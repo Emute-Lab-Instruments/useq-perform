@@ -5,6 +5,7 @@
     "@rollup/plugin-node-resolve": "^11.2.1",
     "npm-run-all": "^4.1.5",
     "rollup": "^2.79.1",
+    "rollup-plugin-serve": "^1.1.1",
     "rollup-plugin-terser": "^7.0.2",
     "serve": "^11.3.2"
   },
@@ -19,6 +20,6 @@
     "build": "rollup -c",
     "watch": "rollup -c -w",
     "dev": "npm-run-all --parallel start watch",
-    "start": "serve public"
+    "start": "serve public -p 5000 --cors"
   }
 }
