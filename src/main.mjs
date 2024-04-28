@@ -4,11 +4,42 @@ import { EditorView, drawSelection, keymap } from  '@codemirror/view';
 // import {javascript} from "@codemirror/lang-javascript"
 import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
-// import {extension as eval_ext } from '@nextjournal/clojure-mode/extensions/eval-region';
 
 
 var serialport = null;
 const encoder = new TextEncoder();
+var serialReadTimer = null;
+
+async function serialReader() {
+  if (serialport) {
+    console.log("reading...");
+    if (serialport.readable && !serialport.readable.locked) {
+      console.log(serialport.readable)
+      // const reader = serialport.readable.getReader();
+      const textDecoder = new TextDecoderStream()
+      const readableStreamClosed = serialport.readable.pipeTo(textDecoder.writable)
+      const reader = textDecoder.readable.getReader()
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            // |reader| has been canceled.
+            break;
+          }
+          // Do something with |value|...
+          console.log("read:")
+          console.log(value);
+        }
+      } catch (error) {
+        console.log(error);
+      } finally {
+        reader.releaseLock();
+        serialReader();
+      }
+    }    
+  }
+}
 
 
 $(function() {
@@ -19,8 +50,8 @@ $(function() {
     .then( (port) => {
       port.open({baudRate:115200}).then(() => {
         serialport = port;
-        console.log("open, writing...");
-        console.log(port.writable);
+        // serialReadTimer = setInterval(serialReader, 500);
+        serialReader();
       })
     })
     .catch((e) => {
