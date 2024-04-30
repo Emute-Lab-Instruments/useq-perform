@@ -5,20 +5,92 @@
 	<meta name='viewport' content='width=device-width'>
 	<title>uSEQ Perform</title>
   <script src="lib/jquery-3.7.1.js"></script>
+  <style type="text/css">
 
-
-	<style>
-		body {
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      margin: 0px;
+      background-color: #ddd;
+      font-size:100%;
 			font-family: 'Helvetica Neue', Arial, sans-serif;
-			color: #333;
-			font-weight: 300;
-		}
+    }
+
+		.header {
+      position: fixed;
+      right: 20px;
+      top: 10px;
+      z-index: 999;
+      /* grid-row: 1;
+      grid-column: 2; */
+    }
+
+
+    .container-editor {
+      width: 100%;
+      height: 100%;
+      /* display: grid; */
+      /* grid-template-rows: auto 1fr; */
+      position:absolute;
+      /* width: auto; */
+      border: 1px solid #ddd;
+      /* max-height: calc(90vh - 40px); */
+      min-height: 22em;
+      max-height: 100%;
+      min-width: 25em;
+      overflow:hidden;
+      resize: both;
+      opacity: 0.8;
+    }
+    .container-console {
+      position:fixed;
+      height:40%;
+      width:20%;
+      left:70%;
+      top:50%;
+      border: 2px solid #fff;
+      background-color: #111;
+      color:lightpink;
+      min-width: 20em;
+      z-index: 99999;
+      /* max-width: 0.5fr; */
+      /* overflow:hidden; */
+      resize: both;
+      /* margin-top:-5em; */
+      opacity:40%;
+      overflow: hidden;
+    }
+    
 	</style>
 </head>
+
 <body>
-	<h1>uSEQ Perform</h1>
-	<button id="btnEval" type="button">Eval</button>
-	<button id="btnConnect" type="button">Connect</button>
+  <div class="main-container">
+	
+    <!-- <div class='bgimage'>
+      <img src="maker.png" width="100%" height="100%">
+    </div> -->
+    <!-- <div class='bgimage2'>
+      <img src="ukrflag.png" width="100%" height="100%">
+    </div> -->
+    <div class='header'>
+			<button id="btnConnect" type="button">Connect</button>
+				<!-- <button id="loadSamplesButton">Load Samples</button> -->
+      <!-- <button id="saveButton">Save</button>-->
+      <!-- <button id="loadButton">Load</button> -->
+      <button id="helpButton">?</button>
+      <span class="sematitle"><a href="https://github.com/Emute-Lab-Instruments/uSEQ" target="_blank">uSEQ</a></span>		
+    </div> 
+
+    <div class="container-editor" id="lceditor">
+    </div>
+    <div class="container-console" id="console"> 
+      stuff<br>
+      stuff
+    </div>
+
+  </div>
 	
 	<script src='bundle.mjs'></script>
 </body>
