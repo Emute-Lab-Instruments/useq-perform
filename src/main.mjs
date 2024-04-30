@@ -5,10 +5,9 @@ import { EditorView, drawSelection, keymap } from  '@codemirror/view';
 import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 
-
 var serialport = null;
 const encoder = new TextEncoder();
-var serialReadTimer = null;
+var consoleLines = []
 
 async function serialReader() {
   if (serialport) {
@@ -28,8 +27,16 @@ async function serialReader() {
             break;
           }
           // Do something with |value|...
-          console.log("read:")
-          console.log(value);
+          // console.log("read:")
+          if (value != "") {
+            console.log(value);
+            consoleLines.push(value)
+            if (consoleLines.length > 50) {
+              consoleLines = consoleLines.slice(1)
+            }
+            $("#console").html(consoleLines.join('<br>'));
+            $('#console').scrollTop($('#console')[0].scrollHeight - $('#console')[0].clientHeight);
+          }
         }
       } catch (error) {
         console.log(error);
@@ -42,28 +49,6 @@ async function serialReader() {
 }
 
 
-$(function() {
-  $("#btnConnect").on("click", function() {
-    console.log("uSEQ-Perform: hello")
-    console.log(navigator.serial);
-    navigator.serial.requestPort()
-    .then( (port) => {
-      port.open({baudRate:115200}).then(() => {
-        serialport = port;
-        // serialReadTimer = setInterval(serialReader, 500);
-        serialReader();
-      })
-    })
-    .catch((e) => {
-      // The user didn't select a port.
-    });
-  });
-  
-  $("#btnEval").on("click", function() {
-    console.log("eval");
-    console.log(top_level_string(state));
-  });
-});
 
 function sendTouSEQ(code) {
   const writer = serialport.writable.getWriter();
@@ -127,6 +112,14 @@ let useqExtension = ( opts ) => {
                     {key: opts.modifier + "-Enter",
                       run: evalToplevel
                     }])}
+
+const updateListenerExtension = EditorView.updateListener.of((update) => {
+  if (update.docChanged) {
+    // Handle the event here
+    // You can access the updated document using `update.state.doc`
+    window.localStorage.setItem("useqcode", update.state.doc.toString());
+  }
+});
                 
 let extensions = [keymap.of(complete_keymap),
   theme,
@@ -135,16 +128,46 @@ let extensions = [keymap.of(complete_keymap),
   drawSelection(),
   bracketMatching(),
 ...default_extensions,
-  useqExtension({modifier: "Ctrl"})];
+  useqExtension({modifier: "Ctrl"}),
+  updateListenerExtension];
                     
-let state = EditorState.create({doc: "\n\n(d2 (sqr (fast 2 bar)))",
+let state = EditorState.create({doc: "(d2 (sqr (fast 2 bar)))",
   extensions: extensions });
 
-let editor = new EditorView({
-  state:state,
-  extensions:extensions,
-  parent: document.body
-})
 
 
 
+$(function() {
+  var editor = new EditorView({
+    state:state,
+    extensions:extensions,
+    parent: document.getElementById("lceditor")
+  })
+
+  let txt =window.localStorage.getItem("useqcode");
+  if (txt) {
+    
+    const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: txt } };
+    // Create a transaction using the spec
+    const transaction = editor.state.update(transactionSpec);
+    // Dispatch the transaction to update the editor state
+    editor.dispatch(transaction);  
+  }
+
+
+  $("#btnConnect").on("click", function() {
+    console.log("uSEQ-Perform: hello")
+    console.log(navigator.serial);
+    navigator.serial.requestPort()
+    .then( (port) => {
+      port.open({baudRate:115200}).then(() => {
+        serialport = port;
+        // serialReadTimer = setInterval(serialReader, 500);
+        serialReader();
+      })
+    })
+    .catch((e) => {
+      // The user didn't select a port.
+    });
+  });
+});
