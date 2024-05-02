@@ -170,4 +170,52 @@ $(function() {
       // The user didn't select a port.
     });
   });
+
+  $("#loadButton").on("click", async () => {
+    let fileHandle;
+    [fileHandle] = await window.showOpenFilePicker();
+    const file = await fileHandle.getFile();
+    const contents = await file.text();   
+    const data = JSON.parse(contents);
+    const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: data['text'] } };
+    // Create a transaction using the spec
+    const transaction = editor.state.update(transactionSpec);
+    // Dispatch the transaction to update the editor state
+    editor.dispatch(transaction);  
+
+  })
+
+  $("#saveButton").on("click", async () => {
+    async function saveToFile(fileContents, ext, desc) {
+      async function getNewFileHandle(ext, desc) {
+        const options = {
+          suggestedName: "untitled" + ext,
+          types: [
+            {
+              description: desc,
+              accept: {
+                'text/plain': ['.txt', ext],
+              },
+            },
+          ],
+        };
+        const handle = await window.showSaveFilePicker(options);
+        return handle;
+      }
+      // fileHandle is an instance of FileSystemFileHandle..
+      async function writeFile(fileHandle, contents) {
+        // Create a FileSystemWritableFileStream to write to.
+        const writable = await fileHandle.createWritable();
+        // Write the contents of the file to the stream.
+        await writable.write(contents);
+        // Close the file and write the contents to disk.
+        await writable.close();
+      }      
+      const filehandle = await getNewFileHandle(ext,desc);
+      writeFile(filehandle, fileContents);
+
+    } 
+    const fileData = {"text": editor.state.doc.toString(), "format_version": 1  };
+    saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code")
+  });
 });
