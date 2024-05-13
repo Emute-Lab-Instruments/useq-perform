@@ -1,9 +1,13 @@
 import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 // import {basicSetup} from "codemirror"
 import { EditorView, drawSelection, keymap } from  '@codemirror/view';
+import { Compartment, EditorState } from '@codemirror/state';
 // import {javascript} from "@codemirror/lang-javascript"
 import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
+import {WebMidi} from "webmidi";
+import { marked } from "marked";
+
 
 var serialport = null;
 const encoder = new TextEncoder();
@@ -26,16 +30,12 @@ async function serialReader() {
             // |reader| has been canceled.
             break;
           }
-          // Do something with |value|...
-          // console.log("read:")
-          if (value != "") {
-            console.log(value);
-            consoleLines.push(value)
-            if (consoleLines.length > 50) {
-              consoleLines = consoleLines.slice(1)
-            }
-            $("#console").html(consoleLines.join('<br>'));
-            $('#console').scrollTop($('#console')[0].scrollHeight - $('#console')[0].clientHeight);
+          if (value != "" && value != "\r\n") {
+            console.log("rcv:" + value);
+            const textEncoder = new TextEncoder();
+            // const uint8Array = textEncoder.encode(value);
+            // console.log(uint8Array);
+            post(value);
           }
         }
       } catch (error) {
@@ -44,11 +44,23 @@ async function serialReader() {
         reader.releaseLock();
         serialReader();
       }
+    }else{
+      console.log(serialport);
     }    
   }
 }
 
 
+
+function post(value) {
+  consoleLines.push(marked.parse(value))
+  if (consoleLines.length > 50) {
+    consoleLines = consoleLines.slice(1);
+  }
+  // $("#console").html(consoleLines.join('<br>'));
+  $("#console").html(consoleLines.join(''));
+  $('#console').scrollTop($('#console')[0].scrollHeight - $('#console')[0].clientHeight);
+}
 
 function sendTouSEQ(code) {
   const writer = serialport.writable.getWriter();
@@ -63,15 +75,20 @@ function sendTouSEQ(code) {
 
 navigator.serial.addEventListener('connect', e => {
   console.log(e);
+  console.log("reconnected")
+  serialReader();
+  $("#btnConnect").hide(1000);
+
 });
 
 navigator.serial.addEventListener('disconnect', e => {
   console.log(e);
+  $("#btnConnect").show(1000);
+  post("uSEQ disconnected")
 });
 
 
 
-import { EditorState } from  '@codemirror/state';
 
 let theme = EditorView.theme({
   ".cm-content": {whitespace: "pre-wrap",
@@ -83,7 +100,7 @@ let theme = EditorView.theme({
                "line-height": "1.6",
                "font-size": "16px",
                "font-family": "var(--code-font)"},
-  ".cm-matchingBracket": {"border-bottom": "1px solid var(--teal-color)",
+  ".cm-matchingBracket": {"border-bottom": "1px solid var(--white-color)",
                           "color": "inherit"},
   ".cm-gutters": {background: "transparent",
                   border: "none"},
@@ -91,7 +108,7 @@ let theme = EditorView.theme({
   // only show cursor when focused
   ".cm-cursor": {visibility: "hidden"},
   "&.cm-focused .cm-cursor": {visibility: "visible"}
-});
+}, { dark: true });
 
 
 
@@ -131,28 +148,68 @@ let extensions = [keymap.of(complete_keymap),
   useqExtension({modifier: "Ctrl"}),
   updateListenerExtension];
                     
-let state = EditorState.create({doc: "(d2 (sqr (fast 2 bar)))",
+let state = EditorState.create({doc: "",
   extensions: extensions });
 
 
 
 
 $(function() {
+
+  WebMidi
+  .enable()
+  .then(onEnabled)
+  .catch(err => alert(err));
+
+  function onEnabled() {
+    
+    // Inputs
+    WebMidi.inputs.forEach(input => console.log(input.manufacturer, input.name));
+    
+    // Outputs
+    WebMidi.outputs.forEach(output => console.log(output.manufacturer, output.name));
+
+  }
+
+
   var editor = new EditorView({
     state:state,
     extensions:extensions,
     parent: document.getElementById("lceditor")
   })
 
-  let txt =window.localStorage.getItem("useqcode");
-  if (txt) {
-    
-    const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: txt } };
-    // Create a transaction using the spec
-    const transaction = editor.state.update(transactionSpec);
-    // Dispatch the transaction to update the editor state
-    editor.dispatch(transaction);  
+  //first, check if loading external file
+  var urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has("gist")) {
+    const gistid = urlParams.get("gist")
+    console.log("loading gist " + gistid)
+    $.ajax({
+      url: "https://api.github.com/gists/" + gistid,
+      type: "GET",
+      data: {"accept":"application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+      error:function (xhr, ajaxOptions, thrownError){
+        const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: "gist not found" }};
+        const transaction = editor.state.update(transactionSpec);
+        editor.dispatch(transaction);  
+        }
+    }).then(function(data) {
+      const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: Object.entries(data.files)[0][1].content } };
+      const transaction = editor.state.update(transactionSpec);
+      editor.dispatch(transaction);  
+
+  });
   }
+  else{
+    //load from local storage
+    let txt =window.localStorage.getItem("useqcode");
+    if (txt) {
+      const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: txt } };
+      // Create a transaction using the spec
+      const transaction = editor.state.update(transactionSpec);
+      // Dispatch the transaction to update the editor state
+      editor.dispatch(transaction);  
+    }
+    }
 
 
   $("#btnConnect").on("click", function() {
@@ -164,6 +221,7 @@ $(function() {
         serialport = port;
         // serialReadTimer = setInterval(serialReader, 500);
         serialReader();
+        $("#btnConnect").hide(1000);
       })
     })
     .catch((e) => {
