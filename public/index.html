@@ -12,7 +12,7 @@
       height: 100%;
       overflow: hidden;
       margin: 0px;
-      background-color: #ddd;
+      background-color:#ddd;
       font-size:100%;
 			font-family: 'Helvetica Neue', Arial, sans-serif;
     }
@@ -45,13 +45,32 @@
     }
     .container-console {
       position:fixed;
-      height:40%;
-      width:20%;
+      height:49%;
+      width:29%;
       left:70%;
       top:50%;
       border: 2px solid #fff;
-      background-color: #111;
-      color:lightpink;
+      background-color: #231e45;
+      color:#f4a7af;
+      min-width: 20em;
+      z-index: 99999;
+      /* max-width: 0.5fr; */
+      /* overflow:hidden; */
+      resize: both;
+      /* margin-top:-5em; */
+      opacity:40%;
+      overflow: hidden;
+    }
+
+    .container-serialconfig {
+      position:fixed;
+      height:39%;
+      width:29%;
+      left:70%;
+      top:10%;
+      border: 2px solid #fff;
+      background-color: #231e45;
+      color:#f4a7af;
       min-width: 20em;
       z-index: 99999;
       /* max-width: 0.5fr; */
@@ -62,7 +81,9 @@
       overflow: hidden;
     }
     
+    
 	</style>
+  
 </head>
 
 <body>
@@ -77,8 +98,8 @@
     <div class='header'>
 			<button id="btnConnect" type="button">Connect</button>
 				<!-- <button id="loadSamplesButton">Load Samples</button> -->
-      <!-- <button id="saveButton">Save</button>-->
-      <!-- <button id="loadButton">Load</button> -->
+      <button id="saveButton">Save</button>
+      <button id="loadButton">Load</button>
       <button id="helpButton">?</button>
       <span class="sematitle"><a href="https://github.com/Emute-Lab-Instruments/uSEQ" target="_blank">uSEQ</a></span>		
     </div> 
@@ -86,8 +107,8 @@
     <div class="container-editor" id="lceditor">
     </div>
     <div class="container-console" id="console"> 
-      stuff<br>
-      stuff
+    </div>
+    <div class="container-serialconfig" id="serialconfig"> 
     </div>
 
   </div>
