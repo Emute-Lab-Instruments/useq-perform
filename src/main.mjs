@@ -1,3 +1,5 @@
+//stuff
+
 import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 // import {basicSetup} from "codemirror"
 import { EditorView, drawSelection, keymap } from  '@codemirror/view';
@@ -7,6 +9,8 @@ import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching 
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 import {WebMidi} from "webmidi";
 import { marked } from "marked";
+
+
 
 
 var serialport = null;
@@ -114,21 +118,30 @@ let theme = EditorView.theme({
 
 
 
-let evalToplevel = function (opts) {
-  console.log("eval top level")
+let evalToplevel = function (opts, prefix="") {
   let state = opts.state;
-  let code = top_level_string(state);
+  let code = prefix + top_level_string(state);
   console.log(code);
+  let utf8Encode = new TextEncoder();
+  console.log(utf8Encode.encode(code));
   sendTouSEQ(code);
   return true;
+}
+
+let evalNow = function (opts) {
+  evalToplevel(opts, "@")
+}
+let evalQuantised = function (opts) {
+  evalToplevel(opts)
 }
 
 let useqExtension = ( opts ) => {
   return keymap.of([
     //{key: "Alt-Enter", run: evalCell},
                     {key: opts.modifier + "-Enter",
-                      run: evalToplevel
-                    }])}
+                      run: evalNow
+                    },{key:"Alt-Enter", run: evalQuantised}
+                  ])}
 
 const updateListenerExtension = EditorView.updateListener.of((update) => {
   if (update.docChanged) {
