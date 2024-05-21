@@ -192,6 +192,7 @@ $(function() {
     parent: document.getElementById("lceditor")
   })
 
+
   //first, check if loading external file
   var urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has('nosave')) {
