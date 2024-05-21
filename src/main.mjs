@@ -144,7 +144,8 @@ let useqExtension = ( opts ) => {
                   ])}
 
 const updateListenerExtension = EditorView.updateListener.of((update) => {
-  if (update.docChanged) {
+  if (update.docChanged && config.savelocal) {
+    
     // Handle the event here
     // You can access the updated document using `update.state.doc`
     window.localStorage.setItem("useqcode", update.state.doc.toString());
@@ -164,7 +165,7 @@ let extensions = [keymap.of(complete_keymap),
 let state = EditorState.create({doc: "",
   extensions: extensions });
 
-
+var config={'savelocal':true}
 
 
 $(function() {
@@ -193,6 +194,9 @@ $(function() {
 
   //first, check if loading external file
   var urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('nosave')) {
+    config.savelocal = false;
+  }
   if (urlParams.has("gist")) {
     const gistid = urlParams.get("gist")
     console.log("loading gist " + gistid)
@@ -210,19 +214,21 @@ $(function() {
       const transaction = editor.state.update(transactionSpec);
       editor.dispatch(transaction);  
 
-  });
+    });
   }
   else{
     //load from local storage
-    let txt =window.localStorage.getItem("useqcode");
-    if (txt) {
-      const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: txt } };
-      // Create a transaction using the spec
-      const transaction = editor.state.update(transactionSpec);
-      // Dispatch the transaction to update the editor state
-      editor.dispatch(transaction);  
+    if (config.savelocal) {
+      let txt =window.localStorage.getItem("useqcode");
+      if (txt) {
+        const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: txt } };
+        // Create a transaction using the spec
+        const transaction = editor.state.update(transactionSpec);
+        // Dispatch the transaction to update the editor state
+        editor.dispatch(transaction);  
+      }
     }
-    }
+  }
 
 
   $("#btnConnect").on("click", function() {
