@@ -9,6 +9,7 @@ import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching 
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 import {WebMidi} from "webmidi";
 import { marked } from "marked";
+import { DataTreeModule } from 'tabulator-tables';
 
 
 
@@ -95,6 +96,9 @@ navigator.serial.addEventListener('disconnect', e => {
 
 
 let theme = EditorView.theme({
+  "&": {"height":"100%"},
+  ".cm-wrap": {"height":"100%"},
+  ".cm-content, .cm-gutter": {minHeight: "100%"},
   ".cm-content": {whitespace: "pre-wrap",
                   passing: "10px 0",
                   flex: "1 1 0"},
@@ -109,10 +113,11 @@ let theme = EditorView.theme({
   ".cm-gutters": {background: "transparent",
                   border: "none"},
   ".cm-gutterElement": {"margin-left": "5px"},
+  ".cm-scroller": { "overflow": "auto"},
   // only show cursor when focused
   ".cm-cursor": {visibility: "hidden"},
   "&.cm-focused .cm-cursor": {visibility: "visible"}
-}, { dark: true });
+}, { dark: DataTreeModule });
 
 
 
