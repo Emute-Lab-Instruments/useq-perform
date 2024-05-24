@@ -10,13 +10,75 @@ import { extension as eval_ext, cursor_node_string, top_level_string } from '@ne
 import {WebMidi} from "webmidi";
 import { marked } from "marked";
 import { DataTreeModule } from 'tabulator-tables';
-
-
+import { Buffer } from 'buffer';
 
 
 var serialport = null;
 const encoder = new TextEncoder();
 var consoleLines = []
+
+// async function serialReader() {
+//   if (serialport) {
+//     console.log("reading...");
+//     if (serialport.readable && !serialport.readable.locked) {
+//       console.log(serialport.readable)
+//       // const reader = serialport.readable.getReader({'mode':'byob'});
+//       const textDecoder = new TextDecoderStream()
+//       const readableStreamClosed = serialport.readable.pipeTo(textDecoder.writable)
+//       const reader = textDecoder.readable.getReader()
+//       //https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream/getReader
+//       let serialValCounter=0;
+//       try {
+//         let txtbuffer="";
+//         let serialInMsg = new Uint8Array(9);
+//         while (true) {
+//           const { value, done } = await reader.read();
+//           if (done) {
+//             // |reader| has been canceled.
+//             console.log("reader done")
+//             break;
+//           }
+//           // if (value != "" && value != "\r\n") {
+//           console.log(value.length);            
+//           const textEncoder = new TextEncoder();
+//           const valBytes = textEncoder.encode(value);
+//           // const valBytes = value;
+//           for(let i=0; i < valBytes.length; i++) {
+//             if (serialValCounter > 0) {
+//               console.log(valBytes[i]);
+//               serialInMsg[9-serialValCounter] = valBytes[i];
+//               if (serialValCounter==1) {
+//                 //decode
+//                 console.log(serialInMsg);
+//                 // const f64bytes = serialInMsg.slice(1);
+//                 const buf = Buffer.from(serialInMsg);
+//                 const val = buf.readDoubleLE(1);
+//                 console.log(val);
+//               }
+//               serialValCounter--;
+//             }else if (valBytes[i] == 31) {
+//               serialValCounter = 9;
+//             }else{
+//               txtbuffer = txtbuffer + String.fromCharCode(valBytes[i]);
+//             }
+//           }
+//           console.log(txtbuffer)
+//           // post(txtbuffer);
+//           txtbuffer = "";
+//           // }
+//         }
+//         console.log(result)
+//       } catch (error) {
+//         console.log(error);
+//       } finally {
+//         reader.releaseLock();
+//         serialReader();
+//       }
+//     }else{
+//       console.log(serialport);
+//     }    
+//   }
+// }
 
 async function serialReader() {
   if (serialport) {
@@ -55,8 +117,6 @@ async function serialReader() {
   }
 }
 
-
-
 function post(value) {
   consoleLines.push(marked.parse(value))
   if (consoleLines.length > 50) {
@@ -68,6 +128,8 @@ function post(value) {
 }
 
 function sendTouSEQ(code) {
+  code = code.replace('\n','')
+  console.log(code);
   const writer = serialport.writable.getWriter();
   console.log("writing...")
   writer.write(encoder.encode(code)).then(() =>{
@@ -128,7 +190,7 @@ let evalToplevel = function (opts, prefix="") {
   let code = prefix + top_level_string(state);
   console.log(code);
   let utf8Encode = new TextEncoder();
-  console.log(utf8Encode.encode(code));
+  // console.log(utf8Encode.encode(code));
   sendTouSEQ(code);
   return true;
 }
@@ -174,6 +236,15 @@ var config={'savelocal':true}
 
 
 $(function() {
+  //test
+  console.log("float test")
+  // const f64bytes = new Uint8Array([71,95,90,28,231,68,254,64]);
+  const f64bytes = new Uint8Array([1, 51,51,51,51,51,51,243,63,]);
+  
+  const buf = Buffer.from(f64bytes);
+  const val = buf.readDoubleLE(1);
+  console.log(val);
+
 
   WebMidi
   .enable()
