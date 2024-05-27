@@ -130,13 +130,16 @@ function post(value) {
 function sendTouSEQ(code) {
   code = code.replace('\n','')
   console.log(code);
-  const writer = serialport.writable.getWriter();
-  console.log("writing...")
-  writer.write(encoder.encode(code)).then(() =>{
-    writer.releaseLock();
-    console.log("written")
-  });
-
+  if (serialport && serialport.writable) {
+    const writer = serialport.writable.getWriter();
+    console.log("writing...")
+    writer.write(encoder.encode(code)).then(() =>{
+      writer.releaseLock();
+      console.log("written")
+    });
+  }else{
+    post("uSEQ not connected")
+  }
 }
 
 
@@ -189,7 +192,7 @@ let evalToplevel = function (opts, prefix="") {
   let state = opts.state;
   let code = prefix + top_level_string(state);
   console.log(code);
-  let utf8Encode = new TextEncoder();
+  // let utf8Encode = new TextEncoder();
   // console.log(utf8Encode.encode(code));
   sendTouSEQ(code);
   return true;
