@@ -44373,31 +44373,119 @@
   async function serialReader() {
     if (serialport) {
       console.log("reading...");
+      let buffer = new Uint8Array(0);
+      // let buffer = new ArrayBuffer(bufferSize);    
       if (serialport.readable && !serialport.readable.locked) {
-        console.log(serialport.readable);
-        // const reader = serialport.readable.getReader();
-        const textDecoder = new TextDecoderStream();
-        serialport.readable.pipeTo(textDecoder.writable);
-        const reader = textDecoder.readable.getReader();
-
+        const reader = serialport.readable.getReader();
+        // const textDecoder = new TextDecoderStream()
+        // const readableStreamClosed = serialport.readable.pipeTo(textDecoder.writable)
+        // const reader = textDecoder.readable.getReader()
+        let serialReadModes = {"ANY":0, "TEXT":1,"SERIALSTREAM":2};
+        let serialReadMode = serialReadModes.ANY;
         try {
           while (true) {
             const { value, done } = await reader.read();
+            console.log("rcv...");
             if (done) {
               // |reader| has been canceled.
               break;
             }
-            if (value != "" && value != "\r\n") {
-              console.log("rcv:" + value);
-              const textEncoder = new TextEncoder();
-              // const uint8Array = textEncoder.encode(value);
-              // console.log(uint8Array);
-              post(value);
+            // buffer = value.buffer;
+            // let charbuf = new Uint8Array(buffer)
+            // console.log(charbuf);
+            
+            // // if (value != "" && value != "\r\n") {
+            // //   console.log("rcv:" + value);
+            // const textEncoder = new TextEncoder();
+            // const txt = textEncoder.encode(buffer);
+            // console.log( String.fromCharCode(txt));
+            // //   post(value);
+            // // }
+            // buffer.clear();
+            let byteArray = new Uint8Array(value.buffer);
+            // console.log("Received data (bytes):", byteArray);
+      
+            // Display data as text
+            // const text = new TextDecoder().decode(byteArray);
+            // console.log("Received data (text):", text);   
+            //if there's unconsumed data from the last read, then prepend to new data
+            if (buffer.length > 0) {
+              // console.log("prepending")
+              console.log(buffer.length);
+              let newBuffer = new Uint8Array(buffer.length+byteArray.length);
+              newBuffer.set(buffer);
+              newBuffer.set(byteArray, buffer.length);
+              byteArray = newBuffer;
             }
+            // console.log("buf: " + byteArray.length)
+            let processed=false;
+            while (byteArray.length > 0) {
+              //consume next val
+              switch(serialReadMode) {
+                case serialReadModes.ANY:
+                {
+                  if (byteArray[0] == 31) {
+                    serialReadMode = serialReadModes.SERIALSTREAM;
+                  }else {
+                    serialReadMode = serialReadModes.TEXT;
+                  }
+                }
+                case serialReadModes.TEXT:
+                {
+                  // console.log("text mode")
+                  //find end of line?
+                  let found=false;
+                  for (let i = 0; i < byteArray.length - 1; i++) {
+                    if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
+                      found=true;
+                      let msg = new TextDecoder().decode(byteArray.slice(0,i));
+                      console.log(msg);
+                      post("uSEQ: " + msg);
+                      byteArray = byteArray.slice(i+2);
+                      console.log(byteArray);
+                      serialReadMode = serialReadModes.ANY;
+                    }
+                  } 
+                  if (!found) {
+                    processed = true;
+                  }         
+                  break;
+                }
+                case serialReadModes.SERIALSTREAM:
+                {
+                  // console.log("serial stream")
+                  if (byteArray.length < 10) {
+                    //wait for more data incoming
+                    processed=true;
+                  }else {
+                    //read channel
+                    const channel = byteArray[1];
+                    // console.log("ch: " + channel)
+                    //decode double
+                    const buf = Buffer.from(byteArray);
+                    const val = buf.readDoubleLE(2);
+                    // console.log(val);
+
+                    //trim data
+                    byteArray = byteArray.slice(10);
+                    serialReadMode = serialReadModes.ANY;
+                  }
+                  break;
+                }
+              } //switch
+              if (processed) {
+                break;
+              }
+            }
+            //carry through any remainder to the next read
+            buffer = byteArray;
+            // console.log("consumed")
+            
           }
         } catch (error) {
           console.log(error);
         } finally {
+          console.log("finally");
           reader.releaseLock();
           serialReader();
         }
