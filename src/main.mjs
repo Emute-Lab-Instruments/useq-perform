@@ -80,6 +80,11 @@ var consoleLines = []
 //   }
 // }
 
+//keep queue of recent MIDI values
+function uSEQ_Serial_Map(channel, value) {
+
+}
+
 async function serialReader() {
   if (serialport) {
     console.log("reading...");
@@ -95,7 +100,7 @@ async function serialReader() {
       try {
         while (true) {
           const { value, done } = await reader.read();
-          console.log("rcv...")
+          // console.log("rcv...")
           if (done) {
             // |reader| has been canceled.
             break;
@@ -121,7 +126,7 @@ async function serialReader() {
           //if there's unconsumed data from the last read, then prepend to new data
           if (buffer.length > 0) {
             // console.log("prepending")
-            console.log(buffer.length)
+            // console.log(buffer.length)
             let newBuffer = new Uint8Array(buffer.length+byteArray.length)
             newBuffer.set(buffer)
             newBuffer.set(byteArray, buffer.length)
@@ -134,10 +139,36 @@ async function serialReader() {
             switch(serialReadMode) {
               case serialReadModes.ANY:
               {
+                // console.log(byteArray)
+                //look for start of message marker
                 if (byteArray[0] == 31) {
-                  serialReadMode = serialReadModes.SERIALSTREAM;
+                  if (byteArray.length > 1) {
+                    //check message type
+                    if (byteArray[1] == 0) {
+                        serialReadMode = serialReadModes.SERIALSTREAM;
+                    }else{
+                      serialReadMode = serialReadModes.TEXT;
+                    }
+                  }else{
+                    //wait for more data
+                    processed = true
+                  }
                 }else{
-                  serialReadMode = serialReadModes.TEXT;
+                  //no marker, so try to find message start
+                  let found=false;
+                  for (let i = 0; i < byteArray.length - 1; i++) {
+                    if (byteArray[i] === 31 ) {
+                      found=true
+                      byteArray = byteArray.slice(i);
+                    }
+                  }
+                  if (!found) {
+                    //lose data and wait for a message start
+                    byteArray = byteArray.slice(byteArray.length)
+                  }
+                  //done for now, wait for more data
+                  processed=true
+                  break
                 }
               }
               case serialReadModes.TEXT:
@@ -145,10 +176,10 @@ async function serialReader() {
                 // console.log("text mode")
                 //find end of line?
                 let found=false;
-                for (let i = 0; i < byteArray.length - 1; i++) {
+                for (let i = 2; i < byteArray.length - 1; i++) {
                   if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
                     found=true
-                    let msg = new TextDecoder().decode(byteArray.slice(0,i))
+                    let msg = new TextDecoder().decode(byteArray.slice(2,i))
                     console.log(msg)
                     post("uSEQ: " + msg)
                     byteArray = byteArray.slice(i+2);
@@ -164,20 +195,20 @@ async function serialReader() {
               case serialReadModes.SERIALSTREAM:
               {
                 // console.log("serial stream")
-                if (byteArray.length < 10) {
+                if (byteArray.length < 11) {
                   //wait for more data incoming
                   processed=true;
                 }else{
                   //read channel
-                  const channel = byteArray[1];
+                  const channel = byteArray[2];
                   // console.log("ch: " + channel)
                   //decode double
                   const buf = Buffer.from(byteArray);
-                  const val = buf.readDoubleLE(2);
-                  // console.log(val);
+                  const val = buf.readDoubleLE(3);
+                  console.log(val);
 
                   //trim data
-                  byteArray = byteArray.slice(10)
+                  byteArray = byteArray.slice(11)
                   serialReadMode = serialReadModes.ANY;
                 }
                 break;
