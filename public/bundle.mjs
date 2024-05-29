@@ -44636,7 +44636,26 @@
         editor.dispatch(transaction);  
 
       });
+    }else if (urlParams.has("txt")) {
+      const url = urlParams.get("txt");
+      console.log("loading code " + url);
+      $.ajax({
+        url: url,
+        type: "GET",
+        data: {},
+        error:function (xhr, ajaxOptions, thrownError){
+          const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: "code not found" }};
+          const transaction = editor.state.update(transactionSpec);
+          editor.dispatch(transaction);  
+          }
+      }).then(function(data) {
+        const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: data } };
+        const transaction = editor.state.update(transactionSpec);
+        editor.dispatch(transaction);  
+
+      });
     }
+    
     else {
       //load from local storage
       if (config.savelocal) {
