@@ -9,8 +9,9 @@ import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching 
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 import {WebMidi} from "webmidi";
 import { marked } from "marked";
-import { DataTreeModule } from 'tabulator-tables';
+// import { DataTreeModule } from 'tabulator-tables';
 import { Buffer } from 'buffer';
+import { compileString } from 'squint-cljs';
 
 
 var serialport = null;
@@ -262,19 +263,6 @@ function sendTouSEQ(code) {
 }
 
 
-navigator.serial.addEventListener('connect', e => {
-  console.log(e);
-  console.log("reconnected")
-  serialReader();
-  $("#btnConnect").hide(1000);
-
-});
-
-navigator.serial.addEventListener('disconnect', e => {
-  console.log(e);
-  $("#btnConnect").show(1000);
-  post("uSEQ disconnected")
-});
 
 
 
@@ -301,7 +289,7 @@ let theme = EditorView.theme({
   // only show cursor when focused
   ".cm-cursor": {visibility: "hidden"},
   "&.cm-focused .cm-cursor": {visibility: "visible"}
-}, { dark: DataTreeModule });
+}, {});
 
 
 
@@ -359,14 +347,38 @@ var config={'savelocal':true}
 
 $(function() {
   //test
-  console.log("float test")
-  // const f64bytes = new Uint8Array([71,95,90,28,231,68,254,64]);
-  const f64bytes = new Uint8Array([1, 51,51,51,51,51,51,243,63,]);
+  // console.log("float test")
+  // // const f64bytes = new Uint8Array([71,95,90,28,231,68,254,64]);
+  // const f64bytes = new Uint8Array([1, 51,51,51,51,51,51,243,63,]);
   
-  const buf = Buffer.from(f64bytes);
-  const val = buf.readDoubleLE(1);
-  console.log(val);
+  // const buf = Buffer.from(f64bytes);
+  // const val = buf.readDoubleLE(1);
+  // console.log(val);
+  console.log("squint test")
+  const jscode = compileString("(+ 127 3)"
+                             , {"context": "expr",
+                                "elide-imports": true}
+                            )
+  console.log(jscode)
 
+  if (!navigator.serial) {
+    post("A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module")
+    post("See https://caniuse.com/web-serial for more information")
+  }else{
+    navigator.serial.addEventListener('connect', e => {
+      console.log(e);
+      console.log("reconnected")
+      serialReader();
+      $("#btnConnect").hide(1000);
+    
+    });
+    
+    navigator.serial.addEventListener('disconnect', e => {
+      console.log(e);
+      $("#btnConnect").show(1000);
+      post("uSEQ disconnected")
+    });    
+  }
 
   WebMidi
   .enable()
