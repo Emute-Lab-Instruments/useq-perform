@@ -86,6 +86,35 @@ function uSEQ_Serial_Map(channel, value) {
 
 }
 
+class CircularBuffer {
+  constructor(bufferLength) {
+    this.buffer = [];
+    this.pointer = 0;
+    this.bufferLength = bufferLength;
+  }
+  
+  push(element) {
+    if(this.buffer.length === this.bufferLength) {
+       this.buffer[this.pointer] = element;
+    } else {
+       this.buffer.push(element);
+    }
+    this.pointer = (this.pointer + 1) % this.bufferLength;
+  }
+
+  get(i) {
+    return this.buffer[i];
+  }
+  
+  //Gets the ith element before last one 
+  getLast(i) {
+    return this.buffer[this.pointer+this.bufferLength-1-i];
+  }
+
+}
+
+var s1buffer = new CircularBuffer(100);
+
 async function serialReader() {
   if (serialport) {
     console.log("reading...");
@@ -206,7 +235,8 @@ async function serialReader() {
                   //decode double
                   const buf = Buffer.from(byteArray);
                   const val = buf.readDoubleLE(3);
-                  console.log(val);
+                  // console.log(val);
+                  s1buffer.push(val);
 
                   //trim data
                   byteArray = byteArray.slice(11)
