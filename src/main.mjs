@@ -278,7 +278,7 @@ function post(value) {
 }
 
 function sendTouSEQ(code) {
-  code = code.replace('\n','')
+  code = code.replaceAll('\n','')
   console.log(code);
   if (serialport && serialport.writable) {
     const writer = serialport.writable.getWriter();
