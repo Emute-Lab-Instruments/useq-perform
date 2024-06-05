@@ -17,70 +17,6 @@ import { compileString } from 'squint-cljs';
 var serialport = null;
 const encoder = new TextEncoder();
 var consoleLines = []
-
-// async function serialReader() {
-//   if (serialport) {
-//     console.log("reading...");
-//     if (serialport.readable && !serialport.readable.locked) {
-//       console.log(serialport.readable)
-//       // const reader = serialport.readable.getReader({'mode':'byob'});
-//       const textDecoder = new TextDecoderStream()
-//       const readableStreamClosed = serialport.readable.pipeTo(textDecoder.writable)
-//       const reader = textDecoder.readable.getReader()
-//       //https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream/getReader
-//       let serialValCounter=0;
-//       try {
-//         let txtbuffer="";
-//         let serialInMsg = new Uint8Array(9);
-//         while (true) {
-//           const { value, done } = await reader.read();
-//           if (done) {
-//             // |reader| has been canceled.
-//             console.log("reader done")
-//             break;
-//           }
-//           // if (value != "" && value != "\r\n") {
-//           console.log(value.length);            
-//           const textEncoder = new TextEncoder();
-//           const valBytes = textEncoder.encode(value);
-//           // const valBytes = value;
-//           for(let i=0; i < valBytes.length; i++) {
-//             if (serialValCounter > 0) {
-//               console.log(valBytes[i]);
-//               serialInMsg[9-serialValCounter] = valBytes[i];
-//               if (serialValCounter==1) {
-//                 //decode
-//                 console.log(serialInMsg);
-//                 // const f64bytes = serialInMsg.slice(1);
-//                 const buf = Buffer.from(serialInMsg);
-//                 const val = buf.readDoubleLE(1);
-//                 console.log(val);
-//               }
-//               serialValCounter--;
-//             }else if (valBytes[i] == 31) {
-//               serialValCounter = 9;
-//             }else{
-//               txtbuffer = txtbuffer + String.fromCharCode(valBytes[i]);
-//             }
-//           }
-//           console.log(txtbuffer)
-//           // post(txtbuffer);
-//           txtbuffer = "";
-//           // }
-//         }
-//         console.log(result)
-//       } catch (error) {
-//         console.log(error);
-//       } finally {
-//         reader.releaseLock();
-//         serialReader();
-//       }
-//     }else{
-//       console.log(serialport);
-//     }    
-//   }
-// }
-
 //keep queue of recent MIDI values  
 function uSEQ_Serial_Map(channel, value) {
 
@@ -103,17 +39,16 @@ class CircularBuffer {
   }
 
   get(i) {
-    return this.buffer[i];
+    return this.buffer[(this.pointer + i) % this.bufferLength];
   }
   
-  //Gets the ith element before last one 
-  getLast(i) {
-    return this.buffer[this.pointer+this.bufferLength-1-i];
-  }
-
 }
 
-var s1buffer = new CircularBuffer(100);
+var serialBuffers = [];
+for(let i=0; i < 8; i++) serialBuffers[i] = new CircularBuffer(100);
+console.log(serialBuffers)
+
+
 
 async function serialReader() {
   if (serialport) {
@@ -210,6 +145,7 @@ async function serialReader() {
                   if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
                     found=true
                     let msg = new TextDecoder().decode(byteArray.slice(2,i))
+                    // msg = encodeURIComponent(msg);
                     console.log(msg)
                     post("uSEQ: " + msg)
                     byteArray = byteArray.slice(i+2);
@@ -236,7 +172,7 @@ async function serialReader() {
                   const buf = Buffer.from(byteArray);
                   const val = buf.readDoubleLE(3);
                   // console.log(val);
-                  s1buffer.push(val);
+                  serialBuffers[channel-1].push(val);
 
                   //trim data
                   byteArray = byteArray.slice(11)
@@ -255,6 +191,7 @@ async function serialReader() {
           
         }
       } catch (error) {
+        reader.releaseLock();
         console.log(error);
       } finally {
         console.log("finally")
@@ -278,7 +215,7 @@ function post(value) {
 }
 
 function sendTouSEQ(code) {
-  code = code.replace('\n','')
+  code = code.replaceAll('\n','')
   console.log(code);
   if (serialport && serialport.writable) {
     const writer = serialport.writable.getWriter();
@@ -374,6 +311,25 @@ let state = EditorState.create({doc: "",
 
 var config={'savelocal':true}
 
+function drawSerialVis() {
+  const palette = ['#00429d', '#45a5ad', '#ace397', '#fcbf5d', '#ff809f', '#ff005e', '#c9004c', '#93003a'];
+  var c = document.getElementById("serialcanvas");
+  var ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  const gap = c.width * 1.0 / serialBuffers[0].bufferLength;
+  for(let ch=0; ch < 8; ch++) {
+    ctx.beginPath();
+    ctx.moveTo(0,c.height - (c.height * serialBuffers[ch].get(0)));
+    
+    for(let i=1; i < serialBuffers[ch].bufferLength-1; i++) {
+      ctx.lineTo(gap*i, c.height - (c.height * serialBuffers[ch].get(i)));    
+    }
+    // ctx.closePath();
+    ctx.strokeStyle = palette[ch];
+    ctx.stroke();
+  }
+  window.requestAnimationFrame(drawSerialVis)  
+}
 
 $(function() {
   //test
@@ -391,6 +347,7 @@ $(function() {
                             )
   console.log(jscode)
 
+
   if (!navigator.serial) {
     post("A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module")
     post("See https://caniuse.com/web-serial for more information")
@@ -398,32 +355,37 @@ $(function() {
     navigator.serial.addEventListener('connect', e => {
       console.log(e);
       console.log("reconnected")
-      serialReader();
-      $("#btnConnect").hide(1000);
+      // serialReader();
+      // $("#btnConnect").hide(1000);
     
     });
     
     navigator.serial.addEventListener('disconnect', e => {
-      console.log(e);
-      $("#btnConnect").show(1000);
+      // console.log(e);
+      // $("#btnConnect").show(1000);
       post("uSEQ disconnected")
     });    
   }
-
-  WebMidi
-  .enable()
-  .then(onEnabled)
-  .catch(err => alert(err));
-
-  function onEnabled() {
-    
-    // Inputs
-    WebMidi.inputs.forEach(input => console.log(input.manufacturer, input.name));
-    
-    // Outputs
-    WebMidi.outputs.forEach(output => console.log(output.manufacturer, output.name));
-
-  }
+  navigator.requestMIDIAccess().then((access) => {
+    // Get lists of available MIDI controllers
+    // const inputs = access.inputs.values();
+    // const outputs = access.outputs.values();
+    // …
+    WebMidi
+    .enable()
+    .then(onEnabled)
+    .catch(err => alert(err));
+  
+    function onEnabled() {
+      
+      // Inputs
+      WebMidi.inputs.forEach(input => console.log(input.manufacturer, input.name));
+      
+      // Outputs
+      WebMidi.outputs.forEach(output => console.log(output.manufacturer, output.name));
+  
+    }
+  });
 
 
   var editor = new EditorView({
@@ -555,4 +517,7 @@ $(function() {
     const fileData = {"text": editor.state.doc.toString(), "format_version": 1  };
     saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code")
   });
+
+
+  window.requestAnimationFrame(drawSerialVis);
 });
