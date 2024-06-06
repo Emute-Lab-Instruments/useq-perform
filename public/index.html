@@ -91,6 +91,26 @@
         height: 100%;
       }
     } 
+    .container-help {
+      position:fixed;
+      height:30%;
+      width:29%;
+      left:70%;
+      top:12%;
+      border: 2px solid #000;
+      background-color: #fff;
+      color:#111;
+
+      /* min-width: 20em; */
+      z-index: 99999;
+      /* max-width: 0.5fr; */
+      /* overflow:hidden; */
+      resize: both;
+      /* margin-top:-5em; */
+      opacity:40%;
+      overflow: hidden;
+    }
+
 
 
     .useqtitle {
@@ -141,6 +161,15 @@
     <div class="container-serialvis" id="serialvis"> 
       <canvas class="serialcanvas" id="serialcanvas"></canvas>
     </div>
+    <div class="container-help" id="helppanel"> 
+      Alt-h: Toggle the help panel<br>
+      <!-- Alt-o: Open a file<br>
+      Alt-s: Save a file<br>
+      Alt-m: Documentation<br> -->
+      Ctrl-Enter: Evaluate code now<br>
+      Atl-Enter: Evaluate code at the next bar <br>
+      
+    </div>    
 
   </div>
 	<script src='bundle.mjs'></script>
