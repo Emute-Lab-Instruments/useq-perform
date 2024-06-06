@@ -284,9 +284,13 @@ let useqExtension = ( opts ) => {
     //{key: "Alt-Enter", run: evalCell},
                     {key: opts.modifier + "-Enter",
                       run: evalNow
-                    },{key:"Alt-Enter", run: evalQuantised}
+                    },
+                    {key:"Alt-Enter", run: evalQuantised}
+                    // ,
+                    // {key:"Alt-h", run: () => {console.log("help");}}
                   ])}
 
+                  //$("#helppanel").toggle(300)
 const updateListenerExtension = EditorView.updateListener.of((update) => {
   if (update.docChanged && config.savelocal) {
     
@@ -517,7 +521,20 @@ $(function() {
     const fileData = {"text": editor.state.doc.toString(), "format_version": 1  };
     saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code")
   });
-
-
+  $("#helpButton").click(() => {
+    $("#helppanel").toggle(100);
+  });
+  $("#helppanel").hide();
+  $(document).on("keydown", function(event) {
+    if (event.altKey) {
+      console.log(event);
+      switch(event.key) {
+        case 'h':console.log($("#helppanel")); $("#helppanel").toggle(100); break;
+        // case 'o':loadFile(); break;
+        // case 's':saveFile(); break;
+        // case 'm':$("#docpanel").toggle(); break;
+      }
+    }
+  });
   window.requestAnimationFrame(drawSerialVis);
 });
