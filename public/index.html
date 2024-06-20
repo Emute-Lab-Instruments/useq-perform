@@ -26,6 +26,33 @@
       grid-column: 2; */
     }
 
+    a.button5{
+     display:inline-block;
+     padding:0.46em 1.6em;
+     border:0.1em solid #000000;
+     margin:0 0.2em 0.2em 0;
+     border-radius:0.12em;
+     box-sizing: border-box;
+     text-decoration:none;
+     font-family: monospace;
+     font-weight:300;
+     color:#000000;
+     text-shadow: 0 0.04em 0.04em rgba(0,0,0,0.7);
+     background-color:lightblue;
+     text-align:center;
+     transition: all 0.15s;
+    }
+    a.button5:hover{
+     text-shadow: 0 0 2em rgba(255,255,255,150);
+     color:#ffffff;
+     border-color:#aaaaaa;
+    }
+    @media all and (max-width:30em){
+     a.button5{
+       display:block;
+       margin:0.4em auto;
+      }
+    }
 
     .container-editor {
       width: 100%;
@@ -43,6 +70,7 @@
       overflow:hidden;
       resize: both;
       opacity: 0.8;
+      z-index:100;
       .cm-content, .cm-gutter { min-height: 150px; }
       .cm-gutters { margin: 1px; }
       .cm-scroller { overflow: auto; }
@@ -109,7 +137,38 @@
       /* margin-top:-5em; */
       opacity:40%;
       overflow: hidden;
+
     }
+
+    
+
+    .container-webcam {
+      position:fixed;
+      height:100%;
+      width:100%;
+      left:0%;
+      top:0%;
+      border: 2px solid #000;
+      background-color: #fff;
+      color:#fff;
+      /* min-width: 20em; */
+      z-index: 10;
+      /* max-width: 0.5fr; */
+      /* overflow:hidden; */
+      resize: both;
+      /* margin-top:-5em; */
+      opacity:20%;
+      overflow: hidden;
+      background-color: transparent;
+
+      /* & .videopanel {
+        background-color: black;
+        color: black;
+        width: 100%;
+        height: 100%;
+      } */
+    } 
+
 
 
 
@@ -144,11 +203,11 @@
       <img src="ukrflag.png" width="100%" height="100%">
     </div> -->
     <div class='header'>
-			<button id="btnConnect" type="button">Connect</button>
+			<a class="button5" id="btnConnect">Connect</a>
 				<!-- <button id="loadSamplesButton">Load Samples</button> -->
-      <button id="saveButton">Save</button>
-      <button id="loadButton">Load</button>
-      <button id="helpButton">?</button>
+      <a class="button5" id="saveButton">Save</a>
+      <a class="button5" id="loadButton">Load</a>
+      <a class="button5" id="helpButton">?</a>
       <span class="useqtitle"><a href="https://github.com/Emute-Lab-Instruments/uSEQ" target="_blank">uSEQ</a></span>		
     </div> 
 
@@ -169,7 +228,11 @@
       Ctrl-Enter: Evaluate code now<br>
       Atl-Enter: Evaluate code at the next bar <br>
       
-    </div>    
+    </div>   
+    
+    <div class="container-webcam" id="vidcontainer">
+      <video id="videopanel" width="1200" height="900"></video>
+    </div>
 
   </div>
 	<script src='bundle.mjs'></script>
