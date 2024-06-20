@@ -14,6 +14,11 @@ import { Buffer } from 'buffer';
 import { compileString } from 'squint-cljs';
 
 
+const panelStates = {OFF:0,PANEL:1, FULLSCREEN: 2}
+
+var interfaceStates={vidpanelState:panelStates.OFF, camOpened:false}
+
+
 var serialport = null;
 const encoder = new TextEncoder();
 var consoleLines = []
@@ -335,7 +340,37 @@ function drawSerialVis() {
   window.requestAnimationFrame(drawSerialVis)  
 }
 
+function openCam(){
+  let allMediaDevices=navigator.mediaDevices
+  if (!allMediaDevices || !allMediaDevices.getUserMedia) {
+     console.log("getUserMedia() not supported.");
+     return;
+  }
+  allMediaDevices.getUserMedia({
+     audio: false,
+     video: { width: 1920, height: 1080 }
+  })
+  .then(function(vidStream) {
+     var video = document.getElementById('videopanel');
+     if ("srcObject" in video) {
+        video.srcObject = vidStream;
+     } else {
+        video.src = window.URL.createObjectURL(vidStream);
+     }
+     video.onloadedmetadata = function(e) {
+        video.play();
+     };
+  })
+  .catch(function(e) {
+     console.log(e.name + ": " + e.message);
+  });
+}
+
 $(function() {
+  $("#helppanel").hide();
+  $("#vidcontainer").hide();
+  $("#serialvis").hide();
+
   //test
   // console.log("float test")
   // // const f64bytes = new Uint8Array([71,95,90,28,231,68,254,64]);
@@ -524,12 +559,37 @@ $(function() {
   $("#helpButton").click(() => {
     $("#helppanel").toggle(100);
   });
-  $("#helppanel").hide();
+
+
+  const toggleVid = () => {
+    console.log("vid")
+    console.log(interfaceStates)
+    //open cam if needed
+    if (!interfaceStates.camOpened) {
+      openCam();
+      interfaceStates.camOpened = true;
+      console.log("open")
+    }
+    switch(interfaceStates.vidpanelState) {
+      case panelStates.OFF:
+        $("#vidcontainer").show();
+        interfaceStates.vidpanelState = panelStates.PANEL;
+        break;
+      case panelStates.PANEL:
+        $("#vidcontainer").hide();
+        interfaceStates.vidpanelState = panelStates.OFF;
+        break;
+      // case panelStates.FULLSCREEN:
+      //   break;
+    }
+  }
+
   $(document).on("keydown", function(event) {
     if (event.altKey) {
       console.log(event);
       switch(event.key) {
         case 'h':console.log($("#helppanel")); $("#helppanel").toggle(100); break;
+        case 'v':toggleVid(); break;
         // case 'o':loadFile(); break;
         // case 's':saveFile(); break;
         // case 'm':$("#docpanel").toggle(); break;
