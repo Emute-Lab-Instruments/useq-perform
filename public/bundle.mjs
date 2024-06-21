@@ -44160,9 +44160,14 @@
           // serialReadTimer = setInterval(serialReader, 500);
           serialReader();
           $("#btnConnect").hide(1000);
+        }).catch((err)=>{
+          console.log(err);
+          //connection failed
+          post("Connection failed. See <a href=\"https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting\">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>");
         });
       })
       .catch((e) => {
+        console.log("error selecting port");
         // The user didn't select a port.
       });
     });
