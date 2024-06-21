@@ -1,5 +1,3 @@
-//stuff
-
 import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 // import {basicSetup} from "codemirror"
 import { EditorView, drawSelection, keymap } from  '@codemirror/view';
@@ -14,10 +12,17 @@ import { Buffer } from 'buffer';
 import { compileString } from 'squint-cljs';
 
 
+const messageStartMarker = 31;
+const messageEndMarker = 3;
+const textMessageMarker = 32;
+const editorMessageMarker = 100;
+const streamMessageMarker = 0;
+
+
 var serialport = null;
 const encoder = new TextEncoder();
 var consoleLines = []
-//keep queue of recent MIDI values  
+//keep queue of recent MIDI values
 function uSEQ_Serial_Map(channel, value) {
 
 }
@@ -28,7 +33,7 @@ class CircularBuffer {
     this.pointer = 0;
     this.bufferLength = bufferLength;
   }
-  
+
   push(element) {
     if(this.buffer.length === this.bufferLength) {
        this.buffer[this.pointer] = element;
@@ -41,7 +46,7 @@ class CircularBuffer {
   get(i) {
     return this.buffer[(this.pointer + i) % this.bufferLength];
   }
-  
+
 }
 
 var serialBuffers = [];
@@ -54,13 +59,13 @@ async function serialReader() {
   if (serialport) {
     console.log("reading...");
     let buffer = new Uint8Array(0);
-    // let buffer = new ArrayBuffer(bufferSize);    
+    // let buffer = new ArrayBuffer(bufferSize);
     if (serialport.readable && !serialport.readable.locked) {
       const reader = serialport.readable.getReader();
       // const textDecoder = new TextDecoderStream()
       // const readableStreamClosed = serialport.readable.pipeTo(textDecoder.writable)
       // const reader = textDecoder.readable.getReader()
-      let serialReadModes = {"ANY":0, "TEXT":1,"SERIALSTREAM":2}
+      let serialReadModes = {"ANY":0, "TEXT":1,"SERIALSTREAM":2, "EDITOR_MESSAGE": 3}
       let serialReadMode = serialReadModes.ANY;
       try {
         while (true) {
@@ -73,7 +78,7 @@ async function serialReader() {
           // buffer = value.buffer;
           // let charbuf = new Uint8Array(buffer)
           // console.log(charbuf);
-          
+
           // // if (value != "" && value != "\r\n") {
           // //   console.log("rcv:" + value);
           // const textEncoder = new TextEncoder();
@@ -84,10 +89,10 @@ async function serialReader() {
           // buffer.clear();
           let byteArray = new Uint8Array(value.buffer);
           // console.log("Received data (bytes):", byteArray);
-    
+
           // Display data as text
           // const text = new TextDecoder().decode(byteArray);
-          // console.log("Received data (text):", text);   
+          // console.log("Received data (text):", text);
           //if there's unconsumed data from the last read, then prepend to new data
           if (buffer.length > 0) {
             // console.log("prepending")
@@ -110,10 +115,18 @@ async function serialReader() {
                   if (byteArray.length > 1) {
                     //check message type
                     if (byteArray[1] == 0) {
+                      console.log("SERIAL MESSAGE")
                         serialReadMode = serialReadModes.SERIALSTREAM;
-                    }else{
+                    }else if (byteArray[1] == textMessageMarker){
+                      console.log("TEXT MESSAGE")
                       serialReadMode = serialReadModes.TEXT;
                     }
+                    else if (byteArray[1] == editorMessageMarker)
+                      {
+                        console.log("EDITOR MESSAGE")
+                        serialReadMode = serialReadModes.EDITOR_MESSAGE;
+                      }
+                    else {console.log("NOT FOUND")}
                   }else{
                     //wait for more data
                     processed = true
@@ -152,10 +165,32 @@ async function serialReader() {
                     console.log(byteArray)
                     serialReadMode = serialReadModes.ANY
                   }
-                } 
+                }
                 if (!found) {
                   processed = true;
-                }         
+                }
+                break;
+              }
+              case serialReadModes.EDITOR_MESSAGE:
+              {
+                // console.log("text mode")
+                //find end of line?
+                let found=false;
+                for (let i = 2; i < byteArray.length - 1; i++) {
+                  if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
+                    found=true
+                    let msg = new TextDecoder().decode(byteArray.slice(2,i))
+                    // msg = encodeURIComponent(msg);
+                    console.log("EDITOR MESSAGE:")
+                    console.log(msg)
+                    byteArray = byteArray.slice(i+2);
+                    console.log(byteArray)
+                    serialReadMode = serialReadModes.ANY
+                  }
+                }
+                if (!found) {
+                  processed = true;
+                }
                 break;
               }
               case serialReadModes.SERIALSTREAM:
@@ -188,7 +223,7 @@ async function serialReader() {
           //carry through any remainder to the next read
           buffer = byteArray;
           // console.log("consumed")
-          
+
         }
       } catch (error) {
         reader.releaseLock();
@@ -200,7 +235,7 @@ async function serialReader() {
       }
     }else{
       console.log(serialport);
-    }    
+    }
   }
 }
 
@@ -293,13 +328,13 @@ let useqExtension = ( opts ) => {
                   //$("#helppanel").toggle(300)
 const updateListenerExtension = EditorView.updateListener.of((update) => {
   if (update.docChanged && config.savelocal) {
-    
+
     // Handle the event here
     // You can access the updated document using `update.state.doc`
     window.localStorage.setItem("useqcode", update.state.doc.toString());
   }
 });
-                
+
 let extensions = [keymap.of(complete_keymap),
   theme,
   foldGutter(),
@@ -309,7 +344,7 @@ let extensions = [keymap.of(complete_keymap),
 ...default_extensions,
   useqExtension({modifier: "Ctrl"}),
   updateListenerExtension];
-                    
+
 let state = EditorState.create({doc: "",
   extensions: extensions });
 
@@ -324,15 +359,15 @@ function drawSerialVis() {
   for(let ch=0; ch < 8; ch++) {
     ctx.beginPath();
     ctx.moveTo(0,c.height - (c.height * serialBuffers[ch].get(0)));
-    
+
     for(let i=1; i < serialBuffers[ch].bufferLength-1; i++) {
-      ctx.lineTo(gap*i, c.height - (c.height * serialBuffers[ch].get(i)));    
+      ctx.lineTo(gap*i, c.height - (c.height * serialBuffers[ch].get(i)));
     }
     // ctx.closePath();
     ctx.strokeStyle = palette[ch];
     ctx.stroke();
   }
-  window.requestAnimationFrame(drawSerialVis)  
+  window.requestAnimationFrame(drawSerialVis)
 }
 
 $(function() {
@@ -340,7 +375,7 @@ $(function() {
   // console.log("float test")
   // // const f64bytes = new Uint8Array([71,95,90,28,231,68,254,64]);
   // const f64bytes = new Uint8Array([1, 51,51,51,51,51,51,243,63,]);
-  
+
   // const buf = Buffer.from(f64bytes);
   // const val = buf.readDoubleLE(1);
   // console.log(val);
@@ -361,14 +396,14 @@ $(function() {
       console.log("reconnected")
       // serialReader();
       // $("#btnConnect").hide(1000);
-    
+
     });
-    
+
     navigator.serial.addEventListener('disconnect', e => {
       // console.log(e);
       // $("#btnConnect").show(1000);
       post("uSEQ disconnected")
-    });    
+    });
   }
   navigator.requestMIDIAccess().then((access) => {
     // Get lists of available MIDI controllers
@@ -379,15 +414,15 @@ $(function() {
     .enable()
     .then(onEnabled)
     .catch(err => alert(err));
-  
+
     function onEnabled() {
-      
+
       // Inputs
       WebMidi.inputs.forEach(input => console.log(input.manufacturer, input.name));
-      
+
       // Outputs
       WebMidi.outputs.forEach(output => console.log(output.manufacturer, output.name));
-  
+
     }
   });
 
@@ -414,12 +449,12 @@ $(function() {
       error:function (xhr, ajaxOptions, thrownError){
         const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: "gist not found" }};
         const transaction = editor.state.update(transactionSpec);
-        editor.dispatch(transaction);  
+        editor.dispatch(transaction);
         }
     }).then(function(data) {
       const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: Object.entries(data.files)[0][1].content } };
       const transaction = editor.state.update(transactionSpec);
-      editor.dispatch(transaction);  
+      editor.dispatch(transaction);
 
     });
   }else if (urlParams.has("txt")) {
@@ -432,16 +467,16 @@ $(function() {
       error:function (xhr, ajaxOptions, thrownError){
         const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: "code not found" }};
         const transaction = editor.state.update(transactionSpec);
-        editor.dispatch(transaction);  
+        editor.dispatch(transaction);
         }
     }).then(function(data) {
       const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: data } };
       const transaction = editor.state.update(transactionSpec);
-      editor.dispatch(transaction);  
+      editor.dispatch(transaction);
 
     });
   }
-  
+
   else{
     //load from local storage
     if (config.savelocal) {
@@ -451,7 +486,7 @@ $(function() {
         // Create a transaction using the spec
         const transaction = editor.state.update(transactionSpec);
         // Dispatch the transaction to update the editor state
-        editor.dispatch(transaction);  
+        editor.dispatch(transaction);
       }
     }
   }
@@ -478,13 +513,13 @@ $(function() {
     let fileHandle;
     [fileHandle] = await window.showOpenFilePicker();
     const file = await fileHandle.getFile();
-    const contents = await file.text();   
+    const contents = await file.text();
     const data = JSON.parse(contents);
     const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: data['text'] } };
     // Create a transaction using the spec
     const transaction = editor.state.update(transactionSpec);
     // Dispatch the transaction to update the editor state
-    editor.dispatch(transaction);  
+    editor.dispatch(transaction);
 
   })
 
@@ -513,11 +548,11 @@ $(function() {
         await writable.write(contents);
         // Close the file and write the contents to disk.
         await writable.close();
-      }      
+      }
       const filehandle = await getNewFileHandle(ext,desc);
       writeFile(filehandle, fileContents);
 
-    } 
+    }
     const fileData = {"text": editor.state.doc.toString(), "format_version": 1  };
     saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code")
   });
