@@ -43710,7 +43710,7 @@
   var serialBuffers = [];
   for(let i=0; i < 8; i++) serialBuffers[i] = new CircularBuffer(100);
 
-
+  var serialVars = {capture:false, captureFunc:null};
 
   async function serialReader() {
     if (serialport) {
@@ -43806,9 +43806,17 @@
                     if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
                       found=true;
                       let msg = new TextDecoder().decode(byteArray.slice(2,i));
-                      // msg = encodeURIComponent(msg);
                       console.log(msg);
-                      post("uSEQ: " + msg);
+                      if (serialVars.capture) {
+                        console.log("captured");
+                        console.log(serialVars);
+                        serialVars.captureFunc(msg);
+                        serialVars.capture=false;
+                      }else {
+                        if (msg != "") {
+                          post("uSEQ: " + msg);
+                        }
+                      }
                       byteArray = byteArray.slice(i+2);
                       console.log(byteArray);
                       serialReadMode = serialReadModes.ANY;
@@ -43866,6 +43874,7 @@
   }
 
   function post(value) {
+    console.log("post: " + value);
     consoleLines.push(marked.parse(value));
     if (consoleLines.length > 50) {
       consoleLines = consoleLines.slice(1);
@@ -43875,12 +43884,16 @@
     $('#console').scrollTop($('#console')[0].scrollHeight - $('#console')[0].clientHeight);
   }
 
-  function sendTouSEQ(code) {
+  function sendTouSEQ(code, capture=null) {
     code = code.replaceAll('\n','');
     console.log(code);
     if (serialport && serialport.writable) {
       const writer = serialport.writable.getWriter();
       console.log("writing...");
+      if (capture) {
+        serialVars.capture = true;
+        serialVars.captureFunc = capture;
+      }
       writer.write(encoder.encode(code)).then(() =>{
         writer.releaseLock();
         console.log("written");
@@ -44151,24 +44164,6 @@
       }
     }
 
-    //new release checker
-    $.ajax({
-      url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
-      type: "GET",
-      data: {"accept":"application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
-      error:function (xhr, ajaxOptions, thrownError){
-        }
-    }).then(function(data) {
-      console.log(data[0]['tag_name']);
-      const re = /uSEQ_(.*)_(([0-9])\.([0-9]))/g;
-      const matches = re.exec(data[0]['tag_name']);
-      const version = matches[2];
-      matches[3];
-      matches[4];
-      console.log(version);
-
-      //get firmware version from the module
-    });
 
 
     $("#btnConnect").on("click", function() {
@@ -44181,6 +44176,44 @@
           // serialReadTimer = setInterval(serialReader, 500);
           serialReader();
           $("#btnConnect").hide(1000);
+          console.log("checking version");
+          sendTouSEQ("@(useq-report-firmware-info)", (versionMsg) => {
+            //testing
+            const verRE = /([0-9])\.([0-9])/g;
+            const groups = verRE.exec(versionMsg);
+            const moduleVersionMajor = groups[1];
+            const moduleVersionMinor = groups[2];
+            post(`**Connected to uSEQ, firmware version ${versionMsg}**`);
+
+            //new release checker
+            $.ajax({
+              url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
+              type: "GET",
+              data: {"accept":"application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+              error:function (xhr, ajaxOptions, thrownError){
+                }
+            }).then(function(data) {
+              const re = /uSEQ_(.*)_(([0-9])\.([0-9]))/g;
+              const matches = re.exec(data[0]['tag_name']);
+              const version = matches[2];
+              const ghVersionMajor = matches[3];
+              const ghVersionMinor = matches[4];
+              console.log(version);
+
+              //compare version
+              if (ghVersionMajor > moduleVersionMajor || 
+                (ghVersionMinor > moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)) {
+                //new release available
+                post("There is a new firmware release available, click below to download");
+                post(`<a target="blank" href="${data[0]['html_url']}">${data[0]['html_url']}</a>`);
+                post("Information on how to update the module:");
+                post(`<a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">https://emutelabinstruments.co.uk/useqinfo/useq-update/</a>`);
+              }
+              
+
+            });
+
+          });
         }).catch((err)=>{
           console.log(err);
           //connection failed
