@@ -43678,7 +43678,9 @@
 
   const panelStates = {OFF:0,PANEL:1, FULLSCREEN: 2};
 
-  var interfaceStates={vidpanelState:panelStates.OFF, camOpened:false};
+  var interfaceStates={vidpanelState:panelStates.OFF, camOpened:false, 
+    serialVisPanelState:panelStates.OFF};
+  var serialVars = {capture:false, captureFunc:null};
 
 
   var serialport = null;
@@ -43710,7 +43712,6 @@
   var serialBuffers = [];
   for(let i=0; i < 8; i++) serialBuffers[i] = new CircularBuffer(100);
 
-  var serialVars = {capture:false, captureFunc:null};
 
   async function serialReader() {
     if (serialport) {
@@ -43732,24 +43733,7 @@
               // |reader| has been canceled.
               break;
             }
-            // buffer = value.buffer;
-            // let charbuf = new Uint8Array(buffer)
-            // console.log(charbuf);
-            
-            // // if (value != "" && value != "\r\n") {
-            // //   console.log("rcv:" + value);
-            // const textEncoder = new TextEncoder();
-            // const txt = textEncoder.encode(buffer);
-            // console.log( String.fromCharCode(txt));
-            // //   post(value);
-            // // }
-            // buffer.clear();
             let byteArray = new Uint8Array(value.buffer);
-            // console.log("Received data (bytes):", byteArray);
-      
-            // Display data as text
-            // const text = new TextDecoder().decode(byteArray);
-            // console.log("Received data (text):", text);   
             //if there's unconsumed data from the last read, then prepend to new data
             if (buffer.length > 0) {
               // console.log("prepending")
@@ -43772,17 +43756,22 @@
                     if (byteArray.length > 1) {
                       //check message type
                       if (byteArray[1] == 0) {
+                          console.log("Serial incoming");
                           serialReadMode = serialReadModes.SERIALSTREAM;
                       }else {
                         serialReadMode = serialReadModes.TEXT;
+                        console.log("Text incoming");
+                        console.log(byteArray);
                       }
                     }else {
                       //wait for more data
                       processed = true;
+                    
                     }
                   }else {
                     //no marker, so try to find message start
                     let found=false;
+                    console.log("searching 31");
                     for (let i = 0; i < byteArray.length - 1; i++) {
                       if (byteArray[i] === 31 ) {
                         found=true;
@@ -43795,8 +43784,9 @@
                     }
                     //done for now, wait for more data
                     processed=true;
-                    break
+                    
                   }
+                  break
                 }
                 case serialReadModes.TEXT:
                 {
@@ -44305,6 +44295,20 @@
         }
       }
     };
+    const toggleSerialVis= () => {
+      console.log("vis");
+      console.log(interfaceStates);
+      switch(interfaceStates.serialVisPanelState) {
+        case panelStates.OFF:
+          $("#serialvis").show();
+          interfaceStates.serialVisPanelState = panelStates.PANEL;
+          break;
+        case panelStates.PANEL:
+          $("#serialvis").hide();
+          interfaceStates.serialVisPanelState = panelStates.OFF;
+          break;
+        }
+    };
 
     $(document).on("keydown", function(event) {
       if (event.altKey) {
@@ -44312,6 +44316,7 @@
         switch(event.key) {
           case 'h':console.log($("#helppanel")); $("#helppanel").toggle(100); break;
           case 'v':toggleVid(); break;
+          case 's':toggleSerialVis(); break;
           // case 'o':loadFile(); break;
           // case 's':saveFile(); break;
           // case 'm':$("#docpanel").toggle(); break;
