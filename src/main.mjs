@@ -51,7 +51,6 @@ class CircularBuffer {
 
 var serialBuffers = [];
 for(let i=0; i < 8; i++) serialBuffers[i] = new CircularBuffer(100);
-console.log(serialBuffers)
 
 
 
@@ -143,7 +142,6 @@ async function serialReader() {
               }
               case serialReadModes.TEXT:
               {
-                // console.log("text mode")
                 //find end of line?
                 let found=false;
                 for (let i = 2; i < byteArray.length - 1; i++) {
@@ -280,6 +278,7 @@ let evalToplevel = function (opts, prefix="") {
 let evalNow = function (opts) {
   evalToplevel(opts, "@")
 }
+
 let evalQuantised = function (opts) {
   evalToplevel(opts)
 }
@@ -341,6 +340,7 @@ function drawSerialVis() {
 }
 
 function openCam(){
+  let error = false
   let allMediaDevices=navigator.mediaDevices
   if (!allMediaDevices || !allMediaDevices.getUserMedia) {
      console.log("getUserMedia() not supported.");
@@ -363,7 +363,9 @@ function openCam(){
   })
   .catch(function(e) {
      console.log(e.name + ": " + e.message);
-  });
+     error = true;
+    });
+  return error;
 }
 
 $(function() {
@@ -491,6 +493,25 @@ $(function() {
     }
   }
 
+  //new release checker
+  $.ajax({
+    url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
+    type: "GET",
+    data: {"accept":"application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+    error:function (xhr, ajaxOptions, thrownError){
+      }
+  }).then(function(data) {
+    console.log(data[0]['tag_name']);
+    const re = /uSEQ_(.*)_(([0-9])\.([0-9]))/g
+    const matches = re.exec(data[0]['tag_name'])
+    const version = matches[2]
+    const versionMajor = matches[3]
+    const versionMinor = matches[4]
+    console.log(version)
+
+    //get firmware version from the module
+  });
+
 
   $("#btnConnect").on("click", function() {
     console.log("uSEQ-Perform: hello")
@@ -571,11 +592,15 @@ $(function() {
     console.log(interfaceStates)
     //open cam if needed
     if (!interfaceStates.camOpened) {
-      openCam();
-      interfaceStates.camOpened = true;
-      console.log("open")
+      if (openCam()) { 
+        interfaceStates.camOpened = true;
+      }
+      else{
+        post("There was an error opening the video camera")
+      }
     }
-    switch(interfaceStates.vidpanelState) {
+    if (interfaceStates.camOpened) {
+      switch(interfaceStates.vidpanelState) {
       case panelStates.OFF:
         $("#vidcontainer").show();
         interfaceStates.vidpanelState = panelStates.PANEL;
@@ -586,6 +611,7 @@ $(function() {
         break;
       // case panelStates.FULLSCREEN:
       //   break;
+      }
     }
   }
 
