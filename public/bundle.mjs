@@ -1,4 +1,4 @@
-(function () {
+(function (exports) {
   'use strict';
 
   /*eslint no-unused-vars: ["error", { "varsIgnorePattern": "^_", "argsIgnorePattern": "^_", "destructuredArrayIgnorePattern": "^_"}]*/
@@ -42481,6 +42481,36 @@
     return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isFastBuffer(obj.slice(0, 0))
   }
 
+  class CircularBuffer {
+    constructor(bufferLength) {
+      this.buffer = [];
+      this.pointer = 0;
+      this.bufferLength = bufferLength;
+    }
+
+    push(element) {
+      if (this.buffer.length === this.bufferLength) {
+        this.buffer[this.pointer] = element;
+      } else {
+        this.buffer.push(element);
+      }
+      this.pointer = (this.pointer + 1) % this.bufferLength;
+    }
+
+    oldest(i) {
+      return this.buffer[(this.pointer + i) % this.bufferLength];
+    }
+
+    last(i) {
+      let idx = this.pointer + i - 1;
+      if (idx < 0) {
+        idx = this.bufferLength + idx;
+      }
+      return this.buffer[idx];
+    }
+
+  }
+
   const $APP = {};
   var ba,za,Wa,gb,ib,jb,kb,lb,mb,nb,pb,qb,rb,sb,tb,wb,xb,Cb,Eb,Fb,Ib,Jb,Kb,Lb,Mb,Nb,Pb,Qb,Rb,Vb,Wb,Zb,$b,ac,bc,dc,ec,gc,jc,nc,pc,rc,sc,tc,wc,xc,yc,Ac,Gc,Hc,Kc,Nc,Sc,Tc,Wc,dd,ed,fd,ad,gd,kd,qd,rd,sd,td,ud,yd,zd,Ad,Bd,Jd,Ld,je,me,ke,le,pe,qe,ze,Be,Ge,Ie,Re,Se,Ue,Ve,af,bf,df,cf,ef,ff,lf,nf,pf,rf,sf,tf,uf,vf,wf,zf,Cf,Kf,Pf,Qf,Vf,Wf,Yf,Zf,$f,ag,bg,cg,eg,dg,gg,mg,qg,ng,pg,rg,sg,ug,vg,xg,yg,zg,Bg,Dg,Fg,Gg,Jg,Mg,Og,Pg,Qg,Vg,Xg,Yg,$g,ah,dh,jh,hh,ih,lh,oh,mh,nh,ph,sh,qh,rh,th,uh,xh,yh,Dh,Eh,Fh,Gh,Ch,Bh,Ih,Jh,
   Nh,Th,ci,di,ei,fi,ri,si,Bi,Fi,Ii,Li,Ai,Mi,Pi,Qi,Si,Ti,Ui,gj,jj,lj,Tj,Wj,Yj,fk,ik,qk,sk,tk,wk,xk,yk,zk,Ak,Dk,Ik,Jk,Sk,Wk,dl,fl,hl,jl,kl,ll,ml,ol,pl,ql,rl,sl,tl,ul,vl,Il,Jl,Kl,Ml,Nl,Ol,Rl,Sl,Tl,Ul,Wl,Xl,$l,bm,dm,hm,im,jm,km,nm,pm,rm,tm,um,wm,Am,Ll,Pl,Ql,Zl,Gm,Hm,Km,Lm,Mm,Pm,Ym,gn,hn,rn,bn,yn,xn,zn,Cn,Dn,En,Gn,Ln,Mn,Nn,On,Pn,Zn,$n,ao,bo,co,go,lo,oo,po,so,uo,Do,Ho,Io,Jo,Ko,To,Un,Tn,Po,$o,bp,lp,Cp,Ip,Mp,Op,Up,aq,bq,dq,eq,fq,gq,hq,kq,lq,mq,nq,oq,xq,Cq,Fq,Gq,Tq,$q,ar,cr,fr,gr,lr,or,pr,Ar,Mr,Or,Qr,Pr,Vr,
@@ -43673,8 +43703,34 @@
   $APP.eu=$APP.gp(new $APP.n(null,6,[$APP.dp,!0,$APP.Wo,!1,$APP.Vo,$APP.be,$APP.Cm,new $APP.n(null,3,[$APP.Cs,function(a){return $APP.jo.A(a,$APP.Rh,cB,!0)},my,function(a){return new $APP.G(null,cA,new $APP.G(null,a,null,1,null),2,null)},wv,function(a){return new $APP.G(null,aA,new $APP.G(null,a,null,1,null),2,null)}],null),$APP.ho,$APP.fA,$APP.eo,new $APP.Uh(null,new $APP.n(null,2,[ju,null,$APP.VC,null],null),null)],null));
   $APP.RG=function RG(a){switch(arguments.length){case 1:return RG.h(arguments[0]);case 2:return RG.g(arguments[0],arguments[1]);default:throw Error(["Invalid arity: ",$APP.t.h(arguments.length)].join(""));}};$APP.RG.h=function(a){return $APP.RG.g(a,null)};$APP.RG.g=function(a,b){b=$APP.$a(b)?xu(b):b;a=$APP.su(a,b,null);a=$APP.jf(a);return $APP.fe.g(a,$APP.ru)};$APP.RG.m=2;const compileString=$APP.RG;
 
-  //stuff
-
+  function openCam() {
+    let error = false;
+    let allMediaDevices = navigator.mediaDevices;
+    if (!allMediaDevices || !allMediaDevices.getUserMedia) {
+      console.log("getUserMedia() not supported.");
+      return;
+    }
+    allMediaDevices.getUserMedia({
+      audio: false,
+      video: { width: 1920, height: 1080 }
+    })
+      .then(function (vidStream) {
+        var video = document.getElementById('videopanel');
+        if ("srcObject" in video) {
+          video.srcObject = vidStream;
+        } else {
+          video.src = window.URL.createObjectURL(vidStream);
+        }
+        video.onloadedmetadata = function (e) {
+          video.play();
+        };
+      })
+      .catch(function (e) {
+        console.log(e.name + ": " + e.message);
+        error = true;
+      });
+    return error;
+  }
 
   const panelStates = {OFF:0,PANEL:1, FULLSCREEN: 2};
 
@@ -43683,43 +43739,36 @@
   var serialVars = {capture:false, captureFunc:null};
 
 
-  var serialport = null;
+  exports.serialport = null;
   const encoder = new TextEncoder();
   var consoleLines = [];
 
-  class CircularBuffer {
-    constructor(bufferLength) {
-      this.buffer = [];
-      this.pointer = 0;
-      this.bufferLength = bufferLength;
-    }
-    
-    push(element) {
-      if(this.buffer.length === this.bufferLength) {
-         this.buffer[this.pointer] = element;
-      } else {
-         this.buffer.push(element);
-      }
-      this.pointer = (this.pointer + 1) % this.bufferLength;
-    }
+  var serialMapFunctions = [];
 
-    get(i) {
-      return this.buffer[(this.pointer + i) % this.bufferLength];
-    }
-    
-  }
+  serialMapFunctions[0] = (buffer) => {
+    // if (WebMidi.outputs[0]) {
+    //   WebMidi.outputs[0].sendControlChange(1, 1, {channels:[1]})
+    // }
+  };
+
+  const jscode = compileString("(js/defSerialMap 0 (fn [buf] (js/midictrl 0 1 1 17)))",
+    {
+      "context": "expr",
+      "elide-imports": true
+    });
+  console.log(jscode);
 
   var serialBuffers = [];
   for(let i=0; i < 8; i++) serialBuffers[i] = new CircularBuffer(100);
 
 
   async function serialReader() {
-    if (serialport) {
+    if (exports.serialport) {
       console.log("reading...");
       let buffer = new Uint8Array(0);
       // let buffer = new ArrayBuffer(bufferSize);    
-      if (serialport.readable && !serialport.readable.locked) {
-        const reader = serialport.readable.getReader();
+      if (exports.serialport.readable && !exports.serialport.readable.locked) {
+        const reader = exports.serialport.readable.getReader();
         // const textDecoder = new TextDecoderStream()
         // const readableStreamClosed = serialport.readable.pipeTo(textDecoder.writable)
         // const reader = textDecoder.readable.getReader()
@@ -43756,12 +43805,9 @@
                     if (byteArray.length > 1) {
                       //check message type
                       if (byteArray[1] == 0) {
-                          console.log("Serial incoming");
                           serialReadMode = serialReadModes.SERIALSTREAM;
                       }else {
                         serialReadMode = serialReadModes.TEXT;
-                        console.log("Text incoming");
-                        console.log(byteArray);
                       }
                     }else {
                       //wait for more data
@@ -43771,7 +43817,6 @@
                   }else {
                     //no marker, so try to find message start
                     let found=false;
-                    console.log("searching 31");
                     for (let i = 0; i < byteArray.length - 1; i++) {
                       if (byteArray[i] === 31 ) {
                         found=true;
@@ -43832,6 +43877,10 @@
                     const val = buf.readDoubleLE(3);
                     // console.log(val);
                     serialBuffers[channel-1].push(val);
+                    if(serialMapFunctions[channel-1]) {
+                      serialMapFunctions[channel-1](serialBuffers[channel-1]);
+                    }
+
 
                     //trim data
                     byteArray = byteArray.slice(11);
@@ -43858,7 +43907,7 @@
           serialReader();
         }
       }else {
-        console.log(serialport);
+        console.log(exports.serialport);
       }    
     }
   }
@@ -43877,8 +43926,8 @@
   function sendTouSEQ(code, capture=null) {
     code = code.replaceAll('\n','');
     console.log(code);
-    if (serialport && serialport.writable) {
-      const writer = serialport.writable.getWriter();
+    if (exports.serialport && exports.serialport.writable) {
+      const writer = exports.serialport.writable.getWriter();
       console.log("writing...");
       if (capture) {
         serialVars.capture = true;
@@ -43909,7 +43958,7 @@
     "&.cm-focused": {outline: "0 !important"},
     ".cm-line": {"padding": "0 9px",
                  "line-height": "1.6",
-                 "font-size": "16px",
+                 "font-size": "24px",
                  "font-family": "var(--code-font)"},
     ".cm-matchingBracket": {"border-bottom": "1px solid var(--white-color)",
                             "color": "inherit"},
@@ -43988,10 +44037,10 @@
     const gap = c.width * 1.0 / serialBuffers[0].bufferLength;
     for(let ch=0; ch < 8; ch++) {
       ctx.beginPath();
-      ctx.moveTo(0,c.height - (c.height * serialBuffers[ch].get(0)));
+      ctx.moveTo(0,c.height - (c.height * serialBuffers[ch].oldest(0)));
       
       for(let i=1; i < serialBuffers[ch].bufferLength-1; i++) {
-        ctx.lineTo(gap*i, c.height - (c.height * serialBuffers[ch].get(i)));    
+        ctx.lineTo(gap*i, c.height - (c.height * serialBuffers[ch].oldest(i)));    
       }
       // ctx.closePath();
       ctx.strokeStyle = palette[ch];
@@ -44000,36 +44049,7 @@
     window.requestAnimationFrame(drawSerialVis);  
   }
 
-  function openCam(){
-    let error = false;
-    let allMediaDevices=navigator.mediaDevices;
-    if (!allMediaDevices || !allMediaDevices.getUserMedia) {
-       console.log("getUserMedia() not supported.");
-       return;
-    }
-    allMediaDevices.getUserMedia({
-       audio: false,
-       video: { width: 1920, height: 1080 }
-    })
-    .then(function(vidStream) {
-       var video = document.getElementById('videopanel');
-       if ("srcObject" in video) {
-          video.srcObject = vidStream;
-       } else {
-          video.src = window.URL.createObjectURL(vidStream);
-       }
-       video.onloadedmetadata = function(e) {
-          video.play();
-       };
-    })
-    .catch(function(e) {
-       console.log(e.name + ": " + e.message);
-       error = true;
-      });
-    return error;
-  }
-
-  $(function() {
+  $(function () {
     $("#helppanel").hide();
     $("#vidcontainer").hide();
     $("#serialvis").hide();
@@ -44038,61 +44058,42 @@
     // console.log("float test")
     // // const f64bytes = new Uint8Array([71,95,90,28,231,68,254,64]);
     // const f64bytes = new Uint8Array([1, 51,51,51,51,51,51,243,63,]);
-    
     // const buf = Buffer.from(f64bytes);
     // const val = buf.readDoubleLE(1);
     // console.log(val);
     console.log("squint test");
-    const jscode = compileString("(+ 127 3)"
-                               , {"context": "expr",
-                                  "elide-imports": true}
-                              );
+    const jscode = compileString("(+ 127 3)",
+      {
+        "context": "expr",
+        "elide-imports": true
+      }
+    );
     console.log(jscode);
 
 
     if (!navigator.serial) {
       post("A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module");
       post("See https://caniuse.com/web-serial for more information");
-    }else {
+    } else {
       navigator.serial.addEventListener('connect', e => {
         console.log(e);
         console.log("reconnected");
         // serialReader();
         // $("#btnConnect").hide(1000);
-      
       });
-      
+
       navigator.serial.addEventListener('disconnect', e => {
         // console.log(e);
         // $("#btnConnect").show(1000);
         post("uSEQ disconnected");
-      });    
+      });
     }
-    navigator.requestMIDIAccess().then((access) => {
-      // Get lists of available MIDI controllers
-      // const inputs = access.inputs.values();
-      // const outputs = access.outputs.values();
-      // …
-      wm$1
-      .enable()
-      .then(onEnabled)
-      .catch(err => alert(err));
-    
-      function onEnabled() {
-        
-        // Inputs
-        wm$1.inputs.forEach(input => console.log(input.manufacturer, input.name));
-        
-        // Outputs
-        wm$1.outputs.forEach(output => console.log(output.manufacturer, output.name));
-    
-      }
-    });
+    setupMIDI();
 
 
     var editor = new EditorView({
-      state:state,
-      extensions:extensions,
+      state: state,
+      extensions: extensions,
       parent: document.getElementById("lceditor")
     });
 
@@ -44108,125 +44109,125 @@
       $.ajax({
         url: "https://api.github.com/gists/" + gistid,
         type: "GET",
-        data: {"accept":"application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
-        error:function (xhr, ajaxOptions, thrownError){
-          const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: "gist not found" }};
+        data: { "accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+        error: function (xhr, ajaxOptions, thrownError) {
+          const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: "gist not found" } };
           const transaction = editor.state.update(transactionSpec);
-          editor.dispatch(transaction);  
-          }
-      }).then(function(data) {
+          editor.dispatch(transaction);
+        }
+      }).then(function (data) {
         const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: Object.entries(data.files)[0][1].content } };
         const transaction = editor.state.update(transactionSpec);
-        editor.dispatch(transaction);  
+        editor.dispatch(transaction);
 
       });
-    }else if (urlParams.has("txt")) {
+    } else if (urlParams.has("txt")) {
       const url = urlParams.get("txt");
       console.log("loading code " + url);
       $.ajax({
         url: url,
         type: "GET",
         data: {},
-        error:function (xhr, ajaxOptions, thrownError){
-          const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: "code not found" }};
+        error: function (xhr, ajaxOptions, thrownError) {
+          const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: "code not found" } };
           const transaction = editor.state.update(transactionSpec);
-          editor.dispatch(transaction);  
-          }
-      }).then(function(data) {
+          editor.dispatch(transaction);
+        }
+      }).then(function (data) {
         const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: data } };
         const transaction = editor.state.update(transactionSpec);
-        editor.dispatch(transaction);  
+        editor.dispatch(transaction);
 
       });
     }
-    
+
     else {
       //load from local storage
       if (config.savelocal) {
-        let txt =window.localStorage.getItem("useqcode");
+        let txt = window.localStorage.getItem("useqcode");
         if (txt) {
           const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: txt } };
           // Create a transaction using the spec
           const transaction = editor.state.update(transactionSpec);
           // Dispatch the transaction to update the editor state
-          editor.dispatch(transaction);  
+          editor.dispatch(transaction);
         }
       }
     }
 
 
 
-    $("#btnConnect").on("click", function() {
+    $("#btnConnect").on("click", function () {
       console.log("uSEQ-Perform: hello");
       console.log(navigator.serial);
       navigator.serial.requestPort()
-      .then( (port) => {
-        port.open({baudRate:115200}).then(() => {
-          serialport = port;
-          // serialReadTimer = setInterval(serialReader, 500);
-          serialReader();
-          $("#btnConnect").hide(1000);
-          console.log("checking version");
-          sendTouSEQ("@(useq-report-firmware-info)", (versionMsg) => {
-            //testing
-            const verRE = /([0-9])\.([0-9])/g;
-            const groups = verRE.exec(versionMsg);
-            const moduleVersionMajor = groups[1];
-            const moduleVersionMinor = groups[2];
-            post(`**Connected to uSEQ, firmware version ${versionMsg}**`);
+        .then((port) => {
+          port.open({ baudRate: 115200 }).then(() => {
+            exports.serialport = port;
+            // serialReadTimer = setInterval(serialReader, 500);
+            serialReader();
+            $("#btnConnect").hide(1000);
+            console.log("checking version");
+            sendTouSEQ("@(useq-report-firmware-info)", (versionMsg) => {
+              //testing
+              const verRE = /([0-9])\.([0-9])/g;
+              const groups = verRE.exec(versionMsg);
+              const moduleVersionMajor = groups[1];
+              const moduleVersionMinor = groups[2];
+              post(`**Connected to uSEQ, firmware version ${versionMsg}**`);
 
-            //new release checker
-            $.ajax({
-              url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
-              type: "GET",
-              data: {"accept":"application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
-              error:function (xhr, ajaxOptions, thrownError){
+              //new release checker
+              $.ajax({
+                url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
+                type: "GET",
+                data: { "accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+                error: function (xhr, ajaxOptions, thrownError) {
                 }
-            }).then(function(data) {
-              const re = /uSEQ_(.*)_(([0-9])\.([0-9]))/g;
-              const matches = re.exec(data[0]['tag_name']);
-              const version = matches[2];
-              const ghVersionMajor = matches[3];
-              const ghVersionMinor = matches[4];
-              console.log(version);
+              }).then(function (data) {
+                const re = /uSEQ_(.*)_(([0-9])\.([0-9]))/g;
+                const matches = re.exec(data[0]['tag_name']);
+                const version = matches[2];
+                const ghVersionMajor = matches[3];
+                const ghVersionMinor = matches[4];
+                console.log(version);
 
-              //compare version
-              if (ghVersionMajor > moduleVersionMajor || 
-                (ghVersionMinor > moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)) {
-                //new release available
-                post("There is a new firmware release available, click below to download");
-                post(`<a target="blank" href="${data[0]['html_url']}">${data[0]['html_url']}</a>`);
-                post("Information on how to update the module:");
-                post(`<a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">https://emutelabinstruments.co.uk/useqinfo/useq-update/</a>`);
-              }
-              
+                //compare version
+                if (ghVersionMajor > moduleVersionMajor ||
+                  (ghVersionMinor > moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)) {
+                  //new release available
+                  post("There is a new firmware release available, click below to download");
+                  post(`<a target="blank" href="${data[0]['html_url']}">${data[0]['html_url']}</a>`);
+                  post("Information on how to update the module:");
+                  post(`<a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">https://emutelabinstruments.co.uk/useqinfo/useq-update/</a>`);
+                }
+
+
+              });
 
             });
-
+          }).catch((err) => {
+            console.log(err);
+            //connection failed
+            post("Connection failed. See <a href=\"https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting\">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>");
           });
-        }).catch((err)=>{
-          console.log(err);
-          //connection failed
-          post("Connection failed. See <a href=\"https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting\">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>");
+        })
+        .catch((e) => {
+          console.log("error selecting port");
+          // The user didn't select a port.
         });
-      })
-      .catch((e) => {
-        console.log("error selecting port");
-        // The user didn't select a port.
-      });
     });
 
     $("#loadButton").on("click", async () => {
       let fileHandle;
       [fileHandle] = await window.showOpenFilePicker();
       const file = await fileHandle.getFile();
-      const contents = await file.text();   
+      const contents = await file.text();
       const data = JSON.parse(contents);
       const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: data['text'] } };
       // Create a transaction using the spec
       const transaction = editor.state.update(transactionSpec);
       // Dispatch the transaction to update the editor state
-      editor.dispatch(transaction);  
+      editor.dispatch(transaction);
 
     });
 
@@ -44255,12 +44256,12 @@
           await writable.write(contents);
           // Close the file and write the contents to disk.
           await writable.close();
-        }      
-        const filehandle = await getNewFileHandle(ext,desc);
+        }
+        const filehandle = await getNewFileHandle(ext, desc);
         writeFile(filehandle, fileContents);
 
-      } 
-      const fileData = {"text": editor.state.doc.toString(), "format_version": 1  };
+      }
+      const fileData = { "text": editor.state.doc.toString(), "format_version": 1 };
       saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
     });
     $("#helpButton").click(() => {
@@ -44273,7 +44274,7 @@
       console.log(interfaceStates);
       //open cam if needed
       if (!interfaceStates.camOpened) {
-        if (openCam()) { 
+        if (openCam()) {
           interfaceStates.camOpened = true;
         }
         else {
@@ -44281,42 +44282,46 @@
         }
       }
       if (interfaceStates.camOpened) {
-        switch(interfaceStates.vidpanelState) {
-        case panelStates.OFF:
-          $("#vidcontainer").show();
-          interfaceStates.vidpanelState = panelStates.PANEL;
-          break;
-        case panelStates.PANEL:
-          $("#vidcontainer").hide();
-          interfaceStates.vidpanelState = panelStates.OFF;
-          break;
-        // case panelStates.FULLSCREEN:
-        //   break;
+        switch (interfaceStates.vidpanelState) {
+          case panelStates.OFF:
+            $("#vidcontainer").show();
+            interfaceStates.vidpanelState = panelStates.PANEL;
+            break;
+          case panelStates.PANEL:
+            $("#vidcontainer").hide();
+            interfaceStates.vidpanelState = panelStates.OFF;
+            break;
+          // case panelStates.FULLSCREEN:
+          //   break;
         }
       }
     };
-    const toggleSerialVis= () => {
+    const toggleSerialVis = () => {
       console.log("vis");
       console.log(interfaceStates);
-      switch(interfaceStates.serialVisPanelState) {
+      switch (interfaceStates.serialVisPanelState) {
         case panelStates.OFF:
           $("#serialvis").show();
+          $("#serialvis").css('top',0);
+          $("#serialvis").css('left',0);
+          $("#serialvis").css('width','100%');
+          $("#serialvis").css('height','100%');
           interfaceStates.serialVisPanelState = panelStates.PANEL;
           break;
         case panelStates.PANEL:
           $("#serialvis").hide();
           interfaceStates.serialVisPanelState = panelStates.OFF;
           break;
-        }
+      }
     };
 
-    $(document).on("keydown", function(event) {
+    $(document).on("keydown", function (event) {
       if (event.altKey) {
         console.log(event);
-        switch(event.key) {
-          case 'h':console.log($("#helppanel")); $("#helppanel").toggle(100); break;
-          case 'v':toggleVid(); break;
-          case 's':toggleSerialVis(); break;
+        switch (event.key) {
+          case 'h': console.log($("#helppanel")); $("#helppanel").toggle(100); break;
+          case 'v': toggleVid(); break;
+          case 'g': toggleSerialVis(); break;
           // case 'o':loadFile(); break;
           // case 's':saveFile(); break;
           // case 'm':$("#docpanel").toggle(); break;
@@ -44326,5 +44331,44 @@
     window.requestAnimationFrame(drawSerialVis);
   });
 
-})();
+  function setupMIDI() {
+    navigator.requestMIDIAccess().then((access) => {
+      // Get lists of available MIDI controllers
+      // const inputs = access.inputs.values();
+      // const outputs = access.outputs.values();
+      // …
+      wm$1
+        .enable()
+        .then(onEnabled)
+        .catch(err => alert(err));
+
+      function onEnabled() {
+
+        // Inputs
+        console.log("MIDI Inputs");
+        wm$1.inputs.forEach(input => console.log(input.manufacturer, input.name));
+
+        // Outputs
+        console.log("MIDI Outputs");
+        wm$1.outputs.forEach(output => console.log(output.manufacturer, output.name));
+
+      }
+    });
+  }
+
+  exports.config = config;
+  exports.drawSerialVis = drawSerialVis;
+  exports.extensions = extensions;
+  exports.interfaceStates = interfaceStates;
+  exports.panelStates = panelStates;
+  exports.post = post;
+  exports.sendTouSEQ = sendTouSEQ;
+  exports.serialReader = serialReader;
+  exports.state = state;
+
+  Object.defineProperty(exports, '__esModule', { value: true });
+
+  return exports;
+
+})({});
 //# sourceMappingURL=bundle.mjs.map
