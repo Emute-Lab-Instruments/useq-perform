@@ -6,25 +6,18 @@ import { Compartment, EditorState } from '@codemirror/state';
 import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 import {WebMidi} from "webmidi";
-import { marked } from "marked";
 import { Buffer } from 'buffer';
-import { CircularBuffer } from './CircularBuffer.mjs';
 import { compileString } from 'squint-cljs';
 import { openCam } from './openCam.mjs';
+import { upgradeCheck } from './upgradeCheck.mjs';
+import { post, sendTouSEQ, setSerialPort, getSerialPort, serialReader, serialMapFunctions } from './serialComms.mjs';
+import { drawSerialVis } from './serialVis.mjs';
  
 
 export const panelStates = {OFF:0,PANEL:1, FULLSCREEN: 2}
 
 export var interfaceStates={vidpanelState:panelStates.OFF, camOpened:false, 
   serialVisPanelState:panelStates.OFF}
-var serialVars = {capture:false, captureFunc:null}
-
-
-export var serialport = null;
-const encoder = new TextEncoder();
-var consoleLines = []
-
-var serialMapFunctions = []
 
 serialMapFunctions[0] = (buffer) => {
   // if (WebMidi.outputs[0]) {
@@ -49,7 +42,7 @@ const jscode = compileString("(js/defSerialMap 0 (fn [buf] (js/midictrl 0 1 1 17
     "context": "expr",
     "elide-imports": true
   });
-console.log(jscode);
+// console.log(jscode);
 // jQuery.globalEval(jscode);
 const scopedEval = (scope, script) => Function(`"use strict"; ${script}`).bind(scope)();
 
@@ -65,195 +58,7 @@ const scopedEval = (scope, script) => Function(`"use strict"; ${script}`).bind(s
 function uSEQ_Serial_Map(channel, value) {
 }
 
-var serialBuffers = [];
-for(let i=0; i < 8; i++) serialBuffers[i] = new CircularBuffer(100);
-
-
-export async function serialReader() {
-  if (serialport) {
-    console.log("reading...");
-    let buffer = new Uint8Array(0);
-    // let buffer = new ArrayBuffer(bufferSize);    
-    if (serialport.readable && !serialport.readable.locked) {
-      const reader = serialport.readable.getReader();
-      // const textDecoder = new TextDecoderStream()
-      // const readableStreamClosed = serialport.readable.pipeTo(textDecoder.writable)
-      // const reader = textDecoder.readable.getReader()
-      let serialReadModes = {"ANY":0, "TEXT":1,"SERIALSTREAM":2}
-      let serialReadMode = serialReadModes.ANY;
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          // console.log("rcv...")
-          if (done) {
-            // |reader| has been canceled.
-            break;
-          }
-          let byteArray = new Uint8Array(value.buffer);
-          //if there's unconsumed data from the last read, then prepend to new data
-          if (buffer.length > 0) {
-            // console.log("prepending")
-            // console.log(buffer.length)
-            let newBuffer = new Uint8Array(buffer.length+byteArray.length)
-            newBuffer.set(buffer)
-            newBuffer.set(byteArray, buffer.length)
-            byteArray = newBuffer
-          }
-          // console.log("buf: " + byteArray.length)
-          let processed=false;
-          while (byteArray.length > 0) {
-            //consume next val
-            switch(serialReadMode) {
-              case serialReadModes.ANY:
-              {
-                // console.log(byteArray)
-                //look for start of message marker
-                if (byteArray[0] == 31) {
-                  if (byteArray.length > 1) {
-                    //check message type
-                    if (byteArray[1] == 0) {
-                        serialReadMode = serialReadModes.SERIALSTREAM;
-                    }else{
-                      serialReadMode = serialReadModes.TEXT;
-                    }
-                  }else{
-                    //wait for more data
-                    processed = true
-                  
-                  }
-                }else{
-                  //no marker, so try to find message start
-                  let found=false;
-                  for (let i = 0; i < byteArray.length - 1; i++) {
-                    if (byteArray[i] === 31 ) {
-                      found=true
-                      byteArray = byteArray.slice(i);
-                    }
-                  }
-                  if (!found) {
-                    //lose data and wait for a message start
-                    byteArray = byteArray.slice(byteArray.length)
-                  }
-                  //done for now, wait for more data
-                  processed=true
-                  
-                }
-                break
-              }
-              case serialReadModes.TEXT:
-              {
-                //find end of line?
-                let found=false;
-                for (let i = 2; i < byteArray.length - 1; i++) {
-                  if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
-                    found=true
-                    let msg = new TextDecoder().decode(byteArray.slice(2,i))
-                    console.log(msg)
-                    if (serialVars.capture) {
-                      console.log("captured")
-                      console.log(serialVars)
-                      serialVars.captureFunc(msg)
-                      serialVars.capture=false
-                    }else{
-                      if (msg != "") {
-                        post("uSEQ: " + msg)
-                      }
-                    }
-                    byteArray = byteArray.slice(i+2);
-                    console.log(byteArray)
-                    serialReadMode = serialReadModes.ANY
-                  }
-                } 
-                if (!found) {
-                  processed = true;
-                }         
-                break;
-              }
-              case serialReadModes.SERIALSTREAM:
-              {
-                // console.log("serial stream")
-                if (byteArray.length < 11) {
-                  //wait for more data incoming
-                  processed=true;
-                }else{
-                  //read channel
-                  const channel = byteArray[2];
-                  // console.log("ch: " + channel)
-                  //decode double
-                  const buf = Buffer.from(byteArray);
-                  const val = buf.readDoubleLE(3);
-                  // console.log(val);
-                  serialBuffers[channel-1].push(val);
-                  if(serialMapFunctions[channel-1]) {
-                    serialMapFunctions[channel-1](serialBuffers[channel-1]);
-                  }
-
-
-                  //trim data
-                  byteArray = byteArray.slice(11)
-                  serialReadMode = serialReadModes.ANY;
-                }
-                break;
-              }
-            } //switch
-            if (processed) {
-              break;
-            }
-          }
-          //carry through any remainder to the next read
-          buffer = byteArray;
-          // console.log("consumed")
-          
-        }
-      } catch (error) {
-        reader.releaseLock();
-        console.log(error);
-      } finally {
-        console.log("finally")
-        reader.releaseLock();
-        serialReader();
-      }
-    }else{
-      console.log(serialport);
-    }    
-  }
-}
-
-export function post(value) {
-  console.log("post: " + value)
-  consoleLines.push(marked.parse(value))
-  if (consoleLines.length > 50) {
-    consoleLines = consoleLines.slice(1);
-  }
-  $("#console").html(consoleLines.join(''));
-  $('#console').scrollTop($('#console')[0].scrollHeight - $('#console')[0].clientHeight);
-}
-
-export function sendTouSEQ(code, capture=null) {
-  code = code.replaceAll('\n','')
-  console.log(code);
-  if (serialport && serialport.writable) {
-    const writer = serialport.writable.getWriter();
-    console.log("writing...")
-    if (capture) {
-      serialVars.capture = true
-      serialVars.captureFunc = capture
-    }
-    writer.write(encoder.encode(code)).then(() =>{
-      writer.releaseLock();
-      console.log("written")
-    });
-  }else{
-    post("uSEQ not connected")
-  }
-}
-
-
-
-
-
-
-let theme = EditorView.theme({
+export let theme = EditorView.theme({
   "&": {"height":"100%"},
   ".cm-wrap": {"height":"100%"},
   ".cm-content, .cm-gutter": {minHeight: "100%"},
@@ -290,57 +95,6 @@ let evalToplevel = function (opts, prefix="") {
   sendTouSEQ(code);
   return true;
 }
-
-function upgradeCheck(versionMsg) {
-  // const verRE = /([0-9])\.([0-9])/g;
-  const verRE = /([0-9])\.([0-9])(.([0-9]))?/g;
-  const groups = verRE.exec(versionMsg);
-  console.log(groups)
-  // const groups = verRE.exec("1.0.2");
-  const moduleVersionMajor = groups[1];
-  const moduleVersionMinor = groups[2];
-  let moduleVersionPatch = 0;
-  if (groups[4]) {
-    moduleVersionPatch = groups[4];
-  }
-  post(`**Connected to uSEQ, firmware version ${versionMsg}**`);
-
-  //new release checker
-  $.ajax({
-    url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
-    type: "GET",
-    data: { "accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-    error: function (xhr, ajaxOptions, thrownError) {
-    }
-  }).then(function (data) {
-    //example uSEQ_1.0c_1.0.4_17072024
-    // const re = /uSEQ_(.*)_(([0-9])\.([0-9]))/g;
-    const re = /uSEQ_(.*)_(([0-9])\.([0-9])\.([0-9]))_[0-9]{8}/g;    
-    const matches = re.exec(data[0]['tag_name']);
-    const version = matches[2];
-    const ghVersionMajor = matches[3];
-    const ghVersionMinor = matches[4];
-    const ghVersionPatch = matches[5];
-    console.log(version);
-
-    //compare version
-    if (ghVersionMajor > moduleVersionMajor ||
-      (ghVersionMinor > moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)
-      ||
-      (ghVersionPatch > moduleVersionPatch && ghVersionMinor >= moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)
-    ) {
-      //new release available
-      post("There is a new firmware release available, click below to download");
-      post(`<a target="blank" href="${data[0]['html_url']}">${data[0]['html_url']}</a>`);
-      post("Information on how to update the module:");
-      post(`<a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">https://emutelabinstruments.co.uk/useqinfo/useq-update/</a>`);
-    }
-
-
-  });
-
-}
-
 
 let evalNow = function (opts) {
   evalToplevel(opts, "@")
@@ -384,26 +138,6 @@ export let state = EditorState.create({doc: "",
   extensions: extensions });
 
 export var config={'savelocal':true}
-
-export function drawSerialVis() {
-  const palette = ['#00429d', '#45a5ad', '#ace397', '#fcbf5d', '#ff809f', '#ff005e', '#c9004c', '#93003a'];
-  var c = document.getElementById("serialcanvas");
-  var ctx = c.getContext("2d");
-  ctx.clearRect(0, 0, c.width, c.height);
-  const gap = c.width * 1.0 / serialBuffers[0].bufferLength;
-  for(let ch=0; ch < 8; ch++) {
-    ctx.beginPath();
-    ctx.moveTo(0,c.height - (c.height * serialBuffers[ch].oldest(0)));
-    
-    for(let i=1; i < serialBuffers[ch].bufferLength-1; i++) {
-      ctx.lineTo(gap*i, c.height - (c.height * serialBuffers[ch].oldest(i)));    
-    }
-    // ctx.closePath();
-    ctx.strokeStyle = palette[ch];
-    ctx.stroke();
-  }
-  window.requestAnimationFrame(drawSerialVis)  
-}
 
 $(function () {
   $("#helppanel").hide();
@@ -519,7 +253,7 @@ $(function () {
     navigator.serial.requestPort()
       .then((port) => {
         port.open({ baudRate: 115200 }).then(() => {
-          serialport = port;
+          setSerialPort(port);
           // serialReadTimer = setInterval(serialReader, 500);
           serialReader();
           $("#btnConnect").hide(1000);
