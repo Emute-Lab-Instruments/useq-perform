@@ -1,8 +1,8 @@
-import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
+import * as cljmode from '@nextjournal/clojure-mode';
+// import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 // import {basicSetup} from "codemirror"
 import { EditorView, drawSelection, keymap } from  '@codemirror/view';
 import { Compartment, EditorState } from '@codemirror/state';
-// import {javascript} from "@codemirror/lang-javascript"
 import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 import {WebMidi} from "webmidi";
@@ -103,16 +103,67 @@ let evalNow = function (opts) {
 let evalQuantised = function (opts) {
   evalToplevel(opts)
 }
+// console.log("keymap")
+// console.log(complete_keymap)
 
+function toggleHelp() {
+  console.log($("#helppanel")); 
+  $("#helppanel").toggle(100);
+}
+
+function toggleVid() {
+  console.log("vid");
+  console.log(interfaceStates);
+  //open cam if needed
+  if (!interfaceStates.camOpened) {
+    if (openCam()) {
+      interfaceStates.camOpened = true;
+    }
+    else {
+      post("There was an error opening the video camera");
+    }
+  }
+  if (interfaceStates.camOpened) {
+    switch (interfaceStates.vidpanelState) {
+      case panelStates.OFF:
+        $("#vidcontainer").show();
+        interfaceStates.vidpanelState = panelStates.PANEL;
+        break;
+      case panelStates.PANEL:
+        $("#vidcontainer").hide();
+        interfaceStates.vidpanelState = panelStates.OFF;
+        break;
+      // case panelStates.FULLSCREEN:
+      //   break;
+    }
+  }
+}
+
+function toggleSerialVis() {
+  console.log("vis");
+  console.log(interfaceStates);
+  switch (interfaceStates.serialVisPanelState) {
+    case panelStates.OFF:
+      $("#serialvis").show();
+      $("#serialvis").css('top', 0);
+      $("#serialvis").css('left', 0);
+      $("#serialvis").css('width', '100%');
+      $("#serialvis").css('height', '100%');
+      interfaceStates.serialVisPanelState = panelStates.PANEL;
+      break;
+    case panelStates.PANEL:
+      $("#serialvis").hide();
+      interfaceStates.serialVisPanelState = panelStates.OFF;
+      break;
+  }
+}
 let useqExtension = ( opts ) => {
   return keymap.of([
-    //{key: "Alt-Enter", run: evalCell},
-                    {key: opts.modifier + "-Enter",
-                      run: evalNow
-                    },
-                    {key:"Alt-Enter", run: evalQuantised}
-                    // ,
-                    // {key:"Alt-h", run: () => {console.log("help");}}
+                    {key: "Ctrl-Enter", run: evalNow}
+                    ,{key:"Alt-Enter", run: evalQuantised}
+                    ,{key:"Alt-h", run: toggleHelp}
+                    ,{key:"Alt-v", run: toggleVid}
+                    ,{key:"Alt-g", run: toggleSerialVis}
                   ])}
 
 const updateListenerExtension = EditorView.updateListener.of((update) => {
@@ -124,13 +175,13 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
   }
 });
                 
-export let extensions = [keymap.of(complete_keymap),
+export let extensions = [keymap.of(cljmode.complete_keymap),
   theme,
   foldGutter(),
   syntaxHighlighting(defaultHighlightStyle),
   drawSelection(),
   bracketMatching(),
-...default_extensions,
+...cljmode.default_extensions,
   useqExtension({modifier: "Ctrl"}),
   updateListenerExtension];
                     
@@ -144,21 +195,14 @@ $(function () {
   $("#vidcontainer").hide();
   $("#serialvis").hide();
 
-  //test
-  // console.log("float test")
-  // // const f64bytes = new Uint8Array([71,95,90,28,231,68,254,64]);
-  // const f64bytes = new Uint8Array([1, 51,51,51,51,51,51,243,63,]);
-  // const buf = Buffer.from(f64bytes);
-  // const val = buf.readDoubleLE(1);
-  // console.log(val);
-  console.log("squint test");
-  const jscode = compileString("(+ 127 3)",
-    {
-      "context": "expr",
-      "elide-imports": true
-    }
-  );
-  console.log(jscode);
+  // console.log("squint test");
+  // const jscode = compileString("(+ 127 3)",
+  //   {
+  //     "context": "expr",
+  //     "elide-imports": true
+  //   }
+  // );
+  // console.log(jscode);
 
 
   if (!navigator.serial) {
@@ -181,11 +225,7 @@ $(function () {
   setupMIDI();
 
 
-  var editor = new EditorView({
-    state: state,
-    extensions: extensions,
-    parent: document.getElementById("lceditor")
-  });
+  var editor = createEditor();
 
 
   //first, check if loading external file
@@ -323,67 +363,29 @@ $(function () {
   });
 
 
-  const toggleVid = () => {
-    console.log("vid");
-    console.log(interfaceStates);
-    //open cam if needed
-    if (!interfaceStates.camOpened) {
-      if (openCam()) {
-        interfaceStates.camOpened = true;
-      }
-      else {
-        post("There was an error opening the video camera");
-      }
-    }
-    if (interfaceStates.camOpened) {
-      switch (interfaceStates.vidpanelState) {
-        case panelStates.OFF:
-          $("#vidcontainer").show();
-          interfaceStates.vidpanelState = panelStates.PANEL;
-          break;
-        case panelStates.PANEL:
-          $("#vidcontainer").hide();
-          interfaceStates.vidpanelState = panelStates.OFF;
-          break;
-        // case panelStates.FULLSCREEN:
-        //   break;
-      }
-    }
-  };
-  const toggleSerialVis = () => {
-    console.log("vis");
-    console.log(interfaceStates);
-    switch (interfaceStates.serialVisPanelState) {
-      case panelStates.OFF:
-        $("#serialvis").show();
-        $("#serialvis").css('top',0);
-        $("#serialvis").css('left',0);
-        $("#serialvis").css('width','100%');
-        $("#serialvis").css('height','100%');
-        interfaceStates.serialVisPanelState = panelStates.PANEL;
-        break;
-      case panelStates.PANEL:
-        $("#serialvis").hide();
-        interfaceStates.serialVisPanelState = panelStates.OFF;
-        break;
-    }
-  };
-
-  $(document).on("keydown", function (event) {
-    if (event.altKey) {
-      console.log(event);
-      switch (event.key) {
-        case 'h': console.log($("#helppanel")); $("#helppanel").toggle(100); break;
-        case 'v': toggleVid(); break;
-        case 'g': toggleSerialVis(); break;
-        // case 'o':loadFile(); break;
-        // case 's':saveFile(); break;
-        // case 'm':$("#docpanel").toggle(); break;
-      }
-    }
-  });
+  // $(document).on("keydown", function (event) {
+  //   if (event.altKey) {
+  //     console.log(event);
+  //     switch (event.key) {
+  //       // case 'h': console.log($("#helppanel")); $("#helppanel").toggle(100); break;
+  //       case 'v': toggleVid(); break;
+  //       case 'g': toggleSerialVis(); break;
+  //       // case 'o':loadFile(); break;
+  //       // case 's':saveFile(); break;
+  //       // case 'm':$("#docpanel").toggle(); break;
+  //     }
+  //   }
+  // });
   window.requestAnimationFrame(drawSerialVis);
 });
+
+function createEditor() {
+  return new EditorView({
+    state: state,
+    extensions: extensions,
+    parent: document.getElementById("lceditor")
+  });
+}
 
 function setupMIDI() {
   navigator.requestMIDIAccess().then((access) => {
