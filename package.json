@@ -20,6 +20,7 @@
     "codemirror": "^6.0.1",
     "date-fns": "^2.16.1",
     "marked": "^12.0.2",
+    "patch-package": "^8.0.0",
     "rollup-plugin-node-globals": "^1.4.0",
     "squint-cljs": "^0.7.110",
     "tabulator-tables": "^6.2.1",
