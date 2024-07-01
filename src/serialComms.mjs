@@ -1,5 +1,6 @@
 import { marked } from "marked";
 import { CircularBuffer } from "./CircularBuffer.mjs";
+import { Buffer } from 'buffer';
 
 var consoleLines = []
 
