@@ -1,5 +1,5 @@
-import * as cljmode from '@nextjournal/clojure-mode';
-// import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
+// import * as cljmode from '@nextjournal/clojure-mode';
+import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 // import {basicSetup} from "codemirror"
 import { EditorView, drawSelection, keymap } from  '@codemirror/view';
 import { Compartment, EditorState } from '@codemirror/state';
@@ -109,6 +109,7 @@ let evalQuantised = function (opts) {
 function toggleHelp() {
   console.log($("#helppanel")); 
   $("#helppanel").toggle(100);
+  return true
 }
 
 function toggleVid() {
@@ -137,6 +138,7 @@ function toggleVid() {
       //   break;
     }
   }
+  return true
 }
 
 function toggleSerialVis() {
@@ -156,14 +158,16 @@ function toggleSerialVis() {
       interfaceStates.serialVisPanelState = panelStates.OFF;
       break;
   }
+  return true
 }
+
 let useqExtension = ( opts ) => {
   return keymap.of([
                     {key: "Ctrl-Enter", run: evalNow}
                     ,{key:"Alt-Enter", run: evalQuantised}
-                    ,{key:"Alt-h", run: toggleHelp}
-                    ,{key:"Alt-v", run: toggleVid}
-                    ,{key:"Alt-g", run: toggleSerialVis}
+                    ,{key:"Alt-h", run: toggleHelp, preventDefault:true, stopPropagation:true}
+                    ,{key:"Alt-v", run: toggleVid, preventDefault:true, stopPropagation:true}
+                    ,{key:"Alt-g", run: toggleSerialVis, preventDefault:true, stopPropagation:true}
                   ])}
 
 const updateListenerExtension = EditorView.updateListener.of((update) => {
@@ -175,15 +179,18 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
   }
 });
                 
-export let extensions = [keymap.of(cljmode.complete_keymap),
+export let extensions = [keymap.of(complete_keymap),
   theme,
   foldGutter(),
   syntaxHighlighting(defaultHighlightStyle),
   drawSelection(),
-  bracketMatching(),
-...cljmode.default_extensions,
+  bracketMatching()
+  ,
+...default_extensions
+,
   useqExtension({modifier: "Ctrl"}),
-  updateListenerExtension];
+  updateListenerExtension
+];
                     
 export let state = EditorState.create({doc: "",
   extensions: extensions });
