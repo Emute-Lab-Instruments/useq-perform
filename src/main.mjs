@@ -6,18 +6,13 @@ import { Compartment, EditorState } from '@codemirror/state';
 import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 import {WebMidi} from "webmidi";
-import { Buffer } from 'buffer';
 import { compileString } from 'squint-cljs';
 import { openCam } from './openCam.mjs';
 import { upgradeCheck } from './upgradeCheck.mjs';
 import { post, sendTouSEQ, setSerialPort, getSerialPort, serialReader, serialMapFunctions } from './serialComms.mjs';
 import { drawSerialVis } from './serialVis.mjs';
+import { interfaceStates, panelStates } from './panelStates.mjs';
  
-
-export const panelStates = {OFF:0,PANEL:1, FULLSCREEN: 2}
-
-export var interfaceStates={vidpanelState:panelStates.OFF, camOpened:false, 
-  serialVisPanelState:panelStates.OFF}
 
 serialMapFunctions[0] = (buffer) => {
   // if (WebMidi.outputs[0]) {
@@ -58,7 +53,7 @@ const scopedEval = (scope, script) => Function(`"use strict"; ${script}`).bind(s
 function uSEQ_Serial_Map(channel, value) {
 }
 
-export let theme = EditorView.theme({
+let theme = EditorView.theme({
   "&": {"height":"100%"},
   ".cm-wrap": {"height":"100%"},
   ".cm-content, .cm-gutter": {minHeight: "100%"},
@@ -179,7 +174,7 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
   }
 });
                 
-export let extensions = [keymap.of(complete_keymap),
+let extensions = [keymap.of(complete_keymap),
   theme,
   foldGutter(),
   syntaxHighlighting(defaultHighlightStyle),
@@ -192,10 +187,10 @@ export let extensions = [keymap.of(complete_keymap),
   updateListenerExtension
 ];
                     
-export let state = EditorState.create({doc: "",
+let state = EditorState.create({doc: "",
   extensions: extensions });
 
-export var config={'savelocal':true}
+var config={'savelocal':true}
 
 $(function () {
   $("#helppanel").hide();
