@@ -126,11 +126,11 @@ export async function serialReader() {
                     //decode double
                     const buf = Buffer.from(byteArray);
                     const val = buf.readDoubleLE(3);
-                    // console.log(val);
                     serialBuffers[channel - 1].push(val);
                     if (serialMapFunctions[channel - 1]) {
                       serialMapFunctions[channel - 1](serialBuffers[channel - 1]);
                     }
+                    // console.log(serialBuffers[channel - 1].last(0));
 
 
                     //trim data
