@@ -39275,32 +39275,40 @@
   $APP.UG=function UG(a){switch(arguments.length){case 1:return UG.h(arguments[0]);case 2:return UG.g(arguments[0],arguments[1]);default:throw Error(["Invalid arity: ",$APP.t.h(arguments.length)].join(""));}};$APP.UG.h=function(a){return $APP.UG.g(a,null)};$APP.UG.g=function(a,b){b=$APP.$a(b)?Au(b):b;a=$APP.vu(a,b,null);a=$APP.jf(a);return $APP.fe.g(a,$APP.uu)};$APP.UG.m=2;const compileString=$APP.UG;
 
   function openCam() {
-    let error = false;
+    // let error = false;
     let allMediaDevices = navigator.mediaDevices;
     if (!allMediaDevices || !allMediaDevices.getUserMedia) {
       console.log("getUserMedia() not supported.");
       return;
     }
-    allMediaDevices.getUserMedia({
-      audio: false,
-      video: { width: 1920, height: 1080 }
-    })
-      .then(function (vidStream) {
-        var video = document.getElementById('videopanel');
-        if ("srcObject" in video) {
-          video.srcObject = vidStream;
-        } else {
-          video.src = window.URL.createObjectURL(vidStream);
-        }
-        video.onloadedmetadata = function (e) {
-          video.play();
-        };
+    try {
+      allMediaDevices.getUserMedia({
+        audio: false,
+        video: { width: 1200, height: 800 }
       })
-      .catch(function (e) {
-        console.log(e.name + ": " + e.message);
-        error = true;
-      });
-    return error;
+        .then(function (vidStream) {
+          console.log(vidStream);
+          var video = document.getElementById('videopanel');
+          if ("srcObject" in video) {
+            video.srcObject = vidStream;
+          } else {
+            video.src = window.URL.createObjectURL(vidStream);
+          }
+          video.onloadedmetadata = function (e) {
+            video.play();
+          };
+        })
+        .catch(function (e) {
+          console.log(e.name + ": " + e.message);
+          error = true;
+        });
+    }
+     catch(err) {
+      console.log(err);
+    }
+    // return error;
+
+    return true;
   }
 
   /**
@@ -43854,11 +43862,11 @@
                       //decode double
                       const buf = Buffer.from(byteArray);
                       const val = buf.readDoubleLE(3);
-                      // console.log(val);
                       serialBuffers[channel - 1].push(val);
                       if (serialMapFunctions[channel - 1]) {
                         serialMapFunctions[channel - 1](serialBuffers[channel - 1]);
                       }
+                      // console.log(serialBuffers[channel - 1].last(0));
 
 
                       //trim data
@@ -43999,20 +44007,20 @@
     serialVisPanelState: panelStates.OFF
   };
 
-  // import * as cljmode from '@nextjournal/clojure-mode';
-   
-
   serialMapFunctions[0] = (buffer) => {
     // if (WebMidi.outputs[0]) {
     //   WebMidi.outputs[0].sendControlChange(1, 1, {channels:[1]})
     // }
   };
 
-  compileString("(js/defSerialMap 0 (fn [buf] (js/midictrl 0 1 1 17)))",
+  const jscode = compileString("(js/this.defSerialMap 0 (fn [buf] (do(js/this.midictrl 0 1 2 (* 20 (buf.last 0))))))",
     {
       "context": "expr",
       "elide-imports": true
     });
+
+
+  console.log(jscode);
 
   let theme = EditorView.theme({
     "&": {"height":"100%"},

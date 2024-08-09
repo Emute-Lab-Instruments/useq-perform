@@ -1,4 +1,3 @@
-// import * as cljmode from '@nextjournal/clojure-mode';
 import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 // import {basicSetup} from "codemirror"
 import { EditorView, drawSelection, keymap } from  '@codemirror/view';
@@ -21,10 +20,14 @@ serialMapFunctions[0] = (buffer) => {
 }
 
 var defSerialMap = (idx, func) => {
-  serialMapFunctions[idx] = func;
-  console.log("added defserial")
+  serialMapFunctions[idx] = func.bind({midictrl:midictrl});
+  console.log("added defserial", idx)
+  console.log(func)
 }
+
 // defSerialMap(0, (buf)=>{console.log(0)})
+// defSerialMap(0, function(buf){console.log(0)})
+// new Function('defSerialMap(0, function(buf){console.log(0)})')()
 
 var midictrl = (devIdx, chan, ctrlNum, val ) =>{
   if (WebMidi.outputs[devIdx]) {
@@ -32,18 +35,21 @@ var midictrl = (devIdx, chan, ctrlNum, val ) =>{
   }
 }
 
-const jscode = compileString("(js/defSerialMap 0 (fn [buf] (js/midictrl 0 1 1 17)))",
+const jscode = compileString("(js/this.defSerialMap 0 (fn [buf] (do(js/this.midictrl 0 1 2 (* 20 (buf.last 0))))))",
   {
     "context": "expr",
     "elide-imports": true
   });
-// console.log(jscode);
+
+
+console.log(jscode);
 // jQuery.globalEval(jscode);
 const scopedEval = (scope, script) => Function(`"use strict"; ${script}`).bind(scope)();
+var jscode2 = 'var x = function(buf){return this.midictrl(0, 1, 2, Math.floor(buf.last(0) * 18));}; this.defSerialMap(0, x)'
+// console.log(jscode2)
+// scopedEval({defSerialMap:defSerialMap, midictrl:midictrl}, jscode2)
 
-// scopedEval({defSerialMap:defSerialMap, midictrl:midictrl}, 'this.defSerialMap(0, (buf)=>{this.midictrl(0, 1, 1, buf.last(0))})')
-
-// eval(jscode)
+// scopedEval({defSerialMap:defSerialMap, midictrl:midictrl}, jscode)
 
 
 
