@@ -19,7 +19,7 @@ export class CircularBuffer {
   }
 
   last(i) {
-    let idx = this.pointer + i - 1
+    let idx = this.pointer - i - 1
     if (idx < 0) {
       idx = this.bufferLength + idx
     }

@@ -3573,6 +3573,17 @@
       return ((code0 - 0xd800) << 10) + (code1 - 0xdc00) + 0x10000;
   }
   /**
+  Given a Unicode codepoint, return the JavaScript string that
+  respresents it (like
+  [`String.fromCodePoint`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/fromCodePoint)).
+  */
+  function fromCodePoint(code) {
+      if (code <= 0xffff)
+          return String.fromCharCode(code);
+      code -= 0x10000;
+      return String.fromCharCode((code >> 10) + 0xd800, (code & 1023) + 0xdc00);
+  }
+  /**
   The amount of positions a character takes up a JavaScript string.
   */
   function codePointSize(code) { return code < 0x10000 ? 1 : 2; }
@@ -25141,6 +25152,130 @@
   var default_extensions = [syntax(parser$2), extension$2(), extension$1(), extension(), ext_format_changed_lines()];
   new LanguageSupport(syntax(), default_extensions.slice(1));
 
+  const basicNormalize = typeof String.prototype.normalize == "function"
+      ? x => x.normalize("NFKD") : x => x;
+  /**
+  A search cursor provides an iterator over text matches in a
+  document.
+  */
+  class SearchCursor {
+      /**
+      Create a text cursor. The query is the search string, `from` to
+      `to` provides the region to search.
+      
+      When `normalize` is given, it will be called, on both the query
+      string and the content it is matched against, before comparing.
+      You can, for example, create a case-insensitive search by
+      passing `s => s.toLowerCase()`.
+      
+      Text is always normalized with
+      [`.normalize("NFKD")`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/normalize)
+      (when supported).
+      */
+      constructor(text, query, from = 0, to = text.length, normalize, test) {
+          this.test = test;
+          /**
+          The current match (only holds a meaningful value after
+          [`next`](https://codemirror.net/6/docs/ref/#search.SearchCursor.next) has been called and when
+          `done` is false).
+          */
+          this.value = { from: 0, to: 0 };
+          /**
+          Whether the end of the iterated region has been reached.
+          */
+          this.done = false;
+          this.matches = [];
+          this.buffer = "";
+          this.bufferPos = 0;
+          this.iter = text.iterRange(from, to);
+          this.bufferStart = from;
+          this.normalize = normalize ? x => normalize(basicNormalize(x)) : basicNormalize;
+          this.query = this.normalize(query);
+      }
+      peek() {
+          if (this.bufferPos == this.buffer.length) {
+              this.bufferStart += this.buffer.length;
+              this.iter.next();
+              if (this.iter.done)
+                  return -1;
+              this.bufferPos = 0;
+              this.buffer = this.iter.value;
+          }
+          return codePointAt(this.buffer, this.bufferPos);
+      }
+      /**
+      Look for the next match. Updates the iterator's
+      [`value`](https://codemirror.net/6/docs/ref/#search.SearchCursor.value) and
+      [`done`](https://codemirror.net/6/docs/ref/#search.SearchCursor.done) properties. Should be called
+      at least once before using the cursor.
+      */
+      next() {
+          while (this.matches.length)
+              this.matches.pop();
+          return this.nextOverlapping();
+      }
+      /**
+      The `next` method will ignore matches that partially overlap a
+      previous match. This method behaves like `next`, but includes
+      such matches.
+      */
+      nextOverlapping() {
+          for (;;) {
+              let next = this.peek();
+              if (next < 0) {
+                  this.done = true;
+                  return this;
+              }
+              let str = fromCodePoint(next), start = this.bufferStart + this.bufferPos;
+              this.bufferPos += codePointSize(next);
+              let norm = this.normalize(str);
+              for (let i = 0, pos = start;; i++) {
+                  let code = norm.charCodeAt(i);
+                  let match = this.match(code, pos, this.bufferPos + this.bufferStart);
+                  if (i == norm.length - 1) {
+                      if (match) {
+                          this.value = match;
+                          return this;
+                      }
+                      break;
+                  }
+                  if (pos == start && i < str.length && str.charCodeAt(i) == code)
+                      pos++;
+              }
+          }
+      }
+      match(code, pos, end) {
+          let match = null;
+          for (let i = 0; i < this.matches.length; i += 2) {
+              let index = this.matches[i], keep = false;
+              if (this.query.charCodeAt(index) == code) {
+                  if (index == this.query.length - 1) {
+                      match = { from: this.matches[i + 1], to: end };
+                  }
+                  else {
+                      this.matches[i]++;
+                      keep = true;
+                  }
+              }
+              if (!keep) {
+                  this.matches.splice(i, 2);
+                  i -= 2;
+              }
+          }
+          if (this.query.charCodeAt(0) == code) {
+              if (this.query.length == 1)
+                  match = { from: pos, to: end };
+              else
+                  this.matches.push(1, pos);
+          }
+          if (match && this.test && !this.test(match.from, match.to, this.buffer, this.bufferStart))
+              match = null;
+          return match;
+      }
+  }
+  if (typeof Symbol != "undefined")
+      SearchCursor.prototype[Symbol.iterator] = function () { return this; };
+
   var uppermost_edge_here = (function (pos, node) {
   let node1 = (function () {
    let or__23553__auto__2 = last(take_while(every_pred(complement(top_QMARK_), (function (_PERCENT_1) {
@@ -41761,7 +41896,7 @@
     }
 
     last(i) {
-      let idx = this.pointer + i - 1;
+      let idx = this.pointer - i - 1;
       if (idx < 0) {
         idx = this.bufferLength + idx;
       }
@@ -44007,20 +44142,135 @@
     serialVisPanelState: panelStates.OFF
   };
 
-  serialMapFunctions[0] = (buffer) => {
+  // serialMapFunctions[0] = (buffer) => {
     // if (WebMidi.outputs[0]) {
     //   WebMidi.outputs[0].sendControlChange(1, 1, {channels:[1]})
     // }
+  // }
+  var editor;
+
+  var drumbrute, minibrute, quneo;
+  var defSerialMap = (idx, func) => {
+    serialMapFunctions[idx] = func.bind({midictrl:midictrl, drumbrute:drumbrute});
+    console.log("added defserial", idx);
+    console.log(func);
   };
 
-  const jscode = compileString("(js/this.defSerialMap 0 (fn [buf] (do(js/this.midictrl 0 1 2 (* 20 (buf.last 0))))))",
-    {
+  // defSerialMap(0, (buf)=>{console.log(0)})
+  // defSerialMap(0, function(buf){console.log(0)})
+  // new Function('defSerialMap(0, function(buf){console.log(0)})')()
+
+  var midictrl = (devIdx, chan, ctrlNum, val ) =>{
+    if (wm$1.outputs[devIdx]) {
+      wm$1.outputs[devIdx].sendControlChange(ctrlNum, val, {channels:[chan]});
+    }
+  };
+
+  // const jscode = compileString("(js/this.defSerialMap 0 (fn [buf] (do(js/this.midictrl 0 1 2 (* 20 (buf.last 0))))))",
+  //   {
+  //     "context": "expr",
+  //     "elide-imports": true
+  //   });
+
+
+  // console.log(jscode);
+  // jQuery.globalEval(jscode);
+
+  const scopedEval = (scope, script) => Function(`"use strict";  ${script}`).bind(scope)();
+
+  // console.log(jscode2)
+  // scopedEval({defSerialMap:defSerialMap, midictrl:midictrl}, jscode2)
+  //does this work? https://2ality.com/2019/10/eval-via-import.html
+
+  var zxc = (buffer) => {
+    return buffer.last(1) <=0 && buffer.last(0) > 0;
+  };
+
+  var evalTaggedCode = (tag, quantise) => {
+    let searchcursor = new SearchCursor(editor.state.doc, ";;@"+tag, 0, editor.state.doc.length); 
+     console.log("eval tagged code");
+    searchcursor.next();
+    if (searchcursor.value.to > 0 && (searchcursor.value.to + 1) < editor.state.doc.length) {
+      console.log(searchcursor.value);
+      editor.dispatch({selection: {anchor:searchcursor.value.to+1, head:searchcursor.value.to+1}});
+      evalQuantised(editor);
+    }else {
+      console.log("Tag not found: " + tag);
+    }
+
+  };
+
+  var onMIDISetupComplete = () => {
+    console.log("MIDI Setup Done");
+    const precode = '(def WebMidi js/this.WebMidi)';
+    const jcode = compileString(precode + '(def synth (WebMidi.getOutputByName "DrumBrute"))(console.log synth)',{
       "context": "expr",
-      "elide-imports": true
+      "elide-imports": true,
+      "elide-exports": true
+    });
+    
+    console.log(jcode);
+    
+    scopedEval({test:12, WebMidi:wm$1}, jcode);
+    
+    
+    drumbrute = wm$1.getOutputByName("DrumBrute");
+    minibrute = wm$1.getOutputByName("MiniBrute");
+    quneo = wm$1.getInputByName("QUNEO");
+    console.log(drumbrute);
+    console.log(minibrute);
+    console.log(quneo);
+
+    quneo.addListener("noteon", (event, ...args) => {
+      console.log(event.data[1]);
+      let tag = "note" + event.data[1].toString();
+      evalTaggedCode(tag);
     });
 
+    defSerialMap(0, (buffer) => {
+      if (zxc(buffer)) {
+        drumbrute.sendNoteOn(36, {channels:[10], attack: buffer.last(0)});
+      }
+    });
+    defSerialMap(1, (buffer) => {
+      if (zxc(buffer)) {
+        drumbrute.sendNoteOn(37, {channels:[10], attack: buffer.last(0)});
+      }
+    });
+    defSerialMap(2, (buffer) => {
+      if (zxc(buffer)) {
+        drumbrute.sendNoteOn(38, {channels:[10], attack: buffer.last(0)});
+      }
+    });
+    defSerialMap(3, (buffer) => {
+      if (zxc(buffer)) {
+        drumbrute.sendNoteOn(39, {channels:[10], attack: buffer.last(0)});
+      }
+    });
+    defSerialMap(4, (buffer) => {
+      if (zxc(buffer)) {
+        drumbrute.sendNoteOn(42, {channels:[10], attack: buffer.last(0)});
+      }
+    });
+    defSerialMap(5, (buffer) => {
+      if (zxc(buffer)) {
+        drumbrute.sendNoteOn(43, {channels:[10], attack: buffer.last(0)});
+      }
+    });
+    defSerialMap(6 , (buffer) => {
+      if (zxc(buffer)) {
+        drumbrute.sendNoteOn(44, {channels:[10], attack: buffer.last(0)});
+      }
+    });
+    defSerialMap(7, (buffer) => {
+      if (zxc(buffer)) {
+        minibrute.playNote(Math.floor(buffer.last(0) * 127), {channels:[1], duration:30});
+      }
+    });
+  };
 
-  console.log(jscode);
+
+
 
   let theme = EditorView.theme({
     "&": {"height":"100%"},
@@ -44127,8 +44377,8 @@
 
   let useqExtension = ( opts ) => {
     return keymap.of([
-                      {key: "Ctrl-Enter", run: evalNow}
-                      ,{key:"Alt-Enter", run: evalQuantised}
+                      {key: "Ctrl-Enter", run: evalNow, preventDefault:true, stopPropagation:true}
+                      ,{key:"Alt-Enter", run: evalQuantised, preventDefault:true, stopPropagation:true}
                       ,{key:"Alt-h", run: toggleHelp, preventDefault:true, stopPropagation:true}
                       ,{key:"Alt-v", run: toggleVid, preventDefault:true, stopPropagation:true}
                       ,{key:"Alt-g", run: toggleSerialVis, preventDefault:true, stopPropagation:true}
@@ -44196,7 +44446,7 @@
     setupMIDI();
 
 
-    var editor = createEditor();
+    editor = createEditor();
 
 
     //first, check if loading external file
@@ -44378,6 +44628,8 @@
         // Outputs
         console.log("MIDI Outputs");
         wm$1.outputs.forEach(output => console.log(output.manufacturer, output.name));
+        
+        onMIDISetupComplete();
 
       }
     });

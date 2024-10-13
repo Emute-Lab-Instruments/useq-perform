@@ -3,6 +3,7 @@ import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 import { EditorView, drawSelection, keymap } from  '@codemirror/view';
 import { Compartment, EditorState } from '@codemirror/state';
 import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
+import {SearchCursor} from '@codemirror/search';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 import {WebMidi} from "webmidi";
 import { compileString } from 'squint-cljs';
@@ -13,14 +14,17 @@ import { drawSerialVis } from './serialVis.mjs';
 import { interfaceStates, panelStates } from './panelStates.mjs';
  
 
-serialMapFunctions[0] = (buffer) => {
+
+// serialMapFunctions[0] = (buffer) => {
   // if (WebMidi.outputs[0]) {
   //   WebMidi.outputs[0].sendControlChange(1, 1, {channels:[1]})
   // }
-}
+// }
+var editor;
 
+var drumbrute, minibrute, quneo;
 var defSerialMap = (idx, func) => {
-  serialMapFunctions[idx] = func.bind({midictrl:midictrl});
+  serialMapFunctions[idx] = func.bind({midictrl:midictrl, drumbrute:drumbrute});
   console.log("added defserial", idx)
   console.log(func)
 }
@@ -35,29 +39,113 @@ var midictrl = (devIdx, chan, ctrlNum, val ) =>{
   }
 }
 
-const jscode = compileString("(js/this.defSerialMap 0 (fn [buf] (do(js/this.midictrl 0 1 2 (* 20 (buf.last 0))))))",
-  {
-    "context": "expr",
-    "elide-imports": true
-  });
+// const jscode = compileString("(js/this.defSerialMap 0 (fn [buf] (do(js/this.midictrl 0 1 2 (* 20 (buf.last 0))))))",
+//   {
+//     "context": "expr",
+//     "elide-imports": true
+//   });
 
 
-console.log(jscode);
+// console.log(jscode);
 // jQuery.globalEval(jscode);
-const scopedEval = (scope, script) => Function(`"use strict"; ${script}`).bind(scope)();
+
+const scopedEval = (scope, script) => Function(`"use strict";  ${script}`).bind(scope)();
+
 var jscode2 = 'var x = function(buf){return this.midictrl(0, 1, 2, Math.floor(buf.last(0) * 18));}; this.defSerialMap(0, x)'
+
 // console.log(jscode2)
 // scopedEval({defSerialMap:defSerialMap, midictrl:midictrl}, jscode2)
+//does this work? https://2ality.com/2019/10/eval-via-import.html
 
-// scopedEval({defSerialMap:defSerialMap, midictrl:midictrl}, jscode)
-
-
-
-
-
-//keep queue of recent MIDI values  
-function uSEQ_Serial_Map(channel, value) {
+var zxc = (buffer) => {
+  return buffer.last(1) <=0 && buffer.last(0) > 0;
 }
+
+var evalTaggedCode = (tag, quantise) => {
+  let searchcursor = new SearchCursor(editor.state.doc, ";;@"+tag, 0, editor.state.doc.length); 
+   console.log("eval tagged code")
+  searchcursor.next();
+  if (searchcursor.value.to > 0 && (searchcursor.value.to + 1) < editor.state.doc.length) {
+    console.log(searchcursor.value);
+    editor.dispatch({selection: {anchor:searchcursor.value.to+1, head:searchcursor.value.to+1}})
+    evalQuantised(editor);
+  }else{
+    console.log("Tag not found: " + tag);
+  }
+
+};
+
+var onMIDISetupComplete = () => {
+  console.log("MIDI Setup Done")
+  const precode = '(def WebMidi js/this.WebMidi)'
+  const jcode = compileString(precode + '(def synth (WebMidi.getOutputByName "DrumBrute"))(console.log synth)',{
+    "context": "expr",
+    "elide-imports": true,
+    "elide-exports": true
+  });
+  
+  console.log(jcode);
+  
+  scopedEval({test:12, WebMidi:WebMidi}, jcode);
+  
+  
+  drumbrute = WebMidi.getOutputByName("DrumBrute");
+  minibrute = WebMidi.getOutputByName("MiniBrute");
+  quneo = WebMidi.getInputByName("QUNEO");
+  console.log(drumbrute)
+  console.log(minibrute)
+  console.log(quneo)
+
+  quneo.addListener("noteon", (event, ...args) => {
+    console.log(event.data[1]);
+    let tag = "note" + event.data[1].toString();
+    evalTaggedCode(tag, 1)
+  })
+
+  defSerialMap(0, (buffer) => {
+    if (zxc(buffer)) {
+      drumbrute.sendNoteOn(36, {channels:[10], attack: buffer.last(0)})
+    }
+  });
+  defSerialMap(1, (buffer) => {
+    if (zxc(buffer)) {
+      drumbrute.sendNoteOn(37, {channels:[10], attack: buffer.last(0)})
+    }
+  });
+  defSerialMap(2, (buffer) => {
+    if (zxc(buffer)) {
+      drumbrute.sendNoteOn(38, {channels:[10], attack: buffer.last(0)})
+    }
+  });
+  defSerialMap(3, (buffer) => {
+    if (zxc(buffer)) {
+      drumbrute.sendNoteOn(39, {channels:[10], attack: buffer.last(0)})
+    }
+  });
+  defSerialMap(4, (buffer) => {
+    if (zxc(buffer)) {
+      drumbrute.sendNoteOn(42, {channels:[10], attack: buffer.last(0)})
+    }
+  });
+  defSerialMap(5, (buffer) => {
+    if (zxc(buffer)) {
+      drumbrute.sendNoteOn(43, {channels:[10], attack: buffer.last(0)})
+    }
+  });
+  defSerialMap(6 , (buffer) => {
+    if (zxc(buffer)) {
+      drumbrute.sendNoteOn(44, {channels:[10], attack: buffer.last(0)})
+    }
+  });
+  defSerialMap(7, (buffer) => {
+    if (zxc(buffer)) {
+      minibrute.playNote(Math.floor(buffer.last(0) * 127), {channels:[1], duration:30})
+    }
+  });
+}
+
+
+
 
 let theme = EditorView.theme({
   "&": {"height":"100%"},
@@ -164,8 +252,8 @@ function toggleSerialVis() {
 
 let useqExtension = ( opts ) => {
   return keymap.of([
-                    {key: "Ctrl-Enter", run: evalNow}
-                    ,{key:"Alt-Enter", run: evalQuantised}
+                    {key: "Ctrl-Enter", run: evalNow, preventDefault:true, stopPropagation:true}
+                    ,{key:"Alt-Enter", run: evalQuantised, preventDefault:true, stopPropagation:true}
                     ,{key:"Alt-h", run: toggleHelp, preventDefault:true, stopPropagation:true}
                     ,{key:"Alt-v", run: toggleVid, preventDefault:true, stopPropagation:true}
                     ,{key:"Alt-g", run: toggleSerialVis, preventDefault:true, stopPropagation:true}
@@ -233,7 +321,7 @@ $(function () {
   setupMIDI();
 
 
-  var editor = createEditor();
+  editor = createEditor();
 
 
   //first, check if loading external file
@@ -415,6 +503,8 @@ function setupMIDI() {
       // Outputs
       console.log("MIDI Outputs");
       WebMidi.outputs.forEach(output => console.log(output.manufacturer, output.name));
+      
+      onMIDISetupComplete();
 
     }
   });
