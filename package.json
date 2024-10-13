@@ -23,6 +23,7 @@
     "rollup-plugin-node-globals": "^1.4.0",
     "squint-cljs": "^0.8.112",
     "tabulator-tables": "^6.2.1",
+    "thememirror": "^2.0.1",
     "webmidi": "^3.1.9"
   },
   "scripts": {

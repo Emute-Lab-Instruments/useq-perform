@@ -12,7 +12,8 @@ import { upgradeCheck } from './upgradeCheck.mjs';
 import { post, sendTouSEQ, setSerialPort, getSerialPort, serialReader, serialMapFunctions } from './serialComms.mjs';
 import { drawSerialVis } from './serialVis.mjs';
 import { interfaceStates, panelStates } from './panelStates.mjs';
- 
+import {createTheme} from 'thememirror';
+import {tags as t} from '@lezer/highlight';
 
 serialMapFunctions[0] = (buffer) => {
   // if (WebMidi.outputs[0]) {
@@ -53,32 +54,87 @@ const scopedEval = (scope, script) => Function(`"use strict"; ${script}`).bind(s
 function uSEQ_Serial_Map(channel, value) {
 }
 
-let theme = EditorView.theme({
-  "&": {"height":"100%"},
-  ".cm-wrap": {"height":"100%"},
-  ".cm-content, .cm-gutter": {minHeight: "100%"},
-  ".cm-content": {whitespace: "pre-wrap",
-                  passing: "10px 0",
-                  flex: "1 1 0"},
+// let theme = EditorView.theme({
+//   "&": {"height":"100%"},
+//   ".cm-wrap": {"height":"100%"},
+//   ".cm-content, .cm-gutter": {minHeight: "100%"},
+//   ".cm-content": {whitespace: "pre-wrap",
+//                   passing: "10px 0",
+//                   flex: "1 1 0"},
 
-  "&.cm-focused": {outline: "0 !important"},
-  ".cm-line": {"padding": "0 9px",
-               "line-height": "1.6",
-               "font-size": "24px",
-               "font-family": "var(--code-font)"},
-  ".cm-matchingBracket": {"border-bottom": "1px solid var(--white-color)",
-                          "color": "inherit"},
-  ".cm-gutters": {background: "transparent",
-                  border: "none"},
-  ".cm-gutterElement": {"margin-left": "5px"},
-  ".cm-scroller": { "overflow": "auto"},
-  // only show cursor when focused
-  ".cm-cursor": {visibility: "hidden"},
-  "&.cm-focused .cm-cursor": {visibility: "visible"}
-}, {});
+//   "&.cm-focused": {outline: "0 !important"},
+//   ".cm-line": {"padding": "0 9px",
+//                "line-height": "1.6",
+//                "font-size": "24px",
+//                "font-family": "var(--code-font)"},
+//   ".cm-matchingBracket": {"border-bottom": "1px solid var(--white-color)",
+//                           "color": "inherit"},
+//   ".cm-gutters": {background: "transparent",
+//                   border: "none"},
+//   ".cm-gutterElement": {"margin-left": "5px"},
+//   ".cm-scroller": { "overflow": "auto"}, //  only show cursor when focused
+//   ".cm-cursor": {visibility: "hidden"},
+//   "&.cm-focused .cm-cursor": {visibility: "visible"}
+// }, {});
 
-
-
+// taken from
+// https://github.com/vadimdemedes/thememirror/blob/main/source/themes/barf.ts
+let theme = createTheme({
+	variant: 'dark',
+	settings: {
+		background: '#15191EFA',
+		foreground: '#EEF2F7',
+		caret: '#C4C4C4',
+		selection: '#90B2D557',
+		gutterBackground: '#15191EFA',
+		gutterForeground: '#aaaaaa95',
+		lineHighlight: '#57575712',
+	},
+	styles: [
+		{
+			tag: t.comment,
+			color: '#6E6E6E',
+		},
+		{
+			tag: [t.string, t.regexp, t.special(t.brace)],
+			color: '#5C81B3',
+		},
+		{
+			tag: t.number,
+			color: '#C1E1B8',
+		},
+		{
+			tag: t.bool,
+			color: '#53667D',
+		},
+		{
+			tag: [t.definitionKeyword, t.modifier, t.function(t.propertyName)],
+			color: '#A3D295',
+			fontWeight: 'bold',
+		},
+		{
+			tag: [t.keyword, t.moduleKeyword, t.operatorKeyword, t.operator],
+			color: '#697A8E',
+			fontWeight: 'bold',
+		},
+		{
+			tag: [t.variableName, t.attributeName],
+			color: '#708E67',
+		},
+		{
+			tag: [
+				t.function(t.variableName),
+				t.definition(t.propertyName),
+				t.derefOperator,
+			],
+			color: '#fff',
+		},
+		{
+			tag: t.tagName,
+			color: '#A3D295',
+		},
+	],
+});
 
 
 let evalToplevel = function (opts, prefix="") {
@@ -175,16 +231,17 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
 });
                 
 let extensions = [keymap.of(complete_keymap),
-  theme,
-  foldGutter(),
-  syntaxHighlighting(defaultHighlightStyle),
-  drawSelection(),
-  bracketMatching()
-  ,
-...default_extensions
-,
-  useqExtension({modifier: "Ctrl"}),
-  updateListenerExtension
+                  theme,
+                  // barf,
+                  foldGutter(),
+                  syntaxHighlighting(defaultHighlightStyle),
+                  drawSelection(),
+                  bracketMatching()
+                  ,
+                  ...default_extensions
+                  ,
+                  useqExtension({modifier: "Ctrl"}),
+                  updateListenerExtension
 ];
                     
 let state = EditorState.create({doc: "",
