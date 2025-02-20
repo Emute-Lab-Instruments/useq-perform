@@ -5417,9 +5417,9 @@
       }
       return spec == tr ? tr : Transaction.create(state, tr.changes, tr.selection, spec.effects, spec.annotations, spec.scrollIntoView);
   }
-  const none$1 = [];
+  const none$2 = [];
   function asArray$1(value) {
-      return value == null ? none$1 : Array.isArray(value) ? value : [value];
+      return value == null ? none$2 : Array.isArray(value) ? value : [value];
   }
 
   /**
@@ -18875,168 +18875,6 @@
       { tag: tags.invalid,
           color: "#f00" }
   ]);
-
-  const baseTheme = /*@__PURE__*/EditorView.baseTheme({
-      "&.cm-focused .cm-matchingBracket": { backgroundColor: "#328c8252" },
-      "&.cm-focused .cm-nonmatchingBracket": { backgroundColor: "#bb555544" }
-  });
-  const DefaultScanDist = 10000, DefaultBrackets = "()[]{}";
-  const bracketMatchingConfig = /*@__PURE__*/Facet.define({
-      combine(configs) {
-          return combineConfig(configs, {
-              afterCursor: true,
-              brackets: DefaultBrackets,
-              maxScanDistance: DefaultScanDist,
-              renderMatch: defaultRenderMatch
-          });
-      }
-  });
-  const matchingMark = /*@__PURE__*/Decoration.mark({ class: "cm-matchingBracket" }), nonmatchingMark = /*@__PURE__*/Decoration.mark({ class: "cm-nonmatchingBracket" });
-  function defaultRenderMatch(match) {
-      let decorations = [];
-      let mark = match.matched ? matchingMark : nonmatchingMark;
-      decorations.push(mark.range(match.start.from, match.start.to));
-      if (match.end)
-          decorations.push(mark.range(match.end.from, match.end.to));
-      return decorations;
-  }
-  const bracketMatchingState = /*@__PURE__*/StateField.define({
-      create() { return Decoration.none; },
-      update(deco, tr) {
-          if (!tr.docChanged && !tr.selection)
-              return deco;
-          let decorations = [];
-          let config = tr.state.facet(bracketMatchingConfig);
-          for (let range of tr.state.selection.ranges) {
-              if (!range.empty)
-                  continue;
-              let match = matchBrackets(tr.state, range.head, -1, config)
-                  || (range.head > 0 && matchBrackets(tr.state, range.head - 1, 1, config))
-                  || (config.afterCursor &&
-                      (matchBrackets(tr.state, range.head, 1, config) ||
-                          (range.head < tr.state.doc.length && matchBrackets(tr.state, range.head + 1, -1, config))));
-              if (match)
-                  decorations = decorations.concat(config.renderMatch(match, tr.state));
-          }
-          return Decoration.set(decorations, true);
-      },
-      provide: f => EditorView.decorations.from(f)
-  });
-  const bracketMatchingUnique = [
-      bracketMatchingState,
-      baseTheme
-  ];
-  /**
-  Create an extension that enables bracket matching. Whenever the
-  cursor is next to a bracket, that bracket and the one it matches
-  are highlighted. Or, when no matching bracket is found, another
-  highlighting style is used to indicate this.
-  */
-  function bracketMatching(config = {}) {
-      return [bracketMatchingConfig.of(config), bracketMatchingUnique];
-  }
-  /**
-  When larger syntax nodes, such as HTML tags, are marked as
-  opening/closing, it can be a bit messy to treat the whole node as
-  a matchable bracket. This node prop allows you to define, for such
-  a node, a ‘handle’—the part of the node that is highlighted, and
-  that the cursor must be on to activate highlighting in the first
-  place.
-  */
-  const bracketMatchingHandle = /*@__PURE__*/new NodeProp();
-  function matchingNodes(node, dir, brackets) {
-      let byProp = node.prop(dir < 0 ? NodeProp.openedBy : NodeProp.closedBy);
-      if (byProp)
-          return byProp;
-      if (node.name.length == 1) {
-          let index = brackets.indexOf(node.name);
-          if (index > -1 && index % 2 == (dir < 0 ? 1 : 0))
-              return [brackets[index + dir]];
-      }
-      return null;
-  }
-  function findHandle(node) {
-      let hasHandle = node.type.prop(bracketMatchingHandle);
-      return hasHandle ? hasHandle(node.node) : node;
-  }
-  /**
-  Find the matching bracket for the token at `pos`, scanning
-  direction `dir`. Only the `brackets` and `maxScanDistance`
-  properties are used from `config`, if given. Returns null if no
-  bracket was found at `pos`, or a match result otherwise.
-  */
-  function matchBrackets(state, pos, dir, config = {}) {
-      let maxScanDistance = config.maxScanDistance || DefaultScanDist, brackets = config.brackets || DefaultBrackets;
-      let tree = syntaxTree(state), node = tree.resolveInner(pos, dir);
-      for (let cur = node; cur; cur = cur.parent) {
-          let matches = matchingNodes(cur.type, dir, brackets);
-          if (matches && cur.from < cur.to) {
-              let handle = findHandle(cur);
-              if (handle && (dir > 0 ? pos >= handle.from && pos < handle.to : pos > handle.from && pos <= handle.to))
-                  return matchMarkedBrackets(state, pos, dir, cur, handle, matches, brackets);
-          }
-      }
-      return matchPlainBrackets(state, pos, dir, tree, node.type, maxScanDistance, brackets);
-  }
-  function matchMarkedBrackets(_state, _pos, dir, token, handle, matching, brackets) {
-      let parent = token.parent, firstToken = { from: handle.from, to: handle.to };
-      let depth = 0, cursor = parent === null || parent === void 0 ? void 0 : parent.cursor();
-      if (cursor && (dir < 0 ? cursor.childBefore(token.from) : cursor.childAfter(token.to)))
-          do {
-              if (dir < 0 ? cursor.to <= token.from : cursor.from >= token.to) {
-                  if (depth == 0 && matching.indexOf(cursor.type.name) > -1 && cursor.from < cursor.to) {
-                      let endHandle = findHandle(cursor);
-                      return { start: firstToken, end: endHandle ? { from: endHandle.from, to: endHandle.to } : undefined, matched: true };
-                  }
-                  else if (matchingNodes(cursor.type, dir, brackets)) {
-                      depth++;
-                  }
-                  else if (matchingNodes(cursor.type, -dir, brackets)) {
-                      if (depth == 0) {
-                          let endHandle = findHandle(cursor);
-                          return {
-                              start: firstToken,
-                              end: endHandle && endHandle.from < endHandle.to ? { from: endHandle.from, to: endHandle.to } : undefined,
-                              matched: false
-                          };
-                      }
-                      depth--;
-                  }
-              }
-          } while (dir < 0 ? cursor.prevSibling() : cursor.nextSibling());
-      return { start: firstToken, matched: false };
-  }
-  function matchPlainBrackets(state, pos, dir, tree, tokenType, maxScanDistance, brackets) {
-      let startCh = dir < 0 ? state.sliceDoc(pos - 1, pos) : state.sliceDoc(pos, pos + 1);
-      let bracket = brackets.indexOf(startCh);
-      if (bracket < 0 || (bracket % 2 == 0) != (dir > 0))
-          return null;
-      let startToken = { from: dir < 0 ? pos - 1 : pos, to: dir > 0 ? pos + 1 : pos };
-      let iter = state.doc.iterRange(pos, dir > 0 ? state.doc.length : 0), depth = 0;
-      for (let distance = 0; !(iter.next()).done && distance <= maxScanDistance;) {
-          let text = iter.value;
-          if (dir < 0)
-              distance += text.length;
-          let basePos = pos + distance * dir;
-          for (let pos = dir > 0 ? 0 : text.length - 1, end = dir > 0 ? text.length : -1; pos != end; pos += dir) {
-              let found = brackets.indexOf(text[pos]);
-              if (found < 0 || tree.resolveInner(basePos + pos, 1).type != tokenType)
-                  continue;
-              if ((found % 2 == 0) == (dir > 0)) {
-                  depth++;
-              }
-              else if (depth == 1) { // Closing
-                  return { start: startToken, end: { from: basePos + pos, to: basePos + pos + 1 }, matched: (found >> 1) == (bracket >> 1) };
-              }
-              else {
-                  depth--;
-              }
-          }
-          if (dir > 0)
-              distance += text.length;
-      }
-      return iter.done ? { start: startToken, matched: false } : null;
-  }
   const noTokens = /*@__PURE__*/Object.create(null);
   const typeArray = [NodeType.none];
   const warned = [];
@@ -22051,7 +21889,7 @@
       /// @internal
       addNode(block, from, to) {
           if (typeof block == "number")
-              block = new Tree(this.parser.nodeSet.types[block], none, none, (to !== null && to !== void 0 ? to : this.prevLineEnd()) - from);
+              block = new Tree(this.parser.nodeSet.types[block], none$1, none$1, (to !== null && to !== void 0 ? to : this.prevLineEnd()) - from);
           this.block.addChild(block, from - this.block.from);
       }
       /// Add a block element. Can be called by [block
@@ -22302,7 +22140,7 @@
       let rest = resolveConfig(spec.slice(1));
       if (!rest || !conf)
           return conf || rest;
-      let conc = (a, b) => (a || none).concat(b || none);
+      let conc = (a, b) => (a || none$1).concat(b || none$1);
       let wrapA = conf.wrap, wrapB = rest.wrap;
       return {
           props: conc(conf.props, rest.props),
@@ -22329,7 +22167,7 @@
           top: name == "Document"
       });
   }
-  const none = [];
+  const none$1 = [];
   class Buffer$1 {
       constructor(nodeSet) {
           this.nodeSet = nodeSet;
@@ -22367,7 +22205,7 @@
       /// The end of the node.
       to, 
       /// The node's child nodes @internal
-      children = none) {
+      children = none$1) {
           this.type = type;
           this.from = from;
           this.to = to;
@@ -22391,7 +22229,7 @@
       }
       get to() { return this.from + this.tree.length; }
       get type() { return this.tree.type.id; }
-      get children() { return none; }
+      get children() { return none$1; }
       writeTo(buf, offset) {
           buf.nodes.push(this.tree);
           buf.content.push(buf.nodes.length - 1, this.from + offset, this.to + offset, -1);
@@ -24757,6 +24595,349 @@
   return ({ "cursor": range.from });
   }));}
   };
+
+  const fromHistory = /*@__PURE__*/Annotation.define();
+  /**
+  Transaction annotation that will prevent that transaction from
+  being combined with other transactions in the undo history. Given
+  `"before"`, it'll prevent merging with previous transactions. With
+  `"after"`, subsequent transactions won't be combined with this
+  one. With `"full"`, the transaction is isolated on both sides.
+  */
+  const isolateHistory = /*@__PURE__*/Annotation.define();
+  /**
+  This facet provides a way to register functions that, given a
+  transaction, provide a set of effects that the history should
+  store when inverting the transaction. This can be used to
+  integrate some kinds of effects in the history, so that they can
+  be undone (and redone again).
+  */
+  const invertedEffects = /*@__PURE__*/Facet.define();
+  const historyConfig = /*@__PURE__*/Facet.define({
+      combine(configs) {
+          return combineConfig(configs, {
+              minDepth: 100,
+              newGroupDelay: 500,
+              joinToEvent: (_t, isAdjacent) => isAdjacent,
+          }, {
+              minDepth: Math.max,
+              newGroupDelay: Math.min,
+              joinToEvent: (a, b) => (tr, adj) => a(tr, adj) || b(tr, adj)
+          });
+      }
+  });
+  const historyField_ = /*@__PURE__*/StateField.define({
+      create() {
+          return HistoryState.empty;
+      },
+      update(state, tr) {
+          let config = tr.state.facet(historyConfig);
+          let fromHist = tr.annotation(fromHistory);
+          if (fromHist) {
+              let item = HistEvent.fromTransaction(tr, fromHist.selection), from = fromHist.side;
+              let other = from == 0 /* BranchName.Done */ ? state.undone : state.done;
+              if (item)
+                  other = updateBranch(other, other.length, config.minDepth, item);
+              else
+                  other = addSelection(other, tr.startState.selection);
+              return new HistoryState(from == 0 /* BranchName.Done */ ? fromHist.rest : other, from == 0 /* BranchName.Done */ ? other : fromHist.rest);
+          }
+          let isolate = tr.annotation(isolateHistory);
+          if (isolate == "full" || isolate == "before")
+              state = state.isolate();
+          if (tr.annotation(Transaction.addToHistory) === false)
+              return !tr.changes.empty ? state.addMapping(tr.changes.desc) : state;
+          let event = HistEvent.fromTransaction(tr);
+          let time = tr.annotation(Transaction.time), userEvent = tr.annotation(Transaction.userEvent);
+          if (event)
+              state = state.addChanges(event, time, userEvent, config, tr);
+          else if (tr.selection)
+              state = state.addSelection(tr.startState.selection, time, userEvent, config.newGroupDelay);
+          if (isolate == "full" || isolate == "after")
+              state = state.isolate();
+          return state;
+      },
+      toJSON(value) {
+          return { done: value.done.map(e => e.toJSON()), undone: value.undone.map(e => e.toJSON()) };
+      },
+      fromJSON(json) {
+          return new HistoryState(json.done.map(HistEvent.fromJSON), json.undone.map(HistEvent.fromJSON));
+      }
+  });
+  /**
+  Create a history extension with the given configuration.
+  */
+  function history(config = {}) {
+      return [
+          historyField_,
+          historyConfig.of(config),
+          EditorView.domEventHandlers({
+              beforeinput(e, view) {
+                  let command = e.inputType == "historyUndo" ? undo : e.inputType == "historyRedo" ? redo : null;
+                  if (!command)
+                      return false;
+                  e.preventDefault();
+                  return command(view);
+              }
+          })
+      ];
+  }
+  function cmd(side, selection) {
+      return function ({ state, dispatch }) {
+          if (!selection && state.readOnly)
+              return false;
+          let historyState = state.field(historyField_, false);
+          if (!historyState)
+              return false;
+          let tr = historyState.pop(side, state, selection);
+          if (!tr)
+              return false;
+          dispatch(tr);
+          return true;
+      };
+  }
+  /**
+  Undo a single group of history events. Returns false if no group
+  was available.
+  */
+  const undo = /*@__PURE__*/cmd(0 /* BranchName.Done */, false);
+  /**
+  Redo a group of history events. Returns false if no group was
+  available.
+  */
+  const redo = /*@__PURE__*/cmd(1 /* BranchName.Undone */, false);
+  /**
+  Undo a change or selection change.
+  */
+  const undoSelection = /*@__PURE__*/cmd(0 /* BranchName.Done */, true);
+  /**
+  Redo a change or selection change.
+  */
+  const redoSelection = /*@__PURE__*/cmd(1 /* BranchName.Undone */, true);
+  // History events store groups of changes or effects that need to be
+  // undone/redone together.
+  class HistEvent {
+      constructor(
+      // The changes in this event. Normal events hold at least one
+      // change or effect. But it may be necessary to store selection
+      // events before the first change, in which case a special type of
+      // instance is created which doesn't hold any changes, with
+      // changes == startSelection == undefined
+      changes, 
+      // The effects associated with this event
+      effects, 
+      // Accumulated mapping (from addToHistory==false) that should be
+      // applied to events below this one.
+      mapped, 
+      // The selection before this event
+      startSelection, 
+      // Stores selection changes after this event, to be used for
+      // selection undo/redo.
+      selectionsAfter) {
+          this.changes = changes;
+          this.effects = effects;
+          this.mapped = mapped;
+          this.startSelection = startSelection;
+          this.selectionsAfter = selectionsAfter;
+      }
+      setSelAfter(after) {
+          return new HistEvent(this.changes, this.effects, this.mapped, this.startSelection, after);
+      }
+      toJSON() {
+          var _a, _b, _c;
+          return {
+              changes: (_a = this.changes) === null || _a === void 0 ? void 0 : _a.toJSON(),
+              mapped: (_b = this.mapped) === null || _b === void 0 ? void 0 : _b.toJSON(),
+              startSelection: (_c = this.startSelection) === null || _c === void 0 ? void 0 : _c.toJSON(),
+              selectionsAfter: this.selectionsAfter.map(s => s.toJSON())
+          };
+      }
+      static fromJSON(json) {
+          return new HistEvent(json.changes && ChangeSet.fromJSON(json.changes), [], json.mapped && ChangeDesc.fromJSON(json.mapped), json.startSelection && EditorSelection.fromJSON(json.startSelection), json.selectionsAfter.map(EditorSelection.fromJSON));
+      }
+      // This does not check `addToHistory` and such, it assumes the
+      // transaction needs to be converted to an item. Returns null when
+      // there are no changes or effects in the transaction.
+      static fromTransaction(tr, selection) {
+          let effects = none;
+          for (let invert of tr.startState.facet(invertedEffects)) {
+              let result = invert(tr);
+              if (result.length)
+                  effects = effects.concat(result);
+          }
+          if (!effects.length && tr.changes.empty)
+              return null;
+          return new HistEvent(tr.changes.invert(tr.startState.doc), effects, undefined, selection || tr.startState.selection, none);
+      }
+      static selection(selections) {
+          return new HistEvent(undefined, none, undefined, undefined, selections);
+      }
+  }
+  function updateBranch(branch, to, maxLen, newEvent) {
+      let start = to + 1 > maxLen + 20 ? to - maxLen - 1 : 0;
+      let newBranch = branch.slice(start, to);
+      newBranch.push(newEvent);
+      return newBranch;
+  }
+  function isAdjacent(a, b) {
+      let ranges = [], isAdjacent = false;
+      a.iterChangedRanges((f, t) => ranges.push(f, t));
+      b.iterChangedRanges((_f, _t, f, t) => {
+          for (let i = 0; i < ranges.length;) {
+              let from = ranges[i++], to = ranges[i++];
+              if (t >= from && f <= to)
+                  isAdjacent = true;
+          }
+      });
+      return isAdjacent;
+  }
+  function eqSelectionShape(a, b) {
+      return a.ranges.length == b.ranges.length &&
+          a.ranges.filter((r, i) => r.empty != b.ranges[i].empty).length === 0;
+  }
+  function conc(a, b) {
+      return !a.length ? b : !b.length ? a : a.concat(b);
+  }
+  const none = [];
+  const MaxSelectionsPerEvent = 200;
+  function addSelection(branch, selection) {
+      if (!branch.length) {
+          return [HistEvent.selection([selection])];
+      }
+      else {
+          let lastEvent = branch[branch.length - 1];
+          let sels = lastEvent.selectionsAfter.slice(Math.max(0, lastEvent.selectionsAfter.length - MaxSelectionsPerEvent));
+          if (sels.length && sels[sels.length - 1].eq(selection))
+              return branch;
+          sels.push(selection);
+          return updateBranch(branch, branch.length - 1, 1e9, lastEvent.setSelAfter(sels));
+      }
+  }
+  // Assumes the top item has one or more selectionAfter values
+  function popSelection(branch) {
+      let last = branch[branch.length - 1];
+      let newBranch = branch.slice();
+      newBranch[branch.length - 1] = last.setSelAfter(last.selectionsAfter.slice(0, last.selectionsAfter.length - 1));
+      return newBranch;
+  }
+  // Add a mapping to the top event in the given branch. If this maps
+  // away all the changes and effects in that item, drop it and
+  // propagate the mapping to the next item.
+  function addMappingToBranch(branch, mapping) {
+      if (!branch.length)
+          return branch;
+      let length = branch.length, selections = none;
+      while (length) {
+          let event = mapEvent(branch[length - 1], mapping, selections);
+          if (event.changes && !event.changes.empty || event.effects.length) { // Event survived mapping
+              let result = branch.slice(0, length);
+              result[length - 1] = event;
+              return result;
+          }
+          else { // Drop this event, since there's no changes or effects left
+              mapping = event.mapped;
+              length--;
+              selections = event.selectionsAfter;
+          }
+      }
+      return selections.length ? [HistEvent.selection(selections)] : none;
+  }
+  function mapEvent(event, mapping, extraSelections) {
+      let selections = conc(event.selectionsAfter.length ? event.selectionsAfter.map(s => s.map(mapping)) : none, extraSelections);
+      // Change-less events don't store mappings (they are always the last event in a branch)
+      if (!event.changes)
+          return HistEvent.selection(selections);
+      let mappedChanges = event.changes.map(mapping), before = mapping.mapDesc(event.changes, true);
+      let fullMapping = event.mapped ? event.mapped.composeDesc(before) : before;
+      return new HistEvent(mappedChanges, StateEffect.mapEffects(event.effects, mapping), fullMapping, event.startSelection.map(before), selections);
+  }
+  const joinableUserEvent = /^(input\.type|delete)($|\.)/;
+  class HistoryState {
+      constructor(done, undone, prevTime = 0, prevUserEvent = undefined) {
+          this.done = done;
+          this.undone = undone;
+          this.prevTime = prevTime;
+          this.prevUserEvent = prevUserEvent;
+      }
+      isolate() {
+          return this.prevTime ? new HistoryState(this.done, this.undone) : this;
+      }
+      addChanges(event, time, userEvent, config, tr) {
+          let done = this.done, lastEvent = done[done.length - 1];
+          if (lastEvent && lastEvent.changes && !lastEvent.changes.empty && event.changes &&
+              (!userEvent || joinableUserEvent.test(userEvent)) &&
+              ((!lastEvent.selectionsAfter.length &&
+                  time - this.prevTime < config.newGroupDelay &&
+                  config.joinToEvent(tr, isAdjacent(lastEvent.changes, event.changes))) ||
+                  // For compose (but not compose.start) events, always join with previous event
+                  userEvent == "input.type.compose")) {
+              done = updateBranch(done, done.length - 1, config.minDepth, new HistEvent(event.changes.compose(lastEvent.changes), conc(StateEffect.mapEffects(event.effects, lastEvent.changes), lastEvent.effects), lastEvent.mapped, lastEvent.startSelection, none));
+          }
+          else {
+              done = updateBranch(done, done.length, config.minDepth, event);
+          }
+          return new HistoryState(done, none, time, userEvent);
+      }
+      addSelection(selection, time, userEvent, newGroupDelay) {
+          let last = this.done.length ? this.done[this.done.length - 1].selectionsAfter : none;
+          if (last.length > 0 &&
+              time - this.prevTime < newGroupDelay &&
+              userEvent == this.prevUserEvent && userEvent && /^select($|\.)/.test(userEvent) &&
+              eqSelectionShape(last[last.length - 1], selection))
+              return this;
+          return new HistoryState(addSelection(this.done, selection), this.undone, time, userEvent);
+      }
+      addMapping(mapping) {
+          return new HistoryState(addMappingToBranch(this.done, mapping), addMappingToBranch(this.undone, mapping), this.prevTime, this.prevUserEvent);
+      }
+      pop(side, state, onlySelection) {
+          let branch = side == 0 /* BranchName.Done */ ? this.done : this.undone;
+          if (branch.length == 0)
+              return null;
+          let event = branch[branch.length - 1], selection = event.selectionsAfter[0] || state.selection;
+          if (onlySelection && event.selectionsAfter.length) {
+              return state.update({
+                  selection: event.selectionsAfter[event.selectionsAfter.length - 1],
+                  annotations: fromHistory.of({ side, rest: popSelection(branch), selection }),
+                  userEvent: side == 0 /* BranchName.Done */ ? "select.undo" : "select.redo",
+                  scrollIntoView: true
+              });
+          }
+          else if (!event.changes) {
+              return null;
+          }
+          else {
+              let rest = branch.length == 1 ? none : branch.slice(0, branch.length - 1);
+              if (event.mapped)
+                  rest = addMappingToBranch(rest, event.mapped);
+              return state.update({
+                  changes: event.changes,
+                  selection: event.startSelection,
+                  effects: event.effects,
+                  annotations: fromHistory.of({ side, rest, selection }),
+                  filter: false,
+                  userEvent: side == 0 /* BranchName.Done */ ? "undo" : "redo",
+                  scrollIntoView: true
+              });
+          }
+      }
+  }
+  HistoryState.empty = /*@__PURE__*/new HistoryState(none, none);
+  /**
+  Default key bindings for the undo history.
+
+  - Mod-z: [`undo`](https://codemirror.net/6/docs/ref/#commands.undo).
+  - Mod-y (Mod-Shift-z on macOS) + Ctrl-Shift-z on Linux: [`redo`](https://codemirror.net/6/docs/ref/#commands.redo).
+  - Mod-u: [`undoSelection`](https://codemirror.net/6/docs/ref/#commands.undoSelection).
+  - Alt-u (Mod-Shift-u on macOS): [`redoSelection`](https://codemirror.net/6/docs/ref/#commands.redoSelection).
+  */
+  const historyKeymap = [
+      { key: "Mod-z", run: undo, preventDefault: true },
+      { key: "Mod-y", mac: "Mod-Shift-z", run: redo, preventDefault: true },
+      { linux: "Ctrl-Shift-z", run: redo, preventDefault: true },
+      { key: "Mod-u", run: undoSelection, preventDefault: true },
+      { key: "Alt-u", mac: "Mod-Shift-u", run: redoSelection, preventDefault: true }
+  ];
 
   function updateSel(sel, by) {
       return EditorSelection.create(sel.ranges.map(by), sel.mainIndex);
@@ -44416,6 +44597,9 @@
     serialVisPanelState: panelStates.OFF
   };
 
+  // NEXTJOURNAL (clojure-mode)
+   
+
   serialMapFunctions[0] = (buffer) => {
     // if (WebMidi.outputs[0]) {
     //   WebMidi.outputs[0].sendControlChange(1, 1, {channels:[1]})
@@ -44471,6 +44655,7 @@
   };
 
   let evalNow = function (opts) {
+    console.log("Hello from evalNow");
     evalToplevel(opts, "@");
   };
 
@@ -44535,14 +44720,15 @@
     return true
   }
 
-  let useqExtension = ( opts ) => {
-    return keymap.of([
-                      {key: "Ctrl-Enter", run: evalNow}
-                      ,{key:"Alt-Enter", run: evalQuantised}
-                      ,{key:"Alt-h", run: toggleHelp, preventDefault:true, stopPropagation:true}
-                      ,{key:"Alt-v", run: toggleVid, preventDefault:true, stopPropagation:true}
-                      ,{key:"Alt-g", run: toggleSerialVis, preventDefault:true, stopPropagation:true}
-                    ])};
+
+  let useq_keymap = [
+    {key: "Ctrl-Enter", run: evalNow}
+    ,{key:"Alt-Enter", run: evalQuantised}
+    ,{key:"Alt-h", run: toggleHelp, preventDefault:true, stopPropagation:true}
+    ,{key:"Alt-v", run: toggleVid, preventDefault:true, stopPropagation:true}
+    ,{key:"Alt-g", run: toggleSerialVis, preventDefault:true, stopPropagation:true}
+  ];
+
 
   const updateListenerExtension = EditorView.updateListener.of((update) => {
     if (update.docChanged && config.savelocal) {
@@ -44552,20 +44738,36 @@
       window.localStorage.setItem("useqcode", update.state.doc.toString());
     }
   });
-                  
-  let extensions = [keymap.of(complete_keymap),
+  console.log(complete_keymap);
+  let complete_keymap_mod = complete_keymap.map(binding => {
+    if (binding.key === 'Ctrl-ArrowRight') {
+      return { ...binding, key: 'Ctrl-]' };
+    }
+    if (binding.key === 'Ctrl-ArrowLeft') {
+      return { ...binding, key: 'Ctrl-[' };
+    }
+    if (binding.key === 'Ctrl-Alt-ArrowLeft') {
+      return { ...binding, key: 'Ctrl-;' };
+    }
+    if (binding.key === 'Ctrl-Alt-ArrowRight') {
+      return { ...binding, key: "Ctrl-'" };
+    }
+    return binding;
+  });
+
+  let extensions = [
+    keymap.of(useq_keymap),
+    keymap.of(complete_keymap_mod),
+    keymap.of(historyKeymap),
+    history(),
     theme,
     foldGutter(),
     syntaxHighlighting(defaultHighlightStyle),
     drawSelection(),
-    bracketMatching()
-    ,
-  ...default_extensions
-  ,
-    useqExtension(),
-    updateListenerExtension
+    updateListenerExtension,
+    ...default_extensions
   ];
-                      
+
   let state = EditorState.create({doc: "",
     extensions: extensions });
 
