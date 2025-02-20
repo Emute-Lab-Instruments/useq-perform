@@ -43,6 +43,7 @@ const jscode = compileString("(js/this.defSerialMap 0 (fn [buf] (do(js/this.midi
 
 
 console.log(jscode);
+console.log(complete_keymap)
 // jQuery.globalEval(jscode);
 const scopedEval = (scope, script) => Function(`"use strict"; ${script}`).bind(scope)();
 var jscode2 = 'var x = function(buf){return this.midictrl(0, 1, 2, Math.floor(buf.last(0) * 18));}; this.defSerialMap(0, x)'
