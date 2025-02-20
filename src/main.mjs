@@ -1,10 +1,12 @@
-// import * as cljmode from '@nextjournal/clojure-mode';
+// NEXTJOURNAL (clojure-mode)
 import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
-// import {basicSetup} from "codemirror"
+import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
+// CODEMIRROR
 import { EditorView, drawSelection, keymap } from  '@codemirror/view';
+import { history, historyKeymap } from '@codemirror/commands';
 import { Compartment, EditorState } from '@codemirror/state';
 import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
-import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
+// OTHERS
 import {WebMidi} from "webmidi";
 import { compileString } from 'squint-cljs';
 import { openCam } from './openCam.mjs';
@@ -92,6 +94,7 @@ let evalToplevel = function (opts, prefix="") {
 }
 
 let evalNow = function (opts) {
+  console.log("Hello from evalNow");
   evalToplevel(opts, "@")
 }
 
@@ -156,14 +159,15 @@ function toggleSerialVis() {
   return true
 }
 
-let useqExtension = ( opts ) => {
-  return keymap.of([
-                    {key: "Ctrl-Enter", run: evalNow}
-                    ,{key:"Alt-Enter", run: evalQuantised}
-                    ,{key:"Alt-h", run: toggleHelp, preventDefault:true, stopPropagation:true}
-                    ,{key:"Alt-v", run: toggleVid, preventDefault:true, stopPropagation:true}
-                    ,{key:"Alt-g", run: toggleSerialVis, preventDefault:true, stopPropagation:true}
-                  ])}
+
+let useq_keymap = [
+  {key: "Ctrl-Enter", run: evalNow}
+  ,{key:"Alt-Enter", run: evalQuantised}
+  ,{key:"Alt-h", run: toggleHelp, preventDefault:true, stopPropagation:true}
+  ,{key:"Alt-v", run: toggleVid, preventDefault:true, stopPropagation:true}
+  ,{key:"Alt-g", run: toggleSerialVis, preventDefault:true, stopPropagation:true}
+];
+
 
 const updateListenerExtension = EditorView.updateListener.of((update) => {
   if (update.docChanged && config.savelocal) {
@@ -173,20 +177,21 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
     window.localStorage.setItem("useqcode", update.state.doc.toString());
   }
 });
-                
-let extensions = [keymap.of(complete_keymap),
+
+
+let extensions = [
+  keymap.of(useq_keymap),
+  keymap.of(complete_keymap),
+  keymap.of(historyKeymap),
+  history(),
   theme,
   foldGutter(),
   syntaxHighlighting(defaultHighlightStyle),
   drawSelection(),
-  bracketMatching()
-  ,
-...default_extensions
-,
-  useqExtension({modifier: "Ctrl"}),
-  updateListenerExtension
+  updateListenerExtension,
+  ...default_extensions
 ];
-                    
+
 let state = EditorState.create({doc: "",
   extensions: extensions });
 
@@ -413,4 +418,3 @@ function setupMIDI() {
     }
   });
 }
-
