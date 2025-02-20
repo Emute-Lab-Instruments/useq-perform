@@ -177,11 +177,26 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
     window.localStorage.setItem("useqcode", update.state.doc.toString());
   }
 });
-
+console.log(complete_keymap);
+let complete_keymap_mod = complete_keymap.map(binding => {
+  if (binding.key === 'Ctrl-ArrowRight') {
+    return { ...binding, key: 'Ctrl-]' };
+  }
+  if (binding.key === 'Ctrl-ArrowLeft') {
+    return { ...binding, key: 'Ctrl-[' };
+  }
+  if (binding.key === 'Ctrl-Alt-ArrowLeft') {
+    return { ...binding, key: 'Ctrl-;' };
+  }
+  if (binding.key === 'Ctrl-Alt-ArrowRight') {
+    return { ...binding, key: "Ctrl-'" };
+  }
+  return binding;
+});
 
 let extensions = [
   keymap.of(useq_keymap),
-  keymap.of(complete_keymap),
+  keymap.of(complete_keymap_mod),
   keymap.of(historyKeymap),
   history(),
   theme,
