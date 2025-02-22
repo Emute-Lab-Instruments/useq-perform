@@ -5,7 +5,8 @@ import { extension as eval_ext, cursor_node_string, top_level_string } from '@ne
 import { EditorView, drawSelection, keymap } from  '@codemirror/view';
 import { history, historyKeymap } from '@codemirror/commands';
 import { Compartment, EditorState } from '@codemirror/state';
-import { syntaxHighlighting, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
+import { syntaxHighlighting, HighlightStyle, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
+import {tags} from "@lezer/highlight"
 // OTHERS
 import {WebMidi} from "webmidi";
 import { compileString } from 'squint-cljs';
@@ -14,6 +15,11 @@ import { upgradeCheck } from './upgradeCheck.mjs';
 import { post, sendTouSEQ, setSerialPort, getSerialPort, serialReader, serialMapFunctions } from './serialComms.mjs';
 import { drawSerialVis } from './serialVis.mjs';
 import { interfaceStates, panelStates } from './panelStates.mjs';
+// import {amy,clouds} from 'thememirror';
+import { barf, cobalt, clouds, coolGlow,noctisLilac,ayuLight } from 'thememirror';
+
+const themes = [barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight];
+let currentTheme=0;
  
 
 serialMapFunctions[0] = (buffer) => {
@@ -45,8 +51,8 @@ const jscode = compileString("(js/this.defSerialMap 0 (fn [buf] (do(js/this.midi
   });
 
 
-console.log(jscode);
-console.log(complete_keymap)
+// console.log(jscode);
+// console.log(complete_keymap)
 // jQuery.globalEval(jscode);
 const scopedEval = (scope, script) => Function(`"use strict"; ${script}`).bind(scope)();
 var jscode2 = 'var x = function(buf){return this.midictrl(0, 1, 2, Math.floor(buf.last(0) * 18));}; this.defSerialMap(0, x)'
@@ -63,13 +69,14 @@ var jscode2 = 'var x = function(buf){return this.midictrl(0, 1, 2, Math.floor(bu
 function uSEQ_Serial_Map(channel, value) {
 }
 
-let theme = EditorView.theme({
+let theme = EditorView.baseTheme({
   "&": {"height":"100%"},
   ".cm-wrap": {"height":"100%"},
   ".cm-content, .cm-gutter": {minHeight: "100%"},
   ".cm-content": {whitespace: "pre-wrap",
                   passing: "10px 0",
-                  flex: "1 1 0"},
+                  flex: "1 1 0",
+                  caretColor: "#ddd"},
 
   "&.cm-focused": {outline: "0 !important"},
   ".cm-line": {"padding": "0 9px",
@@ -85,8 +92,14 @@ let theme = EditorView.theme({
   // only show cursor when focused
   ".cm-cursor": {visibility: "hidden"},
   "&.cm-focused .cm-cursor": {visibility: "visible"}
-}, {});
+});
 
+// const myHighlightStyle = HighlightStyle.define([
+//   {tag: tags.keyword, color: "#f00"},
+//   {tag: tags.comment, color: "#f5d", fontStyle: "italic"}
+// ])
+
+// syntaxHighlighting(myHighlightStyle);
 
 
 
@@ -102,7 +115,6 @@ let evalToplevel = function (opts, prefix="") {
 }
 
 let evalNow = function (opts) {
-  console.log("Hello from evalNow");
   evalToplevel(opts, "@")
 }
 
@@ -185,7 +197,10 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
     window.localStorage.setItem("useqcode", update.state.doc.toString());
   }
 });
-console.log(complete_keymap);
+
+
+// console.log(complete_keymap);
+//change bindings for slurping and barfing
 let complete_keymap_mod = complete_keymap.map(binding => {
   if (binding.key === 'Ctrl-ArrowRight') {
     return { ...binding, key: 'Ctrl-]' };
@@ -202,6 +217,7 @@ let complete_keymap_mod = complete_keymap.map(binding => {
   return binding;
 });
 
+const themeCompartment = new Compartment;
 let extensions = [
   keymap.of(useq_keymap),
   keymap.of(complete_keymap_mod),
@@ -209,7 +225,9 @@ let extensions = [
   history(),
   theme,
   foldGutter(),
-  syntaxHighlighting(defaultHighlightStyle),
+  // syntaxHighlighting(defaultHighlightStyle),
+  // [clouds],
+  themeCompartment.of(themes[0]),  
   drawSelection(),
   updateListenerExtension,
   ...default_extensions
@@ -314,6 +332,18 @@ $(function () {
       }
     }
   }
+  let themeNumStr = window.localStorage.getItem("theme");
+  if (themeNumStr) {
+    let themeNum = parseInt(themeNumStr);
+    if (themeNum < themes.length) {
+      currentTheme = themeNum;
+      editor.dispatch({
+        effects: themeCompartment.reconfigure(themes[currentTheme])
+      })    
+  
+    }
+  }
+
 
 
 
@@ -390,6 +420,16 @@ $(function () {
   });
   $("#helpButton").click(() => {
     $("#helppanel").toggle(100);
+  });
+
+  $("#themeButton").on("click", async () => {
+    currentTheme = (currentTheme+1) % themes.length;
+    editor.dispatch({
+      effects: themeCompartment.reconfigure(themes[currentTheme])
+    })    
+    window.localStorage.setItem("theme", currentTheme.toString());
+
+  
   });
 
 
