@@ -20,7 +20,7 @@ import { barf, cobalt, clouds, coolGlow,noctisLilac,ayuLight } from 'thememirror
 import { createIcons, Cable, Save, File, SwatchBook, AArrowDown, AArrowUp, CircleHelp } from 'lucide';
 
 const themes = [barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight];
-let currentTheme=0;
+let editorPeristantConfig = {'currentTheme':0, 'fontSize':20}
  
 
 serialMapFunctions[0] = (buffer) => {
@@ -250,6 +250,7 @@ function changeFontSize(ed, size) {
       ".cm-content": { fontSize: `${size}px` }
     }))
   });
+
 }
 
 
@@ -359,26 +360,31 @@ $(function () {
       }
     }
   }
-  let themeNumStr = window.localStorage.getItem("theme");
-  if (themeNumStr) {
-    let themeNum = parseInt(themeNumStr);
-    if (themeNum < themes.length) {
-      currentTheme = themeNum;
+
+  let editorPeristantConfigStr = window.localStorage.getItem("editorConfig");
+  if (editorPeristantConfigStr) {
+    editorPeristantConfig = JSON.parse(editorPeristantConfigStr)
+    if (editorPeristantConfig.currentTheme < themes.length) {
       editor.dispatch({
-        effects: themeCompartment.reconfigure(themes[currentTheme])
+        effects: themeCompartment.reconfigure(themes[editorPeristantConfig.currentTheme])
       })    
-  
     }
+    changeFontSize(editor, editorPeristantConfig.fontSize);
   }
 
   $("#increaseFontButton").on("click", () => {
-    let currentSize = parseInt($(".cm-content").css("font-size"));
-    changeFontSize(editor, currentSize + 2);
+    // let currentSize = parseInt($(".cm-content").css("font-size"));
+    editorPeristantConfig.fontSize++;
+    changeFontSize(editor, editorPeristantConfig.fontSize);
+    saveConfig();
   });
 
   $("#decreaseFontButton").on("click", () => {
-    let currentSize = parseInt($(".cm-content").css("font-size"));
-    changeFontSize(editor, currentSize - 2);
+    // let currentSize = parseInt($(".cm-content").css("font-size"));
+    // changeFontSize(editor, currentSize - 2);
+    editorPeristantConfig.fontSize--;
+    changeFontSize(editor, editorPeristantConfig.fontSize);
+    saveConfig();
   });
 
   $("#btnConnect").on("click", function () {
@@ -457,13 +463,11 @@ $(function () {
   });
 
   $("#themeButton").on("click", async () => {
-    currentTheme = (currentTheme+1) % themes.length;
+    editorPeristantConfig.currentTheme = (editorPeristantConfig.currentTheme+1) % themes.length;
     editor.dispatch({
-      effects: themeCompartment.reconfigure(themes[currentTheme])
+      effects: themeCompartment.reconfigure(themes[editorPeristantConfig.currentTheme])
     })    
-    window.localStorage.setItem("theme", currentTheme.toString());
-
-  
+    saveConfig();
   });
 
 
@@ -482,6 +486,10 @@ $(function () {
   // });
   window.requestAnimationFrame(drawSerialVis);
 });
+
+function saveConfig() {
+  window.localStorage.setItem("editorConfig", JSON.stringify(editorPeristantConfig));
+}
 
 function createEditor() {
   return new EditorView({
