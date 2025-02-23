@@ -17,6 +17,7 @@ import { drawSerialVis } from './serialVis.mjs';
 import { interfaceStates, panelStates } from './panelStates.mjs';
 // import {amy,clouds} from 'thememirror';
 import { barf, cobalt, clouds, coolGlow,noctisLilac,ayuLight } from 'thememirror';
+import { createIcons, Cable, Save, File, SwatchBook, AArrowDown, AArrowUp, CircleHelp } from 'lucide';
 
 const themes = [barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight];
 let currentTheme=0;
@@ -288,6 +289,18 @@ $(function () {
 
 
   var editor = createEditor();
+
+  createIcons({
+    icons: {
+      Cable,
+      Save,
+      File,
+      SwatchBook,
+      AArrowDown,
+      AArrowUp,
+      CircleHelp
+    }
+  });
 
 
   //first, check if loading external file

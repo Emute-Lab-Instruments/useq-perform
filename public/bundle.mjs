@@ -8300,7 +8300,7 @@
               }
       return changed;
   }
-  function getAttrs(dom) {
+  function getAttrs$1(dom) {
       let attrs = Object.create(null);
       for (let i = 0; i < dom.attributes.length; i++) {
           let attr = dom.attributes[i];
@@ -10495,7 +10495,7 @@
           else if (parent != view.contentDOM)
               marks.push({ node: parent, deco: new MarkDecoration({
                       inclusive: true,
-                      attributes: getAttrs(parent),
+                      attributes: getAttrs$1(parent),
                       tagName: parent.tagName.toLowerCase()
                   }) });
           else
@@ -45804,6 +45804,241 @@
       ],
   });
 
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+  const createElement = ([tag, attrs, children]) => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    Object.keys(attrs).forEach((name) => {
+      element.setAttribute(name, String(attrs[name]));
+    });
+    if (children?.length) {
+      children.forEach((child) => {
+        const childElement = createElement(child);
+        element.appendChild(childElement);
+      });
+    }
+    return element;
+  };
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+  const defaultAttributes = {
+    xmlns: "http://www.w3.org/2000/svg",
+    width: 24,
+    height: 24,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": 2,
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round"
+  };
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+
+  const getAttrs = (element) => Array.from(element.attributes).reduce((attrs, attr) => {
+    attrs[attr.name] = attr.value;
+    return attrs;
+  }, {});
+  const getClassNames = (attrs) => {
+    if (typeof attrs === "string")
+      return attrs;
+    if (!attrs || !attrs.class)
+      return "";
+    if (attrs.class && typeof attrs.class === "string") {
+      return attrs.class.split(" ");
+    }
+    if (attrs.class && Array.isArray(attrs.class)) {
+      return attrs.class;
+    }
+    return "";
+  };
+  const combineClassNames = (arrayOfClassnames) => {
+    const classNameArray = arrayOfClassnames.flatMap(getClassNames);
+    return classNameArray.map((classItem) => classItem.trim()).filter(Boolean).filter((value, index, self) => self.indexOf(value) === index).join(" ");
+  };
+  const toPascalCase = (string) => string.replace(/(\w)(\w*)(_|-|\s*)/g, (g0, g1, g2) => g1.toUpperCase() + g2.toLowerCase());
+  const replaceElement = (element, { nameAttr, icons, attrs }) => {
+    const iconName = element.getAttribute(nameAttr);
+    if (iconName == null)
+      return;
+    const ComponentName = toPascalCase(iconName);
+    const iconNode = icons[ComponentName];
+    if (!iconNode) {
+      return console.warn(
+        `${element.outerHTML} icon name was not found in the provided icons object.`
+      );
+    }
+    const elementAttrs = getAttrs(element);
+    const iconAttrs = {
+      ...defaultAttributes,
+      "data-lucide": iconName,
+      ...attrs,
+      ...elementAttrs
+    };
+    const classNames = combineClassNames(["lucide", `lucide-${iconName}`, elementAttrs, attrs]);
+    if (classNames) {
+      Object.assign(iconAttrs, {
+        class: classNames
+      });
+    }
+    const svgElement = createElement(["svg", iconAttrs, iconNode]);
+    return element.parentNode?.replaceChild(svgElement, element);
+  };
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+  const AArrowDown = [
+    ["path", { d: "M3.5 13h6" }],
+    ["path", { d: "m2 16 4.5-9 4.5 9" }],
+    ["path", { d: "M18 7v9" }],
+    ["path", { d: "m14 12 4 4 4-4" }]
+  ];
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+  const AArrowUp = [
+    ["path", { d: "M3.5 13h6" }],
+    ["path", { d: "m2 16 4.5-9 4.5 9" }],
+    ["path", { d: "M18 16V7" }],
+    ["path", { d: "m14 11 4-4 4 4" }]
+  ];
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+  const Cable = [
+    ["path", { d: "M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1" }],
+    ["path", { d: "M19 15V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V9" }],
+    ["path", { d: "M21 21v-2h-4" }],
+    ["path", { d: "M3 5h4V3" }],
+    ["path", { d: "M7 5a1 1 0 0 1 1 1v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1V3" }]
+  ];
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+  const CircleHelp = [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" }],
+    ["path", { d: "M12 17h.01" }]
+  ];
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+  const File = [
+    ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" }],
+    ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4" }]
+  ];
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+  const Save = [
+    [
+      "path",
+      {
+        d: "M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"
+      }
+    ],
+    ["path", { d: "M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" }],
+    ["path", { d: "M7 3v4a1 1 0 0 0 1 1h7" }]
+  ];
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+  const SwatchBook = [
+    ["path", { d: "M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z" }],
+    ["path", { d: "M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7" }],
+    ["path", { d: "M 7 17h.01" }],
+    [
+      "path",
+      { d: "m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8" }
+    ]
+  ];
+
+  /**
+   * @license lucide v0.475.0 - ISC
+   *
+   * This source code is licensed under the ISC license.
+   * See the LICENSE file in the root directory of this source tree.
+   */
+
+
+  const createIcons = ({ icons = {}, nameAttr = "data-lucide", attrs = {} } = {}) => {
+    if (!Object.values(icons).length) {
+      throw new Error(
+        "Please provide an icons object.\nIf you want to use all the icons you can import it like:\n `import { createIcons, icons } from 'lucide';\nlucide.createIcons({icons});`"
+      );
+    }
+    if (typeof document === "undefined") {
+      throw new Error("`createIcons()` only works in a browser environment.");
+    }
+    const elementsToReplace = document.querySelectorAll(`[${nameAttr}]`);
+    Array.from(elementsToReplace).forEach(
+      (element) => replaceElement(element, { nameAttr, icons, attrs })
+    );
+    if (nameAttr === "data-lucide") {
+      const deprecatedElements = document.querySelectorAll("[icon-name]");
+      if (deprecatedElements.length > 0) {
+        console.warn(
+          "[Lucide] Some icons were found with the now deprecated icon-name attribute. These will still be replaced for backwards compatibility, but will no longer be supported in v1.0 and you should switch to data-lucide"
+        );
+        Array.from(deprecatedElements).forEach(
+          (element) => replaceElement(element, { nameAttr: "icon-name", icons, attrs })
+        );
+      }
+    }
+  };
+
   // NEXTJOURNAL (clojure-mode)
 
   const themes = [barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight];
@@ -46041,6 +46276,18 @@
 
 
     var editor = createEditor();
+
+    createIcons({
+      icons: {
+        Cable,
+        Save,
+        File,
+        SwatchBook,
+        AArrowDown,
+        AArrowUp,
+        CircleHelp
+      }
+    });
 
 
     //first, check if loading external file
