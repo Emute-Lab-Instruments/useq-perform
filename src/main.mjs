@@ -200,9 +200,9 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
 
 
 // console.log(complete_keymap);
-//change bindings for slurping and barfing
 let complete_keymap_mod = complete_keymap.map(binding => {
   switch (binding.key) {
+    // Fix Del unbalancing parens
     case 'Delete':
       const originalRun = binding.run;
       return {
@@ -217,6 +217,8 @@ let complete_keymap_mod = complete_keymap.map(binding => {
           return originalRun(view); // Run the original function
         }
       };
+    //change bindings for slurping and barfing 
+    // (to avoid using arrows which are intercepted by some OSes)
     case 'Ctrl-ArrowRight':
       return { ...binding, key: 'Ctrl-]' };
     case 'Ctrl-ArrowLeft':
