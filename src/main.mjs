@@ -202,20 +202,34 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
 // console.log(complete_keymap);
 //change bindings for slurping and barfing
 let complete_keymap_mod = complete_keymap.map(binding => {
-  if (binding.key === 'Ctrl-ArrowRight') {
-    return { ...binding, key: 'Ctrl-]' };
+  switch (binding.key) {
+    case 'Delete':
+      const originalRun = binding.run;
+      return {
+        ...binding,
+        run: (view) => {
+          const { state } = view;
+          const { from } = state.selection.main;
+          const nextChar = state.doc.sliceString(from, from + 1);
+          if ([')', ']', '}'].includes(nextChar)) {
+            return true; // Do nothing
+          }
+          return originalRun(view); // Run the original function
+        }
+      };
+    case 'Ctrl-ArrowRight':
+      return { ...binding, key: 'Ctrl-]' };
+    case 'Ctrl-ArrowLeft':
+      return { ...binding, key: 'Ctrl-[' };
+    case 'Ctrl-Alt-ArrowLeft':
+      return { ...binding, key: 'Ctrl-;' };
+    case 'Ctrl-Alt-ArrowRight':
+      return { ...binding, key: "Ctrl-'" };
+    default:
+      return binding;
   }
-  if (binding.key === 'Ctrl-ArrowLeft') {
-    return { ...binding, key: 'Ctrl-[' };
-  }
-  if (binding.key === 'Ctrl-Alt-ArrowLeft') {
-    return { ...binding, key: 'Ctrl-;' };
-  }
-  if (binding.key === 'Ctrl-Alt-ArrowRight') {
-    return { ...binding, key: "Ctrl-'" };
-  }
-  return binding;
 });
+
 
 const themeCompartment = new Compartment;
 const fontSizeCompartment = new Compartment;
