@@ -2,7 +2,7 @@
 import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 // CODEMIRROR
-import { EditorView, drawSelection, keymap } from  '@codemirror/view';
+import { EditorView, drawSelection, keymap, lineNumbers } from  '@codemirror/view';
 import { history, historyKeymap } from '@codemirror/commands';
 import { Compartment, EditorState } from '@codemirror/state';
 import { syntaxHighlighting, HighlightStyle, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
@@ -226,6 +226,7 @@ let extensions = [
   theme,
   foldGutter(),
   bracketMatching(),
+  lineNumbers(),
   // syntaxHighlighting(defaultHighlightStyle),
   // [clouds],
   themeCompartment.of(themes[0]),  

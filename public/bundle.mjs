@@ -16661,6 +16661,82 @@
               return false;
       return true;
   }
+  /**
+  Facet used to provide markers to the line number gutter.
+  */
+  const lineNumberMarkers = /*@__PURE__*/Facet.define();
+  /**
+  Facet used to create markers in the line number gutter next to widgets.
+  */
+  const lineNumberWidgetMarker = /*@__PURE__*/Facet.define();
+  const lineNumberConfig = /*@__PURE__*/Facet.define({
+      combine(values) {
+          return combineConfig(values, { formatNumber: String, domEventHandlers: {} }, {
+              domEventHandlers(a, b) {
+                  let result = Object.assign({}, a);
+                  for (let event in b) {
+                      let exists = result[event], add = b[event];
+                      result[event] = exists ? (view, line, event) => exists(view, line, event) || add(view, line, event) : add;
+                  }
+                  return result;
+              }
+          });
+      }
+  });
+  class NumberMarker extends GutterMarker {
+      constructor(number) {
+          super();
+          this.number = number;
+      }
+      eq(other) { return this.number == other.number; }
+      toDOM() { return document.createTextNode(this.number); }
+  }
+  function formatNumber(view, number) {
+      return view.state.facet(lineNumberConfig).formatNumber(number, view.state);
+  }
+  const lineNumberGutter = /*@__PURE__*/activeGutters.compute([lineNumberConfig], state => ({
+      class: "cm-lineNumbers",
+      renderEmptyElements: false,
+      markers(view) { return view.state.facet(lineNumberMarkers); },
+      lineMarker(view, line, others) {
+          if (others.some(m => m.toDOM))
+              return null;
+          return new NumberMarker(formatNumber(view, view.state.doc.lineAt(line.from).number));
+      },
+      widgetMarker: (view, widget, block) => {
+          for (let m of view.state.facet(lineNumberWidgetMarker)) {
+              let result = m(view, widget, block);
+              if (result)
+                  return result;
+          }
+          return null;
+      },
+      lineMarkerChange: update => update.startState.facet(lineNumberConfig) != update.state.facet(lineNumberConfig),
+      initialSpacer(view) {
+          return new NumberMarker(formatNumber(view, maxLineNumber(view.state.doc.lines)));
+      },
+      updateSpacer(spacer, update) {
+          let max = formatNumber(update.view, maxLineNumber(update.view.state.doc.lines));
+          return max == spacer.number ? spacer : new NumberMarker(max);
+      },
+      domEventHandlers: state.facet(lineNumberConfig).domEventHandlers
+  }));
+  /**
+  Create a line number gutter extension.
+  */
+  function lineNumbers(config = {}) {
+      return [
+          lineNumberConfig.of(config),
+          gutters(),
+          lineNumberGutter
+      ];
+  }
+  function maxLineNumber(lines) {
+      let last = 9;
+      while (last < lines)
+          last = last * 10 + 9;
+      return last;
+  }
 
   let nextTagID = 0;
   /**
@@ -45903,6 +45979,7 @@
     theme,
     foldGutter(),
     bracketMatching(),
+    lineNumbers(),
     // syntaxHighlighting(defaultHighlightStyle),
     // [clouds],
     themeCompartment.of(themes[0]),  
