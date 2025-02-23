@@ -81,7 +81,6 @@ let theme = EditorView.baseTheme({
   "&.cm-focused": {outline: "0 !important"},
   ".cm-line": {"padding": "0 9px",
                "line-height": "1.6",
-               "font-size": "24px",
                "font-family": "var(--code-font)"},
   ".cm-matchingBracket": {"border-bottom": "1px solid var(--white-color)",
                           "color": "inherit"},
@@ -218,6 +217,9 @@ let complete_keymap_mod = complete_keymap.map(binding => {
 });
 
 const themeCompartment = new Compartment;
+const fontSizeCompartment = new Compartment;
+
+
 let extensions = [
   keymap.of(useq_keymap),
   keymap.of(complete_keymap_mod),
@@ -227,8 +229,9 @@ let extensions = [
   foldGutter(),
   bracketMatching(),
   lineNumbers(),
-  // syntaxHighlighting(defaultHighlightStyle),
-  // [clouds],
+  fontSizeCompartment.of(EditorView.theme({
+    ".cm-content": { fontSize: "16px" } // default font size
+  })),
   themeCompartment.of(themes[0]),  
   drawSelection(),
   updateListenerExtension,
@@ -239,6 +242,15 @@ let state = EditorState.create({doc: "",
   extensions: extensions });
 
 var config={'savelocal':true}
+
+function changeFontSize(ed, size) {
+  ed.dispatch({
+    effects: fontSizeCompartment.reconfigure(EditorView.theme({
+      ".cm-content": { fontSize: `${size}px` }
+    }))
+  });
+}
+
 
 $(function () {
   $("#helppanel").hide();
@@ -346,8 +358,15 @@ $(function () {
     }
   }
 
+  $("#increaseFontButton").on("click", () => {
+    let currentSize = parseInt($(".cm-content").css("font-size"));
+    changeFontSize(editor, currentSize + 2);
+  });
 
-
+  $("#decreaseFontButton").on("click", () => {
+    let currentSize = parseInt($(".cm-content").css("font-size"));
+    changeFontSize(editor, currentSize - 2);
+  });
 
   $("#btnConnect").on("click", function () {
     console.log("uSEQ-Perform: hello");
