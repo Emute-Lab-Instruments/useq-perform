@@ -225,6 +225,7 @@ let extensions = [
   history(),
   theme,
   foldGutter(),
+  bracketMatching(),
   // syntaxHighlighting(defaultHighlightStyle),
   // [clouds],
   themeCompartment.of(themes[0]),  
