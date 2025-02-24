@@ -3,7 +3,7 @@ import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 // CODEMIRROR
 import { EditorView, drawSelection, keymap, lineNumbers } from  '@codemirror/view';
-import { history, historyKeymap } from '@codemirror/commands';
+import { history, historyKeymap, deleteCharBackward, deleteCharForward, cursorCharRight } from '@codemirror/commands';
 import { Compartment, EditorState } from '@codemirror/state';
 import { syntaxHighlighting, HighlightStyle, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
 import {tags} from "@lezer/highlight"
@@ -206,7 +206,17 @@ const updateListenerExtension = EditorView.updateListener.of((update) => {
 });
 
 
-// console.log(complete_keymap);
+const openingBracketChars = ["(", "[", "{"];
+const closingBracketChars = [")", "]", "}"];
+const bracketChars = openingBracketChars.concat(closingBracketChars);
+
+function areMatchingBracketChars(char1, char2) {
+  // Works regardless of the order of char1 & char2
+  // By checking to see that they're in the same index in the two arrays
+  return Math.abs(bracketChars.indexOf(char1) - bracketChars.indexOf(char2)) == openingBracketChars.length;
+}
+
+// Modify stock keybindings
 let complete_keymap_mod = complete_keymap.map(binding => {
   switch (binding.key) {
     // Fix Del unbalancing parens
@@ -217,10 +227,29 @@ let complete_keymap_mod = complete_keymap.map(binding => {
         run: (view) => {
           const { state } = view;
           const { from } = state.selection.main;
+          
           const nextChar = state.doc.sliceString(from, from + 1);
-          if ([')', ']', '}'].includes(nextChar)) {
-            return true; // Do nothing
+          if (bracketChars.includes(nextChar)) {
+            const prevChar = state.doc.sliceString(from-1, from);
+            if (areMatchingBracketChars(prevChar, nextChar)) {
+              console.log("matching brackets");
+              // We're in an empty pair, delete both
+              // characters around the cursor
+              view.dispatch({
+                changes: { from: from - 1, to: from, insert: "" }
+              });
+              // NOTE: this is for some reason needed to avoid a blank space 
+              // being inserted after the deleted brackets
+              deleteCharForward(view);
+              return true;
+            }
+            else{
+              // Next char is a closing bracket in a non-empty
+              // expression, do nothing
+              return true; 
+            }
           }
+          // Next char isn't a closing bracket, delete normally
           return originalRun(view); // Run the original function
         }
       };
