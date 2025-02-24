@@ -291,7 +291,9 @@ let extensions = [
   ...default_extensions
 ];
 
-let state = EditorState.create({doc: "",
+const editorEmptyStartingText = Array(100).fill("\n").join("");
+
+let state = EditorState.create({doc: editorEmptyStartingText,
   extensions: extensions });
 
 var config={'savelocal':true}
