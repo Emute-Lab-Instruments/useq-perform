@@ -154,7 +154,7 @@ export async function serialReader() {
       } finally {
         console.log("finally");
         reader.releaseLock();
-        serialReader();
+        // serialReader();
       }
     } else {
       console.log(serialport);

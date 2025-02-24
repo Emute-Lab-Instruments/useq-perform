@@ -19,12 +19,13 @@
     }
 
 		.header {
+      display: grid;
+      grid-template-columns: repeat(2, auto);
+      gap: 10px;
       position: fixed;
       right: 20px;
       top: 10px;
       z-index: 999;
-      /* grid-row: 1;
-      grid-column: 2; */
     }
 
     a.button5{
@@ -108,7 +109,7 @@
       left:0%;
       top:0%;
       border: 2px solid #000;
-      background-color: #fff;
+      background-color: #00000000;
       color:#fff;
       /* min-width: 20em; */
       z-index: 99999;
@@ -116,7 +117,7 @@
       /* overflow:hidden; */
       resize: both;
       /* margin-top:-5em; */
-      opacity:40%;
+      opacity:100%;
       overflow: hidden;
       pointer-events: none;
 
@@ -194,6 +195,12 @@
       font-style:normal;
     }
 
+    #btnConnect {
+      box-shadow: 0 0 20px lightgreen;
+    }
+    #btnConnect:hover {
+      box-shadow: 0 0 20px lightgreen;
+    }
     
 	</style>
   
@@ -209,6 +216,7 @@
       <img src="ukrflag.png" width="100%" height="100%">
     </div> -->
     <div class='header'>
+      <!-- <div>&nbsp;</div> Blank space in the top left grid space -->
 			<a class="button5" id="btnConnect" title="Connect to uSEQ"><i data-lucide="cable"></i> </a>
 				<!-- <button id="loadSamplesButton">Load Samples</button> -->
       <a class="button5" id="saveButton" title="Save"><i data-lucide="save"></i> </a>
@@ -217,8 +225,7 @@
       <a class="button5" id="increaseFontButton" title="font size ++"><i data-lucide="a-arrow-up"></i></a>
       <a class="button5" id="decreaseFontButton" title="font size --"><i data-lucide="a-arrow-down"></i></a>
       <a class="button5" id="helpButton" title="Help!!!"><i data-lucide="circle-help"></i></a>
-      <span class="useqtitle"><a href="https://emutelabinstruments.co.uk/useq/" target="_blank">uSEQ</a></span>		
-    </div> 
+      </div> 
 
     <div class="container-editor" id="lceditor">
     </div>

@@ -21,7 +21,8 @@ import { createIcons, Cable, Save, File, SwatchBook, AArrowDown, AArrowUp, Circl
 
 const themes = [barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight];
 let editorPeristantConfig = {'currentTheme':0, 'fontSize':20}
- 
+
+var editor=null;
 
 serialMapFunctions[0] = (buffer) => {
   // if (WebMidi.outputs[0]) {
@@ -164,6 +165,12 @@ function toggleSerialVis() {
   console.log(interfaceStates);
   switch (interfaceStates.serialVisPanelState) {
     case panelStates.OFF:
+      function getEditorBackgroundColor(editor) {
+        const editorElement = editor.dom;
+        const computedStyle = getComputedStyle(editorElement);
+        return computedStyle.backgroundColor;
+      }
+      console.log(getEditorBackgroundColor(editor));      
       $("#serialvis").show();
       $("#serialvis").css('top', 0);
       $("#serialvis").css('left', 0);
@@ -291,21 +298,26 @@ $(function () {
   } else {
     navigator.serial.addEventListener('connect', e => {
       console.log(e);
-      console.log("reconnected");
-      // serialReader();
-      // $("#btnConnect").hide(1000);
+      let port = getSerialPort();
+      if (port) {
+        post("uSEQ plugged in, use the connect button to re-connect");
+        // port.close().then(() => {;
+        //   console.log("closed, reopening");
+        //   connectToSerialPort(port);
+        // });
+      }
     });
 
     navigator.serial.addEventListener('disconnect', e => {
       // console.log(e);
-      // $("#btnConnect").show(1000);
+      $("#btnConnect").show(1000);
       post("uSEQ disconnected");
     });
   }
-  setupMIDI();
+  // setupMIDI();
 
 
-  var editor = createEditor();
+  editor = createEditor();
 
   createIcons({
     icons: {
@@ -408,18 +420,7 @@ $(function () {
     console.log(navigator.serial);
     navigator.serial.requestPort()
       .then((port) => {
-        port.open({ baudRate: 115200 }).then(() => {
-          setSerialPort(port);
-          // serialReadTimer = setInterval(serialReader, 500);
-          serialReader();
-          $("#btnConnect").hide(1000);
-          console.log("checking version");
-          sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
-        }).catch((err) => {
-          console.log(err);
-          //connection failed
-          post("Connection failed. See <a href=\"https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting\">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>");
-        });
+        connectToSerialPort(port);
       })
       .catch((e) => {
         console.log("error selecting port");
@@ -501,7 +502,24 @@ $(function () {
   //   }
   // });
   window.requestAnimationFrame(drawSerialVis);
+
+  post("Hello!")
+  post("Use the [connect] button to link to uSEQ");
 });
+
+function connectToSerialPort(port) {
+  port.open({ baudRate: 115200 }).then(() => {
+    setSerialPort(port);
+    serialReader();
+    $("#btnConnect").hide(1000);
+    console.log("checking version");
+    sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
+  }).catch((err) => {
+    console.log(err);
+    //connection failed
+    post("Connection failed. See <a href=\"https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting\">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>");
+  });
+}
 
 function saveConfig() {
   window.localStorage.setItem("editorConfig", JSON.stringify(editorPeristantConfig));
