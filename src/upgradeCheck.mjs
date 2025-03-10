@@ -38,10 +38,9 @@ function upgradeCheck(versionMsg) {
       ||
       (ghVersionPatch > moduleVersionPatch && ghVersionMinor >= moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)) {
       //new release available
-      post("There is a new firmware release available, click below to download");
-      post(`<a target="blank" href="${data[0]['html_url']}">${data[0]['html_url']}</a>`);
-      post("Information on how to update the module:");
-      post(`<a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">https://emutelabinstruments.co.uk/useqinfo/useq-update/</a>`);
+      post("Info: There is a new firmware release available:");
+      post(`• <a target='blank' href='${data[0]['html_url']}'>Download new firmware</a>`);
+      post(`• <a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">Firmware update guide</a>`);
     }
   });
 }
