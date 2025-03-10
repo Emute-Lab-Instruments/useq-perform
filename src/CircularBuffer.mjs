@@ -4,7 +4,9 @@
  * Implements a fixed-length circular buffer (ring buffer) for storing data.
  * Useful for maintaining a history of values while limiting memory usage.
  */
-export class CircularBuffer {
+export { CircularBuffer };
+
+class CircularBuffer {
   /**
    * Create a new circular buffer
    * @param {number} bufferLength - Maximum number of elements to store
