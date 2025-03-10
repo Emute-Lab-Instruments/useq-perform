@@ -1,6 +1,8 @@
 import { post } from './serialComms.mjs';
 
-export function upgradeCheck(versionMsg) {
+export { upgradeCheck };
+
+function upgradeCheck(versionMsg) {
   // const verRE = /([0-9])\.([0-9])/g;
   const verRE = /([0-9])\.([0-9])(.([0-9]))?/g;
   const groups = verRE.exec(versionMsg);
@@ -13,7 +15,6 @@ export function upgradeCheck(versionMsg) {
     moduleVersionPatch = groups[4];
   }
   post(`**Connected to uSEQ, firmware version ${versionMsg}**`);
-
   //new release checker
   $.ajax({
     url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
@@ -31,7 +32,6 @@ export function upgradeCheck(versionMsg) {
     const ghVersionMinor = matches[4];
     const ghVersionPatch = matches[5];
     console.log(version);
-
     //compare version
     if (ghVersionMajor > moduleVersionMajor ||
       (ghVersionMinor > moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)
@@ -43,8 +43,5 @@ export function upgradeCheck(versionMsg) {
       post("Information on how to update the module:");
       post(`<a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">https://emutelabinstruments.co.uk/useqinfo/useq-update/</a>`);
     }
-
-
   });
-
 }
