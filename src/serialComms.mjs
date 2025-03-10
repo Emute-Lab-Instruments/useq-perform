@@ -84,9 +84,8 @@ function post(value) {
  * @param {Function|null} capture - Optional callback for response capture
  */
 function sendTouSEQ(code, capture = null) {
-  // Remove newlines from code
-  code = code.replaceAll('\n', '');
-  console.log(code);
+  // Remove comments (anything between ; and newline) and all newlines in a single step
+  code = code.replace(/;[^\n]*(\n|$)|\n/g, match => match.startsWith(';') ? '' : '');
   
   if (serialport && serialport.writable) {
     const writer = serialport.writable.getWriter();

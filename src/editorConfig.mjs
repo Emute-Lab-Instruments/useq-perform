@@ -70,7 +70,6 @@ const editorBaseTheme = EditorView.baseTheme({
 function evalToplevel(opts, prefix = "") {
   let state = opts.state;
   let code = prefix + top_level_string(state);
-  console.log(code);
   sendTouSEQ(code);
   return true;
 }
