@@ -4,8 +4,8 @@ import { WebMidi } from "webmidi";
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { createIcons, Cable, Save, File, SwatchBook, AArrowDown, AArrowUp, CircleHelp } from 'lucide';
+import { setupMIDI, defSerialMap, midictrl } from './midi.mjs';
 
-// Import our modular components
 import { 
   createEditorExtensions, 
   changeFontSize, 
@@ -21,9 +21,8 @@ import {
   getConfig
 } from './configManager.mjs';
 
-import { openCam } from './openCam.mjs';
-import { upgradeCheck } from './upgradeCheck.mjs';
-import { post, sendTouSEQ, setSerialPort, getSerialPort, serialReader, serialMapFunctions } from './serialComms.mjs';
+import { sendTouSEQ, setSerialPort, getSerialPort, serialReader, serialMapFunctions, connectToSerialPort } from './serialComms.mjs';
+import { post } from './console.mjs';
 import { drawSerialVis } from './serialVis.mjs';
 import { interfaceStates, panelStates } from './panelStates.mjs';
 
@@ -33,24 +32,7 @@ export { createEditor, connectToSerialPort, setupMIDI, defSerialMap, midictrl };
 let editor = null;
 let config = { savelocal: true };
 
-// MIDI control functions
-serialMapFunctions[0] = (buffer) => {
-  // Example MIDI mapping function - can be activated via user code
-  // if (WebMidi.outputs[0]) {
-  //   WebMidi.outputs[0].sendControlChange(1, 1, {channels:[1]})
-  // }
-}
 
-function defSerialMap(idx, func) {
-  serialMapFunctions[idx] = func.bind({ midictrl: midictrl });
-  console.log("added defserial", idx);
-}
-
-function midictrl(devIdx, chan, ctrlNum, val) {
-  if (WebMidi.outputs[devIdx]) {
-    WebMidi.outputs[devIdx].sendControlChange(ctrlNum, val, { channels: [chan] });
-  }
-}
 
 // Function to evaluate code passed from Clojure/Squint
 const scopedEval = (scope, script) => Function(`"use strict"; ${script}`).bind(scope)();
@@ -80,45 +62,6 @@ function createEditor() {
   return new EditorView({
     state: state,
     parent: document.getElementById("lceditor")
-  });
-}
-
-/**
- * Connect to the serial port for uSEQ communication
- */
-function connectToSerialPort(port) {
-  port.open({ baudRate: 115200 }).then(() => {
-    setSerialPort(port);
-    serialReader();
-    $("#btnConnect").hide(1000);
-    console.log("checking version");
-    sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
-  }).catch((err) => {
-    console.log(err);
-    //connection failed
-    post("Connection failed. See <a href=\"https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting\">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>");
-  });
-}
-
-/**
- * Sets up MIDI input/output devices
- */
-function setupMIDI() {
-  navigator.requestMIDIAccess().then((access) => {
-    WebMidi
-      .enable()
-      .then(onEnabled)
-      .catch(err => alert(err));
-      
-    function onEnabled() {
-      // Log MIDI Inputs
-      console.log("MIDI Inputs");
-      WebMidi.inputs.forEach(input => console.log(input.manufacturer, input.name));
-      
-      // Log MIDI Outputs
-      console.log("MIDI Outputs");
-      WebMidi.outputs.forEach(output => console.log(output.manufacturer, output.name));
-    }
   });
 }
 

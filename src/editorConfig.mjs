@@ -13,7 +13,8 @@ import { extension as eval_ext, cursor_node_string, top_level_string } from '@ne
 import { barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight } from 'thememirror';
 
 // SERIAL COMMUNICATION
-import { sendTouSEQ, post } from './serialComms.mjs';
+import { sendTouSEQ } from './serialComms.mjs';
+import { post } from './console.mjs';
 
 // UI STATE
 import { interfaceStates, panelStates, togglePanelState, setPanelState } from './panelStates.mjs';

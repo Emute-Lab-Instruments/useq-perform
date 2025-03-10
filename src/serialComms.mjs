@@ -4,9 +4,10 @@
  * Handles communication with the uSEQ device via Web Serial API
  * including message parsing, sending commands, and managing the serial buffer.
  */
-import { marked } from "marked";
 import { CircularBuffer } from "./CircularBuffer.mjs";
 import { Buffer } from 'buffer';
+import { upgradeCheck } from './upgradeCheck.mjs';
+import { post } from './console.mjs';
 
 // Define variables first before exporting them
 var serialport = null;
@@ -24,9 +25,9 @@ export {
   serialMapFunctions, 
   setSerialPort, 
   getSerialPort, 
-  post, 
   sendTouSEQ, 
-  serialReader 
+  serialReader,
+  connectToSerialPort 
 };
 
 // Constants
@@ -63,22 +64,6 @@ function getSerialPort() {
 }
 
 /**
- * Display a message in the console
- * @param {string} value - Text to display (can include markdown)
- */
-function post(value) {
-  console.log("post: " + value);
-  consoleLines.push(marked.parse(value));
-  
-  if (consoleLines.length > MAX_CONSOLE_LINES) {
-    consoleLines.shift(); // Remove oldest line
-  }
-  
-  $("#console").html(consoleLines.join(''));
-  $('#console').scrollTop($('#console')[0].scrollHeight - $('#console')[0].clientHeight);
-}
-
-/**
  * Send code to the uSEQ device
  * @param {string} code - Code to send
  * @param {Function|null} capture - Optional callback for response capture
@@ -86,7 +71,7 @@ function post(value) {
 function sendTouSEQ(code, capture = null) {
   // Remove comments (anything between ; and newline) and all newlines in a single step
   code = code.replace(/;[^\n]*(\n|$)|\n/g, match => match.startsWith(';') ? '' : '');
-  
+
   if (serialport && serialport.writable) {
     const writer = serialport.writable.getWriter();
     console.log("writing...");
@@ -253,5 +238,22 @@ async function serialReader() {
   } else {
     console.log("Serial port is not readable or is locked");
   }
+}
+
+/**
+ * Connect to the serial port for uSEQ communication
+ */
+function connectToSerialPort(port) {
+  port.open({ baudRate: 115200 }).then(() => {
+    setSerialPort(port);
+    serialReader();
+    $("#btnConnect").hide(1000);
+    console.log("checking version");
+    sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
+  }).catch((err) => {
+    console.log(err);
+    //connection failed
+    post("Connection failed. See <a href=\"https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting\">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>");
+  });
 }
 

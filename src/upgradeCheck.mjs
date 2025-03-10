@@ -1,4 +1,4 @@
-import { post } from './serialComms.mjs';
+import { post } from './console.mjs';
 
 export { upgradeCheck };
 
