@@ -229,7 +229,13 @@ $(function () {
   });
   
   $("#helpButton").click(() => {
-    $("#helppanel").toggle(100);
+    if (interfaceStates.helpPanelState === panelStates.OFF) {
+      $("#helppanel").show(100);
+      interfaceStates.helpPanelState = panelStates.PANEL;
+    } else {
+      $("#helppanel").hide(100);
+      interfaceStates.helpPanelState = panelStates.OFF;
+    }
   });
   
   $("#themeButton").on("click", async () => {
@@ -239,6 +245,24 @@ $(function () {
     updateConfig('editor', { currentTheme: editorConfig.currentTheme });
   });
   
+  // Mac toggle switch functionality
+  document.getElementById('macToggle').addEventListener('change', (e) => {
+    const helpPanel = document.getElementById('helppanel');
+    if (e.target.checked) {
+      helpPanel.classList.add('show-mac');
+    } else {
+      helpPanel.classList.remove('show-mac');
+    }
+  });
+
+  // Handle ESC key to close help panel
+  $(document).on('keydown', function(e) {
+    if (e.key === 'Escape' && interfaceStates.helpPanelState === panelStates.PANEL) {
+      $("#helppanel").hide();
+      interfaceStates.helpPanelState = panelStates.OFF;
+    }
+  });
+
   // Start animation loop for serial visualization
   window.requestAnimationFrame(drawSerialVis);
   

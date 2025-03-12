@@ -1,4 +1,3 @@
-
 export { panelStates, interfaceStates, togglePanelState, setPanelState };
 
 /**
@@ -59,17 +58,26 @@ function togglePanelState(panelType, elementId) {
 
   const stateKey = panelType + 'State';
   const currentState = interfaceStates[stateKey];
+  const $panel = $(`#${elementId}`);
   
   // Toggle between OFF and PANEL states
   if (currentState === panelStates.OFF) {
     interfaceStates[stateKey] = panelStates.PANEL;
-    $(`#${elementId}`).show();
+    $panel.css('display', 'block');
+    // Trigger reflow to ensure transition works
+    $panel[0].offsetHeight;
+    $panel.addClass('visible');
   } else if (currentState === panelStates.PANEL) {
     interfaceStates[stateKey] = panelStates.OFF;
-    $(`#${elementId}`).hide();
+    $panel.removeClass('visible');
+    // Wait for transition to complete before hiding
+    setTimeout(() => {
+      if (interfaceStates[stateKey] === panelStates.OFF) {
+        $panel.css('display', 'none');
+      }
+    }, 300); // Match the transition duration from CSS
   }
-  // Note: FULLSCREEN handling could be added here if needed
-  
+
   return interfaceStates[stateKey];
 }
 

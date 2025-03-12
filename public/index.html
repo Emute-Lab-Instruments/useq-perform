@@ -125,29 +125,6 @@
         height: 100%; 
       }
     } 
-    .container-help {
-      position:fixed;
-      height:35%;
-      width:29%;
-      left:70%;
-      top:12%;
-      border: 2px solid #000;
-      background-color: #fff;
-      color:#111;
-
-      /* min-width: 20em; */
-      z-index: 99999;
-      /* max-width: 0.5fr; */
-      /* overflow:hidden; */
-      resize: both;
-      /* margin-top:-5em; */
-      opacity:40%;
-      overflow: hidden;
-      display:none;
-
-    }
-
-    
 
     .container-webcam {
       position:fixed;
@@ -176,21 +153,143 @@
       } */
     } 
 
+    .container-help {
+      position: fixed;
+      height: 70%;
+      width: 50%;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      border: 2px solid #000;
+      background-color: #fff;
+      color: #111;
+      z-index: 99999;
+      padding: 2em;
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.2);
+      overflow-y: auto;
+      opacity: 0;
+      transition: opacity 0.3s ease-in-out;
+      display: none;
+    }
+    
+    .container-help.visible {
+      opacity: 1;
+    }
+
+    .container-help b {
+      color: #444;
+      font-size: 1.1em;
+      margin-top: 1em;
+      display: block;
+      margin-bottom: 0.5em;
+    }
+
+    .key-binding {
+      display: inline-block;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: monospace;
+      margin-right: 8px;
+      width: 100px;
+      text-align: center;
+    }
+
+    .help-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.5em;
+    }
+
+    .help-description {
+      flex: 1;
+    }
+
+    .tip-icon {
+      color: #ff9800;
+      margin-right: 8px;
+    }
+
+    .mac-toggle {
+      position: absolute;
+      top: 1em;
+      right: 1em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9em;
+    }
+
+    .mac-toggle input[type="checkbox"] {
+      appearance: none;
+      width: 40px;
+      height: 20px;
+      background: #ddd;
+      border-radius: 20px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .mac-toggle input[type="checkbox"]::before {
+      content: "";
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      background: white;
+      transition: transform 0.3s;
+    }
+
+    .mac-toggle input[type="checkbox"]:checked {
+      background: #4CAF50;
+    }
+
+    .mac-toggle input[type="checkbox"]:checked::before {
+      transform: translateX(20px);
+    }
+
+    .mac-icon {
+      font-size: 1.2em;
+    }
+
+    .key-bindings-section {
+      margin-bottom: 1.5em;
+    }
+
+    .key-binding.mac {
+      display: none;
+    }
+
+    .show-mac .key-binding.win {
+      display: none;
+    }
+
+    .show-mac .key-binding.mac {
+      display: inline-block;
+    }
+
     .useqtitle {
-      color:red;
+      color: red;
       text-shadow: 2px 2px 10px black;
       font-size: 20pt;
-      font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+      font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
       font-stretch: expanded;
       font-style: normal;
     }
+
     .useqtitle a:link {
-      color:purple;
-      font-style:normal;
+      color: purple;
+      font-style: normal;
     }
+
     .useqtitle a:visited {
-      color:purple;
-      font-style:normal;
+      color: purple;
+      font-style: normal;
     }
 
     #btnConnect {
@@ -198,6 +297,7 @@
       transform-origin: center;
       transition: transform 0.2s ease-in-out;
     }
+
     #btnConnect:hover {
       box-shadow: 0 0 20px lightgreen;
     }
@@ -237,28 +337,81 @@
       <canvas class="serialcanvas" width="1000" height="800" id="serialcanvas"></canvas>
     </div>
     <div class="container-help" id="helppanel"> 
-      Alt-h: Toggle the help panel<br>
-      <!-- Alt-o: Open a file<br>
-      Alt-s: Save a file<br>
-      Alt-m: Documentation<br> -->
-      <br>
-      <b>Coding: </b><br>
-      Ctrl-Enter: Evaluate code now<br>
-      Alt-Enter: Evaluate code at the next bar <br>
-      Ctrl-[: Shrink collection forwards by one form<br>
-      Ctrl-]: Expand collection to include form to the right<br>
-      Ctrl-;: Grow collection backwards by one form<br>
-      Ctrl-': Shrink collection backwards by one form<br>
-      Alt-s: unwrap (remove brackets)<br>
-      Alt-up/down: Semantic selection<br>
-      Ctrl-k: Remove all forms from cursor to end of line<br>
-      <br>
-      <b>Visuals:</b><br>
-      Alt-g: Show serial streams <br>
-      Alt-v: Show webcam under container-editor<br>
-      <br>
-      
-    </div>   
+      <div class="mac-toggle">
+      <span class="mac-icon">⌘</span>
+      <input type="checkbox" id="macToggle">
+      </div>
+
+      <div class="help-row">
+      <span class="tip-icon">💡</span>
+      <span class="key-binding win">Alt-H</span>
+      <span class="key-binding mac">⌥-H</span>
+      <span class="help-description">Toggle the help panel</span>
+      </div>
+
+      <div class="key-bindings-section">
+      <b>Coding:</b>
+      <div class="help-row">
+        <span class="key-binding win">Ctrl-ENTER</span>
+        <span class="key-binding mac">⌘-ENTER</span>
+        <span class="help-description">Evaluate code now</span>
+      </div>
+      <div class="help-row">
+        <span class="key-binding win">Alt-ENTER</span>
+        <span class="key-binding mac">⌥-ENTER</span>
+        <span class="help-description">Evaluate code at the next bar</span>
+      </div>
+      <div class="help-row">
+        <span class="key-binding win">Ctrl-[</span>
+        <span class="key-binding mac">⌘-[</span>
+        <span class="help-description">Shrink collection forwards by one form</span>
+      </div>
+      <div class="help-row">
+        <span class="key-binding win">Ctrl-]</span>
+        <span class="key-binding mac">⌘-]</span>
+        <span class="help-description">Expand collection to include form to the right</span>
+      </div>
+      <div class="help-row">
+        <span class="key-binding win">Ctrl-;</span>
+        <span class="key-binding mac">⌘-;</span>
+        <span class="help-description">Grow collection backwards by one form</span>
+      </div>
+      <div class="help-row">
+        <span class="key-binding win">Ctrl-'</span>
+        <span class="key-binding mac">⌘-'</span>
+        <span class="help-description">Shrink collection backwards by one form</span>
+      </div>
+      <div class="help-row">
+        <span class="key-binding win">Alt-S</span>
+        <span class="key-binding mac">⌥-S</span>
+        <span class="help-description">Unwrap (remove brackets)</span>
+      </div>
+      <div class="help-row">
+        <span class="key-binding win">Alt-up/down</span>
+        <span class="key-binding mac">⌥-up/down</span>
+        <span class="help-description">Semantic selection</span>
+      </div>
+      <div class="help-row">
+        <span class="key-binding win">Ctrl-K</span>
+        <span class="key-binding mac">⌘-K</span>
+        <span class="help-description">Remove all forms from cursor to end of line</span>
+      </div>
+      </div>
+
+      <div class="key-bindings-section">
+      <b>Visuals:</b>
+      <div class="help-row">
+        <span class="key-binding win">Alt-G</span>
+        <span class="key-binding mac">⌥-G</span>
+        <span class="help-description">Show serial streams</span>
+      </div>
+      <div class="help-row">
+        <span class="key-binding win">Alt-V</span>
+        <span class="key-binding mac">⌥-V</span>
+        <span class="help-description">Show webcam under container-editor</span>
+      </div>
+      </div>
+    </div>
     
     <div class="container-webcam" id="vidcontainer">
       <video id="videopanel" width="1200" height="900"></video>
