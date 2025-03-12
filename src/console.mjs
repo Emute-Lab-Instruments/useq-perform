@@ -2,7 +2,7 @@ import { marked } from "marked";
 
 // Console output storage
 const consoleLines = [];
-const MAX_CONSOLE_LINES = 50;
+const MAX_CONSOLE_LINES = 1000; // Increased from 50 to 1000 since we'll have scrolling
 
 /**
  * Display a message in the console
