@@ -1,4 +1,6 @@
-export function openCam() {
+export { openCam };
+
+function openCam() {
   // let error = false;
   let allMediaDevices = navigator.mediaDevices;
   if (!allMediaDevices || !allMediaDevices.getUserMedia) {
@@ -31,6 +33,5 @@ export function openCam() {
     console.log(err)
   }
   // return error;
-
   return true;
 }

@@ -1,6 +1,8 @@
-import { post } from './serialComms.mjs';
+import { post } from './console.mjs';
 
-export function upgradeCheck(versionMsg) {
+export { upgradeCheck };
+
+function upgradeCheck(versionMsg) {
   // const verRE = /([0-9])\.([0-9])/g;
   const verRE = /([0-9])\.([0-9])(.([0-9]))?/g;
   const groups = verRE.exec(versionMsg);
@@ -13,7 +15,6 @@ export function upgradeCheck(versionMsg) {
     moduleVersionPatch = groups[4];
   }
   post(`**Connected to uSEQ, firmware version ${versionMsg}**`);
-
   //new release checker
   $.ajax({
     url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
@@ -31,20 +32,15 @@ export function upgradeCheck(versionMsg) {
     const ghVersionMinor = matches[4];
     const ghVersionPatch = matches[5];
     console.log(version);
-
     //compare version
     if (ghVersionMajor > moduleVersionMajor ||
       (ghVersionMinor > moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)
       ||
       (ghVersionPatch > moduleVersionPatch && ghVersionMinor >= moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)) {
       //new release available
-      post("There is a new firmware release available, click below to download");
-      post(`<a target="blank" href="${data[0]['html_url']}">${data[0]['html_url']}</a>`);
-      post("Information on how to update the module:");
-      post(`<a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">https://emutelabinstruments.co.uk/useqinfo/useq-update/</a>`);
+      post("Info: There is a new firmware release available:");
+      post(`• <a target='blank' href='${data[0]['html_url']}'>Download new firmware</a>`);
+      post(`• <a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">Firmware update guide</a>`);
     }
-
-
   });
-
 }
