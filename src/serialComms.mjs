@@ -87,6 +87,13 @@ function sendTouSEQ(code, capture = null) {
     });
   } else {
     post("uSEQ not connected");
+    // Add attention-grabbing animation to connect button
+    $("#btnConnect")
+      .animate({ scale: 1.2 }, 200)
+      .animate({ scale: 1 }, 200)
+      .animate({ rotate: '-3deg' }, 100)
+      .animate({ rotate: '3deg' }, 100)
+      .animate({ rotate: '0deg' }, 100);
   }
 }
 
