@@ -9,7 +9,7 @@ const MAX_CONSOLE_LINES = 1000; // Increased from 50 to 1000 since we'll have sc
  * @param {string} value - Text to display (can include markdown)
  */
 export function post(value) {
-  consoleLines.push(marked.parse(value));
+  consoleLines.push(marked.parse('`> ' + value + '`'));
   
   if (consoleLines.length > MAX_CONSOLE_LINES) {
     consoleLines.shift(); // Remove oldest line
