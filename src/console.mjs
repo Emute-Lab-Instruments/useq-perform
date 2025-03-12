@@ -9,7 +9,6 @@ const MAX_CONSOLE_LINES = 50;
  * @param {string} value - Text to display (can include markdown)
  */
 export function post(value) {
-  console.log("post: " + value);
   consoleLines.push(marked.parse(value));
   
   if (consoleLines.length > MAX_CONSOLE_LINES) {
