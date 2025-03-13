@@ -232,7 +232,6 @@ let complete_keymap_mod = complete_keymap.map(binding => {
           if (bracketChars.includes(nextChar)) {
             const prevChar = state.doc.sliceString(from-1, from);
             if (areMatchingBracketChars(prevChar, nextChar)) {
-              console.log("matching brackets");
               // We're in an empty pair, delete both
               // characters around the cursor
               view.dispatch({
