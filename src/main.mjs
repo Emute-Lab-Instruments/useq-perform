@@ -11,7 +11,8 @@ import {
   changeFontSize, 
   changeTheme,
   themes,
-  createUpdateListener
+  createUpdateListener,
+  createPatchEditor
 } from './editorConfig.mjs';
 
 import { 
@@ -44,12 +45,16 @@ async function loadSnippets() {
         <div class="patch-header">
           <span class="patch-name">${snippet.name}</span>
           <span class="patch-type">${snippet.type}</span>
-          <span class="patch-author">by ${snippet.by}</span>
+          <span class="patch-author">by ${snippet.author || snippet.by}</span>
         </div>
-        <pre class="patch-code">${snippet.body}</pre>
+        <div class="patch-code"></div>
         <button class="copy-button">Copy</button>
       `;
       patchesList.appendChild(patchItem);
+      
+      // Initialize CodeMirror editor for this patch
+      const editorContainer = patchItem.querySelector('.patch-code');
+      createPatchEditor(editorContainer, snippet.body);
     });
   } catch (error) {
     console.error('Error loading snippets:', error);
@@ -117,6 +122,31 @@ $(function () {
   });
 
   $('#patches-panel-container').load('patches-panel.html', function() {
+    // Initialize patch code editors
+    $('.patch-code').each(function() {
+      const code = $(this).text();
+      $(this).empty(); // Clear the text content
+      createPatchEditor(this, code);
+    });
+    
+    // Update container background based on theme
+    const currentTheme = themes[getConfig('editor').currentTheme || 0];
+    const isDark = currentTheme.extension?.some(ext => 
+      ext.extension?.value === true && 
+      ext.extension?.source?.toString().includes('darkTheme')
+    );
+    
+    if (isDark) {
+      $('.container-patches').css({
+        'background-color': '#1e1e1e',
+        'border-color': 'rgba(255,255,255,0.2)',
+        'color': '#d4d4d4'
+      });
+      $('.patch-item').css('background', '#252525');
+      $('.patch-name').css('color', '#9cdcfe');
+      $('.patch-author').css('color', '#808080');
+    }
+    
     // Load snippets after patches panel is loaded
     loadSnippets();
   });
@@ -293,14 +323,18 @@ $(function () {
   
   // Handle clicking copy buttons in patches panel
   $(document).on('click', '.copy-button', function() {
-    const code = $(this).siblings('.patch-code').text();
-    navigator.clipboard.writeText(code).then(() => {
-      const originalText = $(this).text();
-      $(this).text('Copied!');
-      setTimeout(() => {
-        $(this).text(originalText);
-      }, 1500);
-    });
+    const editorElement = $(this).siblings('.patch-code')[0];
+    const editorView = EditorView.findFromDOM(editorElement);
+    if (editorView) {
+      const code = editorView.state.doc.toString();
+      navigator.clipboard.writeText(code).then(() => {
+        const originalText = $(this).text();
+        $(this).text('Copied!');
+        setTimeout(() => {
+          $(this).text(originalText);
+        }, 1500);
+      });
+    }
   });
 
   $("#themeButton").on("click", async () => {
