@@ -3,7 +3,7 @@ import { compileString } from 'squint-cljs';
 import { WebMidi } from "webmidi";
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
-import { createIcons, Cable, Save, File, SwatchBook, AArrowDown, AArrowUp, CircleHelp } from 'lucide';
+import { createIcons, Cable, Save, File, SwatchBook, AArrowDown, AArrowUp, CircleHelp, Copy } from 'lucide';
 import { setupMIDI, defSerialMap, midictrl } from './midi.mjs';
 
 import { 
@@ -24,7 +24,37 @@ import {
 import { sendTouSEQ, setSerialPort, getSerialPort, serialReader, serialMapFunctions, connectToSerialPort } from './serialComms.mjs';
 import { post } from './console.mjs';
 import { drawSerialVis } from './serialVis.mjs';
-import { interfaceStates, panelStates } from './panelStates.mjs';
+import { interfaceStates, panelStates, togglePanelState } from './panelStates.mjs';
+
+// Load example snippets
+async function loadSnippets() {
+  try {
+    const response = await fetch('example_snippets.json');
+    const snippets = await response.json();
+    const patchesList = document.querySelector('.patches-list');
+    patchesList.innerHTML = ''; // Clear existing content
+    
+    // Remove duplicates based on id
+    const uniqueSnippets = [...new Map(snippets.map(item => [item.id, item])).values()];
+    
+    uniqueSnippets.forEach(snippet => {
+      const patchItem = document.createElement('div');
+      patchItem.className = 'patch-item';
+      patchItem.innerHTML = `
+        <div class="patch-header">
+          <span class="patch-name">${snippet.name}</span>
+          <span class="patch-type">${snippet.type}</span>
+          <span class="patch-author">by ${snippet.by}</span>
+        </div>
+        <pre class="patch-code">${snippet.body}</pre>
+        <button class="copy-button">Copy</button>
+      `;
+      patchesList.appendChild(patchItem);
+    });
+  } catch (error) {
+    console.error('Error loading snippets:', error);
+  }
+}
 
 export { createEditor, connectToSerialPort, setupMIDI, defSerialMap, midictrl };
 
@@ -71,6 +101,25 @@ $(function () {
   $("#helppanel").hide();
   $("#vidcontainer").hide();
   $("#serialvis").hide();
+  $("#patchespanel").hide();
+  
+  // Load components first, then initialize their functionality
+  $('#help-panel-container').load('help-panel.html', function() {
+    // Mac toggle switch functionality (moved here)
+    $('#macToggle').on('change', function(e) {
+      const helpPanel = document.getElementById('helppanel');
+      if (e.target.checked) {
+        helpPanel.classList.add('show-mac');
+      } else {
+        helpPanel.classList.remove('show-mac');
+      }
+    });
+  });
+
+  $('#patches-panel-container').load('patches-panel.html', function() {
+    // Load snippets after patches panel is loaded
+    loadSnippets();
+  });
   
   // Check for Web Serial API support
   if (!navigator.serial) {
@@ -98,7 +147,7 @@ $(function () {
   // Initialize icons
   createIcons({
     icons: {
-      Cable, Save, File, SwatchBook, AArrowDown, AArrowUp, CircleHelp
+      Cable, Save, File, SwatchBook, AArrowDown, AArrowUp, CircleHelp, Copy
     }
   });
   
@@ -238,6 +287,22 @@ $(function () {
     }
   });
   
+  $("#patchesButton").click(() => {
+    togglePanelState('patchesPanel', 'patchespanel');
+  });
+  
+  // Handle clicking copy buttons in patches panel
+  $(document).on('click', '.copy-button', function() {
+    const code = $(this).siblings('.patch-code').text();
+    navigator.clipboard.writeText(code).then(() => {
+      const originalText = $(this).text();
+      $(this).text('Copied!');
+      setTimeout(() => {
+        $(this).text(originalText);
+      }, 1500);
+    });
+  });
+
   $("#themeButton").on("click", async () => {
     const editorConfig = getConfig('editor');
     editorConfig.currentTheme = (editorConfig.currentTheme + 1) % themes.length;
@@ -245,21 +310,17 @@ $(function () {
     updateConfig('editor', { currentTheme: editorConfig.currentTheme });
   });
   
-  // Mac toggle switch functionality
-  document.getElementById('macToggle').addEventListener('change', (e) => {
-    const helpPanel = document.getElementById('helppanel');
-    if (e.target.checked) {
-      helpPanel.classList.add('show-mac');
-    } else {
-      helpPanel.classList.remove('show-mac');
-    }
-  });
-
-  // Handle ESC key to close help panel
+  // Handle ESC key to close panels
   $(document).on('keydown', function(e) {
-    if (e.key === 'Escape' && interfaceStates.helpPanelState === panelStates.PANEL) {
-      $("#helppanel").hide();
-      interfaceStates.helpPanelState = panelStates.OFF;
+    if (e.key === 'Escape') {
+      if (interfaceStates.helpPanelState === panelStates.PANEL) {
+        $("#helppanel").hide();
+        interfaceStates.helpPanelState = panelStates.OFF;
+      }
+      if (interfaceStates.patchesPanelState === panelStates.PANEL) {
+        $("#patchespanel").hide();
+        interfaceStates.patchesPanelState = panelStates.OFF;
+      }
     }
   });
 
