@@ -19,11 +19,12 @@ import { post } from './console.mjs';
 // UI STATE
 import { interfaceStates, panelStates, togglePanelState, setPanelState } from './panelStates.mjs';
 import { openCam } from './openCam.mjs';
+import { getConfig } from './configManager.mjs';
 
 export { themes, themeCompartment, fontSizeCompartment, editorBaseTheme, evalToplevel, evalNow, 
          evalQuantised, toggleHelp, toggleVid, toggleSerialVis, useq_keymap, 
          areMatchingBracketChars, complete_keymap_mod, createEditorExtensions, 
-         changeFontSize, changeTheme, createUpdateListener };
+         changeFontSize, changeTheme, createUpdateListener, createPatchEditor };
 
 // Default editor configuration
 const themes = [barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight];
@@ -270,9 +271,62 @@ function changeTheme(editor, themeIndex) {
     themeIndex = 0;
   }
   
+  const currentTheme = themes[themeIndex];
+  const isDark = currentTheme.extension?.some(ext => 
+    ext.extension?.value === true && 
+    ext.extension?.source?.toString().includes('darkTheme')
+  );
+  
+  // Update main editor
   editor.dispatch({
-    effects: themeCompartment.reconfigure(themes[themeIndex])
+    effects: themeCompartment.reconfigure(currentTheme)
   });
+
+  // Update all patch editors
+  $('.patch-code').each(function() {
+    const patchEditor = EditorView.findFromDOM(this);
+    if (patchEditor) {
+      patchEditor.dispatch({
+        effects: themeCompartment.reconfigure(currentTheme)
+      });
+    }
+  });
+
+  // Update patches panel container styling
+  if (isDark) {
+    $('.container-patches').css({
+      'background-color': '#1e1e1e',
+      'border-color': 'rgba(255,255,255,0.2)',
+      'color': '#d4d4d4'
+    });
+    // Remove background from patch items in dark mode
+    $('.patch-item').css('background', 'transparent');
+    $('.patch-name').css('color', '#9cdcfe');
+    $('.patch-author').css('color', '#808080');
+    // Update copy button for dark theme
+    $('.copy-button').css({
+      'background': '#2d2d2d',
+      'border-color': 'rgba(255,255,255,0.2)',
+      'color': '#d4d4d4'
+    });
+    $('.copy-button:hover').css('background', '#3d3d3d');
+  } else {
+    $('.container-patches').css({
+      'background-color': '#fff',
+      'border-color': '#000',
+      'color': '#111'
+    });
+    $('.patch-item').css('background', '#f5f5f5');
+    $('.patch-name').css('color', '#2c3e50');
+    $('.patch-author').css('color', '#666');
+    // Reset copy button for light theme
+    $('.copy-button').css({
+      'background': '#fff',
+      'border-color': '#ddd',
+      'color': 'inherit'
+    });
+    $('.copy-button:hover').css('background', '#f0f0f0');
+  }
 }
 
 /**
@@ -285,5 +339,47 @@ function createUpdateListener(config) {
     if (update.docChanged && config.savelocal) {
       window.localStorage.setItem("useqcode", update.state.doc.toString());
     }
+  });
+}
+
+/**
+ * Create a CodeMirror editor instance for a patch code block
+ * @param {HTMLElement} element - The DOM element to attach the editor to
+ * @param {string} code - The initial code content
+ * @returns {EditorView} The created editor view instance
+ */
+function createPatchEditor(element, code) {
+  const currentTheme = themes[getConfig('editor').currentTheme || 0];
+  const isDark = currentTheme.extension?.some(ext => 
+    ext.extension?.value === true && 
+    ext.extension?.source?.toString().includes('darkTheme')
+  );
+
+  const state = EditorState.create({
+    doc: code,
+    extensions: [
+      ...default_extensions,
+      EditorView.editable.of(false), // Make it read-only
+      EditorState.readOnly.of(true),
+      themeCompartment.of(currentTheme),
+      EditorView.theme({
+        "&": { 
+          maxHeight: "400px",
+          borderColor: isDark ? "rgba(255,255,255,0.2)" : "#e9ecef"
+        },
+        ".cm-scroller": { overflow: "auto" },
+        ".cm-content": { padding: "0.8em" },
+        "&.cm-editor": {
+          borderWidth: "1px",
+          borderStyle: "solid",
+          borderRadius: "4px"
+        }
+      })
+    ]
+  });
+
+  return new EditorView({
+    state: state,
+    parent: element
   });
 }
