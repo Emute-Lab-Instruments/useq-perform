@@ -38,10 +38,11 @@ var interfaceStates = {
   serialVisPanelState: panelStates.OFF,
   
   /** Current state of the help panel */
-  helpPanelState: panelStates.OFF
+  helpPanelState: panelStates.OFF,
+
+  /** Current state of the patches panel */
+  patchesPanelState: panelStates.OFF
 };
-
-
 
 /**
  * Toggle the state of a specific panel
