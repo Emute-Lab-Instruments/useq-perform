@@ -1,16 +1,16 @@
 // CODEMIRROR IMPORTS
 import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view';
-import { history, historyKeymap, deleteCharBackward, deleteCharForward } from '@codemirror/commands';
+import { history, historyKeymap, deleteCharBackward, deleteCharForward } from '@codemirror/state';
 import { Compartment, EditorState } from '@codemirror/state';
 import { syntaxHighlighting, HighlightStyle, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
-import { tags } from "@lezer/highlight";
+import { tags } from "https://esm.sh/@lezer/highlight";
 
 // NEXTJOURNAL (clojure-mode)
 import { default_extensions, complete_keymap } from '@nextjournal/clojure-mode';
 import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
 
 // THEME IMPORTS
-import { barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight } from 'thememirror';
+import { barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight } from 'https://esm.sh/thememirror';
 
 // SERIAL COMMUNICATION
 import { sendTouSEQ } from './serialComms.mjs';
@@ -21,13 +21,26 @@ import { interfaceStates, panelStates, togglePanelState, setPanelState } from '.
 import { openCam } from './openCam.mjs';
 import { getConfig } from './configManager.mjs';
 
-export { themes, themeCompartment, fontSizeCompartment, editorBaseTheme, evalToplevel, evalNow, 
-         evalQuantised, toggleHelp, toggleVid, toggleSerialVis, useq_keymap, 
-         areMatchingBracketChars, complete_keymap_mod, createEditorExtensions, 
-         changeFontSize, changeTheme, createUpdateListener, createPatchEditor };
+export { 
+  themeCompartment, 
+  fontSizeCompartment, 
+  editorBaseTheme, 
+  evalToplevel, 
+  evalNow, 
+  evalQuantised, 
+  toggleHelp, 
+  toggleVid, 
+  toggleSerialVis, 
+  useq_keymap, 
+  areMatchingBracketChars, 
+  complete_keymap_mod, 
+  createEditorExtensions, 
+  changeFontSize, 
+  changeTheme, 
+  createUpdateListener, 
+  createPatchEditor 
+};
 
-// Default editor configuration
-const themes = [barf, cobalt, clouds, coolGlow, noctisLilac, ayuLight];
 const themeCompartment = new Compartment();
 const fontSizeCompartment = new Compartment();
 
@@ -40,7 +53,7 @@ const editorBaseTheme = EditorView.baseTheme({
     whitespace: "pre-wrap",
     passing: "10px 0",
     flex: "1 1 0",
-    caretColor: "#ddd"
+    caretColor: "var(--text-primary)"
   },
   "&.cm-focused": { outline: "0 !important" },
   ".cm-line": {
@@ -49,7 +62,7 @@ const editorBaseTheme = EditorView.baseTheme({
     "font-family": "var(--code-font)"
   },
   ".cm-matchingBracket": {
-    "border-bottom": "1px solid var(--white-color)",
+    "border-bottom": "1px solid var(--text-primary)",
     "color": "inherit"
   },
   ".cm-gutters": {
@@ -58,7 +71,6 @@ const editorBaseTheme = EditorView.baseTheme({
   },
   ".cm-gutterElement": { "margin-left": "5px" },
   ".cm-scroller": { "overflow": "auto" },
-  // only show cursor when focused
   ".cm-cursor": { visibility: "hidden" },
   "&.cm-focused .cm-cursor": { visibility: "visible" }
 });
@@ -241,7 +253,7 @@ function createEditorExtensions(config) {
     fontSizeCompartment.of(EditorView.theme({
       ".cm-content": { fontSize: `${config.fontSize || 16}px` }
     })),
-    themeCompartment.of(themes[config.currentTheme || 0]),
+    themeCompartment.of(baseThemes[config.currentTheme || 'light']),
     drawSelection(),
     ...default_extensions
   ];
@@ -263,70 +275,26 @@ function changeFontSize(editor, size) {
 /**
  * Change editor theme
  * @param {EditorView} editor - The editor instance
- * @param {number} themeIndex - Index of the theme in the themes array
+ * @param {string} themeName - Name of the theme ('light' or 'dark')
  */
-function changeTheme(editor, themeIndex) {
-  if (themeIndex < 0 || themeIndex >= themes.length) {
-    console.error(`Theme index ${themeIndex} is out of bounds`);
-    themeIndex = 0;
-  }
-  
-  const currentTheme = themes[themeIndex];
-  const isDark = currentTheme.extension?.some(ext => 
-    ext.extension?.value === true && 
-    ext.extension?.source?.toString().includes('darkTheme')
-  );
-  
-  // Update main editor
+function changeTheme(editor, themeName) {
+  const theme = baseThemes[themeName];
+  if (!theme) return;
+
+  const extension = createTheme(theme);
   editor.dispatch({
-    effects: themeCompartment.reconfigure(currentTheme)
+    effects: themeCompartment.reconfigure(extension)
   });
 
   // Update all patch editors
-  $('.patch-code').each(function() {
-    const patchEditor = EditorView.findFromDOM(this);
+  document.querySelectorAll('.patch-code').forEach(element => {
+    const patchEditor = EditorView.findFromDOM(element);
     if (patchEditor) {
       patchEditor.dispatch({
-        effects: themeCompartment.reconfigure(currentTheme)
+        effects: themeCompartment.reconfigure(extension)
       });
     }
   });
-
-  // Update patches panel container styling
-  if (isDark) {
-    $('.container-patches').css({
-      'background-color': '#1e1e1e',
-      'border-color': 'rgba(255,255,255,0.2)',
-      'color': '#d4d4d4'
-    });
-    // Remove background from patch items in dark mode
-    $('.patch-item').css('background', 'transparent');
-    $('.patch-name').css('color', '#9cdcfe');
-    $('.patch-author').css('color', '#808080');
-    // Update copy button for dark theme
-    $('.copy-button').css({
-      'background': '#2d2d2d',
-      'border-color': 'rgba(255,255,255,0.2)',
-      'color': '#d4d4d4'
-    });
-    $('.copy-button:hover').css('background', '#3d3d3d');
-  } else {
-    $('.container-patches').css({
-      'background-color': '#fff',
-      'border-color': '#000',
-      'color': '#111'
-    });
-    $('.patch-item').css('background', '#f5f5f5');
-    $('.patch-name').css('color', '#2c3e50');
-    $('.patch-author').css('color', '#666');
-    // Reset copy button for light theme
-    $('.copy-button').css({
-      'background': '#fff',
-      'border-color': '#ddd',
-      'color': 'inherit'
-    });
-    $('.copy-button:hover').css('background', '#f0f0f0');
-  }
 }
 
 /**
@@ -349,7 +317,7 @@ function createUpdateListener(config) {
  * @returns {EditorView} The created editor view instance
  */
 function createPatchEditor(element, code) {
-  const currentTheme = themes[getConfig('editor').currentTheme || 0];
+  const currentTheme = baseThemes[getConfig('editor').currentTheme || 'light'];
   const isDark = currentTheme.extension?.some(ext => 
     ext.extension?.value === true && 
     ext.extension?.source?.toString().includes('darkTheme')

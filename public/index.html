@@ -6,6 +6,32 @@
 	<title>uSEQ Perform</title>
   <script src="lib/jquery-3.7.1.js"></script>
   <link rel="stylesheet" href="styles.css">
+  <style>
+    .container-console {
+      position: fixed;
+      height: 49%;
+      width: 29%;
+      left: 70%;
+      top: 50%;
+      border: 2px solid var(--panel-border);
+      background-color: var(--console-bg);
+      color: var(--text-primary);
+      min-width: 20em;
+      z-index: 99999;
+      resize: both;
+      opacity: 1;
+      overflow-y: scroll;  /* Always show scrollbar */
+      overflow-x: hidden;
+      padding: 12px;
+      font-family: var(--code-font);
+      font-size: 0.9em;
+      line-height: 1.4;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      a {
+        color: var(--accent-color);
+      }
+    }
+  </style>
 </head>
 
 <body>
