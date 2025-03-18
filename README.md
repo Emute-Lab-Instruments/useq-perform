@@ -1,12 +1,10 @@
 ## Build and Run
 
-`npm run build` builds the application to `public/bundle.js`, along with a sourcemap file for debugging.
+`deno task build` builds the application to `public/bundle.mjs`, along with a sourcemap file for debugging.
 
-`npm start` launches a server, using [serve](https://github.com/zeit/serve). 
+`deno task start` launches the server.
 
-`npm run watch` will continually rebuild the application as your source files change.
-
-`npm run dev` will run `npm start` and `npm run watch` in parallel.
+`deno task dev` will run the server and watch for file changes, rebuilding automatically.
 
 ## Url parameters
 
