@@ -1,4 +1,4 @@
-import { WebMidi } from "webmidi";
+import { WebMidi } from "https://esm.sh/webmidi@3.1.12";
 import { serialMapFunctions } from "./serialComms.mjs";
 
 /**

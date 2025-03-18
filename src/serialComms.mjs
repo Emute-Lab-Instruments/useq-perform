@@ -5,7 +5,6 @@
  * including message parsing, sending commands, and managing the serial buffer.
  */
 import { CircularBuffer } from "./CircularBuffer.mjs";
-import { Buffer } from 'buffer';
 import { upgradeCheck } from './upgradeCheck.mjs';
 import { post } from './console.mjs';
 

@@ -3,8 +3,9 @@ html, body {
   height: 100%;
   overflow: hidden;
   margin: 0px;
-  background-color:#ddd;
-  font-size:100%;
+  background-color: var(--editor-bg);
+  color: var(--editor-fg);
+  font-size: 100%;
   font-family: 'Helvetica Neue', Arial, sans-serif;
 }
 
@@ -19,28 +20,29 @@ html, body {
 }
 
 a.button5 {
-  display:inline-block;
-  padding:0.46em 0.6em;
-  border:0.1em solid #000000;
-  margin:0 0.1em 0.1em 0;
-  border-radius:0.12em;
+  display: inline-block;
+  padding: 0.46em 0.6em;
+  border: 0.1em solid var(--button-border);
+  margin: 0 0.1em 0.1em 0;
+  border-radius: 0.12em;
   box-sizing: border-box;
-  text-decoration:none;
+  text-decoration: none;
   font-family: monospace;
-  font-weight:300;
-  color:#000000;
+  font-weight: 300;
+  color: var(--text-primary);
   text-shadow: 0 0.04em 0.04em rgba(0,0,0,0.7);
-  background-color:white;
-  text-align:center;
+  background-color: var(--button-bg);
+  text-align: center;
   transition: all 0.15s;
   user-select: none;
 }
 
 a.button5:hover {
   text-shadow: 0 0 2em rgba(255,255,255,150);
-  color:purple;
-  border-color:#aaaaaa;
-  cursor:pointer;
+  color: var(--accent-color);
+  border-color: var(--button-border);
+  background-color: var(--button-hover);
+  cursor: pointer;
 }
 
 @media all and (max-width:30em) {
@@ -82,20 +84,17 @@ a.button5:hover {
 }
 
 .container-console {
-  position:fixed;
-  height:49%;
-  width:29%;
-  left:70%;
-  top:50%;
-  border: 2px solid #000;
-  background-color: #000;
-  color:#fff;
-  min-width: 20em;
-  z-index: 99999;
-  resize: both;
-  opacity:40%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  position: fixed;
+  padding: 1em;
+  width: 40%;
+  height: 20%;
+  right: 20px;
+  bottom: 20px;
+  border: 2px solid var(--panel-border);
+  background-color: var(--console-bg);
+  color: var(--text-primary);
+  z-index: 100000;
+  opacity: 0.8;
 }
 
 .container-console a {
@@ -146,9 +145,9 @@ a.button5:hover {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  border: 2px solid #000;
-  background-color: #fff;
-  color: #111;
+  border: 2px solid var(--panel-border);
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
   z-index: 99999;
   padding: 2em;
   border-radius: 8px;
@@ -295,9 +294,9 @@ a.button5:hover {
   right: 20px;
   top: 50%;
   transform: translateY(-50%);
-  border: 2px solid #000;
-  background-color: #fff;
-  color: #111;
+  border: 2px solid var(--panel-border);
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
   z-index: 100000;
   padding: 1.5em;
   border-radius: 8px;
@@ -379,4 +378,28 @@ a.button5:hover {
   border-radius: 12px;
   font-size: 0.9em;
   align-self: flex-start;
+}
+
+/* Component Test Page Styles */
+.test-controls {
+    padding: 1em;
+    margin-bottom: 1em;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+}
+
+.test-controls select {
+    padding: 0.5em;
+    font-size: 1em;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--panel-border);
+}
+
+#testContainer > div {
+    display: none;
+    margin: 1em;
+    padding: 1em;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-bg);
 }
