@@ -1,0 +1,32 @@
+{
+  "name": "useq-perform",
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "^0.20.0",
+    "npm-run-all": "^4.1.5",
+    "serve": "^14.2.4"
+  },
+  "dependencies": {
+    "@codemirror/language": "^6.10.8",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.3",
+    "@nextjournal/clojure-mode": "^0.3.3",
+    "@stdlib/number-float64-base-from-int64-bytes": "^0.2.2",
+    "buffer": "^6.0.3",
+    "clojure-mode": "^0.1.0",
+    "codemirror": "^6.0.1",
+    "date-fns": "^4.1.0",
+    "lucide": "^0.475.0",
+    "marked": "^15.0.7",
+    "squint-cljs": "^0.8.134",
+    "tabulator-tables": "^6.3.1",
+    "thememirror": "^2.0.1",
+    "webmidi": "^3.1.12"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "dev": "npm-run-all --parallel start watch",
+    "start": "serve public -p 5000"
+  }
+}
