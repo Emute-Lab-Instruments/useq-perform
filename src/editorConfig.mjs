@@ -1,7 +1,7 @@
 // CODEMIRROR IMPORTS
 import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view';
-import { history, historyKeymap, deleteCharBackward, deleteCharForward } from '@codemirror/state';
 import { Compartment, EditorState } from '@codemirror/state';
+import { history, historyKeymap, deleteCharBackward, deleteCharForward } from '@codemirror/commands';
 import { syntaxHighlighting, HighlightStyle, defaultHighlightStyle, foldGutter, bracketMatching } from '@codemirror/language';
 import { tags } from "https://esm.sh/@lezer/highlight";
 
