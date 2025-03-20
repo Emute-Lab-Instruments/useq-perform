@@ -1,13 +1,8 @@
 import { Compartment } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 
-console.log("state.mjs: Creating theme compartment");
 export const themeCompartment = new Compartment();
-console.log("state.mjs: Theme compartment created:", themeCompartment);
-
-console.log("state.mjs: Creating font size compartment");
 export const fontSizeCompartment = new Compartment();
-console.log("state.mjs: Font size compartment created:", fontSizeCompartment);
 
 // Bracket related utilities and modified keymaps
 const openingBracketChars = ["(", "[", "{"];

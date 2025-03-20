@@ -2,7 +2,6 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { themes, setTheme } from "../editors/themes/themeManager.mjs";
 import { baseExtensions } from "../editors/extensions.mjs";
-import { interfaceStates, panelStates, togglePanelState } from "./panelStates.mjs";
 import { saveUserSettings } from "../utils/persistentUserSettings.mjs";
 
 export function initThemePanel() {
@@ -46,21 +45,21 @@ export function initThemePanel() {
                 saveUserSettings();
             }
             // Close panel after selection
-            togglePanelState('themePanel', 'panel-theme');
+            $("#panel-theme").hide();
         });
 
         panel.appendChild(container);
     });
 
     // Theme button click handler
-    $("#themeButton").on("click", () => {
-        togglePanelState('themePanel', 'panel-theme');
+    $("#button-theme").on("click", () => {
+        $("#panel-theme").toggle();
     });
 
     // Close on Escape key
     $(document).on("keydown", (e) => {
-        if (e.key === "Escape" && interfaceStates.themePanelState === panelStates.PANEL) {
-            togglePanelState('themePanel', 'panel-theme');
+        if (e.key === "Escape" && $("#panel-theme").is(":visible")) {
+            $("#panel-theme").hide();
         }
     });
 }

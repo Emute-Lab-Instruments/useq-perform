@@ -21,74 +21,67 @@ body {
 }
 
 /* src/styles/buttons.css */
-a.button5 {
-  display: inline-block;
-  padding: 0.46em 0.6em;
-  border: 0.1em solid var(--button-border);
-  margin: 0 0.1em 0.1em 0;
-  border-radius: 0.12em;
+.toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: 1px solid var(--button-border, #ccc);
+  border-radius: 4px;
+  margin: 0 2px;
+  height: 26px;
+  min-width: 26px;
   box-sizing: border-box;
   text-decoration: none;
   font-family: monospace;
   font-weight: 300;
-  color: var(--text-primary);
-  text-shadow: 0 0.04em 0.04em rgba(0, 0, 0, 0.7);
-  background-color: var(--button-bg);
+  color: var(--text-primary, black);
+  background-color: var(--button-bg, white);
   text-align: center;
   transition: all 0.15s;
   user-select: none;
-}
-a.button5:hover {
-  text-shadow: 0 0 2em rgba(255, 255, 255, 150);
-  color: var(--accent-color);
-  border-color: var(--button-border);
-  background-color: var(--button-hover);
   cursor: pointer;
-}
-.toolbar-button {
-  background-color: white;
-  color: black;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  cursor: pointer;
-  margin: 0 4px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .toolbar-button:hover {
-  background-color: #f0f0f0;
+  color: var(--accent-color, #333);
+  background-color: var(--button-hover, #f0f0f0);
+  border-color: var(--button-border);
 }
-#btnConnect {
+#button-connect {
   box-shadow: 0 0 20px lightgreen;
   transform-origin: center;
   transition: transform 0.2s ease-in-out;
 }
-#btnConnect:hover {
+#button-connect:hover {
   box-shadow: 0 0 20px lightgreen;
 }
 @media all and (max-width:30em) {
-  a.button5 {
-    display: block;
+  .toolbar-button {
+    display: inline-flex;
     margin: 0.4em auto;
   }
 }
 
 /* src/styles/panels.css */
-.panel-aux {
-  position: fixed;
-  background-color: rgba(255, 255, 255, 0.5);
-  color: black;
-  z-index: 100;
-  transition: all 0.3s ease-in-out;
+.panel-aux[style*="display: none"] {
   opacity: 0;
-  display: none;
 }
 #panel-toolbar,
 #panel-console {
   display: block !important;
+}
+#panel-main-editor {
+  position: fixed;
+  top: 40px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  min-width: 25em;
+  overflow: hidden;
+  resize: none;
+  opacity: 1.0;
+  z-index: 100;
 }
 .panel-editor {
   width: 100%;
@@ -98,7 +91,7 @@ a.button5:hover {
   min-width: 25em;
   overflow: hidden;
   resize: both;
-  opacity: 0.8;
+  opacity: 1;
   z-index: 100;
 }
 .panel-editor .cm-content,
@@ -133,26 +126,28 @@ a.button5:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   color: #00FF41;
   background-color: rgba(12, 23, 16, 0.95);
+  transition: opacity 0.3s ease-in-out;
 }
 .panel-console a {
   color: var(--accent-color);
 }
-.panel-serialvis {
+#panel-serialvis {
   position: fixed;
   height: 100%;
   width: 100%;
   left: 0%;
   top: 0%;
   border: 2px solid #000;
-  background-color: #00000000;
+  background-color: transparent;
   color: #fff;
   z-index: 99999;
   resize: both;
-  opacity: 100%;
+  opacity: 1;
   overflow: hidden;
   pointer-events: none;
+  transition: opacity 0.3s ease-in-out;
 }
-.panel-serialvis .serialcanvas {
+#panel-serialvis #serialcanvas {
   background-color: transparent;
   width: 100%;
   height: 100%;
@@ -168,8 +163,9 @@ a.button5:hover {
   color: #fff;
   z-index: 10;
   resize: both;
-  opacity: 20%;
+  opacity: 0.2;
   overflow: hidden;
+  transition: opacity 0.3s ease-in-out;
 }
 .panel-help {
   position: fixed;
@@ -184,7 +180,8 @@ a.button5:hover {
   border-radius: 8px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
-  opacity: 0;
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
   transition: opacity 0.3s ease-in-out;
   display: none;
 }
@@ -201,6 +198,9 @@ a.button5:hover {
   border-radius: 4px;
   padding: 1rem;
   z-index: 1100;
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
+  transition: opacity 0.3s ease-in-out;
 }
 #panel-snippets {
   position: fixed;
@@ -211,6 +211,9 @@ a.button5:hover {
   border-left: 1px solid var(--panel-border);
   overflow: auto;
   padding: 1rem;
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
+  transition: opacity 0.3s ease-in-out;
 }
 .panel-patches {
   position: fixed;
@@ -245,12 +248,9 @@ a.button5:hover {
   border-radius: 8px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
-  opacity: 0;
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
   transition: opacity 0.3s ease-in-out;
-  display: none;
-}
-.panel-theme.visible {
-  opacity: 1;
 }
 .panel-theme .theme-preview {
   margin-bottom: 1.5em;
@@ -360,14 +360,27 @@ a.button5:hover {
   top: 0;
   left: 0;
   right: 0;
+  width: 100%;
   height: 40px;
   background-color: white;
   border-bottom: 1px solid var(--panel-border);
   z-index: 1000;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+#panel-toolbar #left-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 12px;
+}
+#panel-toolbar #right-buttons {
+  display: flex;
+  align-items: center;
+  padding-right: 12px;
 }
 .test-controls {
   padding: 1em;

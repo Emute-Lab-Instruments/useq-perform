@@ -1,26 +1,28 @@
-/* Base panel style that all panels inherit from */
-.panel-aux {
-  position: fixed;
-  background-color: rgba(
-    255,
-    255,
-    255,
-    0.5
-  ); /* White background with 50% opacity */
-  color: black;
-  z-index: 100;
-  transition: all 0.3s ease-in-out;
+/* When panel is hidden */
+.panel-aux[style*="display: none"] {
   opacity: 0;
-  display: none;
 }
 
 /* Default visibility for toolbar and console panels */
 #panel-toolbar, #panel-console {
-    display: block !important;
-  }
-
+  display: block !important;
+}
 
 /* Editor Panel */
+#panel-main-editor {
+  position: fixed;
+  top: 40px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  min-width: 25em;
+  overflow: hidden;
+  resize: none;
+  opacity: 1.0;
+  z-index: 100;
+}
+
 .panel-editor {
   width: 100%;
   height: calc(100% - 40px); /* Subtract toolbar height */
@@ -29,7 +31,7 @@
   min-width: 25em;
   overflow: hidden;
   resize: both;
-  opacity: 0.8;
+  opacity: 1;
   z-index: 100;
 }
 
@@ -58,7 +60,6 @@
   left: 70%;
   top: 50%;
   border: 2px solid rgba(0, 255, 65, 0.3);
-  /*   border: 2px solid var(--panel-border); */
   min-width: 20em;
   z-index: 99999;
   resize: both;
@@ -71,6 +72,7 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   color: #00FF41; /* Match editor theme text color */
   background-color: rgba(12, 23, 16, 0.95); /* Slightly transparent dark background matching theme */
+  transition: opacity 0.3s ease-in-out;
 }
 
 .panel-console a {
@@ -78,23 +80,24 @@
 }
 
 /* Serial Visualization Panel */
-.panel-serialvis {
+#panel-serialvis {
   position: fixed;
   height: 100%;
   width: 100%;
   left: 0%;
   top: 0%;
   border: 2px solid #000;
-  background-color: #00000000;
+  background-color: transparent;
   color: #fff;
   z-index: 99999;
   resize: both;
-  opacity: 100%;
+  opacity: 1;
   overflow: hidden;
   pointer-events: none;
+  transition: opacity 0.3s ease-in-out;
 }
 
-.panel-serialvis .serialcanvas {
+#panel-serialvis #serialcanvas {
   background-color: transparent;
   width: 100%;
   height: 100%;
@@ -112,8 +115,9 @@
   color: #fff;
   z-index: 10;
   resize: both;
-  opacity: 20%;
+  opacity: 0.2;
   overflow: hidden;
+  transition: opacity 0.3s ease-in-out;
 }
 
 /* Help Panel */
@@ -130,7 +134,8 @@
   border-radius: 8px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
-  opacity: 0;
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
   transition: opacity 0.3s ease-in-out;
   display: none;
 }
@@ -150,6 +155,9 @@
   border-radius: 4px;
   padding: 1rem;
   z-index: 1100;
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
+  transition: opacity 0.3s ease-in-out;
 }
 
 /* Snippets Panel */
@@ -162,6 +170,9 @@
   border-left: 1px solid var(--panel-border);
   overflow: auto;
   padding: 1rem;
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
+  transition: opacity 0.3s ease-in-out;
 }
 
 /* Patches Panel */
@@ -201,13 +212,9 @@
   border-radius: 8px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
-  opacity: 0;
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
   transition: opacity 0.3s ease-in-out;
-  display: none;
-}
-
-.panel-theme.visible {
-  opacity: 1;
 }
 
 .panel-theme .theme-preview {
