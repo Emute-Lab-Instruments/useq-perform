@@ -1,72 +1,108 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
-<head lang='en'>
-	<meta charset='utf-8'>
-	<meta name='viewport' content='width=device-width'>
-	<title>uSEQ Perform</title>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width'>
+  <title>uSEQ Perform</title>
   <script src="lib/jquery-3.7.1.js"></script>
   <link rel="stylesheet" href="styles.css">
-  <style>
-    .container-console {
-      position: fixed;
-      height: 49%;
-      width: 29%;
-      left: 70%;
-      top: 50%;
-      border: 2px solid var(--panel-border);
-      background-color: var(--console-bg);
-      color: var(--text-primary);
-      min-width: 20em;
-      z-index: 99999;
-      resize: both;
-      opacity: 1;
-      overflow-y: scroll;  /* Always show scrollbar */
-      overflow-x: hidden;
-      padding: 12px;
-      font-family: var(--code-font);
-      font-size: 0.9em;
-      line-height: 1.4;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      a {
-        color: var(--accent-color);
-      }
-    }
-  </style>
 </head>
-
 <body>
-  <div class="main-container">
-    <div class='header'>
-			<a class="button5" id="btnConnect" title="Connect to uSEQ"><i data-lucide="cable"></i> </a>
-      <a class="button5" id="saveButton" title="Save"><i data-lucide="save"></i> </a>
-      <a class="button5" id="loadButton" title="Load"><i data-lucide="file"></i> </a>
-      <a class="button5" id="themeButton" title="Cycle themes"><i data-lucide="swatch-book"></i></a>
-      <a class="button5" id="increaseFontButton" title="font size ++"><i data-lucide="a-arrow-up"></i></a>
-      <a class="button5" id="decreaseFontButton" title="font size --"><i data-lucide="a-arrow-down"></i></a>
-      <a class="button5" id="helpButton" title="Help!!!"><i data-lucide="circle-help"></i></a>
-      <a class="button5" id="patchesButton" title="Code Snippets"><i data-lucide="copy"></i></a>
-    </div> 
-
-    <div class="container-editor" id="lceditor"></div>
-    <div class="container-console" id="console"></div>
-    <div class="container-serialvis" id="serialvis"> 
-      <canvas class="serialcanvas" width="1000" height="800" id="serialcanvas"></canvas>
-    </div>
-    <div class="container-webcam" id="vidcontainer">
-      <video id="videopanel" width="1200" height="900"></video>
-    </div>
-
-    <div id="help-panel-container"></div>
-    <div id="patches-panel-container"></div>
+  <div id="toolbar-panel">
+    <a class="button5 toolbar-button" id="btnConnect" title="Connect to uSEQ"><i data-lucide="cable"></i> </a>
+    <!-- <button id="loadSamplesButton">Load Samples</button> -->
+    <a class="toolbar-button button5" id="saveButton" title="Save"><i data-lucide="save"></i> </a>
+    <a class="button5 toolbar-button" id="loadButton" title="Load"><i data-lucide="file"></i> </a>
+    <a class="button5 toolbar-button" id="themeButton" title="Cycle themes"><i data-lucide="swatch-book"></i></a>
+    <a class="button5 toolbar-button" id="increaseFontButton" title="font size ++"><i data-lucide="a-arrow-up"></i></a>
+    <a class="button5 toolbar-button" id="decreaseFontButton" title="font size --"><i data-lucide="a-arrow-down"></i></a>
+    <a class="button5 toolbar-button" id="helpButton" title="Help!!!"><i data-lucide="circle-help"></i></a>
   </div>
-	<script src='bundle.mjs'></script>
-  <script>
-    // Load components
-    $(document).ready(function() {
-      $('#help-panel-container').load('help-panel.html');
-      $('#patches-panel-container').load('patches-panel.html');
-    });
-  </script>
+  <div id="main-editor-panel"></div>
+  <div id="console-panel" style="display: none;"></div>
+  <div id="vis-panel" class="panel-serialvis" > 
+    <canvas class="serialcanvas" width="1000" height="800" id="serialcanvas"></canvas>
+  </div>
+  <div id="theme-panel" style="display: none;"></div>
+  <div id="settings-panel" style="display: none;"></div>
+  <div id="snippets-panel" style="display: none;"></div>
+  <div id="help-panel" class="help" style="display: none;">
+    <div class="mac-toggle">
+    <span class="mac-icon">⌘</span>
+    <input type="checkbox" id="macToggle">
+    </div>
+
+    <div class="help-row">
+    <span class="tip-icon">💡</span>
+    <span class="key-binding win">Alt-H</span>
+    <span class="key-binding mac">⌥-H</span>
+    <span class="help-description">Toggle the help panel</span>
+    </div>
+
+    <div class="key-bindings-section">
+    <b>Coding:</b>
+    <div class="help-row">
+      <span class="key-binding win">Ctrl-ENTER</span>
+      <span class="key-binding mac">⌘-ENTER</span>
+      <span class="help-description">Evaluate code now</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Alt-ENTER</span>
+      <span class="key-binding mac">⌥-ENTER</span>
+      <span class="help-description">Evaluate code at the next bar</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Ctrl-[</span>
+      <span class="key-binding mac">⌘-[</span>
+      <span class="help-description">Shrink collection forwards by one form</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Ctrl-]</span>
+      <span class="key-binding mac">⌘-]</span>
+      <span class="help-description">Expand collection to include form to the right</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Ctrl-;</span>
+      <span class="key-binding mac">⌘-;</span>
+      <span class="help-description">Grow collection backwards by one form</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Ctrl-'</span>
+      <span class="key-binding mac">⌘-'</span>
+      <span class="help-description">Shrink collection backwards by one form</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Alt-S</span>
+      <span class="key-binding mac">⌥-S</span>
+      <span class="help-description">Unwrap (remove brackets)</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Alt-up/down</span>
+      <span class="key-binding mac">⌥-up/down</span>
+      <span class="help-description">Semantic selection</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Ctrl-K</span>
+      <span class="key-binding mac">⌘-K</span>
+      <span class="help-description">Remove all forms from cursor to end of line</span>
+    </div>
+    </div>
+
+    <div class="key-bindings-section">
+    <b>Visuals:</b>
+    <div class="help-row">
+      <span class="key-binding win">Alt-G</span>
+      <span class="key-binding mac">⌥-G</span>
+      <span class="help-description">Show serial streams</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Alt-V</span>
+      <span class="key-binding mac">⌥-V</span>
+      <span class="help-description">Show webcam under panel-editor</span>
+    </div>
+    </div>
+  </div>
+  <script type="module" src='bundle.mjs'></script>
 </body>
 </html>
 

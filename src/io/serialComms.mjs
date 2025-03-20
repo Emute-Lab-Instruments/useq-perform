@@ -4,30 +4,16 @@
  * Handles communication with the uSEQ device via Web Serial API
  * including message parsing, sending commands, and managing the serial buffer.
  */
-import { CircularBuffer } from "./CircularBuffer.mjs";
-import { upgradeCheck } from './upgradeCheck.mjs';
-import { post } from './console.mjs';
+import { CircularBuffer } from "../utils/CircularBuffer.mjs";
+import { upgradeCheck } from '../utils/upgradeCheck.mjs';
+import { post } from '../io/console.mjs';
 
-// Define variables first before exporting them
-var serialport = null;
-var serialVars = { capture: false, captureFunc: null };
-const encoder = new TextEncoder();
-const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(100));
-const serialMapFunctions = [];
-
-// Export everything at once to avoid duplication
-export { 
-  serialport, 
-  serialVars, 
-  encoder, 
-  serialBuffers, 
-  serialMapFunctions, 
-  setSerialPort, 
-  getSerialPort, 
-  sendTouSEQ, 
-  serialReader,
-  connectToSerialPort 
-};
+// Define variables and export them inline
+export var serialport = null;
+export var serialVars = { capture: false, captureFunc: null };
+export const encoder = new TextEncoder();
+export const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(100));
+export const serialMapFunctions = [];
 
 // Constants
 const SERIAL_READ_MODES = {
@@ -50,7 +36,7 @@ const MAX_CONSOLE_LINES = 50;
  * Set the active serial port
  * @param {SerialPort} newport - The Web Serial port to use
  */
-function setSerialPort(newport) {
+export function setSerialPort(newport) {
   serialport = newport;
 }
 
@@ -58,7 +44,7 @@ function setSerialPort(newport) {
  * Get the current serial port
  * @returns {SerialPort|null} The current Web Serial port or null
  */
-function getSerialPort() {
+export function getSerialPort() {
   return serialport;
 }
 
@@ -67,7 +53,7 @@ function getSerialPort() {
  * @param {string} code - Code to send
  * @param {Function|null} capture - Optional callback for response capture
  */
-function sendTouSEQ(code, capture = null) {
+export function sendTouSEQ(code, capture = null) {
   // Remove comments (anything between ; and newline) and all newlines in a single step
   code = code.replace(/;[^\n]*(\n|$)|\n/g, match => match.startsWith(';') ? '' : '');
 
@@ -193,7 +179,7 @@ function processSerialData(byteArray, state) {
 /**
  * Start reading from the serial port
  */
-async function serialReader() {
+export async function serialReader() {
   if (!serialport) return;
   console.log("reading...");
   
@@ -249,7 +235,7 @@ async function serialReader() {
 /**
  * Connect to the serial port for uSEQ communication
  */
-function connectToSerialPort(port) {
+export function connectToSerialPort(port) {
   port.open({ baudRate: 115200 }).then(() => {
     setSerialPort(port);
     serialReader();
@@ -261,5 +247,27 @@ function connectToSerialPort(port) {
     //connection failed
     post("Connection failed. See <a href=\"https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting\">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>");
   });
+}
+
+export function checkForWebserialSupport() {
+  // Check for Web Serial API support
+  if (!navigator.serial) {
+    post("A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module");
+    post("See https://caniuse.com/web-serial for more information");
+  } else {
+    // Set up serial connection event listeners
+    navigator.serial.addEventListener('connect', e => {
+      console.log(e);
+      let port = getSerialPort();
+      if (port) {
+        post("uSEQ plugged in, use the connect button to re-connect");
+      }
+    });
+    
+    navigator.serial.addEventListener('disconnect', e => {
+      $("#btnConnect").show(1000);
+      post("uSEQ disconnected");
+    });
+  }
 }
 
