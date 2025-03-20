@@ -1,8 +1,6 @@
-import { post } from './console.mjs';
+import { post } from '../io/console.mjs';
 
-export { upgradeCheck };
-
-function upgradeCheck(versionMsg) {
+export function upgradeCheck(versionMsg) {
   // const verRE = /([0-9])\.([0-9])/g;
   const verRE = /([0-9])\.([0-9])(.([0-9]))?/g;
   const groups = verRE.exec(versionMsg);
