@@ -8,25 +8,28 @@
   <link rel="stylesheet" href="bundle.css">
 </head>
 <body>
-  <div id="panel-toolbar" class="panel-toolbar">
-    <a class="button5 toolbar-button" id="btnConnect" title="Connect to uSEQ"><i data-lucide="cable"></i> </a>
-    <!-- <button id="loadSamplesButton">Load Samples</button> -->
-    <a class="toolbar-button button5" id="saveButton" title="Save"><i data-lucide="save"></i> </a>
-    <a class="button5 toolbar-button" id="loadButton" title="Load"><i data-lucide="file"></i> </a>
-    <a class="button5 toolbar-button" id="themeButton" title="Themes"><i data-lucide="swatch-book"></i></a>
-    <a class="button5 toolbar-button" id="increaseFontButton" title="font size ++"><i data-lucide="a-arrow-up"></i></a>
-    <a class="button5 toolbar-button" id="decreaseFontButton" title="font size --"><i data-lucide="a-arrow-down"></i></a>
-    <a class="button5 toolbar-button" id="helpButton" title="Help!!!"><i data-lucide="circle-help"></i></a>
+  <div id="panel-toolbar">
+    <div id="left-buttons">
+      <a class="toolbar-button" id="button-connect" title="Connect to uSEQ"><i data-lucide="cable"></i> </a>
+      <a class="toolbar-button" id="button-save" title="Save Code"><i data-lucide="save"></i> </a>
+      <a class="toolbar-button" id="button-load" title="Load Code"><i data-lucide="file"></i> </a>
+      <a class="toolbar-button" id="button-theme" title="Themes"><i data-lucide="swatch-book"></i></a>
+          <a class="toolbar-button" id="button-increase-font" title="Font size ++"><i data-lucide="a-arrow-up"></i></a>
+      <a class="toolbar-button" id="button-decrease-font" title="Font size --"><i data-lucide="a-arrow-down"></i></a>
+    </div>    
+    <div id="right-buttons">
+      <a class="toolbar-button" id="button-help" title="Help!!!"><i data-lucide="circle-help"></i></a>
+    </div>
   </div>
-  <div id="panel-main-editor" class="panel-main-editor"></div>
-  <div id="panel-console" class="panel-console" style="display: none;"></div>
-  <div id="panel-vis" class="panel-vis panel-aux panel-serialvis"> 
-    <canvas class="serialcanvas" width="1000" height="800" id="serialcanvas"></canvas>
+  <div id="panel-main-editor"></div>
+  <div id="panel-console"></div>
+  <div id="panel-vis"> 
+    <canvas id="serialcanvas" width="1000" height="800"></canvas>
   </div>
-  <div id="panel-theme" class="panel-theme panel-aux" style="display: none;"></div>
-  <div id="panel-settings" class="panel-settings panel-aux" style="display: none;"></div>
-  <div id="panel-snippets" class="panel-snippets panel-aux" style="display: none;"></div>
-  <div id="panel-help" class="panel-help panel-aux help" style="display: none;">
+  <div id="panel-theme" class="panels-aux"></div>
+  <div id="panel-settings" class="panels-aux"></div>
+  <div id="panel-snippets" class="panels-aux"></div>
+  <div id="panel-help" class="panels-aux">
     <div class="mac-toggle">
     <span class="mac-icon">⌘</span>
     <input type="checkbox" id="macToggle">
@@ -65,6 +68,11 @@
       <span class="key-binding win">Ctrl-;</span>
       <span class="key-binding mac">⌘-;</span>
       <span class="help-description">Grow collection backwards by one form</span>
+    </div>
+    <div class="help-row">
+      <span class="key-binding win">Ctrl-'</span>
+      <span class="key-binding mac">⌘-'</span>
+      <span class="help-description">Shrink collection backwards by one form</span>
     </div>
     <div class="help-row">
       <span class="key-binding win">Ctrl-'</span>

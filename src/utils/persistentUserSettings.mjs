@@ -7,11 +7,14 @@
 import { defaultFontSize, defaultTheme, defaultEditorStartingCode } from "../editors/defaults.mjs";
 import { themes } from "../editors/themes/themeManager.mjs";
 
-console.log("persistentUserSettings.mjs: Loading with defaults:", { defaultTheme, defaultFontSize });
+const dbg = (...args) => {if (false) {console.log(...args)}};
+
+dbg("persistentUserSettings.mjs: Loading with defaults:", { defaultTheme, defaultFontSize });
+
 
 // Export both the new and old names for backward compatibility
-console.log('persistentUserSettings.mjs: Importing with defaultTheme:', defaultTheme);
-console.log('persistentUserSettings.mjs: Available themes:', Object.keys(themes));
+dbg('persistentUserSettings.mjs: Importing with defaultTheme:', defaultTheme);
+dbg('persistentUserSettings.mjs: Available themes:', Object.keys(themes));
 
 export const settingsStorageKey = "uSEQ-Perform-User-Settings";
 export const codeStorageKey = "uSEQ-Perform-User-Code";
@@ -34,38 +37,38 @@ const defaultUserSettings = {
   }
 };
 
-console.log('persistentUserSettings.mjs: Default settings theme:', defaultUserSettings.editor.theme);
+dbg('persistentUserSettings.mjs: Default settings theme:', defaultUserSettings.editor.theme);
 
 // Active configuration (initialized with defaults)
 export let activeUserSettings = { ...defaultUserSettings };
-console.log('persistentUserSettings.mjs: Initial active settings theme:', activeUserSettings.editor.theme);
+dbg('persistentUserSettings.mjs: Initial active settings theme:', activeUserSettings.editor.theme);
 
 /**
  * Load configuration from localStorage
  * @returns {Object} The merged configuration (defaults + saved values)
  */
 export function loadUserSettings() {
-  console.log("persistentUserSettings.mjs: Loading user settings...");
+  dbg("persistentUserSettings.mjs: Loading user settings...");
   try {
     // Check if the (new) user settings exist in localStorage
     const retrievedSettingsStr = window.localStorage.getItem(settingsStorageKey);
-    console.log('persistentUserSettings.mjs: Loading settings from storage:', retrievedSettingsStr);
+    dbg('persistentUserSettings.mjs: Loading settings from storage:', retrievedSettingsStr);
 
     // If they exist, parse them and set as active settings
     if (retrievedSettingsStr) {
       const retrievedSettings = JSON.parse(retrievedSettingsStr);
-      console.log('persistentUserSettings.mjs: Retrieved settings theme:', retrievedSettings.editor?.theme);
+      dbg('persistentUserSettings.mjs: Retrieved settings theme:', retrievedSettings.editor?.theme);
       activeUserSettings = { ...activeUserSettings, ...retrievedSettings };
-      console.log("Active user settings:", activeUserSettings);
+      dbg("Active user settings:", activeUserSettings);
     } else {
       // If not, check to see if the old settings exist
-      console.log('persistentUserSettings.mjs: No settings found, checking legacy config...');
+      dbg('persistentUserSettings.mjs: No settings found, checking legacy config...');
       activeUserSettings = migrateLegacyConfig(activeUserSettings);
-      console.log('persistentUserSettings.mjs: Settings after legacy migration:', activeUserSettings.editor.theme);
+      dbg('persistentUserSettings.mjs: Settings after legacy migration:', activeUserSettings.editor.theme);
     }
 
     // If they don't either, activeUserSettings will have remained default by now
-    console.log("Active user settings after migration:", activeUserSettings);
+    dbg("Active user settings after migration:", activeUserSettings);
 return activeUserSettings;
   } catch (error) {
     console.error("Error loading user settings:", error);
@@ -74,16 +77,16 @@ return activeUserSettings;
 
   // Legacy handling for old theme name
   if (activeUserSettings.editor?.theme === 'default') {
-    console.log("persistentUserSettings.mjs: Converting legacy 'default' theme to:", defaultTheme);
+    dbg("persistentUserSettings.mjs: Converting legacy 'default' theme to:", defaultTheme);
     activeUserSettings.editor.theme = defaultTheme;
   }
 
   if (!themes[activeUserSettings.editor?.theme]) {
-    console.log("persistentUserSettings.mjs: Theme not found in available themes, resetting to:", defaultTheme);
+    dbg("persistentUserSettings.mjs: Theme not found in available themes, resetting to:", defaultTheme);
     activeUserSettings.editor.theme = defaultTheme;
   }
 
-  console.log("persistentUserSettings.mjs: Final theme value:", activeUserSettings.editor?.theme);
+  dbg("persistentUserSettings.mjs: Final theme value:", activeUserSettings.editor?.theme);
   return activeUserSettings;
 }
 
@@ -91,17 +94,17 @@ return activeUserSettings;
  * Save current configuration to localStorage
  */
 export function saveUserSettings() {
-  console.log("persistentUserSettings.mjs: Saving settings with theme:", activeUserSettings.editor?.theme);
+  dbg("persistentUserSettings.mjs: Saving settings with theme:", activeUserSettings.editor?.theme);
   try {
 
     const code = activeUserSettings.editor.code;
     let settingsWithoutCode = { ...activeUserSettings};
     delete settingsWithoutCode.editor.code;
 
-    console.log("Code: ", code);
-    console.log("Code string: ", JSON.stringify(code));
-    console.log("Settings without code: ", settingsWithoutCode);
-    console.log("Active settings: ", activeUserSettings);
+    dbg("Code: ", code);
+    dbg("Code string: ", JSON.stringify(code));
+    dbg("Settings without code: ", settingsWithoutCode);
+    dbg("Active settings: ", activeUserSettings);
 
     window.localStorage.setItem(settingsStorageKey, JSON.stringify(activeUserSettings));
     window.localStorage.setItem(codeStorageKey, JSON.stringify(code));
@@ -116,7 +119,7 @@ export function saveUserSettings() {
  * @param {Object} values - New values to merge
  */
 export function updateUserSettings(values) {
-  console.log("persistentUserSettings.mjs: Updating settings with:", values);
+  dbg("persistentUserSettings.mjs: Updating settings with:", values);
   activeUserSettings = { ...activeUserSettings, ...values };
   saveUserSettings();
 }
@@ -163,21 +166,21 @@ function migrateLegacyConfig(settings) {
   }
 };
   */
-  console.log("Checking for legacy config...");
+  dbg("Checking for legacy config...");
     const editorConfigStr = window.localStorage.getItem("editorConfig");
   if (editorConfigStr) {
-    console.log("persistentUserSettings.mjs: Found legacy editor config:", editorConfigStr);
+    dbg("persistentUserSettings.mjs: Found legacy editor config:", editorConfigStr);
 
     const editorConfig = JSON.parse(editorConfigStr);
-    console.log("persistentUserSettings.mjs: Legacy theme index:", editorConfig.currentTheme);
+    dbg("persistentUserSettings.mjs: Legacy theme index:", editorConfig.currentTheme);
 
     // Previously we stored a number, now we store a name
     const themeNames = Object.keys(themes);
-    console.log('persistentUserSettings.mjs: Available theme names:', themeNames);
+    dbg('persistentUserSettings.mjs: Available theme names:', themeNames);
     
     const themeIndex = editorConfig.currentTheme % themeNames.length;
     editorConfig.theme = themeNames[themeIndex];
-    console.log('persistentUserSettings.mjs: Converted legacy theme index', themeIndex, 'to name:', editorConfig.theme);
+    dbg('persistentUserSettings.mjs: Converted legacy theme index', themeIndex, 'to name:', editorConfig.theme);
     
     delete editorConfig.currentTheme;
 
@@ -192,7 +195,7 @@ function migrateLegacyConfig(settings) {
 
   const generalConfigStr = window.localStorage.getItem("useqConfig");
   if (generalConfigStr) {
-    console.log("Found general config:", generalConfigStr);
+    dbg("Found general config:", generalConfigStr);
     const generalConfig = JSON.parse(generalConfigStr);
 
 
@@ -220,7 +223,7 @@ function migrateLegacyConfig(settings) {
 
   const codeStr = window.localStorage.getItem("codeStorageKey");
   if (codeStr) {
-    console.log("Found code:", codeStr);
+    dbg("Found code:", codeStr);
     settings.editor.code = codeStr;
     // Remove legacy config from local storage
     window.localStorage.removeItem("codeStorageKey");
@@ -234,5 +237,5 @@ export function deleteLocalStorage() {
   window.localStorage.removeItem("editorConfig");
   window.localStorage.removeItem("useqConfig");
   window.localStorage.removeItem("codeStorageKey");
-  console.log("Local storage cleared.");
+  dbg("Local storage cleared.");
 }

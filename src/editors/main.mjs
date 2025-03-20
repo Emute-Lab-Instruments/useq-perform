@@ -16,9 +16,6 @@ export function createEditor(startingText, extensions) {
     evalScope: "top"
   };
   
-  console.log('main.mjs createEditor: Active settings theme:', activeUserSettings.editor?.theme);
-  console.log('main.mjs createEditor: Creating editor with extensions:', extensions?.length);
-  
   // Create editor state with provided extensions
   const state = EditorState.create({
     doc: startingText || '',

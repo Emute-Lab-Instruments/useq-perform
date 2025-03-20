@@ -9,14 +9,13 @@ registerBuiltinThemes(themes);
 export {themes};
 
 export function setTheme(editor, themeName) {
-  console.log("themeManager.mjs: Setting theme to:", themeName);
-  console.log("themeManager.mjs: Available themes:", Object.keys(themes));
   const theme = themes[themeName];
   if (theme) {
-    console.log("themeManager.mjs: Found theme, applying...");
     editor.dispatch({
       effects: themeCompartment.reconfigure(theme),
     });
+
+    setSnippetEditorsTheme(themeName);
   } else {
     console.error("themeManager.mjs: Theme not found:", themeName);
   }
