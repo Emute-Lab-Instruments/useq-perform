@@ -81,25 +81,25 @@ $(document).ready(() => {
   
   
 
-  const $consolePanelContainer = $('#console-panel');
+  const $consolePanelContainer = $('#panel-console');
   let consolePanel = createConsolePanel();
   $consolePanelContainer.append(consolePanel);
 
   // Load visualization panel
-  const $visPanelContainer = $('#vis-panel');
+  const $visPanelContainer = $('#panel-vis');
   let visPanel = createVisPanel();
   $visPanelContainer.append(visPanel);
   // Load snippets panel
-  const $snippetsPanelContainer = $('#snippets-panel');
+  const $snippetsPanelContainer = $('#panel-snippets');
   let snippetsPanel = createSnippetsPanel();
   $snippetsPanelContainer.append(snippetsPanel);
   // Load help panel
-  const $helpPanelContainer = $('#help-panel');
+  const $helpPanelContainer = $('#panel-help');
   let helpPanel = createHelpPanel();
   $helpPanelContainer.append(helpPanel);
 
   // Load settings panel
-  const $settingsPanelContainer = $('#settings-panel');
+  const $settingsPanelContainer = $('#panel-settings');
   let settingsPanel = createSettingsPanel();
   $settingsPanelContainer.append(settingsPanel);
 

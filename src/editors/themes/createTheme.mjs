@@ -27,11 +27,6 @@ import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
  * Creates a CodeMirror theme extension
  */
 export function createTheme({ variant, settings, styles }) {
-  console.log(
-    "themeManager.mjs: Creating theme with variant, settings, styles:",
-    { variant, settings, styles }
-  );
-
   if (!settings) {
     console.error("themeManager.mjs: Missing settings in theme configuration");
     throw new Error("Missing settings in theme configuration");
@@ -68,18 +63,12 @@ export function createTheme({ variant, settings, styles }) {
     }
   );
 
-  console.log("themeManager.mjs: Created base theme");
-
   const highlightStyle = HighlightStyle.define(styles);
-  console.log("themeManager.mjs: Created highlight style");
-
   const extension = [theme, syntaxHighlighting(highlightStyle)];
-  console.log("themeManager.mjs: Created theme extension");
 
   return extension;
 }
 
 export function registerTheme(registry, name, theme) {
-  console.log("themeManager.mjs: Registering theme:", name);
   registry[name] = theme;
 }

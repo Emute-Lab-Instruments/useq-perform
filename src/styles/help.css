@@ -1,0 +1,96 @@
+/* Help panel specific styles */
+.panel-help b {
+  color: #444;
+  font-size: 1.1em;
+  margin-top: 1em;
+  display: block;
+  margin-bottom: 0.5em;
+}
+
+.key-binding {
+  display: inline-block;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: monospace;
+  margin-right: 8px;
+  width: 100px;
+  text-align: center;
+}
+
+.help-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5em;
+}
+
+.help-description {
+  flex: 1;
+}
+
+.tip-icon {
+  color: #ff9800;
+  margin-right: 8px;
+}
+
+.mac-toggle {
+  position: absolute;
+  top: 1em;
+  right: 1em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+}
+
+.mac-toggle input[type="checkbox"] {
+  appearance: none;
+  width: 40px;
+  height: 20px;
+  background: #ddd;
+  border-radius: 20px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.mac-toggle input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  background: white;
+  transition: transform 0.3s;
+}
+
+.mac-toggle input[type="checkbox"]:checked {
+  background: #4CAF50;
+}
+
+.mac-toggle input[type="checkbox"]:checked::before {
+  transform: translateX(20px);
+}
+
+.mac-icon {
+  font-size: 1.2em;
+}
+
+.key-bindings-section {
+  margin-bottom: 1.5em;
+}
+
+.key-binding.mac {
+  display: none;
+}
+
+.show-mac .key-binding.win {
+  display: none;
+}
+
+.show-mac .key-binding.mac {
+  display: inline-block;
+}

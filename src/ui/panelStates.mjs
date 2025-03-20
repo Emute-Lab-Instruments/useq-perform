@@ -38,7 +38,10 @@ export var interfaceStates = {
   helpPanelState: panelStates.OFF,
 
   /** Current state of the patches panel */
-  patchesPanelState: panelStates.OFF
+  patchesPanelState: panelStates.OFF,
+
+  /** Current state of the theme panel */
+  themePanelState: panelStates.OFF
 };
 
 /**

@@ -43,6 +43,6 @@ export function createMainEditor() {
 
 export function initEditorPanel() {
   const editor = createMainEditor();
-  $('#main-editor-panel').append(editor.dom);
+  $('#panel-main-editor').append(editor.dom);
   return editor;
 }

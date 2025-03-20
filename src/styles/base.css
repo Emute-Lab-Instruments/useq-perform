@@ -1,0 +1,18 @@
+/* Base styles for html and body */
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  margin: 0px;
+  background-color: var(--editor-bg);
+  color: var(--editor-fg);
+  font-size: 100%;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+.main-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
