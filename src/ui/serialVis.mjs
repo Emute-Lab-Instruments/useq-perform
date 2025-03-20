@@ -1,8 +1,7 @@
-import { serialBuffers } from "./serialComms.mjs";
+import { serialBuffers } from "../io/serialComms.mjs";
 import { interfaceStates, panelStates } from "./panelStates.mjs";
-export { drawSerialVis };
 
-function drawSerialVis() {
+export function drawSerialVis() {
   const palette = ['#00429d', '#45a5ad', '#ace397', '#fcbf5d', '#ff809f', '#ff005e', '#c9004c', '#93003a'];
   const c = document.getElementById("serialcanvas");
   const ctx = c.getContext("2d");
@@ -78,4 +77,9 @@ function drawSerialVis() {
   }
   
   window.requestAnimationFrame(drawSerialVis);
+}
+
+export function initVisPanel(){
+    // Start animation loop for serial visualization
+    window.requestAnimationFrame(drawSerialVis);
 }

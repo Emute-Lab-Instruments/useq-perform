@@ -1,13 +1,10 @@
-import { WebMidi } from "https://esm.sh/webmidi@3.1.12";
+import { WebMidi } from "webmidi";
 import { serialMapFunctions } from "./serialComms.mjs";
 
 /**
  * Sets up MIDI input/output devices
  */
-
-export { setupMIDI, defSerialMap, midictrl };
-
-function setupMIDI() {
+export function setupMIDI() {
   navigator.requestMIDIAccess().then((access) => {
     WebMidi
       .enable()
@@ -34,12 +31,12 @@ serialMapFunctions[0] = (buffer) => {
   // }
 }
 
-function defSerialMap(idx, func) {
-  serialMapFunctions[idx] = func.bind({ midictrl: midictrl });
+export function defSerialMap(idx, func) {
+  serialMapFunctions[idx] = func.bind({ midictrl });
   console.log("added defserial", idx);
 }
 
-function midictrl(devIdx, chan, ctrlNum, val) {
+export function midictrl(devIdx, chan, ctrlNum, val) {
   if (WebMidi.outputs[devIdx]) {
     WebMidi.outputs[devIdx].sendControlChange(ctrlNum, val, { channels: [chan] });
   }

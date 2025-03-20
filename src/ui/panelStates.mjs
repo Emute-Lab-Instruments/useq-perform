@@ -1,17 +1,14 @@
-export { panelStates, interfaceStates, togglePanelState, setPanelState };
-
 /**
  * Panel States Module
  * 
  * Defines constants and state management for UI panels in the application
  */
 
-
 /**
  * Enumeration of possible panel display states
  * @enum {number}
  */
-const panelStates = 
+export const panelStates = 
 {
   /** Panel is hidden/closed */
   OFF: 0,
@@ -27,7 +24,7 @@ const panelStates =
  * Current state of all interface panels and related UI elements
  * @type {Object}
  */
-var interfaceStates = {
+export var interfaceStates = {
   /** Current state of the video panel */
   vidpanelState: panelStates.OFF,
   
@@ -50,7 +47,7 @@ var interfaceStates = {
  * @param {string} elementId - The DOM element ID of the panel
  * @returns {number} The new panel state
  */
-function togglePanelState(panelType, elementId) {
+export function togglePanelState(panelType, elementId) {
   // Validate that the panelType exists in interfaceStates
   if (!(panelType + 'State' in interfaceStates)) {
     console.error(`Panel type "${panelType}" not found in interfaceStates`);
@@ -88,7 +85,7 @@ function togglePanelState(panelType, elementId) {
  * @param {number} state - The state to set (use panelStates constants)
  * @param {string} elementId - The DOM element ID of the panel
  */
-function setPanelState(panelType, state, elementId) {
+export function setPanelState(panelType, state, elementId) {
   // Validate that the panelType exists in interfaceStates
   if (!(panelType + 'State' in interfaceStates)) {
     console.error(`Panel type "${panelType}" not found in interfaceStates`);

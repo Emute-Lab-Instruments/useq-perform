@@ -9,16 +9,6 @@ html, body {
   font-family: 'Helvetica Neue', Arial, sans-serif;
 }
 
-.header {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  gap: 10px;
-  position: fixed;
-  right: 20px;
-  top: 10px;
-  z-index: 999;
-}
-
 a.button5 {
   display: inline-block;
   padding: 0.46em 0.6em;
@@ -52,7 +42,7 @@ a.button5:hover {
   }
 }
 
-.container-editor {
+.panel-editor {
   width: 100%;
   height: 100%;
   top:0px;
@@ -66,42 +56,57 @@ a.button5:hover {
   z-index:100;
 }
 
-.container-editor .cm-content, 
-.container-editor .cm-gutter { 
+.panel-editor .cm-content, 
+.panel-editor .cm-gutter { 
   min-height: 150px; 
 }
 
-.container-editor .cm-gutters { 
+.panel-editor .cm-gutters { 
   margin: 1px; 
 }
 
-.container-editor .cm-scroller { 
+.panel-editor .cm-scroller { 
   overflow: auto; 
 }
 
-.container-editor .cm-wrap { 
+.panel-editor .cm-wrap { 
   border: none;
 }
 
-.container-console {
+.main-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.panel-console {
   position: fixed;
-  padding: 1em;
-  width: 40%;
-  height: 20%;
-  right: 20px;
-  bottom: 20px;
+  height: 49%;
+  width: 29%;
+  left: 70%;
+  top: 50%;
   border: 2px solid var(--panel-border);
   background-color: var(--console-bg);
   color: var(--text-primary);
-  z-index: 100000;
-  opacity: 0.8;
+  min-width: 20em;
+  z-index: 99999;
+  resize: both;
+  opacity: 1;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  padding: 12px;
+  font-family: var(--code-font);
+  font-size: 0.9em;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.container-console a {
-  color: hotpink;
+.panel-console a {
+  color: var(--accent-color);
 }
 
-.container-serialvis {
+.panel-serialvis {
   position:fixed;
   height:100%;
   width:100%;
@@ -117,13 +122,13 @@ a.button5:hover {
   pointer-events: none;
 }
 
-.container-serialvis .serialcanvas {
+.panel-serialvis .serialcanvas {
   background-color: transparent;
   width: 100%;
   height: 100%; 
 }
 
-.container-webcam {
+.panel-webcam {
   position:fixed;
   height:100%;
   width:100%;
@@ -138,7 +143,7 @@ a.button5:hover {
   overflow: hidden;
 }
 
-.container-help {
+.panel-help {
   position: fixed;
   height: 70%;
   width: 50%;
@@ -158,11 +163,11 @@ a.button5:hover {
   display: none;
 }
 
-.container-help.visible {
+.panel-help.visible {
   opacity: 1;
 }
 
-.container-help b {
+.panel-help b {
   color: #444;
   font-size: 1.1em;
   margin-top: 1em;
@@ -287,7 +292,7 @@ a.button5:hover {
   box-shadow: 0 0 20px lightgreen;
 }
 
-.container-patches {
+.panel-patches {
   position: fixed;
   height: 70%;
   width: 40%;
@@ -307,7 +312,7 @@ a.button5:hover {
   display: none;
 }
 
-.container-patches.visible {
+.panel-patches.visible {
   opacity: 1;
 }
 
@@ -324,7 +329,7 @@ a.button5:hover {
   position: relative;
 }
 
-.patch-code {
+.snippet-editors {
   margin: 0;
   height: auto;
   min-height: 100px;
@@ -332,7 +337,7 @@ a.button5:hover {
   font-family: monospace;
 }
 
-.patch-code .cm-scroller {
+.snippet-editors .cm-scroller {
   min-height: 100px;
   max-height: 400px;
 }
@@ -402,4 +407,107 @@ a.button5:hover {
     padding: 1em;
     border: 1px solid var(--panel-border);
     background: var(--panel-bg);
+}
+.toolbar-button {
+  background-color: white;
+  color: black;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  margin: 4px;
+}
+
+.toolbar-button:hover {
+  background-color: #f0f0f0;
+}
+/* Panel Layout Styles */
+#toolbar-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background-color: white;
+  border-bottom: 1px solid var(--panel-border);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.toolbar-button {
+  margin: 0 4px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Adjust main editor panel to account for toolbar */
+#main-editor-panel {
+  position: fixed;
+  top: 40px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--editor-bg);
+}
+
+#console-panel {
+  position: fixed;
+  width: 30%;
+  height: 50%;
+  right: 0;
+  bottom: 0;
+  background: var(--console-bg);
+  border-left: 1px solid var(--panel-border);
+  overflow: auto;
+  padding: 1rem;
+}
+
+#help-panel {
+  position: fixed;
+  top: 40px;
+  right: 0;
+  width: 30%;
+  height: calc(100% - 40px);
+  background: var(--panel-bg);
+  border-left: 1px solid var(--panel-border);
+  overflow: auto;
+  padding: 1rem;
+}
+
+#settings-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 1rem;
+  z-index: 1100;
+}
+
+#snippets-panel {
+  position: fixed;
+  top: 40px;
+  right: 0;
+  width: 40%;
+  height: calc(100% - 40px);
+  background: var(--panel-bg);
+  border-left: 1px solid var(--panel-border);
+  overflow: auto;
+  padding: 1rem;
+}
+
+/* Transition effects */
+#console-panel,
+#help-panel,
+#settings-panel,
+#snippets-panel {
+  transition: all 0.3s ease-in-out;
 }
