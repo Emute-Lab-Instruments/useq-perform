@@ -1,34 +1,63 @@
 import * as esbuild from 'esbuild';
-
-// Check if we're in watch mode
-const watch = process.argv.includes('--watch');
+import cssModulesPlugin from 'esbuild-plugin-css-modules';
 
 // Common build options
-const buildOptions = {
-  entryPoints: ['src/main.mjs'],
+const commonOptions = {
   bundle: true,
   sourcemap: true,
   format: 'iife',
-  outfile: 'public/bundle.mjs',
   platform: 'browser',
-  target: 'es2015',  // Changed from specific browsers to ES2015 target which supports destructuring
-  define: {
-    'process.env.NODE_ENV': watch ? '"development"' : '"production"',
-    'global': 'window',
-  },
-  minify: !watch,
-  loader: {
-    '.mjs': 'jsx'
-  }
+  target: 'es2015',
+  minify: !process.argv.includes('--watch'),
 };
 
-if (watch) {
-  // Watch mode
-  const ctx = await esbuild.context(buildOptions);
-  await ctx.watch();
-  console.log('Watching for changes...');
-} else {
-  // Single build
-  await esbuild.build(buildOptions);
-  console.log('Build complete');
+// JavaScript build configuration
+const jsBuildOptions = {
+  ...commonOptions,
+  entryPoints: ['src/main.mjs'],
+  outfile: 'public/bundle.mjs',
+  loader: {
+    '.mjs': 'jsx'
+  },
+  define: {
+    'process.env.NODE_ENV': process.argv.includes('--watch') ? '"development"' : '"production"',
+    'global': 'window',
+  },
+};
+
+// CSS build configuration
+const cssBuildOptions = {
+  ...commonOptions,
+  entryPoints: ['src/styles/index.css'],
+  outfile: 'public/bundle.css',
+  plugins: [cssModulesPlugin()],
+};
+
+async function build() {
+  try {
+    if (process.argv.includes('--watch')) {
+      // Watch mode
+      const jsContext = await esbuild.context(jsBuildOptions);
+      const cssContext = await esbuild.context(cssBuildOptions);
+      
+      await Promise.all([
+        jsContext.watch(),
+        cssContext.watch()
+      ]);
+      
+      console.log('Watching for changes...');
+    } else {
+      // Single build
+      await Promise.all([
+        esbuild.build(jsBuildOptions),
+        esbuild.build(cssBuildOptions)
+      ]);
+      console.log('Build complete');
+    }
+  } catch (error) {
+    console.error('Build failed:', error);
+    process.exit(1);
+  }
 }
+
+build();

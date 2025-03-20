@@ -1,0 +1,232 @@
+/* Base panel style that all panels inherit from */
+.panel-aux {
+  position: fixed;
+  background-color: rgba(
+    255,
+    255,
+    255,
+    0.5
+  ); /* White background with 50% opacity */
+  color: black;
+  z-index: 100;
+  transition: all 0.3s ease-in-out;
+  opacity: 0;
+  display: none;
+}
+
+/* Default visibility for toolbar and console panels */
+#panel-toolbar, #panel-console {
+    display: block !important;
+  }
+
+
+/* Editor Panel */
+.panel-editor {
+  width: 100%;
+  height: calc(100% - 40px); /* Subtract toolbar height */
+  top: 40px; /* Start after toolbar */
+  position: absolute;
+  min-width: 25em;
+  overflow: hidden;
+  resize: both;
+  opacity: 0.8;
+  z-index: 100;
+}
+
+.panel-editor .cm-content,
+.panel-editor .cm-gutter {
+  min-height: 150px;
+}
+
+.panel-editor .cm-gutters {
+  margin: 1px;
+}
+
+.panel-editor .cm-scroller {
+  overflow: auto;
+}
+
+.panel-editor .cm-wrap {
+  border: none;
+}
+
+/* Console Panel */
+.panel-console {
+  position: fixed;
+  height: 49%;
+  width: 29%;
+  left: 70%;
+  top: 50%;
+  border: 2px solid rgba(0, 255, 65, 0.3);
+  /*   border: 2px solid var(--panel-border); */
+  min-width: 20em;
+  z-index: 99999;
+  resize: both;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  padding: 12px;
+  font-family: var(--code-font);
+  font-size: 0.9em;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  color: #00FF41; /* Match editor theme text color */
+  background-color: rgba(12, 23, 16, 0.95); /* Slightly transparent dark background matching theme */
+}
+
+.panel-console a {
+  color: var(--accent-color);
+}
+
+/* Serial Visualization Panel */
+.panel-serialvis {
+  position: fixed;
+  height: 100%;
+  width: 100%;
+  left: 0%;
+  top: 0%;
+  border: 2px solid #000;
+  background-color: #00000000;
+  color: #fff;
+  z-index: 99999;
+  resize: both;
+  opacity: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.panel-serialvis .serialcanvas {
+  background-color: transparent;
+  width: 100%;
+  height: 100%;
+}
+
+/* Webcam Panel */
+.panel-webcam {
+  position: fixed;
+  height: 100%;
+  width: 100%;
+  left: 0%;
+  top: 0%;
+  border: 2px solid #000;
+  background-color: transparent;
+  color: #fff;
+  z-index: 10;
+  resize: both;
+  opacity: 20%;
+  overflow: hidden;
+}
+
+/* Help Panel */
+.panel-help {
+  position: fixed;
+  height: 70%;
+  width: 50%;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--panel-border);
+  z-index: 99999;
+  padding: 2em;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+  overflow-y: auto;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  display: none;
+}
+
+.panel-help.visible {
+  opacity: 1;
+}
+
+/* Settings Panel */
+#panel-settings {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 1rem;
+  z-index: 1100;
+}
+
+/* Snippets Panel */
+#panel-snippets {
+  position: fixed;
+  top: 40px;
+  right: 0;
+  width: 40%;
+  height: calc(100% - 40px);
+  border-left: 1px solid var(--panel-border);
+  overflow: auto;
+  padding: 1rem;
+}
+
+/* Patches Panel */
+.panel-patches {
+  position: fixed;
+  height: 70%;
+  width: 40%;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 2px solid var(--panel-border);
+  z-index: 100000;
+  padding: 1.5em;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+  overflow-y: auto;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  display: none;
+}
+
+.panel-patches.visible {
+  opacity: 1;
+}
+
+/* Theme Panel */
+.panel-theme {
+  position: fixed;
+  height: 70%;
+  width: 50%;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--panel-border);
+  z-index: 99999;
+  padding: 2em;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+  overflow-y: auto;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  display: none;
+}
+
+.panel-theme.visible {
+  opacity: 1;
+}
+
+.panel-theme .theme-preview {
+  margin-bottom: 1.5em;
+  padding: 1em;
+  border-radius: 4px;
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.panel-theme .theme-preview:hover {
+  background: rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.panel-theme .theme-name {
+  font-size: 1.1em;
+  margin-bottom: 0.5em;
+  color: var(--text-primary);
+}

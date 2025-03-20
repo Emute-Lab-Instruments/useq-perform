@@ -54,10 +54,10 @@ export function initToolbarPanel(editor) {
     
     $("#helpButton").click(() => {
         if (interfaceStates.helpPanelState === panelStates.OFF) {
-            $("#help-panel").show(100);
+            $("#panel-help").show(100);
             interfaceStates.helpPanelState = panelStates.PANEL;
         } else {
-            $("#help-panel").hide(100);
+            $("#panel-help").hide(100);
             interfaceStates.helpPanelState = panelStates.OFF;
         }
     });
