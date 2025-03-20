@@ -73,7 +73,7 @@ export function sendTouSEQ(code, capture = null) {
   } else {
     post("uSEQ not connected");
     // Add attention-grabbing animation to connect button
-    $("#btnConnect")
+    $("#button-connect")
       .animate({ scale: 1.2 }, 200)
       .animate({ scale: 1 }, 200)
       .animate({ rotate: '-3deg' }, 100)
@@ -239,7 +239,7 @@ export function connectToSerialPort(port) {
   port.open({ baudRate: 115200 }).then(() => {
     setSerialPort(port);
     serialReader();
-    $("#btnConnect").hide(1000);
+    $("#button-connect").hide(1000);
     console.log("checking version");
     sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
   }).catch((err) => {
@@ -265,7 +265,7 @@ export function checkForWebserialSupport() {
     });
     
     navigator.serial.addEventListener('disconnect', e => {
-      $("#btnConnect").show(1000);
+      $("#button-connect").show(1000);
       post("uSEQ disconnected");
     });
   }

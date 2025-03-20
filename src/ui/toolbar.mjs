@@ -1,7 +1,6 @@
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { changeFontSize } from "../editors/editorConfig.mjs";
 import { connectToSerialPort } from "../io/serialComms.mjs";
-import { interfaceStates, panelStates } from "./panelStates.mjs";
 
 let editorInstance = null;
 
@@ -10,19 +9,19 @@ export function initToolbarPanel(editor) {
     editorInstance = editor;
     
     // Set up UI event handlers
-    $("#increaseFontButton").on("click", () => {
+    $("#button-increase-font").on("click", () => {
         activeUserSettings.editor.fontSize++;
         changeFontSize(editorInstance, activeUserSettings.editor.fontSize);
         saveUserSettings();
     });
     
-    $("#decreaseFontButton").on("click", () => {
+    $("#button-decrease-font").on("click", () => {
         activeUserSettings.editor.fontSize--;
         changeFontSize(editorInstance, activeUserSettings.editor.fontSize);
         saveUserSettings();
     });
     
-    $("#btnConnect").on("click", function() {
+    $("#button-connect").on("click", function() {
         console.log("uSEQ-Perform: hello");
         navigator.serial.requestPort()
             .then((port) => {
@@ -33,7 +32,7 @@ export function initToolbarPanel(editor) {
             });
     });
     
-    $("#loadButton").on("click", async () => {
+    $("#button-load").on("click", async () => {
         let fileHandle;
         [fileHandle] = await window.showOpenFilePicker();
         const file = await fileHandle.getFile();
@@ -44,7 +43,7 @@ export function initToolbarPanel(editor) {
         editorInstance.dispatch(transaction);
     });
     
-    $("#saveButton").on("click", async () => {
+    $("#button-save").on("click", async () => {
         const fileData = { 
             "text": editorInstance.state.doc.toString(),
             "format_version": 1 
@@ -52,14 +51,8 @@ export function initToolbarPanel(editor) {
         await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
     });
     
-    $("#helpButton").click(() => {
-        if (interfaceStates.helpPanelState === panelStates.OFF) {
-            $("#panel-help").show(100);
-            interfaceStates.helpPanelState = panelStates.PANEL;
-        } else {
-            $("#panel-help").hide(100);
-            interfaceStates.helpPanelState = panelStates.OFF;
-        }
+    $("#button-help").click(() => {
+        $("#panel-help").toggle(100);
     });
 }
 

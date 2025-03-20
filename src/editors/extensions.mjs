@@ -16,10 +16,14 @@ import { history } from '@codemirror/commands';
 import { baseKeymap, mainEditorKeymap } from "./keymaps.mjs";
 import { themeCompartment, fontSizeCompartment } from "./state.mjs";
 
-console.log('extensions.mjs: Loading...');
-console.log('extensions.mjs: Active user settings:', activeUserSettings);
-console.log('extensions.mjs: Theme compartment:', themeCompartment);
-console.log('extensions.mjs: Available themes:', Object.keys(themes));
+
+const dbg = (...args) => {if (false) {console.log(...args)}};
+
+
+dbg('extensions.mjs: Loading...');
+dbg('extensions.mjs: Active user settings:', activeUserSettings);
+dbg('extensions.mjs: Theme compartment:', themeCompartment);
+dbg('extensions.mjs: Available themes:', Object.keys(themes));
 
 // Create update listener
 export const updateListener = EditorView.updateListener.of((update) => {
@@ -30,13 +34,13 @@ export const updateListener = EditorView.updateListener.of((update) => {
 });
 
 // Theme-related extensions
-console.log('extensions.mjs: Creating theme extensions with:', {
+dbg('extensions.mjs: Creating theme extensions with:', {
   theme: activeUserSettings.editor.theme,
   fontSize: activeUserSettings.editor.fontSize
 });
 
 const selectedTheme = themes[activeUserSettings.editor.theme];
-console.log('extensions.mjs: Selected theme:', selectedTheme ? 'found' : 'not found');
+dbg('extensions.mjs: Selected theme:', selectedTheme ? 'found' : 'not found');
 
 const themeExtensions = [
   editorBaseTheme,
@@ -58,7 +62,7 @@ const functionalExtensions = [
   updateListener
 ];
 
-console.log('extensions.mjs: Created base extensions:', {
+dbg('extensions.mjs: Created base extensions:', {
   themeExtensions: 'themeExtensions array',
   functionalExtensions: 'functionalExtensions array'
 });
@@ -77,4 +81,4 @@ export const mainEditorExtensions = [
   ...baseExtensions
 ];
 
-console.log('extensions.mjs: Final mainEditorExtensions array created');
+dbg('extensions.mjs: Final mainEditorExtensions array created');

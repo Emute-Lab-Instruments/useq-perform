@@ -9,7 +9,6 @@ import { sendTouSEQ } from '../io/serialComms.mjs';
 import { post } from '../io/console.mjs';
 
 // UI STATE
-import { interfaceStates, panelStates, togglePanelState, setPanelState } from '../ui/panelStates.mjs';
 import { openCam } from '../ui/camera.mjs';
 import { getUserSettings } from '../utils/persistentUserSettings.mjs';
 import { fontSizeCompartment } from './state.mjs';
@@ -30,9 +29,12 @@ export function evalQuantised(opts) {
 }
 
 export function toggleHelp() {
-  togglePanelState('helpPanel', 'helppanel');
+  $("#helppanel").toggle();
   return true;
 }
+
+// Track camera state
+let isCameraOpen = false;
 
 /**
  * Toggle video panel visibility
@@ -40,17 +42,17 @@ export function toggleHelp() {
  */
 export function toggleVid() {
   // Open cam if needed
-  if (!interfaceStates.camOpened) {
+  if (!isCameraOpen) {
     if (openCam()) {
-      interfaceStates.camOpened = true;
+      isCameraOpen = true;
     } else {
       post("There was an error opening the video camera");
       return false;
     }
   }
   
-  if (interfaceStates.camOpened) {
-    togglePanelState('vidpanel', 'vidcontainer');
+  if (isCameraOpen) {
+    $("#vidcontainer").toggle();
   }
   
   return true;
@@ -61,11 +63,12 @@ export function toggleVid() {
  * @returns {boolean} True to indicate success
  */
 export function toggleSerialVis() {
-  const newState = togglePanelState('serialVisPanel', 'serialvis');
+  const $serialvis = $("#serialvis");
+  $serialvis.toggle();
   
   // Apply additional styling if panel is visible
-  if (newState === panelStates.PANEL) {
-    $("#serialvis").css({
+  if ($serialvis.is(":visible")) {
+    $serialvis.css({
       'top': 0,
       'left': 0,
       'width': '100%',

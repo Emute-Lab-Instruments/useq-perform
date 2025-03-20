@@ -1,5 +1,4 @@
 import { serialBuffers } from "../io/serialComms.mjs";
-import { interfaceStates, panelStates } from "./panelStates.mjs";
 
 export function drawSerialVis() {
   const palette = ['#00429d', '#45a5ad', '#ace397', '#fcbf5d', '#ff809f', '#ff005e', '#c9004c', '#93003a'];
@@ -31,7 +30,7 @@ export function drawSerialVis() {
   ctx.textAlign = 'right';  // Right-align text
   
   // Move header buttons left when visualization panel is active
-  if (interfaceStates.serialVisPanelState === panelStates.PANEL) {
+  if ($("#serialvis").is(":visible")) {
     $(".header").css("right", "50px"); // Add space for scale markings
   } else {
     $(".header").css("right", "20px"); // Restore original position
@@ -79,7 +78,30 @@ export function drawSerialVis() {
   window.requestAnimationFrame(drawSerialVis);
 }
 
-export function initVisPanel(){
+export function initVisPanel() {
     // Start animation loop for serial visualization
     window.requestAnimationFrame(drawSerialVis);
+
+    // Handle toggling visibility
+    $("#visButton").on("click", () => {
+        const $serialvis = $("#serialvis");
+        $serialvis.toggle();
+        
+        // Apply positioning when visible
+        if ($serialvis.is(":visible")) {
+            $serialvis.css({
+                "top": 0,
+                "left": 0,
+                "width": "100%",
+                "height": "100%"
+            });
+        }
+    });
+
+    // Handle ESC key to close panel 
+    $(document).on("keydown", (e) => {
+        if (e.key === "Escape" && $("#serialvis").is(":visible")) {
+            $("#serialvis").hide();
+        }
+    });
 }
