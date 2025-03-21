@@ -236,6 +236,7 @@ export async function serialReader() {
  * Connect to the serial port for uSEQ communication
  */
 export function connectToSerialPort(port) {
+  console.log("Connecting to serial port:", port);
   port.open({ baudRate: 115200 }).then(() => {
     setSerialPort(port);
     serialReader();
@@ -250,11 +251,13 @@ export function connectToSerialPort(port) {
 }
 
 export function checkForWebserialSupport() {
+  console.log("Checking for Web Serial API support...");
   // Check for Web Serial API support
   if (!navigator.serial) {
     post("A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module");
     post("See https://caniuse.com/web-serial for more information");
   } else {
+    console.log("Web Serial API supported");
     // Set up serial connection event listeners
     navigator.serial.addEventListener('connect', e => {
       console.log(e);
