@@ -1,7 +1,7 @@
 import { createMainEditor } from './editors/main.mjs';
 import { initUI } from './ui/ui.mjs';
 import { checkForWebserialSupport } from './io/serialComms.mjs';
-import { deleteLocalStorage } from './utils/persistentUserSettings.mjs';
+import { activeUserSettings, deleteLocalStorage } from './utils/persistentUserSettings.mjs';
 import { post } from './io/console.mjs';
 
 // Store editor instance globally 
@@ -21,7 +21,7 @@ $(document).ready(() => {
    const urlParams = new URLSearchParams(window.location.search);
   
    if (urlParams.has('nosave')) {
-     config.saveCodeLocally = false;
+     activeUserSettings.storage.saveCodeLocally = false;
      updateUserSettings('storage', { saveCodeLocally: false });
    }
 
@@ -65,7 +65,7 @@ $(document).ready(() => {
     });
   } else {
     // Load from local storage
-    if (config.saveCodeLocally) {
+    if (activeUserSettings.storage.saveCodeLocally) {
       let txt = window.localStorage.getItem("codeStorageKey");
       if (txt) {
         const transactionSpec = { changes: { from: 0, to: editor.state.doc.length, insert: txt } };
@@ -76,6 +76,6 @@ $(document).ready(() => {
   }
 
   // Display welcome messages
-  post("Hello!");
+  post(`Hello, ${activeUserSettings.name}!`);
   post("Use the [connect] button to link to uSEQ");
 });
