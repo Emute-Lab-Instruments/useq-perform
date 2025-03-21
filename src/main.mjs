@@ -17,7 +17,6 @@ $(document).ready(() => {
     return;
   }
 
-     
    // Handle URL parameters
    const urlParams = new URLSearchParams(window.location.search);
   
@@ -79,20 +78,4 @@ $(document).ready(() => {
   // Display welcome messages
   post("Hello!");
   post("Use the [connect] button to link to uSEQ");
-
-  // Load snippets panel
-  const $snippetsPanelContainer = $('#panel-snippets');
-  let snippetsPanel = createSnippetsPanel();
-  $snippetsPanelContainer.append(snippetsPanel);
-  
-  // Load help panel
-  const $helpPanelContainer = $('#panel-help');
-  let helpPanel = createHelpPanel();
-  $helpPanelContainer.append(helpPanel);
-
-  // Load settings panel
-  const $settingsPanelContainer = $('#panel-settings');
-  let settingsPanel = createSettingsPanel();
-  $settingsPanelContainer.append(settingsPanel);
-
 });
