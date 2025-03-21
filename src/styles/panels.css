@@ -36,10 +36,11 @@
   position: fixed;
   height: 49%;
   width: 29%;
-  left: 70%;
+  right: 0;
   top: 50%;
   border: 2px solid;
   min-width: 20em;
+  max-width: 30em;
   z-index: 99999;
   resize: both;
   overflow-y: scroll;
@@ -82,16 +83,96 @@
 /* Help Panel */
 #panel-help.panel-aux {
   height: 70%;
-  width: 50%;
-  left: 50%;
+  width: 25%;
+  right: 0;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateY(-50%);
   border: 2px solid var(--panel-border);
   z-index: 99999;
-  padding: 2em;
+  padding: 1.5em;
   border-radius: 8px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
+  background-color: var(--panel-bg, rgba(30, 30, 30, 0.95));
+  transition: all 0.3s ease-in-out;
+}
+
+/* Help Panel - Centered mode */
+#panel-help.panel-aux.centered {
+  width: 40%;
+  right: 50%;
+  transform: translate(50%, -50%);
+}
+
+/* Help Panel - Close button */
+#panel-help-toggle-position {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 30px;
+  height: 30px;
+  background-color: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+#panel-help-toggle-position:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Help Panel - Content styling */
+#panel-help .key-bindings-section {
+  text-align: left;
+  margin-bottom: 1.5em;
+  width: 100%;
+}
+
+#panel-help .help-row {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin: 0.5em 0;
+  flex-wrap: nowrap;
+}
+
+#panel-help .key-binding {
+  min-width: 100px;
+  margin: 0 0.5em;
+  padding: 0.2em 0.5em;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-family: var(--code-font);
+  white-space: nowrap;
+  text-align: center;
+}
+
+#panel-help .help-description {
+  margin-left: 0.5em;
+  text-align: left;
+  flex: 1;
+}
+
+#panel-help .mac-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+}
+
+#panel-help b {
+  display: block;
+  text-align: center;
+  margin: 1em 0 0.5em;
+  font-size: 1.1em;
+  color: var(--accent-color, #00ff41);
 }
 
 /* Settings Panel */
@@ -141,6 +222,10 @@
   border: 1px solid var(--panel-border);
   cursor: pointer;
   transition: all 0.2s ease;
+}
+/* FIXME doesn't seem to work */
+#panel-theme .theme-preview .cm-editor {
+  pointer-events: none;
 }
 
 #panel-theme .theme-preview:hover {

@@ -1,3 +1,46 @@
+/* Define CSS custom properties (variables) at the root level so they're globally available */
+:root {
+  /* Set the default monospace font for code elements
+   * This variable is used throughout the application for code blocks, editors, and terminals
+   * Using 'monospace' as a fallback ensures consistent character width even if other fonts aren't available
+   */
+  /* --code-font: monospace; */
+  /* --code-font: 'Source Code Pro', monospace; */
+  /* --code-font: 'Fira Code', monospace; */
+  /* --code-font: 'Hack', monospace; */
+  /* --code-font: 'Ubuntu Mono', monospace; */
+  /* --code-font: 'Consolas', monospace; */
+  /* --code-font: 'DejaVu Sans Mono', monospace; */
+  --code-font: 'IBM Plex Mono', monospace;
+  
+  /* Panel styling variables */
+  --panel-bg: rgba(30, 30, 30, 0.95); /* Default panel background color */
+  --panel-border: rgba(255, 255, 255, 0.2); /* Default panel border color */
+  --accent-color: #00ff41; /* Default accent color */
+  --text-primary: #f8f8f2; /* Default text color */
+}
+
+/* Base styles for editor cursor */
+.cm-cursor {
+  position: relative;
+  background-color: transparent !important;
+  border-left: none !important;
+}
+
+.cm-cursor::before {
+  border-left: none;
+  content: '|';
+  position: absolute;
+  background-color: var(--caret, #00FF41);
+  color: transparent;
+  opacity: 0.7;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  font-family: var(--code-font);
+  margin-left: 0.5px;
+}
+
 /* Base styles for html and body */
 html, body {
   width: 100%;
@@ -8,6 +51,33 @@ html, body {
   color: var(--editor-fg);
   font-size: 100%;
   font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Modern scrollbar styling */
+.cm-scroller::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb {
+  background: var(--editor-fg);
+  opacity: 0.3;
+  border-radius: 4px;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--editor-fg);
+  opacity: 0.5;
+}
+
+/* Firefox scrollbar styling */
+.cm-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: var(--editor-fg) transparent;
 }
 
 .main-container {
