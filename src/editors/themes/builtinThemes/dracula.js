@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Zeno Rocha
-export const dracula = createTheme({
+export const dracula = {
+	name: 'Dracula',
 	variant: 'dark',
 	settings: {
 		background: '#2d2f3f',
@@ -48,4 +49,4 @@ export const dracula = createTheme({
 			color: '#50fa7b',
 		},
 	],
-});
+};

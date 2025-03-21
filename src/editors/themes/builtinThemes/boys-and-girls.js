@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: unknown
-export const boysAndGirls = createTheme({
+export const boysAndGirls = {
+	name: 'Boys and Girls',
 	variant: 'dark',
 	settings: {
 		background: '#000205',
@@ -37,4 +38,4 @@ export const boysAndGirls = createTheme({
 			fontWeight: 'bold',
 		},
 	],
-});
+};

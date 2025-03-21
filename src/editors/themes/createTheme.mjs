@@ -26,12 +26,14 @@ import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 /**
  * Creates a CodeMirror theme extension
  */
-export function createTheme({ variant, settings, styles }) {
+
+export function createTheme({ name=null, variant, settings, styles }) {
   if (!settings) {
     console.error("themeManager.mjs: Missing settings in theme configuration");
     throw new Error("Missing settings in theme configuration");
   }
 
+  console.log("color:", settings.foreground);
   const theme = EditorView.theme(
     {
       "&": {
@@ -66,9 +68,17 @@ export function createTheme({ variant, settings, styles }) {
   const highlightStyle = HighlightStyle.define(styles);
   const extension = [theme, syntaxHighlighting(highlightStyle)];
 
+//   if (name) {
+//     console.log("themeManager.mjs: Registering theme:", name);
+//     themeRecipes[name] = {variant: variant, settings: settings, styles: styles};
+//     themes[name] = extension;
+//   }
+
   return extension;
 }
 
-export function registerTheme(registry, name, theme) {
-  registry[name] = theme;
-}
+
+
+// export function registerTheme(registry, name, theme) {
+//   registry[name] = theme;
+// }

@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Chris Kempson
-export const tomorrow = createTheme({
+export const tomorrow = {
+	name: 'Tomorrow',
 	variant: 'light',
 	settings: {
 		background: '#FFFFFF',
@@ -51,4 +52,4 @@ export const tomorrow = createTheme({
 			color: '#4D4D4C',
 		},
 	],
-});
+};

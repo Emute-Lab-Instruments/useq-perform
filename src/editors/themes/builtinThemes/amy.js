@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: William D. Neumann
-export const amy = createTheme({
+export const amy = {
+	name: 'Amy',
 	variant: 'dark',
 	settings: {
 		background: '#200020',
@@ -83,4 +84,4 @@ export const amy = createTheme({
 			color: '#D0D0FF',
 		},
 	],
-});
+};

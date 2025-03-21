@@ -15,6 +15,6 @@ export function post(value) {
     consoleLines.shift(); // Remove oldest line
   }
   
-  $("#console").html(consoleLines.join(''));
-  $('#console').scrollTop($('#console')[0].scrollHeight - $('#console')[0].clientHeight);
+  $("#panel-console").html(consoleLines.join(''));
+  $('#panel-console').scrollTop($('#panel-console')[0].scrollHeight - $('#panel-console')[0].clientHeight);
 }

@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: unknown
-export const barf = createTheme({
+export const barf = {
+	name: 'Barf',
 	variant: 'dark',
 	settings: {
 		background: '#15191EFA',
@@ -57,4 +58,4 @@ export const barf = createTheme({
 			color: '#A3D295',
 		},
 	],
-});
+};

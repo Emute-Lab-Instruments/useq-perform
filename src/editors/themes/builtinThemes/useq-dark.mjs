@@ -1,7 +1,8 @@
 import { tags as t } from '@lezer/highlight';
 import { createTheme } from '../createTheme.mjs';
 
-const themeConfig = {
+export const useqDark = {
+  name: 'uSEQ Dark',
   variant: 'dark',
   settings: {
     background: '#0C1710',
@@ -13,7 +14,7 @@ const themeConfig = {
     lineHighlight: '#00FF411A',
   },
   styles: [
-    {
+    { 
       tag: t.comment,
       color: '#267F45',
     },
@@ -61,5 +62,3 @@ const themeConfig = {
     },
   ],
 };
-
-export const useqDark = createTheme(themeConfig);

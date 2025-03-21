@@ -4,8 +4,10 @@
  * Handles application configuration, including loading, saving,
  * and providing defaults.
  */
-import { defaultFontSize, defaultTheme, defaultEditorStartingCode } from "../editors/defaults.mjs";
+import { defaultFontSize, defaultTheme, defaultMainEditorStartingCode } from "../editors/defaults.mjs";
 import { themes } from "../editors/themes/themeManager.mjs";
+
+console.log("themes: ", themes);
 
 const dbg = (...args) => {if (false) {console.log(...args)}};
 
@@ -23,7 +25,7 @@ export const codeStorageKey = "uSEQ-Perform-User-Code";
 const defaultUserSettings = { 
   name: "Livecoder",
   editor: { 
-    code: defaultEditorStartingCode,
+    code: defaultMainEditorStartingCode,
     theme: defaultTheme,
     fontSize: defaultFontSize },
   storage : {  
