@@ -1,10 +1,9 @@
 import { Compartment } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 
+// Create compartments for theme and font size
 export const themeCompartment = new Compartment();
 export const fontSizeCompartment = new Compartment();
-
-
 
 export const stateExtensions = [];
 

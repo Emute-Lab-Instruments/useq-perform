@@ -51,7 +51,7 @@ const themeExtensions = [
     })
   ),
   lineNumbers(),
-  bracketMatching(),
+  bracketMatching()
 ];
 
 // Core functionality extensions
