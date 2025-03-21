@@ -2,6 +2,8 @@ import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { activeUserSettings, loadUserSettings } from '../utils/persistentUserSettings.mjs';
 import { mainEditorExtensions } from './extensions.mjs';
+import { setMainEditorTheme } from './themes/themeManager.mjs';
+import { setFontSize } from './editorConfig.mjs';
 
 /**
  * Creates and configures the editor instance
@@ -27,6 +29,9 @@ export function createEditor(startingText, extensions) {
     state: state
   });
 
+  // Make sure it's initialised with the current font size
+  setFontSize(view, activeUserSettings.editor.fontSize);
+
   return view;
 }
 
@@ -35,11 +40,14 @@ export function createMainEditor() {
     theme: activeUserSettings.editor?.theme,
     code: activeUserSettings.editor?.code?.length
   });
-  return createEditor(activeUserSettings.editor.code, mainEditorExtensions);
+
+  let editor = createEditor(activeUserSettings.editor.code, mainEditorExtensions);
+  return editor;
 }
 
 export function initEditorPanel() {
   const editor = createMainEditor();
   $('#panel-main-editor').append(editor.dom);
+  setMainEditorTheme(activeUserSettings.editor.theme);
   return editor;
 }
