@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Fred LeBlanc
-export const clouds = createTheme({
+export const clouds = {
+	name: 'Clouds',
 	variant: 'light',
 	settings: {
 		background: '#fff',
@@ -43,4 +44,4 @@ export const clouds = createTheme({
 			color: '#000',
 		},
 	],
-});
+};

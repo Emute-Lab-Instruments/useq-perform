@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Ethan Schoonover
-export const solarizedLight = createTheme({
+export const solarizedLight = {
+	name: 'Solarized Light',
 	variant: 'light',
 	settings: {
 		background: '#fef7e5',
@@ -73,4 +74,4 @@ export const solarizedLight = createTheme({
 			color: '#859900',
 		},
 	],
-});
+};

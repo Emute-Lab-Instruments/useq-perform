@@ -1,17 +1,21 @@
 // CODEMIRROR IMPORTS
-import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 
 // NEXTJOURNAL (clojure-mode)
-import { extension as eval_ext, cursor_node_string, top_level_string } from '@nextjournal/clojure-mode/extensions/eval-region';
+import {
+  extension as eval_ext,
+  cursor_node_string,
+  top_level_string,
+} from "@nextjournal/clojure-mode/extensions/eval-region";
 
 // SERIAL COMMUNICATION
-import { sendTouSEQ } from '../io/serialComms.mjs';
-import { post } from '../io/console.mjs';
+import { sendTouSEQ } from "../io/serialComms.mjs";
+import { post } from "../io/console.mjs";
 
 // UI STATE
-import { openCam } from '../ui/camera.mjs';
-import { getUserSettings } from '../utils/persistentUserSettings.mjs';
-import { fontSizeCompartment } from './state.mjs';
+import { openCam } from "../ui/camera.mjs";
+import { getUserSettings } from "../utils/persistentUserSettings.mjs";
+import { fontSizeCompartment } from "./state.mjs";
 
 export function evalToplevel(opts, prefix = "") {
   let state = opts.state;
@@ -50,11 +54,11 @@ export function toggleVid() {
       return false;
     }
   }
-  
+
   if (isCameraOpen) {
     $("#vidcontainer").toggle();
   }
-  
+
   return true;
 }
 
@@ -65,17 +69,17 @@ export function toggleVid() {
 export function toggleSerialVis() {
   const $serialvis = $("#serialvis");
   $serialvis.toggle();
-  
+
   // Apply additional styling if panel is visible
   if ($serialvis.is(":visible")) {
     $serialvis.css({
-      'top': 0,
-      'left': 0,
-      'width': '100%',
-      'height': '100%'
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
     });
   }
-  
+
   return true;
 }
 
@@ -86,12 +90,67 @@ export function toggleSerialVis() {
  */
 export function changeFontSize(editor, size) {
   if (!editor) return;
-  
+
   editor.dispatch({
     effects: fontSizeCompartment.reconfigure(
       EditorView.theme({
-        ".cm-content": { fontSize: `${size}px` }
+        ".cm-content": { fontSize: `${size}px` },
       })
-    )
+    ),
   });
+}
+
+
+// Bracket related utilities and modified keymaps
+const openingBracketChars = ["(", "[", "{"];
+const closingBracketChars = [")", "]", "}"];
+const bracketChars = openingBracketChars.concat(closingBracketChars);
+
+/**
+ * Check if two bracket characters match (open/close pair)
+ * @param {string} char1 - First bracket character
+ * @param {string} char2 - Second bracket character
+ * @returns {boolean} True if characters form a matching bracket pair
+ */
+export function areMatchingBracketChars(char1, char2) {
+    const idx1 = openingBracketChars.indexOf(char1);
+    if (idx1 >= 0) {
+        return char2 === closingBracketChars[idx1];
+    }
+    const idx2 = closingBracketChars.indexOf(char1);
+    if (idx2 >= 0) {
+        return char2 === openingBracketChars[idx2];
+    }
+    return false;
+}
+
+// FIXME do something about Ctrl-Del too
+export function makeDeleteWrapper(originalRun) {
+  return (view) => {
+    const { state } = view;
+    const { from } = state.selection.main;
+
+    const nextChar = state.doc.sliceString(from, from + 1);
+    if (bracketChars.includes(nextChar)) {
+      const prevChar = state.doc.sliceString(from - 1, from);
+      if (areMatchingBracketChars(prevChar, nextChar)) {
+        console.log("matching brackets");
+        // We're in an empty pair, delete both
+        // characters around the cursor
+        view.dispatch({
+          changes: { from: from - 1, to: from, insert: "" },
+        });
+        // NOTE: this is needed to avoid a blank space
+        // being inserted after the deleted brackets
+        deleteCharForward(view);
+        return true;
+      } else {
+        // Next char is a closing bracket in a non-empty
+        // expression, do nothing
+        return true;
+      }
+    }
+    // Next char isn't a closing bracket, delete normally
+    return originalRun(view); // Run the original function
+  };
 }

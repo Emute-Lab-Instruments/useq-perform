@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: unknown
-export const coolGlow = createTheme({
+export const coolGlow = {
+	name: 'Cool Glow',
 	variant: 'dark',
 	settings: {
 		background: '#060521',
@@ -61,4 +62,4 @@ export const coolGlow = createTheme({
 			color: '#7BACCA',
 		},
 	],
-});
+};

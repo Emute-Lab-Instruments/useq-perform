@@ -63,12 +63,19 @@ body {
 }
 
 /* src/styles/panels.css */
-.panel-aux[style*="display: none"] {
+.panel-aux {
+  position: fixed;
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
+  z-index: 1000;
   opacity: 0;
+  visibility: hidden;
+  display: none;
+  transition: opacity 0.15s ease-in-out;
 }
-#panel-toolbar,
-#panel-console {
-  display: block !important;
+.panel-aux[style*="display: block"] {
+  opacity: 1;
+  visibility: visible;
 }
 #panel-main-editor {
   position: fixed;
@@ -80,7 +87,7 @@ body {
   min-width: 25em;
   overflow: hidden;
   resize: none;
-  opacity: 1.0;
+  opacity: 1;
   z-index: 100;
 }
 .panel-editor {
@@ -107,13 +114,12 @@ body {
 .panel-editor .cm-wrap {
   border: none;
 }
-.panel-console {
+#panel-console {
   position: fixed;
   height: 49%;
   width: 29%;
   left: 70%;
   top: 50%;
-  border: 2px solid rgba(0, 255, 65, 0.3);
   min-width: 20em;
   z-index: 99999;
   resize: both;
@@ -123,13 +129,13 @@ body {
   font-family: var(--code-font);
   font-size: 0.9em;
   line-height: 1.4;
+  opacity: 40%;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  color: #00FF41;
-  background-color: rgba(12, 23, 16, 0.95);
+  color: #00ff41;
   transition: opacity 0.3s ease-in-out;
-}
-.panel-console a {
-  color: var(--accent-color);
+  a {
+    color: var(--accent-color);
+  }
 }
 #panel-serialvis {
   position: fixed;
@@ -167,8 +173,7 @@ body {
   overflow: hidden;
   transition: opacity 0.3s ease-in-out;
 }
-.panel-help {
-  position: fixed;
+#panel-help.panel-aux {
   height: 70%;
   width: 50%;
   left: 50%;
@@ -180,30 +185,18 @@ body {
   border-radius: 8px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
-  background-color: var(--panel-bg);
-  color: var(--text-primary);
-  transition: opacity 0.3s ease-in-out;
-  display: none;
 }
-.panel-help.visible {
-  opacity: 1;
-}
-#panel-settings {
-  position: fixed;
+#panel-settings.panel-aux {
+  width: 500px;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 500px;
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 1rem;
   z-index: 1100;
-  background-color: var(--panel-bg);
-  color: var(--text-primary);
-  transition: opacity 0.3s ease-in-out;
 }
-#panel-snippets {
-  position: fixed;
+#panel-snippets.panel-aux {
   top: 40px;
   right: 0;
   width: 40%;
@@ -211,9 +204,6 @@ body {
   border-left: 1px solid var(--panel-border);
   overflow: auto;
   padding: 1rem;
-  background-color: var(--panel-bg);
-  color: var(--text-primary);
-  transition: opacity 0.3s ease-in-out;
 }
 .panel-patches {
   position: fixed;
@@ -235,8 +225,7 @@ body {
 .panel-patches.visible {
   opacity: 1;
 }
-.panel-theme {
-  position: fixed;
+#panel-theme {
   height: 70%;
   width: 50%;
   left: 50%;
@@ -248,9 +237,7 @@ body {
   border-radius: 8px;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
-  background-color: var(--panel-bg);
-  color: var(--text-primary);
-  transition: opacity 0.3s ease-in-out;
+  background-color: #fff;
 }
 .panel-theme .theme-preview {
   margin-bottom: 1.5em;
@@ -266,9 +253,13 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 .panel-theme .theme-name {
-  font-size: 1.1em;
-  margin-bottom: 0.5em;
+  font-size: 1.5em;
+  margin-bottom: 1.5em;
   color: var(--text-primary);
+  background-color: var(--panel-bg);
+  padding: 8px 12px;
+  border-radius: 8px;
+  display: inline-block;
 }
 
 /* src/styles/help.css */
@@ -356,6 +347,7 @@ body {
 
 /* src/styles/toolbar.css */
 #panel-toolbar {
+  position: relative;
   position: fixed;
   top: 0;
   left: 0;
@@ -374,11 +366,13 @@ body {
 #panel-toolbar #left-buttons {
   display: flex;
   align-items: center;
-  gap: 4px;
+  margin-right: 2px;
   padding-left: 12px;
 }
 #panel-toolbar #right-buttons {
   display: flex;
+  position: absolute;
+  right: 0;
   align-items: center;
   padding-right: 12px;
 }

@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Kenneth Reitz
-export const smoothy = createTheme({
+export const smoothy = {
+	name: 'Smoothy',
 	variant: 'light',
 	settings: {
 		background: '#FFFFFF',
@@ -79,4 +80,4 @@ export const smoothy = createTheme({
 			color: '#000',
 		},
 	],
-});
+};

@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Liviu Schera
-export const noctisLilac = createTheme({
+export const noctisLilac = {
+	name: 'Noctis Lilac',
 	variant: 'light',
 	settings: {
 		background: '#f2f1f8',
@@ -76,4 +77,4 @@ export const noctisLilac = createTheme({
 			color: '#9995b7',
 		},
 	],
-});
+};

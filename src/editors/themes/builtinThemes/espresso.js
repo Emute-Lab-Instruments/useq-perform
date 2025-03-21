@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: TextMate
-export const espresso = createTheme({
+export const espresso = {
+	name: 'Espresso',
 	variant: 'light',
 	settings: {
 		background: '#FFFFFF',
@@ -41,4 +42,4 @@ export const espresso = createTheme({
 			fontWeight: 'bold',
 		},
 	],
-});
+};
