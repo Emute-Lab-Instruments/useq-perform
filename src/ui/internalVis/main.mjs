@@ -1,5 +1,4 @@
 function create2DFloatBuffer(numChannels, numSamples) {
-    console.log("Creating 2D float buffer with channels:", numChannels, "and samples:", numSamples);
     const buffer = new Array(numChannels);
     
     for (let channel = 0; channel < numChannels; channel++) {

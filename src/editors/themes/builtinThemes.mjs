@@ -81,6 +81,4 @@ builtinThemes.forEach((themeRecipe) => {
   }
 });
 
-console.log("themes:", themes);
-
 export { themes, themeRecipes };
