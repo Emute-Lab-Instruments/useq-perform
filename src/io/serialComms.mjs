@@ -256,6 +256,7 @@ export function checkForWebserialSupport() {
   if (!navigator.serial) {
     post("A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module");
     post("See https://caniuse.com/web-serial for more information");
+    return false;
   } else {
     console.log("Web Serial API supported");
     // Set up serial connection event listeners
@@ -271,6 +272,7 @@ export function checkForWebserialSupport() {
       $("#button-connect").show(1000);
       post("uSEQ disconnected");
     });
+    return true;
   }
 }
 
