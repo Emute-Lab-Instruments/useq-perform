@@ -1,7 +1,7 @@
 import { EditorView } from "@codemirror/view";
 import { themeCompartment } from "../state.mjs";
 import { themes, themeRecipes } from "./builtinThemes.mjs";
-import { convert } from "color-convert";
+// import { convert } from "color-convert";
 
 export { themes, themeRecipes };
 

@@ -90,30 +90,6 @@ body {
   opacity: 1;
   z-index: 100;
 }
-.panel-editor {
-  width: 100%;
-  height: calc(100% - 40px);
-  top: 40px;
-  position: absolute;
-  min-width: 25em;
-  overflow: hidden;
-  resize: both;
-  opacity: 1;
-  z-index: 100;
-}
-.panel-editor .cm-content,
-.panel-editor .cm-gutter {
-  min-height: 150px;
-}
-.panel-editor .cm-gutters {
-  margin: 1px;
-}
-.panel-editor .cm-scroller {
-  overflow: auto;
-}
-.panel-editor .cm-wrap {
-  border: none;
-}
 #panel-console {
   position: fixed;
   height: 49%;
@@ -137,7 +113,7 @@ body {
     color: var(--accent-color);
   }
 }
-#panel-serialvis {
+#panel-vis {
   position: fixed;
   height: 100%;
   width: 100%;
@@ -148,30 +124,25 @@ body {
   color: #fff;
   z-index: 99999;
   resize: both;
-  opacity: 1;
+  opacity: 0.5;
   overflow: hidden;
   pointer-events: none;
   transition: opacity 0.3s ease-in-out;
-}
-#panel-serialvis #serialcanvas {
-  background-color: transparent;
-  width: 100%;
-  height: 100%;
-}
-.panel-webcam {
-  position: fixed;
-  height: 100%;
-  width: 100%;
-  left: 0%;
-  top: 0%;
-  border: 2px solid #000;
-  background-color: transparent;
-  color: #fff;
-  z-index: 10;
-  resize: both;
-  opacity: 0.2;
-  overflow: hidden;
-  transition: opacity 0.3s ease-in-out;
+  & #canvas-plot {
+    background-color: transparent;
+    width: 100%;
+    height: 100%;
+  }
+  & #canvas-timeline {
+    background-color: transparent;
+    width: 100%;
+    height: 100%;
+  }
+  & #serialcanvas {
+    background-color: transparent;
+    width: 100%;
+    height: 100%;
+  }
 }
 #panel-help.panel-aux {
   height: 70%;
@@ -205,26 +176,6 @@ body {
   overflow: auto;
   padding: 1rem;
 }
-.panel-patches {
-  position: fixed;
-  height: 70%;
-  width: 40%;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: 2px solid var(--panel-border);
-  z-index: 100000;
-  padding: 1.5em;
-  border-radius: 8px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
-  overflow-y: auto;
-  opacity: 0;
-  transition: opacity 0.3s ease-in-out;
-  display: none;
-}
-.panel-patches.visible {
-  opacity: 1;
-}
 #panel-theme {
   height: 70%;
   width: 50%;
@@ -239,7 +190,7 @@ body {
   overflow-y: auto;
   background-color: #fff;
 }
-.panel-theme .theme-preview {
+#panel-theme .theme-preview {
   margin-bottom: 1.5em;
   padding: 1em;
   border-radius: 4px;
@@ -247,12 +198,12 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.panel-theme .theme-preview:hover {
+#panel-theme .theme-preview:hover {
   background: rgba(0, 0, 0, 0.05);
   transform: translateY(-2px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
-.panel-theme .theme-name {
+#panel-theme .theme-name {
   font-size: 1.5em;
   margin-bottom: 1.5em;
   color: var(--text-primary);
