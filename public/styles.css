@@ -106,7 +106,7 @@ a.button5:hover {
   color: var(--accent-color);
 }
 
-.panel-serialvis {
+#panel-vis {
   position:fixed;
   height:100%;
   width:100%;
@@ -122,7 +122,19 @@ a.button5:hover {
   pointer-events: none;
 }
 
-.panel-serialvis .serialcanvas {
+#panel-vis #serialcanvas {
+  background-color: transparent;
+  width: 100%;
+  height: 100%; 
+}
+
+#panel-vis #canvas-plot {
+  background-color: transparent;
+  width: 100%;
+  height: 100%; 
+}
+
+#panel-vis #canvas-timeline {
   background-color: transparent;
   width: 100%;
   height: 100%; 
