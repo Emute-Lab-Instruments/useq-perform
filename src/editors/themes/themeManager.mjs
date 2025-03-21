@@ -19,43 +19,74 @@ export function setTheme(editor, themeName) {
   }
 }
 
+function adjustPanelsToTheme(themeName) {
+  const theme = themes[themeName];
+  const themeRecipe = themeRecipes[themeName];
+  const backgroundColor = themeRecipe.settings.background;
+  const foregroundColor = themeRecipe.settings.foreground;
+
+  // Adjust panel background colors based on theme variant
+  const consoleAdjustmentPercentage = 0.25;
+  const helpAdjustmentPercentage = 0.15; // Slightly less adjustment for help panel
+  const consoleAdjustmentRatio = 1 + consoleAdjustmentPercentage;
+  const helpAdjustmentRatio = 1 + helpAdjustmentPercentage;
+  
+  let adjustedConsoleBackground = backgroundColor;
+  let adjustedHelpBackground = backgroundColor;
+  
+  if (backgroundColor.startsWith("#")) {
+    // Convert hex to HSV for console
+    const consoleHsv = convert.hex.hsv(backgroundColor.substring(1));
+    // Adjust vibrancy
+    consoleHsv[2] = Math.max(0, Math.min(100, consoleHsv[2] * consoleAdjustmentRatio));
+    // Convert back to hex
+    adjustedConsoleBackground = "#" + convert.hsv.hex(consoleHsv);
+    
+    // Convert hex to HSV for help panel
+    const helpHsv = convert.hex.hsv(backgroundColor.substring(1));
+    // Adjust vibrancy and add opacity
+    helpHsv[2] = Math.max(0, Math.min(100, helpHsv[2] * helpAdjustmentRatio));
+    // Convert back to hex
+    adjustedHelpBackground = "#" + convert.hsv.hex(helpHsv);
+  }
+
+  // Update console panel
+  $("#panel-console").css({
+    backgroundColor: adjustedConsoleBackground,
+    color: foregroundColor,
+    "box-shadow": `0 4px 12px ${themeRecipe.settings.foreground}`,
+    "border-color": themeRecipe.settings.foreground,
+  });
+  
+  // Update help panel
+  $("#panel-help").css({
+    backgroundColor: adjustedHelpBackground + "F0", // Add 94% opacity
+    color: foregroundColor,
+    "border-color": themeRecipe.settings.foreground,
+  });
+  
+  // Update toolbar panel
+  $("#panel-toolbar").css({
+    backgroundColor: adjustedConsoleBackground,
+    "border-color": themeRecipe.settings.foreground,
+  });
+  
+  // Update CSS variables for other panels to use
+  document.documentElement.style.setProperty('--panel-bg', adjustedHelpBackground + "F0");
+  document.documentElement.style.setProperty('--toolbar-bg', adjustedConsoleBackground);
+  document.documentElement.style.setProperty('--accent-color', themeRecipe.settings.accent || foregroundColor);
+}
+
 export function setMainEditorTheme(themeName) {
   console.log("themename:", themeName);
-  const editor = EditorView.findFromDOM(document.querySelector("#panel-main-editor .cm-editor"));
+  const editor = EditorView.findFromDOM(
+    document.querySelector("#panel-main-editor .cm-editor")
+  );
   const success = setTheme(editor, themeName);
   if (success) {
     setSnippetEditorsTheme(themeName);
 
-    const theme = themes[themeName];
-    // Set text-primary color based on theme variant
-    // const theme = themes[themeName];
-    // if (theme && Array.isArray(theme)) {
-    //   const isDark = theme.some(ext => {
-    //     if (typeof ext === 'object' && ext.extension && ext.extension.value === true) {
-    //       return true;
-    //     }
-    //     return false;
-    //   });
-    //   document.documentElement.style.setProperty('--text-primary', isDark ? 'white' : 'black');
-    // }
-
-    const themeRecipe = themeRecipes[themeName];
-    const backgroundColor = themeRecipe.settings.background;
-    const foregroundColor = themeRecipe.settings.foreground;
-
-    $("#panel-console").css({
-      backgroundColor: backgroundColor,
-      color: foregroundColor,
-      //"border-color": themeRecipe.settings.foreground,
-      "box-shadow": `0 4px 12px ${themeRecipe.settings.foreground}`,
-      "border-color": themeRecipe.settings.foreground,
-    });
-
-    // $("#panel-toolbar").css({
-    //   backgroundColor: backgroundColor,
-    //   color: foregroundColor,
-    // });
-
+    adjustPanelsToTheme(themeName);
   }
 }
 
