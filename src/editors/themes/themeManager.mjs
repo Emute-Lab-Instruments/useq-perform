@@ -6,7 +6,6 @@ import { themes, themeRecipes } from "./builtinThemes.mjs";
 export { themes, themeRecipes };
 
 export function setTheme(editor, themeName) {
-  console.log("themeManager.mjs: Setting theme:", themeName);
   const theme = themes[themeName];
   if (theme) {
     editor.dispatch({
@@ -28,7 +27,6 @@ export function setMainEditorTheme(themeName) {
     setSnippetEditorsTheme(themeName);
 
     const theme = themes[themeName];
-    console.log("themeManager.mjs: Setting theme:", theme);
     // Set text-primary color based on theme variant
     // const theme = themes[themeName];
     // if (theme && Array.isArray(theme)) {
