@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Michael Diolosa
-export const bespin = createTheme({
+export const bespin = {
+	name: 'Bespin',
 	variant: 'dark',
 	settings: {
 		background: '#2e241d',
@@ -51,4 +52,4 @@ export const bespin = createTheme({
 			color: '#9B859D',
 		},
 	],
-});
+};

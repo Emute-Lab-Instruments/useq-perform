@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Rosé Pine
-export const rosePineDawn = createTheme({
+export const rosePineDawn = {
+	name: 'Rosé Pine Dawn',
 	variant: 'light',
 	settings: {
 		background: '#faf4ed',
@@ -55,4 +56,4 @@ export const rosePineDawn = createTheme({
 			color: '#d7827e',
 		},
 	],
-});
+};

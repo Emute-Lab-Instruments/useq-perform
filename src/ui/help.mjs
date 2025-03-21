@@ -1,3 +1,5 @@
+import { toggleAuxPanel } from './ui.mjs';
+
 export function initHelpPanel(){
     // Mac toggle switch functionality
     document.getElementById('macToggle').addEventListener('change', (e) => {
@@ -9,10 +11,10 @@ export function initHelpPanel(){
         }
     });
 
-    // Handle ESC key to close help panel
+    // Handle ESC key to close help panel globally
     $(document).on('keydown', function(e) {
         if (e.key === 'Escape' && $("#panel-help").is(":visible")) {
-            $("#panel-help").hide();
+            toggleAuxPanel("#panel-help");
         }
     });
 }

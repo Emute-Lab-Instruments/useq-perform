@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Joe Bergantine
-export const birdsOfParadise = createTheme({
+export const birdsOfParadise = {
+	name: 'Birds of Paradise',
 	variant: 'dark',
 	settings: {
 		background: '#3b2627',
@@ -63,4 +64,4 @@ export const birdsOfParadise = createTheme({
 			color: '#EFCB43',
 		},
 	],
-});
+};

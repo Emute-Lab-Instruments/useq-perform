@@ -2,6 +2,7 @@ import { createMainEditor } from './editors/main.mjs';
 import { initUI } from './ui/ui.mjs';
 import { checkForWebserialSupport } from './io/serialComms.mjs';
 import { deleteLocalStorage } from './utils/persistentUserSettings.mjs';
+import { post } from './io/console.mjs';
 
 // Store editor instance globally 
 let editor = null;
@@ -82,8 +83,8 @@ $(document).ready(() => {
   
 
   const $consolePanelContainer = $('#panel-console');
-  let consolePanel = createConsolePanel();
-  $consolePanelContainer.append(consolePanel);
+  //let consolePanel = createConsolePanel();
+  //$consolePanelContainer.append(consolePanel);
 
   // Load visualization panel
   const $visPanelContainer = $('#panel-vis');

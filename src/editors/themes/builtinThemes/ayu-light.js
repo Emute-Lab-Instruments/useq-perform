@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import { createTheme } from '../createTheme.mjs';
 
 // Author: Konstantin Pschera
-export const ayuLight = createTheme({
+export const ayuLight = {
+	name: 'Ayu Light',
 	variant: 'light',
 	settings: {
 		background: '#fcfcfc',
@@ -75,4 +76,4 @@ export const ayuLight = createTheme({
 			color: '#f2ae49',
 		},
 	],
-});
+};

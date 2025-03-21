@@ -2,7 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: Jacob Rus
-export const cobalt = createTheme({
+export const cobalt = {
+	name: 'Cobalt',
 	variant: 'dark',
 	settings: {
 		background: '#00254b',
@@ -73,4 +74,4 @@ export const cobalt = createTheme({
 			color: '#fff',
 		},
 	],
-});
+};

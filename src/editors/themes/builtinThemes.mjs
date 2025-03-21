@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { registerTheme } from "./createTheme.mjs";
+import { createTheme } from "./createTheme.mjs";
 
 import { useqDark } from "./builtinThemes/useq-dark.mjs";
 import { amy } from "./builtinThemes/amy.js";
@@ -50,23 +50,37 @@ export const editorBaseTheme = EditorView.baseTheme({
   "&.cm-focused .cm-cursor": { visibility: "visible" },
 });
 
-export function registerBuiltinThemes(themesRegistry) {
-  // Register all built-in themes
-  registerTheme(themesRegistry, "uSEQ Dark", useqDark);
-  registerTheme(themesRegistry, "Amy", amy);
-  registerTheme(themesRegistry, "Ayu Light", ayuLight);
-  registerTheme(themesRegistry, "Barf", barf);
-  registerTheme(themesRegistry, "Bespin", bespin);
-  registerTheme(themesRegistry, "Birds of Paradise", birdsOfParadise);
-  registerTheme(themesRegistry, "Boys and Girls", boysAndGirls);
-  registerTheme(themesRegistry, "Clouds", clouds);
-  registerTheme(themesRegistry, "Cobalt", cobalt);
-  registerTheme(themesRegistry, "Cool Glow", coolGlow);
-  registerTheme(themesRegistry, "Dracula", dracula);
-  registerTheme(themesRegistry, "Espresso", espresso);
-  registerTheme(themesRegistry, "Noctis Lilac", noctisLilac);
-  registerTheme(themesRegistry, "Rosé Pine Dawn", rosePineDawn);
-  registerTheme(themesRegistry, "Solarized Light", solarizedLight);
-  registerTheme(themesRegistry, "Smoothy", smoothy);
-  registerTheme(themesRegistry, "Tomorrow", tomorrow);
-}
+  const builtinThemes = [
+    useqDark,
+    amy,
+    ayuLight,
+    barf,
+    bespin,
+    birdsOfParadise,
+    boysAndGirls,
+    clouds,
+    cobalt,
+    coolGlow,
+    dracula,
+    espresso,
+    noctisLilac,
+    rosePineDawn,
+    solarizedLight,
+    smoothy,
+    tomorrow,
+  ];
+
+let themes = {};
+let themeRecipes = {};
+
+builtinThemes.forEach((themeRecipe) => {
+  const name = themeRecipe.name;
+  if (name) {
+    themeRecipes[name] = themeRecipe;
+    themes[name] = createTheme(themeRecipe);
+  }
+});
+
+console.log("themes:", themes);
+
+export { themes, themeRecipes };
