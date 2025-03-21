@@ -33,7 +33,6 @@ export function createTheme({ name=null, variant, settings, styles }) {
     throw new Error("Missing settings in theme configuration");
   }
 
-  console.log("color:", settings.foreground);
   const theme = EditorView.theme(
     {
       "&": {
