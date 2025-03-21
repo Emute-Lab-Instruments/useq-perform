@@ -79,21 +79,12 @@ $(document).ready(() => {
   // Display welcome messages
   post("Hello!");
   post("Use the [connect] button to link to uSEQ");
-  
-  
 
-  const $consolePanelContainer = $('#panel-console');
-  //let consolePanel = createConsolePanel();
-  //$consolePanelContainer.append(consolePanel);
-
-  // Load visualization panel
-  const $visPanelContainer = $('#panel-vis');
-  let visPanel = createVisPanel();
-  $visPanelContainer.append(visPanel);
   // Load snippets panel
   const $snippetsPanelContainer = $('#panel-snippets');
   let snippetsPanel = createSnippetsPanel();
   $snippetsPanelContainer.append(snippetsPanel);
+  
   // Load help panel
   const $helpPanelContainer = $('#panel-help');
   let helpPanel = createHelpPanel();
@@ -103,7 +94,5 @@ $(document).ready(() => {
   const $settingsPanelContainer = $('#panel-settings');
   let settingsPanel = createSettingsPanel();
   $settingsPanelContainer.append(settingsPanel);
-
-
 
 });

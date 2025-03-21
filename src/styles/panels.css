@@ -65,35 +65,19 @@
   position: fixed;
   height: 100%;
   width: 100%;
-  left: 0%;
-  top: 0%;
-  border: 2px solid #000;
-  background-color: transparent;
-  color: #fff;
+  left: 0;
+  top: 0;
+  display: none;
   z-index: 99999;
-  resize: both;
-  opacity: 0.5;
-  overflow: hidden;
   pointer-events: none;
-  transition: opacity 0.3s ease-in-out;
+  opacity: 50%;
+}
 
-  & #canvas-plot {
-    background-color: transparent;
-    width: 100%;
-    height: 100%;
-  }
-
-  & #canvas-timeline {
-    background-color: transparent;
-    width: 100%;
-    height: 100%;
-  }
-
-  & #serialcanvas {
-    background-color: transparent;
-    width: 100%;
-    height: 100%;
-  }
+#panel-vis canvas {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 /* Help Panel */

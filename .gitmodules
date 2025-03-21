@@ -1,0 +1,3 @@
+[submodule "deps/modulisp"]
+	path = deps/modulisp
+	url = git@github.com:Emute-Lab-Instruments/ModuLisp.git

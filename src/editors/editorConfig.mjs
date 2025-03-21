@@ -67,24 +67,9 @@ export function toggleVid() {
  * @returns {boolean} True to indicate success
  */
 export function toggleSerialVis() {
-  console.log("toggleSerialVis");
-  
-  $("#canvas-plot").toggle();
-  $("#canvas-timeline").toggle();
-
-  // const $serialvis = $("#serialvis");
-  // $serialvis.toggle();
-
-  // // Apply additional styling if panel is visible
-  // if ($serialvis.is(":visible")) {
-  //   $serialvis.css({
-  //     top: 0,
-  //     left: 0,
-  //     width: "100%",
-  //     height: "100%",
-  //   });
-  // }
-
+  const $visPanel = $("#panel-vis");
+  const isVisible = $visPanel.css("display") !== "none";
+  $visPanel.css("display", isVisible ? "none" : "block");
   return true;
 }
 

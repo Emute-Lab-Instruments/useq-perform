@@ -7,7 +7,7 @@ function create2DFloatBuffer(numChannels, numSamples) {
         
         // Calculate frequency for this channel (higher channel = higher frequency)
         const frequency = (channel + 1) * 2; // Hz
-        const sampleRate = 400;
+        const sampleRate = 250;
         
         for (let sample = 0; sample < numSamples; sample++) {
             // Create sine wave: amplitude * sin(2π * frequency * time)
@@ -20,7 +20,7 @@ function create2DFloatBuffer(numChannels, numSamples) {
 }
 
 const numChannels = 8;
-const numSamples = 1024;
+const numSamples = 2048;
 export let activeBuffer = create2DFloatBuffer(numChannels, numSamples);
 export let swapBuffer = create2DFloatBuffer(numChannels, numSamples);
 
