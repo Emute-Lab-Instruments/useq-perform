@@ -4,3 +4,5 @@ package-lock.json
 public/bundle.mjs
 public/bundle.mjs.map
 .local
+public/bundle.css
+public/bundle.css.map
