@@ -1,7 +1,7 @@
 import { EditorView } from "@codemirror/view";
 import { themeCompartment } from "../state.mjs";
 import { themes, themeRecipes } from "./builtinThemes.mjs";
-// import { convert } from "color-convert";
+import convert from "color-convert";
 
 export { themes, themeRecipes };
 
@@ -48,6 +48,7 @@ export function setMainEditorTheme(themeName) {
       color: foregroundColor,
       //"border-color": themeRecipe.settings.foreground,
       "box-shadow": `0 4px 12px ${themeRecipe.settings.foreground}`,
+      "border-color": themeRecipe.settings.foreground,
     });
 
     // $("#panel-toolbar").css({
