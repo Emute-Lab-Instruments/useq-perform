@@ -1,5 +1,5 @@
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
-import { changeFontSize } from "../editors/editorConfig.mjs";
+import { setFontSize } from "../editors/editorConfig.mjs";
 import { connectToSerialPort } from "../io/serialComms.mjs";
   import { toggleAuxPanel } from './ui.mjs';
 
@@ -12,13 +12,13 @@ export function initToolbarPanel(editor) {
     // Set up UI event handlers
     $("#button-increase-font").on("click", () => {
         activeUserSettings.editor.fontSize++;
-        changeFontSize(editorInstance, activeUserSettings.editor.fontSize);
+        setFontSize(editorInstance, activeUserSettings.editor.fontSize);
         saveUserSettings();
     });
     
     $("#button-decrease-font").on("click", () => {
         activeUserSettings.editor.fontSize--;
-        changeFontSize(editorInstance, activeUserSettings.editor.fontSize);
+        setFontSize(editorInstance, activeUserSettings.editor.fontSize);
         saveUserSettings();
     });
     

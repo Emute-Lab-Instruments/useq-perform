@@ -78,7 +78,7 @@ export function toggleSerialVis() {
  * @param {EditorView} editor - The editor instance
  * @param {number} size - New font size in pixels
  */
-export function changeFontSize(editor, size) {
+export function setFontSize(editor, size) {
   if (!editor) return;
 
   editor.dispatch({
