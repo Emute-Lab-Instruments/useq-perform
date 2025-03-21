@@ -84,7 +84,15 @@ export function setFontSize(editor, size) {
   editor.dispatch({
     effects: fontSizeCompartment.reconfigure(
       EditorView.theme({
-        ".cm-content": { fontSize: `${size}px` },
+        ".cm-content, .cm-cursor, .cm-gutters, .cm-lineNumbers": {
+          fontSize: `${size}px`,
+          lineHeight: `${Math.ceil(size * 1.5)}px`
+        },
+        ".cm-gutters .cm-lineNumber": {
+          display: "flex",
+          alignItems: "center",
+          height: "100%"
+        }
       })
     ),
   });
