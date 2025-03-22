@@ -54,7 +54,7 @@ function drawPlot() {
   ctx.clearRect(0, 0, c.width, c.height);
 
   const mapValueToY = (value) =>
-    zeroY - (value * 2 - 1) * amplitudeMultiplier * zeroY;
+    zeroY - (value * amplitudeMultiplier * zeroY);
 
   // Draw dashed 0-line
   ctx.strokeStyle = "#777777";
@@ -204,7 +204,7 @@ function drawSerialVis() {
   ctx.clearRect(0, 0, c.width, c.height);
   
   // Helper function for mapping values to Y coordinates
-  const mapValueToY = value => zeroY - ((value * 2 - 1) * amplitudeMultiplier * zeroY);
+  const mapValueToY = value => zeroY - (value * amplitudeMultiplier * zeroY);
   
   // Draw 0 axis dotted line
   ctx.strokeStyle = '#777777';
