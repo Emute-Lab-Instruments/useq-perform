@@ -68,11 +68,17 @@ export function toggleVid() {
  * Toggle serial visualization panel
  * @returns {boolean} True to indicate success
  */
-export function toggleSerialVis() {
+export function toggleSerialVisInternal() {
   const $visPanel = $("#panel-vis");
   const isVisible = $visPanel.css("display") !== "none";
   $visPanel.css("display", isVisible ? "none" : "block");
   return true;
+}
+
+export function toggleSerialVis() {
+  console.log("Toggling serial visualization");
+  $("#panel-vis").toggle();
+  $("#serialcanvas").toggle();
 }
 
 /**
