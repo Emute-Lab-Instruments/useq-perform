@@ -5,15 +5,30 @@
  * including message parsing, sending commands, and managing the serial buffer.
  */
 import { CircularBuffer } from "../utils/CircularBuffer.mjs";
+import { Buffer } from 'buffer';
+import { post } from './console.mjs';
 import { upgradeCheck } from '../utils/upgradeCheck.mjs';
-import { post } from '../io/console.mjs';
 
-// Define variables and export them inline
-export var serialport = null;
-export var serialVars = { capture: false, captureFunc: null };
-export const encoder = new TextEncoder();
-export const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(100));
-export const serialMapFunctions = [];
+// Define variables first before exporting them
+var serialport = null;
+var serialVars = { capture: false, captureFunc: null };
+const encoder = new TextEncoder();
+const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(100));
+const serialMapFunctions = [];
+
+// Export everything at once to avoid duplication
+export { 
+  serialport, 
+  serialVars, 
+  encoder, 
+  serialBuffers, 
+  serialMapFunctions, 
+  setSerialPort, 
+  getSerialPort, 
+  sendTouSEQ, 
+  serialReader,
+  connectToSerialPort 
+};
 
 // Constants
 const SERIAL_READ_MODES = {
@@ -36,7 +51,7 @@ const MAX_CONSOLE_LINES = 50;
  * Set the active serial port
  * @param {SerialPort} newport - The Web Serial port to use
  */
-export function setSerialPort(newport) {
+function setSerialPort(newport) {
   serialport = newport;
 }
 
@@ -44,7 +59,7 @@ export function setSerialPort(newport) {
  * Get the current serial port
  * @returns {SerialPort|null} The current Web Serial port or null
  */
-export function getSerialPort() {
+function getSerialPort() {
   return serialport;
 }
 
@@ -53,7 +68,7 @@ export function getSerialPort() {
  * @param {string} code - Code to send
  * @param {Function|null} capture - Optional callback for response capture
  */
-export function sendTouSEQ(code, capture = null) {
+function sendTouSEQ(code, capture = null) {
   // Remove comments (anything between ; and newline) and all newlines in a single step
   code = code.replace(/;[^\n]*(\n|$)|\n/g, match => match.startsWith(';') ? '' : '');
 
@@ -73,7 +88,7 @@ export function sendTouSEQ(code, capture = null) {
   } else {
     post("uSEQ not connected");
     // Add attention-grabbing animation to connect button
-    $("#button-connect")
+    $("#btnConnect")
       .animate({ scale: 1.2 }, 200)
       .animate({ scale: 1 }, 200)
       .animate({ rotate: '-3deg' }, 100)
@@ -179,7 +194,7 @@ function processSerialData(byteArray, state) {
 /**
  * Start reading from the serial port
  */
-export async function serialReader() {
+async function serialReader() {
   if (!serialport) return;
   console.log("reading...");
   
@@ -235,12 +250,11 @@ export async function serialReader() {
 /**
  * Connect to the serial port for uSEQ communication
  */
-export function connectToSerialPort(port) {
-  console.log("Connecting to serial port:", port);
+function connectToSerialPort(port) {
   port.open({ baudRate: 115200 }).then(() => {
     setSerialPort(port);
     serialReader();
-    $("#button-connect").hide(1000);
+    $("#btnConnect").hide(1000);
     console.log("checking version");
     sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
   }).catch((err) => {
@@ -275,4 +289,3 @@ export function checkForWebserialSupport() {
     return true;
   }
 }
-
