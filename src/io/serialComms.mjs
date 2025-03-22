@@ -13,7 +13,19 @@ import { upgradeCheck } from '../utils/upgradeCheck.mjs';
 var serialport = null;
 var serialVars = { capture: false, captureFunc: null };
 const encoder = new TextEncoder();
-const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(100));
+const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(400));
+
+// Smoothing and interpolation settings
+const smoothingSettings = {
+  enabled: true,             // Enable/disable smoothing
+  windowSize: 3,             // Size of moving average window (odd number recommended)
+  interpolationPoints: 3,    // Number of points to interpolate between samples
+  interpolationEnabled: true // Enable/disable interpolation
+};
+
+// Arrays to store previous values for smoothing
+const previousValues = Array(8).fill().map(() => []);
+
 const serialMapFunctions = [];
 
 // Export everything at once to avoid duplication
@@ -27,7 +39,8 @@ export {
   getSerialPort, 
   sendTouSEQ, 
   serialReader,
-  connectToSerialPort 
+  connectToSerialPort,
+  smoothingSettings,
 };
 
 // Constants
@@ -94,6 +107,54 @@ function sendTouSEQ(code, capture = null) {
       .animate({ rotate: '-3deg' }, 100)
       .animate({ rotate: '3deg' }, 100)
       .animate({ rotate: '0deg' }, 100);
+  }
+}
+
+/**
+ * Apply a moving average filter to smooth the input value
+ * @param {number} channelIndex - Index of the channel (0-7)
+ * @param {number} value - New value to smooth
+ * @returns {number} Smoothed value
+ */
+function applySmoothing(channelIndex, value) {
+  if (!smoothingSettings.enabled || smoothingSettings.windowSize <= 1) {
+    return value;
+  }
+
+  const values = previousValues[channelIndex];
+  values.push(value);
+  
+  // Keep only the last windowSize values
+  while (values.length > smoothingSettings.windowSize) {
+    values.shift();
+  }
+  
+  // Calculate the moving average
+  const sum = values.reduce((acc, val) => acc + val, 0);
+  return sum / values.length;
+}
+
+/**
+ * Generate interpolated points between previous and current value
+ * @param {number} channelIndex - Index of the channel (0-7)
+ * @param {number} previousValue - Last stored value
+ * @param {number} currentValue - New incoming value
+ * @param {number} bufferIndex - Buffer index for this channel
+ */
+function applyInterpolation(channelIndex, previousValue, currentValue, bufferIndex) {
+  if (!smoothingSettings.interpolationEnabled || smoothingSettings.interpolationPoints < 2) {
+    return;
+  }
+
+  // Get the buffer for this channel
+  const buffer = serialBuffers[bufferIndex];
+  
+  // Generate interpolation points
+  for (let i = 1; i < smoothingSettings.interpolationPoints; i++) {
+    const t = i / smoothingSettings.interpolationPoints;
+    // Linear interpolation: previousValue * (1-t) + currentValue * t
+    const interpolatedValue = previousValue * (1 - t) + currentValue * t;
+    buffer.push(interpolatedValue);
   }
 }
 
@@ -172,7 +233,20 @@ function processSerialData(byteArray, state) {
         // Store value in circular buffer for that channel
         const bufferIndex = channel - 1;
         if (bufferIndex >= 0 && bufferIndex < serialBuffers.length) {
-          serialBuffers[bufferIndex].push(val);
+          // Apply smoothing to the incoming value
+          const smoothedValue = applySmoothing(bufferIndex, val);
+          
+          // Get previous value for interpolation (if any)
+          const buffer = serialBuffers[bufferIndex];
+          const previousValue = buffer.length > 0 ? buffer.last(0) : smoothedValue;
+          
+          // Apply interpolation between previous and current value
+          if (smoothingSettings.interpolationEnabled && buffer.length > 0) {
+            applyInterpolation(bufferIndex, previousValue, smoothedValue, bufferIndex);
+          }
+          
+          // Push the final smoothed value to the buffer
+          buffer.push(smoothedValue);
           
           // Call any registered handler function
           if (serialMapFunctions[bufferIndex]) {
