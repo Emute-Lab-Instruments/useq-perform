@@ -1,7 +1,7 @@
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { setFontSize } from "../editors/editorConfig.mjs";
 import { connectToSerialPort } from "../io/serialComms.mjs";
-  import { toggleAuxPanel } from './ui.mjs';
+import { toggleAuxPanel } from './ui.mjs';
 
 let editorInstance = null;
 
@@ -54,6 +54,10 @@ export function initToolbarPanel(editor) {
     
     $("#button-help").click(() => {
         toggleAuxPanel("#panel-help");
+    });
+
+    $("#button-documentation").click(() => {
+        toggleAuxPanel("#panel-documentation");
     });
 }
 
