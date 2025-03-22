@@ -1,5 +1,5 @@
 import { toggleAuxPanel } from './ui.mjs';
-import documentationData from '../data/documentation.json';
+import documentationData from '../data/documentation_hand_edited.json';
 import { createEditor } from '../editors/main.mjs';
 import { activeUserSettings } from '../utils/persistentUserSettings.mjs';
 import { baseExtensions } from '../editors/extensions.mjs';
@@ -98,7 +98,7 @@ export function initDocumentationPanel() {
  * Initialize the filter tags
  */
 function initTags(container) {
-  container.innerHTML = '<div class="doc-section-title">Filter by tags:</div>';
+  // container.innerHTML = '<div class="doc-section-title">Filter by tags:</div>';
   
   const tagsWrapper = document.createElement('div');
   tagsWrapper.className = 'doc-tags-wrapper';
