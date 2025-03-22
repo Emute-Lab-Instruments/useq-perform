@@ -85,7 +85,24 @@ export function setMainEditorTheme(themeName) {
   const success = setTheme(editor, themeName);
   if (success) {
     setSnippetEditorsTheme(themeName);
-
+    
+    // Update the serial visualization palette based on theme variant
+    if (themeRecipes[themeName] && themeRecipes[themeName].variant === "dark") {
+      // Import and use the setter function from serialVis module
+      import("../../ui/serialVis.mjs").then(module => {
+        if (module.setSerialVisPalette && module.serialVisPaletteDark) {
+          module.setSerialVisPalette(module.serialVisPaletteDark);
+        }
+      });
+    } else {
+      // Use light theme palette for light themes
+      import("../../ui/serialVis.mjs").then(module => {
+        if (module.setSerialVisPalette && module.serialVisPaletteLight) {
+          module.setSerialVisPalette(module.serialVisPaletteLight);
+        }
+      });
+    }
+    
     adjustPanelsToTheme(themeName);
   }
 }

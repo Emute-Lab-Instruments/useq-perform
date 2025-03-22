@@ -1,4 +1,4 @@
-import { serialBuffers } from "../io/serialComms.mjs";
+import { serialBuffers, smoothingSettings } from "../io/serialComms.mjs";
 import { toggleAuxPanel } from "./ui.mjs";
 import {
   plotCtx,
@@ -39,16 +39,7 @@ const getCatmullRomPoint = (p0, p1, p2, p3, t) => {
 
 function drawPlot() {
   console.log("Drawing plot");
-  const palette = [
-    "#00429d",
-    "#45a5ad",
-    "#ace397",
-    "#fcbf5d",
-    "#ff809f",
-    "#ff005e",
-    "#c9004c",
-    "#93003a",
-  ];
+  
   // Setup
   const ctx = plotCtx;
   const c = ctx.canvas;
@@ -78,12 +69,6 @@ function drawPlot() {
   ctx.font = "10px Arial";
   ctx.fillStyle = "#777777";
   ctx.textAlign = "right";
-
-  //   if ($("#serialvis").is(":visible")) {
-  //     $(".header").css("right", "50px");
-  //   } else {
-  //     $(".header").css("right", "20px");
-  //   }
 
   // Draw quarter amplitude lines & labels
   for (let i = -1; i <= 1; i += 0.25) {
@@ -117,7 +102,8 @@ function drawPlot() {
     }
 
     ctx.beginPath();
-    ctx.strokeStyle = palette[ch];
+    // Use theme-aware palette
+    ctx.strokeStyle = serialVisPalette[ch];
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
@@ -179,13 +165,40 @@ export function drawSerialVisInternal() {
   window.requestAnimationFrame(drawSerialVis);
 }
 
+// Export palette arrays so they can be accessed from the theme manager
+export const serialVisPaletteLight = ['#ace397', '#45a5ad', '#fcbf5d', '#ff809f', '#ff005e', '#c9004c', '#93003a', '#00429d'];
+// Brighter colors that work better on dark backgrounds
+export const serialVisPaletteDark = ['#00ff41', '#1adbdb', '#ffee33', '#ffaa00', '#ff5500', '#ff0080', '#aa00ff', '#0088ff'];
+// Use let instead of const so it can be changed
+let serialVisPalette = serialVisPaletteLight;
+
+// Create a setter function to update the palette
+export function setSerialVisPalette(palette) {
+  if (Array.isArray(palette) && palette.length > 0) {
+    serialVisPalette = palette;
+    // Force redraw of the plot with new colors
+    plotNeedsRedrawing = true;
+    console.log("Serial visualization palette updated");
+    return true;
+  }
+  return false;
+}
+
+// Getter to access the current palette
+export function getSerialVisPalette() {
+  return serialVisPalette;
+}
+
 function drawSerialVis() {
-  const palette = ['#00429d', '#45a5ad', '#ace397', '#fcbf5d', '#ff809f', '#ff005e', '#c9004c', '#93003a'];
   const c = document.getElementById("serialcanvas");
   const ctx = c.getContext("2d");
   const amplitudeMultiplier = 0.9;
   const zeroY = c.height / 2;
   const gap = c.width / serialBuffers[0].bufferLength;
+  
+  // Enable antialiasing for smoother lines
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   
   // Clear canvas
   ctx.clearRect(0, 0, c.width, c.height);
@@ -208,7 +221,6 @@ function drawSerialVis() {
   ctx.fillStyle = '#777777';
   ctx.textAlign = 'right';  // Right-align text
 
-  
   for (let i = -1; i <= 1; i += 0.25) {
     const y = zeroY - (i * amplitudeMultiplier * zeroY);
     ctx.beginPath();
@@ -222,7 +234,14 @@ function drawSerialVis() {
   }
   
   // Draw data traces
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  
+  // Pre-calculate interpolation steps for the spline
+  const segments = 5;
+  const step = 1 / segments;
+  const interpolationSteps = Array.from({ length: segments + 1 }, (_, i) => i * step);
   
   // Pre-calculate oldest values once for each channel to avoid repeated method calls
   const oldestValues = Array(8).fill().map((_, ch) => {
@@ -233,16 +252,36 @@ function drawSerialVis() {
   // Draw each channel
   for (let ch = 0; ch < 8; ch++) {
     const channelValues = oldestValues[ch];
+    const points = channelValues.map((value, i) => ({
+      x: gap * i,
+      y: mapValueToY(value)
+    }));
     
     ctx.beginPath();
-    ctx.strokeStyle = palette[ch];
+    ctx.strokeStyle = serialVisPalette[ch];
     
     // Plot first point
-    ctx.moveTo(0, mapValueToY(channelValues[0]));
+    ctx.moveTo(points[0].x, points[0].y);
     
-    // Plot remaining points
-    for (let i = 1; i < channelValues.length; i++) {
-      ctx.lineTo(gap * i, mapValueToY(channelValues[i]));
+    // Use Catmull-Rom spline for smooth curves if we have enough points
+    if (points.length > 3) {
+      for (let i = 0; i < points.length - 3; i++) {
+        const p0 = points[Math.max(0, i)];
+        const p1 = points[i + 1];
+        const p2 = points[i + 2];
+        const p3 = points[Math.min(points.length - 1, i + 3)];
+        
+        // Generate points along the spline curve
+        for (const t of interpolationSteps) {
+          const pt = getCatmullRomPoint(p0, p1, p2, p3, t);
+          ctx.lineTo(pt.x, pt.y);
+        }
+      }
+    } else {
+      // Fall back to simple lines if not enough points
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
     }
     
     ctx.stroke();
@@ -253,6 +292,153 @@ function drawSerialVis() {
 
 export function initVisPanel() {
   console.log("Initializing serial visualization panel");
+  
   // Start animation loop for serial visualization
   window.requestAnimationFrame(drawSerialVis);
+  
+  // Create controls for smoothing settings
+  createSmoothingControls();
+}
+
+/**
+ * Create UI controls for smoothing and interpolation settings
+ */
+function createSmoothingControls() {
+  const visPanel = document.getElementById("panel-vis");
+  if (!visPanel) {
+    console.error("Visualization panel not found");
+    return;
+  }
+  
+  // Create a control container
+  const controlsContainer = document.createElement("div");
+  controlsContainer.id = "serial-vis-controls";
+  controlsContainer.className = "serial-vis-controls";
+  controlsContainer.style.cssText = "padding: 10px; margin-top: 10px; background: rgba(0,0,0,0.1); border-radius: 4px;";
+  
+  // Create heading
+  const heading = document.createElement("h3");
+  heading.textContent = "Visualization Settings";
+  heading.style.cssText = "margin: 0 0 10px 0; font-size: 14px;";
+  controlsContainer.appendChild(heading);
+  
+  // Smoothing toggle
+  const smoothingToggle = createToggle(
+    "Enable Smoothing", 
+    smoothingSettings.enabled,
+    (checked) => {
+      smoothingSettings.enabled = checked;
+      console.log(`Smoothing ${checked ? 'enabled' : 'disabled'}`);
+    }
+  );
+  controlsContainer.appendChild(smoothingToggle);
+  
+  // Smoothing window size
+  const windowSizeSlider = createRangeControl(
+    "Window Size",
+    smoothingSettings.windowSize,
+    1, 10, 1,
+    (value) => {
+      smoothingSettings.windowSize = parseInt(value);
+      console.log(`Smoothing window size set to ${value}`);
+    }
+  );
+  controlsContainer.appendChild(windowSizeSlider);
+  
+  // Interpolation toggle
+  const interpolationToggle = createToggle(
+    "Enable Interpolation", 
+    smoothingSettings.interpolationEnabled,
+    (checked) => {
+      smoothingSettings.interpolationEnabled = checked;
+      console.log(`Interpolation ${checked ? 'enabled' : 'disabled'}`);
+    }
+  );
+  controlsContainer.appendChild(interpolationToggle);
+  
+  // Interpolation points
+  const interpolationSlider = createRangeControl(
+    "Interpolation Points",
+    smoothingSettings.interpolationPoints,
+    2, 10, 1,
+    (value) => {
+      smoothingSettings.interpolationPoints = parseInt(value);
+      console.log(`Interpolation points set to ${value}`);
+    }
+  );
+  controlsContainer.appendChild(interpolationSlider);
+  
+  // Add controls to the panel
+  visPanel.appendChild(controlsContainer);
+}
+
+/**
+ * Create a toggle switch control
+ * @param {string} label - Control label
+ * @param {boolean} initialValue - Initial toggle state
+ * @param {Function} onChange - Change event handler
+ * @returns {HTMLDivElement} Container element
+ */
+function createToggle(label, initialValue, onChange) {
+  const container = document.createElement("div");
+  container.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;";
+  
+  const labelEl = document.createElement("label");
+  labelEl.textContent = label;
+  labelEl.style.cssText = "flex-grow: 1; font-size: 12px;";
+  container.appendChild(labelEl);
+  
+  const toggle = document.createElement("input");
+  toggle.type = "checkbox";
+  toggle.checked = initialValue;
+  toggle.addEventListener("change", (e) => onChange(e.target.checked));
+  container.appendChild(toggle);
+  
+  return container;
+}
+
+/**
+ * Create a range slider control
+ * @param {string} label - Control label
+ * @param {number} initialValue - Initial slider value
+ * @param {number} min - Minimum value
+ * @param {number} max - Maximum value
+ * @param {number} step - Step size
+ * @param {Function} onChange - Change event handler
+ * @returns {HTMLDivElement} Container element
+ */
+function createRangeControl(label, initialValue, min, max, step, onChange) {
+  const container = document.createElement("div");
+  container.style.cssText = "margin-bottom: 12px;";
+  
+  const labelContainer = document.createElement("div");
+  labelContainer.style.cssText = "display: flex; justify-content: space-between; margin-bottom: 2px;";
+  
+  const labelEl = document.createElement("label");
+  labelEl.textContent = label;
+  labelEl.style.cssText = "font-size: 12px;";
+  labelContainer.appendChild(labelEl);
+  
+  const valueEl = document.createElement("span");
+  valueEl.textContent = initialValue;
+  valueEl.style.cssText = "font-size: 12px;";
+  labelContainer.appendChild(valueEl);
+  
+  container.appendChild(labelContainer);
+  
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.min = min;
+  slider.max = max;
+  slider.step = step;
+  slider.value = initialValue;
+  slider.style.cssText = "width: 100%;";
+  slider.addEventListener("input", (e) => {
+    const value = e.target.value;
+    valueEl.textContent = value;
+    onChange(value);
+  });
+  container.appendChild(slider);
+  
+  return container;
 }
