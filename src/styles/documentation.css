@@ -1,0 +1,302 @@
+/* Documentation Panel Styles */
+
+/* Main panel container */
+#panel-documentation.panel-aux {
+  height: 70%;
+  width: 25%; 
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 2px solid var(--panel-border);
+  z-index: 99999;
+  padding-top: 5em; /* Increased to make room for fixed tags */
+  padding-left: 1.5em;
+  padding-right: 1.5em;
+  padding-bottom: 1.5em;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+  overflow-y: auto;
+  background-color: var(--panel-bg, rgba(30, 30, 30, 0.95));
+  transition: all 0.3s ease-in-out;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Documentation Panel - Centered mode */
+#panel-documentation.panel-aux.centered {
+  width: 80%;
+  right: 50%;
+  transform: translate(50%, -50%);
+}
+
+/* Toggle position button */
+#panel-documentation-toggle-position {
+  position: absolute;
+  top: 50%;
+  left: -15px;
+  width: 30px;
+  height: 30px;
+  background-color: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  transform: translateY(-50%);
+  z-index: 100000;
+}
+
+#panel-documentation-toggle-position:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Tags container - Fixed at the top */
+.doc-tags-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background-color: var(--panel-bg, rgba(30, 30, 30, 0.95));
+  padding: 1em 1.5em;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--panel-border);
+  z-index: 100;
+  /* Adjust for the panel's position */
+  width: 100%;
+}
+
+.doc-tags-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin-top: 0.5em;
+}
+
+.doc-tag {
+  padding: 0.3em 0.8em;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 15px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  font-size: 0.85em;
+}
+
+.doc-tag:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.doc-tag.selected {
+  background-color: var(--accent-color, #00ff41);
+  color: #000;
+}
+
+/* Function list - Multi-column layout */
+.doc-function-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5em;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1em;
+  align-items: start;
+}
+
+/* For non-centered mode (single column) */
+#panel-documentation:not(.centered) .doc-function-list {
+  grid-template-columns: 1fr;
+}
+
+.doc-function-item {
+  margin-bottom: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  transition: border-color 0.2s ease;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  width: 100%;
+}
+
+.doc-function-item:hover {
+  border-color: var(--panel-border);
+}
+
+.doc-function-header {
+  display: flex;
+  align-items: center;
+  padding: 0.5em;
+  cursor: pointer;
+  background-color: rgba(255, 255, 255, 0.05);
+  transition: background-color 0.2s ease;
+}
+
+.doc-function-header:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.doc-function-name {
+  font-family: var(--code-font);
+  flex: 1;
+  font-size: 0.9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-function-alias {
+  font-size: 0.85em;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.doc-star-button {
+  background: none;
+  border: none;
+  color: gold;
+  font-size: 1.2em;
+  cursor: pointer;
+  margin-right: 0.5em;
+  line-height: 1;
+  padding: 0 0.3em;
+}
+
+.doc-function-details {
+  padding: 1em;
+  border-top: 1px solid var(--panel-border);
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.doc-function-description {
+  margin-bottom: 1em;
+  line-height: 1.4;
+}
+
+.doc-section-title {
+  font-weight: bold;
+  margin: 1em 0 0.5em;
+  color: var(--accent-color, #00ff41);
+}
+
+.doc-params-list {
+  list-style: none;
+  padding-left: 1em;
+  margin: 0.5em 0 1em;
+}
+
+.doc-param-item {
+  margin-bottom: 0.5em;
+}
+
+.doc-param-name {
+  display: inline-block;
+  font-family: var(--code-font);
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 0 0.3em;
+  border-radius: 3px;
+  margin-right: 0.5em;
+}
+
+.doc-param-description {
+  display: inline;
+}
+
+.doc-param-range {
+  display: block;
+  font-size: 0.85em;
+  margin-top: 0.3em;
+  padding-left: 1em;
+  opacity: 0.7;
+}
+
+/* Code example styling */
+.doc-example-wrapper {
+  margin: 0.8em 0;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.doc-example-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.3em;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.doc-example-copy {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0.3em 0.5em;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+  font-size: 0.9em;
+}
+
+.doc-example-copy:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.doc-example-copy.copied {
+  background-color: rgba(0, 255, 0, 0.2);
+}
+
+.doc-example-copy .copy-icon {
+  font-size: 1em;
+}
+
+.doc-example-editor {
+  height: auto;
+  min-height: 20px;
+  max-height: 150px;
+  overflow: auto;
+  cursor: grab;
+}
+
+.doc-example-editor.dragging {
+  opacity: 0.7;
+  cursor: grabbing;
+}
+
+/* CodeMirror customizations within documentation */
+.doc-example-editor .cm-editor {
+  height: auto;
+  font-size: 0.9em;
+}
+
+.doc-example-editor .cm-gutters {
+  display: none; /* Hide line numbers to save space */
+}
+
+.doc-example-editor .cm-content {
+  padding: 0.5em;
+}
+
+.doc-function-tags {
+  margin-top: 1em;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em;
+}
+
+.doc-function-tag {
+  font-size: 0.8em;
+  padding: 0.2em 0.5em;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.doc-no-results {
+  padding: 2em;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  grid-column: 1 / -1;
+}

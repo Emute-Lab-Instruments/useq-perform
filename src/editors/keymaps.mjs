@@ -8,6 +8,8 @@ import {
   evalQuantised,
   toggleHelp,
   toggleSerialVis,
+  toggleDocumentation,
+  showDocumentationForSymbol
 } from "./editorConfig.mjs";
 
 import { makeDeleteWrapper } from "./editorConfig.mjs";
@@ -55,6 +57,12 @@ const useq_keymap = [
   {
     key: "Alt-g",
     run: toggleSerialVis,
+    preventDefault: true,
+    stopPropagation: true,
+  },
+  {
+    key: "Alt-f",
+    run: showDocumentationForSymbol,
     preventDefault: true,
     stopPropagation: true,
   },
