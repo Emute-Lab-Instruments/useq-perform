@@ -47,7 +47,67 @@ export function createMainEditor() {
 
 export function initEditorPanel() {
   const editor = createMainEditor();
-  $('#panel-main-editor').append(editor.dom);
+  const editorPanel = $('#panel-main-editor');
+  editorPanel.append(editor.dom);
   setMainEditorTheme(activeUserSettings.editor.theme);
+  
+  // Add drag-and-drop support for documentation examples
+  setupDragAndDropForEditor(editorPanel[0], editor);
+  
   return editor;
+}
+
+/**
+ * Set up drag and drop functionality for the editor
+ * @param {HTMLElement} container - The editor container element
+ * @param {EditorView} editor - The CodeMirror editor instance
+ */
+function setupDragAndDropForEditor(container, editor) {
+  // Add event listeners for drag and drop events
+  container.addEventListener('dragover', (e) => {
+    // Prevent default to allow drop
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Change the cursor style as a visual cue
+    e.dataTransfer.dropEffect = 'copy';
+    
+    // Add a highlight effect to indicate droppable area
+    container.classList.add('drag-over');
+  });
+  
+  container.addEventListener('dragleave', () => {
+    // Remove highlight effect
+    container.classList.remove('drag-over');
+  });
+  
+  container.addEventListener('drop', (e) => {
+    // Prevent default drop action
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Remove highlight effect
+    container.classList.remove('drag-over');
+    
+    // Get the dropped text
+    const text = e.dataTransfer.getData('text/plain');
+    if (text) {
+      // Insert the text at the current cursor position
+      const cursor = editor.state.selection.main.head;
+      
+      // Create a transaction to insert the text
+      const transaction = editor.state.update({
+        changes: {
+          from: cursor,
+          insert: text
+        }
+      });
+      
+      // Apply the transaction
+      editor.dispatch(transaction);
+      
+      // Focus the editor
+      editor.focus();
+    }
+  });
 }

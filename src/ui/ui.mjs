@@ -7,6 +7,7 @@ import { initSettingsPanel } from "./settings.mjs";
 import { initToolbarPanel } from "./toolbar.mjs";
 import { initThemePanel } from "./themes.mjs";
 import { initSnippetsPanel } from "./snippets.mjs";
+import { initDocumentationPanel } from "./documentation.mjs";
 
 export function toggleAuxPanel(panelID) {
     const $panel = $(panelID);
@@ -45,6 +46,7 @@ function initPanels(){
     initThemePanel();
     initVisPanel();
     initSnippetsPanel();
+    initDocumentationPanel();
     
     return editor;
 }

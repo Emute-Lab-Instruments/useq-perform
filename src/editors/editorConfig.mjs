@@ -16,6 +16,8 @@ import { post } from "../io/console.mjs";
 import { openCam } from "../ui/camera.mjs";
 import { getUserSettings } from "../utils/persistentUserSettings.mjs";
 import { fontSizeCompartment } from "./state.mjs";
+import { toggleAuxPanel } from "../ui/ui.mjs";
+import { showDocumentationForSymbol as showDocForSymbol } from "../ui/documentation.mjs";
 
 export function evalToplevel(opts, prefix = "") {
   let state = opts.state;
@@ -150,4 +152,16 @@ export function makeDeleteWrapper(originalRun) {
     // Next char isn't a closing bracket, delete normally
     return originalRun(view); // Run the original function
   };
+}
+
+// Documentation panel toggle
+export function toggleDocumentation() {
+  toggleAuxPanel("#panel-documentation");
+  return true;
+}
+
+// Show documentation for symbol at cursor
+export function showDocumentationForSymbol(view) {
+  showDocForSymbol(view);
+  return true;
 }

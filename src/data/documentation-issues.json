@@ -1,0 +1,126 @@
+{
+  "missingDescription": [],
+  "missingExamples": [
+    {
+      "name": "-",
+      "category": "modulisp"
+    },
+    {
+      "name": "%",
+      "category": "modulisp"
+    },
+    {
+      "name": "<",
+      "category": "modulisp"
+    },
+    {
+      "name": "<=",
+      "category": "modulisp"
+    },
+    {
+      "name": "=",
+      "category": "modulisp"
+    },
+    {
+      "name": ">",
+      "category": "modulisp"
+    },
+    {
+      "name": ">=",
+      "category": "modulisp"
+    },
+    {
+      "name": "bar",
+      "category": "timing"
+    },
+    {
+      "name": "beat",
+      "category": "timing"
+    },
+    {
+      "name": "bpm",
+      "category": "timing"
+    },
+    {
+      "name": "bps",
+      "category": "timing"
+    },
+    {
+      "name": "get-clock-source",
+      "category": "timing"
+    },
+    {
+      "name": "perf",
+      "category": "modulisp"
+    },
+    {
+      "name": "phrase",
+      "category": "timing"
+    },
+    {
+      "name": "pulse",
+      "category": "sequencing"
+    },
+    {
+      "name": "reset-clock-ext",
+      "category": "timing"
+    },
+    {
+      "name": "reset-clock-int",
+      "category": "timing"
+    },
+    {
+      "name": "s[x]",
+      "category": "outputs"
+    },
+    {
+      "name": "section",
+      "category": "timing"
+    },
+    {
+      "name": "set-bpm",
+      "category": "timing"
+    },
+    {
+      "name": "set-clock-ext",
+      "category": "timing"
+    },
+    {
+      "name": "set-clock-int",
+      "category": "timing"
+    },
+    {
+      "name": "set-time-sig",
+      "category": "timing"
+    },
+    {
+      "name": "sine",
+      "category": "modulisp"
+    },
+    {
+      "name": "sqr",
+      "category": "sequencing"
+    },
+    {
+      "name": "step",
+      "category": "sequencing"
+    },
+    {
+      "name": "swm",
+      "category": "inputs"
+    },
+    {
+      "name": "swt",
+      "category": "inputs"
+    },
+    {
+      "name": "t",
+      "category": "timing"
+    },
+    {
+      "name": "time",
+      "category": "timing"
+    }
+  ],
+  "totalWithIssues": 30
+}
