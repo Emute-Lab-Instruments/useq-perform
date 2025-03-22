@@ -38,12 +38,7 @@ export function initDocumentationPanel() {
   togglePositionButton.id = 'panel-documentation-toggle-position';
   togglePositionButton.innerHTML = '⇄';
   togglePositionButton.title = 'Toggle panel position';
-  togglePositionButton.style.position = 'absolute';
-  // Position in the middle of the left side instead of top left corner
-  togglePositionButton.style.top = '50%';
-  togglePositionButton.style.left = '0';
-  togglePositionButton.style.transform = 'translateY(-50%)';
-  togglePositionButton.style.zIndex = '100';
+  // Remove inline positioning styles - let CSS handle it
   docPanel.appendChild(togglePositionButton);
   
   // Add toggle position functionality
@@ -166,11 +161,40 @@ function renderFunctionList(applySorting = false) {
     return a.name.localeCompare(b.name);
   });
   
-  // Create function list
-  filteredFunctions.forEach(func => {
-    const functionElement = createFunctionElement(func);
-    container.appendChild(functionElement);
-  });
+  // Check if we're in centered mode (3-column) layout
+  const isMultiColumn = document.getElementById('panel-documentation').classList.contains('centered');
+  
+  if (isMultiColumn) {
+    // For multi-column layout, we need to distribute functions across columns manually
+    // This ensures each column fills vertically before moving to the next column
+    const columnCount = 3;
+    const itemsPerColumn = Math.ceil(filteredFunctions.length / columnCount);
+    
+    // Create column containers
+    for (let i = 0; i < columnCount; i++) {
+      const columnContainer = document.createElement('div');
+      columnContainer.className = 'doc-column';
+      columnContainer.style.display = 'flex';
+      columnContainer.style.flexDirection = 'column';
+      columnContainer.style.gap = '1em';
+      container.appendChild(columnContainer);
+      
+      // Fill this column with its share of functions
+      const startIdx = i * itemsPerColumn;
+      const endIdx = Math.min(startIdx + itemsPerColumn, filteredFunctions.length);
+      
+      for (let j = startIdx; j < endIdx; j++) {
+        const functionElement = createFunctionElement(filteredFunctions[j]);
+        columnContainer.appendChild(functionElement);
+      }
+    }
+  } else {
+    // Single column mode - add functions directly to container
+    filteredFunctions.forEach(func => {
+      const functionElement = createFunctionElement(func);
+      container.appendChild(functionElement);
+    });
+  }
   
   // If no functions match the filters
   if (filteredFunctions.length === 0) {
@@ -242,7 +266,9 @@ function createFunctionElement(func) {
   expandIndicator.className = 'doc-function-expand-indicator';
   expandIndicator.style.marginLeft = 'auto';
   expandIndicator.style.marginRight = '8px';
-  expandIndicator.style.fontSize = '0.8em';
+  expandIndicator.style.fontSize = '0.9em';
+  expandIndicator.textContent = expandedFunctions && expandedFunctions[func.name] ? '▼' : '▶';
+  expandIndicator.title = expandedFunctions && expandedFunctions[func.name] ? 'Collapse' : 'Expand';
   
   // Add elements to header
   functionHeader.appendChild(starButton);
@@ -593,7 +619,15 @@ function toggleDocumentation(functionName) {
   const functionHeader = document.querySelector(`.doc-function-header[data-function="${functionName}"]`);
   if (functionHeader) {
     const detailsContainer = functionHeader.nextElementSibling;
+    const expandIndicator = functionHeader.querySelector('.doc-function-expand-indicator');
     
+    // Update expand indicator
+    if (expandIndicator) {
+      expandIndicator.textContent = expandedFunctions[functionName] ? '▼' : '▶';
+      expandIndicator.title = expandedFunctions[functionName] ? 'Collapse' : 'Expand';
+    }
+    
+    // Update details container visibility
     if (detailsContainer) {
       if (expandedFunctions[functionName]) {
         detailsContainer.style.display = 'block';
