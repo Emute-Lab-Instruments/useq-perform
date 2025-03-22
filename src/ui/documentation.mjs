@@ -38,6 +38,12 @@ export function initDocumentationPanel() {
   togglePositionButton.id = 'panel-documentation-toggle-position';
   togglePositionButton.innerHTML = '⇄';
   togglePositionButton.title = 'Toggle panel position';
+  togglePositionButton.style.position = 'absolute';
+  // Position in the middle of the left side instead of top left corner
+  togglePositionButton.style.top = '50%';
+  togglePositionButton.style.left = '0';
+  togglePositionButton.style.transform = 'translateY(-50%)';
+  togglePositionButton.style.zIndex = '100';
   docPanel.appendChild(togglePositionButton);
   
   // Add toggle position functionality
