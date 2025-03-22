@@ -1,0 +1,1922 @@
+[
+  {
+    "name": "-",
+    "aliases": [],
+    "description": "Subtracts the second number from the first.",
+    "parameters": [
+      {
+        "name": "value1",
+        "description": "The value to subtract from",
+        "range": "number"
+      }
+    ],
+    "examples": [],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths"
+    ]
+  },
+  {
+    "name": "!=",
+    "aliases": [],
+    "description": "Returns true if the two values are not equal, false otherwise.",
+    "parameters": [
+      {
+        "name": "value1",
+        "description": "The first value to compare",
+        "range": "any"
+      },
+      {
+        "name": "value2",
+        "description": "The second value to compare",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(!= 1 2) ; => true\n\n(!= 'a 'a) ; => false"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "*",
+    "aliases": [],
+    "description": "Returns the result of multiplying all of its arguments, which are expected to evaluate to numbers.",
+    "parameters": [
+      {
+        "name": "[numbers]",
+        "description": "Parameter 1 of function *",
+        "range": ""
+      }
+    ],
+    "examples": [
+      "(* 2 2 2) ;; => 8"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths"
+    ]
+  },
+  {
+    "name": "%",
+    "aliases": [],
+    "description": "Calculates the remainder of the division of the first value by the second value.",
+    "parameters": [
+      {
+        "name": "value1",
+        "description": "The value to be divided",
+        "range": "number"
+      },
+      {
+        "name": "value2",
+        "description": "The value to divide by",
+        "range": "number"
+      }
+    ],
+    "examples": [],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "+",
+    "aliases": [],
+    "description": "Returns the sum of all its arguments, which are expected to evaluate to numbers.",
+    "parameters": [
+      {
+        "name": "[numbers]",
+        "description": "Parameter 1 of function +",
+        "range": ""
+      }
+    ],
+    "examples": [
+      "(+ 1 2 3) ;; => 6"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths"
+    ]
+  },
+  {
+    "name": "<",
+    "aliases": [],
+    "description": "Checks if the first value is less than the second value.",
+    "parameters": [
+      {
+        "name": "value1",
+        "description": "The first value to compare",
+        "range": "any"
+      },
+      {
+        "name": "value2",
+        "description": "The second value to compare",
+        "range": "any"
+      }
+    ],
+    "examples": [],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "<=",
+    "aliases": [],
+    "description": "Checks if the first value is less than or equal to the second value.",
+    "parameters": [
+      {
+        "name": "value1",
+        "description": "The first value to compare",
+        "range": "any"
+      },
+      {
+        "name": "value2",
+        "description": "The second value to compare",
+        "range": "any"
+      }
+    ],
+    "examples": [],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "=",
+    "aliases": [],
+    "description": "Checks if two values are equal.",
+    "parameters": [
+      {
+        "name": "value1",
+        "description": "The first value to compare",
+        "range": "any"
+      },
+      {
+        "name": "value2",
+        "description": "The second value to compare",
+        "range": "any"
+      }
+    ],
+    "examples": [],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": ">",
+    "aliases": [],
+    "description": "Checks if the first value is greater than the second value.",
+    "parameters": [
+      {
+        "name": "value1",
+        "description": "The first value to compare",
+        "range": "any"
+      },
+      {
+        "name": "value2",
+        "description": "The second value to compare",
+        "range": "any"
+      }
+    ],
+    "examples": [],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": ">=",
+    "aliases": [],
+    "description": "Checks if the first value is greater than or equal to the second value.",
+    "parameters": [
+      {
+        "name": "value1",
+        "description": "The first value to compare",
+        "range": "any"
+      },
+      {
+        "name": "value2",
+        "description": "The second value to compare",
+        "range": "any"
+      }
+    ],
+    "examples": [],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "a[1/2/3/...]",
+    "aliases": [],
+    "description": "Specify a function to calculate the value of analog output 1/2/3/etc. This function will be evaluated once every update loop.",
+    "parameters": [
+      {
+        "name": "form",
+        "description": "Parameter 1 of function a[1/2/3/...]",
+        "range": ""
+      }
+    ],
+    "examples": [
+      "(a1 (* 3 (from-list [0.4 0.1] bar)))",
+      "(a2 0)",
+      ";; Silence all analog outs at the same time\n(do \n  (a1 0)\n  (a2 0)\n  (a3 0))"
+    ],
+    "category": "outputs",
+    "tags": [
+      "outputs",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "ain1",
+    "aliases": [],
+    "description": "Returns the value of CV input 1\n\nExample: to echo CV input 1 to CV output 1",
+    "parameters": [],
+    "examples": [
+      "(a1 (ain1))"
+    ],
+    "category": "inputs",
+    "tags": [
+      "inputs"
+    ]
+  },
+  {
+    "name": "ain2",
+    "aliases": [],
+    "description": "Returns the value of CV input 2\n\nExample: to echo CV input 2 to CV output 2",
+    "parameters": [],
+    "examples": [
+      "(a2 (ain2))"
+    ],
+    "category": "inputs",
+    "tags": [
+      "inputs"
+    ]
+  },
+  {
+    "name": "bar",
+    "aliases": [],
+    "description": "A phasor, rising from 0-1 over the length of a bar (dependent on the BPM and time signature).",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "beat",
+    "aliases": [],
+    "description": "A phasor, rising from 0-1 over the length of a beat (dependent on the BPM and time signature).",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "bi->uni",
+    "aliases": [],
+    "description": "Converts a bipolar value (-1 to 1) to a unipolar value (0 to 1).",
+    "parameters": [
+      {
+        "name": "value",
+        "description": "The bipolar value to convert",
+        "range": "Number"
+      }
+    ],
+    "examples": [
+      "(bi->uni -1) ;; => 0.0\n(bi->uni 0) ;; => 0.5\n(bi->uni 1) ;; => 1.0"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "bpm",
+    "aliases": [],
+    "description": "The tempo in beats per minute.",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "bps",
+    "aliases": [],
+    "description": "The tempo in beats per second.",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "ceil",
+    "aliases": [],
+    "description": "Rounds a number up to the nearest integer.",
+    "parameters": [
+      {
+        "name": "value",
+        "description": "The value to round up",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(ceil 3.7) ; => 4\n\n(ceil -1.2) ; => -1"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths"
+    ]
+  },
+  {
+    "name": "d[1/2/3/...]",
+    "aliases": [],
+    "description": "Specify a function to calculate the value of digital (i.e. binary) output 1/2/3/etc. This function will be evaluated once every update loop.",
+    "parameters": [
+      {
+        "name": "form",
+        "description": "Parameter 1 of function d[1/2/3/...]",
+        "range": ""
+      }
+    ],
+    "examples": [
+      "(d1 (square (slow 2 beat)))",
+      "(d2 (from-list [0 0 1 0 1 1 0 1] (slow 2 bar)))",
+      ";; Silence all digital outs at the same time\n(do \n  (d1 0)\n  (d2 0)\n  (d3 0))"
+    ],
+    "category": "outputs",
+    "tags": [
+      "outputs",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "define",
+    "aliases": [],
+    "description": "Creates a new **signal** definition, essentially assigning a name to a (potentialy time-varying) expression. These definitions are accessible from anywhere in the code, unless they are shadowed by a local binding with higher precedence (e.g. when inside a `let` expression body).",
+    "parameters": [
+      {
+        "name": "name",
+        "description": "The name to assign to the expression",
+        "range": "Symbol"
+      },
+      {
+        "name": "expression",
+        "description": "The expression to associate with the name",
+        "range": "Any"
+      }
+    ],
+    "examples": [
+      "(define my-number-three (+ 1 2))\n\n(+ my-number-three 1) ;; => 4",
+      "(define a 1)\n(define b 2)\n(define my-number-three (+ a b))\n\n;; Check the value first\nmy-number-three ;; => 3 - as expected\n\n;; Let's Redefine one of the variables used in its definition\n(define a 101)\n\n;; Check the value again\nmy-number-three ;; => 103 - it's been updated!",
+      "(define my-ramp          (slow 2 beat))\n(define my-inverted-ramp (- 1 my-ramp))\n\n;; the two expressions above are equivalent to this one:\n\n(defs my-ramp          (slow 2 beat)\n      my-inverted-ramp (- 1 my-ramp))"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "defun",
+    "aliases": [],
+    "description": "Creates and names a function. The body can be any number of forms, and the function's return value will always be the return value of the last expression.",
+    "parameters": [
+      {
+        "name": "name",
+        "description": "The name of the function",
+        "range": "Symbol"
+      },
+      {
+        "name": "params",
+        "description": "A list of the function's parameter names",
+        "range": "List/Vector of Symbols"
+      },
+      {
+        "name": "body",
+        "description": "The body of code to run when called",
+        "range": "Any"
+      }
+    ],
+    "examples": [
+      "(defun my-no-args-function []\n  (println \"Hello from inside the function!\"))\n  \n(my-no-args-function) ;; => prints the message\n\n;; if the function name is long, you can put each of the other arguments\n;; on their own lines\n\n(defn my-addition-function \n  [a b] \n  (+ a b))\n\n(my-addition-function 3 5) ;; => 8"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "do",
+    "aliases": [],
+    "description": "Evaluates the given arguments in order and returns the value of the last argument.",
+    "parameters": [
+      {
+        "name": "args",
+        "description": "Any number of expressions",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(do (print \"Hello\") \n    (print \"World!\") \n    (+ 1 2)) ;; => 3",
+      "(do\n  (d1 (sqr bar))\n  (d2 (sqr (slow 2 bar))))\n \n;; silence all analog outs\n(do\n  (a1 0)\n  (a2 0)\n  (a3 0))"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "euclid",
+    "aliases": [],
+    "description": "Generate a sequence of gates based on euclidean sequencing.\n\nFor more info: https://erikdemaine.org/papers/DeepRhythms_CGTA/paper.pdf\n\nDemaine, E.D., Gomez-Martin, F., Meijer, H., Rappaport, D., Taslakian, P., Toussaint, G.T., Winograd, T. and Wood, D.R., 2009. The distance geometry of music. Computational geometry, 42(5), pp.429-454.",
+    "parameters": [
+      {
+        "name": "n",
+        "description": "the number of beats to fit into the period of the phasor",
+        "range": ">0"
+      },
+      {
+        "name": "k",
+        "description": "the number of beats to fit, equally spaced, into n beats",
+        "range": ">0"
+      },
+      {
+        "name": "pulseWidth",
+        "description": "(optional) Width of the gates",
+        "range": ">0 and <1"
+      },
+      {
+        "name": "phasor",
+        "description": "A phasor",
+        "range": "0 - 1"
+      }
+    ],
+    "examples": [
+      "(d1 (euclid 16 (step phrase 4 4) 0.3 bar))\n(d2 (euclid 32 8 0.1 bar))\n(d3 (euclid 16 6 (step (fast 4 phrase) bar)))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing"
+    ]
+  },
+  {
+    "name": "filter",
+    "aliases": [],
+    "description": "Filters a list using a single-argument function that should return `true` or `false`. Any value that's in the input list and for which the test function returns false will be excluded from the resulting list.",
+    "parameters": [
+      {
+        "name": "test function",
+        "description": "A function to apply to each element",
+        "range": "1-arg Function that returns a Bool"
+      },
+      {
+        "name": "list",
+        "description": "A list of values",
+        "range": "Any"
+      }
+    ],
+    "examples": [
+      "(filter (fn [x] (> x 2)) \n  [1 2 3 4]) ; => [3 4]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "first",
+    "aliases": [],
+    "description": "Returns the first element of the list.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "A list of values",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(first [1 2 3 4]) ;; => 1\n\n(first '(a b c d)) ;; => a"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "flatten",
+    "aliases": [],
+    "description": "Take a list with multiple dimensions and return a single dimensional list of the value, in sequence.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "The list to push to",
+        "range": "List/Vector"
+      }
+    ],
+    "examples": [
+      "(flatten [[1 2] 2 3 [1 2 3]]) ;; => [1 2 2 3 1 2 3]\n(flatten '(0 1 '(2 3))) ;; => (0 1 2 3)\n(flatten [[0 [1 [3 [4 5]]]]]) ;; => [1 1 3 4 5]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists",
+      "sequencing"
+    ]
+  },
+  {
+    "name": "floor",
+    "aliases": [],
+    "description": "Rounds a number down to the nearest integer.",
+    "parameters": [
+      {
+        "name": "value",
+        "description": "The value to round down",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(floor 3.7) ; => 3\n\n(floor -1.2) ; => -2"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths"
+    ]
+  },
+  {
+    "name": "for",
+    "aliases": [],
+    "description": "Iterates over a list of values, assigns each value to a name, and then evaluates a number of expressions in which that name can be used to refer to each of the iterated values.",
+    "parameters": [
+      {
+        "name": "name",
+        "description": "The name to assign to each value",
+        "range": "Symbol"
+      },
+      {
+        "name": "list",
+        "description": "The list of values to iterate over",
+        "range": "List/Vector"
+      },
+      {
+        "name": "body",
+        "description": "Any number of expressions",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(for my-number [1 2 3]\n  (println \"My number is: \")\n  (println my-number)\n  my-number) ;; => prints each number in order, returns 3"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "from-flattened-list",
+    "aliases": [],
+    "description": "Read an item from a list, using a normalised index, but flatten then list first (using `flattened`).",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "A list of values",
+        "range": "any"
+      },
+      {
+        "name": "position",
+        "description": "A normalised index",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(from-flattened-list [0 1 2 [3 4 5]] 0.75)"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists"
+    ]
+  },
+  {
+    "name": "from-list",
+    "aliases": [],
+    "description": "Read an item from a list, using a normalised index.\n\nItems in the list are evaluated before being returned, so you can use functions, variables, and generally any valid expressions in the list.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "A list of values",
+        "range": "any"
+      },
+      {
+        "name": "position",
+        "description": "A normalised index",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(from-list [1 2 3 4] 0.6) ; => 3",
+      "(from-list [1 2 3 4] bar))",
+      "(seq [1 (/ phrase 2)] bar))",
+      "(from-list '(1 phrase) bar))",
+      "(from-list [1 2 (from-list [1 2] bar)] \n    (slow 2 bar))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists"
+    ]
+  },
+  {
+    "name": "gates",
+    "aliases": [],
+    "description": "Output a sequence of gates, with variable pulse width.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "A list of gate values",
+        "range": "0 or 1"
+      },
+      {
+        "name": "phasor",
+        "description": "The sequence is output once per cycle of the phasor",
+        "range": "0-1"
+      },
+      {
+        "name": "speed",
+        "description": "Modify the speed of the phasor",
+        "range": ">= 1"
+      },
+      {
+        "name": "pulse width",
+        "description": "Optional, default: 0.5. The pulse width of the gates",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(d2 (gates [0 1 1 0  1 1 1 0  1 1 0 1  1 0 0 1] (+ (swm 1) 0.3) bar))",
+      "(d2 (gates [0 1 1 0 1 0 0 (swt)] 0.5 (fast 2 bar))))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "gatesw",
+    "aliases": [],
+    "description": "Output a sequence of gates, with pulse width controlled from values in the list",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "A list of gate/pulse width values, varying from 0 (0% pulse width) to 9 (100% pulse width / tie into the next note)",
+        "range": "0 - 9"
+      },
+      {
+        "name": "phasor",
+        "description": "The sequence is output once per cycle of the phasor",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(d2 (gatesw [9 9 5 9 3 0 3 8] (fast 2 bar)))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists"
+    ]
+  },
+  {
+    "name": "get-clock-source",
+    "aliases": [],
+    "description": "Returns the source for the clock, either internal (0), gate input 1 (1) or gate input 2 (2).",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "if",
+    "aliases": [],
+    "description": "Conditionally executes one of two branches depending on the outcome of a boolean test.",
+    "parameters": [
+      {
+        "name": "test",
+        "description": "An expression that evaluates to either true or false",
+        "range": "any"
+      },
+      {
+        "name": "then",
+        "description": "An expression to evaluate if the test returns true",
+        "range": "any"
+      },
+      {
+        "name": "else",
+        "description": "An expression to evaluate if the test returns false",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(if (> 3 2)\n  (println \"Three is greater than two\")\n  (println \"Two is greater than three!?!?\"))"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "in1",
+    "aliases": [],
+    "description": "Returns the value of digital input 1.\n\nExample: to echo digital input 1 to digital output 1",
+    "parameters": [],
+    "examples": [
+      "(d1 (in1))"
+    ],
+    "category": "inputs",
+    "tags": [
+      "inputs"
+    ]
+  },
+  {
+    "name": "in2",
+    "aliases": [],
+    "description": "Returns the value of digital input 2.\n\nExample: to echo digital input 2 to digital output 1",
+    "parameters": [],
+    "examples": [
+      "(d1 (in2))"
+    ],
+    "category": "inputs",
+    "tags": [
+      "inputs"
+    ]
+  },
+  {
+    "name": "index",
+    "aliases": [],
+    "description": "Returns the element at the given index in the list.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "A list of values",
+        "range": "any"
+      },
+      {
+        "name": "index",
+        "description": "The index of the element to retrieve",
+        "range": "integer"
+      }
+    ],
+    "examples": [
+      "(index [1 2 3] 1) ; => 2\n(index '(a b c) 0) ; => a"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "insert",
+    "aliases": [],
+    "description": "Inserts a value in a specific position in the list.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "The list to insert in",
+        "range": "List/Vector"
+      },
+      {
+        "name": "position",
+        "description": "Where in the list to put the value",
+        "range": "any integer >= 0"
+      },
+      {
+        "name": "value",
+        "description": "The value to insert",
+        "range": "Any"
+      }
+    ],
+    "examples": [
+      "(insert '(a b c) 1 \"hi\") ;; => (a \"hi\" b c)\n(insert [0 1 2 3] 3 0.5) ;; => [0 1 2 0.5 3]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "interp",
+    "aliases": [],
+    "description": "Interpolate across a list, using a phasor.  This function acts as if the list of values describes a continuous envelope, and returns the value at a position in that envelope.  e.g.",
+    "parameters": [
+      {
+        "name": "values",
+        "description": "A list of values",
+        "range": "any list"
+      },
+      {
+        "name": "phasor",
+        "description": "A phasor",
+        "range": "0 - 1"
+      }
+    ],
+    "examples": [
+      "(interp [0 0.5 0] 0.75)",
+      "(a1 (interp [1 0.5 0 0.6 1] bar))",
+      "(a2 (interp [0 (sin phrase) 1] section))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists"
+    ]
+  },
+  {
+    "name": "lambda",
+    "aliases": [],
+    "description": "Creates an anonymous function that's ready to use. It works more-or-less exactly the same as `defun`/`defn`, except it doesn't expect a name.\n\nTIP: `lambda`/`fn` is often used with higher-order functions, such as `map`, to create a local/temporary function:",
+    "parameters": [
+      {
+        "name": "params",
+        "description": "A list of the function's parameter names",
+        "range": "List/Vector of Symbols"
+      },
+      {
+        "name": "body",
+        "description": "The body of code to run when called",
+        "range": "Any"
+      }
+    ],
+    "examples": [
+      "(map (lambda [x] (* x x)) \n  [1 2 3 4]) ; => [1 4 9 16]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "let",
+    "aliases": [],
+    "description": "Creates a number of locally-named variables that are only accessible within the body of the `let` expression.",
+    "parameters": [
+      {
+        "name": "bindings",
+        "description": "A list of binding pairs",
+        "range": "List/Vector of pairs of symbols and expressions"
+      },
+      {
+        "name": "body",
+        "description": "Any number of expressions to evaluate within the local context",
+        "range": "Any"
+      }
+    ],
+    "examples": [
+      "(let [a 1\n      b 2]\n  (+ a b)) ;; => 3",
+      "(let [a \"Hello\"\n      b (str a \", World!\")]\n  (println b)) ;; => \"Hello, World!\"",
+      "(define a 10000)\n(define b 99999)\n(define c 10)\n\n(let [a 1\n      b 2]\n  (+ a b c)) ;; => 13"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "list",
+    "aliases": [],
+    "description": "Creates a list containing the given arguments.",
+    "parameters": [
+      {
+        "name": "args",
+        "description": "Any number of values",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(list 1 2 3) ; => (1 2 3)\n\n(list 'a 'b 'c) ; => (a b c)",
+      "(list 1 2 (+ 1 2)) ;; => (1 2 3)\n(quote (1 2 3))           ;; => (1 2 3)\n'(1 2 3) ;; => (1 2 3)\n\n;; but, here the addition does not get evaluated first:\n'(1 2 (+ 1 2) ;; => (1 2 (+ 1 2))"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "map",
+    "aliases": [],
+    "description": "Applies a function to each element of a list and returns a list of the results.",
+    "parameters": [
+      {
+        "name": "function",
+        "description": "A function to apply to each element",
+        "range": "function"
+      },
+      {
+        "name": "list",
+        "description": "A list of values",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(map (fn [x] (* x x)) \n  [1 2 3 4]) ; => [1 4 9 16]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "perf",
+    "aliases": [],
+    "description": "Reports the most recent performance metrics.\n\n' (useq_perf) ; => prints performance metrics\n'",
+    "parameters": [],
+    "examples": [],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "phrase",
+    "aliases": [],
+    "description": "A phasor, rising from 0-1 over the length of a phrase (dependent on the BPM, time signature, and phrase length in bars).",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "pow",
+    "aliases": [],
+    "description": "Returns the result of raising the base to the power of the exponent.",
+    "parameters": [
+      {
+        "name": "exponent",
+        "description": "The exponent value",
+        "range": "Number"
+      },
+      {
+        "name": "value",
+        "description": "The base value",
+        "range": "Number"
+      }
+    ],
+    "examples": [
+      "(pow 3 2) ;; => 8.0\n(pow 2 5) ;; => 25.0"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths"
+    ]
+  },
+  {
+    "name": "pulse",
+    "aliases": [],
+    "description": "Outputs a pulse wave.",
+    "parameters": [
+      {
+        "name": "pulse width",
+        "description": "The relative width of each pulse",
+        "range": "0-1"
+      }
+    ],
+    "examples": [],
+    "category": "sequencing",
+    "tags": [
+      "sequencing"
+    ]
+  },
+  {
+    "name": "push",
+    "aliases": [],
+    "description": "Pushes a value to the top of a list.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "The list to push to",
+        "range": "List/Vector"
+      },
+      {
+        "name": "value",
+        "description": "The value to push",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(push '(b c d) 'a) ;; => (a b c d)\n(push [1 2 3] 5) ;; => [5 1 2 3]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "q0",
+    "aliases": [],
+    "description": "Specify a function to run at the start of each quantisation period (by default, each bar)",
+    "parameters": [
+      {
+        "name": "form",
+        "description": "Parameter 1 of function q0",
+        "range": ""
+      }
+    ],
+    "examples": [
+      "(q0 (print bar))",
+      "(q0 0)"
+    ],
+    "category": "outputs",
+    "tags": [
+      "outputs",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "random",
+    "aliases": [],
+    "description": "Generates a random integer",
+    "parameters": [
+      {
+        "name": "low",
+        "description": "the lowest random integer the function should generate",
+        "range": "any"
+      },
+      {
+        "name": "high",
+        "description": "the highest random integer the function should generate",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(* (random 0 1000) 0.001)"
+    ],
+    "category": "probabalistic",
+    "tags": [
+      "randomness"
+    ]
+  },
+  {
+    "name": "range",
+    "aliases": [],
+    "description": "Create a vector of numbers from low to high.",
+    "parameters": [
+      {
+        "name": "low",
+        "description": "The lowest number in the series",
+        "range": "any integer"
+      },
+      {
+        "name": "high",
+        "description": "The highest number in the series",
+        "range": "any integer"
+      }
+    ],
+    "examples": [
+      "(range 1 3) ; => [1 2 3]\n(range -10 0) ; => [-10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "remove",
+    "aliases": [],
+    "description": "Removes from the list the value at the specified index (if it exists).",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "The list to remove from",
+        "range": "List/Vector"
+      },
+      {
+        "name": "index",
+        "description": "The index of the item to remove",
+        "range": "any integer >= 0 and <= list length"
+      }
+    ],
+    "examples": [
+      "(remove '(a b c) 0) ;; => (b c)\n(remove [0 1 2 3 4] 2) ;; => [0 1 3 4]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "reset-clock-ext",
+    "aliases": [],
+    "description": "Reset the data used by the external clock tracker.  If you are changing from one external clock to another, it might be useful to run this.  After running this function, the first rising edge to be detected will be assumed to be the start of the first bar.",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing",
+      "playback"
+    ]
+  },
+  {
+    "name": "reset-clock-int",
+    "aliases": [],
+    "description": "Reset the internal clock, starting the logical time from 0.",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing",
+      "playback"
+    ]
+  },
+  {
+    "name": "rest",
+    "aliases": [],
+    "description": "Returns all but the first element of the list.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "A list of values",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(tail [1 2 3 4]) ; => [2 3 4]",
+      "(tail '(a b c d)) ; => (b c d)"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "ridx",
+    "aliases": [],
+    "description": "Transform a phasor (or other signal) into a series of steps.  The list of ratios (as with 'rpulse' above) determines the timing and length of the steps.  The amplitude of the step is determined by the index of the time ratio in the list of ratios.  It's a bit like 'rstep' above, but the steps occur at even divisions of the range 0-1, depending on the number of time ratios specificied. This means 'ridx' is useful as a phasor for indexing other lists (e.g. using 'seq'); you can control the timing of when you move through items in another list.",
+    "parameters": [
+      {
+        "name": "ratios",
+        "description": "a list of ratios of time periods that the phasor will be divided into",
+        "range": "any"
+      },
+      {
+        "name": "phasor",
+        "description": "A phasor",
+        "range": "0 - 1"
+      }
+    ],
+    "examples": [
+      "rpulse",
+      "rstep",
+      "ridx",
+      "seq",
+      "(a1 (ridx [1 1 1 3] bar))",
+      "(a1 (ridx [1 1 15 3 3] bar))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists"
+    ]
+  },
+  {
+    "name": "rpulse",
+    "aliases": [],
+    "description": "Generate pulses by dividing a phasor into sections according to a list of timing ratios, and emiting a pulse at the start of each section.",
+    "parameters": [
+      {
+        "name": "ratios",
+        "description": "a list of ratios of time periods that the phasor will be divided into",
+        "range": "any"
+      },
+      {
+        "name": "pulseWidth",
+        "description": "width of the pulses",
+        "range": ">0 and <1"
+      },
+      {
+        "name": "phasor",
+        "description": "A phasor",
+        "range": "0 - 1"
+      }
+    ],
+    "examples": [
+      "(d1 (rpulse [1 1] 0.5 bar))",
+      "(d1 (rpulse [15 15] 0.5 bar))",
+      "(d1 (rpulse [3 3 3] 0.2 bar))",
+      "(d1 (rpulse [1 1 2 3 1] 0.1 bar))",
+      "(d1 (rpulse [3 1 1 1 3 2 1] 0.9 bar))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists"
+    ]
+  },
+  {
+    "name": "rstep",
+    "aliases": [],
+    "description": "Transform a phasor (or other signal) into a series of steps.  The list of ratios (as with 'rpulse' above) determines the timing and length of the steps.  The amplitude of the step is determined by the phasor's value at the beginning of the step. \n\nIt's the equivelant of triggering a sample and hold on the phasor, according to the timing of the ratios.",
+    "parameters": [
+      {
+        "name": "ratios",
+        "description": "a list of ratios of time periods that the phasor will be divided into",
+        "range": "any"
+      },
+      {
+        "name": "phasor",
+        "description": "A phasor",
+        "range": "0 - 1"
+      }
+    ],
+    "examples": [
+      "rpulse",
+      "interp",
+      "(a1 (rstep [1 1 2] bar))",
+      "(a1 (rstep [6 6 6 2 2 2] bar))",
+      "rstep",
+      "(a2 (interp [0 0.2 1 0] (rstep [3 1 1 1] (slow 4 bar))))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists"
+    ]
+  },
+  {
+    "name": "rwarp",
+    "aliases": [],
+    "description": "This works similarly to 'ridx' above, except that the function produces a ramp between points at the start of each time period.  This could be useful with functions like 'gatesw', which take a ramp as input and use this to control pulse width. In this case, you could control the timing of when you move though each gate.",
+    "parameters": [
+      {
+        "name": "ratios",
+        "description": "a list of ratios of time periods that the phasor will be divided into",
+        "range": "any"
+      },
+      {
+        "name": "phasor",
+        "description": "A phasor",
+        "range": "0 - 1"
+      }
+    ],
+    "examples": [
+      "ridx",
+      "gatesw",
+      "(a1 (rwarp [1 5 12] bar))",
+      "(a1 (rwarp [200 40 10] bar))",
+      ";fibonacci ratios\n(a1 (rwarp [1 2 3 5 8 13 21 34 55] bar))",
+      "gatesw",
+      "(a1 (gatesw [4 8 1 8] (rwarp [3 5 2 6] bar)))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists"
+    ]
+  },
+  {
+    "name": "s[x]",
+    "aliases": [],
+    "description": "Send a sequence over the USB serial connection.  This sequence can be decoded by your USB client software.  To differentiate from other text send by the module, serial data is send in a 11 byte message in the following format:\n[31][0][index of serial stream][8 bytes representing a double]\n\nThe useq editor can decode these messages and forward them as MIDI.",
+    "parameters": [
+      {
+        "name": "form",
+        "description": "Parameter 1 of function s[x]",
+        "range": ""
+      }
+    ],
+    "examples": [],
+    "category": "outputs",
+    "tags": [
+      "outputs",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "scale",
+    "aliases": [],
+    "description": "Scales a value from one range to another.",
+    "parameters": [
+      {
+        "name": "in-min",
+        "description": "The minimum input range",
+        "range": "Number"
+      },
+      {
+        "name": "in-max",
+        "description": "The maximum input range",
+        "range": "Number"
+      },
+      {
+        "name": "out-min",
+        "description": "The minimum output range",
+        "range": "Number"
+      },
+      {
+        "name": "out-max",
+        "description": "The maximum output range",
+        "range": "Number"
+      },
+      {
+        "name": "val",
+        "description": "The value to scale",
+        "range": "Number"
+      }
+    ],
+    "examples": [
+      "(scale 0 1 0 100 0.5) ;; => 50.0\n(scale 0 100 0 1 25) ;; => 0.25"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "section",
+    "aliases": [],
+    "description": "A phasor, rising from 0-1 over the length of a section (dependent on the BPM, time signature, and section length in bars).",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "set",
+    "aliases": [],
+    "description": "Creates a new **static** definition, essentially assigning a name to the value that an expression evaluates to _at the moment_ that the definition is executed. These definitions are accessible from anywhere in the code, unless they are shadowed by a local binding with higher precedence (e.g. when inside a `let` expression body).",
+    "parameters": [
+      {
+        "name": "name",
+        "description": "The name to assign to the expression's current value",
+        "range": "Symbol"
+      },
+      {
+        "name": "expression",
+        "description": "The expression to evaluate",
+        "range": "Any"
+      }
+    ],
+    "examples": [
+      "(set my-current-point-in-bar bar) ;; => stores the current \n\n;; Let's compare the value that `bar` had at the moment\n;; of definition with the value that it has now:\n\n(= bar my-current-point-in-bar) ;; => most likely false, as time has moved on",
+      "(set a 1)\n(set b 2)\n(set my-number-three (+ a b))\n\n;; Check the value\nmy-number-three ;; => 3 - as expected\n\n;; Change one of the variables used in its definition\n(set a 99999)\n\n;; Check the value again \nmy-number-three ;; => 3 - nothing has changed!"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "set-bpm",
+    "aliases": [],
+    "description": "Set the speed of the sequencer in beats per minute.",
+    "parameters": [
+      {
+        "name": "bpm",
+        "description": "Parameter 1 of function set-bpm",
+        "range": ""
+      }
+    ],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "set-clock-ext",
+    "aliases": [],
+    "description": "Sets the clock source to be driven by either gate input 1 or 2.  uSEQ will calculate the current bpm from the time between rising edges of the gate.  It will also stay in phase by reseting uSEQs logical time to zero, either at the start of each phrase if the bpm tracking is stable, or every bar if the bpm tracking is unstable.  If you change the speed of the external signal, uSEQ will try to adapt to it as quickly as possible. uSEQ will track bars and phrases by counting from the first rising edge it receives.  You can reset this information using `reset-clock-ext`.",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "set-clock-int",
+    "aliases": [],
+    "description": "Sets the clock source to the internal clock",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "set-time-sig",
+    "aliases": [],
+    "description": "Set the time signature of the sequencer.",
+    "parameters": [
+      {
+        "name": "numerator",
+        "description": "number of beats in a measure",
+        "range": "> 0"
+      }
+    ],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "shift",
+    "aliases": [],
+    "description": "Start a phasor from a specified point.",
+    "parameters": [
+      {
+        "name": "offset",
+        "description": "The offset to start the phasor from",
+        "range": "0-1"
+      },
+      {
+        "name": "phasor",
+        "description": "A phasor",
+        "range": "0 - 1"
+      }
+    ],
+    "examples": [
+      "a2",
+      "a1",
+      "(a1 (shift 0 bar))\n(a2 (shift 0.25 bar))",
+      "d1",
+      "d2",
+      "(d1 (sqr (fast 2 bar)))\n(d2 (sqr (fast 2 (shift 0.5 bar))))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing"
+    ]
+  },
+  {
+    "name": "sine",
+    "aliases": [],
+    "description": "(get-expr my-foo) ;; => (+ 1 2 3)",
+    "parameters": [
+      {
+        "name": "value",
+        "description": "Parameter 1 of function sine",
+        "range": ""
+      }
+    ],
+    "examples": [],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "maths"
+    ]
+  },
+  {
+    "name": "slice",
+    "aliases": [],
+    "description": "Extract a subset of a list or vector.\n\nThis supports negative indexing, where negative indexes are counted backwards from the end.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "The list to push to",
+        "range": "List/Vector"
+      },
+      {
+        "name": "from",
+        "description": "Index of the first value in the slice",
+        "range": "Integer"
+      },
+      {
+        "name": "to",
+        "description": "Index of the value following the end of the slice",
+        "range": "Integer"
+      }
+    ],
+    "examples": [
+      "(slice [1 2 3 4 5] 0 3) ;; => [1 2 3]\n(slice '(1 2 3 4 5) 0 -1) ;; => (1 2 3 4)\n(slice [1 2 3 4 5] 1 -3) ;; => [2]\n(slice [1 2 3 4 5] -3 -1) ;; => [3 4]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "sqr",
+    "aliases": [],
+    "description": "Turns a phasor into a square wave.",
+    "parameters": [
+      {
+        "name": "phasor",
+        "description": "Parameter 1 of function sqr",
+        "range": ""
+      }
+    ],
+    "examples": [],
+    "category": "sequencing",
+    "tags": [
+      "sequencing"
+    ]
+  },
+  {
+    "name": "step",
+    "aliases": [],
+    "description": "Turn a phasor into an integer counter.",
+    "parameters": [
+      {
+        "name": "count",
+        "description": "the number of divisions to divide the phasor into",
+        "range": ">0"
+      },
+      {
+        "name": "offset",
+        "description": "Optional. the point to start the counter from",
+        "range": "any"
+      }
+    ],
+    "examples": [],
+    "category": "sequencing",
+    "tags": [
+      "sequencing"
+    ]
+  },
+  {
+    "name": "swm",
+    "aliases": [],
+    "description": "Read the value of the momentary switch\n\n\nControl the speed of a square wave with momentary switch 1",
+    "parameters": [],
+    "examples": [],
+    "category": "inputs",
+    "tags": [
+      "inputs"
+    ]
+  },
+  {
+    "name": "swt",
+    "aliases": [],
+    "description": "Read the value of the toggle switch",
+    "parameters": [],
+    "examples": [],
+    "category": "inputs",
+    "tags": [
+      "inputs"
+    ]
+  },
+  {
+    "name": "t",
+    "aliases": [],
+    "description": "Logical time, similar to the notion of playback transport time in most DAWs; the number of seconds since the last user-requested reset of the transport.",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "time",
+    "aliases": [],
+    "description": "The number of seconds since the module was last switched on.",
+    "parameters": [],
+    "examples": [],
+    "category": "timing",
+    "tags": [
+      "timing"
+    ]
+  },
+  {
+    "name": "tri",
+    "aliases": [],
+    "description": "Variable duty triangle wave",
+    "parameters": [
+      {
+        "name": "duty",
+        "description": "The point within the phase when the triangle should reach its peak",
+        "range": "0-1"
+      },
+      {
+        "name": "phasor",
+        "description": "A phasor (e.g. bar, beat)",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(a1 (tri 0.1 (fast 4 bar)))",
+      "pow",
+      "(a1 (pow (tri 0.2 (fast 4 bar)) 0.6))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing"
+    ]
+  },
+  {
+    "name": "trigs",
+    "aliases": [],
+    "description": "Output a sequence of gates, each of which can have a different amplitude, determined by a list of amplitudes.",
+    "parameters": [
+      {
+        "name": "list",
+        "description": "A list of trigger values, varying from 0 (0% amplitude) to 9 (100% amplitude)",
+        "range": "0 - 9"
+      },
+      {
+        "name": "phasor",
+        "description": "The sequence is output once per cycle of the phasor",
+        "range": "0-1"
+      },
+      {
+        "name": "pulseWidth",
+        "description": "Optional, default: 0.1. Modify the pulse width of the trigger",
+        "range": "0 - 1"
+      }
+    ],
+    "examples": [
+      "(s3 (trigs [0 1 9 0 1] (fast 2 bar)))\n;; With a higher pulse width:\n(s4 (trigs [0 1 9 0 1] 0.7 (fast 2 bar)))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing",
+      "lists"
+    ]
+  },
+  {
+    "name": "uni->bi",
+    "aliases": [],
+    "description": "Converts a unipolar value (0 to 1) to a bipolar value (-1 to 1).",
+    "parameters": [
+      {
+        "name": "value",
+        "description": "The unipolar value to convert",
+        "range": "Number"
+      }
+    ],
+    "examples": [
+      "(uni->bi 0) ;; => -1.0\n(uni->bi 0.5) ;; => 0.0\n(uni->bi 1) ;; => 1.0"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "usin",
+    "aliases": [],
+    "description": "Generates a unipolar sine wave from the given phasor.",
+    "parameters": [
+      {
+        "name": "phasor",
+        "description": "A value between 0 and 1",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(usin 0.5) ; => 1.0\n\n(usin 0.25) ; => 0.8535533905932737"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "vec",
+    "aliases": [],
+    "description": "Creates a vector containing the given arguments.",
+    "parameters": [
+      {
+        "name": "args",
+        "description": "Any number of values",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(vec 1 2 3) ; => [1 2 3]\n\n(vec 'a 'b 'c) ; => [a b c]"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming"
+    ]
+  },
+  {
+    "name": "while",
+    "aliases": [],
+    "description": "Executes a number of expressions repeatedly until the condition evaluates to false.",
+    "parameters": [
+      {
+        "name": "condition",
+        "description": "Any expression that evaluates to a boolean",
+        "range": "Bool"
+      },
+      {
+        "name": "body",
+        "description": "Any number of expressions to evaluate",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(set i 0)\n\n(while (< i 10)\n  (println \"i is now = \")\n  (println i)\n  (set i (+ i 1)))"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "evaluation control"
+    ]
+  },
+  {
+    "name": "zeros",
+    "aliases": [],
+    "description": "Creates a list of zeros of the specified length.",
+    "parameters": [
+      {
+        "name": "length",
+        "description": "The number of zeros to generate",
+        "range": "any integer >= 0"
+      }
+    ],
+    "examples": [
+      "(zeros 5) ; => [0 0 0 0 0]\n(zeros 0) ; => []"
+    ],
+    "category": "modulisp",
+    "tags": [
+      "functional programming",
+      "lists"
+    ]
+  },
+  {
+    "name": "useq-firmware-info",
+    "aliases": [],
+    "description": "Prints the module's current firmware version.",
+    "parameters": [],
+    "examples": [
+      "(useq-firmware-info)"
+    ],
+    "category": "system",
+    "tags": [
+      "system"
+    ]
+  },
+  {
+    "name": "useq-get-id",
+    "aliases": [],
+    "description": "Prints the current module's ID.",
+    "parameters": [],
+    "examples": [
+      "(useq-get-id)"
+    ],
+    "category": "system",
+    "tags": [
+      "system"
+    ]
+  },
+  {
+    "name": "useq-set-id",
+    "aliases": [],
+    "description": "Sets the module's identity, which could be a number or a name (as a string).",
+    "parameters": [
+      {
+        "name": "new id",
+        "description": "The new ID to set",
+        "range": "number or string"
+      }
+    ],
+    "examples": [
+      "(useq-set-id 3)"
+    ],
+    "category": "system",
+    "tags": [
+      "system"
+    ]
+  },
+  {
+    "name": "useq-memory-save",
+    "aliases": [],
+    "description": "Saves the current state of the module (i.e. all definitions) to the persistent flash storage, which will be re-loaded on every subsequent boot.",
+    "parameters": [],
+    "examples": [
+      "(useq-memory-save)"
+    ],
+    "category": "system",
+    "tags": [
+      "system"
+    ]
+  },
+  {
+    "name": "useq-memory-restore",
+    "aliases": [
+      "useq-memory-load"
+    ],
+    "description": "Restores the state of the module (i.e. all definitions) to that which is saved in the persistent flash storage, effectively resetting the module to how it was when it last booted.",
+    "parameters": [],
+    "examples": [
+      "(useq-memory-restore)"
+    ],
+    "category": "system",
+    "tags": [
+      "system"
+    ]
+  },
+  {
+    "name": "useq-memory-erase",
+    "aliases": [
+      "useq-memory-clear"
+    ],
+    "description": "Erases all user definitions that were previously saved on the module's persistent flash storage. The next time the module boots, it will default to only the built-in definitions.\n\nWARNING: this will permanently delete all saved user definitions.",
+    "parameters": [],
+    "examples": [
+      "(useq-memory-erase)"
+    ],
+    "category": "system",
+    "tags": [
+      "system"
+    ]
+  },
+  {
+    "name": "useq-stop-all",
+    "aliases": [],
+    "description": "Stops and clears all outputs, effectively emptying the update loop.",
+    "parameters": [],
+    "examples": [
+      "(useq-stop-all)"
+    ],
+    "category": "system",
+    "tags": [
+      "system"
+    ]
+  },
+  {
+    "name": "useq-reboot",
+    "aliases": [],
+    "description": "Reboots the module.",
+    "parameters": [],
+    "examples": [
+      "(useq-reboot)"
+    ],
+    "category": "system",
+    "tags": [
+      "system"
+    ]
+  },
+  {
+    "name": "timeit",
+    "aliases": [],
+    "description": "Returns the amount of time it took to run the statement, in microseconds.",
+    "parameters": [
+      {
+        "name": "statement",
+        "description": "Any LISP statement",
+        "range": "-"
+      }
+    ],
+    "examples": [
+      "(timeit (+ 1 1))"
+    ],
+    "category": "system",
+    "tags": [
+      "system"
+    ]
+  }
+]
