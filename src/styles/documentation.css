@@ -9,7 +9,7 @@
   transform: translateY(-50%);
   border: 2px solid var(--panel-border);
   z-index: 99999;
-  padding-top: 5em; /* Increased to make room for fixed tags */
+  padding-top: ; /* Increased to make room for fixed tags */
   padding-left: 1.5em;
   padding-right: 1.5em;
   padding-bottom: 1.5em;
@@ -59,12 +59,12 @@
 
 /* Tags container - Fixed at the top */
 .doc-tags-container {
-  position: fixed;
+  position: sticky;
   top: 0;
   left: 0;
   right: 0;
-  background-color: var(--panel-bg, rgba(30, 30, 30, 0.95));
-  padding: 1em 1.5em;
+  background-color: var(--panel-bg, rgba(30, 30, 30, 1));
+  padding: 0.5em 0.5em;
   margin-bottom: 0;
   border-bottom: 1px solid var(--panel-border);
   z-index: 100;
@@ -170,7 +170,7 @@
   background: none;
   border: none;
   color: gold;
-  font-size: 1.2em;
+  font-size: 0.8em;
   cursor: pointer;
   margin-right: 0.5em;
   line-height: 1;
