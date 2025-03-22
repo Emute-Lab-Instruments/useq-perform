@@ -3,18 +3,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 8px;
+  padding:0.46em 0.6em;
+  /*padding: 4px 8px;*/
   border: 1px solid #333;
   border-radius: 1px;
   margin: 0 2px;
-  height: 26px;
+  height: 2.5em;
   min-width: 26px;
   box-sizing: border-box;
   text-decoration: none;
   font-family: monospace;
   font-weight: 400;
   color: #000;
-  background-color: #f5f5dc; /* Creme color */
+  background-color: #f5f5dc; 
   text-align: center;
   transition: all 0.15s;
   user-select: none;
@@ -24,10 +25,40 @@
 
 .toolbar-button:hover {
   color: #000;
-  background-color: #fffdd0; /* Lighter creme on hover */
+  background-color: #fffdd0; 
   border-color: #000;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
 }
+/* 
+.toolbar-button{
+  display:inline-block;
+  padding:0.46em 0.6em;
+  border:0.1em solid #000000;
+  margin:0 0.1em 0.1em 0;
+  border-radius:0.12em;
+  box-sizing: border-box;
+  text-decoration:none;
+  font-family: monospace;
+  font-weight:300;
+  color:#000000;
+  text-shadow: 0 0.04em 0.04em rgba(0,0,0,0.7);
+  background-color:white;
+  text-align:center;
+  transition: all 0.15s;
+  user-select: none;
+ }
+ .toolbar-button:hover{
+  text-shadow: 0 0 2em rgba(255,255,255,150);
+  color:purple;
+  border-color:#aaaaaa;
+  cursor:pointer;
+ }
+ @media all and (max-width:30em){
+  .toolbar-button{
+    display:block;
+    margin:0.4em auto;
+   }
+ } */
 
 #button-connect {
   box-shadow: 0 0 20px lightgreen;
