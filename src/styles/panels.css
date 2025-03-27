@@ -210,16 +210,10 @@
   color: var(--accent-color, #00ff41);
 }
 
-/* Settings Panel */
+/* Settings Panel styling is now in settings.css */
+/* Overriding the previous centered settings panel to match our new design */
 #panel-settings.panel-aux {
-  width: 500px;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  border: 1px solid var(--panel-border);
-  border-radius: 4px;
-  padding: 1rem;
-  z-index: 1100;
+  /* Position and size are defined in settings.css */
 }
 
 /* Snippets Panel */
