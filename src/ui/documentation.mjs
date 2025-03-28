@@ -31,67 +31,228 @@ let pendingSort = false; // Flag to determine if we need to sort on next panel t
  * Initialize the documentation panel
  */
 export function initDocumentationPanel() {
-  const docPanel = document.getElementById('panel-documentation');
-  
-  // Create and add the toggle position button
-  const togglePositionButton = document.createElement('button');
-  togglePositionButton.id = 'panel-documentation-toggle-position';
-  togglePositionButton.innerHTML = '⇄';
-  togglePositionButton.title = 'Toggle panel position';
-  // Remove inline positioning styles - let CSS handle it
-  docPanel.appendChild(togglePositionButton);
-  
-  // Add toggle position functionality
-  togglePositionButton.addEventListener('click', () => {
-    docPanel.classList.toggle('centered');
+    console.log("Initializing documentation panel");
+    const docPanel = document.getElementById('panel-documentation');
     
-    // Re-render to adjust the column layout
-    renderFunctionList(false);
-  });
+    // Verify panel exists
+    if (!docPanel) {
+        console.error("Documentation panel element not found in DOM!");
+        return;
+    } else {
+        console.log("Documentation panel found in DOM:", docPanel);
+    }
+    
+    // Load and render documentation data
+    loadDocumentationData().then(data => {
+        console.log("Documentation data loaded, count:", data.length);
+        renderDocumentationPanel(docPanel, data);
+    }).catch(error => {
+        console.error("Error loading documentation data:", error);
+    });
+    
+    // Remove previous handlers if any
+    $("#button-documentation").off("click");
+    
+    // Add event handler for documentation button - using direct DOM for reliability
+    const docButton = document.getElementById("button-documentation");
+    if (docButton) {
+        docButton.addEventListener("click", function(e) {
+            console.log("Documentation button clicked - direct event listener");
+            toggleAuxPanel("#panel-documentation");
+            
+            // Prevent event bubbling issues
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    }
+    
+    // Handle ESC key to close panel
+    $(document).keydown((e) => {
+        if (e.key === "Escape") {
+            if (window.getComputedStyle(docPanel).display !== "none") {
+                console.log("ESC key pressed while documentation panel is visible - closing panel");
+                toggleAuxPanel("#panel-documentation");
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }
+    });
+    
+    // Verify button exists
+    if ($("#button-documentation").length === 0) {
+        console.error("Documentation button not found in DOM!");
+    } else {
+        console.log("Documentation button found in DOM:", $("#button-documentation")[0]);
+    }
+}
+
+/**
+ * Adjust documentation panel elements to ensure readability based on current theme
+ */
+function adjustDocPanelForTheme() {
+    // Determine if we're using a light theme by checking the --text-primary variable
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
+    
+    // Convert the color to RGB to check its brightness
+    let isLightText = false;
+    if (textColor.startsWith('#')) {
+        // For hex color
+        const hex = textColor.substring(1);
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        // Calculate perceived brightness
+        const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
+        isLightText = brightness > 128;
+    } else if (textColor.startsWith('rgb')) {
+        // For rgb color
+        const rgb = textColor.match(/\d+/g);
+        if (rgb && rgb.length >= 3) {
+            const r = parseInt(rgb[0]);
+            const g = parseInt(rgb[1]);
+            const b = parseInt(rgb[2]);
+            const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
+            isLightText = brightness > 128;
+        }
+    }
+    
+    // If we have light text, we're in a dark theme, otherwise we're in a light theme
+    const isLightTheme = !isLightText;
+    
+    if (isLightTheme) {
+        // Adjust documentation panel elements for better visibility in light themes
+        $('.doc-tag').css({
+            'background-color': '#f0f0f0',
+            'color': '#333'
+        });
+        
+        $('.doc-tag.selected').css({
+            'background-color': 'var(--accent-color, #0066cc)',
+            'color': 'white'
+        });
+        
+        $('.doc-function-header').css({
+            'background-color': '#f5f5f5',
+            'color': '#333'
+        });
+        
+        $('.doc-function-details').css({
+            'background-color': '#fafafa',
+            'color': '#333',
+            'border-top': '1px solid #ddd'
+        });
+        
+        $('.doc-section-title').css({
+            'color': 'var(--accent-color, #0066cc)'
+        });
+        
+        $('.doc-param-name').css({
+            'background-color': '#f0f0f0',
+            'color': '#333',
+            'border': '1px solid #ddd'
+        });
+        
+        $('.doc-function-tag').css({
+            'background-color': '#f0f0f0',
+            'color': '#555'
+        });
+        
+        // Override CodeMirror styles for examples
+        $('.doc-example-editor .cm-editor').css({
+            'background-color': '#f8f8f8',
+            'border': '1px solid #eee'
+        });
+    } else {
+        // Reset to dark theme defaults
+        $('.doc-tag').css({
+            'background-color': 'var(--panel-item-hover-bg)',
+            'color': 'var(--text-primary)'
+        });
+        
+        $('.doc-tag.selected').css({
+            'background-color': 'var(--accent-color)',
+            'color': '#000'
+        });
+        
+        $('.doc-function-header').css({
+            'background-color': 'var(--panel-section-bg)',
+            'color': 'var(--text-primary)'
+        });
+        
+        $('.doc-function-details').css({
+            'background-color': 'var(--panel-control-bg)',
+            'color': 'var(--text-primary)',
+            'border-top': '1px solid var(--panel-border)'
+        });
+        
+        $('.doc-section-title').css({
+            'color': 'var(--accent-color)'
+        });
+        
+        $('.doc-param-name').css({
+            'background-color': 'var(--panel-item-hover-bg)',
+            'color': 'var(--text-primary)',
+            'border': 'none'
+        });
+        
+        $('.doc-function-tag').css({
+            'background-color': 'var(--panel-item-hover-bg)',
+            'color': 'var(--text-primary)'
+        });
+        
+        // Reset CodeMirror styles
+        $('.doc-example-editor .cm-editor').css({
+            'background-color': '',
+            'border': ''
+        });
+    }
+}
+
+/**
+ * Load documentation data from the imported JSON
+ * This function was missing, causing the documentation panel to break
+ */
+async function loadDocumentationData() {
+  try {
+    // We're already importing documentationData at the top of the file
+    // Let's load user preferences first
+    loadUserPreferences();
+    
+    // Return the imported documentationData
+    return documentationData;
+    
+  } catch (error) {
+    console.error('Error loading documentation data:', error);
+    return [];
+  }
+}
+
+/**
+ * Render the documentation panel with the loaded data
+ * This function was missing, causing the documentation panel to be empty
+ */
+function renderDocumentationPanel(container, data) {
+  if (!container) {
+    console.error('Documentation panel container not found');
+    return;
+  }
   
-  // Create tags container
+  // Create tags container at the top
   const tagsContainer = document.createElement('div');
-  tagsContainer.id = 'doc-tags-container';
   tagsContainer.className = 'doc-tags-container';
-  docPanel.appendChild(tagsContainer);
+  container.appendChild(tagsContainer);
+  
+  // Initialize tags
+  initTags(tagsContainer);
   
   // Create function list container
   const functionListContainer = document.createElement('div');
   functionListContainer.id = 'doc-function-list';
   functionListContainer.className = 'doc-function-list';
-  docPanel.appendChild(functionListContainer);
-  
-  // Initialize the tags
-  initTags(tagsContainer);
-  
-  // Load user preferences
-  loadUserPreferences();
+  container.appendChild(functionListContainer);
   
   // Render the function list
   renderFunctionList(true);
-  
-  // Handle ESC key to close documentation panel globally
-  $(document).on('keydown', function(e) {
-    if (e.key === 'Escape' && $("#panel-documentation").is(":visible")) {
-      toggleAuxPanel("#panel-documentation");
-    }
-  });
-  
-  // Add event listener for panel visibility changes
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.attributeName === 'style') {
-        const isVisible = $(docPanel).is(':visible');
-        if (isVisible && pendingSort) {
-          // Sort and render only when panel becomes visible after starring
-          pendingSort = false;
-          renderFunctionList(true);
-        }
-      }
-    });
-  });
-  
-  observer.observe(docPanel, { attributes: true });
 }
 
 /**

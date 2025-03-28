@@ -1,23 +1,12 @@
 /* Documentation Panel Styles */
+/* These styles extend the common panel styles defined in panels.css */
 
 /* Main panel container */
 #panel-documentation.panel-aux {
-  height: 70%;
-  width: 25%; 
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  border: 2px solid var(--panel-border);
-  z-index: 99999;
-  padding-top: ; /* Increased to make room for fixed tags */
+  padding-top: 0; /* Fix invalid padding value */
   padding-left: 1.5em;
   padding-right: 1.5em;
   padding-bottom: 1.5em;
-  border-radius: 8px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
-  overflow-y: auto;
-  background-color: var(--panel-bg, rgba(30, 30, 30, 0.95));
-  transition: all 0.3s ease-in-out;
   display: flex;
   flex-direction: column;
 }
@@ -29,41 +18,13 @@
   transform: translate(50%, -50%);
 }
 
-/* Toggle position button - Now positioned on the middle of the left side */
-#panel-documentation-toggle-position {
-  position: fixed;
-  top: 50%;
-  left: 0;
-  width: 30px;
-  height: 30px;
-  background-color: transparent;
-  border-top: 1px solid var(--panel-border);
-  border-right: 1px solid var(--panel-border);
-  border-bottom: 1px solid var(--panel-border);
-  border-left: none;
-  border-radius: 0 4px 4px 0;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 16px;
-  transition: all 0.2s ease;
-  transform: translateY(-50%);
-  z-index: 101;
-}
-
-#panel-documentation-toggle-position:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
 /* Tags container - Fixed at the top */
 .doc-tags-container {
   position: sticky;
   top: 0;
   left: 0;
   right: 0;
-  background-color: var(--panel-bg, rgba(30, 30, 30, 1));
+  background-color: var(--panel-bg);
   padding: 0.5em 0.5em;
   margin-bottom: 0;
   border-bottom: 1px solid var(--panel-border);
@@ -81,7 +42,7 @@
 
 .doc-tag {
   padding: 0.3em 0.8em;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--panel-item-hover-bg);
   border-radius: 15px;
   cursor: pointer;
   user-select: none;
@@ -90,11 +51,11 @@
 }
 
 .doc-tag:hover {
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: var(--panel-item-active-bg);
 }
 
 .doc-tag.selected {
-  background-color: var(--accent-color, #00ff41);
+  background-color: var(--accent-color);
   color: #000;
 }
 
@@ -125,7 +86,7 @@
 
 .doc-function-item {
   margin-bottom: 0;
-  border-radius: 4px;
+  border-radius: var(--item-border-radius);
   overflow: hidden;
   border: 1px solid transparent;
   transition: border-color 0.2s ease;
@@ -143,12 +104,12 @@
   align-items: center;
   padding: 0.5em;
   cursor: pointer;
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--panel-section-bg);
   transition: background-color 0.2s ease;
 }
 
 .doc-function-header:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--panel-item-hover-bg);
 }
 
 .doc-function-name {
@@ -180,7 +141,7 @@
 .doc-function-details {
   padding: 1em;
   border-top: 1px solid var(--panel-border);
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--panel-control-bg);
 }
 
 .doc-function-description {
@@ -191,7 +152,7 @@
 .doc-section-title {
   font-weight: bold;
   margin: 1em 0 0.5em;
-  color: var(--accent-color, #00ff41);
+  color: var(--accent-color);
 }
 
 .doc-params-list {
@@ -207,7 +168,7 @@
 .doc-param-name {
   display: inline-block;
   font-family: var(--code-font);
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--panel-item-hover-bg);
   padding: 0 0.3em;
   border-radius: 3px;
   margin-right: 0.5em;
@@ -228,7 +189,7 @@
 /* Code example styling */
 .doc-example-wrapper {
   margin: 0.8em 0;
-  border-radius: 4px;
+  border-radius: var(--item-border-radius);
   overflow: hidden;
   border: 1px solid var(--panel-border);
   background-color: rgba(0, 0, 0, 0.3);
@@ -238,7 +199,7 @@
   display: flex;
   justify-content: flex-end;
   padding: 0.3em;
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--panel-control-bg);
   border-bottom: 1px solid var(--panel-border);
 }
 
@@ -254,7 +215,7 @@
 }
 
 .doc-example-copy:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--panel-item-hover-bg);
 }
 
 .doc-example-copy.copied {
@@ -302,13 +263,13 @@
 .doc-function-tag {
   font-size: 0.8em;
   padding: 0.2em 0.5em;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--panel-item-hover-bg);
   border-radius: 3px;
 }
 
 .doc-no-results {
   padding: 2em;
   text-align: center;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-muted);
   grid-column: 1 / -1;
 }

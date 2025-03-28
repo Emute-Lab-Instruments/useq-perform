@@ -24,7 +24,8 @@ function adjustPanelsToTheme(themeName) {
   const themeRecipe = themeRecipes[themeName];
   const backgroundColor = themeRecipe.settings.background;
   const foregroundColor = themeRecipe.settings.foreground;
-
+  const isLightTheme = themeRecipe.variant === "light";
+  
   // Adjust panel background colors based on theme variant
   const consoleAdjustmentPercentage = 0.25;
   const helpAdjustmentPercentage = 0.15; // Slightly less adjustment for help panel
@@ -49,7 +50,7 @@ function adjustPanelsToTheme(themeName) {
     // Convert back to hex
     adjustedHelpBackground = "#" + convert.hsv.hex(helpHsv);
   }
-
+  
   // Update console panel
   $("#panel-console").css({
     backgroundColor: adjustedConsoleBackground,
@@ -71,10 +72,49 @@ function adjustPanelsToTheme(themeName) {
     "border-color": themeRecipe.settings.foreground,
   });
   
-  // Update CSS variables for other panels to use
-  document.documentElement.style.setProperty('--panel-bg', adjustedHelpBackground + "F0");
-  document.documentElement.style.setProperty('--toolbar-bg', adjustedConsoleBackground);
-  document.documentElement.style.setProperty('--accent-color', themeRecipe.settings.accent || foregroundColor);
+  // Update all other auxiliary panels
+  $(".panel-aux").css({
+    color: foregroundColor,
+  });
+  
+  // For light themes, we need to adjust contrast on form controls and borders
+  if (isLightTheme) {
+    // Create contrasting colors for light themes
+    let panelControlBg = "#f0f0f0";
+    let panelBorder = "#cccccc";
+    let panelItemHoverBg = "#e5e5e5";
+    let panelItemActiveBg = "#d5d5d5";
+    let textPrimary = "#333333";
+    let textSecondary = "#555555";
+    let textMuted = "#777777";
+    let panelSectionBg = "#f8f8f8";
+    
+    // Update CSS variables for light theme
+    document.documentElement.style.setProperty('--panel-bg', adjustedHelpBackground + "F0");
+    document.documentElement.style.setProperty('--toolbar-bg', adjustedConsoleBackground);
+    document.documentElement.style.setProperty('--panel-border', panelBorder);
+    document.documentElement.style.setProperty('--panel-section-bg', panelSectionBg);
+    document.documentElement.style.setProperty('--panel-item-hover-bg', panelItemHoverBg);
+    document.documentElement.style.setProperty('--panel-item-active-bg', panelItemActiveBg);
+    document.documentElement.style.setProperty('--panel-control-bg', panelControlBg);
+    document.documentElement.style.setProperty('--text-primary', textPrimary);
+    document.documentElement.style.setProperty('--text-secondary', textSecondary);
+    document.documentElement.style.setProperty('--text-muted', textMuted);
+    document.documentElement.style.setProperty('--accent-color', themeRecipe.settings.accent || '#0066cc');
+  } else {
+    // Dark theme variables - use existing color scheme
+    document.documentElement.style.setProperty('--panel-bg', adjustedHelpBackground + "F0");
+    document.documentElement.style.setProperty('--toolbar-bg', adjustedConsoleBackground);
+    document.documentElement.style.setProperty('--panel-border', 'rgba(255, 255, 255, 0.2)');
+    document.documentElement.style.setProperty('--panel-section-bg', 'rgba(255, 255, 255, 0.05)');
+    document.documentElement.style.setProperty('--panel-item-hover-bg', 'rgba(255, 255, 255, 0.1)');
+    document.documentElement.style.setProperty('--panel-item-active-bg', 'rgba(255, 255, 255, 0.15)');
+    document.documentElement.style.setProperty('--panel-control-bg', 'rgba(0, 0, 0, 0.2)');
+    document.documentElement.style.setProperty('--text-primary', foregroundColor);
+    document.documentElement.style.setProperty('--text-secondary', 'rgba(255, 255, 255, 0.7)');
+    document.documentElement.style.setProperty('--text-muted', 'rgba(255, 255, 255, 0.5)');
+    document.documentElement.style.setProperty('--accent-color', themeRecipe.settings.accent || foregroundColor);
+  }
 }
 
 export function setMainEditorTheme(themeName) {

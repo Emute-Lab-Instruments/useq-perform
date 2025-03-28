@@ -52,9 +52,10 @@ export function initToolbarPanel(editor) {
         await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
     });
     
-    $("#button-help").click(() => {
-        toggleAuxPanel("#panel-help");
-    });
+    // Remove the help button click handler since help.mjs now has its own direct handler
+    // $("#button-help").click(() => {
+    //     toggleAuxPanel("#panel-help");
+    // });
 
     $("#button-documentation").click(() => {
         toggleAuxPanel("#panel-documentation");
