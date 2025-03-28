@@ -1,0 +1,61 @@
+/* Theme Panel Styles */
+/* These styles extend the common panel styles defined in panels.css */
+
+/* Theme container */
+.themes-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding-top: 1em;
+}
+
+/* Theme preview card */
+.theme-preview {
+  margin-bottom: 1.5em;
+  padding: 1em;
+  border-radius: var(--item-border-radius);
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: var(--panel-section-bg);
+}
+
+/* Make the editor non-interactive */
+.theme-preview .cm-editor {
+  pointer-events: none;
+}
+
+/* Hover effect for theme cards */
+.theme-preview:hover {
+  background-color: var(--panel-item-hover-bg);
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Theme name styling */
+.theme-name {
+  font-size: 1.2em;
+  margin-bottom: 1em;
+  color: var(--accent-color);
+  padding: 6px 10px;
+  border-radius: var(--item-border-radius);
+  display: inline-block;
+}
+
+/* Active/selected theme indicator */
+.theme-preview.active {
+  border: 2px solid var(--accent-color);
+}
+
+/* Grid layout for larger screens */
+@media (min-width: 1200px) {
+  #panel-theme.panel-aux.centered .themes-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5em;
+  }
+  
+  #panel-theme.panel-aux.centered .theme-preview {
+    margin-bottom: 0;
+  }
+}

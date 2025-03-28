@@ -1,50 +1,14 @@
 /* Settings Panel Styles */
+/* These styles extend the common panel styles defined in panels.css */
 
-/* Main panel container */
+/* Remove duplicated panel styling - already handled in panels.css */
 #panel-settings.panel-aux {
-  height: 70%;
-  width: 25%; 
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  border: 2px solid var(--panel-border);
-  z-index: 99999;
-  padding: 1.5em;
-  border-radius: 8px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
-  overflow-y: auto;
-  background-color: var(--panel-bg, rgba(30, 30, 30, 0.95));
-  transition: all 0.3s ease-in-out;
+  /* Custom styles only for the settings panel if needed */
 }
 
-/* Settings Panel - Centered mode */
+/* Settings Panel - Centered mode - override width from common class */
 #panel-settings.panel-aux.centered {
   width: 50%;
-  right: 50%;
-  transform: translate(50%, -50%);
-}
-
-/* Toggle position button */
-#panel-settings-toggle-position {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  width: 30px;
-  height: 30px;
-  background-color: transparent;
-  border: 1px solid var(--panel-border);
-  border-radius: 4px;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 16px;
-  transition: all 0.2s ease;
-}
-
-#panel-settings-toggle-position:hover {
-  background-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Settings container */
@@ -56,83 +20,16 @@
   padding-top: 1em;
 }
 
-/* Settings section */
-.settings-section {
-  border-radius: 6px;
-  background-color: rgba(255, 255, 255, 0.05);
-  padding: 1em;
-  border: 1px solid var(--panel-border);
-}
-
-.settings-section-title {
-  font-size: 1.1em;
-  margin: 0 0 1em 0;
-  color: var(--accent-color, #00ff41);
-  border-bottom: 1px solid var(--panel-border);
-  padding-bottom: 0.5em;
-}
-
-/* Settings form rows */
-.settings-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1em;
-  padding: 0.5em 0;
-}
-
-.settings-label {
-  flex: 1;
-  font-size: 0.9em;
-}
-
-.settings-control {
-  flex: 1;
-  text-align: right;
-}
-
-/* Form controls styling */
-.settings-text-input,
-.settings-number-input,
-.settings-select {
-  background-color: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--panel-border);
-  border-radius: 4px;
-  color: var(--text-primary);
-  padding: 0.5em;
-  font-size: 0.9em;
-  width: 100%;
-  max-width: 200px;
-}
-
-.settings-text-input:focus,
-.settings-number-input:focus,
-.settings-select:focus {
-  border-color: var(--accent-color, #00ff41);
-  outline: none;
-}
-
-.settings-checkbox {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent-color, #00ff41);
-}
-
 /* Reset button container */
 .settings-reset-container {
   margin-top: 1em;
   text-align: center;
 }
 
+/* Settings-specific styling for reset button - inherits from panel-button */
 .settings-reset-button {
   background-color: rgba(255, 0, 0, 0.2);
   border: 1px solid rgba(255, 0, 0, 0.4);
-  color: var(--text-primary);
-  padding: 0.8em 1.2em;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: all 0.2s ease;
 }
 
 .settings-reset-button:hover {
