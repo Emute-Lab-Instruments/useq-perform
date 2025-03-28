@@ -6,6 +6,7 @@ import {
   activeBuffer,
   swapBuffer,
 } from "./internalVis/main.mjs";
+import { toggleSerialVis } from "../editors/editorConfig.mjs";
 
 let linePosition = 0.0;
 let plotNeedsRedrawing = true;
@@ -298,6 +299,8 @@ export function initVisPanel() {
   
   // Create controls for smoothing settings
   createSmoothingControls();
+
+  toggleSerialVis();
 }
 
 /**

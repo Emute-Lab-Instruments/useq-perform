@@ -291,6 +291,18 @@ function initTags(container) {
  */
 function renderFunctionList(applySorting = false) {
   const container = document.getElementById('doc-function-list');
+  if (!container) {
+    console.error('Documentation function list container not found');
+    return;
+  }
+  
+  console.log("--- DOCUMENTATION RENDER START ---");
+  console.log("Container dimensions before rendering:", 
+              "width:", container.offsetWidth, 
+              "height:", container.offsetHeight,
+              "scrollHeight:", container.scrollHeight);
+  
+  // Clear existing content
   container.innerHTML = '';
   
   // Destroy any existing code editors
@@ -322,39 +334,135 @@ function renderFunctionList(applySorting = false) {
     return a.name.localeCompare(b.name);
   });
   
-  // Check if we're in centered mode (3-column) layout
-  const isMultiColumn = document.getElementById('panel-documentation').classList.contains('centered');
+  console.log(`Rendering ${filteredFunctions.length} documentation entries`);
   
+  // Check if we're in centered mode (multi-column) layout
+  const docPanel = document.getElementById('panel-documentation');
+  const isMultiColumn = docPanel && docPanel.classList.contains('centered');
+  console.log(`Documentation panel centered mode: ${isMultiColumn}`);
+  console.log("Panel dimensions:", 
+              "width:", docPanel.offsetWidth, 
+              "height:", docPanel.offsetHeight,
+              "display:", window.getComputedStyle(docPanel).display);
+  
+  // Handle multi-column layout for centered mode
   if (isMultiColumn) {
-    // For multi-column layout, we need to distribute functions across columns manually
-    // This ensures each column fills vertically before moving to the next column
+    console.log("Using multi-column layout");
+    // For multi-column layout in centered mode, distribute functions evenly
     const columnCount = 3;
     const itemsPerColumn = Math.ceil(filteredFunctions.length / columnCount);
     
-    // Create column containers
+    // Create all column containers first
+    const columns = [];
     for (let i = 0; i < columnCount; i++) {
       const columnContainer = document.createElement('div');
       columnContainer.className = 'doc-column';
+      columnContainer.setAttribute('data-column-index', i);
+      
+      // Make columns explicitly visible with inline styles to override any CSS
       columnContainer.style.display = 'flex';
       columnContainer.style.flexDirection = 'column';
-      columnContainer.style.gap = '1em';
+      columnContainer.style.visibility = 'visible';
+      columnContainer.style.opacity = '1';
+      columnContainer.style.minWidth = '200px';
+      columnContainer.style.flex = '1';
+      
       container.appendChild(columnContainer);
-      
-      // Fill this column with its share of functions
-      const startIdx = i * itemsPerColumn;
-      const endIdx = Math.min(startIdx + itemsPerColumn, filteredFunctions.length);
-      
-      for (let j = startIdx; j < endIdx; j++) {
-        const functionElement = createFunctionElement(filteredFunctions[j]);
-        columnContainer.appendChild(functionElement);
-      }
+      columns.push(columnContainer);
+      console.log(`Created column ${i} with styles:`, 
+                  "display:", columnContainer.style.display,
+                  "visibility:", columnContainer.style.visibility,
+                  "opacity:", columnContainer.style.opacity);
     }
-  } else {
-    // Single column mode - add functions directly to container
-    filteredFunctions.forEach(func => {
+    
+    // Now distribute functions across the columns
+    filteredFunctions.forEach((func, index) => {
+      const columnIndex = Math.floor(index / itemsPerColumn);
+      const targetColumn = columns[Math.min(columnIndex, columnCount - 1)];
+      
       const functionElement = createFunctionElement(func);
-      container.appendChild(functionElement);
+      targetColumn.appendChild(functionElement);
+      
+      if (index < 5) { // Log only first few items to avoid console spam
+        console.log(`Added function ${func.name} to column ${targetColumn.getAttribute('data-column-index')}`);
+      }
     });
+    
+    // Force a repaint multiple times to ensure visibility
+    let repaintCount = 0;
+    const forceRepaint = () => {
+      if (repaintCount++ >= 3) return; // Stop after 3 tries
+      
+      columns.forEach((col, idx) => {
+        // Get computed style to force a reflow
+        const forceReflow = col.offsetHeight;
+        
+        // Check if the column is visible in the computed style
+        const computedStyle = window.getComputedStyle(col);
+        const isVisible = computedStyle.display !== 'none' && 
+                          computedStyle.visibility !== 'hidden' &&
+                          parseFloat(computedStyle.opacity) > 0;
+        
+        console.log(`Column ${idx} visibility check (attempt ${repaintCount}):`, 
+                    "display:", computedStyle.display,
+                    "visibility:", computedStyle.visibility,
+                    "opacity:", computedStyle.opacity,
+                    "isVisible:", isVisible);
+        
+        // Explicitly set styles again
+        col.style.display = 'flex';
+        col.style.visibility = 'visible';
+        col.style.opacity = '1';
+        
+        // If the column has no height, try setting min-height
+        if (col.offsetHeight < 10) {
+          col.style.minHeight = '300px';
+          console.log(`Column ${idx} had no height, setting minHeight to 300px`);
+        }
+      });
+      
+      // Check container dimensions after this repaint
+      console.log("Container dimensions after repaint attempt:", 
+                  "width:", container.offsetWidth, 
+                  "height:", container.offsetHeight,
+                  "scrollHeight:", container.scrollHeight);
+      
+      // Schedule another repaint
+      setTimeout(forceRepaint, 100);
+    };
+    
+    // Start the repaint process
+    setTimeout(forceRepaint, 50);
+    
+  } else {
+    console.log("Using single-column layout");
+    // Single column mode - create a single column container
+    const columnContainer = document.createElement('div');
+    columnContainer.className = 'doc-column';
+    columnContainer.style.display = 'flex';
+    columnContainer.style.flexDirection = 'column';
+    columnContainer.style.visibility = 'visible';
+    columnContainer.style.opacity = '1';
+    columnContainer.style.width = '100%';
+    container.appendChild(columnContainer);
+    
+    // Add functions to the single column
+    filteredFunctions.forEach((func, index) => {
+      const functionElement = createFunctionElement(func);
+      columnContainer.appendChild(functionElement);
+      
+      if (index < 5) { // Log only first few items to avoid console spam
+        console.log(`Added function ${func.name} to single column`);
+      }
+    });
+    
+    // Check container dimensions after rendering
+    setTimeout(() => {
+      console.log("Single column dimensions after rendering:", 
+                  "width:", columnContainer.offsetWidth, 
+                  "height:", columnContainer.offsetHeight,
+                  "children:", columnContainer.children.length);
+    }, 50);
   }
   
   // If no functions match the filters
@@ -368,8 +476,35 @@ function renderFunctionList(applySorting = false) {
   // Initialize CodeMirror instances for expanded functions
   setTimeout(() => {
     setupCodeEditors();
-  }, 0);
+    
+    // Final check after everything should be rendered
+    const finalContainer = document.getElementById('doc-function-list');
+    console.log("Final container dimensions:", 
+                "width:", finalContainer.offsetWidth, 
+                "height:", finalContainer.offsetHeight,
+                "scrollHeight:", finalContainer.scrollHeight,
+                "children:", finalContainer.children.length);
+    
+    if (isMultiColumn) {
+      // Check if columns are now visible
+      const columns = finalContainer.querySelectorAll('.doc-column');
+      columns.forEach((col, idx) => {
+        const colStyle = window.getComputedStyle(col);
+        console.log(`Final column ${idx} visibility:`, 
+                    "display:", colStyle.display,
+                    "visibility:", colStyle.visibility,
+                    "opacity:", colStyle.opacity,
+                    "offsetHeight:", col.offsetHeight,
+                    "children:", col.children.length);
+      });
+    }
+    
+    console.log("--- DOCUMENTATION RENDER END ---");
+  }, 200);
 }
+
+// Expose renderFunctionList globally so it can be called from ui.mjs
+window.renderDocumentationFunctionList = renderFunctionList;
 
 /**
  * Create a function element for the list
