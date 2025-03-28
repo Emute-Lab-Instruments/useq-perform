@@ -30,13 +30,19 @@ export function toggleAuxPanel(panelID) {
         return;
     }
     
-    // Directly check if panel has display block style to determine visibility
-    const isVisible = window.getComputedStyle($panel[0]).display !== 'none';
+    // Check if the panel is already in the process of being shown
+    const panelElement = $panel[0];
+    const computedStyle = window.getComputedStyle(panelElement);
+    
+    // More reliable check for visibility - check both display and opacity
+    const isVisible = computedStyle.display !== 'none' && 
+                     (parseFloat(computedStyle.opacity) > 0 || 
+                      panelElement.classList.contains('is-opening'));
     
     console.log(`Panel ${panelID} current visibility (computed style):`, isVisible, 
-                `display=${window.getComputedStyle($panel[0]).display}`,
-                `opacity=${window.getComputedStyle($panel[0]).opacity}`,
-                `visibility=${window.getComputedStyle($panel[0]).visibility}`);
+                `display=${computedStyle.display}`,
+                `opacity=${computedStyle.opacity}`,
+                `visibility=${computedStyle.visibility}`);
     
     if (!isVisible) {
         // First hide all panels with !important to override any CSS issues
@@ -44,38 +50,55 @@ export function toggleAuxPanel(panelID) {
             this.style.setProperty('display', 'none', 'important');
             this.style.setProperty('visibility', 'hidden', 'important');
             this.style.setProperty('opacity', '0', 'important');
+            this.classList.remove('is-opening');
         });
         
         // Remove any existing position toggle buttons
         $('.panel-position-toggle').remove();
         
-        // Show the requested panel - using inline styles with !important to override any CSS
+        // Mark the panel as opening to prevent double-click issues
+        panelElement.classList.add('is-opening');
+        
+        // Show the requested panel with appropriate display value based on its default style
         console.log(`Opening panel ${panelID}`);
-        $panel[0].style.setProperty('display', 'block', 'important');
+        
+        // Set display first - use flex instead of block for panels that need it
+        if (panelID === '#panel-documentation') {
+            panelElement.style.setProperty('display', 'flex', 'important');
+        } else {
+            panelElement.style.setProperty('display', 'block', 'important');
+        }
         
         // Force a reflow to ensure transitions work
-        $panel[0].offsetHeight;
+        panelElement.offsetHeight;
         
-        $panel[0].style.setProperty('visibility', 'visible', 'important');
-        $panel[0].style.setProperty('opacity', '1', 'important');
+        // Then set visibility and opacity
+        panelElement.style.setProperty('visibility', 'visible', 'important');
+        panelElement.style.setProperty('opacity', '1', 'important');
         
         // Add position toggle button if this panel supports it
         if (POSITION_TOGGLABLE_PANELS.includes(panelID)) {
             setupPositionToggle(panelID);
         }
+        
+        // Remove the opening class after transition completes
+        setTimeout(() => {
+            panelElement.classList.remove('is-opening');
+        }, 300); // slightly longer than the CSS transition
     } else {
         // Hide this panel with !important flags
         console.log(`Closing panel ${panelID}`);
-        $panel[0].style.setProperty('opacity', '0', 'important');
-        $panel[0].style.setProperty('visibility', 'hidden', 'important');
+        panelElement.style.setProperty('opacity', '0', 'important');
+        panelElement.style.setProperty('visibility', 'hidden', 'important');
+        panelElement.classList.remove('is-opening');
         
         // Remove the toggle button for this panel
         $(`.panel-position-toggle[data-for="${panelID}"]`).remove();
         
         // Immediately set display to none to force panel to be hidden
         setTimeout(() => {
-            $panel[0].style.setProperty('display', 'none', 'important');
-        }, 50);
+            panelElement.style.setProperty('display', 'none', 'important');
+        }, 200); // matches the transition duration in CSS
     }
     
     return !isVisible; // Return whether the panel is now visible
@@ -96,12 +119,15 @@ export function togglePanelPosition(panelID) {
     console.log(`Toggling position for panel ${panelID}`);
     
     // Toggle the centered class
+    const wasCentered = $panel.hasClass('centered');
     $panel.toggleClass('centered');
+    const isCentered = $panel.hasClass('centered');
+    
+    console.log(`Panel ${panelID} position changed: wasCentered=${wasCentered}, isCentered=${isCentered}`);
     
     // Update the icon to match the current state
     const $toggleBtn = $(`.panel-position-toggle[data-for="${panelID}"]`);
     if ($toggleBtn.length) {
-        const isCentered = $panel.hasClass('centered');
         $toggleBtn.attr('title', isCentered ? 'Dock to side' : 'Center panel');
         $toggleBtn.find('i').attr('data-lucide', isCentered ? 'panel-right' : 'layout');
         // Refresh the Lucide icon
@@ -111,6 +137,18 @@ export function togglePanelPosition(panelID) {
         
         // Update button position after position toggle
         setTimeout(() => updateToggleButtonPosition(panelID), 10);
+    }
+    
+    // For documentation panel, re-render the function list since layout changed
+    if (panelID === "#panel-documentation") {
+        console.log("Re-rendering documentation after position toggle");
+        // Give time for the class change to apply before rendering
+        setTimeout(() => {
+            // Use a global function from documentation.mjs if it exists
+            if (typeof window.renderDocumentationFunctionList === 'function') {
+                window.renderDocumentationFunctionList(true);
+            }
+        }, 50);
     }
 }
 

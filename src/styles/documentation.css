@@ -16,6 +16,10 @@
   width: 80%;
   right: 50%;
   transform: translate(50%, -50%);
+  max-height: 80%;
+  overflow: hidden; /* Change from overflow-y: auto to prevent duplicate scrollbars */
+  display: flex !important;
+  flex-direction: column !important;
 }
 
 /* Tags container - Fixed at the top */
@@ -66,13 +70,34 @@
   padding-right: 0.5em;
   display: flex;
   gap: 1em;
+  min-height: 100px;
+  width: 100%;
+  flex-wrap: nowrap;
 }
 
+/* Column container for function items */
 .doc-function-list .doc-column {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   gap: 1em;
+  min-width: 200px;
+  width: 0; /* This forces columns to be equal width in flex layout */
+  visibility: visible !important; /* Force visibility */
+  opacity: 1 !important; /* Force opacity */
+}
+
+/* For centered mode (multi-column) */
+#panel-documentation.centered .doc-function-list {
+  flex-direction: row;
+  height: calc(100% - 50px); /* Subtract the height of the tags container */
+  min-height: 300px; /* Ensure minimum height */
+  overflow-y: auto;
+}
+
+/* Improve the tag container's appearance in the centered panel */
+#panel-documentation.centered .doc-tags-container {
+  flex-shrink: 0;
 }
 
 /* For non-centered mode (single column) */
