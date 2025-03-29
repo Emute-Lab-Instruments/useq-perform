@@ -1,9 +1,15 @@
-import { EditorView } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
-import { activeUserSettings, loadUserSettings } from '../utils/persistentUserSettings.mjs';
-import { mainEditorExtensions } from './extensions.mjs';
-import { setMainEditorTheme } from './themes/themeManager.mjs';
-import { setFontSize } from './editorConfig.mjs';
+import { EditorView } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import {
+  activeUserSettings,
+  loadUserSettings,
+} from "../utils/persistentUserSettings.mjs";
+import {
+  exampleEditorExtensions,
+  mainEditorExtensions,
+} from "./extensions.mjs";
+import { setMainEditorTheme } from "./themes/themeManager.mjs";
+import { setFontSize } from "./editorConfig.mjs";
 
 /**
  * Creates and configures the editor instance
@@ -15,18 +21,18 @@ export function createEditor(startingText, extensions) {
   const appConfig = loadUserSettings();
   const config = {
     saveCodeLocally: appConfig.storage.saveCodeLocally,
-    evalScope: "top"
+    evalScope: "top",
   };
-  
+
   // Create editor state with provided extensions
   const state = EditorState.create({
-    doc: startingText || '',
-    extensions: extensions || []
+    doc: startingText || "",
+    extensions: extensions || [],
   });
-  
+
   // Create editor view
   const view = new EditorView({
-    state: state
+    state: state,
   });
 
   // Make sure it's initialised with the current font size
@@ -36,24 +42,43 @@ export function createEditor(startingText, extensions) {
 }
 
 export function createMainEditor() {
-  console.log('main.mjs createMainEditor: Creating main editor with settings:', {
-    theme: activeUserSettings.editor?.theme,
-    code: activeUserSettings.editor?.code?.length
-  });
+  console.log(
+    "main.mjs createMainEditor: Creating main editor with settings:",
+    {
+      theme: activeUserSettings.editor?.theme,
+      code: activeUserSettings.editor?.code?.length,
+    }
+  );
 
-  let editor = createEditor(activeUserSettings.editor.code, mainEditorExtensions);
+  let editor = createEditor(
+    activeUserSettings.editor.code,
+    mainEditorExtensions
+  );
   return editor;
+}
+
+export function createExampleEditor(text, parent) {
+  let state = EditorState.create({
+    doc: text,
+    extensions: exampleEditorExtensions,
+  });
+  
+  let view = new EditorView({
+    state: state,
+    parent: parent,
+    extensions: exampleEditorExtensions,
+  });
 }
 
 export function initEditorPanel() {
   const editor = createMainEditor();
-  const editorPanel = $('#panel-main-editor');
+  const editorPanel = $("#panel-main-editor");
   editorPanel.append(editor.dom);
   setMainEditorTheme(activeUserSettings.editor.theme);
-  
+
   // Add drag-and-drop support for documentation examples
   setupDragAndDropForEditor(editorPanel[0], editor);
-  
+
   return editor;
 }
 
@@ -64,48 +89,48 @@ export function initEditorPanel() {
  */
 function setupDragAndDropForEditor(container, editor) {
   // Add event listeners for drag and drop events
-  container.addEventListener('dragover', (e) => {
+  container.addEventListener("dragover", (e) => {
     // Prevent default to allow drop
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Change the cursor style as a visual cue
-    e.dataTransfer.dropEffect = 'copy';
-    
+    e.dataTransfer.dropEffect = "copy";
+
     // Add a highlight effect to indicate droppable area
-    container.classList.add('drag-over');
+    container.classList.add("drag-over");
   });
-  
-  container.addEventListener('dragleave', () => {
+
+  container.addEventListener("dragleave", () => {
     // Remove highlight effect
-    container.classList.remove('drag-over');
+    container.classList.remove("drag-over");
   });
-  
-  container.addEventListener('drop', (e) => {
+
+  container.addEventListener("drop", (e) => {
     // Prevent default drop action
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Remove highlight effect
-    container.classList.remove('drag-over');
-    
+    container.classList.remove("drag-over");
+
     // Get the dropped text
-    const text = e.dataTransfer.getData('text/plain');
+    const text = e.dataTransfer.getData("text/plain");
     if (text) {
       // Insert the text at the current cursor position
       const cursor = editor.state.selection.main.head;
-      
+
       // Create a transaction to insert the text
       const transaction = editor.state.update({
         changes: {
           from: cursor,
-          insert: text
-        }
+          insert: text,
+        },
       });
-      
+
       // Apply the transaction
       editor.dispatch(transaction);
-      
+
       // Focus the editor
       editor.focus();
     }

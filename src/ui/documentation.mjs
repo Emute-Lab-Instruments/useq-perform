@@ -296,176 +296,105 @@ function renderFunctionList(applySorting = false) {
     return;
   }
   
-  console.log("--- DOCUMENTATION RENDER START ---");
-  console.log("Container dimensions before rendering:", 
-              "width:", container.offsetWidth, 
-              "height:", container.offsetHeight,
-              "scrollHeight:", container.scrollHeight);
-  
-  // Clear existing content
+  // Clear existing content and editors
   container.innerHTML = '';
-  
-  // Destroy any existing code editors
   codeEditors.forEach((editor) => {
     editor.destroy();
   });
   codeEditors.clear();
   
-  // Filter functions based on selected tags
+  // Get all functions, whether filtered or not
   let filteredFunctions = [...documentationData];
   
+  // Apply tag filtering only if tags are selected
   if (selectedTags.length > 0) {
     filteredFunctions = documentationData.filter(func => {
-      // A function matches if it has at least one of the selected tags
       return func.tags && func.tags.some(tag => selectedTags.includes(tag));
     });
   }
   
-  // Sort functions: first starred, then alphabetical (if applySorting is true)
-  filteredFunctions.sort((a, b) => {
-    if (applySorting) {
+  // Apply sorting
+  if (applySorting) {
+    filteredFunctions.sort((a, b) => {
       const aIsStarred = starredFunctions.includes(a.name);
       const bIsStarred = starredFunctions.includes(b.name);
-      
       if (aIsStarred && !bIsStarred) return -1;
       if (!aIsStarred && bIsStarred) return 1;
-    }
-    
-    return a.name.localeCompare(b.name);
-  });
+      return a.name.localeCompare(b.name);
+    });
+  }
   
-  console.log(`Rendering ${filteredFunctions.length} documentation entries`);
-  
-  // Check if we're in centered mode (multi-column) layout
+  // Check if we're in centered mode
   const docPanel = document.getElementById('panel-documentation');
   const isMultiColumn = docPanel && docPanel.classList.contains('centered');
-  console.log(`Documentation panel centered mode: ${isMultiColumn}`);
-  console.log("Panel dimensions:", 
-              "width:", docPanel.offsetWidth, 
-              "height:", docPanel.offsetHeight,
-              "display:", window.getComputedStyle(docPanel).display);
   
-  // Handle multi-column layout for centered mode
+  // Set container styles
+  Object.assign(container.style, {
+    display: 'flex',
+    flexDirection: isMultiColumn ? 'row' : 'column',
+    gap: '1em',
+    width: '100%',
+    minHeight: '100px',
+    padding: '0.5em',
+    boxSizing: 'border-box',
+    overflowY: 'auto'
+  });
+
   if (isMultiColumn) {
-    console.log("Using multi-column layout");
-    // For multi-column layout in centered mode, distribute functions evenly
+    // Multi-column layout
     const columnCount = 3;
     const itemsPerColumn = Math.ceil(filteredFunctions.length / columnCount);
     
-    // Create all column containers first
+    // Create columns
     const columns = [];
     for (let i = 0; i < columnCount; i++) {
       const columnContainer = document.createElement('div');
       columnContainer.className = 'doc-column';
       columnContainer.setAttribute('data-column-index', i);
-      
-      // Make columns explicitly visible with inline styles to override any CSS
-      columnContainer.style.display = 'flex';
-      columnContainer.style.flexDirection = 'column';
-      columnContainer.style.visibility = 'visible';
-      columnContainer.style.opacity = '1';
-      columnContainer.style.minWidth = '200px';
-      columnContainer.style.flex = '1';
-      
+      Object.assign(columnContainer.style, {
+        display: 'flex',
+        flexDirection: 'column',
+        visibility: 'visible',
+        opacity: '1',
+        flex: '1 1 0',
+        minWidth: '200px',
+        width: 'auto',
+        padding: '0.5em',
+        boxSizing: 'border-box'
+      });
       container.appendChild(columnContainer);
       columns.push(columnContainer);
-      console.log(`Created column ${i} with styles:`, 
-                  "display:", columnContainer.style.display,
-                  "visibility:", columnContainer.style.visibility,
-                  "opacity:", columnContainer.style.opacity);
     }
     
-    // Now distribute functions across the columns
+    // Distribute functions across columns
     filteredFunctions.forEach((func, index) => {
       const columnIndex = Math.floor(index / itemsPerColumn);
-      const targetColumn = columns[Math.min(columnIndex, columnCount - 1)];
-      
       const functionElement = createFunctionElement(func);
-      targetColumn.appendChild(functionElement);
-      
-      if (index < 5) { // Log only first few items to avoid console spam
-        console.log(`Added function ${func.name} to column ${targetColumn.getAttribute('data-column-index')}`);
-      }
+      columns[Math.min(columnIndex, columnCount - 1)].appendChild(functionElement);
     });
-    
-    // Force a repaint multiple times to ensure visibility
-    let repaintCount = 0;
-    const forceRepaint = () => {
-      if (repaintCount++ >= 3) return; // Stop after 3 tries
-      
-      columns.forEach((col, idx) => {
-        // Get computed style to force a reflow
-        const forceReflow = col.offsetHeight;
-        
-        // Check if the column is visible in the computed style
-        const computedStyle = window.getComputedStyle(col);
-        const isVisible = computedStyle.display !== 'none' && 
-                          computedStyle.visibility !== 'hidden' &&
-                          parseFloat(computedStyle.opacity) > 0;
-        
-        console.log(`Column ${idx} visibility check (attempt ${repaintCount}):`, 
-                    "display:", computedStyle.display,
-                    "visibility:", computedStyle.visibility,
-                    "opacity:", computedStyle.opacity,
-                    "isVisible:", isVisible);
-        
-        // Explicitly set styles again
-        col.style.display = 'flex';
-        col.style.visibility = 'visible';
-        col.style.opacity = '1';
-        
-        // If the column has no height, try setting min-height
-        if (col.offsetHeight < 10) {
-          col.style.minHeight = '300px';
-          console.log(`Column ${idx} had no height, setting minHeight to 300px`);
-        }
-      });
-      
-      // Check container dimensions after this repaint
-      console.log("Container dimensions after repaint attempt:", 
-                  "width:", container.offsetWidth, 
-                  "height:", container.offsetHeight,
-                  "scrollHeight:", container.scrollHeight);
-      
-      // Schedule another repaint
-      setTimeout(forceRepaint, 100);
-    };
-    
-    // Start the repaint process
-    setTimeout(forceRepaint, 50);
-    
   } else {
-    console.log("Using single-column layout");
-    // Single column mode - create a single column container
-    const columnContainer = document.createElement('div');
-    columnContainer.className = 'doc-column';
-    columnContainer.style.display = 'flex';
-    columnContainer.style.flexDirection = 'column';
-    columnContainer.style.visibility = 'visible';
-    columnContainer.style.opacity = '1';
-    columnContainer.style.width = '100%';
-    container.appendChild(columnContainer);
-    
-    // Add functions to the single column
-    filteredFunctions.forEach((func, index) => {
-      const functionElement = createFunctionElement(func);
-      columnContainer.appendChild(functionElement);
-      
-      if (index < 5) { // Log only first few items to avoid console spam
-        console.log(`Added function ${func.name} to single column`);
-      }
+    // Single column layout
+    const column = document.createElement('div');
+    column.className = 'doc-column';
+    Object.assign(column.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      visibility: 'visible',
+      opacity: '1',
+      width: '100%',
+      padding: '0.5em',
+      boxSizing: 'border-box'
     });
+    container.appendChild(column);
     
-    // Check container dimensions after rendering
-    setTimeout(() => {
-      console.log("Single column dimensions after rendering:", 
-                  "width:", columnContainer.offsetWidth, 
-                  "height:", columnContainer.offsetHeight,
-                  "children:", columnContainer.children.length);
-    }, 50);
+    // Add all functions to the single column
+    filteredFunctions.forEach(func => {
+      const functionElement = createFunctionElement(func);
+      column.appendChild(functionElement);
+    });
   }
   
-  // If no functions match the filters
+  // Show no results message if needed
   if (filteredFunctions.length === 0) {
     const noResults = document.createElement('div');
     noResults.className = 'doc-no-results';
@@ -473,49 +402,44 @@ function renderFunctionList(applySorting = false) {
     container.appendChild(noResults);
   }
   
-  // Initialize CodeMirror instances for expanded functions
-  setTimeout(() => {
-    setupCodeEditors();
-    
-    // Final check after everything should be rendered
-    const finalContainer = document.getElementById('doc-function-list');
-    console.log("Final container dimensions:", 
-                "width:", finalContainer.offsetWidth, 
-                "height:", finalContainer.offsetHeight,
-                "scrollHeight:", finalContainer.scrollHeight,
-                "children:", finalContainer.children.length);
-    
-    if (isMultiColumn) {
-      // Check if columns are now visible
-      const columns = finalContainer.querySelectorAll('.doc-column');
-      columns.forEach((col, idx) => {
-        const colStyle = window.getComputedStyle(col);
-        console.log(`Final column ${idx} visibility:`, 
-                    "display:", colStyle.display,
-                    "visibility:", colStyle.visibility,
-                    "opacity:", colStyle.opacity,
-                    "offsetHeight:", col.offsetHeight,
-                    "children:", col.children.length);
-      });
-    }
-    
-    console.log("--- DOCUMENTATION RENDER END ---");
-  }, 200);
+  // Initialize code editors after a short delay to ensure DOM is ready
+  setTimeout(setupCodeEditors, 100);
 }
 
-// Expose renderFunctionList globally so it can be called from ui.mjs
-window.renderDocumentationFunctionList = renderFunctionList;
-
-/**
- * Create a function element for the list
- */
 function createFunctionElement(func) {
   const functionElement = document.createElement('div');
   functionElement.className = 'doc-function-item';
   
+  // Set explicit styles for function element
+  Object.assign(functionElement.style, {
+    display: 'block',
+    visibility: 'visible',
+    width: '100%',
+    marginBottom: '0.5em',
+    backgroundColor: 'var(--panel-section-bg)',
+    borderRadius: 'var(--item-border-radius)',
+    border: '1px solid var(--panel-border)',
+    overflow: 'hidden',
+    boxSizing: 'border-box'
+  });
+  
   // Function header (always visible)
   const functionHeader = document.createElement('div');
   functionHeader.className = 'doc-function-header';
+  functionHeader.dataset.function = func.name;
+  
+  // Set explicit styles for header
+  Object.assign(functionHeader.style, {
+    display: 'flex',
+    visibility: 'visible',
+    alignItems: 'center',
+    padding: '0.5em',
+    width: '100%',
+    boxSizing: 'border-box',
+    cursor: 'pointer',
+    backgroundColor: 'var(--panel-section-bg)',
+    color: 'var(--text-primary)'
+  });
   
   // Star button
   const starButton = document.createElement('button');
@@ -524,7 +448,6 @@ function createFunctionElement(func) {
   starButton.title = starredFunctions.includes(func.name) ? 'Remove from favorites' : 'Add to favorites';
   starButton.addEventListener('click', (e) => {
     e.stopPropagation();
-    
     if (starredFunctions.includes(func.name)) {
       starredFunctions = starredFunctions.filter(name => name !== func.name);
       starButton.innerHTML = '☆';
@@ -534,11 +457,7 @@ function createFunctionElement(func) {
       starButton.innerHTML = '★';
       starButton.title = 'Remove from favorites';
     }
-    
-    // Save starred functions to localStorage
     saveUserPreferences();
-    
-    // Mark for sorting on next panel toggle
     pendingSort = true;
   });
   
@@ -546,13 +465,21 @@ function createFunctionElement(func) {
   const functionName = document.createElement('span');
   functionName.className = 'doc-function-name';
   functionName.textContent = func.name;
-  functionName.dataset.name = func.name; // For finding it later
+  functionName.dataset.name = func.name;
   
-  // If it has aliases, add them
+  // Set explicit styles for function name
+  Object.assign(functionName.style, {
+    visibility: 'visible',
+    color: 'var(--text-primary)',
+    flex: '1',
+    minWidth: '0'
+  });
+  
+  // Add aliases if any
   if (func.aliases && func.aliases.length > 0) {
     const aliasSpan = document.createElement('span');
     aliasSpan.className = 'doc-function-alias';
-    aliasSpan.textContent = `(alias: ${func.aliases.join(', ')})`;
+    aliasSpan.textContent = ` (alias: ${func.aliases.join(', ')})`;
     functionName.appendChild(document.createTextNode(' '));
     functionName.appendChild(aliasSpan);
   }
@@ -563,31 +490,28 @@ function createFunctionElement(func) {
   expandIndicator.style.marginLeft = 'auto';
   expandIndicator.style.marginRight = '8px';
   expandIndicator.style.fontSize = '0.9em';
-  expandIndicator.textContent = expandedFunctions && expandedFunctions[func.name] ? '▼' : '▶';
-  expandIndicator.title = expandedFunctions && expandedFunctions[func.name] ? 'Collapse' : 'Expand';
+  expandIndicator.textContent = expandedFunctions[func.name] ? '▼' : '▶';
+  expandIndicator.title = expandedFunctions[func.name] ? 'Collapse' : 'Expand';
   
   // Add elements to header
   functionHeader.appendChild(starButton);
   functionHeader.appendChild(functionName);
   functionHeader.appendChild(expandIndicator);
   
-  // Add click handler to toggle expansion
-  functionHeader.dataset.function = func.name;
-  functionHeader.className = 'doc-function-header';
+  // Add click handler
   functionHeader.addEventListener('click', () => {
-    console.log(`Clicking function ${func.name}, current state: ${expandedFunctions[func.name]}`);
     toggleDocumentation(func.name);
   });
   
   // Add header to function element
   functionElement.appendChild(functionHeader);
   
-  // Function details (will be toggled by the click handler)
+  // Function details
   const functionDetails = document.createElement('div');
   functionDetails.className = 'doc-function-details';
-  functionDetails.style.display = expandedFunctions && expandedFunctions[func.name] ? 'block' : 'none';
+  functionDetails.style.display = expandedFunctions[func.name] ? 'block' : 'none';
   
-  // Description
+  // Add description, parameters, examples, and tags
   if (func.description) {
     const description = document.createElement('div');
     description.className = 'doc-function-description';
@@ -595,7 +519,6 @@ function createFunctionElement(func) {
     functionDetails.appendChild(description);
   }
   
-  // Parameters
   if (func.parameters && func.parameters.length > 0) {
     const paramsTitle = document.createElement('div');
     paramsTitle.className = 'doc-section-title';
@@ -633,7 +556,6 @@ function createFunctionElement(func) {
     functionDetails.appendChild(paramsList);
   }
   
-  // Examples
   if (func.examples && func.examples.length > 0) {
     const examplesTitle = document.createElement('div');
     examplesTitle.className = 'doc-section-title';
@@ -641,15 +563,12 @@ function createFunctionElement(func) {
     functionDetails.appendChild(examplesTitle);
     
     func.examples.forEach((example, index) => {
-      // Create wrapper div for each example
       const exampleWrapper = document.createElement('div');
       exampleWrapper.className = 'doc-example-wrapper';
       
-      // Create toolbar for the example
       const toolbar = document.createElement('div');
       toolbar.className = 'doc-example-toolbar';
       
-      // Add copy button
       const copyButton = document.createElement('button');
       copyButton.className = 'doc-example-copy';
       copyButton.innerHTML = '<span class="copy-icon">📋</span>';
@@ -663,22 +582,18 @@ function createFunctionElement(func) {
         });
       });
       
-      // Add the toolbar
       toolbar.appendChild(copyButton);
       exampleWrapper.appendChild(toolbar);
       
-      // Create container for the code editor
       const editorContainer = document.createElement('div');
       editorContainer.className = 'doc-example-editor';
       editorContainer.id = `${func.name}-example-${index}`;
       exampleWrapper.appendChild(editorContainer);
       
-      // Add the wrapper to the function details
       functionDetails.appendChild(exampleWrapper);
     });
   }
   
-  // Tags
   if (func.tags && func.tags.length > 0) {
     const tagsContainer = document.createElement('div');
     tagsContainer.className = 'doc-function-tags';
@@ -694,7 +609,6 @@ function createFunctionElement(func) {
   }
   
   functionElement.appendChild(functionDetails);
-  
   return functionElement;
 }
 
@@ -705,20 +619,60 @@ function setupCodeEditors() {
   // Add global style for all code editors in documentation
   const globalStyle = document.createElement('style');
   globalStyle.textContent = `
+    .doc-example-editor {
+      position: relative;
+      width: 100%;
+    }
+
     .doc-example-editor .cm-editor {
       height: auto;
+      min-height: 20px;
       max-height: 150px;
-      background-color: #f5f5f5; /* Light gray background */
-      border-radius: 4px;
+      background-color: var(--panel-section-bg) !important;
+      border: 1px solid var(--panel-border);
+      border-radius: var(--item-border-radius);
       overflow: auto;
+      width: 100%;
+      box-sizing: border-box;
     }
-    .doc-example-editor .cm-editor .cm-content, 
-    .doc-example-editor .cm-editor .cm-line {
-      color: #333; /* Dark text */
-      padding: 2px 4px;
+
+    .doc-example-editor .cm-content,
+    .doc-example-editor .cm-line {
+      color: var(--text-primary) !important;
+      font-family: var(--code-font) !important;
     }
-    .doc-example-editor .cm-editor .cm-gutters {
-      background-color: #eee;
+
+    .doc-example-editor .cm-content {
+      padding: 4px 8px;
+    }
+
+    .doc-example-editor .cm-gutters {
+      background-color: var(--panel-control-bg) !important;
+      border-right: 1px solid var(--panel-border) !important;
+    }
+
+    .doc-example-editor .cm-editor.cm-focused {
+      outline: none !important;
+      border-color: var(--accent-color) !important;
+    }
+
+    .doc-example-editor:hover {
+      cursor: grab;
+    }
+
+    .doc-example-editor:active {
+      cursor: grabbing;
+    }
+
+    /* Specific styles for centered mode */
+    .centered .doc-example-editor .cm-editor {
+      width: 100%;
+      margin: 0;
+    }
+
+    /* Ensure text is readable in both modes */
+    .doc-example-editor .cm-editor .ͼ1 {
+      color: var(--text-primary) !important;
     }
   `;
   document.head.appendChild(globalStyle);
@@ -736,15 +690,20 @@ function setupCodeEditors() {
       
       if (!container) return;
       
-      // Create a new editor using the createEditor function with baseExtensions
+      container.innerHTML = '';
+
+      // Create the example editor and attach it to the container
       const view = createEditor(example, baseExtensions);
       
       // Make it read-only
       view.contentDOM.setAttribute('contenteditable', 'false');
       
       // Add to container
-      container.innerHTML = '';
       container.appendChild(view.dom);
+      
+      // Ensure the editor fills its container
+      view.dom.style.width = '100%';
+      view.dom.style.boxSizing = 'border-box';
       
       // Store the editor instance for cleanup
       codeEditors.set(editorId, view);

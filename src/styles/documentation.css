@@ -66,33 +66,35 @@
 /* Function list - Multi-column layout */
 .doc-function-list {
   flex: 1;
-  overflow-y: auto;
-  padding-right: 0.5em;
-  display: flex;
+  display: flex !important;
   gap: 1em;
-  min-height: 100px;
   width: 100%;
-  flex-wrap: nowrap;
+  min-height: 100px;
+  padding: 0.5em;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 /* Column container for function items */
 .doc-function-list .doc-column {
-  flex: 1;
+  flex: 1 1 0;
   display: flex !important;
   flex-direction: column !important;
   gap: 1em;
   min-width: 200px;
-  width: 0; /* This forces columns to be equal width in flex layout */
-  visibility: visible !important; /* Force visibility */
-  opacity: 1 !important; /* Force opacity */
+  width: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  padding: 0.5em;
+  box-sizing: border-box;
 }
 
 /* For centered mode (multi-column) */
 #panel-documentation.centered .doc-function-list {
   flex-direction: row;
+  flex-wrap: nowrap;
   height: calc(100% - 50px); /* Subtract the height of the tags container */
   min-height: 300px; /* Ensure minimum height */
-  overflow-y: auto;
 }
 
 /* Improve the tag container's appearance in the centered panel */
@@ -110,27 +112,39 @@
 }
 
 .doc-function-item {
-  margin-bottom: 0;
-  border-radius: var(--item-border-radius);
-  overflow: hidden;
-  border: 1px solid transparent;
-  transition: border-color 0.2s ease;
-  break-inside: avoid;
-  page-break-inside: avoid;
+  display: block !important;
+  visibility: visible !important;
   width: 100%;
+  margin-bottom: 0.5em;
+  background-color: var(--panel-section-bg);
+  border-radius: var(--item-border-radius);
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .doc-function-item:hover {
   border-color: var(--panel-border);
 }
 
+/* Ensure visibility of function items in both filtered and unfiltered states */
+.doc-function-item,
+.doc-function-header,
+.doc-function-name {
+  pointer-events: auto !important;
+  user-select: text !important;
+}
+
 .doc-function-header {
-  display: flex;
+  display: flex !important;
+  visibility: visible !important;
   align-items: center;
   padding: 0.5em;
+  width: 100%;
+  box-sizing: border-box;
   cursor: pointer;
   background-color: var(--panel-section-bg);
-  transition: background-color 0.2s ease;
+  color: var(--text-primary);
 }
 
 .doc-function-header:hover {
@@ -138,12 +152,15 @@
 }
 
 .doc-function-name {
-  font-family: var(--code-font);
   flex: 1;
+  visibility: visible !important;
+  font-family: var(--code-font);
   font-size: 0.9em;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0; /* Allow text to truncate */
 }
 
 .doc-function-alias {
@@ -164,9 +181,11 @@
 }
 
 .doc-function-details {
+  display: none;
   padding: 1em;
-  border-top: 1px solid var(--panel-border);
   background-color: var(--panel-control-bg);
+  border-top: 1px solid var(--panel-border);
+  color: var(--text-primary);
 }
 
 .doc-function-description {
@@ -213,11 +232,40 @@
 
 /* Code example styling */
 .doc-example-wrapper {
-  margin: 0.8em 0;
+  position: relative;
+  margin: 8px 0;
+  background-color: var(--panel-section-bg);
   border-radius: var(--item-border-radius);
-  overflow: hidden;
-  border: 1px solid var(--panel-border);
-  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.doc-example-toolbar {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+}
+
+.centered .doc-example-wrapper {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure editors in centered mode fill their container width */
+.centered .doc-example-editor {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Force theme colors for the editor content */
+.doc-example-editor .cm-content {
+  background-color: var(--panel-section-bg) !important;
+  color: var(--text-primary) !important;
+}
+
+.doc-example-editor .cm-line {
+  color: var(--text-primary) !important;
 }
 
 .doc-example-toolbar {

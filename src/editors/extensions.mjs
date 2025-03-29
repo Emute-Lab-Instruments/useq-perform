@@ -54,6 +54,17 @@ const themeExtensions = [
   bracketMatching()
 ];
 
+export const exampleEditorExtensions = [
+  editorBaseTheme,
+  fontSizeCompartment.of(
+    EditorView.theme({
+      ".cm-content": { fontSize: `${activeUserSettings.editor.fontSize || 16}px` },
+    })
+  ),
+  bracketMatching(),
+  drawSelection()
+];
+
 // Core functionality extensions
 const functionalExtensions = [
   history(),
