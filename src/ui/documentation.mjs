@@ -59,24 +59,10 @@ export function initDocumentationPanel() {
         docButton.addEventListener("click", function(e) {
             console.log("Documentation button clicked - direct event listener");
             toggleAuxPanel("#panel-documentation");
-            
-            // Prevent event bubbling issues
             e.preventDefault();
             e.stopPropagation();
         });
     }
-    
-    // Handle ESC key to close panel
-    $(document).keydown((e) => {
-        if (e.key === "Escape") {
-            if (window.getComputedStyle(docPanel).display !== "none") {
-                console.log("ESC key pressed while documentation panel is visible - closing panel");
-                toggleAuxPanel("#panel-documentation");
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        }
-    });
     
     // Verify button exists
     if ($("#button-documentation").length === 0) {

@@ -7,10 +7,9 @@ import { toggleAuxPanel } from './ui.mjs';
 import { defaultThemeEditorStartingCode } from "../editors/defaults.mjs";
 
 export function initThemePanel() {
-    // Get theme panel element
-    const panel = document.getElementById("panel-theme");
+    const panel = document.getElementById('panel-theme');
     
-    // Create a container for the themes
+    // Create themes container
     const themesContainer = document.createElement('div');
     themesContainer.className = 'themes-container';
     panel.appendChild(themesContainer);
@@ -66,28 +65,15 @@ export function initThemePanel() {
     // Remove previous handlers if any
     $("#button-theme").off("click");
     
-    // Theme button click handler - using direct DOM for reliability
     const themeButton = document.getElementById("button-theme");
     if (themeButton) {
         themeButton.addEventListener("click", function(e) {
             console.log("Theme button clicked - direct event listener");
             toggleAuxPanel("#panel-theme");
-            
+                        
             // Prevent event bubbling issues
             e.preventDefault();
             e.stopPropagation();
         });
     }
-    
-    // Handle ESC key to close panel
-    $(document).keydown((e) => {
-        if (e.key === "Escape") {
-            if (window.getComputedStyle(panel).display !== "none") {
-                console.log("ESC key pressed while theme panel is visible - closing panel");
-                toggleAuxPanel("#panel-theme");
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        }
-    });
 }

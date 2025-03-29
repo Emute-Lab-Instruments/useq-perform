@@ -8,6 +8,7 @@ import { initToolbarPanel } from "./toolbar.mjs";
 import { initThemePanel } from "./themes.mjs";
 import { initSnippetsPanel } from "./snippets.mjs";
 import { initDocumentationPanel } from "./documentation.mjs";
+import { isPanelVisible } from "./utils.mjs";
 
 // List of panels that support position toggling
 const POSITION_TOGGLABLE_PANELS = [
@@ -15,6 +16,21 @@ const POSITION_TOGGLABLE_PANELS = [
     "#panel-settings",
     "#panel-documentation"
 ];
+
+// Global ESC key handler
+$(document).keydown((e) => {
+    if (e.key === "Escape") {
+        // Find any visible panel using the helper function
+        const visiblePanel = $(".panel-aux").filter((_, el) => isPanelVisible(el)).first();
+        
+        if (visiblePanel.length) {
+            console.log("ESC key pressed - closing visible panel:", visiblePanel.attr('id'));
+            toggleAuxPanel("#" + visiblePanel.attr('id'));
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }
+});
 
 /**
  * Toggle the visibility of an auxiliary panel
@@ -32,17 +48,9 @@ export function toggleAuxPanel(panelID) {
     
     // Check if the panel is already in the process of being shown
     const panelElement = $panel[0];
-    const computedStyle = window.getComputedStyle(panelElement);
+    const isVisible = isPanelVisible(panelElement);
     
-    // More reliable check for visibility - check both display and opacity
-    const isVisible = computedStyle.display !== 'none' && 
-                     (parseFloat(computedStyle.opacity) > 0 || 
-                      panelElement.classList.contains('is-opening'));
-    
-    console.log(`Panel ${panelID} current visibility (computed style):`, isVisible, 
-                `display=${computedStyle.display}`,
-                `opacity=${computedStyle.opacity}`,
-                `visibility=${computedStyle.visibility}`);
+    console.log(`Panel ${panelID} current visibility:`, isVisible);
     
     if (!isVisible) {
         // First hide all panels with !important to override any CSS issues

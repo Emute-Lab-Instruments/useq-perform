@@ -25,25 +25,12 @@ export function initHelpPanel(){
         e.stopPropagation();
     });
     
-    // Handle ESC key to close panel
-    $(document).keydown((e) => {
-        if (e.key === "Escape") {
-            const helpPanel = document.getElementById("panel-help");
-            if (window.getComputedStyle(helpPanel).display !== "none") {
-                console.log("ESC key pressed while help panel is visible - closing panel");
-                toggleAuxPanel("#panel-help");
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        }
-    });
-    
     // Set initial OS-specific keybinding class
     if(isMac) {
         $("#panel-help").addClass("show-mac");
     }
     
-    // Mac toggle functionality - Fixed the ID to match the HTML
+    // Mac toggle functionality
     $("#macToggle").on("change", function() {
         $("#panel-help").toggleClass("show-mac");
     });
