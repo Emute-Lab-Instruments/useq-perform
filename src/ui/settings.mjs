@@ -37,18 +37,6 @@ export function initSettingsPanel() {
             e.stopPropagation();
         });
     }
-    
-    // Handle ESC key to close panel
-    $(document).keydown((e) => {
-        if (e.key === "Escape") {
-            if (window.getComputedStyle(settingsPanel).display !== "none") {
-                console.log("ESC key pressed while settings panel is visible - closing panel");
-                toggleAuxPanel("#panel-settings");
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        }
-    });
 }
 
 /**
