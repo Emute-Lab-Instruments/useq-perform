@@ -157,7 +157,8 @@
     padding: 0.5em;
     background: var(--panel-section-bg);
     border-bottom: 1px solid var(--panel-border);
-    margin: -1.5em -1.5em 1em -1.5em;
+    /* margin: -1.5em -1.5em 1em -1.5em; */
+    margin: 0 0 1em 0;
 }
 
 .panel-tab {
