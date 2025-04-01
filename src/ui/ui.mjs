@@ -155,7 +155,7 @@ function initPanels(){
 }
 
 export function initUI() {
-    initIcons();
+    // initIcons();
     const editor = initPanels();
     return editor;
 }
