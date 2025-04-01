@@ -161,13 +161,13 @@ export function makeDeleteWrapper(originalRun) {
   };
 }
 
-// Documentation panel toggle
+// ModuLisp Reference panel toggle
 export function toggleDocumentation() {
   toggleAuxPanel("#panel-documentation");
   return true;
 }
 
-// Show documentation for symbol at cursor
+// Show ModuLisp Reference for symbol at cursor
 export function showDocumentationForSymbol(view) {
   showDocForSymbol(view);
   return true;
