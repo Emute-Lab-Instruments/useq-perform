@@ -293,15 +293,13 @@ function drawSerialVis() {
 }
 
 export function initVisPanel() {
-  dbg("Initializing serial visualization panel");
-  
-  // Start animation loop for serial visualization
+  dbg("Visualization", "initVisPanel", "Initializing serial visualization panel");
   window.requestAnimationFrame(drawSerialVis);
-  
-  // Create controls for smoothing settings
+  dbg("Visualization", "initVisPanel", "Started animation loop for serial visualization");
   createSmoothingControls();
-
+  dbg("Visualization", "initVisPanel", "Created smoothing controls");
   toggleSerialVis();
+  dbg("Visualization", "initVisPanel", "Toggled serial visualization");
 }
 
 /**
