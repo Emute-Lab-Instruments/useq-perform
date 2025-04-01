@@ -57,38 +57,6 @@ export function initDocumentationPanel() {
     }).catch(error => {
         console.error("Error loading documentation data:", error);
     });
-    
-    // Remove previous handlers if any
-    $("#button-documentation").off("click");
-    
-    // Add event handler for documentation button - using direct DOM for reliability
-    const docButton = document.getElementById("button-documentation");
-    if (docButton) {
-        docButton.addEventListener("click", function(e) {
-            console.log("Documentation button clicked - direct event listener");
-            
-            // Switch to documentation tab
-            const $panel = $('#panel-help-docs');
-            $panel.find('.panel-tab[data-tab="documentation"]').click();
-            
-            toggleAuxPanel("#panel-help-docs");
-            
-            // Apply theme styling when panel opens
-            if (window.getComputedStyle(helpPanel).display !== 'none') {
-                adjustDocPanelForTheme();
-            }
-            
-            e.preventDefault();
-            e.stopPropagation();
-        });
-    }
-    
-    // Verify button exists
-    if ($("#button-documentation").length === 0) {
-        console.error("Documentation button not found in DOM!");
-    } else {
-        console.log("Documentation button found in DOM:", $("#button-documentation")[0]);
-    }
 }
 
 /**
