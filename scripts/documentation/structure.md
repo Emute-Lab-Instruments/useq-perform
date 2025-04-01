@@ -33,6 +33,8 @@ Each object contains the following fields:
   - `name` (string): The name of the parameter.
   - `description` (string): A description of the parameter's purpose.
   - `range` (string): The expected data type or range of values for the parameter. This field may be empty for some parameters.
+  - `optional` (boolean, optional): Indicates whether the parameter is optional. Defaults to `false` if not specified.
+  - `default` (any, optional): The default value of the parameter, if it is optional.
 - **Example**:
   ```json
   [
@@ -42,9 +44,11 @@ Each object contains the following fields:
       "range": "any"
     },
     {
-      "name": "value2",
-      "description": "The second value to compare",
-      "range": "any"
+      "name": "pulseWidth",
+      "description": "(optional) Width of the gates",
+      "range": ">0 and <1",
+      "optional": true,
+      "default": 0.5
     }
   ]
   ```
@@ -117,16 +121,18 @@ Each object contains the following fields:
      ```
 
 5. **Optional Parameters**:
-   - Some functions have optional parameters, which are indicated in the `description` or `parameters` field.
+   - Some functions have optional parameters, which are indicated in the `parameters` field using the `optional` property. If a default value exists, it is specified in the `default` property.
    - Example:
      ```json
      {
-       "name": "euclid",
+       "name": "gates",
        "parameters": [
          {
            "name": "pulseWidth",
-           "description": "(optional) Width of the gates",
-           "range": ">0 and <1"
+           "description": "The pulse width of the gates",
+           "range": "0-1",
+           "optional": true,
+           "default": 0.5
          }
        ],
        ...

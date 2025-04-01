@@ -470,8 +470,9 @@
       },
       {
         "name": "pulseWidth",
-        "description": "(optional) Width of the gates",
-        "range": ">0 and <1"
+        "description": "Width of the gates (relative)",
+        "range": ">0 and <1",
+        "optional": true
       },
       {
         "name": "phasor",
@@ -679,8 +680,10 @@
       },
       {
         "name": "pulse width",
-        "description": "Optional, default: 0.5. The pulse width of the gates",
-        "range": "0-1"
+        "description": "The pulse width of the gates",
+        "default": 0.5,
+        "range": "0-1",
+        "optional": true
       }
     ],
     "examples": [
@@ -1574,8 +1577,9 @@
       },
       {
         "name": "offset",
-        "description": "Optional. the point to start the counter from",
-        "range": "any"
+        "description": "The relative point to start the counter from",
+        "range": "any",
+        "optional": true
       }
     ],
     "examples": [],
@@ -1671,8 +1675,10 @@
       },
       {
         "name": "pulseWidth",
-        "description": "Optional, default: 0.1. Modify the pulse width of the trigger",
-        "range": "0 - 1"
+        "description": "The pulse width of the trigger",
+        "range": "0 - 1",
+        "default": 0.1,
+        "optional": true
       }
     ],
     "examples": [
