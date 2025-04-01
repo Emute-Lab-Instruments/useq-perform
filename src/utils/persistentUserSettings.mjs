@@ -220,12 +220,12 @@ function migrateLegacyConfig(settings) {
     window.localStorage.removeItem("useqConfig");
   }
 
-  const codeStr = window.localStorage.getItem("codeStorageKey");
+  const codeStr = window.localStorage.getIte(codeStorageKey);
   if (codeStr) {
     dbg("Found code:", codeStr);
     settings.editor.code = codeStr;
     // Remove legacy config from local storage
-    window.localStorage.removeItem("codeStorageKey");
+    window.localStorage.removeItem("useqcode");
   }
   
   return settings;
@@ -235,6 +235,6 @@ export function deleteLocalStorage() {
   window.localStorage.removeItem(settingsStorageKey);
   window.localStorage.removeItem("editorConfig");
   window.localStorage.removeItem("useqConfig");
-  window.localStorage.removeItem("codeStorageKey");
+  window.localStorage.removeItem("useqcode");
   dbg("Local storage cleared.");
 }

@@ -33,32 +33,31 @@ let isDevMode = false; // Track dev mode state
  * Initialize the documentation tab within the help panel
  */
 export function initDocumentationTab() {
-    dbg("ModuLisp Reference", "initDocumentationTab", "Initializing ModuLisp reference tab");
+    dbg("Documentation Tab", "initDocumentationTab", "Starting initialization of the documentation tab");
     const urlParams = new URLSearchParams(window.location.search);
     isDevMode = urlParams.get('devmode') === 'true';
-    dbg("ModuLisp Reference", "initDocumentationTab", `Dev mode: ${isDevMode}`);
+    dbg("Documentation Tab", "initDocumentationTab", `Dev mode: ${isDevMode}`);
     const helpPanel = document.getElementById('panel-help-docs');
     if (!helpPanel) {
-        dbg("ModuLisp Reference", "initDocumentationTab", "Help panel element not found in DOM");
+        dbg("Documentation Tab", "initDocumentationTab", "Help panel element not found in DOM");
         console.error("Help panel element not found in DOM!");
         return;
     } else {
-        dbg("ModuLisp Reference", "initDocumentationTab", "Help panel found in DOM");
+        dbg("Documentation Tab", "initDocumentationTab", "Help panel found in DOM");
     }
-    
     const docContainer = document.querySelector('#panel-help-docs .panel-tab-content[data-tab="documentation"]');
     if (!docContainer) {
-        dbg("ModuLisp Reference", "initDocumentationTab", "ModuLisp reference tab content element not found in DOM");
-        console.error("ModuLisp reference tab content element not found in DOM!");
+        dbg("Documentation Tab", "initDocumentationTab", "Documentation tab content element not found in DOM");
+        console.error("Documentation tab content element not found in DOM!");
         return;
     }
-    
-    // Load and render documentation data
     loadDocumentationData().then(data => {
-        dbg("ModuLisp Reference data loaded, count:", data.length);
+        dbg("Documentation Tab", "initDocumentationTab", `Loaded documentation data, count: ${data.length}`);
         renderDocumentationPanel(docContainer, data);
+        dbg("Documentation Tab", "initDocumentationTab", "Rendered documentation panel");
     }).catch(error => {
-        console.error("Error loading ModuLisp reference data:", error);
+        dbg("Documentation Tab", "initDocumentationTab", "Error loading documentation data");
+        console.error("Error loading documentation data:", error);
     });
 }
 

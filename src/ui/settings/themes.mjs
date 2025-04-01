@@ -10,10 +10,9 @@ import { dbg } from "../../utils.mjs";
 /**
  * Initialize the theme tab within the settings panel
  */
-export function initThemeTab() {
+export function initThemeTab(container) {
     dbg("Initializing theme tab");
-    const panel = document.getElementById('panel-settings-themes');
-    const themesContainer = panel.querySelector('.panel-tab-content[data-tab="themes"]');
+    const themesContainer = container;
     
     // Create themes container
     const themesGrid = document.createElement('div');
@@ -62,29 +61,9 @@ export function initThemeTab() {
                 setMainEditorTheme(themeName);
                 saveUserSettings();
             }
-            toggleAuxPanel("#panel-settings-themes");
+            toggleAuxPanel("#pannel-settings");
         });
         
         themesGrid.appendChild(container);
     });
-    
-    // Remove previous handlers if any
-    $("#button-theme").off("click");
-    
-    const themeButton = document.getElementById("button-theme");
-    if (themeButton) {
-        themeButton.addEventListener("click", function(e) {
-            dbg("Theme button clicked - direct event listener");
-            
-            // Switch to themes tab
-            const $panel = $('#panel-settings-themes');
-            $panel.find('.panel-tab[data-tab="themes"]').click();
-            
-            toggleAuxPanel("#panel-settings-themes");
-            
-            // Prevent event bubbling issues
-            e.preventDefault();
-            e.stopPropagation();
-        });
-    }
 }

@@ -1,82 +1,84 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <!-- Metadata and title -->
   <meta charset='utf-8'>
   <meta name='viewport' content='width=device-width'>
   <title>uSEQ Perform</title>
+
+  <!-- External libraries and styles -->
   <script src="lib/jquery-3.7.1.js"></script>
   <link rel="stylesheet" href="bundle.css">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
   <script>
+    // Initialize Lucide icons after DOM content is loaded
     document.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
     });
   </script>
 </head>
 <body>
+  <!-- Toolbar panel with buttons -->
   <div id="panel-toolbar">
       <div class="toolbar-row">
+        <!-- Connection and graph buttons -->
         <a class="toolbar-button" id="button-connect" title="Connect"><i data-lucide="cable"></i></a>
         <a class="toolbar-button" id="button-graph" title="Graph"><i data-lucide="chart-spline"></i></a>
       </div>
       <div class="toolbar-row">
+        <!-- Font size adjustment buttons -->
         <a class="toolbar-button" id="button-decrease-font" title="Font size--"><i data-lucide="a-arrow-down"></i></a>
         <a class="toolbar-button" id="button-increase-font" title="Font size++"><i data-lucide="a-arrow-up"></i></a>
       </div>
       <div class="toolbar-row">
+        <!-- Help and settings buttons -->
         <a class="toolbar-button" id="button-help" title="Help!"><i data-lucide="circle-help"></i></a>
-          <a class="toolbar-button" id="button-settings" title="Settings"><i data-lucide="settings"></i></a>
+        <a class="toolbar-button" id="button-settings" title="Settings"><i data-lucide="settings"></i></a>
       </div>
   </div>
+
+  <!-- Console and main editor panels -->
+  <div id="panel-main-editor"></div>
+  <div id="panel-console"></div>
+
+  <!-- Visualization panel with canvases -->
   <div id="panel-vis"> 
     <canvas class="serialcanvas" width="1000" height="800" id="serialcanvas"></canvas>
     <canvas id="canvas-plot" width="1000" height="800"></canvas>
     <canvas id="canvas-timeline" width="1000" height="800"></canvas>
   </div>
-  <div id="panel-settings-themes" class="panel-aux">
+
+  <!-- Settings panel with tabs -->
+  <div id="pannel-settings" class="panel-aux">
     <div class="panel-tabs">
-      <div class="panel-tab active" data-tab="settings">Settings</div>
-      <div class="panel-tab" data-tab="themes">Themes</div>
+      <!-- Tabs for settings -->
+      <div id="panel-settings-tab-general" class="panel-tab active">General</div>
+      <div id="panel-settings-tab-keybindings" class="panel-tab">Key Bindings</div>
+      <div id="panel-settings-tab-themes" class="panel-tab">Themes</div>
     </div>
-    <div class="panel-tab-content active" data-tab="settings"></div>
-    <div class="panel-tab-content" data-tab="themes"></div>
+    <!-- Content for each settings tab -->
+    <div id="panel-settings-general" class="panel-tab-content active"></div>
+    <div id="panel-settings-keybindings" class="panel-tab-content"></div>
+    <div id="panel-settings-theme" class="panel-tab-content"></div>
+
   </div>
+
+  <!-- Help documentation panel -->
   <div id="panel-help-docs" class="panel-aux">
     <div class="panel-tabs">
+      <!-- Tabs for help and reference -->
       <div id="panel-tab-guide" class="panel-tab active" data-tab="help">User Guide</div>
       <div id="panel-tab-reference" class="panel-tab" data-tab="documentation">ModuLisp Reference</div>
     </div>
-    <div class="panel-tab-content active" data-tab="help">
-      <div class="mac-toggle">
-        <span class="mac-icon">⌘</span>
-        <input type="checkbox" id="macToggle">
-      </div>
-      <div class="help-content">
-        <div class="help-row">
-          <span class="tip-icon">💡</span>
-          <span class="key-binding pc">Ctrl-Enter</span>
-          <span class="key-binding mac">⌘-Enter</span>
-          <span class="help-description">Evaluate selected code (or top level)</span>
-        </div>
-        <div class="help-row">
-          <span class="tip-icon">💡</span>
-          <span class="key-binding pc">Alt-Enter</span>
-          <span class="key-binding mac">⌥-Enter</span>
-          <span class="help-description">Evaluate selected code</span>
-        </div>
-        <div class="help-row">
-          <span class="tip-icon">💡</span>
-          <span class="key-binding pc">Alt-F</span>
-          <span class="key-binding mac">⌥-F</span>
-          <span class="help-description">Show documentation for function at cursor</span>
-        </div>
-      </div>
-    </div>
+    <!-- Content for each help tab -->
+    <div class="panel-tab-content active" data-tab="help"></div>
     <div class="panel-tab-content" data-tab="documentation"></div>
   </div>
-  <div id="panel-console"></div>
-  <div id="panel-main-editor"></div>
+
+
+
+  <!-- Main JavaScript module -->
   <script type="module" src='bundle.mjs'></script>
 </body>
 </html>

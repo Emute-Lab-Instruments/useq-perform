@@ -13,7 +13,7 @@ import { isPanelVisible } from "./utils.mjs";
 // List of panels that support position toggling
 const POSITION_TOGGLABLE_PANELS = [
     "#panel-help-docs",
-    "#panel-settings-themes"
+    "#pannel-settings"
 ];
 
 // Global ESC key handler

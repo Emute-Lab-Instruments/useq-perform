@@ -44,7 +44,7 @@
 - ESC key support for closing
 - Position toggle support (can be centered or side-aligned)
 
-## Settings Panel (panel-settings-themes)
+## Settings Panel (pannel-settings)
 
 ### Architecture
 - Combined panel with settings and themes tabs
