@@ -33,32 +33,32 @@ let isDevMode = false; // Track dev mode state
  * Initialize the documentation tab within the help panel
  */
 export function initDocumentationTab() {
-    dbg("Documentation", "initDocumentationTab", "Initializing documentation tab");
+    dbg("ModuLisp Reference", "initDocumentationTab", "Initializing ModuLisp reference tab");
     const urlParams = new URLSearchParams(window.location.search);
     isDevMode = urlParams.get('devmode') === 'true';
-    dbg("Documentation", "initDocumentationTab", `Dev mode: ${isDevMode}`);
+    dbg("ModuLisp Reference", "initDocumentationTab", `Dev mode: ${isDevMode}`);
     const helpPanel = document.getElementById('panel-help-docs');
     if (!helpPanel) {
-        dbg("Documentation", "initDocumentationTab", "Help panel element not found in DOM");
+        dbg("ModuLisp Reference", "initDocumentationTab", "Help panel element not found in DOM");
         console.error("Help panel element not found in DOM!");
         return;
     } else {
-        dbg("Documentation", "initDocumentationTab", "Help panel found in DOM");
+        dbg("ModuLisp Reference", "initDocumentationTab", "Help panel found in DOM");
     }
     
     const docContainer = document.querySelector('#panel-help-docs .panel-tab-content[data-tab="documentation"]');
     if (!docContainer) {
-        dbg("Documentation", "initDocumentationTab", "Documentation tab content element not found in DOM");
-        console.error("Documentation tab content element not found in DOM!");
+        dbg("ModuLisp Reference", "initDocumentationTab", "ModuLisp reference tab content element not found in DOM");
+        console.error("ModuLisp reference tab content element not found in DOM!");
         return;
     }
     
     // Load and render documentation data
     loadDocumentationData().then(data => {
-        dbg("Documentation data loaded, count:", data.length);
+        dbg("ModuLisp Reference data loaded, count:", data.length);
         renderDocumentationPanel(docContainer, data);
     }).catch(error => {
-        console.error("Error loading documentation data:", error);
+        console.error("Error loading ModuLisp reference data:", error);
     });
 }
 

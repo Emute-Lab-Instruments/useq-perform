@@ -6,7 +6,7 @@ import { adjustDocPanelForTheme, initDocumentationTab } from './documentation.mj
  * Initialize the help tab within the help panel
  */
 export function initHelpTab() {
-    dbg("Initializing help tab");
+    dbg("User Guide", "initHelpTab", "Initializing user guide tab");
     
     // Mac shortcut toggle
     let isMac = /Mac/.test(navigator.platform);
@@ -26,7 +26,7 @@ export function initHelpTab() {
  * Initialize the help panel with all tabs
  */
 export function initHelpPanel() {
-    dbg("Initializing help panel");
+    dbg("Help Panel", "initHelpPanel", "Initializing help panel with User Guide and ModuLisp Reference tabs");
     
     // Initialize both tabs
     initHelpTab();
@@ -39,7 +39,7 @@ export function initHelpPanel() {
     document.getElementById("button-help").addEventListener("click", function(e) {
         dbg("Help button clicked - direct event listener");
         
-        // Switch to help tab
+        // Switch to User Guide tab by default
         const $panel = $('#panel-help-docs');
         $panel.find('.panel-tab[data-tab="help"]').click();
         
@@ -91,76 +91,4 @@ function setupTabs() {
             });
         });
     });
-}
-
-/**
- * Adjust help panel elements to ensure readability based on current theme
- */
-function adjustHelpPanelForTheme() {
-    dbg("Adjusting help panel theme");
-    // Determine if we're using a light theme by checking the --text-primary variable
-    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
-    
-    // Convert the color to RGB to check its brightness
-    let isLightText = false;
-    if (textColor.startsWith('#')) {
-        // For hex color
-        const hex = textColor.substring(1);
-        const r = parseInt(hex.substring(0, 2), 16);
-        const g = parseInt(hex.substring(2, 4), 16);
-        const b = parseInt(hex.substring(4, 6), 16);
-        // Calculate perceived brightness
-        const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
-        isLightText = brightness > 128;
-    } else if (textColor.startsWith('rgb')) {
-        // For rgb color
-        const rgb = textColor.match(/\d+/g);
-        if (rgb && rgb.length >= 3) {
-            const r = parseInt(rgb[0]);
-            const g = parseInt(rgb[1]);
-            const b = parseInt(rgb[2]);
-            const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
-            isLightText = brightness > 128;
-        }
-    }
-    
-    // If we have light text, we're in a dark theme, otherwise we're in a light theme
-    const isLightTheme = !isLightText;
-    dbg("Current theme is:", isLightTheme ? "light" : "dark");
-    
-    if (isLightTheme) {
-        // Adjust key bindings for better visibility in light theme
-        $('.key-binding').css({
-            'background-color': '#f0f0f0',
-            'color': '#333',
-            'border': '1px solid #ccc',
-            'box-shadow': '0 1px 2px rgba(0,0,0,0.1)'
-        });
-        
-        // Make help section headings more visible
-        $('#panel-help b').css({
-            'color': 'var(--accent-color, #0066cc)'
-        });
-        
-        // Ensure tip icons are visible
-        $('.tip-icon').css({
-            'color': 'var(--accent-color-secondary, #ff9800)'
-        });
-    } else {
-        // Dark theme - reset to default styles
-        $('.key-binding').css({
-            'background-color': 'var(--panel-control-bg)',
-            'color': 'var(--text-primary)',
-            'border': 'none',
-            'box-shadow': 'none'
-        });
-        
-        $('#panel-help b').css({
-            'color': 'var(--accent-color, #00ff41)'
-        });
-        
-        $('.tip-icon').css({
-            'color': 'var(--accent-color-secondary, #ff9800)'
-        });
-    }
 }
