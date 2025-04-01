@@ -18,5 +18,6 @@ export function dbg(...args) {
 
 // Exported function to toggle the debug flag
 export function toggleDbg() {
+  console.log("Debug mode toggled");
   debug = !debug;
 }

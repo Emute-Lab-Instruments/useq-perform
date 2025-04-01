@@ -6,19 +6,16 @@ import { adjustDocPanelForTheme, initDocumentationTab } from './documentation.mj
  * Initialize the help tab within the help panel
  */
 export function initHelpTab() {
-    dbg("User Guide", "initHelpTab", "Initializing user guide tab");
-    
-    // Mac shortcut toggle
+    dbg("Help Tab", "initHelpTab", "Starting initialization of the help tab");
     let isMac = /Mac/.test(navigator.platform);
-    
-    // Set initial OS-specific keybinding class
+    dbg("Help Tab", "initHelpTab", `Detected platform: ${isMac ? 'Mac' : 'Other'}`);
     if(isMac) {
         $("#panel-help-docs").addClass("show-mac");
+        dbg("Help Tab", "initHelpTab", "Added 'show-mac' class to help panel");
     }
-    
-    // Mac toggle functionality
     $("#macToggle").on("change", function() {
         $("#panel-help-docs").toggleClass("show-mac");
+        dbg("Help Tab", "initHelpTab", "Toggled 'show-mac' class on help panel");
     });
 }
 
@@ -26,37 +23,25 @@ export function initHelpTab() {
  * Initialize the help panel with all tabs
  */
 export function initHelpPanel() {
-    dbg("Help Panel", "initHelpPanel", "Initializing help panel with User Guide and ModuLisp Reference tabs");
-    
-    // Initialize both tabs
+    dbg("Help Panel", "initHelpPanel", "Starting initialization of the help panel");
     initHelpTab();
     initDocumentationTab();
-    
-    // Remove previous handlers if any
+    dbg("Help Panel", "initHelpPanel", "Initialized help and documentation tabs");
     $("#button-help").off("click");
-    
-    // Add click handler directly using addEventListener for more reliable triggering
     document.getElementById("button-help").addEventListener("click", function(e) {
-        dbg("Help button clicked - direct event listener");
-        
-        // Switch to User Guide tab by default
+        dbg("Help Panel", "initHelpPanel", "Help button clicked");
         const $panel = $('#panel-help-docs');
         $panel.find('.panel-tab[data-tab="help"]').click();
-        
-        // Use the shared toggleAuxPanel function
         toggleAuxPanel("#panel-help-docs");
-        
-        // Apply theme styling after panel is open
         if (window.getComputedStyle(document.getElementById("panel-help-docs")).display !== 'none') {
             adjustHelpPanelForTheme();
+            dbg("Help Panel", "initHelpPanel", "Adjusted help panel for theme");
         }
-        
         e.preventDefault();
         e.stopPropagation();
     });
-
-    // Set up tab functionality
     setupTabs();
+    dbg("Help Panel", "initHelpPanel", "Completed initialization of the help panel");
 }
 
 /**
