@@ -6,8 +6,7 @@
  */
 import { defaultFontSize, defaultTheme, defaultMainEditorStartingCode } from "../editors/defaults.mjs";
 import { themes } from "../editors/themes/themeManager.mjs";
-
-const dbg = (...args) => {if (false) {console.log(...args)}};
+import {dbg} from "../utils.mjs";
 
 dbg("persistentUserSettings.mjs: Loading with defaults:", { defaultTheme, defaultFontSize });
 

@@ -1,3 +1,4 @@
+import { dbg } from "../utils.mjs";
 import { toggleAuxPanel } from './ui.mjs';
 import documentationData from '../data/documentation_hand_edited.json';
 import { createEditor } from '../editors/main.mjs';
@@ -32,12 +33,12 @@ let isDevMode = false; // Track dev mode state
  * Initialize the documentation panel
  */
 export function initDocumentationPanel() {
-    console.log("Initializing documentation panel");
+    dbg("Initializing documentation panel");
     
     // Check for dev mode URL parameter
     const urlParams = new URLSearchParams(window.location.search);
     isDevMode = urlParams.get('devmode') === 'true';
-    console.log("Documentation dev mode:", isDevMode);
+    dbg("Documentation dev mode:", isDevMode);
 
     const helpPanel = document.getElementById('panel-help-docs');
     const docContainer = helpPanel.querySelector('.panel-tab-content[data-tab="documentation"]');
@@ -47,12 +48,12 @@ export function initDocumentationPanel() {
         console.error("Help panel element not found in DOM!");
         return;
     } else {
-        console.log("Help panel found in DOM:", helpPanel);
+        dbg("Help panel found in DOM:", helpPanel);
     }
     
     // Load and render documentation data
     loadDocumentationData().then(data => {
-        console.log("Documentation data loaded, count:", data.length);
+        dbg("Documentation data loaded, count:", data.length);
         renderDocumentationPanel(docContainer, data);
     }).catch(error => {
         console.error("Error loading documentation data:", error);
@@ -638,7 +639,7 @@ function createFunctionElement(func) {
         updatedFunc.aliases = aliasText.split(',').map(a => a.trim());
       }
 
-      console.log('Updated function data:', updatedFunc);
+      dbg('Updated function data:', updatedFunc);
       
       // TODO: Add endpoint to save changes
       alert('Changes recorded in console. Add API endpoint to save changes.');
@@ -894,7 +895,7 @@ export function showDocumentationForSymbol(editor) {
 }
 
 function toggleDocumentation(functionName) {
-  console.log('Toggling documentation for:', functionName, 'Current state:', expandedFunctions[functionName]);
+  dbg('Toggling documentation for:', functionName, 'Current state:', expandedFunctions[functionName]);
   
   // Ensure expandedFunctions is initialized
   if (!expandedFunctions) {
@@ -933,5 +934,5 @@ function toggleDocumentation(functionName) {
     }
   }
   
-  console.log('Toggled state:', functionName, expandedFunctions[functionName]);
+  dbg('Toggled state:', functionName, expandedFunctions[functionName]);
 }

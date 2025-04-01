@@ -1,3 +1,4 @@
+import { dbg } from "../utils.mjs";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import {
@@ -42,7 +43,7 @@ export function createEditor(startingText, extensions) {
 }
 
 export function createMainEditor() {
-  console.log(
+  dbg(
     "main.mjs createMainEditor: Creating main editor with settings:",
     {
       theme: activeUserSettings.editor?.theme,

@@ -3,6 +3,7 @@ import { initUI } from './ui/ui.mjs';
 import { checkForWebserialSupport } from './io/serialComms.mjs';
 import { activeUserSettings, deleteLocalStorage } from './utils/persistentUserSettings.mjs';
 import { post } from './io/console.mjs';
+import { dbg, toggleDbg } from './utils.mjs';
 
 // Store editor instance globally 
 let editor = null;
@@ -17,20 +18,25 @@ $(document).ready(() => {
     return;
   }
 
-   // Handle URL parameters
-   const urlParams = new URLSearchParams(window.location.search);
-  
-   if (urlParams.has('nosave')) {
-     activeUserSettings.storage.saveCodeLocally = false;
-     updateUserSettings('storage', { saveCodeLocally: false });
-   }
+  // Handle URL parameters
+  const urlParams = new URLSearchParams(window.location.search);
+
+  if (urlParams.has('debug') && urlParams.get('debug') === 'true') {
+    toggleDbg();
+    dbg("Debug mode enabled");
+  }
+
+  if (urlParams.has('nosave')) {
+    activeUserSettings.storage.saveCodeLocally = false;
+    updateUserSettings('storage', { saveCodeLocally: false });
+  }
 
 
    // Load code from various sources
   if (urlParams.has("gist")) {
     // Load from GitHub Gist
     const gistid = urlParams.get("gist");
-    console.log("loading gist " + gistid);
+    dbg("loading gist " + gistid);
     $.ajax({
       url: "https://api.github.com/gists/" + gistid,
       type: "GET",
@@ -48,7 +54,7 @@ $(document).ready(() => {
   } else if (urlParams.has("txt")) {
     // Load from text URL
     const url = urlParams.get("txt");
-    console.log("loading code " + url);
+    dbg("loading code " + url);
     $.ajax({
       url: url,
       type: "GET",

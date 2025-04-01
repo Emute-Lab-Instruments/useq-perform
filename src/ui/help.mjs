@@ -1,8 +1,9 @@
+import { dbg } from "../utils.mjs";
 import { toggleAuxPanel } from './ui.mjs';
 import { adjustDocPanelForTheme } from './documentation.mjs';
 
 export function initHelpPanel() {
-    console.log("Initializing help panel");
+    dbg("Initializing help panel");
     
     // Mac shortcut toggle
     let isMac = /Mac/.test(navigator.platform);
@@ -12,7 +13,7 @@ export function initHelpPanel() {
     
     // Add click handler directly using addEventListener for more reliable triggering
     document.getElementById("button-help").addEventListener("click", function(e) {
-        console.log("Help button clicked - direct event listener");
+        dbg("Help button clicked - direct event listener");
         
         // Switch to help tab
         const $panel = $('#panel-help-docs');
@@ -82,7 +83,7 @@ function setupTabs() {
  * Adjust help panel elements to ensure readability based on current theme
  */
 function adjustHelpPanelForTheme() {
-    console.log("Adjusting help panel theme");
+    dbg("Adjusting help panel theme");
     // Determine if we're using a light theme by checking the --text-primary variable
     const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
     
@@ -111,7 +112,7 @@ function adjustHelpPanelForTheme() {
     
     // If we have light text, we're in a dark theme, otherwise we're in a light theme
     const isLightTheme = !isLightText;
-    console.log("Current theme is:", isLightTheme ? "light" : "dark");
+    dbg("Current theme is:", isLightTheme ? "light" : "dark");
     
     if (isLightTheme) {
         // Adjust key bindings for better visibility in light theme

@@ -2,7 +2,7 @@ export function openCam() {
   // let error = false;
   let allMediaDevices = navigator.mediaDevices;
   if (!allMediaDevices || !allMediaDevices.getUserMedia) {
-    console.log("getUserMedia() not supported.");
+    dbg("getUserMedia() not supported.");
     return;
   }
   try {
@@ -11,7 +11,7 @@ export function openCam() {
       video: { width: 1200, height: 800 }
     })
       .then(function (vidStream) {
-        console.log(vidStream)
+        dbg(vidStream)
         var video = document.getElementById('videopanel');
         if ("srcObject" in video) {
           video.srcObject = vidStream;
@@ -23,12 +23,12 @@ export function openCam() {
         };
       })
       .catch(function (e) {
-        console.log(e.name + ": " + e.message);
+        dbg(e.name + ": " + e.message);
         error = true;
       });
   }
    catch(err) {
-    console.log(err)
+    dbg(err)
   }
   // return error;
   return true;

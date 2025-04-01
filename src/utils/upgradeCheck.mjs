@@ -4,7 +4,7 @@ export function upgradeCheck(versionMsg) {
   // const verRE = /([0-9])\.([0-9])/g;
   const verRE = /([0-9])\.([0-9])(.([0-9]))?/g;
   const groups = verRE.exec(versionMsg);
-  console.log(groups);
+  dbg(groups);
   // const groups = verRE.exec("1.0.2");
   const moduleVersionMajor = groups[1];
   const moduleVersionMinor = groups[2];
@@ -29,7 +29,7 @@ export function upgradeCheck(versionMsg) {
     const ghVersionMajor = matches[3];
     const ghVersionMinor = matches[4];
     const ghVersionPatch = matches[5];
-    console.log(version);
+    dbg(version);
     //compare version
     if (ghVersionMajor > moduleVersionMajor ||
       (ghVersionMinor > moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)

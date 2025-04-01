@@ -1,3 +1,4 @@
+import { dbg } from "../utils.mjs";
 import { toggleAuxPanel } from './ui.mjs';
 import { activeUserSettings, updateUserSettings, resetUserSettings } from '../utils/persistentUserSettings.mjs';
 import { themes } from '../editors/themes/themeManager.mjs';
@@ -27,7 +28,7 @@ export function initSettingsPanel() {
     const settingsButton = document.getElementById("button-settings");
     if (settingsButton) {
         settingsButton.addEventListener("click", function(e) {
-            console.log("Settings button clicked - direct event listener");
+            dbg("Settings button clicked - direct event listener");
             
             // Switch to settings tab
             const $panel = $('#panel-settings-themes');

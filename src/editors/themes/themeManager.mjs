@@ -2,6 +2,7 @@ import { EditorView } from "@codemirror/view";
 import { themeCompartment } from "../state.mjs";
 import { themes, themeRecipes } from "./builtinThemes.mjs";
 import convert from "color-convert";
+import { dbg } from "../../utils.mjs";
 
 export { themes, themeRecipes };
 
@@ -118,7 +119,7 @@ function adjustPanelsToTheme(themeName) {
 }
 
 export function setMainEditorTheme(themeName) {
-  console.log("themename:", themeName);
+  dbg("themename:", themeName);
   const editor = EditorView.findFromDOM(
     document.querySelector("#panel-main-editor .cm-editor")
   );

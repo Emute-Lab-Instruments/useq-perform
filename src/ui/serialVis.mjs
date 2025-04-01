@@ -1,3 +1,4 @@
+import { dbg } from "../utils.mjs";
 import { serialBuffers, smoothingSettings } from "../io/serialComms.mjs";
 import { toggleAuxPanel } from "./ui.mjs";
 import {
@@ -39,7 +40,7 @@ const getCatmullRomPoint = (p0, p1, p2, p3, t) => {
 };
 
 function drawPlot() {
-  console.log("Drawing plot");
+  dbg("Drawing plot");
   
   // Setup
   const ctx = plotCtx;
@@ -179,7 +180,7 @@ export function setSerialVisPalette(palette) {
     serialVisPalette = palette;
     // Force redraw of the plot with new colors
     plotNeedsRedrawing = true;
-    console.log("Serial visualization palette updated");
+    dbg("Serial visualization palette updated");
     return true;
   }
   return false;
@@ -292,7 +293,7 @@ function drawSerialVis() {
 }
 
 export function initVisPanel() {
-  console.log("Initializing serial visualization panel");
+  dbg("Initializing serial visualization panel");
   
   // Start animation loop for serial visualization
   window.requestAnimationFrame(drawSerialVis);
@@ -331,7 +332,7 @@ function createSmoothingControls() {
     smoothingSettings.enabled,
     (checked) => {
       smoothingSettings.enabled = checked;
-      console.log(`Smoothing ${checked ? 'enabled' : 'disabled'}`);
+      dbg(`Smoothing ${checked ? 'enabled' : 'disabled'}`);
     }
   );
   controlsContainer.appendChild(smoothingToggle);
@@ -343,7 +344,7 @@ function createSmoothingControls() {
     1, 10, 1,
     (value) => {
       smoothingSettings.windowSize = parseInt(value);
-      console.log(`Smoothing window size set to ${value}`);
+      dbg(`Smoothing window size set to ${value}`);
     }
   );
   controlsContainer.appendChild(windowSizeSlider);
@@ -354,7 +355,7 @@ function createSmoothingControls() {
     smoothingSettings.interpolationEnabled,
     (checked) => {
       smoothingSettings.interpolationEnabled = checked;
-      console.log(`Interpolation ${checked ? 'enabled' : 'disabled'}`);
+      dbg(`Interpolation ${checked ? 'enabled' : 'disabled'}`);
     }
   );
   controlsContainer.appendChild(interpolationToggle);
@@ -366,7 +367,7 @@ function createSmoothingControls() {
     2, 10, 1,
     (value) => {
       smoothingSettings.interpolationPoints = parseInt(value);
-      console.log(`Interpolation points set to ${value}`);
+      dbg(`Interpolation points set to ${value}`);
     }
   );
   controlsContainer.appendChild(interpolationSlider);
