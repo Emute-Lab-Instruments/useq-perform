@@ -1,7 +1,9 @@
 import { toggleAuxPanel } from './ui.mjs';
+import { adjustDocPanelForTheme } from './documentation.mjs';
 
-export function initHelpPanel(){
+export function initHelpPanel() {
     console.log("Initializing help panel");
+    
     // Mac shortcut toggle
     let isMac = /Mac/.test(navigator.platform);
     
@@ -12,42 +14,68 @@ export function initHelpPanel(){
     document.getElementById("button-help").addEventListener("click", function(e) {
         console.log("Help button clicked - direct event listener");
         
-        // Use the shared toggleAuxPanel function instead of custom logic
-        toggleAuxPanel("#panel-help");
+        // Switch to help tab
+        const $panel = $('#panel-help-docs');
+        $panel.find('.panel-tab[data-tab="help"]').click();
+        
+        // Use the shared toggleAuxPanel function
+        toggleAuxPanel("#panel-help-docs");
         
         // Apply theme styling after panel is open
-        if (window.getComputedStyle(document.getElementById("panel-help")).display !== 'none') {
+        if (window.getComputedStyle(document.getElementById("panel-help-docs")).display !== 'none') {
             adjustHelpPanelForTheme();
         }
         
-        // Prevent event bubbling issues
         e.preventDefault();
         e.stopPropagation();
     });
     
     // Set initial OS-specific keybinding class
     if(isMac) {
-        $("#panel-help").addClass("show-mac");
+        $("#panel-help-docs").addClass("show-mac");
     }
     
     // Mac toggle functionality
     $("#macToggle").on("change", function() {
-        $("#panel-help").toggleClass("show-mac");
+        $("#panel-help-docs").toggleClass("show-mac");
     });
-    
-    // Verify the panel exists in DOM
-    if ($("#panel-help").length === 0) {
-        console.error("Help panel element not found in DOM!");
-    } else {
-        console.log("Help panel found in DOM:", $("#panel-help")[0]);
-    }
-    
-    // Verify button exists
-    if ($("#button-help").length === 0) {
-        console.error("Help button not found in DOM!");
-    } else {
-        console.log("Help button found in DOM:", $("#button-help")[0]);
-    }
+
+    // Set up tab functionality
+    setupTabs();
+}
+
+/**
+ * Set up tab switching functionality for the help panel
+ */
+function setupTabs() {
+    const panel = document.getElementById('panel-help-docs');
+    const tabs = panel.querySelectorAll('.panel-tab');
+    const contents = panel.querySelectorAll('.panel-tab-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabId = tab.dataset.tab;
+            
+            // Update tab states
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            // Update content states
+            contents.forEach(content => {
+                if (content.dataset.tab === tabId) {
+                    content.classList.add('active');
+                    // Call appropriate theme adjustment based on active tab
+                    if (tabId === 'help') {
+                        adjustHelpPanelForTheme();
+                    } else if (tabId === 'documentation') {
+                        adjustDocPanelForTheme();
+                    }
+                } else {
+                    content.classList.remove('active');
+                }
+            });
+        });
+    });
 }
 
 /**

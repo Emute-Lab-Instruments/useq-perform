@@ -1,28 +1,7 @@
 /* Documentation Panel Styles */
-/* These styles extend the common panel styles defined in panels.css */
+/* Panel styles are now in help.css */
 
-/* Main panel container */
-#panel-documentation.panel-aux {
-  padding-top: 0; /* Fix invalid padding value */
-  padding-left: 1.5em;
-  padding-right: 1.5em;
-  padding-bottom: 1.5em;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Documentation Panel - Centered mode */
-#panel-documentation.panel-aux.centered {
-  width: 80%;
-  right: 50%;
-  transform: translate(50%, -50%);
-  max-height: 80%;
-  overflow: hidden; /* Change from overflow-y: auto to prevent duplicate scrollbars */
-  display: flex !important;
-  flex-direction: column !important;
-}
-
-/* Tags container - Fixed at the top */
+/* Tags container */
 .doc-tags-container {
   position: sticky;
   top: 0;
@@ -32,8 +11,7 @@
   padding: 0.5em 0.5em;
   margin-bottom: 0;
   border-bottom: 1px solid var(--panel-border);
-  z-index: 100;
-  /* Adjust for the panel's position */
+  z-index: 350; /* Above console but below aux panel controls */
   width: 100%;
 }
 
@@ -63,7 +41,7 @@
   color: #000;
 }
 
-/* Function list - Multi-column layout */
+/* Function list */
 .doc-function-list {
   flex: 1;
   display: flex !important;
@@ -75,7 +53,7 @@
   overflow-y: auto;
 }
 
-/* Column container for function items */
+/* Column container */
 .doc-function-list .doc-column {
   flex: 1 1 0;
   display: flex !important;
@@ -87,28 +65,6 @@
   opacity: 1 !important;
   padding: 0.5em;
   box-sizing: border-box;
-}
-
-/* For centered mode (multi-column) */
-#panel-documentation.centered .doc-function-list {
-  flex-direction: row;
-  flex-wrap: nowrap;
-  height: calc(100% - 50px); /* Subtract the height of the tags container */
-  min-height: 300px; /* Ensure minimum height */
-}
-
-/* Improve the tag container's appearance in the centered panel */
-#panel-documentation.centered .doc-tags-container {
-  flex-shrink: 0;
-}
-
-/* For non-centered mode (single column) */
-#panel-documentation:not(.centered) .doc-function-list {
-  flex-direction: column;
-}
-
-#panel-documentation:not(.centered) .doc-function-list .doc-column {
-  width: 100%;
 }
 
 .doc-function-item {
@@ -127,7 +83,7 @@
   border-color: var(--panel-border);
 }
 
-/* Ensure visibility of function items in both filtered and unfiltered states */
+/* Function items visibility */
 .doc-function-item,
 .doc-function-header,
 .doc-function-name {
@@ -160,7 +116,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0; /* Allow text to truncate */
+  min-width: 0;
 }
 
 .doc-function-alias {
@@ -242,30 +198,54 @@
   position: absolute;
   top: 4px;
   right: 4px;
-  z-index: 10;
+  z-index: 355; /* Above tags container but below aux panel controls */
   display: flex;
   gap: 4px;
 }
 
-.centered .doc-example-wrapper {
+.doc-example-editor {
+  position: relative;
   width: 100%;
-  box-sizing: border-box;
 }
 
-/* Ensure editors in centered mode fill their container width */
-.centered .doc-example-editor {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Force theme colors for the editor content */
-.doc-example-editor .cm-content {
+.doc-example-editor .cm-editor {
+  height: auto;
+  min-height: 20px;
+  max-height: 150px;
   background-color: var(--panel-section-bg) !important;
-  color: var(--text-primary) !important;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--item-border-radius);
+  overflow: auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
+.doc-example-editor .cm-content,
 .doc-example-editor .cm-line {
   color: var(--text-primary) !important;
+  font-family: var(--code-font) !important;
+}
+
+.doc-example-editor .cm-content {
+  padding: 4px 8px;
+}
+
+.doc-example-editor .cm-gutters {
+  background-color: var(--panel-control-bg) !important;
+  border-right: 1px solid var(--panel-border) !important;
+}
+
+.doc-example-editor .cm-editor.cm-focused {
+  outline: none !important;
+  border-color: var(--accent-color) !important;
+}
+
+.doc-example-editor:hover {
+  cursor: grab;
+}
+
+.doc-example-editor:active {
+  cursor: grabbing;
 }
 
 .doc-example-toolbar {
@@ -299,33 +279,6 @@
   font-size: 1em;
 }
 
-.doc-example-editor {
-  height: auto;
-  min-height: 20px;
-  max-height: 150px;
-  overflow: auto;
-  cursor: grab;
-}
-
-.doc-example-editor.dragging {
-  opacity: 0.7;
-  cursor: grabbing;
-}
-
-/* CodeMirror customizations within documentation */
-.doc-example-editor .cm-editor {
-  height: auto;
-  font-size: 0.9em;
-}
-
-.doc-example-editor .cm-gutters {
-  display: none; /* Hide line numbers to save space */
-}
-
-.doc-example-editor .cm-content {
-  padding: 0.5em;
-}
-
 .doc-function-tags {
   margin-top: 1em;
   display: flex;
@@ -345,4 +298,27 @@
   text-align: center;
   color: var(--text-muted);
   grid-column: 1 / -1;
+}
+
+/* Dev mode editable content */
+[contenteditable="true"] {
+  cursor: text;
+  transition: outline-color 0.2s;
+}
+
+[contenteditable="true"]:hover {
+  outline-color: var(--accent-color) !important;
+}
+
+[contenteditable="true"]:focus {
+  outline: 2px solid var(--accent-color) !important;
+  outline-offset: 1px;
+}
+
+.doc-save-button:hover {
+  background: var(--accent-hover-color, #0055aa) !important;
+}
+
+.doc-save-button:active {
+  transform: translateY(1px);
 }

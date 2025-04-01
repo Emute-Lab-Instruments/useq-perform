@@ -10,108 +10,67 @@
 </head>
 <body>
   <div id="panel-toolbar">
-      <a class="toolbar-button" id="button-connect" title="Connect to uSEQ"><i data-lucide="cable"></i> </a>
-      <a class="toolbar-button" id="button-save" title="Save Code"><i data-lucide="save"></i> </a>
-      <a class="toolbar-button" id="button-load" title="Load Code"><i data-lucide="file"></i> </a>
-      <a class="toolbar-button" id="button-theme" title="Themes"><i data-lucide="swatch-book"></i></a>
-      <a class="toolbar-button" id="button-increase-font" title="Font size ++"><i data-lucide="a-arrow-up"></i></a>
-      <a class="toolbar-button" id="button-decrease-font" title="Font size --"><i data-lucide="a-arrow-down"></i></a>
-      <a class="toolbar-button" id="button-settings" title="Settings"><i data-lucide="settings"></i></a>
-      <a class="toolbar-button" id="button-documentation" title="Documentation"><i data-lucide="book"></i></a>
-      <a class="toolbar-button" id="button-help" title="Help!"><i data-lucide="circle-help"></i></a>
+      <div class="toolbar-row">
+        <a class="toolbar-button" id="button-connect" title="Connect"><i data-lucide="cable"></i></a>
+        <a class="toolbar-button" id="button-graph" title="Graph"><i data-lucide="chart-spline"></i></a>
+      </div>
+      <div class="toolbar-row">
+        <a class="toolbar-button" id="button-decrease-font" title="Font size--"><i data-lucide="a-arrow-down"></i></a>
+        <a class="toolbar-button" id="button-increase-font" title="Font size++"><i data-lucide="a-arrow-up"></i></a>
+      </div>
+      <div class="toolbar-row">
+        <a class="toolbar-button" id="button-help" title="Help!"><i data-lucide="circle-help"></i></a>
+          <a class="toolbar-button" id="button-settings" title="Settings"><i data-lucide="settings"></i></a>
+      </div>
   </div>
-  <div id="panel-main-editor"></div>
-  <div id="panel-console"></div>
   <div id="panel-vis"> 
     <canvas class="serialcanvas" width="1000" height="800" id="serialcanvas"></canvas>
     <canvas id="canvas-plot" width="1000" height="800"></canvas>
     <canvas id="canvas-timeline" width="1000" height="800"></canvas>
   </div>
-  <div id="panel-theme" class="panel-aux"></div>
-  <div id="panel-settings" class="panel-aux"></div>
-  <div id="panel-snippets" class="panel-aux"></div>
-  <div id="panel-documentation" class="panel-aux"></div>
-  <div id="panel-help" class="panel-aux">
-    <div class="mac-toggle">
-    <span class="mac-icon">⌘</span>
-    <input type="checkbox" id="macToggle">
+  <div id="panel-settings-themes" class="panel-aux">
+    <div class="panel-tabs">
+      <div class="panel-tab active" data-tab="settings">Settings</div>
+      <div class="panel-tab" data-tab="themes">Themes</div>
     </div>
-
-    <div class="help-row">
-    <span class="tip-icon">💡</span>
-    <span class="key-binding win">Alt-H</span>
-    <span class="key-binding mac">⌥-H</span>
-    <span class="help-description">Toggle the help panel</span>
-    </div>
-
-    <div class="key-bindings-section">
-    <b>Coding:</b>
-    <div class="help-row">
-      <span class="key-binding win">Ctrl-ENTER</span>
-      <span class="key-binding mac">⌘-ENTER</span>
-      <span class="help-description">Evaluate code now</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Alt-ENTER</span>
-      <span class="key-binding mac">⌥-ENTER</span>
-      <span class="help-description">Evaluate code at the next bar</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Ctrl-[</span>
-      <span class="key-binding mac">⌘-[</span>
-      <span class="help-description">Shrink collection forwards by one form</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Ctrl-]</span>
-      <span class="key-binding mac">⌘-]</span>
-      <span class="help-description">Expand collection to include form to the right</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Ctrl-;</span>
-      <span class="key-binding mac">⌘-;</span>
-      <span class="help-description">Grow collection backwards by one form</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Ctrl-'</span>
-      <span class="key-binding mac">⌘-'</span>
-      <span class="help-description">Shrink collection backwards by one form</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Alt-S</span>
-      <span class="key-binding mac">⌥-S</span>
-      <span class="help-description">Unwrap (remove brackets)</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Alt-up/down</span>
-      <span class="key-binding mac">⌥-up/down</span>
-      <span class="help-description">Semantic selection</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Ctrl-K</span>
-      <span class="key-binding mac">⌘-K</span>
-      <span class="help-description">Remove all forms from cursor to end of line</span>
-    </div>
-    </div>
-
-    <div class="key-bindings-section">
-    <b>Visuals:</b>
-    <div class="help-row">
-      <span class="key-binding win">Alt-G</span>
-      <span class="key-binding mac">⌥-G</span>
-      <span class="help-description">Show serial streams</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Alt-V</span>
-      <span class="key-binding mac">⌥-V</span>
-      <span class="help-description">Show webcam under panel-editor</span>
-    </div>
-    <div class="help-row">
-      <span class="key-binding win">Alt-F</span>
-      <span class="key-binding mac">⌥-F</span>
-      <span class="help-description">Show documentation for function at cursor</span>
-    </div>
-    </div>
+    <div class="panel-tab-content active" data-tab="settings"></div>
+    <div class="panel-tab-content" data-tab="themes"></div>
   </div>
+  <div id="panel-help-docs" class="panel-aux">
+    <div class="panel-tabs">
+      <div class="panel-tab active" data-tab="help">Help</div>
+      <div class="panel-tab" data-tab="documentation">Documentation</div>
+    </div>
+    <div class="panel-tab-content active" data-tab="help">
+      <div class="mac-toggle">
+        <span class="mac-icon">⌘</span>
+        <input type="checkbox" id="macToggle">
+      </div>
+      <div class="help-content">
+        <div class="help-row">
+          <span class="tip-icon">💡</span>
+          <span class="key-binding pc">Ctrl-Enter</span>
+          <span class="key-binding mac">⌘-Enter</span>
+          <span class="help-description">Evaluate selected code (or top level)</span>
+        </div>
+        <div class="help-row">
+          <span class="tip-icon">💡</span>
+          <span class="key-binding pc">Alt-Enter</span>
+          <span class="key-binding mac">⌥-Enter</span>
+          <span class="help-description">Evaluate selected code</span>
+        </div>
+        <div class="help-row">
+          <span class="tip-icon">💡</span>
+          <span class="key-binding pc">Alt-F</span>
+          <span class="key-binding mac">⌥-F</span>
+          <span class="help-description">Show documentation for function at cursor</span>
+        </div>
+      </div>
+    </div>
+    <div class="panel-tab-content" data-tab="documentation"></div>
+  </div>
+  <div id="panel-console"></div>
+  <div id="panel-main-editor"></div>
   <script type="module" src='bundle.mjs'></script>
 </body>
 </html>

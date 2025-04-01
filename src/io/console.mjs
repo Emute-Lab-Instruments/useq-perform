@@ -15,6 +15,16 @@ export function post(value) {
     consoleLines.shift(); // Remove oldest line
   }
   
-  $("#panel-console").html(consoleLines.join(''));
-  $('#panel-console').scrollTop($('#panel-console')[0].scrollHeight - $('#panel-console')[0].clientHeight);
+  const consolePanel = document.getElementById('panel-console');
+  if (!consolePanel) {
+    console.warn('Console panel not found, buffering message:', value);
+    return;
+  }
+  
+  consolePanel.innerHTML = consoleLines.join('');
+  
+  // Only try to scroll if the panel exists and has scrollHeight
+  if (consolePanel.scrollHeight !== undefined) {
+    consolePanel.scrollTop = consolePanel.scrollHeight - consolePanel.clientHeight;
+  }
 }

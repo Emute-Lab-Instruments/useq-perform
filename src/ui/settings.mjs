@@ -9,15 +9,16 @@ import { EditorView } from '@codemirror/view';
  * Initialize the settings panel
  */
 export function initSettingsPanel() {
-    const settingsPanel = document.getElementById('panel-settings');
+    const settingsPanel = document.getElementById('panel-settings-themes');
+    const settingsContainer = settingsPanel.querySelector('.panel-tab-content[data-tab="settings"]');
     
     // Create settings container
-    const settingsContainer = document.createElement('div');
-    settingsContainer.className = 'settings-container';
-    settingsPanel.appendChild(settingsContainer);
+    const settingsContent = document.createElement('div');
+    settingsContent.className = 'settings-container';
+    settingsContainer.appendChild(settingsContent);
     
     // Render settings UI
-    renderSettingsUI(settingsContainer);
+    renderSettingsUI(settingsContent);
     
     // Remove previous handlers if any
     $("#button-settings").off("click");
@@ -27,7 +28,12 @@ export function initSettingsPanel() {
     if (settingsButton) {
         settingsButton.addEventListener("click", function(e) {
             console.log("Settings button clicked - direct event listener");
-            toggleAuxPanel("#panel-settings");
+            
+            // Switch to settings tab
+            const $panel = $('#panel-settings-themes');
+            $panel.find('.panel-tab[data-tab="settings"]').click();
+            
+            toggleAuxPanel("#panel-settings-themes");
             
             // Apply theme-specific styling to form controls when the panel opens
             refreshControlStyling();

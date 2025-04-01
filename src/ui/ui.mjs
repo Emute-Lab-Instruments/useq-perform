@@ -12,9 +12,8 @@ import { isPanelVisible } from "./utils.mjs";
 
 // List of panels that support position toggling
 const POSITION_TOGGLABLE_PANELS = [
-    "#panel-help",
-    "#panel-settings",
-    "#panel-documentation"
+    "#panel-help-docs",
+    "#panel-settings-themes"
 ];
 
 // Global ESC key handler
@@ -71,7 +70,7 @@ export function toggleAuxPanel(panelID) {
         console.log(`Opening panel ${panelID}`);
         
         // Set display first - use flex instead of block for panels that need it
-        if (panelID === '#panel-documentation') {
+        if (panelID === '#panel-documentation' || panelID === '#panel-help-docs') {
             panelElement.style.setProperty('display', 'flex', 'important');
         } else {
             panelElement.style.setProperty('display', 'block', 'important');
@@ -113,124 +112,24 @@ export function toggleAuxPanel(panelID) {
 }
 
 /**
- * Toggle the position of a panel between side and centered
- * @param {string} panelID - The CSS selector for the panel to toggle position
- */
-export function togglePanelPosition(panelID) {
-    const $panel = $(panelID);
-    
-    if (!$panel.length) {
-        console.error(`Panel ${panelID} not found in the DOM`);
-        return;
-    }
-    
-    console.log(`Toggling position for panel ${panelID}`);
-    
-    // Toggle the centered class
-    const wasCentered = $panel.hasClass('centered');
-    $panel.toggleClass('centered');
-    const isCentered = $panel.hasClass('centered');
-    
-    console.log(`Panel ${panelID} position changed: wasCentered=${wasCentered}, isCentered=${isCentered}`);
-    
-    // Update the icon to match the current state
-    const $toggleBtn = $(`.panel-position-toggle[data-for="${panelID}"]`);
-    if ($toggleBtn.length) {
-        $toggleBtn.attr('title', isCentered ? 'Dock to side' : 'Center panel');
-        $toggleBtn.find('i').attr('data-lucide', isCentered ? 'panel-right' : 'layout');
-        // Refresh the Lucide icon
-        if (window.lucide) {
-            window.lucide.createIcons();
-        }
-        
-        // Update button position after position toggle
-        setTimeout(() => updateToggleButtonPosition(panelID), 10);
-    }
-    
-    // For documentation panel, re-render the function list since layout changed
-    if (panelID === "#panel-documentation") {
-        console.log("Re-rendering documentation after position toggle");
-        // Give time for the class change to apply before rendering
-        setTimeout(() => {
-            // Use a global function from documentation.mjs if it exists
-            if (typeof window.renderDocumentationFunctionList === 'function') {
-                window.renderDocumentationFunctionList(true);
-            }
-        }, 50);
-    }
-}
-
-/**
- * Set up the position toggle button for a panel
+ * Set up tab functionality for tabbed panels
  * @param {string} panelID - The CSS selector for the panel
  */
-function setupPositionToggle(panelID) {
+function setupTabs(panelID) {
     const $panel = $(panelID);
-    
-    // Add position-togglable class if not already present
-    if (!$panel.hasClass('position-togglable')) {
-        $panel.addClass('position-togglable');
-    }
-    
-    // Remove any existing toggle button
-    $panel.find('.panel-position-toggle').remove();
-    $('body > .panel-position-toggle[data-for="' + panelID + '"]').remove();
-    
-    // Create the position toggle button
-    const isCentered = $panel.hasClass('centered');
-    const toggleButton = $(`
-        <div class="panel-position-toggle" data-for="${panelID}" title="${isCentered ? 'Dock to side' : 'Center panel'}">
-            <i data-lucide="${isCentered ? 'panel-right' : 'layout'}"></i>
-        </div>
-    `);
-    
-    // Add click handler
-    toggleButton.on('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        togglePanelPosition(panelID);
-    });
-    
-    // Add the button to the body instead of the panel so it doesn't scroll
-    $('body').append(toggleButton);
-    
-    // Initialize the Lucide icon
-    if (window.lucide) {
-        window.lucide.createIcons();
-    }
-    
-    // Position the button correctly
-    updateToggleButtonPosition(panelID);
-    
-    // Add resize listener to update button position if window is resized
-    $(window).off('resize.positionToggle').on('resize.positionToggle', () => {
-        updateToggleButtonPosition(panelID);
-    });
-}
-
-/**
- * Update the position of the toggle button for a panel
- * @param {string} panelID - The CSS selector for the panel
- */
-function updateToggleButtonPosition(panelID) {
-    const $panel = $(panelID);
-    const $button = $(`.panel-position-toggle[data-for="${panelID}"]`);
-    
-    if ($panel.length && $button.length) {
-        const panelRect = $panel[0].getBoundingClientRect();
+    $panel.find('.panel-tab').on('click', function() {
+        const $this = $(this);
+        const tabId = $this.data('tab');
         
-        if ($panel.hasClass('centered')) {
-            // For centered panel, position at the left edge
-            $button.css({
-                'left': `${panelRect.left}px`
-            });
-        } else {
-            // For side panel, position just at the left border
-            $button.css({
-                'left': `${panelRect.left}px`
-            });
-        }
-    }
+        // Update tab states
+        $this.siblings().removeClass('active');
+        $this.addClass('active');
+        
+        // Update content states
+        const $content = $panel.find(`.panel-tab-content[data-tab="${tabId}"]`);
+        $content.siblings('.panel-tab-content').removeClass('active');
+        $content.addClass('active');
+    });
 }
 
 function initPanels(){
@@ -246,6 +145,10 @@ function initPanels(){
     initVisPanel();
     initSnippetsPanel();
     initDocumentationPanel();
+    
+    // Setup tabs for merged panels
+    setupTabs('#panel-help-docs');
+    setupTabs('#panel-settings-themes');
     
     return editor;
 }

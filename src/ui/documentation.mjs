@@ -26,26 +26,34 @@ let starredFunctions = [];
 let expandedFunctions = {};
 let codeEditors = new Map(); // Store code editor instances
 let pendingSort = false; // Flag to determine if we need to sort on next panel toggle
+let isDevMode = false; // Track dev mode state
 
 /**
  * Initialize the documentation panel
  */
 export function initDocumentationPanel() {
     console.log("Initializing documentation panel");
-    const docPanel = document.getElementById('panel-documentation');
+    
+    // Check for dev mode URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    isDevMode = urlParams.get('devmode') === 'true';
+    console.log("Documentation dev mode:", isDevMode);
+
+    const helpPanel = document.getElementById('panel-help-docs');
+    const docContainer = helpPanel.querySelector('.panel-tab-content[data-tab="documentation"]');
     
     // Verify panel exists
-    if (!docPanel) {
-        console.error("Documentation panel element not found in DOM!");
+    if (!helpPanel) {
+        console.error("Help panel element not found in DOM!");
         return;
     } else {
-        console.log("Documentation panel found in DOM:", docPanel);
+        console.log("Help panel found in DOM:", helpPanel);
     }
     
     // Load and render documentation data
     loadDocumentationData().then(data => {
         console.log("Documentation data loaded, count:", data.length);
-        renderDocumentationPanel(docPanel, data);
+        renderDocumentationPanel(docContainer, data);
     }).catch(error => {
         console.error("Error loading documentation data:", error);
     });
@@ -58,7 +66,18 @@ export function initDocumentationPanel() {
     if (docButton) {
         docButton.addEventListener("click", function(e) {
             console.log("Documentation button clicked - direct event listener");
-            toggleAuxPanel("#panel-documentation");
+            
+            // Switch to documentation tab
+            const $panel = $('#panel-help-docs');
+            $panel.find('.panel-tab[data-tab="documentation"]').click();
+            
+            toggleAuxPanel("#panel-help-docs");
+            
+            // Apply theme styling when panel opens
+            if (window.getComputedStyle(helpPanel).display !== 'none') {
+                adjustDocPanelForTheme();
+            }
+            
             e.preventDefault();
             e.stopPropagation();
         });
@@ -75,7 +94,7 @@ export function initDocumentationPanel() {
 /**
  * Adjust documentation panel elements to ensure readability based on current theme
  */
-function adjustDocPanelForTheme() {
+export function adjustDocPanelForTheme() {
     // Determine if we're using a light theme by checking the --text-primary variable
     const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim();
     
@@ -452,13 +471,16 @@ function createFunctionElement(func) {
   functionName.className = 'doc-function-name';
   functionName.textContent = func.name;
   functionName.dataset.name = func.name;
+  functionName.contentEditable = isDevMode;
   
   // Set explicit styles for function name
   Object.assign(functionName.style, {
     visibility: 'visible',
     color: 'var(--text-primary)',
     flex: '1',
-    minWidth: '0'
+    minWidth: '0',
+    outline: isDevMode ? '1px dashed var(--panel-border)' : 'none',
+    padding: isDevMode ? '0 4px' : '0'
   });
   
   // Add aliases if any
@@ -466,6 +488,7 @@ function createFunctionElement(func) {
     const aliasSpan = document.createElement('span');
     aliasSpan.className = 'doc-function-alias';
     aliasSpan.textContent = ` (alias: ${func.aliases.join(', ')})`;
+    aliasSpan.contentEditable = isDevMode;
     functionName.appendChild(document.createTextNode(' '));
     functionName.appendChild(aliasSpan);
   }
@@ -502,6 +525,9 @@ function createFunctionElement(func) {
     const description = document.createElement('div');
     description.className = 'doc-function-description';
     description.textContent = func.description;
+    description.contentEditable = isDevMode;
+    description.style.outline = isDevMode ? '1px dashed var(--panel-border)' : 'none';
+    description.style.padding = isDevMode ? '4px' : '0';
     functionDetails.appendChild(description);
   }
   
@@ -521,10 +547,15 @@ function createFunctionElement(func) {
       const paramName = document.createElement('span');
       paramName.className = 'doc-param-name';
       paramName.textContent = param.name;
+      paramName.contentEditable = isDevMode;
+      paramName.style.outline = isDevMode ? '1px dashed var(--panel-border)' : 'none';
       
       const paramDesc = document.createElement('span');
       paramDesc.className = 'doc-param-description';
       paramDesc.textContent = param.description;
+      paramDesc.contentEditable = isDevMode;
+      paramDesc.style.outline = isDevMode ? '1px dashed var(--panel-border)' : 'none';
+      paramDesc.style.padding = isDevMode ? '0 4px' : '0';
       
       paramItem.appendChild(paramName);
       paramItem.appendChild(paramDesc);
@@ -533,6 +564,9 @@ function createFunctionElement(func) {
         const paramRange = document.createElement('span');
         paramRange.className = 'doc-param-range';
         paramRange.textContent = `Range: ${param.range}`;
+        paramRange.contentEditable = isDevMode;
+        paramRange.style.outline = isDevMode ? '1px dashed var(--panel-border)' : 'none';
+        paramRange.style.padding = isDevMode ? '0 4px' : '0';
         paramItem.appendChild(paramRange);
       }
       
@@ -588,10 +622,60 @@ function createFunctionElement(func) {
       const tagElement = document.createElement('span');
       tagElement.className = 'doc-function-tag';
       tagElement.textContent = tag;
+      tagElement.contentEditable = isDevMode;
+      tagElement.style.outline = isDevMode ? '1px dashed var(--panel-border)' : 'none';
+      tagElement.style.padding = isDevMode ? '0 4px' : '0';
       tagsContainer.appendChild(tagElement);
     });
     
     functionDetails.appendChild(tagsContainer);
+  }
+  
+  // Add save changes button in dev mode
+  if (isDevMode) {
+    const saveButton = document.createElement('button');
+    saveButton.className = 'doc-save-button';
+    saveButton.textContent = 'Save Changes';
+    saveButton.style.cssText = `
+      margin: 8px;
+      padding: 4px 8px;
+      background: var(--accent-color);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    `;
+    saveButton.addEventListener('click', () => {
+      // Collect updated data
+      const updatedFunc = {
+        name: functionName.childNodes[0].textContent.trim(),
+        aliases: [],
+        description: functionDetails.querySelector('.doc-function-description')?.textContent || '',
+        parameters: Array.from(functionDetails.querySelectorAll('.doc-param-item')).map(item => ({
+          name: item.querySelector('.doc-param-name').textContent,
+          description: item.querySelector('.doc-param-description').textContent,
+          range: item.querySelector('.doc-param-range')?.textContent.replace('Range: ', '') || ''
+        })),
+        examples: Array.from(functionDetails.querySelectorAll('.doc-example-editor')).map(editor => {
+          const view = codeEditors.get(editor.id);
+          return view ? view.state.doc.toString() : '';
+        }),
+        tags: Array.from(functionDetails.querySelectorAll('.doc-function-tag')).map(tag => tag.textContent)
+      };
+
+      // Extract aliases if they exist
+      const aliasSpan = functionName.querySelector('.doc-function-alias');
+      if (aliasSpan) {
+        const aliasText = aliasSpan.textContent.replace('(alias: ', '').replace(')', '');
+        updatedFunc.aliases = aliasText.split(',').map(a => a.trim());
+      }
+
+      console.log('Updated function data:', updatedFunc);
+      
+      // TODO: Add endpoint to save changes
+      alert('Changes recorded in console. Add API endpoint to save changes.');
+    });
+    functionDetails.appendChild(saveButton);
   }
   
   functionElement.appendChild(functionDetails);
@@ -775,67 +859,70 @@ function loadUserPreferences() {
  * @param {*} editor CodeMirror editor instance
  */
 export function showDocumentationForSymbol(editor) {
-  if (!editor) return false;
-  
-  const cursor = editor.state.selection.main.head;
-  const line = editor.state.doc.lineAt(cursor);
-  const lineText = line.text;
-  
-  // Try to extract the symbol at the current cursor position
-  let start = cursor - line.from;
-  let end = start;
-  
-  // Move backward to find the start of the symbol
-  while (start > 0 && /[\w-]/.test(lineText.charAt(start - 1))) {
-    start--;
-  }
-  
-  // Move forward to find the end of the symbol
-  while (end < lineText.length && /[\w-]/.test(lineText.charAt(end))) {
-    end++;
-  }
-  
-  if (start < end) {
-    const symbol = lineText.substring(start, end);
+    if (!editor) return false;
     
-    // Find the matching function in documentation
-    const func = documentationData.find(f => 
-      f.name === symbol || (f.aliases && f.aliases.includes(symbol))
-    );
+    const cursor = editor.state.selection.main.head;
+    const line = editor.state.doc.lineAt(cursor);
+    const lineText = line.text;
     
-    if (func) {
-      // Show documentation panel
-      toggleAuxPanel("#panel-documentation");
-      
-      // Expand the function
-      expandedFunctions = {}; // Collapse all others
-      expandedFunctions[func.name] = true;
-      
-      // Clear any tag filters
-      selectedTags = [];
-      document.querySelectorAll('.doc-tag').forEach(tag => {
-        tag.classList.remove('selected');
-      });
-      
-      // Render the updated list
-      renderFunctionList(false);
-      
-      // Scroll to the function
-      setTimeout(() => {
-        const funcElements = document.querySelectorAll('.doc-function-name');
-        for (const element of funcElements) {
-          if (element.dataset.name === func.name) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            break;
-          }
-        }
-      }, 100);
-      
-      return true;
+    // Try to extract the symbol at the current cursor position
+    let start = cursor - line.from;
+    let end = start;
+    
+    // Move backward to find the start of the symbol
+    while (start > 0 && /[\w-]/.test(lineText.charAt(start - 1))) {
+        start--;
     }
-  }
-  
-  return false;
+    
+    // Move forward to find the end of the symbol
+    while (end < lineText.length && /[\w-]/.test(lineText.charAt(end))) {
+        end++;
+    }
+    
+    if (start < end) {
+        const symbol = lineText.substring(start, end);
+        
+        // Find the matching function in documentation
+        const func = documentationData.find(f => 
+            f.name === symbol || (f.aliases && f.aliases.includes(symbol))
+        );
+        
+        if (func) {
+            // Show help panel with documentation tab
+            toggleAuxPanel("#panel-help-docs");
+            
+            // Switch to documentation tab
+            $('#panel-help-docs').find('.panel-tab[data-tab="documentation"]').click();
+            
+            // Expand the function
+            expandedFunctions = {}; // Collapse all others
+            expandedFunctions[func.name] = true;
+            
+            // Clear any tag filters
+            selectedTags = [];
+            document.querySelectorAll('.doc-tag').forEach(tag => {
+                tag.classList.remove('selected');
+            });
+            
+            // Render the updated list
+            renderFunctionList(false);
+            
+            // Scroll to the function
+            setTimeout(() => {
+                const funcElements = document.querySelectorAll('.doc-function-name');
+                for (const element of funcElements) {
+                    if (element.dataset.name === func.name) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        break;
+                    }
+                }
+            }, 100);
+            
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 function toggleDocumentation(functionName) {
