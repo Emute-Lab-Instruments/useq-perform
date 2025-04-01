@@ -1,170 +1,149 @@
-/* Help and Documentation panel styles */
-/* These styles extend the common panel styles defined in panels.css */
+/* Help Panel Styles */
 
-/* Base panel styling */
+/* Main Help Panel */
 #panel-help-docs.panel-aux {
-    transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
-    display: flex;
-    flex-direction: column;
-    padding: 0; /* Remove padding since we'll handle it in the content */
-    overflow: hidden; /* Prevent double scrollbars */
+  background-color: var(--panel-bg);
+  border-radius: var(--panel-border-radius);
+  transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 
-/* Make sure the panel is visible when it has display:block */
 #panel-help-docs.panel-aux[style*="display: block"] {
-    opacity: 1 !important;
-    visibility: visible !important;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
-/* Panel tabs - horizontal at the top */
-#panel-help-docs .panel-tabs {
-    display: flex;
-    gap: 0.5em;
-    padding: 0.5em;
-    background: var(--panel-section-bg);
-    border-bottom: 1px solid var(--panel-border);
-    flex-shrink: 0; /* Prevent tabs from shrinking */
+/* Tabs */
+.panel-tabs {
+  display: flex;
+  gap: 0.5em;
+  padding: 0.5em;
+  background: var(--panel-section-bg);
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
 }
 
-#panel-help-docs .panel-tab {
-    padding: 0.5em 1em;
-    background: var(--panel-control-bg);
-    border: 1px solid var(--panel-border);
-    border-radius: var(--item-border-radius);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.2s ease;
+.panel-tab {
+  padding: 0.5em 1em;
+  background: var(--panel-control-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--item-border-radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-#panel-help-docs .panel-tab:hover {
-    background: var(--panel-item-hover-bg);
+.panel-tab:hover {
+  background: var(--panel-item-hover-bg);
 }
 
-#panel-help-docs .panel-tab.active {
-    background: var(--accent-color);
-    color: #000;
-    border-color: var(--accent-color);
+.panel-tab.active {
+  background: var(--accent-color);
+  color: #000;
+  border-color: var(--accent-color);
 }
 
-/* Tab content container */
-#panel-help-docs .panel-tab-content {
-    display: none;
-    padding: 1.5em;
-    flex: 1;
-    overflow-y: auto;
+/* Tab Content */
+.panel-tab-content {
+  display: none;
+  padding: 1.5em;
+  flex: 1;
+  overflow-y: auto;
 }
 
-#panel-help-docs .panel-tab-content.active {
-    display: block;
+.panel-tab-content.active {
+  display: block;
 }
 
-/* Help tab specific styles */
+/* Help Content */
 .panel-help b {
-    color: var(--accent-color);
-    font-size: 1.1em;
-    margin-top: 1em;
-    display: block;
-    margin-bottom: 0.5em;
-    text-align: center;
+  color: var(--accent-color);
+  font-size: 1.1em;
+  margin-top: 1em;
+  display: block;
+  margin-bottom: 0.5em;
+  text-align: center;
 }
 
 .key-binding {
-    display: inline-block;
-    background-color: var(--panel-control-bg);
-    border-radius: var(--item-border-radius);
-    padding: 2px 6px;
-    font-family: var(--code-font);
-    margin-right: 8px;
-    width: 100px;
-    text-align: center;
+  display: inline-block;
+  background-color: var(--panel-control-bg);
+  border-radius: var(--item-border-radius);
+  padding: 2px 6px;
+  font-family: var(--code-font);
+  margin-right: 8px;
+  width: 100px;
+  text-align: center;
 }
 
 .help-row {
-    display: flex;
-    align-items: center;
-    margin-bottom: 0.5em;
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5em;
 }
 
 .help-description {
-    flex: 1;
+  flex: 1;
 }
 
-.tip-icon {
-    color: var(--accent-color-secondary);
-    margin-right: 8px;
-}
-
+/* Mac Toggle */
 .mac-toggle {
-    position: absolute;
-    top: 1em;
-    right: 1em;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.9em;
+  position: absolute;
+  top: 1em;
+  right: 1em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
 }
 
 .mac-toggle input[type="checkbox"] {
-    appearance: none;
-    width: 40px;
-    height: 20px;
-    background: var(--panel-control-bg);
-    border-radius: 20px;
-    position: relative;
-    cursor: pointer;
-    transition: background 0.3s;
+  appearance: none;
+  width: 40px;
+  height: 20px;
+  background: var(--panel-control-bg);
+  border-radius: 20px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
 }
 
 .mac-toggle input[type="checkbox"]::before {
-    content: "";
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    top: 2px;
-    left: 2px;
-    background: white;
-    transition: transform 0.3s;
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  background: white;
+  transition: transform 0.3s;
 }
 
 .mac-toggle input[type="checkbox"]:checked {
-    background: var(--accent-color);
+  background: var(--accent-color);
 }
 
 .mac-toggle input[type="checkbox"]:checked::before {
-    transform: translateX(20px);
+  transform: translateX(20px);
 }
 
-.mac-icon {
-    font-size: 1.2em;
-}
-
+/* Key Bindings Section */
 .key-bindings-section {
-    margin-bottom: 1.5em;
+  margin-bottom: 1.5em;
 }
 
 .key-binding.mac {
-    display: none;
+  display: none;
 }
 
 .show-mac .key-binding.win {
-    display: none;
+  display: none;
 }
 
 .show-mac .key-binding.mac {
-    display: inline-block;
-}
-
-/* Documentation tab specific styles */
-#panel-help-docs .panel-tab-content[data-tab="documentation"] {
-    padding: 0; /* Remove padding here since documentation has its own internal padding */
-}
-
-/* When in centered mode */
-#panel-help-docs.centered {
-    width: 80%;
-    right: 50%;
-    transform: translate(50%, -50%);
-    max-height: 80%;
-    overflow: hidden;
+  display: inline-block;
 }

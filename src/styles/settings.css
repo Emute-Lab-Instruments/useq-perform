@@ -1,17 +1,58 @@
 /* Settings Panel Styles */
-/* These styles extend the common panel styles defined in panels.css */
 
-/* Remove duplicated panel styling - already handled in panels.css */
+/* Main Settings Panel */
 #panel-settings.panel-aux {
-  /* Custom styles only for the settings panel if needed */
+  background-color: var(--panel-bg);
+  border-radius: var(--panel-border-radius);
+  transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
 }
 
-/* Settings Panel - Centered mode - override width from common class */
 #panel-settings.panel-aux.centered {
   width: 50%;
 }
 
-/* Settings container */
+/* Tabs */
+.panel-tabs {
+  display: flex;
+  gap: 0.5em;
+  padding: 0.5em;
+  background: var(--panel-section-bg);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.panel-tab {
+  padding: 0.5em 1em;
+  background: var(--panel-control-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--item-border-radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.panel-tab:hover {
+  background: var(--panel-item-hover-bg);
+}
+
+.panel-tab.active {
+  background: var(--accent-color);
+  color: #000;
+  border-color: var(--accent-color);
+}
+
+/* Tab Content */
+.panel-tab-content {
+  display: none;
+  padding: 1.5em;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.panel-tab-content.active {
+  display: block;
+}
+
+/* Settings Container */
 .settings-container {
   display: flex;
   flex-direction: column;
@@ -20,16 +61,83 @@
   padding-top: 1em;
 }
 
-/* Reset button container */
+/* Sections */
+.settings-section {
+  background-color: var(--panel-section-bg);
+  padding: 1em;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--item-border-radius);
+  margin-bottom: 1.5em;
+}
+
+.settings-section-title {
+  font-size: 1.1em;
+  margin: 0 0 1em 0;
+  color: var(--accent-color);
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 0.5em;
+}
+
+/* Form Rows */
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1em;
+  padding: 0.5em 0;
+}
+
+.settings-label {
+  flex: 1;
+  font-size: 0.9em;
+}
+
+.settings-control {
+  flex: 1;
+  text-align: right;
+}
+
+/* Form Controls */
+.settings-text-input,
+.settings-number-input,
+.settings-select {
+  background-color: var(--panel-control-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--item-border-radius);
+  color: var(--text-primary);
+  padding: 0.5em;
+  font-size: 0.9em;
+  width: 100%;
+  max-width: 200px;
+}
+
+.settings-text-input:focus,
+.settings-number-input:focus,
+.settings-select:focus {
+  border-color: var(--accent-color);
+  outline: none;
+}
+
+.settings-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-color);
+}
+
+/* Reset Button */
 .settings-reset-container {
   margin-top: 1em;
   text-align: center;
 }
 
-/* Settings-specific styling for reset button - inherits from panel-button */
 .settings-reset-button {
   background-color: rgba(255, 0, 0, 0.2);
   border: 1px solid rgba(255, 0, 0, 0.4);
+  padding: 0.6em 1em;
+  border-radius: var(--item-border-radius);
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.2s ease;
 }
 
 .settings-reset-button:hover {

@@ -1,38 +1,56 @@
 /* Theme Panel Styles */
-/* These styles extend the common panel styles defined in panels.css */
 
-/* Theme container */
+/* Theme Panel */
+#panel-theme.panel-aux {
+  background-color: var(--panel-bg);
+  border-radius: var(--panel-border-radius);
+  width: 70%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+#panel-theme.panel-aux.centered {
+  width: 85%;
+}
+
+/* Themes Container */
 .themes-container {
   display: flex;
   flex-direction: column;
+  gap: 1.5em;
   width: 100%;
   padding-top: 1em;
 }
 
-/* Theme preview card */
+@media (min-width: 1200px) {
+  .themes-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5em;
+  }
+}
+
+/* Theme Preview */
 .theme-preview {
-  margin-bottom: 1.5em;
   padding: 1em;
   border-radius: var(--item-border-radius);
   border: 1px solid var(--panel-border);
+  background-color: var(--panel-section-bg);
   cursor: pointer;
   transition: all 0.2s ease;
-  background-color: var(--panel-section-bg);
 }
 
-/* Make the editor non-interactive */
-.theme-preview .cm-editor {
-  pointer-events: none;
-}
-
-/* Hover effect for theme cards */
 .theme-preview:hover {
   background-color: var(--panel-item-hover-bg);
   transform: translateY(-2px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-/* Theme name styling */
+.theme-preview.active {
+  border: 2px solid var(--accent-color);
+}
+
+/* Theme Name */
 .theme-name {
   font-size: 1.2em;
   margin-bottom: 1em;
@@ -40,22 +58,4 @@
   padding: 6px 10px;
   border-radius: var(--item-border-radius);
   display: inline-block;
-}
-
-/* Active/selected theme indicator */
-.theme-preview.active {
-  border: 2px solid var(--accent-color);
-}
-
-/* Grid layout for larger screens */
-@media (min-width: 1200px) {
-  #panel-theme.panel-aux.centered .themes-container {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.5em;
-  }
-  
-  #panel-theme.panel-aux.centered .theme-preview {
-    margin-bottom: 0;
-  }
 }

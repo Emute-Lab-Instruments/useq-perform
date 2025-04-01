@@ -1,8 +1,11 @@
 @import './base.css';
 @import './buttons.css';
-@import './panels.css';
-@import './help.css';
-@import './toolbar.css';
+@import './console.css';
 @import './documentation.css';
+@import './editor.css';
+@import './help.css';
+@import './panels.css';
 @import './settings.css';
 @import './themes.css';
+@import './toolbar.css';
+@import './vis.css';
