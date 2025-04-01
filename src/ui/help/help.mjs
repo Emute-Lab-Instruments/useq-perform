@@ -52,28 +52,34 @@ function setupTabs() {
     const tabs = panel.querySelectorAll('.panel-tab');
     const contents = panel.querySelectorAll('.panel-tab-content');
 
+    dbg("setupTabs", "Initializing tab setup", { panel, tabs, contents });
+
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
-            const tabId = tab.dataset.tab;
-            
+            const tabId = tab.id.replace('panel-help-tab-', '');
+
+            dbg("setupTabs", "Tab clicked", { tabId });
+
             // Update tab states
-            tabs.forEach(t => t.classList.remove('active'));
+            tabs.forEach(t => {
+                t.classList.remove('active');
+                dbg("setupTabs", "Removing active class from tab", { tab: t });
+            });
             tab.classList.add('active');
-            
+            dbg("setupTabs", "Added active class to tab", { tab });
+
             // Update content states
             contents.forEach(content => {
-                if (content.dataset.tab === tabId) {
+                if (content.id === `panel-help-${tabId}`) {
                     content.classList.add('active');
-                    // Call appropriate theme adjustment based on active tab
-                    if (tabId === 'help') {
-                        adjustHelpPanelForTheme();
-                    } else if (tabId === 'documentation') {
-                        adjustDocPanelForTheme();
-                    }
+                    dbg("setupTabs", "Added active class to content", { content });
                 } else {
                     content.classList.remove('active');
+                    dbg("setupTabs", "Removed active class from content", { content });
                 }
             });
         });
     });
+
+    dbg("setupTabs", "Tab setup complete");
 }
