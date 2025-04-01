@@ -1,56 +1,15 @@
 /* Settings Panel Styles */
 
 /* Main Settings Panel */
-#panel-settings.panel-aux {
+/* #panel-settings.panel-aux {
   background-color: var(--panel-bg);
   border-radius: var(--panel-border-radius);
   transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
-}
+} */
 
-#panel-settings.panel-aux.centered {
+/* #panel-settings.panel-aux.centered {
   width: 50%;
-}
-
-/* Tabs */
-.panel-tabs {
-  display: flex;
-  gap: 0.5em;
-  padding: 0.5em;
-  background: var(--panel-section-bg);
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.panel-tab {
-  padding: 0.5em 1em;
-  background: var(--panel-control-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--item-border-radius);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.panel-tab:hover {
-  background: var(--panel-item-hover-bg);
-}
-
-.panel-tab.active {
-  background: var(--accent-color);
-  color: #000;
-  border-color: var(--accent-color);
-}
-
-/* Tab Content */
-.panel-tab-content {
-  display: none;
-  padding: 1.5em;
-  flex: 1;
-  overflow-y: auto;
-}
-
-.panel-tab-content.active {
-  display: block;
-}
+} */
 
 /* Settings Container */
 .settings-container {
