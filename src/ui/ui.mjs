@@ -1,14 +1,13 @@
 import { dbg } from "../utils.mjs";
-import { initHelpPanel } from './help.mjs';
+import { initHelpPanel } from './help/help.mjs';
 import { initIcons } from './icons.mjs';
 import { initVisPanel } from "./serialVis.mjs";   
 import { initConsolePanel } from "./console.mjs";
 import { initEditorPanel } from "../editors/main.mjs";
-import { initSettingsPanel } from "./settings.mjs";
+import { initSettingsPanel } from "./settings/settings.mjs";
 import { initToolbarPanel } from "./toolbar.mjs";
-import { initThemePanel } from "./themes.mjs";
 import { initSnippetsPanel } from "./snippets.mjs";
-import { initDocumentationPanel } from "./documentation.mjs";
+import { initVisLegend } from "./visLegend.mjs";
 import { isPanelVisible } from "./utils.mjs";
 
 // List of panels that support position toggling
@@ -38,19 +37,16 @@ $(document).keydown((e) => {
  * @returns {boolean} - Whether the panel is now visible
  */
 export function toggleAuxPanel(panelID) {
-    dbg(`toggleAuxPanel called for ${panelID}`);
+    dbg("UI", "toggleAuxPanel", `Toggling panel visibility for ${panelID}`);
     const $panel = $(panelID);
-    
     if (!$panel.length) {
+        dbg("UI", "toggleAuxPanel", `Panel ${panelID} not found in the DOM`);
         console.error(`Panel ${panelID} not found in the DOM`);
         return;
     }
-    
-    // Check if the panel is already in the process of being shown
     const panelElement = $panel[0];
     const isVisible = isPanelVisible(panelElement);
-    
-    dbg(`Panel ${panelID} current visibility:`, isVisible);
+    dbg("UI", "toggleAuxPanel", `Panel ${panelID} current visibility: ${isVisible}`);
     
     if (!isVisible) {
         // First hide all panels with !important to override any CSS issues
@@ -113,24 +109,70 @@ export function toggleAuxPanel(panelID) {
 }
 
 /**
- * Set up tab functionality for tabbed panels
- * @param {string} panelID - The CSS selector for the panel
+ * Set up position toggle button for panels that support it
+ * This allows switching between left, right, or centered positions
  */
-function setupTabs(panelID) {
-    const $panel = $(panelID);
-    $panel.find('.panel-tab').on('click', function() {
-        const $this = $(this);
-        const tabId = $this.data('tab');
+function setupPositionToggle(panelID) {
+    const positions = ['left', 'center', 'right'];
+    const panel = $(panelID)[0];
+    
+    // Determine current position class, default to center
+    let currentPosition = 'center';
+    for (const pos of positions) {
+        if (panel.classList.contains(pos)) {
+            currentPosition = pos;
+            break;
+        }
+    }
+    
+    // Create toggle button
+    const toggleButton = document.createElement('button');
+    toggleButton.className = 'panel-position-toggle';
+    toggleButton.dataset.for = panelID;
+    toggleButton.title = `Position: ${currentPosition} (click to toggle)`;
+    toggleButton.innerHTML = getPositionIcon(currentPosition);
+    
+    // Add click handler
+    toggleButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
         
-        // Update tab states
-        $this.siblings().removeClass('active');
-        $this.addClass('active');
+        // Cycle through positions: left -> center -> right -> left
+        const currentIndex = positions.indexOf(currentPosition);
+        const nextIndex = (currentIndex + 1) % positions.length;
+        const nextPosition = positions[nextIndex];
         
-        // Update content states
-        const $content = $panel.find(`.panel-tab-content[data-tab="${tabId}"]`);
-        $content.siblings('.panel-tab-content').removeClass('active');
-        $content.addClass('active');
+        // Remove all position classes
+        panel.classList.remove(...positions);
+        
+        // Add the new position class
+        panel.classList.add(nextPosition);
+        
+        // Update button
+        currentPosition = nextPosition;
+        toggleButton.title = `Position: ${currentPosition} (click to toggle)`;
+        toggleButton.innerHTML = getPositionIcon(currentPosition);
     });
+    
+    document.body.appendChild(toggleButton);
+    
+    // Position the toggle button relative to the panel
+    const rect = panel.getBoundingClientRect();
+    toggleButton.style.top = `${rect.top + 10}px`;
+    toggleButton.style.left = `${rect.right - 40}px`;
+}
+
+/**
+ * Get icon HTML for position toggle button
+ */
+function getPositionIcon(position) {
+    if (position === 'left') {
+        return '◀';
+    } else if (position === 'right') {
+        return '▶';
+    } else {
+        return '■';
+    }
 }
 
 function initPanels(){
@@ -142,20 +184,15 @@ function initPanels(){
     initHelpPanel();
     initSettingsPanel();
     initToolbarPanel(editor);
-    initThemePanel();
     initVisPanel();
     initSnippetsPanel();
-    initDocumentationPanel();
-    
-    // Setup tabs for merged panels
-    setupTabs('#panel-help-docs');
-    setupTabs('#panel-settings-themes');
+    // initVisLegend();
     
     return editor;
 }
 
 export function initUI() {
-    // initIcons();
     const editor = initPanels();
+    dbg("UI", "initUI", "UI components initialized");
     return editor;
 }

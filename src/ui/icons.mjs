@@ -1,10 +1,11 @@
-import { createIcons, Cable, Save, File, SwatchBook, AArrowDown, AArrowUp, CircleHelp, Settings, Book, ChartSpline } from 'lucide';
+import { createIcons } from 'lucide';
 
 export function initIcons() {
+  createIcons();
 
-    createIcons({
-        icons: {
-          Cable, Save, File, AArrowDown, AArrowUp, CircleHelp, Settings, Book, ChartSpline
-        }
-      });
+    // createIcons({
+    //     icons: {
+    //       Cable, Save, File, AArrowDown, AArrowUp, CircleHelp, Settings, Book, ChartSpline
+    //     }
+    //   });
 }

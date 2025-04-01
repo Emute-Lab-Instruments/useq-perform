@@ -1,9 +1,9 @@
-import { dbg } from "../utils.mjs";
-import { toggleAuxPanel } from './ui.mjs';
-import documentationData from '../data/documentation_hand_edited.json';
-import { createEditor } from '../editors/main.mjs';
-import { activeUserSettings } from '../utils/persistentUserSettings.mjs';
-import { baseExtensions } from '../editors/extensions.mjs';
+import { dbg } from "../../utils.mjs";
+import { toggleAuxPanel } from '../ui.mjs';
+import documentationData from '../../data/documentation_hand_edited.json';
+import { createEditor } from '../../editors/main.mjs';
+import { activeUserSettings } from '../../utils/persistentUserSettings.mjs';
+import { baseExtensions } from '../../editors/extensions.mjs';
 
 // Available tags for filtering
 const availableTags = [
@@ -30,25 +30,27 @@ let pendingSort = false; // Flag to determine if we need to sort on next panel t
 let isDevMode = false; // Track dev mode state
 
 /**
- * Initialize the documentation panel
+ * Initialize the documentation tab within the help panel
  */
-export function initDocumentationPanel() {
-    dbg("Initializing documentation panel");
-    
-    // Check for dev mode URL parameter
+export function initDocumentationTab() {
+    dbg("Documentation", "initDocumentationTab", "Initializing documentation tab");
     const urlParams = new URLSearchParams(window.location.search);
     isDevMode = urlParams.get('devmode') === 'true';
-    dbg("Documentation dev mode:", isDevMode);
-
+    dbg("Documentation", "initDocumentationTab", `Dev mode: ${isDevMode}`);
     const helpPanel = document.getElementById('panel-help-docs');
-    const docContainer = helpPanel.querySelector('.panel-tab-content[data-tab="documentation"]');
-    
-    // Verify panel exists
     if (!helpPanel) {
+        dbg("Documentation", "initDocumentationTab", "Help panel element not found in DOM");
         console.error("Help panel element not found in DOM!");
         return;
     } else {
-        dbg("Help panel found in DOM:", helpPanel);
+        dbg("Documentation", "initDocumentationTab", "Help panel found in DOM");
+    }
+    
+    const docContainer = document.querySelector('#panel-help-docs .panel-tab-content[data-tab="documentation"]');
+    if (!docContainer) {
+        dbg("Documentation", "initDocumentationTab", "Documentation tab content element not found in DOM");
+        console.error("Documentation tab content element not found in DOM!");
+        return;
     }
     
     // Load and render documentation data

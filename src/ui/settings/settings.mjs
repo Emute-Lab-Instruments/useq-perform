@@ -1,15 +1,17 @@
-import { dbg } from "../utils.mjs";
-import { toggleAuxPanel } from './ui.mjs';
-import { activeUserSettings, updateUserSettings, resetUserSettings } from '../utils/persistentUserSettings.mjs';
-import { themes } from '../editors/themes/themeManager.mjs';
-import { setMainEditorTheme } from '../editors/themes/themeManager.mjs';
-import { setFontSize } from '../editors/editorConfig.mjs';
+import { dbg } from "../../utils.mjs";
+import { toggleAuxPanel } from '../ui.mjs';
+import { activeUserSettings, updateUserSettings, resetUserSettings } from '../../utils/persistentUserSettings.mjs';
+import { themes } from '../../editors/themes/themeManager.mjs';
+import { setMainEditorTheme } from '../../editors/themes/themeManager.mjs';
+import { setFontSize } from '../../editors/editorConfig.mjs';
 import { EditorView } from '@codemirror/view';
+import { initThemeTab } from './themes.mjs';
 
 /**
- * Initialize the settings panel
+ * Initialize the settings tab within the settings panel
  */
-export function initSettingsPanel() {
+export function initSettingsTab() {
+    dbg("Initializing settings tab");
     const settingsPanel = document.getElementById('panel-settings-themes');
     const settingsContainer = settingsPanel.querySelector('.panel-tab-content[data-tab="settings"]');
     
@@ -20,6 +22,17 @@ export function initSettingsPanel() {
     
     // Render settings UI
     renderSettingsUI(settingsContent);
+}
+
+/**
+ * Initialize the settings panel with all tabs
+ */
+export function initSettingsPanel() {
+    dbg("Initializing settings panel");
+    
+    // Initialize both tabs
+    initSettingsTab();
+    initThemeTab();
     
     // Remove previous handlers if any
     $("#button-settings").off("click");

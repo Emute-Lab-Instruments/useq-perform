@@ -1,12 +1,36 @@
-import { dbg } from "../utils.mjs";
-import { toggleAuxPanel } from './ui.mjs';
-import { adjustDocPanelForTheme } from './documentation.mjs';
+import { dbg } from "../../utils.mjs";
+import { toggleAuxPanel } from '../ui.mjs';
+import { adjustDocPanelForTheme, initDocumentationTab } from './documentation.mjs';
 
-export function initHelpPanel() {
-    dbg("Initializing help panel");
+/**
+ * Initialize the help tab within the help panel
+ */
+export function initHelpTab() {
+    dbg("Initializing help tab");
     
     // Mac shortcut toggle
     let isMac = /Mac/.test(navigator.platform);
+    
+    // Set initial OS-specific keybinding class
+    if(isMac) {
+        $("#panel-help-docs").addClass("show-mac");
+    }
+    
+    // Mac toggle functionality
+    $("#macToggle").on("change", function() {
+        $("#panel-help-docs").toggleClass("show-mac");
+    });
+}
+
+/**
+ * Initialize the help panel with all tabs
+ */
+export function initHelpPanel() {
+    dbg("Initializing help panel");
+    
+    // Initialize both tabs
+    initHelpTab();
+    initDocumentationTab();
     
     // Remove previous handlers if any
     $("#button-help").off("click");
@@ -29,16 +53,6 @@ export function initHelpPanel() {
         
         e.preventDefault();
         e.stopPropagation();
-    });
-    
-    // Set initial OS-specific keybinding class
-    if(isMac) {
-        $("#panel-help-docs").addClass("show-mac");
-    }
-    
-    // Mac toggle functionality
-    $("#macToggle").on("change", function() {
-        $("#panel-help-docs").toggleClass("show-mac");
     });
 
     // Set up tab functionality

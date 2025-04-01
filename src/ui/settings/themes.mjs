@@ -1,13 +1,17 @@
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
-import { themes, setTheme, setMainEditorTheme } from "../editors/themes/themeManager.mjs";
-import { baseExtensions } from "../editors/extensions.mjs";
-import { saveUserSettings } from "../utils/persistentUserSettings.mjs";
-import { toggleAuxPanel } from './ui.mjs';
-import { defaultThemeEditorStartingCode } from "../editors/defaults.mjs";
-import { dbg } from "../utils.mjs";
+import { themes, setTheme, setMainEditorTheme } from "../../editors/themes/themeManager.mjs";
+import { baseExtensions } from "../../editors/extensions.mjs";
+import { saveUserSettings } from "../../utils/persistentUserSettings.mjs";
+import { toggleAuxPanel } from '../ui.mjs';
+import { defaultThemeEditorStartingCode } from "../../editors/defaults.mjs";
+import { dbg } from "../../utils.mjs";
 
-export function initThemePanel() {
+/**
+ * Initialize the theme tab within the settings panel
+ */
+export function initThemeTab() {
+    dbg("Initializing theme tab");
     const panel = document.getElementById('panel-settings-themes');
     const themesContainer = panel.querySelector('.panel-tab-content[data-tab="themes"]');
     
