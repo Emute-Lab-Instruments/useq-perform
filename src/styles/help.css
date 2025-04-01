@@ -16,7 +16,7 @@
   visibility: visible !important;
 }
 
-/* Tabs */
+/* Ensure tabs in the help panel are fully visible and properly aligned */
 .panel-tabs {
   display: flex;
   gap: 0.5em;
@@ -24,29 +24,11 @@
   background: var(--panel-section-bg);
   border-bottom: 1px solid var(--panel-border);
   flex-shrink: 0;
+  overflow-x: auto; /* Allow horizontal scrolling if tabs overflow */
+  justify-content: flex-start; /* Align tabs to the left */
 }
 
-.panel-tab {
-  padding: 0.5em 1em;
-  background: var(--panel-control-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--item-border-radius);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.panel-tab:hover {
-  background: var(--panel-item-hover-bg);
-}
-
-.panel-tab.active {
-  background: var(--accent-color);
-  color: #000;
-  border-color: var(--accent-color);
-}
-
-/* Tab Content */
+/* Ensure tab content is properly hidden when inactive */
 .panel-tab-content {
   display: none;
   padding: 1.5em;
@@ -146,4 +128,13 @@
 
 .show-mac .key-binding.mac {
   display: inline-block;
+}
+
+/* Debugging styles for active tabs and content */
+.panel-tab.active {
+  outline: 2px solid red; /* Highlight active tabs for debugging */
+}
+
+.panel-tab-content.active {
+  outline: 2px solid blue; /* Highlight active content for debugging */
 }
