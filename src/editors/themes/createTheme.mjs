@@ -68,7 +68,7 @@ export function createTheme({ name=null, variant, settings, styles }) {
   const extension = [theme, syntaxHighlighting(highlightStyle)];
 
 //   if (name) {
-//     console.log("themeManager.mjs: Registering theme:", name);
+//     dbg("themeManager.mjs: Registering theme:", name);
 //     themeRecipes[name] = {variant: variant, settings: settings, styles: styles};
 //     themes[name] = extension;
 //   }

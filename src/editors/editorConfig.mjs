@@ -18,6 +18,7 @@ import { getUserSettings } from "../utils/persistentUserSettings.mjs";
 import { fontSizeCompartment } from "./state.mjs";
 import { toggleAuxPanel } from "../ui/ui.mjs";
 import { showDocumentationForSymbol as showDocForSymbol } from "../ui/documentation.mjs";
+import { dbg } from "../utils.mjs";
 
 export function evalToplevel(opts, prefix = "") {
   let state = opts.state;
@@ -76,7 +77,7 @@ export function toggleSerialVisInternal() {
 }
 
 export function toggleSerialVis() {
-  console.log("Toggling serial visualization");
+  dbg("Toggling serial visualization");
   $("#panel-vis").toggle();
   $("#serialcanvas").toggle();
 }
@@ -139,7 +140,7 @@ export function makeDeleteWrapper(originalRun) {
     if (bracketChars.includes(nextChar)) {
       const prevChar = state.doc.sliceString(from - 1, from);
       if (areMatchingBracketChars(prevChar, nextChar)) {
-        console.log("matching brackets");
+        dbg("matching brackets");
         // We're in an empty pair, delete both
         // characters around the cursor
         view.dispatch({

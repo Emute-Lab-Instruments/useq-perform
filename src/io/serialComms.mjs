@@ -8,6 +8,7 @@ import { CircularBuffer } from "../utils/CircularBuffer.mjs";
 import { Buffer } from 'buffer';
 import { post } from './console.mjs';
 import { upgradeCheck } from '../utils/upgradeCheck.mjs';
+import { dbg } from "../utils.mjs";
 
 // Define variables first before exporting them
 var serialport = null;
@@ -87,7 +88,7 @@ function sendTouSEQ(code, capture = null) {
 
   if (serialport && serialport.writable) {
     const writer = serialport.writable.getWriter();
-    console.log("writing...");
+    dbg("writing...");
     
     if (capture) {
       serialVars.capture = true;
@@ -96,7 +97,7 @@ function sendTouSEQ(code, capture = null) {
     
     writer.write(encoder.encode(code)).then(() => {
       writer.releaseLock();
-      console.log("written");
+      dbg("written");
     });
   } else {
     post("uSEQ not connected");
@@ -201,10 +202,10 @@ function processSerialData(byteArray, state) {
         if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
           // Extract message text
           const msg = new TextDecoder().decode(byteArray.slice(2, i));
-          console.log(msg);
+          dbg(msg);
           
           if (serialVars.capture) {
-            console.log("captured");
+            dbg("captured");
             serialVars.captureFunc(msg);
             serialVars.capture = false;
           } else if (msg !== "") {
@@ -270,7 +271,7 @@ function processSerialData(byteArray, state) {
  */
 async function serialReader() {
   if (!serialport) return;
-  console.log("reading...");
+  dbg("reading...");
   
   let buffer = new Uint8Array(0);
   
@@ -329,7 +330,7 @@ function connectToSerialPort(port) {
     setSerialPort(port);
     serialReader();
     $("#btnConnect").hide(1000);
-    console.log("checking version");
+    dbg("checking version");
     sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
   }).catch((err) => {
     console.log(err);

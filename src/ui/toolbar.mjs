@@ -1,3 +1,4 @@
+import { dbg } from "../utils.mjs";
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { setFontSize } from "../editors/editorConfig.mjs";
 import { connectToSerialPort } from "../io/serialComms.mjs";
@@ -23,13 +24,13 @@ export function initToolbarPanel(editor) {
     });
     
     $("#button-connect").on("click", function() {
-        console.log("uSEQ-Perform: hello");
+        dbg("uSEQ-Perform: hello");
         navigator.serial.requestPort()
             .then((port) => {
                 connectToSerialPort(port);
             })
             .catch((e) => {
-                console.log("error selecting port");
+                dbg("error selecting port");
             });
     });
     

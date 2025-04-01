@@ -1,3 +1,4 @@
+import { dbg } from "../utils.mjs";
 import { WebMidi } from "webmidi";
 import { serialMapFunctions } from "./serialComms.mjs";
 
@@ -13,12 +14,12 @@ export function setupMIDI() {
       
     function onEnabled() {
       // Log MIDI Inputs
-      console.log("MIDI Inputs");
-      WebMidi.inputs.forEach(input => console.log(input.manufacturer, input.name));
+      dbg("MIDI Inputs");
+      WebMidi.inputs.forEach(input => dbg(input.manufacturer, input.name));
       
       // Log MIDI Outputs
-      console.log("MIDI Outputs");
-      WebMidi.outputs.forEach(output => console.log(output.manufacturer, output.name));
+      dbg("MIDI Outputs");
+      WebMidi.outputs.forEach(output => dbg(output.manufacturer, output.name));
     }
   });
 }
@@ -33,7 +34,7 @@ serialMapFunctions[0] = (buffer) => {
 
 export function defSerialMap(idx, func) {
   serialMapFunctions[idx] = func.bind({ midictrl });
-  console.log("added defserial", idx);
+  dbg("added defserial", idx);
 }
 
 export function midictrl(devIdx, chan, ctrlNum, val) {

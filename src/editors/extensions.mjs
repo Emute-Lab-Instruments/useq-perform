@@ -15,9 +15,8 @@ import { lineNumbers, drawSelection } from "@codemirror/view";
 import { history } from '@codemirror/commands';
 import { baseKeymap, mainEditorKeymap } from "./keymaps.mjs";
 import { themeCompartment, fontSizeCompartment } from "./state.mjs";
+import {dbg} from "../utils.mjs";
 
-
-const dbg = (...args) => {if (false) {console.log(...args)}};
 
 
 dbg('extensions.mjs: Loading...');

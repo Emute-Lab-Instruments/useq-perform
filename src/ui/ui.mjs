@@ -1,3 +1,4 @@
+import { dbg } from "../utils.mjs";
 import { initHelpPanel } from './help.mjs';
 import { initIcons } from './icons.mjs';
 import { initVisPanel } from "./serialVis.mjs";   
@@ -23,7 +24,7 @@ $(document).keydown((e) => {
         const visiblePanel = $(".panel-aux").filter((_, el) => isPanelVisible(el)).first();
         
         if (visiblePanel.length) {
-            console.log("ESC key pressed - closing visible panel:", visiblePanel.attr('id'));
+            dbg("ESC key pressed - closing visible panel:", visiblePanel.attr('id'));
             toggleAuxPanel("#" + visiblePanel.attr('id'));
             e.preventDefault();
             e.stopPropagation();
@@ -37,7 +38,7 @@ $(document).keydown((e) => {
  * @returns {boolean} - Whether the panel is now visible
  */
 export function toggleAuxPanel(panelID) {
-    console.log(`toggleAuxPanel called for ${panelID}`);
+    dbg(`toggleAuxPanel called for ${panelID}`);
     const $panel = $(panelID);
     
     if (!$panel.length) {
@@ -49,7 +50,7 @@ export function toggleAuxPanel(panelID) {
     const panelElement = $panel[0];
     const isVisible = isPanelVisible(panelElement);
     
-    console.log(`Panel ${panelID} current visibility:`, isVisible);
+    dbg(`Panel ${panelID} current visibility:`, isVisible);
     
     if (!isVisible) {
         // First hide all panels with !important to override any CSS issues
@@ -67,7 +68,7 @@ export function toggleAuxPanel(panelID) {
         panelElement.classList.add('is-opening');
         
         // Show the requested panel with appropriate display value based on its default style
-        console.log(`Opening panel ${panelID}`);
+        dbg(`Opening panel ${panelID}`);
         
         // Set display first - use flex instead of block for panels that need it
         if (panelID === '#panel-documentation' || panelID === '#panel-help-docs') {
@@ -94,7 +95,7 @@ export function toggleAuxPanel(panelID) {
         }, 300); // slightly longer than the CSS transition
     } else {
         // Hide this panel with !important flags
-        console.log(`Closing panel ${panelID}`);
+        dbg(`Closing panel ${panelID}`);
         panelElement.style.setProperty('opacity', '0', 'important');
         panelElement.style.setProperty('visibility', 'hidden', 'important');
         panelElement.classList.remove('is-opening');
