@@ -10,9 +10,6 @@ let mainEditor = null;
 
 // Main entry point
 $(document).ready(() => {
-
-  console.log("Hi");
-
   // Handle URL parameters
   handleURLParameters();
 
@@ -22,7 +19,6 @@ $(document).ready(() => {
   if (!checkForWebserialSupport()) {
     return;
   }
-
   
   // Display welcome messages
   post(`Hello, ${activeUserSettings.name}!`);

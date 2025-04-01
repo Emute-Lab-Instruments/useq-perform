@@ -1,0 +1,28 @@
+/* Console Panel */
+#panel-console {
+  position: fixed;
+  height: 49%;
+  width: 25%;
+  right: 0;
+  top: 60%;
+  border: 2px solid;
+  min-width: 20em;
+  max-width: 30em;
+  z-index: 300;
+  resize: both;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  padding: 12px;
+  font-family: var(--code-font);
+  font-size: 0.9em;
+  line-height: 1.4;
+  opacity: 40%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  color: #00ff41; /* Match editor theme text color */
+  /*background-color: rgba(12, 23, 16, 0.95);*/
+
+  transition: opacity 0.3s ease-in-out;
+  a {
+    color: var(--accent-color);
+  }
+}

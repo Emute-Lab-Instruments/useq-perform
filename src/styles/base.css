@@ -1,38 +1,15 @@
-/* Define CSS custom properties (variables) at the root level so they're globally available */
 :root {
-  /* Set the default monospace font for code elements
-   * This variable is used throughout the application for code blocks, editors, and terminals
-   * Using 'monospace' as a fallback ensures consistent character width even if other fonts aren't available
-   */
-  /* --code-font: monospace; */
-  /* --code-font: 'Source Code Pro', monospace; */
-  /* --code-font: 'Fira Code', monospace; */
-  /* --code-font: 'Hack', monospace; */
-  /* --code-font: 'Ubuntu Mono', monospace; */
-  /* --code-font: 'Consolas', monospace; */
-  /* --code-font: 'DejaVu Sans Mono', monospace; */
   --code-font: 'IBM Plex Mono', monospace;
-  
-  /* Panel styling variables */
-  --panel-bg: rgba(30, 30, 30, 0.95); /* Default panel background color */
-  --panel-border: rgba(255, 255, 255, 0.2); /* Default panel border color */
-  --panel-section-bg: rgba(255, 255, 255, 0.05); /* Background for panel sections */
-  --panel-item-hover-bg: rgba(255, 255, 255, 0.1); /* Hover background for items */
-  --panel-item-active-bg: rgba(255, 255, 255, 0.15); /* Active background for items */
-  --panel-item-border: rgba(0, 0, 0, 0.2); /* Border color for items in panels */
-  --panel-control-bg: rgba(0, 0, 0, 0.2); /* Background for form controls */
-  
-  --accent-color: #00ff41; /* Default accent color */
-  --accent-color-hover: #33ff66; /* Lighter version of accent color for hover states */
-  --accent-color-secondary: #ff9800; /* Secondary accent color for special elements */
-  
-  --text-primary: #f8f8f2; /* Default text color */
-  --text-secondary: rgba(255, 255, 255, 0.7); /* Secondary text color */
-  --text-muted: rgba(255, 255, 255, 0.5); /* Muted text color */
-  
-  /* Sizing variables */
-  --panel-border-radius: 8px; /* Border radius for panels */
-  --item-border-radius: 4px; /* Border radius for items within panels */
+  --panel-bg: rgba(30, 30, 30, 0.95);
+  --panel-border: rgba(255, 255, 255, 0.2);
+  --panel-section-bg: rgba(255, 255, 255, 0.05);
+  --panel-item-hover-bg: rgba(255, 255, 255, 0.1);
+  --panel-item-active-bg: rgba(255, 255, 255, 0.15);
+  --panel-control-bg: rgba(0, 0, 0, 0.2);
+  --accent-color: #00ff41;
+  --text-primary: #f8f8f2;
+  --panel-border-radius: 8px;
+  --item-border-radius: 4px;
 }
 
 /* Base styles for editor cursor */
