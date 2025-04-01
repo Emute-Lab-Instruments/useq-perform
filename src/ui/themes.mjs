@@ -7,18 +7,19 @@ import { toggleAuxPanel } from './ui.mjs';
 import { defaultThemeEditorStartingCode } from "../editors/defaults.mjs";
 
 export function initThemePanel() {
-    const panel = document.getElementById('panel-theme');
+    const panel = document.getElementById('panel-settings-themes');
+    const themesContainer = panel.querySelector('.panel-tab-content[data-tab="themes"]');
     
     // Create themes container
-    const themesContainer = document.createElement('div');
-    themesContainer.className = 'themes-container';
-    panel.appendChild(themesContainer);
+    const themesGrid = document.createElement('div');
+    themesGrid.className = 'themes-container';
+    themesContainer.appendChild(themesGrid);
     
     // Add a title for the panel
     const panelTitle = document.createElement('h2');
     panelTitle.className = 'panel-section-title';
     panelTitle.textContent = 'Select a Theme';
-    themesContainer.appendChild(panelTitle);
+    themesGrid.appendChild(panelTitle);
     
     // Create preview editors for each theme
     Object.entries(themes).forEach(([themeName, themeExtension]) => {
@@ -56,10 +57,10 @@ export function initThemePanel() {
                 setMainEditorTheme(themeName);
                 saveUserSettings();
             }
-            toggleAuxPanel("#panel-theme");
+            toggleAuxPanel("#panel-settings-themes");
         });
         
-        themesContainer.appendChild(container);
+        themesGrid.appendChild(container);
     });
     
     // Remove previous handlers if any
@@ -69,8 +70,13 @@ export function initThemePanel() {
     if (themeButton) {
         themeButton.addEventListener("click", function(e) {
             console.log("Theme button clicked - direct event listener");
-            toggleAuxPanel("#panel-theme");
-                        
+            
+            // Switch to themes tab
+            const $panel = $('#panel-settings-themes');
+            $panel.find('.panel-tab[data-tab="themes"]').click();
+            
+            toggleAuxPanel("#panel-settings-themes");
+            
             // Prevent event bubbling issues
             e.preventDefault();
             e.stopPropagation();

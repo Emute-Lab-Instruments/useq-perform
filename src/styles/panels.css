@@ -7,11 +7,11 @@
   top: 50%;
   transform: translateY(-50%);
   border: 2px solid var(--panel-border);
-  z-index: 99999;
+  z-index: 400;
   padding: 1.5em;
   border-radius: var(--panel-border-radius);
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
-  overflow-y: auto;
+  overflow: hidden;
   background-color: var(--panel-bg);
   color: var(--text-primary);
   opacity: 0;
@@ -39,7 +39,7 @@
   justify-content: center;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  z-index: 100000;
+  z-index: 450;  /* Slightly higher than panel-aux to stay above it */
 }
 
 .panel-position-toggle:hover {
@@ -57,7 +57,7 @@
 
 /* Centered panel mode - shared across all panels */
 .panel-aux.centered {
-  width: 50%;
+  width: 80%;
   right: 50%;
   transform: translate(50%, -50%);
 }
@@ -180,7 +180,7 @@
   border: 2px solid;
   min-width: 20em;
   max-width: 30em;
-  z-index: 99999;
+  z-index: 300;
   resize: both;
   overflow-y: scroll;
   overflow-x: hidden;
@@ -211,7 +211,7 @@
   background-color: #00000000;
   color:#fff;
   /* min-width: 20em; */
-  z-index: 99999;
+  z-index: 200;
   /* max-width: 0.5fr; */
   /* overflow:hidden; */
   resize: both;
@@ -341,4 +341,43 @@
   padding: 6px 10px;
   border-radius: var(--item-border-radius);
   display: inline-block;
+}
+
+/* Tab navigation for panels */
+.panel-tabs {
+    display: flex;
+    gap: 0.5em;
+    padding: 0.5em;
+    background: var(--panel-section-bg);
+    border-bottom: 1px solid var(--panel-border);
+    margin: -1.5em -1.5em 1em -1.5em;
+}
+
+.panel-tab {
+    padding: 0.5em 1em;
+    background: var(--panel-control-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--item-border-radius);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.panel-tab:hover {
+    background: var(--panel-item-hover-bg);
+}
+
+.panel-tab.active {
+    background: var(--accent-color);
+    color: #000;
+    border-color: var(--accent-color);
+}
+
+/* Tab content containers */
+.panel-tab-content {
+    display: none;
+}
+
+.panel-tab-content.active {
+    display: block;
 }
