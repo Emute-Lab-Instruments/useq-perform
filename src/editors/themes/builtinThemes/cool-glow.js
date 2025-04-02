@@ -13,6 +13,7 @@ export const coolGlow = {
 		gutterBackground: '#060521',
 		gutterForeground: '#E0E0E090',
 		lineHighlight: '#FFFFFF0F',
+		accentColor: '#2BF1DC',
 	},
 	styles: [
 		{

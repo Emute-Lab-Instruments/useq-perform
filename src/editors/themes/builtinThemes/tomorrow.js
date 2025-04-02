@@ -13,6 +13,7 @@ export const tomorrow = {
 		gutterBackground: '#FFFFFF',
 		gutterForeground: '#4D4D4C80',
 		lineHighlight: '#EFEFEF',
+		accentColor: '#8959A8',
 	},
 	styles: [
 		{

@@ -21,6 +21,43 @@ export function setTheme(editor, themeName) {
   }
 }
 
+export function setMainEditorTheme(themeName) {
+  dbg("themename:", themeName);
+  const editor = EditorView.findFromDOM(
+    document.querySelector("#panel-main-editor .cm-editor")
+  );
+  const success = setTheme(editor, themeName);
+  if (success) {
+    setSnippetEditorsTheme(themeName);
+    
+    // Update the serial visualization palette based on theme variant
+    if (themeRecipes[themeName] && themeRecipes[themeName].variant === "dark") {
+      // Import and use the setter function from serialVis module
+      import("../../ui/serialVis.mjs").then(module => {
+        if (module.setSerialVisPalette && module.serialVisPaletteDark) {
+          module.setSerialVisPalette(module.serialVisPaletteDark);
+        }
+      });
+    } else {
+      // Use light theme palette for light themes
+      import("../../ui/serialVis.mjs").then(module => {
+        if (module.setSerialVisPalette && module.serialVisPaletteLight) {
+          module.setSerialVisPalette(module.serialVisPaletteLight);
+        }
+      });
+    }
+    
+    adjustPanelsToTheme(themeName);
+  }
+}
+
+export function setSnippetEditorsTheme(themeName) {
+  const theme = themes[themeName];
+  // TODO
+}
+
+
+// Update CSS variables based on theme
 function adjustPanelsToTheme(themeName) {
   const theme = themes[themeName];
   const themeRecipe = themeRecipes[themeName];
@@ -102,7 +139,9 @@ function adjustPanelsToTheme(themeName) {
     document.documentElement.style.setProperty('--text-primary', textPrimary);
     document.documentElement.style.setProperty('--text-secondary', textSecondary);
     document.documentElement.style.setProperty('--text-muted', textMuted);
-    document.documentElement.style.setProperty('--accent-color', themeRecipe.settings.accent || '#0066cc');
+    document.documentElement.style.setProperty('--accent-color', themeRecipe.settings.accentColor || '#0066cc');
+    document.documentElement.style.setProperty('--accent-color-hover', adjustColorBrightness(themeRecipe.settings.accentColor || '#0066cc', 10));
+    document.documentElement.style.setProperty('--accent-color-active', adjustColorBrightness(themeRecipe.settings.accentColor || '#0066cc', -10));
   } else {
     // Dark theme variables - use existing color scheme
     document.documentElement.style.setProperty('--panel-bg', adjustedHelpBackground + "F0");
@@ -115,50 +154,30 @@ function adjustPanelsToTheme(themeName) {
     document.documentElement.style.setProperty('--text-primary', foregroundColor);
     document.documentElement.style.setProperty('--text-secondary', 'rgba(255, 255, 255, 0.7)');
     document.documentElement.style.setProperty('--text-muted', 'rgba(255, 255, 255, 0.5)');
-    document.documentElement.style.setProperty('--accent-color', themeRecipe.settings.accent || foregroundColor);
+    document.documentElement.style.setProperty('--accent-color', themeRecipe.settings.accentColor || foregroundColor);
+    document.documentElement.style.setProperty('--accent-color-hover', adjustColorBrightness(themeRecipe.settings.accentColor || foregroundColor, 10));
+    document.documentElement.style.setProperty('--accent-color-active', adjustColorBrightness(themeRecipe.settings.accentColor || foregroundColor, -10));
   }
 }
 
-export function setMainEditorTheme(themeName) {
-  dbg("themename:", themeName);
-  const editor = EditorView.findFromDOM(
-    document.querySelector("#panel-main-editor .cm-editor")
-  );
-  const success = setTheme(editor, themeName);
-  if (success) {
-    setSnippetEditorsTheme(themeName);
-    
-    // Update the serial visualization palette based on theme variant
-    if (themeRecipes[themeName] && themeRecipes[themeName].variant === "dark") {
-      // Import and use the setter function from serialVis module
-      import("../../ui/serialVis.mjs").then(module => {
-        if (module.setSerialVisPalette && module.serialVisPaletteDark) {
-          module.setSerialVisPalette(module.serialVisPaletteDark);
-        }
-      });
-    } else {
-      // Use light theme palette for light themes
-      import("../../ui/serialVis.mjs").then(module => {
-        if (module.setSerialVisPalette && module.serialVisPaletteLight) {
-          module.setSerialVisPalette(module.serialVisPaletteLight);
-        }
-      });
-    }
-    
-    adjustPanelsToTheme(themeName);
-  }
-}
+// Helper function to adjust color brightness
+function adjustColorBrightness(hex, percent) {
+  // Remove the '#' if present
+  hex = hex.replace(/^#/, '');
 
-export function setSnippetEditorsTheme(themeName) {
-  const theme = themes[themeName];
-  if (theme) {
-    document.querySelectorAll(".snippet-editors").forEach((element) => {
-      const snippetEditor = EditorView.findFromDOM(element);
-      if (snippetEditor) {
-        snippetEditor.dispatch({
-          effects: themeCompartment.reconfigure(theme),
-        });
-      }
-    });
-  }
+  // Convert to RGB
+  let r = parseInt(hex.substring(0, 2), 16);
+  let g = parseInt(hex.substring(2, 4), 16);
+  let b = parseInt(hex.substring(4, 6), 16);
+
+  // Adjust brightness
+  r = Math.max(0, Math.min(255, r + (r * percent / 100)));
+  g = Math.max(0, Math.min(255, g + (g * percent / 100)));
+  b = Math.max(0, Math.min(255, b + (b * percent / 100)));
+
+  // Convert back to hex
+  return '#' + [r, g, b].map(x => {
+    const hex = Math.round(x).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
 }

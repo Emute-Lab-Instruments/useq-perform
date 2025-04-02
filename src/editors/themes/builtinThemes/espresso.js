@@ -13,6 +13,7 @@ export const espresso = {
 		gutterBackground: '#FFFFFF',
 		gutterForeground: '#00000070',
 		lineHighlight: '#C1E2F8',
+		accentColor: '#2F6F9F',
 	},
 	styles: [
 		{

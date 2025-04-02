@@ -13,6 +13,7 @@ export const ayuLight = {
 		gutterBackground: '#fcfcfc',
 		gutterForeground: '#8a919966',
 		lineHighlight: '#8a91991a',
+		accentColor: '#fa8d3e',
 	},
 	styles: [
 		{

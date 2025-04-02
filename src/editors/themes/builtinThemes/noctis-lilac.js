@@ -13,6 +13,7 @@ export const noctisLilac = {
 		gutterBackground: '#f2f1f8',
 		gutterForeground: '#0c006b70',
 		lineHighlight: '#e1def3',
+		accentColor: '#5842ff',
 	},
 	styles: [
 		{

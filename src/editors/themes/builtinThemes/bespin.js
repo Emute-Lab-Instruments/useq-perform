@@ -13,6 +13,7 @@ export const bespin = {
 		gutterBackground: '#28211C',
 		gutterForeground: '#BAAE9E90',
 		lineHighlight: '#FFFFFF08',
+		accentColor: '#5EA6EA',
 	},
 	styles: [
 		{

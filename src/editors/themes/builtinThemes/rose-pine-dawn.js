@@ -13,6 +13,7 @@ export const rosePineDawn = {
 		gutterBackground: '#faf4ed',
 		gutterForeground: '#57527970',
 		lineHighlight: '#6e6a860d',
+		accentColor: '#286983',
 	},
 	styles: [
 		{

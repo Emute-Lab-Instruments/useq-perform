@@ -13,6 +13,7 @@ export const birdsOfParadise = {
 		gutterBackground: '#3b2627',
 		gutterForeground: '#E6E1C490',
 		lineHighlight: '#1F1611',
+		accentColor: '#EF5D32',
 	},
 	styles: [
 		{

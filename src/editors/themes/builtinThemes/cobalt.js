@@ -13,6 +13,7 @@ export const cobalt = {
 		gutterBackground: '#00254b',
 		gutterForeground: '#FFFFFF70',
 		lineHighlight: '#00000059',
+		accentColor: '#FFDD00',
 	},
 	styles: [
 		{
