@@ -51,10 +51,10 @@
 
 /* Ensure the overflow container does not go under the navigation bar */
 .panel-tab-content {
-  display: none;
+  display: none !important;
 
   &.active {
-    display:block;
+    display: block !important;
     background: darkcyan;
   }
 }

@@ -1,6 +1,6 @@
 import { dbg } from "../../utils.mjs";
-
-import { adjustDocPanelForTheme, initModuLispReferenceTab } from './documentation.mjs';
+import { makeUserGuide } from "./userGuide.mjs";
+import { makeModuLispReference } from "./moduLispReference.mjs";
 
 /**
  * Initialize the help tab within the help panel
@@ -24,12 +24,29 @@ export function initHelpTab(container) {
  */
 export function makeHelpPanel(container) {
 
+    return makeTabs([
+        {
+            name: "User Guide",
+            id: "panel-help-tab-guide",
+            element: makeUserGuide(),
+        },
+        {
+            name: "ModuLisp Reference",
+            id: "panel-help-tab-reference",
+            element: makeModuLispReference(),
+        },
+    ]);
 
     // initHelpTab(document.querySelector("#panel-help-guide"));
     // initModuLispReferenceTab(document.querySelector("#panel-help-reference"));
     // $("#button-help").click(() => toggleAuxPanel("#panel-help"));
     // setupTabs(container);
 }
+
+
+
+
+
 
 /**
  * Set up tab switching functionality for the help panel

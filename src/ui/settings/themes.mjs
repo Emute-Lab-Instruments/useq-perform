@@ -14,7 +14,7 @@ export function makeThemeTab() {
     
     // Create themes container
     const $themesGrid = $('<div>', {
-        class: 'themes-container panel-tab-content',
+        class: 'panel-tab-content themes-container',
         id: 'panel-settings-themes'
     });
     

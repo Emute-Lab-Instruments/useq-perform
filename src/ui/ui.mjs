@@ -30,15 +30,14 @@ function getPositionIcon(position) {
 let editor = null;
 
 export function initUI() {
+    console.log("initUI");
      // Initialize editor first so we can pass its instance to other panels
     editor = initEditorPanel("#panel-main-editor");
     makeToolbar(editor);
     makeConsole();
     makeVis();
     $("#panel-vis").hide();
-    // // document.getElementById("panel-vis").appendChild(makeVis()).hide();
-    const [nav, window] = makeSettings();
-    $("#panel-settings").append(nav, window);
+    $("#panel-settings").append(...makeSettings());
     $("#panel-settings").show();
     
     $("#panel-help").hide();
