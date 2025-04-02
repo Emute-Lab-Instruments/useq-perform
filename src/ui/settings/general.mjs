@@ -3,7 +3,7 @@ import {activeUserSettings, updateUserSettings, resetUserSettings} from "../../u
 import {themes} from "../../editors/themes/themeManager.mjs";
 
 export function makeGeneralTab() {
-    console.log("initGeneralTab");
+    dbg("initGeneralTab");
 
     const $container = $('<div>').addClass('panel-tab-content');
     dbg("Settings Tab", "initSettingsTab", "Appended settings content container");

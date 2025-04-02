@@ -5,7 +5,7 @@ import { dbg, toggleDbg } from "./utils.mjs";
 export function handleURLParameters() {
   const urlParams = new URLSearchParams(window.location.search);
 
-  console.log("URL Parameters: ", urlParams);
+  dbg("URL Parameters: ", urlParams);
 
   if (urlParams.has("debug") && urlParams.get("debug") === "true") {
     toggleDbg();

@@ -30,7 +30,7 @@ function getPositionIcon(position) {
 let editor = null;
 
 export function initUI() {
-    console.log("initUI");
+    dbg("initUI");
      // Initialize editor first so we can pass its instance to other panels
     editor = initEditorPanel("#panel-main-editor");
     makeToolbar(editor);
@@ -43,7 +43,7 @@ export function initUI() {
     $("#panel-help").hide();
     // $("#panel-settings").hide();
     // $("#button-settings").on("click", () => {
-    //     console.log("toggle settings");
+    //     dbg("toggle settings");
     //     $("#panel-settings").toggle();
     // });
 
