@@ -12,7 +12,6 @@
   border: 1px solid var(--panel-border);
   opacity:100%;
   gap: 10px;
-
   display: flex;
   flex-direction: column;
   text-align: left;

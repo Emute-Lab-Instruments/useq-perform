@@ -6,6 +6,11 @@ import { connectToSerialPort } from "../io/serialComms.mjs";
 
 let editorInstance = null;
 
+function toggleAuxPanel(panel) {
+    $(`.panel-aux`).hide();
+    $(panel).show();
+}
+
 export function makeToolbar(editor) {
     // Store editor reference
     editorInstance = editor;
@@ -32,6 +37,14 @@ export function makeToolbar(editor) {
             .catch((e) => {
                 dbg("error selecting port");
             });
+    });
+
+    $("#button-settings").on("click", function() {
+        toggleAuxPanel("#panel-settings");
+    });
+
+    $("#button-help").on("click", function() {
+        toggleAuxPanel("#panel-help");
     });
     
     // FIXME reinstate

@@ -1,5 +1,5 @@
 import { dbg } from "../utils.mjs";
-import { makeHelpPanel as makeHelp } from './help/help.mjs';
+import { makeHelp } from './help/help.mjs';
 import { initIcons } from './icons.mjs';
 import { makeVis as makeVis } from "./serialVis.mjs";   
 import { makeConsole as makeConsole } from "./console.mjs";
@@ -29,23 +29,22 @@ function getPositionIcon(position) {
 
 let editor = null;
 
-export function initUI() {
+export async function initUI() {
     dbg("initUI");
-     // Initialize editor first so we can pass its instance to other panels
+    // Initialize editor first so we can pass its instance to other panels
     editor = initEditorPanel("#panel-main-editor");
     makeToolbar(editor);
     makeConsole();
     makeVis();
-    $("#panel-vis").hide();
     $("#panel-settings").append(...makeSettings());
-    $("#panel-settings").show();
     
-    $("#panel-help").hide();
-    // $("#panel-settings").hide();
-    // $("#button-settings").on("click", () => {
-    //     dbg("toggle settings");
-    //     $("#panel-settings").toggle();
-    // });
-
-    // //  $("#panel-help").append(makeHelp()).hide();
+    // Handle async makeHelp
+    try {
+        const helpElements = await makeHelp();
+        $("#panel-help").append(...helpElements);
+        dbg("UI", "initUI", "Help panel initialized");
+    } catch (error) {
+        dbg("UI", "initUI", "Error initializing help panel", error);
+        console.error("Failed to initialize help panel:", error);
+    }
 }
