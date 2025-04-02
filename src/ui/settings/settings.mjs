@@ -1,4 +1,5 @@
 import { dbg } from "../../utils.mjs";
+import { makeThemeTab } from "./themes.mjs";
 
 import {
     activeUserSettings,
@@ -19,74 +20,95 @@ import { EditorView } from "@codemirror/view";
 
 
 export function makeTabButton(tab) {
-    const button = document.createElement("button");
-    button.className = `panel-nav-button ${tab.active ? 'active' : ''}`;
-    button.id = `${tab.id}-button`;
-    button.textContent = tab.name;
-    return button;
+    return $('<button>', {
+        class: `panel-nav-button ${tab.active ? 'active' : ''}`,
+        id: `${tab.id}-button`,
+        text: tab.name
+    });
+}
+
+
+function makeTabs(tabs) {
+    // Create navigation bar and window container
+    const $nav = $('<div>', {
+        class: 'panel-nav-bar'
+    });
+
+    const $window = $('<div>', {
+        class: 'panel-window'
+    });
+
+    // Iterate over the tabs and create buttons + content
+    tabs.forEach(tab => {
+        // Create and add the nav button
+        const $button = makeTabButton(tab);
+        $nav.append($button);
+
+        // Add the tab content div
+        const $content = $(tab.element);
+        $content.toggleClass('active', tab.active);
+        $window.append($content);
+
+        // Add click handler to toggle tabs
+        $button.on('click', () => {
+            // Deactivate all tabs within this window only
+            $nav.find('.panel-nav-button').removeClass('active');
+            $window.find('.panel-tab-content').removeClass('active');
+            
+            // Activate clicked tab
+            $button.addClass('active');
+            $content.addClass('active');
+        });
+    });
+
+    return [$nav, $window];
 }
 
 function makeGeneralTab() {
-    const div = document.createElement('div');
-    div.className = 'panel-tab-content';
-    div.id = 'panel-settings-general';
+    const $div = $('<div>', {
+        class: 'panel-tab-content',
+        id: 'panel-settings-general'
+    });
 
     // Create a container for the content
-    const contentContainer = document.createElement('div');
-    contentContainer.className = 'panel-content-container';
+    const $contentContainer = $('<div>', {
+        class: 'panel-content-container'
+    });
 
     // Load the userguide content from public directory using root-relative path
-    fetch('/userguide.html')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.text();
-        })
-        .then(html => {
+    $.get('/userguide.html')
+        .done(html => {
             // Create a temporary container to parse the HTML
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
+            const $mainContent = $(html).find('main');
             
-            // Get the main content from the userguide
-            const mainContent = doc.querySelector('main');
-            if (mainContent) {
+            if ($mainContent.length) {
                 // Copy the content to our container
-                contentContainer.innerHTML = mainContent.innerHTML;
-                
-                // Add some basic styling to make it fit in the settings panel
-                contentContainer.style.padding = '1rem';
-                contentContainer.style.overflowY = 'auto';
-                contentContainer.style.maxHeight = '100%';
+                $div.html($mainContent.html());
             }
         })
-        .catch(error => {
+        .fail(error => {
             console.error('Error loading userguide:', error);
-            contentContainer.innerHTML = '<p>Error loading user guide content.</p>';
+            $div.html('<p>Error loading user guide content.</p>');
         });
 
-    div.appendChild(contentContainer);
-    return div;
+    return $div; 
 }
 
 function makeKeybindingsTab() {
-    const div = document.createElement('div');
-    div.className = 'panel-tab-content';
-    div.id = 'panel-settings-keybindings';
-
-    // Create a container for the buttons
-    const buttonContainer = document.createElement('div');
-    buttonContainer.className = 'panel-buttons-container';
+    const $div = $('<div>', {
+        class: 'panel-tab-content',
+        id: 'panel-settings-keybindings'
+    });
 
     for (let i = 0; i < 10; i++) {
-        const button = document.createElement('button');
-        button.className = 'panel-button';
-        button.textContent = `Keybinding Button ${i}`;
-        buttonContainer.appendChild(button);
+        const $button = $('<button>', {
+            class: 'panel-button',
+            text: `Keybinding Button ${i}`
+        });
+        $div.append($button);
     }
 
-    div.appendChild(buttonContainer);
-    return div;
+    return $div;
 }
 
 
@@ -96,18 +118,11 @@ function makeKeybindingsTab() {
  */
 export function makeSettings() {
     dbg("settings.mjs makeSettings: Creating settings panel");
-
-    const panel = document.createElement("div");
-    panel.className = "aux-panel tabs-panel";
-    const nav = document.createElement("div");
-    nav.className = "panel-nav-bar";
-    const window = document.createElement("div");
-    window.className = "panel-window";
-
-    const tabs = [
+    
+   return makeTabs([
         {
             name: "General",
-            id: "panel-settings-tab-general",
+            id: "panel-settings-tab-general", 
             element: makeGeneralTab(),
             active: true
         },
@@ -118,52 +133,12 @@ export function makeSettings() {
             active: false
         },
         {
-            name: "Keybindings",
+            name: "Keybindings", 
             id: "panel-settings-tab-keybindings",
             element: makeKeybindingsTab(),
             active: false
         },
-    ];
-
-    dbg("settings.mjs makeSettings: Creating tabs:", tabs.map(t => t.name));
-
-    // Create and append each tab button individually
-    tabs.forEach(tab => {
-        // Tab Button
-        const button = makeTabButton(tab);
-        nav.appendChild(button);
-
-        // Tab Content
-        const element = tab.element;
-        element.className = `panel-tab-content ${tab.active ? "active" : ""}`;
-        console.log("settings.mjs makeSettings: Adding tab element:", element);
-        window.appendChild(element);
-
-        button.addEventListener("click", () => {
-            // disable all active elements in both the nav and the window
-            Array.from(nav.children).forEach(button => {
-                button.classList.remove("active");
-            });
-            Array.from(window.children).forEach(element => {
-                element.classList.remove("active");
-            });
-
-            tab.element.classList.add("active");
-            button.classList.add("active");
-        });
-    });
-
-    // Create and append each tab element individually  
-    tabs.forEach(tab => {
-        
-    });
-
-    // Add the nav and window to the panel
-    panel.appendChild(nav);
-    panel.appendChild(window);
-
-    dbg("settings.mjs makeSettings: Settings panel created");
-    return panel;
+    ]);
 }
 
 /**
