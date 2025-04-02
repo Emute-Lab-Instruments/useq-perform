@@ -8,7 +8,7 @@ export function makeTabButton(tab) {
 
 
 export function makeTabs(tabs) {
-    console.log("makeTabs");
+    dbg("makeTabs");
     // Create navigation bar and window container
     const $nav = $('<div>', {
         class: 'panel-nav-bar'
