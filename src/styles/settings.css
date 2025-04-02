@@ -1,2 +1,163 @@
-#panel-settings {
+/* Settings Panel Styles */
+/* .panel-tab-content {
+    padding: 1.5rem;
+    height: 100%;
+    overflow-y: auto;
+    color: var(--text-primary);
+    display: block !important; 
+} */
+
+/* Section Styling */
+.panel-section {
+    margin-bottom: 2rem;
+    background: var(--panel-section-bg);
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--panel-border);
+}
+
+.panel-section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: var(--accent-color);
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--panel-border);
+}
+
+/* Form Row Layout */
+.panel-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+    gap: 1rem;
+}
+
+.panel-label {
+    flex: 0 0 200px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.panel-control {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+/* Form Controls */
+.panel-text-input,
+.panel-number-input,
+.panel-select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    background-color: var(--panel-control-bg);
+    color: var(--text-primary);
+}
+
+.panel-text-input:focus,
+.panel-number-input:focus,
+.panel-select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px var(--accent-color);
+    opacity: 0.2;
+}
+
+/* Checkbox Styling */
+.panel-checkbox {
+    width: 18px;
+    height: 18px;
+    margin-right: 0.5rem;
+    cursor: pointer;
+    accent-color: var(--accent-color);
+}
+
+/* Button Styling */
+.panel-button {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--accent-color);
+    color: white;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.panel-button:hover {
+    background-color: var(--accent-color-hover);
+    transform: translateY(-1px);
+}
+
+.panel-button:active {
+    background-color: var(--accent-color-active);
+    transform: translateY(0);
+}
+
+/* Reset Button Special Styling */
+.panel-button.reset {
+    background-color: #ff4d4d;
+    color: white;
+}
+
+.panel-button.reset:hover {
+    background-color: #ff6666;
+    transform: translateY(-1px);
+}
+
+.panel-button.reset:active {
+    background-color: #e63939;
+    transform: translateY(0);
+}
+
+/* Key Bindings */
+.key-binding {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    background-color: var(--panel-control-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+/* Theme Select Styling */
+.theme-select {
+    color: var(--text-primary);
+}
+
+.theme-select option {
+    background-color: var(--panel-control-bg);
+    color: var(--text-primary);
+}
+
+/* Dark Theme Adjustments */
+@media (prefers-color-scheme: dark) {
+    .panel-section {
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .panel-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .panel-label {
+        flex: none;
+    }
+
+    .panel-control {
+        width: 100%;
+    }
 }

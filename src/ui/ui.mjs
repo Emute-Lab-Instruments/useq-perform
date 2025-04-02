@@ -35,10 +35,15 @@ export async function initUI() {
     editor = initEditorPanel("#panel-main-editor");
     makeToolbar(editor);
     makeConsole();
-    makeVis();
-    $("#panel-settings").append(...makeSettings());
     
-    // Handle async makeHelp
+    makeVis();
+    $("#panel-vis").hide();
+
+    // Initialize settings panel
+    const settingsElements = makeSettings();
+    $("#panel-settings").append(...settingsElements);
+    
+    // Initialize help panel
     try {
         const helpElements = await makeHelp();
         $("#panel-help").append(...helpElements);
@@ -47,4 +52,6 @@ export async function initUI() {
         dbg("UI", "initUI", "Error initializing help panel", error);
         console.error("Failed to initialize help panel:", error);
     }
+
+    dbg("UI", "initUI", "UI initialized");
 }

@@ -15,64 +15,39 @@ const state = {
   isDevMode: false
 };
 
-export async function makeModuLispReferenceNEW() {
-  const $container = $('<div>', {
-    class: 'panel-tab-content',
-    id: 'panel-help-reference'
-  });
-
-  const data = await loadReferenceData();
-  $container.append(makeTags(data));
-  // makeFunctionList gets given the data and the number of columns
-  $container.append(makeFunctionList(data, 1));
-
-  return $container;
-}
-
-
-// Main function to create the ModuLisp reference panel
 export async function makeModuLispReference() {
-  dbg("Documentation Tab", "makeModuLispReference", "Starting");
-  
-  const urlParams = new URLSearchParams(window.location.search);
-  state.isDevMode = urlParams.get("devmode") === "true";
-
-  // Create top-level container
+  dbg("makeModuLispReference", "Initializing ModuLisp reference panel");
   const $container = $('<div>', {
     class: 'panel-tab-content',
     id: 'panel-help-reference'
   });
+  dbg("makeModuLispReference", "Created container with classes", $container.attr('class'));
+  dbg("makeModuLispReference", "Container element", $container[0]);
 
   try {
-    // Load documentation data
-    const response = await fetch("./modulisp_reference_data.json");
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    dbg("makeModuLispReference", "Loading user preferences");
+    loadUserPreferences();
+
+    dbg("makeModuLispReference", "Loading reference data");
+    const data = await loadReferenceData();
+    if (!data || !Array.isArray(data)) {
+      throw new Error('Failed to load valid documentation data');
     }
-    state.data = await response.json();
-    dbg("Documentation Tab", "makeModuLispReference", "Loaded documentation data", state.data);
-    
-    // Validate data structure
-    if (!Array.isArray(state.data)) {
-      throw new Error('Documentation data must be an array');
-    }
+    state.data = data;
+    dbg("makeModuLispReference", "Reference data loaded", data);
 
+    dbg("makeModuLispReference", "Creating tags");
+    $container.append(makeTags(data));
 
-    // Load user preferences
-    // loadUserPreferences();
+    dbg("makeModuLispReference", "Creating function list");
+    $container.append(makeFunctionList(data, 1));
 
-    dbg("Documentation Tab", "makeModuLispReference", "Creating tags container");
-    // Create and append tags container
-    $container.append(makeTagsContainer());
-
-    dbg("Documentation Tab", "makeModuLispReference", "Creating function list");
-    // Create and append function list
-    $container.append(makeFunctionList());
-
-    dbg("Documentation Tab", "makeModuLispReference", "Rendered documentation panel", $container[0]);
+    dbg("makeModuLispReference", "Final container classes", $container.attr('class'));
+    dbg("makeModuLispReference", "Final container element", $container[0]);
+    return $container;
   } catch (error) {
-    dbg("Documentation Tab", "makeModuLispReference", "Error loading documentation data");
-    console.error("Error loading documentation data:", error);
+    dbg("makeModuLispReference", "Error creating reference panel", error);
+    console.error("Error creating reference panel:", error);
     
     const $errorMessage = $('<div>', {
       class: 'doc-error-message',
@@ -85,13 +60,17 @@ export async function makeModuLispReference() {
       borderRadius: '4px'
     });
     $container.append($errorMessage);
+    
+    return $container;
   }
-
-  return $container;
 }
+
+
+// Main function to create the ModuLisp reference pane
 
 // Load user preferences from localStorage
 function loadUserPreferences() {
+  dbg("loadUserPreferences", "Loading preferences from localStorage");
   try {
     const savedStarred = localStorage.getItem("starredFunctions");
     if (savedStarred) {
@@ -104,8 +83,12 @@ function loadUserPreferences() {
       const parsedExpanded = JSON.parse(savedExpanded);
       state.expandedFunctions = new Set(Array.isArray(parsedExpanded) ? parsedExpanded : []);
     }
+    dbg("loadUserPreferences", "Preferences loaded", {
+      starredFunctions: state.starredFunctions,
+      expandedFunctions: state.expandedFunctions
+    });
   } catch (error) {
-    console.error("Error loading documentation preferences:", error);
+    dbg("loadUserPreferences", "Error loading preferences", error);
     // Reset to empty sets on error
     state.starredFunctions = new Set();
     state.expandedFunctions = new Set();
@@ -114,16 +97,19 @@ function loadUserPreferences() {
 
 // Save user preferences to localStorage
 function saveUserPreferences() {
+  dbg("saveUserPreferences", "Saving preferences to localStorage");
   try {
     localStorage.setItem("starredFunctions", JSON.stringify(Array.from(state.starredFunctions)));
     localStorage.setItem("expandedFunctions", JSON.stringify(Array.from(state.expandedFunctions)));
+    dbg("saveUserPreferences", "Preferences saved");
   } catch (error) {
-    console.error("Error saving documentation preferences:", error);
+    dbg("saveUserPreferences", "Error saving preferences", error);
   }
 }
 
 // Create a tag element
 function makeTagElement(tag) {
+  dbg("makeTagElement", "Creating tag element", tag);
   const $tag = $('<div>', {
     class: 'doc-tag',
     text: tag
@@ -134,6 +120,7 @@ function makeTagElement(tag) {
   }
 
   $tag.on('click', () => {
+    dbg("makeTagElement", "Tag clicked", tag);
     if (state.selectedTags.has(tag)) {
       state.selectedTags.delete(tag);
       $tag.removeClass('selected');
@@ -176,6 +163,7 @@ function makeTagsContainer() {
 
 // Create a code editor for examples
 function makeCodeEditor(code, id) {
+  dbg("makeCodeEditor", "Creating code editor", { code, id });
   const $container = $('<div>', {
     class: 'doc-example-editor',
     id: `code-${id}`
@@ -204,6 +192,7 @@ function makeCodeEditor(code, id) {
 
 // Create a function element
 function makeFunctionElement(func) {
+  dbg("makeFunctionElement", "Creating function element", func);
   const $item = $('<div>', {
     class: 'doc-function-item',
     'data-function': func.name
@@ -278,6 +267,7 @@ function makeFunctionElement(func) {
 
   // Add click handler for expand/collapse
   $item.on('click', (e) => {
+    dbg("makeFunctionElement", "Function item clicked", func.name);
     if (!$(e.target).is('.doc-star-button')) {
       if (state.expandedFunctions.has(func.name)) {
         state.expandedFunctions.delete(func.name);
@@ -297,14 +287,23 @@ function makeFunctionElement(func) {
 }
 
 // Create the function list
-function makeFunctionList() {
+function makeFunctionList(data, columns = 1) {
+  dbg("makeFunctionList", "Creating function list", { data, columns });
+  if (!data || !Array.isArray(data)) {
+    console.error("Invalid data passed to makeFunctionList:", data);
+    return $('<div>', {
+      class: 'doc-error-message',
+      text: 'Invalid documentation data'
+    });
+  }
+
   const $container = $('<div>', {
     id: 'doc-function-list',
     class: 'doc-function-list'
   });
 
   // Filter functions based on selected tags
-  let filteredFunctions = state.data.filter(func => {
+  const filteredFunctions = data.filter(func => {
     if (!func || typeof func !== 'object') return false;
     if (state.selectedTags.size === 0) return true;
     return Array.from(state.selectedTags).every(tag => func.tags.includes(tag));
@@ -318,14 +317,24 @@ function makeFunctionList() {
     return aStarred ? -1 : 1;
   });
 
+  // Create grid container if multiple columns
+  const $grid = columns > 1 ? $('<div>', { class: 'doc-function-grid' }) : null;
+  const $target = $grid || $container;
+
   // Add functions to the list
   filteredFunctions.forEach(func => {
+    dbg("makeFunctionList", "Adding function to list", func.name);
     if (!func || typeof func !== 'object') return;
     const $functionElement = makeFunctionElement(func);
     if ($functionElement && $functionElement.length) {
-      $container.append($functionElement);
+      $target.append($functionElement);
     }
   });
+
+  // Add grid to container if using multiple columns
+  if ($grid) {
+    $container.append($grid);
+  }
 
   // Show message if no functions match
   if (!filteredFunctions.length) {
@@ -346,6 +355,7 @@ function makeFunctionList() {
 
 // Show documentation for a symbol
 export function showDocumentationForSymbol(editor) {
+  dbg("showDocumentationForSymbol", "Showing documentation for symbol");
   if (!editor) return false;
 
   const cursor = editor.state.selection.main.head;
@@ -365,12 +375,14 @@ export function showDocumentationForSymbol(editor) {
 
   if (start < end) {
     const symbol = lineText.substring(start, end);
+    dbg("showDocumentationForSymbol", "Symbol identified", symbol);
 
     const func = state.data.find(
       (f) => f.name === symbol || (f.aliases && f.aliases.includes(symbol))
     );
 
     if (func) {
+      dbg("showDocumentationForSymbol", "Function found", func.name);
       $("#panel-help").show();
       $("#panel-help-tab-reference").click();
       state.expandedFunctions = new Set([func.name]);
@@ -389,15 +401,48 @@ export function showDocumentationForSymbol(editor) {
     }
   }
 
+  dbg("showDocumentationForSymbol", "No matching function found");
   return false;
 }
 
+async function loadReferenceData() {
+  dbg("loadReferenceData", "Fetching reference data");
+  try {
+    const response = await fetch("/modulisp_reference_data.json");
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    
+    // Validate data structure
+    if (!Array.isArray(data)) {
+      throw new Error('Documentation data must be an array');
+    }
 
+    // Validate each function entry
+    data.forEach(func => {
+      if (!func || typeof func !== 'object') {
+        throw new Error('Each function entry must be an object');
+      }
+      if (!func.name || typeof func.name !== 'string') {
+        throw new Error('Each function must have a name property');
+      }
+      if (!Array.isArray(func.tags)) {
+        throw new Error('Each function must have a tags array');
+      }
+    });
 
-
+    dbg("loadReferenceData", "Reference data loaded successfully");
+    return data;
+  } catch (error) {
+    dbg("loadReferenceData", "Error loading reference data", error);
+    throw error;
+  }
+}
 
 // Adjust documentation panel elements for theme
 function adjustDocPanelForTheme() {
+  dbg("adjustDocPanelForTheme", "Adjusting documentation panel for theme");
   const textColor = getComputedStyle(document.documentElement)
     .getPropertyValue("--text-primary")
     .trim();
@@ -506,4 +551,73 @@ function adjustDocPanelForTheme() {
       border: "",
     });
   }
+}
+
+function makeTags(data) {
+  // Get all unique tags from the documentation data
+  const allTags = new Set();
+  data.forEach(func => {
+    if (func && func.tags) {
+      func.tags.forEach(tag => allTags.add(tag));
+    }
+  });
+
+  // Create container
+  const $container = $('<div>', {
+    class: 'doc-tags-container'
+  });
+
+  const $wrapper = $('<div>', {
+    class: 'doc-tags-wrapper'
+  });
+
+  // Sort tags alphabetically and create tag elements
+  Array.from(allTags).sort().forEach(tag => {
+    const $tag = $('<div>', {
+      class: 'doc-tag',
+      text: tag
+    });
+
+    if (state.selectedTags.has(tag)) {
+      $tag.addClass('selected');
+    }
+
+    $tag.on('click', () => {
+      if (state.selectedTags.has(tag)) {
+        state.selectedTags.delete(tag);
+        $tag.removeClass('selected');
+      } else {
+        state.selectedTags.add(tag);
+        $tag.addClass('selected');
+      }
+      renderFunctionList();
+    });
+
+    $wrapper.append($tag);
+  });
+
+  $container.append($wrapper);
+  return $container;
+}
+
+// Render the function list
+function renderFunctionList() {
+  dbg("renderFunctionList", "Rendering function list");
+  if (!state.data || !Array.isArray(state.data)) {
+    console.error("Cannot render function list: invalid data");
+    return;
+  }
+  
+  const $container = $('#panel-help-reference');
+  if (!$container.length) {
+    console.error("Cannot render function list: container not found");
+    return;
+  }
+
+  const $oldList = $('#doc-function-list');
+  if ($oldList.length) {
+    $oldList.remove();
+  }
+  
+  $container.append(makeFunctionList(state.data));
 }
