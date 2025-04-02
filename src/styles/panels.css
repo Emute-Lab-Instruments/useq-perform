@@ -1,191 +1,68 @@
-/* Base panel styles */
 .panel-aux {
-  position: fixed;
-  height: 70%;
-  width: 25%; 
+  position: absolute;
   right: 0;
   top: 50%;
-  transform: translateY(-50%);
-  border: 2px solid var(--panel-border);
-  z-index: 400;
-  padding: 1.5em;
-  border-radius: var(--panel-border-radius);
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
-  overflow: hidden;
-  background-color: var(--panel-bg);
-  color: var(--text-primary);
-  opacity: 0;
-  visibility: hidden;
-  display: none;
-  transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
-}
-
-/* Position toggle button for panels that support position toggling */
-.panel-position-toggle {
-  position: fixed;
-  /* We'll set left dynamically via JavaScript */
-  top: 50%;
-  transform: translateY(-50%);
-  width: 15px;
-  height: 32px;
-  background-color: var(--panel-control-bg);
+  transform: translate(0, -50%);
+  background-color: lightblue;
+  display: block;
+  min-width: 20%;
+  max-width: 35%;
+  height: 50%;
+  z-index: 1000;
+  padding: 10px;
   border: 1px solid var(--panel-border);
-  border-left: none;
-  border-top-right-radius: var(--item-border-radius);
-  border-bottom-right-radius: var(--item-border-radius);
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-  z-index: 450;  /* Slightly higher than panel-aux to stay above it */
+  overflow: auto; /* Prevent content from spilling out */
+  opacity:100%;
 }
 
-.panel-position-toggle:hover {
-  background-color: var(--panel-item-hover-bg);
+.panel-nav-button  {
+  background-color:#ff4d00;
+
+  &.active {
+    background-color:#006139;
+  }
 }
 
-.panel-position-toggle i {
-  font-size: 14px;
-}
-
-/* Add additional space for the toggle button */
-.panel-aux.position-togglable {
-  padding-left: 2.5em;
-}
-
-/* Centered panel mode - shared across all panels */
-.panel-aux.centered {
-  width: 80%;
-  right: 50%;
-  transform: translate(50%, -50%);
-}
-
-/* Section styling - shared across panels */
-.panel-section {
-  border-radius: var(--item-border-radius);
-  background-color: var(--panel-section-bg);
-  padding: 1em;
-  border: 1px solid var(--panel-border);
-  margin-bottom: 1.5em;
-}
-
-.panel-section-title {
-  font-size: 1.1em;
-  margin: 0 0 1em 0;
-  color: var(--accent-color);
-  border-bottom: 1px solid var(--panel-border);
-  padding-bottom: 0.5em;
-}
-
-/* Row layout - shared across panels */
-.panel-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1em;
-  padding: 0.5em 0;
-}
-
-.panel-label {
-  flex: 1;
-  font-size: 0.9em;
-}
-
-.panel-control {
-  flex: 1;
-  text-align: right;
-}
-
-/* Form controls - shared styling */
-.panel-text-input,
-.panel-number-input,
-.panel-select {
-  background-color: var(--panel-control-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--item-border-radius);
-  color: var(--text-primary);
-  padding: 0.5em;
-  font-size: 0.9em;
-  width: 100%;
-  max-width: 200px;
-}
-
-.panel-text-input:focus,
-.panel-number-input:focus,
-.panel-select:focus {
-  border-color: var(--accent-color);
-  outline: none;
-}
-
-.panel-checkbox {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent-color);
-}
-
-.panel-button {
-  background-color: var(--panel-item-hover-bg);
-  border: 1px solid var(--panel-border);
-  color: var(--text-primary);
-  padding: 0.6em 1em;
-  border-radius: var(--item-border-radius);
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: all 0.2s ease;
-}
-
-.panel-button:hover {
-  background-color: var(--panel-item-active-bg);
-}
-
-/* Code/monospace elements */
-.panel-code {
-  font-family: var(--code-font);
-  background-color: var(--panel-control-bg);
-  padding: 0.2em 0.5em;
-  border-radius: var(--item-border-radius);
-  font-size: 0.9em;
-}
-
-
-/* Tab navigation for panels */
-.panel-tabs {
+.panel-nav-bar {
+  position:sticky;
+  top:0px;
+  left:0px;
+  width:100%;
+  height:50px;
     display: flex;
-    gap: 0.5em;
+    flex-direction: row;
+    justify-content: flex-start;
     padding: 0.5em;
-    background: var(--panel-section-bg);
-    border-bottom: 1px solid var(--panel-border);
-    /* margin: -1.5em -1.5em 1em -1.5em; */
-    margin: 0 0 1em 0;
+    margin-right: 5px;
+    align-items: center;
+    background-color: #bd4917;
+    gap: 0px; /* Add space between elements */
+    z-index: 1000;
 }
 
-.panel-tab {
-    padding: 0.5em 1em;
-    background: var(--panel-control-bg);
-    border: 1px solid var(--panel-border);
-    border-radius: var(--item-border-radius);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.panel-tab:hover {
-    background: var(--panel-item-hover-bg);
-}
-
-.panel-tab.active {
-    background: var(--accent-color);
-    color: #000;
-    border-color: var(--accent-color);
-}
-
-/* Tab content containers */
+/* Ensure the overflow container does not go under the navigation bar */
 .panel-tab-content {
-    display: none;
+  position: relative;
+  display: none;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  opacity: 1;
+
+  &.active {
+    display: block;
+    background: darkcyan;
+  }
 }
 
-.panel-tab-content.active {
-    display: block;
+.panel-window {
+  padding-top:20px;
+  position: relative; /* Changed from block */
+  width: 100%;
+  max-height: 150px;
+  padding-top:50px;
+overflow-y:auto;
+  z-index: 1;
+  opacity: 1;
+
 }

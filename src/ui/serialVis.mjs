@@ -1,6 +1,6 @@
 import { dbg } from "../utils.mjs";
 import { serialBuffers, smoothingSettings } from "../io/serialComms.mjs";
-import { toggleAuxPanel } from "./ui.mjs";
+
 import {
   plotCtx,
   lineCtx,
@@ -292,14 +292,12 @@ function drawSerialVis() {
   window.requestAnimationFrame(drawSerialVis);
 }
 
-export function initVisPanel() {
-  dbg("Visualization", "initVisPanel", "Initializing serial visualization panel");
+export function makeVis() {
+  dbg("Visualization", "makeVis", "Initializing serial visualization panel");
   window.requestAnimationFrame(drawSerialVis);
-  dbg("Visualization", "initVisPanel", "Started animation loop for serial visualization");
+  dbg("Visualization", "makeVis", "Started animation loop for serial visualization");
   createSmoothingControls();
-  dbg("Visualization", "initVisPanel", "Created smoothing controls");
-  toggleSerialVis();
-  dbg("Visualization", "initVisPanel", "Toggled serial visualization");
+  dbg("Visualization", "makeVis", "Created smoothing controls");
 }
 
 /**

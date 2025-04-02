@@ -1,6 +1,6 @@
-import { toggleAuxPanel } from './ui.mjs';
 
-export function initConsolePanel() {
+
+export function makeConsole() {
     // The console panel is currently not toggleable via button
     // Keeping the handlers commented out for future use
     

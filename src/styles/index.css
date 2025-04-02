@@ -1,11 +1,28 @@
-@import './base.css';
+@import './toolbar.css';
 @import './buttons.css';
 @import './console.css';
-@import './documentation.css';
-@import './editor.css';
-@import './help.css';
-@import './panels.css';
 @import './settings.css';
+@import './panels.css';
+@import './editor.css';
+
+
+
+/* 
+@import './base.css';
+/* @import './documentation.css';
+@import './help.css';
 @import './themes.css';
-@import './toolbar.css';
-@import './vis.css';
+@import './vis.css'; */
+
+
+/* 
+@import './base.css';
+
+@import './editor.css';
+
+@import './documentation.css';
+@import './help.css';
+@import './themes.css';
+@import './vis.css'; 
+
+*/

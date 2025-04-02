@@ -1,5 +1,5 @@
 import { dbg } from "../../utils.mjs";
-import { toggleAuxPanel } from '../ui.mjs';
+
 import { adjustDocPanelForTheme, initModuLispReferenceTab } from './documentation.mjs';
 
 /**
@@ -10,11 +10,11 @@ export function initHelpTab(container) {
     // let isMac = /Mac/.test(navigator.platform);
     // dbg("Help Tab", "initHelpTab", `Detected platform: ${isMac ? 'Mac' : 'Other'}`);
     // if(isMac) {
-    //     $("#panel-help-docs").addClass("show-mac");
+    //     $("#panel-help").addClass("show-mac");
     //     dbg("Help Tab", "initHelpTab", "Added 'show-mac' class to help panel");
     // }
     // $("#macToggle").on("change", function() {
-    //     $("#panel-help-docs").toggleClass("show-mac");
+    //     $("#panel-help").toggleClass("show-mac");
     //     dbg("Help Tab", "initHelpTab", "Toggled 'show-mac' class on help panel");
     // });
 }
@@ -22,33 +22,20 @@ export function initHelpTab(container) {
 /**
  * Initialize the help panel with all tabs
  */
-export function initHelpPanel() {
-    dbg("Help Panel", "initHelpPanel", "Starting initialization of the help panel");
-    initHelpTab(document.querySelector("#panel-help-guide"));
-    initModuLispReferenceTab(document.querySelector("#panel-help-reference"));
-    dbg("Help Panel", "initHelpPanel", "Initialized help and documentation tabs");
-    $("#button-help").off("click");
-    document.getElementById("button-help").addEventListener("click", function(e) {
-        dbg("Help Panel", "initHelpPanel", "Help button clicked");
-        const $panel = $('#panel-help-docs');
-        $panel.find('.panel-tab[data-tab="help"]').click();
-        toggleAuxPanel("#panel-help-docs");
-        if (window.getComputedStyle(document.getElementById("panel-help-docs")).display !== 'none') {
-            adjustHelpPanelForTheme();
-            dbg("Help Panel", "initHelpPanel", "Adjusted help panel for theme");
-        }
-        e.preventDefault();
-        e.stopPropagation();
-    });
-    setupTabs();
-    dbg("Help Panel", "initHelpPanel", "Completed initialization of the help panel");
+export function makeHelpPanel(container) {
+
+
+    // initHelpTab(document.querySelector("#panel-help-guide"));
+    // initModuLispReferenceTab(document.querySelector("#panel-help-reference"));
+    // $("#button-help").click(() => toggleAuxPanel("#panel-help"));
+    // setupTabs(container);
 }
 
 /**
  * Set up tab switching functionality for the help panel
  */
-function setupTabs() {
-    const panel = document.getElementById('panel-help-docs');
+function setupTabs(container) {
+    const panel = container;
     const tabs = panel.querySelectorAll('.panel-tab');
     const contents = panel.querySelectorAll('.panel-tab-content');
 

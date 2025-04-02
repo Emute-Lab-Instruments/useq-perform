@@ -16,7 +16,7 @@ import { post } from "../io/console.mjs";
 import { openCam } from "../ui/camera.mjs";
 import { getUserSettings } from "../utils/persistentUserSettings.mjs";
 import { fontSizeCompartment } from "./state.mjs";
-import { toggleAuxPanel } from "../ui/ui.mjs";
+
 import { showDocumentationForSymbol as showDocForSymbol } from "../ui/help/documentation.mjs";
 import { dbg } from "../utils.mjs";
 

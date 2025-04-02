@@ -9,7 +9,7 @@ This document provides a complete reference for the HTML structure, CSS IDs, cla
 ### Panel Container
 
 - **Element**: `<div>`
-- **ID**: `panel-help-docs`
+- **ID**: `panel-help`
 - **Classes**: `panel-aux`
 - **Description**: The main container for the help panel.
 

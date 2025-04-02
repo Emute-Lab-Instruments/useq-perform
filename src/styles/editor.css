@@ -16,6 +16,6 @@
   }
   
   /* Drag-and-drop highlight effect */
-  #panel-main-editor.drag-over {
+  /* #panel-main-editor.drag-over {
     box-shadow: inset 0 0 0 3px var(--accent-color, #00ff41);
-  }
+  } */

@@ -16,6 +16,28 @@
     document.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
     });
+
+    // CSS Hot Reload
+    const link = document.querySelector('link[href="bundle.css"]');
+    let lastModified = Date.now();
+    
+    setInterval(async () => {
+      try {
+        const response = await fetch('bundle.css');
+        const newModified = response.headers.get('last-modified');
+        
+        if (newModified) {
+          const newTimestamp = new Date(newModified).getTime();
+          if (newTimestamp > lastModified) {
+            link.href = `bundle.css?${Date.now()}`;
+            lastModified = newTimestamp;
+            console.log('CSS updated');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking for CSS updates:', error);
+      }
+    }, 1000);
   </script>
 </head>
 <body>
@@ -50,33 +72,10 @@
   </div>
 
   <!-- Settings panel with tabs -->
-  <div id="pannel-settings" class="panel-aux">
-    <div class="panel-tabs">
-      <!-- Tabs for settings -->
-      <div id="panel-settings-tab-general" class="panel-tab active">General</div>
-      <div id="panel-settings-tab-keybindings" class="panel-tab">Key Bindings</div>
-      <div id="panel-settings-tab-themes" class="panel-tab">Themes</div>
-    </div>
-    <!-- Content for each settings tab -->
-    <div id="panel-settings-general" class="panel-tab-content active"></div>
-    <div id="panel-settings-keybindings" class="panel-tab-content"></div>
-    <div id="panel-settings-theme" class="panel-tab-content"></div>
-
-  </div>
+  <div id="panel-settings" class="panel-aux"></div>
 
   <!-- Help documentation panel -->
-  <div id="panel-help-docs" class="panel-aux">
-    <div class="panel-tabs">
-      <!-- Tabs for help and reference -->
-      <div id="panel-help-tab-guide" class="panel-tab active">User Guide</div>
-      <div id="panel-help-tab-reference" class="panel-tab">ModuLisp Reference</div>
-    </div>
-    <!-- Content for each help tab -->
-    <div id="panel-help-guide" class="panel-tab-content active"></div>
-    <div id="panel-help-reference" class="panel-tab-content"></div>
-  </div>
-
-
+  <div id="panel-help" class="panel-aux"></div>
 
   <!-- Main JavaScript module -->
   <script type="module" src='bundle.mjs'></script>
