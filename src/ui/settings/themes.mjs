@@ -3,21 +3,18 @@ import { EditorState } from "@codemirror/state";
 import { themes, setTheme, setMainEditorTheme } from "../../editors/themes/themeManager.mjs";
 import { baseExtensions } from "../../editors/extensions.mjs";
 import { saveUserSettings } from "../../utils/persistentUserSettings.mjs";
-import { toggleAuxPanel } from '../ui.mjs';
 import { defaultThemeEditorStartingCode } from "../../editors/defaults.mjs";
 import { dbg } from "../../utils.mjs";
 
 /**
  * Initialize the theme tab within the settings panel
  */
-export function initThemeTab(container) {
+export function makeThemeTab() {
     dbg("Initializing theme tab");
-    const themesContainer = container;
     
     // Create themes container
     const themesGrid = document.createElement('div');
     themesGrid.className = 'themes-container';
-    themesContainer.appendChild(themesGrid);
     
     // Add a title for the panel
     const panelTitle = document.createElement('h2');
@@ -61,9 +58,11 @@ export function initThemeTab(container) {
                 setMainEditorTheme(themeName);
                 saveUserSettings();
             }
-            toggleAuxPanel("#pannel-settings");
+            $("#panel-settings").toggle();
         });
         
         themesGrid.appendChild(container);
     });
+
+    return themesGrid;
 }

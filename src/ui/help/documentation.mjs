@@ -1,5 +1,5 @@
 import { dbg } from "../../utils.mjs";
-import { toggleAuxPanel } from "../ui.mjs";
+
 import documentationData from "../../data/documentation_hand_edited.json";
 import { createEditor } from "../../editors/main.mjs";
 import { baseExtensions } from "../../editors/extensions.mjs";
@@ -887,10 +887,10 @@ export function showDocumentationForSymbol(editor) {
 
     if (func) {
       // Show help panel with documentation tab
-      toggleAuxPanel("#panel-help-docs");
+      toggleAuxPanel("#panel-help");
 
       // Switch to documentation tab
-      $("#panel-help-docs")
+      $("#panel-help")
         .find('.panel-tab[data-tab="documentation"]')
         .click();
 

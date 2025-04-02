@@ -1,7 +1,7 @@
 /* Help Panel Styles */
 
 /* Main Help Panel */
-#panel-help-docs.panel-aux {
+#panel-help.panel-aux {
   background-color: var(--panel-bg);
   border-radius: var(--panel-border-radius);
   transition: opacity 0.2s ease-in-out, visibility 0.2s ease-in-out;
@@ -11,7 +11,7 @@
   overflow: hidden;
 }
 
-#panel-help-docs.panel-aux[style*="display: block"] {
+#panel-help.panel-aux[style*="display: block"] {
   opacity: 1 !important;
   visibility: visible !important;
 }

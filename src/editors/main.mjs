@@ -71,15 +71,11 @@ export function createExampleEditor(text, parent) {
   });
 }
 
-export function initEditorPanel() {
+export function initEditorPanel(id) {
   const editor = createMainEditor();
-  const editorPanel = $("#panel-main-editor");
+  const editorPanel = $(id);
   editorPanel.append(editor.dom);
   setMainEditorTheme(activeUserSettings.editor.theme);
-
-  // Add drag-and-drop support for documentation examples
-  setupDragAndDropForEditor(editorPanel[0], editor);
-
   return editor;
 }
 

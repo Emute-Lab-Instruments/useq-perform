@@ -2,11 +2,11 @@ import { dbg } from "../utils.mjs";
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { setFontSize } from "../editors/editorConfig.mjs";
 import { connectToSerialPort } from "../io/serialComms.mjs";
-import { toggleAuxPanel } from './ui.mjs';
+
 
 let editorInstance = null;
 
-export function initToolbarPanel(editor) {
+export function makeToolbar(editor) {
     // Store editor reference
     editorInstance = editor;
     
@@ -34,24 +34,25 @@ export function initToolbarPanel(editor) {
             });
     });
     
-    $("#button-load").on("click", async () => {
-        let fileHandle;
-        [fileHandle] = await window.showOpenFilePicker();
-        const file = await fileHandle.getFile();
-        const contents = await file.text();
-        const data = JSON.parse(contents);
-        const transactionSpec = { changes: { from: 0, to: editorInstance.state.doc.length, insert: data['text'] } };
-        const transaction = editorInstance.state.update(transactionSpec);
-        editorInstance.dispatch(transaction);
-    });
+    // FIXME reinstate
+    // $("#button-load").on("click", async () => {
+    //     let fileHandle;
+    //     [fileHandle] = await window.showOpenFilePicker();
+    //     const file = await fileHandle.getFile();
+    //     const contents = await file.text();
+    //     const data = JSON.parse(contents);
+    //     const transactionSpec = { changes: { from: 0, to: editorInstance.state.doc.length, insert: data['text'] } };
+    //     const transaction = editorInstance.state.update(transactionSpec);
+    //     editorInstance.dispatch(transaction);
+    // });
     
-    $("#button-save").on("click", async () => {
-        const fileData = { 
-            "text": editorInstance.state.doc.toString(),
-            "format_version": 1 
-        };
-        await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
-    });
+    // $("#button-save").on("click", async () => {
+    //     const fileData = { 
+    //         "text": editorInstance.state.doc.toString(),
+    //         "format_version": 1 
+    //     };
+    //     await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
+    // });
 }
 
 async function saveToFile(fileContents, ext, desc) {
