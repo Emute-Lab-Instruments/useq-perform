@@ -1,17 +1,7 @@
 /* Theme Panel Styles */
 
 /* Theme Panel */
-#panel-theme.panel-aux {
-  background-color: var(--panel-bg);
-  border-radius: var(--panel-border-radius);
-  width: 70%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
 
-#panel-theme.panel-aux.centered {
-  width: 85%;
-}
 
 /* Themes Container */
 .themes-container {

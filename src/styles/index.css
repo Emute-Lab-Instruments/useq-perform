@@ -4,6 +4,8 @@
 /* @import './settings.css'; */
 @import './panels.css';
 @import './editor.css';
+@import './themes.css';
+
 
 
 
@@ -11,7 +13,6 @@
 @import './base.css';
 /* @import './documentation.css';
 @import './help.css';
-@import './themes.css';
 @import './vis.css'; */
 
 

@@ -31,48 +31,53 @@ let isDevMode = false; // Track dev mode state
 /**
  * Initialize the documentation tab within the help panel
  */
-export function initModuLispReferenceTab(container) {
+export function makeModuLispReference() {
   const urlParams = new URLSearchParams(window.location.search);
   isDevMode = urlParams.get("devmode") === "true";
 
-  if (!container) {
-    console.error("Documentation panel container not found");
-    return;
-  }
+  // Create top-level container
+  const $container = $('<div>', {
+    class: 'panel-tab-content',
+    id: 'panel-help-reference'
+  });
 
   loadDocumentationData()
     .then((data) => {
       // Create tags container at the top
-      const tagsContainer = document.createElement("div");
-      tagsContainer.className = "doc-tags-container";
-      container.appendChild(tagsContainer);
+      const $tagsContainer = $('<div>', {
+        class: 'doc-tags-container'
+      });
+      $container.append($tagsContainer);
 
       // Initialize tags
-      initTags(tagsContainer);
+      initTags($tagsContainer);
 
-      // Create function list container
-      const functionListContainer = document.createElement("div");
-      functionListContainer.id = "doc-function-list";
-      functionListContainer.className = "doc-function-list";
-      container.appendChild(functionListContainer);
+      // Create function list container 
+      const $functionListContainer = $('<div>', {
+        id: 'doc-function-list',
+        class: 'doc-function-list'
+      });
+      $container.append($functionListContainer);
 
       // Render the function list
       renderFunctionList(true);
 
       dbg(
         "Documentation Tab",
-        "initDocumentationTab",
+        "makeModuLispReference",
         "Rendered documentation panel"
       );
     })
     .catch((error) => {
       dbg(
-        "Documentation Tab",
-        "initDocumentationTab",
+        "Documentation Tab", 
+        "makeModuLispReference",
         "Error loading documentation data"
       );
       console.error("Error loading documentation data:", error);
     });
+
+  return $container;
 }
 
 /**
