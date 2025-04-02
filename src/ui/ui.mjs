@@ -37,8 +37,10 @@ export function initUI() {
     makeVis();
     $("#panel-vis").hide();
     // // document.getElementById("panel-vis").appendChild(makeVis()).hide();
-    document.getElementById("panel-settings").appendChild(makeSettings());
+    const [nav, window] = makeSettings();
+    $("#panel-settings").append(nav, window);
     $("#panel-settings").show();
+    
     $("#panel-help").hide();
     // $("#panel-settings").hide();
     // $("#button-settings").on("click", () => {

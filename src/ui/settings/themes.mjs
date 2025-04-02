@@ -13,24 +13,29 @@ export function makeThemeTab() {
     dbg("Initializing theme tab");
     
     // Create themes container
-    const themesGrid = document.createElement('div');
-    themesGrid.className = 'themes-container';
+    const $themesGrid = $('<div>', {
+        class: 'themes-container panel-tab-content',
+        id: 'panel-settings-themes'
+    });
     
     // Add a title for the panel
-    const panelTitle = document.createElement('h2');
-    panelTitle.className = 'panel-section-title';
-    panelTitle.textContent = 'Select a Theme';
-    themesGrid.appendChild(panelTitle);
+    const $panelTitle = $('<h2>', {
+        class: 'panel-section-title',
+        text: 'Select a Theme'
+    });
+    $themesGrid.append($panelTitle);
     
     // Create preview editors for each theme
     Object.entries(themes).forEach(([themeName, themeExtension]) => {
-        const container = document.createElement("div");
-        container.className = "theme-preview panel-section";
+        const $container = $('<div>', {
+            class: 'theme-preview panel-section'
+        });
         
-        const label = document.createElement("div");
-        label.textContent = themeName;
-        label.className = "theme-name";
-        container.appendChild(label);
+        const $label = $('<div>', {
+            class: 'theme-name',
+            text: themeName
+        });
+        $container.append($label);
         
         // Create editor with this theme
         const state = EditorState.create({
@@ -43,26 +48,26 @@ export function makeThemeTab() {
         
         const view = new EditorView({
             state,
-            parent: container
+            parent: $container[0]
         });
         
         setTheme(view, themeName);
         
         // Make editor read-only
-        view.contentDOM.setAttribute("contenteditable", "false");
+        $(view.contentDOM).attr('contenteditable', 'false');
         
         // Add click handler to apply theme
-        container.addEventListener("click", () => {
-            const mainEditor = EditorView.findFromDOM(document.querySelector("#panel-main-editor .cm-editor"));
+        $container.on('click', () => {
+            const mainEditor = EditorView.findFromDOM($('#panel-main-editor .cm-editor')[0]);
             if (mainEditor) {
                 setMainEditorTheme(themeName);
                 saveUserSettings();
             }
-            $("#panel-settings").toggle();
+            $('#panel-settings').toggle();
         });
         
-        themesGrid.appendChild(container);
+        $themesGrid.append($container);
     });
 
-    return themesGrid;
+    return $themesGrid;
 }

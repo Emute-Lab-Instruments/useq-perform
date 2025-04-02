@@ -2,17 +2,20 @@
   position: absolute;
   right: 0;
   top: 50%;
-  transform: translate(0, -50%);
+  transform: translateY(-50%);
   background-color: lightblue;
-  display: block;
   min-width: 20%;
-  max-width: 35%;
+  max-width: 40%;
   height: 50%;
   z-index: 1000;
   padding: 10px;
   border: 1px solid var(--panel-border);
-  overflow: auto; /* Prevent content from spilling out */
   opacity:100%;
+  gap: 10px;
+
+  display: flex;
+  flex-direction: column;
+  text-align: left;
 }
 
 .panel-nav-button  {
@@ -24,45 +27,36 @@
 }
 
 .panel-nav-bar {
-  position:sticky;
+  /* position:sticky;
   top:0px;
   left:0px;
   width:100%;
-  height:50px;
+  height:50px; */
     display: flex;
     flex-direction: row;
     justify-content: flex-start;
-    padding: 0.5em;
-    margin-right: 5px;
     align-items: center;
     background-color: #bd4917;
-    gap: 0px; /* Add space between elements */
     z-index: 1000;
 }
 
+/* the container that holds all the tab contents */
+.panel-window {
+  /* padding-top:20px; */
+  flex-grow: 1;
+  max-height: unset;
+  overflow-y:auto;
+}
+
+
 /* Ensure the overflow container does not go under the navigation bar */
 .panel-tab-content {
-  position: relative;
   display: none;
-  width: 100%;
-  height: 100%;
-  overflow-y: auto;
-  opacity: 1;
 
   &.active {
-    display: block;
+    display:block;
     background: darkcyan;
   }
 }
 
-.panel-window {
-  padding-top:20px;
-  position: relative; /* Changed from block */
-  width: 100%;
-  max-height: 150px;
-  padding-top:50px;
-overflow-y:auto;
-  z-index: 1;
-  opacity: 1;
 
-}

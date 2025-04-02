@@ -1,6 +1,6 @@
 # Panels Overview
 
-## Help Panel (panel-help-docs)
+## Help Panel (panel-help)
 
 ### Architecture
 - Combined panel that contains two tabs: Help and Documentation
