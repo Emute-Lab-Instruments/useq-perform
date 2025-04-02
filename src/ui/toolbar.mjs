@@ -6,9 +6,15 @@ import { connectToSerialPort } from "../io/serialComms.mjs";
 
 let editorInstance = null;
 
-function toggleAuxPanel(panel) {
-    $(`.panel-aux`).hide();
-    $(panel).show();
+function toggleAuxPanel(panelID) {
+    const panel = $(panelID);
+
+    if (panel.is(":visible")) { 
+        $(`.panel-aux`).hide();
+    } else {
+        $(`.panel-aux`).hide();
+        panel.show();
+    }
 }
 
 export function makeToolbar(editor) {

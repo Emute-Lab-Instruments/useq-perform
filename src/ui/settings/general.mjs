@@ -1,6 +1,7 @@
 import {dbg} from "../../utils.mjs";
 import {activeUserSettings, updateUserSettings, resetUserSettings} from "../../utils/persistentUserSettings.mjs";
 import {themes} from "../../editors/themes/themeManager.mjs";
+import { setMainEditorTheme } from "../../editors/themes/themeManager.mjs";
 
 export function makeGeneralTab() {
     dbg("initGeneralTab");
@@ -42,7 +43,7 @@ export function makeGeneralTab() {
     // Add reset button at the bottom
     const $resetButtonContainer = $('<div>').addClass('panel-section');
     const $resetButton = $('<button>')
-        .addClass('panel-button')
+        .addClass('panel-button reset')
         .text('Reset All Settings')
         .on('click', () => {
             dbg("Settings UI", "resetButton", "Reset button clicked");
@@ -133,6 +134,7 @@ function buildEditorSettings($container) {
         };
         updateUserSettings(newSettings);
         setMainEditorTheme($themeSelect.val());
+        dbg()
     });
     
     $container.append(createFormRow('Editor Theme', $themeSelect));
