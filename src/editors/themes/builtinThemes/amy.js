@@ -13,6 +13,7 @@ export const amy = {
 		gutterBackground: '#200020',
 		gutterForeground: '#C080C0',
 		lineHighlight: '#80000040',
+		accentColor: '#60B0FF',
 	},
 	styles: [
 		{

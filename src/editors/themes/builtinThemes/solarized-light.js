@@ -13,6 +13,7 @@ export const solarizedLight = {
 		gutterBackground: '#fef7e5',
 		gutterForeground: '#586E7580',
 		lineHighlight: '#EEE8D5',
+		accentColor: '#268BD2',
 	},
 	styles: [
 		{

@@ -13,6 +13,7 @@ export const clouds = {
 		gutterBackground: '#fff',
 		gutterForeground: '#00000070',
 		lineHighlight: '#FFFBD1',
+		accentColor: '#5D90CD',
 	},
 	styles: [
 		{

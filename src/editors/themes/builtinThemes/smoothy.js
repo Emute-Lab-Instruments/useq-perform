@@ -13,6 +13,7 @@ export const smoothy = {
 		gutterBackground: '#FFFFFF',
 		gutterForeground: '#00000070',
 		lineHighlight: '#00000008',
+		accentColor: '#2EB43B',
 	},
 	styles: [
 		{

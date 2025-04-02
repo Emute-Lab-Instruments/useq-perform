@@ -13,6 +13,7 @@ export const boysAndGirls = {
 		gutterBackground: '#000205',
 		gutterForeground: '#ffffff90',
 		lineHighlight: '#4DD7FC1A',
+		accentColor: '#E62286',
 	},
 	styles: [
 		{

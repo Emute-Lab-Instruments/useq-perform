@@ -13,6 +13,7 @@ export const dracula = {
 		gutterBackground: '#282a36',
 		gutterForeground: 'rgb(144, 145, 148)',
 		lineHighlight: '#44475a',
+		accentColor: '#bd93f9',
 	},
 	styles: [
 		{

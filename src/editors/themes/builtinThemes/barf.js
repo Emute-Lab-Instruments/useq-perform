@@ -13,6 +13,7 @@ export const barf = {
 		gutterBackground: '#15191EFA',
 		gutterForeground: '#aaaaaa95',
 		lineHighlight: '#57575712',
+		accentColor: '#A3D295',
 	},
 	styles: [
 		{

@@ -3,58 +3,121 @@
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  background-color: lightblue;
+  background-color: var(--panel-bg);
   min-width: 20%;
   max-width: 40%;
-  height: 50%;
+  height: 75%;
   z-index: 1000;
-  padding: 10px;
+  padding: 0;
   border: 1px solid var(--panel-border);
-  opacity:100%;
-  gap: 10px;
+  opacity: 100%;
   display: flex;
   flex-direction: column;
   text-align: left;
+  color: var(--text-primary);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  font-family: var(--code-font);
 }
 
-.panel-nav-button  {
-  background-color:#ff4d00;
+.panel-aux:hover {
+  border-color: var(--accent-color);
+}
 
-  &.active {
-    background-color:#006139;
-  }
+.panel-nav-button {
+  background-color: var(--panel-control-bg);
+  color: var(--text-primary);
+  padding: 8px 16px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  margin: 4px;
+  font-weight: 500;
+  font-family: var(--code-font);
+  border: 1px solid transparent;
+}
+
+.panel-nav-button:hover {
+  background-color: var(--panel-item-hover-bg);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.panel-nav-button.active {
+  background-color: var(--panel-item-active-bg);
+  color: var(--accent-color);
+  border-color: var(--accent-color);
 }
 
 .panel-nav-bar {
-  /* position:sticky;
-  top:0px;
-  left:0px;
-  width:100%;
-  height:50px; */
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: center;
-    background-color: #bd4917;
-    z-index: 1000;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  background-color: var(--toolbar-bg);
+  z-index: 1000;
+  border-bottom: 1px solid var(--panel-border);
+  padding: 8px;
+  min-height: 48px;
+  font-family: var(--code-font);
 }
 
 /* the container that holds all the tab contents */
 .panel-window {
-  /* padding-top:20px; */
   flex-grow: 1;
   max-height: unset;
-  overflow-y:auto;
-}
+  overflow-y: auto;
+  background-color: var(--panel-section-bg);
+  padding: 0px;
+  font-family: var(--code-font);
+  
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-color) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--accent-color);
+    opacity: 0.5;
+    border-radius: 4px;
+    border: 2px solid var(--panel-section-bg);
+  }
 
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--accent-color-hover);
+  }
+}
 
 /* Ensure the overflow container does not go under the navigation bar */
 .panel-tab-content {
   display: none !important;
+  font-family: var(--code-font);
+  transition: opacity 0.2s ease;
+  background-color: var(--panel-bg);
+  padding: 16px;
+  overflow-y: auto;
 
   &.active {
     display: block !important;
-    background: darkcyan;
+  }
+}
+
+
+/* Add fade in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
