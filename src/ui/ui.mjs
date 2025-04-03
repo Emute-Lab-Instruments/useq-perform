@@ -31,6 +31,7 @@ let editor = null;
 
 export async function initUI() {
     dbg("initUI");
+
     // Initialize editor first so we can pass its instance to other panels
     editor = initEditorPanel("#panel-main-editor");
     makeToolbar(editor);
@@ -39,19 +40,21 @@ export async function initUI() {
     makeVis();
     $("#panel-vis").hide();
 
-    // Initialize settings panel
-    const settingsElements = makeSettings();
-    $("#panel-settings").append(...settingsElements);
+    $("#panel-settings").append(...makeSettings());
     
-    // Initialize help panel
-    try {
-        const helpElements = await makeHelp();
-        $("#panel-help").append(...helpElements);
-        dbg("UI", "initUI", "Help panel initialized");
-    } catch (error) {
-        dbg("UI", "initUI", "Error initializing help panel", error);
-        console.error("Failed to initialize help panel:", error);
-    }
+    $("#panel-help").append(...await makeHelp());
+
+    initEventHandlers();
 
     dbg("UI", "initUI", "UI initialized");
+}
+
+function initEventHandlers() {
+    // on escape, close all panel-aux
+    $(document).on("keydown", function (e) {
+        console.log("Key pressed:", e.key);
+        if (e.key === "Escape") {
+            $(".panel-aux").hide();
+        }
+    });
 }
