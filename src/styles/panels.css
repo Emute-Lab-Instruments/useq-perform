@@ -37,8 +37,20 @@
   &:hover {
     border-color: var(--accent-color);
   }
+
+  overflow: hidden
 }
 /* End of Selection */
+
+/* The main container that holds both the nav bar and tab contents */
+.panel-tab-container {
+  /* Fill the entire panel-aux container */
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
 /* Tab bar container - holds the tab buttons in a horizontal row */
 .panel-nav-bar {
@@ -98,7 +110,8 @@
 /* the container that holds all the tab contents */
 .panel-tab-window {
   flex-grow: 1;
-  max-height: unset;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   background-color: var(--panel-section-bg);
   padding: 10px;
