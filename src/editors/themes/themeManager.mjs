@@ -102,7 +102,6 @@ function adjustPanelsToTheme(themeName) {
   $("#panel-help").css({
     backgroundColor: adjustedHelpBackground + "F0", // Add 94% opacity
     color: foregroundColor,
-    "border-color": themeRecipe.settings.foreground,
   });
   
   // Update toolbar panel
