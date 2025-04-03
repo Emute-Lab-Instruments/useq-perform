@@ -1,7 +1,6 @@
 /* Documentation Panel Styles */
-/* Panel styles are now in help.css */
 
-/* Tags container - fixed to be sticky correctly */
+/* General Container Styles */
 .modulisp-reference-container {
   display: flex;
   flex-direction: column;
@@ -9,6 +8,7 @@
   overflow: hidden; /* Container shouldn't scroll, only the function list */
 }
 
+/* Tags Container */
 .doc-tags-container {
   position: sticky;
   top: 0;
@@ -18,9 +18,9 @@
   padding: 0.5em 0.5em;
   margin-bottom: 0;
   border-bottom: 1px solid var(--panel-border);
-  z-index: 350; /* Above console but below aux panel controls */
+  z-index: 350;
   width: 100%;
-  flex-shrink: 0; /* Prevent the tags container from shrinking */
+  flex-shrink: 0;
 }
 
 .doc-tags-wrapper {
@@ -49,19 +49,19 @@
   color: #000;
 }
 
-/* Function list - SIMPLIFIED */
+/* Function List */
 .doc-function-list {
   display: block;
   width: 100%;
-  padding: 1em 1em 7em 1em; /* Added extra bottom padding to ensure visibility of last items */
+  padding: 1em 1em 7em 1em;
   box-sizing: border-box;
-  overflow-y: auto; /* This is where scrolling should happen */
-  flex: 1; /* Take remaining space */
-  height: auto; /* Let it naturally size to content */
-  max-height: calc(100% - 50px); /* Maximum height calculation */
+  overflow-y: auto;
+  flex: 1;
+  height: auto;
+  max-height: calc(100% - 50px);
 }
 
-/* Function items */
+/* Function Items */
 .doc-function-item {
   margin-bottom: 1em;
   background-color: var(--panel-section-bg);
@@ -96,10 +96,10 @@
   margin-left: 0.3em;
   opacity: 0.9;
   font-weight: bold;
-  text-shadow: 0 0 1px rgba(0,0,0,0.2);
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.2);
 }
 
-/* Make the star button more consistent with new position */
+/* Star Button */
 .doc-star-button {
   background: none;
   border: none;
@@ -110,13 +110,14 @@
   padding: 0 0.3em;
 }
 
-/* Add some styling for expand indicator */
+/* Expand Indicator */
 .doc-expand-indicator {
   color: var(--text-muted);
   font-size: 0.8em;
   padding: 0 0.3em;
 }
 
+/* Function Content */
 .doc-function-content {
   padding: 1em;
   background-color: var(--panel-control-bg);
@@ -166,7 +167,7 @@
   opacity: 0.7;
 }
 
-/* Code example styling */
+/* Code Example Styling */
 .doc-example-wrapper {
   position: relative;
   margin: 8px 0;
@@ -193,7 +194,7 @@
   white-space: pre-wrap;
 }
 
-/* Copy button for examples */
+/* Copy Button */
 .doc-copy-button {
   position: absolute;
   top: 0.3em;
@@ -252,6 +253,7 @@
   font-size: 1em;
 }
 
+/* Function Tags */
 .doc-function-tags {
   margin-top: 1em;
   display: flex;
@@ -266,6 +268,7 @@
   border-radius: 3px;
 }
 
+/* No Results */
 .doc-no-results {
   padding: 2em;
   text-align: center;
@@ -273,7 +276,7 @@
   grid-column: 1 / -1;
 }
 
-/* Dev mode editable content */
+/* Editable Content */
 [contenteditable="true"] {
   cursor: text;
   transition: outline-color 0.2s;
@@ -288,6 +291,7 @@
   outline-offset: 1px;
 }
 
+/* Save Button */
 .doc-save-button:hover {
   background: var(--accent-hover-color, #0055aa) !important;
 }
@@ -296,6 +300,7 @@
   transform: translateY(1px);
 }
 
+/* Function Params Container */
 .doc-function-params-container {
   display: inline-flex;
   flex-wrap: wrap;
