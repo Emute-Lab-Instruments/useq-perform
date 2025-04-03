@@ -444,7 +444,7 @@
       }
     ],
     "examples": [
-      "(do (print \"Hello\") \n    (print \"World!\") \n    (+ 1 2)) ;; => 3",
+      "(do (println \"Hello\") \n    (println \"World!\") \n    (+ 1 2)) ;; => 3",
       "(do\n  (d1 (sqr bar))\n  (d2 (sqr (slow 2 bar))))\n \n;; silence all analog outs\n(do\n  (a1 0)\n  (a2 0)\n  (a3 0))"
     ],
     "category": "modulisp",
@@ -1069,7 +1069,7 @@
       }
     ],
     "examples": [
-      "(q0 (print bar))",
+      "(q0 (println bar))",
       "(q0 0)"
     ],
     "category": "outputs",
