@@ -18,8 +18,7 @@ const state = {
 export async function makeModuLispReference() {
   dbg("makeModuLispReference", "Initializing ModuLisp reference panel");
   const $container = $('<div>', {
-    class: 'panel-tab-content',
-    id: 'panel-help-reference'
+    class: 'modulisp-reference-container' 
   });
   dbg("makeModuLispReference", "Created container with classes", $container.attr('class'));
   dbg("makeModuLispReference", "Container element", $container[0]);
