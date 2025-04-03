@@ -11,6 +11,7 @@ import {
 } from "./extensions.mjs";
 import { setMainEditorTheme } from "./themes/themeManager.mjs";
 import { setFontSize } from "./editorConfig.mjs";
+import { debugSExprTracking } from "./extensions/sexprTest.mjs";
 
 /**
  * Creates and configures the editor instance
@@ -55,6 +56,13 @@ export function createMainEditor() {
     activeUserSettings.editor.code,
     mainEditorExtensions
   );
+  
+  // Add the editor to window for debugging
+  window.editor = editor;
+  
+  // Add debug function for S-Expression tracking
+  window.debugSExprTracking = () => debugSExprTracking(editor);
+  
   return editor;
 }
 
