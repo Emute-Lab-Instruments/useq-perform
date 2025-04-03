@@ -38,8 +38,58 @@
     border-color: var(--accent-color);
   }
 
-  overflow: hidden
+  overflow: hidden;
 }
+
+/* Panel expanded state */
+.panel-aux.panel-expanded {
+  /* Center and enlarge the panel */
+  left: 10%;
+  right: 10%;
+  top: 10%;
+  transform: none;
+  width: 80%;
+  height: 80%;
+  max-width: none;
+  z-index: 1100; /* Ensure expanded panel is above others */
+}
+
+/* Toggle expand button */
+.panel-expand-toggle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 35px;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-left: none;
+  border-top-right-radius: 50%;
+  border-bottom-right-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1050;
+  transition: all 0.2s ease;
+}
+
+.panel-expand-toggle:hover {
+  background-color: var(--panel-item-hover-bg);
+  border-color: var(--accent-color);
+}
+
+.panel-expand-toggle .expand-icon {
+  transition: transform 0.2s ease;
+  color: var(--text-primary);
+}
+
+/* Remove rotation effect - we'll use different icons instead */
+.panel-expanded .panel-expand-toggle .expand-icon {
+  /* transform: rotate(180deg); */
+}
+
 /* End of Selection */
 
 /* The main container that holds both the nav bar and tab contents */
@@ -115,6 +165,7 @@
   overflow-y: auto;
   background-color: var(--panel-section-bg);
   padding: 10px;
+  padding-left: 21px;
   
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
