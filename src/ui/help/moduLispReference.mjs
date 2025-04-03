@@ -204,26 +204,6 @@ function makeFunctionElement(func) {
     class: 'doc-function-header'
   });
 
-  // Add star button
-  const $starButton = $('<button>', {
-    class: 'doc-star-button',
-    html: state.starredFunctions.has(func.name) ? '★' : '☆',
-    title: state.starredFunctions.has(func.name) ? 'Remove from favorites' : 'Add to favorites'
-  });
-
-  $starButton.on('click', (e) => {
-    e.stopPropagation();
-    if (state.starredFunctions.has(func.name)) {
-      state.starredFunctions.delete(func.name);
-      $starButton.html('☆').attr('title', 'Add to favorites');
-    } else {
-      state.starredFunctions.add(func.name);
-      $starButton.html('★').attr('title', 'Remove from favorites');
-    }
-    saveUserPreferences();
-    renderFunctionList();
-  });
-
   // Add function name and parameters
   const $nameContainer = $('<div>', {
     class: 'doc-function-name'
@@ -287,13 +267,34 @@ function makeFunctionElement(func) {
     console.log(`Function ${func.name} has no parameters`);
   }
 
+  // Add star button (moved to the right)
+  const $starButton = $('<button>', {
+    class: 'doc-star-button',
+    html: state.starredFunctions.has(func.name) ? '★' : '☆',
+    title: state.starredFunctions.has(func.name) ? 'Remove from favorites' : 'Add to favorites'
+  });
+
+  $starButton.on('click', (e) => {
+    e.stopPropagation();
+    if (state.starredFunctions.has(func.name)) {
+      state.starredFunctions.delete(func.name);
+      $starButton.html('☆').attr('title', 'Add to favorites');
+    } else {
+      state.starredFunctions.add(func.name);
+      $starButton.html('★').attr('title', 'Remove from favorites');
+    }
+    saveUserPreferences();
+    renderFunctionList();
+  });
+
   // Add expand/collapse indicator
   const $expandIndicator = $('<span>', {
     class: 'doc-expand-indicator',
     text: state.expandedFunctions.has(func.name) ? '▼' : '▶'
   });
 
-  $header.append($starButton, $nameContainer, $expandIndicator);
+  // Append elements in the correct order
+  $header.append($nameContainer, $starButton, $expandIndicator);
 
   // Create content container
   const $content = $('<div>', {
@@ -468,24 +469,24 @@ function makeFunctionList(data, columns = 1) {
     class: 'doc-function-list'
   });
 
-  // Filter functions based on selected tags
+  // Filter functions based on selected tags - UPDATED to use set UNION logic
   const filteredFunctions = data.filter(func => {
     if (!func || typeof func !== 'object') {
       console.log(`Skipping invalid function object: ${func}`);
       return false;
     }
+    
+    // If no tags selected, show all functions
     if (state.selectedTags.size === 0) return true;
     
-    // Check if function has all selected tags
-    const hasAllTags = Array.from(state.selectedTags).every(tag => {
-      if (!func.tags || !Array.isArray(func.tags)) {
-        console.log(`Function ${func.name} has no tags array`);
-        return false;
-      }
-      return func.tags.includes(tag);
-    });
+    // Check if function has ANY of the selected tags (union behavior)
+    if (!func.tags || !Array.isArray(func.tags)) {
+      console.log(`Function ${func.name} has no tags array`);
+      return false;
+    }
     
-    return hasAllTags;
+    // Return true if ANY of the selected tags match (union)
+    return Array.from(state.selectedTags).some(tag => func.tags.includes(tag));
   });
 
   console.log(`Filtered to ${filteredFunctions.length} functions`);
@@ -818,7 +819,8 @@ function renderFunctionList() {
     return;
   }
   
-  const $container = $('#panel-help-reference');
+  // Find the correct container - look for modulisp-reference-container instead of panel-help-reference
+  const $container = $('.modulisp-reference-container');
   if (!$container.length) {
     console.error("Cannot render function list: container not found");
     return;
