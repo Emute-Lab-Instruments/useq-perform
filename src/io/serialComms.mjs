@@ -1,14 +1,47 @@
 /**
  * Serial Communication Module
- * 
+ *
  * Handles communication with the uSEQ device via Web Serial API
  * including message parsing, sending commands, and managing the serial buffer.
  */
 import { CircularBuffer } from "../utils/CircularBuffer.mjs";
-import { Buffer } from 'buffer';
-import { post } from './console.mjs';
-import { upgradeCheck } from '../utils/upgradeCheck.mjs';
+import { Buffer } from "buffer";
+import { post } from "./console.mjs";
+import { upgradeCheck } from "../utils/upgradeCheck.mjs";
 import { dbg } from "../utils.mjs";
+
+let connectedToModule = false;
+
+export function setConnectedToModule(connected) {
+  connectedToModule = connected;
+  console.log("Setting connected state to:", connected);
+  
+  // Make sure the DOM is ready
+  setTimeout(() => {
+    const $button = $("#button-connect");
+    if ($button.length) {
+      if (connected) {
+        dbg("Connected to uSEQ");
+        $button.css("color", "rgb(0, 255, 0) !important");
+        // Alternatively try setting class instead of inline style
+        $button.removeClass("disconnected").addClass("connected");
+        console.log("Connected to port - Button found and color set to green");
+      } else {
+        dbg("Disconnected from uSEQ");
+        $button.css("color", "rgb(255, 0, 0) !important");
+        // Alternatively try setting class instead of inline style
+        $button.removeClass("connected").addClass("disconnected");
+        console.log("Disconnected - Button found and color set to red");
+      }
+    } else {
+      console.log("Button not found when trying to set color!");
+    }
+  }, 0);
+}
+
+export function isConnectedToModule() {
+  return connectedToModule;
+}
 
 // Define variables first before exporting them
 var serialport = null;
@@ -18,27 +51,29 @@ const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(400));
 
 // Smoothing and interpolation settings
 const smoothingSettings = {
-  enabled: true,             // Enable/disable smoothing
-  windowSize: 3,             // Size of moving average window (odd number recommended)
-  interpolationPoints: 3,    // Number of points to interpolate between samples
-  interpolationEnabled: true // Enable/disable interpolation
+  enabled: true, // Enable/disable smoothing
+  windowSize: 3, // Size of moving average window (odd number recommended)
+  interpolationPoints: 3, // Number of points to interpolate between samples
+  interpolationEnabled: true, // Enable/disable interpolation
 };
 
 // Arrays to store previous values for smoothing
-const previousValues = Array(8).fill().map(() => []);
+const previousValues = Array(8)
+  .fill()
+  .map(() => []);
 
 const serialMapFunctions = [];
 
 // Export everything at once to avoid duplication
-export { 
-  serialport, 
-  serialVars, 
-  encoder, 
-  serialBuffers, 
-  serialMapFunctions, 
-  setSerialPort, 
-  getSerialPort, 
-  sendTouSEQ, 
+export {
+  serialport,
+  serialVars,
+  encoder,
+  serialBuffers,
+  serialMapFunctions,
+  setSerialPort,
+  getSerialPort,
+  sendTouSEQ,
   serialReader,
   connectToSerialPort,
   smoothingSettings,
@@ -48,7 +83,7 @@ export {
 const SERIAL_READ_MODES = {
   ANY: 0,
   TEXT: 1,
-  SERIALSTREAM: 2
+  SERIALSTREAM: 2,
 };
 
 const MESSAGE_START_MARKER = 31;
@@ -84,30 +119,32 @@ function getSerialPort() {
  */
 function sendTouSEQ(code, capture = null) {
   // Remove comments (anything between ; and newline) and all newlines in a single step
-  code = code.replace(/;[^\n]*(\n|$)|\n/g, match => match.startsWith(';') ? '' : '');
+  code = code.replace(/;[^\n]*(\n|$)|\n/g, (match) =>
+    match.startsWith(";") ? "" : ""
+  );
 
   if (serialport && serialport.writable) {
     const writer = serialport.writable.getWriter();
     dbg("writing...");
-    
+
     if (capture) {
       serialVars.capture = true;
       serialVars.captureFunc = capture;
     }
-    
+
     writer.write(encoder.encode(code)).then(() => {
       writer.releaseLock();
       dbg("written");
     });
   } else {
-    post("uSEQ not connected");
+    post("**Info**: uSEQ not connected yet");
     // Add attention-grabbing animation to connect button
-    $("#btnConnect")
+    $("#button-connect")
       .animate({ scale: 1.2 }, 200)
       .animate({ scale: 1 }, 200)
-      .animate({ rotate: '-3deg' }, 100)
-      .animate({ rotate: '3deg' }, 100)
-      .animate({ rotate: '0deg' }, 100);
+      .animate({ rotate: "-3deg" }, 100)
+      .animate({ rotate: "3deg" }, 100)
+      .animate({ rotate: "0deg" }, 100);
   }
 }
 
@@ -124,12 +161,12 @@ function applySmoothing(channelIndex, value) {
 
   const values = previousValues[channelIndex];
   values.push(value);
-  
+
   // Keep only the last windowSize values
   while (values.length > smoothingSettings.windowSize) {
     values.shift();
   }
-  
+
   // Calculate the moving average
   const sum = values.reduce((acc, val) => acc + val, 0);
   return sum / values.length;
@@ -142,14 +179,22 @@ function applySmoothing(channelIndex, value) {
  * @param {number} currentValue - New incoming value
  * @param {number} bufferIndex - Buffer index for this channel
  */
-function applyInterpolation(channelIndex, previousValue, currentValue, bufferIndex) {
-  if (!smoothingSettings.interpolationEnabled || smoothingSettings.interpolationPoints < 2) {
+function applyInterpolation(
+  channelIndex,
+  previousValue,
+  currentValue,
+  bufferIndex
+) {
+  if (
+    !smoothingSettings.interpolationEnabled ||
+    smoothingSettings.interpolationPoints < 2
+  ) {
     return;
   }
 
   // Get the buffer for this channel
   const buffer = serialBuffers[bufferIndex];
-  
+
   // Generate interpolation points
   for (let i = 1; i < smoothingSettings.interpolationPoints; i++) {
     const t = i / smoothingSettings.interpolationPoints;
@@ -167,24 +212,26 @@ function applyInterpolation(channelIndex, previousValue, currentValue, bufferInd
  */
 function processSerialData(byteArray, state) {
   let { mode, processed, remainingBytes } = state;
-  
+
   switch (mode) {
     case SERIAL_READ_MODES.ANY:
       if (byteArray[0] === MESSAGE_START_MARKER) {
         if (byteArray.length > 1) {
           // Check message type
-          mode = byteArray[1] === MESSAGE_TYPES.STREAM 
-            ? SERIAL_READ_MODES.SERIALSTREAM 
-            : SERIAL_READ_MODES.TEXT;
+          mode =
+            byteArray[1] === MESSAGE_TYPES.STREAM
+              ? SERIAL_READ_MODES.SERIALSTREAM
+              : SERIAL_READ_MODES.TEXT;
         } else {
           // Not enough data yet, wait for more
           processed = true;
         }
       } else {
         // No marker, search for message start
-        const startIndex = byteArray.findIndex((byte, i) => 
-          i < byteArray.length - 1 && byte === MESSAGE_START_MARKER);
-          
+        const startIndex = byteArray.findIndex(
+          (byte, i) => i < byteArray.length - 1 && byte === MESSAGE_START_MARKER
+        );
+
         if (startIndex >= 0) {
           // Found message start, keep from here onwards
           remainingBytes = byteArray.slice(startIndex);
@@ -195,7 +242,7 @@ function processSerialData(byteArray, state) {
         processed = true;
       }
       break;
-      
+
     case SERIAL_READ_MODES.TEXT:
       // Find end of line (CR+LF)
       for (let i = 2; i < byteArray.length - 1; i++) {
@@ -203,15 +250,15 @@ function processSerialData(byteArray, state) {
           // Extract message text
           const msg = new TextDecoder().decode(byteArray.slice(2, i));
           dbg(msg);
-          
+
           if (serialVars.capture) {
-            dbg("captured");
+            dbg("Serial vars captured");
             serialVars.captureFunc(msg);
             serialVars.capture = false;
           } else if (msg !== "") {
             post("uSEQ: " + msg);
           }
-          
+
           // Move to next bytes and reset mode
           remainingBytes = byteArray.slice(i + 2);
           mode = SERIAL_READ_MODES.ANY;
@@ -220,7 +267,7 @@ function processSerialData(byteArray, state) {
       }
       processed = true;
       break;
-      
+
     case SERIAL_READ_MODES.SERIALSTREAM:
       if (byteArray.length < 11) {
         // Not enough data yet
@@ -230,31 +277,37 @@ function processSerialData(byteArray, state) {
         const channel = byteArray[2];
         const buf = Buffer.from(byteArray);
         const val = buf.readDoubleLE(3);
-        
+
         // Store value in circular buffer for that channel
         const bufferIndex = channel - 1;
         if (bufferIndex >= 0 && bufferIndex < serialBuffers.length) {
           // Apply smoothing to the incoming value
           const smoothedValue = applySmoothing(bufferIndex, val);
-          
+
           // Get previous value for interpolation (if any)
           const buffer = serialBuffers[bufferIndex];
-          const previousValue = buffer.length > 0 ? buffer.last(0) : smoothedValue;
-          
+          const previousValue =
+            buffer.length > 0 ? buffer.last(0) : smoothedValue;
+
           // Apply interpolation between previous and current value
           if (smoothingSettings.interpolationEnabled && buffer.length > 0) {
-            applyInterpolation(bufferIndex, previousValue, smoothedValue, bufferIndex);
+            applyInterpolation(
+              bufferIndex,
+              previousValue,
+              smoothedValue,
+              bufferIndex
+            );
           }
-          
+
           // Push the final smoothed value to the buffer
           buffer.push(smoothedValue);
-          
+
           // Call any registered handler function
           if (serialMapFunctions[bufferIndex]) {
             serialMapFunctions[bufferIndex](serialBuffers[bufferIndex]);
           }
         }
-        
+
         // Move to next data
         remainingBytes = byteArray.slice(11);
         mode = SERIAL_READ_MODES.ANY;
@@ -262,7 +315,7 @@ function processSerialData(byteArray, state) {
       }
       break;
   }
-  
+
   return { mode, processed, remainingBytes };
 }
 
@@ -272,24 +325,24 @@ function processSerialData(byteArray, state) {
 async function serialReader() {
   if (!serialport) return;
   dbg("reading...");
-  
+
   let buffer = new Uint8Array(0);
-  
+
   // Check if port is readable and not locked
   if (serialport.readable && !serialport.readable.locked) {
     const reader = serialport.readable.getReader();
-    
+
     try {
       while (true) {
         const { value, done } = await reader.read();
-        
+
         if (done) {
           // Reader has been canceled
           break;
         }
-        
+
         let byteArray = new Uint8Array(value.buffer);
-        
+
         // If there's unconsumed data from the last read, prepend to new data
         if (buffer.length > 0) {
           let newBuffer = new Uint8Array(buffer.length + byteArray.length);
@@ -297,18 +350,18 @@ async function serialReader() {
           newBuffer.set(byteArray, buffer.length);
           byteArray = newBuffer;
         }
-        
+
         // Process all complete messages in the byte array
-        let state = { 
-          mode: SERIAL_READ_MODES.ANY, 
-          processed: false, 
-          remainingBytes: byteArray 
+        let state = {
+          mode: SERIAL_READ_MODES.ANY,
+          processed: false,
+          remainingBytes: byteArray,
         };
-        
+
         while (state.remainingBytes.length > 0 && !state.processed) {
           state = processSerialData(state.remainingBytes, state);
         }
-        
+
         // Save any remaining bytes for the next read
         buffer = state.remainingBytes;
       }
@@ -324,41 +377,54 @@ async function serialReader() {
 
 /**
  * Connect to the serial port for uSEQ communication
+ * @returns {Promise<boolean>} Promise resolving to true on success, false on failure
  */
 function connectToSerialPort(port) {
-  port.open({ baudRate: 115200 }).then(() => {
-    setSerialPort(port);
-    serialReader();
-    $("#btnConnect").hide(1000);
-    dbg("checking version");
-    sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
-  }).catch((err) => {
-    console.log(err);
-    //connection failed
-    post("Connection failed. See <a href=\"https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting\">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>");
-  });
+  return port
+    .open({ baudRate: 115200 })
+    .then(() => {
+      setSerialPort(port);
+      serialReader();
+      dbg("checking version");
+      sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
+      return true;
+    })
+    .catch((err) => {
+      console.log("Error connecting to serial:", err);
+      //connection failed
+      post(
+        'Connection failed. See <a href="https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>'
+      );
+      return false;
+    });
 }
 
 export function checkForWebserialSupport() {
   console.log("Checking for Web Serial API support...");
   // Check for Web Serial API support
   if (!navigator.serial) {
-    post("A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module");
+    post(
+      "A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module"
+    );
     post("See https://caniuse.com/web-serial for more information");
     return false;
   } else {
     console.log("Web Serial API supported");
     // Set up serial connection event listeners
-    navigator.serial.addEventListener('connect', e => {
+    navigator.serial.addEventListener("connect", (e) => {
       console.log(e);
       let port = getSerialPort();
       if (port) {
-        post("uSEQ plugged in, use the connect button to re-connect");
+
+        $("#button-connect").removeClass("connected").removeClass("disconnected").addClass("plugged-in");
+
+
+        post(`uSEQ plugged in, use the <span style="color: var(--accent-color); font-weight: bold; display: inline;">[connect]</span> button to re-connect`);
       }
     });
-    
-    navigator.serial.addEventListener('disconnect', e => {
-      $("#button-connect").show(1000);
+
+    navigator.serial.addEventListener("disconnect", (e) => {
+      setConnectedToModule(false);
       post("uSEQ disconnected");
     });
     return true;
