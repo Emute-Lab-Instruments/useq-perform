@@ -41,88 +41,51 @@
   color: #000;
 }
 
-/* Function list */
+/* Function list - SIMPLIFIED */
 .doc-function-list {
-  flex: 1;
-  display: flex !important;
-  gap: 1em;
+  display: block;
   width: 100%;
-  min-height: 100px;
-  padding: 0.5em;
+  padding: 1em;
   box-sizing: border-box;
   overflow-y: auto;
 }
 
-/* Column container */
-.doc-function-list .doc-column {
-  flex: 1 1 0;
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 1em;
-  min-width: 200px;
-  width: auto !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  padding: 0.5em;
-  box-sizing: border-box;
-}
-
+/* Function items */
 .doc-function-item {
-  display: block !important;
-  visibility: visible !important;
-  width: 100%;
-  margin-bottom: 0.5em;
+  margin-bottom: 1em;
   background-color: var(--panel-section-bg);
   border-radius: var(--item-border-radius);
   border: 1px solid var(--panel-border);
   overflow: hidden;
-  box-sizing: border-box;
-}
-
-.doc-function-item:hover {
-  border-color: var(--panel-border);
-}
-
-/* Function items visibility */
-.doc-function-item,
-.doc-function-header,
-.doc-function-name {
-  pointer-events: auto !important;
-  user-select: text !important;
 }
 
 .doc-function-header {
-  display: flex !important;
-  visibility: visible !important;
+  display: flex;
   align-items: center;
-  padding: 0.5em;
-  width: 100%;
-  box-sizing: border-box;
+  padding: 0.75em;
   cursor: pointer;
   background-color: var(--panel-section-bg);
-  color: var(--text-primary);
-}
-
-.doc-function-header:hover {
-  background-color: var(--panel-item-hover-bg);
 }
 
 .doc-function-name {
   flex: 1;
-  visibility: visible !important;
   font-family: var(--code-font);
   font-size: 0.9em;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
 
-.doc-function-alias {
-  font-size: 0.85em;
-  opacity: 0.7;
+.doc-function-param {
+  font-family: var(--code-font);
+  font-size: 0.9em;
+  color: var(--text-muted, #888);
   font-style: italic;
+  margin-left: 0.3em;
+  opacity: 0.9;
+  font-weight: bold;
+  text-shadow: 0 0 1px rgba(0,0,0,0.2);
 }
 
 .doc-star-button {
@@ -132,12 +95,10 @@
   font-size: 0.8em;
   cursor: pointer;
   margin-right: 0.5em;
-  line-height: 1;
   padding: 0 0.3em;
 }
 
-.doc-function-details {
-  display: none;
+.doc-function-content {
   padding: 1em;
   background-color: var(--panel-control-bg);
   border-top: 1px solid var(--panel-border);
@@ -194,58 +155,51 @@
   border-radius: var(--item-border-radius);
 }
 
-.doc-example-toolbar {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 355; /* Above tags container but below aux panel controls */
-  display: flex;
-  gap: 4px;
-}
-
 .doc-example-editor {
   position: relative;
   width: 100%;
+  margin-bottom: 0.8em;
 }
 
-.doc-example-editor .cm-editor {
-  height: auto;
-  min-height: 20px;
-  max-height: 150px;
-  background-color: var(--panel-section-bg) !important;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--item-border-radius);
-  overflow: auto;
+.doc-example-simple {
+  position: relative;
   width: 100%;
-  box-sizing: border-box;
+  background-color: var(--panel-item-hover-bg);
+  padding: 0.8em;
+  border-radius: 4px;
+  font-family: var(--code-font);
+  font-size: 0.9em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
 }
 
-.doc-example-editor .cm-content,
-.doc-example-editor .cm-line {
-  color: var(--text-primary) !important;
-  font-family: var(--code-font) !important;
+/* Copy button for examples */
+.doc-copy-button {
+  position: absolute;
+  top: 0.3em;
+  right: 0.3em;
+  background-color: var(--panel-control-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 0.8em;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  z-index: 5;
 }
 
-.doc-example-editor .cm-content {
-  padding: 4px 8px;
+.doc-copy-button:hover {
+  opacity: 1;
+  background-color: var(--panel-item-hover-bg);
 }
 
-.doc-example-editor .cm-gutters {
-  background-color: var(--panel-control-bg) !important;
-  border-right: 1px solid var(--panel-border) !important;
-}
-
-.doc-example-editor .cm-editor.cm-focused {
-  outline: none !important;
-  border-color: var(--accent-color) !important;
-}
-
-.doc-example-editor:hover {
-  cursor: grab;
-}
-
-.doc-example-editor:active {
-  cursor: grabbing;
+.doc-copy-button.copied {
+  background-color: var(--accent-color);
+  color: #fff;
+  opacity: 1;
 }
 
 .doc-example-toolbar {
@@ -321,4 +275,23 @@
 
 .doc-save-button:active {
   transform: translateY(1px);
+}
+
+.doc-function-params-container {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3em;
+  align-items: center;
+}
+
+.doc-function-param {
+  font-family: var(--code-font);
+  font-size: 0.9em;
+  color: var(--accent-color, #0066cc);
+  background-color: var(--panel-control-bg);
+  border-radius: 3px;
+  padding: 0 0.3em;
+  display: inline-block;
+  font-weight: normal;
+  border: 1px solid var(--panel-border);
 }
