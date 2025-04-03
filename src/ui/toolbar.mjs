@@ -18,6 +18,9 @@ function toggleAuxPanel(panelID) {
         
         // Make sure the panel has an expand toggle button
         ensurePanelHasExpandToggle(panel);
+        
+        // Make sure the panel has a close button
+        ensurePanelHasCloseButton(panel);
     }
 }
 
@@ -76,6 +79,33 @@ function ensurePanelHasExpandToggle(panel) {
     }
 }
 
+// Add close button to panel if it doesn't exist
+function ensurePanelHasCloseButton(panel) {
+    const panelId = panel.attr('id');
+    
+    // Check if button already exists
+    if (panel.find('.panel-close-button').length === 0) {
+        const closeButton = $(`
+            <button class="panel-close-button" data-panel="${panelId}" title="Close panel">
+                <i class="close-icon" data-lucide="x"></i>
+            </button>
+        `);
+        
+        // Append button to the panel
+        panel.append(closeButton);
+        
+        // Add click event handler
+        closeButton.on('click', function(e) {
+            e.stopPropagation();
+            $(`.panel-aux`).hide();
+        });
+        
+        // Initialize Lucide icon
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
+    }
+}
 
 
 export function makeToolbar(editor) {
@@ -137,9 +167,10 @@ export function makeToolbar(editor) {
         await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
     });
     
-    // Initialize expand toggles for all existing panels when the UI is first loaded
+    // Initialize expand toggles and close buttons for all existing panels when the UI is first loaded
     $('.panel-aux').each(function() {
         ensurePanelHasExpandToggle($(this));
+        ensurePanelHasCloseButton($(this));
     });
 }
 
