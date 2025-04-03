@@ -12,16 +12,35 @@ import { dbg } from "../utils.mjs";
 
 let connectedToModule = false;
 
+function setCodeHighlightColor(connected) {
+  const root = document.documentElement;
+  
+  let color = undefined;
+  if (connected) {
+    color = getComputedStyle(root).getPropertyValue('--code-eval-highlight-color-connected').trim();
+  }
+  else {
+    color = getComputedStyle(root).getPropertyValue('--code-eval-highlight-color-disconnected').trim();
+  }
+
+  root.style.setProperty('--code-eval-highlight-color', color);
+}
+
 export function setConnectedToModule(connected) {
   connectedToModule = connected;
   console.log("Setting connected state to:", connected);
-  
-  // Make sure the DOM is ready
+
+  // Update code highlight color
+  setCodeHighlightColor(connected);
+
+
+  // Make sure the DOM is ready before modifying the 'connect' button
   setTimeout(() => {
     const $button = $("#button-connect");
     if ($button.length) {
       if (connected) {
         dbg("Connected to uSEQ");
+
         $button.css("color", "rgb(0, 255, 0) !important");
         // Alternatively try setting class instead of inline style
         $button.removeClass("disconnected").addClass("connected");

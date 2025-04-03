@@ -11,6 +11,7 @@ import {
   toggleDocumentation,
   showDocumentationForSymbol
 } from "./editorConfig.mjs";
+import { wrapEvalFunction } from "./extensions/sexprHighlight.mjs";
 
 import { makeDeleteWrapper } from "./editorConfig.mjs";
 
@@ -38,10 +39,14 @@ const completeKeymapModified = completeClojureKeymap.map((binding) => {
   }
 });
 
+// Wrap the evaluation function with the S-Expression highlighting
+const wrappedEvalNow = wrapEvalFunction(evalNow);
+const wrappedEvalQuantised = wrapEvalFunction(evalQuantised);
+
 // Custom keymap for the editor
 const useq_keymap = [
-  { key: "Ctrl-Enter", run: evalNow },
-  { key: "Alt-Enter", run: evalQuantised },
+  { key: "Ctrl-Enter", run: wrappedEvalNow },
+  { key: "Alt-Enter", run: wrappedEvalQuantised },
   {
     key: "Alt-h",
     run: toggleHelp,
