@@ -61,6 +61,7 @@ export function makeThemeTab() {
             const mainEditor = EditorView.findFromDOM($('#panel-main-editor .cm-editor')[0]);
             if (mainEditor) {
                 setMainEditorTheme(themeName);
+                activeUserSettings.editor.theme = themeName;
                 saveUserSettings();
             }
             $('#panel-settings').toggle();
