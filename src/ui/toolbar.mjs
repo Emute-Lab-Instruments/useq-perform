@@ -53,25 +53,29 @@ export function makeToolbar(editor) {
         toggleAuxPanel("#panel-help");
     });
     
-    // FIXME reinstate
-    // $("#button-load").on("click", async () => {
-    //     let fileHandle;
-    //     [fileHandle] = await window.showOpenFilePicker();
-    //     const file = await fileHandle.getFile();
-    //     const contents = await file.text();
-    //     const data = JSON.parse(contents);
-    //     const transactionSpec = { changes: { from: 0, to: editorInstance.state.doc.length, insert: data['text'] } };
-    //     const transaction = editorInstance.state.update(transactionSpec);
-    //     editorInstance.dispatch(transaction);
-    // });
+    $("#button-load").on("click", async () => {
+        let fileHandle;
+        [fileHandle] = await window.showOpenFilePicker();
+        const file = await fileHandle.getFile();
+        const contents = await file.text();
+        const data = JSON.parse(contents);
+        const transactionSpec = { changes: { from: 0, to: editorInstance.state.doc.length, insert: data['text'] } };
+        const transaction = editorInstance.state.update(transactionSpec);
+        editorInstance.dispatch(transaction);
+    });
     
-    // $("#button-save").on("click", async () => {
-    //     const fileData = { 
-    //         "text": editorInstance.state.doc.toString(),
-    //         "format_version": 1 
-    //     };
-    //     await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
-    // });
+    $("#button-save").on("click", async () => {
+        const fileData = { 
+            "text": editorInstance.state.doc.toString(),
+            "format_version": 1 
+        };
+        await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
+    });
+    
+    // Initialize expand toggles for all existing panels when the UI is first loaded
+    $('.panel-aux').each(function() {
+        ensurePanelHasExpandToggle($(this));
+    });
 }
 
 async function saveToFile(fileContents, ext, desc) {
