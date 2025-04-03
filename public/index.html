@@ -17,27 +17,35 @@
       lucide.createIcons();
     });
 
-    // CSS Hot Reload
-    const link = document.querySelector('link[href="bundle.css"]');
-    let lastModified = Date.now();
-    
-    setInterval(async () => {
-      try {
-        const response = await fetch('bundle.css');
-        const newModified = response.headers.get('last-modified');
-        
-        if (newModified) {
-          const newTimestamp = new Date(newModified).getTime();
-          if (newTimestamp > lastModified) {
-            link.href = `bundle.css?${Date.now()}`;
-            lastModified = newTimestamp;
-            console.log('CSS updated');
-          }
+    // CSS hot-reloading for development
+    if (location.hostname === 'localhost') {
+      const cssLink = document.querySelector('link[href^="bundle.css"]');
+      let currentHref = cssLink.href;
+
+      const reloadCSS = () => {
+        const timestamp = Date.now();
+        const newHref = `bundle.css?t=${timestamp}`;
+        if (cssLink.href !== newHref) {
+          cssLink.href = newHref;
+          // console.log('CSS reloaded at:', new Date().toLocaleTimeString());
         }
-      } catch (error) {
-        console.error('Error checking for CSS updates:', error);
-      }
-    }, 1000);
+      };
+
+      // Check more frequently and use fetch to ensure we get fresh responses
+      setInterval(async () => {
+        try {
+          const response = await fetch('bundle.css', { 
+            method: 'HEAD',
+            cache: 'no-store'
+          });
+          if (response.ok) {
+            reloadCSS();
+          }
+        } catch (error) {
+          console.warn('CSS reload check failed:', error);
+        }
+      }, 500);
+    }
   </script>
 </head>
 <body>
