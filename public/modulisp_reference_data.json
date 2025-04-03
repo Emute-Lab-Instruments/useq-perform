@@ -10,7 +10,11 @@
         "range": "number"
       }
     ],
-    "examples": [],
+    "examples": [
+      "(- 5 2) ; => 3",
+      "(- 10 3 2) ; => 5",
+      "(- 10 1 1 1 1) ; => 6"
+    ],
     "category": "modulisp",
     "tags": [
       "functional programming",
@@ -34,7 +38,8 @@
       }
     ],
     "examples": [
-      "(!= 1 2) ; => true\n\n(!= 'a 'a) ; => false"
+      "(!= 1 2) ; => true",
+      "(!= 1 1) ; => false"
     ],
     "category": "modulisp",
     "tags": [
@@ -54,7 +59,8 @@
       }
     ],
     "examples": [
-      "(* 2 2 2) ;; => 8"
+      "(* 2 2 2) ;; => 8",
+      "(* 2 2.5) ;; => 5.00"
     ],
     "category": "modulisp",
     "tags": [
@@ -78,7 +84,11 @@
         "range": "number"
       }
     ],
-    "examples": [],
+    // TODO add moving example
+    "examples": [
+      "(% 6 3) ; => 0",
+      "(% 7 3) ; => 1"
+    ],
     "category": "modulisp",
     "tags": [
       "functional programming"
@@ -96,7 +106,8 @@
       }
     ],
     "examples": [
-      "(+ 1 2 3) ;; => 6"
+      "(+ 1 2 3) ;; => 6",
+      "(a1 (scale 0 2 0 1 (+ beat bar))"
     ],
     "category": "modulisp",
     "tags": [
@@ -120,7 +131,10 @@
         "range": "any"
       }
     ],
-    "examples": [],
+    "examples": [
+      "(< 1 2) ; => true",
+      "(< 5 3) ; => false"
+    ],
     "category": "modulisp",
     "tags": [
       "functional programming",
@@ -144,7 +158,11 @@
         "range": "any"
       }
     ],
-    "examples": [],
+    "examples": [
+      "(<= 1 2) ; => true",
+      "(<= 2 2) ; => true",
+      "(<= 3 2) ; => false"
+    ],
     "category": "modulisp",
     "tags": [
       "functional programming",
@@ -168,7 +186,10 @@
         "range": "any"
       }
     ],
-    "examples": [],
+    "examples": [
+      "(= 1 1) ; => true",
+      "(= 1 2) ; => false"
+    ],
     "category": "modulisp",
     "tags": [
       "functional programming",
@@ -192,7 +213,10 @@
         "range": "any"
       }
     ],
-    "examples": [],
+    "examples": [
+      "(> 2 1) ; => true",
+      "(> 1 2) ; => false"
+    ],
     "category": "modulisp",
     "tags": [
       "functional programming",
@@ -216,7 +240,11 @@
         "range": "any"
       }
     ],
-    "examples": [],
+    "examples": [
+      "(>= 2 1) ; => true",
+      "(>= 2 2) ; => true",
+      "(>= 1 2) ; => false"
+    ],
     "category": "modulisp",
     "tags": [
       "functional programming",
@@ -238,7 +266,8 @@
     "examples": [
       "(a1 (* 3 (from-list [0.4 0.1] bar)))",
       "(a2 0)",
-      ";; Silence all analog outs at the same time\n(do \n  (a1 0)\n  (a2 0)\n  (a3 0))"
+      ";; Silence all analog outs at the same time",
+      "(do \n  (a1 0)\n  (a2 0)\n  (a3 0))"
     ],
     "category": "outputs",
     "tags": [
@@ -306,7 +335,10 @@
       }
     ],
     "examples": [
-      "(bi->uni -1) ;; => 0.0\n(bi->uni 0) ;; => 0.5\n(bi->uni 1) ;; => 1.0"
+      "(bi->uni -1) ;; => 0.0",
+      "(bi->uni 0) ;; => 0.5",
+      "(bi->uni 1) ;; => 1.0",
+      "(a1 (b->u (sine (* 2 pi beat))))"
     ],
     "category": "modulisp",
     "tags": [
@@ -347,7 +379,8 @@
       }
     ],
     "examples": [
-      "(ceil 3.7) ; => 4\n\n(ceil -1.2) ; => -1"
+      "(ceil 3.7) ; => 4",
+      "(ceil -1.2) ; => -1"
     ],
     "category": "modulisp",
     "tags": [
@@ -369,7 +402,8 @@
     "examples": [
       "(d1 (square (slow 2 beat)))",
       "(d2 (from-list [0 0 1 0 1 1 0 1] (slow 2 bar)))",
-      ";; Silence all digital outs at the same time\n(do \n  (d1 0)\n  (d2 0)\n  (d3 0))"
+      ";; Silence all digital outs at the same time",
+      "(do \n  (d1 0)\n  (d2 0)\n  (d3 0))"
     ],
     "category": "outputs",
     "tags": [
@@ -481,7 +515,9 @@
       }
     ],
     "examples": [
-      "(d1 (euclid 16 (step phrase 4 4) 0.3 bar))\n(d2 (euclid 32 8 0.1 bar))\n(d3 (euclid 16 6 (step (fast 4 phrase) bar)))"
+      "(d1 (euclid 16 (step phrase 4 4) 0.3 bar))",
+      "(d2 (euclid 32 8 0.1 bar))",
+      "(d3 (euclid 32 18 (step (fast 4 phrase) (slow 2 bar))))"
     ],
     "category": "sequencing",
     "tags": [
@@ -525,7 +561,7 @@
       }
     ],
     "examples": [
-      "(first [1 2 3 4]) ;; => 1\n\n(first '(a b c d)) ;; => a"
+      "(first [1 2 3 4]) ;; => 1"
     ],
     "category": "modulisp",
     "tags": [
@@ -545,7 +581,9 @@
       }
     ],
     "examples": [
-      "(flatten [[1 2] 2 3 [1 2 3]]) ;; => [1 2 2 3 1 2 3]\n(flatten '(0 1 '(2 3))) ;; => (0 1 2 3)\n(flatten [[0 [1 [3 [4 5]]]]]) ;; => [1 1 3 4 5]"
+      "(flatten [[1 2] 5 5 [9 8 7]]) ;; => [1 2 5 5 9 8 7]",
+      "(flatten [0 1 [2 3]]) ;; => [0 1 2 3]",
+      "(flatten [[0 [1 [2 [3 4]]]]]) ;; => [0 1 2 3 4]"
     ],
     "category": "modulisp",
     "tags": [
@@ -566,7 +604,9 @@
       }
     ],
     "examples": [
-      "(floor 3.7) ; => 3\n\n(floor -1.2) ; => -2"
+      "(floor 3.7) ; => 3",
+      "(floor -1.2) ; => -2",
+      "(floor 3.1) ; => 3"
     ],
     "category": "modulisp",
     "tags": [
@@ -595,8 +635,11 @@
         "range": "any"
       }
     ],
+    // FIXME @bug
     "examples": [
-      "(for my-number [1 2 3]\n  (println \"My number is: \")\n  (println my-number)\n  my-number) ;; => prints each number in order, returns 3"
+      "(for my-number [1 2 3]\n  (println \"My number is: \")\n  (println my-number)\n  my-number) ;; => prints each number in order, returns 3",
+      "(for i [1 2 3] (+ i 1))",
+      "(for x [1 2 3] (println (* x 2)))"
     ],
     "category": "modulisp",
     "tags": [
@@ -607,7 +650,7 @@
   {
     "name": "from-flattened-list",
     "aliases": [],
-    "description": "Read an item from a list, using a normalised index, but flatten then list first (using `flattened`).",
+    "description": "Like 'from-list', but flattens the list first so that nesting doesn't matter.",
     "parameters": [
       {
         "name": "list",
@@ -621,7 +664,7 @@
       }
     ],
     "examples": [
-      "(from-flattened-list [0 1 2 [3 4 5]] 0.75)"
+      "(from-flattened-list [1 [2 3] [4]] 0.25) ;; => 2"
     ],
     "category": "sequencing",
     "tags": [
@@ -649,8 +692,9 @@
       "(from-list [1 2 3 4] 0.6) ; => 3",
       "(from-list [1 2 3 4] bar))",
       "(seq [1 (/ phrase 2)] bar))",
-      "(from-list '(1 phrase) bar))",
-      "(from-list [1 2 (from-list [1 2] bar)] \n    (slow 2 bar))"
+      "(from-list [1 phrase] bar))",
+      "(from-list [1 2 (from-list [1 2] bar)] \n    (slow 2 bar))",
+      "(from-list [1 5 2] 0.5)"
     ],
     "category": "sequencing",
     "tags": [
@@ -688,7 +732,8 @@
     ],
     "examples": [
       "(d2 (gates [0 1 1 0  1 1 1 0  1 1 0 1  1 0 0 1] (+ (swm 1) 0.3) bar))",
-      "(d2 (gates [0 1 1 0 1 0 0 (swt)] 0.5 (fast 2 bar))))"
+      "(d2 (gates [0 1 1 0 1 0 0 (swt)] 0.5 (fast 2 bar))))",
+      "(d1 (gates [1 0 1 0] bar 2 0.75))"
     ],
     "category": "sequencing",
     "tags": [
@@ -714,7 +759,8 @@
       }
     ],
     "examples": [
-      "(d2 (gatesw [9 9 5 9 3 0 3 8] (fast 2 bar)))"
+      "(d2 (gatesw [9 9 5 9 3 0 3 8] (fast 2 bar)))",
+      "(d1 (gatesw [1 2 3 4 5] bar))"
     ],
     "category": "sequencing",
     "tags": [
@@ -727,7 +773,9 @@
     "aliases": [],
     "description": "Returns the source for the clock, either internal (0), gate input 1 (1) or gate input 2 (2).",
     "parameters": [],
-    "examples": [],
+    "examples": [
+      "(get-clock-source)"
+    ],
     "category": "timing",
     "tags": [
       "timing",
@@ -756,7 +804,8 @@
       }
     ],
     "examples": [
-      "(if (> 3 2)\n  (println \"Three is greater than two\")\n  (println \"Two is greater than three!?!?\"))"
+      "(if (> 3 2)\n  (println \"Three is greater than two\")\n  (println \"Two is greater than three!?!?\"))",
+      "(if (= 1 1) (println \"yes\") (println \"no\"))"
     ],
     "category": "modulisp",
     "tags": [
@@ -770,7 +819,8 @@
     "description": "Returns the value of digital input 1.\n\nExample: to echo digital input 1 to digital output 1",
     "parameters": [],
     "examples": [
-      "(d1 (in1))"
+      "(d1 (in1))",
+      "(if (in1) 1 0)"
     ],
     "category": "inputs",
     "tags": [
@@ -783,7 +833,8 @@
     "description": "Returns the value of digital input 2.\n\nExample: to echo digital input 2 to digital output 1",
     "parameters": [],
     "examples": [
-      "(d1 (in2))"
+      "(d1 (in2))",
+      "(if (in2) 1 0)"
     ],
     "category": "inputs",
     "tags": [
@@ -807,7 +858,8 @@
       }
     ],
     "examples": [
-      "(index [1 2 3] 1) ; => 2\n(index '(a b c) 0) ; => a"
+      "(index [1 2 3] 1) ; => 2",
+      "(index [4 5 6] 0) ; => 4"
     ],
     "category": "modulisp",
     "tags": [
@@ -837,7 +889,8 @@
       }
     ],
     "examples": [
-      "(insert '(a b c) 1 \"hi\") ;; => (a \"hi\" b c)\n(insert [0 1 2 3] 3 0.5) ;; => [0 1 2 0.5 3]"
+      "(insert [0 1 2 3] 3 0.5) ;; => [0 1 2 0.5 3]",
+      "(insert [4 5 6] 1 7)"
     ],
     "category": "modulisp",
     "tags": [
@@ -864,7 +917,8 @@
     "examples": [
       "(interp [0 0.5 0] 0.75)",
       "(a1 (interp [1 0.5 0 0.6 1] bar))",
-      "(a2 (interp [0 (sin phrase) 1] section))"
+      "(a2 (interp [0 (usin bar) 1] section))",
+      "(interp [0 1 0] bar)"
     ],
     "category": "sequencing",
     "tags": [
@@ -889,7 +943,8 @@
       }
     ],
     "examples": [
-      "(map (lambda [x] (* x x)) \n  [1 2 3 4]) ; => [1 4 9 16]"
+      "(map (lambda [x] (* x x)) \n  [1 2 3 4]) ; => [1 4 9 16]",
+      "(lambda [x y] (+ x y))"
     ],
     "category": "modulisp",
     "tags": [
@@ -915,7 +970,8 @@
     "examples": [
       "(let [a 1\n      b 2]\n  (+ a b)) ;; => 3",
       "(let [a \"Hello\"\n      b (str a \", World!\")]\n  (println b)) ;; => \"Hello, World!\"",
-      "(define a 10000)\n(define b 99999)\n(define c 10)\n\n(let [a 1\n      b 2]\n  (+ a b c)) ;; => 13"
+      "(define a 10000)\n(define b 99999)\n(define c 10)\n\n(let [a 1\n      b 2]\n  (+ a b c)) ;; => 13",
+      "(let [x 5] (* x x))"
     ],
     "category": "modulisp",
     "tags": [
@@ -934,8 +990,13 @@
       }
     ],
     "examples": [
-      "(list 1 2 3) ; => (1 2 3)\n\n(list 'a 'b 'c) ; => (a b c)",
-      "(list 1 2 (+ 1 2)) ;; => (1 2 3)\n(quote (1 2 3))           ;; => (1 2 3)\n'(1 2 3) ;; => (1 2 3)\n\n;; but, here the addition does not get evaluated first:\n'(1 2 (+ 1 2) ;; => (1 2 (+ 1 2))"
+      "(list 1 2 3) ; => (1 2 3)",
+      "(list 'a 'b 'c) ; => (a b c)",
+      "(list 1 2 (+ 1 2)) ;; => (1 2 3)",
+      "(quote (1 2 3))           ;; => (1 2 3)",
+      "'(1 2 3) ;; => (1 2 3)",
+      "(list 4 5 6)",
+      ";; but, here the addition does not get evaluated first:\n'(1 2 (+ 1 2) ;; => (1 2 (+ 1 2))"
     ],
     "category": "modulisp",
     "tags": [
@@ -960,7 +1021,8 @@
       }
     ],
     "examples": [
-      "(map (fn [x] (* x x)) \n  [1 2 3 4]) ; => [1 4 9 16]"
+      "(map (fn [x] (* x x)) \n  [1 2 3 4]) ; => [1 4 9 16]",
+      "(map (lambda [x] (+ x 5)) [1 2 3])"
     ],
     "category": "modulisp",
     "tags": [
@@ -973,7 +1035,9 @@
     "aliases": [],
     "description": "Reports the most recent performance metrics.\n\n' (useq_perf) ; => prints performance metrics\n'",
     "parameters": [],
-    "examples": [],
+    "examples": [
+      "(perf)"
+    ],
     "category": "modulisp",
     "tags": [
       "functional programming"
@@ -984,7 +1048,9 @@
     "aliases": [],
     "description": "A phasor, rising from 0-1 over the length of a phrase (dependent on the BPM, time signature, and phrase length in bars).",
     "parameters": [],
-    "examples": [],
+    "examples": [
+      "(phrase)"
+    ],
     "category": "timing",
     "tags": [
       "timing"
@@ -1007,7 +1073,9 @@
       }
     ],
     "examples": [
-      "(pow 3 2) ;; => 8.0\n(pow 2 5) ;; => 25.0"
+      "(pow 3 2) ;; => 8.0",
+      "(pow 2 5) ;; => 25.0",
+      "(pow 2 3)"
     ],
     "category": "modulisp",
     "tags": [
@@ -1026,7 +1094,10 @@
         "range": "0-1"
       }
     ],
-    "examples": [],
+    "examples": [
+      "(pulse 0.5)",
+      "(pulse 0.2)"
+    ],
     "category": "sequencing",
     "tags": [
       "sequencing"
@@ -1049,7 +1120,8 @@
       }
     ],
     "examples": [
-      "(push '(b c d) 'a) ;; => (a b c d)\n(push [1 2 3] 5) ;; => [5 1 2 3]"
+      "(push [1 2 3] 5) ;; => [5 1 2 3]",
+      "(push [4 5 6] 7)"
     ],
     "category": "modulisp",
     "tags": [
@@ -1070,7 +1142,8 @@
     ],
     "examples": [
       "(q0 (println bar))",
-      "(q0 0)"
+      "(q0 0)",
+      "(q0 (+ 1 2))"
     ],
     "category": "outputs",
     "tags": [
@@ -1095,7 +1168,8 @@
       }
     ],
     "examples": [
-      "(* (random 0 1000) 0.001)"
+      "(* (random 0 1000) 0.001)",
+      "(random 1 10)"
     ],
     "category": "probabalistic",
     "tags": [
@@ -1119,7 +1193,9 @@
       }
     ],
     "examples": [
-      "(range 1 3) ; => [1 2 3]\n(range -10 0) ; => [-10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0]"
+      "(range 1 3) ; => [1 2 3]",
+      "(range -10 0) ; => [-10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0]",
+      "(range 5 10)"
     ],
     "category": "modulisp",
     "tags": [
@@ -1143,7 +1219,8 @@
       }
     ],
     "examples": [
-      "(remove '(a b c) 0) ;; => (b c)\n(remove [0 1 2 3 4] 2) ;; => [0 1 3 4]"
+      "(remove [0 1 2 3 4] 2) ;; => [0 1 3 4]",
+      "(remove [5 6 7] 0)"
     ],
     "category": "modulisp",
     "tags": [
@@ -1156,7 +1233,9 @@
     "aliases": [],
     "description": "Reset the data used by the external clock tracker.  If you are changing from one external clock to another, it might be useful to run this.  After running this function, the first rising edge to be detected will be assumed to be the start of the first bar.",
     "parameters": [],
-    "examples": [],
+    "examples": [
+      "(reset-clock-ext)"
+    ],
     "category": "timing",
     "tags": [
       "timing",
@@ -1168,7 +1247,9 @@
     "aliases": [],
     "description": "Reset the internal clock, starting the logical time from 0.",
     "parameters": [],
-    "examples": [],
+    "examples": [
+      "(reset-clock-int)"
+    ],
     "category": "timing",
     "tags": [
       "timing",
@@ -1188,7 +1269,7 @@
     ],
     "examples": [
       "(tail [1 2 3 4]) ; => [2 3 4]",
-      "(tail '(a b c d)) ; => (b c d)"
+      "(rest [5 6 7])"
     ],
     "category": "modulisp",
     "tags": [
@@ -1218,7 +1299,8 @@
       "ridx",
       "seq",
       "(a1 (ridx [1 1 1 3] bar))",
-      "(a1 (ridx [1 1 15 3 3] bar))"
+      "(a1 (ridx [1 1 15 3 3] bar))",
+      "(ridx [1 2 3] bar)"
     ],
     "category": "sequencing",
     "tags": [
@@ -1252,7 +1334,8 @@
       "(d1 (rpulse [15 15] 0.5 bar))",
       "(d1 (rpulse [3 3 3] 0.2 bar))",
       "(d1 (rpulse [1 1 2 3 1] 0.1 bar))",
-      "(d1 (rpulse [3 1 1 1 3 2 1] 0.9 bar))"
+      "(d1 (rpulse [3 1 1 1 3 2 1] 0.9 bar))",
+      "(rpulse [1 2] 0.3 bar)"
     ],
     "category": "sequencing",
     "tags": [
@@ -1529,18 +1612,18 @@
         "range": "List/Vector"
       },
       {
-        "name": "from",
+        "name": "starting-from",
         "description": "Index of the first value in the slice",
         "range": "Integer"
       },
       {
-        "name": "to",
+        "name": "how many",
         "description": "Index of the value following the end of the slice",
         "range": "Integer"
       }
     ],
     "examples": [
-      "(slice [1 2 3 4 5] 0 3) ;; => [1 2 3]\n(slice '(1 2 3 4 5) 0 -1) ;; => (1 2 3 4)\n(slice [1 2 3 4 5] 1 -3) ;; => [2]\n(slice [1 2 3 4 5] -3 -1) ;; => [3 4]"
+      "(slice [1 2 3 4 5] 0 3) ;; => [1 2 3]\n(slice [1 2 3 4 5] 0 -1) ;; => [1 2 3 4]\n(slice [1 2 3 4 5] 1 -3) ;; => [2]\n(slice [1 2 3 4 5] -3 -1) ;; => [3 4]"
     ],
     "category": "modulisp",
     "tags": [

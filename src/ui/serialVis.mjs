@@ -296,6 +296,7 @@ export function makeVis() {
   dbg("Visualization", "makeVis", "Initializing serial visualization panel");
   window.requestAnimationFrame(drawSerialVis);
   dbg("Visualization", "makeVis", "Started animation loop for serial visualization");
+  // TODO incorporate these in the vis panel
   createSmoothingControls();
   dbg("Visualization", "makeVis", "Created smoothing controls");
 }
