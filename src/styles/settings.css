@@ -17,6 +17,12 @@
     border: 1px solid var(--panel-border);
 }
 
+/* Adjust sections in expanded mode for better use of space */
+.panel-expanded .panel-section {
+    padding: 1.5rem;
+    margin-bottom: 2.5rem;
+}
+
 .panel-section-title {
     font-size: 1.1rem;
     font-weight: 600;
@@ -24,6 +30,12 @@
     color: var(--accent-color);
     padding-bottom: 0.5rem;
     border-bottom: 2px solid var(--panel-border);
+}
+
+/* Slightly larger titles in expanded mode */
+.panel-expanded .panel-section-title {
+    font-size: 1.3rem;
+    margin-bottom: 1.5rem;
 }
 
 /* Form Row Layout */
@@ -38,6 +50,11 @@
     flex: 0 0 200px;
     font-weight: 500;
     color: var(--text-primary);
+}
+
+/* Wider labels in expanded mode */
+.panel-expanded .panel-label {
+    flex: 0 0 250px;
 }
 
 .panel-control {
@@ -58,6 +75,14 @@
     transition: all 0.2s ease;
     background-color: var(--panel-control-bg);
     color: var(--text-primary);
+}
+
+/* Slightly larger controls in expanded mode */
+.panel-expanded .panel-text-input,
+.panel-expanded .panel-number-input,
+.panel-expanded .panel-select {
+    padding: 0.6rem 0.85rem;
+    font-size: 1rem;
 }
 
 .panel-text-input:focus,
@@ -88,6 +113,12 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
+}
+
+/* Larger buttons in expanded mode */
+.panel-expanded .panel-button {
+    padding: 0.6rem 1.2rem;
+    font-size: 1.05rem;
 }
 
 .panel-button:hover {
@@ -160,4 +191,16 @@
     .panel-control {
         width: 100%;
     }
+}
+
+/* Multi-column layout for expanded panel */
+.panel-expanded .panel-tab-window {
+    padding: 1.5rem;
+}
+
+/* Only apply grid layout to expanded themes section */
+.panel-expanded .themes-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-gap: 1.5rem;
 }
