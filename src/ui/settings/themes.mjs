@@ -1,8 +1,8 @@
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { themes, setTheme, setMainEditorTheme } from "../../editors/themes/themeManager.mjs";
+import { activeUserSettings, updateUserSettings} from "../../utils/persistentUserSettings.mjs";
 import { baseExtensions } from "../../editors/extensions.mjs";
-import { saveUserSettings } from "../../utils/persistentUserSettings.mjs";
 import { defaultThemeEditorStartingCode } from "../../editors/defaults.mjs";
 import { dbg } from "../../utils.mjs";
 
@@ -60,9 +60,14 @@ export function makeThemeTab() {
         $container.on('click', () => {
             const mainEditor = EditorView.findFromDOM($('#panel-main-editor .cm-editor')[0]);
             if (mainEditor) {
-                setMainEditorTheme(themeName);
-                activeUserSettings.editor.theme = themeName;
-                saveUserSettings();
+                const newSettings = {
+                           editor: {
+                               ...activeUserSettings.editor,
+                               theme: themeName
+                           }
+                       };
+                       updateUserSettings(newSettings);
+                       setMainEditorTheme(themeName);
             }
             $('#panel-settings').toggle();
         });
