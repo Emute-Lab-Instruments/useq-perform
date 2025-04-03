@@ -1,10 +1,11 @@
 import { dbg } from "../utils.mjs";
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { setFontSize } from "../editors/editorConfig.mjs";
-import { connectToSerialPort } from "../io/serialComms.mjs";
+import { connectToSerialPort, setConnectedToModule } from "../io/serialComms.mjs";
 
 
 let editorInstance = null;
+
 
 function toggleAuxPanel(panelID) {
     const panel = $(panelID);
@@ -14,12 +15,74 @@ function toggleAuxPanel(panelID) {
     } else {
         $(`.panel-aux`).hide();
         panel.show();
+        
+        // Make sure the panel has an expand toggle button
+        ensurePanelHasExpandToggle(panel);
     }
 }
+
+// Toggle expanded state of panel
+function togglePanelExpand(panelElement) {
+    const panel = $(panelElement);
+    panel.toggleClass('panel-expanded');
+    
+    // Update the button's icon based on the panel's state
+    const isExpanded = panel.hasClass('panel-expanded');
+    const toggleButton = panel.find('.panel-expand-toggle');
+    const iconElement = toggleButton.find('.expand-icon');
+    
+    // First remove the old icon element
+    iconElement.remove();
+    
+    // Create a new icon element with the correct icon name
+    const newIcon = $(`<i class="expand-icon" data-lucide="${isExpanded ? 'chevron-right' : 'chevron-left'}"></i>`);
+    toggleButton.append(newIcon);
+    
+    // Force the Lucide icon to render immediately
+    if (window.lucide) {
+        window.lucide.createIcons({
+            attrs: {
+                class: ['expand-icon']
+            }
+        });
+    }
+}
+
+// Add expand toggle button to panel if it doesn't exist
+function ensurePanelHasExpandToggle(panel) {
+    const panelId = panel.attr('id');
+    
+    // Check if button already exists
+    if (panel.find('.panel-expand-toggle').length === 0) {
+        const toggleButton = $(`
+            <div class="panel-expand-toggle" data-panel="${panelId}" title="Toggle expand panel">
+                <i class="expand-icon" data-lucide="chevron-left"></i>
+            </div>
+        `);
+        
+        // Append button to the panel
+        panel.append(toggleButton);
+        
+        // Add click event handler
+        toggleButton.on('click', function(e) {
+            e.stopPropagation();
+            togglePanelExpand(panel);
+        });
+        
+        // Initialize Lucide icon
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
+    }
+}
+
+
 
 export function makeToolbar(editor) {
     // Store editor reference
     editorInstance = editor;
+
+    setConnectedToModule(false);
     
     // Set up UI event handlers
     $("#button-increase-font").on("click", () => {
@@ -38,10 +101,12 @@ export function makeToolbar(editor) {
         dbg("uSEQ-Perform: hello");
         navigator.serial.requestPort()
             .then((port) => {
-                connectToSerialPort(port);
+                connectToSerialPort(port).then(connected => {
+                    setConnectedToModule(connected);
+                });
             })
             .catch((e) => {
-                dbg("error selecting port");
+                console.log("error selecting port", e);
             });
     });
 

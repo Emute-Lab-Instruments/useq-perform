@@ -37,7 +37,7 @@ export function upgradeCheck(versionMsg) {
       ||
       (ghVersionPatch > moduleVersionPatch && ghVersionMinor >= moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)) {
       //new release available
-      post(`<b>Info</b>: There is a new firmware release (version ${version}) available, you can 
+      post(`**Info**: There is a new firmware release (**v${version}**) available, you can 
         <a target='blank' href='${data[0]['html_url']}'>download it</a> 
         and follow the
         <a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">update guide</a>.`);
