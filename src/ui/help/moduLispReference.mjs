@@ -12,9 +12,90 @@ const state = {
   selectedTags: new Set(),
   starredFunctions: new Set(),
   expandedFunctions: new Set(),
-  isDevMode: false
+  isDevMode: false,
+  isExpanded: false
 };
 
+// Cache for documentation elements
+const cachedFunctionElements = [];
+
+// Function to cache documentation elements
+function cacheFunctionElements(data) {
+  cachedFunctionElements.length = 0; // Clear the cache
+  data.forEach(func => {
+    const $functionElement = makeFunctionElement(func);
+    if ($functionElement) {
+      cachedFunctionElements.push($functionElement);
+    }
+  });
+}
+
+// Function to create the documentation panel with a specified number of columns
+function createDocPanel(columns = 1) {
+  const $container = $('<div>', {
+    id: 'doc-function-list',
+    class: 'doc-function-list'
+  });
+
+  if (columns === 1) {
+    // Single column view
+    cachedFunctionElements.forEach($element => $container.append($element));
+  } else {
+    // Multi-column view
+    const columnContainers = Array.from({ length: columns }, () => $('<div>', { class: 'doc-column' }));
+
+    cachedFunctionElements.forEach(($element, index) => {
+      const columnIndex = index % columns;
+      columnContainers[columnIndex].append($element);
+    });
+
+    columnContainers.forEach($column => $container.append($column));
+  }
+
+  return $container;
+}
+
+// Update renderFunctionList to calculate columns based on state
+function renderFunctionList() {
+  dbg("renderFunctionList", "Rendering function list");
+  if (!state.data || !Array.isArray(state.data)) {
+    console.error("Cannot render function list: invalid data");
+    return;
+  }
+
+  // Determine the number of columns based on state
+  const columns = state.isExpanded ? 3 : 1;
+  dbg("renderFunctionList", "Number of columns", columns);
+
+  const $container = $('.modulisp-reference-container');
+  if (!$container.length) {
+    console.error("Cannot render function list: container not found");
+    return;
+  }
+
+  const $oldList = $('#doc-function-list');
+  if ($oldList.length) {
+    $oldList.remove();
+  }
+
+  $container.append(createDocPanel(columns));
+}
+
+// Add a function to toggle expanded/collapsed state
+function togglePanelView() {
+  state.isExpanded = !state.isExpanded;
+  dbg("togglePanelView", "Toggled panel view", state.isExpanded ? "expanded" : "collapsed");
+
+  // Update the toggle button text or appearance
+  const $toggleButton = $("#toggle-expand-button");
+  if ($toggleButton.length) {
+    $toggleButton.text(state.isExpanded ? "Collapse" : "Expand");
+  }
+
+  renderFunctionList();
+}
+
+// Update makeModuLispReference to cache elements initially
 export async function makeModuLispReference() {
   dbg("makeModuLispReference", "Initializing ModuLisp reference panel");
   const $container = $('<div>', {
@@ -35,11 +116,14 @@ export async function makeModuLispReference() {
     state.data = data;
     dbg("makeModuLispReference", "Reference data loaded", data);
 
+    dbg("makeModuLispReference", "Caching function elements");
+    cacheFunctionElements(data);
+
     dbg("makeModuLispReference", "Creating tags");
     $container.append(makeTags(data));
 
     dbg("makeModuLispReference", "Creating function list");
-    $container.append(makeFunctionList(data, 1));
+    $container.append(createDocPanel(1));
 
     dbg("makeModuLispReference", "Final container classes", $container.attr('class'));
     dbg("makeModuLispReference", "Final container element", $container[0]);
@@ -63,9 +147,6 @@ export async function makeModuLispReference() {
     return $container;
   }
 }
-
-
-// Main function to create the ModuLisp reference pane
 
 // Load user preferences from localStorage
 function loadUserPreferences() {
@@ -765,11 +846,13 @@ function adjustDocPanelForTheme() {
 }
 
 function makeTags(data) {
-  // Get all unique tags from the documentation data
-  const allTags = new Set();
+  // Get all unique tags and count their frequency
+  const tagFrequency = {};
   data.forEach(func => {
     if (func && func.tags) {
-      func.tags.forEach(tag => allTags.add(tag));
+      func.tags.forEach(tag => {
+        tagFrequency[tag] = (tagFrequency[tag] || 0) + 1;
+      });
     }
   });
 
@@ -782,8 +865,13 @@ function makeTags(data) {
     class: 'doc-tags-wrapper'
   });
 
-  // Sort tags alphabetically and create tag elements
-  Array.from(allTags).sort().forEach(tag => {
+  // Sort tags by frequency (most frequent first) and create tag elements
+  const sortedTags = Object.keys(tagFrequency).sort((a, b) => {
+    // Sort by frequency (descending)
+    return tagFrequency[b] - tagFrequency[a];
+  });
+
+  sortedTags.forEach(tag => {
     const $tag = $('<div>', {
       class: 'doc-tag',
       text: tag
@@ -809,27 +897,4 @@ function makeTags(data) {
 
   $container.append($wrapper);
   return $container;
-}
-
-// Render the function list
-function renderFunctionList() {
-  dbg("renderFunctionList", "Rendering function list");
-  if (!state.data || !Array.isArray(state.data)) {
-    console.error("Cannot render function list: invalid data");
-    return;
-  }
-  
-  // Find the correct container - look for modulisp-reference-container instead of panel-help-reference
-  const $container = $('.modulisp-reference-container');
-  if (!$container.length) {
-    console.error("Cannot render function list: container not found");
-    return;
-  }
-
-  const $oldList = $('#doc-function-list');
-  if ($oldList.length) {
-    $oldList.remove();
-  }
-  
-  $container.append(makeFunctionList(state.data));
 }
