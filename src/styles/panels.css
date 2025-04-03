@@ -1,81 +1,113 @@
+/* Auxiliary panel - positioned on the right side of the screen */
+/* Start of Selection */
 .panel-aux {
+  /* Positioning */
   position: absolute;
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  background-color: var(--panel-bg);
-  min-width: 20%;
-  max-width: 40%;
-  height: 75%;
   z-index: 1000;
-  padding: 0;
-  border: 1px solid var(--panel-border);
-  opacity: 100%;
+
+  /* Layout */
   display: flex;
   flex-direction: column;
   text-align: left;
-  color: var(--text-primary);
-  border-radius: 8px;
+
+  /* Dimensions */
+  padding: 0;
+  height: 75%;
+  min-width: 20%;
+  max-width: 40%;
+
+  /* Visual styling */
+  background-color: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-border-radius);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-  font-family: var(--code-font);
-}
+  opacity: 100%;
 
-.panel-aux:hover {
-  border-color: var(--accent-color);
-}
-
-.panel-nav-button {
-  background-color: var(--panel-control-bg);
+  /* Typography */
   color: var(--text-primary);
-  padding: 8px 16px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-radius: 4px;
-  margin: 4px;
-  font-weight: 500;
   font-family: var(--code-font);
-  border: 1px solid transparent;
-}
 
-.panel-nav-button:hover {
-  background-color: var(--panel-item-hover-bg);
-  border-color: var(--accent-color);
-  color: var(--accent-color);
-}
+  /* Animation */
+  transition: all 0.2s ease;
 
-.panel-nav-button.active {
-  background-color: var(--panel-item-active-bg);
-  color: var(--accent-color);
-  border-color: var(--accent-color);
+  /* Hover state merged into main class */
+  &:hover {
+    border-color: var(--accent-color);
+  }
 }
+/* End of Selection */
 
+/* Tab bar container - holds the tab buttons in a horizontal row */
 .panel-nav-bar {
+  /* Layout */
   display: flex;
   flex-direction: row;
   justify-content: flex-start;
   align-items: center;
-  background-color: var(--toolbar-bg);
-  z-index: 1000;
-  border-bottom: 1px solid var(--panel-border);
-  padding: 8px;
   min-height: 48px;
+  padding: 8px;
+
+  /* Visual styling */
+  background-color: var(--toolbar-bg);
+  border-bottom: 1px solid var(--panel-border);
+  
+  /* Typography */
   font-family: var(--code-font);
+
+  /* Positioning */
+  z-index: 1000;
+}
+
+/* Tab button styling */
+.panel-tab-button {
+  /* Layout and spacing */
+  padding: 8px 16px;
+  margin: 4px;
+  border-radius: 4px;
+
+  /* Typography */
+  font-family: var(--code-font);
+  font-weight: 500;
+  color: var(--text-primary);
+
+  /* Visual styling */
+  background-color: var(--panel-control-bg);
+  border: 1px solid transparent;
+  
+  /* Interaction */
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  /* States */
+  &:hover {
+    background-color: var(--panel-item-hover-bg);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+
+  &.active {
+    background-color: var(--panel-item-active-bg);
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+  }
 }
 
 /* the container that holds all the tab contents */
-.panel-window {
+.panel-tab-window {
   flex-grow: 1;
   max-height: unset;
   overflow-y: auto;
   background-color: var(--panel-section-bg);
-  padding: 0px;
-  font-family: var(--code-font);
+  padding: 10px;
   
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
-  
+ 
+  /* the individual tabs */
+
   &::-webkit-scrollbar {
     width: 8px;
   }
@@ -96,20 +128,13 @@
   }
 }
 
-/* Ensure the overflow container does not go under the navigation bar */
-.panel-tab-content {
+.panel-tab {
   display: none !important;
-  font-family: var(--code-font);
-  transition: opacity 0.2s ease;
-  background-color: var(--panel-bg);
-  padding: 16px;
-  overflow-y: auto;
-
+  
   &.active {
     display: block !important;
   }
 }
-
 
 /* Add fade in animation */
 @keyframes fadeIn {

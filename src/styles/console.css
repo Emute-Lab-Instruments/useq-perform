@@ -2,10 +2,12 @@
 #panel-console {
   position: fixed;
   height: 49%;
-  width: 25%;
+  width: 100px;
   right: 0;
-  top: 60%;
+  bottom: 0;
   border: 2px solid;
+  border-color: var(--accent-color);
+  border-radius: var(--panel-border-radius);
   min-width: 20em;
   max-width: 30em;
   z-index: 300;
@@ -18,7 +20,7 @@
   line-height: 1.4;
   opacity: 40%;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  color: #00ff41; /* Match editor theme text color */
+  color: var(--text-primary); /* Match editor theme text color */
   /*background-color: rgba(12, 23, 16, 0.95);*/
 
   transition: opacity 0.3s ease-in-out;
