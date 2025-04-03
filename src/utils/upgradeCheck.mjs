@@ -1,4 +1,5 @@
 import { post } from '../io/console.mjs';
+import { dbg } from '../utils.mjs';
 
 export function upgradeCheck(versionMsg) {
   // const verRE = /([0-9])\.([0-9])/g;
@@ -12,7 +13,7 @@ export function upgradeCheck(versionMsg) {
   if (groups[4]) {
     moduleVersionPatch = groups[4];
   }
-  post(`**Connected to uSEQ, firmware version ${versionMsg}**`);
+  post(`**Connected to uSEQ (v${versionMsg})**`);
   //new release checker
   $.ajax({
     url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
@@ -36,9 +37,10 @@ export function upgradeCheck(versionMsg) {
       ||
       (ghVersionPatch > moduleVersionPatch && ghVersionMinor >= moduleVersionMinor && ghVersionMajor >= moduleVersionMajor)) {
       //new release available
-      post("Info: There is a new firmware release available:");
-      post(`• <a target='blank' href='${data[0]['html_url']}'>Download new firmware</a>`);
-      post(`• <a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">Firmware update guide</a>`);
+      post(`<b>Info</b>: There is a new firmware release (version ${version}) available, you can 
+        <a target='blank' href='${data[0]['html_url']}'>download it</a> 
+        and follow the
+        <a target="blank" href="https://emutelabinstruments.co.uk/useqinfo/useq-update/">update guide</a>.`);
     }
   });
 }

@@ -18,5 +18,5 @@ $(document).ready(() => {
 
   // Display welcome messages
   post(`Hello, ${activeUserSettings.name}!`);
-  post("Use the [connect] button to link to uSEQ");
+  post('Click the <span style="color: var(--accent-color); font-weight: bold; display: inline;">[connect]</span> button to link to uSEQ');
 });
