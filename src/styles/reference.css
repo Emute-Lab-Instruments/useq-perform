@@ -51,14 +51,14 @@
 
 /* Function List */
 .doc-function-list {
-  display: block;
-  width: 100%;
-  padding: 1em 1em 7em 1em;
-  box-sizing: border-box;
-  overflow-y: auto;
-  flex: 1;
-  height: auto;
-  max-height: calc(100% - 50px);
+  overflow-y: auto; /* Retain scrolling for the function list */
+  height: calc(100% - 50px); /* Adjust height to leave room for tags */
+}
+
+/* Column containers */
+.doc-column {
+  display: block; /* Reset to block layout */
+  gap: 0; /* Remove column gap */
 }
 
 /* Function Items */
@@ -68,6 +68,7 @@
   border-radius: var(--item-border-radius);
   border: 1px solid var(--panel-border);
   overflow: hidden;
+  width: 100%;
 }
 
 .doc-function-header {
@@ -81,23 +82,27 @@
 .doc-function-name {
   flex: 1;
   font-family: var(--code-font);
-  font-size: 0.9em;
+  font-size: 1em;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+
+
 .doc-function-param {
   font-family: var(--code-font);
-  font-size: 0.9em;
-  color: var(--text-muted, #888);
+  font-size: 0.8em;
+  color: var(--accent-color, #888);
+  background-color: var(--panel-control-bg);
   font-style: italic;
   margin-left: 0.3em;
   opacity: 0.9;
-  font-weight: bold;
+  font-weight: normal;
   text-shadow: 0 0 1px rgba(0, 0, 0, 0.2);
 }
+
 
 /* Star Button */
 .doc-star-button {
@@ -123,6 +128,10 @@
   background-color: var(--panel-control-bg);
   border-top: 1px solid var(--panel-border);
   color: var(--text-primary);
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden; /* Prevent content from spilling */
+  display: none; /* Hide by default */
 }
 
 .doc-function-description {
@@ -179,6 +188,11 @@
   position: relative;
   width: 100%;
   margin-bottom: 0.8em;
+}
+
+/* Larger code examples in expanded view */
+.panel-expanded .doc-example-editor {
+  max-height: none;
 }
 
 .doc-example-simple {
@@ -308,14 +322,3 @@
   align-items: center;
 }
 
-.doc-function-param {
-  font-family: var(--code-font);
-  font-size: 0.9em;
-  color: var(--accent-color, #0066cc);
-  background-color: var(--panel-control-bg);
-  border-radius: 3px;
-  padding: 0 0.3em;
-  display: inline-block;
-  font-weight: normal;
-  border: 1px solid var(--panel-border);
-}
