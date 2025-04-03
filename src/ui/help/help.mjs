@@ -20,12 +20,12 @@ export async function makeHelp() {
             element: makeUserGuide(),
             active: true
         },
-        // {
-        //     name: "ModuLisp Reference",
-        //     id: "panel-help-tab-reference",
-        //     element: await makeModuLispReference(),
-        //     active: false
-        // },
+        {
+            name: "ModuLisp Reference",
+            id: "panel-help-tab-reference",
+            element: await makeModuLispReference(),
+            active: false
+        },
     ]);
     
     return result;

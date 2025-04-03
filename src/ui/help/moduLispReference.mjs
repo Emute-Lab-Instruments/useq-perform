@@ -192,6 +192,8 @@ function makeCodeEditor(code, id) {
 // Create a function element
 function makeFunctionElement(func) {
   dbg("makeFunctionElement", "Creating function element", func);
+  console.log(`Creating function element for: ${func.name}`, func);
+  
   const $item = $('<div>', {
     class: 'doc-function-item',
     'data-function': func.name
@@ -222,11 +224,68 @@ function makeFunctionElement(func) {
     renderFunctionList();
   });
 
-  // Add function name
-  const $name = $('<div>', {
-    class: 'doc-function-name',
-    text: func.name
+  // Add function name and parameters
+  const $nameContainer = $('<div>', {
+    class: 'doc-function-name'
   });
+
+  // Add the function name itself
+  console.log(`Adding function name: ${func.name}`);
+  $nameContainer.text(func.name);
+
+  // Add parameters if any - handle inconsistent data structures
+  if (func.parameters) {
+    console.log(`Function ${func.name} has parameters property:`, func.parameters);
+    let paramNames = "";
+    
+    // Handle array of parameter objects (expected format)
+    if (Array.isArray(func.parameters) && func.parameters.length > 0) {
+      paramNames = func.parameters.map(param => {
+        // Make sure param is an object with a name property
+        if (param && typeof param === 'object' && param.name) {
+          // Special handling for parameters with brackets
+          const paramName = param.name;
+          return `&lt;${paramName}&gt;`;
+        }
+        return '';
+      }).filter(name => name.length > 0).join(' ');
+    } 
+    // Handle single string parameter name
+    else if (typeof func.parameters === 'string') {
+      paramNames = `&lt;${func.parameters}&gt;`;
+    }
+    // Handle object with direct key-value pairs
+    else if (typeof func.parameters === 'object' && !Array.isArray(func.parameters)) {
+      paramNames = Object.keys(func.parameters)
+        .map(key => `&lt;${key}&gt;`)
+        .join(' ');
+    }
+    
+    console.log(`Param names for ${func.name}: ${paramNames}`);
+    
+    if (paramNames.length > 0) {
+      // Create a separate element for each parameter to ensure better styling control
+      let $paramsContainer = $('<span>', {
+        class: 'doc-function-params-container'
+      });
+      
+      // Split the parameters and create separate elements for each
+      const paramsList = paramNames.split(' ').filter(p => p.length > 0);
+      
+      paramsList.forEach(param => {
+        const $param = $('<span>', {
+          class: 'doc-function-param',
+          html: param
+        });
+        $paramsContainer.append($param, ' ');
+      });
+      
+      $nameContainer.append(' ');
+      $nameContainer.append($paramsContainer);
+    }
+  } else {
+    console.log(`Function ${func.name} has no parameters`);
+  }
 
   // Add expand/collapse indicator
   const $expandIndicator = $('<span>', {
@@ -234,7 +293,7 @@ function makeFunctionElement(func) {
     text: state.expandedFunctions.has(func.name) ? '▼' : '▶'
   });
 
-  $header.append($starButton, $name, $expandIndicator);
+  $header.append($starButton, $nameContainer, $expandIndicator);
 
   // Create content container
   const $content = $('<div>', {
@@ -242,7 +301,7 @@ function makeFunctionElement(func) {
     style: state.expandedFunctions.has(func.name) ? 'display: block' : 'display: none'
   });
 
-  // Add description
+  // Add description if it exists
   if (func.description) {
     const $description = $('<div>', {
       class: 'doc-function-description',
@@ -251,23 +310,129 @@ function makeFunctionElement(func) {
     $content.append($description);
   }
 
-  // Add code examples
+  // Add parameters if they exist
+  if (func.parameters && func.parameters.length > 0) {
+    const $paramsTitle = $('<div>', {
+      class: 'doc-section-title',
+      text: 'Parameters'
+    });
+    
+    const $paramsList = $('<ul>', {
+      class: 'doc-params-list'
+    });
+
+    func.parameters.forEach(param => {
+      if (!param) return;
+      
+      const $paramItem = $('<li>', {
+        class: 'doc-param-item'
+      });
+
+      const $paramName = $('<span>', {
+        class: 'doc-param-name',
+        text: param.name || 'unnamed'
+      });
+
+      const $paramDesc = $('<span>', {
+        class: 'doc-param-description',
+        text: param.description || ''
+      });
+
+      $paramItem.append($paramName, ' ', $paramDesc);
+
+      if (param.range) {
+        const $paramRange = $('<div>', {
+          class: 'doc-param-range',
+          text: `Range: ${param.range}`
+        });
+        $paramItem.append($paramRange);
+      }
+
+      $paramsList.append($paramItem);
+    });
+
+    $content.append($paramsTitle, $paramsList);
+  }
+
+  // Add examples if they exist
   if (func.examples && func.examples.length > 0) {
-    const $examplesContainer = $('<div>', {
-      class: 'doc-function-examples'
+    const $examplesTitle = $('<div>', {
+      class: 'doc-section-title',
+      text: 'Examples'
+    });
+    
+    const $examplesList = $('<div>', {
+      class: 'doc-examples-list'
     });
 
+    // Create examples with copy button
     func.examples.forEach((example, index) => {
-      $examplesContainer.append(makeCodeEditor(example, `${func.name}-${index}`));
+      const $exampleWrapper = $('<div>', {
+        class: 'doc-example-wrapper'
+      });
+      
+      const $exampleItem = $('<pre>', {
+        class: 'doc-example-simple',
+        text: example
+      });
+      
+      // Add copy button
+      const $copyButton = $('<button>', {
+        class: 'doc-copy-button',
+        text: 'Copy',
+        title: 'Copy example to clipboard'
+      });
+      
+      $copyButton.on('click', (e) => {
+        e.stopPropagation();
+        
+        // Copy example text to clipboard
+        navigator.clipboard.writeText(example).then(() => {
+          $copyButton.text('Copied!');
+          $copyButton.addClass('copied');
+          
+          // Reset button text after a delay
+          setTimeout(() => {
+            $copyButton.text('Copy');
+            $copyButton.removeClass('copied');
+          }, 2000);
+        }).catch(err => {
+          console.error('Could not copy text: ', err);
+        });
+      });
+      
+      $exampleWrapper.append($exampleItem, $copyButton);
+      $examplesList.append($exampleWrapper);
     });
 
-    $content.append($examplesContainer);
+    $content.append($examplesTitle, $examplesList);
+  }
+
+  // Add tags if they exist
+  if (func.tags && func.tags.length > 0) {
+    const $tagsTitle = $('<div>', {
+      class: 'doc-section-title',
+      text: 'Tags'
+    });
+    
+    const $tagsList = $('<div>', {
+      class: 'doc-function-tags'
+    });
+
+    func.tags.forEach(tag => {
+      const $tag = $('<span>', {
+        class: 'doc-function-tag',
+        text: tag
+      });
+      $tagsList.append($tag);
+    });
+
+    $content.append($tagsTitle, $tagsList);
   }
 
   // Add click handler for expand/collapse
-  $item.on('click', (e) => {
-    dbg("makeFunctionElement", "Function item clicked", func.name);
-    if (!$(e.target).is('.doc-star-button')) {
+  $header.on('click', (e) => {
+    if (!$(e.target).is('.doc-star-button') && !$(e.target).is('.doc-copy-button')) {
       if (state.expandedFunctions.has(func.name)) {
         state.expandedFunctions.delete(func.name);
         $expandIndicator.text('▶');
@@ -288,6 +453,8 @@ function makeFunctionElement(func) {
 // Create the function list
 function makeFunctionList(data, columns = 1) {
   dbg("makeFunctionList", "Creating function list", { data, columns });
+  console.log(`Making function list with ${data.length} functions`);
+  
   if (!data || !Array.isArray(data)) {
     console.error("Invalid data passed to makeFunctionList:", data);
     return $('<div>', {
@@ -303,10 +470,25 @@ function makeFunctionList(data, columns = 1) {
 
   // Filter functions based on selected tags
   const filteredFunctions = data.filter(func => {
-    if (!func || typeof func !== 'object') return false;
+    if (!func || typeof func !== 'object') {
+      console.log(`Skipping invalid function object: ${func}`);
+      return false;
+    }
     if (state.selectedTags.size === 0) return true;
-    return Array.from(state.selectedTags).every(tag => func.tags.includes(tag));
+    
+    // Check if function has all selected tags
+    const hasAllTags = Array.from(state.selectedTags).every(tag => {
+      if (!func.tags || !Array.isArray(func.tags)) {
+        console.log(`Function ${func.name} has no tags array`);
+        return false;
+      }
+      return func.tags.includes(tag);
+    });
+    
+    return hasAllTags;
   });
+
+  console.log(`Filtered to ${filteredFunctions.length} functions`);
 
   // Sort by starred status
   filteredFunctions.sort((a, b) => {
@@ -321,22 +503,32 @@ function makeFunctionList(data, columns = 1) {
   const $target = $grid || $container;
 
   // Add functions to the list
-  filteredFunctions.forEach(func => {
+  console.log(`Adding ${filteredFunctions.length} function elements to the DOM`);
+  filteredFunctions.forEach((func, index) => {
+    console.log(`[${index}] Creating element for function: ${func.name}`);
     dbg("makeFunctionList", "Adding function to list", func.name);
     if (!func || typeof func !== 'object') return;
+    
     const $functionElement = makeFunctionElement(func);
+    console.log(`Element created for ${func.name}: `, $functionElement.length ? 'Success' : 'Failed');
+    
     if ($functionElement && $functionElement.length) {
       $target.append($functionElement);
+      console.log(`Appended ${func.name} to container`);
+    } else {
+      console.error(`Failed to create element for function ${func.name}`);
     }
   });
 
   // Add grid to container if using multiple columns
   if ($grid) {
     $container.append($grid);
+    console.log("Added grid to container");
   }
 
   // Show message if no functions match
   if (!filteredFunctions.length) {
+    console.log("No functions match the filter criteria");
     const $noResults = $('<div>', {
       class: 'doc-no-results',
       text: 'No functions match the selected tags'
@@ -348,6 +540,7 @@ function makeFunctionList(data, columns = 1) {
     $container.append($noResults);
   }
 
+  console.log(`Function list creation complete, returning container`);
   return $container;
 }
 
@@ -417,6 +610,24 @@ async function loadReferenceData() {
     if (!Array.isArray(data)) {
       throw new Error('Documentation data must be an array');
     }
+
+    // Inspect the data structure
+    console.log("DEBUG: REFERENCE DATA STRUCTURE");
+    for (let i = 0; i < Math.min(5, data.length); i++) {
+      const func = data[i];
+      console.log(`Function ${i}: ${func.name}`, {
+        hasParameters: !!func.parameters,
+        parametersIsArray: Array.isArray(func.parameters),
+        parametersLength: func.parameters ? func.parameters.length : 0,
+        parameters: func.parameters
+      });
+    }
+    
+    // Count functions with valid parameters
+    const validParamsCount = data.filter(f => 
+      f.parameters && Array.isArray(f.parameters) && f.parameters.length > 0
+    ).length;
+    console.log(`Total functions: ${data.length}, Functions with valid parameters: ${validParamsCount}`);
 
     // Validate each function entry
     data.forEach(func => {
