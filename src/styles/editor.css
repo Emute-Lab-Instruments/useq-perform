@@ -33,3 +33,29 @@
   0% { background-color: var(--code-eval-highlight-color); }
   100% { background-color: transparent; }
 }
+
+/* Base styles for editor cursor */
+.cm-cursor {
+  position: relative;
+  background-color: transparent !important;
+  border-left: none !important;
+}
+
+.cm-cursor::before {
+  border-left: none;
+  content: '|';
+  position: absolute;
+  /* background-color: var(--caret, #FF69B4); */
+  background-color: var(--caret, #DE3163);
+  color: transparent;
+  opacity: 0.7;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  font-family: var(--code-font);
+  margin-left: 0.5px;
+}
+
+.current-line {
+  background-color: lightgrey;
+}
