@@ -68,9 +68,15 @@ export const editorBaseTheme = EditorView.baseTheme({
   // Enable scrolling for overflow content
   ".cm-scroller": { overflow: "auto" },
   // Hide the cursor when editor is not focused
-  ".cm-cursor": { visibility: "hidden" },
+  // ".cm-cursor": { visibility: "hidden" },
   // Show the cursor only when the editor is focused
-  "&.cm-focused .cm-cursor": { visibility: "visible" },
+  // "&.cm-focused .cm-cursor": { visibility: "visible" },
+  ".cm-cursor": {
+    display: "block",
+  },
+  ".cm-cursorLayer": {
+    animation: "steps(1) cm-blink 1.2s infinite",
+  },
 });
 
 const builtinThemes = [
