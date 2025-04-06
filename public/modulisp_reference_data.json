@@ -84,7 +84,6 @@
         "range": "number"
       }
     ],
-    // TODO add moving example
     "examples": [
       "(% 6 3) ; => 0",
       "(% 7 3) ; => 1"
@@ -92,6 +91,9 @@
     "category": "modulisp",
     "tags": [
       "functional programming"
+    ],
+    "internal_comments": [
+      "TODO add moving examples"
     ]
   },
   {
@@ -635,7 +637,6 @@
         "range": "any"
       }
     ],
-    // FIXME @bug
     "examples": [
       "(for my-number [1 2 3]\n  (println \"My number is: \")\n  (println my-number)\n  my-number) ;; => prints each number in order, returns 3",
       "(for i [1 2 3] (+ i 1))",
@@ -645,6 +646,9 @@
     "tags": [
       "functional programming",
       "evaluation control"
+    ],
+    "internal_comments": [
+      "FIXME @bug"
     ]
   },
   {
