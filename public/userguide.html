@@ -1,80 +1,520 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Guide</title>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: var(--text-primary, #333);
+      max-width: 100%;
+      padding: 0 15px;
+      margin: 0;
+    }
+    code {
+      font-family: Consolas, Monaco, 'Andale Mono', monospace;
+      background-color: var(--panel-control-bg, #f4f4f4);
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    pre {
+      background-color: var(--panel-control-bg, #f4f4f4);
+      padding: 12px;
+      border-radius: 4px;
+      overflow: auto;
+    }
+    .experience-selector {
+      background: var(--panel-section-bg, #f5f5f5);
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .experience-selector button {
+      background: var(--panel-control-bg, #e0e0e0);
+      border: none;
+      padding: 8px 16px;
+      margin: 0 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+    .experience-selector button.active {
+      background: var(--accent-color, #007bff);
+      color: white;
+    }
+    #advanced-content, #advanced-content-continued {
+      border-top: 1px solid var(--panel-border, #eee);
+      margin-top: 20px;
+      padding-top: 20px;
+    }
+    h2 {
+      position: sticky;
+      top: 70px;
+      background-color: var(--panel-bg, rgba(255,255,255,0.95));
+      margin: 0 -15px;
+      padding: 10px 15px;
+      z-index: 90;
+      border-bottom: 1px solid var(--panel-border, rgba(0,0,0,0.1));
+    }
+    h3 {
+      position: sticky;
+      top: 120px;
+      background-color: var(--panel-bg, rgba(255,255,255,0.95));
+      margin: 0 -15px;
+      padding: 8px 15px;
+      z-index: 80;
+      border-bottom: 1px solid var(--panel-border, rgba(0,0,0,0.1));
+    }
+    .back-to-top {
+      position: sticky;
+      bottom: 20px;
+      text-align: center;
+      z-index: 100;
+      margin: 20px auto;
+      width: 180px;
+    }
+    .back-to-top a {
+      display: inline-block;
+      padding: 8px 16px;
+      background-color: var(--accent-color, #007bff);
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+    .back-to-top a:hover {
+      background-color: var(--accent-color-hover, #0069d9);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    }
+    a {
+      color: var(--accent-color, #007bff);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
-    <header>
-        <h1>Application User Guide</h1>
-    </header>
+  <h1>uSEQ User Guide</h1>
+<p>Welcome to the world of livecoding in your modular system! This guide will help you get started with uSEQ and show you how to make some cool sounds with just a few lines of code.</p>
+<h2>Table of Contents</h2>
+<ul>
+<li><a href="#useq-user-guide">uSEQ User Guide</a><ul>
+<li><a href="#table-of-contents">Table of Contents</a></li>
+<li><a href="#what-is-useq">What is uSEQ?</a></li>
+<li><a href="#getting-connected">Getting Connected</a></li>
+<li><a href="#the-basics">The Basics</a><ul>
+<li><a href="#understanding-the-interface">Understanding the Interface</a></li>
+<li><a href="#how-code-works-on-useq">How Code Works on uSEQ</a></li>
+</ul>
+</li>
+<li><a href="#your-first-sounds">Your First Sounds</a><ul>
+<li><a href="#making-a-square-wave">Making a Square Wave</a></li>
+<li><a href="#creating-rhythms">Creating Rhythms</a></li>
+<li><a href="#adding-modulation">Adding Modulation</a></li>
+</ul>
+</li>
+<li><a href="#what-is-useq-1">What is uSEQ?</a></li>
+<li><a href="#core-modulisp-concepts">Core ModuLisp Concepts</a><ul>
+<li><a href="#working-with-time">Working with Time</a></li>
+<li><a href="#creating-expressions-for-outputs">Creating Expressions for Outputs</a></li>
+</ul>
+</li>
+<li><a href="#working-with-the-editor">Working with the Editor</a><ul>
+<li><a href="#saving-and-loading-code">Saving and Loading Code</a></li>
+<li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
+<li><a href="#structural-editing">Structural Editing</a></li>
+</ul>
+</li>
+<li><a href="#common-functions">Common Functions</a></li>
+<li><a href="#tips-and-tricks">Tips and Tricks</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#going-further">Going Further</a></li>
+<li><a href="#advanced-concepts">Advanced Concepts</a><ul>
+<li><a href="#understanding-time-in-modulisp">Understanding Time in ModuLisp</a></li>
+<li><a href="#temporal-control-functions">Temporal Control Functions</a><ul>
+<li><a href="#eval-at-time">eval-at-time</a></li>
+<li><a href="#offset-fast-and-slow">offset, fast, and slow</a></li>
+</ul>
+</li>
+<li><a href="#creating-predictable-randomness">Creating Predictable Randomness</a></li>
+<li><a href="#the-modulisp-architecture">The ModuLisp Architecture</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<div class="experience-selector">
+  <p>Choose your experience level:</p>
+  <button id="beginner-button" class="active">I'm new to programming</button>
+  <button id="advanced-button">I have programming experience</button>
+</div>
 
-    <nav>
-        <h2>Contents</h2>
-        <ul>
-            <li><a href="#getting-started">Getting Started</a></li>
-            <li><a href="#basic-features">Basic Features</a></li>
-            <li><a href="#settings">Settings</a></li>
-            <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
-            <li><a href="#troubleshooting">Troubleshooting</a></li>
-        </ul>
-    </nav>
+<div id="beginner-content">
 
-    <main>
-        <section id="getting-started">
-            <h2>Getting Started</h2>
-            <p>Welcome to the application! This guide will help you get started...</p>
-        </section>
+<h2>What is uSEQ?</h2>
+<p>uSEQ is your gateway to creative coding inside your eurorack system. It&#39;s a flexible control-rate voltage generator and processor that you can control through simple code. Instead of being locked into a specific function, uSEQ lets you decide exactly how it should behave by writing small bits of code.</p>
+<p>The module features:</p>
+<ul>
+<li>2 CV inputs with attenuverters</li>
+<li>2 pulse inputs</li>
+<li>3 CV (aka &#39;analog&#39;) outputs</li>
+<li>3 pulse (aka &#39;digital)&#39; outputs</li>
+<li>A momentary switch and three-way toggle switch</li>
+<li>A live coding language called <code>ModuLisp</code> that&#39;s designed specifically for sequencing and modulating</li>
+</ul>
+<p>Whether you want to create complex rhythms, generate waveforms, or process incoming signals in unusual ways, uSEQ has you covered.</p>
+<h2>Getting Connected</h2>
+<p>Getting started with uSEQ is easy:</p>
+<ol>
+<li>Connect your uSEQ module to your computer using a USB cable</li>
+<li>Open the editor at <a href="https://useq.emutelabinstruments.co.uk/">https://useq.emutelabinstruments.co.uk/</a> (or use the embedded editor on this site)</li>
+<li>Click the &quot;Connect&quot; button in the corner of the editor</li>
+<li>Select your uSEQ device from the list (it&#39;s usually at the top and might have &quot;rp2040&quot; in the name)</li>
+</ol>
+<p>That&#39;s it! Once connected, the editor will show you&#39;re ready to start coding.</p>
+<h2>The Basics</h2>
+<h3>Understanding the Interface</h3>
+<p>Your uSEQ module has several parts:</p>
+<ul>
+<li><strong>CV Outputs (a1, a2, a3)</strong>: These output continuous voltage signals (-5V to +5V)</li>
+<li><strong>Pulse Outputs (d1, d2, d3)</strong>: These output gates/triggers (0V or +5V)</li>
+<li><strong>CV Inputs (cv1, cv2)</strong>: These receive external voltage with attenuverters to control the level</li>
+<li><strong>Pulse Inputs (p1, p2)</strong>: These receive external gate or trigger signals</li>
+<li><strong>Controls</strong>: A momentary button and a three-way toggle switch for hands-on interaction</li>
+</ul>
+<h3>How Code Works on uSEQ</h3>
+<p>uSEQ uses a streamlined version of the classic LISP programming language called ModuLISP, that&#39;s designed specifically for music. Don&#39;t worry if you&#39;ve never coded before - no programming experience required to make beats!</p>
+<p>Some key things to know:</p>
+<ul>
+<li>Code is written inside parentheses: <code>(+ 1 2 3)</code>.</li>
+<li>The first word inside the parentheses (<code>+</code>) is usually the &#39;verb&#39; (aka &#39;function&#39;), i.e. what you want to do.</li>
+<li>The other items (<code>1 2 3</code>) are the parameters, i.e. <em>how</em> you want to do it or what you want to do it <em>on/with</em>.</li>
+<li>To run a line of code, place your cursor anywhere inside the parentheses and press <strong>Ctrl+Enter</strong>. You will see a little flash that signals the exact bit of code that was executed; if it&#39;s grey, that means that the module isn&#39;t connected yet.</li>
+<li>To schedule code to run at the start of the next bar, use <strong>Alt+Enter</strong> instead</li>
+</ul>
+<h2>Your First Sounds</h2>
+<h3>Making a Square Wave</h3>
+<p>Let&#39;s start with something simple - a flashing LED and a square wave output:</p>
+<pre><code class="language-lisp">(d1 (sqr bar))
+</code></pre>
+<p>Put your cursor inside the parentheses and hit <strong>Ctrl+Enter</strong>. You should see the blue LED next to output d1 start flashing once per bar. If you patch d1 into a trigger input on another module (like an envelope generator), you&#39;ll have a steady pulse going.</p>
+<p>What&#39;s happening here? You&#39;re telling output <code>d1</code> to output a square wave (<code>sqr</code>) that cycles at the rate of <code>bar</code> (which is a built-in timing reference).</p>
+<h3>Creating Rhythms</h3>
+<p>Want to make a more interesting rhythm? Try this:</p>
+<pre><code class="language-lisp">(d3 (seq [1 0 0 1 1 0 1 0] bar))
+</code></pre>
+<p>This creates a rhythmic pattern on output d3. The <code>seq</code> function takes a list of values (<code>[1 0 0 1 1 0 1 0]</code>) and cycles through them at the rate of <code>bar</code>. Each <code>1</code> sends out a trigger, and each <code>0</code> stays silent.</p>
+<p>Try changing the pattern by editing the numbers in the list. For example:</p>
+<pre><code class="language-lisp">(d3 (seq [1 1 0 0 1 0 1 1] bar))
+</code></pre>
+<p>Want your rhythm to play faster? Use the <code>fast</code> function:</p>
+<pre><code class="language-lisp">(d3 (seq [1 0 0 1 1 0 1 0] (fast 2 bar)))
+</code></pre>
+<p>This plays the rhythm twice as fast. Try different numbers instead of <code>2</code> to change the speed.</p>
+<h3>Adding Modulation</h3>
+<p>Now let&#39;s add some continuous voltage modulation on output a1:</p>
+<pre><code class="language-lisp">(a1 (interp &#39;(1 0.5 0 0.6 1) bar))
+</code></pre>
+<p>This creates a voltage that moves through the list of values over the course of one bar. The values range from -5V (0) to +5V (1), so this creates a varying voltage that could control an oscillator&#39;s pitch, a filter cutoff, or anything else that takes CV.</p>
+<p>Try connecting a1 to your oscillator&#39;s pitch input and hear how it creates a simple melody!</p>
+</div>
 
-        <section id="basic-features">
-            <h2>Basic Features</h2>
-            <p>Learn about the core features of the application...</p>
-        </section>
+<div id="advanced-content" style="display: none;">
 
-        <section id="settings">
-            <h2>Settings</h2>
-            <p>Customize the application to your needs...</p>
-        </section>
+<h2>What is uSEQ?</h2>
+<p>uSEQ is a eurorack module that brings livecoding into your modular system. It&#39;s an extremely flexible voltage generator and processor with a LISP-based coding engine called ModuLisp. The module features:</p>
+<ul>
+<li>2 CV inputs with attenuverters</li>
+<li>2 pulse inputs</li>
+<li>3 CV outputs (a1, a2, a3)</li>
+<li>3 pulse outputs (d1, d2, d3)</li>
+<li>A momentary switch and three-way toggle switch</li>
+<li>A powerful, time-aware functional language environment</li>
+</ul>
+<p>The uSEQ firmware consists of three core components:</p>
+<ol>
+<li>An expression for each output that&#39;s repeatedly evaluated</li>
+<li>An interpreter/VM for evaluating those expressions</li>
+<li>An update loop that reads hardware inputs, evaluates output expressions, and updates hardware outputs</li>
+</ol>
+<h2>Core ModuLisp Concepts</h2>
+<p>The ModuLisp language is designed around a few key principles:</p>
+<ol>
+<li><strong>Meta-temporality</strong> - time is a first-class concept in the language</li>
+<li><strong>Functional programming</strong> - expressions return values without side effects</li>
+<li><strong>Predictable signals</strong> - behavior can be analyzed and understood in advance</li>
+</ol>
+<p>The key to understanding ModuLisp is that everything revolves around the variable <code>t</code>, which represents the current time in seconds. All timing functions are derived from this fundamental value.</p>
+<h3>Working with Time</h3>
+<p>Time-bending functions form the core of ModuLisp&#39;s power:</p>
+<pre><code class="language-lisp">;; Examples of time manipulation
+(def my-signal (sin (* 2 Math/PI t)))            ; A sine wave at 1Hz
 
-        <section id="keyboard-shortcuts">
-            <h2>Keyboard Shortcuts</h2>
-            <p>Master the application with these helpful shortcuts...</p>
-        </section>
+;; Time-shifting with offset (delay/advance by 0.5 seconds)
+(a1 (+ my-signal (offset 0.5 my-signal)))        ; Echo effect
 
-        <section id="troubleshooting">
-            <h2>Troubleshooting</h2>
-            <p>Common issues and their solutions...</p>
+;; Speed up or slow down time
+(a2 (fast 2 my-signal))                          ; Twice as fast
+(a3 (slow 2 my-signal))                          ; Half speed
+</code></pre>
+<h3>Creating Expressions for Outputs</h3>
+<p>Each output needs an expression that will be evaluated repeatedly during the update loop:</p>
+<pre><code class="language-lisp">;; Set up expressions for different outputs
+(a1 (scale (sin (fast 4 bar)) 0 1 -3 3))         ; Modulation voltage
+(d1 (&gt; (sin (* 4 bar)) 0.2))                     ; Rhythmic trigger
+(a2 (interp (seq [0 0.3 0.7 1] bar) (saw bar)))  ; Stepped voltage
+</code></pre>
+</div>
+
+<div id="shared-content">
+
+<h2>Working with the Editor</h2>
+<h3>Saving and Loading Code</h3>
+<p>Your code is automatically saved in your browser&#39;s local storage, but you can also save it to your computer:</p>
+<ul>
+<li>Click the &quot;Save&quot; button to download your code as a file</li>
+<li>Click &quot;Load&quot; to open a previously saved file</li>
+</ul>
+<h3>Keyboard Shortcuts</h3>
+<p>Press <strong>Alt+H</strong> to see all available keyboard shortcuts. Some useful ones:</p>
+<ul>
+<li><strong>Ctrl+Enter</strong>: Run the current expression immediately</li>
+<li><strong>Alt+Enter</strong>: Run the current expression at the start of the next bar</li>
+<li><strong>Ctrl+S</strong>: Save your code</li>
+</ul>
+<h3>Structural Editing</h3>
+<p>The editor uses something called &quot;structural editing&quot; which helps you write valid code by handling brackets automatically. It might feel a bit strange at first, but it prevents a lot of errors!</p>
+<p>Some useful structural editing commands:</p>
+<ul>
+<li><strong>Alt+Right/Left</strong>: Move code in and out of brackets (&quot;slurp&quot; and &quot;barf&quot;)</li>
+<li><strong>Alt+S</strong>: Splice - remove surrounding brackets while keeping content</li>
+<li><strong>Alt+Up/Down</strong>: Move up or down through code structure</li>
+</ul>
+<p>If you ever get confused with brackets, you can always select and delete text normally.</p>
+<h2>Common Functions</h2>
+<p>Here are some functions you&#39;ll use a lot:</p>
+<ul>
+<li><code>sqr</code> - Square wave (values alternate between 0 and 1)</li>
+<li><code>sin</code> - Sine wave (smooth oscillation between 0 and 1)</li>
+<li><code>tri</code> - Triangle wave (ramps up, then down between 0 and 1)</li>
+<li><code>saw</code> - Sawtooth wave (ramps up then resets between 0 and 1)</li>
+<li><code>seq</code> - Create rhythmic sequences from lists of values</li>
+<li><code>interp</code> - Smoothly interpolate between a list of values</li>
+<li><code>fast</code> - Speed up a timing function</li>
+<li><code>slow</code> - Slow down a timing function</li>
+<li><code>scale</code> - Scale a value to a different range</li>
+<li><code>offset</code> - Shift a signal forward or backward in time</li>
+</ul>
+<h2>Tips and Tricks</h2>
+<ul>
+<li>You can run multiple lines of code to control different outputs at the same time</li>
+<li>Use the <code>bar</code> variable to keep everything in sync</li>
+<li>Try <code>rnd</code> for random values (example: <code>(a2 (rnd))</code>)</li>
+<li>Combine functions: <code>(a1 (scale (sin (fast 4 bar)) 0 1 -3 3))</code></li>
+<li>Use the momentary button with <code>(btn)</code> in your code</li>
+</ul>
+<h2>Troubleshooting</h2>
+<p>If you&#39;re having trouble:</p>
+<ul>
+<li>If the connection fails, try refreshing the page</li>
+<li>On Linux/Unix systems, you might need to adjust permissions (see: <a href="https://support.arduino.cc/hc/en-us/articles/360016495679-Fix-port-access-on-Linux">https://support.arduino.cc/hc/en-us/articles/360016495679-Fix-port-access-on-Linux</a>)</li>
+<li>If code isn&#39;t working as expected, check your brackets - they must be balanced</li>
+<li>Join our Discord for help: <a href="https://discord.gg/TQMNfp6GJ9">https://discord.gg/TQMNfp6GJ9</a></li>
+</ul>
+<h2>Going Further</h2>
+<p>Once you&#39;re comfortable with the basics, you can:</p>
+<ul>
+<li>Create complex multi-track sequences by running multiple lines of code</li>
+<li>Process incoming CV using the <code>cv1</code> and <code>cv2</code> variables</li>
+<li>Create conditional logic with <code>if</code> statements</li>
+<li>Define your own functions for reuse</li>
+<li>Check out the full API documentation to see all available functions</li>
+</ul>
+</div>
+
+<div id="advanced-content-continued" style="display: none;">
+
+<h2>Advanced Concepts</h2>
+<h3>Understanding Time in ModuLisp</h3>
+<p>At the core of uSEQ&#39;s timing model is the variable <code>t</code>. It represents the flow of time in seconds since the module was turned on (or since the last time reset). This variable is automatically updated at the beginning of each tick using the microcontroller&#39;s hardware clock. </p>
+<p>From <code>t</code>, other built-in variables like <code>beat</code> and <code>bar</code> are derived. These provide convenient reference points for musical timing:</p>
+<pre><code class="language-lisp">;; t represents absolute time in seconds
+;; beat is derived from t based on the current BPM
+;; bar is derived from beat (usually 4 beats = 1 bar)
+
+(def bar-num (floor (/ t barDur)))  ; Count how many bars have elapsed
+</code></pre>
+<h3>Temporal Control Functions</h3>
+<p>ModuLisp provides powerful functions for manipulating time:</p>
+<h4>eval-at-time</h4>
+<p>This function evaluates an expression as if time were at a specific point:</p>
+<pre><code class="language-lisp">(eval-at-time 999 (+ 1 2))       ; =&gt; 3
+(eval-at-time 999 t)             ; =&gt; 999
+(eval-at-time 999 (+ t 1))       ; =&gt; 1000
+</code></pre>
+<h4>offset, fast, and slow</h4>
+<p>These functions are relative to the context in which they&#39;re evaluated:</p>
+<pre><code class="language-lisp">(eval-at-time 5 (fast 2 (+ t 1)))          ; =&gt; 11
+(eval-at-time 5 (fast 2 (fast 2 (+ t 1)))) ; =&gt; 21
+(eval-at-time 5 (offset 1 (offset 1 t)))   ; =&gt; 7
+</code></pre>
+<h3>Creating Predictable Randomness</h3>
+<p>ModuLisp uses indexed randomness for creating sequences that are random-seeming but predictable and repeatable:</p>
+<pre><code class="language-lisp">;; A helper signal that tracks bar count
+(def bar-num (floor (/ t barDur)))
+
+;; Create a &quot;random&quot; chord progression that changes each bar
+(def chord (from-list [&quot;Am&quot;, &quot;Cm&quot;, &quot;E&quot;] (ind-rand 0 bar-num)))
+</code></pre>
+<p>The <code>ind-rand</code> function takes a seed and an index, returning a consistent &quot;random&quot; number for the same combination:</p>
+<pre><code class="language-lisp">(ind-rand 1234      5)      ; =&gt; 0.2435
+(ind-rand 1234.0001 5)      ; =&gt; 0.8924
+(ind-rand 1234      5.0001) ; =&gt; 0.3259
+</code></pre>
+<p>This approach enables:</p>
+<ul>
+<li>Predictable but seemingly random sequences</li>
+<li>The ability to change the seed to get completely different patterns</li>
+<li>The possibility to visualize future events before they happen</li>
+</ul>
+<h3>The ModuLisp Architecture</h3>
+<p>ModuLisp currently runs on a tree-walking interpreter but is planned to migrate to a bytecode VM with JIT compilation for better performance. The purely-functional approach enables advanced optimizations that wouldn&#39;t be possible with a more imperative approach.</p>
+<p>Benefits of this architecture:</p>
+<ul>
+<li>Better performance through optimization</li>
+<li>Code analysis for visualizing future states</li>
+<li>Composability of signals and timing functions</li>
+</ul>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Get reference to buttons and content divs
+    const beginnerBtn = document.getElementById('beginner-button');
+    const advancedBtn = document.getElementById('advanced-button');
+    const beginnerContent = document.getElementById('beginner-content');
+    const advancedContent = document.getElementById('advanced-content');
+    const advancedContentContinued = document.getElementById('advanced-content-continued');
+    
+    // Add click event listeners
+    beginnerBtn.addEventListener('click', function() {
+        beginnerContent.style.display = 'block';
+        advancedContent.style.display = 'none';
+        advancedContentContinued.style.display = 'none';
+        beginnerBtn.classList.add('active');
+        advancedBtn.classList.remove('active');
+    });
+    
+    advancedBtn.addEventListener('click', function() {
+        beginnerContent.style.display = 'none';
+        advancedContent.style.display = 'block';
+        advancedContentContinued.style.display = 'block';
+        beginnerBtn.classList.remove('active');
+        advancedBtn.classList.add('active');
+    });
+});
+</script>
+
+<style>
+.experience-selector {
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.experience-selector button {
+    background: #e0e0e0;
+    border: none;
+    padding: 8px 16px;
+    margin: 0 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.experience-selector button.active {
+    background: #007bff;
+    color: white;
+}
+
+#advanced-content, #advanced-content-continued {
+    border-top: 1px solid #eee;
+    margin-top: 20px;
+    padding-top: 20px;
+}
+</style>
+  
+  <div class="back-to-top">
+    <a href="#useq-user-guide">↑ Back to Top</a>
+  </div>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Get reference to buttons and content divs
+    const beginnerBtn = document.getElementById('beginner-button');
+    const advancedBtn = document.getElementById('advanced-button');
+    const beginnerContent = document.getElementById('beginner-content');
+    const advancedContent = document.getElementById('advanced-content');
+    const advancedContentContinued = document.getElementById('advanced-content-continued');
+    
+    // Add click event listeners
+    if (beginnerBtn && advancedBtn) {
+      beginnerBtn.addEventListener('click', function() {
+        beginnerContent.style.display = 'block';
+        advancedContent.style.display = 'none';
+        if (advancedContentContinued) {
+          advancedContentContinued.style.display = 'none';
+        }
+        beginnerBtn.classList.add('active');
+        advancedBtn.classList.remove('active');
+        localStorage.setItem('useqExperienceLevel', 'beginner');
+      });
+      
+      advancedBtn.addEventListener('click', function() {
+        beginnerContent.style.display = 'none';
+        advancedContent.style.display = 'block';
+        if (advancedContentContinued) {
+          advancedContentContinued.style.display = 'block';
+        }
+        beginnerBtn.classList.remove('active');
+        advancedBtn.classList.add('active');
+        localStorage.setItem('useqExperienceLevel', 'advanced');
+      });
+
+      // Check if user has a preference stored
+      const savedExperience = localStorage.getItem('useqExperienceLevel');
+      if (savedExperience === 'advanced') {
+        advancedBtn.click();
+      } else {
+        beginnerBtn.click();
+      }
+    }
+    
+    // Add smooth scrolling for navigation links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
         
-        </section><section id="getting-started">
-            <h2>Getting Started</h2>
-            <p>Welcome to the application! This guide will help you get started...</p>
-        </section>
-
-        <section id="basic-features">
-            <h2>Basic Features</h2>
-            <p>Learn about the core features of the application...</p>
-        </section>
-
-        <section id="settings">
-            <h2>Settings</h2>
-            <p>Customize the application to your needs...</p>
-        </section>
-
-        <section id="keyboard-shortcuts">
-            <h2>Keyboard Shortcuts</h2>
-            <p>Master the application with these helpful shortcuts...</p>
-        </section>
-
-        <section id="troubleshooting">
-            <h2>Troubleshooting</h2>
-            <p>Common issues and their solutions...</p>
-        </section>
-
-    </main>
-
-    <footer>
-        <p>Last updated: <time datetime="2024-01-01">January 1, 2024</time></p>
-    </footer>
+        document.querySelector(this.getAttribute('href')).scrollIntoView({
+          behavior: 'smooth'
+        });
+      });
+    });
+  });
+  </script>
 </body>
 </html>
+  
