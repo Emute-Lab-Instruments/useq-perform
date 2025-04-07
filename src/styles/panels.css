@@ -6,13 +6,11 @@
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 1000;
 
   /* Layout */
   display: flex;
   flex-direction: column;
   text-align: left;
-
   
   /* Dimensions */
   padding: 0;
@@ -34,7 +32,6 @@
     height: 15px;
     background: linear-gradient(135deg, transparent 50%, var(--accent-color) 50%);
     cursor: nwse-resize; /* Show resize cursor */
-    z-index: 1001;
     opacity: 0.7;
     transition: opacity 0.2s ease;
   }
@@ -84,7 +81,6 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    z-index: 1500;
     opacity: 0.7;
     transition: all 0.2s ease;
   }
@@ -110,7 +106,6 @@
   width: 80%;
   height: 80%;
   max-width: none;
-  z-index: 1100; /* Ensure expanded panel is above others */
 }
 
 /* Toggle expand button */
@@ -130,7 +125,6 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 1050;
   transition: all 0.2s ease;
 }
 
@@ -179,7 +173,6 @@
   font-family: var(--code-font);
 
   /* Positioning */
-  z-index: 1000;
 }
 
 /* Tab button styling */

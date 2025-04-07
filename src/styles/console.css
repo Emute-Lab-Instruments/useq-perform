@@ -10,7 +10,6 @@
   border-radius: var(--panel-border-radius);
   min-width: 20em;
   max-width: 30em;
-  z-index: 100;
   resize: both;
   overflow-y: scroll;
   overflow-x: hidden;
