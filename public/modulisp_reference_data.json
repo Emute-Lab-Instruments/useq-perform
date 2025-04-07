@@ -1588,6 +1588,56 @@
     ]
   },
   {
+    "name": "fast",
+    "aliases": [],
+    "description": "Speed up any signal by multiplying the rate at which time flows for all of its components.",
+    "parameters": [
+      {
+        "name": "factor",
+        "description": "The amount by which to multiply the rate of time flowing into the signal (note: values below 1 will slow down the signal)",
+        "range": "any"
+      },
+      {
+        "name": "signal",
+        "description": "The signal for which to speed up time",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(a1 (fast 4 beat)) ; same as `beat` in 4/4",
+      "(d1 (fast 2 (sqr bar)))\n; equivalently, we could also write\n(d1 (sqr (fast 2 bar)))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing"
+    ]
+  },
+  {
+    "name": "slow",
+    "aliases": [],
+    "description": "Slow down any signal by dividing the rate at which time flows for all of its components.",
+    "parameters": [
+      {
+        "name": "factor",
+        "description": "The amount by which to divide the rate of time flowing into the signal (note: values below 1 will speed up the signal)",
+        "range": "any"
+      },
+      {
+        "name": "signal",
+        "description": "The signal for which to slow down time",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(a1 (slow 4 beat)) ; same as `bar` in 4/4",
+      "(d1 (slow 2 (sqr beat)))\n; equivalently, we could also write\n(d1 (sqr (slow 2 beat)))"
+    ],
+    "category": "sequencing",
+    "tags": [
+      "sequencing"
+    ]
+  },
+  {
     "name": "sine",
     "aliases": [],
     "description": "(get-expr my-foo) ;; => (+ 1 2 3)",
