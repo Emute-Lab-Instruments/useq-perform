@@ -7,28 +7,4 @@
 @import './settings.css';
 @import './themes.css';
 @import './help.css';
-
-
-/* 
-
-
-*/
-
-
-
-
-/* 
-/* 
-@import './vis.css'; */
-
-
-/* 
-@import './base.css';
-
-
-@import './documentation.css';
-@import './help.css';
-@import './themes.css';
-@import './vis.css'; 
-
-*/
+@import './z_index.css';

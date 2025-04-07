@@ -1,0 +1,53 @@
+#panel-console {
+    z-index: 100;
+}
+
+#panel-main-editor {
+    z-index: 100;
+}
+
+#panel-toolbar {
+    z-index: 1000;
+}
+
+.panel-aux {
+    z-index: 1000;
+
+    &::after {
+        z-index: 1001;
+    }
+}
+
+
+#panel-vis {
+    z-index: 200;
+
+    & .serialcanvas {
+        z-index: auto;
+      }
+}
+
+
+.panel-close-button {
+    z-index: 1500;
+}
+
+.panel-aux.panel-expanded {
+    z-index: 1100;
+}
+
+.panel-expand-toggle {
+    z-index: 1050;
+}
+
+.panel-nav-bar {
+    z-index: 1000;
+}
+
+.doc-tags-container {
+    z-index: 350;
+}
+
+.doc-copy-button {
+    z-index: 5;
+}
