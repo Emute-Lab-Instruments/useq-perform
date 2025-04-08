@@ -20,8 +20,9 @@
 }
 
 
+/* Above everything else except for panel-aux */
 #panel-vis {
-    z-index: 200;
+    z-index: 19;
 
     & #serialcanvas {
         z-index: auto;
