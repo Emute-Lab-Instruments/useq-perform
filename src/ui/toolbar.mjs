@@ -1,6 +1,6 @@
 import { dbg } from "../utils.mjs";
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
-import { setFontSize } from "../editors/editorConfig.mjs";
+import { setFontSize, toggleSerialVis } from "../editors/editorConfig.mjs";
 import { connectToSerialPort, setConnectedToModule } from "../io/serialComms.mjs";
 
 
@@ -138,6 +138,11 @@ export function makeToolbar(editor) {
             .catch((e) => {
                 console.log("error selecting port", e);
             });
+    });
+
+
+    $("#button-graph").on("click", function() {
+        toggleSerialVis();
     });
 
     $("#button-settings").on("click", function() {

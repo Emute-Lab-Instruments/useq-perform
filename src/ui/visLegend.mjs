@@ -1,4 +1,4 @@
-import { serialVisPaletteLight, serialVisPaletteDark } from './serialVis.mjs';
+import { serialVisPaletteLight, serialVisPaletteDark } from './serialVis/utils.mjs';
 
 let currentPalette = serialVisPaletteLight;
 const legendPanel = document.createElement('div');

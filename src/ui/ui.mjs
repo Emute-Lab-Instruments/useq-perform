@@ -1,7 +1,7 @@
 import { dbg } from "../utils.mjs";
 import { makeHelp } from './help/help.mjs';
 import { initIcons } from './icons.mjs';
-import { makeVis as makeVis } from "./serialVis.mjs";   
+import { makeVis } from "./serialVis/serialVis.mjs";   
 import { makeConsole as makeConsole } from "./console.mjs";
 import { initEditorPanel } from "../editors/main.mjs";
 import { makeSettings as makeSettings } from "./settings/settings.mjs";
