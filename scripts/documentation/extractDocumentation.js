@@ -536,7 +536,7 @@ function determineTagsFromCategoryAndContent(category, content, functionName) {
     case 'system':
       tags.add('system');
       break;
-    case 'probabalistic':
+    case 'probabilistic':
       tags.add('randomness');
       break;
     case 'scheduling':

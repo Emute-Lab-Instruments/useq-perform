@@ -1158,7 +1158,34 @@
   {
     "name": "random",
     "aliases": [],
-    "description": "Generates a random integer",
+    "description": "Generates a random integer (on every beat, unless otherwise modified with fast/slow, offset etc).",
+    "parameters": [
+      {
+        "name": "low",
+        "description": "the lowest random integer the function should generate",
+        "range": "any",
+        "optional": true
+      },
+      {
+        "name": "high",
+        "description": "the highest random integer the function should generate",
+        "range": "any",
+        "optional": true
+      }
+    ],
+    "examples": [
+      "(a1 (random))",
+      "(a2 (slow 2 (random 0.5 0.8)))"
+    ],
+    "category": "probabilistic",
+    "tags": [
+      "randomness"
+    ]
+  },
+  {
+    "name": "random'",
+    "aliases": [],
+    "description": "Generates a random integer (every time it's called).",
     "parameters": [
       {
         "name": "low",
@@ -1175,7 +1202,7 @@
       "(* (random 0 1000) 0.001)",
       "(random 1 10)"
     ],
-    "category": "probabalistic",
+    "category": "probabilistic",
     "tags": [
       "randomness"
     ]
