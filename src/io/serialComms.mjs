@@ -76,6 +76,7 @@ const smoothingSettings = {
   interpolationEnabled: true, // Enable/disable interpolation
 };
 
+
 // Arrays to store previous values for smoothing
 const previousValues = Array(8)
   .fill()

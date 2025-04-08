@@ -19,9 +19,13 @@
     overflow: hidden;
     pointer-events: none;
   
-    & .serialcanvas {
+    & #serialcanvas {
       background-color: transparent;
       width: 100%;
       height: 100%; 
     }
   } 
+
+  .serial-vis-controls {
+    display:none;
+  }
