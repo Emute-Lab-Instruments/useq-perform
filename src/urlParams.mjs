@@ -2,6 +2,8 @@ import { post } from './io/console.mjs';
 import { activeUserSettings } from "./utils/persistentUserSettings.mjs";
 import { dbg, toggleDbg } from "./utils.mjs";
 
+export let devmode = false;
+
 export function handleURLParameters() {
   const urlParams = new URLSearchParams(window.location.search);
 
@@ -10,6 +12,10 @@ export function handleURLParameters() {
   if (urlParams.has("debug") && urlParams.get("debug") === "true") {
     toggleDbg();
     dbg("Debug mode enabled");
+  } 
+  if (urlParams.has("devmode") && urlParams.get("devmode") === "true") {
+    devmode = true;
+    dbg("Dev mode enabled");
   }
 
   if (urlParams.has("nosave")) {
