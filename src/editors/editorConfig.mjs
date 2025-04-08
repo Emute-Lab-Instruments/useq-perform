@@ -76,10 +76,115 @@ export function toggleSerialVisInternal() {
   return true;
 }
 
+/**
+ * Get panel visibility status
+ * @param {jQuery} panel - The panel element
+ * @returns {boolean} True if panel is visible
+ */
+export function isPanelVisible(panel) {
+  return panel.is(":visible");
+}
+
+/**
+ * Generate panel styles based on visibility state
+ * @param {boolean} makeVisible - Whether to make the panel visible
+ * @returns {Object} CSS properties to apply
+ */
+export function getPanelStyles(makeVisible) {
+  if (!makeVisible) {
+    return { "display": "none" };
+  }
+  
+  return {
+    "display": "block",
+    "z-index": "200", 
+    "position": "fixed",
+    "height": "100%",
+    "width": "100%",
+    "left": "0%",
+    "top": "0%",
+    "opacity": "0.7",
+    "pointer-events": "none"
+  };
+}
+
+/**
+ * Calculate canvas dimensions based on window size
+ * @returns {Object} Canvas width and height
+ */
+export function getCanvasDimensions() {
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight
+  };
+}
+
+/**
+ * Generate canvas styles
+ * @returns {Object} CSS properties for canvas
+ */
+export function getCanvasStyles() {
+  return {
+    "display": "block",
+    "width": "100%",
+    "height": "100%",
+    "background-color": "transparent",
+    "position": "absolute", // Ensure canvas is positioned absolutely within panel
+    "top": "0",
+    "left": "0"
+  };
+}
+
+/**
+ * Toggle serial visualization panel with improved visibility
+ * @returns {boolean} True to indicate success
+ */
 export function toggleSerialVis() {
   dbg("Toggling serial visualization");
-  $("#panel-vis").toggle();
-  $("#serialcanvas").toggle();
+  const $panel = $("#panel-vis");
+  const $canvas = $("#serialcanvas");
+  
+  const isVisible = isPanelVisible($panel);
+  dbg(`Panel visibility before: ${isVisible}`);
+  
+  // Apply styles based on desired state
+  const panelStyles = getPanelStyles(!isVisible);
+  $panel.css(panelStyles);
+  
+  // If making visible, ensure canvas is properly sized and styled
+  if (!isVisible) {
+    // Apply dimensions to canvas
+    const dimensions = getCanvasDimensions();
+    $canvas.attr("width", dimensions.width);
+    $canvas.attr("height", dimensions.height);
+    
+    // Apply proper styles to canvas
+    const canvasStyles = getCanvasStyles();
+    $canvas.css(canvasStyles);
+    
+    // Force canvas to be in front with high z-index
+    $canvas.css("z-index", "1000");
+    
+    // Ensure canvas is in the DOM and visible
+    if ($canvas.parent().length === 0) {
+      $panel.append($canvas);
+    }
+    
+    // Force repaint of canvas
+    $canvas[0].getContext('2d').clearRect(0, 0, dimensions.width, dimensions.height);
+
+    
+    dbg("Panel and canvas should now be visible");
+  }
+  
+  // Debug canvas state after changes
+  setTimeout(() => {
+    dbg(`Canvas display after: ${$canvas.css("display")}`);
+    dbg(`Canvas dimensions: ${$canvas.width()}x${$canvas.height()}`);
+    dbg(`Canvas is in DOM: ${$canvas.parent().length > 0}`);
+  }, 10);
+  
+  return true;
 }
 
 /**
