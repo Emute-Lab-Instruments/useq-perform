@@ -35,14 +35,6 @@ Welcome to the world of livecoding in your modular system! This guide will help 
     - [Creating Predictable Randomness](#creating-predictable-randomness)
     - [The ModuLisp Architecture](#the-modulisp-architecture)
 
-<div class="experience-selector">
-  <p>Choose your experience level:</p>
-  <button id="beginner-button" class="active">I'm new to programming</button>
-  <button id="advanced-button">I have programming experience</button>
-</div>
-
-<div id="beginner-content">
-
 ## What is uSEQ?
 
 uSEQ is your gateway to creative coding inside your eurorack system. It's a flexible control-rate voltage generator and processor that you can control through simple code. Instead of being locked into a specific function, uSEQ lets you decide exactly how it should behave by writing small bits of code.
@@ -140,9 +132,7 @@ This creates a voltage that moves through the list of values over the course of 
 
 Try connecting a1 to your oscillator's pitch input and hear how it creates a simple melody!
 
-</div>
 
-<div id="advanced-content" style="display: none;">
 
 ## What is uSEQ?
 
@@ -351,62 +341,3 @@ Benefits of this architecture:
 
 </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Get reference to buttons and content divs
-    const beginnerBtn = document.getElementById('beginner-button');
-    const advancedBtn = document.getElementById('advanced-button');
-    const beginnerContent = document.getElementById('beginner-content');
-    const advancedContent = document.getElementById('advanced-content');
-    const advancedContentContinued = document.getElementById('advanced-content-continued');
-    
-    // Add click event listeners
-    beginnerBtn.addEventListener('click', function() {
-        beginnerContent.style.display = 'block';
-        advancedContent.style.display = 'none';
-        advancedContentContinued.style.display = 'none';
-        beginnerBtn.classList.add('active');
-        advancedBtn.classList.remove('active');
-    });
-    
-    advancedBtn.addEventListener('click', function() {
-        beginnerContent.style.display = 'none';
-        advancedContent.style.display = 'block';
-        advancedContentContinued.style.display = 'block';
-        beginnerBtn.classList.remove('active');
-        advancedBtn.classList.add('active');
-    });
-});
-</script>
-
-<style>
-.experience-selector {
-    background: #f5f5f5;
-    padding: 15px;
-    border-radius: 5px;
-    margin-bottom: 20px;
-    text-align: center;
-}
-
-.experience-selector button {
-    background: #e0e0e0;
-    border: none;
-    padding: 8px 16px;
-    margin: 0 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.3s ease;
-}
-
-.experience-selector button.active {
-    background: #007bff;
-    color: white;
-}
-
-#advanced-content, #advanced-content-continued {
-    border-top: 1px solid #eee;
-    margin-top: 20px;
-    padding-top: 20px;
-}
-</style>
