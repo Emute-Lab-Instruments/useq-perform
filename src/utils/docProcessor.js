@@ -142,7 +142,7 @@ function determineTagsFromCategory(category) {
     case 'system':
       tags.push('system');
       break;
-    case 'probabalistic':
+    case 'probabilistic':
       tags.push('randomness');
       break;
     case 'scheduling':
