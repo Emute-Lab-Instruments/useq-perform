@@ -8,7 +8,6 @@ import { devmode } from "../../urlParams.mjs";
 function drawSerialVis() {
   const c = document.getElementById("serialcanvas");
   const ctx = c.getContext("2d");
-  console.log("c.height", c.height);
   const verticalPadding = c.height * 0.1; // 10% padding top and bottom
   const centerY = c.height / 2; // Center point of canvas
   const drawableHeight = c.height - verticalPadding * 2; // Height available for drawing
