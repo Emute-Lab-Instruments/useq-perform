@@ -1,5 +1,7 @@
 import { dbg } from "../utils.mjs";
-import { fillSerialBuffersDefault, serialBuffers, smoothingSettings } from "../io/serialComms.mjs";
+import { serialBuffers, smoothingSettings } from "../io/serialComms.mjs";
+import {fillSerialBuffersDefault} from "../ui/serialVis/utils.mjs";
+import { devmode } from "../urlParams.mjs";
 
 const getCatmullRomPoint = (p0, p1, p2, p3, t) => {
   const t2 = t * t;
@@ -67,8 +69,11 @@ function drawSerialVis() {
   // Helper function for mapping values to Y coordinates
   const mapValueToY = value => zeroY - (value * amplitudeMultiplier * zeroY);
   
+  // Get accent color from CSS variables
+  const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-color') || '#00ff41';
+  
   // Draw 0 axis dotted line
-  ctx.strokeStyle = '#777777';
+  ctx.strokeStyle = accentColor;
   ctx.lineWidth = 0.5;
   ctx.setLineDash([5, 3]);
   ctx.beginPath();
@@ -76,22 +81,22 @@ function drawSerialVis() {
   ctx.lineTo(c.width, zeroY);
   ctx.stroke();
   
-  // Draw y-axis markings on right side
+  // Draw y-axis markings on left side
   ctx.setLineDash([]);
   ctx.font = '10px Arial';
-  ctx.fillStyle = '#777777';
-  ctx.textAlign = 'right';  // Right-align text
+  ctx.fillStyle = accentColor;
+  ctx.textAlign = 'left';  // Left-align text
 
   for (let i = -1; i <= 1; i += 0.25) {
     const y = zeroY - (i * amplitudeMultiplier * zeroY);
     ctx.beginPath();
-    ctx.moveTo(c.width - 10, y);  // Start from right side
-    ctx.lineTo(c.width, y);       // Draw to edge
+    ctx.moveTo(0, y);          // Start from left side
+    ctx.lineTo(10, y);         // Draw towards right
     ctx.stroke();
     
     // Position text above or below the marking based on which side of x-axis it's on
     const textY = i > 0 ? y - 4 : (i < 0 ? y + 12 : y + 12); // Special case for 0
-    ctx.fillText(i.toFixed(2), c.width - 12, textY);
+    ctx.fillText(i.toFixed(2), 12, textY);
   }
   
   // Draw data traces
@@ -156,7 +161,7 @@ export function makeVis() {
   window.requestAnimationFrame(drawSerialVis);
   dbg("Visualization", "makeVis", "Started animation loop for serial visualization");
   // TODO incorporate these in the vis panel
-  createSmoothingControls();
+  // createSmoothingControls();
   dbg("Visualization", "makeVis", "Created smoothing controls");
 
   if (devmode){

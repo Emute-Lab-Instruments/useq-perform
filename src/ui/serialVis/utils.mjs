@@ -1,3 +1,5 @@
+import { serialBuffers, serialMapFunctions } from "../../io/serialComms.mjs";
+import { dbg } from "../../utils.mjs";
 
 /**
  * Generates a sine wave data point at a specific time
