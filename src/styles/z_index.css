@@ -1,46 +1,47 @@
-#panel-console {
-    z-index: 100;
+#panel-main-editor {
+    z-index: 0;
 }
 
-#panel-main-editor {
-    z-index: 100;
+#panel-console {
+    z-index: 10;
 }
+
 
 #panel-toolbar {
-    z-index: 1000;
+    z-index: 10;
 }
 
 .panel-aux {
-    z-index: 1000;
+    z-index: 20;
 
-    &::after {
+    /* &::after {
         z-index: 1001;
-    }
+    } */
 }
 
 
 #panel-vis {
     z-index: 200;
 
-    & .serialcanvas {
+    & #serialcanvas {
         z-index: auto;
       }
 }
 
 
-.panel-close-button {
+/* .panel-close-button {
     z-index: 1500;
-}
+} */
 
-.panel-aux.panel-expanded {
+/* .panel-aux.panel-expanded {
     z-index: 1100;
-}
+} */
 
-.panel-expand-toggle {
+/* .panel-expand-toggle {
     z-index: 1050;
-}
+} */
 
-.panel-nav-bar {
+/* .panel-nav-bar {
     z-index: 1000;
 }
 
@@ -50,4 +51,4 @@
 
 .doc-copy-button {
     z-index: 5;
-}
+} */
