@@ -78,7 +78,7 @@ export let currentVersion = null;
 
 export function upgradeCheck(versionMsg) {
   currentVersion = parseVersion(versionMsg);
-  post(`**Connected to uSEQ (v${currentVersion.string})**`);
+  post(`<span style="color: var(--accent-color); font-weight: bold; display: inline;">**Connected to uSEQ (v${currentVersion.string})**</span>`);
   
   fetchLatestRelease().then(function(data) {
     if (!data || !data.length) {
