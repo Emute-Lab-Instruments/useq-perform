@@ -7,7 +7,6 @@ import { dbg } from "../../utils.mjs";
 export { themes, themeRecipes };
 
 export function setTheme(editor, themeName) {
-  dbg("themeManager.mjs", "setTheme", "Setting theme", themeName);
   const theme = themes[themeName];
   if (theme) {
     editor.dispatch({

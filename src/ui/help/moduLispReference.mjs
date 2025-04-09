@@ -272,9 +272,6 @@ function makeCodeEditor(code, id) {
 
 // Create a function element
 function makeFunctionElement(func) {
-  dbg("makeFunctionElement", "Creating function element", func);
-  console.log(`Creating function element for: ${func.name}`, func);
-  
   const $item = $('<div>', {
     class: 'doc-function-item',
     'data-function': func.name
@@ -291,12 +288,10 @@ function makeFunctionElement(func) {
   });
 
   // Add the function name itself
-  console.log(`Adding function name: ${func.name}`);
   $nameContainer.text(func.name);
 
   // Add parameters if any - handle inconsistent data structures
   if (func.parameters) {
-    console.log(`Function ${func.name} has parameters property:`, func.parameters);
     let paramNames = "";
     
     // Handle array of parameter objects (expected format)
@@ -322,7 +317,6 @@ function makeFunctionElement(func) {
         .join(' ');
     }
     
-    console.log(`Param names for ${func.name}: ${paramNames}`);
     
     if (paramNames.length > 0) {
       // Create a separate element for each parameter to ensure better styling control
@@ -344,8 +338,6 @@ function makeFunctionElement(func) {
       $nameContainer.append(' ');
       $nameContainer.append($paramsContainer);
     }
-  } else {
-    console.log(`Function ${func.name} has no parameters`);
   }
 
   // Add star button (moved to the right)
@@ -535,7 +527,6 @@ function makeFunctionElement(func) {
 // Create the function list
 function makeFunctionList(data, columns = 1) {
   dbg("makeFunctionList", "Creating function list", { data, columns });
-  console.log(`Making function list with ${data.length} functions`);
   
   if (!data || !Array.isArray(data)) {
     console.error("Invalid data passed to makeFunctionList:", data);
@@ -553,7 +544,6 @@ function makeFunctionList(data, columns = 1) {
   // Filter functions based on selected tags - UPDATED to use set UNION logic
   const filteredFunctions = data.filter(func => {
     if (!func || typeof func !== 'object') {
-      console.log(`Skipping invalid function object: ${func}`);
       return false;
     }
     
@@ -562,7 +552,6 @@ function makeFunctionList(data, columns = 1) {
     
     // Check if function has ANY of the selected tags (union behavior)
     if (!func.tags || !Array.isArray(func.tags)) {
-      console.log(`Function ${func.name} has no tags array`);
       return false;
     }
     
@@ -570,7 +559,6 @@ function makeFunctionList(data, columns = 1) {
     return Array.from(state.selectedTags).some(tag => func.tags.includes(tag));
   });
 
-  console.log(`Filtered to ${filteredFunctions.length} functions`);
 
   // Sort by starred status
   filteredFunctions.sort((a, b) => {
@@ -585,18 +573,13 @@ function makeFunctionList(data, columns = 1) {
   const $target = $grid || $container;
 
   // Add functions to the list
-  console.log(`Adding ${filteredFunctions.length} function elements to the DOM`);
   filteredFunctions.forEach((func, index) => {
-    console.log(`[${index}] Creating element for function: ${func.name}`);
-    dbg("makeFunctionList", "Adding function to list", func.name);
     if (!func || typeof func !== 'object') return;
     
     const $functionElement = makeFunctionElement(func);
-    console.log(`Element created for ${func.name}: `, $functionElement.length ? 'Success' : 'Failed');
     
     if ($functionElement && $functionElement.length) {
       $target.append($functionElement);
-      console.log(`Appended ${func.name} to container`);
     } else {
       console.error(`Failed to create element for function ${func.name}`);
     }
@@ -605,12 +588,10 @@ function makeFunctionList(data, columns = 1) {
   // Add grid to container if using multiple columns
   if ($grid) {
     $container.append($grid);
-    console.log("Added grid to container");
   }
 
   // Show message if no functions match
   if (!filteredFunctions.length) {
-    console.log("No functions match the filter criteria");
     const $noResults = $('<div>', {
       class: 'doc-no-results',
       text: 'No functions match the selected tags'
@@ -622,7 +603,6 @@ function makeFunctionList(data, columns = 1) {
     $container.append($noResults);
   }
 
-  console.log(`Function list creation complete, returning container`);
   return $container;
 }
 
@@ -694,22 +674,14 @@ async function loadReferenceData() {
     }
 
     // Inspect the data structure
-    console.log("DEBUG: REFERENCE DATA STRUCTURE");
     for (let i = 0; i < Math.min(5, data.length); i++) {
       const func = data[i];
-      console.log(`Function ${i}: ${func.name}`, {
-        hasParameters: !!func.parameters,
-        parametersIsArray: Array.isArray(func.parameters),
-        parametersLength: func.parameters ? func.parameters.length : 0,
-        parameters: func.parameters
-      });
     }
     
     // Count functions with valid parameters
     const validParamsCount = data.filter(f => 
       f.parameters && Array.isArray(f.parameters) && f.parameters.length > 0
     ).length;
-    console.log(`Total functions: ${data.length}, Functions with valid parameters: ${validParamsCount}`);
 
     // Validate each function entry
     data.forEach(func => {

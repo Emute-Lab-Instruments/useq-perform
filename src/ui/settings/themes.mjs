@@ -9,9 +9,7 @@ import { dbg } from "../../utils.mjs";
 /**
  * Initialize the theme tab within the settings panel
  */
-export function makeThemeTab() {
-    dbg("Initializing theme tab");
-    
+export function makeThemeTab() {    
     // Create themes container
     const $themesGrid = $('<div>', {
         class: 'panel-tab-content themes-container',

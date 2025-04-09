@@ -30,8 +30,6 @@ function getPositionIcon(position) {
 let editor = null;
 
 export async function initUI() {
-    dbg("initUI");
-
     // Initialize editor first so we can pass its instance to other panels
     editor = initEditorPanel("#panel-main-editor");
     makeToolbar(editor);
@@ -45,8 +43,6 @@ export async function initUI() {
     $("#panel-help").append(...await makeHelp());
 
     initEventHandlers();
-
-    dbg("UI", "initUI", "UI initialized");
 }
 
 function initEventHandlers() {
