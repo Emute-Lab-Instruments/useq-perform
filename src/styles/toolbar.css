@@ -86,19 +86,20 @@
   }
   
   /* High-specificity selector for connected state */
-  #panel-toolbar #button-connect.connected {
-    /* color: rgb(0, 255, 0) !important; */
-    box-shadow: 0 0 20px rgba(0, 255, 0);
+  #button-connect.connected {
+    color: rgba(0, 255, 0, 0.75) !important;
+    /* box-shadow: 0 0 20px rgba(0, 255, 0); */
   }
   
   /* High-specificity selector for disconnected state */
-  #panel-toolbar #button-connect.disconnected {
-    box-shadow: 0 0 20px rgba(255, 0, 0);
+  #button-connect.disconnected {
+    /* box-shadow: 0 0 20px rgb(255, 0, 0); */
+    color: rgba(255, 0, 0, 0.75) !important;
   }
   
    /* High-specificity selector for disconnected state */
-   #panel-toolbar #button-connect.plugged-in {
-    box-shadow: 0 0 20px yellow;
+   #button-connect.plugged-in {
+    color: rgba(255, 255, 0, 0.8) !important;
   }
 
   @media all and (max-width:30em) {
