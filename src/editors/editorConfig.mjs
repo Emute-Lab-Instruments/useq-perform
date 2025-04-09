@@ -36,7 +36,7 @@ export function evalQuantised(opts) {
 }
 
 export function toggleHelp() {
-  $("#helppanel").toggle();
+  $("#panel-help").toggle();
   return true;
 }
 
