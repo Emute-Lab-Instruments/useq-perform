@@ -1,8 +1,8 @@
 import { tags as t } from '@lezer/highlight';
 import { createTheme } from '../createTheme.mjs';
 
-export const useqDark = {
-  name: 'uSEQ Dark',
+export const uSEQ1337 = {
+  name: 'uSEQ 1337',
   variant: 'dark',
   settings: {
     background: '#0C1710',
