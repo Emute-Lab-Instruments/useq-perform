@@ -10,11 +10,7 @@ import { post } from "./console.mjs";
 import { upgradeCheck } from "../utils/upgradeCheck.mjs";
 import { dbg } from "../utils.mjs";
 import {
-  setCodeHighlightColor,
-  smoothingSettings,
-  applySmoothing,
-  applyInterpolation,
-  createPreviousValuesArray
+  setCodeHighlightColor
 } from "./utils.mjs";
 
 
@@ -91,9 +87,6 @@ const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(400));
 let currentReader = null;
 let readingActive = false;
 
-// Arrays to store previous values for smoothing
-const previousValues = createPreviousValuesArray(8);
-
 const serialMapFunctions = [];
 
 // Export everything at once to avoid duplication
@@ -108,7 +101,6 @@ export {
   sendTouSEQ,
   serialReader,
   connectToSerialPort,
-  smoothingSettings,
   readingActive,
 };
 
@@ -309,27 +301,9 @@ function processSerialData(byteArray, state) {
         // Store value in circular buffer for that channel
         const bufferIndex = channel - 1;
         if (bufferIndex >= 0 && bufferIndex < serialBuffers.length) {
-          // Apply smoothing to the incoming value
-          const smoothedValue = applySmoothing(previousValues, bufferIndex, val);
-
-          // Get previous value for interpolation (if any)
           const buffer = serialBuffers[bufferIndex];
-          const previousValue =
-            buffer.length > 0 ? buffer.last(0) : smoothedValue;
-
-          // Apply interpolation between previous and current value
-          if (smoothingSettings.interpolationEnabled && buffer.length > 0) {
-            applyInterpolation(
-              bufferIndex,
-              previousValue,
-              smoothedValue,
-              serialBuffers,
-              bufferIndex
-            );
-          }
-
           // Push the final smoothed value to the buffer
-          buffer.push(smoothedValue);
+          buffer.push(val);
 
           // Call any registered handler function
           if (serialMapFunctions[bufferIndex]) {
