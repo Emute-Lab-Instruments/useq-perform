@@ -1,158 +1,181 @@
 # uSEQ Perform Codebase Tour
 
-Welcome to the uSEQ Perform codebase! This document provides an extensive tour of the codebase structure and functionality to help you understand how the application works and how to extend it.
-
 ## Overview
 
-uSEQ Perform is a web-based code editor specifically designed for live coding and interacting with hardware and virtual uSEQs. It is written in JavaScript and is based on the CodeMirror 6 editor framework, but it also leverages the ClojureScript-based `clojure-mode` extension (by NextJournal) for CodeMirror, since ModuLisp is designed to be very similar to Clojure syntactically. Its functionality includes interactive code evaluation, serial communication with hardware devices, a set of key bindings for ease of use while performing, a built-in help mode and others.
+uSEQ Perform is a web-based, live-coding interface for the uSEQ hardware, a music/audio sequencing device. The application provides a code editor with Clojure-like syntax for programming the device in real-time, along with visualization tools for monitoring outputs and a comprehensive settings system.
 
-## Core Technologies
+## Tech Stack
 
-- **CodeMirror 6** - Advanced text editor framework
-- **Squint-CLJS** - ClojureScript compiler (for `clojure-mode`)
-- **WebMidi API** - For MIDI device interaction
-- **Web Serial API** - For communication with uSEQ devices, hardware and virtual
-- **jQuery** - DOM manipulation library
-- **Lucide** - Icon library for the UI
+### Frontend Technologies
+- **JavaScript** (ES Modules)
+- **HTML/CSS**
+- **jQuery** - For DOM manipulation
+- **CodeMirror 6** - Highly customizable code editor
+- **Two.js** - 2D drawing API
+- **Lucide** - Icon library
+- **Marked** - Markdown parsing for documentation
+- **Tabulator** - Interactive tables
 
-## File Structure
+### Build & Development Tools
+- **esbuild** - Fast JavaScript bundler
+- **serve** - Static file server with CORS support
 
-### Key Components
+### Key Libraries
+- **@nextjournal/clojure-mode** - Clojure syntax highlighting for CodeMirror
+- **WebMIDI** - MIDI protocol interface
+- **color-convert** - Color manipulation for theming
+- **squint-cljs** - ClojureScript-related functionality
 
-#### 1. Editor Setup (editorConfig.mjs)
+## Codebase Structure
 
-The CodeMirror editor is the heart of the application, customized for Clojure-like syntax and live evaluation:
+### Core Application Structure
+- `src/main.mjs` - Main entry point that initializes the application
+- `public/index.html` - HTML entry point, includes the bundled JavaScript and CSS
+- `build.js` - Build script using esbuild
 
-This module provides:
+### Key Modules
 
-- Theme management
-- Font size control
-- Key mappings for code evaluation
-- Syntax highlighting for ClojureScript/Clojure
+#### User Interface (`src/ui/`)
+- `ui.mjs` - Core UI initialization and management
+- `toolbar.mjs` - Top toolbar controls
+- `console.mjs` - Console output component
+- `help/` - Documentation and reference panels
+- `settings/` - User settings panels
+- `serialVis/` - Serial data visualization components
+- `snippets.mjs` - Code snippet management
 
-#### 2. Main Application (main.mjs)
+#### Code Editors (`src/editors/`)
+- `main.mjs` - Editor initialization
+- `extensions.mjs` - CodeMirror extensions configuration
+- `themes/` - Comprehensive theming system
+  - `themeManager.mjs` - Theme application and management
+  - `builtinThemes.mjs` - Collection of available editor themes
+  - `builtinThemes/` - Individual theme definitions
+- `extensions/` - Custom editor extensions
+  - `sexprHighlight.mjs` - S-expression highlighting for Clojure code
 
-The main module initializes the application, sets up event listeners, and coordinates between components:
+#### I/O and Communication (`src/io/`)
+- `serialComms.mjs` - Web Serial API interface to communicate with uSEQ hardware
+- `console.mjs` - Console output management
+- `midi.mjs` - MIDI communication
+- `utils.mjs` - I/O utility functions
 
-This module handles:
+#### Utils and Helpers (`src/utils/`)
+- `persistentUserSettings.mjs` - User settings management with localStorage
+- `CircularBuffer.mjs` - Efficient circular buffer implementation for data
+- `debug.mjs` - Debugging utilities
+- `upgradeCheck.mjs` - Version checking and upgrade flow
+- `upgradeFlow.mjs` - UI for version upgrades
 
-- Application initialization
-- DOM event binding
-- Loading/saving of code
-- URL parameter handling
+### URL Parameter Handling (`src/urlParams.mjs`)
+Handles URL parameters for session configuration and sharing.
 
-#### 3. Serial Communication (serialComms.mjs)
+## Key Features
 
-Manages communication with the uSEQ hardware device:
+### Live Coding Environment
+The application provides a CodeMirror-based editor with Clojure-like syntax highlighting and auto-formatting. Users can write and execute code that controls the uSEQ hardware in real-time.
 
-This module provides:
+### Serial Communication
+The application uses the Web Serial API to communicate with the uSEQ hardware. It handles serializing commands from the code editor and parsing the responses and data streams from the device.
 
-- Serial port connection management
-- Data transmission to/from uSEQ
-- Mapping of serial data to application functions
+### Data Visualization
+A canvas-based visualization system displays data from the device in real-time, with smooth animations and custom rendering.
 
-#### 4. Configuration Management (configManager.mjs)
+### Theme System
+A sophisticated theming system allows users to choose between light and dark themes, affecting both the code editor and the visualization components. The system extends CodeMirror's theming capabilities.
 
-Handles saving and loading user configurations.
+### Persistent Settings
+User preferences, including editor theme, font size, and code, are stored in `localStorage` for persistence across sessions.
 
-#### 5. Panel States (panelStates.mjs)
+### Documentation and Help
+Comprehensive documentation is available within the application, including reference materials for the coding language used to control the device.
 
-Manages the visibility and state of UI panels.
+## UI Rendering Approach
 
-### Key UI Components
+The application uses a direct DOM manipulation approach rather than a framework-based architecture:
 
-The UI is composed of several panels:
+- **jQuery-based Components**: UI components are created via functions that generate and return DOM elements using jQuery
+- **Manual State Management**: Component state is managed manually through closure variables and event handlers
+- **Event-Driven Updates**: UI updates are triggered by events (user input, device responses, etc.)
+- **Targeted DOM Updates**: Changes are applied directly to specific DOM elements rather than through virtual DOM diffing
+- **Component Composition**: Larger UI sections are built by composing smaller component functions
+- **CSS Classes for Styling**: Components apply CSS classes and inline styles for visual presentation
 
-- **Editor Panel** (`#lceditor`) - The main code editing area
-- **Console Panel** (`#console`) - Shows output and error messages
-- **Serial Visualization Panel** (`#serialvis`) - Visualizes serial data
-- **Help Panel** (`#helppanel`) - Shows keyboard shortcuts and help
+Most UI components follow a pattern where a factory function creates the element, sets up event handlers, and returns the DOM node for insertion into the document.
 
-## Editor Features
+## Application Flow
 
-### Code Evaluation
-
-The editor supports multiple ways to evaluate code.
-
-These are implemented through CodeMirror's keymap system in editorConfig.mjs.
-
-### Theme Management
-
-Themes can be switched through the UI or programmatically.
-
-### Custom Keyboard Shortcuts
-
-## Extending the Codebase
-
-### Adding a New Feature
-
-1. Identify which module should contain your feature
-2. Implement your functionality in the appropriate module
-3. Export necessary functions/components
-4. Import and integrate in main.mjs if needed
-
-### Adding a New Theme
-
-Add your theme to the themes array in editorConfig.mjs.
-
-### Adding New Serial Commands
-
-Extend the serial communication protocol in serialComms.mjs.
-
-## Key Customization Points
-
-- **Editor Extensions**: Modify `createEditorExtensions()` in editorConfig.mjs
-- **Keybindings**: Extend the keymap definitions in editorConfig.mjs
-- **UI Components**: Add new panels or modify existing ones in index.html and manage their state in panelStates.mjs
-- **Serial Communication**: Define new commands in serialComms.mjs
-
-## Advanced Concepts
-
-### CodeMirror Extension System
-
-The editor is built on CodeMirror's extension system. Extensions are objects that add or modify editor behavior.
-
-### View Plugin Architecture
-
-CodeMirror uses view plugins to modify the editor behavior.
-
-### URL Parameters
-
-The application supports URL parameters for configuration:
-
-- `nosave`: Disables local storage saving
-- `gist=<id>`: Loads code from a GitHub Gist
+1. The application initializes from `main.mjs`, which loads user settings and checks for Web Serial support.
+2. The UI is initialized, setting up the code editor, console, and visualization components.
+3. If a previously saved connection exists, the application attempts to reconnect to the uSEQ device.
+4. Users can write and execute code in the editor, which is sent to the device via the Web Serial API.
+5. Data from the device is visualized in real-time using the canvas-based visualization system.
+6. User settings are automatically saved to localStorage for persistence.
 
 ## Development Workflow
 
-1. Make changes to source files
-2. Run `npm run watch` to automatically rebuild on changes
-3. Use `npm run dev` to start the server and watch for changes
+The application uses a modern JavaScript development workflow:
 
-## Common Tasks
+1. ES modules for code organization
+2. esbuild for bundling
+3. Parallel watching and serving during development
+4. CSS hot-reloading on localhost
 
-### Adding a New Editor Command
+## Developer Setup Guide
 
-1. Define a new function in editorConfig.mjs
-2. Add it to the keymap
-3. Export it for use in other modules
+### Prerequisites
+- Node.js (v14 or newer)
+- npm (usually comes with Node.js)
 
-### Customizing the Editor Appearance
+### Installation
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/useq-perform.git
+   cd useq-perform
+   ```
 
-Modify the `editorBaseTheme` in editorConfig.mjs to change base styling.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-### Debugging Serial Communication
+### Development Server
+1. Start the development server:
+   ```bash
+   npm run dev
+   ```
+   This will:
+   - Bundle the JavaScript with esbuild in watch mode
+   - Start a local server on port 5000
+   - Enable CSS hot-reloading
 
-Use the serial visualization panel to monitor data exchange with the device.
+2. Open your browser to `http://localhost:5000`
+
+### Building for Production
+```bash
+npm run build
+```
+This creates optimized files in the `dist/` directory.
+
+### Extending the Application
+- New UI components should be added to the appropriate subdirectory in `src/ui/`
+- Editor extensions go in `src/editors/extensions/`
+- New themes should follow the pattern in `src/editors/themes/builtinThemes/`
+
+## Special Features
+
+### S-Expression Tracking
+The application includes specialized tracking for S-expressions in the code editor, which is crucial for Clojure-like languages.
+
+### Themes with Variant Support
+The theming system supports both light and dark variants, with automatic adjustments to visualization colors based on the selected theme.
+
+### Responsive Panels
+The UI includes panels that can be toggled and repositioned, providing a flexible interface for different workflows.
+
+### URL Parameter Configuration
+The application can be configured via URL parameters, allowing for easy sharing of specific setups.
 
 ## Conclusion
 
-This codebase follows a modular structure with clear separation of concerns. The main components interact through exported functions and events. To understand more about a specific part, start with the corresponding module and follow the imports/exports to see how it integrates with the rest of the application.
-
-For more information on the libraries used, refer to their documentation:
-
-- [CodeMirror 6](https://codemirror.net/)
-- [Web Serial API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API)
-- [WebMidi API](https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API)
-
-Happy coding!
+uSEQ Perform is a sophisticated web application that provides a live coding interface for the uSEQ hardware. It combines modern web technologies with a focus on user experience, providing a powerful tool for creative audio sequencing.
