@@ -45,7 +45,6 @@ function convertMarkdownToHtml() {
       border-radius: 5px;
       margin-bottom: 20px;
       text-align: center;
-      position: sticky;
       top: 0;
       z-index: 100;
     }
@@ -69,7 +68,6 @@ function convertMarkdownToHtml() {
       padding-top: 20px;
     }
     h2 {
-      position: sticky;
       top: 70px;
       background-color: var(--panel-bg, rgba(255,255,255,0.95));
       margin: 0 -15px;
@@ -78,7 +76,6 @@ function convertMarkdownToHtml() {
       border-bottom: 1px solid var(--panel-border, rgba(0,0,0,0.1));
     }
     h3 {
-      position: sticky;
       top: 120px;
       background-color: var(--panel-bg, rgba(255,255,255,0.95));
       margin: 0 -15px;
