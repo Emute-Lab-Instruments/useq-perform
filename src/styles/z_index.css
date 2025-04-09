@@ -19,6 +19,10 @@
     } */
 }
 
+/* Update notification should appear above everything */
+#update-notification-panel {
+    z-index: 30;
+}
 
 /* Above everything else except for panel-aux */
 #panel-vis {
