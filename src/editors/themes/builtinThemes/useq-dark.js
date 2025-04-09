@@ -2,8 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: unknown
-export const barf = {
-	name: 'Barf',
+export const useqDark = {
+	name: 'uSEQ Dark',
 	variant: 'dark',
 	settings: {
 		background: '#15191EFA',

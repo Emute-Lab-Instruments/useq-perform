@@ -1,10 +1,10 @@
 import { EditorView } from "@codemirror/view";
 import { createTheme } from "./createTheme.mjs";
 
-import { useqDark } from "./builtinThemes/useq-dark.mjs";
+import { uSEQ1337 } from "./builtinThemes/useq-1337.mjs";
 import { amy } from "./builtinThemes/amy.js";
 import { ayuLight } from "./builtinThemes/ayu-light.js";
-import { barf } from "./builtinThemes/barf.js";
+import { useqDark } from "./builtinThemes/useq-dark.js";
 import { bespin } from "./builtinThemes/bespin.js";
 import { birdsOfParadise } from "./builtinThemes/birds-of-paradise.js";
 import { boysAndGirls } from "./builtinThemes/boys-and-girls.js";
@@ -83,7 +83,7 @@ const builtinThemes = [
   useqDark,
   amy,
   ayuLight,
-  barf,
+  uSEQ1337,
   bespin,
   birdsOfParadise,
   boysAndGirls,
