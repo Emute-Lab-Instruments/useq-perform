@@ -20,7 +20,7 @@
     "date-fns": "^4.1.0",
     "lezer": "^0.13.5",
     "lucide": "^0.475.0",
-    "marked": "^15.0.7",
+    "marked": "^15.0.8",
     "squint-cljs": "^0.8.134",
     "tabulator-tables": "^6.3.1",
     "two.js": "^0.8.17",

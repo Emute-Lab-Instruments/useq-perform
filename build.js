@@ -1,5 +1,8 @@
 import * as esbuild from 'esbuild';
 import cssModulesPlugin from 'esbuild-plugin-css-modules';
+import fs from 'fs';
+import path from 'path';
+import { marked } from 'marked';
 
 // Common build options
 const commonOptions = {
@@ -33,13 +36,44 @@ const cssBuildOptions = {
   plugins: [cssModulesPlugin()],
 };
 
+// Markdown to HTML build configuration
+const markdownBuildOptions = {
+  inputDir: 'assets',
+  outputDir: 'public/assets',
+};
+
+function buildMarkdown() {
+  const inputDir = markdownBuildOptions.inputDir;
+  const outputDir = markdownBuildOptions.outputDir;
+
+  fs.readdirSync(inputDir).forEach(file => {
+    if (path.extname(file) === '.md') {
+      const filePath = path.join(inputDir, file);
+      const outputFilePath = path.join(outputDir, file.replace('.md', '.html'));
+
+      const markdownContent = fs.readFileSync(filePath, 'utf-8');
+      const htmlContent = marked(markdownContent);
+
+      fs.writeFileSync(outputFilePath, htmlContent);
+      console.log(`Compiled ${file} to ${outputFilePath}`);
+    }
+  });
+}
+
 async function build() {
   try {
     if (process.argv.includes('--watch')) {
       // Watch mode
       const jsContext = await esbuild.context(jsBuildOptions);
       const cssContext = await esbuild.context(cssBuildOptions);
-      
+
+      // Watch for markdown changes
+      fs.watch(markdownBuildOptions.inputDir, (eventType, filename) => {
+        if (path.extname(filename) === '.md') {
+          buildMarkdown();
+        }
+      });
+
       await Promise.all([
         jsContext.watch(),
         cssContext.watch()
@@ -52,6 +86,7 @@ async function build() {
         esbuild.build(jsBuildOptions),
         esbuild.build(cssBuildOptions)
       ]);
+      buildMarkdown();
       console.log('Build complete');
     }
   } catch (error) {
