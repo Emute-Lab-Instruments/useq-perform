@@ -3,6 +3,7 @@ import { checkForWebserialSupport } from './io/serialComms.mjs';
 import { activeUserSettings } from './utils/persistentUserSettings.mjs';
 import { post } from './io/console.mjs';
 import { handleURLParameters } from './urlParams.mjs';
+import { checkForSavedPortAndMaybeConnect } from './io/serialComms.mjs';
 //       data: {
 
 // Main entry point
@@ -18,5 +19,6 @@ $(document).ready(() => {
 
   // Display welcome messages
   post(`Hello, ${activeUserSettings.name}!`);
-  post('Click the <span style="color: var(--accent-color); font-weight: bold; display: inline;">[connect]</span> button to link to uSEQ');
+
+  checkForSavedPortAndMaybeConnect();
 });
