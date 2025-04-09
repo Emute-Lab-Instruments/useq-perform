@@ -246,6 +246,7 @@
 
 .panel-tab {
   display: none !important;
+  overflow-x: hidden;
   
   &.active {
     display: block !important;
