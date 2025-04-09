@@ -45,7 +45,6 @@ function makeKeybindingsTab() {
  */
 export function makeSettings() {
     dbg("makeSettings");
-    dbg("settings.mjs makeSettings: Creating settings panel");
     
    return makeTabs([
         {

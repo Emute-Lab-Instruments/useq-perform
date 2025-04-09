@@ -1,44 +1,30 @@
-import {dbg} from "../../utils.mjs";
 import {activeUserSettings, updateUserSettings, resetUserSettings} from "../../utils/persistentUserSettings.mjs";
 import {themes} from "../../editors/themes/themeManager.mjs";
 import { setMainEditorTheme } from "../../editors/themes/themeManager.mjs";
 
 export function makeGeneralTab() {
-    dbg("initGeneralTab");
-
     const $container = $('<div>').addClass('panel-tab-content');
-    dbg("Settings Tab", "initSettingsTab", "Appended settings content container");
 
-    dbg("Settings UI", "renderSettingsUI", "Rendering settings UI");
     // Create main sections
     const $personalSection = createSection('Personal Settings');
-    dbg("Settings UI", "renderSettingsUI", "Created personal settings section");
     const $editorSection = createSection('Editor Settings');
-    dbg("Settings UI", "renderSettingsUI", "Created editor settings section");
     const $storageSection = createSection('Storage Settings');
-    dbg("Settings UI", "renderSettingsUI", "Created storage settings section");
     const $uiSection = createSection('UI Settings');
-    dbg("Settings UI", "renderSettingsUI", "Created UI settings section");
     
     // Add to container
     $container.append($personalSection, $editorSection, $storageSection, $uiSection);
-    dbg("Settings UI", "renderSettingsUI", "Appended all sections to container");
     
     // Build personal settings
     buildPersonalSettings($personalSection);
-    dbg("Settings UI", "renderSettingsUI", "Built personal settings");
 
     // Build editor settings
     buildEditorSettings($editorSection);
-    dbg("Settings UI", "renderSettingsUI", "Built editor settings");
 
     // Build storage settings
     buildStorageSettings($storageSection);
-    dbg("Settings UI", "renderSettingsUI", "Built storage settings");
 
     // Build UI settings
     buildUISettings($uiSection);
-    dbg("Settings UI", "renderSettingsUI", "Built UI settings");
 
     // Add reset button at the bottom
     const $resetButtonContainer = $('<div>').addClass('panel-section');
@@ -46,17 +32,14 @@ export function makeGeneralTab() {
         .addClass('panel-button reset')
         .text('Reset All Settings')
         .on('click', () => {
-            dbg("Settings UI", "resetButton", "Reset button clicked");
             if (confirm('Are you sure you want to reset all settings to default values?')) {
                 resetUserSettings();
-                dbg("Settings UI", "resetButton", "User settings reset to default");
                 window.location.reload();
             }
         });
     
     $resetButtonContainer.append($resetButton);
     $container.append($resetButtonContainer);
-    dbg("Settings UI", "renderSettingsUI", "Added reset button to container");
 
     return $container;
 }
@@ -65,13 +48,11 @@ export function makeGeneralTab() {
  * Create a settings section with a title
  */
 function createSection(title) {
-    dbg("Settings UI", "createSection", `Creating section with title: ${title}`);
     const $section = $('<div>').addClass('panel-section');
     const $sectionTitle = $('<h3>')
         .addClass('panel-section-title')
         .text(title);
     $section.append($sectionTitle);
-    dbg("Settings UI", "createSection", `Created section: ${title}`);
     return $section;
 }
 
@@ -79,7 +60,6 @@ function createSection(title) {
  * Create a form row with label and control
  */
 function createFormRow(labelText, $controlElement) {
-    dbg("Settings UI", "createFormRow", `Creating form row with label: ${labelText}`);
     const $row = $('<div>').addClass('panel-row');
     const $label = $('<label>')
         .addClass('panel-label')
@@ -94,26 +74,22 @@ function createFormRow(labelText, $controlElement) {
  * Build the personal settings section
  */
 function buildPersonalSettings($container) {
-    dbg("Settings UI", "buildPersonalSettings", "Building personal settings");
     const $nameInput = $('<input>')
         .attr('type', 'text')
         .addClass('panel-text-input')
         .val(activeUserSettings.name || '')
         .attr('placeholder', 'Enter your name')
         .on('change', () => {
-            dbg("Settings UI", "buildPersonalSettings", "Name input changed");
             updateUserSettings({ name: $nameInput.val() });
         });
     
     $container.append(createFormRow('Your Name', $nameInput));
-    dbg("Settings UI", "buildPersonalSettings", "Added name input to personal settings");
 }
 
 /**
  * Build the editor settings section
  */
 function buildEditorSettings($container) {
-    dbg("Settings UI", "buildEditorSettings", "Building editor settings");
     const $themeSelect = $('<select>').addClass('panel-select');
     
     Object.keys(themes).forEach(themeName => {
@@ -125,7 +101,6 @@ function buildEditorSettings($container) {
     });
     
     $themeSelect.on('change', () => {
-        dbg("Settings UI", "buildEditorSettings", "Theme selection changed");
         const newSettings = {
             editor: {
                 ...activeUserSettings.editor,
@@ -134,11 +109,9 @@ function buildEditorSettings($container) {
         };
         updateUserSettings(newSettings);
         setMainEditorTheme($themeSelect.val());
-        dbg()
     });
     
     $container.append(createFormRow('Editor Theme', $themeSelect));
-    dbg("Settings UI", "buildEditorSettings", "Added theme selector to editor settings");
 
     const $fontSizeInput = $('<input>')
         .attr('type', 'number')
@@ -147,7 +120,6 @@ function buildEditorSettings($container) {
         .attr('max', 32)
         .val(activeUserSettings.editor?.fontSize || 16)
         .on('change', () => {
-            dbg("Settings UI", "buildEditorSettings", "Font size input changed");
             const fontSize = parseInt($fontSizeInput.val(), 10);
             if (fontSize >= 8 && fontSize <= 32) {
                 const newSettings = {
@@ -165,20 +137,17 @@ function buildEditorSettings($container) {
         });
     
     $container.append(createFormRow('Font Size', $fontSizeInput));
-    dbg("Settings UI", "buildEditorSettings", "Added font size input to editor settings");
 }
 
 /**
  * Build the storage settings section
  */
 function buildStorageSettings($container) {
-    dbg("Settings UI", "buildStorageSettings", "Building storage settings");
     const $saveLocallyCheckbox = $('<input>')
         .attr('type', 'checkbox')
         .addClass('panel-checkbox')
         .prop('checked', activeUserSettings.storage?.saveCodeLocally !== false)
         .on('change', () => {
-            dbg("Settings UI", "buildStorageSettings", "Save code locally checkbox changed");
             const newSettings = {
                 storage: {
                     ...activeUserSettings.storage,
@@ -195,7 +164,6 @@ function buildStorageSettings($container) {
         .addClass('panel-checkbox')
         .prop('checked', activeUserSettings.storage?.autoSaveEnabled !== false)
         .on('change', () => {
-            dbg("Settings UI", "buildStorageSettings", "Auto-save checkbox changed");
             const newSettings = {
                 storage: {
                     ...activeUserSettings.storage,
@@ -217,7 +185,6 @@ function buildStorageSettings($container) {
         .val(activeUserSettings.storage?.autoSaveInterval || 5000)
         .prop('disabled', !$autoSaveCheckbox.prop('checked'))
         .on('change', () => {
-            dbg("Settings UI", "buildStorageSettings", "Auto-save interval input changed");
             const interval = parseInt($autoSaveIntervalInput.val(), 10);
             if (interval >= 1000 && interval <= 60000) {
                 const newSettings = {
@@ -237,7 +204,6 @@ function buildStorageSettings($container) {
  * Build the UI settings section
  */
 function buildUISettings($container) {
-    dbg("Settings UI", "buildUISettings", "Building UI settings");
     const $consoleLinesInput = $('<input>')
         .attr('type', 'number')
         .addClass('panel-number-input')
@@ -245,7 +211,6 @@ function buildUISettings($container) {
         .attr('max', 10000)
         .val(activeUserSettings.ui?.consoleLinesLimit || 1000)
         .on('change', () => {
-            dbg("Settings UI", "buildUISettings", "Console lines limit input changed");
             const lines = parseInt($consoleLinesInput.val(), 10);
             if (lines >= 100 && lines <= 10000) {
                 const newSettings = {

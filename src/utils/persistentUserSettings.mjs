@@ -100,11 +100,6 @@ export function saveUserSettings() {
     let settingsWithoutCode = { ...activeUserSettings};
     delete settingsWithoutCode.editor.code;
 
-    dbg("Code: ", code);
-    dbg("Code string: ", JSON.stringify(code));
-    dbg("Settings without code: ", settingsWithoutCode);
-    dbg("Active settings: ", activeUserSettings);
-
     window.localStorage.setItem(settingsStorageKey, JSON.stringify(activeUserSettings));
     window.localStorage.setItem(codeStorageKey, JSON.stringify(code));
   } catch (error) {

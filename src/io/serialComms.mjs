@@ -278,7 +278,6 @@ function processSerialData(byteArray, state) {
         if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
           // Extract message text
           const msg = new TextDecoder().decode(byteArray.slice(2, i));
-          dbg(msg);
 
           if (serialVars.capture) {
             dbg("Serial vars captured");
