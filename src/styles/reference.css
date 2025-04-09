@@ -10,7 +10,7 @@
 
 /* Tags Container */
 .doc-tags-container {
-  position: sticky;
+  position: relative;
   top: 0;
   left: 0;
   right: 0;
@@ -51,7 +51,9 @@
 /* Function List */
 .doc-function-list {
   overflow-y: auto; /* Retain scrolling for the function list */
-  height: calc(100% - 50px); /* Adjust height to leave room for tags */
+  overflow-x: hiden;
+  /* This seems to be crucial for scrolling? */
+  height: calc(100% - 100px); 
 }
 
 /* Column containers */

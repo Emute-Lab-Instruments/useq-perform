@@ -32,30 +32,11 @@ function cacheFunctionElements(data) {
 
 // Function to create the documentation panel with a specified number of columns
 function createDocPanel(columns = 1) {
-  const $container = $('<div>', {
-    id: 'doc-function-list',
-    class: 'doc-function-list'
-  });
-
-  if (columns === 1) {
-    // Single column view
-    cachedFunctionElements.forEach($element => $container.append($element));
-  } else {
-    // Multi-column view
-    const columnContainers = Array.from({ length: columns }, () => $('<div>', { class: 'doc-column' }));
-
-    cachedFunctionElements.forEach(($element, index) => {
-      const columnIndex = index % columns;
-      columnContainers[columnIndex].append($element);
-    });
-
-    columnContainers.forEach($column => $container.append($column));
-  }
-
-  return $container;
+  // Use makeFunctionList to create the panel with proper filtering
+  return makeFunctionList(state.data, columns);
 }
 
-// Update renderFunctionList to calculate columns based on state
+// Render the function list based on current state
 function renderFunctionList() {
   dbg("renderFunctionList", "Rendering function list");
   if (!state.data || !Array.isArray(state.data)) {
@@ -78,7 +59,8 @@ function renderFunctionList() {
     $oldList.remove();
   }
 
-  $container.append(createDocPanel(columns));
+  // Create a new function list with proper filtering and append it
+  $container.append(makeFunctionList(state.data, columns));
 }
 
 // Add a function to toggle expanded/collapsed state
@@ -95,14 +77,30 @@ function togglePanelView() {
   renderFunctionList();
 }
 
-// Update makeModuLispReference to cache elements initially
+// Initialize CodeMirror editors for code blocks
+function initializeCodeMirrorEditors() {
+  const codeBlocks = document.querySelectorAll(".codeblock");
+
+  codeBlocks.forEach((block, index) => {
+    const code = block.textContent.trim();
+    const editorContainer = document.createElement("div");
+    block.replaceWith(editorContainer);
+
+    createExampleEditor(code, editorContainer);
+  });
+}
+
 export async function makeModuLispReference() {
   dbg("makeModuLispReference", "Initializing ModuLisp reference panel");
   const $container = $('<div>', {
-    class: 'modulisp-reference-container' 
+    class: 'modulisp-reference-container',
+    css: {
+      'display': 'flex',
+      'flex-direction': 'column',
+      'height': '100%',
+      'overflow': 'hidden'
+    }
   });
-  dbg("makeModuLispReference", "Created container with classes", $container.attr('class'));
-  dbg("makeModuLispReference", "Container element", $container[0]);
 
   try {
     dbg("makeModuLispReference", "Loading user preferences");
@@ -119,11 +117,11 @@ export async function makeModuLispReference() {
     dbg("makeModuLispReference", "Caching function elements");
     cacheFunctionElements(data);
 
-    dbg("makeModuLispReference", "Creating tags");
-    $container.append(makeTags(data));
+    // Append both containers to main container
+    $container.append(makeTags(data), createDocPanel(1));
 
-    dbg("makeModuLispReference", "Creating function list");
-    $container.append(createDocPanel(1));
+    // Initialize CodeMirror editors for code blocks
+    initializeCodeMirrorEditors();
 
     dbg("makeModuLispReference", "Final container classes", $container.attr('class'));
     dbg("makeModuLispReference", "Final container element", $container[0]);
@@ -131,7 +129,7 @@ export async function makeModuLispReference() {
   } catch (error) {
     dbg("makeModuLispReference", "Error creating reference panel", error);
     console.error("Error creating reference panel:", error);
-    
+
     const $errorMessage = $('<div>', {
       class: 'doc-error-message',
       text: 'Failed to load documentation data. Please try refreshing the page.'
@@ -143,7 +141,7 @@ export async function makeModuLispReference() {
       borderRadius: '4px'
     });
     $container.append($errorMessage);
-    
+
     return $container;
   }
 }
@@ -662,7 +660,7 @@ export function showDocumentationForSymbol(editor) {
 async function loadReferenceData() {
   dbg("loadReferenceData", "Fetching reference data");
   try {
-    const response = await fetch("/modulisp_reference_data.json");
+    const response = await fetch("/assets/modulisp_reference_data.json");
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
