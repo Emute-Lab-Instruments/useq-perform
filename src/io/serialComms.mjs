@@ -467,10 +467,12 @@ async function disconnect(port) {
 function connectToSerialPort(port) {
   return port
     .open({ baudRate: 115200 })
-    .then(() => {
+    .then(async () => {
       setConnectedToModule(true);
       setSerialPort(port);
       serialReader();
+      // FIXME In case we just updated the firmware, give the interpreter some time to boot before communication
+      await new Promise(resolve => setTimeout(resolve, 3500));
       sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
       return true;
     })
