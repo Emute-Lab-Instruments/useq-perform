@@ -2,8 +2,8 @@ import {tags as t} from '@lezer/highlight';
 import {createTheme} from '../createTheme.mjs';
 
 // Author: unknown
-export const boysAndGirls = {
-	name: 'Boys and Girls',
+export const nightLights = {
+	name: 'Night Lights',
 	variant: 'dark',
 	settings: {
 		background: '#000205',
