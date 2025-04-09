@@ -3,43 +3,6 @@ import { makeThemeTab } from "./themes.mjs";
 import { makeGeneralTab } from "./general.mjs";
 import { makeTabs } from "../tabs.mjs";
 
-import {
-    activeUserSettings,
-    updateUserSettings,
-    resetUserSettings,
-} from "../../utils/persistentUserSettings.mjs";
-import { themes } from "../../editors/themes/themeManager.mjs";
-import { setMainEditorTheme } from "../../editors/themes/themeManager.mjs";
-import { setFontSize } from "../../editors/editorConfig.mjs";
-import { EditorView } from "@codemirror/view";
-// import { initThemeTab as makeThemeTab } from "./themes.mjs";
-// import { initGeneralTab } from "./general.mjs";
-// import { initKeybindingsTab as makeKeybindingsTab } from "./keybindings.mjs";
-
-/**
- * Initialize the settings tab within the settings panel
- */
-
-
-function makeKeybindingsTab() {
-    const $div = $('<div>', {
-        class: 'panel-tab-content',
-        id: 'panel-settings-keybindings'
-    });
-
-    for (let i = 0; i < 10; i++) {
-        const $button = $('<button>', {
-            class: 'panel-button',
-            text: `Keybinding Button ${i}`
-        });
-        $div.append($button);
-    }
-
-    return $div;
-}
-
-
-
 /**
  * Initialize the settings panel with all tabs
  */
@@ -57,12 +20,6 @@ export function makeSettings() {
             name: "Themes",
             id: "panel-settings-tab-themes",
             element: makeThemeTab(),
-            active: false
-        },
-        {
-            name: "Keybindings", 
-            id: "panel-settings-tab-keybindings",
-            element: makeKeybindingsTab(),
             active: false
         },
     ]);

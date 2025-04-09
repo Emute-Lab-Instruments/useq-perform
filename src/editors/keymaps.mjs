@@ -44,7 +44,7 @@ const wrappedEvalNow = wrapEvalFunction(evalNow);
 const wrappedEvalQuantised = wrapEvalFunction(evalQuantised);
 
 // Custom keymap for the editor
-const useq_keymap = [
+export const useq_keymap = [
   { key: "Ctrl-Enter", run: wrappedEvalNow },
   { key: "Alt-Enter", run: wrappedEvalQuantised },
   {
@@ -78,5 +78,10 @@ export let baseKeymap = [
   keymap.of(completeKeymapModified),
   keymap.of(historyKeymap),
 ];
+
+// iterate over baseKeymap and print each map
+// baseKeymap.forEach((map) => {
+//   console.log("Keymap:", map.value);
+// });
 
 export let mainEditorKeymap = [baseKeymap];
