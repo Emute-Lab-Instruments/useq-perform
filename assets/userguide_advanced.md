@@ -1,10 +1,10 @@
-# uSEQ User Guide
+# uSEQ Advanced User's Guide
 
 Welcome to the world of livecoding in your modular system! This guide will help you get started with uSEQ and show you how to make some cool sounds with just a few lines of code.
 
 ## Table of Contents
 
-- [uSEQ User Guide](#useq-user-guide)
+- [uSEQ Advanced User's Guide](#useq-advanced-users-guide)
   - [Table of Contents](#table-of-contents)
   - [What is uSEQ?](#what-is-useq)
   - [Getting Connected](#getting-connected)
@@ -27,6 +27,13 @@ Welcome to the world of livecoding in your modular system! This guide will help 
   - [Tips and Tricks](#tips-and-tricks)
   - [Troubleshooting](#troubleshooting)
   - [Going Further](#going-further)
+  - [Advanced Concepts](#advanced-concepts)
+    - [Understanding Time in ModuLisp](#understanding-time-in-modulisp)
+    - [Temporal Control Functions](#temporal-control-functions)
+      - [eval-at-time](#eval-at-time)
+      - [offset, fast, and slow](#offset-fast-and-slow)
+    - [Creating Predictable Randomness](#creating-predictable-randomness)
+    - [The ModuLisp Architecture](#the-modulisp-architecture)
 
 ## What is uSEQ?
 
@@ -159,7 +166,7 @@ Time-bending functions form the core of ModuLisp's power:
 
 ```lisp
 ;; Examples of time manipulation
-(def my-signal (sin (* 2 Math/PI t)))            ; A sine wave at 1Hz
+(def my-signal (sin (* 2 PI t)))            ; A sine wave at 1Hz
 
 ;; Time-shifting with offset (delay/advance by 0.5 seconds)
 (a1 (+ my-signal (offset 0.5 my-signal)))        ; Echo effect
@@ -179,6 +186,7 @@ Each output needs an expression that will be evaluated repeatedly during the upd
 (d1 (> (sin (* 4 bar)) 0.2))                     ; Rhythmic trigger
 (a2 (interp (seq [0 0.3 0.7 1] bar) (saw bar)))  ; Stepped voltage
 ```
+
 
 ## Working with the Editor
 
@@ -235,18 +243,92 @@ Here are some functions you'll use a lot:
 
 If you're having trouble:
 
-- If the connection fails, try refreshing the page.
-- On Linux/Unix systems, you might need to adjust permissions (see: https://support.arduino.cc/hc/en-us/articles/360016495679-Fix-port-access-on-Linux).
-- If code isn't working as expected, check your brackets - they must be balanced! The editor tries its best to help you keep them balanced at all times, but sometimes things can go wrong. Use the matching brackets highlighting to help you understand what's going on.
-- Join our Discord for help: https://discord.gg/TQMNfp6GJ9.
+- If the connection fails, try refreshing the page
+- On Linux/Unix systems, you might need to adjust permissions (see: https://support.arduino.cc/hc/en-us/articles/360016495679-Fix-port-access-on-Linux)
+- If code isn't working as expected, check your brackets - they must be balanced
+- Join our Discord for help: https://discord.gg/TQMNfp6GJ9
 
 ## Going Further
 
 Once you're comfortable with the basics, you can:
 
-- Create complex multi-track sequences by running multiple lines of code.
-- Process incoming CV using the `cv1` and `cv2` variables.
-- Create conditional logic with `if` statements.
-- Start building your arsenal of little functions that you can reuse and build upon.
-- Check out the full API documentation to see all available functions.
-  
+- Create complex multi-track sequences by running multiple lines of code
+- Process incoming CV using the `cv1` and `cv2` variables
+- Create conditional logic with `if` statements
+- Define your own functions for reuse
+- Check out the full API documentation to see all available functions
+
+
+## Advanced Concepts
+
+### Understanding Time in ModuLisp
+
+At the core of uSEQ's timing model is the variable `t`. It represents the flow of time in seconds since the module was turned on (or since the last time reset). This variable is automatically updated at the beginning of each tick using the microcontroller's hardware clock. 
+
+From `t`, other built-in variables like `beat` and `bar` are derived. These provide convenient reference points for musical timing:
+
+```lisp
+;; t represents absolute time in seconds
+;; beat is derived from t based on the current BPM
+;; bar is derived from beat (usually 4 beats = 1 bar)
+
+(def bar-num (floor (/ t barDur)))  ; Count how many bars have elapsed
+```
+
+### Temporal Control Functions
+
+ModuLisp provides powerful functions for manipulating time:
+
+#### eval-at-time
+
+This function evaluates an expression as if time were at a specific point:
+
+```lisp
+(eval-at-time 999 (+ 1 2))       ; => 3
+(eval-at-time 999 t)             ; => 999
+(eval-at-time 999 (+ t 1))       ; => 1000
+```
+
+#### offset, fast, and slow
+
+These functions are relative to the context in which they're evaluated:
+
+```lisp
+(eval-at-time 5 (fast 2 (+ t 1)))          ; => 11
+(eval-at-time 5 (fast 2 (fast 2 (+ t 1)))) ; => 21
+(eval-at-time 5 (offset 1 (offset 1 t)))   ; => 7
+```
+
+### Creating Predictable Randomness
+
+ModuLisp uses indexed randomness for creating sequences that are random-seeming but predictable and repeatable:
+
+```lisp
+;; A helper signal that tracks bar count
+(def bar-num (floor (/ t barDur)))
+
+;; Create a "random" chord progression that changes each bar
+(def chord (from-list ["Am", "Cm", "E"] (ind-rand 0 bar-num)))
+```
+
+The `ind-rand` function takes a seed and an index, returning a consistent "random" number for the same combination:
+
+```lisp
+(ind-rand 1234      5)      ; => 0.2435
+(ind-rand 1234.0001 5)      ; => 0.8924
+(ind-rand 1234      5.0001) ; => 0.3259
+```
+
+This approach enables:
+- Predictable but seemingly random sequences
+- The ability to change the seed to get completely different patterns
+- The possibility to visualize future events before they happen
+
+### The ModuLisp Architecture
+
+ModuLisp currently runs on a tree-walking interpreter but is planned to migrate to a bytecode VM with JIT compilation for better performance. The purely-functional approach enables advanced optimizations that wouldn't be possible with a more imperative approach.
+
+Benefits of this architecture:
+- Better performance through optimization
+- Code analysis for visualizing future states
+- Composability of signals and timing functions

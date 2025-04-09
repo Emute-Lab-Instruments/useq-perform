@@ -1,29 +1,32 @@
-.experience-selector {
-    background: #f5f5f5;
+
+
+
+#userguide-content {
     padding: 15px;
+    /* background: white; */
+    /* border: 1px solid #ddd; */
     border-radius: 5px;
-    margin-bottom: 20px;
-    text-align: center;
-}
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 
-.experience-selector button {
-    background: #e0e0e0;
-    border: none;
-    padding: 8px 16px;
-    margin: 0 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.3s ease;
-}
+    a {
+        color: var(--accent-color);
+    }
 
-.experience-selector button.active {
-    background: #007bff;
-    color: white;
-}
+    h1, h2, h3, h4, h5, h6 {
+        color: var(--accent-color);
+        font-family: var(--code-font);
+        margin: 0.5em 0;
+    }
 
-#advanced-content, #advanced-content-continued {
-    border-top: 1px solid #eee;
-    margin-top: 20px;
-    padding-top: 20px;
+    ol li::marker, ul li::marker {
+        color: var(--accent-color);
+    }
+
+    ol li, ul li {
+        color: inherit; /* This ensures the text keeps the parent's color */
+    }
+
+    .codeblock {
+        color: red;
+    }
 }
