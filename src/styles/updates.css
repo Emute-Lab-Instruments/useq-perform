@@ -1,0 +1,16 @@
+/* Version comparison styles for update notification */
+.version-comparison {
+    text-align: center;
+    margin: 15px 0;
+    font-size: 1.1em;
+    font-family: var(--code-font);
+    padding: 8px;
+    background-color: var(--panel-control-bg);
+    border-radius: var(--item-border-radius);
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
