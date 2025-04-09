@@ -7,7 +7,7 @@ import { ayuLight } from "./builtinThemes/ayu-light.js";
 import { useqDark } from "./builtinThemes/useq-dark.js";
 import { bespin } from "./builtinThemes/bespin.js";
 import { birdsOfParadise } from "./builtinThemes/birds-of-paradise.js";
-import { boysAndGirls } from "./builtinThemes/boys-and-girls.js";
+import { nightLights } from "./builtinThemes/night-lights.js";
 import { clouds } from "./builtinThemes/clouds.js";
 import { cobalt } from "./builtinThemes/cobalt.js";
 import { coolGlow } from "./builtinThemes/cool-glow.js";
@@ -86,7 +86,7 @@ const builtinThemes = [
   uSEQ1337,
   bespin,
   birdsOfParadise,
-  boysAndGirls,
+  nightLights,
   clouds,
   cobalt,
   coolGlow,
