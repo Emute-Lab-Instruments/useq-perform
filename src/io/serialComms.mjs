@@ -9,48 +9,67 @@ import { Buffer } from "buffer";
 import { post } from "./console.mjs";
 import { upgradeCheck } from "../utils/upgradeCheck.mjs";
 import { dbg } from "../utils.mjs";
+import {
+  setCodeHighlightColor,
+  smoothingSettings,
+  applySmoothing,
+  applyInterpolation,
+  createPreviousValuesArray
+} from "./utils.mjs";
 
-let connectedToModule = false;
 
-function setCodeHighlightColor(connected) {
-  const root = document.documentElement;
-  
-  let color = undefined;
-  if (connected) {
-    color = getComputedStyle(root).getPropertyValue('--code-eval-highlight-color-connected').trim();
+export async function toggleConnect() {
+  if (isConnectedToModule()) {
+    disconnect();
+  } else {
+    const savedport = await checkForSavedPort();
+    console.log("Saved port", savedport);
+    if (savedport) {
+      post("**Info**: Connecting to saved port...");
+      connectToSerialPort(savedport);
+    }
+    else {
+      // If no saved port is found, ask for a new connection
+      askForPortAndConnect();
+    }
+  }
+}
+
+export function askForPortAndConnect() {
+  if (!isConnectedToModule()) {
+    navigator.serial.requestPort()
+      .then((port) => {
+        connectToSerialPort(port);
+      })
+      .catch((err) => {
+        console.log("Error requesting port:", err);
+        post("Error requesting port. Please try again.");
+      });
   }
   else {
-    color = getComputedStyle(root).getPropertyValue('--code-eval-highlight-color-disconnected').trim();
+    post('uSEQ is already connected - would you like to <span style="color: red; font-weight: bold; cursor: pointer;" onclick="disconnect()">disconnect</span>?');
   }
-
-  root.style.setProperty('--code-eval-highlight-color', color);
 }
+
+
+let connectedToModule = false;
+setConnectedToModule(false);
 
 export function setConnectedToModule(connected) {
   connectedToModule = connected;
-  console.log("Setting connected state to:", connected);
 
   // Update code highlight color
   setCodeHighlightColor(connected);
-
-
   // Make sure the DOM is ready before modifying the 'connect' button
   setTimeout(() => {
     const $button = $("#button-connect");
     if ($button.length) {
+      $button.removeClass("plugged-in");
+      
       if (connected) {
-        dbg("Connected to uSEQ");
-
-        $button.css("color", "rgb(0, 255, 0) !important");
-        // Alternatively try setting class instead of inline style
         $button.removeClass("disconnected").addClass("connected");
-        console.log("Connected to port - Button found and color set to green");
       } else {
-        dbg("Disconnected from uSEQ");
-        $button.css("color", "rgb(255, 0, 0) !important");
-        // Alternatively try setting class instead of inline style
         $button.removeClass("connected").addClass("disconnected");
-        console.log("Disconnected - Button found and color set to red");
       }
     } else {
       console.log("Button not found when trying to set color!");
@@ -68,19 +87,12 @@ var serialVars = { capture: false, captureFunc: null };
 const encoder = new TextEncoder();
 const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(400));
 
-// Smoothing and interpolation settings
-const smoothingSettings = {
-  enabled: true, // Enable/disable smoothing
-  windowSize: 3, // Size of moving average window (odd number recommended)
-  interpolationPoints: 3, // Number of points to interpolate between samples
-  interpolationEnabled: true, // Enable/disable interpolation
-};
-
+// Add reader reference that can be accessed globally
+let currentReader = null;
+let readingActive = false;
 
 // Arrays to store previous values for smoothing
-const previousValues = Array(8)
-  .fill()
-  .map(() => []);
+const previousValues = createPreviousValuesArray(8);
 
 const serialMapFunctions = [];
 
@@ -97,6 +109,7 @@ export {
   serialReader,
   connectToSerialPort,
   smoothingSettings,
+  readingActive,
 };
 
 // Constants
@@ -122,6 +135,56 @@ const MAX_CONSOLE_LINES = 50;
  */
 function setSerialPort(newport) {
   serialport = newport;
+  const portInfo = newport.getInfo();
+  localStorage.setItem("uSEQ-Serial-Port-Info", JSON.stringify(portInfo));
+}
+
+
+async function checkForSavedPort() {
+  dbg("Checking for saved port...");
+  // Retrieve saved port information from localStorage
+  const savedInfo = JSON.parse(localStorage.getItem("uSEQ-Serial-Port-Info") || "null");
+
+  if (savedInfo) {
+    // Get the list of available serial ports
+    const ports = await navigator.serial.getPorts();
+    dbg("Ports", ports);
+
+    // Find a port that matches the saved information
+    const matchingPort = ports.find((port) => {
+      const info = port.getInfo();
+      return (
+        info.usbVendorId === savedInfo.usbVendorId &&
+        info.usbProductId === savedInfo.usbProductId
+      );
+    });
+
+    if (matchingPort) {
+      return matchingPort;
+    }
+  } else {
+    return null;
+  }
+}
+
+
+/**
+ * Check for a previously saved serial port and attempt to reconnect automatically
+ * @returns {Promise<SerialPort|null>} The matching saved port if found, otherwise null
+ */
+export async function checkForSavedPortAndMaybeConnect() {
+  let savedPort = await checkForSavedPort();
+  if (savedPort) {
+    post("**Info**: Found a saved port, connecting automatically...");
+    connectToSerialPort(savedPort);
+    return savedPort;
+  }
+  else {
+    dbg("No saved port information found");
+    // No saved port information or no matching port found
+    post('It looks like you haven\'t connected to uSEQ before (or you have cleared your cookies). Click the <span style="color: var(--accent-color); font-weight: bold; display: inline;">[connect]</span> button to link to uSEQ - you will only have to do this once.');
+    return null;
+  }
 }
 
 /**
@@ -168,61 +231,7 @@ function sendTouSEQ(code, capture = null) {
   }
 }
 
-/**
- * Apply a moving average filter to smooth the input value
- * @param {number} channelIndex - Index of the channel (0-7)
- * @param {number} value - New value to smooth
- * @returns {number} Smoothed value
- */
-function applySmoothing(channelIndex, value) {
-  if (!smoothingSettings.enabled || smoothingSettings.windowSize <= 1) {
-    return value;
-  }
 
-  const values = previousValues[channelIndex];
-  values.push(value);
-
-  // Keep only the last windowSize values
-  while (values.length > smoothingSettings.windowSize) {
-    values.shift();
-  }
-
-  // Calculate the moving average
-  const sum = values.reduce((acc, val) => acc + val, 0);
-  return sum / values.length;
-}
-
-/**
- * Generate interpolated points between previous and current value
- * @param {number} channelIndex - Index of the channel (0-7)
- * @param {number} previousValue - Last stored value
- * @param {number} currentValue - New incoming value
- * @param {number} bufferIndex - Buffer index for this channel
- */
-function applyInterpolation(
-  channelIndex,
-  previousValue,
-  currentValue,
-  bufferIndex
-) {
-  if (
-    !smoothingSettings.interpolationEnabled ||
-    smoothingSettings.interpolationPoints < 2
-  ) {
-    return;
-  }
-
-  // Get the buffer for this channel
-  const buffer = serialBuffers[bufferIndex];
-
-  // Generate interpolation points
-  for (let i = 1; i < smoothingSettings.interpolationPoints; i++) {
-    const t = i / smoothingSettings.interpolationPoints;
-    // Linear interpolation: previousValue * (1-t) + currentValue * t
-    const interpolatedValue = previousValue * (1 - t) + currentValue * t;
-    buffer.push(interpolatedValue);
-  }
-}
 
 /**
  * Process data received from serial port
@@ -302,7 +311,7 @@ function processSerialData(byteArray, state) {
         const bufferIndex = channel - 1;
         if (bufferIndex >= 0 && bufferIndex < serialBuffers.length) {
           // Apply smoothing to the incoming value
-          const smoothedValue = applySmoothing(bufferIndex, val);
+          const smoothedValue = applySmoothing(previousValues, bufferIndex, val);
 
           // Get previous value for interpolation (if any)
           const buffer = serialBuffers[bufferIndex];
@@ -315,6 +324,7 @@ function processSerialData(byteArray, state) {
               bufferIndex,
               previousValue,
               smoothedValue,
+              serialBuffers,
               bufferIndex
             );
           }
@@ -351,9 +361,11 @@ async function serialReader() {
   // Check if port is readable and not locked
   if (serialport.readable && !serialport.readable.locked) {
     const reader = serialport.readable.getReader();
+    currentReader = reader;
+    readingActive = true;
 
     try {
-      while (true) {
+      while (readingActive) {
         const { value, done } = await reader.read();
 
         if (done) {
@@ -388,6 +400,8 @@ async function serialReader() {
     } catch (error) {
       console.log("Serial read error:", error);
     } finally {
+      readingActive = false;
+      currentReader = null;
       reader.releaseLock();
     }
   } else {
@@ -396,16 +410,68 @@ async function serialReader() {
 }
 
 /**
+ * Safely stops the serial reader by cancelling the read operation
+ * @returns {Promise<void>}
+ */
+async function stopSerialReader() {
+  if (currentReader) {
+    readingActive = false;
+    try {
+      await currentReader.cancel();
+      // Lock will be released in the finally block of serialReader
+    } catch (err) {
+      console.log("Error cancelling reader:", err);
+    }
+  }
+}
+
+async function disconnect(port) {
+  if (!port) {
+    port = serialport;
+  }
+
+  if (port) {
+    // First stop any active reader to properly release the lock
+    if (port === serialport && readingActive) {
+      await stopSerialReader();
+    }
+
+    // Now we can safely close the port
+    try {
+      if (port.readable || port.writable) {
+        await port.close();
+
+        // If the port we closed was the main module port
+        if (port === serialport) {
+          setConnectedToModule(false);
+          post("**Info**: uSEQ disconnected");
+        }
+      }
+    } catch (err) {
+      console.log("Error closing port:", err);
+      // Even if there's an error, we should update UI state
+      if (port === serialport) {
+        setConnectedToModule(false);
+        post("**Warning**: uSEQ disconnected with errors\n" + err);
+      }
+    }
+  }
+}
+
+/**
  * Connect to the serial port for uSEQ communication
  * @returns {Promise<boolean>} Promise resolving to true on success, false on failure
  */
+
+
+
 function connectToSerialPort(port) {
   return port
     .open({ baudRate: 115200 })
     .then(() => {
+      setConnectedToModule(true);
       setSerialPort(port);
       serialReader();
-      dbg("checking version");
       sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
       return true;
     })
@@ -435,18 +501,57 @@ export function checkForWebserialSupport() {
       console.log(e);
       let port = getSerialPort();
       if (port) {
-
         $("#button-connect").removeClass("connected").removeClass("disconnected").addClass("plugged-in");
-
-
-        post(`uSEQ plugged in, use the <span style="color: var(--accent-color); font-weight: bold; display: inline;">[connect]</span> button to re-connect`);
+        toggleConnect();
+        // post(`uSEQ is plugged in but not connected yet, use the <span style="color: var(--accent-color); font-weight: bold; display: inline;">[connect]</span> button to re-connect.`);
       }
     });
 
     navigator.serial.addEventListener("disconnect", (e) => {
       setConnectedToModule(false);
-      post("uSEQ disconnected");
+      if (!flag_triggeringBootloader) {
+        post("**Info**: uSEQ disconnected");
+      }
     });
     return true;
   }
 }
+
+
+let flag_triggeringBootloader = false;
+
+export async function enterBootloaderMode(port) {
+  flag_triggeringBootloader = true;
+
+  if (!port) {
+    port = serialport;
+  }
+
+  try {
+    // If we're triggering bootloader mode on a port that is already open
+    // we need to close it first, as we need to open it with 1200 baud instead
+    if (port && (port.readable || port.writable)) {
+      await disconnect(port);
+    }
+
+    // Reopen at 1200 baud - this is a common technique to trigger bootloader mode
+    post("Putting uSEQ into bootloader mode...");
+    await port.open({ baudRate: 1200 });
+    
+    // Close immediately after opening at 1200 baud
+    await port.close();
+    
+    // Wait for the device to restart in bootloader mode
+    post("Waiting for device to reappear as a USB drive...");
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  } catch (error) {
+    console.error("Error entering bootloader mode:", error);
+    post(`Error entering bootloader mode: ${error.message}`);
+  } finally {
+    flag_triggeringBootloader = false;
+  }
+  
+  return true;
+}
+
+window.enterBootloaderMode = enterBootloaderMode;

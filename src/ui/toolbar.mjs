@@ -1,7 +1,7 @@
 import { dbg } from "../utils.mjs";
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { setFontSize, toggleSerialVis } from "../editors/editorConfig.mjs";
-import { connectToSerialPort, setConnectedToModule } from "../io/serialComms.mjs";
+import { toggleConnect } from "../io/serialComms.mjs";
 
 
 let editorInstance = null;
@@ -111,8 +111,6 @@ function ensurePanelHasCloseButton(panel) {
 export function makeToolbar(editor) {
     // Store editor reference
     editorInstance = editor;
-
-    setConnectedToModule(false);
     
     // Set up UI event handlers
     $("#button-increase-font").on("click", () => {
@@ -128,16 +126,7 @@ export function makeToolbar(editor) {
     });
     
     $("#button-connect").on("click", function() {
-        dbg("uSEQ-Perform: hello");
-        navigator.serial.requestPort()
-            .then((port) => {
-                connectToSerialPort(port).then(connected => {
-                    setConnectedToModule(connected);
-                });
-            })
-            .catch((e) => {
-                console.log("error selecting port", e);
-            });
+        toggleConnect();
     });
 
 
