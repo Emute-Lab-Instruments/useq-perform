@@ -1,98 +1,129 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <!-- Metadata and title -->
-  <meta charset='utf-8'>
-  <meta name='viewport' content='width=device-width'>
-  <title>uSEQ Perform</title>
+  <head>
+    <!-- Metadata and title -->
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>uSEQ Perform</title>
 
-  <!-- External libraries and styles -->
-  <script src="lib/jquery-3.7.1.js"></script>
-  <link rel="stylesheet" href="bundle.css">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
-  <script>
-    // Initialize Lucide icons after DOM content is loaded
-    document.addEventListener('DOMContentLoaded', () => {
-      lucide.createIcons();
-    });
+    <!-- Client-side rerouting for /preview -->
+    <script>
+      // Client-side routing logic
+      document.addEventListener("DOMContentLoaded", () => {
+        const currentPath = window.location.pathname;
 
-    // CSS hot-reloading for development
-    if (location.hostname === 'localhost') {
-      const cssLink = document.querySelector('link[href^="bundle.css"]');
-      let currentHref = cssLink.href;
-
-      const reloadCSS = () => {
-        const timestamp = Date.now();
-        const newHref = `bundle.css?t=${timestamp}`;
-        if (cssLink.href !== newHref) {
-          cssLink.href = newHref;
-          // console.log('CSS reloaded at:', new Date().toLocaleTimeString());
+        // Check if the user is on the /preview route
+        if (currentPath === "/preview") {
+          // Redirect to the development branch's index.html
+          window.location.href = "/preview/index.html";
         }
-      };
+      });
+    </script>
 
-      // Check more frequently and use fetch to ensure we get fresh responses
-      setInterval(async () => {
-        try {
-          const response = await fetch('bundle.css', { 
-            method: 'HEAD',
-            cache: 'no-store'
-          });
-          if (response.ok) {
-            reloadCSS();
+    <!-- External libraries and styles -->
+    <script src="lib/jquery-3.7.1.js"></script>
+    <link rel="stylesheet" href="bundle.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script>
+      // Initialize Lucide icons after DOM content is loaded
+      document.addEventListener("DOMContentLoaded", () => {
+        lucide.createIcons();
+      });
+
+      // CSS hot-reloading for development
+      if (location.hostname === "localhost") {
+        const cssLink = document.querySelector('link[href^="bundle.css"]');
+        let currentHref = cssLink.href;
+
+        const reloadCSS = () => {
+          const timestamp = Date.now();
+          const newHref = `bundle.css?t=${timestamp}`;
+          if (cssLink.href !== newHref) {
+            cssLink.href = newHref;
+            // console.log('CSS reloaded at:', new Date().toLocaleTimeString());
           }
-        } catch (error) {
-          console.warn('CSS reload check failed:', error);
-        }
-      }, 500);
-    }
-  </script>
-</head>
-<body>
-  <!-- Toolbar panel with buttons -->
-  <div id="panel-toolbar">
+        };
+
+        // Check more frequently and use fetch to ensure we get fresh responses
+        setInterval(async () => {
+          try {
+            const response = await fetch("bundle.css", {
+              method: "HEAD",
+              cache: "no-store",
+            });
+            if (response.ok) {
+              reloadCSS();
+            }
+          } catch (error) {
+            console.warn("CSS reload check failed:", error);
+          }
+        }, 500);
+      }
+    </script>
+  </head>
+  <body>
+    <!-- Toolbar panel with buttons -->
+    <div id="panel-toolbar">
       <div class="toolbar-row">
         <!-- Connection and graph buttons -->
-        <a class="toolbar-button" id="button-connect" title="Connect"><i data-lucide="cable"></i></a>
-        <a class="toolbar-button" id="button-graph" title="Graph"><i data-lucide="chart-spline"></i></a>
+        <a class="toolbar-button" id="button-connect" title="Connect"
+          ><i data-lucide="cable"></i
+        ></a>
+        <a class="toolbar-button" id="button-graph" title="Graph"
+          ><i data-lucide="chart-spline"></i
+        ></a>
       </div>
       <div class="toolbar-row">
         <!-- Save and load buttons -->
-        <a class="toolbar-button" id="button-load" title="Load Code"><i data-lucide="file"></i></a>        
-        <a class="toolbar-button" id="button-save" title="Save Code"><i data-lucide="save"></i></a>
+        <a class="toolbar-button" id="button-load" title="Load Code"
+          ><i data-lucide="file"></i
+        ></a>
+        <a class="toolbar-button" id="button-save" title="Save Code"
+          ><i data-lucide="save"></i
+        ></a>
       </div>
       <div class="toolbar-row">
         <!-- Font size adjustment buttons -->
-        <a class="toolbar-button" id="button-decrease-font" title="Font size--"><i data-lucide="a-arrow-down"></i></a>
-        <a class="toolbar-button" id="button-increase-font" title="Font size++"><i data-lucide="a-arrow-up"></i></a>
+        <a class="toolbar-button" id="button-decrease-font" title="Font size--"
+          ><i data-lucide="a-arrow-down"></i
+        ></a>
+        <a class="toolbar-button" id="button-increase-font" title="Font size++"
+          ><i data-lucide="a-arrow-up"></i
+        ></a>
       </div>
       <div class="toolbar-row">
         <!-- Help and settings buttons -->
-        <a class="toolbar-button" id="button-help" title="Help!"><i data-lucide="circle-help"></i></a>
-        <a class="toolbar-button" id="button-settings" title="Settings"><i data-lucide="settings"></i></a>
+        <a class="toolbar-button" id="button-help" title="Help!"
+          ><i data-lucide="circle-help"></i
+        ></a>
+        <a class="toolbar-button" id="button-settings" title="Settings"
+          ><i data-lucide="settings"></i
+        ></a>
       </div>
-  </div>
+    </div>
 
-  <!-- Console and main editor panels -->
-  <div id="panel-main-editor"></div>
-  <div id="panel-console"></div>
+    <!-- Console and main editor panels -->
+    <div id="panel-main-editor"></div>
+    <div id="panel-console"></div>
 
-  <!-- Visualization panel with canvases -->
-  <div id="panel-vis"> 
-    <canvas id="serialcanvas" style="width: 100vw; height: 100vh;"></canvas>
-    <!-- <canvas id="canvas-plot" width="1000" height="800"></canvas>
+    <!-- Visualization panel with canvases -->
+    <div id="panel-vis">
+      <canvas id="serialcanvas" style="width: 100vw; height: 100vh"></canvas>
+      <!-- <canvas id="canvas-plot" width="1000" height="800"></canvas>
     <canvas id="canvas-timeline" width="1000" height="800"></canvas> -->
-  </div>
+    </div>
 
-  <!-- Settings panel with tabs -->
-  <div id="panel-settings" class="panel-aux" style="display: none;"></div>
+    <!-- Settings panel with tabs -->
+    <div id="panel-settings" class="panel-aux" style="display: none"></div>
 
-  <!-- Help documentation panel -->
-  <div id="panel-help" class="panel-aux" style="display: none;"></div>
+    <!-- Help documentation panel -->
+    <div id="panel-help" class="panel-aux" style="display: none"></div>
 
-  <!-- Main JavaScript module -->
-  <script type="module" src='bundle.mjs'></script>
-</body>
+    <!-- Main JavaScript module -->
+    <script src="bundle.mjs"></script>
+  </body>
 </html>
-
-
