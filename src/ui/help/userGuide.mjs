@@ -31,7 +31,7 @@ export function makeUserGuide() {
 
 function initUserGuideDropdown($dropdown, $content) {
     const loadGuide = (type) => {
-        const url = `/assets/userguide_${type}.html`;
+        const url = `assets/userguide_${type}.html`;
         $content.html("<div class='loading-indicator'>Loading user guide...</div>");
 
         $.get(url, function(data) {

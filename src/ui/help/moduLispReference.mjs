@@ -660,7 +660,7 @@ export function showDocumentationForSymbol(editor) {
 async function loadReferenceData() {
   dbg("loadReferenceData", "Fetching reference data");
   try {
-    const response = await fetch("/assets/modulisp_reference_data.json");
+    const response = await fetch("assets/modulisp_reference_data.json");
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
