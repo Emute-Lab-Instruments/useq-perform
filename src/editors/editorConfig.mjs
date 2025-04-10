@@ -97,7 +97,6 @@ export function getPanelStyles(makeVisible) {
   
   return {
     "display": "block",
-    "z-index": "200", 
     "position": "fixed",
     "height": "100%",
     "width": "100%",
