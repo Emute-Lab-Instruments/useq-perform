@@ -215,7 +215,7 @@ function migrateLegacyConfig(settings) {
     window.localStorage.removeItem("useqConfig");
   }
 
-  const codeStr = window.localStorage.getIte(codeStorageKey);
+  const codeStr = window.localStorage.getItem(codeStorageKey);
   if (codeStr) {
     dbg("Found code:", codeStr);
     settings.editor.code = codeStr;
