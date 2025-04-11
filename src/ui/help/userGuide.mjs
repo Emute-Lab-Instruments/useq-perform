@@ -30,15 +30,69 @@ export function makeUserGuide() {
 }
 
 function initUserGuideDropdown($dropdown, $content) {
-    const loadGuide = (type) => {
-        const url = `assets/userguide_${type}.html`;
-        $content.html("<div class='loading-indicator'>Loading user guide...</div>");
-
-        $.get(url, function(data) {
-            $content.html(data);
-        }).fail(function() {
-            $content.html('<p>Error loading user guide. Please try refreshing the page.</p>');
+    const preserveDimensions = ($element) => {
+        const width = $element.width();
+        const height = $element.height();
+        return { width, height };
+    };
+    
+    const applyDimensions = ($element, dimensions) => {
+        $element.css({
+            'min-width': `${dimensions.width}px`,
+            'min-height': `${dimensions.height}px`,
+            'width': `${dimensions.width}px`
         });
+        return $element;
+    };
+    
+    const resetDimensions = ($element) => {
+        setTimeout(() => {
+            $element.css({
+                'min-width': '',
+                'min-height': '',
+                'width': ''
+            });
+        }, 300);
+        return $element;
+    };
+    
+    const createLoadingIndicator = () => {
+        return $("<div class='loading-indicator'>Loading user guide...</div>");
+    };
+    
+    const fetchGuideContent = (url) => {
+        return new Promise((resolve, reject) => {
+            $.get(url)
+                .done(resolve)
+                .fail(() => reject('Error loading user guide. Please try refreshing the page.'));
+        });
+    };
+    
+    const loadGuide = async (type) => {
+        const url = `assets/userguide_${type}.html`;
+        
+        // Preserve current dimensions before any changes
+        const dimensions = preserveDimensions($content);
+        applyDimensions($content, dimensions);
+        
+        // Show loading indicator
+        $content.html(createLoadingIndicator());
+        
+        try {
+            // Get the new content
+            const data = await fetchGuideContent(url);
+            
+            // Apply the transition
+            $content.fadeOut(100, function() {
+                $content.html(data);
+                $content.fadeIn(100, function() {
+                    resetDimensions($content);
+                });
+            });
+        } catch (errorMessage) {
+            $content.html(`<p>${errorMessage}</p>`);
+            resetDimensions($content);
+        }
     };
 
     // Set up dropdown change handler
