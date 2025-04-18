@@ -14,7 +14,104 @@ export function setCodeHighlightColor(connected) {
     }
   
     root.style.setProperty('--code-eval-highlight-color', color);
+}
+
+/**
+ * Serial communication utility functions
+ */
+
+/**
+ * Clean code by removing comments and newlines
+ * @param {string} code - The code to clean
+ * @returns {string} Cleaned code
+ */
+export function cleanCode(code) {
+  // Remove comments (anything between ; and newline) and all newlines in a single step
+  return code.replace(/;[^\n]*(\n|$)|\n/g, (match) =>
+    match.startsWith(";") ? "" : ""
+  );
+}
+
+/**
+ * Combine existing buffer with new data
+ * @param {Uint8Array} existingBuffer - Existing buffer data
+ * @param {Uint8Array} newData - New data to append
+ * @returns {Uint8Array} Combined buffer
+ */
+export function combineBuffers(existingBuffer, newData) {
+  if (existingBuffer.length === 0) {
+    return newData;
   }
+  
+  let combinedBuffer = new Uint8Array(existingBuffer.length + newData.length);
+  combinedBuffer.set(existingBuffer);
+  combinedBuffer.set(newData, existingBuffer.length);
+  return combinedBuffer;
+}
+
+/**
+ * Find the start marker in a byte array
+ * @param {Uint8Array} byteArray - The byte array to search
+ * @param {number} markerValue - The marker value to find
+ * @returns {number} The index of the start marker or -1 if not found
+ */
+export function findMessageStartMarker(byteArray, markerValue) {
+  return byteArray.findIndex(
+    (byte, i) => i < byteArray.length - 1 && byte === markerValue
+  );
+}
+
+/**
+ * Update remaining bytes based on marker position
+ * @param {Uint8Array} byteArray - The original byte array
+ * @param {number} startIndex - The index where the marker was found
+ * @returns {Uint8Array} The updated remaining bytes
+ */
+export function updateRemainingBytes(byteArray, startIndex) {
+  if (startIndex >= 0) {
+    // Found message start, keep from here onwards
+    return byteArray.slice(startIndex);
+  } else {
+    // Nothing useful, discard everything
+    return new Uint8Array(0);
+  }
+}
+
+/**
+ * Extracts message text from byte array
+ * @param {Uint8Array} messageBytes - Message bytes to decode
+ * @returns {string} Decoded message text
+ */
+export function extractMessageText(messageBytes) {
+  return new TextDecoder().decode(messageBytes);
+}
+
+/**
+ * Validates if a serial port exists
+ * @param {SerialPort|null} port - Port to validate
+ * @returns {boolean} True if port exists
+ */
+export function isSerialPortValid(port) {
+  return port !== null;
+}
+
+/**
+ * Check if the port is readable and not locked
+ * @param {SerialPort} port - The port to check
+ * @returns {boolean} True if the port is readable and not locked
+ */
+export function isPortReadableAndUnlocked(port) {
+  return port && port.readable && !port.readable.locked;
+}
+
+/**
+ * Check if the serial port is writable
+ * @param {SerialPort} port - The port to check
+ * @returns {boolean} True if the port is writable
+ */
+export function isPortWritable(port) {
+  return port && port.writable;
+}
   
   // Smoothing and interpolation settings
   export const smoothingSettings = {
