@@ -43,17 +43,17 @@ export function createEditor(startingText, extensions) {
   return view;
 }
 
-export function createMainEditor() {
+export function createMainEditor(initialText) {
   dbg(
     "main.mjs createMainEditor: Creating main editor with settings:",
     {
       theme: activeUserSettings.editor?.theme,
-      code: activeUserSettings.editor?.code?.length,
+      code: initialText ? initialText.length : activeUserSettings.editor?.code?.length,
     }
   );
 
   let editor = createEditor(
-    activeUserSettings.editor.code,
+    initialText || activeUserSettings.editor.code,
     mainEditorExtensions
   );
   
