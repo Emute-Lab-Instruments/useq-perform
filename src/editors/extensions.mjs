@@ -15,8 +15,8 @@ import { lineNumbers, drawSelection } from "@codemirror/view";
 import { history } from '@codemirror/commands';
 import { baseKeymap, mainEditorKeymap } from "./keymaps.mjs";
 import { themeCompartment, fontSizeCompartment } from "./state.mjs";
+import {structureExtensions} from "./extensions/structure.mjs";
 import { dbg } from "../utils.mjs";
-import { setupSExprTracking } from "./extensions/sexprHighlight.mjs";
 
 dbg('extensions.mjs: Loading...');
 dbg('extensions.mjs: Active user settings:', activeUserSettings);
@@ -72,13 +72,7 @@ const functionalExtensions = [
 ];
 
 // S-Expression tracking extensions
-const sExprExtensions = setupSExprTracking();
 
-dbg('extensions.mjs: Created base extensions:', {
-  themeExtensions: 'themeExtensions array',
-  functionalExtensions: 'functionalExtensions array',
-  sExprExtensions: 'sExprExtensions array'
-});
 
 // Base extensions combine core functionality
 export const baseExtensions = [
@@ -86,7 +80,7 @@ export const baseExtensions = [
   ...functionalExtensions,
   ...themeExtensions,
   ...default_clojure_extensions,
-  ...sExprExtensions,
+  ...structureExtensions
 ];
 
 // Main editor combines all extensions
