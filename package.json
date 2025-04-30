@@ -30,7 +30,8 @@
     "build": "node build.js",
     "watch": "node build.js --watch",
     "dev": "npm-run-all --parallel start watch",
-    "start": "serve public -p 5000 --cors --config serve.json"
+    "start": "serve public -p 5000 --cors --config serve.json",
+    "test": "mocha \"test/**/*.mjs\""
   },
   "resolutions": {
     "@codemirror/state": "latest"
