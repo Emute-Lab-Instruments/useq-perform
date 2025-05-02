@@ -1,379 +1,389 @@
-import { StateField, StateEffect } from "@codemirror/state";
+// Simple, functional navigation commands for CodeMirror using SyntaxNode.resolve.
+// These functions do not mutate state; they return new selection positions or perform navigation
+// by dispatching a transaction on the provided Editorstate instance.
+
+import { EditorSelection, StateField } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
+import { ASTCursor } from "../../utils/astCursor.mjs";
 import { EditorView, Decoration } from "@codemirror/view";
-import { dbg } from "../../utils.mjs";
 
-///// DECORATIONS
-
-// Create decoration for highlighting evaluated code
-const highlightDecoration = Decoration.mark({
-    attributes: { class: "cm-evaluated-code" }
-});
-
-// Create decoration for highlighting the current node
-const currentNodeDecoration = Decoration.mark({
-    attributes: { class: "cm-current-node" }
-});
-
-// Create decoration for highlighting the parent node
-const parentNodeDecoration = Decoration.mark({
-    attributes: { class: "cm-parent-node" }
-});
-
-// New: Decorations for left and right siblings (underscore, blue/red)
-const leftSiblingDecoration = Decoration.mark({
-    attributes: { class: "cm-left-sibling-underscore" }
-});
-const rightSiblingDecoration = Decoration.mark({
-    attributes: { class: "cm-right-sibling-underscore" }
-});
-
-
-///// STATE FIELDS
-
-// Effect for setting the current node
-export const setCurrentNodeEffect = StateEffect.define();
-
-function cleanupParent(parent, state) {
-    if (!parent) return null;
-    if (parent.name === "Operator") {
-        // Skip operator nodes and return their parent instead
-        return parent.parent ? cleanupNode(parent.parent, state) : null;
-    }
-    return cleanupNode(parent, state);
-}
-
-// Helper function to determine if a node is a bracket or paren
-function isBracketOrParen(nodeName) {
-    return nodeName === '[' || nodeName === ']' ||
-           nodeName === '(' || nodeName === ')' ||
-           nodeName === '{' || nodeName === '}';
-}
-
-// Helper function to determine if a node is a container (List, Vector, Map)
-function isContainer(nodeName) {
-    return nodeName === 'List' || nodeName === 'Vector' || nodeName === 'Map';
-}
-
-// Helper function to get the container type based on brackets
-function getContainerType(openBracket) {
-    if (openBracket === '[') return 'Vector';
-    if (openBracket === '(') return 'List';
-    if (openBracket === '{') return 'Map';
-    return null;
-}
-
-function cleanupNode(node, state) {
-    if (!node) return null;
-
-    // Extract the node's text content
-    const text = state.sliceDoc(node.from, node.to);
-
-    // If we're on a bracket or paren, get the parent container instead
-    if (isBracketOrParen(node.name) && node.parent) {
-        // We're on a bracket, so get the parent container
-        return cleanupNode(node.parent, state);
-    }
-
-    // If we're on an operator, get the parent container
-    if (node.name === 'Operator' && node.parent) {
-        return cleanupNode(node.parent, state);
-    }
-
-    // Determine the node type based on its name and content
-    let nodeType = node.name;
-
-    // Handle special cases for Clojure syntax
-    if (nodeType === 'Number' || nodeType === 'String' || nodeType === 'Symbol') {
-        // These are already correct
-    } else if (text.startsWith('[') && text.endsWith(']')) {
-        nodeType = 'Vector';
-    } else if (text.startsWith('(') && text.endsWith(')')) {
-        nodeType = 'List';
-    } else if (text.startsWith('{') && text.endsWith('}')) {
-        nodeType = 'Map';
-    } else if (/^[a-zA-Z0-9_\-+*\/\.!?]+$/.test(text)) {
-        nodeType = 'Symbol';
-    }
-
-    // Create the node object with all necessary properties
-    let myNode = {
-        from: node.from,
-        to: node.to,
-        firstChild: node.firstChild,
-        name: node.name,
-        type: nodeType,
-        text: text,
-    };
-
-    return myNode;
-}
-
-// Text extraction is now handled directly in cleanupNode
-
-
-// Helper function to find the parent node, handling special cases
-function findParentNode(node, state) {
-    if (!node || !node.parent) return null;
-
-    // Skip top-level nodes
-    if (node.parent.name === 'Program' || node.parent.name === 'TopLevel' || node.parent.name === 'Document') {
-        return null;
-    }
-
-    // If we're already on a container (List, Vector, Map), get its parent
-    const text = state.sliceDoc(node.from, node.to);
-    if ((text.startsWith('[') && text.endsWith(']')) ||
-        (text.startsWith('(') && text.endsWith(')')) ||
-        (text.startsWith('{') && text.endsWith('}'))) {
-        // We're on a container, so get its parent
-        return node.parent ? cleanupNode(node.parent, state) : null;
-    }
-
-    // For all other nodes, get the parent container
-    // This will automatically skip brackets and operators due to cleanupNode
-    return cleanupNode(node.parent, state);
-}
-
-// Helper function to find siblings by traversing the parent's children
-function findSiblings(node, state) {
-    if (!node || !node.parent) return { leftSibling: null, rightSibling: null };
-
-    // If we're on a bracket or operator, we need to get the actual node first
-    if (isBracketOrParen(node.name) || node.name === 'Operator') {
-        // We're on a bracket or operator, so we need to get the parent container
-        const container = cleanupNode(node, state);
-        // Now find siblings of the container
-        return findSiblings(container, state);
-    }
-
-    const parent = node.parent;
-    if (!parent.firstChild) return { leftSibling: null, rightSibling: null };
-
-    // Get the text of the parent to determine if we're in a container
-    const parentText = state.sliceDoc(parent.from, parent.to);
-    
-    // If parent is a container like [a], where 'a' is the only element, return null siblings
-    if ((parentText.startsWith('[') && parentText.endsWith(']')) ||
-        (parentText.startsWith('(') && parentText.endsWith(')')) ||
-        (parentText.startsWith('{') && parentText.endsWith('}'))) {
-        
-        // Count meaningful children (non-bracket, non-whitespace elements)
-        let meaningfulChildren = 0;
-        let child = parent.firstChild;
-        while (child) {
-            if (!isBracketOrParen(child.name) &&
-                child.name !== 'Operator' &&
-                child.name !== 'Whitespace' &&
-                child.name !== 'Comment') {
-                meaningfulChildren++;
-            }
-            child = child.nextSibling;
-        }
-        
-        // If there's only one meaningful child (or none), return null siblings
-        if (meaningfulChildren <= 1) {
-            return { leftSibling: null, rightSibling: null };
-        }
-    }
-
-    // Collect all meaningful children of the parent (skip brackets, operators, whitespace, etc.)
-    const children = [];
-    let child = parent.firstChild;
-    while (child) {
-        // Skip brackets, operators, whitespace, and comments
-        if (!isBracketOrParen(child.name) &&
-            child.name !== 'Operator' &&
-            child.name !== 'Whitespace' &&
-            child.name !== 'Comment') {
-            children.push(child);
-        }
-        child = child.nextSibling;
-    }
-
-    // If we have no meaningful children, return null siblings
-    if (children.length <= 1) {
-        return { leftSibling: null, rightSibling: null };
-    }
-
-    // Find the current node's index among siblings
-    const idx = children.findIndex(n => n.from === node.from && n.to === node.to);
-    if (idx === -1) return { leftSibling: null, rightSibling: null };
-
-    // Get left and right siblings
-    const leftSibling = idx > 0 ? cleanupNode(children[idx - 1], state) : null;
-    const rightSibling = idx < children.length - 1 ? cleanupNode(children[idx + 1], state) : null;
-
-    return { leftSibling, rightSibling };
-}
-
-// Helper function to find the first child of a node
-function findFirstChild(node, state) {
-    if (!node || !node.firstChild) return null;
-
-    // If we're on a bracket or operator, we need to get the actual node first
-    if (isBracketOrParen(node.name) || node.name === 'Operator') {
-        // We're on a bracket or operator, so we need to get the parent container
-        const container = cleanupNode(node, state);
-        // Now find the first child of the container
-        return findFirstChild(container, state);
-    }
-
-    // Skip non-content nodes like brackets, whitespace, etc.
-    let child = node.firstChild;
-    while (child) {
-        // Skip brackets, operators, whitespace, and comments
-        if (!isBracketOrParen(child.name) &&
-            child.name !== 'Operator' &&
-            child.name !== 'Whitespace' &&
-            child.name !== 'Comment') {
-            return cleanupNode(child, state);
-        }
-        child = child.nextSibling;
-    }
-
-    // If we didn't find a meaningful child, return null
-    return null;
-}
-
-function getSiblingsAndFirstChild(rawNode, state) {
-    // If we're on a bracket or operator, we need to get the actual node first
-    if (isBracketOrParen(rawNode.name) || rawNode.name === 'Operator') {
-        // We're on a bracket or operator, so we need to get the parent container
-        const container = cleanupNode(rawNode, state);
-        // Now get siblings and first child of the container
-        const { leftSibling, rightSibling } = findSiblings(container, state);
-        const firstChild = findFirstChild(container, state);
-
-        return {
-            leftSibling,
-            rightSibling,
-            // For backward compatibility
-            prevSibling: leftSibling,
-            nextSibling: rightSibling,
-            firstChild
-        };
-    }
-
-    // Use our helper functions to find siblings and first child
-    const { leftSibling, rightSibling } = findSiblings(rawNode, state);
-    const firstChild = findFirstChild(rawNode, state);
+// Helper functions for tree processing
+function treeToJson(node, state) {
+    // For structural tokens like parentheses, include the full text including their contents
+    const isStructural = isStructuralToken(node.type.name);
+    const text = state.sliceDoc(
+        node.from,
+        node.to
+    );
 
     return {
-        leftSibling,
-        rightSibling,
-        // For backward compatibility
-        prevSibling: leftSibling,
-        nextSibling: rightSibling,
-        firstChild
+        type: node.type.name,
+        from: node.from,
+        to: node.to,
+        text: isStructural ? text : text,
+        children: collectChildren(node, state)
     };
 }
 
-export function stateToNodeContext(state) {
-    let nodeInfo = null;
-    if (state && state.selection) {
-        const tree = syntaxTree(state);
-        const pos = state.selection.main.head;
-
-        // Find the most specific node at the cursor position
-        // Use side = -1 to prefer the node that ends at the cursor position
-        const rawNode = tree.resolve(pos, -1);
-
-        // Create the current node, skipping brackets and operators
-        const current = cleanupNode(rawNode, state);
-
-        // Get parent node
-        const parent = findParentNode(rawNode, state);
-
-        // Get siblings and first child
-        const { leftSibling, rightSibling, firstChild } = getSiblingsAndFirstChild(rawNode, state);
-
-        // Attach relationships to current node for test compatibility
-        current.prevSibling = leftSibling;
-        current.nextSibling = rightSibling;
-        current.firstChild = firstChild;
-        current.parent = parent;
-
-        // Create the node context object
-        nodeInfo = {
-            current: current,
-            parent: parent,
-            leftSibling: leftSibling,
-            rightSibling: rightSibling,
-            firstChild: firstChild
-        };
+function collectChildren(node, state) {
+    const children = [];
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+        children.push(treeToJson(child, state));
     }
-    return nodeInfo;
+    return children.length > 0 ? children : undefined;
 }
 
+function isStructuralToken(type) {
+    return ["(", ")", "[", "]", "{", "}", "Brace", "Bracket", "Paren"].includes(type);
+}
 
-// State field to track the current node and its context
-export const nodeTrackingField = StateField.define({
+function isOperatorNode(node) {
+    return node.type === "Operator" && node.children && node.children.length > 0;
+}
+
+function filterStructuralAndLiftOperatorNodes(node) {
+    if (isStructuralToken(node.type)) {
+        if (node.children) {
+            return node.children.map(filterStructuralAndLiftOperatorNodes).filter(Boolean).flat();
+        }
+        return undefined;
+    }
+    if (isOperatorNode(node)) {
+        // Replace Operator node with its first child (lift it)
+        return filterStructuralAndLiftOperatorNodes(node.children[0]);
+    }
+    const children = node.children
+        ? node.children.map(filterStructuralAndLiftOperatorNodes).filter(Boolean).flat()
+        : undefined;
+    return { ...node, children };
+}
+
+function isContainerNode(node) {
+    return node.type === "List" || node.type === "Vector" ||
+        node.type === "Program" || node.type === "Map";
+}
+
+function distributeWhitespace(children, _parentFrom, parentTo) {
+    if (!children || children.length === 0) return [];
+
+    const result = [];
+
+    // Process the first child
+    const firstChild = { ...children[0] };
+    // Include opening delimiters in the parent's range
+    result.push(firstChild);
+
+    // Process middle children with whitespace distribution
+    for (let i = 1; i < children.length; i++) {
+        const prev = result[i - 1];
+        const current = { ...children[i] };
+
+        // Calculate whitespace between elements
+        const whitespace = current.from - prev.to;
+        if (whitespace > 0) {
+            if (whitespace === 1) {
+                // Assign single whitespace to the left element
+                prev.to += 1;
+                // current.from remains unchanged
+            } else {
+                // Split whitespace, favoring next element if odd number of spaces (except for 1)
+                const half = Math.floor(whitespace / 2);
+                prev.to += half;
+                current.from = prev.to;
+            }
+        }
+
+        result.push(current);
+    }
+
+    // Ensure the last child extends to include closing delimiters
+    if (result.length > 0) {
+        const last = result[result.length - 1];
+        last.to = parentTo;
+    }
+
+    return result;
+}
+
+function createAdjustedTree(node) {
+    // Non-container nodes pass through unchanged
+    if (!isContainerNode(node)) {
+        return {
+            ...node,
+            children: node.children ? node.children.map(createAdjustedTree) : undefined
+        };
+    }
+
+    // For container nodes, process children first
+    const processedChildren = node.children
+        ? node.children.map(createAdjustedTree)
+        : [];
+
+    // Then distribute whitespace among children
+    const adjustedChildren = distributeWhitespace(
+        processedChildren,
+        node.from,
+        node.to
+    );
+
+    // Return the node with adjusted children
+    return {
+        ...node,
+        children: adjustedChildren
+    };
+}
+
+function resolveNodeAtPosition(tree, pos) {
+    // Base case: outside tree bounds
+    if (pos < tree.from || pos >= tree.to) return null;
+
+    // If this is a container node with children, delegate to them
+    if (isContainerNode(tree) && tree.children && tree.children.length > 0) {
+        for (const child of tree.children) {
+            if (pos >= child.from && pos < child.to) {
+                return resolveNodeAtPosition(child, pos);
+            }
+        }
+
+        // If we get here, position is in the container but not in any child
+        // This shouldn't happen with proper whitespace distribution
+        return tree;
+    }
+
+    // Non-container node or leaf node
+    return tree;
+}
+
+// Helper: find path to node at a given position
+function findPathToNodeAtPosition(node, pos, path = []) {
+    if (pos < node.from || pos >= node.to) return null;
+    if (!node.children || node.children.length === 0) return path;
+    for (let i = 0; i < node.children.length; i++) {
+        const child = node.children[i];
+        const childPath = findPathToNodeAtPosition(child, pos, [...path, i]);
+        if (childPath) return childPath;
+    }
+    return path;
+}
+
+// Combines all tree adjustment steps into one function
+function processSyntaxTree(state) {
+    const tree = syntaxTree(state);
+    const jsonTree = treeToJson(tree.topNode, state);
+    const filteredTree = filterStructuralAndLiftOperatorNodes(jsonTree);
+    const adjustedTree = createAdjustedTree(filteredTree);
+    return adjustedTree;
+}
+
+// State field to track the processed syntax tree
+export const nodeTreeField = StateField.define({
     create(state) {
-        return stateToNodeContext(state);
+        return processSyntaxTree(state);
     },
-    update(value, tr) {
-        let current = value;
-        let newValue = null;
 
-        // Handle setting the current node via navigation effect
-        for (let e of tr.effects) {
-            if (e.is(setCurrentNodeEffect)) {
-                dbg("Current node from effect", e.value);
-                newValue = e.value;
-                console.log("DEBUG currentNode update - Set from effect:", current);
-                break;
-            }
+    update(value, transaction) {
+        if (transaction.docChanged) {
+            const processedTree =  processSyntaxTree(transaction.state);
+            return processedTree;
         }
-
-        // If no current node from effects and selection changed, find node at cursor
-        if (!newValue && tr.selection) {
-            newValue = stateToNodeContext(tr.state);
+        else {
+            return value;
         }
-        return newValue;
     }
 });
 
-// State field for tracking the last evaluated code (commented out for now)
-export const lastEvaluatedCode = StateField.define({
-    create() {
-        return { from: 0, to: 0 };
+// Function to print the current node of the ASTCursor
+function printCurrentNode(cursor) {
+    console.log("Printing current cursor node...");
+    if (cursor && cursor.getNode) {
+        // eslint-disable-next-line no-console
+        console.log('ASTCursor current node:', cursor.getNode());
+    }
+}
+
+// State field to track the ASTCursor for the current node tree
+export const nodeTreeCursorField = StateField.define({
+    create(state) {
+        const nodeTree = state.field(nodeTreeField, false);
+        const cursor = nodeTree ? new ASTCursor(nodeTree) : null;
+        if (!cursor) return null;
+        // Set cursor to node at initial selection
+        const pos = state.selection?.main.head || 0;
+        const path = nodeTree ? findPathToNodeAtPosition(nodeTree, pos) : [];
+        cursor.setPath(path);
+        printCurrentNode(cursor);
+        return cursor;
     },
-    update(value, _tr) {
-        // Ignore transaction, just return the current value
-        return value;
+    update(prevCursor, tr) {
+        console.log("nodeTreeCursorField update routine called...");
+
+        const prevNodeTree = tr.startState.field(nodeTreeField, false);
+        const nodeTree = tr.state.field(nodeTreeField, false);
+        const prevPos = tr.startState.selection?.main.head || 0;
+        const pos = tr.state.selection?.main.head || 0;
+        // If nothing changed, return previous cursor
+        if (nodeTree === prevNodeTree && pos === prevPos && prevCursor) {
+            return prevCursor;
+        }
+        // If only the cursor position changed, reuse ASTCursor and just update path
+        if (nodeTree === prevNodeTree && prevCursor) {
+            const path = findPathToNodeAtPosition(nodeTree, pos);
+            prevCursor.setPath(path);
+            printCurrentNode(prevCursor);
+            return prevCursor;
+        }
+        // Otherwise, create a new ASTCursor
+        const cursor = nodeTree ? new ASTCursor(nodeTree) : null;
+        if (!cursor) return null;
+        const path = nodeTree ? findPathToNodeAtPosition(nodeTree, pos) : [];
+        cursor.setPath(path);
+        printCurrentNode(cursor);
+        return cursor;
     }
 });
 
-// Create decoration provider for evaluated code
-export const highlightField = StateField.define({
-    create() {
-        return Decoration.none;
-    },
-    update(decorations, tr) {
-        // Remove old decorations and add new ones based on the current highlight
-        decorations = decorations.map(tr.changes);
+// Helper to trim whitespace and get adjusted range
+function getTrimmedRange(node, state) {
+    if (!node || typeof node.from !== "number" || typeof node.to !== "number") return null;
+    const text = state.sliceDoc(node.from, node.to);
+    let startOffset = 0;
+    let endOffset = text.length;
+    // Find first non-whitespace
+    while (startOffset < endOffset && /\s/.test(text[startOffset])) startOffset++;
+    // Find last non-whitespace
+    while (endOffset > startOffset && /\s/.test(text[endOffset - 1])) endOffset--;
+    if (startOffset >= endOffset) return null; // all whitespace
+    return {
+        from: node.from + startOffset,
+        to: node.from + endOffset
+    };
+}
 
-        // Check if lastEvaluatedCode field exists before trying to access it
-        if (tr.state.field(lastEvaluatedCode, false)) {
-            const lastEvaluated = tr.state.field(lastEvaluatedCode);
-            if (lastEvaluated && lastEvaluated.from < lastEvaluated.to) {
-                return Decoration.set([
-                    highlightDecoration.range(lastEvaluated.from, lastEvaluated.to)
-                ]);
-            }
+// StateField for highlighting the current node (trimmed)
+export const nodeHighlightField = StateField.define({
+    create(state) {
+        const cursor = state.field(nodeTreeCursorField, false);
+        console.log("[nodeHighlightField.create] cursor:", cursor);
+        if (!cursor || !cursor.getNode) return Decoration.none;
+        const node = cursor.getNode();
+        console.log("[nodeHighlightField.create] node:", node);
+        const range = getTrimmedRange(node, state);
+        console.log("[nodeHighlightField.create] range:", range);
+        // Add parent node highlight
+        let parentRange = null;
+        if (cursor.peekParent) {
+            const parent = cursor.peekParent();
+            parentRange = getTrimmedRange(parent, state);
         }
-
-        return Decoration.none;
+        const decorations = [];
+        if (range) {
+            decorations.push(Decoration.mark({class: "cm-current-node"}).range(range.from, range.to));
+        }
+        if (parentRange) {
+            decorations.push(Decoration.mark({class: "cm-parent-node"}).range(parentRange.from, parentRange.to));
+        }
+        // Sort decorations by from position
+        decorations.sort((a, b) => a.from - b.from);
+        return decorations.length ? Decoration.set(decorations) : Decoration.none;
     },
-    provide: field => EditorView.decorations.from(field)
+    update(deco, tr) {
+        const cursor = tr.state.field(nodeTreeCursorField, false);
+        console.log("[nodeHighlightField.update] cursor:", cursor);
+        if (!cursor || !cursor.getNode) return Decoration.none;
+        const node = cursor.getNode();
+        console.log("[nodeHighlightField.update] node:", node);
+        const range = getTrimmedRange(node, tr.state);
+        console.log("[nodeHighlightField.update] range:", range);
+        // Add parent node highlight
+        let parentRange = null;
+        if (cursor.peekParent) {
+            const parent = cursor.peekParent();
+            parentRange = getTrimmedRange(parent, tr.state);
+        }
+        const decorations = [];
+        if (range) {
+            decorations.push(Decoration.mark({class: "cm-current-node"}).range(range.from, range.to));
+        }
+        if (parentRange) {
+            decorations.push(Decoration.mark({class: "cm-parent-node"}).range(parentRange.from, parentRange.to));
+        }
+        // Sort decorations by from position
+        decorations.sort((a, b) => a.from - b.from);
+        return decorations.length ? Decoration.set(decorations) : Decoration.none;
+    },
+    provide: f => EditorView.decorations.from(f)
 });
 
+// === Navigation commands for structure navigation ===
 
-// Export all extensions
+/**
+ * Move cursor in (to first child node) and return a transaction to update selection.
+ */
+export function navigateIn(state) {
+    const cursor = state.field(nodeTreeCursorField, false);
+    if (!cursor || !cursor.hasChildren()) return null;
+    const fork = cursor.fork().in();
+    const node = fork.getNode();
+    if (!node || typeof node.from !== 'number') return null;
+    return state.update({
+        selection: EditorSelection.single(node.from),
+        scrollIntoView: true
+    });
+}
+
+/**
+ * Move cursor out (to parent node) and return a transaction to update selection.
+ */
+export function navigateOut(state) {
+    const cursor = state.field(nodeTreeCursorField, false);
+    if (!cursor || !cursor.canGoOut()) return null;
+    const fork = cursor.fork().out();
+    const node = fork.getNode();
+    if (!node || typeof node.from !== 'number') return null;
+    return state.update({
+        selection: EditorSelection.single(node.from),
+        scrollIntoView: true
+    });
+}
+
+/**
+ * Move cursor to previous sibling and return a transaction to update selection.
+ */
+export function navigatePrev(state) {
+    const cursor = state.field(nodeTreeCursorField, false);
+    if (!cursor || !cursor.hasPrev()) return null;
+    const fork = cursor.fork().prev();
+    const node = fork.getNode();
+    if (!node || typeof node.from !== 'number') return null;
+    return state.update({
+        selection: EditorSelection.single(node.from),
+        scrollIntoView: true
+    });
+}
+
+/**
+ * Move cursor to next sibling and return a transaction to update selection.
+ */
+export function navigateNext(state) {
+    const cursor = state.field(nodeTreeCursorField, false);
+    if (!cursor || !cursor.hasNext()) return null;
+    const fork = cursor.fork().next();
+    const node = fork.getNode();
+    if (!node || typeof node.from !== 'number') return null;
+    return state.update({
+        selection: EditorSelection.single(node.from),
+        scrollIntoView: true
+    });
+}
+
+// Export the structural extension as just the state field
+// Consumers can add their own event handlers to call the navigation functions
 export let structureExtensions = [
-    nodeTrackingField,
-    lastEvaluatedCode,
-    // nodeHighlightField,
-    highlightField
+    nodeTreeField,
+    nodeTreeCursorField,
+    nodeHighlightField,
+    // nodeTreeCursorContextField
 ];
+
+console.log("[structure.mjs] nodeHighlightField:", nodeHighlightField);
+console.log("[structure.mjs] structureExtensions:", structureExtensions);

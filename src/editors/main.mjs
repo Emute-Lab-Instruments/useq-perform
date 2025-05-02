@@ -67,7 +67,7 @@ export function createMainEditor(initialText) {
 }
 
 export function createExampleEditor(text, parent) {
-  let state = EditorState.create({
+   let state = EditorState.create({
     doc: text,
     extensions: exampleEditorExtensions,
   });
