@@ -36,16 +36,21 @@
 /* Current node highlighting */
 .cm-current-node {
   background-color: rgba(100, 200, 255, 0.3);
-  border-radius: 3px;
+  border-radius: 13px;
   border: 2px solid rgba(100, 200, 255, 0.8);
 }
 
 /* Parent node highlighting */
 .cm-parent-node {
-  border: 2px solid rgba(255, 150, 50, 0.8);
-  border-radius: 3px;
+  border: 2px solid rgba(51, 200, 255, 0.5);
+  border-radius: 6px;
 }
 
+
+.cm-parent-node-editor-area {
+  border: 2px solid rgba(255, 200, 255, 0.5);
+  border-radius: 1px;
+}
 /* Left sibling highlighting (first character) */
 .cm-left-sibling-underscore {
   border-bottom: 3px solid rgba(50, 150, 255, 0.9);
