@@ -11,6 +11,13 @@ import {
   toggleDocumentation,
   showDocumentationForSymbol
 } from "./editorConfig.mjs";
+// import { 
+//   navigatePrev, 
+//   navigateNext, 
+//   navigateIn, 
+//   navigateOut 
+// } from "./extensions/structure.mjs";
+
 
 import { makeDeleteWrapper } from "./editorConfig.mjs";
 
@@ -68,8 +75,37 @@ export const useq_keymap = [
   },
 ];
 
+// Structural navigation keymap for code structure traversal
+export const structural_navigation_keymap = [
+  // { 
+  //   key: "Alt-ArrowLeft", 
+  //   run: navigatePrev,
+  //   preventDefault: true,
+  //   stopPropagation: true
+  // },
+  // { 
+  //   key: "Alt-ArrowRight", 
+  //   run: navigateNext,
+  //   preventDefault: true,
+  //   stopPropagation: true
+  // },
+  // { 
+  //   key: "Alt-ArrowUp", 
+  //   run: navigateOut,
+  //   preventDefault: true,
+  //   stopPropagation: true
+  // },
+  // { 
+  //   key: "Alt-ArrowDown", 
+  //   run: navigateIn,
+  //   preventDefault: true,
+  //   stopPropagation: true
+  // }
+];
+
 export let baseKeymap = [
   keymap.of(useq_keymap),
+  keymap.of(structural_navigation_keymap),
   keymap.of(completeKeymapModified),
   keymap.of(historyKeymap),
 ];
