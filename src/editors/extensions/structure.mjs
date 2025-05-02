@@ -271,18 +271,22 @@ export const nodeHighlightField = StateField.define({
         console.log("[nodeHighlightField.create] range:", range);
         // Add parent node highlight
         let parentRange = null;
+        let parentIsProgram = false;
+        let parent = null;
         if (cursor.peekParent) {
-            const parent = cursor.peekParent();
+            parent = cursor.peekParent();
+            parentIsProgram = parent && parent.type === "Program";
             parentRange = getTrimmedRange(parent, state);
         }
         const decorations = [];
         if (range) {
             decorations.push(Decoration.mark({class: "cm-current-node"}).range(range.from, range.to));
         }
-        if (parentRange) {
+        if (parentIsProgram) {
+            decorations.push(Decoration.mark({class: "cm-parent-node-editor-area"}).range(0, state.doc.length));
+        } else if (parentRange) {
             decorations.push(Decoration.mark({class: "cm-parent-node"}).range(parentRange.from, parentRange.to));
         }
-        // Sort decorations by from position
         decorations.sort((a, b) => a.from - b.from);
         return decorations.length ? Decoration.set(decorations) : Decoration.none;
     },
@@ -296,18 +300,22 @@ export const nodeHighlightField = StateField.define({
         console.log("[nodeHighlightField.update] range:", range);
         // Add parent node highlight
         let parentRange = null;
+        let parentIsProgram = false;
+        let parent = null;
         if (cursor.peekParent) {
-            const parent = cursor.peekParent();
+            parent = cursor.peekParent();
+            parentIsProgram = parent && parent.type === "Program";
             parentRange = getTrimmedRange(parent, tr.state);
         }
         const decorations = [];
         if (range) {
             decorations.push(Decoration.mark({class: "cm-current-node"}).range(range.from, range.to));
         }
-        if (parentRange) {
+        if (parentIsProgram) {
+            decorations.push(Decoration.mark({class: "cm-parent-node-editor-area"}).range(0, tr.state.doc.length));
+        } else if (parentRange) {
             decorations.push(Decoration.mark({class: "cm-parent-node"}).range(parentRange.from, parentRange.to));
         }
-        // Sort decorations by from position
         decorations.sort((a, b) => a.from - b.from);
         return decorations.length ? Decoration.set(decorations) : Decoration.none;
     },
