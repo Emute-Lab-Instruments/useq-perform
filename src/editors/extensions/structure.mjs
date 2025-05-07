@@ -239,7 +239,7 @@ export const nodeTreeCursorField = StateField.define({
 });
 
 // Helper to trim whitespace and get adjusted range
-function getTrimmedRange(node, state) {
+export function getTrimmedRange(node, state) {
     if (!node || typeof node.from !== "number" || typeof node.to !== "number") return null;
     const text = state.sliceDoc(node.from, node.to);
     let startOffset = 0;
