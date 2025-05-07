@@ -16,6 +16,7 @@ import {
     navigateNext,
     // navigateToTopLevel
 } from "../editors/extensions/structure.mjs";
+import { initGamepadControl } from "../editors/gamepadControl.mjs";
 
 function makeStructureNavPanel(editor) {
     const panel = document.createElement('div');
@@ -79,6 +80,7 @@ export async function initUI() {
 
     $("#panel-help").append(...await makeHelp());
 
+    initGamepadControl(editor);
     initEventHandlers();
 }
 
