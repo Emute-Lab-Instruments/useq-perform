@@ -1,0 +1,90 @@
+/* pickerMenu.css: Styles for the pickerMenu pop-up and overlay */
+
+.picker-menu-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0,0,0,0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.18s cubic-bezier(0.4,0,0.2,1);
+  pointer-events: all;
+}
+.picker-menu-overlay.visible {
+  opacity: 1;
+}
+
+.picker-menu {
+  background: var(--panel-bg, #232323);
+  border-radius: var(--panel-border-radius, 8px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  min-width: 320px;
+  max-width: 90vw;
+  min-height: 120px;
+  max-height: 80vh;
+  padding: 1.5em 2em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity 0.18s cubic-bezier(0.4,0,0.2,1), transform 0.18s cubic-bezier(0.4,0,0.2,1);
+}
+.picker-menu.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.picker-menu-items.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 1em;
+}
+.picker-menu-items.vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+.picker-menu-item {
+  background: var(--panel-control-bg, #222);
+  color: var(--text-primary, #fff);
+  border-radius: var(--item-border-radius, 4px);
+  padding: 0.7em 1.2em;
+  font-size: 1.1em;
+  text-align: center;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  outline: none;
+  user-select: none;
+}
+.picker-menu-item.active, .picker-menu-item:focus {
+  background: var(--accent-color, #00ff41);
+  color: #232323;
+  border-color: var(--accent-color, #00ff41);
+  font-weight: bold;
+  z-index: 1;
+}
+.picker-menu-title {
+  font-size: 1.3em;
+  font-weight: 600;
+  margin-bottom: 1em;
+  color: var(--accent-color, #00ff41);
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .picker-menu {
+    min-width: 90vw;
+    padding: 1em 0.5em;
+  }
+  .picker-menu-items.grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
