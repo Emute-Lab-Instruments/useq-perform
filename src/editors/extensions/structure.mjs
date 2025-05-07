@@ -63,14 +63,13 @@ function isContainerNode(node) {
         node.type === "Program" || node.type === "Map";
 }
 
-function distributeWhitespace(children, _parentFrom, parentTo) {
+function distributeWhitespace(children, parentFrom, parentTo) {
     if (!children || children.length === 0) return [];
 
     const result = [];
 
     // Process the first child
     const firstChild = { ...children[0] };
-    // Include opening delimiters in the parent's range
     result.push(firstChild);
 
     // Process middle children with whitespace distribution
@@ -82,11 +81,8 @@ function distributeWhitespace(children, _parentFrom, parentTo) {
         const whitespace = current.from - prev.to;
         if (whitespace > 0) {
             if (whitespace === 1) {
-                // Assign single whitespace to the left element
                 prev.to += 1;
-                // current.from remains unchanged
             } else {
-                // Split whitespace, favoring next element if odd number of spaces (except for 1)
                 const half = Math.floor(whitespace / 2);
                 prev.to += half;
                 current.from = prev.to;
@@ -96,11 +92,13 @@ function distributeWhitespace(children, _parentFrom, parentTo) {
         result.push(current);
     }
 
-    // Ensure the last child extends to include closing delimiters
-    if (result.length > 0) {
-        const last = result[result.length - 1];
-        last.to = parentTo;
-    }
+    // --- FIX: Do NOT extend last child's .to to parentTo ---
+    // The last child's .to should remain as-is, so it doesn't include the closing delimiter.
+    // Remove or comment out the following lines:
+    // if (result.length > 0) {
+    //     const last = result[result.length - 1];
+    //     last.to = parentTo;
+    // }
 
     return result;
 }
