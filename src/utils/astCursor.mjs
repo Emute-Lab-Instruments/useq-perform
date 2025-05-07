@@ -54,13 +54,16 @@ export class ASTCursor {
      * Move to first child (in)
      * Stays in place if there are no children
      */
-    in() {
+    in(index = 0) {
       if (!this.hasChildren()) {
         return this; // No children, stay here
       }
-      
-      this.path.push(0);
-      this.current = this.current.children[0];
+      // Defensive: clamp index
+      if (typeof index !== "number" || index < 0 || index >= this.current.children.length) {
+        index = 0;
+      }
+      this.path.push(index);
+      this.current = this.current.children[index];
       return this;
     }
   

@@ -2,7 +2,7 @@
 // These functions do not mutate state; they return new selection positions or perform navigation
 // by dispatching a transaction on the provided Editorstate instance.
 
-import { EditorSelection, StateField } from "@codemirror/state";
+import { EditorSelection, StateField, Transaction } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { ASTCursor } from "../../utils/astCursor.mjs";
 import { EditorView, Decoration } from "@codemirror/view";
@@ -213,8 +213,6 @@ export const nodeTreeCursorField = StateField.define({
         return cursor;
     },
     update(prevCursor, tr) {
-        console.log("nodeTreeCursorField update routine called...");
-
         const prevNodeTree = tr.startState.field(nodeTreeField, false);
         const nodeTree = tr.state.field(nodeTreeField, false);
         const prevPos = tr.startState.selection?.main.head || 0;
@@ -320,20 +318,72 @@ export const nodeHighlightField = StateField.define({
     provide: f => EditorView.decorations.from(f)
 });
 
-// === Navigation commands for structure navigation ===
+// --- New: StateField to track last child index for navigation ---
+export const lastChildIndexField = StateField.define({
+    create() {
+        return null; // { parentPath: [...], childIndex: n }
+    },
+    update(value, tr) {
+        const meta = tr.annotation(lastChildIndexAnnotation);
+        if (meta && typeof meta.childIndex === "number" && Array.isArray(meta.parentPath)) {
+            return { parentPath: meta.parentPath, childIndex: meta.childIndex };
+        }
+        if (meta && meta.reset) {
+            return null;
+        }
+        return value;
+    }
+});
+
+import { Annotation } from "@codemirror/state";
+export const lastChildIndexAnnotation = Annotation.define();
+
+// Helper: get path to node at position
+function getChildIndexFromPath(path) {
+    if (!Array.isArray(path) || path.length === 0) return 0;
+    return path[path.length - 1];
+}
+
+function getParentPath(path) {
+    if (!Array.isArray(path) || path.length === 0) return [];
+    return path.slice(0, -1);
+}
+
+// --- Navigation commands for structure navigation ---
 
 /**
- * Move cursor in (to first child node) and return a transaction to update selection.
+ * Move cursor in (to first child node or last visited child) and return a transaction to update selection.
  */
 export function navigateIn(state) {
     const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor || !cursor.hasChildren()) return null;
-    const fork = cursor.fork().in();
-    const node = fork.getNode();
-    if (!node || typeof node.from !== 'number') return null;
+    if (!cursor || !cursor.hasChildren()) {
+        return null;
+    }
+    const lastChildInfo = state.field(lastChildIndexField, false);
+    const currentPath = cursor.getPath ? cursor.getPath() : [];
+    let childIndex = 0;
+    if (
+        lastChildInfo &&
+        Array.isArray(lastChildInfo.parentPath) &&
+        JSON.stringify(lastChildInfo.parentPath) === JSON.stringify(currentPath) &&
+        typeof lastChildInfo.childIndex === "number"
+    ) {
+        childIndex = lastChildInfo.childIndex;
+    }
+    const node = cursor.getNode ? cursor.getNode() : null;
+    const children = node && node.children ? node.children : [];
+    if (childIndex < 0 || childIndex >= children.length) {
+        childIndex = 0;
+    }
+    const fork = cursor.fork().in(childIndex);
+    const childNode = fork.getNode();
+    if (!childNode || typeof childNode.from !== 'number') {
+        return null;
+    }
     return state.update({
-        selection: EditorSelection.single(node.from),
-        scrollIntoView: true
+        selection: EditorSelection.single(childNode.from),
+        scrollIntoView: true,
+        annotations: lastChildIndexAnnotation.of({ reset: true })
     });
 }
 
@@ -342,43 +392,63 @@ export function navigateIn(state) {
  */
 export function navigateOut(state) {
     const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor || !cursor.canGoOut()) return null;
+    if (!cursor || !cursor.canGoOut()) {
+        return null;
+    }
+    const currentPath = cursor.getPath ? cursor.getPath() : [];
+    const parentPath = getParentPath(currentPath);
+    const childIndex = getChildIndexFromPath(currentPath);
     const fork = cursor.fork().out();
     const node = fork.getNode();
-    if (!node || typeof node.from !== 'number') return null;
+    if (!node || typeof node.from !== 'number') {
+        return null;
+    }
     return state.update({
         selection: EditorSelection.single(node.from),
-        scrollIntoView: true
+        scrollIntoView: true,
+        annotations: lastChildIndexAnnotation.of({ parentPath, childIndex })
     });
 }
 
 /**
  * Move cursor to previous sibling and return a transaction to update selection.
+ * Resets lastChildIndexField.
  */
 export function navigatePrev(state) {
     const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor || !cursor.hasPrev()) return null;
+    if (!cursor || !cursor.hasPrev()) {
+        return null;
+    }
     const fork = cursor.fork().prev();
     const node = fork.getNode();
-    if (!node || typeof node.from !== 'number') return null;
+    if (!node || typeof node.from !== 'number') {
+        return null;
+    }
     return state.update({
         selection: EditorSelection.single(node.from),
-        scrollIntoView: true
+        scrollIntoView: true,
+        annotations: lastChildIndexAnnotation.of({ reset: true })
     });
 }
 
 /**
  * Move cursor to next sibling and return a transaction to update selection.
+ * Resets lastChildIndexField.
  */
 export function navigateNext(state) {
     const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor || !cursor.hasNext()) return null;
+    if (!cursor || !cursor.hasNext()) {
+        return null;
+    }
     const fork = cursor.fork().next();
     const node = fork.getNode();
-    if (!node || typeof node.from !== 'number') return null;
+    if (!node || typeof node.from !== 'number') {
+        return null;
+    }
     return state.update({
         selection: EditorSelection.single(node.from),
-        scrollIntoView: true
+        scrollIntoView: true,
+        annotations: lastChildIndexAnnotation.of({ reset: true })
     });
 }
 
@@ -388,6 +458,7 @@ export let structureExtensions = [
     nodeTreeField,
     nodeTreeCursorField,
     nodeHighlightField,
+    lastChildIndexField,
     // nodeTreeCursorContextField
 ];
 
