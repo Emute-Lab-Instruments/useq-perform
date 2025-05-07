@@ -5,25 +5,70 @@ import { nodeTreeCursorField, getTrimmedRange } from "./extensions/structure.mjs
 
 let editorView = null;
 
+
+function hideEditorCursor() {
+    if (editorView && editorView.dom) {
+        editorView.dom.classList.add('hide-cursor');
+    }
+}
+
+function showEditorCursor() {
+    if (editorView && editorView.dom) {
+        editorView.dom.classList.remove('hide-cursor');
+    }
+}
+
 export function initGamepadControl(view) {
     editorView = view;
+    if (editorView && editorView.dom) {
+        // Show cursor on mouse click/tap in editor
+        editorView.dom.addEventListener('pointerdown', showEditorCursor);
+    }
     initGamepad();
-    requestAnimationFrame(loop);
+    loop();
 }
+
+let prevGamepadState = {
+    buttons: {},
+    axes: []
+};
 
 function loop() {
     const poll = pollGamepad();
-    handleGamepadPoll(poll);
-    requestAnimationFrame(loop);
+    store = updateStoreWithGamepad(store, poll);
+
+    // Pass only gamepad fields to handlers for new/old state comparison
+    handleGamepadPoll(store, prevGamepadState);
+
+    // Save previous gamepad state for next loop
+    prevGamepadState = {
+        buttons: { ...poll.buttons },
+        axes: Array.isArray(poll.axes) ? [...poll.axes] : []
+    };
+
+    setTimeout(loop, 50); // Run 10 times a second (every 100ms)
 }
 
+function updateStoreWithGamepad(currentStore, gamepadState) {
+    return {
+        ...currentStore,
+        buttons: gamepadState.buttons,
+        axes: gamepadState.axes,
+        // add any other gamepad fields you want to track
+    };
+}
+
+import { showPickerMenu, showNumberPickerMenu } from "../ui/pickerMenu.mjs";
+import { evalNow } from "./editorConfig.mjs";
+
 let store = {
-    mode: "normal", // also create, edit, move, etc
+    mode: "normal", // also create, edit, move, picker, etc
+    picker: null,   // { options, selectedIndex, closeMenu, direction } | null
 }
 
 // functionalities to implement:
 // navigation DONE
-// deletion
+// deletion DONE
 // insertion
 // duplication
 // moving
@@ -37,11 +82,14 @@ function newPress(buttonName, newState, oldState) {
 function handleButtonNavigation(newState, oldState) {
     let action = null;
     let buttonThatTriggered = "NONE";
+    // Remap navigation: "A" is navigateIn, "B" is navigateOut
     const map = {
-        "Up": navigateOut,
-        "Down": navigateIn,
+        "A": navigateIn,
+        "B": navigateOut,
+        "Up": navigatePrev,
+        "Down": navigateNext,
         "Left": navigatePrev,
-        "Right": navigateNext
+        "Right": navigateNext,
     };
 
     for (const [button, handler] of Object.entries(map)) {
@@ -86,29 +134,116 @@ const createMenuOptions = [
 
 
 
+
 function createNode(direction, newState, oldState) {
-    // return a state where the mode has been changed to "create",
-    // so that next time around the handleGamepadPoll (and, subsequently, the handleButtonPresses) will be delegated to the create mode handler
-    // this will be a menu that will allow the user to select the type of node to create, which will then be inserted 
+    if (store.mode === "picker") {
+        console.debug("[gamepadControl] createNode: already in picker mode, aborting");
+        return;
+    }
+    const options = createMenuOptions.map(opt => ({
+        label: opt.name,
+        value: opt.name,
+        icon: opt.lucideIcon || undefined
+    }));
+
+    store = {
+        ...store,
+        mode: "picker",
+        picker: {
+            options,
+            selectedIndex: 0,
+            closeMenu: null,
+            direction
+        }
+    };
+    console.debug("[gamepadControl] createNode: set mode to 'picker'");
+
+    const closeMenu = showPickerMenu({
+        items: options,
+        title: "Create Node",
+        layout: "grid",
+        onSelect: (item, idx) => {
+            console.debug("[gamepadControl] showPickerMenu onSelect: item.value =", item.value, "idx =", idx, "store.mode =", store.mode);
+            if (item.value === "Number") {
+                console.debug("[gamepadControl] Number option selected, closing picker and showing number picker. store before closeMenu:", JSON.stringify(store));
+                closeMenu();
+                console.debug("[gamepadControl] Picker menu closed. store after closeMenu:", JSON.stringify(store));
+                store = {
+                    ...store,
+                    mode: "number-picker",
+                    picker: null
+                };
+                console.debug("[gamepadControl] store set to number-picker mode:", JSON.stringify(store));
+                showNumberPickerMenu({
+                    title: "Pick a Number",
+                    initialValue: 0,
+                    min: -9999,
+                    max: 9999,
+                    step: 1,
+                    onSelect: (numberValue) => {
+                        console.debug("[gamepadControl] Number picker returned value:", numberValue, "store before reset:", JSON.stringify(store));
+                        store = {
+                            ...store,
+                            mode: "normal",
+                            picker: null
+                        };
+                        console.debug("[gamepadControl] store set to normal mode after number picker:", JSON.stringify(store));
+                        // TODO: insert number node at direction with value numberValue
+                    }
+                });
+                console.debug("[gamepadControl] showNumberPickerMenu called");
+            } else {
+                console.debug("[gamepadControl] Non-number option selected:", item.value, "store before closeMenu:", JSON.stringify(store));
+                closeMenu();
+                store = {
+                    ...store,
+                    mode: "normal",
+                    picker: null
+                };
+                console.debug("[gamepadControl] store set to normal mode after non-number:", JSON.stringify(store));
+                if (typeof store.onPickerSelect === 'function') {
+                    store.onPickerSelect(item, idx, direction);
+                }
+            }
+        }
+    });
+
+    store = {
+        ...store,
+        picker: {
+            ...store.picker,
+            closeMenu
+        }
+    };
+    console.debug("[gamepadControl] createNode: picker menu shown, closeMenu set");
 }
+
 
 function replaceNode(newState, oldState) {
-    // like createNode with direction set to "replace"
+    createNode("replace", newState, oldState);
 }
+
 
 function createNodeBefore(newState, oldState) {
-    // like createNode with direction set to "before"
+    createNode("before", newState, oldState);
 }
+
 
 function createNodeAfter(newState, oldState) {
-    // like createNode with direction set to "after"
+    createNode("after", newState, oldState);
 }
 
+
 function cancelAction(newState, oldState) {
-    // pop one level of the context stack
-    // so, if we were in "create" mode, then we go back to "normal" mode
-    // if we were N number of layers deep into nested menus, then we pop to the previous layer
-    // close any windows that were associated with the popped layers
+    // If in picker mode, close picker and return to normal
+    if (store.mode === "picker" && store.picker && typeof store.picker.closeMenu === 'function') {
+        store.picker.closeMenu();
+    }
+    store = {
+        ...store,
+        mode: "normal",
+        picker: null
+    };
 }
 
 function pressedButtons(state) {
@@ -151,9 +286,78 @@ function deleteNode(newState, oldState) {
     });
 }
 
-function handleButtonPresses(newState, oldState) {
-    let map = null;
 
+function handleButtonPresses(newState, oldState) {
+    if (newState.mode === "picker" && store.picker) {
+        // Handle picker menu navigation with d-pad and selection/cancel
+        const pressed = pressedButtons(newState);
+        const prevPressed = pressedButtons(oldState);
+        const justPressed = btn => pressed.includes(btn) && !prevPressed.includes(btn);
+        let idx = store.picker.selectedIndex;
+        const optionsLen = store.picker.options.length;
+        let changed = false;
+
+        if (justPressed("Left") || justPressed("Up")) {
+            idx = (idx - 1 + optionsLen) % optionsLen;
+            changed = true;
+        } else if (justPressed("Right") || justPressed("Down")) {
+            idx = (idx + 1) % optionsLen;
+            changed = true;
+        }
+        if (changed) {
+            store.picker.selectedIndex = idx;
+            // Visually update active item
+            // (handled by pickerMenu, but could be exposed via API if needed)
+        }
+        if (justPressed("A") || justPressed("Enter") || justPressed(" ")) {
+            // Select current item
+            const item = store.picker.options[idx];
+            if (typeof store.picker.closeMenu === 'function') {
+                store.picker.closeMenu();
+            }
+            store = {
+                ...store,
+                mode: "normal",
+                picker: null
+            };
+            if (typeof store.onPickerSelect === 'function') {
+                store.onPickerSelect(item, idx, store.picker.direction);
+            }
+            return;
+        }
+        if (justPressed("B") || justPressed("Escape")) {
+            cancelAction(newState, oldState);
+            return;
+        }
+        return;
+    }
+
+    // Handle number increment/decrement in normal mode with LB/RB
+    if (newState.mode === "normal" && editorView) {
+        const pressed = pressedButtons(newState);
+        const prevPressed = pressedButtons(oldState);
+        const justPressed = btn => pressed.includes(btn) && !prevPressed.includes(btn);
+
+        if (justPressed("LB") || justPressed("RB")) {
+            const state = editorView.state;
+            const cursor = state.field(nodeTreeCursorField, false);
+            if (cursor && cursor.getNode) {
+                const node = cursor.getNode();
+                if (isNumberNode(node)) {
+                    const currentValue = getNumberNodeValue(node, state);
+                    if (currentValue !== null) {
+                        const newValue = justPressed("LB")
+                            ? currentValue - 1
+                            : currentValue + 1;
+                        setNumberNodeValue(editorView, node, newValue);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    let map = null;
     if (newState.mode === "normal") {
         map = {
             "LB+A": createNodeBefore,
@@ -161,6 +365,11 @@ function handleButtonPresses(newState, oldState) {
             "B": cancelAction,
             "X": replaceNode,
             "Y": deleteNode,
+            "Start": function runEvalNow(newState, oldState) {
+                if (editorView) {
+                    evalNow({ state: editorView.state });
+                }
+            },
         };
     }
 
@@ -190,9 +399,91 @@ function handleButtonPresses(newState, oldState) {
     }
 }
 
-function handleGamepadPoll(newPoll) {
-    newPoll = { ...store, ...newPoll };
-    handleButtonNavigation(newPoll, store);
-    handleButtonPresses(newPoll, store);
-    store = { ...store, ...newPoll };
+function handlePickerNavigation(newState, oldState) {
+    // If in picker mode, change active selection instead of navigating the editor
+    if (newState.mode === "picker" && newState.picker) {
+        console.debug("[gamepadControl] handlePickerNavigation: mode is 'picker', picker exists");
+        const prevPressed = pressedButtons(oldState);
+        const pressed = pressedButtons(newState);
+        const justPressed = btn => pressed.includes(btn) && !prevPressed.includes(btn);
+        let idx = newState.picker.selectedIndex;
+        const optionsLen = newState.picker.options.length;
+        let changed = false;
+
+        if (justPressed("Left") || justPressed("Up")) {
+            console.debug("[gamepadControl] D-pad Left/Up pressed in picker");
+            idx = (idx - 1 + optionsLen) % optionsLen;
+            changed = true;
+        } else if (justPressed("Right") || justPressed("Down")) {
+            console.debug("[gamepadControl] D-pad Right/Down pressed in picker");
+            idx = (idx + 1) % optionsLen;
+            changed = true;
+        }
+        if (changed) {
+            console.debug(`[gamepadControl] Picker index changed to ${idx}`);
+            store.picker.selectedIndex = idx;
+            // Dispatch a custom event so the pickerMenu UI updates
+            window.dispatchEvent(new CustomEvent('gamepadpickerinput', {
+                detail: {
+                    direction: justPressed("Left") || justPressed("Up") ? 'left' : 'right'
+                }
+            }));
+        } else {
+            console.debug("[gamepadControl] No picker index change");
+        }
+        return;
+    } else {
+        console.debug("[gamepadControl] handlePickerNavigation: mode is not 'picker' or picker missing");
+    }
+}
+
+function handleGamepadPoll(currentStore, oldGamepadState) {
+    console.debug(`[gamepadControl] handleGamepadPoll: mode=${currentStore.mode}`);
+
+    if (currentStore.mode === "normal") {
+        console.debug("[gamepadControl] Dispatching handleButtonNavigation");
+        handleButtonNavigation(currentStore, oldGamepadState);
+    } else if (currentStore.mode === "picker") {
+        console.debug("[gamepadControl] Dispatching handlePickerNavigation");
+        handlePickerNavigation(currentStore, oldGamepadState);
+    }
+    // Do not handle button presses in number-picker mode
+    if (currentStore.mode !== "number-picker") {
+        handleButtonPresses(currentStore, oldGamepadState);
+        // Hide cursor on any gamepad input
+        hideEditorCursor();
+    }
+    // store is already updated in loop()
+}
+
+function isNumberNode(node) {
+    // Simple check: node.type.name === "Number" or similar
+    return node && (node.type?.name === "Number" || node.type === "Number");
+}
+
+function getNumberNodeValue(node, state) {
+    // Assumes node has from/to and state.doc
+    if (!node || typeof node.from !== "number" || typeof node.to !== "number") return null;
+    const text = state.doc.sliceString(node.from, node.to);
+    const num = Number(text);
+    return isNaN(num) ? null : num;
+}
+
+function setNumberNodeValue(editorView, node, value) {
+    if (!node || typeof node.from !== "number" || typeof node.to !== "number") return;
+    const doc = editorView.state.doc;
+    const originalText = doc.sliceString(node.from, node.to);
+
+    // Match leading/trailing whitespace
+    const match = originalText.match(/^(\s*)(.*?)(\s*)$/);
+    const leading = match ? match[1] : "";
+    const trailing = match ? match[3] : "";
+
+    const newText = `${leading}${value}${trailing}`;
+    editorView.dispatch({
+        changes: { from: node.from, to: node.to, insert: newText },
+        selection: { anchor: node.from + leading.length },
+        scrollIntoView: true,
+        userEvent: "edit.number"
+    });
 }

@@ -288,12 +288,12 @@ export const nodeHighlightField = StateField.define({
     },
     update(deco, tr) {
         const cursor = tr.state.field(nodeTreeCursorField, false);
-        console.log("[nodeHighlightField.update] cursor:", cursor);
+        // console.log("[nodeHighlightField.update] cursor:", cursor);
         if (!cursor || !cursor.getNode) return Decoration.none;
         const node = cursor.getNode();
-        console.log("[nodeHighlightField.update] node:", node);
+        // console.log("[nodeHighlightField.update] node:", node);
         const range = getTrimmedRange(node, tr.state);
-        console.log("[nodeHighlightField.update] range:", range);
+        // console.log("[nodeHighlightField.update] range:", range);
         // Add parent node highlight
         let parentRange = null;
         let parentIsProgram = false;
