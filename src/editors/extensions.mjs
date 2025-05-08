@@ -16,6 +16,7 @@ import { history } from '@codemirror/commands';
 import { baseKeymap, mainEditorKeymap } from "./keymaps.mjs";
 import { themeCompartment, fontSizeCompartment } from "./state.mjs";
 import {structureExtensions} from "./extensions/structure.mjs";
+import { evalHighlightField } from "./extensions/evalHighlight.mjs";
 import { dbg } from "../utils.mjs";
 
 dbg('extensions.mjs: Loading...');
@@ -80,7 +81,8 @@ export const baseExtensions = [
   ...functionalExtensions,
   ...themeExtensions,
   ...default_clojure_extensions,
-  ...structureExtensions
+  ...structureExtensions,
+  evalHighlightField
 ];
 
 // Main editor combines all extensions
