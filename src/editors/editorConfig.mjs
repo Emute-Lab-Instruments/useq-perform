@@ -20,18 +20,48 @@ import { fontSizeCompartment } from "./state.mjs";
 import { showDocumentationForSymbol as showDocForSymbol } from "../ui/help/moduLispReference.mjs";
 import { dbg } from "../utils.mjs";
 
+import { flashEvalHighlight } from "./extensions/evalHighlight.mjs";
+
+// Evaluate the current top-level form, optionally with a prefix (e.g., "@" for async)
 export function evalToplevel(opts, prefix = "") {
-  let state = opts.state;
-  let code = prefix + top_level_string(state);
+  const state = opts.state;
+  const code = prefix + top_level_string(state);
+  // Highlight the evaluated region
+  if (opts.view && typeof opts.view.dispatch === 'function') {
+    // Try to highlight the top-level form
+    const sel = state.selection.main;
+    // If selection is empty, highlight the current top-level node
+    let from = sel.from, to = sel.to;
+    if (from === to && typeof state.field === 'function') {
+      // Try to get the top-level node from the syntax tree
+      try {
+        const tree = state.tree || (state.syntaxTree && state.syntaxTree());
+        if (tree && tree.topNode) {
+          from = tree.topNode.from;
+          to = tree.topNode.to;
+        }
+      } catch (e) {}
+    }
+    flashEvalHighlight(opts.view, from, to);
+  }
   sendTouSEQ(code);
   return true;
 }
 
-export function evalNow(opts) {
+
+// Evaluate the current top-level form asynchronously
+export function evalToplevelAsync(opts) {
   return evalToplevel(opts, "@");
 }
 
+// Evaluate the current top-level form synchronously
+export function evalNow(opts) {
+  return evalToplevel(opts);
+}
+
+// Evaluate the current top-level form in quantised mode (stub: same as evalNow for now)
 export function evalQuantised(opts) {
+  // If quantised evaluation should differ, implement here
   return evalToplevel(opts);
 }
 

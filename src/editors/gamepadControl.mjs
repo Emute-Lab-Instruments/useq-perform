@@ -64,6 +64,171 @@ import { evalNow } from "./editorConfig.mjs";
 let store = {
     mode: "normal", // also create, edit, move, picker, etc
     picker: null,   // { options, selectedIndex, closeMenu, direction } | null
+    navigationMode: "structural", // or 'spatial'
+    buttonRepeat: {} // { [buttonName]: { pressedAt, lastRepeat } }
+}
+// Toggle between 'structural' and 'spatial' navigation modes
+function toggleNavigationMode() {
+    store = {
+        ...store,
+        navigationMode: store.navigationMode === "structural" ? "spatial" : "structural"
+    };
+    // Optionally, show a UI notification here
+    console.debug(`[gamepadControl] navigationMode set to ${store.navigationMode}`);
+}
+
+// --- Spatial navigation helpers ---
+function getNodeLineAndColumn(node, state) {
+    const line = state.doc.lineAt(node.from);
+    const col = node.from - line.from;
+    return { line: line.number, col };
+}
+
+function getAllNodes(state) {
+    const tree = state.field(nodeTreeCursorField, false)?.root;
+    if (!tree) return [];
+    const nodes = [];
+    function visit(node) {
+        if (!node) return;
+        nodes.push(node);
+        if (node.children) node.children.forEach(visit);
+    }
+    visit(tree);
+    return nodes;
+}
+
+function spatialNavigateLeft(state) {
+    const cursor = state.field(nodeTreeCursorField, false);
+    if (!cursor) return null;
+    const node = cursor.getNode();
+    if (!node) return null;
+    const { line, col } = getNodeLineAndColumn(node, state);
+    const nodes = getAllNodes(state).filter(n => n !== node);
+    // Find node on same line, ends before this node starts, closest to the left
+    let best = null;
+    let bestDist = Infinity;
+    for (const n of nodes) {
+        const nLine = state.doc.lineAt(n.from).number;
+        const nCol = n.from - state.doc.lineAt(n.from).from;
+        if (nLine === line && n.from < node.from) {
+            const dist = col - nCol;
+            if (dist > 0 && dist < bestDist) {
+                best = n;
+                bestDist = dist;
+            }
+        }
+    }
+    if (best) {
+        return state.update({
+            selection: { anchor: best.from },
+            scrollIntoView: true
+        });
+    }
+    return null;
+}
+
+function spatialNavigateRight(state) {
+    const cursor = state.field(nodeTreeCursorField, false);
+    if (!cursor) return null;
+    const node = cursor.getNode();
+    if (!node) return null;
+    const { line, col } = getNodeLineAndColumn(node, state);
+    const nodes = getAllNodes(state).filter(n => n !== node);
+    // Find node on same line, starts after this node's start, closest to the right
+    let best = null;
+    let bestDist = Infinity;
+    for (const n of nodes) {
+        const nLine = state.doc.lineAt(n.from).number;
+        const nCol = n.from - state.doc.lineAt(n.from).from;
+        if (nLine === line && n.from > node.from) {
+            const dist = nCol - col;
+            if (dist > 0 && dist < bestDist) {
+                best = n;
+                bestDist = dist;
+            }
+        }
+    }
+    // If the current node has children, prefer the first child that starts after the cursor
+    if (node.children && node.children.length > 0) {
+        for (const child of node.children) {
+            const childLine = state.doc.lineAt(child.from).number;
+            const childCol = child.from - state.doc.lineAt(child.from).from;
+            if (childLine === line && child.from > node.from) {
+                const dist = childCol - col;
+                if (dist > 0 && dist < bestDist) {
+                    best = child;
+                    bestDist = dist;
+                }
+            }
+        }
+    }
+    if (best) {
+        return state.update({
+            selection: { anchor: best.from },
+            scrollIntoView: true
+        });
+    }
+    return null;
+}
+
+function spatialNavigateUp(state) {
+    const cursor = state.field(nodeTreeCursorField, false);
+    if (!cursor) return null;
+    const node = cursor.getNode();
+    if (!node) return null;
+    const { line, col } = getNodeLineAndColumn(node, state);
+    const nodes = getAllNodes(state).filter(n => n !== node);
+    // Find node in same column, on a line above, closest vertically
+    let best = null;
+    let bestDist = Infinity;
+    for (const n of nodes) {
+        const nLine = state.doc.lineAt(n.from).number;
+        const nCol = n.from - state.doc.lineAt(n.from).from;
+        if (nCol === col && nLine < line) {
+            const dist = line - nLine;
+            if (dist > 0 && dist < bestDist) {
+                best = n;
+                bestDist = dist;
+            }
+        }
+    }
+    if (best) {
+        return state.update({
+            selection: { anchor: best.from },
+            scrollIntoView: true
+        });
+    }
+    return null;
+}
+
+function spatialNavigateDown(state) {
+    const cursor = state.field(nodeTreeCursorField, false);
+    if (!cursor) return null;
+    const node = cursor.getNode();
+    if (!node) return null;
+    const { line, col } = getNodeLineAndColumn(node, state);
+    const nodes = getAllNodes(state).filter(n => n !== node);
+    // Find node in same column, on a line below, closest vertically
+    let best = null;
+    let bestDist = Infinity;
+    for (const n of nodes) {
+        const nLine = state.doc.lineAt(n.from).number;
+        const nCol = n.from - state.doc.lineAt(n.from).from;
+        if (nCol === col && nLine > line) {
+            const dist = nLine - line;
+            if (dist > 0 && dist < bestDist) {
+                best = n;
+                bestDist = dist;
+            }
+        }
+    }
+    if (best) {
+        return state.update({
+            selection: { anchor: best.from },
+            scrollIntoView: true
+        });
+    }
+    return null;
 }
 
 // functionalities to implement:
@@ -75,31 +240,77 @@ let store = {
 // toggling collapse
 
 function newPress(buttonName, newState, oldState) {
-    return newState.buttons[buttonName].pressed && !oldState.buttons[buttonName].pressed;
+    const newBtn = newState.buttons[buttonName];
+    const oldBtn = oldState.buttons[buttonName];
+    const newPressed = newBtn && typeof newBtn.pressed === 'boolean' ? newBtn.pressed : false;
+    const oldPressed = oldBtn && typeof oldBtn.pressed === 'boolean' ? oldBtn.pressed : false;
+    return newPressed && !oldPressed;
 }
 
 
 function handleButtonNavigation(newState, oldState) {
+    // Button repeat config
+    const initialDelay = 300; // ms before repeat starts
+    const repeatInterval = 60; // ms between repeats
+    const now = Date.now();
+
+    // Choose navigation map based on mode
+    const isSpatial = store.navigationMode === "spatial";
+    const map = isSpatial
+        ? {
+            "Up": spatialNavigateUp,
+            "Down": spatialNavigateDown,
+            "Left": spatialNavigateLeft,
+            "Right": spatialNavigateRight,
+        }
+        : {
+            "Up": navigatePrev,
+            "Down": navigateNext,
+            "Left": navigatePrev,
+            "Right": navigateNext,
+        };
+
+    // Only repeat for navigation buttons
+    for (const [button, handler] of Object.entries(map)) {
+        const isPressed = newState.buttons[button]?.pressed;
+        const wasPressed = oldState.buttons[button]?.pressed;
+        if (isPressed) {
+            if (!store.buttonRepeat[button]) {
+                // Just pressed: trigger immediately
+                store.buttonRepeat[button] = { pressedAt: now, lastRepeat: now };
+                const transaction = handler(editorView.state);
+                if (transaction) editorView.dispatch(transaction);
+            } else {
+                // Held: check if should repeat
+                const { pressedAt, lastRepeat } = store.buttonRepeat[button];
+                const delay = now - pressedAt;
+                const sinceLast = now - lastRepeat;
+                if (delay >= initialDelay && sinceLast >= repeatInterval) {
+                    store.buttonRepeat[button].lastRepeat = now;
+                    const transaction = handler(editorView.state);
+                    if (transaction) editorView.dispatch(transaction);
+                }
+            }
+        } else if (store.buttonRepeat[button]) {
+            // Released: clear tracking
+            delete store.buttonRepeat[button];
+        }
+    }
+
+    // For non-repeating buttons (A, B, etc.), use original logic
     let action = null;
     let buttonThatTriggered = "NONE";
-    // Remap navigation: "A" is navigateIn, "B" is navigateOut
-    const map = {
-        "A": navigateIn,
-        "B": navigateOut,
-        "Up": navigatePrev,
-        "Down": navigateNext,
-        "Left": navigatePrev,
-        "Right": navigateNext,
+    const nonRepeatMap = {
+        "A": isSpatial ? navigateIn : navigateIn,
+        "B": isSpatial ? navigateOut : navigateOut,
     };
-
-    for (const [button, handler] of Object.entries(map)) {
+    for (const [button, handler] of Object.entries(nonRepeatMap)) {
         if (newPress(button, newState, oldState)) {
             action = handler;
             buttonThatTriggered = button;
             break;
         }
     }
-
     if (action) {
         const transaction = action(editorView.state);
         if (transaction) {
@@ -288,6 +499,11 @@ function deleteNode(newState, oldState) {
 
 
 function handleButtonPresses(newState, oldState) {
+    // Debug: log all pressed buttons to help identify button names
+    const pressed = pressedButtons(newState);
+    if (pressed.length > 0) {
+        console.debug('[gamepadControl] Pressed buttons:', pressed);
+    }
     if (newState.mode === "picker" && store.picker) {
         // Handle picker menu navigation with d-pad and selection/cancel
         const pressed = pressedButtons(newState);
@@ -367,8 +583,14 @@ function handleButtonPresses(newState, oldState) {
             "Y": deleteNode,
             "Start": function runEvalNow(newState, oldState) {
                 if (editorView) {
-                    evalNow({ state: editorView.state });
+                    evalNow({ state: editorView.state, view: editorView });
                 }
+            },
+            "Select": function toggleNavMode() {
+                toggleNavigationMode();
+            },
+            "Back": function toggleNavMode(newState, oldState) {
+                toggleNavigationMode();
             },
         };
     }
