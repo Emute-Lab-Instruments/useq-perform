@@ -105,11 +105,82 @@ export function showPickerMenu({items, onSelect, title = '', layout = 'grid', in
   function handleGamepadInput(e) {
     if (!Array.isArray(items) || items.length === 0) return;
     const { direction, action } = e.detail || {};
-    if (direction === 'left' || direction === 'up') {
-      setActive((activeIdx - 1 + items.length) % items.length);
-    } else if (direction === 'right' || direction === 'down') {
-      setActive((activeIdx + 1) % items.length);
-    } else if (action === 'select') {
+
+    if (layout === 'grid') {
+      // Use a fixed number of columns (3) to match our CSS
+      const numColumns = 3;
+      const numRows = Math.ceil(items.length / numColumns);
+
+      // Current position in grid
+      const currentRow = Math.floor(activeIdx / numColumns);
+      const currentCol = activeIdx % numColumns;
+
+      let newRow = currentRow;
+      let newCol = currentCol;
+
+      // Reverse directional navigation
+      if (direction === 'left') {
+        // Move right instead of left
+        const maxColInRow = Math.min(numColumns, items.length - (currentRow * numColumns)) - 1;
+        newCol = (currentCol < maxColInRow) ? currentCol + 1 : 0;
+      } else if (direction === 'right') {
+        // Move left instead of right
+        newCol = (currentCol > 0) ? currentCol - 1 : numColumns - 1;
+        if (newRow * numColumns + newCol >= items.length) {
+          newCol = items.length - 1 - (newRow * numColumns);
+        }
+      } else if (direction === 'up') {
+        // Move down instead of up, keep column fixed, wrap rows
+        newRow = (currentRow < numRows - 1) ? currentRow + 1 : 0;
+        // If the new cell is out of bounds, wrap to first valid row for this column
+        if (newRow * numColumns + currentCol >= items.length) {
+          newRow = 0;
+        }
+        newCol = currentCol;
+      } else if (direction === 'down') {
+        // Move up instead of down, keep column fixed, wrap rows
+        console.debug('DOWN: currentRow', currentRow, 'currentCol', currentCol, 'numRows', numRows, 'numColumns', numColumns);
+        let found = false;
+        let tries = 0;
+        let startRow = currentRow;
+        do {
+          newRow = (newRow > 0) ? newRow - 1 : numRows - 1;
+          tries++;
+          // Check if this row/col is valid
+          if (newRow * numColumns + currentCol < items.length) {
+            found = true;
+          }
+        } while (!found && tries < numRows);
+        newCol = currentCol;
+        console.debug('DOWN: final newRow', newRow, 'newCol', newCol);
+      }
+
+      // Calculate new index
+      let newIdx = newRow * numColumns + newCol;
+      console.debug('DOWN: calculated newIdx', newIdx, 'activeIdx', activeIdx);
+
+      // Final safety check to ensure we're within bounds
+      if (newIdx >= items.length) {
+        newIdx = items.length - 1;
+      } else if (newIdx < 0) {
+        newIdx = 0;
+      }
+
+      if (newIdx !== activeIdx) {
+        setActive(newIdx);
+      } else {
+        console.debug('DOWN: newIdx is same as activeIdx, no change');
+      }
+    } else {
+      // Vertical layout - simple prev/next navigation (reversed)
+      if (direction === 'left' || direction === 'up') {
+        setActive((activeIdx + 1) % items.length);
+      } else if (direction === 'right' || direction === 'down') {
+        setActive((activeIdx - 1 + items.length) % items.length);
+      }
+    }
+
+    if (action === 'select') {
       selectItem(activeIdx);
     } else if (action === 'cancel') {
       closeMenu();
@@ -123,12 +194,67 @@ export function showPickerMenu({items, onSelect, title = '', layout = 'grid', in
 
   $(window).on('keydown.pickerMenu', e => {
     if (e.key === 'Escape') closeMenu();
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-      setActive((activeIdx - 1 + items.length) % items.length);
-    } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-      setActive((activeIdx + 1) % items.length);
-    } else if (e.key === 'Enter' || e.key === ' ') {
+    else if (e.key === 'Enter' || e.key === ' ') {
       selectItem(activeIdx);
+    } else if (layout === 'grid') {
+      // Use a fixed number of columns (3) to match our CSS
+      const numColumns = 3;
+      const numRows = Math.ceil(items.length / numColumns);
+
+      const currentRow = Math.floor(activeIdx / numColumns);
+      const currentCol = activeIdx % numColumns;
+
+      let newRow = currentRow;
+      let newCol = currentCol;
+
+      // Reverse directional navigation for keyboard
+      if (e.key === 'ArrowLeft') {
+        // Move right instead of left
+        const maxColInRow = Math.min(numColumns, items.length - (currentRow * numColumns)) - 1;
+        newCol = (currentCol < maxColInRow) ? currentCol + 1 : 0;
+      } else if (e.key === 'ArrowRight') {
+        // Move left instead of right
+        newCol = (currentCol > 0) ? currentCol - 1 : numColumns - 1;
+        if (newRow * numColumns + newCol >= items.length) {
+          newCol = items.length - 1 - (newRow * numColumns);
+        }
+      } else if (e.key === 'ArrowUp') {
+        // Move down instead of up, keep column fixed, wrap rows
+        newRow = (currentRow < numRows - 1) ? currentRow + 1 : 0;
+        if (newRow * numColumns + currentCol >= items.length) {
+          newRow = 0;
+        }
+        newCol = currentCol;
+      } else if (e.key === 'ArrowDown') {
+        // Move up instead of down, keep column fixed, wrap rows
+        newRow = (currentRow > 0) ? currentRow - 1 : numRows - 1;
+        if (newRow * numColumns + currentCol >= items.length) {
+          newRow = numRows - 1;
+          if (newRow * numColumns + currentCol >= items.length) {
+            newRow = Math.floor((items.length - 1) / numColumns);
+          }
+        }
+        newCol = currentCol;
+      }
+
+      // Calculate new index
+      let newIdx = newRow * numColumns + newCol;
+
+      // Final safety check to ensure we're within bounds
+      if (newIdx >= items.length) {
+        newIdx = items.length - 1;
+      } else if (newIdx < 0) {
+        newIdx = 0;
+      }
+
+      setActive(newIdx);
+    } else {
+      // Vertical layout - simple prev/next navigation (reversed)
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        setActive((activeIdx + 1) % items.length);
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        setActive((activeIdx - 1 + items.length) % items.length);
+      }
     }
   });
 
