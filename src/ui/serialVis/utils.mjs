@@ -95,7 +95,16 @@ export const getCatmullRomPoint = (p0, p1, p2, p3, t) => {
 // Export palette arrays so they can be accessed from the theme manager
 export const serialVisPaletteLight = ['#ace397', '#45a5ad', '#fcbf5d', '#ff809f', '#ff005e', '#c9004c', '#93003a', '#00429d'];
 // Brighter colors that work better on dark backgrounds
-export const serialVisPaletteDark = ['#00ff41', '#1adbdb', '#ffee33', '#ffaa00', '#ff5500', '#ff0080', '#aa00ff', '#0088ff'];
+export const serialVisPaletteDark = [
+  '#00ff41', 
+  '#1adbdb', 
+  '#ffaa00',
+  '#ff0080',
+  '#ff5500',
+  '#ffee33',
+  '#0088ff',
+  '#aa00ff',
+];
 // Use let instead of const so it can be changed
 export let serialVisPalette = serialVisPaletteLight;
 
