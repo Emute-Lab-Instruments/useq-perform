@@ -2,10 +2,11 @@
 // These functions do not mutate state; they return new selection positions or perform navigation
 // by dispatching a transaction on the provided Editorstate instance.
 
-import { EditorSelection, StateField, Transaction } from "@codemirror/state";
+import { EditorSelection, StateField, Transaction, RangeSetBuilder } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { ASTCursor } from "../../utils/astCursor.mjs";
-import { EditorView, Decoration } from "@codemirror/view";
+import { EditorView, Decoration, ViewPlugin } from "@codemirror/view";
+import { serialVisPalette } from "../../ui/serialVis/utils.mjs";
 
 // Helper functions for tree processing
 function treeToJson(node, state) {
@@ -452,6 +453,74 @@ export function navigateNext(state) {
     });
 }
 
+// --- Match Decorator for 'a' or 'd' followed by digit and space (underline with palette color) ---
+
+// Helper: get palette based on theme (light/dark)
+function getCurrentPalette() {
+  const isDark = document.documentElement.classList.contains("cm-theme-dark") ||
+                 window.matchMedia("(prefers-color-scheme: dark)").matches;
+  // If you have a dark palette, use it here. Otherwise, fallback to serialVisPalette.
+  // Example: return isDark ? serialVisPaletteDark : serialVisPalette;
+  return serialVisPalette;
+}
+
+// Map pattern to palette index
+function getMatchColor(match) {
+  const palette = getCurrentPalette();
+  const [full, type, digit] = match;
+  if (type === "a") {
+    if (digit === "1") return palette[0];
+    if (digit === "2") return palette[1];
+    if (digit === "3") return palette[2];
+  }
+  if (type === "d") {
+    if (digit === "1") return palette[2];
+    if (digit === "2") return palette[3];
+    if (digit === "3") return palette[4];
+  }
+  return palette[0];
+}
+
+// Regex: 'a' or 'd', then digit, then space (but don't include space in match)
+const matchPattern = /\b([ad])([1-3])(?= )/g;
+
+// Decoration plugin
+export const matchDecorator = ViewPlugin.fromClass(class {
+  constructor(view) {
+    this.decorations = this.buildDecorations(view);
+  }
+  update(update) {
+    if (update.docChanged || update.viewportChanged) {
+      this.decorations = this.buildDecorations(update.view);
+    }
+  }
+  buildDecorations(view) {
+    const builder = new RangeSetBuilder();
+    for (let { from, to } of view.visibleRanges) {
+      const text = view.state.doc.sliceString(from, to);
+      let match;
+      while ((match = matchPattern.exec(text)) !== null) {
+        const start = from + match.index;
+        const end = start + match[0].length;
+        const color = getMatchColor(match);
+        builder.add(
+          start,
+          end,
+          Decoration.mark({
+            class: "cm-match-underline",
+            attributes: {
+              style: `text-decoration: underline solid 2px ${color}; text-underline-offset: 2px; color: ${color} !important; border-color: ${color} !important;`
+            }
+          })
+        );
+      }
+    }
+    return builder.finish();
+  }
+}, {
+  decorations: v => v.decorations
+});
+
 // Export the structural extension as just the state field
 // Consumers can add their own event handlers to call the navigation functions
 export let structureExtensions = [
@@ -460,6 +529,7 @@ export let structureExtensions = [
     nodeHighlightField,
     lastChildIndexField,
     // nodeTreeCursorContextField
+    matchDecorator
 ];
 
 console.log("[structure.mjs] nodeHighlightField:", nodeHighlightField);
