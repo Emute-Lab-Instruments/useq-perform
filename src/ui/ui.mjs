@@ -66,10 +66,10 @@ export async function initUI() {
     // Initialize editor first so we can pass its instance to other panels
     editor = initEditorPanel("#panel-main-editor");
     // Add structure navigation panel to the top of the editor panel
-    const editorPanel = document.querySelector('#panel-main-editor');
-    if (editorPanel) {
-        editorPanel.prepend(makeStructureNavPanel(editor));
-    }
+    // const editorPanel = document.querySelector('#panel-main-editor');
+    // if (editorPanel) {
+    //     editorPanel.prepend(makeStructureNavPanel(editor));
+    // }
     makeToolbar(editor);
     makeConsole();
 
