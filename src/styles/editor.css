@@ -41,13 +41,14 @@
 
 /* Parent node highlighting */
 .cm-parent-node {
-  border: 2px solid rgba(180, 40, 80, 0.7);
-  border-radius: 6px;
+  /* border-bottom: 2px solid rgba(180, 40, 80, 0.4); */
+  border-bottom: 2px solid var(--accent-color);
+  border-radius: 0 0 1px 1px;
 }
 
 
 .cm-parent-node-editor-area {
-  border: 2px solid rgba(255, 200, 255, 0.5);
+  border-bottom: 2px solid rgba(255, 100, 100, 0.3);
   border-radius: 1px;
 }
 /* Left sibling highlighting (first character) */
