@@ -34,6 +34,7 @@
   opacity: 0;
   transform: scale(0.98);
   transition: opacity 0.18s cubic-bezier(0.4,0,0.2,1), transform 0.18s cubic-bezier(0.4,0,0.2,1);
+  width: auto; /* Allow it to grow based on content */
 }
 .picker-menu.visible {
   opacity: 1;
@@ -42,8 +43,10 @@
 
 .picker-menu-items.grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  grid-template-columns: repeat(3, minmax(90px, 1fr)); /* Fixed number of columns */
   gap: 1em;
+  width: 100%; /* Ensure it takes full width of the container */
+  max-width: 500px; /* Limit maximum width */
 }
 .picker-menu-items.vertical {
   display: flex;
@@ -63,6 +66,8 @@
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   outline: none;
   user-select: none;
+  min-width: 90px; /* Ensure minimum width */
+  box-sizing: border-box; /* Include padding in width calculation */
 }
 .picker-menu-item.active, .picker-menu-item:focus {
   background: var(--accent-color, #00ff41);
@@ -86,5 +91,6 @@
   }
   .picker-menu-items.grid {
     grid-template-columns: 1fr 1fr;
+    max-width: 100%;
   }
 }
