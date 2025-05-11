@@ -33,8 +33,47 @@ export const evalHighlightField = StateField.define({
 });
 
 // Helper to dispatch highlight effect and clear it after 1s
-export function flashEvalHighlight(view, from, to) {
-  view.dispatch({ effects: evalHighlightEffect.of({ from, to }) });
+import { nodeTreeCursorField } from "./structure.mjs";
+import { ASTCursor } from "../../utils/astCursor.mjs";
+
+
+// Helper to find the range of the top-level s-expression as used by evalNow
+
+// Find the range of the top-level node using the nodeTreeCursor
+function getTopLevelRange(state) {
+  // Get the AST cursor from the state
+  const cursor = state.field(nodeTreeCursorField, false);
+  if (!cursor) return { from: 0, to: 0 };
+  // Get the path vector and navigate to the first entry
+  const path = cursor.getPath ? cursor.getPath() : [];
+  if (!Array.isArray(path) || path.length === 0) {
+    // If at root, highlight the whole doc
+    const docLen = state.doc.length;
+    return { from: 0, to: docLen };
+  }
+  // The first entry in the path is the top-level node index
+  const topLevelIndex = path[0];
+  let topNode = cursor.root;
+  if (topNode && topNode.children && topNode.children.length > topLevelIndex) {
+    topNode = topNode.children[topLevelIndex];
+    if (typeof topNode.from === 'number' && typeof topNode.to === 'number') {
+      return { from: topNode.from, to: topNode.to };
+    }
+  }
+  // Fallback: highlight nothing
+  return { from: 0, to: 0 };
+}
+
+// Helper to dispatch highlight effect and clear it after 1s
+export function flashEvalHighlight(view, _from, _to) {
+  // Use the same logic as evalNow/evalToplevel
+  const state = view.state;
+  const range = getTopLevelRange(state);
+  if (!range || range.from === range.to) {
+    view.dispatch({ effects: evalHighlightEffect.of({ from: 0, to: 0 }) });
+    return;
+  }
+  view.dispatch({ effects: evalHighlightEffect.of({ from: range.from, to: range.to }) });
   setTimeout(() => {
     view.dispatch({ effects: evalHighlightEffect.of({ from: 0, to: 0 }) });
   }, 1000);
