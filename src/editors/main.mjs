@@ -11,6 +11,31 @@ import {
 } from "./extensions.mjs";
 import { setMainEditorTheme } from "./themes/themeManager.mjs";
 import { setFontSize } from "./editorConfig.mjs";
+import { codeStorageKey, updateUserSettings } from "../utils/persistentUserSettings.mjs";
+
+// Autosave timer reference (module scoped)
+let autosaveTimer = null;
+
+/**
+ * Start or update the autosave timer based on user settings
+ * @param {EditorView} editor - The editor instance
+ * @param {Object} settings - The user settings object
+ */
+function setupAutosaveTimer(editor, settings) {
+    if (autosaveTimer) {
+        clearInterval(autosaveTimer);
+        autosaveTimer = null;
+    }
+    const storage = settings.storage || {};
+    if (storage.autoSaveEnabled && storage.saveCodeLocally) {
+        const interval = Math.max(1000, parseInt(storage.autoSaveInterval, 10) || 5000);
+        autosaveTimer = setInterval(() => {
+            if (editor && editor.state) {
+                window.localStorage.setItem(codeStorageKey, editor.state.doc.toString());
+            }
+        }, interval);
+    }
+}
 // import { debugSExprTracking } from "./extensions/sexprTest.mjs";
 
 /**
@@ -52,17 +77,45 @@ export function createMainEditor(initialText) {
     }
   );
 
+  // Always prefer the latest saved code if available and settings allow
+  let codeToLoad = activeUserSettings.editor.code;
+  const storage = activeUserSettings.storage || {};
+  if (storage.saveCodeLocally) {
+    try {
+      const saved = window.localStorage.getItem(codeStorageKey);
+      if (typeof saved === 'string' && saved.length > 0) {
+        codeToLoad = saved;
+      }
+    } catch (e) {
+      dbg('main.mjs: Error loading saved code from localStorage:', e);
+    }
+  }
   let editor = createEditor(
-    initialText || activeUserSettings.editor.code,
+    initialText || codeToLoad,
     mainEditorExtensions
   );
-  
+
   // Add the editor to window for debugging
   window.editor = editor;
-  
+
+  // Set up autosave timer
+  setupAutosaveTimer(editor, activeUserSettings);
+
+  // Listen for settings changes to update autosave timer
+  if (!window.__useq_autosave_settings_listener) {
+    window.__useq_autosave_settings_listener = true;
+    const origUpdateUserSettings = updateUserSettings;
+    window.updateUserSettings = function (values) {
+      const result = origUpdateUserSettings(values);
+      // Use latest settings
+      setupAutosaveTimer(window.editor, activeUserSettings);
+      return result;
+    };
+  }
+
   // Add debug function for S-Expression tracking
   // window.debugSExprTracking = () => debugSExprTracking(editor);
-  
+
   return editor;
 }
 
