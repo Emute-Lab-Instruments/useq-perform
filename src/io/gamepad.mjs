@@ -67,7 +67,7 @@ export function initGamepad() {
     }
   }
 
-  post("Gamepad support initialized. Connect a controller to begin.");
+  // post("Gamepad support initialized. Connect a controller to begin.");
   return true;
 }
 
