@@ -56,7 +56,7 @@ export function evalToplevelAsync(opts) {
 
 // Evaluate the current top-level form synchronously
 export function evalNow(opts) {
-  return evalToplevel(opts);
+  return evalToplevel(opts, "@");
 }
 
 // Evaluate the current top-level form in quantised mode (stub: same as evalNow for now)
