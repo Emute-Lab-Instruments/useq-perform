@@ -223,7 +223,7 @@ function handleNoSavedPort() {
  * Display instructions for connecting to uSEQ for the first time
  */
 function displayConnectInstructions() {
-  post('It looks like you haven\'t connected to uSEQ before (or you have cleared your cookies). Click the <span style="color: var(--accent-color); font-weight: bold; display: inline;">[connect]</span> button to link to uSEQ - you will only have to do this once.');
+  post('Make sure that your uSEQ is switched on and plugged in. If it doesn\'t reconnect automatically, click the <span style="color: var(--accent-color); font-weight: bold; display: inline;">[connect]</span> button to pair.');
 }
 
 /**
