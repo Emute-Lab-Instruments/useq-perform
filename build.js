@@ -34,6 +34,7 @@ const cssBuildOptions = {
   entryPoints: ['src/styles/index.css'],
   outfile: 'public/bundle.css',
   plugins: [cssModulesPlugin()],
+  external: ['/assets/*'],
 };
 
 // Markdown to HTML build configuration
