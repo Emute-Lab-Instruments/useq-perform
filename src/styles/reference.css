@@ -51,9 +51,27 @@
 /* Function List */
 .doc-function-list {
   overflow-y: auto; /* Retain scrolling for the function list */
-  overflow-x: hiden;
+  overflow-x: hidden;
   /* This seems to be crucial for scrolling? */
   height: calc(100% - 100px); 
+}
+
+/* Multi-column Grid Layout */
+.doc-function-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1em;
+  align-items: start;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.doc-function-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Column containers */

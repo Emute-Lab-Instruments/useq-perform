@@ -123,6 +123,9 @@ export async function makeModuLispReference() {
     // Initialize CodeMirror editors for code blocks
     initializeCodeMirrorEditors();
 
+    // Set up panel expansion observer
+    setupPanelExpansionObserver();
+
     dbg("makeModuLispReference", "Final container classes", $container.attr('class'));
     dbg("makeModuLispReference", "Final container element", $container[0]);
     return $container;
@@ -522,7 +525,7 @@ function makeFunctionElement(func) {
   return $item;
 }
 
-// Create the function list
+// Create the function list with multi-column support
 function makeFunctionList(data, columns = 1) {
   dbg("makeFunctionList", "Creating function list", { data, columns });
   
@@ -557,35 +560,63 @@ function makeFunctionList(data, columns = 1) {
     return Array.from(state.selectedTags).some(tag => func.tags.includes(tag));
   });
 
-
-  // Sort by starred status
+  // Sort alphabetically first
   filteredFunctions.sort((a, b) => {
     const aStarred = state.starredFunctions.has(a.name);
     const bStarred = state.starredFunctions.has(b.name);
-    if (aStarred === bStarred) return 0;
-    return aStarred ? -1 : 1;
-  });
-
-  // Create grid container if multiple columns
-  const $grid = columns > 1 ? $('<div>', { class: 'doc-function-grid' }) : null;
-  const $target = $grid || $container;
-
-  // Add functions to the list
-  filteredFunctions.forEach((func, index) => {
-    if (!func || typeof func !== 'object') return;
     
-    const $functionElement = makeFunctionElement(func);
-    
-    if ($functionElement && $functionElement.length) {
-      $target.append($functionElement);
-    } else {
-      console.error(`Failed to create element for function ${func.name}`);
+    // First sort by starred status
+    if (aStarred !== bStarred) {
+      return aStarred ? -1 : 1;
     }
+    
+    // Then sort alphabetically
+    return a.name.localeCompare(b.name);
   });
 
-  // Add grid to container if using multiple columns
-  if ($grid) {
+  // Create multi-column layout if columns > 1
+  if (columns > 1) {
+    const $grid = $('<div>', { class: 'doc-function-grid' });
+    
+    // Create column containers
+    const columnContainers = [];
+    for (let i = 0; i < columns; i++) {
+      const $column = $('<div>', {
+        class: 'doc-function-column',
+        'data-column': i
+      });
+      columnContainers.push($column);
+      $grid.append($column);
+    }
+    
+    // Distribute functions across columns in round-robin fashion
+    filteredFunctions.forEach((func, index) => {
+      if (!func || typeof func !== 'object') return;
+      
+      const $functionElement = makeFunctionElement(func);
+      
+      if ($functionElement && $functionElement.length) {
+        const columnIndex = index % columns;
+        columnContainers[columnIndex].append($functionElement);
+      } else {
+        console.error(`Failed to create element for function ${func.name}`);
+      }
+    });
+    
     $container.append($grid);
+  } else {
+    // Single column layout
+    filteredFunctions.forEach((func, index) => {
+      if (!func || typeof func !== 'object') return;
+      
+      const $functionElement = makeFunctionElement(func);
+      
+      if ($functionElement && $functionElement.length) {
+        $container.append($functionElement);
+      } else {
+        console.error(`Failed to create element for function ${func.name}`);
+      }
+    });
   }
 
   // Show message if no functions match
@@ -813,6 +844,39 @@ function adjustDocPanelForTheme() {
       border: "",
     });
   }
+}
+
+// Set up observer to watch for panel expansion changes
+function setupPanelExpansionObserver() {
+  const helpPanel = document.getElementById('panel-help');
+  if (!helpPanel) {
+    dbg("setupPanelExpansionObserver", "Help panel not found");
+    return;
+  }
+
+  // Create observer to watch for class changes
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+        const $panel = $('#panel-help');
+        const wasExpanded = state.isExpanded;
+        state.isExpanded = $panel.hasClass('panel-expanded');
+        
+        dbg("setupPanelExpansionObserver", "Panel expansion changed", {
+          wasExpanded,
+          isExpanded: state.isExpanded
+        });
+        
+        if (wasExpanded !== state.isExpanded) {
+          renderFunctionList();
+        }
+      }
+    });
+  });
+
+  // Start observing
+  observer.observe(helpPanel, { attributes: true, attributeFilter: ['class'] });
+  dbg("setupPanelExpansionObserver", "Panel expansion observer set up");
 }
 
 function makeTags(data) {
