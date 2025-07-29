@@ -45,12 +45,14 @@ export class CircularBuffer {
     if (this.buffer.length === 0) {
       return undefined;
     }
-    
+
     if (i < 0 || i >= this.buffer.length) {
       return undefined;
     }
-    
-    return this.buffer[(this.pointer + i) % this.bufferLength];
+    const index = this.buffer.length < this.bufferLength
+      ? i
+      : (this.pointer + i) % this.bufferLength;
+    return this.buffer[index];
   }
   
   /**
@@ -62,16 +64,19 @@ export class CircularBuffer {
     if (this.buffer.length === 0) {
       return undefined;
     }
-    
+
     if (i < 0 || i >= this.buffer.length) {
       return undefined;
     }
-    
-    let idx = this.pointer - 1 - i;
-    if (idx < 0) {
-      idx = this.buffer.length + idx;
+    let idx;
+    if (this.buffer.length < this.bufferLength) {
+      idx = this.buffer.length - 1 - i;
+    } else {
+      idx = this.pointer - 1 - i;
+      if (idx < 0) {
+        idx = this.bufferLength + idx;
+      }
     }
-    
     return this.buffer[idx];
   }
   
