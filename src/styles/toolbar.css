@@ -88,12 +88,12 @@
   /* High-specificity selector for connected state */
   #button-connect.connected {
     color: rgba(0, 255, 0, 0.75) !important;
-    /* box-shadow: 0 0 20px rgba(0, 255, 0); */
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.6) !important;
   }
   
   /* High-specificity selector for disconnected state */
   #button-connect.disconnected {
-    /* box-shadow: 0 0 20px rgb(255, 0, 0); */
+    box-shadow: 0 0 20px rgba(255, 0, 0, 0.6) !important;
     color: rgba(255, 0, 0, 0.75) !important;
   }
   
