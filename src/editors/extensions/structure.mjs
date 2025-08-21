@@ -5,7 +5,7 @@
 import { EditorSelection, StateField, Transaction, RangeSetBuilder } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { ASTCursor } from "../../utils/astCursor.mjs";
-import { EditorView, Decoration, ViewPlugin } from "@codemirror/view";
+import { EditorView, Decoration, ViewPlugin, gutter, GutterMarker } from "@codemirror/view";
 import { serialVisPalette } from "../../ui/serialVis/utils.mjs";
 
 // Helper functions for tree processing
@@ -453,7 +453,7 @@ export function navigateNext(state) {
     });
 }
 
-// --- Match Decorator for 'a' or 'd' followed by digit and space (underline with palette color) ---
+// --- Expression Gutter for 'a' or 'd' followed by digit and space ---
 
 // Helper: get palette based on theme (light/dark)
 function getCurrentPalette() {
@@ -484,41 +484,152 @@ function getMatchColor(match) {
 // Regex: 'a' or 'd', then digit, then space (but don't include space in match)
 const matchPattern = /\b([ad])([1-3])(?= )/g;
 
-// Decoration plugin
-export const matchDecorator = ViewPlugin.fromClass(class {
-  constructor(view) {
-    this.decorations = this.buildDecorations(view);
+// Custom gutter marker for expression vertical lines
+class ExpressionGutterMarker extends GutterMarker {
+  constructor(color, isStart = false, isEnd = false, isMid = false) {
+    super();
+    this.color = color;
+    this.isStart = isStart;
+    this.isEnd = isEnd;
+    this.isMid = isMid;
   }
-  update(update) {
-    if (update.docChanged || update.viewportChanged) {
-      this.decorations = this.buildDecorations(update.view);
+  
+  toDOM() {
+    const div = document.createElement('div');
+    div.style.cssText = `
+      position: relative;
+      width: 4px;
+      height: 100%;
+      margin-left: 2px;
+    `;
+    
+    if (this.isStart || this.isMid || this.isEnd) {
+      const line = document.createElement('div');
+      line.style.cssText = `
+        position: absolute;
+        left: 0;
+        width: 4px;
+        background-color: ${this.color};
+        height: 100%;
+      `;
+      div.appendChild(line);
     }
+    
+    return div;
   }
-  buildDecorations(view) {
+  
+  eq(other) {
+    return other instanceof ExpressionGutterMarker && 
+           other.color === this.color &&
+           other.isStart === this.isStart &&
+           other.isEnd === this.isEnd &&
+           other.isMid === this.isMid;
+  }
+}
+
+// Helper: find expression boundaries by looking for brackets
+function findExpressionBounds(state, matchPos) {
+  const doc = state.doc;
+  const tree = syntaxTree(state);
+  
+  // Find the node at the match position
+  const node = tree.resolveInner(matchPos, 1);
+  
+  // Walk up the tree to find the containing expression (list/vector/etc)
+  let current = node;
+  while (current && !['List', 'Vector', 'Map'].includes(current.name)) {
+    current = current.parent;
+  }
+  
+  if (current) {
+    return {
+      from: state.doc.lineAt(current.from).number,
+      to: state.doc.lineAt(current.to).number
+    };
+  }
+  
+  // Fallback: just the current line
+  const line = state.doc.lineAt(matchPos);
+  return {
+    from: line.number,
+    to: line.number
+  };
+}
+
+// Helper function to build markers
+function buildMarkers(state) {
     const builder = new RangeSetBuilder();
-    for (let { from, to } of view.visibleRanges) {
-      const text = view.state.doc.sliceString(from, to);
+    const doc = state.doc;
+    const expressionRanges = new Map(); // color -> [{from, to}, ...]
+    
+    // Find all matches and their expression boundaries
+    for (let line = 1; line <= doc.lines; line++) {
+      const lineText = doc.line(line).text;
       let match;
-      while ((match = matchPattern.exec(text)) !== null) {
-        const start = from + match.index;
-        const end = start + match[0].length;
+      matchPattern.lastIndex = 0; // Reset regex
+      
+      while ((match = matchPattern.exec(lineText)) !== null) {
+        const matchStart = doc.line(line).from + match.index;
         const color = getMatchColor(match);
-        builder.add(
-          start,
-          end,
-          Decoration.mark({
-            class: "cm-match-underline",
-            attributes: {
-              style: `text-decoration: underline solid 2px ${color}; text-underline-offset: 2px; color: ${color} !important; border-color: ${color} !important;`
-            }
-          })
-        );
+        const bounds = findExpressionBounds(state, matchStart);
+        
+        if (!expressionRanges.has(color)) {
+          expressionRanges.set(color, []);
+        }
+        expressionRanges.get(color).push(bounds);
       }
     }
+    
+    // Collect all markers and sort them by position
+    const markers = [];
+    for (const [color, ranges] of expressionRanges) {
+      for (const range of ranges) {
+        for (let line = range.from; line <= range.to; line++) {
+          const isStart = line === range.from;
+          const isEnd = line === range.to;
+          const isMid = !isStart && !isEnd;
+          
+          const marker = new ExpressionGutterMarker(color, isStart, isEnd, isMid);
+          const lineObj = doc.line(line);
+          markers.push({
+            pos: lineObj.from,
+            marker: marker
+          });
+        }
+      }
+    }
+    
+    // Sort markers by position
+    markers.sort((a, b) => a.pos - b.pos);
+    
+    // Add sorted markers to builder
+    for (const {pos, marker} of markers) {
+      builder.add(pos, pos, marker);
+    }
+    
     return builder.finish();
+}
+
+// State field for expression gutter markers
+const expressionGutterField = StateField.define({
+  create(state) {
+    return buildMarkers(state);
+  },
+  
+  update(markers, tr) {
+    if (tr.docChanged) {
+      return buildMarkers(tr.state);
+    }
+    return markers;
   }
-}, {
-  decorations: v => v.decorations
+});
+
+// Create the expression gutter
+export const expressionGutter = gutter({
+  class: 'cm-expression-gutter',
+  markers: v => v.state.field(expressionGutterField),
+  initialSpacer: () => new ExpressionGutterMarker('#transparent', false, false, false),
+  domEventHandlers: {}
 });
 
 // Export the structural extension as just the state field
@@ -528,8 +639,8 @@ export let structureExtensions = [
     nodeTreeCursorField,
     nodeHighlightField,
     lastChildIndexField,
-    // nodeTreeCursorContextField
-    matchDecorator
+    expressionGutterField,
+    expressionGutter
 ];
 
 console.log("[structure.mjs] nodeHighlightField:", nodeHighlightField);
