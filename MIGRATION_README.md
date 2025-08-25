@@ -78,28 +78,84 @@ src-solid/
 - `public/index.html` - Updated to include test island
 - `package.json` - Updated scripts for dual builds
 
+## Migration Priority Order
+
+Based on codebase analysis, components should be migrated in the following order to minimize dependencies and maximize impact:
+
+### 🔥 Phase 1: Core Utility Components (Week 1-2)
+- [ ] **Settings Panel** (`src/ui/settings/`) - Self-contained with minimal dependencies  
+- [ ] **Theme Manager** (`src/editors/themes/themeManager.mjs`) - Independent styling system
+- [ ] **Tab System** (`src/ui/tabs.mjs`) - Reusable UI pattern used by many components
+- [ ] **Panel Utils** (`src/ui/utils.mjs`) - Shared utilities for panel management
+
+### 🎯 Phase 2: UI Interaction Components (Week 3-4)  
+- [ ] **Toolbar** (`src/ui/toolbar.mjs`) - High jQuery usage (22 occurrences), central to UX
+- [ ] **Help System** (`src/ui/help/`) - Multi-file module with user guides and references
+- [ ] **Picker Menu** (`src/ui/pickerMenu.mjs`) - Interactive dropdown/selection component
+- [ ] **Snippets Panel** (`src/ui/snippets.mjs`) - Code snippet management UI
+
+### 🚀 Phase 3: Editor Integration (Week 5-6)
+- [ ] **Editor Configuration** (`src/editors/editorConfig.mjs`) - CodeMirror integration layer
+- [ ] **Editor Extensions** (`src/editors/extensions/`) - Custom editor behaviors 
+- [ ] **Gamepad Control** (`src/editors/gamepadControl.mjs`) - Alternative input handling
+- [ ] **Keymaps** (`src/editors/keymaps.mjs`) - Keyboard shortcut management
+
+### 🔧 Phase 4: I/O & External Systems (Week 7-8)
+- [ ] **Serial Communications** (`src/io/serialComms.mjs`) - Hardware interface (3 jQuery calls)
+- [ ] **Console Output** (`src/ui/console.mjs`) - Logging and debug interface
+- [ ] **Visualization Components** (`src/ui/serialVis/`, `src/ui/internalVis/`) - Data display
+- [ ] **Camera Interface** (`src/ui/camera.mjs`) - Media handling
+
+### 🏗️ Phase 5: System Architecture (Week 9-10)
+- [ ] **Main UI Orchestrator** (`src/ui/ui.mjs`) - Root component initialization (6 jQuery calls)
+- [ ] **URL Parameters** (`src/urlParams.mjs`) - Route/state management 
+- [ ] **Persistent Settings** (`src/utils/persistentUserSettings.mjs`) - Data persistence
+- [ ] **Main Entry Point** (`src/main.mjs`) - Application bootstrap
+
+## Migration Strategy Rationale
+
+### Why This Order?
+
+1. **Settings First**: Self-contained, well-defined state, good learning component
+2. **Utilities Early**: Shared components reduce duplication in later migrations  
+3. **UI Before Logic**: Visual components are easier to test and validate
+4. **Editor Integration**: Complex but well-encapsulated in dedicated modules
+5. **I/O Systems**: External dependencies require careful state management
+6. **Core Last**: Main orchestration components depend on migrated components
+
+### Dependency Analysis
+
+**Low jQuery Usage** (Good migration candidates):
+- Settings: Self-contained forms and tabs
+- Themes: Mostly computational with minimal DOM manipulation
+- Utils: Helper functions with limited UI interaction
+
+**High jQuery Usage** (Complex but high-impact):
+- Toolbar: 22 jQuery calls - central UI component
+- UI Orchestrator: 6 calls - but depends on other components
+- Serial Comms: 3 calls - hardware integration complexity
+
+**Architectural Bottlenecks**:
+- `src/main.mjs`: Entry point that initializes everything
+- `src/ui/ui.mjs`: UI orchestrator that manages all panels
+- `src/editors/main.mjs`: Editor system foundation
+
 ## Next Steps
 
 ### Immediate (Week 1-2)
-1. **Identify Migration Target**: Choose first real component to migrate
-   - Suggested: Settings panel or toolbar interactions
-   - Look for components with complex state or frequent DOM updates
-
-2. **Create Real Machine**: Replace test machine with actual domain logic
-   - Example: Settings validation, network connection status, file operations
-
-3. **Replace jQuery Gradually**: Start with one event handler at a time
-   - Convert `$(selector).on('click', handler)` to `onClick={handler}`
+1. **Start with Settings Panel**: Self-contained component with clear state boundaries
+2. **Create Settings Machine**: Model settings validation and persistence in XState
+3. **Migrate Tab System**: Reusable pattern for other components
 
 ### Medium Term (Week 3-4)  
-1. **Form Handling**: Migrate form interactions to Solid + XState
-2. **API Integration**: Move Ajax calls to Effect modules with proper retry/error handling
-3. **State Management**: Consolidate scattered state into XState machines
+1. **Toolbar Migration**: High-impact component with many interactions
+2. **Help System**: Multi-component module good for testing patterns
+3. **Establish Migration Patterns**: Document successful approaches
 
 ### Long Term (Month 2+)
-1. **Router Migration**: When ready, introduce @solidjs/router
-2. **jQuery Removal**: Eliminate jQuery dependency entirely
-3. **SSR (Optional)**: Consider Solid Start for server-side rendering if needed
+1. **Editor Integration**: Complex but well-encapsulated system
+2. **I/O System Migration**: Hardware interfaces with state management
+3. **Architecture Consolidation**: Main orchestration and bootstrap code
 
 ## Development Workflow
 
