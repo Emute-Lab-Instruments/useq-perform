@@ -21,14 +21,18 @@ import { showDocumentationForSymbol as showDocForSymbol } from "../ui/help/moduL
 import { dbg } from "../utils.mjs";
 
 import { flashEvalHighlight } from "./extensions/evalHighlight.mjs";
+import { detectAndTrackExpressionEvaluation } from "./extensions/structure.mjs";
 
 // Evaluate the current top-level form, optionally with a prefix (e.g., "@" for async)
 export function evalToplevel(opts, prefix = "") {
   const state = opts.state;
   const code = prefix + top_level_string(state);
-  // Highlight the evaluated region
+  
+  // Track expression evaluation for gutter highlighting
   if (opts.view && typeof opts.view.dispatch === 'function') {
-    // Try to highlight the top-level form
+    detectAndTrackExpressionEvaluation(opts.view);
+    
+    // Highlight the evaluated region
     const sel = state.selection.main;
     // If selection is empty, highlight the current top-level node
     let from = sel.from, to = sel.to;

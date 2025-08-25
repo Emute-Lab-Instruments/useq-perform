@@ -339,6 +339,91 @@ export const lastChildIndexField = StateField.define({
 import { Annotation } from "@codemirror/state";
 export const lastChildIndexAnnotation = Annotation.define();
 
+// --- Expression Evaluation Tracking ---
+
+// Annotation for expression evaluation events
+export const expressionEvaluatedAnnotation = Annotation.define();
+
+// StateField to track last evaluated expression for each type (a1, a2, a3, d1, d2, d3)
+export const lastEvaluatedExpressionField = StateField.define({
+    create() {
+        return new Map(); // expressionType -> { from, to, line }
+    },
+    update(value, tr) {
+        const evaluationMeta = tr.annotation(expressionEvaluatedAnnotation);
+        if (evaluationMeta && evaluationMeta.expressionType && evaluationMeta.position !== undefined) {
+            const newMap = new Map(value);
+            newMap.set(evaluationMeta.expressionType, {
+                from: evaluationMeta.position.from,
+                to: evaluationMeta.position.to,
+                line: evaluationMeta.position.line
+            });
+            return newMap;
+        }
+        return value;
+    }
+});
+
+// --- Pure functions for expression detection ---
+
+// Pure function: Find expression at cursor position
+export function findExpressionAtPosition(cursor, lineText, lineFrom, findBoundsFn) {
+    let match;
+    matchPattern.lastIndex = 0;
+    
+    while ((match = matchPattern.exec(lineText)) !== null) {
+        const matchStart = lineFrom + match.index;
+        const bounds = findBoundsFn(matchStart);
+        const boundsStartPos = bounds.startPos;
+        const boundsEndPos = bounds.endPos;
+        
+        if (cursor >= boundsStartPos && cursor <= boundsEndPos) {
+            return {
+                expressionType: `${match[1]}${match[2]}`, // e.g., "a1", "d2"
+                position: {
+                    from: boundsStartPos,
+                    to: boundsEndPos,
+                    line: bounds.from
+                }
+            };
+        }
+    }
+    
+    return null;
+}
+
+// Helper function to detect expression at cursor and dispatch evaluation annotation
+export function detectAndTrackExpressionEvaluation(view) {
+    const state = view.state;
+    const cursor = state.selection.main.head;
+    const doc = state.doc;
+    
+    // Get the line containing the cursor
+    const line = doc.lineAt(cursor);
+    const lineText = line.text;
+    
+    // Pure function to find expression
+    const expressionInfo = findExpressionAtPosition(
+        cursor, 
+        lineText, 
+        line.from, 
+        (matchStart) => {
+            const bounds = findExpressionBounds(state, matchStart);
+            return {
+                ...bounds,
+                startPos: doc.line(bounds.from).from,
+                endPos: doc.line(bounds.to).to
+            };
+        }
+    );
+    
+    if (expressionInfo) {
+        view.dispatch({
+            annotations: expressionEvaluatedAnnotation.of(expressionInfo)
+        });
+    }
+}
+
 // Helper: get path to node at position
 function getChildIndexFromPath(path) {
     if (!Array.isArray(path) || path.length === 0) return 0;
@@ -486,12 +571,13 @@ const matchPattern = /\b([ad])([1-3])(?= )/g;
 
 // Custom gutter marker for expression vertical lines
 class ExpressionGutterMarker extends GutterMarker {
-  constructor(color, isStart = false, isEnd = false, isMid = false) {
+  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true) {
     super();
     this.color = color;
     this.isStart = isStart;
     this.isEnd = isEnd;
     this.isMid = isMid;
+    this.isActive = isActive;
   }
   
   toDOM() {
@@ -505,11 +591,13 @@ class ExpressionGutterMarker extends GutterMarker {
     
     if (this.isStart || this.isMid || this.isEnd) {
       const line = document.createElement('div');
+      const opacity = this.isActive ? '1.0' : '0.3';
       line.style.cssText = `
         position: absolute;
         left: 0;
         width: 4px;
         background-color: ${this.color};
+        opacity: ${opacity};
         height: 100%;
       `;
       div.appendChild(line);
@@ -523,7 +611,8 @@ class ExpressionGutterMarker extends GutterMarker {
            other.color === this.color &&
            other.isStart === this.isStart &&
            other.isEnd === this.isEnd &&
-           other.isMid === this.isMid;
+           other.isMid === this.isMid &&
+           other.isActive === this.isActive;
   }
 }
 
@@ -556,55 +645,114 @@ function findExpressionBounds(state, matchPos) {
   };
 }
 
-// Helper function to build markers
-function buildMarkers(state) {
-    const builder = new RangeSetBuilder();
-    const doc = state.doc;
-    const expressionRanges = new Map(); // color -> [{from, to}, ...]
+// --- Pure functions for expression tracking logic ---
+
+// Pure function: Find all expression ranges in document text
+export function findExpressionRanges(docLines, findBoundsFn) {
+    const expressionRanges = new Map(); // expressionType -> [{color, from, to, matchStart}, ...]
     
-    // Find all matches and their expression boundaries
-    for (let line = 1; line <= doc.lines; line++) {
-      const lineText = doc.line(line).text;
-      let match;
-      matchPattern.lastIndex = 0; // Reset regex
-      
-      while ((match = matchPattern.exec(lineText)) !== null) {
-        const matchStart = doc.line(line).from + match.index;
-        const color = getMatchColor(match);
-        const bounds = findExpressionBounds(state, matchStart);
+    for (let lineNum = 1; lineNum <= docLines.length; lineNum++) {
+        const lineText = docLines[lineNum - 1].text;
+        const lineFrom = docLines[lineNum - 1].from;
+        let match;
+        matchPattern.lastIndex = 0; // Reset regex
         
-        if (!expressionRanges.has(color)) {
-          expressionRanges.set(color, []);
+        while ((match = matchPattern.exec(lineText)) !== null) {
+            const matchStart = lineFrom + match.index;
+            const expressionType = `${match[1]}${match[2]}`; // e.g., "a1", "d2"
+            const color = getMatchColor(match);
+            const bounds = findBoundsFn(matchStart);
+            
+            if (!expressionRanges.has(expressionType)) {
+                expressionRanges.set(expressionType, []);
+            }
+            expressionRanges.get(expressionType).push({
+                color,
+                from: bounds.from,
+                to: bounds.to,
+                matchStart
+            });
         }
-        expressionRanges.get(color).push(bounds);
-      }
     }
     
-    // Collect all markers and sort them by position
+    return expressionRanges;
+}
+
+// Pure function: Determine if a range is active based on last evaluation
+export function isRangeActive(range, lastEvaluated) {
+    if (!lastEvaluated) return false;
+    
+    const rangeStartLine = range.from;
+    const rangeEndLine = range.to;
+    return lastEvaluated.line >= rangeStartLine && lastEvaluated.line <= rangeEndLine;
+}
+
+// Pure function: Create markers for an expression range
+export function createMarkersForRange(range, isActive, docLineFn) {
     const markers = [];
-    for (const [color, ranges] of expressionRanges) {
-      for (const range of ranges) {
-        for (let line = range.from; line <= range.to; line++) {
-          const isStart = line === range.from;
-          const isEnd = line === range.to;
-          const isMid = !isStart && !isEnd;
-          
-          const marker = new ExpressionGutterMarker(color, isStart, isEnd, isMid);
-          const lineObj = doc.line(line);
-          markers.push({
+    
+    for (let line = range.from; line <= range.to; line++) {
+        const isStart = line === range.from;
+        const isEnd = line === range.to;
+        const isMid = !isStart && !isEnd;
+        
+        const marker = new ExpressionGutterMarker(range.color, isStart, isEnd, isMid, isActive);
+        const lineObj = docLineFn(line);
+        markers.push({
             pos: lineObj.from,
             marker: marker
-          });
+        });
+    }
+    
+    return markers;
+}
+
+// Pure function: Process all expression ranges and create markers
+export function processExpressionRanges(expressionRanges, lastEvaluatedMap, docLineFn) {
+    const allMarkers = [];
+    
+    for (const [expressionType, ranges] of expressionRanges) {
+        const lastEval = lastEvaluatedMap.get(expressionType);
+        
+        for (const range of ranges) {
+            const isActive = isRangeActive(range, lastEval);
+            const markers = createMarkersForRange(range, isActive, docLineFn);
+            allMarkers.push(...markers);
         }
-      }
     }
     
     // Sort markers by position
-    markers.sort((a, b) => a.pos - b.pos);
+    allMarkers.sort((a, b) => a.pos - b.pos);
+    
+    return allMarkers;
+}
+
+// Helper function to build markers (now uses pure functions)
+function buildMarkers(state) {
+    const builder = new RangeSetBuilder();
+    const doc = state.doc;
+    const lastEvaluated = state.field(lastEvaluatedExpressionField, false) || new Map();
+    
+    // Create array of line objects for pure function
+    const docLines = [];
+    for (let line = 1; line <= doc.lines; line++) {
+        docLines.push(doc.line(line));
+    }
+    
+    // Pure function calls
+    const expressionRanges = findExpressionRanges(docLines, (matchStart) => 
+        findExpressionBounds(state, matchStart)
+    );
+    
+    const markers = processExpressionRanges(
+        expressionRanges, 
+        lastEvaluated, 
+        (lineNum) => doc.line(lineNum)
+    );
     
     // Add sorted markers to builder
     for (const {pos, marker} of markers) {
-      builder.add(pos, pos, marker);
+        builder.add(pos, pos, marker);
     }
     
     return builder.finish();
@@ -628,7 +776,7 @@ const expressionGutterField = StateField.define({
 export const expressionGutter = gutter({
   class: 'cm-expression-gutter',
   markers: v => v.state.field(expressionGutterField),
-  initialSpacer: () => new ExpressionGutterMarker('#transparent', false, false, false),
+  initialSpacer: () => new ExpressionGutterMarker('#transparent', false, false, false, true),
   domEventHandlers: {}
 });
 
@@ -639,6 +787,7 @@ export let structureExtensions = [
     nodeTreeCursorField,
     nodeHighlightField,
     lastChildIndexField,
+    lastEvaluatedExpressionField,
     expressionGutterField,
     expressionGutter
 ];
