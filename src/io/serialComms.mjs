@@ -243,7 +243,20 @@ function sendTouSEQ(code, capture = null) {
   const cleanedCode = cleanCode(code);
 
   if (isPortWritable(serialport)) {
-    sendToPort(cleanedCode, capture);
+    // Check if this is dev mode with mock connection
+    const urlParams = new URLSearchParams(window.location.search);
+    const isDevMode = urlParams.has('devmode') && urlParams.get('devmode') === 'true';
+    
+    if (isDevMode && !serialport) {
+      // Dev mode mock: don't actually send to port, just simulate success
+      dbg("Dev mode: Simulating code execution:", cleanedCode);
+      if (capture) {
+        capture("Dev mode: Code executed successfully");
+      }
+    } else {
+      // Normal mode: send to actual port
+      sendToPort(cleanedCode, capture);
+    }
   } else {
     handleNotConnected();
   }

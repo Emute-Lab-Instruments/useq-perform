@@ -17,6 +17,8 @@ import {
     // navigateToTopLevel
 } from "../editors/extensions/structure.mjs";
 import { initGamepadControl } from "../editors/gamepadControl.mjs";
+import { makeDevMode, initDevMode } from "./devMode.mjs";
+import { devmode } from "../urlParams.mjs";
 
 function makeStructureNavPanel(editor) {
     const panel = document.createElement('div');
@@ -79,6 +81,13 @@ export async function initUI() {
     $("#panel-settings").append(...makeSettings());
 
     $("#panel-help").append(...await makeHelp());
+
+    // Initialize dev mode panel if dev mode is active
+    if (devmode) {
+        dbg("Dev mode active - initializing dev mode panel");
+        $("#panel-devmode").append(makeDevMode());
+        initDevMode();
+    }
 
     initGamepadControl(editor);
     initEventHandlers();
