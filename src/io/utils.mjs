@@ -110,6 +110,28 @@ export function isPortReadableAndUnlocked(port) {
  * @returns {boolean} True if the port is writable
  */
 export function isPortWritable(port) {
+  // Check for dev mode connection mock first
+  try {
+    // Dynamic import to avoid circular dependencies
+    const urlParams = new URLSearchParams(window.location.search);
+    const isDevMode = urlParams.has('devmode') && urlParams.get('devmode') === 'true';
+    
+    if (isDevMode) {
+      // In dev mode, check the mocked connection status
+      // We need to access the connectedToModule variable from serialComms
+      // Since we can't easily import it here due to circular deps, we'll check if
+      // the connect button has the 'connected' class which indicates mock connection
+      const connectButton = document.getElementById('button-connect');
+      if (connectButton && connectButton.classList.contains('connected')) {
+        return true; // Mock connection is active
+      }
+    }
+  } catch (error) {
+    // If there's any error checking dev mode, fall back to normal behavior
+    console.warn('Error checking dev mode connection status:', error);
+  }
+  
+  // Normal behavior: check if actual port is writable
   return port && port.writable;
 }
   

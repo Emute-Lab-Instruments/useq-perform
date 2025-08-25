@@ -2,6 +2,7 @@ import { dbg } from "../utils.mjs";
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { setFontSize, toggleSerialVis } from "../editors/editorConfig.mjs";
 import { toggleConnect } from "../io/serialComms.mjs";
+import { devmode } from "../urlParams.mjs";
 
 
 let editorInstance = null;
@@ -107,10 +108,40 @@ function ensurePanelHasCloseButton(panel) {
     }
 }
 
+/**
+ * Dynamically add dev mode button to toolbar when dev mode is active
+ */
+function addDevModeButton() {
+    dbg("Adding dev mode button to toolbar");
+    
+    // Create the dev mode button
+    const $devModeButton = $('<a>', {
+        class: 'toolbar-button',
+        id: 'button-devmode',
+        title: 'Dev Mode Tools',
+        html: '<i data-lucide="wrench"></i>'
+    });
+    
+    // Find the last toolbar row and add the button there
+    const $lastToolbarRow = $('.toolbar-row').last();
+    $lastToolbarRow.append($devModeButton);
+    
+    // Initialize the Lucide icon
+    if (window.lucide) {
+        window.lucide.createIcons();
+    }
+    
+    dbg("Dev mode button added to toolbar");
+}
 
 export function makeToolbar(editor) {
     // Store editor reference
     editorInstance = editor;
+    
+    // Add dev mode button if dev mode is active
+    if (devmode) {
+        addDevModeButton();
+    }
     
     // Set up UI event handlers
     $("#button-increase-font").on("click", () => {
@@ -141,6 +172,14 @@ export function makeToolbar(editor) {
     $("#button-help").on("click", function() {
         toggleAuxPanel("#panel-help");
     });
+
+    // Dev mode button - only set up handler if dev mode is active
+    if (devmode) {
+        $("#button-devmode").on("click", function() {
+            toggleAuxPanel("#panel-devmode");
+        });
+        dbg("Dev mode button handler registered");
+    }
     
     $("#button-load").on("click", async () => {
         let fileHandle;
