@@ -3,6 +3,7 @@ import cssModulesPlugin from 'esbuild-plugin-css-modules';
 import fs from 'fs';
 import path from 'path';
 import { marked } from 'marked';
+import { WebSocketServer } from 'ws';
 
 // Common build options
 const commonOptions = {
@@ -64,9 +65,46 @@ function buildMarkdown() {
 async function build() {
   try {
     if (process.argv.includes('--watch')) {
-      // Watch mode
+      // Watch mode with WebSocket for hot reload
+      const wss = new WebSocketServer({ port: 8080 });
+      const clients = new Set();
+
+      wss.on('connection', (ws) => {
+        clients.add(ws);
+        console.log('Client connected for hot reload');
+        
+        ws.on('close', () => {
+          clients.delete(ws);
+          console.log('Client disconnected');
+        });
+      });
+
+      // Create a plugin to notify clients on CSS rebuild
+      const hotReloadPlugin = {
+        name: 'hot-reload',
+        setup(build) {
+          build.onEnd(result => {
+            if (result.errors.length === 0) {
+              // Notify all connected clients
+              clients.forEach(client => {
+                if (client.readyState === 1) { // WebSocket.OPEN
+                  client.send(JSON.stringify({ type: 'css-update' }));
+                }
+              });
+              console.log('CSS updated, notified clients');
+            }
+          });
+        }
+      };
+
+      // Add hot reload plugin to CSS build
+      const cssWithHotReload = {
+        ...cssBuildOptions,
+        plugins: [...cssBuildOptions.plugins, hotReloadPlugin]
+      };
+
       const jsContext = await esbuild.context(jsBuildOptions);
-      const cssContext = await esbuild.context(cssBuildOptions);
+      const cssContext = await esbuild.context(cssWithHotReload);
 
       // Watch for markdown changes
       fs.watch(markdownBuildOptions.inputDir, (eventType, filename) => {
@@ -81,6 +119,7 @@ async function build() {
       ]);
       
       console.log('Watching for changes...');
+      console.log('Hot reload WebSocket server running on ws://localhost:8080');
     } else {
       // Single build
       await Promise.all([
