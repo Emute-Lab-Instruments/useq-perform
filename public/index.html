@@ -30,34 +30,43 @@
         lucide.createIcons();
       });
 
-      // CSS hot-reloading for development
+      // CSS hot-reloading via WebSocket for development
       if (location.hostname === "localhost") {
         const cssLink = document.querySelector('link[href^="bundle.css"]');
-        let currentHref = cssLink.href;
-
+        
         const reloadCSS = () => {
           const timestamp = Date.now();
           const newHref = `bundle.css?t=${timestamp}`;
-          if (cssLink.href !== newHref) {
-            cssLink.href = newHref;
-            // console.log('CSS reloaded at:', new Date().toLocaleTimeString());
-          }
+          cssLink.href = newHref;
+          console.log('CSS hot reloaded at:', new Date().toLocaleTimeString());
         };
 
-        // Check more frequently and use fetch to ensure we get fresh responses
-        setInterval(async () => {
-          try {
-            const response = await fetch("bundle.css", {
-              method: "HEAD",
-              cache: "no-store",
-            });
-            if (response.ok) {
+        // Connect to WebSocket server for hot reload
+        const connectWebSocket = () => {
+          const ws = new WebSocket('ws://localhost:8080');
+          
+          ws.onopen = () => {
+            console.log('Connected to hot reload server');
+          };
+          
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'css-update') {
               reloadCSS();
             }
-          } catch (error) {
-            console.warn("CSS reload check failed:", error);
-          }
-        }, 500);
+          };
+          
+          ws.onclose = () => {
+            console.log('Hot reload disconnected, reconnecting in 2s...');
+            setTimeout(connectWebSocket, 2000);
+          };
+          
+          ws.onerror = (error) => {
+            console.error('Hot reload WebSocket error:', error);
+          };
+        };
+        
+        connectWebSocket();
       }
     </script>
   </head>
@@ -118,6 +127,9 @@
 
     <!-- Help documentation panel -->
     <div id="panel-help" class="panel-aux" style="display: none"></div>
+
+    <!-- Dev mode panel (only used when devmode=true) -->
+    <div id="panel-devmode" class="panel-aux" style="display: none"></div>
 
     <!-- Main JavaScript module -->
     <script src="bundle.mjs"></script>
