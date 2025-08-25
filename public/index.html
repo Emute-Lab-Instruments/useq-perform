@@ -130,8 +130,13 @@
 
     <!-- Dev mode panel (only used when devmode=true) -->
     <div id="panel-devmode" class="panel-aux" style="display: none"></div>
+    
+    <!-- SolidJS Test Island -->
+    <div id="test-island" style="position: fixed; top: 10px; right: 10px; z-index: 10000;"></div>
 
     <!-- Main JavaScript module -->
     <script src="bundle.mjs"></script>
+    <!-- SolidJS Test Island Script -->
+    <script type="module" src="solid-dist/test-island.js"></script>
   </body>
 </html>

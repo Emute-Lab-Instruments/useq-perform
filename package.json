@@ -6,6 +6,9 @@
     "esbuild-plugin-css-modules": "^0.3.0",
     "npm-run-all": "^4.1.5",
     "serve": "^14.2.4",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vite-plugin-solid": "^2.11.8",
     "ws": "^8.18.3"
   },
   "dependencies": {
@@ -14,22 +17,30 @@
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.3",
     "@nextjournal/clojure-mode": "^0.3.3",
+    "@solidjs/router": "^0.15.3",
     "@stdlib/number-float64-base-from-int64-bytes": "^0.2.2",
     "buffer": "^6.0.3",
     "codemirror": "^6.0.1",
     "color-convert": "^3.0.1",
     "date-fns": "^4.1.0",
+    "effect": "^3.17.9",
     "lezer": "^0.13.5",
     "lucide": "^0.475.0",
     "marked": "^15.0.8",
+    "solid-js": "^1.9.9",
     "squint-cljs": "^0.8.134",
     "tabulator-tables": "^6.3.1",
     "two.js": "^0.8.17",
-    "webmidi": "^3.1.12"
+    "webmidi": "^3.1.12",
+    "xstate": "^5.20.2"
   },
   "scripts": {
-    "build": "node build.js",
-    "watch": "node build.js --watch",
+    "build": "npm run build:legacy && npm run build:solid",
+    "build:legacy": "node build.js",
+    "build:solid": "vite build",
+    "watch": "npm-run-all --parallel watch:legacy watch:solid",
+    "watch:legacy": "node build.js --watch",
+    "watch:solid": "vite build --watch",
     "dev": "npm-run-all --parallel start watch",
     "start": "serve public -p 5000 --cors --config serve.json",
     "test": "mocha \"test/**/*.mjs\""
