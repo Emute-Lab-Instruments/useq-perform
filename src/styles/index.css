@@ -1,4 +1,5 @@
 @import './base.css';
+/* Test hot reload */
 @import './toolbar.css';
 @import './editor.css';
 @import './panels.css';
