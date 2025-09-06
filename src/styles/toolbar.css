@@ -12,6 +12,25 @@
     padding: 5px;
 }
 
+/* Top playback toolbar */
+#panel-top-toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    padding: 6px 10px;
+    gap: 8px;
+    background: transparent;
+    z-index: 1000;
+    pointer-events: none; /* allow underlying clicks except buttons */
+}
+
+#panel-top-toolbar .toolbar-row {
+    pointer-events: auto; /* re-enable for row/buttons */
+}
+
 .toolbar-row {
     display: flex;
     gap: 5px;
@@ -73,6 +92,12 @@
     background-color: var(--accent-color-active);
     border-color: var(--accent-color-active);
     color: white;
+  }
+
+  /* Disabled state */
+  .toolbar-button.disabled {
+    opacity: 0.5;
+    pointer-events: none;
   }
   
   #button-connect {

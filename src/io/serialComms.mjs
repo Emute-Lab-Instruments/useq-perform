@@ -112,6 +112,12 @@ export function setConnectedToModule(connected) {
     } else {
       console.log("Button not found when trying to set color!");
     }
+    // Notify other UI components about connection status changes
+    try {
+      window.dispatchEvent(new CustomEvent('useq-connection-changed', { detail: { connected } }));
+    } catch (e) {
+      // no-op if window not available
+    }
   }, 0);
 }
 

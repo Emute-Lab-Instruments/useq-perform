@@ -1,7 +1,7 @@
 import { dbg } from "../utils.mjs";
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { setFontSize, toggleSerialVis } from "../editors/editorConfig.mjs";
-import { toggleConnect } from "../io/serialComms.mjs";
+import { toggleConnect, sendTouSEQ, isConnectedToModule } from "../io/serialComms.mjs";
 import { devmode } from "../urlParams.mjs";
 
 
@@ -205,6 +205,9 @@ export function makeToolbar(editor) {
         ensurePanelHasExpandToggle($(this));
         ensurePanelHasCloseButton($(this));
     });
+
+    // Setup top playback toolbar interactions
+    initPlaybackToolbar();
 }
 
 async function saveToFile(fileContents, ext, desc) {
@@ -230,4 +233,110 @@ async function saveToFile(fileContents, ext, desc) {
     
     const filehandle = await getNewFileHandle(ext, desc);
     await writeFile(filehandle, fileContents);
+}
+
+// --- Playback toolbar state & handlers ---
+
+const PlaybackState = Object.freeze({
+    Stopped: 'stopped',
+    Playing: 'playing',
+    Paused: 'paused',
+});
+
+let playbackState = PlaybackState.Stopped;
+let isConnected = false;
+
+function setPlaybackState(state) {
+    playbackState = state;
+    updatePlaybackUI();
+}
+
+function updatePlaybackUI() {
+    const $play = $('#button-play');
+    const $pause = $('#button-pause');
+    const $stop = $('#button-stop');
+    const $rewind = $('#button-rewind');
+    const $clear = $('#button-clear');
+
+    // Reset classes
+    [$play, $pause, $stop, $rewind, $clear].forEach($b => $b.removeClass('primary disabled'));
+
+    // If not connected, gray out all controls
+    if (!isConnected) {
+        [$play, $pause, $stop, $rewind, $clear].forEach($b => $b.addClass('disabled'));
+        return;
+    }
+
+    switch (playbackState) {
+        case PlaybackState.Playing:
+            $play.addClass('primary disabled');
+            // pause, stop, rewind, clear enabled
+            break;
+        case PlaybackState.Paused:
+            $pause.addClass('primary disabled');
+            // play, stop, rewind, clear enabled
+            break;
+        case PlaybackState.Stopped:
+        default:
+            $stop.addClass('primary disabled');
+            // play enabled, pause disabled; rewind, clear enabled
+            $pause.addClass('disabled');
+            break;
+    }
+}
+
+function initPlaybackToolbar() {
+    const $play = $('#button-play');
+    const $pause = $('#button-pause');
+    const $stop = $('#button-stop');
+    const $rewind = $('#button-rewind');
+    const $clear = $('#button-clear');
+
+    if (!($play.length && $pause.length && $stop.length && $rewind.length)) {
+        return; // Top toolbar not present
+    }
+
+    // Initial connection state
+    try {
+        isConnected = !!isConnectedToModule();
+    } catch (e) { isConnected = false; }
+
+    // Initial state
+    updatePlaybackUI();
+
+    $play.on('click', () => {
+        if ($play.hasClass('disabled')) return;
+        sendTouSEQ('(useq-play)');
+        setPlaybackState(PlaybackState.Playing);
+    });
+
+    $pause.on('click', () => {
+        if ($pause.hasClass('disabled')) return;
+        sendTouSEQ('(useq-pause)');
+        setPlaybackState(PlaybackState.Paused);
+    });
+
+    $stop.on('click', () => {
+        if ($stop.hasClass('disabled')) return;
+        sendTouSEQ('(useq-stop)');
+        setPlaybackState(PlaybackState.Stopped);
+    });
+
+    $rewind.on('click', () => {
+        if ($rewind.hasClass('disabled')) return;
+        sendTouSEQ('(useq-rewind)');
+        // After rewind, consider state stopped
+        setPlaybackState(PlaybackState.Stopped);
+    });
+
+    $clear.on('click', () => {
+        if ($clear.hasClass('disabled')) return;
+        sendTouSEQ('(useq-clear-outs)');
+    });
+
+    // React to connection status changes
+    window.addEventListener('useq-connection-changed', (e) => {
+        isConnected = !!(e && e.detail && e.detail.connected);
+        updatePlaybackUI();
+    });
 }
