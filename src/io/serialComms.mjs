@@ -70,7 +70,22 @@ export function askForPortAndConnect() {
       });
   }
   else {
-    post('uSEQ is already connected - would you like to <span style="color: red; font-weight: bold; cursor: pointer;" onclick="disconnect()">disconnect</span>?');
+    post('uSEQ is already connected - would you like to <span class="disconnect-link" style="color: red; font-weight: bold; cursor: pointer;">disconnect</span>?');
+    // Add event listener for the disconnect link after DOM update
+    setTimeout(() => {
+      const disconnectLinks = document.querySelectorAll('.disconnect-link');
+      disconnectLinks.forEach(link => {
+        // Remove any existing listeners to avoid duplicates
+        link.replaceWith(link.cloneNode(true));
+      });
+      // Get fresh references after cloning
+      const freshLinks = document.querySelectorAll('.disconnect-link');
+      freshLinks.forEach(link => {
+        link.addEventListener('click', () => {
+          disconnect();
+        });
+      });
+    }, 0);
   }
 }
 
