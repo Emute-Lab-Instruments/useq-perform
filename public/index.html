@@ -71,6 +71,26 @@
     </script>
   </head>
   <body>
+    <!-- Top playback toolbar -->
+    <div id="panel-top-toolbar">
+      <div class="toolbar-row">
+        <a class="toolbar-button" id="button-play" title="Play">
+          <i data-lucide="play"></i>
+        </a>
+        <a class="toolbar-button" id="button-pause" title="Pause">
+          <i data-lucide="pause"></i>
+        </a>
+        <a class="toolbar-button" id="button-stop" title="Stop">
+          <i data-lucide="square"></i>
+        </a>
+        <a class="toolbar-button" id="button-rewind" title="Rewind">
+          <i data-lucide="rewind"></i>
+        </a>
+        <a class="toolbar-button" id="button-clear" title="Clear">
+          <i data-lucide="x"></i>
+        </a>
+      </div>
+    </div>
     <!-- Toolbar panel with buttons -->
     <div id="panel-toolbar">
       <div class="toolbar-row">
@@ -132,7 +152,7 @@
     <div id="panel-devmode" class="panel-aux" style="display: none"></div>
     
     <!-- SolidJS Test Island -->
-    <div id="test-island" style="position: fixed; top: 10px; right: 10px; z-index: 10000;"></div>
+    <!-- <div id="test-island" style="position: fixed; top: 10px; right: 10px; z-index: 10000;"></div> -->
 
     <!-- Main JavaScript module -->
     <script src="bundle.mjs"></script>
