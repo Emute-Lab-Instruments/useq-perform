@@ -49,7 +49,7 @@ const completeKeymapModified = completeClojureKeymap.map((binding) => {
 
 // Custom keymap for the editor
 export const useq_keymap = [
-  { key: "Ctrl-Enter", run: (view) => evalNow({ view, state: view.state }) },
+  { key: "Mod-Enter", run: (view) => evalNow({ view, state: view.state }) },
   { key: "Alt-Enter", run: (view) => evalQuantised({ view, state: view.state }) },
   {
     key: "Alt-h",

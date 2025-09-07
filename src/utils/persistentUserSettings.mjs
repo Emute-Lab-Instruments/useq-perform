@@ -33,7 +33,9 @@ const defaultUserSettings = {
   },
   ui: {
     consoleLinesLimit: 1000,
-    customThemes: []
+    customThemes: [],
+    // OS family for key display/bindings: 'pc' (Linux/Windows) or 'mac'
+    osFamily: 'pc'
   }
 };
 
@@ -74,6 +76,17 @@ return activeUserSettings;
     console.error("Error loading user settings:", error);
     activeUserSettings = { ...defaultUserSettings };
   }
+
+  // Auto-detect OS family (mac vs pc) if unset
+  try {
+    if (!activeUserSettings.ui) activeUserSettings.ui = {};
+    if (!activeUserSettings.ui.osFamily) {
+      const platformStr = (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent || '')) || '';
+      const isMac = /Mac|iPhone|iPad|iPod/i.test(platformStr);
+      activeUserSettings.ui.osFamily = isMac ? 'mac' : 'pc';
+      dbg('Detected OS family:', activeUserSettings.ui.osFamily);
+    }
+  } catch (e) {}
 
   // Legacy handling for old theme name
   if (activeUserSettings.editor?.theme === 'default') {
