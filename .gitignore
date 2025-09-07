@@ -7,3 +7,5 @@ public/bundle.mjs.map
 public/bundle.css
 public/bundle.css.map
 public/assets
+public/solid-dist
+*.backup
