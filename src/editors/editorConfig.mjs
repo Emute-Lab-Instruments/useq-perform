@@ -1,5 +1,6 @@
 // CODEMIRROR IMPORTS
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { deleteCharForward } from "@codemirror/commands";
 
 // NEXTJOURNAL (clojure-mode)
 import {
@@ -271,6 +272,19 @@ export function areMatchingBracketChars(char1, char2) {
 // FIXME do something about Ctrl-Del too
 export function makeDeleteWrapper(originalRun) {
   return (view) => {
+    // Check if bracket unbalancing prevention is enabled
+    const userSettings = getUserSettings();
+    const preventUnbalancing = userSettings.editor?.preventBracketUnbalancing ?? true;
+    dbg("Delete wrapper - prevent unbalancing setting:", preventUnbalancing);
+    
+    if (!preventUnbalancing) {
+      // Feature disabled, use normal deletion
+      dbg("Bracket prevention DISABLED, using normal deletion");
+      return originalRun(view);
+    }
+    
+    dbg("Bracket prevention ENABLED, checking brackets");
+
     const { state } = view;
     const { from } = state.selection.main;
 
