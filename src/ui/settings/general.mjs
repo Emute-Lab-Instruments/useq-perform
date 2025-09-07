@@ -1,4 +1,4 @@
-import {activeUserSettings, updateUserSettings, resetUserSettings} from "../../utils/persistentUserSettings.mjs";
+import {activeUserSettings, updateUserSettings, resetUserSettings, getUserSettings} from "../../utils/persistentUserSettings.mjs";
 import {themes} from "../../editors/themes/themeManager.mjs";
 import { setMainEditorTheme } from "../../editors/themes/themeManager.mjs";
 
@@ -137,6 +137,26 @@ function buildEditorSettings($container) {
         });
     
     $container.append(createFormRow('Font Size', $fontSizeInput));
+    
+    const $preventBracketUnbalancingCheckbox = $('<input>')
+        .attr('type', 'checkbox')
+        .addClass('panel-checkbox')
+        .prop('checked', activeUserSettings.editor?.preventBracketUnbalancing ?? true)
+        .on('change', () => {
+            const isChecked = $preventBracketUnbalancingCheckbox.prop('checked');
+            console.log("Settings: preventBracketUnbalancing changed to:", isChecked);
+            const currentSettings = getUserSettings();
+            const newSettings = {
+                editor: {
+                    ...currentSettings.editor,
+                    preventBracketUnbalancing: isChecked
+                }
+            };
+            console.log("Settings: updating with:", newSettings);
+            updateUserSettings(newSettings);
+        });
+    
+    $container.append(createFormRow('Prevent bracket unbalancing', $preventBracketUnbalancingCheckbox));
 }
 
 /**

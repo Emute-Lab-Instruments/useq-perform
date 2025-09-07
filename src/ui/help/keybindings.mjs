@@ -1,5 +1,5 @@
 import { dbg } from "../../utils.mjs";
-import { activeUserSettings, updateUserSettings } from "../../utils/persistentUserSettings.mjs";
+import { activeUserSettings, updateUserSettings, getUserSettings } from "../../utils/persistentUserSettings.mjs";
 
 /**
  * Creates the keybindings settings tab
@@ -9,6 +9,28 @@ export function makeKeybindingsTab() {
     dbg("makeKeybindingsTab", "Creating keybindings tab");
     
     const $container = $('<div>').addClass('panel-tab-content');
+    
+    // OS toggle section (PC vs Mac)
+    const $osSection = createSection('Platform');
+    const currentUi = getUserSettings('ui') || {};
+    const osFamily = currentUi.osFamily || 'pc';
+    const $osRow = $('<div>').addClass('panel-row');
+    const $osLabel = $('<label>').addClass('panel-label').text('OS');
+    const $osControl = $('<div>').addClass('panel-control');
+    const $pcRadio = $('<label>').append(
+        $('<input>').attr({ type: 'radio', name: 'os-family', value: 'pc' }).prop('checked', osFamily !== 'mac')
+            .on('change', () => setOsFamily('pc', $container)),
+        $('<span>').text(' Linux/Windows')
+    );
+    const $macRadio = $('<label>').css('margin-left', '12px').append(
+        $('<input>').attr({ type: 'radio', name: 'os-family', value: 'mac' }).prop('checked', osFamily === 'mac')
+            .on('change', () => setOsFamily('mac', $container)),
+        $('<span>').text(' macOS')
+    );
+    $osControl.append($pcRadio, $macRadio);
+    $osRow.append($osLabel, $osControl);
+    $osSection.append($osRow);
+    $container.append($osSection);
     
     // Introduction section
     // const $introSection = createSection('Keyboard Shortcuts');
@@ -82,7 +104,7 @@ function buildKeyBindingsGroup($container, keybindings) {
         const $keyBinding = $('<span>')
             .addClass('key-binding')
             .attr('data-action', binding.action)
-            .text(binding.key)
+            .text(formatKeyForDisplay(binding.key))
             .on('click', function() {
                 editKeybinding($(this), binding);
             });
@@ -151,7 +173,7 @@ function editKeybinding($element, binding) {
             const newKey = $newBinding.text();
             if (newKey !== 'Press keys...') {
                 saveKeybinding(binding.action, newKey);
-                $element.text(newKey); // Update the displayed keybinding
+                $element.text(formatKeyForDisplay(newKey)); // Update the displayed keybinding
             }
             $modal.remove();
             $overlay.remove();
@@ -203,6 +225,32 @@ function getEffectiveKeybinding(action, defaultKey) {
     return defaultKey;
 }
 
+function getOsFamily() {
+    const ui = getUserSettings('ui') || {};
+    return ui.osFamily === 'mac' ? 'mac' : 'pc';
+}
+
+function setOsFamily(osFamily, $container) {
+    const current = getUserSettings();
+    const newUi = { ...(current.ui || {}), osFamily };
+    updateUserSettings({ ui: newUi });
+    // Rerender the tab to refresh labels
+    const $parent = $container.parent();
+    $container.replaceWith(makeKeybindingsTab());
+}
+
+function formatKeyForDisplay(key) {
+    const os = getOsFamily();
+    let out = key;
+    // Normalize case: common aliases
+    out = out.replace(/Mod/gi, os === 'mac' ? 'Cmd' : 'Ctrl');
+    out = out.replace(/Meta/gi, os === 'mac' ? 'Cmd' : 'Win');
+    if (os === 'mac') {
+      out = out.replace(/Alt/gi, 'Option');
+    }
+    return out;
+}
+
 /**
  * Get core application keybindings
  */
@@ -211,7 +259,7 @@ function getCoreKeybindings() {
         {
             description: 'Execute Code (now)',
             action: 'evalNow',
-            key: getEffectiveKeybinding('evalNow', 'Ctrl-Enter')
+            key: getEffectiveKeybinding('evalNow', 'Mod-Enter')
         },
         {
             description: 'Execute Code (quantised)',
@@ -274,12 +322,12 @@ function getEditorKeybindings() {
         {
             description: 'Undo',
             action: 'undo',
-            key: getEffectiveKeybinding('undo', 'Ctrl-z')
+            key: getEffectiveKeybinding('undo', 'Mod-z')
         },
         {
             description: 'Redo',
             action: 'redo',
-            key: getEffectiveKeybinding('redo', 'Ctrl-y')
+            key: getEffectiveKeybinding('redo', 'Shift-Mod-z')
         }
     ];
 }
