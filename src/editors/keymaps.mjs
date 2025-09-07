@@ -1,7 +1,8 @@
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
 import { keymap } from "@codemirror/view";
+import { Prec } from "@codemirror/state";
 import { sendTouSEQ } from "../io/serialComms.mjs";
-import { historyKeymap } from "@codemirror/commands";
+import { historyKeymap, deleteCharBackward } from "@codemirror/commands";
 import {
   toggleVid,
   evalNow,
@@ -20,6 +21,7 @@ import {
 
 
 import { makeDeleteWrapper } from "./editorConfig.mjs";
+import { getUserSettings } from "../utils/persistentUserSettings.mjs";
 
 // Modified keybindings to improve usability
 const completeKeymapModified = completeClojureKeymap.map((binding) => {
@@ -104,6 +106,22 @@ export const structural_navigation_keymap = [
 ];
 
 export let baseKeymap = [
+  // Highest precedence Backspace gate: when prevention is disabled,
+  // bypass clojure-mode's close_brackets Backspace handler.
+  Prec.highest(keymap.of([
+    {
+      key: "Backspace",
+      run: (view) => {
+        const prevent = getUserSettings().editor?.preventBracketUnbalancing ?? true;
+        if (!prevent) {
+          // Feature disabled: perform normal backspace and stop propagation
+          return deleteCharBackward(view);
+        }
+        // Feature enabled: let lower keymaps (clojure-mode) handle it
+        return false;
+      },
+    },
+  ])),
   keymap.of(useq_keymap),
   keymap.of(structural_navigation_keymap),
   keymap.of(completeKeymapModified),

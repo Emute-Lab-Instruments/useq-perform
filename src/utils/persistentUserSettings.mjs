@@ -24,7 +24,8 @@ const defaultUserSettings = {
   editor: { 
     code: defaultMainEditorStartingCode,
     theme: defaultTheme,
-    fontSize: defaultFontSize },
+    fontSize: defaultFontSize,
+    preventBracketUnbalancing: true },
   storage : {  
     saveCodeLocally: true,
     autoSaveEnabled: true,
