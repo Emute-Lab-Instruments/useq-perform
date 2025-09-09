@@ -64,13 +64,39 @@ global.$ = (selector) => {
   return mockJQuery;
 };
 
+// Mock activeUserSettings global
+global.activeUserSettings = {
+  ui: {
+    expressionLastTrackingEnabled: true,
+    expressionGutterEnabled: true,
+    expressionClearButtonEnabled: true
+  }
+};
+
+// Mock localStorage for settings persistence
+const localStorageMock = {
+  getItem: (key) => localStorageMock.store[key] || null,
+  setItem: (key, value) => { 
+    localStorageMock.store[key] = value != null ? value.toString() : '';
+  },
+  removeItem: (key) => { delete localStorageMock.store[key]; },
+  clear: () => { localStorageMock.store = {}; },
+  store: {}
+};
+
+Object.defineProperty(global.window, 'localStorage', {
+  value: localStorageMock,
+  writable: true
+});
+
 // Mock console methods to avoid noise in test output
 console.log = () => {};
 console.warn = () => {};
+const originalConsoleError = console.error;
 console.error = (...args) => {
-  // Only show actual errors, not debug logs
-  if (args[0] && args[0].toString().includes('Error')) {
-    console.error(...args);
+  // Only show actual errors, not debug logs, and avoid recursion
+  if (args[0] && typeof args[0] === 'string' && args[0].includes('Error')) {
+    originalConsoleError(...args);
   }
 };
 

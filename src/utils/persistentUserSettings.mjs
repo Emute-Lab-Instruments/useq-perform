@@ -64,7 +64,14 @@ export function loadUserSettings() {
     if (retrievedSettingsStr) {
       const retrievedSettings = JSON.parse(retrievedSettingsStr);
       dbg('persistentUserSettings.mjs: Retrieved settings theme:', retrievedSettings.editor?.theme);
-      activeUserSettings = { ...activeUserSettings, ...retrievedSettings };
+      // Deep merge to preserve default values that weren't saved
+      activeUserSettings = {
+        ...activeUserSettings,
+        ...retrievedSettings,
+        editor: { ...activeUserSettings.editor, ...retrievedSettings.editor },
+        storage: { ...activeUserSettings.storage, ...retrievedSettings.storage },
+        ui: { ...activeUserSettings.ui, ...retrievedSettings.ui }
+      };
       dbg("Active user settings:", activeUserSettings);
     } else {
       // If not, check to see if the old settings exist
@@ -81,9 +88,13 @@ return activeUserSettings;
     activeUserSettings = { ...defaultUserSettings };
   }
 
-  // Auto-detect OS family (mac vs pc) if unset
+  // Ensure UI section exists and has all defaults
   try {
     if (!activeUserSettings.ui) activeUserSettings.ui = {};
+    // Ensure all UI defaults are present
+    activeUserSettings.ui = { ...defaultUserSettings.ui, ...activeUserSettings.ui };
+    
+    // Auto-detect OS family (mac vs pc) if unset
     if (!activeUserSettings.ui.osFamily) {
       const platformStr = (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent || '')) || '';
       const isMac = /Mac|iPhone|iPad|iPod/i.test(platformStr);
@@ -132,7 +143,14 @@ export function saveUserSettings() {
  */
 export function updateUserSettings(values) {
   dbg("persistentUserSettings.mjs: Updating settings with:", values);
-  activeUserSettings = { ...activeUserSettings, ...values };
+  // Deep merge to preserve existing nested settings
+  activeUserSettings = {
+    ...activeUserSettings,
+    ...values,
+    editor: values.editor ? { ...activeUserSettings.editor, ...values.editor } : activeUserSettings.editor,
+    storage: values.storage ? { ...activeUserSettings.storage, ...values.storage } : activeUserSettings.storage,
+    ui: values.ui ? { ...activeUserSettings.ui, ...values.ui } : activeUserSettings.ui
+  };
   saveUserSettings();
   try {
     window.dispatchEvent(new CustomEvent('useq-settings-changed', { detail: activeUserSettings }));

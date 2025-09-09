@@ -636,8 +636,8 @@ export class ExpressionGutterMarker extends GutterMarker {
     this.showClear = showClear;
   }
   
-  toDOM(createElement = (tag) => document.createElement(tag)) {
-    const div = createElement('div');
+  toDOM() {
+    const div = document.createElement('div');
     div.style.cssText = `
       position: relative;
       width: 14px;
@@ -646,7 +646,7 @@ export class ExpressionGutterMarker extends GutterMarker {
     `;
     
     if (this.isStart || this.isMid || this.isEnd) {
-      const line = createElement('div');
+      const line = document.createElement('div');
       const opacity = this.isActive ? '1.0' : '0.3';
       line.style.cssText = `
         position: absolute;
@@ -662,7 +662,7 @@ export class ExpressionGutterMarker extends GutterMarker {
 
     // Add clear button centered on the bar when active start line
     if (this.showClear && this.isActive && this.exprType) {
-      const btn = createElement('span');
+      const btn = document.createElement('span');
       btn.className = 'cm-expr-clear-btn';
       btn.dataset.expr = this.exprType;
       btn.textContent = '×';
