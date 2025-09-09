@@ -244,4 +244,34 @@ function buildUISettings($container) {
         });
     
     $container.append(createFormRow('Console Line Limit', $consoleLinesInput));
+
+    // Expression tracking & gutter options
+    const ui = activeUserSettings.ui || {};
+
+    const $gutterEnabled = $('<input>')
+        .attr('type', 'checkbox')
+        .addClass('panel-checkbox')
+        .prop('checked', ui.expressionGutterEnabled !== false)
+        .on('change', () => {
+            updateUserSettings({ ui: { ...activeUserSettings.ui, expressionGutterEnabled: $gutterEnabled.prop('checked') } });
+        });
+    $container.append(createFormRow('Show expression gutter bars', $gutterEnabled));
+
+    const $lastTrackingEnabled = $('<input>')
+        .attr('type', 'checkbox')
+        .addClass('panel-checkbox')
+        .prop('checked', ui.expressionLastTrackingEnabled !== false)
+        .on('change', () => {
+            updateUserSettings({ ui: { ...activeUserSettings.ui, expressionLastTrackingEnabled: $lastTrackingEnabled.prop('checked') } });
+        });
+    $container.append(createFormRow('Track last expression per type', $lastTrackingEnabled));
+
+    const $clearButtonEnabled = $('<input>')
+        .attr('type', 'checkbox')
+        .addClass('panel-checkbox')
+        .prop('checked', ui.expressionClearButtonEnabled !== false)
+        .on('change', () => {
+            updateUserSettings({ ui: { ...activeUserSettings.ui, expressionClearButtonEnabled: $clearButtonEnabled.prop('checked') } });
+        });
+    $container.append(createFormRow('Show clear (×) button on active expression', $clearButtonEnabled));
 }

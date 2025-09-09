@@ -35,7 +35,11 @@ const defaultUserSettings = {
     consoleLinesLimit: 1000,
     customThemes: [],
     // OS family for key display/bindings: 'pc' (Linux/Windows) or 'mac'
-    osFamily: 'pc'
+    osFamily: 'pc',
+    // Editor UI features
+    expressionGutterEnabled: true,
+    expressionLastTrackingEnabled: true,
+    expressionClearButtonEnabled: true
   }
 };
 
@@ -130,6 +134,9 @@ export function updateUserSettings(values) {
   dbg("persistentUserSettings.mjs: Updating settings with:", values);
   activeUserSettings = { ...activeUserSettings, ...values };
   saveUserSettings();
+  try {
+    window.dispatchEvent(new CustomEvent('useq-settings-changed', { detail: activeUserSettings }));
+  } catch (e) {}
 }
 
 /**

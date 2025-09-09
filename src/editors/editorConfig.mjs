@@ -10,7 +10,7 @@ import {
 } from "@nextjournal/clojure-mode/extensions/eval-region";
 
 // SERIAL COMMUNICATION
-import { sendTouSEQ } from "../io/serialComms.mjs";
+import { sendTouSEQ, isConnectedToModule } from "../io/serialComms.mjs";
 import { post } from "../io/console.mjs";
 
 // UI STATE
@@ -29,8 +29,8 @@ export function evalToplevel(opts, prefix = "") {
   const state = opts.state;
   const code = prefix + top_level_string(state);
   
-  // Track expression evaluation for gutter highlighting
-  if (opts.view && typeof opts.view.dispatch === 'function') {
+  // Track expression evaluation for gutter highlighting only if connected
+  if (opts.view && typeof opts.view.dispatch === 'function' && isConnectedToModule()) {
     detectAndTrackExpressionEvaluation(opts.view);
     
     // Highlight the evaluated region
