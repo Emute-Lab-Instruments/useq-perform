@@ -7,6 +7,8 @@ import { syntaxTree } from "@codemirror/language";
 import { ASTCursor } from "../../utils/astCursor.mjs";
 import { EditorView, Decoration, ViewPlugin, gutter, GutterMarker } from "@codemirror/view";
 import { serialVisPalette } from "../../ui/serialVis/utils.mjs";
+import { sendTouSEQ, isConnectedToModule } from "../../io/serialComms.mjs";
+import { activeUserSettings } from "../../utils/persistentUserSettings.mjs";
 
 // Helper functions for tree processing
 function treeToJson(node, state) {
@@ -34,12 +36,12 @@ function collectChildren(node, state) {
     return children.length > 0 ? children : undefined;
 }
 
-function isStructuralToken(type) {
+export function isStructuralToken(type) {
     return ["(", ")", "[", "]", "{", "}", "Brace", "Bracket", "Paren"].includes(type);
 }
 
-function isOperatorNode(node) {
-    return node.type === "Operator" && node.children && node.children.length > 0;
+export function isOperatorNode(node) {
+    return !!(node && node.type === "Operator" && node.children && node.children.length > 0);
 }
 
 function filterStructuralAndLiftOperatorNodes(node) {
@@ -59,9 +61,9 @@ function filterStructuralAndLiftOperatorNodes(node) {
     return { ...node, children };
 }
 
-function isContainerNode(node) {
-    return node.type === "List" || node.type === "Vector" ||
-        node.type === "Program" || node.type === "Map";
+export function isContainerNode(node) {
+    return !!(node && (node.type === "List" || node.type === "Vector" ||
+        node.type === "Program" || node.type === "Map"));
 }
 
 function distributeWhitespace(children, parentFrom, parentTo) {
@@ -338,6 +340,7 @@ export const lastChildIndexField = StateField.define({
 
 import { Annotation } from "@codemirror/state";
 export const lastChildIndexAnnotation = Annotation.define();
+export const settingsChangedAnnotation = Annotation.define();
 
 // --- Expression Evaluation Tracking ---
 
@@ -350,15 +353,30 @@ export const lastEvaluatedExpressionField = StateField.define({
         return new Map(); // expressionType -> { from, to, line }
     },
     update(value, tr) {
-        const evaluationMeta = tr.annotation(expressionEvaluatedAnnotation);
-        if (evaluationMeta && evaluationMeta.expressionType && evaluationMeta.position !== undefined) {
+        // Process all annotations in this transaction (may be multiple types)
+        const anns = tr.annotations || [];
+        if (anns.length) {
+            let updated = false;
             const newMap = new Map(value);
-            newMap.set(evaluationMeta.expressionType, {
-                from: evaluationMeta.position.from,
-                to: evaluationMeta.position.to,
-                line: evaluationMeta.position.line
-            });
-            return newMap;
+            for (const ann of anns) {
+                if (ann.type === expressionEvaluatedAnnotation) {
+                    const meta = ann.value || {};
+                    if (meta && meta.expressionType) {
+                        if (meta.clear) {
+                            newMap.delete(meta.expressionType);
+                            updated = true;
+                        } else if (meta.position !== undefined) {
+                            newMap.set(meta.expressionType, {
+                                from: meta.position.from,
+                                to: meta.position.to,
+                                line: meta.position.line
+                            });
+                            updated = true;
+                        }
+                    }
+                }
+            }
+            if (updated) return newMap;
         }
         return value;
     }
@@ -395,42 +413,83 @@ export function findExpressionAtPosition(cursor, lineText, lineFrom, findBoundsF
 // Helper function to detect expression at cursor and dispatch evaluation annotation
 export function detectAndTrackExpressionEvaluation(view) {
     const state = view.state;
-    const cursor = state.selection.main.head;
     const doc = state.doc;
-    
-    // Get the line containing the cursor
-    const line = doc.lineAt(cursor);
-    const lineText = line.text;
-    
-    // Pure function to find expression
-    const expressionInfo = findExpressionAtPosition(
-        cursor, 
-        lineText, 
-        line.from, 
-        (matchStart) => {
-            const bounds = findExpressionBounds(state, matchStart);
-            return {
-                ...bounds,
-                startPos: doc.line(bounds.from).from,
-                endPos: doc.line(bounds.to).to
-            };
+    const ui = (activeUserSettings && activeUserSettings.ui) || {};
+    if (ui.expressionLastTrackingEnabled === false) {
+        return;
+    }
+
+    // Determine evaluated top-level range using the same cursor-derived logic as highlight
+    const cursorField = state.field(nodeTreeCursorField, false);
+    let evalFrom = 0, evalTo = 0;
+    if (cursorField && cursorField.getPath) {
+        const path = cursorField.getPath();
+        if (Array.isArray(path) && path.length > 0) {
+            const topIndex = path[0];
+            let topNode = cursorField.root;
+            if (topNode && topNode.children && topNode.children.length > topIndex) {
+                const tn = topNode.children[topIndex];
+                if (typeof tn.from === 'number' && typeof tn.to === 'number') {
+                    evalFrom = tn.from;
+                    evalTo = tn.to;
+                }
+            }
+        } else {
+            // Fallback: whole document
+            evalFrom = 0;
+            evalTo = doc.length;
         }
-    );
-    
-    if (expressionInfo) {
-        view.dispatch({
-            annotations: expressionEvaluatedAnnotation.of(expressionInfo)
-        });
+    }
+
+    if (evalFrom === evalTo) return; // nothing to do
+
+    // Scan all lines within the evaluated range and pick the last occurrence per expression type
+    const startLineNum = doc.lineAt(evalFrom).number;
+    const endLineNum = doc.lineAt(evalTo).number;
+    const lastInChunk = new Map(); // exprType -> { expressionType, position, matchStart }
+
+    for (let lineNum = startLineNum; lineNum <= endLineNum; lineNum++) {
+        const lineObj = doc.line(lineNum);
+        const lineText = lineObj.text;
+        const lineFrom = lineObj.from;
+        let match;
+        matchPattern.lastIndex = 0;
+        while ((match = matchPattern.exec(lineText)) !== null) {
+            const matchStart = lineFrom + match.index;
+            if (matchStart < evalFrom || matchStart > evalTo) continue;
+            const bounds = findExpressionBounds(state, matchStart);
+            const exprType = `${match[1]}${match[2]}`;
+            const info = {
+                expressionType: exprType,
+                position: {
+                    from: doc.line(bounds.from).from,
+                    to: doc.line(bounds.to).to,
+                    line: bounds.from
+                },
+                matchStart
+            };
+            const prev = lastInChunk.get(exprType);
+            if (!prev || prev.matchStart <= info.matchStart) {
+                lastInChunk.set(exprType, info);
+            }
+        }
+    }
+
+    if (lastInChunk.size > 0) {
+        const annotations = Array.from(lastInChunk.values()).map(info =>
+            expressionEvaluatedAnnotation.of({ expressionType: info.expressionType, position: info.position })
+        );
+        view.dispatch({ annotations });
     }
 }
 
 // Helper: get path to node at position
-function getChildIndexFromPath(path) {
+export function getChildIndexFromPath(path) {
     if (!Array.isArray(path) || path.length === 0) return 0;
     return path[path.length - 1];
 }
 
-function getParentPath(path) {
+export function getParentPath(path) {
     if (!Array.isArray(path) || path.length === 0) return [];
     return path.slice(0, -1);
 }
@@ -541,66 +600,110 @@ export function navigateNext(state) {
 // --- Expression Gutter for 'a' or 'd' followed by digit and space ---
 
 // Helper: get palette based on theme (light/dark)
-function getCurrentPalette() {
-  const isDark = document.documentElement.classList.contains("cm-theme-dark") ||
-                 window.matchMedia("(prefers-color-scheme: dark)").matches;
+export function getCurrentPalette(doc = typeof document !== 'undefined' ? document : null, win = typeof window !== 'undefined' ? window : null) {
+  // Fallback to light theme if no DOM available
+  if (!doc || !win) {
+    return serialVisPalette;
+  }
+  
+  const isDark = doc.documentElement.classList.contains("cm-theme-dark") ||
+                 win.matchMedia("(prefers-color-scheme: dark)").matches;
   // If you have a dark palette, use it here. Otherwise, fallback to serialVisPalette.
   // Example: return isDark ? serialVisPaletteDark : serialVisPalette;
   return serialVisPalette;
 }
 
 // Map pattern to palette index
-function getMatchColor(match) {
+export function getMatchColor(match) {
   const palette = getCurrentPalette();
-  const [full, type, digit] = match;
-  if (type === "a") {
-    if (digit === "1") return palette[0];
-    if (digit === "2") return palette[1];
-    if (digit === "3") return palette[2];
-  }
-  if (type === "d") {
-    if (digit === "1") return palette[2];
-    if (digit === "2") return palette[3];
-    if (digit === "3") return palette[4];
-  }
-  return palette[0];
+  const digit = Number(match[2] || 1);
+  return palette[(digit - 1) % palette.length];
 }
 
 // Regex: 'a' or 'd', then digit, then space (but don't include space in match)
-const matchPattern = /\b([ad])([1-3])(?= )/g;
+const matchPattern = /\b([ads])([1-8])(?= )/g;
 
 // Custom gutter marker for expression vertical lines
-class ExpressionGutterMarker extends GutterMarker {
-  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true) {
+export class ExpressionGutterMarker extends GutterMarker {
+  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true, exprType = null, showClear = false) {
     super();
     this.color = color;
     this.isStart = isStart;
     this.isEnd = isEnd;
     this.isMid = isMid;
     this.isActive = isActive;
+    this.exprType = exprType;
+    this.showClear = showClear;
   }
   
-  toDOM() {
-    const div = document.createElement('div');
+  toDOM(createElement = (tag) => document.createElement(tag)) {
+    const div = createElement('div');
     div.style.cssText = `
       position: relative;
-      width: 4px;
+      width: 14px;
       height: 100%;
       margin-left: 2px;
     `;
     
     if (this.isStart || this.isMid || this.isEnd) {
-      const line = document.createElement('div');
+      const line = createElement('div');
       const opacity = this.isActive ? '1.0' : '0.3';
       line.style.cssText = `
         position: absolute;
-        left: 0;
+        left: 50%;
+        transform: translateX(-50%);
         width: 4px;
         background-color: ${this.color};
         opacity: ${opacity};
         height: 100%;
       `;
       div.appendChild(line);
+    }
+
+    // Add clear button centered on the bar when active start line
+    if (this.showClear && this.isActive && this.exprType) {
+      const btn = createElement('span');
+      btn.className = 'cm-expr-clear-btn';
+      btn.dataset.expr = this.exprType;
+      btn.textContent = '×';
+      btn.title = `Clear ${this.exprType}`;
+      // Use the expression color as background; choose contrasting text color
+      const bg = this.color || '#888';
+      // Compute simple luminance for contrast decision
+      let fg = '#000';
+      try {
+        const hex = bg.startsWith('#') ? bg.substring(1) : null;
+        if (hex && (hex.length === 6 || hex.length === 3)) {
+          const hx = hex.length === 3 ? hex.split('').map(c=>c+c).join('') : hex;
+          const r = parseInt(hx.substring(0,2),16);
+          const g = parseInt(hx.substring(2,4),16);
+          const b = parseInt(hx.substring(4,6),16);
+          const luminance = 0.299*r + 0.587*g + 0.114*b;
+          fg = luminance > 140 ? '#000' : '#fff';
+        } else {
+          // Fallback for rgba()/named colors: default to white text
+          fg = '#fff';
+        }
+      } catch (e) { fg = '#fff'; }
+      btn.style.cssText = `
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 14px;
+        height: 14px;
+        line-height: 14px;
+        text-align: center;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        user-select: none;
+        color: ${fg};
+        background: ${bg};
+        border-radius: 4px;
+        z-index: 5;
+      `;
+      div.appendChild(btn);
     }
     
     return div;
@@ -612,7 +715,9 @@ class ExpressionGutterMarker extends GutterMarker {
            other.isStart === this.isStart &&
            other.isEnd === this.isEnd &&
            other.isMid === this.isMid &&
-           other.isActive === this.isActive;
+           other.isActive === this.isActive &&
+           other.exprType === this.exprType &&
+           other.showClear === this.showClear;
   }
 }
 
@@ -688,15 +793,17 @@ export function isRangeActive(range, lastEvaluated) {
 }
 
 // Pure function: Create markers for an expression range
-export function createMarkersForRange(range, isActive, docLineFn) {
+export function createMarkersForRange(range, isActive, docLineFn, exprType) {
     const markers = [];
+    const midLine = Math.floor((range.from + range.to) / 2);
     
     for (let line = range.from; line <= range.to; line++) {
         const isStart = line === range.from;
         const isEnd = line === range.to;
         const isMid = !isStart && !isEnd;
-        
-        const marker = new ExpressionGutterMarker(range.color, isStart, isEnd, isMid, isActive);
+        const ui = (activeUserSettings && activeUserSettings.ui) || {};
+        const showClear = (ui.expressionClearButtonEnabled !== false) && isActive && (line === midLine);
+        const marker = new ExpressionGutterMarker(range.color, isStart, isEnd, isMid, isActive, exprType, showClear);
         const lineObj = docLineFn(line);
         markers.push({
             pos: lineObj.from,
@@ -716,7 +823,7 @@ export function processExpressionRanges(expressionRanges, lastEvaluatedMap, docL
         
         for (const range of ranges) {
             const isActive = isRangeActive(range, lastEval);
-            const markers = createMarkersForRange(range, isActive, docLineFn);
+            const markers = createMarkersForRange(range, isActive, docLineFn, expressionType);
             allMarkers.push(...markers);
         }
     }
@@ -731,7 +838,13 @@ export function processExpressionRanges(expressionRanges, lastEvaluatedMap, docL
 function buildMarkers(state) {
     const builder = new RangeSetBuilder();
     const doc = state.doc;
-    const lastEvaluated = state.field(lastEvaluatedExpressionField, false) || new Map();
+    // Respect settings toggles
+    const ui = (activeUserSettings && activeUserSettings.ui) || {};
+    if (ui.expressionGutterEnabled === false) {
+        return builder.finish();
+    }
+    const lastEvaluatedRaw = state.field(lastEvaluatedExpressionField, false) || new Map();
+    const lastEvaluated = ui.expressionLastTrackingEnabled === false ? new Map() : lastEvaluatedRaw;
     
     // Create array of line objects for pure function
     const docLines = [];
@@ -765,12 +878,71 @@ const expressionGutterField = StateField.define({
   },
   
   update(markers, tr) {
+    // Rebuild markers when document changes OR when last-evaluated map changes
     if (tr.docChanged) {
+      return buildMarkers(tr.state);
+    }
+    const prevMap = tr.startState.field(lastEvaluatedExpressionField, false);
+    const nextMap = tr.state.field(lastEvaluatedExpressionField, false);
+    if (prevMap !== nextMap) {
+      return buildMarkers(tr.state);
+    }
+    const settingsChanged = tr.annotation(settingsChangedAnnotation);
+    if (settingsChanged) {
       return buildMarkers(tr.state);
     }
     return markers;
   }
 });
+
+// View plugin to handle click on clear icons
+const expressionClearClickPlugin = ViewPlugin.fromClass(class {
+  constructor(view) {
+    this.view = view;
+    this.onClick = this.onClick.bind(this);
+    this.onSettingsChange = this.onSettingsChange.bind(this);
+    view.dom.addEventListener('click', this.onClick);
+    window.addEventListener('useq-settings-changed', this.onSettingsChange);
+  }
+  destroy() {
+    this.view.dom.removeEventListener('click', this.onClick);
+    window.removeEventListener('useq-settings-changed', this.onSettingsChange);
+  }
+  onClick(e) {
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    const btn = target.closest('.cm-expr-clear-btn');
+    if (!btn) return;
+    const ui = (activeUserSettings && activeUserSettings.ui) || {};
+    if (ui.expressionClearButtonEnabled === false) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const exprType = btn.getAttribute('data-expr');
+    if (!exprType) return;
+    handleClearExpression(this.view, exprType);
+  }
+  onSettingsChange() {
+    // Trigger rebuild of fields that depend on settings
+    try {
+      this.view.dispatch({ annotations: settingsChangedAnnotation.of(true) });
+    } catch (e) {}
+  }
+});
+
+function handleClearExpression(view, exprType) {
+  if (!isConnectedToModule || !isConnectedToModule()) {
+    // Not connected; do nothing
+    return;
+  }
+  // Send neutral value based on type
+  const type = exprType[0];
+  const code = type === 'a' ? `(${exprType} 0.5)` : `(${exprType} 0)`;
+  try { sendTouSEQ(code); } catch (e) {
+    // ignore
+  }
+  // Clear active state for this expression type
+  view.dispatch({ annotations: expressionEvaluatedAnnotation.of({ expressionType: exprType, clear: true }) });
+}
 
 // Create the expression gutter
 export const expressionGutter = gutter({
@@ -788,6 +960,7 @@ export let structureExtensions = [
     nodeHighlightField,
     lastChildIndexField,
     lastEvaluatedExpressionField,
+    expressionClearClickPlugin,
     expressionGutterField,
     expressionGutter
 ];

@@ -2,15 +2,20 @@
  * Updates the code highlight color based on connection status
  * @param {boolean} connected - Whether connected to the uSEQ module
  */
-export function setCodeHighlightColor(connected) {
-    const root = document.documentElement;
+export function setCodeHighlightColor(connected, doc = typeof document !== 'undefined' ? document : null, win = typeof window !== 'undefined' ? window : null) {
+    // Fallback if no DOM available (e.g., in tests)
+    if (!doc || !win) {
+      return;
+    }
+    
+    const root = doc.documentElement;
     
     let color = undefined;
     if (connected) {
-      color = getComputedStyle(root).getPropertyValue('--code-eval-highlight-color-connected').trim();
+      color = win.getComputedStyle(root).getPropertyValue('--code-eval-highlight-color-connected').trim();
     }
     else {
-      color = getComputedStyle(root).getPropertyValue('--code-eval-highlight-color-disconnected').trim();
+      color = win.getComputedStyle(root).getPropertyValue('--code-eval-highlight-color-disconnected').trim();
     }
   
     root.style.setProperty('--code-eval-highlight-color', color);
