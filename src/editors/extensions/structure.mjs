@@ -625,7 +625,7 @@ const matchPattern = /\b([ads])([1-8])(?= )/g;
 
 // Custom gutter marker for expression vertical lines
 export class ExpressionGutterMarker extends GutterMarker {
-  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true, exprType = null, showClear = false) {
+  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true, exprType = null, showButton = false) {
     super();
     this.color = color;
     this.isStart = isStart;
@@ -633,7 +633,7 @@ export class ExpressionGutterMarker extends GutterMarker {
     this.isMid = isMid;
     this.isActive = isActive;
     this.exprType = exprType;
-    this.showClear = showClear;
+    this.showButton = showButton;
   }
   
   toDOM() {
@@ -660,13 +660,21 @@ export class ExpressionGutterMarker extends GutterMarker {
       div.appendChild(line);
     }
 
-    // Add clear button centered on the bar when active start line
-    if (this.showClear && this.isActive && this.exprType) {
+    // Add button (clear 'x' for active, play '▶' for inactive) centered on the gutter bar
+    if (this.showButton && this.exprType) {
       const btn = document.createElement('span');
-      btn.className = 'cm-expr-clear-btn';
-      btn.dataset.expr = this.exprType;
-      btn.textContent = '×';
-      btn.title = `Clear ${this.exprType}`;
+      if (this.isActive) {
+        btn.className = 'cm-expr-clear-btn';
+        btn.dataset.expr = this.exprType;
+        btn.textContent = '×';
+        btn.title = `Clear ${this.exprType}`;
+      } else {
+        btn.className = 'cm-expr-play-btn';
+        btn.dataset.expr = this.exprType;
+        btn.textContent = '▶';
+        btn.title = `Activate ${this.exprType}`;
+      }
+      
       // Use the expression color as background; choose contrasting text color
       const bg = this.color || '#888';
       // Compute simple luminance for contrast decision
@@ -685,6 +693,7 @@ export class ExpressionGutterMarker extends GutterMarker {
           fg = '#fff';
         }
       } catch (e) { fg = '#fff'; }
+      
       btn.style.cssText = `
         position: absolute;
         left: 50%;
@@ -694,7 +703,7 @@ export class ExpressionGutterMarker extends GutterMarker {
         height: 14px;
         line-height: 14px;
         text-align: center;
-        font-size: 12px;
+        font-size: ${this.isActive ? '12px' : '10px'};
         font-weight: bold;
         cursor: pointer;
         user-select: none;
@@ -702,6 +711,9 @@ export class ExpressionGutterMarker extends GutterMarker {
         background: ${bg};
         border-radius: 4px;
         z-index: 5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       `;
       div.appendChild(btn);
     }
@@ -717,7 +729,7 @@ export class ExpressionGutterMarker extends GutterMarker {
            other.isMid === this.isMid &&
            other.isActive === this.isActive &&
            other.exprType === this.exprType &&
-           other.showClear === this.showClear;
+           other.showButton === this.showButton;
   }
 }
 
@@ -802,8 +814,12 @@ export function createMarkersForRange(range, isActive, docLineFn, exprType) {
         const isEnd = line === range.to;
         const isMid = !isStart && !isEnd;
         const ui = (activeUserSettings && activeUserSettings.ui) || {};
-        const showClear = (ui.expressionClearButtonEnabled !== false) && isActive && (line === midLine);
-        const marker = new ExpressionGutterMarker(range.color, isStart, isEnd, isMid, isActive, exprType, showClear);
+        
+        // Show button on middle line: 'x' for active, 'play' for inactive expressions
+        const buttonsEnabled = ui.expressionClearButtonEnabled !== false;
+        const showButton = buttonsEnabled && (line === midLine);
+        
+        const marker = new ExpressionGutterMarker(range.color, isStart, isEnd, isMid, isActive, exprType, showButton);
         const lineObj = docLineFn(line);
         markers.push({
             pos: lineObj.from,
@@ -911,15 +927,32 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
   onClick(e) {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
-    const btn = target.closest('.cm-expr-clear-btn');
-    if (!btn) return;
-    const ui = (activeUserSettings && activeUserSettings.ui) || {};
-    if (ui.expressionClearButtonEnabled === false) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const exprType = btn.getAttribute('data-expr');
-    if (!exprType) return;
-    handleClearExpression(this.view, exprType);
+    
+    // Handle clear button (x)
+    const clearBtn = target.closest('.cm-expr-clear-btn');
+    if (clearBtn) {
+      const ui = (activeUserSettings && activeUserSettings.ui) || {};
+      if (ui.expressionClearButtonEnabled === false) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const exprType = clearBtn.getAttribute('data-expr');
+      if (!exprType) return;
+      handleClearExpression(this.view, exprType);
+      return;
+    }
+    
+    // Handle play button (▶)
+    const playBtn = target.closest('.cm-expr-play-btn');
+    if (playBtn) {
+      const ui = (activeUserSettings && activeUserSettings.ui) || {};
+      if (ui.expressionClearButtonEnabled === false) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const exprType = playBtn.getAttribute('data-expr');
+      if (!exprType) return;
+      handlePlayExpression(this.view, exprType);
+      return;
+    }
   }
   onSettingsChange() {
     // Trigger rebuild of fields that depend on settings
@@ -942,6 +975,54 @@ function handleClearExpression(view, exprType) {
   }
   // Clear active state for this expression type
   view.dispatch({ annotations: expressionEvaluatedAnnotation.of({ expressionType: exprType, clear: true }) });
+}
+
+function handlePlayExpression(view, exprType) {
+  if (!isConnectedToModule || !isConnectedToModule()) {
+    // Not connected; do nothing
+    return;
+  }
+  
+  // Find the expression in the editor and send it to the module
+  const state = view.state;
+  const doc = state.doc;
+  
+  // Find the first occurrence of this expression pattern in the document
+  for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
+    const lineObj = doc.line(lineNum);
+    const lineText = lineObj.text;
+    const lineFrom = lineObj.from;
+    
+    let match;
+    matchPattern.lastIndex = 0;
+    while ((match = matchPattern.exec(lineText)) !== null) {
+      const matchStart = lineFrom + match.index;
+      const foundExprType = `${match[1]}${match[2]}`;
+      
+      if (foundExprType === exprType) {
+        // Found the expression, get its bounds and send it
+        const bounds = findExpressionBounds(state, matchStart);
+        const expressionStartLine = bounds.from;
+        const expressionEndLine = bounds.to;
+        
+        // Extract the full expression text
+        const startLineObj = doc.line(expressionStartLine);
+        const endLineObj = doc.line(expressionEndLine);
+        const expressionText = doc.sliceString(startLineObj.from, endLineObj.to);
+        
+        // Send to module
+        try { 
+          sendTouSEQ(expressionText.trim()); 
+        } catch (e) {
+          // ignore
+        }
+        
+        // Mark this expression as active
+        detectAndTrackExpressionEvaluation(view);
+        return;
+      }
+    }
+  }
 }
 
 // Create the expression gutter
