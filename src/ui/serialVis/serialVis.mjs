@@ -11,7 +11,11 @@ function drawSerialVis() {
   const verticalPadding = c.height * 0.1; // 10% padding top and bottom
   const centerY = c.height / 2; // Center point of canvas
   const drawableHeight = c.height - verticalPadding * 2; // Height available for drawing
-  const gap = c.width / serialBuffers[0].bufferLength;
+  const referenceBuffer = serialBuffers[1] || serialBuffers[0];
+  if (!referenceBuffer) {
+    return;
+  }
+  const gap = c.width / referenceBuffer.bufferLength;
 
   // Enable antialiasing for smoother lines
   ctx.imageSmoothingEnabled = true;
@@ -68,21 +72,28 @@ function drawSerialVis() {
   const interpolationSteps = Array.from({ length: segments + 1 }, (_, i) => i * step);
 
   // Pre-calculate oldest values once for each channel to avoid repeated method calls
-  const oldestValues = Array(8).fill().map((_, ch) => {
-    const buffer = serialBuffers[ch];
+  const userChannelCount = Math.max(0, serialBuffers.length - 1);
+  const oldestValues = Array(userChannelCount).fill().map((_, ch) => {
+    const buffer = serialBuffers[ch + 1];
+    if (!buffer) {
+      return [];
+    }
     return Array(buffer.bufferLength - 1).fill().map((_, i) => buffer.oldest(i));
   });
 
   // Draw each channel
-  for (let ch = 0; ch < 8; ch++) {
+  for (let ch = 0; ch < userChannelCount; ch++) {
     const channelValues = oldestValues[ch];
+    if (!channelValues || channelValues.length === 0) {
+      continue;
+    }
     const points = channelValues.map((value, i) => ({
       x: gap * i,
       y: mapValueToY(value)
     }));
 
     ctx.beginPath();
-    ctx.strokeStyle = serialVisPalette[ch];
+    ctx.strokeStyle = serialVisPalette[ch % serialVisPalette.length];
 
     // Plot first point
     ctx.moveTo(points[0].x, points[0].y);
@@ -123,4 +134,3 @@ export function makeVis() {
     // fillSerialBuffersDefault();
   }
 }
-
