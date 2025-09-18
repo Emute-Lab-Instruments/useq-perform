@@ -38,7 +38,7 @@ function createSineWaveData(frequency, duration, sampleRate, amplitude = 1.0, ph
  */
 export function fillSerialBuffersDefault(duration = 2.0, sampleRate = 100) {
   // Base frequency and multipliers for each channel (creating harmonic relationships)
-  const baseFreq = 0.5; // 0.5 Hz for the first buffer
+  const baseFreq = 0.5; // 0.5 Hz for the first user buffer
   const freqMultipliers = [1, 1.5, 2, 2.5, 3, 4, 5, 6];
   
   // Generate different amplitudes for visual distinction
@@ -51,16 +51,23 @@ export function fillSerialBuffersDefault(duration = 2.0, sampleRate = 100) {
   serialBuffers.forEach((buffer, index) => {
     buffer.clear();
     
-    const frequency = baseFreq * freqMultipliers[index];
-    const amplitude = amplitudes[index];
-    const phase = phaseOffsets[index];
+    if (index === 0) {
+      const timeSeries = Array.from({ length: Math.floor(duration * sampleRate) }, (_, i) => i / sampleRate);
+      timeSeries.forEach(value => buffer.push(value));
+    } else {
+      const channelIdx = index - 1;
+      const frequency = baseFreq * freqMultipliers[channelIdx % freqMultipliers.length];
+      const amplitude = amplitudes[channelIdx % amplitudes.length];
+      const phase = phaseOffsets[channelIdx % phaseOffsets.length];
+
+      const waveData = createSineWaveData(frequency, duration, sampleRate, amplitude, phase);
+      waveData.forEach(value => buffer.push(value));
+    }
     
-    const waveData = createSineWaveData(frequency, duration, sampleRate, amplitude, phase);
-    waveData.forEach(value => buffer.push(value));
-    
-    // Trigger the map function if one is registered
-    if (serialMapFunctions[index]) {
-      serialMapFunctions[index](buffer);
+    // Trigger the map function if one is registered for user channels
+    const mapIndex = index - 1;
+    if (mapIndex >= 0 && serialMapFunctions[mapIndex]) {
+      serialMapFunctions[mapIndex](buffer);
     }
   });
   

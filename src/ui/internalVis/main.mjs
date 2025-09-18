@@ -53,7 +53,11 @@ function drawPlot() {
   
   const amplitudeMultiplier = 0.9;
   const zeroY = c.height / 2;
-  const gap = c.width / serialBuffers[0].bufferLength;
+  const referenceBuffer = serialBuffers[1] || serialBuffers[0];
+  if (!referenceBuffer) {
+    return;
+  }
+  const gap = c.width / referenceBuffer.bufferLength;
   ctx.clearRect(0, 0, c.width, c.height);
 
   const mapValueToY = (value) =>

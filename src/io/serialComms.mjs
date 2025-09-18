@@ -7,7 +7,7 @@
 import { CircularBuffer } from "../utils/CircularBuffer.mjs";
 import { Buffer } from "buffer";
 import { post } from "./console.mjs";
-import { upgradeCheck } from "../utils/upgradeCheck.mjs";
+import { upgradeCheck, currentVersion } from "../utils/upgradeCheck.mjs";
 import { dbg } from "../utils.mjs";
 import {
   setCodeHighlightColor,
@@ -91,10 +91,13 @@ export function askForPortAndConnect() {
 
 
 let connectedToModule = false;
-setConnectedToModule(false);
 
 export function setConnectedToModule(connected) {
   connectedToModule = connected;
+
+  if (!connected) {
+    resetProtocolState();
+  }
 
   // Update code highlight color
   setCodeHighlightColor(connected);
@@ -129,13 +132,157 @@ export function isConnectedToModule() {
 var serialport = null;
 var serialVars = { capture: false, captureFunc: null };
 const encoder = new TextEncoder();
-const serialBuffers = Array.from({ length: 8 }, () => new CircularBuffer(400));
+const serialBuffers = Array.from({ length: 9 }, () => new CircularBuffer(400));
 
 // Add reader reference that can be accessed globally
 let currentReader = null;
 let readingActive = false;
 
 const serialMapFunctions = [];
+
+const PROTOCOL_MODES = {
+  LEGACY: 'legacy',
+  JSON: 'json'
+};
+
+const protocolState = {
+  mode: PROTOCOL_MODES.LEGACY,
+  negotiationAttempted: false,
+  requestIdCounter: 0,
+  pendingRequests: new Map(),
+};
+
+const JSON_PROTOCOL_MIN_VERSION = { major: 1, minor: 2, patch: 0 };
+
+function resetProtocolState() {
+  protocolState.pendingRequests.forEach((pending) => {
+    if (pending && typeof pending.reject === 'function') {
+      pending.reject(new Error('Connection reset'));
+    }
+  });
+  protocolState.mode = PROTOCOL_MODES.LEGACY;
+  protocolState.negotiationAttempted = false;
+  protocolState.requestIdCounter = 0;
+  protocolState.pendingRequests.clear();
+}
+
+function versionAtLeast(version, target) {
+  if (!version) {
+    return false;
+  }
+
+  if (version.major !== target.major) {
+    return version.major > target.major;
+  }
+
+  if (version.minor !== target.minor) {
+    return version.minor > target.minor;
+  }
+
+  return version.patch >= target.patch;
+}
+
+function jsonEligibleVersion() {
+  return versionAtLeast(currentVersion, JSON_PROTOCOL_MIN_VERSION);
+}
+
+function nextRequestId() {
+  protocolState.requestIdCounter += 1;
+  return `req-${protocolState.requestIdCounter}`;
+}
+
+// Initialise connection-dependent UI state after protocol state is ready
+setConnectedToModule(false);
+
+async function maybeNegotiateJsonProtocol() {
+  if (protocolState.negotiationAttempted) {
+    return;
+  }
+
+  if (!jsonEligibleVersion()) {
+    protocolState.negotiationAttempted = true;
+    return;
+  }
+
+  protocolState.negotiationAttempted = true;
+
+  try {
+    const response = await sendJsonEval('(useq-talk-in-json)', {
+      force: true,
+      skipConsole: true,
+    });
+
+    if (response.success) {
+      protocolState.mode = PROTOCOL_MODES.JSON;
+      post('**Info**: Using structured JSON protocol for this session.');
+    } else {
+      post(`**Warning**: JSON negotiation failed (${response.text || 'no details'}), using legacy mode.`);
+    }
+  } catch (err) {
+    console.error('JSON negotiation error', err);
+    post('**Warning**: Unable to switch to JSON protocol, staying in legacy mode.');
+  }
+}
+
+function sendJsonEval(code, options = {}) {
+  const { capture = null, force = false, skipConsole = false } = options;
+
+  if (!serialport || !serialport.writable) {
+    return Promise.reject(new Error('Serial port is not writable'));
+  }
+
+  if (!force && protocolState.mode !== PROTOCOL_MODES.JSON) {
+    return Promise.reject(new Error('JSON protocol not active'));
+  }
+
+  const payload = {
+    type: 'eval',
+    code,
+  };
+
+  return writeJsonRequest(payload, { capture, skipConsole });
+}
+
+function writeJsonRequest(payload, options = {}) {
+  if (!serialport || !serialport.writable) {
+    return Promise.reject(new Error('Serial port is not writable'));
+  }
+
+  const requestId = payload.requestId || nextRequestId();
+  payload.requestId = requestId;
+
+  const pending = {
+    resolve: null,
+    reject: null,
+    capture: options.capture || null,
+    skipConsole: options.skipConsole || false,
+  };
+
+  const message = `${JSON.stringify(payload)}\n`;
+
+  return new Promise((resolve, reject) => {
+    pending.resolve = resolve;
+    pending.reject = reject;
+    protocolState.pendingRequests.set(requestId, pending);
+
+    const writer = serialport.writable.getWriter();
+
+    writer.write(encoder.encode(message))
+      .then(() => {
+        writer.releaseLock();
+      })
+      .catch((error) => {
+        writer.releaseLock();
+        protocolState.pendingRequests.delete(requestId);
+        reject(error);
+      });
+  });
+}
+
+function handleFirmwareInfo(versionMsg) {
+  upgradeCheck(versionMsg);
+  maybeNegotiateJsonProtocol();
+}
 
 // Export everything at once to avoid duplication
 export {
@@ -157,12 +304,14 @@ const SERIAL_READ_MODES = {
   ANY: 0,
   TEXT: 1,
   SERIALSTREAM: 2,
+  JSON: 3,
 };
 
 const MESSAGE_START_MARKER = 31;
 const MESSAGE_TYPES = {
   STREAM: 0,
-  // Any value other than 0 is treated as TEXT
+  JSON: 101,
+  // Any other value is treated as TEXT
 };
 
 // Console output storage
@@ -263,24 +412,32 @@ function getSerialPort() {
 function sendTouSEQ(code, capture = null) {
   const cleanedCode = cleanCode(code);
 
-  if (isPortWritable(serialport)) {
-    // Check if this is dev mode with mock connection
-    const urlParams = new URLSearchParams(window.location.search);
-    const isDevMode = urlParams.has('devmode') && urlParams.get('devmode') === 'true';
-    
-    if (isDevMode && !serialport) {
-      // Dev mode mock: don't actually send to port, just simulate success
-      dbg("Dev mode: Simulating code execution:", cleanedCode);
-      if (capture) {
-        capture("Dev mode: Code executed successfully");
-      }
-    } else {
-      // Normal mode: send to actual port
-      sendToPort(cleanedCode, capture);
+  const urlParams = new URLSearchParams(window.location.search);
+  const isDevMode = urlParams.has('devmode') && urlParams.get('devmode') === 'true';
+
+  if (isDevMode && !serialport) {
+    dbg("Dev mode: Simulating code execution:", cleanedCode);
+    if (capture) {
+      capture("Dev mode: Code executed successfully");
     }
+    return Promise.resolve({ success: true, text: 'Dev mode: Code executed successfully' });
+  }
+
+  if (protocolState.mode === PROTOCOL_MODES.JSON) {
+    return sendJsonEval(cleanedCode, { capture }).catch((error) => {
+      console.error('Failed to send JSON request to uSEQ', error);
+      post('**Error**: Failed to send request to uSEQ. See console for details.');
+      throw error;
+    });
+  }
+
+  if (isPortWritable(serialport)) {
+    sendToPort(cleanedCode, capture);
   } else {
     handleNotConnected();
   }
+
+  return Promise.resolve();
 }
 
 /**
@@ -359,6 +516,8 @@ function processSerialData(byteArray, state) {
       return processTextModeData(byteArray);
     case SERIAL_READ_MODES.SERIALSTREAM:
       return processStreamModeData(byteArray);
+    case SERIAL_READ_MODES.JSON:
+      return processJsonModeData(byteArray);
   }
 
   return { mode, processed, remainingBytes };
@@ -376,11 +535,14 @@ function processAnyModeData(byteArray) {
 
   if (byteArray[0] === MESSAGE_START_MARKER) {
     if (byteArray.length > 1) {
-      // Check message type
-      mode =
-        byteArray[1] === MESSAGE_TYPES.STREAM
-          ? SERIAL_READ_MODES.SERIALSTREAM
-          : SERIAL_READ_MODES.TEXT;
+      const messageType = byteArray[1];
+      if (messageType === MESSAGE_TYPES.STREAM) {
+        mode = SERIAL_READ_MODES.SERIALSTREAM;
+      } else if (messageType === MESSAGE_TYPES.JSON) {
+        mode = SERIAL_READ_MODES.JSON;
+      } else {
+        mode = SERIAL_READ_MODES.TEXT;
+      }
     } else {
       // Not enough data yet, wait for more
       processed = true;
@@ -423,6 +585,29 @@ function processTextModeData(byteArray) {
     mode: SERIAL_READ_MODES.TEXT, 
     processed: true, 
     remainingBytes: byteArray 
+  };
+}
+
+function processJsonModeData(byteArray) {
+  for (let i = 2; i < byteArray.length - 1; i++) {
+    if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
+      const messageBytes = byteArray.slice(2, i);
+      const messageText = extractMessageText(messageBytes);
+      handleJsonMessage(messageText);
+
+      const remainingBytes = byteArray.slice(i + 2);
+      return {
+        mode: SERIAL_READ_MODES.ANY,
+        processed: false,
+        remainingBytes
+      };
+    }
+  }
+
+  return {
+    mode: SERIAL_READ_MODES.JSON,
+    processed: true,
+    remainingBytes: byteArray
   };
 }
 
@@ -488,6 +673,61 @@ function processSerialStreamValue(byteArray) {
   }
 }
 
+function handleJsonMessage(rawMessage) {
+  const trimmedMessage = rawMessage.trim();
+  if (trimmedMessage.length === 0) {
+    return;
+  }
+
+  // Debug: Log the raw message received
+  dbg("Received raw JSON message:", trimmedMessage);
+
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmedMessage);
+    // Debug: Log the parsed JSON object
+    dbg("Parsed JSON message:", parsed);
+  } catch (error) {
+    console.error('Failed to parse JSON message from uSEQ', trimmedMessage, error);
+    return;
+  }
+
+  const { requestId, text, meta, success } = parsed;
+  let pending = null;
+
+  if (requestId && protocolState.pendingRequests.has(requestId)) {
+    pending = protocolState.pendingRequests.get(requestId);
+    protocolState.pendingRequests.delete(requestId);
+  }
+
+  if (pending) {
+    if (pending.capture) {
+      try {
+        pending.capture(text ?? '');
+      } catch (captureError) {
+        console.error('Error running capture callback for JSON response', captureError);
+      }
+    } else if (!pending.skipConsole && text) {
+      post(`uSEQ: ${text}`);
+    }
+
+    pending.resolve(parsed);
+  } else if (text) {
+    const prefix = success === false ? '**Error**: ' : 'uSEQ: ';
+    post(`${prefix}${text}`);
+  }
+
+  if (meta) {
+    try {
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('useq-json-meta', { detail: { response: parsed } }));
+      }
+    } catch (dispatchError) {
+      console.error('Failed to dispatch useq-json-meta event', dispatchError);
+    }
+  }
+}
+
 /**
  * Update a serial buffer with a new value and call any registered handlers
  * @param {number} bufferIndex - The index of the buffer to update
@@ -499,8 +739,9 @@ function updateSerialBuffer(bufferIndex, value) {
   buffer.push(value);
 
   // Call any registered handler function
-  if (serialMapFunctions[bufferIndex]) {
-    serialMapFunctions[bufferIndex](buffer);
+  const mapIndex = bufferIndex - 1;
+  if (mapIndex >= 0 && serialMapFunctions[mapIndex]) {
+    serialMapFunctions[mapIndex](buffer);
   }
 }
 
@@ -684,13 +925,14 @@ function openSerialConnection(port) {
  * @returns {Promise<void>} Promise that resolves when setup is complete
  */
 async function setupConnectedPort(port) {
+  resetProtocolState();
   setConnectedToModule(true);
   setSerialPort(port);
   serialReader();
   
   // FIXME In case we just updated the firmware, give the interpreter some time to boot before communication
   await waitForInterpreterBoot();
-  sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
+  sendTouSEQ("@(useq-report-firmware-info)", handleFirmwareInfo);
 }
 
 /**
