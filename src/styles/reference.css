@@ -29,6 +29,48 @@
   margin-top: 0.5em;
 }
 
+.doc-filters-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  align-items: center;
+}
+
+.doc-version-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  font-size: 0.85em;
+}
+
+.doc-filter-label {
+  color: var(--text-muted);
+}
+
+.doc-version-select {
+  background-color: var(--panel-control-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 0.25em 0.5em;
+}
+
+.doc-expand-toggle,
+.doc-clear-tags {
+  background-color: var(--panel-item-hover-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0.25em 0.75em;
+  font-size: 0.85em;
+}
+
+.doc-clear-tags[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .doc-tag {
   padding: 0.2em 0.5em;
   background-color: var(--panel-item-hover-bg);
@@ -50,10 +92,21 @@
 
 /* Function List */
 .doc-function-list {
-  overflow-y: auto; /* Retain scrolling for the function list */
-  overflow-x: hiden;
-  /* This seems to be crucial for scrolling? */
-  height: calc(100% - 100px); 
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  padding: 0.5em 0.5em 1em;
+  box-sizing: border-box;
+}
+
+.doc-function-list--expanded {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 1em;
+}
+
+.doc-function-list--expanded .doc-function-item {
+  margin-bottom: 0;
 }
 
 /* Column containers */
@@ -70,6 +123,14 @@
   border: 1px solid var(--panel-border);
   overflow: hidden;
   width: 100%;
+}
+
+.doc-function-item--unavailable {
+  opacity: 0.55;
+}
+
+.doc-function-item--unavailable .doc-function-header {
+  color: var(--text-muted);
 }
 
 .doc-function-header {
@@ -123,6 +184,16 @@
   padding: 0 0.3em;
 }
 
+.doc-function-version-chip {
+  margin-left: 0.75em;
+  font-size: 0.75em;
+  color: var(--accent-color);
+  background-color: var(--panel-item-hover-bg);
+  border-radius: 999px;
+  padding: 0.1em 0.6em;
+  white-space: nowrap;
+}
+
 /* Function Content */
 .doc-function-content {
   padding: 1em;
@@ -138,6 +209,26 @@
 .doc-function-description {
   margin-bottom: 1em;
   line-height: 1.4;
+}
+
+.doc-function-availability-note {
+  margin-bottom: 0.75em;
+  padding: 0.6em 0.75em;
+  background-color: rgba(255, 196, 0, 0.12);
+  border: 1px solid rgba(255, 196, 0, 0.3);
+  border-radius: 6px;
+  font-size: 0.85em;
+  color: var(--text-primary);
+}
+
+.doc-function-change-note {
+  margin-top: 0.75em;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.doc-function-change-note--upcoming {
+  color: var(--accent-color);
 }
 
 .doc-section-title {
@@ -321,4 +412,3 @@
   gap: 0.3em;
   align-items: center;
 }
-
