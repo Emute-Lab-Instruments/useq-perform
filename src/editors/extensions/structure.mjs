@@ -195,10 +195,10 @@ export const nodeTreeField = StateField.define({
 
 // Function to print the current node of the ASTCursor
 function printCurrentNode(cursor) {
-    console.log("Printing current cursor node...");
+    // console.log("Printing current cursor node...");
     if (cursor && cursor.getNode) {
         // eslint-disable-next-line no-console
-        console.log('ASTCursor current node:', cursor.getNode());
+        // console.log('ASTCursor current node:', cursor.getNode());
     }
 }
 
@@ -262,12 +262,12 @@ export function getTrimmedRange(node, state) {
 export const nodeHighlightField = StateField.define({
     create(state) {
         const cursor = state.field(nodeTreeCursorField, false);
-        console.log("[nodeHighlightField.create] cursor:", cursor);
+        // console.log("[nodeHighlightField.create] cursor:", cursor);
         if (!cursor || !cursor.getNode) return Decoration.none;
         const node = cursor.getNode();
-        console.log("[nodeHighlightField.create] node:", node);
+        // console.log("[nodeHighlightField.create] node:", node);
         const range = getTrimmedRange(node, state);
-        console.log("[nodeHighlightField.create] range:", range);
+        // console.log("[nodeHighlightField.create] range:", range);
         // Add parent node highlight
         let parentRange = null;
         let parentIsProgram = false;
@@ -1046,5 +1046,5 @@ export let structureExtensions = [
     expressionGutter
 ];
 
-console.log("[structure.mjs] nodeHighlightField:", nodeHighlightField);
-console.log("[structure.mjs] structureExtensions:", structureExtensions);
+// console.log("[structure.mjs] nodeHighlightField:", nodeHighlightField);
+// console.log("[structure.mjs] structureExtensions:", structureExtensions);

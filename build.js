@@ -44,6 +44,15 @@ const markdownBuildOptions = {
   outputDir: 'public/assets',
 };
 
+const referenceDataFile = {
+  src: path.join('assets', 'modulisp_reference_data.json'),
+  dest: path.join('public', 'assets', 'modulisp_reference_data.json')
+};
+
+function ensureDirectoryExists(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
 function buildMarkdown() {
   const inputDir = markdownBuildOptions.inputDir;
   const outputDir = markdownBuildOptions.outputDir;
@@ -60,6 +69,16 @@ function buildMarkdown() {
       console.log(`Compiled ${file} to ${outputFilePath}`);
     }
   });
+}
+
+function copyReferenceData() {
+  try {
+    ensureDirectoryExists(path.dirname(referenceDataFile.dest));
+    fs.copyFileSync(referenceDataFile.src, referenceDataFile.dest);
+    console.log(`Copied ${referenceDataFile.src} to ${referenceDataFile.dest}`);
+  } catch (error) {
+    console.error(`Failed to copy ${referenceDataFile.src}:`, error);
+  }
 }
 
 async function build() {
@@ -106,10 +125,21 @@ async function build() {
       const jsContext = await esbuild.context(jsBuildOptions);
       const cssContext = await esbuild.context(cssWithHotReload);
 
+      buildMarkdown();
+      copyReferenceData();
+
       // Watch for markdown changes
       fs.watch(markdownBuildOptions.inputDir, (eventType, filename) => {
+        if (!filename) {
+          return;
+        }
+
         if (path.extname(filename) === '.md') {
           buildMarkdown();
+        }
+
+        if (filename === path.basename(referenceDataFile.src)) {
+          copyReferenceData();
         }
       });
 
@@ -127,6 +157,7 @@ async function build() {
         esbuild.build(cssBuildOptions)
       ]);
       buildMarkdown();
+      copyReferenceData();
       console.log('Build complete');
     }
   } catch (error) {

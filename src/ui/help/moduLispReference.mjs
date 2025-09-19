@@ -1,134 +1,855 @@
 import { dbg } from "../../utils.mjs";
-import { createEditor, createExampleEditor } from "../../editors/main.mjs";
-import { baseExtensions } from "../../editors/extensions.mjs";
+import { createExampleEditor } from "../../editors/main.mjs";
 import { marked } from "marked";
-import { EditorView } from "@codemirror/view";
-import { setTheme } from "../../editors/themes/themeManager.mjs";
-import { activeUserSettings } from "../../utils/persistentUserSettings.mjs";
+import { currentVersion as connectedFirmwareVersion } from "../../utils/upgradeCheck.mjs";
 
-// State management
+const STORAGE_KEYS = Object.freeze({
+  starred: "moduLispReference:starredFunctions",
+  expanded: "moduLispReference:expandedFunctions",
+  version: "moduLispReference:targetVersion"
+});
+
 const state = {
-  data: null,
+  data: [],
   selectedTags: new Set(),
   starredFunctions: new Set(),
   expandedFunctions: new Set(),
-  isDevMode: false,
+  tags: [],
+  functionIndex: new Map(),
+  aliasIndex: new Map(),
+  versionOptions: [],
+  targetVersion: null,
+  parsedTargetVersion: null,
   isExpanded: false
 };
 
-// Cache for documentation elements
-const cachedFunctionElements = [];
+const ui = {
+  root: null,
+  versionSelect: null,
+  clearTagsButton: null,
+  expandButton: null,
+  tagsWrapper: null
+};
 
-// Function to cache documentation elements
-function cacheFunctionElements(data) {
-  cachedFunctionElements.length = 0; // Clear the cache
-  data.forEach(func => {
-    const $functionElement = makeFunctionElement(func);
-    if ($functionElement) {
-      cachedFunctionElements.push($functionElement);
+function restoreSetFromStorage(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      return new Set();
     }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed) : new Set();
+  } catch (error) {
+    dbg("moduLispReference", "Failed to restore set", key, error);
+    return new Set();
+  }
+}
+
+function persistSetToStorage(key, valueSet) {
+  try {
+    localStorage.setItem(key, JSON.stringify(Array.from(valueSet)));
+  } catch (error) {
+    dbg("moduLispReference", "Failed to persist set", key, error);
+  }
+}
+
+function restoreTargetVersion() {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.version);
+  } catch (error) {
+    dbg("moduLispReference", "Failed to restore target version", error);
+    return null;
+  }
+}
+
+function persistTargetVersion(version) {
+  try {
+    if (version) {
+      localStorage.setItem(STORAGE_KEYS.version, version);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.version);
+    }
+  } catch (error) {
+    dbg("moduLispReference", "Failed to persist target version", error);
+  }
+}
+
+function ensureArray(value) {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.filter(Boolean);
+  }
+  return [value].filter(Boolean);
+}
+
+function getReferenceDataCandidateUrls() {
+  const candidates = new Set();
+  const relativeCandidates = [
+    "../../assets/modulisp_reference_data.json",
+    "../assets/modulisp_reference_data.json",
+    "./assets/modulisp_reference_data.json"
+  ];
+
+  relativeCandidates.forEach((path) => {
+    try {
+      candidates.add(new URL(path, import.meta.url).href);
+    } catch (error) {
+      dbg("moduLispReference", "Failed to resolve data path via import.meta", { path, error });
+    }
+  });
+
+  const windowHref = typeof window !== "undefined" ? window.location.href : null;
+  if (windowHref) {
+    [
+      "assets/modulisp_reference_data.json",
+      "/assets/modulisp_reference_data.json",
+      "/dev/assets/modulisp_reference_data.json",
+      "../assets/modulisp_reference_data.json"
+    ].forEach((path) => {
+      try {
+        candidates.add(new URL(path, windowHref).href);
+      } catch (error) {
+        dbg("moduLispReference", "Failed to resolve data path via window", { path, error });
+      }
+    });
+  }
+
+  return Array.from(candidates);
+}
+
+function normalizeParameters(parameters) {
+  if (!parameters) {
+    return [];
+  }
+
+  if (Array.isArray(parameters)) {
+    return parameters
+      .filter(Boolean)
+      .map((param) => {
+        if (typeof param === "string") {
+          return { name: param, description: "" };
+        }
+        if (typeof param === "object") {
+          return {
+            name: param.name || "",
+            description: param.description || "",
+            range: param.range || ""
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  if (typeof parameters === "object") {
+    return Object.entries(parameters).map(([name, description]) => ({
+      name,
+      description: typeof description === "string" ? description : ""
+    }));
+  }
+
+  if (typeof parameters === "string") {
+    return [{ name: parameters, description: "" }];
+  }
+
+  return [];
+}
+
+function parseVersionString(version) {
+  if (!version || typeof version !== "string") {
+    return null;
+  }
+
+  const trimmed = version.trim().replace(/^v/i, "");
+  if (!trimmed) {
+    return null;
+  }
+
+  const [majorStr, minorStr = "0", patchStr = "0"] = trimmed.split(".");
+  const major = Number.parseInt(majorStr, 10);
+  const minor = Number.parseInt(minorStr, 10);
+  const patch = Number.parseInt(patchStr, 10);
+
+  if (Number.isNaN(major) || Number.isNaN(minor)) {
+    return null;
+  }
+
+  return {
+    major,
+    minor,
+    patch: Number.isNaN(patch) ? 0 : patch,
+    raw: `${major}.${minor}.${Number.isNaN(patch) ? 0 : patch}`
+  };
+}
+
+function compareVersions(left, right) {
+  if (!left && !right) {
+    return 0;
+  }
+  if (!left) {
+    return -1;
+  }
+  if (!right) {
+    return 1;
+  }
+
+  if (left.major !== right.major) {
+    return left.major - right.major;
+  }
+  if (left.minor !== right.minor) {
+    return left.minor - right.minor;
+  }
+  return left.patch - right.patch;
+}
+
+function normalizeEntry(rawEntry) {
+  if (!rawEntry || typeof rawEntry !== "object") {
+    return null;
+  }
+
+  const normalized = {
+    ...rawEntry,
+    name: typeof rawEntry.name === "string" ? rawEntry.name : "",
+    aliases: ensureArray(rawEntry.aliases),
+    tags: ensureArray(rawEntry.tags),
+    parameters: normalizeParameters(rawEntry.parameters),
+    examples: ensureArray(rawEntry.examples),
+    meta: {
+      introduced: parseVersionString(rawEntry.introduced_in_version),
+      changed: parseVersionString(rawEntry.changed_in_version)
+    }
+  };
+
+  return normalized;
+}
+
+function rebuildIndexes(data) {
+  state.functionIndex = new Map();
+  state.aliasIndex = new Map();
+
+  data.forEach((func) => {
+    state.functionIndex.set(func.name, func);
+    func.aliases.forEach((alias) => {
+      if (!state.aliasIndex.has(alias)) {
+        state.aliasIndex.set(alias, func.name);
+      }
+    });
   });
 }
 
-// Function to create the documentation panel with a specified number of columns
-function createDocPanel(columns = 1) {
-  // Use makeFunctionList to create the panel with proper filtering
-  return makeFunctionList(state.data, columns);
+function deriveTags(data) {
+  const tagSet = new Set();
+  data.forEach((func) => {
+    func.tags.forEach((tag) => tagSet.add(tag));
+  });
+  state.tags = Array.from(tagSet).sort((a, b) => a.localeCompare(b));
 }
 
-// Render the function list based on current state
-function renderFunctionList() {
-  dbg("renderFunctionList", "Rendering function list");
-  if (!state.data || !Array.isArray(state.data)) {
-    console.error("Cannot render function list: invalid data");
+function getConnectedVersionString() {
+  if (connectedFirmwareVersion && connectedFirmwareVersion.string) {
+    return connectedFirmwareVersion.string;
+  }
+  return null;
+}
+
+function deriveVersionOptions(data) {
+  const versionMap = new Map();
+
+  data.forEach((func) => {
+    if (func.meta.introduced) {
+      versionMap.set(func.meta.introduced.raw, func.meta.introduced);
+    }
+    if (func.meta.changed) {
+      versionMap.set(func.meta.changed.raw, func.meta.changed);
+    }
+  });
+
+  const stored = parseVersionString(state.targetVersion);
+  if (stored) {
+    versionMap.set(stored.raw, stored);
+  }
+
+  const connected = parseVersionString(getConnectedVersionString());
+  if (connected) {
+    versionMap.set(connected.raw, connected);
+  }
+
+  state.versionOptions = Array.from(versionMap.values()).sort((a, b) => compareVersions(b, a));
+}
+
+function resolveInitialTargetVersion() {
+  const stored = parseVersionString(state.targetVersion);
+  if (stored) {
+    state.targetVersion = stored.raw;
+    state.parsedTargetVersion = stored;
     return;
   }
 
-  // Determine the number of columns based on state
-  const columns = state.isExpanded ? 3 : 1;
-  dbg("renderFunctionList", "Number of columns", columns);
-
-  const $container = $('.modulisp-reference-container');
-  if (!$container.length) {
-    console.error("Cannot render function list: container not found");
+  const connected = parseVersionString(getConnectedVersionString());
+  if (connected) {
+    state.targetVersion = connected.raw;
+    state.parsedTargetVersion = connected;
     return;
   }
 
-  const $oldList = $('#doc-function-list');
-  if ($oldList.length) {
-    $oldList.remove();
-  }
-
-  // Create a new function list with proper filtering and append it
-  $container.append(makeFunctionList(state.data, columns));
+  state.targetVersion = null;
+  state.parsedTargetVersion = null;
 }
 
-// Add a function to toggle expanded/collapsed state
-function togglePanelView() {
-  state.isExpanded = !state.isExpanded;
-  dbg("togglePanelView", "Toggled panel view", state.isExpanded ? "expanded" : "collapsed");
+function initializeState(data) {
+  state.data = data;
+  rebuildIndexes(data);
+  deriveTags(data);
+  deriveVersionOptions(data);
+  resolveInitialTargetVersion();
+}
 
-  // Update the toggle button text or appearance
-  const $toggleButton = $("#toggle-expand-button");
-  if ($toggleButton.length) {
-    $toggleButton.text(state.isExpanded ? "Collapse" : "Expand");
+function populateVersionSelect() {
+  if (!ui.versionSelect) {
+    return;
   }
 
+  const previousValue = state.targetVersion || "";
+  ui.versionSelect.empty();
+
+  ui.versionSelect.append(
+    $('<option>', {
+      value: '',
+      text: 'Show all firmware versions'
+    })
+  );
+
+  state.versionOptions.forEach((version) => {
+    const connected = getConnectedVersionString();
+    let label = `v${version.raw}`;
+    if (connected && version.raw === connected) {
+      label += ' (connected)';
+    }
+    ui.versionSelect.append(
+      $('<option>', {
+        value: version.raw,
+        text: label
+      })
+    );
+  });
+
+  if (previousValue) {
+    if (!state.versionOptions.some((version) => version.raw === previousValue)) {
+      ui.versionSelect.append(
+        $('<option>', {
+          value: previousValue,
+          text: `v${previousValue}`
+        })
+      );
+    }
+    ui.versionSelect.val(previousValue);
+  } else {
+    ui.versionSelect.val('');
+  }
+}
+
+function updateClearTagsButton() {
+  if (!ui.clearTagsButton) {
+    return;
+  }
+  ui.clearTagsButton.prop('disabled', state.selectedTags.size === 0);
+}
+
+function handleVersionChange(value) {
+  const normalized = parseVersionString(value);
+  state.targetVersion = normalized ? normalized.raw : null;
+  state.parsedTargetVersion = normalized;
+  persistTargetVersion(state.targetVersion);
   renderFunctionList();
 }
 
-// Initialize CodeMirror editors for code blocks
-function initializeCodeMirrorEditors() {
-  const codeBlocks = document.querySelectorAll(".codeblock");
+function toggleFunctionExpansion(functionName, expanded, $content, $indicator) {
+  if (expanded) {
+    state.expandedFunctions.add(functionName);
+    $indicator.text('▼');
+    $content.show();
+  } else {
+    state.expandedFunctions.delete(functionName);
+    $indicator.text('▶');
+    $content.hide();
+  }
+  persistSetToStorage(STORAGE_KEYS.expanded, state.expandedFunctions);
+}
 
-  codeBlocks.forEach((block, index) => {
-    const code = block.textContent.trim();
-    const editorContainer = document.createElement("div");
-    block.replaceWith(editorContainer);
+function toggleStar(functionName) {
+  if (state.starredFunctions.has(functionName)) {
+    state.starredFunctions.delete(functionName);
+  } else {
+    state.starredFunctions.add(functionName);
+  }
+  persistSetToStorage(STORAGE_KEYS.starred, state.starredFunctions);
+  renderFunctionList();
+}
 
-    createExampleEditor(code, editorContainer);
+function isFunctionAvailable(func) {
+  if (!state.parsedTargetVersion) {
+    return true;
+  }
+
+  const introduced = func.meta?.introduced;
+  if (!introduced) {
+    return true;
+  }
+
+  return compareVersions(state.parsedTargetVersion, introduced) >= 0;
+}
+
+function hasUpcomingChange(func) {
+  if (!state.parsedTargetVersion || !func.meta?.changed) {
+    return false;
+  }
+  return compareVersions(state.parsedTargetVersion, func.meta.changed) < 0;
+}
+
+function createVersionBadge(func, available) {
+  if (!func.meta?.introduced) {
+    return null;
+  }
+  const label = available ? `Since v${func.meta.introduced.raw}` : `Requires v${func.meta.introduced.raw}`;
+  return $('<span>', {
+    class: 'doc-function-version-chip',
+    text: label
   });
 }
 
+function createAvailabilityBanner(func, available) {
+  if (available) {
+    return null;
+  }
+  return $('<div>', {
+    class: 'doc-function-availability-note',
+    text: `Available from firmware v${func.meta?.introduced?.raw || ''}`.trim()
+  });
+}
+
+function createChangeNote(func) {
+  if (!func.meta?.changed) {
+    return null;
+  }
+
+  const upcoming = hasUpcomingChange(func);
+  const text = upcoming ? `Changes coming in v${func.meta.changed.raw}` : `Updated in v${func.meta.changed.raw}`;
+
+  return $('<div>', {
+    class: `doc-function-change-note${upcoming ? ' doc-function-change-note--upcoming' : ''}`,
+    text
+  });
+}
+
+function buildParametersSection(func) {
+  if (!func.parameters.length) {
+    return null;
+  }
+
+  const $title = $('<div>', { class: 'doc-section-title', text: 'Parameters' });
+  const $list = $('<ul>', { class: 'doc-params-list' });
+
+  func.parameters.forEach((param) => {
+    const $item = $('<li>', { class: 'doc-param-item' });
+    $item.append(
+      $('<span>', { class: 'doc-param-name', text: param.name || 'unnamed' })
+    );
+    if (param.description) {
+      $item.append(' ', $('<span>', { class: 'doc-param-description', text: param.description }));
+    }
+    if (param.range) {
+      $item.append(
+        $('<div>', {
+          class: 'doc-param-range',
+          text: `Range: ${param.range}`
+        })
+      );
+    }
+    $list.append($item);
+  });
+
+  return $('<div>').append($title, $list);
+}
+
+function buildExamplesSection(func) {
+  if (!func.examples.length) {
+    return null;
+  }
+
+  const $title = $('<div>', { class: 'doc-section-title', text: 'Examples' });
+  const $list = $('<div>', { class: 'doc-examples-list' });
+
+  func.examples.forEach((example) => {
+    const $wrapper = $('<div>', { class: 'doc-example-wrapper' });
+    const $pre = $('<pre>', {
+      class: 'doc-example-simple',
+      text: example
+    });
+    const $button = $('<button>', {
+      class: 'doc-copy-button',
+      text: 'Copy',
+      title: 'Copy example to clipboard'
+    });
+
+    $button.on('click', (event) => {
+      event.stopPropagation();
+      navigator.clipboard.writeText(example).then(() => {
+        $button.text('Copied!').addClass('copied');
+        setTimeout(() => {
+          $button.text('Copy').removeClass('copied');
+        }, 2000);
+      }).catch((error) => {
+        console.error('Could not copy text:', error);
+      });
+    });
+
+    $wrapper.append($pre, $button);
+    $list.append($wrapper);
+  });
+
+  return $('<div>').append($title, $list);
+}
+
+function buildTagsSection(func) {
+  if (!func.tags.length) {
+    return null;
+  }
+
+  const $title = $('<div>', { class: 'doc-section-title', text: 'Tags' });
+  const $tags = $('<div>', { class: 'doc-function-tags' });
+  func.tags.forEach((tag) => {
+    $tags.append($('<span>', { class: 'doc-function-tag', text: tag }));
+  });
+  return $('<div>').append($title, $tags);
+}
+
+function buildFunctionElement(func) {
+  const available = isFunctionAvailable(func);
+  const $item = $('<div>', {
+    class: `doc-function-item${available ? '' : ' doc-function-item--unavailable'}`,
+    'data-function': func.name
+  });
+
+  const $header = $('<div>', { class: 'doc-function-header' });
+  const $name = $('<div>', { class: 'doc-function-name', text: func.name });
+
+  if (func.parameters.length) {
+    const $paramsContainer = $('<span>', { class: 'doc-function-params-container' });
+    func.parameters.forEach((param) => {
+      $paramsContainer.append(
+        $('<span>', { class: 'doc-function-param', html: `&lt;${param.name}&gt;` })
+      );
+    });
+    $name.append(' ', $paramsContainer);
+  }
+
+  const $badge = createVersionBadge(func, available);
+  const $starButton = $('<button>', {
+    class: 'doc-star-button',
+    html: state.starredFunctions.has(func.name) ? '★' : '☆',
+    title: state.starredFunctions.has(func.name) ? 'Remove from favorites' : 'Add to favorites'
+  });
+
+  const isExpanded = state.expandedFunctions.has(func.name);
+  const $indicator = $('<span>', {
+    class: 'doc-expand-indicator',
+    text: isExpanded ? '▼' : '▶'
+  });
+
+  const $content = $('<div>', {
+    class: 'doc-function-content',
+    style: isExpanded ? 'display: block' : 'display: none'
+  });
+
+  if (func.description) {
+    $content.append(
+      $('<div>', {
+        class: 'doc-function-description',
+        html: marked.parse(func.description)
+      })
+    );
+  }
+
+  const $banner = createAvailabilityBanner(func, available);
+  if ($banner) {
+    $content.prepend($banner);
+  }
+
+  const $changeNote = createChangeNote(func);
+  if ($changeNote) {
+    $content.append($changeNote);
+  }
+
+  const $params = buildParametersSection(func);
+  if ($params) {
+    $content.append($params.children());
+  }
+
+  const $examples = buildExamplesSection(func);
+  if ($examples) {
+    $content.append($examples.children());
+  }
+
+  const $tags = buildTagsSection(func);
+  if ($tags) {
+    $content.append($tags.children());
+  }
+
+  $starButton.on('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleStar(func.name);
+  });
+
+  $header.on('click', (event) => {
+    if ($(event.target).is('.doc-star-button') || $(event.target).is('.doc-copy-button')) {
+      return;
+    }
+    const nextExpandedState = !state.expandedFunctions.has(func.name);
+    toggleFunctionExpansion(func.name, nextExpandedState, $content, $indicator);
+  });
+
+  $header.append($name);
+  if ($badge) {
+    $header.append($badge);
+  }
+  $header.append($starButton, $indicator);
+
+  $item.append($header, $content);
+  return $item;
+}
+
+function getFilteredFunctions() {
+  if (!Array.isArray(state.data)) {
+    return [];
+  }
+
+  const selectedTags = state.selectedTags;
+  const filtered = state.data.filter((func) => {
+    if (!selectedTags.size) {
+      return true;
+    }
+    if (!func.tags.length) {
+      return false;
+    }
+    return func.tags.some((tag) => selectedTags.has(tag));
+  });
+
+  filtered.sort((left, right) => {
+    const leftStar = state.starredFunctions.has(left.name) ? 0 : 1;
+    const rightStar = state.starredFunctions.has(right.name) ? 0 : 1;
+    if (leftStar !== rightStar) {
+      return leftStar - rightStar;
+    }
+
+    const leftAvailable = isFunctionAvailable(left) ? 0 : 1;
+    const rightAvailable = isFunctionAvailable(right) ? 0 : 1;
+    if (leftAvailable !== rightAvailable) {
+      return leftAvailable - rightAvailable;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
+
+  return filtered;
+}
+
+function renderFunctionList() {
+  if (!ui.root) {
+    return;
+  }
+
+  const existing = ui.root.find('#doc-function-list');
+  if (existing.length) {
+    existing.remove();
+  }
+
+  const functions = getFilteredFunctions();
+  const $list = $('<div>', {
+    id: 'doc-function-list',
+    class: `doc-function-list${state.isExpanded ? ' doc-function-list--expanded' : ''}`
+  });
+
+  functions.forEach((func) => {
+    $list.append(buildFunctionElement(func));
+  });
+
+  if (!functions.length) {
+    $list.append(
+      $('<div>', {
+        class: 'doc-no-results',
+        text: 'No functions match the current filters.'
+      })
+    );
+  }
+
+  if (ui.expandButton) {
+    ui.expandButton.text(state.isExpanded ? 'Collapse' : 'Expand');
+  }
+  populateVersionSelect();
+  updateClearTagsButton();
+
+  ui.root.append($list);
+  initializeCodeMirrorEditors();
+}
+
+function buildTagsPanel() {
+  const $container = $('<div>', { class: 'doc-tags-container' });
+  const $controls = $('<div>', { class: 'doc-filters-controls' });
+
+  const $versionLabel = $('<label>', {
+    class: 'doc-filter-label',
+    for: 'modulisp-version-filter',
+    text: 'Firmware version'
+  });
+
+  const $versionSelect = $('<select>', {
+    id: 'modulisp-version-filter',
+    class: 'doc-version-select'
+  });
+
+  $versionSelect.on('change', () => {
+    handleVersionChange($versionSelect.val());
+  });
+
+  ui.versionSelect = $versionSelect;
+
+  const $versionWrapper = $('<div>', { class: 'doc-version-filter' });
+  $versionWrapper.append($versionLabel, $versionSelect);
+
+  const $expandButton = $('<button>', {
+    id: 'toggle-expand-button',
+    class: 'doc-expand-toggle',
+    text: state.isExpanded ? 'Collapse' : 'Expand'
+  });
+
+  $expandButton.on('click', () => {
+    state.isExpanded = !state.isExpanded;
+    $expandButton.text(state.isExpanded ? 'Collapse' : 'Expand');
+    renderFunctionList();
+  });
+
+  ui.expandButton = $expandButton;
+
+  const $clearTagsButton = $('<button>', {
+    class: 'doc-clear-tags',
+    text: 'Clear tags'
+  });
+
+  $clearTagsButton.on('click', () => {
+    state.selectedTags.clear();
+    ui.tagsWrapper.find('.doc-tag').removeClass('selected');
+    updateClearTagsButton();
+    renderFunctionList();
+  });
+
+  ui.clearTagsButton = $clearTagsButton;
+
+  $controls.append($versionWrapper, $expandButton, $clearTagsButton);
+
+  const $wrapper = $('<div>', { class: 'doc-tags-wrapper' });
+  ui.tagsWrapper = $wrapper;
+
+  state.tags.forEach((tag) => {
+    const $tag = $('<div>', {
+      class: `doc-tag${state.selectedTags.has(tag) ? ' selected' : ''}`,
+      text: tag
+    });
+
+    $tag.on('click', () => {
+      if (state.selectedTags.has(tag)) {
+        state.selectedTags.delete(tag);
+        $tag.removeClass('selected');
+      } else {
+        state.selectedTags.add(tag);
+        $tag.addClass('selected');
+      }
+      updateClearTagsButton();
+      renderFunctionList();
+    });
+
+    $wrapper.append($tag);
+  });
+
+  updateClearTagsButton();
+  populateVersionSelect();
+
+  $container.append($controls, $wrapper);
+  return $container;
+}
+
+function initializeCodeMirrorEditors() {
+  const codeBlocks = document.querySelectorAll('.doc-example-simple');
+  codeBlocks.forEach((block) => {
+    const code = block.textContent.trim();
+    const container = document.createElement('div');
+    block.replaceWith(container);
+    createExampleEditor(code, container);
+  });
+}
+
+async function loadReferenceData() {
+  const candidates = getReferenceDataCandidateUrls();
+  dbg('loadReferenceData', 'Attempting to fetch reference data', candidates);
+
+  const errors = [];
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(candidate, { cache: 'no-store' });
+      if (!response.ok) {
+        errors.push(`${candidate} -> ${response.status}`);
+        continue;
+      }
+      const data = await response.json();
+      if (!Array.isArray(data)) {
+        errors.push(`${candidate} -> invalid payload`);
+        continue;
+      }
+      dbg('loadReferenceData', 'Loaded reference data from', candidate);
+      return data;
+    } catch (error) {
+      errors.push(`${candidate} -> ${error.message}`);
+    }
+  }
+
+  throw new Error(`Unable to load documentation data (${errors.join('; ')})`);
+}
+
 export async function makeModuLispReference() {
-  dbg("makeModuLispReference", "Initializing ModuLisp reference panel");
+  dbg('makeModuLispReference', 'Initializing ModuLisp reference panel');
+
+  state.starredFunctions = restoreSetFromStorage(STORAGE_KEYS.starred);
+  state.expandedFunctions = restoreSetFromStorage(STORAGE_KEYS.expanded);
+  state.targetVersion = restoreTargetVersion();
+
   const $container = $('<div>', {
     class: 'modulisp-reference-container',
     css: {
-      'display': 'flex',
-      'flex-direction': 'column',
-      'height': '100%',
-      'overflow': 'hidden'
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      overflow: 'hidden'
     }
   });
 
+  ui.root = $container;
+
   try {
-    dbg("makeModuLispReference", "Loading user preferences");
-    loadUserPreferences();
+    const rawData = await loadReferenceData();
+    const normalizedData = rawData.map(normalizeEntry).filter(Boolean);
 
-    dbg("makeModuLispReference", "Loading reference data");
-    const data = await loadReferenceData();
-    if (!data || !Array.isArray(data)) {
-      throw new Error('Failed to load valid documentation data');
-    }
-    state.data = data;
-    dbg("makeModuLispReference", "Reference data loaded", data);
+    initializeState(normalizedData);
 
-    dbg("makeModuLispReference", "Caching function elements");
-    cacheFunctionElements(data);
+    const $filters = buildTagsPanel();
+    $container.append($filters);
+    renderFunctionList();
 
-    // Append both containers to main container
-    $container.append(makeTags(data), createDocPanel(1));
-
-    // Initialize CodeMirror editors for code blocks
-    initializeCodeMirrorEditors();
-
-    dbg("makeModuLispReference", "Final container classes", $container.attr('class'));
-    dbg("makeModuLispReference", "Final container element", $container[0]);
     return $container;
   } catch (error) {
-    dbg("makeModuLispReference", "Error creating reference panel", error);
-    console.error("Error creating reference panel:", error);
+    dbg('makeModuLispReference', 'Error creating reference panel', error);
+    console.error('Error creating reference panel:', error);
 
     const $errorMessage = $('<div>', {
       class: 'doc-error-message',
@@ -140,475 +861,17 @@ export async function makeModuLispReference() {
       color: 'var(--error-text, #c62828)',
       borderRadius: '4px'
     });
-    $container.append($errorMessage);
 
+    $container.append($errorMessage);
     return $container;
   }
 }
 
-// Load user preferences from localStorage
-function loadUserPreferences() {
-  dbg("loadUserPreferences", "Loading preferences from localStorage");
-  try {
-    const savedStarred = localStorage.getItem("starredFunctions");
-    if (savedStarred) {
-      const parsedStarred = JSON.parse(savedStarred);
-      state.starredFunctions = new Set(Array.isArray(parsedStarred) ? parsedStarred : []);
-    }
-
-    const savedExpanded = localStorage.getItem("expandedFunctions");
-    if (savedExpanded) {
-      const parsedExpanded = JSON.parse(savedExpanded);
-      state.expandedFunctions = new Set(Array.isArray(parsedExpanded) ? parsedExpanded : []);
-    }
-    dbg("loadUserPreferences", "Preferences loaded", {
-      starredFunctions: state.starredFunctions,
-      expandedFunctions: state.expandedFunctions
-    });
-  } catch (error) {
-    dbg("loadUserPreferences", "Error loading preferences", error);
-    // Reset to empty sets on error
-    state.starredFunctions = new Set();
-    state.expandedFunctions = new Set();
-  }
-}
-
-// Save user preferences to localStorage
-function saveUserPreferences() {
-  dbg("saveUserPreferences", "Saving preferences to localStorage");
-  try {
-    localStorage.setItem("starredFunctions", JSON.stringify(Array.from(state.starredFunctions)));
-    localStorage.setItem("expandedFunctions", JSON.stringify(Array.from(state.expandedFunctions)));
-    dbg("saveUserPreferences", "Preferences saved");
-  } catch (error) {
-    dbg("saveUserPreferences", "Error saving preferences", error);
-  }
-}
-
-// Create a tag element
-function makeTagElement(tag) {
-  dbg("makeTagElement", "Creating tag element", tag);
-  const $tag = $('<div>', {
-    class: 'doc-tag',
-    text: tag
-  });
-
-  if (state.selectedTags.has(tag)) {
-    $tag.addClass('selected');
-  }
-
-  $tag.on('click', () => {
-    dbg("makeTagElement", "Tag clicked", tag);
-    if (state.selectedTags.has(tag)) {
-      state.selectedTags.delete(tag);
-      $tag.removeClass('selected');
-    } else {
-      state.selectedTags.add(tag);
-      $tag.addClass('selected');
-    }
-    renderFunctionList();
-  });
-
-  return $tag;
-}
-
-// Create a tags container
-function makeTagsContainer() {
-  const $container = $('<div>', {
-    class: 'doc-tags-container'
-  });
-
-  const $wrapper = $('<div>', {
-    class: 'doc-tags-wrapper'
-  });
-
-  // Get all unique tags from the documentation data
-  const allTags = new Set();
-  state.data.forEach(func => {
-    if (func && func.tags) {
-      func.tags.forEach(tag => allTags.add(tag));
-    }
-  });
-
-  // Sort tags alphabetically and create tag elements
-  Array.from(allTags).sort().forEach(tag => {
-    $wrapper.append(makeTagElement(tag));
-  });
-
-  $container.append($wrapper);
-  return $container;
-}
-
-// Create a code editor for examples
-function makeCodeEditor(code, id) {
-  dbg("makeCodeEditor", "Creating code editor", { code, id });
-  const $container = $('<div>', {
-    class: 'doc-example-editor',
-    id: `code-${id}`
-  });
-
-  // Create the editor using our own function
-  const editor = createExampleEditor(code, $container[0]);
-  dbg("Documentation Tab", "makeCodeEditor", "Created editor", editor);
-  dbg("Documentation Tab", "makeCodeEditor", "Active user settings", activeUserSettings);
-  dbg("Documentation Tab", "makeCodeEditor", "Setting theme", activeUserSettings.editor.theme);
-  // setTheme(editor, activeUserSettings.editor.theme);
-
-  // Make example draggable
-  $container.attr('draggable', 'true');
-  $container.on('dragstart', (e) => {
-    e.dataTransfer.setData('text/plain', code);
-    e.dataTransfer.effectAllowed = 'copy';
-    $container.addClass('dragging');
-  });
-  $container.on('dragend', () => {
-    $container.removeClass('dragging');
-  });
-
-  return $container;
-}
-
-// Create a function element
-function makeFunctionElement(func) {
-  const $item = $('<div>', {
-    class: 'doc-function-item',
-    'data-function': func.name
-  });
-
-  // Create header
-  const $header = $('<div>', {
-    class: 'doc-function-header'
-  });
-
-  // Add function name and parameters
-  const $nameContainer = $('<div>', {
-    class: 'doc-function-name'
-  });
-
-  // Add the function name itself
-  $nameContainer.text(func.name);
-
-  // Add parameters if any - handle inconsistent data structures
-  if (func.parameters) {
-    let paramNames = "";
-    
-    // Handle array of parameter objects (expected format)
-    if (Array.isArray(func.parameters) && func.parameters.length > 0) {
-      paramNames = func.parameters.map(param => {
-        // Make sure param is an object with a name property
-        if (param && typeof param === 'object' && param.name) {
-          // Special handling for parameters with brackets
-          const paramName = param.name;
-          return `&lt;${paramName}&gt;`;
-        }
-        return '';
-      }).filter(name => name.length > 0).join(' ');
-    } 
-    // Handle single string parameter name
-    else if (typeof func.parameters === 'string') {
-      paramNames = `&lt;${func.parameters}&gt;`;
-    }
-    // Handle object with direct key-value pairs
-    else if (typeof func.parameters === 'object' && !Array.isArray(func.parameters)) {
-      paramNames = Object.keys(func.parameters)
-        .map(key => `&lt;${key}&gt;`)
-        .join(' ');
-    }
-    
-    
-    if (paramNames.length > 0) {
-      // Create a separate element for each parameter to ensure better styling control
-      let $paramsContainer = $('<span>', {
-        class: 'doc-function-params-container'
-      });
-      
-      // Split the parameters and create separate elements for each
-      const paramsList = paramNames.split(' ').filter(p => p.length > 0);
-      
-      paramsList.forEach(param => {
-        const $param = $('<span>', {
-          class: 'doc-function-param',
-          html: param
-        });
-        $paramsContainer.append($param, ' ');
-      });
-      
-      $nameContainer.append(' ');
-      $nameContainer.append($paramsContainer);
-    }
-  }
-
-  // Add star button (moved to the right)
-  const $starButton = $('<button>', {
-    class: 'doc-star-button',
-    html: state.starredFunctions.has(func.name) ? '★' : '☆',
-    title: state.starredFunctions.has(func.name) ? 'Remove from favorites' : 'Add to favorites'
-  });
-
-  $starButton.on('click', (e) => {
-    e.stopPropagation();
-    if (state.starredFunctions.has(func.name)) {
-      state.starredFunctions.delete(func.name);
-      $starButton.html('☆').attr('title', 'Add to favorites');
-    } else {
-      state.starredFunctions.add(func.name);
-      $starButton.html('★').attr('title', 'Remove from favorites');
-    }
-    saveUserPreferences();
-    renderFunctionList();
-  });
-
-  // Add expand/collapse indicator
-  const $expandIndicator = $('<span>', {
-    class: 'doc-expand-indicator',
-    text: state.expandedFunctions.has(func.name) ? '▼' : '▶'
-  });
-
-  // Append elements in the correct order
-  $header.append($nameContainer, $starButton, $expandIndicator);
-
-  // Create content container
-  const $content = $('<div>', {
-    class: 'doc-function-content',
-    style: state.expandedFunctions.has(func.name) ? 'display: block' : 'display: none'
-  });
-
-  // Add description if it exists
-  if (func.description) {
-    const $description = $('<div>', {
-      class: 'doc-function-description',
-      html: marked.parse(func.description)
-    });
-    $content.append($description);
-  }
-
-  // Add parameters if they exist
-  if (func.parameters && func.parameters.length > 0) {
-    const $paramsTitle = $('<div>', {
-      class: 'doc-section-title',
-      text: 'Parameters'
-    });
-    
-    const $paramsList = $('<ul>', {
-      class: 'doc-params-list'
-    });
-
-    func.parameters.forEach(param => {
-      if (!param) return;
-      
-      const $paramItem = $('<li>', {
-        class: 'doc-param-item'
-      });
-
-      const $paramName = $('<span>', {
-        class: 'doc-param-name',
-        text: param.name || 'unnamed'
-      });
-
-      const $paramDesc = $('<span>', {
-        class: 'doc-param-description',
-        text: param.description || ''
-      });
-
-      $paramItem.append($paramName, ' ', $paramDesc);
-
-      if (param.range) {
-        const $paramRange = $('<div>', {
-          class: 'doc-param-range',
-          text: `Range: ${param.range}`
-        });
-        $paramItem.append($paramRange);
-      }
-
-      $paramsList.append($paramItem);
-    });
-
-    $content.append($paramsTitle, $paramsList);
-  }
-
-  // Add examples if they exist
-  if (func.examples && func.examples.length > 0) {
-    const $examplesTitle = $('<div>', {
-      class: 'doc-section-title',
-      text: 'Examples'
-    });
-    
-    const $examplesList = $('<div>', {
-      class: 'doc-examples-list'
-    });
-
-    // Create examples with copy button
-    func.examples.forEach((example, index) => {
-      const $exampleWrapper = $('<div>', {
-        class: 'doc-example-wrapper'
-      });
-      
-      const $exampleItem = $('<pre>', {
-        class: 'doc-example-simple',
-        text: example
-      });
-      
-      // Add copy button
-      const $copyButton = $('<button>', {
-        class: 'doc-copy-button',
-        text: 'Copy',
-        title: 'Copy example to clipboard'
-      });
-      
-      $copyButton.on('click', (e) => {
-        e.stopPropagation();
-        
-        // Copy example text to clipboard
-        navigator.clipboard.writeText(example).then(() => {
-          $copyButton.text('Copied!');
-          $copyButton.addClass('copied');
-          
-          // Reset button text after a delay
-          setTimeout(() => {
-            $copyButton.text('Copy');
-            $copyButton.removeClass('copied');
-          }, 2000);
-        }).catch(err => {
-          console.error('Could not copy text: ', err);
-        });
-      });
-      
-      $exampleWrapper.append($exampleItem, $copyButton);
-      $examplesList.append($exampleWrapper);
-    });
-
-    $content.append($examplesTitle, $examplesList);
-  }
-
-  // Add tags if they exist
-  if (func.tags && func.tags.length > 0) {
-    const $tagsTitle = $('<div>', {
-      class: 'doc-section-title',
-      text: 'Tags'
-    });
-    
-    const $tagsList = $('<div>', {
-      class: 'doc-function-tags'
-    });
-
-    func.tags.forEach(tag => {
-      const $tag = $('<span>', {
-        class: 'doc-function-tag',
-        text: tag
-      });
-      $tagsList.append($tag);
-    });
-
-    $content.append($tagsTitle, $tagsList);
-  }
-
-  // Add click handler for expand/collapse
-  $header.on('click', (e) => {
-    if (!$(e.target).is('.doc-star-button') && !$(e.target).is('.doc-copy-button')) {
-      if (state.expandedFunctions.has(func.name)) {
-        state.expandedFunctions.delete(func.name);
-        $expandIndicator.text('▶');
-        $content.hide();
-      } else {
-        state.expandedFunctions.add(func.name);
-        $expandIndicator.text('▼');
-        $content.show();
-      }
-      saveUserPreferences();
-    }
-  });
-
-  $item.append($header, $content);
-  return $item;
-}
-
-// Create the function list
-function makeFunctionList(data, columns = 1) {
-  dbg("makeFunctionList", "Creating function list", { data, columns });
-  
-  if (!data || !Array.isArray(data)) {
-    console.error("Invalid data passed to makeFunctionList:", data);
-    return $('<div>', {
-      class: 'doc-error-message',
-      text: 'Invalid documentation data'
-    });
-  }
-
-  const $container = $('<div>', {
-    id: 'doc-function-list',
-    class: 'doc-function-list'
-  });
-
-  // Filter functions based on selected tags - UPDATED to use set UNION logic
-  const filteredFunctions = data.filter(func => {
-    if (!func || typeof func !== 'object') {
-      return false;
-    }
-    
-    // If no tags selected, show all functions
-    if (state.selectedTags.size === 0) return true;
-    
-    // Check if function has ANY of the selected tags (union behavior)
-    if (!func.tags || !Array.isArray(func.tags)) {
-      return false;
-    }
-    
-    // Return true if ANY of the selected tags match (union)
-    return Array.from(state.selectedTags).some(tag => func.tags.includes(tag));
-  });
-
-
-  // Sort by starred status
-  filteredFunctions.sort((a, b) => {
-    const aStarred = state.starredFunctions.has(a.name);
-    const bStarred = state.starredFunctions.has(b.name);
-    if (aStarred === bStarred) return 0;
-    return aStarred ? -1 : 1;
-  });
-
-  // Create grid container if multiple columns
-  const $grid = columns > 1 ? $('<div>', { class: 'doc-function-grid' }) : null;
-  const $target = $grid || $container;
-
-  // Add functions to the list
-  filteredFunctions.forEach((func, index) => {
-    if (!func || typeof func !== 'object') return;
-    
-    const $functionElement = makeFunctionElement(func);
-    
-    if ($functionElement && $functionElement.length) {
-      $target.append($functionElement);
-    } else {
-      console.error(`Failed to create element for function ${func.name}`);
-    }
-  });
-
-  // Add grid to container if using multiple columns
-  if ($grid) {
-    $container.append($grid);
-  }
-
-  // Show message if no functions match
-  if (!filteredFunctions.length) {
-    const $noResults = $('<div>', {
-      class: 'doc-no-results',
-      text: 'No functions match the selected tags'
-    }).css({
-      padding: '1em',
-      textAlign: 'center',
-      color: 'var(--text-muted, #666)'
-    });
-    $container.append($noResults);
-  }
-
-  return $container;
-}
-
-
-// Show documentation for a symbol
 export function showDocumentationForSymbol(editor) {
-  dbg("showDocumentationForSymbol", "Showing documentation for symbol");
-  if (!editor) return false;
+  dbg('showDocumentationForSymbol', 'Showing documentation for symbol');
+  if (!editor || !state.data.length) {
+    return false;
+  }
 
   const cursor = editor.state.selection.main.head;
   const line = editor.state.doc.lineAt(cursor);
@@ -618,253 +881,44 @@ export function showDocumentationForSymbol(editor) {
   let end = start;
 
   while (start > 0 && /[\w-]/.test(lineText.charAt(start - 1))) {
-    start--;
+    start -= 1;
   }
 
   while (end < lineText.length && /[\w-]/.test(lineText.charAt(end))) {
-    end++;
+    end += 1;
   }
 
-  if (start < end) {
-    const symbol = lineText.substring(start, end);
-    dbg("showDocumentationForSymbol", "Symbol identified", symbol);
-
-    const func = state.data.find(
-      (f) => f.name === symbol || (f.aliases && f.aliases.includes(symbol))
-    );
-
-    if (func) {
-      dbg("showDocumentationForSymbol", "Function found", func.name);
-      $("#panel-help").show();
-      $("#panel-help-tab-reference").click();
-      state.expandedFunctions = new Set([func.name]);
-      state.selectedTags.clear();
-      $(".doc-tag").removeClass("selected");
-      renderFunctionList();
-
-      setTimeout(() => {
-        const $functionItem = $(`.doc-function-item[data-function="${func.name}"]`);
-        if ($functionItem.length) {
-          $functionItem[0].scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      }, 100);
-
-      return true;
-    }
+  if (start >= end) {
+    return false;
   }
 
-  dbg("showDocumentationForSymbol", "No matching function found");
-  return false;
-}
+  const symbol = lineText.substring(start, end);
+  const directMatch = state.functionIndex.get(symbol);
+  const aliasTarget = state.aliasIndex.get(symbol);
+  const func = directMatch || (aliasTarget ? state.functionIndex.get(aliasTarget) : null);
 
-async function loadReferenceData() {
-  dbg("loadReferenceData", "Fetching reference data");
-  try {
-    const response = await fetch("assets/modulisp_reference_data.json");
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    
-    // Validate data structure
-    if (!Array.isArray(data)) {
-      throw new Error('Documentation data must be an array');
-    }
-
-    // Inspect the data structure
-    for (let i = 0; i < Math.min(5, data.length); i++) {
-      const func = data[i];
-    }
-    
-    // Count functions with valid parameters
-    const validParamsCount = data.filter(f => 
-      f.parameters && Array.isArray(f.parameters) && f.parameters.length > 0
-    ).length;
-
-    // Validate each function entry
-    data.forEach(func => {
-      if (!func || typeof func !== 'object') {
-        throw new Error('Each function entry must be an object');
-      }
-      if (!func.name || typeof func.name !== 'string') {
-        throw new Error('Each function must have a name property');
-      }
-      if (!Array.isArray(func.tags)) {
-        throw new Error('Each function must have a tags array');
-      }
-    });
-
-    dbg("loadReferenceData", "Reference data loaded successfully");
-    return data;
-  } catch (error) {
-    dbg("loadReferenceData", "Error loading reference data", error);
-    throw error;
-  }
-}
-
-// Adjust documentation panel elements for theme
-function adjustDocPanelForTheme() {
-  dbg("adjustDocPanelForTheme", "Adjusting documentation panel for theme");
-  const textColor = getComputedStyle(document.documentElement)
-    .getPropertyValue("--text-primary")
-    .trim();
-
-  let isLightText = false;
-  if (textColor.startsWith("#")) {
-    const hex = textColor.substring(1);
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
-    const brightness = r * 0.299 + g * 0.587 + b * 0.114;
-    isLightText = brightness > 128;
-  } else if (textColor.startsWith("rgb")) {
-    const rgb = textColor.match(/\d+/g);
-    if (rgb && rgb.length >= 3) {
-      const r = parseInt(rgb[0]);
-      const g = parseInt(rgb[1]);
-      const b = parseInt(rgb[2]);
-      const brightness = r * 0.299 + g * 0.587 + b * 0.114;
-      isLightText = brightness > 128;
-    }
+  if (!func) {
+    return false;
   }
 
-  const isLightTheme = !isLightText;
+  $('#panel-help').show();
+  $('#panel-help-tab-reference').click();
 
-  if (isLightTheme) {
-    $(".doc-tag").css({
-      "background-color": "#f0f0f0",
-      color: "#333",
-    });
-
-    $(".doc-tag.selected").css({
-      "background-color": "var(--accent-color, #0066cc)",
-      color: "white",
-    });
-
-    $(".doc-function-header").css({
-      "background-color": "#f5f5f5",
-      color: "#333",
-    });
-
-    $(".doc-function-details").css({
-      "background-color": "#fafafa",
-      color: "#333",
-      "border-top": "1px solid #ddd",
-    });
-
-    $(".doc-section-title").css({
-      color: "var(--accent-color, #0066cc)",
-    });
-
-    $(".doc-param-name").css({
-      "background-color": "#f0f0f0",
-      color: "#333",
-      border: "1px solid #ddd",
-    });
-
-    $(".doc-function-tag").css({
-      "background-color": "#f0f0f0",
-      color: "#555",
-    });
-
-    $(".doc-example-editor .cm-editor").css({
-      "background-color": "#f8f8f8",
-      border: "1px solid #eee",
-    });
-  } else {
-    $(".doc-tag").css({
-      "background-color": "var(--panel-item-hover-bg)",
-      color: "var(--text-primary)",
-    });
-
-    $(".doc-tag.selected").css({
-      "background-color": "var(--accent-color)",
-      color: "#000",
-    });
-
-    $(".doc-function-header").css({
-      "background-color": "var(--panel-section-bg)",
-      color: "var(--text-primary)",
-    });
-
-    $(".doc-function-details").css({
-      "background-color": "var(--panel-control-bg)",
-      color: "var(--text-primary)",
-      "border-top": "1px solid var(--panel-border)",
-    });
-
-    $(".doc-section-title").css({
-      color: "var(--accent-color)",
-    });
-
-    $(".doc-param-name").css({
-      "background-color": "var(--panel-item-hover-bg)",
-      color: "var(--text-primary)",
-      border: "none",
-    });
-
-    $(".doc-function-tag").css({
-      "background-color": "var(--panel-item-hover-bg)",
-      color: "var(--text-primary)",
-    });
-
-    $(".doc-example-editor .cm-editor").css({
-      "background-color": "",
-      border: "",
-    });
+  state.expandedFunctions.add(func.name);
+  persistSetToStorage(STORAGE_KEYS.expanded, state.expandedFunctions);
+  state.selectedTags.clear();
+  if (ui.tagsWrapper) {
+    ui.tagsWrapper.find('.doc-tag').removeClass('selected');
   }
-}
+  updateClearTagsButton();
+  renderFunctionList();
 
-function makeTags(data) {
-  // Get all unique tags and count their frequency
-  const tagFrequency = {};
-  data.forEach(func => {
-    if (func && func.tags) {
-      func.tags.forEach(tag => {
-        tagFrequency[tag] = (tagFrequency[tag] || 0) + 1;
-      });
+  setTimeout(() => {
+    const $item = $(`.doc-function-item[data-function="${func.name}"]`);
+    if ($item.length) {
+      $item[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  });
+  }, 100);
 
-  // Create container
-  const $container = $('<div>', {
-    class: 'doc-tags-container'
-  });
-
-  const $wrapper = $('<div>', {
-    class: 'doc-tags-wrapper'
-  });
-
-  // Sort tags by frequency (most frequent first) and create tag elements
-  const sortedTags = Object.keys(tagFrequency).sort((a, b) => {
-    // Sort by frequency (descending)
-    return tagFrequency[b] - tagFrequency[a];
-  });
-
-  sortedTags.forEach(tag => {
-    const $tag = $('<div>', {
-      class: 'doc-tag',
-      text: tag
-    });
-
-    if (state.selectedTags.has(tag)) {
-      $tag.addClass('selected');
-    }
-
-    $tag.on('click', () => {
-      if (state.selectedTags.has(tag)) {
-        state.selectedTags.delete(tag);
-        $tag.removeClass('selected');
-      } else {
-        state.selectedTags.add(tag);
-        $tag.addClass('selected');
-      }
-      renderFunctionList();
-    });
-
-    $wrapper.append($tag);
-  });
-
-  $container.append($wrapper);
-  return $container;
+  return true;
 }
