@@ -4,22 +4,19 @@
 .modulisp-reference-container {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden; /* Container shouldn't scroll, only the function list */
 }
 
 /* Tags Container */
 .doc-tags-container {
-  position: relative;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   background-color: var(--panel-bg);
   padding: 0.5em 0.5em;
   margin-bottom: 0;
   border-bottom: 1px solid var(--panel-border);
   width: 100%;
   flex-shrink: 0;
+  z-index: 10;
 }
 
 .doc-tags-wrapper {
@@ -92,9 +89,6 @@
 
 /* Function List */
 .doc-function-list {
-  overflow-y: auto;
-  overflow-x: hidden;
-  flex: 1;
   padding: 0.5em 0.5em 1em;
   box-sizing: border-box;
 }

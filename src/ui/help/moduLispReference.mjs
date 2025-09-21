@@ -825,13 +825,7 @@ export async function makeModuLispReference() {
   state.targetVersion = restoreTargetVersion();
 
   const $container = $('<div>', {
-    class: 'modulisp-reference-container',
-    css: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      overflow: 'hidden'
-    }
+    class: 'modulisp-reference-container'
   });
 
   ui.root = $container;
