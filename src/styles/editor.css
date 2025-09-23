@@ -93,3 +93,13 @@
 .current-line {
   background-color: lightgrey;
 }
+
+/* Hide scrollbar for main editor */
+.cm-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.cm-scroller {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
