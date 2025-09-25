@@ -1,9 +1,11 @@
 import { post } from './io/console.mjs';
+import { setConnectedToModule } from "./io/serialComms.mjs";
 import { activeUserSettings } from "./utils/persistentUserSettings.mjs";
 import { dbg, toggleDbg } from "./utils.mjs";
 
 export let devmode = false;
 export let disableWebSerial = false;
+export let noModuleMode = false;
 
 export function handleURLParameters() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -22,6 +24,13 @@ export function handleURLParameters() {
   if (urlParams.has("disableWebSerial") && urlParams.get("disableWebSerial") === "true") {
     disableWebSerial = true;
     dbg("WebSerial disabled via URL parameter");
+  }
+
+  if (urlParams.has("noModuleMode") && urlParams.get("noModuleMode") === "true") {
+    noModuleMode = true;
+    dbg("No-module mode enabled");
+    setConnectedToModule(true);
+    post("**Info**: Running in no-module mode. Expressions evaluate via the in-browser uSEQ interpreter.");
   }
 
   if (urlParams.has("nosave")) {

@@ -8,4 +8,5 @@ public/bundle.css
 public/bundle.css.map
 public/assets
 public/solid-dist
+public/wasm
 *.backup

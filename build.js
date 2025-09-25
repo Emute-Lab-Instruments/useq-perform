@@ -49,6 +49,13 @@ const referenceDataFile = {
   dest: path.join('public', 'assets', 'modulisp_reference_data.json')
 };
 
+const wasmBundleFile = {
+  src: path.join('src-useq', 'wasm', 'useq.js'),
+  dest: path.join('public', 'wasm', 'useq.js')
+};
+
+let warnedMissingWasmBundle = false;
+
 function ensureDirectoryExists(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -78,6 +85,26 @@ function copyReferenceData() {
     console.log(`Copied ${referenceDataFile.src} to ${referenceDataFile.dest}`);
   } catch (error) {
     console.error(`Failed to copy ${referenceDataFile.src}:`, error);
+  }
+}
+
+function copyUseqWasmBundle() {
+  if (!fs.existsSync(wasmBundleFile.src)) {
+    if (!warnedMissingWasmBundle) {
+      console.warn(`uSEQ WASM bundle not found at ${wasmBundleFile.src}. Run src-useq/scripts/build_wasm.sh to generate it.`);
+      warnedMissingWasmBundle = true;
+    }
+    return;
+  }
+
+  warnedMissingWasmBundle = false;
+
+  try {
+    ensureDirectoryExists(path.dirname(wasmBundleFile.dest));
+    fs.copyFileSync(wasmBundleFile.src, wasmBundleFile.dest);
+    console.log(`Copied ${wasmBundleFile.src} to ${wasmBundleFile.dest}`);
+  } catch (error) {
+    console.error(`Failed to copy ${wasmBundleFile.src}:`, error);
   }
 }
 
@@ -127,6 +154,7 @@ async function build() {
 
       buildMarkdown();
       copyReferenceData();
+      copyUseqWasmBundle();
 
       // Watch for markdown changes
       fs.watch(markdownBuildOptions.inputDir, (eventType, filename) => {
@@ -140,6 +168,16 @@ async function build() {
 
         if (filename === path.basename(referenceDataFile.src)) {
           copyReferenceData();
+        }
+      });
+
+      fs.watch(path.dirname(wasmBundleFile.src), (eventType, filename) => {
+        if (!filename) {
+          return;
+        }
+
+        if (filename === path.basename(wasmBundleFile.src)) {
+          copyUseqWasmBundle();
         }
       });
 
@@ -158,6 +196,7 @@ async function build() {
       ]);
       buildMarkdown();
       copyReferenceData();
+      copyUseqWasmBundle();
       console.log('Build complete');
     }
   } catch (error) {
