@@ -12,6 +12,8 @@ import {
 // SERIAL COMMUNICATION
 import { sendTouSEQ, isConnectedToModule } from "../io/serialComms.mjs";
 import { post } from "../io/console.mjs";
+import { evalInUseqWasm } from "../io/useqWasmInterpreter.mjs";
+import { noModuleMode } from "../urlParams.mjs";
 
 // UI STATE
 import { openCam } from "../ui/camera.mjs";
@@ -28,7 +30,9 @@ import { detectAndTrackExpressionEvaluation } from "./extensions/structure.mjs";
 export function evalToplevel(opts, prefix = "") {
   const state = opts.state;
   const code = prefix + top_level_string(state);
-  
+
+  const wasmCode = code.startsWith("@") ? code.slice(1) : code;
+
   // Track expression evaluation for gutter highlighting only if connected
   if (opts.view && typeof opts.view.dispatch === 'function' && isConnectedToModule()) {
     detectAndTrackExpressionEvaluation(opts.view);
@@ -49,7 +53,35 @@ export function evalToplevel(opts, prefix = "") {
     }
     flashEvalHighlight(opts.view, from, to);
   }
-  sendTouSEQ(code);
+
+  evalInUseqWasm(wasmCode)
+    .then((result) => {
+      if (!noModuleMode) {
+        return;
+      }
+
+      const formatForCodeBlock = (text) => {
+        const value = typeof text === 'string' ? text : String(text ?? '');
+        return value.replace(/```/g, '``\`');
+      };
+
+      const formattedExpr = formatForCodeBlock(wasmCode);
+      const formattedResult = formatForCodeBlock(result);
+
+      post(`**Interpreter** evaluated:\n\n\`\`\`\n${formattedExpr}\n\`\`\`\n\nResult:\n\n\`\`\`\n${formattedResult}\n\`\`\``);
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (noModuleMode) {
+        post(`**Interpreter Error**: ${message.replace(/`/g, '\\`')}`);
+      } else {
+        console.error('uSEQ WASM interpreter evaluation failed', error);
+      }
+    });
+
+  if (!noModuleMode) {
+    sendTouSEQ(code);
+  }
   return true;
 }
 

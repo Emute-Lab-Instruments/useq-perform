@@ -1,5 +1,7 @@
 import { post } from '../io/console.mjs';
 import { checkForSavedPortAndMaybeConnect } from '../io/serialComms.mjs';
+import { ensureUseqWasmLoaded } from '../io/useqWasmInterpreter.mjs';
+import { noModuleMode } from '../urlParams.mjs';
 import { startWebSocketServer, stopWebSocketServer } from '../io/websocketServer.mjs';
 import { showModal } from '../ui/modal.mjs';
 
@@ -9,7 +11,7 @@ export function createApp(appUI, environmentState) {
 
     async start() {
       // Show warning modal if Web Serial is not available in browser
-      if (environmentState.areInBrowser && !environmentState.isWebSerialAvailable) {
+      if (!noModuleMode && environmentState.areInBrowser && !environmentState.isWebSerialAvailable) {
         const modalContent = `
           <p>This browser doesn't support the WebSerial API. Please try using a Chrome or Chromium-based browser, like Brave or Microsoft Edge.</p>
           <p>The WebSerial API is required to connect to your uSEQ hardware module.</p>
@@ -39,6 +41,16 @@ export function createApp(appUI, environmentState) {
       post(`Hello, ${userName}!`);
 
       // Check for saved port and maybe connect
+      if (noModuleMode) {
+        try {
+          await ensureUseqWasmLoaded();
+          post('No-module mode active: expressions will run on the in-browser interpreter.');
+        } catch (error) {
+          post('**Error**: Failed to initialise the in-browser interpreter.');
+        }
+        return;
+      }
+
       await checkForSavedPortAndMaybeConnect();
     },
 
