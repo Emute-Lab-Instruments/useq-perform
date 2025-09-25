@@ -3,6 +3,7 @@ import { activeUserSettings } from "./utils/persistentUserSettings.mjs";
 import { dbg, toggleDbg } from "./utils.mjs";
 
 export let devmode = false;
+export let disableWebSerial = false;
 
 export function handleURLParameters() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -16,6 +17,11 @@ export function handleURLParameters() {
   if (urlParams.has("devmode") && urlParams.get("devmode") === "true") {
     devmode = true;
     dbg("Dev mode enabled");
+  }
+
+  if (urlParams.has("disableWebSerial") && urlParams.get("disableWebSerial") === "true") {
+    disableWebSerial = true;
+    dbg("WebSerial disabled via URL parameter");
   }
 
   if (urlParams.has("nosave")) {
