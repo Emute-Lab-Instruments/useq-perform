@@ -625,7 +625,7 @@ const matchPattern = /\b([ads])([1-8])(?= )/g;
 
 // Custom gutter marker for expression vertical lines
 export class ExpressionGutterMarker extends GutterMarker {
-  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true, exprType = null, showButton = false) {
+  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true, exprType = null, showClear = false) {
     super();
     this.color = color;
     this.isStart = isStart;
@@ -633,7 +633,7 @@ export class ExpressionGutterMarker extends GutterMarker {
     this.isMid = isMid;
     this.isActive = isActive;
     this.exprType = exprType;
-    this.showButton = showButton;
+    this.showClear = showClear;
   }
   
   toDOM() {
@@ -661,7 +661,7 @@ export class ExpressionGutterMarker extends GutterMarker {
     }
 
     // Add button (clear 'x' for active, play '▶' for inactive) centered on the gutter bar
-    if (this.showButton && this.exprType) {
+    if (this.showClear && this.exprType) {
       const btn = document.createElement('span');
       if (this.isActive) {
         btn.className = 'cm-expr-clear-btn';
@@ -729,7 +729,7 @@ export class ExpressionGutterMarker extends GutterMarker {
            other.isMid === this.isMid &&
            other.isActive === this.isActive &&
            other.exprType === this.exprType &&
-           other.showButton === this.showButton;
+           other.showClear === this.showClear;
   }
 }
 
@@ -817,9 +817,9 @@ export function createMarkersForRange(range, isActive, docLineFn, exprType) {
         
         // Show button on middle line: 'x' for active, 'play' for inactive expressions
         const buttonsEnabled = ui.expressionClearButtonEnabled !== false;
-        const showButton = buttonsEnabled && (line === midLine);
-        
-        const marker = new ExpressionGutterMarker(range.color, isStart, isEnd, isMid, isActive, exprType, showButton);
+        const showClear = buttonsEnabled && (line === midLine);
+
+        const marker = new ExpressionGutterMarker(range.color, isStart, isEnd, isMid, isActive, exprType, showClear);
         const lineObj = docLineFn(line);
         markers.push({
             pos: lineObj.from,

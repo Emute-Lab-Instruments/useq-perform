@@ -1,9 +1,13 @@
 import { serialVisPaletteLight, serialVisPaletteDark } from './serialVis/utils.mjs';
 
 let currentPalette = serialVisPaletteLight;
-const legendPanel = document.createElement('div');
+let legendPanel;
 
 function createLegendPanel() {
+    if (typeof document === 'undefined') return;
+    if (!legendPanel) {
+        legendPanel = document.createElement('div');
+    }
     legendPanel.id = 'vis-legend';
     legendPanel.style.cssText = `
         position: fixed;
