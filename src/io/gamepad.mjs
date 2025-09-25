@@ -1,18 +1,15 @@
 /**
  * Gamepad Support Module
  *
- * Provides support for gamepad input using the native browser Gamepad API.
- * Simplified interface for handling a single gamepad controller.
+ * Provides an interface for polling and managing browser Gamepad API input.
+ * The core manager exposes pure data snapshots while all side effects
+ * (DOM listeners, logging, scheduling) are injected for easier testing.
  */
-import { dbg } from "../utils.mjs";
-import { post } from "./console.mjs";
 
-// Constants for input processing
-const AXIS_DEADZONE = 0.1;
-const BUTTON_THRESHOLD = 0.1;
+const DEFAULT_AXIS_DEADZONE = 0.1;
+const DEFAULT_BUTTON_THRESHOLD = 0.1;
 
-// Button mapping for more readable code
-const BUTTON_MAP = {
+export const BUTTON_MAP = {
   0: 'A',
   1: 'B',
   2: 'X',
@@ -31,267 +28,460 @@ const BUTTON_MAP = {
   15: 'Right'
 };
 
-// Axis mapping for more readable code
-const AXIS_MAP = {
+export const AXIS_MAP = {
   0: 'LeftStickX',
   1: 'LeftStickY',
   2: 'RightStickX',
   3: 'RightStickY'
 };
 
-// State tracking
-let primaryGamepadIndex = null;
-let previousState = null;
+const EVENT_TYPES = /** @type {const} */ (['connected', 'disconnected', 'primaryChanged']);
 
-/**
- * Initialize gamepad support
- * @returns {boolean} Whether gamepad support was successfully initialized
- */
-export function initGamepad() {
-  // Check API support
-  if (!navigator.getGamepads) {
-    post("**Warning**: Gamepad API is not supported in this browser.");
-    return false;
+const noop = () => {};
+const nullLogger = {
+  debug: noop,
+  info: noop,
+  warn: noop,
+  error: noop
+};
+
+const defaultGetGamepads = () => {
+  if (typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function') {
+    return navigator.getGamepads();
   }
+  return [];
+};
 
-  // Set up event listeners
-  window.addEventListener("gamepadconnected", handleGamepadConnected);
-  window.addEventListener("gamepaddisconnected", handleGamepadDisconnected);
-
-  // Check for already connected gamepads
-  const connectedGamepads = navigator.getGamepads();
-  for (let i = 0; i < connectedGamepads.length; i++) {
-    if (connectedGamepads[i]) {
-      handleGamepadConnected({ gamepad: connectedGamepads[i] });
-      break; // Only use the first connected gamepad
-    }
+const defaultAddListener = (type, handler) => {
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener(type, handler);
   }
+};
 
-  // post("Gamepad support initialized. Connect a controller to begin.");
-  return true;
-}
-
-/**
- * Handle gamepad connected event
- * @param {GamepadEvent} event - The gamepad connection event
- */
-function handleGamepadConnected(event) {
-  const gamepad = event.gamepad || event.detail.gamepad;
-  
-  // If we don't have a primary gamepad yet, use this one
-  if (primaryGamepadIndex === null) {
-    primaryGamepadIndex = gamepad.index;
-    
-    // Initialize previous state
-    previousState = createEmptyState();
-    
-    post(`**Gamepad Connected**: ${gamepad.id} (index: ${gamepad.index})`);
-    dbg("Primary gamepad connected:", gamepad);
+const defaultRemoveListener = (type, handler) => {
+  if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+    window.removeEventListener(type, handler);
   }
-}
+};
 
-/**
- * Handle gamepad disconnected event
- * @param {GamepadEvent} event - The gamepad disconnection event
- */
-function handleGamepadDisconnected(event) {
-  const gamepad = event.gamepad;
-  
-  // If this was our primary gamepad, clear it
-  if (primaryGamepadIndex === gamepad.index) {
-    post(`**Primary Gamepad Disconnected**: ${gamepad.id}`);
-    primaryGamepadIndex = null;
-    previousState = null;
-    
-    // Try to find another connected gamepad to use
-    const connectedGamepads = navigator.getGamepads();
-    for (let i = 0; i < connectedGamepads.length; i++) {
-      if (connectedGamepads[i] && i !== gamepad.index) {
-        handleGamepadConnected({ gamepad: connectedGamepads[i] });
-        break;
-      }
-    }
-  }
-}
+const defaultNow = () => Date.now();
 
-/**
- * Create an empty gamepad state object
- * @returns {Object} Empty state object
- */
-function createEmptyState() {
-  // Create buttons object with all possible buttons initialized
+const toArray = value => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return Array.prototype.slice.call(value);
+};
+
+const uniqueNamesFromMap = mapping => {
+  const names = new Set();
+  Object.values(mapping).forEach(name => names.add(name));
+  return Array.from(names);
+};
+
+function createEmptySnapshot({ now, buttonNames, axisNames }) {
+  const timestamp = now();
   const buttons = {};
-  Object.values(BUTTON_MAP).forEach(buttonName => {
-    buttons[buttonName] = {
+  buttonNames.forEach(name => {
+    buttons[name] = {
       pressed: false,
       value: 0
     };
   });
-  
-  // Create axes object with all possible axes initialized
+
   const axes = {};
-  Object.values(AXIS_MAP).forEach(axisName => {
-    axes[axisName] = 0;
+  axisNames.forEach(name => {
+    axes[name] = 0;
   });
-  
+
   return {
     connected: false,
-    id: "",
+    id: '',
     index: null,
-    timestamp: Date.now(),
+    timestamp,
     buttons,
-    axes,
-    events: []
+    axes
   };
 }
 
-/**
- * Apply deadzone to an axis value
- * @param {number} value - The raw axis value
- * @returns {number} The processed axis value
- */
-function applyDeadzone(value) {
-  return Math.abs(value) < AXIS_DEADZONE ? 0 : value;
+function cloneSnapshot(snapshot) {
+  if (!snapshot) return null;
+  return {
+    connected: Boolean(snapshot.connected),
+    id: snapshot.id || '',
+    index: typeof snapshot.index === 'number' ? snapshot.index : null,
+    timestamp: snapshot.timestamp ?? 0,
+    buttons: Object.fromEntries(
+      Object.entries(snapshot.buttons || {}).map(([name, value]) => [
+        name,
+        {
+          pressed: Boolean(value?.pressed),
+          value: typeof value?.value === 'number' ? value.value : 0
+        }
+      ])
+    ),
+    axes: Object.fromEntries(
+      Object.entries(snapshot.axes || {}).map(([name, value]) => [
+        name,
+        typeof value === 'number' ? value : 0
+      ])
+    )
+  };
 }
 
-/**
- * Check if a button is pressed (above threshold)
- * @param {GamepadButton} button - The button to check
- * @returns {boolean} Whether the button is considered pressed
- */
-function isButtonPressed(button) {
-  return button.value >= BUTTON_THRESHOLD;
-}
-
-/**
- * Poll for gamepad state and return the current state
- * @param {Function} [handler] - Optional handler function to process the state
- * @returns {Object} Current gamepad state with any new events
- */
-export function pollGamepad(handler = null) {
-  // If we don't have a primary gamepad, return empty state
-  if (primaryGamepadIndex === null) {
-    const emptyState = createEmptyState();
-    if (handler) handler(emptyState);
-    return emptyState;
-  }
-  
-  // Get the gamepad data
-  const gamepads = navigator.getGamepads();
-  const gamepad = gamepads[primaryGamepadIndex];
-  
-  // If the gamepad is no longer connected, return disconnected state
-  if (!gamepad) {
-    const emptyState = createEmptyState();
-    if (handler) handler(emptyState);
-    return emptyState;
-  }
-  
-  // Start with a complete state including all possible buttons and axes
-  const currentState = createEmptyState();
-  
-  // Update base properties
-  currentState.connected = true;
-  currentState.id = gamepad.id || "";
-  currentState.index = gamepad.index;
-  currentState.timestamp = Date.now();
-  
-  // Process buttons - only update values for buttons that exist on this gamepad
-  for (let i = 0; i < gamepad.buttons.length; i++) {
-    const buttonName = BUTTON_MAP[i] || `Button${i}`;
-    const buttonValue = gamepad.buttons[i].value;
-    const isPressed = isButtonPressed(gamepad.buttons[i]);
-    
-    // Record current state - the button already exists in the state with defaults
-    currentState.buttons[buttonName] = {
-      pressed: isPressed,
-      value: buttonValue
+function normaliseGamepadSnapshot(gamepad, {
+  now,
+  buttonMap,
+  axisMap,
+  buttonNames,
+  axisNames,
+  deadzone,
+  threshold
+}) {
+  const timestamp = now();
+  const buttons = {};
+  buttonNames.forEach(name => {
+    buttons[name] = {
+      pressed: false,
+      value: 0
     };
-    
-    // Check for changes from previous state
-    if (previousState && previousState.connected) {
-      const prevButton = previousState.buttons[buttonName];
-      if (prevButton) {
-        // Button press
-        if (isPressed && !prevButton.pressed) {
-          currentState.events.push({
-            type: 'buttonPressed',
-            button: buttonName,
-            value: buttonValue,
-            timestamp: currentState.timestamp
-          });
-        }
-        // Button release
-        else if (!isPressed && prevButton.pressed) {
-          currentState.events.push({
-            type: 'buttonReleased',
-            button: buttonName,
-            value: buttonValue,
-            timestamp: currentState.timestamp
-          });
-        }
-        // Value change while pressed
-        else if (isPressed && 
-                Math.abs(buttonValue - prevButton.value) > BUTTON_THRESHOLD) {
-          currentState.events.push({
-            type: 'buttonValueChanged',
-            button: buttonName,
-            value: buttonValue,
-            previousValue: prevButton.value,
-            timestamp: currentState.timestamp
-          });
-        }
-      }
-    }
+  });
+
+  const axes = {};
+  axisNames.forEach(name => {
+    axes[name] = 0;
+  });
+
+  const rawButtons = gamepad?.buttons || [];
+  for (let index = 0; index < rawButtons.length; index += 1) {
+    const button = rawButtons[index];
+    if (!button) continue;
+    const name = buttonMap[index] || `Button${index}`;
+    buttons[name] = {
+      pressed: Number(button.value || 0) >= threshold,
+      value: Number(button.value || 0)
+    };
   }
-  
-  // Process axes - only update values for axes that exist on this gamepad
-  for (let i = 0; i < gamepad.axes.length; i++) {
-    const axisName = AXIS_MAP[i] || `Axis${i}`;
-    const rawValue = gamepad.axes[i];
-    const axisValue = applyDeadzone(rawValue);
-    
-    // Record current state - the axis already exists in the state with defaults
-    currentState.axes[axisName] = axisValue;
-    
-    // Check for changes from previous state
-    if (previousState && previousState.connected) {
-      const prevValue = previousState.axes[axisName];
-      if (Math.abs(axisValue - prevValue) > AXIS_DEADZONE) {
-        currentState.events.push({
-          type: 'axisChanged',
-          axis: axisName,
-          value: axisValue,
-          previousValue: prevValue,
-          timestamp: currentState.timestamp
-        });
-      }
-    }
+
+  const rawAxes = gamepad?.axes || [];
+  for (let index = 0; index < rawAxes.length; index += 1) {
+    const name = axisMap[index] || `Axis${index}`;
+    const value = typeof rawAxes[index] === 'number' ? rawAxes[index] : 0;
+    axes[name] = Math.abs(value) < deadzone ? 0 : value;
   }
-  
-  // Update previous state
-  previousState = currentState;
-  
-  // Call the handler if provided
-  if (handler) {
-    handler(currentState);
-  }
-  
-  return currentState;
+
+  return {
+    connected: Boolean(gamepad?.connected),
+    id: gamepad?.id || '',
+    index: typeof gamepad?.index === 'number' ? gamepad.index : null,
+    timestamp,
+    buttons,
+    axes
+  };
 }
 
-/**
- * Check if a gamepad is currently connected
- * @returns {boolean} Whether a gamepad is connected
- */
+function extractGamepad(event) {
+  if (!event) return null;
+  if (event.gamepad) return event.gamepad;
+  if (event.detail && event.detail.gamepad) return event.detail.gamepad;
+  return null;
+}
+
+function createListenerRegistry() {
+  return EVENT_TYPES.reduce((registry, type) => {
+    registry[type] = new Set();
+    return registry;
+  }, {});
+}
+
+export class GamepadManager {
+  constructor({
+    getGamepads = defaultGetGamepads,
+    addListener = defaultAddListener,
+    removeListener = defaultRemoveListener,
+    now = defaultNow,
+    logger = nullLogger,
+    buttonMap = BUTTON_MAP,
+    axisMap = AXIS_MAP,
+    deadzone = DEFAULT_AXIS_DEADZONE,
+    threshold = DEFAULT_BUTTON_THRESHOLD,
+    supported = typeof navigator !== 'undefined' && typeof navigator.getGamepads === 'function'
+  } = {}) {
+    this.getGamepads = getGamepads;
+    this.addListener = addListener;
+    this.removeListener = removeListener;
+    this.now = now;
+    this.logger = logger ?? nullLogger;
+    this.buttonMap = { ...buttonMap };
+    this.axisMap = { ...axisMap };
+    this.deadzone = deadzone;
+    this.threshold = threshold;
+    this.supported = Boolean(supported);
+
+    this.buttonNames = uniqueNamesFromMap(this.buttonMap);
+    this.axisNames = uniqueNamesFromMap(this.axisMap);
+
+    this.eventListeners = createListenerRegistry();
+
+    this.primaryIndex = null;
+    this.lastSnapshot = createEmptySnapshot({
+      now: this.now,
+      buttonNames: this.buttonNames,
+      axisNames: this.axisNames
+    });
+
+    this.connected = false;
+    this.boundConnectedListener = null;
+    this.boundDisconnectedListener = null;
+  }
+
+  isSupported() {
+    return this.supported;
+  }
+
+  connect() {
+    if (!this.supported || this.connected) {
+      return this.supported;
+    }
+
+    if (typeof this.addListener === 'function') {
+      this.boundConnectedListener = event => {
+        const gamepad = extractGamepad(event);
+        if (gamepad) {
+          this.handleGamepadConnected(gamepad);
+        }
+      };
+      this.boundDisconnectedListener = event => {
+        const gamepad = extractGamepad(event);
+        if (gamepad) {
+          this.handleGamepadDisconnected(gamepad);
+        }
+      };
+      this.addListener('gamepadconnected', this.boundConnectedListener);
+      this.addListener('gamepaddisconnected', this.boundDisconnectedListener);
+    }
+
+    this.connected = true;
+    this.refreshPrimaryFromGamepads();
+    return true;
+  }
+
+  disconnect() {
+    if (!this.connected) return;
+    if (typeof this.removeListener === 'function') {
+      if (this.boundConnectedListener) {
+        this.removeListener('gamepadconnected', this.boundConnectedListener);
+        this.boundConnectedListener = null;
+      }
+      if (this.boundDisconnectedListener) {
+        this.removeListener('gamepaddisconnected', this.boundDisconnectedListener);
+        this.boundDisconnectedListener = null;
+      }
+    }
+    this.connected = false;
+  }
+
+  reset() {
+    this.primaryIndex = null;
+    this.lastSnapshot = createEmptySnapshot({
+      now: this.now,
+      buttonNames: this.buttonNames,
+      axisNames: this.axisNames
+    });
+  }
+
+  on(event, handler) {
+    if (!EVENT_TYPES.includes(event) || typeof handler !== 'function') {
+      return noop;
+    }
+    this.eventListeners[event].add(handler);
+    return () => this.eventListeners[event].delete(handler);
+  }
+
+  off(event, handler) {
+    if (EVENT_TYPES.includes(event) && handler) {
+      this.eventListeners[event].delete(handler);
+    }
+  }
+
+  emit(event, payload) {
+    if (!EVENT_TYPES.includes(event)) return;
+    this.eventListeners[event].forEach(listener => {
+      try {
+        listener(payload);
+      } catch (error) {
+        this.logger.warn?.('Error in gamepad listener', error);
+      }
+    });
+  }
+
+  getPrimaryIndex() {
+    return this.primaryIndex;
+  }
+
+  getLastSnapshot() {
+    return cloneSnapshot(this.lastSnapshot);
+  }
+
+  poll(handler) {
+    const snapshot = this.computeSnapshot();
+    if (handler) {
+      handler(cloneSnapshot(snapshot));
+    }
+    return cloneSnapshot(snapshot);
+  }
+
+  handleGamepadConnected(gamepad) {
+    this.emit('connected', {
+      index: gamepad.index,
+      id: gamepad.id || ''
+    });
+    if (this.primaryIndex === null) {
+      this.updatePrimary(gamepad.index, gamepad);
+    }
+  }
+
+  handleGamepadDisconnected(gamepad) {
+    this.emit('disconnected', {
+      index: gamepad.index,
+      id: gamepad.id || ''
+    });
+    if (this.primaryIndex === gamepad.index) {
+      this.primaryIndex = null;
+      this.emit('primaryChanged', {
+        index: null,
+        previousIndex: gamepad.index,
+        id: gamepad.id || ''
+      });
+      this.refreshPrimaryFromGamepads();
+    }
+  }
+
+  refreshPrimaryFromGamepads() {
+    const pads = this.safeGetGamepads();
+    if (this.primaryIndex !== null && pads[this.primaryIndex]) {
+      return;
+    }
+    const nextIndex = this.findNextConnectedIndex(pads, null);
+    if (typeof nextIndex === 'number') {
+      this.updatePrimary(nextIndex, pads[nextIndex]);
+    }
+  }
+
+  safeGetGamepads() {
+    try {
+      return toArray(this.getGamepads());
+    } catch (error) {
+      this.logger.warn?.('Failed to read gamepads', error);
+      return [];
+    }
+  }
+
+  findNextConnectedIndex(pads, skipIndex) {
+    for (let index = 0; index < pads.length; index += 1) {
+      if (index === skipIndex) continue;
+      if (pads[index]) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  updatePrimary(index, gamepad) {
+    if (typeof index !== 'number' || this.primaryIndex === index) return;
+    const previousIndex = this.primaryIndex;
+    this.primaryIndex = index;
+    this.emit('primaryChanged', {
+      index,
+      previousIndex,
+      id: gamepad?.id || ''
+    });
+  }
+
+  computeSnapshot() {
+    const pads = this.safeGetGamepads();
+
+    if (this.primaryIndex === null) {
+      const nextIndex = this.findNextConnectedIndex(pads, null);
+      if (typeof nextIndex === 'number') {
+        this.updatePrimary(nextIndex, pads[nextIndex]);
+      }
+    }
+
+    const gamepad = typeof this.primaryIndex === 'number' ? pads[this.primaryIndex] : null;
+
+    if (!gamepad) {
+      this.lastSnapshot = createEmptySnapshot({
+        now: this.now,
+        buttonNames: this.buttonNames,
+        axisNames: this.axisNames
+      });
+      return this.lastSnapshot;
+    }
+
+    this.lastSnapshot = normaliseGamepadSnapshot(gamepad, {
+      now: this.now,
+      buttonMap: this.buttonMap,
+      axisMap: this.axisMap,
+      buttonNames: this.buttonNames,
+      axisNames: this.axisNames,
+      deadzone: this.deadzone,
+      threshold: this.threshold
+    });
+    this.lastSnapshot.connected = true;
+    return this.lastSnapshot;
+  }
+}
+
+export function createEmptyGamepadState({
+  now = defaultNow,
+  buttonMap = BUTTON_MAP,
+  axisMap = AXIS_MAP
+} = {}) {
+  return createEmptySnapshot({
+    now,
+    buttonNames: uniqueNamesFromMap(buttonMap),
+    axisNames: uniqueNamesFromMap(axisMap)
+  });
+}
+
+export function createGamepadManager(options = {}) {
+  return new GamepadManager(options);
+}
+
+let defaultManager = null;
+
+function ensureDefaultManager() {
+  if (!defaultManager) {
+    defaultManager = createGamepadManager();
+  }
+  return defaultManager;
+}
+
+export function initGamepad() {
+  const manager = ensureDefaultManager();
+  return manager.connect();
+}
+
+export function pollGamepad(handler = null) {
+  const manager = ensureDefaultManager();
+  return manager.poll(handler);
+}
+
 export function isGamepadConnected() {
-  return primaryGamepadIndex !== null;
+  const manager = ensureDefaultManager();
+  const snapshot = manager.getLastSnapshot();
+  return Boolean(snapshot?.connected);
 }
 
-/**
- * Get the index of the primary gamepad
- * @returns {number|null} The index of the primary gamepad or null if none connected
- */
 export function getPrimaryGamepadIndex() {
-  return primaryGamepadIndex;
+  const manager = ensureDefaultManager();
+  return manager.getPrimaryIndex();
+}
+
+export function resetDefaultGamepadManager() {
+  if (defaultManager) {
+    defaultManager.disconnect();
+    defaultManager.reset();
+    defaultManager = null;
+  }
 }
