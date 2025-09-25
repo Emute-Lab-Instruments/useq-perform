@@ -296,6 +296,7 @@ export {
   sendTouSEQ,
   serialReader,
   connectToSerialPort,
+  disconnect,
   readingActive,
 };
 
@@ -958,7 +959,7 @@ function handleConnectionError(err) {
 export function checkForWebserialSupport() {
   console.log("Checking for Web Serial API support...");
   // Check for Web Serial API support
-  if (!navigator.serial) {
+  if (typeof navigator === 'undefined' || !navigator.serial) {
     post(
       "A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module"
     );
@@ -1024,4 +1025,6 @@ export async function enterBootloaderMode(port) {
   return true;
 }
 
-window.enterBootloaderMode = enterBootloaderMode;
+if (typeof window !== 'undefined') {
+  window.enterBootloaderMode = enterBootloaderMode;
+}

@@ -22,9 +22,12 @@ export function setTheme(editor, themeName) {
 
 export function setMainEditorTheme(themeName) {
   dbg("themename:", themeName);
-  const editor = EditorView.findFromDOM(
-    document.querySelector("#panel-main-editor .cm-editor")
-  );
+  const editorElement = document.querySelector("#panel-main-editor .cm-editor");
+  if (!editorElement) {
+    dbg("Editor element not found, skipping theme setting");
+    return false;
+  }
+  const editor = EditorView.findFromDOM(editorElement);
   const success = setTheme(editor, themeName);
   if (success) {
     setSnippetEditorsTheme(themeName);
