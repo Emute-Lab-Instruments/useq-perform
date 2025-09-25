@@ -19,17 +19,21 @@ const state = {
   aliasIndex: new Map(),
   versionOptions: [],
   targetVersion: null,
-  parsedTargetVersion: null,
-  isExpanded: false
+  parsedTargetVersion: null
 };
 
 const ui = {
   root: null,
   versionSelect: null,
   clearTagsButton: null,
-  expandButton: null,
   tagsWrapper: null
 };
+
+const PANEL_ANIMATION_DURATION = 260;
+const PANEL_EXPAND_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'; // Fast start with smooth landing
+// Alternate easings you can try:
+// const PANEL_EXPAND_EASING = 'cubic-bezier(0.33, 1, 0.68, 1)'; // Ease-out quartic feel
+// const PANEL_EXPAND_EASING = 'cubic-bezier(0.4, 0, 0.2, 1)'; // Balanced ease-in-out curve
 
 function restoreSetFromStorage(key) {
   try {
@@ -72,6 +76,98 @@ function persistTargetVersion(version) {
   } catch (error) {
     dbg("moduLispReference", "Failed to persist target version", error);
   }
+}
+
+function animatePanelContent(element, expanding) {
+  if (!element) {
+    return;
+  }
+
+  const supportsAnimation = typeof element.animate === 'function';
+  if (!supportsAnimation) {
+    element.classList.toggle('doc-function-content--active', expanding);
+    element.style.display = expanding ? 'block' : 'none';
+    element.style.height = '';
+    element.style.opacity = '';
+    element.style.transform = '';
+    element.style.overflow = '';
+    return;
+  }
+
+  if (typeof element.getAnimations === 'function') {
+    element.getAnimations().forEach((animation) => animation.cancel());
+  }
+
+  if (expanding) {
+    element.classList.add('doc-function-content--active');
+  }
+
+  element.style.display = 'block';
+  element.style.overflow = 'hidden';
+
+  const targetHeight = element.scrollHeight || 0;
+  const keyframes = expanding
+    ? [
+        { height: '0px', opacity: 0, transform: 'translateY(-4px)' },
+        { height: `${targetHeight}px`, opacity: 1, transform: 'translateY(0)' }
+      ]
+    : [
+        { height: `${targetHeight}px`, opacity: 1, transform: 'translateY(0)' },
+        { height: '0px', opacity: 0, transform: 'translateY(-4px)' }
+      ];
+
+  const animation = element.animate(keyframes, {
+    duration: PANEL_ANIMATION_DURATION,
+    easing: PANEL_EXPAND_EASING,
+    fill: 'both'
+  });
+
+  const cleanup = () => {
+    if (!expanding) {
+      element.classList.remove('doc-function-content--active');
+      element.style.display = 'none';
+    } else {
+      element.style.display = 'block';
+    }
+    element.style.height = '';
+    element.style.opacity = '';
+    element.style.transform = '';
+    element.style.overflow = '';
+  };
+
+  animation.onfinish = cleanup;
+  animation.oncancel = cleanup;
+}
+
+function setContentVisibility($content, expanded, { animate = false } = {}) {
+  if (!$content || !$content.length) {
+    return;
+  }
+
+  const element = $content[0];
+  if (animate) {
+    animatePanelContent(element, expanded);
+    return;
+  }
+
+  element.classList.toggle('doc-function-content--active', expanded);
+  element.style.display = expanded ? 'block' : 'none';
+  element.style.height = '';
+  element.style.opacity = '';
+  element.style.transform = '';
+  element.style.overflow = '';
+}
+
+function setItemExpandedState($item, $content, $indicator, expanded, options = {}) {
+  if ($item && $item.length) {
+    $item.toggleClass('doc-function-item--expanded', expanded);
+  }
+
+  if ($indicator && $indicator.length) {
+    $indicator.text(expanded ? '▼' : '▶');
+  }
+
+  setContentVisibility($content, expanded, options);
 }
 
 function ensureArray(value) {
@@ -365,16 +461,14 @@ function handleVersionChange(value) {
   renderFunctionList();
 }
 
-function toggleFunctionExpansion(functionName, expanded, $content, $indicator) {
+function toggleFunctionExpansion(functionName, expanded, $item, $content, $indicator) {
   if (expanded) {
     state.expandedFunctions.add(functionName);
-    $indicator.text('▼');
-    $content.show();
   } else {
     state.expandedFunctions.delete(functionName);
-    $indicator.text('▶');
-    $content.hide();
   }
+
+  setItemExpandedState($item, $content, $indicator, expanded, { animate: true });
   persistSetToStorage(STORAGE_KEYS.expanded, state.expandedFunctions);
 }
 
@@ -553,14 +647,10 @@ function buildFunctionElement(func) {
   });
 
   const isExpanded = state.expandedFunctions.has(func.name);
-  const $indicator = $('<span>', {
-    class: 'doc-expand-indicator',
-    text: isExpanded ? '▼' : '▶'
-  });
+  const $indicator = $('<span>', { class: 'doc-expand-indicator' });
 
   const $content = $('<div>', {
-    class: 'doc-function-content',
-    style: isExpanded ? 'display: block' : 'display: none'
+    class: 'doc-function-content'
   });
 
   if (func.description) {
@@ -608,7 +698,7 @@ function buildFunctionElement(func) {
       return;
     }
     const nextExpandedState = !state.expandedFunctions.has(func.name);
-    toggleFunctionExpansion(func.name, nextExpandedState, $content, $indicator);
+    toggleFunctionExpansion(func.name, nextExpandedState, $item, $content, $indicator);
   });
 
   $header.append($name);
@@ -618,6 +708,7 @@ function buildFunctionElement(func) {
   $header.append($starButton, $indicator);
 
   $item.append($header, $content);
+  setItemExpandedState($item, $content, $indicator, isExpanded, { animate: false });
   return $item;
 }
 
@@ -669,7 +760,7 @@ function renderFunctionList() {
   const functions = getFilteredFunctions();
   const $list = $('<div>', {
     id: 'doc-function-list',
-    class: `doc-function-list${state.isExpanded ? ' doc-function-list--expanded' : ''}`
+    class: 'doc-function-list'
   });
 
   functions.forEach((func) => {
@@ -685,9 +776,6 @@ function renderFunctionList() {
     );
   }
 
-  if (ui.expandButton) {
-    ui.expandButton.text(state.isExpanded ? 'Collapse' : 'Expand');
-  }
   populateVersionSelect();
   updateClearTagsButton();
 
@@ -719,20 +807,6 @@ function buildTagsPanel() {
   const $versionWrapper = $('<div>', { class: 'doc-version-filter' });
   $versionWrapper.append($versionLabel, $versionSelect);
 
-  const $expandButton = $('<button>', {
-    id: 'toggle-expand-button',
-    class: 'doc-expand-toggle',
-    text: state.isExpanded ? 'Collapse' : 'Expand'
-  });
-
-  $expandButton.on('click', () => {
-    state.isExpanded = !state.isExpanded;
-    $expandButton.text(state.isExpanded ? 'Collapse' : 'Expand');
-    renderFunctionList();
-  });
-
-  ui.expandButton = $expandButton;
-
   const $clearTagsButton = $('<button>', {
     class: 'doc-clear-tags',
     text: 'Clear tags'
@@ -747,7 +821,7 @@ function buildTagsPanel() {
 
   ui.clearTagsButton = $clearTagsButton;
 
-  $controls.append($versionWrapper, $expandButton, $clearTagsButton);
+  $controls.append($versionWrapper, $clearTagsButton);
 
   const $wrapper = $('<div>', { class: 'doc-tags-wrapper' });
   ui.tagsWrapper = $wrapper;

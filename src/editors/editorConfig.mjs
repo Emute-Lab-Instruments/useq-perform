@@ -26,6 +26,30 @@ import { dbg } from "../utils.mjs";
 import { flashEvalHighlight } from "./extensions/evalHighlight.mjs";
 import { detectAndTrackExpressionEvaluation } from "./extensions/structure.mjs";
 
+function evalSelection(opts, prefix = "") {
+  const state = opts.state;
+  if (!state?.selection) {
+    return false;
+  }
+
+  const main = state.selection.main;
+  if (!main || main.empty) {
+    return false;
+  }
+
+  const code = prefix + state.doc.sliceString(main.from, main.to);
+  if (!code.trim()) {
+    return false;
+  }
+
+  if (opts.view && typeof opts.view.dispatch === 'function' && isConnectedToModule()) {
+    flashEvalHighlight(opts.view, main.from, main.to);
+  }
+
+  sendTouSEQ(code);
+  return true;
+}
+
 // Evaluate the current top-level form, optionally with a prefix (e.g., "@" for async)
 export function evalToplevel(opts, prefix = "") {
   const state = opts.state;
@@ -93,6 +117,20 @@ export function evalToplevelAsync(opts) {
 
 // Evaluate the current top-level form synchronously
 export function evalNow(opts) {
+  const state = opts.state;
+  if (state?.selection) {
+    const main = state.selection.main;
+    if (main && !main.empty) {
+      const startLine = state.doc.lineAt(main.from).number;
+      const endLine = state.doc.lineAt(Math.max(main.to - 1, main.from)).number;
+      if (startLine !== endLine) {
+        const evaluated = evalSelection(opts, "@");
+        if (evaluated) {
+          return true;
+        }
+      }
+    }
+  }
   return evalToplevel(opts, "@");
 }
 

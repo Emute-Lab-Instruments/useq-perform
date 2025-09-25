@@ -138,11 +138,6 @@
   color: var(--text-primary);
 }
 
-/* Remove rotation effect - we'll use different icons instead */
-.panel-expanded .panel-expand-toggle .expand-icon {
-  /* transform: rotate(180deg); */
-}
-
 /* End of Selection */
 
 /* The main container that holds both the nav bar and tab contents */
