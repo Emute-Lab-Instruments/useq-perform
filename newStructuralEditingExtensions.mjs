@@ -255,31 +255,28 @@ export function navigateOut(state) {
  * @returns {EditorState} - New state with updated selection
  */
 export function navigateRight(state) {
-  // For now, implement as next sibling with entry capability
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
   if (!currentNode) return state;
   
-  // If we can enter the current node, do so
-  if (currentNode.firstChild && isContainerNode(currentNode)) {
-    return navigateIn(state);
+  // If current node has children and is a container, enter it
+  if (isContainerNode(currentNode)) {
+    const cursor = currentNode.cursor();
+    if (cursor.firstChild()) {
+      // Skip structural tokens
+      do {
+        if (!isStructuralToken(cursor.node)) {
+          return state.update({
+            selection: EditorSelection.single(cursor.node.from, cursor.node.to)
+          }).state;
+        }
+      } while (cursor.nextSibling());
+    }
   }
   
-  // Otherwise try to go to next sibling
-  if (currentNode.nextSibling) {
-    return navigateNext(state);
-  }
-  
-  // Try to exit and continue
-  if (currentNode.parent && currentNode.parent.nextSibling) {
-    const parent = currentNode.parent;
-    return state.update({
-      selection: EditorSelection.single(parent.nextSibling.from, parent.nextSibling.to)
-    }).state;
-  }
-  
-  return state;
+  // Otherwise, find the next meaningful node spatially
+  return findNextSpatialNode(state, currentNode);
 }
 
 /**
@@ -289,20 +286,91 @@ export function navigateRight(state) {
  */
 export function navigateLeft(state) {
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
   if (!currentNode) return state;
   
-  // Try to go to previous sibling
-  if (currentNode.prevSibling) {
-    return navigatePrevious(state);
+  // Find the previous meaningful node spatially
+  return findPrevSpatialNode(state, currentNode);
+}
+
+/**
+ * Find the next node in spatial order (depth-first traversal)
+ * @param {EditorState} state - Editor state
+ * @param {SyntaxNode} currentNode - Current node
+ * @returns {EditorState} - New state with next spatial selection
+ */
+function findNextSpatialNode(state, currentNode) {
+  // Try to go to next sibling first
+  const nextSibling = getNextSibling(currentNode);
+  if (nextSibling) {
+    return state.update({
+      selection: EditorSelection.single(nextSibling.from, nextSibling.to)
+    }).state;
   }
   
-  // Try to exit to parent
-  if (currentNode.parent) {
-    return navigateOut(state);
+  // If no next sibling, try to exit to parent
+  let parent = currentNode.parent;
+  while (parent) {
+    // Check if parent has a next sibling
+    const parentNextSibling = getNextSibling(parent);
+    if (parentNextSibling) {
+      return state.update({
+        selection: EditorSelection.single(parentNextSibling.from, parentNextSibling.to)
+      }).state;
+    }
+    
+    // Check if we should select the parent itself (exit behavior)
+    if (isContainerNode(parent) && parent.from !== currentNode.from) {
+      return state.update({
+        selection: EditorSelection.single(parent.from, parent.to)
+      }).state;
+    }
+    
+    parent = parent.parent;
   }
   
+  // No more spatial nodes, stay where we are
+  return state;
+}
+
+/**
+ * Find the previous node in spatial order (reverse depth-first traversal)
+ * @param {EditorState} state - Editor state
+ * @param {SyntaxNode} currentNode - Current node
+ * @returns {EditorState} - New state with previous spatial selection
+ */
+function findPrevSpatialNode(state, currentNode) {
+  // Try to go to previous sibling first
+  const prevSibling = getPrevSibling(currentNode);
+  if (prevSibling) {
+    return state.update({
+      selection: EditorSelection.single(prevSibling.from, prevSibling.to)
+    }).state;
+  }
+  
+  // If no previous sibling, try to exit to parent
+  let parent = currentNode.parent;
+  while (parent) {
+    // Check if parent has a previous sibling
+    const parentPrevSibling = getPrevSibling(parent);
+    if (parentPrevSibling) {
+      return state.update({
+        selection: EditorSelection.single(parentPrevSibling.from, parentPrevSibling.to)
+      }).state;
+    }
+    
+    // Check if we should select the parent itself (exit behavior)
+    if (isContainerNode(parent) && parent.from !== currentNode.from) {
+      return state.update({
+        selection: EditorSelection.single(parent.from, parent.to)
+      }).state;
+    }
+    
+    parent = parent.parent;
+  }
+  
+  // No more spatial nodes, stay where we are
   return state;
 }
 
@@ -337,29 +405,33 @@ export function navigateDown(state) {
  */
 export function deleteExpression(state) {
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
   if (!currentNode) return state;
   
-  // Delete the current node
+  // Store information about siblings for new selection
+  const nextSibling = getNextSibling(currentNode);
+  const prevSibling = getPrevSibling(currentNode);
+  const parent = currentNode.parent;
+  
+  // Delete the current node content
   const changes = { from: currentNode.from, to: currentNode.to, insert: '' };
   
   // Determine new selection position after deletion
   let newSelection;
-  if (currentNode.nextSibling) {
-    // Select next sibling
-    const next = currentNode.nextSibling;
-    newSelection = EditorSelection.single(currentNode.from, currentNode.from + (next.to - next.from));
-  } else if (currentNode.prevSibling) {
-    // Select previous sibling
-    const prev = currentNode.prevSibling;
-    newSelection = EditorSelection.single(prev.from, prev.to);
-  } else if (currentNode.parent) {
-    // Select parent if no siblings
-    const parent = currentNode.parent;
-    newSelection = EditorSelection.single(parent.from, parent.to);
+  if (nextSibling) {
+    // Select next sibling, adjusting for deleted content
+    const offset = currentNode.to - currentNode.from;
+    newSelection = EditorSelection.single(nextSibling.from - offset, nextSibling.to - offset);
+  } else if (prevSibling) {
+    // Select previous sibling (position unchanged)
+    newSelection = EditorSelection.single(prevSibling.from, prevSibling.to);
+  } else if (parent && isContainerNode(parent)) {
+    // Select parent if no siblings (empty container case)
+    const offset = currentNode.to - currentNode.from;
+    newSelection = EditorSelection.single(parent.from, parent.to - offset);
   } else {
-    // Default to beginning
+    // Default to beginning of document
     newSelection = EditorSelection.single(0);
   }
   
@@ -376,14 +448,14 @@ export function deleteExpression(state) {
  */
 export function cutExpression(state) {
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
   if (!currentNode) return state;
   
   // Store in clipboard
   clipboardContent = getNodeText(state, currentNode);
   
-  // Delete the content
+  // Delete the content (use same logic as deleteExpression)
   return deleteExpression(state);
 }
 
@@ -396,7 +468,7 @@ export function pasteExpression(state) {
   if (!clipboardContent) return state;
   
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
   if (!currentNode) return state;
   
@@ -419,7 +491,7 @@ export function pasteExpressionBefore(state) {
   if (!clipboardContent) return state;
   
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
   if (!currentNode) return state;
   
@@ -439,7 +511,7 @@ export function pasteExpressionBefore(state) {
  * @returns {boolean} - True if container
  */
 function isContainerNode(node) {
-  const containerTypes = ['List', 'Vector', 'Map', 'Set'];
+  const containerTypes = ['List', 'Vector', 'Map', 'Set', 'Program'];
   return containerTypes.includes(node.type.name);
 }
 
