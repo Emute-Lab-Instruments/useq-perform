@@ -522,25 +522,39 @@ function isContainerNode(node) {
  */
 export function slurpRight(state) {
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
-  if (!currentNode || !isContainerNode(currentNode) || !currentNode.nextSibling) {
-    return state; // Can't slurp
+  if (!currentNode || !isContainerNode(currentNode)) {
+    return state; // Can't slurp non-containers
   }
   
-  const nextSibling = currentNode.nextSibling;
+  const nextSibling = getNextSibling(currentNode);
+  if (!nextSibling) {
+    return state; // Nothing to slurp
+  }
+  
   const nextText = getNodeText(state, nextSibling);
   
-  // Find the closing bracket/paren position
-  const closingPos = currentNode.to - 1; // Assume closing bracket is at end
+  // Find the position just before the closing bracket
+  // We need to be more careful about finding the actual closing position
+  let closingPos = currentNode.to - 1;
+  while (closingPos > currentNode.from && state.sliceDoc(closingPos, closingPos + 1).match(/\s/)) {
+    closingPos--;
+  }
+  
   const changes = [
+    // Insert the next sibling content before the closing bracket
     { from: closingPos, to: closingPos, insert: ' ' + nextText },
-    { from: nextSibling.from, to: nextSibling.to, insert: '' }
+    // Remove the original next sibling (with a space if needed)
+    { from: nextSibling.from - 1, to: nextSibling.to, insert: '' }
   ];
+  
+  // Calculate new selection boundaries
+  const newTo = currentNode.to + nextText.length;
   
   return state.update({
     changes,
-    selection: EditorSelection.single(currentNode.from, currentNode.to + nextText.length + 1)
+    selection: EditorSelection.single(currentNode.from, newTo)
   }).state;
 }
 
@@ -551,25 +565,39 @@ export function slurpRight(state) {
  */
 export function slurpLeft(state) {
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
-  if (!currentNode || !isContainerNode(currentNode) || !currentNode.prevSibling) {
-    return state; // Can't slurp
+  if (!currentNode || !isContainerNode(currentNode)) {
+    return state; // Can't slurp non-containers
   }
   
-  const prevSibling = currentNode.prevSibling;
+  const prevSibling = getPrevSibling(currentNode);
+  if (!prevSibling) {
+    return state; // Nothing to slurp
+  }
+  
   const prevText = getNodeText(state, prevSibling);
   
-  // Find the opening bracket/paren position
-  const openingPos = currentNode.from + 1; // Assume opening bracket is at start
+  // Find the position just after the opening bracket
+  let openingPos = currentNode.from + 1;
+  while (openingPos < currentNode.to && state.sliceDoc(openingPos, openingPos + 1).match(/\s/)) {
+    openingPos++;
+  }
+  
   const changes = [
-    { from: openingPos, to: openingPos, insert: prevText + ' ' },
-    { from: prevSibling.from, to: prevSibling.to, insert: '' }
+    // Remove the previous sibling (with trailing space if needed)
+    { from: prevSibling.from, to: currentNode.from, insert: '' },
+    // Insert the previous sibling content after the opening bracket
+    { from: openingPos - prevText.length - 1, to: openingPos - prevText.length - 1, insert: prevText + ' ' }
   ];
+  
+  // Calculate new selection boundaries  
+  const newFrom = prevSibling.from;
+  const newTo = currentNode.to - 1; // Adjust for removed space
   
   return state.update({
     changes,
-    selection: EditorSelection.single(currentNode.from - prevText.length - 1, currentNode.to)
+    selection: EditorSelection.single(newFrom, newTo)
   }).state;
 }
 
