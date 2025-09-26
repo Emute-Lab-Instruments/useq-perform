@@ -58,6 +58,8 @@ async function instantiateInterpreter() {
   const module = await factory();
   const useq_init = module.cwrap("useq_init", null, []);
   const useq_eval = module.cwrap("useq_eval", "string", ["string"]);
+  const useq_update_time = module.cwrap("useq_update_time", null, ["number"]);
+  const useq_eval_output = module.cwrap("useq_eval_output", "number", ["string", "number"]);
 
   useq_init();
   dbg("uSEQ WASM interpreter initialised");
@@ -71,6 +73,21 @@ async function instantiateInterpreter() {
         throw new Error(`uSEQ WASM evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
+    updateTime: (seconds) => {
+      try {
+        useq_update_time(Number(seconds) || 0);
+      } catch (error) {
+        throw new Error(`uSEQ WASM time update failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    evaluateOutputAtTime: (name, timeSeconds) => {
+      try {
+        const value = useq_eval_output(name, Number(timeSeconds) || 0);
+        return Number.isNaN(value) ? NaN : value;
+      } catch (error) {
+        throw new Error(`uSEQ WASM output evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   };
 }
 
@@ -89,4 +106,14 @@ export function ensureUseqWasmLoaded() {
 export async function evalInUseqWasm(code) {
   const runtime = await ensureUseqWasmLoaded();
   return runtime.evaluate(code);
+}
+
+export async function updateUseqWasmTime(timeSeconds) {
+  const runtime = await ensureUseqWasmLoaded();
+  runtime.updateTime(timeSeconds);
+}
+
+export async function evalOutputAtTime(name, timeSeconds) {
+  const runtime = await ensureUseqWasmLoaded();
+  return runtime.evaluateOutputAtTime(name, timeSeconds);
 }

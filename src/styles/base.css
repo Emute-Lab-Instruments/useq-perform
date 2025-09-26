@@ -31,4 +31,17 @@
     --code-eval-highlight-color-connected: rgba(255, 255, 0, 0.7);
     --code-eval-highlight-color-disconnected: rgb(148, 148, 148);
     --code-eval-highlight-color: rgba(255, 255, 0, 0.7);
+  --editor-background: #15191EFA;
+  --top-toolbar-height: 48px;
   }
+
+html,
+body {
+  min-height: 100%;
+  background-color: var(--editor-background, #15191EFA);
+  transition: background-color 0.2s ease;
+}
+
+body {
+  margin: 0;
+}
