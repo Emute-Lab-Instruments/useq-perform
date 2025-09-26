@@ -1,26 +1,16 @@
-import { createStructuralEditor, selectByText, navigateNext } from './newStructuralEditingExtensions.mjs';
-import { syntaxTree } from '@codemirror/language';
+import { createStructuralEditor, selectByText, deleteExpression } from './newStructuralEditingExtensions.mjs';
 
-// Test the failing case
-const state = createStructuralEditor("(+ 1 (* 2 3))");
+// Test deletion
+const state = createStructuralEditor("(foo bar baz)");
 console.log("Initial doc:", state.doc.toString());
 
-// Print syntax tree
-const tree = syntaxTree(state);
-tree.iterate({
-  enter(node) {
-    console.log(`${node.type.name}: "${state.sliceDoc(node.from, node.to)}" (${node.from}-${node.to})`);
-  }
-});
-
-// Try to select "(* 2 3)"
-const state2 = selectByText(state, "(* 2 3)");
-console.log("After selecting '(* 2 3)':");
-console.log("Selection:", state2.selection.main);
+// Try to select "bar"
+const state2 = selectByText(state, "bar");
+console.log("After selecting 'bar':");
 console.log("Selected text:", state2.sliceDoc(state2.selection.main.from, state2.selection.main.to));
 
-// Try navigate next
-const state3 = navigateNext(state2);
-console.log("After navigate next:");
-console.log("Selection:", state3.selection.main);
+// Try delete
+const state3 = deleteExpression(state2);
+console.log("After delete:");
+console.log("Doc:", state3.doc.toString());
 console.log("Selected text:", state3.sliceDoc(state3.selection.main.from, state3.selection.main.to));
