@@ -274,4 +274,16 @@ function buildUISettings($container) {
             updateUserSettings({ ui: { ...activeUserSettings.ui, expressionClearButtonEnabled: $clearButtonEnabled.prop('checked') } });
         });
     $container.append(createFormRow('Show clear (×) button on active expression', $clearButtonEnabled));
+
+    // Gamepad picker style select
+    const $pickerStyleSelect = $('<select>')
+        .addClass('panel-select')
+        .append($('<option>').val('grid').text('Grid (D-pad, nested)'))
+        .append($('<option>').val('radial').text('Radial (dual sticks)'))
+        .val((activeUserSettings.ui && activeUserSettings.ui.gamepadPickerStyle) || 'grid')
+        .on('change', () => {
+            const style = $pickerStyleSelect.val();
+            updateUserSettings({ ui: { ...activeUserSettings.ui, gamepadPickerStyle: style } });
+        });
+    $container.append(createFormRow('Gamepad Picker Style', $pickerStyleSelect));
 }

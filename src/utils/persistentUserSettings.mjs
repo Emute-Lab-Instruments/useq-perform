@@ -39,7 +39,9 @@ const defaultUserSettings = {
     // Editor UI features
     expressionGutterEnabled: true,
     expressionLastTrackingEnabled: true,
-    expressionClearButtonEnabled: true
+    expressionClearButtonEnabled: true,
+    // Gamepad picker style: 'grid' (hierarchical grid) or 'radial'
+    gamepadPickerStyle: 'grid'
   }
 };
 
