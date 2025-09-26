@@ -3,6 +3,27 @@ import { getVisualisationState } from "./visualisationController.mjs";
 
 const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)';
 const TEXT_COLOR = 'rgba(255, 255, 255, 0.5)';
+const ACCENT_REFRESH_INTERVAL_MS = 250;
+
+let cachedAccentColor = null;
+let lastAccentColorRead = 0;
+
+function readAccentColor() {
+  const computed = getComputedStyle(document.documentElement).getPropertyValue('--accent-color');
+  return (computed && computed.trim()) || '#00ff41';
+}
+
+// Cache accent color lookups to avoid allocating strings every animation frame.
+function getAccentColor() {
+  const now = (window.performance && window.performance.now) ? window.performance.now() : Date.now();
+  if (cachedAccentColor !== null && now - lastAccentColorRead <= ACCENT_REFRESH_INTERVAL_MS) {
+    return cachedAccentColor;
+  }
+
+  cachedAccentColor = readAccentColor();
+  lastAccentColorRead = now;
+  return cachedAccentColor;
+}
 
 function drawSerialVis() {
   const c = document.getElementById("serialcanvas");
@@ -47,7 +68,7 @@ function drawSerialVis() {
     return c.height - verticalPadding - (clamped * drawableHeight);
   };
 
-  const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-color') || '#00ff41';
+  const accentColor = getAccentColor();
 
   // Draw center axis (0.5) dotted line
   ctx.strokeStyle = accentColor;
@@ -91,33 +112,62 @@ function drawSerialVis() {
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
 
+  const startTime = currentTime - offset;
+  const endTime = currentTime + offset;
+
   // Draw each registered expression
   for (const expression of expressions.values()) {
-    const samplesInRange = expression.samples
-      .filter(sample => sample.time >= currentTime - offset && sample.time <= currentTime + offset)
-      .sort((a, b) => a.time - b.time);
+    const samples = expression.samples;
+    if (!samples || samples.length < 2) {
+      continue;
+    }
 
-    if (samplesInRange.length < 2) {
+    // Samples are kept sorted by time when populated in the controller.
+    const windowStartIndex = lowerBound(samples, startTime);
+    const windowEndIndex = upperBound(samples, endTime);
+    const windowLength = windowEndIndex - windowStartIndex;
+    if (windowLength < 2) {
       continue;
     }
 
     const color = expression.color || accentColor;
-    const lastPastIndex = findLastPastIndex(samplesInRange, currentTime);
+    const lastPastIndex = findLastPastIndex(samples, currentTime, windowStartIndex, windowEndIndex);
 
-    if (lastPastIndex >= 1) {
-      const pastSamples = samplesInRange.slice(0, lastPastIndex + 1);
-      drawPath(ctx, pastSamples, color, 1, lineWidth, currentTime, offset, totalWindow, c.width, mapValueToY);
+    // Past segment
+    if (lastPastIndex - windowStartIndex >= 1) {
+      drawPathSegment(
+        ctx,
+        samples,
+        windowStartIndex,
+        lastPastIndex + 1,
+        color,
+        1,
+        lineWidth,
+        currentTime,
+        offset,
+        totalWindow,
+        c.width,
+        mapValueToY
+      );
     }
 
-    const futureStart = lastPastIndex >= 0 ? lastPastIndex : 0;
-    if (futureStart < samplesInRange.length - 1) {
-      const futureSamples = samplesInRange.slice(futureStart, samplesInRange.length);
-      if (futureSamples.length >= 2) {
-        drawPath(ctx, futureSamples, color, futureLineAlpha, lineWidth, currentTime, offset, totalWindow, c.width, mapValueToY);
-      }
-    } else if (lastPastIndex < 1) {
-      // No past samples; draw entire range as future
-      drawPath(ctx, samplesInRange, color, futureLineAlpha, lineWidth, currentTime, offset, totalWindow, c.width, mapValueToY);
+    // Future segment (includes pivot sample to ensure continuity)
+    const futureStart = lastPastIndex >= windowStartIndex ? lastPastIndex : windowStartIndex;
+    if (windowEndIndex - futureStart >= 2) {
+      drawPathSegment(
+        ctx,
+        samples,
+        futureStart,
+        windowEndIndex,
+        color,
+        futureLineAlpha,
+        lineWidth,
+        currentTime,
+        offset,
+        totalWindow,
+        c.width,
+        mapValueToY
+      );
     }
   }
 
@@ -135,17 +185,26 @@ export function makeVis() {
   window.requestAnimationFrame(drawSerialVis);
 }
 
-function findLastPastIndex(samples, currentTime) {
-  for (let i = samples.length - 1; i >= 0; i--) {
-    if (samples[i].time <= currentTime) {
-      return i;
+function findLastPastIndex(samples, currentTime, startIndex, endIndex) {
+  let low = startIndex;
+  let high = endIndex - 1;
+  let result = -1;
+
+  while (low <= high) {
+    const mid = (low + high) >>> 1;
+    if (samples[mid].time <= currentTime) {
+      result = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
     }
   }
-  return -1;
+
+  return result;
 }
 
-function drawPath(ctx, samples, color, alpha, lineWidth, currentTime, offset, totalWindow, canvasWidth, mapValueToY, dashPattern = []) {
-  if (!samples || samples.length < 2) {
+function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineWidth, currentTime, offset, totalWindow, canvasWidth, mapValueToY, dashPattern = []) {
+  if (!samples || endIndex - startIndex < 2) {
     return;
   }
 
@@ -157,12 +216,12 @@ function drawPath(ctx, samples, color, alpha, lineWidth, currentTime, offset, to
   ctx.globalAlpha = safeAlpha;
   ctx.setLineDash(Array.isArray(dashPattern) && dashPattern.length ? dashPattern : []);
 
-  const start = samples[0];
+  const start = samples[startIndex];
   const startRelative = (start.time - (currentTime - offset)) / totalWindow;
   const startX = clamp01(startRelative) * canvasWidth;
   ctx.moveTo(startX, mapValueToY(start.value));
 
-  for (let i = 1; i < samples.length; i++) {
+  for (let i = startIndex + 1; i < endIndex; i++) {
     const sample = samples[i];
     const relative = (sample.time - (currentTime - offset)) / totalWindow;
     const x = clamp01(relative) * canvasWidth;
@@ -171,6 +230,34 @@ function drawPath(ctx, samples, color, alpha, lineWidth, currentTime, offset, to
 
   ctx.stroke();
   ctx.restore();
+}
+
+function lowerBound(samples, target) {
+  let low = 0;
+  let high = samples.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (samples[mid].time < target) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
+function upperBound(samples, target) {
+  let low = 0;
+  let high = samples.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (samples[mid].time <= target) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
 }
 
 function clamp01(value) {
