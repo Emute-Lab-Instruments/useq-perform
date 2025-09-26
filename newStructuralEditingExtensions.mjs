@@ -46,16 +46,26 @@ function findNodeAt(state, from, to = from) {
   
   // If we have a range selection, try to find a node that exactly matches
   if (to > from) {
-    let bestMatch = null;
+    let matches = [];
+    
     tree.iterate({
       enter(node) {
         if (node.from === from && node.to === to) {
-          bestMatch = node.node;
-          return false; // Stop iteration
+          matches.push(node.node);
         }
       }
     });
-    if (bestMatch) return bestMatch;
+    
+    // If we have multiple matches, prefer List/Vector/Map over Program
+    if (matches.length > 1) {
+      for (const match of matches) {
+        if (match.type.name !== 'Program') {
+          return match;
+        }
+      }
+    }
+    
+    if (matches.length > 0) return matches[0];
   }
   
   // Fall back to resolveInner with preference for start
@@ -215,16 +225,20 @@ export function navigatePrevious(state) {
  */
 export function navigateIn(state) {
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
   if (!currentNode) return state;
   
   const cursor = currentNode.cursor();
   if (cursor.firstChild()) {
-    const firstChild = cursor.node;
-    return state.update({
-      selection: EditorSelection.single(firstChild.from, firstChild.to)
-    }).state;
+    // Find the first non-structural child
+    do {
+      if (!isStructuralToken(cursor.node)) {
+        return state.update({
+          selection: EditorSelection.single(cursor.node.from, cursor.node.to)
+        }).state;
+      }
+    } while (cursor.nextSibling());
   }
   
   return state; // No change if no children
@@ -237,7 +251,7 @@ export function navigateIn(state) {
  */
 export function navigateOut(state) {
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
   if (!currentNode || !currentNode.parent) {
     return state; // No change if at root
@@ -608,25 +622,38 @@ export function slurpLeft(state) {
  */
 export function barfRight(state) {
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
-  if (!currentNode || !isContainerNode(currentNode) || !currentNode.lastChild) {
-    return state; // Can't barf
+  if (!currentNode || !isContainerNode(currentNode)) {
+    return state; // Can't barf non-containers
   }
   
-  const lastChild = currentNode.lastChild;
+  // Find the last non-structural child
+  let lastChild = null;
+  const cursor = currentNode.cursor();
+  if (cursor.firstChild()) {
+    do {
+      if (!isStructuralToken(cursor.node)) {
+        lastChild = cursor.node;
+      }
+    } while (cursor.nextSibling());
+  }
+  
+  if (!lastChild) {
+    return state; // No children to barf
+  }
+  
   const lastText = getNodeText(state, lastChild);
   
-  // Move last child outside the expression
-  const closingPos = currentNode.to;
+  // Move last child outside the expression (after the closing bracket)
   const changes = [
     { from: lastChild.from, to: lastChild.to, insert: '' },
-    { from: closingPos, to: closingPos, insert: ' ' + lastText }
+    { from: currentNode.to, to: currentNode.to, insert: ' ' + lastText }
   ];
   
   return state.update({
     changes,
-    selection: EditorSelection.single(currentNode.from, currentNode.to - lastText.length - 1)
+    selection: EditorSelection.single(currentNode.from, currentNode.to - lastText.length)
   }).state;
 }
 
@@ -637,20 +664,34 @@ export function barfRight(state) {
  */
 export function barfLeft(state) {
   const selection = state.selection.main;
-  const currentNode = findNodeAt(state, selection.from);
+  const currentNode = findNodeAt(state, selection.from, selection.to);
   
-  if (!currentNode || !isContainerNode(currentNode) || !currentNode.firstChild) {
-    return state; // Can't barf
+  if (!currentNode || !isContainerNode(currentNode)) {
+    return state; // Can't barf non-containers
   }
   
-  const firstChild = currentNode.firstChild;
+  // Find the first non-structural child
+  let firstChild = null;
+  const cursor = currentNode.cursor();
+  if (cursor.firstChild()) {
+    do {
+      if (!isStructuralToken(cursor.node)) {
+        firstChild = cursor.node;
+        break; // Take the first one
+      }
+    } while (cursor.nextSibling());
+  }
+  
+  if (!firstChild) {
+    return state; // No children to barf
+  }
+  
   const firstText = getNodeText(state, firstChild);
   
-  // Move first child outside the expression
-  const openingPos = currentNode.from;
+  // Move first child outside the expression (before the opening bracket)
   const changes = [
     { from: firstChild.from, to: firstChild.to, insert: '' },
-    { from: openingPos, to: openingPos, insert: firstText + ' ' }
+    { from: currentNode.from, to: currentNode.from, insert: firstText + ' ' }
   ];
   
   return state.update({
@@ -664,14 +705,56 @@ export function barfLeft(state) {
  * These would need more sophisticated implementation for full functionality
  */
 
+/**
+ * Move operations - swap elements with siblings
+ */
+
 export function moveNext(state) {
-  // Placeholder: swap with next sibling
-  return state;
+  const selection = state.selection.main;
+  const currentNode = findNodeAt(state, selection.from, selection.to);
+  
+  if (!currentNode) return state;
+  
+  const nextSibling = getNextSibling(currentNode);
+  if (!nextSibling) return state; // Can't move if no next sibling
+  
+  const currentText = getNodeText(state, currentNode);
+  const nextText = getNodeText(state, nextSibling);
+  
+  // Swap the two elements
+  const changes = [
+    { from: currentNode.from, to: currentNode.to, insert: nextText },
+    { from: nextSibling.from, to: nextSibling.to, insert: currentText }
+  ];
+  
+  return state.update({
+    changes,
+    selection: EditorSelection.single(nextSibling.from, nextSibling.from + currentText.length)
+  }).state;
 }
 
 export function movePrevious(state) {
-  // Placeholder: swap with previous sibling
-  return state;
+  const selection = state.selection.main;
+  const currentNode = findNodeAt(state, selection.from, selection.to);
+  
+  if (!currentNode) return state;
+  
+  const prevSibling = getPrevSibling(currentNode);
+  if (!prevSibling) return state; // Can't move if no previous sibling
+  
+  const currentText = getNodeText(state, currentNode);
+  const prevText = getNodeText(state, prevSibling);
+  
+  // Swap the two elements
+  const changes = [
+    { from: prevSibling.from, to: prevSibling.to, insert: currentText },
+    { from: currentNode.from, to: currentNode.to, insert: prevText }
+  ];
+  
+  return state.update({
+    changes,
+    selection: EditorSelection.single(prevSibling.from, prevSibling.from + currentText.length)
+  }).state;
 }
 
 export function moveRight(state) {
