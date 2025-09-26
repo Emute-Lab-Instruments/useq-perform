@@ -778,22 +778,99 @@ export function moveDown(state) {
 }
 
 /**
- * Insert operations - placeholders for now
+ * Insert operations
  */
 
 export function insertSymbol(state, symbol) {
-  // Placeholder: insert symbol at current position
-  return state;
+  const selection = state.selection.main;
+  const currentNode = findNodeAt(state, selection.from, selection.to);
+  
+  if (!currentNode) return state;
+  
+  // Insert after current node
+  const insertPos = currentNode.to;
+  const changes = { from: insertPos, to: insertPos, insert: ' ' + symbol };
+  
+  return state.update({
+    changes,
+    selection: EditorSelection.single(insertPos + 1, insertPos + 1 + symbol.length)
+  }).state;
 }
 
-export function applyInsert(state, symbol) {
-  // Placeholder: insert after current position
-  return state;
+export function insertSymbolBefore(state, symbol) {
+  const selection = state.selection.main;
+  const currentNode = findNodeAt(state, selection.from, selection.to);
+  
+  if (!currentNode) return state;
+  
+  // Insert before current node
+  const insertPos = currentNode.from;
+  const changes = { from: insertPos, to: insertPos, insert: symbol + ' ' };
+  
+  return state.update({
+    changes,
+    selection: EditorSelection.single(insertPos, insertPos + symbol.length)
+  }).state;
 }
 
-export function applyInsertPre(state, symbol) {
-  // Placeholder: insert before current position
-  return state;
+export function insertFunctionCall(state, symbol) {
+  const selection = state.selection.main;
+  const currentNode = findNodeAt(state, selection.from, selection.to);
+  
+  if (!currentNode) return state;
+  
+  // Insert function call with two placeholders after current node
+  const insertPos = currentNode.to;
+  const funcCall = ` (${symbol} _ _)`;
+  const changes = { from: insertPos, to: insertPos, insert: funcCall };
+  
+  // Select the first placeholder "_"
+  const placeholderPos = insertPos + 2 + symbol.length + 1; // " (" + symbol + " " + "_"
+  
+  return state.update({
+    changes,
+    selection: EditorSelection.single(placeholderPos, placeholderPos + 1)
+  }).state;
+}
+
+export function insertFunctionCallBefore(state, symbol) {
+  const selection = state.selection.main;
+  const currentNode = findNodeAt(state, selection.from, selection.to);
+  
+  if (!currentNode) return state;
+  
+  // Insert function call with placeholder before current node
+  const insertPos = currentNode.from;
+  const funcCall = `(${symbol} _) `;
+  const changes = { from: insertPos, to: insertPos, insert: funcCall };
+  
+  // Select the placeholder "_"
+  const placeholderPos = insertPos + funcCall.indexOf('_');
+  
+  return state.update({
+    changes,
+    selection: EditorSelection.single(placeholderPos, placeholderPos + 1)
+  }).state;
+}
+
+export function wrapInFunction(state, symbol) {
+  const selection = state.selection.main;
+  const currentNode = findNodeAt(state, selection.from, selection.to);
+  
+  if (!currentNode) return state;
+  
+  const currentText = getNodeText(state, currentNode);
+  const wrappedCall = `(${symbol} ${currentText} _)`;
+  
+  const changes = { from: currentNode.from, to: currentNode.to, insert: wrappedCall };
+  
+  // Select the placeholder "_"
+  const placeholderPos = currentNode.from + wrappedCall.indexOf('_');
+  
+  return state.update({
+    changes,
+    selection: EditorSelection.single(placeholderPos, placeholderPos + 1)
+  }).state;
 }
 
 /**
@@ -807,7 +884,7 @@ export function typeText(state, text) {
   
   return state.update({
     changes: { from: selection.from, to: selection.to, insert: text },
-    selection: EditorSelection.single(selection.from + text.length)
+    selection: EditorSelection.single(selection.from, selection.from + text.length)
   }).state;
 }
 
