@@ -1,0 +1,569 @@
+# Structural Editor Test Cases for Clojure
+
+# Test format:
+# - name: descriptive test name
+#   code: initial code state
+#   selection: currently selected expression
+#   actions: action or list of actions to perform
+#   new_code: resulting code after actions
+#   new_selection: selected expression after actions (if relevant)
+
+# ============================================================================
+# DELETE OPERATIONS
+# ============================================================================
+
+- name: "delete simple symbol"
+  code: "(foo bar baz)"
+  selection: "bar"
+  actions: delete
+  new_code: "(foo baz)"
+  new_selection: "baz"
+
+- name: "delete last symbol in list"
+  code: "(foo bar baz)"
+  selection: "baz"
+  actions: delete
+  new_code: "(foo bar)"
+  new_selection: "bar"
+
+- name: "delete first symbol in list"
+  code: "(foo bar baz)"
+  selection: "foo"
+  actions: delete
+  new_code: "(bar baz)"
+  new_selection: "bar"
+
+- name: "delete nested expression"
+  code: "(+ 1 (* 2 3))"
+  selection: "(* 2 3)"
+  actions: delete
+  new_code: "(+ 1)"
+  new_selection: "1"
+
+- name: "delete entire top-level expression"
+  code: "(foo bar) (baz qux)"
+  selection: "(foo bar)"
+  actions: delete
+  new_code: "(baz qux)"
+  new_selection: "(baz qux)"
+
+- name: "delete from vector"
+  code: "[1 2 3]"
+  selection: "2"
+  actions: delete
+  new_code: "[1 3]"
+  new_selection: "3"
+
+- name: "delete nested vector"
+  code: "(foo [1 2 3] bar)"
+  selection: "[1 2 3]"
+  actions: delete
+  new_code: "(foo bar)"
+  new_selection: "bar"
+
+# ============================================================================
+# CUT AND PASTE OPERATIONS
+# ============================================================================
+
+- name: "cut and paste symbol"
+  code: "(foo bar baz)"
+  selection: "bar"
+  actions: [cut, next, paste]
+  new_code: "(foo baz bar)"
+  new_selection: "bar"
+
+- name: "cut and paste to different position"
+  code: "(a b c d)"
+  selection: "b"
+  actions: [cut, next, next, paste]
+  new_code: "(a c d b)"
+  new_selection: "b"
+
+- name: "cut and paste expression"
+  code: "(+ 1 (* 2 3))"
+  selection: "(* 2 3)"
+  actions: [cut, previous, paste_before]
+  new_code: "(+ (* 2 3) 1)"
+  new_selection: "(* 2 3)"
+
+- name: "cut from one list and paste to another"
+  code: "(foo bar) (baz qux)"
+  selection: "bar"
+  actions: [cut, out, next, in, paste]
+  new_code: "(foo) (baz qux bar)"
+  new_selection: "bar"
+
+- name: "cut and paste with paste_before"
+  code: "(a b c)"
+  selection: "c"
+  actions: [cut, previous, previous, paste_before]
+  new_code: "(c a b)"
+  new_selection: "c"
+
+- name: "cut nested and paste at top level"
+  code: "((a b) c)"
+  selection: "b"
+  actions: [cut, out, out, paste]
+  new_code: "((a) c) b"
+  new_selection: "b"
+
+# ============================================================================
+# SLURP OPERATIONS (lists)
+# ============================================================================
+
+- name: "slurp right - list absorbs next element"
+  code: "(a b) c"
+  selection: "(a b)"
+  actions: slurp_right
+  new_code: "(a b c)"
+  new_selection: "(a b c)"
+
+- name: "slurp left - list absorbs previous element"
+  code: "a (b c)"
+  selection: "(b c)"
+  actions: slurp_left
+  new_code: "(a b c)"
+  new_selection: "(a b c)"
+
+- name: "slurp right nested"
+  code: "(+ (* 2 3) 4)"
+  selection: "(* 2 3)"
+  actions: slurp_right
+  new_code: "(+ (* 2 3 4))"
+  new_selection: "(* 2 3 4)"
+
+- name: "slurp left with multiple elements"
+  code: "a b (c d)"
+  selection: "(c d)"
+  actions: slurp_left
+  new_code: "a (b c d)"
+  new_selection: "(b c d)"
+
+- name: "slurp right at top level - nothing to slurp"
+  code: "(a b c)"
+  selection: "(a b c)"
+  actions: slurp_right
+  new_code: "(a b c)"
+  new_selection: "(a b c)"
+
+- name: "slurp right absorbs expression"
+  code: "(foo) (bar baz)"
+  selection: "(foo)"
+  actions: slurp_right
+  new_code: "(foo (bar baz))"
+  new_selection: "(foo (bar baz))"
+
+# ============================================================================
+# SLURP OPERATIONS (vectors)
+# ============================================================================
+
+- name: "slurp right - vector absorbs next element"
+  code: "[a b] c"
+  selection: "[a b]"
+  actions: slurp_right
+  new_code: "[a b c]"
+  new_selection: "[a b c]"
+
+- name: "slurp left - vector absorbs previous element"
+  code: "a [b c]"
+  selection: "[b c]"
+  actions: slurp_left
+  new_code: "[a b c]"
+  new_selection: "[a b c]"
+
+- name: "slurp vector inside list"
+  code: "(foo [1 2] 3)"
+  selection: "[1 2]"
+  actions: slurp_right
+  new_code: "(foo [1 2 3])"
+  new_selection: "[1 2 3]"
+
+# ============================================================================
+# BARF OPERATIONS (lists)
+# ============================================================================
+
+- name: "barf right - list expels last element"
+  code: "(a b c)"
+  selection: "(a b c)"
+  actions: barf_right
+  new_code: "(a b) c"
+  new_selection: "(a b)"
+
+- name: "barf left - list expels first element"
+  code: "(a b c)"
+  selection: "(a b c)"
+  actions: barf_left
+  new_code: "a (b c)"
+  new_selection: "(b c)"
+
+- name: "barf right nested"
+  code: "(+ (* 2 3 4))"
+  selection: "(* 2 3 4)"
+  actions: barf_right
+  new_code: "(+ (* 2 3) 4)"
+  new_selection: "(* 2 3)"
+
+- name: "barf left with nested expression"
+  code: "((a b) c d)"
+  selection: "((a b) c d)"
+  actions: barf_left
+  new_code: "(a b) (c d)"
+  new_selection: "(c d)"
+
+- name: "barf right single element - nothing to barf"
+  code: "(a)"
+  selection: "(a)"
+  actions: barf_right
+  new_code: "(a)"
+  new_selection: "(a)"
+
+# ============================================================================
+# BARF OPERATIONS (vectors)
+# ============================================================================
+
+- name: "barf right - vector expels last element"
+  code: "[a b c]"
+  selection: "[a b c]"
+  actions: barf_right
+  new_code: "[a b] c"
+  new_selection: "[a b]"
+
+- name: "barf left - vector expels first element"
+  code: "[a b c]"
+  selection: "[a b c]"
+  actions: barf_left
+  new_code: "a [b c]"
+  new_selection: "[b c]"
+
+- name: "barf vector inside list"
+  code: "(foo [1 2 3])"
+  selection: "[1 2 3]"
+  actions: barf_right
+  new_code: "(foo [1 2] 3)"
+  new_selection: "[1 2]"
+
+# ============================================================================
+# MOVE OPERATIONS (using previous/next)
+# ============================================================================
+
+- name: "move next - swap with next sibling"
+  code: "(a b c)"
+  selection: "a"
+  actions: move_next
+  new_code: "(b a c)"
+  new_selection: "a"
+
+- name: "move previous - swap with previous sibling"
+  code: "(a b c)"
+  selection: "c"
+  actions: move_previous
+  new_code: "(a c b)"
+  new_selection: "c"
+
+- name: "move next at end - no change"
+  code: "(a b c)"
+  selection: "c"
+  actions: move_next
+  new_code: "(a b c)"
+  new_selection: "c"
+
+- name: "move previous at start - no change"
+  code: "(a b c)"
+  selection: "a"
+  actions: move_previous
+  new_code: "(a b c)"
+  new_selection: "a"
+
+- name: "move next with nested expression"
+  code: "(+ 1 (* 2 3))"
+  selection: "1"
+  actions: move_next
+  new_code: "(+ (* 2 3) 1)"
+  new_selection: "1"
+
+- name: "move expression within vector"
+  code: "[a b c]"
+  selection: "b"
+  actions: move_next
+  new_code: "[a c b]"
+  new_selection: "b"
+
+# ============================================================================
+# MOVE OPERATIONS (using left/right/up/down)
+# ============================================================================
+
+- name: "move right - moves spatially"
+  code: "(a (b c) d)"
+  selection: "a"
+  actions: move_right
+  new_code: "((b c) a d)"
+  new_selection: "a"
+
+- name: "move left - moves spatially"
+  code: "(a (b c) d)"
+  selection: "d"
+  actions: move_left
+  new_code: "(a d (b c))"
+  new_selection: "d"
+
+- name: "move down - moves to next line same level"
+  code: "(a b)\n(c d)"
+  selection: "a"
+  actions: move_down
+  new_code: "(b)\n(a c d)"
+  new_selection: "a"
+
+- name: "move up - moves to previous line same level"
+  code: "(a b)\n(c d)"
+  selection: "c"
+  actions: move_up
+  new_code: "(a b c)\n(d)"
+  new_selection: "c"
+
+# ============================================================================
+# INSERT - SIMPLE SYMBOLS (apply and apply_pre)
+# ============================================================================
+
+- name: "insert symbol after - apply"
+  code: "(a b)"
+  selection: "a"
+  actions: [insert, maths, "+", apply]
+  new_code: "(a + b)"
+  new_selection: "+"
+
+- name: "insert symbol before - apply_pre"
+  code: "(a b)"
+  selection: "b"
+  actions: [insert, maths, "+", apply_pre]
+  new_code: "(a + b)"
+  new_selection: "+"
+
+- name: "insert at end of list"
+  code: "(a b)"
+  selection: "b"
+  actions: [insert, maths, "*", apply]
+  new_code: "(a b *)"
+  new_selection: "*"
+
+- name: "insert at start of list"
+  code: "(a b)"
+  selection: "a"
+  actions: [insert, maths, "-", apply_pre]
+  new_code: "(- a b)"
+  new_selection: "-"
+
+- name: "insert into empty list"
+  code: "()"
+  selection: "()"
+  actions: [insert, maths, "+", apply]
+  new_code: "(+)"
+  new_selection: "+"
+
+- name: "insert in vector"
+  code: "[a b]"
+  selection: "a"
+  actions: [insert, maths, "+", apply]
+  new_code: "[a + b]"
+  new_selection: "+"
+
+# ============================================================================
+# INSERT - FUNCTION CALLS (apply_call and apply_call_pre)
+# ============================================================================
+
+- name: "insert function call after - apply_call"
+  code: "(a b)"
+  selection: "a"
+  actions: [insert, maths, "+", apply_call]
+  new_code: "(a (+ _) b)"
+  new_selection: "_"
+
+- name: "insert function call before - apply_call_pre"
+  code: "(a b)"
+  selection: "b"
+  actions: [insert, maths, "+", apply_call_pre]
+  new_code: "(a (+ _) b)"
+  new_selection: "_"
+
+- name: "insert function call at end"
+  code: "(foo bar)"
+  selection: "bar"
+  actions: [insert, maths, "*", apply_call]
+  new_code: "(foo bar (* _))"
+  new_selection: "_"
+
+- name: "insert nested function call"
+  code: "(+ 1 2)"
+  selection: "1"
+  actions: [insert, maths, "*", apply_call]
+  new_code: "(+ 1 (* _) 2)"
+  new_selection: "_"
+
+- name: "insert function with multiple holes"
+  code: "(a)"
+  selection: "a"
+  actions: [insert, maths, "+", apply_call]
+  new_code: "(a (+ _))"
+  new_selection: "_"
+
+# ============================================================================
+# INSERT - WRAP OPERATIONS (apply_wrap)
+# ============================================================================
+
+- name: "wrap symbol in function call"
+  code: "(a b c)"
+  selection: "b"
+  actions: [insert, maths, "+", apply_wrap]
+  new_code: "(a (+ b _) c)"
+  new_selection: "_"
+
+- name: "wrap expression in function call"
+  code: "(foo (* 2 3) bar)"
+  selection: "(* 2 3)"
+  actions: [insert, maths, "+", apply_wrap]
+  new_code: "(foo (+ (* 2 3) _) bar)"
+  new_selection: "_"
+
+- name: "wrap first element"
+  code: "(a b c)"
+  selection: "a"
+  actions: [insert, maths, "*", apply_wrap]
+  new_code: "((* a _) b c)"
+  new_selection: "_"
+
+- name: "wrap last element"
+  code: "(a b c)"
+  selection: "c"
+  actions: [insert, maths, "-", apply_wrap]
+  new_code: "(a b (- c _))"
+  new_selection: "_"
+
+- name: "wrap entire expression"
+  code: "(a b)"
+  selection: "(a b)"
+  actions: [insert, maths, "+", apply_wrap]
+  new_code: "(+ (a b) _)"
+  new_selection: "_"
+
+- name: "wrap in vector"
+  code: "[1 2 3]"
+  selection: "2"
+  actions: [insert, maths, "*", apply_wrap]
+  new_code: "[1 (* 2 _) 3]"
+  new_selection: "_"
+
+# ============================================================================
+# COMPLEX EDITING SEQUENCES
+# ============================================================================
+
+- name: "insert, fill hole, and continue"
+  code: "(+ 1)"
+  selection: "1"
+  actions: [insert, maths, "*", apply_call, type, "5", next, type, "3"]
+  new_code: "(+ 1 (* 5 3))"
+  new_selection: "3"
+
+- name: "wrap and fill"
+  code: "(foo bar)"
+  selection: "bar"
+  actions: [insert, maths, "+", apply_wrap, type, "10"]
+  new_code: "(foo (+ bar 10))"
+  new_selection: "10"
+
+- name: "delete and insert replacement"
+  code: "(+ 1 2)"
+  selection: "+"
+  actions: [delete, insert, maths, "*", apply_pre]
+  new_code: "(* 1 2)"
+  new_selection: "*"
+
+- name: "cut, navigate, paste, and wrap"
+  code: "(a (b c) d)"
+  selection: "d"
+  actions: [cut, previous, in, paste, insert, maths, "+", apply_wrap, type, "1"]
+  new_code: "(a (b c (+ d 1)))"
+  new_selection: "1"
+
+- name: "slurp and insert"
+  code: "(+ 1) 2"
+  selection: "(+ 1)"
+  actions: [slurp_right, in, next, insert, maths, "*", apply_wrap, type, "3"]
+  new_code: "(+ 1 (* 2 3))"
+  new_selection: "3"
+
+- name: "barf and wrap expelled element"
+  code: "(+ 1 2 3)"
+  selection: "(+ 1 2 3)"
+  actions: [barf_right, next, insert, maths, "*", apply_wrap, type, "4"]
+  new_code: "(+ 1 2) (* 3 4)"
+  new_selection: "4"
+
+- name: "multiple moves and insert"
+  code: "(a b c d)"
+  selection: "b"
+  actions: [move_next, move_next, insert, maths, "+", apply_call_pre, type, "x", next, type, "y"]
+  new_code: "(a c d (+ x y) b)"
+  new_selection: "y"
+
+# ============================================================================
+# EDGE CASES AND ERROR CONDITIONS
+# ============================================================================
+
+- name: "slurp with nothing to absorb"
+  code: "(a b c)"
+  selection: "(a b c)"
+  actions: slurp_right
+  new_code: "(a b c)"
+  new_selection: "(a b c)"
+
+- name: "barf single element list"
+  code: "(a)"
+  selection: "(a)"
+  actions: barf_right
+  new_code: "(a)"
+  new_selection: "(a)"
+
+- name: "move at boundary does nothing"
+  code: "(a b)"
+  selection: "b"
+  actions: move_next
+  new_code: "(a b)"
+  new_selection: "b"
+
+- name: "delete and selection moves sensibly"
+  code: "(only)"
+  selection: "only"
+  actions: delete
+  new_code: "()"
+  new_selection: "()"
+
+- name: "paste without prior cut does nothing"
+  code: "(a b)"
+  selection: "a"
+  actions: paste
+  new_code: "(a b)"
+  new_selection: "a"
+
+# ============================================================================
+# COMBINED OPERATIONS - REFACTORING EXAMPLES
+# ============================================================================
+
+- name: "extract to variable pattern"
+  code: "(+ (* 2 3) (* 2 3))"
+  selection: "(* 2 3)"
+  actions: [cut, out, insert, "let", apply_call, type, "[x _]", navigate_to_hole, paste, next, type, "(+ x x)"]
+  new_code: "(let [x (* 2 3)] (+ x x))"
+  new_selection: "(+ x x)"
+
+- name: "convert to threaded form"
+  code: "(f (g (h x)))"
+  selection: "(f (g (h x)))"
+  actions: [in, in, in, cut, out, out, out, insert, "->", apply_wrap, in, next, paste]
+  new_code: "(-> x h g f)"
+  new_selection: "f"
+
+- name: "inline function call"
+  code: "(let [x (+ 1 2)] (* x 3))"
+  selection: "x"
+  actions: [navigate_to_binding, cut, navigate_to_usage, delete, paste]
+  new_code: "(let [] (* (+ 1 2) 3))"
+  new_selection: "(+ 1 2)"
