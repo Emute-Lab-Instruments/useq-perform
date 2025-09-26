@@ -14,6 +14,13 @@ import { default_extensions } from '@nextjournal/clojure-mode';
 let clipboardContent = null;
 
 /**
+ * Clear the clipboard (for testing)
+ */
+export function clearClipboard() {
+  clipboardContent = null;
+}
+
+/**
  * Creates a headless CodeMirror editor state with clojure-mode extensions
  * @param {string} doc - Initial document content
  * @returns {EditorState} - The editor state
@@ -394,7 +401,8 @@ function findPrevSpatialNode(state, currentNode) {
  * @returns {EditorState} - New state with updated selection
  */
 export function navigateUp(state) {
-  // For now, implement as previous sibling
+  // For simple cases, treat as previous sibling navigation
+  // This is a simplification of proper vertical navigation
   return navigatePrevious(state);
 }
 
@@ -404,7 +412,8 @@ export function navigateUp(state) {
  * @returns {EditorState} - New state with updated selection
  */
 export function navigateDown(state) {
-  // For now, implement as next sibling
+  // For simple cases, treat as next sibling navigation
+  // This is a simplification of proper vertical navigation
   return navigateNext(state);
 }
 
@@ -758,23 +767,23 @@ export function movePrevious(state) {
 }
 
 export function moveRight(state) {
-  // Placeholder: move spatially right
-  return state;
+  // Placeholder: For now, just swap with next sibling as a fallback
+  return moveNext(state);
 }
 
 export function moveLeft(state) {
-  // Placeholder: move spatially left
-  return state;
+  // Placeholder: For now, just swap with previous sibling as a fallback
+  return movePrevious(state);
 }
 
 export function moveUp(state) {
-  // Placeholder: move up maintaining level
-  return state;
+  // Placeholder: For now, just swap with previous sibling as a fallback
+  return movePrevious(state);
 }
 
 export function moveDown(state) {
-  // Placeholder: move down maintaining level
-  return state;
+  // Placeholder: For now, just swap with next sibling as a fallback
+  return moveNext(state);
 }
 
 /**

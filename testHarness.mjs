@@ -36,7 +36,8 @@ import {
   insertSymbolBefore,
   insertFunctionCall,
   insertFunctionCallBefore,
-  wrapInFunction
+  wrapInFunction,
+  clearClipboard
 } from './newStructuralEditingExtensions.mjs';
 
 /**
@@ -183,6 +184,9 @@ function handleInsertOperation(state, category, symbol, applyType) {
  */
 function runTestCase(testCase) {
   try {
+    // Clear clipboard at start of each test to avoid cross-test contamination
+    clearClipboard();
+    
     // Create editor with initial code
     let state = createStructuralEditor(testCase.code);
     
