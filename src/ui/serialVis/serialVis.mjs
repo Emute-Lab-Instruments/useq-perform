@@ -1,21 +1,28 @@
 import { dbg } from "../../utils.mjs";
-import { serialBuffers } from "../../io/serialComms.mjs";
-import { fillSerialBuffersDefault, serialVisPalette, getCatmullRomPoint } from "./utils.mjs";
-import { devmode } from "../../urlParams.mjs";
+import { getVisualisationState } from "./visualisationController.mjs";
 
-
+const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)';
+const TEXT_COLOR = 'rgba(255, 255, 255, 0.5)';
 
 function drawSerialVis() {
   const c = document.getElementById("serialcanvas");
   const ctx = c.getContext("2d");
-  const verticalPadding = c.height * 0.1; // 10% padding top and bottom
-  const centerY = c.height / 2; // Center point of canvas
-  const drawableHeight = c.height - verticalPadding * 2; // Height available for drawing
-  const referenceBuffer = serialBuffers[1] || serialBuffers[0];
-  if (!referenceBuffer) {
-    return;
-  }
-  const gap = c.width / referenceBuffer.bufferLength;
+  const verticalPadding = c.height * 0.1;
+  const centerY = c.height / 2;
+  const drawableHeight = c.height - verticalPadding * 2;
+
+  const state = getVisualisationState();
+  const { currentTime, settings, expressions } = state;
+  const {
+    lineWidth = 1.5,
+    futureDashed = true,
+    futureMaskOpacity = 0.35,
+    futureMaskWidth = 12,
+  } = settings;
+  const futureLineAlpha = futureDashed ? 0.6 : 0.85;
+  const offset = settings.offsetSeconds || 0.5;
+  const totalWindow = offset * 2;
+  const hasExpressions = expressions.size > 0;
 
   // Enable antialiasing for smoother lines
   ctx.imageSmoothingEnabled = true;
@@ -24,13 +31,22 @@ function drawSerialVis() {
   // Clear canvas
   ctx.clearRect(0, 0, c.width, c.height);
 
+  if (!hasExpressions) {
+    ctx.fillStyle = TEXT_COLOR;
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('No expressions selected for visualisation', c.width / 2, c.height / 2);
+    window.requestAnimationFrame(drawSerialVis);
+    return;
+  }
+
   // Helper function for mapping values to Y coordinates with 0.5 at center
   const mapValueToY = value => {
+    const clamped = Math.max(0, Math.min(1, value));
     // Map 0-1 range to canvas with padding (0 at bottom, 1 at top)
-    return c.height - verticalPadding - (value * drawableHeight);
+    return c.height - verticalPadding - (clamped * drawableHeight);
   };
 
-  // Get accent color from CSS variables
   const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent-color') || '#00ff41';
 
   // Draw center axis (0.5) dotted line
@@ -40,6 +56,15 @@ function drawSerialVis() {
   ctx.beginPath();
   ctx.moveTo(0, centerY);
   ctx.lineTo(c.width, centerY);
+  ctx.stroke();
+
+  // Draw current time vertical line
+  const centerX = c.width / 2;
+  ctx.setLineDash([]);
+  ctx.strokeStyle = AXIS_COLOR;
+  ctx.beginPath();
+  ctx.moveTo(centerX, 0);
+  ctx.lineTo(centerX, c.height);
   ctx.stroke();
 
   // Draw y-axis markings on left side
@@ -62,64 +87,45 @@ function drawSerialVis() {
   }
 
   // Draw data traces
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = lineWidth;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
 
-  // Pre-calculate interpolation steps for the spline
-  const segments = 5;
-  const step = 1 / segments;
-  const interpolationSteps = Array.from({ length: segments + 1 }, (_, i) => i * step);
+  // Draw each registered expression
+  for (const expression of expressions.values()) {
+    const samplesInRange = expression.samples
+      .filter(sample => sample.time >= currentTime - offset && sample.time <= currentTime + offset)
+      .sort((a, b) => a.time - b.time);
 
-  // Pre-calculate oldest values once for each channel to avoid repeated method calls
-  const userChannelCount = Math.max(0, serialBuffers.length - 1);
-  const oldestValues = Array(userChannelCount).fill().map((_, ch) => {
-    const buffer = serialBuffers[ch + 1];
-    if (!buffer) {
-      return [];
-    }
-    return Array(buffer.bufferLength - 1).fill().map((_, i) => buffer.oldest(i));
-  });
-
-  // Draw each channel
-  for (let ch = 0; ch < userChannelCount; ch++) {
-    const channelValues = oldestValues[ch];
-    if (!channelValues || channelValues.length === 0) {
+    if (samplesInRange.length < 2) {
       continue;
     }
-    const points = channelValues.map((value, i) => ({
-      x: gap * i,
-      y: mapValueToY(value)
-    }));
 
-    ctx.beginPath();
-    ctx.strokeStyle = serialVisPalette[ch % serialVisPalette.length];
+    const color = expression.color || accentColor;
+    const lastPastIndex = findLastPastIndex(samplesInRange, currentTime);
 
-    // Plot first point
-    ctx.moveTo(points[0].x, points[0].y);
-
-    // Use Catmull-Rom spline for smooth curves if we have enough points
-    // if (points.length > 3) {
-    //   for (let i = 0; i < points.length - 3; i++) {
-    //     const p0 = points[Math.max(0, i)];
-    //     const p1 = points[i + 1];
-    //     const p2 = points[i + 2];
-    //     const p3 = points[Math.min(points.length - 1, i + 3)];
-
-    //     // Generate points along the spline curve
-    //     for (const t of interpolationSteps) {
-    //       const pt = getCatmullRomPoint(p0, p1, p2, p3, t);
-    //       ctx.lineTo(pt.x, pt.y);
-    //     }
-    //   }
-    // } else {
-    // Fall back to simple lines if not enough points
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
+    if (lastPastIndex >= 1) {
+      const pastSamples = samplesInRange.slice(0, lastPastIndex + 1);
+      drawPath(ctx, pastSamples, color, 1, lineWidth, currentTime, offset, totalWindow, c.width, mapValueToY);
     }
-    // }
 
-    ctx.stroke();
+    const futureStart = lastPastIndex >= 0 ? lastPastIndex : 0;
+    if (futureStart < samplesInRange.length - 1) {
+      const futureSamples = samplesInRange.slice(futureStart, samplesInRange.length);
+      if (futureSamples.length >= 2) {
+        drawPath(ctx, futureSamples, color, futureLineAlpha, lineWidth, currentTime, offset, totalWindow, c.width, mapValueToY);
+      }
+    } else if (lastPastIndex < 1) {
+      // No past samples; draw entire range as future
+      drawPath(ctx, samplesInRange, color, futureLineAlpha, lineWidth, currentTime, offset, totalWindow, c.width, mapValueToY);
+    }
+  }
+
+  const maskOpacity = Math.min(1, Math.max(0, settings.futureMaskOpacity ?? futureMaskOpacity));
+  const maskWidth = Math.max(2, Math.round(settings.futureMaskWidth ?? futureMaskWidth));
+
+  if (futureDashed && maskOpacity > 0.001) {
+    drawFutureMask(ctx, c.width, c.height, maskWidth, maskOpacity);
   }
 
   window.requestAnimationFrame(drawSerialVis);
@@ -127,10 +133,98 @@ function drawSerialVis() {
 
 export function makeVis() {
   window.requestAnimationFrame(drawSerialVis);
-  // TODO incorporate these in the vis panel
-  // createSmoothingControls();
+}
 
-  if (devmode) {
-    // fillSerialBuffersDefault();
+function findLastPastIndex(samples, currentTime) {
+  for (let i = samples.length - 1; i >= 0; i--) {
+    if (samples[i].time <= currentTime) {
+      return i;
+    }
   }
+  return -1;
+}
+
+function drawPath(ctx, samples, color, alpha, lineWidth, currentTime, offset, totalWindow, canvasWidth, mapValueToY, dashPattern = []) {
+  if (!samples || samples.length < 2) {
+    return;
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  const safeAlpha = Math.min(1, Math.max(0, alpha));
+  ctx.globalAlpha = safeAlpha;
+  ctx.setLineDash(Array.isArray(dashPattern) && dashPattern.length ? dashPattern : []);
+
+  const start = samples[0];
+  const startRelative = (start.time - (currentTime - offset)) / totalWindow;
+  const startX = clamp01(startRelative) * canvasWidth;
+  ctx.moveTo(startX, mapValueToY(start.value));
+
+  for (let i = 1; i < samples.length; i++) {
+    const sample = samples[i];
+    const relative = (sample.time - (currentTime - offset)) / totalWindow;
+    const x = clamp01(relative) * canvasWidth;
+    ctx.lineTo(x, mapValueToY(sample.value));
+  }
+
+  ctx.stroke();
+  ctx.restore();
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  if (value < 0) {
+    return 0;
+  }
+  if (value > 1) {
+    return 1;
+  }
+  return value;
+}
+
+let futureMaskCache = { key: null, canvas: null };
+
+function drawFutureMask(ctx, canvasWidth, canvasHeight, stripeWidth, opacity) {
+  const centerX = canvasWidth / 2;
+  if (opacity <= 0) {
+    return;
+  }
+
+  const patternCanvas = getFutureMaskPatternCanvas(stripeWidth);
+  const pattern = ctx.createPattern(patternCanvas, 'repeat');
+  if (!pattern) {
+    return;
+  }
+
+  ctx.save();
+  ctx.translate(centerX, 0);
+  ctx.fillStyle = pattern;
+  ctx.globalAlpha = Math.min(1, Math.max(0, opacity));
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillRect(0, 0, canvasWidth - centerX, canvasHeight);
+  ctx.restore();
+}
+
+function getFutureMaskPatternCanvas(stripeWidth) {
+  const width = Math.max(2, Math.round(stripeWidth));
+  const key = `${width}`;
+  if (futureMaskCache.key === key && futureMaskCache.canvas) {
+    return futureMaskCache.canvas;
+  }
+
+  const size = width * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const patternCtx = canvas.getContext('2d');
+  patternCtx.clearRect(0, 0, size, size);
+  patternCtx.fillStyle = '#000';
+  patternCtx.fillRect(0, 0, width, size);
+
+  futureMaskCache = { key, canvas };
+  return canvas;
 }

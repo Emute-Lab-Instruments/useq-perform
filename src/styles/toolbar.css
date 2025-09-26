@@ -14,21 +14,32 @@
 
 /* Top playback toolbar */
 #panel-top-toolbar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    display: flex;
-    justify-content: center;
-    padding: 6px 10px;
-    gap: 8px;
-    background: transparent;
-    z-index: 1000;
-    pointer-events: none; /* allow underlying clicks except buttons */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  gap: 4px;
+  background: var(--toolbar-bg, transparent);
+  backdrop-filter: blur(12px);
+  z-index: 1000;
+  pointer-events: none; /* allow underlying clicks except buttons */
 }
 
 #panel-top-toolbar .toolbar-row {
-    pointer-events: auto; /* re-enable for row/buttons */
+  pointer-events: auto; /* re-enable for row/buttons */
+  gap: 4px;
+}
+
+#panel-top-toolbar .toolbar-button {
+  padding: 0.35em 0.5em;
+  height: 2.1em;
+  min-width: 22px;
+  font-size: 0.95em;
 }
 
 .toolbar-row {
