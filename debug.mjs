@@ -1,17 +1,17 @@
 import { createStructuralEditor, selectByText } from './newStructuralEditingExtensions.mjs';
 import { runTestCase } from './testHarness.mjs';
 
-// Test a complex insert sequence again
+// Test a failing barf operation
 const testCase = {
-  name: "insert, fill hole, and continue",
-  code: "(+ 1)",
-  selection: "1",
-  actions: ["insert", "maths", "*", "apply_call", "type", "5", "next", "type", "3"],
-  new_code: "(+ 1 (* 5 3))",
-  new_selection: "3"
+  name: "barf right - list expels last element",
+  code: "(a b c)",
+  selection: "(a b c)",
+  actions: "barf_right",
+  new_code: "(a b) c",
+  new_selection: "(a b)"
 };
 
-console.log("Testing complex insert sequence...");
+console.log("Testing barf right...");
 const result = runTestCase(testCase);
 console.log("Result:", result.passed ? "PASSED" : "FAILED");
 if (!result.passed) {
