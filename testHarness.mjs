@@ -31,7 +31,12 @@ import {
   moveLeft,
   moveUp,
   moveDown,
-  typeText
+  typeText,
+  insertSymbol,
+  insertSymbolBefore,
+  insertFunctionCall,
+  insertFunctionCallBefore,
+  wrapInFunction
 } from './newStructuralEditingExtensions.mjs';
 
 /**
@@ -87,11 +92,35 @@ function getSelectedText(state) {
  */
 function applyAction(state, action) {
   if (Array.isArray(action)) {
-    // Handle action sequences
+    // Handle action sequences by processing each action individually
     let currentState = state;
-    for (const subAction of action) {
-      currentState = applyAction(currentState, subAction);
+    
+    for (let i = 0; i < action.length; i++) {
+      const currentAction = action[i];
+      
+      // Check for insert operation pattern: [insert, category, symbol, apply_type]
+      if (currentAction === 'insert' && i + 3 < action.length) {
+        const category = action[i + 1]; // e.g., 'maths'
+        const symbol = action[i + 2];   // e.g., '+'
+        const applyType = action[i + 3]; // e.g., 'apply', 'apply_call', etc.
+        
+        currentState = handleInsertOperation(currentState, category, symbol, applyType);
+        i += 3; // Skip the next 3 elements as they were part of the insert
+        continue;
+      }
+      
+      // Check for type action pattern: type followed by text
+      if (currentAction === 'type' && i + 1 < action.length) {
+        const text = action[i + 1];
+        currentState = typeText(currentState, text);
+        i += 1; // Skip the next element as it was the text to type
+        continue;
+      }
+      
+      // Handle regular actions
+      currentState = applyAction(currentState, currentAction);
     }
+    
     return currentState;
   }
   
@@ -107,13 +136,44 @@ function applyAction(state, action) {
     if (actionFunc) {
       return actionFunc(state);
     } else {
-      console.warn(`Unknown action: ${action}`);
+      // Don't warn about insert-related actions or common symbols
+      if (!['insert', 'maths', 'apply', 'apply_pre', 'apply_call', 'apply_call_pre', 'apply_wrap', 'type', 
+            'let', 'navigate_to_hole', 'navigate_to_binding', 'navigate_to_usage'].includes(action) &&
+          !action.match(/^[+\-*/=<>!&|0-9xy\[\]_()]+$/)) {
+        console.warn(`Unknown action: ${action}`);
+      }
       return state;
     }
   }
   
   console.warn(`Invalid action format: ${action}`);
   return state;
+}
+
+/**
+ * Handle insert operations with category, symbol, and apply type
+ * @param {EditorState} state - Current editor state
+ * @param {string} category - Category (e.g., 'maths')
+ * @param {string} symbol - Symbol to insert (e.g., '+')
+ * @param {string} applyType - How to apply (e.g., 'apply', 'apply_call')
+ * @returns {EditorState} - New editor state
+ */
+function handleInsertOperation(state, category, symbol, applyType) {
+  switch (applyType) {
+    case 'apply':
+      return insertSymbol(state, symbol);
+    case 'apply_pre':
+      return insertSymbolBefore(state, symbol);
+    case 'apply_call':
+      return insertFunctionCall(state, symbol);
+    case 'apply_call_pre':
+      return insertFunctionCallBefore(state, symbol);
+    case 'apply_wrap':
+      return wrapInFunction(state, symbol);
+    default:
+      console.warn(`Unknown insert apply type: ${applyType}`);
+      return state;
+  }
 }
 
 /**
