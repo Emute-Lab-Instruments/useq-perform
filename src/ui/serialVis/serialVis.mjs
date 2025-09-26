@@ -115,6 +115,9 @@ function drawSerialVis() {
   const startTime = currentTime - offset;
   const endTime = currentTime + offset;
 
+  const maskOpacity = Math.min(1, Math.max(0, settings.futureMaskOpacity ?? futureMaskOpacity));
+  const maskWidth = Math.max(2, Math.round(settings.futureMaskWidth ?? futureMaskWidth));
+
   // Draw each registered expression
   for (const expression of expressions.values()) {
     const samples = expression.samples;
@@ -154,7 +157,7 @@ function drawSerialVis() {
     // Future segment (includes pivot sample to ensure continuity)
     const futureStart = lastPastIndex >= windowStartIndex ? lastPastIndex : windowStartIndex;
     if (windowEndIndex - futureStart >= 2) {
-      drawPathSegment(
+      const futurePoints = drawPathSegment(
         ctx,
         samples,
         futureStart,
@@ -168,14 +171,10 @@ function drawSerialVis() {
         c.width,
         mapValueToY
       );
+      if (futureDashed && maskOpacity > 0.001 && futurePoints) {
+        applyFutureMaskToPoints(ctx, futurePoints, lineWidth, maskWidth, maskOpacity);
+      }
     }
-  }
-
-  const maskOpacity = Math.min(1, Math.max(0, settings.futureMaskOpacity ?? futureMaskOpacity));
-  const maskWidth = Math.max(2, Math.round(settings.futureMaskWidth ?? futureMaskWidth));
-
-  if (futureDashed && maskOpacity > 0.001) {
-    drawFutureMask(ctx, c.width, c.height, maskWidth, maskOpacity);
   }
 
   window.requestAnimationFrame(drawSerialVis);
@@ -204,31 +203,79 @@ function findLastPastIndex(samples, currentTime, startIndex, endIndex) {
 }
 
 function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineWidth, currentTime, offset, totalWindow, canvasWidth, mapValueToY, dashPattern = []) {
-  if (!samples || endIndex - startIndex < 2) {
-    return;
+  const points = buildSegmentPoints(samples, startIndex, endIndex, currentTime, offset, totalWindow, canvasWidth, mapValueToY);
+  if (!points || points.length < 2) {
+    return null;
   }
 
   ctx.save();
-  ctx.beginPath();
   ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
   const safeAlpha = Math.min(1, Math.max(0, alpha));
   ctx.globalAlpha = safeAlpha;
   ctx.setLineDash(Array.isArray(dashPattern) && dashPattern.length ? dashPattern : []);
 
-  const start = samples[startIndex];
-  const startRelative = (start.time - (currentTime - offset)) / totalWindow;
-  const startX = clamp01(startRelative) * canvasWidth;
-  ctx.moveTo(startX, mapValueToY(start.value));
-
-  for (let i = startIndex + 1; i < endIndex; i++) {
-    const sample = samples[i];
-    const relative = (sample.time - (currentTime - offset)) / totalWindow;
-    const x = clamp01(relative) * canvasWidth;
-    ctx.lineTo(x, mapValueToY(sample.value));
+  if (traceSegment(ctx, points)) {
+    ctx.stroke();
   }
 
-  ctx.stroke();
+  ctx.restore();
+  return points;
+}
+
+function buildSegmentPoints(samples, startIndex, endIndex, currentTime, offset, totalWindow, canvasWidth, mapValueToY) {
+  if (!samples || endIndex - startIndex < 2) {
+    return null;
+  }
+
+  const points = [];
+  const windowStart = currentTime - offset;
+
+  for (let i = startIndex; i < endIndex; i++) {
+    const sample = samples[i];
+    const relative = (sample.time - windowStart) / totalWindow;
+    const x = clamp01(relative) * canvasWidth;
+    points.push({ x, y: mapValueToY(sample.value) });
+  }
+
+  return points;
+}
+
+function traceSegment(ctx, points) {
+  if (!points || points.length < 2) {
+    return false;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    const point = points[i];
+    ctx.lineTo(point.x, point.y);
+  }
+  return true;
+}
+
+function applyFutureMaskToPoints(ctx, points, lineWidth, dashSize, opacity) {
+  if (!points || points.length < 2 || opacity <= 0) {
+    return;
+  }
+
+  const dashLength = Math.max(1, dashSize);
+
+  ctx.save();
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.setLineDash([dashLength, dashLength]);
+  ctx.lineDashOffset = dashLength / 2;
+  ctx.globalAlpha = Math.min(1, Math.max(0, opacity));
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.strokeStyle = '#000';
+
+  if (traceSegment(ctx, points)) {
+    ctx.stroke();
+  }
+
   ctx.restore();
 }
 
@@ -273,45 +320,7 @@ function clamp01(value) {
   return value;
 }
 
-let futureMaskCache = { key: null, canvas: null };
-
-function drawFutureMask(ctx, canvasWidth, canvasHeight, stripeWidth, opacity) {
-  const centerX = canvasWidth / 2;
-  if (opacity <= 0) {
-    return;
-  }
-
-  const patternCanvas = getFutureMaskPatternCanvas(stripeWidth);
-  const pattern = ctx.createPattern(patternCanvas, 'repeat');
-  if (!pattern) {
-    return;
-  }
-
-  ctx.save();
-  ctx.translate(centerX, 0);
-  ctx.fillStyle = pattern;
-  ctx.globalAlpha = Math.min(1, Math.max(0, opacity));
-  ctx.globalCompositeOperation = 'destination-out';
-  ctx.fillRect(0, 0, canvasWidth - centerX, canvasHeight);
-  ctx.restore();
-}
-
-function getFutureMaskPatternCanvas(stripeWidth) {
-  const width = Math.max(2, Math.round(stripeWidth));
-  const key = `${width}`;
-  if (futureMaskCache.key === key && futureMaskCache.canvas) {
-    return futureMaskCache.canvas;
-  }
-
-  const size = width * 2;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const patternCtx = canvas.getContext('2d');
-  patternCtx.clearRect(0, 0, size, size);
-  patternCtx.fillStyle = '#000';
-  patternCtx.fillRect(0, 0, width, size);
-
-  futureMaskCache = { key, canvas };
-  return canvas;
-}
+export const __serialVisInternals = {
+  buildSegmentPoints,
+  applyFutureMaskToPoints,
+};
