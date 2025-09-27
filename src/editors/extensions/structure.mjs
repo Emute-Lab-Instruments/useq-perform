@@ -634,7 +634,7 @@ const matchPattern = /\b([ads])([1-8])(?=[\s)(]|$)/g;
 
 // Custom gutter marker for expression vertical lines
 export class ExpressionGutterMarker extends GutterMarker {
-  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true, exprType = null, showClear = false, isVisualised = false) {
+  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true, exprType = null, showPlayButton = false, isVisualised = false) {
     super();
     this.color = color;
     this.isStart = isStart;
@@ -642,7 +642,7 @@ export class ExpressionGutterMarker extends GutterMarker {
     this.isMid = isMid;
     this.isActive = isActive;
     this.exprType = exprType;
-    this.showClear = showClear;
+    this.showPlayButton = showPlayButton;
     this.isVisualised = isVisualised;
   }
   
@@ -676,40 +676,41 @@ export class ExpressionGutterMarker extends GutterMarker {
       div.appendChild(line);
     }
 
-    // Add button (clear 'x' for active, play '▶' for inactive) centered on the gutter bar
-    if (this.showClear && this.exprType) {
+    if (this.showPlayButton && this.exprType) {
       const btn = document.createElement('span');
-      if (this.isActive) {
-        btn.className = 'cm-expr-clear-btn';
-        btn.dataset.expr = this.exprType;
-        btn.textContent = '×';
-        btn.title = `Clear ${this.exprType}`;
-      } else {
-        btn.className = 'cm-expr-play-btn';
-        btn.dataset.expr = this.exprType;
-        btn.textContent = '▶';
-        btn.title = `Activate ${this.exprType}`;
-      }
-      
-      // Use the expression color as background; choose contrasting text color
-      const bg = this.color || '#888';
-      // Compute simple luminance for contrast decision
-      let fg = '#000';
-      try {
-        const hex = bg.startsWith('#') ? bg.substring(1) : null;
-        if (hex && (hex.length === 6 || hex.length === 3)) {
-          const hx = hex.length === 3 ? hex.split('').map(c=>c+c).join('') : hex;
-          const r = parseInt(hx.substring(0,2),16);
-          const g = parseInt(hx.substring(2,4),16);
-          const b = parseInt(hx.substring(4,6),16);
-          const luminance = 0.299*r + 0.587*g + 0.114*b;
-          fg = luminance > 140 ? '#000' : '#fff';
-        } else {
-          // Fallback for rgba()/named colors: default to white text
+      btn.className = 'cm-expr-play-btn';
+      btn.dataset.expr = this.exprType;
+      btn.textContent = '▶';
+      btn.title = this.isVisualised
+        ? `Stop visualising ${this.exprType}`
+        : `Play ${this.exprType}`;
+      btn.setAttribute('aria-pressed', this.isVisualised ? 'true' : 'false');
+
+      const baseColor = this.color || 'var(--accent-color, #00ff41)';
+      const bg = this.isVisualised ? baseColor : 'rgba(0, 0, 0, 0.45)';
+      let fg = this.isVisualised ? '#080808' : baseColor;
+      if (this.isVisualised) {
+        try {
+          const hex = baseColor.startsWith('#') ? baseColor.substring(1) : null;
+          if (hex && (hex.length === 6 || hex.length === 3)) {
+            const hx = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+            const r = parseInt(hx.substring(0, 2), 16);
+            const g = parseInt(hx.substring(2, 4), 16);
+            const b = parseInt(hx.substring(4, 6), 16);
+            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+            fg = luminance > 140 ? '#000' : '#fff';
+          } else {
+            fg = '#fff';
+          }
+        } catch (e) {
           fg = '#fff';
         }
-      } catch (e) { fg = '#fff'; }
-      
+      }
+
+      if (this.isVisualised) {
+        btn.classList.add('is-visualising');
+      }
+
       btn.style.cssText = `
         position: absolute;
         left: 50%;
@@ -719,7 +720,7 @@ export class ExpressionGutterMarker extends GutterMarker {
         height: 14px;
         line-height: 14px;
         text-align: center;
-        font-size: ${this.isActive ? '12px' : '10px'};
+        font-size: 10px;
         font-weight: bold;
         cursor: pointer;
         user-select: none;
@@ -730,61 +731,11 @@ export class ExpressionGutterMarker extends GutterMarker {
         display: flex;
         align-items: center;
         justify-content: center;
+        border: 1px solid ${baseColor};
+        box-shadow: ${this.isVisualised ? '0 0 6px rgba(0,0,0,0.35)' : 'none'};
       `;
       btn.style.pointerEvents = 'auto';
       div.appendChild(btn);
-    }
-    
-    if (this.exprType) {
-      const vizBtn = document.createElement('span');
-      vizBtn.className = 'cm-expr-viz-btn';
-      vizBtn.dataset.expr = this.exprType;
-      vizBtn.title = this.isVisualised
-        ? `Stop visualising ${this.exprType}`
-        : `Visualise ${this.exprType}`;
-      vizBtn.setAttribute('aria-pressed', this.isVisualised ? 'true' : 'false');
-      if (this.isVisualised) {
-        vizBtn.classList.add('active');
-      }
-
-      vizBtn.style.cssText = `
-        position: absolute;
-        left: 50%;
-        bottom: 4px;
-        transform: translateX(-50%);
-        width: 18px;
-        height: 18px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        user-select: none;
-        border-radius: 4px;
-        border: 1px solid transparent;
-        z-index: 6;
-      `;
-      vizBtn.style.pointerEvents = 'auto';
-
-      const color = this.color || 'var(--accent-color, #00ff41)';
-      vizBtn.style.borderColor = color;
-      if (this.isVisualised) {
-        vizBtn.style.background = color;
-        vizBtn.style.color = '#080808';
-      } else {
-        vizBtn.style.background = 'rgba(0, 0, 0, 0.5)';
-        vizBtn.style.color = color;
-      }
-
-      const icon = document.createElement('i');
-      icon.setAttribute('data-lucide', 'chart-spline');
-      vizBtn.appendChild(icon);
-      div.appendChild(vizBtn);
-
-      if (window.lucide && typeof window.lucide.createIcons === 'function') {
-        try {
-          window.lucide.createIcons({ root: vizBtn });
-        } catch (e) {}
-      }
     }
     
     return div;
@@ -798,7 +749,7 @@ export class ExpressionGutterMarker extends GutterMarker {
            other.isMid === this.isMid &&
            other.isActive === this.isActive &&
            other.exprType === this.exprType &&
-           other.showClear === this.showClear &&
+           other.showPlayButton === this.showPlayButton &&
            other.isVisualised === this.isVisualised;
   }
 }
@@ -949,9 +900,9 @@ export function createMarkersForRange(range, isActive, docLineFn, exprType) {
         const isMid = !isStart && !isEnd;
         const ui = (activeUserSettings && activeUserSettings.ui) || {};
         
-        // Show button on middle line: 'x' for active, 'play' for inactive expressions
+        // Show play button on middle line
         const buttonsEnabled = ui.expressionClearButtonEnabled !== false;
-        const showClear = buttonsEnabled && (line === midLine);
+        const showPlayButton = buttonsEnabled && (line === midLine);
 
         const marker = new ExpressionGutterMarker(
           range.color,
@@ -960,7 +911,7 @@ export function createMarkersForRange(range, isActive, docLineFn, exprType) {
           isMid,
           isActive,
           exprType,
-          showClear,
+          showPlayButton,
           isExpressionVisualised(exprType)
         );
         const lineObj = docLineFn(line);
@@ -1058,7 +1009,7 @@ const expressionGutterField = StateField.define({
   }
 });
 
-// View plugin to handle click on clear icons
+// View plugin to handle expression gutter interactions
 const expressionClearClickPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
     this.view = view;
@@ -1083,19 +1034,6 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
     
-    // Handle clear button (x)
-    const clearBtn = target.closest('.cm-expr-clear-btn');
-    if (clearBtn) {
-      const ui = (activeUserSettings && activeUserSettings.ui) || {};
-      if (ui.expressionClearButtonEnabled === false) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const exprType = clearBtn.getAttribute('data-expr');
-      if (!exprType) return;
-      handleClearExpression(this.view, exprType);
-      return;
-    }
-    
     // Handle play button (▶)
     const playBtn = target.closest('.cm-expr-play-btn');
     if (playBtn) {
@@ -1106,16 +1044,6 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
       const exprType = playBtn.getAttribute('data-expr');
       if (!exprType) return;
       handlePlayExpression(this.view, exprType);
-      return;
-    }
-
-    const vizBtn = target.closest('.cm-expr-viz-btn');
-    if (vizBtn) {
-      e.preventDefault();
-      e.stopPropagation();
-      const exprType = vizBtn.getAttribute('data-expr');
-      if (!exprType) return;
-      handleVisualiseExpression(this.view, exprType);
       return;
     }
   }
@@ -1169,33 +1097,46 @@ function handleClearExpression(view, exprType) {
 }
 
 function handlePlayExpression(view, exprType) {
-  if (!isConnectedToModule || !isConnectedToModule()) {
-    // Not connected; do nothing
-    return;
-  }
   const definition = findExpressionDefinition(view, exprType);
   if (!definition) {
-    return;
-  }
-
-  try {
-    dbg(`Play: sending ${exprType}`);
-    sendTouSEQ(definition.expressionText.trim());
-  } catch (e) {
-    dbg(`Play: failed to send ${exprType}: ${e}`);
-  }
-
-  detectAndTrackExpressionEvaluation(view);
-}
-
-function handleVisualiseExpression(view, exprType) {
-  const definition = findExpressionDefinition(view, exprType);
-  if (!definition) {
-    dbg(`Visualise: could not find definition for ${exprType}`);
     return;
   }
 
   const expressionText = definition.expressionText.trim();
+  const connected = isConnectedToModule && isConnectedToModule();
+
+  if (connected) {
+    try {
+      dbg(`Play: sending ${exprType}`);
+      sendTouSEQ(expressionText);
+    } catch (e) {
+      dbg(`Play: failed to send ${exprType}: ${e}`);
+    }
+
+    detectAndTrackExpressionEvaluation(view);
+  }
+
+  handleVisualiseExpression(view, exprType, expressionText);
+}
+
+function handleVisualiseExpression(view, exprType, expressionTextOverride = null) {
+  let expressionText = typeof expressionTextOverride === 'string'
+    ? expressionTextOverride.trim()
+    : expressionTextOverride;
+  if (!expressionText) {
+    const definition = findExpressionDefinition(view, exprType);
+    if (!definition) {
+      dbg(`Visualise: could not find definition for ${exprType}`);
+      return;
+    }
+    expressionText = definition.expressionText.trim();
+  }
+
+  if (!expressionText) {
+    dbg(`Visualise: empty expression for ${exprType}`);
+    return;
+  }
+
   const wasVisualised = isExpressionVisualised(exprType);
 
   if (typeof console !== 'undefined' && console.debug) {
