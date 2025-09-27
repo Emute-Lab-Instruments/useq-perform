@@ -1,4 +1,3 @@
-import { dbg } from "../../utils.mjs";
 import { getVisualisationState } from "./visualisationController.mjs";
 
 const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)';
@@ -25,6 +24,8 @@ function getAccentColor() {
   return cachedAccentColor;
 }
 
+const DIGITAL_CHANNELS = ['d1', 'd2', 'd3'];
+
 function drawSerialVis() {
   const c = document.getElementById("serialcanvas");
   const ctx = c.getContext("2d");
@@ -33,14 +34,10 @@ function drawSerialVis() {
   const drawableHeight = c.height - verticalPadding * 2;
 
   const state = getVisualisationState();
-  const { currentTime, settings, expressions } = state;
-  const {
-    lineWidth = 1.5,
-    futureDashed = true,
-    futureMaskOpacity = 0.35,
-    futureMaskWidth = 12,
-  } = settings;
-  const futureLineAlpha = futureDashed ? 0.6 : 0.85;
+  const { displayTime, currentTime: rawTime, settings, expressions } = state;
+  const currentTime = Number.isFinite(displayTime) ? displayTime : rawTime;
+  const { lineWidth = 1.5, digitalLaneGap: rawDigitalGap = 4 } = settings;
+  const futureLineAlpha = settings.futureDashed === false ? 0.85 : 0.6;
   const offset = settings.offsetSeconds || 0.5;
   const totalWindow = offset * 2;
   const hasExpressions = expressions.size > 0;
@@ -61,14 +58,32 @@ function drawSerialVis() {
     return;
   }
 
-  // Helper function for mapping values to Y coordinates with 0.5 at center
-  const mapValueToY = value => {
+  const accentColor = getAccentColor();
+  const laneCount = DIGITAL_CHANNELS.length;
+  const digitalLaneGap = Math.max(0, Math.min(drawableHeight, Number(rawDigitalGap) || 0));
+  const totalGapHeight = laneCount > 1 ? digitalLaneGap * (laneCount - 1) : 0;
+  const availableDigitalHeight = Math.max(0, drawableHeight - totalGapHeight);
+  const digitalLaneHeight = laneCount > 0 ? availableDigitalHeight / laneCount : 0;
+
+  const mapAnalogValueToY = (value) => {
     const clamped = Math.max(0, Math.min(1, value));
-    // Map 0-1 range to canvas with padding (0 at bottom, 1 at top)
     return c.height - verticalPadding - (clamped * drawableHeight);
   };
 
-  const accentColor = getAccentColor();
+  const makeDigitalMapper = (exprType) => {
+    const laneIndex = DIGITAL_CHANNELS.indexOf(exprType);
+    if (laneIndex < 0) {
+      return mapAnalogValueToY;
+    }
+
+    const laneTop = verticalPadding + laneIndex * (digitalLaneHeight + digitalLaneGap);
+    const laneBottom = laneTop + digitalLaneHeight;
+
+    return (value) => {
+      const clamped = Math.max(0, Math.min(1, value));
+      return laneBottom - (clamped * digitalLaneHeight);
+    };
+  };
 
   // Draw center axis (0.5) dotted line
   ctx.strokeStyle = accentColor;
@@ -96,7 +111,7 @@ function drawSerialVis() {
 
   // Draw markers at quarter intervals
   for (let i = 0; i <= 1; i += 0.25) {
-    const y = mapValueToY(i);
+    const y = mapAnalogValueToY(i);
     ctx.beginPath();
     ctx.moveTo(0, y);          // Start from left side
     ctx.lineTo(10, y);         // Draw towards right
@@ -115,15 +130,19 @@ function drawSerialVis() {
   const startTime = currentTime - offset;
   const endTime = currentTime + offset;
 
-  const maskOpacity = Math.min(1, Math.max(0, settings.futureMaskOpacity ?? futureMaskOpacity));
-  const maskWidth = Math.max(2, Math.round(settings.futureMaskWidth ?? futureMaskWidth));
-
   // Draw each registered expression
   for (const expression of expressions.values()) {
     const samples = expression.samples;
     if (!samples || samples.length < 2) {
       continue;
     }
+
+    const exprType = expression.exprType;
+    const isDigital = DIGITAL_CHANNELS.includes(exprType);
+    const mapValueToY = isDigital ? makeDigitalMapper(exprType) : mapAnalogValueToY;
+    const segmentOptions = isDigital
+      ? { stepMode: true, lineJoin: 'miter', lineCap: 'butt' }
+      : {};
 
     // Samples are kept sorted by time when populated in the controller.
     const windowStartIndex = lowerBound(samples, startTime);
@@ -150,14 +169,16 @@ function drawSerialVis() {
         offset,
         totalWindow,
         c.width,
-        mapValueToY
+        mapValueToY,
+        [],
+        segmentOptions
       );
     }
 
     // Future segment (includes pivot sample to ensure continuity)
     const futureStart = lastPastIndex >= windowStartIndex ? lastPastIndex : windowStartIndex;
     if (windowEndIndex - futureStart >= 2) {
-      const futurePoints = drawPathSegment(
+      drawPathSegment(
         ctx,
         samples,
         futureStart,
@@ -169,11 +190,10 @@ function drawSerialVis() {
         offset,
         totalWindow,
         c.width,
-        mapValueToY
+        mapValueToY,
+        [],
+        segmentOptions
       );
-      if (futureDashed && maskOpacity > 0.001 && futurePoints) {
-        applyFutureMaskToPoints(ctx, futurePoints, lineWidth, maskWidth, maskOpacity);
-      }
     }
   }
 
@@ -202,8 +222,8 @@ function findLastPastIndex(samples, currentTime, startIndex, endIndex) {
   return result;
 }
 
-function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineWidth, currentTime, offset, totalWindow, canvasWidth, mapValueToY, dashPattern = []) {
-  const points = buildSegmentPoints(samples, startIndex, endIndex, currentTime, offset, totalWindow, canvasWidth, mapValueToY);
+function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineWidth, currentTime, offset, totalWindow, canvasWidth, mapValueToY, dashPattern = [], options = {}) {
+  const points = buildSegmentPoints(samples, startIndex, endIndex, currentTime, offset, totalWindow, canvasWidth, mapValueToY, options);
   if (!points || points.length < 2) {
     return null;
   }
@@ -214,6 +234,12 @@ function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineW
   const safeAlpha = Math.min(1, Math.max(0, alpha));
   ctx.globalAlpha = safeAlpha;
   ctx.setLineDash(Array.isArray(dashPattern) && dashPattern.length ? dashPattern : []);
+  if (options?.lineJoin) {
+    ctx.lineJoin = options.lineJoin;
+  }
+  if (options?.lineCap) {
+    ctx.lineCap = options.lineCap;
+  }
 
   if (traceSegment(ctx, points)) {
     ctx.stroke();
@@ -223,19 +249,27 @@ function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineW
   return points;
 }
 
-function buildSegmentPoints(samples, startIndex, endIndex, currentTime, offset, totalWindow, canvasWidth, mapValueToY) {
+function buildSegmentPoints(samples, startIndex, endIndex, currentTime, offset, totalWindow, canvasWidth, mapValueToY, options = {}) {
   if (!samples || endIndex - startIndex < 2) {
     return null;
   }
 
   const points = [];
   const windowStart = currentTime - offset;
+  const useStepMode = options?.stepMode === true;
+  let previousPoint = null;
 
   for (let i = startIndex; i < endIndex; i++) {
     const sample = samples[i];
     const relative = (sample.time - windowStart) / totalWindow;
     const x = clamp01(relative) * canvasWidth;
-    points.push({ x, y: mapValueToY(sample.value) });
+    const y = mapValueToY(sample.value);
+    if (useStepMode && previousPoint && previousPoint.y !== y) {
+      points.push({ x, y: previousPoint.y });
+    }
+    const point = { x, y };
+    points.push(point);
+    previousPoint = point;
   }
 
   return points;
@@ -253,30 +287,6 @@ function traceSegment(ctx, points) {
     ctx.lineTo(point.x, point.y);
   }
   return true;
-}
-
-function applyFutureMaskToPoints(ctx, points, lineWidth, dashSize, opacity) {
-  if (!points || points.length < 2 || opacity <= 0) {
-    return;
-  }
-
-  const dashLength = Math.max(1, dashSize);
-
-  ctx.save();
-  ctx.lineWidth = lineWidth;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  ctx.setLineDash([dashLength, dashLength]);
-  ctx.lineDashOffset = dashLength / 2;
-  ctx.globalAlpha = Math.min(1, Math.max(0, opacity));
-  ctx.globalCompositeOperation = 'destination-out';
-  ctx.strokeStyle = '#000';
-
-  if (traceSegment(ctx, points)) {
-    ctx.stroke();
-  }
-
-  ctx.restore();
 }
 
 function lowerBound(samples, target) {
@@ -322,5 +332,4 @@ function clamp01(value) {
 
 export const __serialVisInternals = {
   buildSegmentPoints,
-  applyFutureMaskToPoints,
 };

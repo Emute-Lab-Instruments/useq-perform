@@ -6,15 +6,14 @@ import { EditorSelection, StateField, Transaction, RangeSetBuilder } from "@code
 import { syntaxTree } from "@codemirror/language";
 import { ASTCursor } from "../../utils/astCursor.mjs";
 import { EditorView, Decoration, ViewPlugin, gutter, GutterMarker } from "@codemirror/view";
-import { serialVisPalette } from "../../ui/serialVis/utils.mjs";
+import { getSerialVisPalette, getSerialVisChannelColor } from "../../ui/serialVis/utils.mjs";
 import { sendTouSEQ, isConnectedToModule } from "../../io/serialComms.mjs";
 import {
   isExpressionVisualised,
   toggleVisualisation,
   reportExpressionColor,
-  getVisualisedExpressionTypes,
-  getVisualisedExpressionText,
-  refreshVisualisedExpression
+  refreshVisualisedExpression,
+  notifyExpressionEvaluated
 } from "../../ui/serialVis/visualisationController.mjs";
 import { dbg } from "../../utils.mjs";
 import { activeUserSettings } from "../../utils/persistentUserSettings.mjs";
@@ -485,10 +484,30 @@ export function detectAndTrackExpressionEvaluation(view) {
     }
 
     if (lastInChunk.size > 0) {
-        const annotations = Array.from(lastInChunk.values()).map(info =>
+        const evaluations = Array.from(lastInChunk.values());
+        const annotations = evaluations.map(info =>
             expressionEvaluatedAnnotation.of({ expressionType: info.expressionType, position: info.position })
         );
         view.dispatch({ annotations });
+
+        for (const info of evaluations) {
+            const exprType = info.expressionType;
+            notifyExpressionEvaluated(exprType);
+
+            if (!isExpressionVisualised(exprType)) {
+                continue;
+            }
+
+            const definition = findExpressionDefinition(view, exprType);
+            const newText = definition?.expressionText?.trim();
+            if (!newText) {
+                continue;
+            }
+
+            refreshVisualisedExpression(exprType, newText).catch((error) => {
+                dbg(`Visualise: failed to refresh ${exprType} after evaluation: ${error}`);
+            });
+        }
     }
 }
 
@@ -612,21 +631,17 @@ export function navigateNext(state) {
 export function getCurrentPalette(doc = typeof document !== 'undefined' ? document : null, win = typeof window !== 'undefined' ? window : null) {
   // Fallback to light theme if no DOM available
   if (!doc || !win) {
-    return serialVisPalette;
+    return getSerialVisPalette();
   }
-  
-  const isDark = doc.documentElement.classList.contains("cm-theme-dark") ||
-                 win.matchMedia("(prefers-color-scheme: dark)").matches;
-  // If you have a dark palette, use it here. Otherwise, fallback to serialVisPalette.
-  // Example: return isDark ? serialVisPaletteDark : serialVisPalette;
-  return serialVisPalette;
+  return getSerialVisPalette();
 }
 
 // Map pattern to palette index
 export function getMatchColor(match) {
   const palette = getCurrentPalette();
-  const digit = Number(match[2] || 1);
-  return palette[(digit - 1) % palette.length];
+  const offset = activeUserSettings?.visualisation?.circularOffset ?? 0;
+  const exprType = `${match[1]}${match[2]}`;
+  return getSerialVisChannelColor(exprType, offset, palette);
 }
 
 // Regex: 'a' or 'd' or 's', then digit, followed by whitespace, delimiter, or end of line
@@ -659,6 +674,7 @@ export class ExpressionGutterMarker extends GutterMarker {
       justify-content: flex-start;
     `;
     div.style.pointerEvents = 'auto';
+    const baseColor = this.color || 'var(--accent-color, #00ff41)';
     
     if (this.isStart || this.isMid || this.isEnd) {
       const line = document.createElement('div');
@@ -668,7 +684,7 @@ export class ExpressionGutterMarker extends GutterMarker {
         left: 50%;
         transform: translateX(-50%);
         width: 4px;
-        background-color: ${this.color};
+        background-color: ${baseColor};
         opacity: ${opacity};
         height: 100%;
       `;
@@ -686,7 +702,6 @@ export class ExpressionGutterMarker extends GutterMarker {
         : `Play ${this.exprType}`;
       btn.setAttribute('aria-pressed', this.isVisualised ? 'true' : 'false');
 
-      const baseColor = this.color || 'var(--accent-color, #00ff41)';
       const bg = this.isVisualised ? baseColor : 'rgba(0, 0, 0, 0.45)';
       let fg = this.isVisualised ? '#080808' : baseColor;
       if (this.isVisualised) {
@@ -931,9 +946,7 @@ export function processExpressionRanges(expressionRanges, lastEvaluatedMap, docL
     for (const [expressionType, ranges] of expressionRanges) {
         const lastEval = lastEvaluatedMap.get(expressionType);
         const firstRange = ranges && ranges.length > 0 ? ranges[0] : null;
-        if (firstRange && firstRange.color) {
-            reportExpressionColor(expressionType, firstRange.color);
-        }
+      reportExpressionColor(expressionType, firstRange ? firstRange.color : null);
         
         for (const range of ranges) {
             const isActive = isRangeActive(range, lastEval);
@@ -1026,9 +1039,6 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
     window.removeEventListener('useq-visualisation-changed', this.onVisualisationChange);
   }
   update(update) {
-    if (update.docChanged) {
-      syncVisualisedExpressions(update.view);
-    }
   }
   onClick(e) {
     const target = e.target;
@@ -1059,27 +1069,6 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
     } catch (e) {}
   }
 });
-
-function syncVisualisedExpressions(view) {
-  const exprTypes = getVisualisedExpressionTypes();
-  if (!exprTypes.length) {
-    return;
-  }
-
-  for (const exprType of exprTypes) {
-    const definition = findExpressionDefinition(view, exprType);
-    if (!definition) {
-      continue;
-    }
-    const newText = definition.expressionText.trim();
-    const currentText = getVisualisedExpressionText(exprType);
-    if (currentText !== newText) {
-      refreshVisualisedExpression(exprType, newText).catch((error) => {
-        dbg(`Visualise: failed to refresh ${exprType}: ${error}`);
-      });
-    }
-  }
-}
 
 function handleClearExpression(view, exprType) {
   if (!isConnectedToModule || !isConnectedToModule()) {
@@ -1112,9 +1101,9 @@ function handlePlayExpression(view, exprType) {
     } catch (e) {
       dbg(`Play: failed to send ${exprType}: ${e}`);
     }
-
-    detectAndTrackExpressionEvaluation(view);
   }
+
+  detectAndTrackExpressionEvaluation(view);
 
   handleVisualiseExpression(view, exprType, expressionText);
 }

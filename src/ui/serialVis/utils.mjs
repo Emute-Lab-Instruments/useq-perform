@@ -1,6 +1,53 @@
 import { serialBuffers, serialMapFunctions } from "../../io/serialComms.mjs";
 import { dbg } from "../../utils.mjs";
 
+export const serialVisChannels = ['a1', 'a2', 'a3', 'a4', 'd1', 'd2', 'd3'];
+
+const clampOffset = (rawOffset, length) => {
+  if (!length) {
+    return 0;
+  }
+  const numeric = Number(rawOffset) || 0;
+  const mod = numeric % length;
+  return mod < 0 ? mod + length : mod;
+};
+
+const normalisePalette = (paletteCandidate) => {
+  if (Array.isArray(paletteCandidate) && paletteCandidate.length > 0) {
+    return paletteCandidate;
+  }
+  return serialVisPalette;
+};
+
+export const getSerialVisChannelColor = (exprType, circularOffset = 0, paletteOverride = null) => {
+  if (!exprType) {
+    return null;
+  }
+  const index = serialVisChannels.indexOf(exprType);
+  if (index < 0) {
+    return null;
+  }
+  const palette = normalisePalette(paletteOverride || serialVisPalette);
+  if (!Array.isArray(palette) || palette.length === 0) {
+    return null;
+  }
+  const rotationLength = serialVisChannels.length || palette.length;
+  const offset = clampOffset(circularOffset, rotationLength);
+  const paletteIndex = (index + offset) % palette.length;
+  return palette[paletteIndex] || null;
+};
+
+export const buildSerialVisColorMap = (circularOffset = 0, paletteOverride = null) => {
+  const palette = normalisePalette(paletteOverride || serialVisPalette);
+  return serialVisChannels.reduce((acc, channel) => {
+    const color = getSerialVisChannelColor(channel, circularOffset, palette);
+    if (color) {
+      acc.set(channel, color);
+    }
+    return acc;
+  }, new Map());
+};
+
 /**
  * Generates a sine wave data point at a specific time
  * @param {number} frequency - The frequency of the sine wave in Hz
@@ -122,6 +169,13 @@ export function setSerialVisPalette(palette) {
     // Force redraw of the plot with new colors
     // plotNeedsRedrawing = true;
     dbg("Serial visualization palette updated");
+    if (typeof window !== 'undefined' && window?.dispatchEvent) {
+      try {
+        window.dispatchEvent(new CustomEvent('useq-serialvis-palette-changed', { detail: { palette } }));
+      } catch (error) {
+        dbg(`Serial visualization palette event failed: ${error}`);
+      }
+    }
     return true;
   }
   return false;

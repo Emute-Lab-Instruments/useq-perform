@@ -1,6 +1,7 @@
 import {activeUserSettings, updateUserSettings, resetUserSettings, getUserSettings} from "../../utils/persistentUserSettings.mjs";
 import {themes} from "../../editors/themes/themeManager.mjs";
 import { setMainEditorTheme } from "../../editors/themes/themeManager.mjs";
+import { serialVisChannels } from "../serialVis/utils.mjs";
 
 export function makeGeneralTab() {
     const $container = $('<div>').addClass('panel-tab-content');
@@ -323,6 +324,47 @@ function buildUISettings($container) {
         });
     $lineWidthWrapper.append($lineWidthSlider, $lineWidthLabel);
     $container.append(createFormRow('Waveform line width', $lineWidthWrapper));
+
+    const parsedDigitalGap = Number.parseInt(visual.digitalLaneGap, 10);
+    const rawDigitalGap = Number.isFinite(parsedDigitalGap) ? parsedDigitalGap : 4;
+    const $digitalGapWrapper = $('<div>').addClass('panel-range-wrapper');
+    const $digitalGapLabel = $('<span>').addClass('panel-range-value').text(`${Math.round(rawDigitalGap)}px`);
+    const $digitalGapSlider = $('<input>')
+        .attr({ type: 'range', min: 0, max: 40, step: 1 })
+        .addClass('panel-range-input')
+        .val(rawDigitalGap)
+        .on('input', () => {
+            const value = parseInt($digitalGapSlider.val(), 10) || 0;
+            $digitalGapLabel.text(`${value}px`);
+        })
+        .on('change', () => {
+            const value = parseInt($digitalGapSlider.val(), 10) || 0;
+            updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, digitalLaneGap: value } });
+        });
+    $digitalGapWrapper.append($digitalGapSlider, $digitalGapLabel);
+    $container.append(createFormRow('Digital channel gap', $digitalGapWrapper));
+
+    const offsetRangeLength = Math.max(1, (serialVisChannels?.length || 1));
+    const maxCircularOffset = offsetRangeLength - 1;
+    const rawCircularOffset = Number(visual.circularOffset ?? 0);
+    const safeCircularOffset = ((rawCircularOffset % offsetRangeLength) + offsetRangeLength) % offsetRangeLength;
+    const $circularOffsetWrapper = $('<div>').addClass('panel-range-wrapper');
+    const $circularOffsetLabel = $('<span>').addClass('panel-range-value').text(`${safeCircularOffset}`);
+    const $circularOffsetSlider = $('<input>')
+        .attr({ type: 'range', min: 0, max: maxCircularOffset, step: 1 })
+        .addClass('panel-range-input')
+        .val(safeCircularOffset)
+        .prop('disabled', maxCircularOffset === 0)
+        .on('input', () => {
+            const value = parseInt($circularOffsetSlider.val(), 10) || 0;
+            $circularOffsetLabel.text(`${value}`);
+        })
+        .on('change', () => {
+            const value = parseInt($circularOffsetSlider.val(), 10) || 0;
+            updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, circularOffset: value } });
+        });
+    $circularOffsetWrapper.append($circularOffsetSlider, $circularOffsetLabel);
+    $container.append(createFormRow('Color circular offset', $circularOffsetWrapper));
 
     const $futureDashedCheckbox = $('<input>')
         .attr('type', 'checkbox')

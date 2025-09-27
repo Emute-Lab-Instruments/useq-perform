@@ -47,7 +47,9 @@ const defaultUserSettings = {
     lineWidth: 1.5,
     futureDashed: true,
     futureMaskOpacity: 0.35,
-    futureMaskWidth: 12
+    futureMaskWidth: 12,
+    circularOffset: 0,
+    digitalLaneGap: 4
   }
 };
 
