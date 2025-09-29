@@ -1,742 +1,756 @@
-import { initGamepad, pollGamepad } from "../io/gamepad.mjs"
-import { navigateIn, navigateNext, navigateOut, navigatePrev } from "./extensions/structure/navigation.mjs";
+import {
+  createGamepadManager,
+  createEmptyGamepadState
+} from "../io/gamepad.mjs";
+import {
+  navigateIn,
+  navigateNext,
+  navigateOut,
+  navigatePrev
+} from "./extensions/structure/navigation.mjs";
 import { nodeTreeCursorField, getTrimmedRange } from "./extensions/structure.mjs";
-
-
-let editorView = null;
-
-
-function hideEditorCursor() {
-    if (editorView && editorView.dom) {
-        editorView.dom.classList.add('hide-cursor');
-    }
-}
-
-function showEditorCursor() {
-    if (editorView && editorView.dom) {
-        editorView.dom.classList.remove('hide-cursor');
-    }
-}
-
-export function initGamepadControl(view) {
-    editorView = view;
-    if (editorView && editorView.dom) {
-        // Show cursor on mouse click/tap in editor
-        editorView.dom.addEventListener('pointerdown', showEditorCursor);
-    }
-    initGamepad();
-    loop();
-}
-
-let prevGamepadState = {
-    buttons: {},
-    axes: []
-};
-
-function loop() {
-    const poll = pollGamepad();
-    store = updateStoreWithGamepad(store, poll);
-
-    // Pass only gamepad fields to handlers for new/old state comparison
-    handleGamepadPoll(store, prevGamepadState);
-
-    // Save previous gamepad state for next loop
-    prevGamepadState = {
-        buttons: { ...poll.buttons },
-        axes: Array.isArray(poll.axes) ? [...poll.axes] : []
-    };
-
-    setTimeout(loop, 50); // Run 10 times a second (every 100ms)
-}
-
-function updateStoreWithGamepad(currentStore, gamepadState) {
-    return {
-        ...currentStore,
-        buttons: gamepadState.buttons,
-        axes: gamepadState.axes,
-        // add any other gamepad fields you want to track
-    };
-}
-
 import { showPickerMenu, showNumberPickerMenu } from "../ui/pickerMenu.mjs";
 import { evalNow } from "./editorConfig.mjs";
 
-let store = {
-    mode: "normal", // also create, edit, move, picker, etc
-    picker: null,   // { options, selectedIndex, closeMenu, direction } | null
-    navigationMode: "structural", // or 'spatial'
-    buttonRepeat: {} // { [buttonName]: { pressedAt, lastRepeat } }
-}
-// Toggle between 'structural' and 'spatial' navigation modes
-function toggleNavigationMode() {
-    store = {
-        ...store,
-        navigationMode: store.navigationMode === "structural" ? "spatial" : "structural"
+const DEFAULT_POLL_INTERVAL = 50;
+const DEFAULT_REPEAT_CONFIG = {
+  initialDelay: 300,
+  repeatInterval: 60
+};
+
+const noop = () => {};
+const nullLogger = {
+  debug: noop,
+  info: noop,
+  warn: noop,
+  error: noop
+};
+
+const defaultScheduler = {
+  set(callback, interval) {
+    return setInterval(callback, interval);
+  },
+  clear(handle) {
+    clearInterval(handle);
+  }
+};
+
+const defaultEventTarget = typeof window !== "undefined" ? window : null;
+
+const createMenuOptions = [
+  { name: "Number", text: "123" },
+  { name: "Math", lucideIcon: "calculator" },
+  { name: "Timing", lucideIcon: "clock" },
+  { name: "Call", text: "()" },
+  { name: "List", text: "[]" },
+  { name: "IO", lucideIcon: "arrow-left-right" },
+  { name: "Utils", lucideIcon: "wrench" }
+];
+
+const COMMAND_REGISTRY = [
+  {
+    combo: ["LB", "A"],
+    mode: "normal",
+    action: controller => controller.openCreateMenu("before")
+  },
+  {
+    combo: ["RB", "A"],
+    mode: "normal",
+    action: controller => controller.openCreateMenu("after")
+  },
+  {
+    combo: ["X"],
+    mode: "normal",
+    action: controller => controller.openCreateMenu("replace")
+  },
+  {
+    combo: ["Y"],
+    mode: "normal",
+    action: controller => controller.deleteNode()
+  },
+  {
+    combo: ["Start"],
+    mode: "normal",
+    action: controller => controller.runEvalNow()
+  },
+  {
+    combo: ["Back"],
+    mode: "normal",
+    action: controller => controller.toggleNavigationMode()
+  }
+];
+
+function cloneGamepadSnapshot(snapshot) {
+  if (!snapshot) {
+    return {
+      connected: false,
+      id: "",
+      index: null,
+      timestamp: 0,
+      buttons: {},
+      axes: {}
     };
-    // Optionally, show a UI notification here
-    console.debug(`[gamepadControl] navigationMode set to ${store.navigationMode}`);
+  }
+  return {
+    connected: Boolean(snapshot.connected),
+    id: snapshot.id || "",
+    index: typeof snapshot.index === "number" ? snapshot.index : null,
+    timestamp: snapshot.timestamp ?? 0,
+    buttons: Object.fromEntries(
+      Object.entries(snapshot.buttons || {}).map(([name, value]) => [
+        name,
+        {
+          pressed: Boolean(value?.pressed),
+          value: typeof value?.value === "number" ? value.value : 0
+        }
+      ])
+    ),
+    axes: Object.fromEntries(
+      Object.entries(snapshot.axes || {}).map(([name, value]) => [
+        name,
+        typeof value === "number" ? value : 0
+      ])
+    )
+  };
 }
 
-// --- Spatial navigation helpers ---
+function isNewPress(buttonName, snapshot, prevSnapshot) {
+  const nextPressed = Boolean(snapshot?.buttons?.[buttonName]?.pressed);
+  const prevPressed = Boolean(prevSnapshot?.buttons?.[buttonName]?.pressed);
+  return nextPressed && !prevPressed;
+}
+
+function isButtonPressed(buttonName, snapshot) {
+  return Boolean(snapshot?.buttons?.[buttonName]?.pressed);
+}
+
+function pressedButtons(snapshot) {
+  return Object.entries(snapshot?.buttons || {})
+    .filter(([, value]) => Boolean(value?.pressed))
+    .map(([name]) => name);
+}
+
+function computeRepeatState(previousState, now, { initialDelay, repeatInterval }) {
+  if (!previousState) {
+    return {
+      shouldTrigger: true,
+      state: {
+        pressedAt: now,
+        lastRepeat: now
+      }
+    };
+  }
+
+  const elapsed = now - previousState.pressedAt;
+  const sinceLast = now - previousState.lastRepeat;
+
+  if (elapsed >= initialDelay && sinceLast >= repeatInterval) {
+    return {
+      shouldTrigger: true,
+      state: {
+        pressedAt: previousState.pressedAt,
+        lastRepeat: now
+      }
+    };
+  }
+
+  return {
+    shouldTrigger: false,
+    state: previousState
+  };
+}
+
+function resolvePickerDirection(snapshot, prevSnapshot) {
+  if (isNewPress("Left", snapshot, prevSnapshot)) return "left";
+  if (isNewPress("Right", snapshot, prevSnapshot)) return "right";
+  if (isNewPress("Up", snapshot, prevSnapshot)) return "up";
+  if (isNewPress("Down", snapshot, prevSnapshot)) return "down";
+  return null;
+}
+
+function dispatchPickerEvent(target, detail, logger) {
+  if (!target || typeof target.dispatchEvent !== "function") return;
+  const event = typeof CustomEvent === "function"
+    ? new CustomEvent("gamepadpickerinput", { detail })
+    : { type: "gamepadpickerinput", detail };
+  try {
+    target.dispatchEvent(event);
+  } catch (error) {
+    logger.warn?.("Failed to dispatch picker event", error);
+  }
+}
+
+function getCursorNode(view) {
+  if (!view) return null;
+  const cursorField = view.state.field(nodeTreeCursorField, false);
+  if (!cursorField || typeof cursorField.getNode !== "function") return null;
+  return cursorField.getNode();
+}
+
+function deleteNodeAtCursor(view) {
+  if (!view) return false;
+  const state = view.state;
+  const node = getCursorNode(view);
+  if (!node) return false;
+  const range = getTrimmedRange(node, state);
+  if (!range) return false;
+
+  const doc = state.doc;
+  let whitespaceEnd = range.to;
+  const docLen = doc.length;
+  while (whitespaceEnd < docLen) {
+    const ch = doc.sliceString(whitespaceEnd, whitespaceEnd + 1);
+    if (ch === " " || ch === "\t") {
+      whitespaceEnd += 1;
+    } else if (ch === "\n") {
+      whitespaceEnd += 1;
+      break;
+    } else {
+      break;
+    }
+  }
+
+  view.dispatch({
+    changes: { from: range.from, to: whitespaceEnd, insert: "" },
+    selection: { anchor: range.from },
+    scrollIntoView: true,
+    userEvent: "delete.node"
+  });
+  return true;
+}
+
+function isNumberNode(node) {
+  return node && (node.type?.name === "Number" || node.type === "Number");
+}
+
+function getNumberNodeValue(node, state) {
+  if (!node || typeof node.from !== "number" || typeof node.to !== "number") return null;
+  const text = state.doc.sliceString(node.from, node.to);
+  const num = Number(text);
+  return Number.isNaN(num) ? null : num;
+}
+
+function setNumberNodeValue(view, node, value) {
+  if (!view) return;
+  if (!node || typeof node.from !== "number" || typeof node.to !== "number") return;
+  const doc = view.state.doc;
+  const originalText = doc.sliceString(node.from, node.to);
+  const match = originalText.match(/^(\s*)(.*?)(\s*)$/);
+  const leading = match ? match[1] : "";
+  const trailing = match ? match[3] : "";
+  const newText = `${leading}${value}${trailing}`;
+
+  view.dispatch({
+    changes: { from: node.from, to: node.to, insert: newText },
+    selection: { anchor: node.from + leading.length },
+    scrollIntoView: true,
+    userEvent: "edit.number"
+  });
+}
+
+function adjustNumberAtCursor(view, delta) {
+  if (!view) return false;
+  const state = view.state;
+  const node = getCursorNode(view);
+  if (!node || !isNumberNode(node)) return false;
+  const currentValue = getNumberNodeValue(node, state);
+  if (currentValue === null) return false;
+  setNumberNodeValue(view, node, currentValue + delta);
+  return true;
+}
+
 function getNodeLineAndColumn(node, state) {
-    const line = state.doc.lineAt(node.from);
-    const col = node.from - line.from;
-    return { line: line.number, col };
+  const line = state.doc.lineAt(node.from);
+  const col = node.from - line.from;
+  return { line: line.number, col };
 }
 
 function getAllNodes(state) {
-    const tree = state.field(nodeTreeCursorField, false)?.root;
-    if (!tree) return [];
-    const nodes = [];
-    function visit(node) {
-        if (!node) return;
-        nodes.push(node);
-        if (node.children) node.children.forEach(visit);
-    }
-    visit(tree);
-    return nodes;
+  const tree = state.field(nodeTreeCursorField, false)?.root;
+  if (!tree) return [];
+  const nodes = [];
+  function visit(n) {
+    if (!n) return;
+    nodes.push(n);
+    if (n.children) n.children.forEach(visit);
+  }
+  visit(tree);
+  return nodes;
 }
 
 function spatialNavigateLeft(state) {
-    const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor) return null;
-    const node = cursor.getNode();
-    if (!node) return null;
-    const { line, col } = getNodeLineAndColumn(node, state);
-    const nodes = getAllNodes(state).filter(n => n !== node);
-    // Find node on same line, ends before this node starts, closest to the left
-    let best = null;
-    let bestDist = Infinity;
-    for (const n of nodes) {
-        const nLine = state.doc.lineAt(n.from).number;
-        const nCol = n.from - state.doc.lineAt(n.from).from;
-        if (nLine === line && n.from < node.from) {
-            const dist = col - nCol;
-            if (dist > 0 && dist < bestDist) {
-                best = n;
-                bestDist = dist;
-            }
-        }
+  const cursor = state.field(nodeTreeCursorField, false);
+  if (!cursor) return null;
+  const node = cursor.getNode?.();
+  if (!node) return null;
+  const { line, col } = getNodeLineAndColumn(node, state);
+  const nodes = getAllNodes(state).filter(n => n !== node);
+  let best = null;
+  let bestDist = Infinity;
+  for (const n of nodes) {
+    const nLine = state.doc.lineAt(n.from).number;
+    const nCol = n.from - state.doc.lineAt(n.from).from;
+    if (nLine === line && n.from < node.from) {
+      const dist = col - nCol;
+      if (dist > 0 && dist < bestDist) {
+        best = n;
+        bestDist = dist;
+      }
     }
-    if (best) {
-        return state.update({
-            selection: { anchor: best.from },
-            scrollIntoView: true
-        });
-    }
-    return null;
+  }
+  if (best) {
+    return state.update({
+      selection: { anchor: best.from },
+      scrollIntoView: true
+    });
+  }
+  return null;
 }
 
 function spatialNavigateRight(state) {
-    const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor) return null;
-    const node = cursor.getNode();
-    if (!node) return null;
-    const { line, col } = getNodeLineAndColumn(node, state);
-    const nodes = getAllNodes(state).filter(n => n !== node);
-    // Find node on same line, starts after this node's start, closest to the right
-    let best = null;
-    let bestDist = Infinity;
-    for (const n of nodes) {
-        const nLine = state.doc.lineAt(n.from).number;
-        const nCol = n.from - state.doc.lineAt(n.from).from;
-        if (nLine === line && n.from > node.from) {
-            const dist = nCol - col;
-            if (dist > 0 && dist < bestDist) {
-                best = n;
-                bestDist = dist;
-            }
+  const cursor = state.field(nodeTreeCursorField, false);
+  if (!cursor) return null;
+  const node = cursor.getNode?.();
+  if (!node) return null;
+  const { line, col } = getNodeLineAndColumn(node, state);
+  const nodes = getAllNodes(state).filter(n => n !== node);
+  let best = null;
+  let bestDist = Infinity;
+  for (const n of nodes) {
+    const nLine = state.doc.lineAt(n.from).number;
+    const nCol = n.from - state.doc.lineAt(n.from).from;
+    if (nLine === line && n.from > node.from) {
+      const dist = nCol - col;
+      if (dist > 0 && dist < bestDist) {
+        best = n;
+        bestDist = dist;
+      }
+    }
+  }
+  if (node.children && node.children.length > 0) {
+    for (const child of node.children) {
+      const childLine = state.doc.lineAt(child.from).number;
+      const childCol = child.from - state.doc.lineAt(child.from).from;
+      if (childLine === line && child.from > node.from) {
+        const dist = childCol - col;
+        if (dist > 0 && dist < bestDist) {
+          best = child;
+          bestDist = dist;
         }
+      }
     }
-    // If the current node has children, prefer the first child that starts after the cursor
-    if (node.children && node.children.length > 0) {
-        for (const child of node.children) {
-            const childLine = state.doc.lineAt(child.from).number;
-            const childCol = child.from - state.doc.lineAt(child.from).from;
-            if (childLine === line && child.from > node.from) {
-                const dist = childCol - col;
-                if (dist > 0 && dist < bestDist) {
-                    best = child;
-                    bestDist = dist;
-                }
-            }
-        }
-    }
-    if (best) {
-        return state.update({
-            selection: { anchor: best.from },
-            scrollIntoView: true
-        });
-    }
-    return null;
+  }
+  if (best) {
+    return state.update({
+      selection: { anchor: best.from },
+      scrollIntoView: true
+    });
+  }
+  return null;
 }
 
 function spatialNavigateUp(state) {
-    const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor) return null;
-    const node = cursor.getNode();
-    if (!node) return null;
-    const { line, col } = getNodeLineAndColumn(node, state);
-    const nodes = getAllNodes(state).filter(n => n !== node);
-    let targetLine = -1;
-    // Find the closest previous line number
-    for (let l = line - 1; l >= 1; l--) {
-        if (nodes.some(n => state.doc.lineAt(n.from).number === l)) {
-            targetLine = l;
-            break;
-        }
+  const cursor = state.field(nodeTreeCursorField, false);
+  if (!cursor) return null;
+  const node = cursor.getNode?.();
+  if (!node) return null;
+  const { line, col } = getNodeLineAndColumn(node, state);
+  const nodes = getAllNodes(state).filter(n => n !== node);
+  let targetLine = -1;
+  for (let l = line - 1; l >= 1; l -= 1) {
+    if (nodes.some(n => state.doc.lineAt(n.from).number === l)) {
+      targetLine = l;
+      break;
     }
-    if (targetLine === -1) return null;
-    // On the target line, find node that starts at col or, if not, closest before that
-    let closest = null;
-    let minColDiff = Infinity;
-    for (const n of nodes) {
-        const nLine = state.doc.lineAt(n.from).number;
-        if (nLine === targetLine) {
-            const nCol = n.from - state.doc.lineAt(n.from).from;
-            const colDiff = Math.abs(nCol - col);
-            if (colDiff < minColDiff) {
-                minColDiff = colDiff;
-                closest = n;
-            }
-        }
+  }
+  if (targetLine === -1) return null;
+  let closest = null;
+  let minColDiff = Infinity;
+  for (const n of nodes) {
+    const nLine = state.doc.lineAt(n.from).number;
+    if (nLine === targetLine) {
+      const nCol = n.from - state.doc.lineAt(n.from).from;
+      const colDiff = Math.abs(nCol - col);
+      if (colDiff < minColDiff) {
+        minColDiff = colDiff;
+        closest = n;
+      }
     }
-    if (closest) {
-        return state.update({
-            selection: { anchor: closest.from },
-            scrollIntoView: true
-        });
-    }
-    return null;
+  }
+  if (closest) {
+    return state.update({
+      selection: { anchor: closest.from },
+      scrollIntoView: true
+    });
+  }
+  return null;
 }
 
 function spatialNavigateDown(state) {
-    const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor) return null;
-    const node = cursor.getNode();
-    if (!node) return null;
-    const { line, col } = getNodeLineAndColumn(node, state);
-    const nodes = getAllNodes(state).filter(n => n !== node);
-    const maxLine = state.doc.lines;
-    let targetLine = -1;
-    // Find the closest next line number
-    for (let l = line + 1; l <= maxLine; l++) {
-        if (nodes.some(n => state.doc.lineAt(n.from).number === l)) {
-            targetLine = l;
-            break;
-        }
+  const cursor = state.field(nodeTreeCursorField, false);
+  if (!cursor) return null;
+  const node = cursor.getNode?.();
+  if (!node) return null;
+  const { line, col } = getNodeLineAndColumn(node, state);
+  const nodes = getAllNodes(state).filter(n => n !== node);
+  const maxLine = state.doc.lines;
+  let targetLine = -1;
+  for (let l = line + 1; l <= maxLine; l += 1) {
+    if (nodes.some(n => state.doc.lineAt(n.from).number === l)) {
+      targetLine = l;
+      break;
     }
-    if (targetLine === -1) return null;
-    // On the target line, find node that starts at col or, if not, closest before that
-    let closest = null;
-    let minColDiff = Infinity;
-    for (const n of nodes) {
-        const nLine = state.doc.lineAt(n.from).number;
-        if (nLine === targetLine) {
-            const nCol = n.from - state.doc.lineAt(n.from).from;
-            const colDiff = Math.abs(nCol - col);
-            if (colDiff < minColDiff) {
-                minColDiff = colDiff;
-                closest = n;
-            }
-        }
+  }
+  if (targetLine === -1) return null;
+  let closest = null;
+  let minColDiff = Infinity;
+  for (const n of nodes) {
+    const nLine = state.doc.lineAt(n.from).number;
+    if (nLine === targetLine) {
+      const nCol = n.from - state.doc.lineAt(n.from).from;
+      const colDiff = Math.abs(nCol - col);
+      if (colDiff < minColDiff) {
+        minColDiff = colDiff;
+        closest = n;
+      }
     }
-    if (closest) {
-        return state.update({
-            selection: { anchor: closest.from },
-            scrollIntoView: true
-        });
-    }
-    return null;
+  }
+  if (closest) {
+    return state.update({
+      selection: { anchor: closest.from },
+      scrollIntoView: true
+    });
+  }
+  return null;
 }
 
-// functionalities to implement:
-// navigation DONE
-// deletion DONE
-// insertion
-// duplication
-// moving
-// toggling collapse
+class GamepadController {
+  constructor({
+    view,
+    gamepadManager = createGamepadManager(),
+    scheduler = defaultScheduler,
+    now = () => Date.now(),
+    logger = nullLogger,
+    pollInterval = DEFAULT_POLL_INTERVAL,
+    repeatConfig = DEFAULT_REPEAT_CONFIG,
+    pickerUI = {
+      showMenu: showPickerMenu,
+      showNumberMenu: showNumberPickerMenu
+    },
+    eventTarget = defaultEventTarget,
+    onPickerSelect = null
+  } = {}) {
+    this.view = view;
+    this.gamepadManager = gamepadManager;
+    this.scheduler = scheduler;
+    this.now = now;
+    this.logger = logger ?? nullLogger;
+    this.pollInterval = pollInterval;
+    this.repeatConfig = {
+      initialDelay: repeatConfig.initialDelay ?? DEFAULT_REPEAT_CONFIG.initialDelay,
+      repeatInterval: repeatConfig.repeatInterval ?? DEFAULT_REPEAT_CONFIG.repeatInterval
+    };
+    this.pickerUI = {
+      showMenu: pickerUI?.showMenu ?? showPickerMenu,
+      showNumberMenu: pickerUI?.showNumberMenu ?? showNumberPickerMenu
+    };
+    this.eventTarget = eventTarget;
+    this.onPickerSelect = typeof onPickerSelect === "function" ? onPickerSelect : null;
 
-function newPress(buttonName, newState, oldState) {
-    const newBtn = newState.buttons[buttonName];
-    const oldBtn = oldState.buttons[buttonName];
-    const newPressed = newBtn && typeof newBtn.pressed === 'boolean' ? newBtn.pressed : false;
-    const oldPressed = oldBtn && typeof oldBtn.pressed === 'boolean' ? oldBtn.pressed : false;
-    return newPressed && !oldPressed;
-}
+    this.state = {
+      mode: "normal",
+      picker: null,
+      numberPicker: null,
+      navigationMode: "structural",
+      buttonRepeat: {},
+      prevSnapshot: cloneGamepadSnapshot(createEmptyGamepadState({ now: this.now }))
+    };
 
+    this.intervalId = null;
+    this.started = false;
+    this.pointerListener = () => this.showEditorCursor();
+  }
 
-function handleButtonNavigation(newState, oldState) {
-    // Button repeat config
-    const initialDelay = 300; // ms before repeat starts
-    const repeatInterval = 60; // ms between repeats
-    const now = Date.now();
+  start() {
+    if (this.started) return;
+    this.started = true;
+    if (this.view?.dom) {
+      this.view.dom.addEventListener("pointerdown", this.pointerListener);
+    }
+    this.gamepadManager.connect();
+    this.intervalId = this.scheduler.set(() => this.tick(), this.pollInterval);
+    this.tick();
+  }
 
-    // Choose navigation map based on mode
-    const isSpatial = store.navigationMode === "spatial";
-    const map = isSpatial
-        ? {
-            "Up": spatialNavigateUp,
-            "Down": spatialNavigateDown,
-            "Left": spatialNavigateLeft,
-            "Right": spatialNavigateRight,
+  stop() {
+    if (!this.started) return;
+    this.started = false;
+    if (this.intervalId !== null) {
+      this.scheduler.clear(this.intervalId);
+      this.intervalId = null;
+    }
+    if (this.view?.dom) {
+      this.view.dom.removeEventListener("pointerdown", this.pointerListener);
+    }
+    this.gamepadManager.disconnect();
+  }
+
+  dispose() {
+    this.stop();
+    this.gamepadManager.reset();
+  }
+
+  getState() {
+    return {
+      ...this.state,
+      buttonRepeat: { ...this.state.buttonRepeat },
+      prevSnapshot: cloneGamepadSnapshot(this.state.prevSnapshot)
+    };
+  }
+
+  tick() {
+    const snapshot = this.gamepadManager.poll();
+    this.processSnapshot(snapshot);
+  }
+
+  processSnapshot(snapshot) {
+    const prevSnapshot = this.state.prevSnapshot;
+
+    if (!snapshot?.connected) {
+      this.state.buttonRepeat = {};
+      this.state.prevSnapshot = cloneGamepadSnapshot(snapshot);
+      return;
+    }
+
+    if (this.state.mode === "picker" || this.state.mode === "number-picker") {
+      this.state.buttonRepeat = {};
+      this.handlePickerNavigation(snapshot, prevSnapshot);
+    } else {
+      this.handleNavigation(snapshot, prevSnapshot);
+    }
+
+    if (this.state.mode === "normal") {
+      this.handleNumberAdjustment(snapshot, prevSnapshot);
+      this.handleButtonCommands(snapshot, prevSnapshot);
+    }
+
+    this.state.prevSnapshot = cloneGamepadSnapshot(snapshot);
+  }
+
+  handleNavigation(snapshot, prevSnapshot) {
+    if (!this.view) return;
+    const now = this.now();
+    const navigationMap = this.state.navigationMode === "spatial"
+      ? {
+          Up: spatialNavigateUp,
+          Down: spatialNavigateDown,
+          Left: spatialNavigateLeft,
+          Right: spatialNavigateRight
         }
-        : {
-            "Up": navigatePrev,
-            "Down": navigateNext,
-            "Left": navigatePrev,
-            "Right": navigateNext,
+      : {
+          Up: navigatePrev,
+          Down: navigateNext,
+          Left: navigatePrev,
+          Right: navigateNext
         };
 
-    // Only repeat for navigation buttons
-    for (const [button, handler] of Object.entries(map)) {
-        const isPressed = newState.buttons[button]?.pressed;
-        const wasPressed = oldState.buttons[button]?.pressed;
-        if (isPressed) {
-            if (!store.buttonRepeat[button]) {
-                // Just pressed: trigger immediately
-                store.buttonRepeat[button] = { pressedAt: now, lastRepeat: now };
-                const transaction = handler(editorView.state);
-                if (transaction) editorView.dispatch(transaction);
-            } else {
-                // Held: check if should repeat
-                const { pressedAt, lastRepeat } = store.buttonRepeat[button];
-                const delay = now - pressedAt;
-                const sinceLast = now - lastRepeat;
-                if (delay >= initialDelay && sinceLast >= repeatInterval) {
-                    store.buttonRepeat[button].lastRepeat = now;
-                    const transaction = handler(editorView.state);
-                    if (transaction) editorView.dispatch(transaction);
-                }
-            }
-        } else if (store.buttonRepeat[button]) {
-            // Released: clear tracking
-            delete store.buttonRepeat[button];
-        }
+    for (const [button, handler] of Object.entries(navigationMap)) {
+      this.applyNavigation(button, handler, snapshot, now);
     }
 
-    // For non-repeating buttons (A, B, etc.), use original logic
-    let action = null;
-    const nonRepeatMap = {
-        "A": isSpatial ? navigateIn : navigateIn,
-        "B": isSpatial ? navigateOut : navigateOut,
-    };
-    for (const [button, handler] of Object.entries(nonRepeatMap)) {
-        if (newPress(button, newState, oldState)) {
-            action = handler;
-            buttonThatTriggered = button;
-            break;
-        }
+    if (isNewPress("A", snapshot, prevSnapshot)) {
+      this.dispatchTransaction(navigateIn(this.view.state));
     }
-    if (action) {
-        const transaction = action(editorView.state);
-        if (transaction) {
-            editorView.dispatch(transaction);
-        }
+    if (isNewPress("B", snapshot, prevSnapshot)) {
+      this.dispatchTransaction(navigateOut(this.view.state));
     }
-}
+  }
 
-
-// each one of these pushes another picker menu on the stack
-// once that picker menu resolves, it pops everything off the stack and returns to normal mode
-const createMenuOptions = [
-    // numbers arranged in a 3x3 + 1 grid (1-2-3, 4-5-6, 7-8-9, 0)
-    { name: "Number", text: "123" },
-    // operators like +, -, *, /, %, floor, ceil
-    { name: "Math", lucideIcon: "calculator" },
-    // the options t, beat, bar, slow, fast
-    { name: "Timing", lucideIcon: "clock" },
-    // ignore for now
-    // { name: "Symbol", text: "abc" },
-    // inserts a list '()', moves the cursor inside, and creates a new picker menu for the function
-    { name: "Call", text: "()" },
-    // inserts a list '[]', moves the cursor inside, and creates a new picker menu for the first element
-    { name: "List", text: "[]" },
-    // ignore for now
-    // { name: "Sequencing", text: "" },
-    // a1, a2, a3, d1, d2, d3, ain1, ain2, swt, swm
-    { name: "IO", lucideIcon: "arrow-left-right" },
-    // uni->bi, bi->uni
-    { name: "Utils", lucideIcon: "wrench" },
-];
-
-
-
-
-function createNode(direction) {
-    if (store.mode === "picker") {
-        console.debug("[gamepadControl] createNode: already in picker mode, aborting");
-        return;
+  applyNavigation(button, handler, snapshot, now) {
+    if (!isButtonPressed(button, snapshot)) {
+      if (this.state.buttonRepeat[button]) {
+        delete this.state.buttonRepeat[button];
+      }
+      return;
     }
+
+    const repeat = computeRepeatState(this.state.buttonRepeat[button], now, this.repeatConfig);
+    this.state.buttonRepeat[button] = repeat.state;
+    if (!repeat.shouldTrigger) return;
+
+    const transaction = handler(this.view.state);
+    if (transaction) {
+      this.dispatchTransaction(transaction);
+    }
+  }
+
+  handlePickerNavigation(snapshot, prevSnapshot) {
+    if (this.state.mode !== "picker" && this.state.mode !== "number-picker") return;
+    const direction = resolvePickerDirection(snapshot, prevSnapshot);
+    if (direction) {
+      dispatchPickerEvent(this.eventTarget, { direction }, this.logger);
+    }
+
+    if (isNewPress("A", snapshot, prevSnapshot)) {
+      dispatchPickerEvent(this.eventTarget, { action: "select" }, this.logger);
+    } else if (isNewPress("B", snapshot, prevSnapshot) || isNewPress("Back", snapshot, prevSnapshot)) {
+      dispatchPickerEvent(this.eventTarget, { action: "cancel" }, this.logger);
+      this.cancelAction();
+    }
+  }
+
+  handleNumberAdjustment(snapshot, prevSnapshot) {
+    if (!this.view) return;
+    if (isNewPress("LB", snapshot, prevSnapshot)) {
+      const adjusted = adjustNumberAtCursor(this.view, -1);
+      if (adjusted) this.hideEditorCursor();
+    } else if (isNewPress("RB", snapshot, prevSnapshot)) {
+      const adjusted = adjustNumberAtCursor(this.view, 1);
+      if (adjusted) this.hideEditorCursor();
+    }
+  }
+
+  handleButtonCommands(snapshot, prevSnapshot) {
+    const pressed = pressedButtons(snapshot);
+    if (pressed.length === 0) return;
+
+    for (const command of COMMAND_REGISTRY) {
+      if (command.mode && command.mode !== this.state.mode) continue;
+      if (!this.isComboTriggered(command.combo, snapshot, prevSnapshot)) continue;
+      command.action(this);
+    }
+  }
+
+  isComboTriggered(combo, snapshot, prevSnapshot) {
+    return combo.every(button => isButtonPressed(button, snapshot)) &&
+      combo.some(button => isNewPress(button, snapshot, prevSnapshot));
+  }
+
+  dispatchTransaction(transaction) {
+    if (!this.view || !transaction) return;
+    this.view.dispatch(transaction);
+    this.hideEditorCursor();
+  }
+
+  showEditorCursor() {
+    if (this.view?.dom) {
+      this.view.dom.classList.remove("hide-cursor");
+    }
+  }
+
+  hideEditorCursor() {
+    if (this.view?.dom) {
+      this.view.dom.classList.add("hide-cursor");
+    }
+  }
+
+  openCreateMenu(direction) {
+    if (this.state.mode === "picker") {
+      this.logger.debug?.("[gamepadControl] Picker already open; ignoring create menu request");
+      return;
+    }
+
     const options = createMenuOptions.map(opt => ({
-        label: opt.name,
-        value: opt.name,
-        icon: opt.lucideIcon || undefined
+      label: opt.name,
+      value: opt.name,
+      icon: opt.lucideIcon || undefined
     }));
 
-    // Calculate the center item for the grid
-    const numColumns = 3; // Match the fixed number in pickerMenu.mjs
+    const numColumns = 3;
     const numRows = Math.ceil(options.length / numColumns);
     const centerRow = Math.floor(numRows / 2);
     const centerCol = Math.floor(numColumns / 2);
     const centerIndex = Math.min(centerRow * numColumns + centerCol, options.length - 1);
 
-    store = {
-        ...store,
-        mode: "picker",
-        picker: {
-            options,
-            selectedIndex: centerIndex,
-            closeMenu: null,
-            direction
-        }
+    this.state.mode = "picker";
+    this.state.picker = {
+      direction,
+      closeMenu: null
     };
-    console.debug("[gamepadControl] createNode: set mode to 'picker'");
 
-    const closeMenu = showPickerMenu({
-        items: options,
-        title: "Create Node",
-        layout: "grid",
-        initialIndex: store.picker.selectedIndex,
-        onSelect: (item, idx) => {
-            console.debug("[gamepadControl] showPickerMenu onSelect: item.value =", item.value, "idx =", idx, "store.mode =", store.mode);
-            if (item.value === "Number") {
-                console.debug("[gamepadControl] Number option selected, closing picker and showing number picker. store before closeMenu:", JSON.stringify(store));
-                closeMenu();
-                console.debug("[gamepadControl] Picker menu closed. store after closeMenu:", JSON.stringify(store));
-                store = {
-                    ...store,
-                    mode: "number-picker",
-                    picker: null
-                };
-                console.debug("[gamepadControl] store set to number-picker mode:", JSON.stringify(store));
-                showNumberPickerMenu({
-                    title: "Pick a Number",
-                    initialValue: 0,
-                    min: -9999,
-                    max: 9999,
-                    step: 1,
-                    onSelect: (numberValue) => {
-                        console.debug("[gamepadControl] Number picker returned value:", numberValue, "store before reset:", JSON.stringify(store));
-                        store = {
-                            ...store,
-                            mode: "normal",
-                            picker: null
-                        };
-                        console.debug("[gamepadControl] store set to normal mode after number picker:", JSON.stringify(store));
-                        // TODO: insert number node at direction with value numberValue
-                    }
-                });
-                console.debug("[gamepadControl] showNumberPickerMenu called");
-            } else {
-                console.debug("[gamepadControl] Non-number option selected:", item.value, "store before closeMenu:", JSON.stringify(store));
-                closeMenu();
-                store = {
-                    ...store,
-                    mode: "normal",
-                    picker: null
-                };
-                console.debug("[gamepadControl] store set to normal mode after non-number:", JSON.stringify(store));
-                if (typeof store.onPickerSelect === 'function') {
-                    store.onPickerSelect(item, idx, direction);
-                }
-            }
+    const closeMenu = this.pickerUI.showMenu({
+      items: options,
+      title: "Create Node",
+      layout: "grid",
+      initialIndex: centerIndex,
+      onSelect: (item, idx) => {
+        this.state.mode = "normal";
+        this.state.picker = null;
+        if (!item) return;
+        if (item.value === "Number") {
+          this.openNumberPicker(direction);
+          return;
         }
+        if (this.onPickerSelect) {
+          this.onPickerSelect(item, idx, direction);
+        }
+      }
     });
 
-    store = {
-        ...store,
-        picker: {
-            ...store.picker,
-            closeMenu
-        }
+    this.state.picker = {
+      direction,
+      closeMenu
     };
-    console.debug("[gamepadControl] createNode: picker menu shown, closeMenu set");
-}
+  }
 
+  openNumberPicker(direction) {
+    this.state.mode = "number-picker";
+    const closeMenu = this.pickerUI.showNumberMenu({
+      title: "Pick a Number",
+      initialValue: 0,
+      min: -9999,
+      max: 9999,
+      step: 1,
+      onSelect: value => {
+        this.state.mode = "normal";
+        this.state.numberPicker = null;
+        if (this.onPickerSelect) {
+          this.onPickerSelect({ label: String(value), value }, 0, direction);
+        }
+      }
+    });
 
-function replaceNode() {
-    createNode("replace");
-}
-
-
-function createNodeBefore() {
-    createNode("before");
-}
-
-
-function createNodeAfter() {
-    createNode("after");
-}
-
-
-function cancelAction() {
-    // If in picker mode, close picker and return to normal
-    if (store.mode === "picker" && store.picker && typeof store.picker.closeMenu === 'function') {
-        store.picker.closeMenu();
-    }
-    store = {
-        ...store,
-        mode: "normal",
-        picker: null
+    this.state.numberPicker = {
+      direction,
+      closeMenu
     };
+  }
+
+  cancelAction() {
+    if (this.state.mode === "picker" && this.state.picker?.closeMenu) {
+      this.state.picker.closeMenu();
+    }
+    if (this.state.mode === "number-picker" && this.state.numberPicker?.closeMenu) {
+      this.state.numberPicker.closeMenu();
+    }
+    this.state.picker = null;
+    this.state.numberPicker = null;
+    this.state.mode = "normal";
+  }
+
+  deleteNode() {
+    const removed = deleteNodeAtCursor(this.view);
+    if (!removed) return;
+    this.hideEditorCursor();
+  }
+
+  runEvalNow() {
+    if (!this.view) return;
+    evalNow({ state: this.view.state, view: this.view });
+  }
+
+  toggleNavigationMode() {
+    this.state.navigationMode = this.state.navigationMode === "structural" ? "spatial" : "structural";
+    this.logger.debug?.(`[gamepadControl] navigationMode set to ${this.state.navigationMode}`);
+  }
 }
 
-function pressedButtons(state) {
-    return Object.entries(state.buttons)
-        .filter(([_, value]) => value.pressed)
-        .map(([key, _]) => key);
+export function createGamepadController(options = {}) {
+  return new GamepadController(options);
 }
 
-function deleteNode() {
-    if (!editorView) return;
-    const state = editorView.state;
-    const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor || !cursor.getNode) return;
-    const node = cursor.getNode();
-    if (!node) return;
-    const range = getTrimmedRange(node, state);
-    if (!range) return;
-
-    // Find whitespace after node's end
-    const doc = state.doc;
-    let whitespaceEnd = range.to;
-    const docLen = doc.length;
-    while (whitespaceEnd < docLen) {
-        const ch = doc.sliceString(whitespaceEnd, whitespaceEnd + 1);
-        if (ch === ' ' || ch === '\t') {
-            whitespaceEnd++;
-        } else if (ch === '\n') {
-            whitespaceEnd++;
-            break;
-        } else {
-            break;
-        }
-    }
-
-    editorView.dispatch({
-        changes: { from: range.from, to: whitespaceEnd, insert: "" },
-        selection: { anchor: range.from },
-        scrollIntoView: true,
-        userEvent: "delete.node"
-    });
-}
-
-
-function handleButtonPresses(newState, oldState) {
-    // Debug: log all pressed buttons to help identify button names
-    const pressed = pressedButtons(newState);
-    if (pressed.length > 0) {
-        console.debug('[gamepadControl] Pressed buttons:', pressed);
-    }
-    if (newState.mode === "picker" && store.picker) {
-        // Handle picker menu navigation with d-pad and selection/cancel
-        const pressed = pressedButtons(newState);
-        const prevPressed = pressedButtons(oldState);
-        const justPressed = btn => pressed.includes(btn) && !prevPressed.includes(btn);
-
-        let direction = null;
-
-        if (justPressed("Left")) {
-            direction = 'left';
-        } else if (justPressed("Right")) {
-            direction = 'right';
-        } else if (justPressed("Up")) {
-            direction = 'up';
-        } else if (justPressed("Down")) {
-            direction = 'down';
-        }
-
-        if (direction) {
-            // Dispatch a custom event so the pickerMenu UI updates with the proper direction
-            window.dispatchEvent(new CustomEvent('gamepadpickerinput', {
-                detail: { direction }
-            }));
-        }
-        if (justPressed("A") || justPressed("Enter") || justPressed(" ")) {
-            // Select current item
-            const selectedIdx = store.picker.selectedIndex;
-            const item = store.picker.options[selectedIdx];
-            if (typeof store.picker.closeMenu === 'function') {
-                store.picker.closeMenu();
-            }
-            store = {
-                ...store,
-                mode: "normal",
-                picker: null
-            };
-            if (typeof store.onPickerSelect === 'function') {
-                store.onPickerSelect(item, selectedIdx, store.picker.direction);
-            }
-            return;
-        }
-        if (justPressed("B") || justPressed("Escape")) {
-            cancelAction(newState, oldState);
-            return;
-        }
-        return;
-    }
-
-    // Handle number increment/decrement in normal mode with LB/RB
-    if (newState.mode === "normal" && editorView) {
-        const pressed = pressedButtons(newState);
-        const prevPressed = pressedButtons(oldState);
-        const justPressed = btn => pressed.includes(btn) && !prevPressed.includes(btn);
-
-        if (justPressed("LB") || justPressed("RB")) {
-            const state = editorView.state;
-            const cursor = state.field(nodeTreeCursorField, false);
-            if (cursor && cursor.getNode) {
-                const node = cursor.getNode();
-                if (isNumberNode(node)) {
-                    const currentValue = getNumberNodeValue(node, state);
-                    if (currentValue !== null) {
-                        const newValue = justPressed("LB")
-                            ? currentValue - 1
-                            : currentValue + 1;
-                        setNumberNodeValue(editorView, node, newValue);
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    let map = null;
-    if (newState.mode === "normal") {
-        map = {
-            "LB+A": createNodeBefore,
-            "RB+A": createNodeAfter,
-            "B": cancelAction,
-            "X": replaceNode,
-            "Y": deleteNode,
-            "Start": function runEvalNow() {
-                if (editorView) {
-                    evalNow({ state: editorView.state, view: editorView });
-                }
-            },
-            "Select": function toggleNavMode() {
-                toggleNavigationMode();
-            },
-            "Back": function toggleNavMode() {
-                toggleNavigationMode();
-            },
-        };
-    }
-
-    if (map) {
-        const pressed = pressedButtons(newState);
-        if (pressed.length === 0) {
-            return newState;
-        }
-
-        // Sort map keys by number of buttons in combination (descending)
-        const sortedKeys = Object.keys(map).sort((a, b) => b.split("+").length - a.split("+").length);
-
-        for (const key of sortedKeys) {
-            const combo = key.split("+");
-            const allPressed = combo.every(btn => pressed.includes(btn));
-            const newPresses = combo.map(btn => newPress(btn, newState, oldState));
-            const isNew = newPresses.some(Boolean);
-            if (allPressed) {
-                if (isNew) {
-                    if (typeof map[key] === 'function') {
-                        map[key](newState, oldState);
-                    }
-                    break;
-                }
-            }
-        }
-    }
-}
-
-function handlePickerNavigation(newState, oldState) {
-    // If in picker mode, change active selection instead of navigating the editor
-    if (newState.mode === "picker" && newState.picker) {
-        console.debug("[gamepadControl] handlePickerNavigation: mode is 'picker', picker exists");
-        const prevPressed = pressedButtons(oldState);
-        const pressed = pressedButtons(newState);
-        const justPressed = btn => pressed.includes(btn) && !prevPressed.includes(btn);
-
-        let direction = null;
-
-        if (justPressed("Left")) {
-            console.debug("[gamepadControl] D-pad Left pressed in picker");
-            direction = 'left';
-        } else if (justPressed("Right")) {
-            console.debug("[gamepadControl] D-pad Right pressed in picker");
-            direction = 'right';
-        } else if (justPressed("Up")) {
-            console.debug("[gamepadControl] D-pad Up pressed in picker");
-            direction = 'up';
-        } else if (justPressed("Down")) {
-            console.debug("[gamepadControl] D-pad Down pressed in picker");
-            direction = 'down';
-        }
-
-        if (direction) {
-            console.debug(`[gamepadControl] Picker direction: ${direction}`);
-            // Dispatch a custom event so the pickerMenu UI updates with the proper direction
-            window.dispatchEvent(new CustomEvent('gamepadpickerinput', {
-                detail: { direction }
-            }));
-        } else {
-            console.debug("[gamepadControl] No picker direction change");
-        }
-        return;
-    } else {
-        console.debug("[gamepadControl] handlePickerNavigation: mode is not 'picker' or picker missing");
-    }
-}
-
-function handleGamepadPoll(currentStore, oldGamepadState) {
-    console.debug(`[gamepadControl] handleGamepadPoll: mode=${currentStore.mode}`);
-
-    if (currentStore.mode === "normal") {
-        console.debug("[gamepadControl] Dispatching handleButtonNavigation");
-        handleButtonNavigation(currentStore, oldGamepadState);
-    } else if (currentStore.mode === "picker") {
-        console.debug("[gamepadControl] Dispatching handlePickerNavigation");
-        handlePickerNavigation(currentStore, oldGamepadState);
-    }
-    // Do not handle button presses in number-picker mode
-    if (currentStore.mode !== "number-picker") {
-        handleButtonPresses(currentStore, oldGamepadState);
-        // Hide cursor on any gamepad input
-        // hideEditorCursor();
-    }
-    // store is already updated in loop()
-}
-
-function isNumberNode(node) {
-    // Simple check: node.type.name === "Number" or similar
-    return node && (node.type?.name === "Number" || node.type === "Number");
-}
-
-function getNumberNodeValue(node, state) {
-    // Assumes node has from/to and state.doc
-    if (!node || typeof node.from !== "number" || typeof node.to !== "number") return null;
-    const text = state.doc.sliceString(node.from, node.to);
-    const num = Number(text);
-    return isNaN(num) ? null : num;
-}
-
-function setNumberNodeValue(editorView, node, value) {
-    if (!node || typeof node.from !== "number" || typeof node.to !== "number") return;
-    const doc = editorView.state.doc;
-    const originalText = doc.sliceString(node.from, node.to);
-
-    // Match leading/trailing whitespace
-    const match = originalText.match(/^(\s*)(.*?)(\s*)$/);
-    const leading = match ? match[1] : "";
-    const trailing = match ? match[3] : "";
-
-    const newText = `${leading}${value}${trailing}`;
-    editorView.dispatch({
-        changes: { from: node.from, to: node.to, insert: newText },
-        selection: { anchor: node.from + leading.length },
-        scrollIntoView: true,
-        userEvent: "edit.number"
-    });
+export function initGamepadControl(view, options = {}) {
+  const controller = createGamepadController({ view, ...options });
+  controller.start();
+  return controller;
 }
