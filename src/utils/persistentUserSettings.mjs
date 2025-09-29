@@ -40,6 +40,16 @@ const defaultUserSettings = {
     expressionGutterEnabled: true,
     expressionLastTrackingEnabled: true,
     expressionClearButtonEnabled: true
+  },
+  visualisation: {
+    offsetSeconds: 5,
+    sampleCount: 100,
+    lineWidth: 1.5,
+    futureDashed: true,
+    futureMaskOpacity: 0.35,
+    futureMaskWidth: 12,
+    circularOffset: 0,
+    digitalLaneGap: 4
   }
 };
 
@@ -70,7 +80,8 @@ export function loadUserSettings() {
         ...retrievedSettings,
         editor: { ...activeUserSettings.editor, ...retrievedSettings.editor },
         storage: { ...activeUserSettings.storage, ...retrievedSettings.storage },
-        ui: { ...activeUserSettings.ui, ...retrievedSettings.ui }
+        ui: { ...activeUserSettings.ui, ...retrievedSettings.ui },
+        visualisation: { ...activeUserSettings.visualisation, ...retrievedSettings.visualisation }
       };
       dbg("Active user settings:", activeUserSettings);
     } else {
@@ -93,6 +104,11 @@ return activeUserSettings;
     if (!activeUserSettings.ui) activeUserSettings.ui = {};
     // Ensure all UI defaults are present
     activeUserSettings.ui = { ...defaultUserSettings.ui, ...activeUserSettings.ui };
+
+    activeUserSettings.visualisation = {
+      ...defaultUserSettings.visualisation,
+      ...(activeUserSettings.visualisation || {})
+    };
     
     // Auto-detect OS family (mac vs pc) if unset
     if (!activeUserSettings.ui.osFamily) {
@@ -149,7 +165,8 @@ export function updateUserSettings(values) {
     ...values,
     editor: values.editor ? { ...activeUserSettings.editor, ...values.editor } : activeUserSettings.editor,
     storage: values.storage ? { ...activeUserSettings.storage, ...values.storage } : activeUserSettings.storage,
-    ui: values.ui ? { ...activeUserSettings.ui, ...values.ui } : activeUserSettings.ui
+    ui: values.ui ? { ...activeUserSettings.ui, ...values.ui } : activeUserSettings.ui,
+    visualisation: values.visualisation ? { ...activeUserSettings.visualisation, ...values.visualisation } : activeUserSettings.visualisation
   };
   saveUserSettings();
   try {

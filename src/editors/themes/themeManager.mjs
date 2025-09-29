@@ -66,6 +66,11 @@ function adjustPanelsToTheme(themeName) {
   const backgroundColor = themeRecipe.settings.background;
   const foregroundColor = themeRecipe.settings.foreground;
   const isLightTheme = themeRecipe.variant === "light";
+
+  document.documentElement.style.setProperty('--editor-background', backgroundColor);
+  if (document.body) {
+    document.body.style.backgroundColor = backgroundColor;
+  }
   
   // Adjust panel background colors based on theme variant
   const consoleAdjustmentPercentage = 0.25;

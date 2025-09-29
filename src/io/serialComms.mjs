@@ -9,6 +9,7 @@ import { Buffer } from "buffer";
 import { post } from "./console.mjs";
 import { upgradeCheck, currentVersion } from "../utils/upgradeCheck.mjs";
 import { dbg } from "../utils.mjs";
+import { handleExternalTimeUpdate } from "../ui/serialVis/visualisationController.mjs";
 import {
   setCodeHighlightColor,
   cleanCode,
@@ -738,6 +739,13 @@ function updateSerialBuffer(bufferIndex, value) {
   const buffer = serialBuffers[bufferIndex];
   // Push the final smoothed value to the buffer
   buffer.push(value);
+
+  // Channel 0 (buffer index 0) carries transport time in seconds.
+  if (bufferIndex === 0) {
+    handleExternalTimeUpdate(value).catch((error) => {
+      dbg(`serialComms: failed to forward time update: ${error}`);
+    });
+  }
 
   // Call any registered handler function
   const mapIndex = bufferIndex - 1;

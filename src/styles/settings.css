@@ -104,6 +104,18 @@
     accent-color: var(--accent-color);
 }
 
+.panel-control-disabled {
+    cursor: not-allowed !important;
+}
+
+.panel-range-wrapper--disabled {
+    opacity: 0.45;
+}
+
+.panel-range-wrapper--disabled .panel-range-value {
+    opacity: 0.7;
+}
+
 /* Button Styling */
 .panel-button {
     padding: 0.5rem 1rem;

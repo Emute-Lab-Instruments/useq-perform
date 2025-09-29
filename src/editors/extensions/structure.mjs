@@ -6,8 +6,16 @@ import { EditorSelection, StateField, Transaction, RangeSetBuilder } from "@code
 import { syntaxTree } from "@codemirror/language";
 import { ASTCursor } from "../../utils/astCursor.mjs";
 import { EditorView, Decoration, ViewPlugin, gutter, GutterMarker } from "@codemirror/view";
-import { serialVisPalette } from "../../ui/serialVis/utils.mjs";
+import { getSerialVisPalette, getSerialVisChannelColor } from "../../ui/serialVis/utils.mjs";
 import { sendTouSEQ, isConnectedToModule } from "../../io/serialComms.mjs";
+import {
+  isExpressionVisualised,
+  toggleVisualisation,
+  reportExpressionColor,
+  refreshVisualisedExpression,
+  notifyExpressionEvaluated
+} from "../../ui/serialVis/visualisationController.mjs";
+import { dbg } from "../../utils.mjs";
 import { activeUserSettings } from "../../utils/persistentUserSettings.mjs";
 
 // Helper functions for tree processing
@@ -476,10 +484,30 @@ export function detectAndTrackExpressionEvaluation(view) {
     }
 
     if (lastInChunk.size > 0) {
-        const annotations = Array.from(lastInChunk.values()).map(info =>
+        const evaluations = Array.from(lastInChunk.values());
+        const annotations = evaluations.map(info =>
             expressionEvaluatedAnnotation.of({ expressionType: info.expressionType, position: info.position })
         );
         view.dispatch({ annotations });
+
+        for (const info of evaluations) {
+            const exprType = info.expressionType;
+            notifyExpressionEvaluated(exprType);
+
+            if (!isExpressionVisualised(exprType)) {
+                continue;
+            }
+
+            const definition = findExpressionDefinition(view, exprType);
+            const newText = definition?.expressionText?.trim();
+            if (!newText) {
+                continue;
+            }
+
+            refreshVisualisedExpression(exprType, newText).catch((error) => {
+                dbg(`Visualise: failed to refresh ${exprType} after evaluation: ${error}`);
+            });
+        }
     }
 }
 
@@ -603,29 +631,25 @@ export function navigateNext(state) {
 export function getCurrentPalette(doc = typeof document !== 'undefined' ? document : null, win = typeof window !== 'undefined' ? window : null) {
   // Fallback to light theme if no DOM available
   if (!doc || !win) {
-    return serialVisPalette;
+    return getSerialVisPalette();
   }
-  
-  const isDark = doc.documentElement.classList.contains("cm-theme-dark") ||
-                 win.matchMedia("(prefers-color-scheme: dark)").matches;
-  // If you have a dark palette, use it here. Otherwise, fallback to serialVisPalette.
-  // Example: return isDark ? serialVisPaletteDark : serialVisPalette;
-  return serialVisPalette;
+  return getSerialVisPalette();
 }
 
 // Map pattern to palette index
 export function getMatchColor(match) {
   const palette = getCurrentPalette();
-  const digit = Number(match[2] || 1);
-  return palette[(digit - 1) % palette.length];
+  const offset = activeUserSettings?.visualisation?.circularOffset ?? 0;
+  const exprType = `${match[1]}${match[2]}`;
+  return getSerialVisChannelColor(exprType, offset, palette);
 }
 
-// Regex: 'a' or 'd', then digit, then space (but don't include space in match)
-const matchPattern = /\b([ads])([1-8])(?= )/g;
+// Regex: 'a' or 'd' or 's', then digit, followed by whitespace, delimiter, or end of line
+const matchPattern = /\b([ads])([1-8])(?=[\s)(]|$)/g;
 
 // Custom gutter marker for expression vertical lines
 export class ExpressionGutterMarker extends GutterMarker {
-  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true, exprType = null, showClear = false) {
+  constructor(color, isStart = false, isEnd = false, isMid = false, isActive = true, exprType = null, showPlayButton = false, isVisualised = false) {
     super();
     this.color = color;
     this.isStart = isStart;
@@ -633,17 +657,24 @@ export class ExpressionGutterMarker extends GutterMarker {
     this.isMid = isMid;
     this.isActive = isActive;
     this.exprType = exprType;
-    this.showClear = showClear;
+    this.showPlayButton = showPlayButton;
+    this.isVisualised = isVisualised;
   }
   
   toDOM() {
     const div = document.createElement('div');
     div.style.cssText = `
       position: relative;
-      width: 14px;
+      width: 16px;
       height: 100%;
       margin-left: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
     `;
+    div.style.pointerEvents = 'auto';
+    const baseColor = this.color || 'var(--accent-color, #00ff41)';
     
     if (this.isStart || this.isMid || this.isEnd) {
       const line = document.createElement('div');
@@ -653,57 +684,58 @@ export class ExpressionGutterMarker extends GutterMarker {
         left: 50%;
         transform: translateX(-50%);
         width: 4px;
-        background-color: ${this.color};
+        background-color: ${baseColor};
         opacity: ${opacity};
         height: 100%;
       `;
+      line.style.pointerEvents = 'none';
       div.appendChild(line);
     }
 
-    // Add button (clear 'x' for active, play '▶' for inactive) centered on the gutter bar
-    if (this.showClear && this.exprType) {
+    if (this.showPlayButton && this.exprType) {
       const btn = document.createElement('span');
-      if (this.isActive) {
-        btn.className = 'cm-expr-clear-btn';
-        btn.dataset.expr = this.exprType;
-        btn.textContent = '×';
-        btn.title = `Clear ${this.exprType}`;
-      } else {
-        btn.className = 'cm-expr-play-btn';
-        btn.dataset.expr = this.exprType;
-        btn.textContent = '▶';
-        btn.title = `Activate ${this.exprType}`;
-      }
-      
-      // Use the expression color as background; choose contrasting text color
-      const bg = this.color || '#888';
-      // Compute simple luminance for contrast decision
-      let fg = '#000';
-      try {
-        const hex = bg.startsWith('#') ? bg.substring(1) : null;
-        if (hex && (hex.length === 6 || hex.length === 3)) {
-          const hx = hex.length === 3 ? hex.split('').map(c=>c+c).join('') : hex;
-          const r = parseInt(hx.substring(0,2),16);
-          const g = parseInt(hx.substring(2,4),16);
-          const b = parseInt(hx.substring(4,6),16);
-          const luminance = 0.299*r + 0.587*g + 0.114*b;
-          fg = luminance > 140 ? '#000' : '#fff';
-        } else {
-          // Fallback for rgba()/named colors: default to white text
+      btn.className = 'cm-expr-play-btn';
+      btn.dataset.expr = this.exprType;
+      btn.textContent = '▶';
+      btn.title = this.isVisualised
+        ? `Stop visualising ${this.exprType}`
+        : `Play ${this.exprType}`;
+      btn.setAttribute('aria-pressed', this.isVisualised ? 'true' : 'false');
+
+      const bg = this.isVisualised ? baseColor : 'rgba(0, 0, 0, 0.45)';
+      let fg = this.isVisualised ? '#080808' : baseColor;
+      if (this.isVisualised) {
+        try {
+          const hex = baseColor.startsWith('#') ? baseColor.substring(1) : null;
+          if (hex && (hex.length === 6 || hex.length === 3)) {
+            const hx = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+            const r = parseInt(hx.substring(0, 2), 16);
+            const g = parseInt(hx.substring(2, 4), 16);
+            const b = parseInt(hx.substring(4, 6), 16);
+            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+            fg = luminance > 140 ? '#000' : '#fff';
+          } else {
+            fg = '#fff';
+          }
+        } catch (e) {
           fg = '#fff';
         }
-      } catch (e) { fg = '#fff'; }
-      
+      }
+
+      if (this.isVisualised) {
+        btn.classList.add('is-visualising');
+      }
+
       btn.style.cssText = `
         position: absolute;
         left: 50%;
-        top: 50%;
+        top: 38%;
         transform: translate(-50%, -50%);
         width: 14px;
         height: 14px;
         line-height: 14px;
         text-align: center;
-        font-size: ${this.isActive ? '12px' : '10px'};
+        font-size: 10px;
         font-weight: bold;
         cursor: pointer;
         user-select: none;
@@ -714,7 +746,10 @@ export class ExpressionGutterMarker extends GutterMarker {
         display: flex;
         align-items: center;
         justify-content: center;
+        border: 1px solid ${baseColor};
+        box-shadow: ${this.isVisualised ? '0 0 6px rgba(0,0,0,0.35)' : 'none'};
       `;
+      btn.style.pointerEvents = 'auto';
       div.appendChild(btn);
     }
     
@@ -729,7 +764,8 @@ export class ExpressionGutterMarker extends GutterMarker {
            other.isMid === this.isMid &&
            other.isActive === this.isActive &&
            other.exprType === this.exprType &&
-           other.showClear === this.showClear;
+           other.showPlayButton === this.showPlayButton &&
+           other.isVisualised === this.isVisualised;
   }
 }
 
@@ -760,6 +796,70 @@ function findExpressionBounds(state, matchPos) {
     from: line.number,
     to: line.number
   };
+}
+
+function findExpressionDefinition(view, exprType) {
+  const state = view.state;
+  const doc = state.doc;
+
+  dbg(`Finding definition for ${exprType}`);
+
+  for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
+    const lineObj = doc.line(lineNum);
+    const lineText = lineObj.text;
+    const lineFrom = lineObj.from;
+
+    let match;
+    matchPattern.lastIndex = 0;
+    while ((match = matchPattern.exec(lineText)) !== null) {
+      const matchStart = lineFrom + match.index;
+      const foundExprType = `${match[1]}${match[2]}`;
+      if (foundExprType === exprType) {
+        const bounds = findExpressionBounds(state, matchStart);
+        const startLineObj = doc.line(bounds.from);
+        const endLineObj = doc.line(bounds.to);
+        const expressionText = doc.sliceString(startLineObj.from, endLineObj.to);
+        dbg(`Found ${exprType} from ${bounds.from} to ${bounds.to}`);
+        return {
+          expressionText,
+          from: startLineObj.from,
+          to: endLineObj.to,
+        };
+      }
+    }
+  }
+
+  dbg(`No definition located for ${exprType}`);
+  return null;
+}
+
+function ensureSerialVisPanelVisible() {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  const panel = document.getElementById('panel-vis');
+  if (!panel) {
+    return;
+  }
+  const style = window?.getComputedStyle(panel);
+  const isHidden = !style || style.display === 'none' || panel.hidden || style.visibility === 'hidden';
+  if (isHidden) {
+    if (window.$) {
+      window.$(panel).show();
+    }
+    panel.style.display = 'block';
+    panel.hidden = false;
+    panel.style.opacity = '';
+    panel.style.visibility = 'visible';
+    panel.style.pointerEvents = 'auto';
+    const canvas = panel.querySelector('#serialcanvas');
+    if (canvas) {
+      canvas.style.pointerEvents = 'auto';
+    }
+    try {
+      window.dispatchEvent?.(new CustomEvent('useq-serialvis-auto-open'));
+    } catch (e) {}
+  }
 }
 
 // --- Pure functions for expression tracking logic ---
@@ -815,11 +915,20 @@ export function createMarkersForRange(range, isActive, docLineFn, exprType) {
         const isMid = !isStart && !isEnd;
         const ui = (activeUserSettings && activeUserSettings.ui) || {};
         
-        // Show button on middle line: 'x' for active, 'play' for inactive expressions
+        // Show play button on middle line
         const buttonsEnabled = ui.expressionClearButtonEnabled !== false;
-        const showClear = buttonsEnabled && (line === midLine);
+        const showPlayButton = buttonsEnabled && (line === midLine);
 
-        const marker = new ExpressionGutterMarker(range.color, isStart, isEnd, isMid, isActive, exprType, showClear);
+        const marker = new ExpressionGutterMarker(
+          range.color,
+          isStart,
+          isEnd,
+          isMid,
+          isActive,
+          exprType,
+          showPlayButton,
+          isExpressionVisualised(exprType)
+        );
         const lineObj = docLineFn(line);
         markers.push({
             pos: lineObj.from,
@@ -836,6 +945,8 @@ export function processExpressionRanges(expressionRanges, lastEvaluatedMap, docL
     
     for (const [expressionType, ranges] of expressionRanges) {
         const lastEval = lastEvaluatedMap.get(expressionType);
+        const firstRange = ranges && ranges.length > 0 ? ranges[0] : null;
+      reportExpressionColor(expressionType, firstRange ? firstRange.color : null);
         
         for (const range of ranges) {
             const isActive = isRangeActive(range, lastEval);
@@ -911,35 +1022,27 @@ const expressionGutterField = StateField.define({
   }
 });
 
-// View plugin to handle click on clear icons
+// View plugin to handle expression gutter interactions
 const expressionClearClickPlugin = ViewPlugin.fromClass(class {
   constructor(view) {
     this.view = view;
     this.onClick = this.onClick.bind(this);
     this.onSettingsChange = this.onSettingsChange.bind(this);
+    this.onVisualisationChange = this.onVisualisationChange.bind(this);
     view.dom.addEventListener('click', this.onClick);
     window.addEventListener('useq-settings-changed', this.onSettingsChange);
+    window.addEventListener('useq-visualisation-changed', this.onVisualisationChange);
   }
   destroy() {
     this.view.dom.removeEventListener('click', this.onClick);
     window.removeEventListener('useq-settings-changed', this.onSettingsChange);
+    window.removeEventListener('useq-visualisation-changed', this.onVisualisationChange);
+  }
+  update(update) {
   }
   onClick(e) {
     const target = e.target;
     if (!(target instanceof HTMLElement)) return;
-    
-    // Handle clear button (x)
-    const clearBtn = target.closest('.cm-expr-clear-btn');
-    if (clearBtn) {
-      const ui = (activeUserSettings && activeUserSettings.ui) || {};
-      if (ui.expressionClearButtonEnabled === false) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const exprType = clearBtn.getAttribute('data-expr');
-      if (!exprType) return;
-      handleClearExpression(this.view, exprType);
-      return;
-    }
     
     // Handle play button (▶)
     const playBtn = target.closest('.cm-expr-play-btn');
@@ -956,6 +1059,11 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
   }
   onSettingsChange() {
     // Trigger rebuild of fields that depend on settings
+    try {
+      this.view.dispatch({ annotations: settingsChangedAnnotation.of(true) });
+    } catch (e) {}
+  }
+  onVisualisationChange() {
     try {
       this.view.dispatch({ annotations: settingsChangedAnnotation.of(true) });
     } catch (e) {}
@@ -978,51 +1086,62 @@ function handleClearExpression(view, exprType) {
 }
 
 function handlePlayExpression(view, exprType) {
-  if (!isConnectedToModule || !isConnectedToModule()) {
-    // Not connected; do nothing
+  const definition = findExpressionDefinition(view, exprType);
+  if (!definition) {
     return;
   }
-  
-  // Find the expression in the editor and send it to the module
-  const state = view.state;
-  const doc = state.doc;
-  
-  // Find the first occurrence of this expression pattern in the document
-  for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
-    const lineObj = doc.line(lineNum);
-    const lineText = lineObj.text;
-    const lineFrom = lineObj.from;
-    
-    let match;
-    matchPattern.lastIndex = 0;
-    while ((match = matchPattern.exec(lineText)) !== null) {
-      const matchStart = lineFrom + match.index;
-      const foundExprType = `${match[1]}${match[2]}`;
-      
-      if (foundExprType === exprType) {
-        // Found the expression, get its bounds and send it
-        const bounds = findExpressionBounds(state, matchStart);
-        const expressionStartLine = bounds.from;
-        const expressionEndLine = bounds.to;
-        
-        // Extract the full expression text
-        const startLineObj = doc.line(expressionStartLine);
-        const endLineObj = doc.line(expressionEndLine);
-        const expressionText = doc.sliceString(startLineObj.from, endLineObj.to);
-        
-        // Send to module
-        try { 
-          sendTouSEQ(expressionText.trim()); 
-        } catch (e) {
-          // ignore
-        }
-        
-        // Mark this expression as active
-        detectAndTrackExpressionEvaluation(view);
-        return;
-      }
+
+  const expressionText = definition.expressionText.trim();
+  const connected = isConnectedToModule && isConnectedToModule();
+
+  if (connected) {
+    try {
+      dbg(`Play: sending ${exprType}`);
+      sendTouSEQ(expressionText);
+    } catch (e) {
+      dbg(`Play: failed to send ${exprType}: ${e}`);
     }
   }
+
+  detectAndTrackExpressionEvaluation(view);
+
+  handleVisualiseExpression(view, exprType, expressionText);
+}
+
+function handleVisualiseExpression(view, exprType, expressionTextOverride = null) {
+  let expressionText = typeof expressionTextOverride === 'string'
+    ? expressionTextOverride.trim()
+    : expressionTextOverride;
+  if (!expressionText) {
+    const definition = findExpressionDefinition(view, exprType);
+    if (!definition) {
+      dbg(`Visualise: could not find definition for ${exprType}`);
+      return;
+    }
+    expressionText = definition.expressionText.trim();
+  }
+
+  if (!expressionText) {
+    dbg(`Visualise: empty expression for ${exprType}`);
+    return;
+  }
+
+  const wasVisualised = isExpressionVisualised(exprType);
+
+  if (typeof console !== 'undefined' && console.debug) {
+    console.debug('useq:visualise-toggle', { exprType, wasVisualised, length: expressionText.length });
+  }
+  dbg(`Visualise: toggling ${exprType}, text length ${expressionText.length}`);
+  toggleVisualisation(exprType, expressionText)
+    .then(() => {
+      const isNowVisualised = isExpressionVisualised(exprType);
+      if (!wasVisualised && isNowVisualised) {
+        ensureSerialVisPanelVisible();
+      }
+    })
+    .catch((error) => {
+      dbg(`Visualisation toggle failed for ${exprType}: ${error}`);
+    });
 }
 
 // Create the expression gutter

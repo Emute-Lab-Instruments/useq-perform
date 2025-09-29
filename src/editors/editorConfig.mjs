@@ -58,9 +58,12 @@ export function evalToplevel(opts, prefix = "") {
   const wasmCode = code.startsWith("@") ? code.slice(1) : code;
 
   // Track expression evaluation for gutter highlighting only if connected
-  if (opts.view && typeof opts.view.dispatch === 'function' && isConnectedToModule()) {
+  const hasView = opts.view && typeof opts.view.dispatch === 'function';
+  if (hasView) {
     detectAndTrackExpressionEvaluation(opts.view);
-    
+  }
+
+  if (hasView && isConnectedToModule()) {
     // Highlight the evaluated region
     const sel = state.selection.main;
     // If selection is empty, highlight the current top-level node
