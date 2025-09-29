@@ -10,6 +10,10 @@ import {
 } from "./extensions/structure/navigation.mjs";
 import { nodeTreeCursorField, getTrimmedRange } from "./extensions/structure.mjs";
 import { showPickerMenu, showNumberPickerMenu } from "../ui/pickerMenu.mjs";
+import { showHierarchicalGridPicker } from "../ui/hierarchicalPickerMenu.mjs";
+import { showRadialPickerMenu } from "../ui/radialPickerMenu.mjs";
+import { buildHierarchicalMenuModel } from "../ui/pickers/menuData.mjs";
+import { activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { evalNow } from "./editorConfig.mjs";
 
 const DEFAULT_POLL_INTERVAL = 50;
@@ -166,6 +170,17 @@ function resolvePickerDirection(snapshot, prevSnapshot) {
   if (isNewPress("Up", snapshot, prevSnapshot)) return "up";
   if (isNewPress("Down", snapshot, prevSnapshot)) return "down";
   return null;
+}
+
+function resolveStickVectors(snapshot) {
+  const lx = Number(snapshot?.axes?.LeftStickX || 0);
+  const ly = Number(snapshot?.axes?.LeftStickY || 0);
+  const rx = Number(snapshot?.axes?.RightStickX || 0);
+  const ry = Number(snapshot?.axes?.RightStickY || 0);
+  return {
+    leftStick: { x: lx, y: ly },
+    rightStick: { x: rx, y: ry }
+  };
 }
 
 function dispatchPickerEvent(target, detail, logger) {
@@ -587,8 +602,12 @@ class GamepadController {
   handlePickerNavigation(snapshot, prevSnapshot) {
     if (this.state.mode !== "picker" && this.state.mode !== "number-picker") return;
     const direction = resolvePickerDirection(snapshot, prevSnapshot);
+    const sticks = resolveStickVectors(snapshot);
     if (direction) {
-      dispatchPickerEvent(this.eventTarget, { direction }, this.logger);
+      dispatchPickerEvent(this.eventTarget, { direction, ...sticks }, this.logger);
+    } else {
+      // Forward stick position for radial menus even without D-pad movement
+      dispatchPickerEvent(this.eventTarget, { ...sticks }, this.logger);
     }
 
     if (isNewPress("A", snapshot, prevSnapshot)) {
@@ -644,23 +663,13 @@ class GamepadController {
     }
   }
 
-  openCreateMenu(direction) {
+  async openCreateMenu(direction) {
     if (this.state.mode === "picker") {
       this.logger.debug?.("[gamepadControl] Picker already open; ignoring create menu request");
       return;
     }
 
-    const options = createMenuOptions.map(opt => ({
-      label: opt.name,
-      value: opt.name,
-      icon: opt.lucideIcon || undefined
-    }));
-
-    const numColumns = 3;
-    const numRows = Math.ceil(options.length / numColumns);
-    const centerRow = Math.floor(numRows / 2);
-    const centerCol = Math.floor(numColumns / 2);
-    const centerIndex = Math.min(centerRow * numColumns + centerCol, options.length - 1);
+    const categories = await buildHierarchicalMenuModel();
 
     this.state.mode = "picker";
     this.state.picker = {
@@ -668,29 +677,51 @@ class GamepadController {
       closeMenu: null
     };
 
-    const closeMenu = this.pickerUI.showMenu({
-      items: options,
-      title: "Create Node",
-      layout: "grid",
-      initialIndex: centerIndex,
-      onSelect: (item, idx) => {
-        this.state.mode = "normal";
-        this.state.picker = null;
-        if (!item) return;
-        if (item.value === "Number") {
-          this.openNumberPicker(direction);
-          return;
-        }
-        if (this.onPickerSelect) {
-          this.onPickerSelect(item, idx, direction);
-        }
-      }
-    });
+    const style = activeUserSettings?.ui?.gamepadPickerStyle || 'grid';
+    const closeMenu = (style === 'radial')
+      ? showRadialPickerMenu({
+          categories,
+          title: 'Create',
+          onSelect: (entry) => this.handleCreateSelection(entry, direction)
+        })
+      : showHierarchicalGridPicker({
+          categories,
+          title: 'Create',
+          onSelect: (entry) => this.handleCreateSelection(entry, direction)
+        });
 
     this.state.picker = {
       direction,
       closeMenu
     };
+  }
+
+  handleCreateSelection(entry, direction) {
+    if (this.onPickerSelect) {
+      this.onPickerSelect(entry, 0, direction);
+      this.state.mode = "normal";
+      this.state.picker = null;
+      return;
+    }
+    const text = (entry && entry.insertText) ? entry.insertText : String(entry?.value ?? '');
+    if (!text) {
+      this.state.mode = "normal"; this.state.picker = null; return;
+    }
+    const view = this.view;
+    if (!view) { this.state.mode = "normal"; this.state.picker = null; return; }
+    const node = getCursorNode(view);
+    const range = node ? getTrimmedRange(node, view.state) : view.state.selection.main;
+    const from = typeof range?.from === 'number' ? range.from : view.state.selection.main.from;
+    const to = typeof range?.to === 'number' ? range.to : view.state.selection.main.to;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+      scrollIntoView: true,
+      userEvent: 'insert.picker'
+    });
+    this.state.mode = "normal";
+    this.state.picker = null;
+    this.hideEditorCursor();
   }
 
   openNumberPicker(direction) {
