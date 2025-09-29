@@ -3,6 +3,7 @@ import { makeTabs } from "../tabs.mjs";
 import { makeUserGuide } from "./userGuide.mjs";
 import { makeModuLispReference } from "./moduLispReference.mjs";
 import { makeKeybindingsTab } from "./keybindings.mjs";
+import { makeCodeSnippets } from "./codeSnippets.mjs";
 
 
 /**
@@ -18,7 +19,7 @@ export async function makeHelp() {
     const result = makeTabs([
         {
             name: "User Guide",
-            id: "panel-help-tab-guide", 
+            id: "panel-help-tab-guide",
             element: makeUserGuide(),
             active: true
         },
@@ -29,7 +30,13 @@ export async function makeHelp() {
             active: false
         },
         {
-            name: "Keybindings", 
+            name: "Code Snippets",
+            id: "panel-help-tab-snippets",
+            element: makeCodeSnippets(),
+            active: false
+        },
+        {
+            name: "Keybindings",
             id: "panel-settings-tab-keybindings",
             element: makeKeybindingsTab(),
             active: false
