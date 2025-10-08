@@ -9,6 +9,20 @@
 import { makeTabs } from './tabs.mjs';
 import { setConnectedToModule, isConnectedToModule } from '../io/serialComms.mjs';
 import { dbg } from '../utils.mjs';
+import {
+    startMockTimeGenerator,
+    stopMockTimeGenerator,
+    isMockTimeGeneratorRunning,
+    getCurrentMockTime,
+    resetMockTimeGenerator
+} from '../io/mockTimeGenerator.mjs';
+import {
+    setControlValue,
+    getControlValue,
+    getControlDefinitions,
+    resetAllControls,
+    initializeMockControls
+} from '../io/mockControlInputs.mjs';
 
 /**
  * Create the main dev mode panel with tabs
@@ -109,47 +123,281 @@ function makeConnectionTab() {
 
 /**
  * Create the debug information tab
- * @returns {jQuery} The debug tab element  
+ * @returns {jQuery} The debug tab element
  */
 function makeDebugTab() {
     const $container = $('<div>', {
         class: 'devmode-tab-content',
         id: 'devmode-debug-content'
     });
-    
-    const $title = $('<h3>').text('Debug Information');
-    const $info = $('<div>', {
-        class: 'devmode-debug-info'
+
+    // Mock Time Generator section
+    const $timeGenSection = $('<div>', {
+        class: 'devmode-section'
     });
-    
-    const $placeholder = $('<p>').text('Debug tools will be added here in future updates.');
-    
-    $container.append($title, $info, $placeholder);
-    
+
+    const $timeGenTitle = $('<h3>').text('Mock Time Generator');
+
+    const $timeGenStatus = $('<div>', {
+        class: 'devmode-status-display',
+        id: 'devmode-timegen-status'
+    });
+
+    // Control buttons
+    const $timeGenControls = $('<div>', {
+        class: 'devmode-button-group'
+    });
+
+    const $startBtn = $('<button>', {
+        class: 'devmode-button devmode-button-success',
+        text: 'Start',
+        id: 'devmode-timegen-start-btn'
+    });
+
+    const $stopBtn = $('<button>', {
+        class: 'devmode-button devmode-button-danger',
+        text: 'Stop',
+        id: 'devmode-timegen-stop-btn'
+    });
+
+    const $resetBtn = $('<button>', {
+        class: 'devmode-button',
+        text: 'Reset',
+        id: 'devmode-timegen-reset-btn'
+    });
+
+    // Info section
+    const $timeGenInfo = $('<div>', {
+        class: 'devmode-info'
+    });
+
+    const $infoText = $('<p>').html(`
+        <strong>Mock Time Generator:</strong> Simulates the time updates that normally come from
+        the uSEQ module. When running, the serialVis will advance at ~60fps using wall-clock time,
+        starting from t=0.
+    `);
+
+    // Assemble the section
+    $timeGenControls.append($startBtn, $stopBtn, $resetBtn);
+    $timeGenInfo.append($infoText);
+    $timeGenSection.append($timeGenTitle, $timeGenStatus, $timeGenControls, $timeGenInfo);
+
+    $container.append($timeGenSection);
+
+    // Mock Control Inputs section
+    const $controlsSection = makeControlInputsSection();
+    $container.append($controlsSection);
+
+    // Set up event handlers
+    setupTimeGeneratorControls($startBtn, $stopBtn, $resetBtn, $timeGenStatus);
+
+    // Update initial status
+    updateTimeGeneratorStatus($timeGenStatus);
+
     return $container;
+}
+
+/**
+ * Create the control inputs section with sliders
+ * @returns {jQuery} The control inputs section element
+ */
+function makeControlInputsSection() {
+    const $section = $('<div>', {
+        class: 'devmode-section'
+    });
+
+    const $title = $('<h3>').text('Mock Control Inputs');
+
+    const $controlsContainer = $('<div>', {
+        class: 'devmode-controls-container'
+    });
+
+    // Create sliders for each control
+    const definitions = getControlDefinitions();
+    for (const def of definitions) {
+        const $controlRow = createControlSlider(def);
+        $controlsContainer.append($controlRow);
+    }
+
+    // Reset button
+    const $resetBtn = $('<button>', {
+        class: 'devmode-button',
+        text: 'Reset All',
+        id: 'devmode-controls-reset-btn'
+    });
+
+    $resetBtn.on('click', () => {
+        dbg('Dev mode: Resetting all control inputs');
+        resetAllControls();
+        // Update all slider displays
+        for (const def of definitions) {
+            const $slider = $(`#devmode-control-${def.name}`);
+            const $display = $(`#devmode-control-${def.name}-value`);
+            const value = getControlValue(def.name);
+            $slider.val(value);
+            $display.text(value.toFixed(2));
+        }
+    });
+
+    // Info section
+    const $info = $('<div>', {
+        class: 'devmode-info'
+    });
+
+    const $infoText = $('<p>').html(`
+        <strong>Mock Control Inputs:</strong> Simulates the hardware control inputs
+        (CV inputs, pulse inputs, switches) that would normally come from the uSEQ module.
+        Use the sliders to change values and test code that uses these controls.
+    `);
+
+    $info.append($infoText);
+    $section.append($title, $controlsContainer, $resetBtn, $info);
+
+    return $section;
+}
+
+/**
+ * Create a slider control for a single input
+ * @param {object} definition - Control definition
+ * @returns {jQuery} The control row element
+ */
+function createControlSlider(definition) {
+    const { name, label, description, min, max, step, default: defaultValue } = definition;
+
+    const $row = $('<div>', {
+        class: 'devmode-control-row'
+    });
+
+    const $label = $('<label>', {
+        for: `devmode-control-${name}`,
+        class: 'devmode-control-label'
+    }).text(label);
+
+    const $sliderContainer = $('<div>', {
+        class: 'devmode-control-slider-container'
+    });
+
+    const $slider = $('<input>', {
+        type: 'range',
+        id: `devmode-control-${name}`,
+        class: 'devmode-control-slider',
+        min: min,
+        max: max,
+        step: step,
+        value: getControlValue(name)
+    });
+
+    const $valueDisplay = $('<span>', {
+        class: 'devmode-control-value',
+        id: `devmode-control-${name}-value`
+    }).text(getControlValue(name).toFixed(2));
+
+    // Handle slider changes
+    $slider.on('input', (e) => {
+        const value = parseFloat(e.target.value);
+        setControlValue(name, value);
+        $valueDisplay.text(value.toFixed(2));
+    });
+
+    $sliderContainer.append($slider, $valueDisplay);
+    $row.append($label, $sliderContainer);
+
+    // Add tooltip if available
+    if (description) {
+        $row.attr('title', description);
+    }
+
+    return $row;
+}
+
+/**
+ * Set up event handlers for time generator controls
+ * @param {jQuery} $startBtn Start button
+ * @param {jQuery} $stopBtn Stop button
+ * @param {jQuery} $resetBtn Reset button
+ * @param {jQuery} $statusDisplay Status display element
+ */
+function setupTimeGeneratorControls($startBtn, $stopBtn, $resetBtn, $statusDisplay) {
+    // Start button
+    $startBtn.on('click', () => {
+        dbg('Dev mode: Starting mock time generator');
+        startMockTimeGenerator();
+        updateTimeGeneratorStatus($statusDisplay);
+        updateTimeGeneratorButtonStates($startBtn, $stopBtn, $resetBtn);
+
+        // Start periodic status updates while running
+        startStatusUpdateInterval($statusDisplay, $startBtn, $stopBtn, $resetBtn);
+    });
+
+    // Stop button
+    $stopBtn.on('click', () => {
+        dbg('Dev mode: Stopping mock time generator');
+        stopMockTimeGenerator();
+        updateTimeGeneratorStatus($statusDisplay);
+        updateTimeGeneratorButtonStates($startBtn, $stopBtn, $resetBtn);
+    });
+
+    // Reset button
+    $resetBtn.on('click', () => {
+        dbg('Dev mode: Resetting mock time generator');
+        resetMockTimeGenerator();
+        updateTimeGeneratorStatus($statusDisplay);
+        updateTimeGeneratorButtonStates($startBtn, $stopBtn, $resetBtn);
+    });
+
+    // Update initial button states
+    updateTimeGeneratorButtonStates($startBtn, $stopBtn, $resetBtn);
 }
 
 /**
  * Set up event handlers for connection controls
  * @param {jQuery} $connectBtn Connect button
- * @param {jQuery} $disconnectBtn Disconnect button  
+ * @param {jQuery} $disconnectBtn Disconnect button
  * @param {jQuery} $statusDisplay Status display element
  */
 function setupConnectionControls($connectBtn, $disconnectBtn, $statusDisplay) {
-    $connectBtn.on('click', () => {
+    $connectBtn.on('click', async () => {
+        console.log('=== DEVMODE: Connect button clicked ===');
         dbg('Dev mode: Setting connection to true');
         setConnectedToModule(true);
         updateConnectionStatus($statusDisplay);
         updateButtonStates($connectBtn, $disconnectBtn);
+
+        // Initialize mock control inputs in the WASM interpreter
+        try {
+            console.log('Initializing mock controls...');
+            await initializeMockControls();
+            dbg('Dev mode: Mock controls initialized');
+            console.log('Mock controls initialized successfully');
+        } catch (error) {
+            dbg(`Dev mode: Failed to initialize mock controls: ${error}`);
+            console.error('Failed to initialize mock controls:', error);
+        }
+
+        // Automatically start the time generator when connecting
+        if (!isMockTimeGeneratorRunning()) {
+            console.log('Starting mock time generator...');
+            dbg('Dev mode: Auto-starting time generator with connection');
+            const started = startMockTimeGenerator();
+            console.log('Mock time generator start result:', started);
+        } else {
+            console.log('Mock time generator already running');
+        }
     });
-    
+
     $disconnectBtn.on('click', () => {
         dbg('Dev mode: Setting connection to false');
         setConnectedToModule(false);
         updateConnectionStatus($statusDisplay);
         updateButtonStates($connectBtn, $disconnectBtn);
+
+        // Automatically stop the time generator when disconnecting
+        if (isMockTimeGeneratorRunning()) {
+            dbg('Dev mode: Auto-stopping time generator with disconnection');
+            stopMockTimeGenerator();
+        }
     });
-    
+
     // Update initial button states
     updateButtonStates($connectBtn, $disconnectBtn);
 }
@@ -177,9 +425,67 @@ function updateConnectionStatus($statusDisplay) {
  */
 function updateButtonStates($connectBtn, $disconnectBtn) {
     const isConnected = isConnectedToModule();
-    
+
     $connectBtn.prop('disabled', isConnected);
     $disconnectBtn.prop('disabled', !isConnected);
+}
+
+/**
+ * Update the time generator status display
+ * @param {jQuery} $statusDisplay Status display element
+ */
+function updateTimeGeneratorStatus($statusDisplay) {
+    const isRunning = isMockTimeGeneratorRunning();
+    const currentTime = getCurrentMockTime();
+
+    const statusClass = isRunning ? 'devmode-status-connected' : 'devmode-status-disconnected';
+    const statusText = isRunning ? `Running (t=${currentTime.toFixed(3)}s)` : 'Stopped';
+    const statusIcon = isRunning ? '▶️' : '⏸️';
+
+    $statusDisplay.removeClass('devmode-status-connected devmode-status-disconnected')
+                  .addClass(statusClass)
+                  .html(`${statusIcon} <strong>${statusText}</strong>`);
+}
+
+/**
+ * Update time generator button states
+ * @param {jQuery} $startBtn Start button
+ * @param {jQuery} $stopBtn Stop button
+ * @param {jQuery} $resetBtn Reset button
+ */
+function updateTimeGeneratorButtonStates($startBtn, $stopBtn, $resetBtn) {
+    const isRunning = isMockTimeGeneratorRunning();
+
+    $startBtn.prop('disabled', isRunning);
+    $stopBtn.prop('disabled', !isRunning);
+    $resetBtn.prop('disabled', false); // Reset always enabled
+}
+
+let statusUpdateIntervalId = null;
+
+/**
+ * Start periodic status updates while the generator is running
+ * @param {jQuery} $statusDisplay Status display element
+ * @param {jQuery} $startBtn Start button
+ * @param {jQuery} $stopBtn Stop button
+ * @param {jQuery} $resetBtn Reset button
+ */
+function startStatusUpdateInterval($statusDisplay, $startBtn, $stopBtn, $resetBtn) {
+    // Clear any existing interval
+    if (statusUpdateIntervalId !== null) {
+        clearInterval(statusUpdateIntervalId);
+    }
+
+    // Update every 100ms while running
+    statusUpdateIntervalId = setInterval(() => {
+        if (isMockTimeGeneratorRunning()) {
+            updateTimeGeneratorStatus($statusDisplay);
+        } else {
+            // Stop the interval if the generator stopped
+            clearInterval(statusUpdateIntervalId);
+            statusUpdateIntervalId = null;
+        }
+    }, 100);
 }
 
 /**
@@ -304,6 +610,67 @@ function addDevModeStyles() {
             border-radius: 4px;
             max-height: 200px;
             overflow-y: auto;
+        }
+
+        .devmode-controls-container {
+            margin: 12px 0;
+        }
+
+        .devmode-control-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            gap: 12px;
+        }
+
+        .devmode-control-label {
+            min-width: 120px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        .devmode-control-slider-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .devmode-control-slider {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .devmode-control-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-color, #00ff41);
+            cursor: pointer;
+        }
+
+        .devmode-control-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-color, #00ff41);
+            cursor: pointer;
+            border: none;
+        }
+
+        .devmode-control-value {
+            min-width: 40px;
+            text-align: right;
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--text-color);
         }
         </style>
     `;

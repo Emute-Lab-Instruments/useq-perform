@@ -506,8 +506,11 @@ export async function handleExternalTimeUpdate(timeSeconds) {
 
 async function refreshBarValue() {
   try {
-    const result = await evalInUseqWasm("bar");
-    const numeric = Number.parseFloat(String(result).trim());
+    // Evaluate bar at displayTime for consistency with visualization
+    const settings = getSettings();
+    const displayTime = updateDisplayClock(settings);
+    const result = await evalOutputAtTime("bar", displayTime);
+    const numeric = Number(result);
     if (Number.isFinite(numeric)) {
       const wrapped = numeric % 1;
       currentBarValue = wrapped < 0 ? wrapped + 1 : wrapped;
