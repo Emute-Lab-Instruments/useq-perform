@@ -11,7 +11,7 @@ function candidateDataUrls() {
     "/assets/modulisp_reference_data.json",
     "/dev/assets/modulisp_reference_data.json"
   ];
-  const base = (typeof import !== 'undefined' && import.meta && import.meta.url) ? import.meta.url : (typeof window !== 'undefined' ? window.location.href : null);
+  const base = (typeof import.meta !== 'undefined' && import.meta.url) ? import.meta.url : (typeof window !== 'undefined' ? window.location.href : null);
   rel.forEach(p => {
     try { candidates.add(new URL(p, base || 'http://local/').href); } catch (_) {}
   });
