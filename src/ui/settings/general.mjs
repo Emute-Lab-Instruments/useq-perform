@@ -27,6 +27,9 @@ export function makeGeneralTab() {
     // Build UI settings
     buildUISettings($uiSection);
 
+    // Build configuration management section
+    buildConfigurationSection($container);
+
     // Add reset button at the bottom
     const $resetButtonContainer = $('<div>').addClass('panel-section');
     const $resetButton = $('<button>')
@@ -440,4 +443,100 @@ function buildUISettings($container) {
     };
 
     updateMaskControlsState(visual.futureDashed !== false);
+}
+
+/**
+ * Build the configuration management section
+ */
+function buildConfigurationSection($container) {
+    // Lazy import configuration manager to avoid circular dependencies
+    const loadConfigManager = async () => {
+        try {
+            return await import('../../config/configManager.mjs');
+        } catch (error) {
+            console.error('Failed to load config manager:', error);
+            return null;
+        }
+    };
+
+    const $section = createSection('Configuration Management');
+
+    const $infoText = $('<p>')
+        .addClass('panel-info-text')
+        .html(`
+            Export your current settings to a file, or import settings from a previously saved configuration.
+            In dev mode with the config server running, configurations can be saved directly to the source directory.
+        `);
+    $section.append($infoText);
+
+    // Export button
+    const $exportBtn = $('<button>')
+        .addClass('panel-button')
+        .text('💾 Export Configuration')
+        .on('click', async () => {
+            const configManager = await loadConfigManager();
+            if (!configManager) {
+                alert('Failed to load configuration manager');
+                return;
+            }
+
+            try {
+                const result = await configManager.saveConfiguration({
+                    includeCode: false,
+                    includeDevMode: window.location.search.includes('devmode=true')
+                });
+
+                if (result.method === 'websocket') {
+                    alert(`✅ Configuration saved to:\n${result.path}\n\nYou can now commit this file to git!`);
+                } else if (result.method === 'filesystem-api') {
+                    alert(`✅ Configuration saved to:\n${result.name}`);
+                } else if (result.method === 'download') {
+                    alert('⬇️ Configuration downloaded.\n\nCopy the file to:\nsrc/config/default-config.json\n\nto make changes persist across builds.');
+                }
+            } catch (error) {
+                console.error('Export error:', error);
+                alert(`❌ Failed to export configuration:\n${error.message}`);
+            }
+        });
+
+    // Import button
+    const $importBtn = $('<button>')
+        .addClass('panel-button')
+        .text('📥 Import Configuration')
+        .on('click', async () => {
+            const configManager = await loadConfigManager();
+            if (!configManager) {
+                alert('Failed to load configuration manager');
+                return;
+            }
+
+            try {
+                const config = await configManager.loadConfigurationFromFile();
+
+                const preview = configManager.previewConfiguration(config);
+
+                let confirmMessage = 'Apply this configuration?\n\n';
+                if (preview.hasChanges) {
+                    confirmMessage += 'Changes:\n' + preview.diffs.join('\n') + '\n\n';
+                } else {
+                    confirmMessage += 'No changes detected.\n\n';
+                }
+                confirmMessage += 'The page will reload to apply changes.';
+
+                if (confirm(confirmMessage)) {
+                    configManager.importConfiguration(config);
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error('Import error:', error);
+                alert(`❌ Failed to import configuration:\n${error.message}`);
+            }
+        });
+
+    const $buttonGroup = $('<div>')
+        .addClass('panel-button-group')
+        .append($exportBtn, $importBtn);
+
+    $section.append($buttonGroup);
+    $container.append($section);
 }

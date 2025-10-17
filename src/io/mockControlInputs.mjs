@@ -19,6 +19,31 @@ const controlValues = {
     swt: 0.5    // Toggle switch (0, 0.5, or 1)
 };
 
+function normaliseControlName(name) {
+    if (typeof name !== 'string') {
+        return null;
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+        return null;
+    }
+    const sanitised = trimmed.replace(/[^a-z0-9-]/gi, '');
+    if (!sanitised) {
+        return null;
+    }
+    return sanitised;
+}
+
+function formatControlValueLiteral(value) {
+    if (!Number.isFinite(value)) {
+        return '0';
+    }
+    if (Number.isInteger(value)) {
+        return String(value);
+    }
+    return value.toFixed(6).replace(/\.0+$/, '').replace(/0+$/, '').replace(/\.$/, '');
+}
+
 // Listeners for value changes
 const valueChangeListeners = new Set();
 
@@ -115,9 +140,22 @@ function notifyValueChanged(name, newValue, oldValue) {
  */
 async function updateInterpreterValue(name, value) {
     try {
-        // Define the control as a signal in the interpreter
-        // This makes it available for use in expressions
-        await evalInUseqWasm(`(defsig ${name} ${value})`);
+        const normalised = normaliseControlName(name);
+        if (!normalised) {
+            dbg(`mockControlInputs: refusing to define invalid control name "${name}"`);
+            return;
+        }
+
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+            dbg(`mockControlInputs: control ${normalised} value ${value} is not finite`);
+            return;
+        }
+
+        const literal = formatControlValueLiteral(numericValue);
+
+        // Represent hardware input functions as zero-arg functions that return the latest mock value.
+        await evalInUseqWasm(`(defn ${normalised} () ${literal})`);
     } catch (error) {
         dbg(`mockControlInputs: failed to update interpreter for ${name}: ${error}`);
     }

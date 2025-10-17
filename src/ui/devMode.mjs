@@ -188,6 +188,10 @@ function makeDebugTab() {
     const $controlsSection = makeControlInputsSection();
     $container.append($controlsSection);
 
+    // Configuration Management section
+    const $configSection = makeConfigManagementSection();
+    $container.append($configSection);
+
     // Set up event handlers
     setupTimeGeneratorControls($startBtn, $stopBtn, $resetBtn, $timeGenStatus);
 
@@ -678,6 +682,105 @@ function addDevModeStyles() {
     // Only add styles if they don't already exist
     if ($('#devmode-styles').length === 0) {
         $('head').append(styles);
+    }
+}
+
+/**
+ * Create the configuration management section
+ * @returns {jQuery} The configuration management section element
+ */
+function makeConfigManagementSection() {
+    const $section = $('<div>', {
+        class: 'devmode-section'
+    });
+
+    const $title = $('<h3>').text('Configuration Management');
+
+    const $statusDisplay = $('<div>', {
+        class: 'devmode-status-display',
+        id: 'devmode-config-status'
+    }).text('Config server status: checking...');
+
+    // Check config server availability
+    checkConfigServerStatus($statusDisplay);
+
+    const $saveBtn = $('<button>', {
+        class: 'devmode-button devmode-button-success',
+        text: '💾 Save Config to Source File',
+        id: 'devmode-save-config-btn'
+    });
+
+    $saveBtn.on('click', async () => {
+        try {
+            // Lazy import to avoid circular dependencies
+            const configManager = await import('../config/configManager.mjs');
+
+            dbg('DevMode: Saving configuration to source file');
+
+            const result = await configManager.saveConfiguration({
+                includeDevMode: true,
+                includeCode: false
+            });
+
+            if (result.success && result.method === 'websocket') {
+                $statusDisplay.removeClass('devmode-status-disconnected')
+                              .addClass('devmode-status-connected')
+                              .html(`✅ <strong>Config saved to: ${result.path}</strong>`);
+                alert(`✅ Configuration saved to:\n${result.path}\n\nAll current UI settings and mock control values have been saved.\nCommit this file to preserve your configuration!`);
+            } else if (result.success && result.method === 'filesystem-api') {
+                alert(`✅ Configuration saved to:\n${result.name}`);
+            } else if (result.success && result.method === 'download') {
+                alert(`⬇️ Configuration downloaded.\n\nCopy the file to:\nsrc/config/default-config.json\n\nto make changes persist across builds.`);
+            } else {
+                alert(`ℹ️ Configuration exported via ${result.method}`);
+            }
+        } catch (error) {
+            console.error('Failed to save configuration:', error);
+            alert(`❌ Failed to save configuration:\n${error.message}`);
+        }
+    });
+
+    const $info = $('<div>', {
+        class: 'devmode-info'
+    }).html(`
+        <strong>Config Persistence:</strong> Saves all UI settings and mock control
+        values to <code>src/config/default-config.json</code>. When the config server
+        is running (via npm run dev), changes write directly to the source file.
+        Commit this file to preserve your configuration across builds and share with teammates.
+    `);
+
+    $section.append($title, $statusDisplay, $saveBtn, $info);
+
+    return $section;
+}
+
+/**
+ * Check if the config server is available
+ * @param {jQuery} $statusDisplay Status display element
+ */
+async function checkConfigServerStatus($statusDisplay) {
+    try {
+        const configManager = await import('../config/configManager.mjs');
+
+        // Try to connect
+        const ws = await configManager.connectToConfigServer();
+
+        if (ws) {
+            $statusDisplay.removeClass('devmode-status-disconnected')
+                          .addClass('devmode-status-connected')
+                          .html('🟢 <strong>Config server: Connected</strong>');
+            dbg('DevMode: Config server is available');
+        } else {
+            $statusDisplay.removeClass('devmode-status-connected')
+                          .addClass('devmode-status-disconnected')
+                          .html('🔴 <strong>Config server: Not available</strong>');
+            dbg('DevMode: Config server is not available');
+        }
+    } catch (error) {
+        $statusDisplay.removeClass('devmode-status-connected')
+                      .addClass('devmode-status-disconnected')
+                      .html('🔴 <strong>Config server: Error</strong>');
+        dbg('DevMode: Error checking config server status:', error);
     }
 }
 

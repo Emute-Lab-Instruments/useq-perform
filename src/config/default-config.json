@@ -1,0 +1,54 @@
+{
+  "version": "1.0.0",
+  "metadata": {
+    "lastModified": "2025-10-08T00:00:00.000Z",
+    "source": "default",
+    "description": "uSEQ Perform default configuration"
+  },
+  "user": {
+    "name": "Livecoder",
+    "editor": {
+      "theme": "uSEQ Dark",
+      "fontSize": 16,
+      "preventBracketUnbalancing": true
+    },
+    "storage": {
+      "saveCodeLocally": true,
+      "autoSaveEnabled": true,
+      "autoSaveInterval": 5000
+    },
+    "ui": {
+      "consoleLinesLimit": 1000,
+      "customThemes": [],
+      "osFamily": "pc",
+      "expressionGutterEnabled": true,
+      "expressionLastTrackingEnabled": true,
+      "expressionClearButtonEnabled": true,
+      "gamepadPickerStyle": "grid"
+    },
+    "visualisation": {
+      "offsetSeconds": 5,
+      "sampleCount": 100,
+      "lineWidth": 1.5,
+      "futureDashed": true,
+      "futureMaskOpacity": 0.35,
+      "futureMaskWidth": 12,
+      "circularOffset": 0,
+      "digitalLaneGap": 4
+    }
+  },
+  "devMode": {
+    "enabled": false,
+    "mockConnection": {
+      "autoConnect": false
+    },
+    "mockControls": {
+      "ain1": 0.5,
+      "ain2": 0.5,
+      "din1": 0,
+      "din2": 0,
+      "swm": 0,
+      "swt": 0.5
+    }
+  }
+}

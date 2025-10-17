@@ -45,7 +45,8 @@
     "watch": "npm-run-all --parallel watch:legacy watch:solid",
     "watch:legacy": "node build.js --watch",
     "watch:solid": "vite build --watch",
-    "dev": "npm-run-all --parallel start watch",
+    "dev": "npm-run-all --parallel config-server start watch",
+    "config-server": "node scripts/config-server.mjs",
     "start": "serve public -p 5000 --cors --config serve.json",
     "test": "mocha \"test/**/*.mjs\""
   },
