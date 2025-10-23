@@ -55,7 +55,8 @@ export function evalToplevel(opts, prefix = "") {
   const state = opts.state;
   const code = prefix + top_level_string(state);
 
-  const wasmCode = code.startsWith("@") ? code.slice(1) : code;
+  const isImmediate = code.startsWith("@");
+  const wasmCode = isImmediate ? code.slice(1) : code;
 
   // Track expression evaluation for gutter highlighting only if connected
   const hasView = opts.view && typeof opts.view.dispatch === 'function';
@@ -87,20 +88,23 @@ export function evalToplevel(opts, prefix = "") {
         return;
       }
 
-      const formatForCodeBlock = (text) => {
-        const value = typeof text === 'string' ? text : String(text ?? '');
-        return value.replace(/```/g, '``\`');
-      };
-
-      const formattedExpr = formatForCodeBlock(wasmCode);
-      const formattedResult = formatForCodeBlock(result);
-
-      post(`**Interpreter** evaluated:\n\n\`\`\`\n${formattedExpr}\n\`\`\`\n\nResult:\n\n\`\`\`\n${formattedResult}\n\`\`\``);
+      if (isImmediate) {
+        const output = typeof result === 'string' ? result : String(result ?? '');
+        const trimmed = output.trim();
+        if (trimmed.length > 0) {
+          post(`uSEQ: ${trimmed}`);
+        }
+      } else {
+        const echoed = wasmCode.trim();
+        if (echoed.length > 0) {
+          post(`uSEQ: ${echoed}`);
+        }
+      }
     })
     .catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       if (noModuleMode) {
-        post(`**Interpreter Error**: ${message.replace(/`/g, '\\`')}`);
+        post(`**Error**: ${message.replace(/`/g, '\\`')}`);
       } else {
         console.error('uSEQ WASM interpreter evaluation failed', error);
       }

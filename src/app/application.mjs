@@ -1,9 +1,11 @@
 import { post } from '../io/console.mjs';
-import { checkForSavedPortAndMaybeConnect } from '../io/serialComms.mjs';
+import { checkForSavedPortAndMaybeConnect, setConnectedToModule } from '../io/serialComms.mjs';
 import { ensureUseqWasmLoaded } from '../io/useqWasmInterpreter.mjs';
 import { noModuleMode } from '../urlParams.mjs';
 import { startWebSocketServer, stopWebSocketServer } from '../io/websocketServer.mjs';
 import { showModal } from '../ui/modal.mjs';
+import { initializeMockControls } from '../io/mockControlInputs.mjs';
+import { startMockTimeGenerator } from '../io/mockTimeGenerator.mjs';
 
 export function createApp(appUI, environmentState) {
   const app = {
@@ -45,6 +47,22 @@ export function createApp(appUI, environmentState) {
         try {
           await ensureUseqWasmLoaded();
           post('No-module mode active: expressions will run on the in-browser interpreter.');
+
+          setConnectedToModule(true);
+
+          try {
+            await initializeMockControls();
+          } catch (error) {
+            console.warn('Failed to initialise mock controls:', error);
+          }
+
+          try {
+            startMockTimeGenerator();
+          } catch (error) {
+            console.warn('Failed to start mock time generator:', error);
+          }
+
+          post('uSEQ: mock module connected.');
         } catch (error) {
           post('**Error**: Failed to initialise the in-browser interpreter.');
         }
