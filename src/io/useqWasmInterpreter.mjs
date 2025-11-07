@@ -60,6 +60,7 @@ async function instantiateInterpreter() {
   const useq_eval = module.cwrap("useq_eval", "string", ["string"]);
   const useq_update_time = module.cwrap("useq_update_time", null, ["number"]);
   const useq_eval_output = module.cwrap("useq_eval_output", "number", ["string", "number"]);
+  const useq_eval_outputs_time_window = module.cwrap("useq_eval_outputs_time_window", "string", ["string", "number", "number", "number"]);
 
   useq_init();
   dbg("uSEQ WASM interpreter initialised");
@@ -86,6 +87,28 @@ async function instantiateInterpreter() {
         return Number.isNaN(value) ? NaN : value;
       } catch (error) {
         throw new Error(`uSEQ WASM output evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    evaluateOutputsTimeWindow: (outputs, startTime, endTime, numSamples) => {
+      try {
+        const outputsJson = JSON.stringify(outputs);
+        const resultJson = useq_eval_outputs_time_window(
+          outputsJson,
+          Number(startTime) || 0,
+          Number(endTime) || 0,
+          Number(numSamples) || 1
+        );
+
+        const parsed = JSON.parse(resultJson);
+
+        // Check for error response
+        if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+          throw new Error(parsed.error);
+        }
+
+        return parsed;
+      } catch (error) {
+        throw new Error(`uSEQ WASM batch evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   };
@@ -116,4 +139,52 @@ export async function updateUseqWasmTime(timeSeconds) {
 export async function evalOutputAtTime(name, timeSeconds) {
   const runtime = await ensureUseqWasmLoaded();
   return runtime.evaluateOutputAtTime(name, timeSeconds);
+}
+
+/**
+ * Evaluate multiple outputs across a time window
+ * @param {string[]} outputs - Array of output names (e.g., ["a1", "a2", "d1"])
+ * @param {number} startTime - Start time in seconds
+ * @param {number} endTime - End time in seconds
+ * @param {number} numSamples - Number of samples to take
+ * @returns {Promise<Map<string, Array<{time: number, value: number}>>>} Map of output names to time series
+ */
+export async function evalOutputsInTimeWindow(outputs, startTime, endTime, numSamples) {
+  const runtime = await ensureUseqWasmLoaded();
+
+  // Get channel-series data from C++ (object with arrays)
+  // Format: {"a1": [0.5, 0.6, ...], "a2": [0.3, 0.4, ...]}
+  const channelData = runtime.evaluateOutputsTimeWindow(outputs, startTime, endTime, numSamples);
+
+  // Validate channel-series format
+  if (typeof channelData !== 'object' || channelData === null || Array.isArray(channelData)) {
+    throw new Error('Expected channel-indexed object from WASM, got: ' + typeof channelData);
+  }
+
+  // Transform to Map with {time, value} objects for visualisationController
+  // Format: Map { "a1" => [{time: 0, value: 0.5}, {time: 1, value: 0.6}], ... }
+  const result = new Map();
+  const timeStep = numSamples > 1 ? (endTime - startTime) / (numSamples - 1) : 0;
+
+  for (const [outputName, valueArray] of Object.entries(channelData)) {
+    if (!Array.isArray(valueArray)) {
+      dbg(`Warning: Output ${outputName} is not an array, skipping`);
+      continue;
+    }
+
+    // Validate array length matches expected sample count
+    if (valueArray.length !== numSamples) {
+      dbg(`Warning: Output ${outputName} has ${valueArray.length} samples, expected ${numSamples}`);
+    }
+
+    // Convert raw values to {time, value} objects
+    const samples = valueArray.map((value, idx) => ({
+      time: startTime + (idx * timeStep),
+      value: value
+    }));
+
+    result.set(outputName, samples);
+  }
+
+  return result;
 }

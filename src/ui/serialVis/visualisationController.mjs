@@ -1,6 +1,6 @@
 import { dbg } from "../../utils.mjs";
 import { activeUserSettings } from "../../utils/persistentUserSettings.mjs";
-import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime } from "../../io/useqWasmInterpreter.mjs";
+import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../io/useqWasmInterpreter.mjs";
 import { getSerialVisPalette, getSerialVisChannelColor } from "./utils.mjs";
 
 const registeredExpressions = new Map();
@@ -19,7 +19,7 @@ const SAMPLE_EPSILON = 1e-9;
 
 function getDefaults() {
   return {
-    offsetSeconds: 5,
+    windowDuration: 10,  // Total visible window width in seconds (past + future)
     sampleCount: 100,
     lineWidth: 1.5,
     futureDashed: true,
@@ -34,7 +34,7 @@ function getDefaults() {
 function clampSettings(raw) {
   const defaults = getDefaults();
   const safe = { ...defaults, ...(raw || {}) };
-  safe.offsetSeconds = Math.min(10, Math.max(0.5, Number(safe.offsetSeconds) || defaults.offsetSeconds));
+  safe.windowDuration = Math.min(20, Math.max(1, Number(safe.windowDuration) || defaults.windowDuration));
   safe.sampleCount = Math.max(2, Math.min(400, Math.floor(Number(safe.sampleCount) || defaults.sampleCount)));
   safe.lineWidth = Math.min(5, Math.max(0.5, Number(safe.lineWidth) || defaults.lineWidth));
   safe.futureDashed = safe.futureDashed !== false;
@@ -82,12 +82,12 @@ function resetDisplayClock() {
 }
 
 function computeDisplayBounds(settings) {
-  const offset = settings.offsetSeconds;
+  const halfWindow = settings.windowDuration / 2;
   const lead = settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS;
 
   if (!registeredExpressions.size) {
-    const min = currentTimeSeconds - offset;
-    const max = currentTimeSeconds + lead;
+    const min = currentTimeSeconds - halfWindow;
+    const max = currentTimeSeconds + halfWindow;
     return { min, max };
   }
 
@@ -97,15 +97,15 @@ function computeDisplayBounds(settings) {
   for (const expression of registeredExpressions.values()) {
     const samples = expression.samples;
     if (!samples || samples.length === 0) {
-      min = Math.max(min, currentTimeSeconds - offset);
-      max = Math.min(max, currentTimeSeconds + lead);
+      min = Math.max(min, currentTimeSeconds - halfWindow);
+      max = Math.min(max, currentTimeSeconds + halfWindow);
       continue;
     }
 
     const first = samples[0]?.time ?? currentTimeSeconds;
     const last = samples[samples.length - 1]?.time ?? currentTimeSeconds;
-    min = Math.max(min, first + offset);
-    max = Math.min(max, last - offset);
+    min = Math.max(min, first + halfWindow);
+    max = Math.min(max, last - halfWindow);
   }
 
   if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) {
@@ -159,11 +159,11 @@ function getSettings() {
 }
 
 function stepSize(settings) {
-  const { offsetSeconds, sampleCount } = settings;
+  const { windowDuration, sampleCount } = settings;
   if (sampleCount <= 1) {
-    return offsetSeconds * 2;
+    return windowDuration;
   }
-  return (offsetSeconds * 2) / (sampleCount - 1);
+  return windowDuration / (sampleCount - 1);
 }
 
 function notifyStateChanged(kind = "change") {
@@ -243,12 +243,12 @@ function refreshExpressionColorsFromSettings(settings = getSettings()) {
 }
 
 function samplingRangeStart(settings) {
-  return currentTimeSeconds - settings.offsetSeconds;
+  return currentTimeSeconds - (settings.windowDuration / 2);
 }
 
 function samplingRangeEnd(settings) {
   const lead = settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS;
-  return currentTimeSeconds + settings.offsetSeconds + lead;
+  return currentTimeSeconds + (settings.windowDuration / 2) + lead;
 }
 
 function resetSamples(expression, settings) {
@@ -263,7 +263,10 @@ async function sampleExpressionAt(expression, targetTime) {
 }
 
 async function repopulateExpressionSamples(expression, settings) {
+  const start = samplingRangeStart(settings);
+  const end = samplingRangeEnd(settings);
   const step = stepSize(settings);
+
   if (!Number.isFinite(step) || step <= 0) {
     expression.samples = [];
     const end = samplingRangeEnd(settings);
@@ -273,16 +276,32 @@ async function repopulateExpressionSamples(expression, settings) {
     return;
   }
 
-  const start = samplingRangeStart(settings);
-  const end = samplingRangeEnd(settings);
-  expression.samples = [];
+  // Use batch evaluation for efficient sampling
+  const numSamples = settings.sampleCount;
 
-  for (let time = start; time <= end + SAMPLE_EPSILON; time += step) {
-    await sampleExpressionAt(expression, time);
+  try {
+    const batchResults = await evalOutputsInTimeWindow(
+      [expression.exprType],
+      start,
+      end,
+      numSamples
+    );
+
+    // Direct assignment - batch API returns data in correct format
+    expression.samples = batchResults.get(expression.exprType) || [];
+    expression.nextSampleTime = end + step;
+    expression.needsFutureRefresh = false;
+  } catch (error) {
+    dbg(`visualisationController: batch evaluation failed for ${expression.exprType}, falling back to single samples: ${error}`);
+
+    // Fallback to single-sample evaluation if batch fails
+    expression.samples = [];
+    for (let time = start; time <= end + SAMPLE_EPSILON; time += step) {
+      await sampleExpressionAt(expression, time);
+    }
+    expression.nextSampleTime = end + step;
+    expression.needsFutureRefresh = false;
   }
-
-  expression.nextSampleTime = end + step;
-  expression.needsFutureRefresh = false;
 }
 
 async function initialiseSamples(expression, settings) {
@@ -457,12 +476,38 @@ async function advanceExpressionSamples(expression, settings, maxTime) {
   let nextTime = expression.nextSampleTime ?? futureTarget;
   nextTime = Math.max(nextTime, lastSampleTime + step);
 
-  while (nextTime <= futureTarget + SAMPLE_EPSILON) {
-    await sampleExpressionAt(expression, nextTime);
-    nextTime += step;
+  // Calculate how many new samples we need
+  const numNewSamples = Math.floor((futureTarget - nextTime) / step) + 1;
+
+  if (numNewSamples <= 0) {
+    expression.nextSampleTime = nextTime;
+    return;
   }
 
-  expression.nextSampleTime = nextTime;
+  try {
+    // Use batch evaluation for efficient future sampling
+    const endTime = nextTime + (numNewSamples - 1) * step;
+    const batchResults = await evalOutputsInTimeWindow(
+      [expression.exprType],
+      nextTime,
+      endTime,
+      numNewSamples
+    );
+
+    // Append new samples to existing ones
+    const newSamples = batchResults.get(expression.exprType) || [];
+    expression.samples.push(...newSamples);
+    expression.nextSampleTime = endTime + step;
+  } catch (error) {
+    dbg(`visualisationController: batch advance failed for ${expression.exprType}, falling back to single samples: ${error}`);
+
+    // Fallback to single-sample evaluation
+    while (nextTime <= futureTarget + SAMPLE_EPSILON) {
+      await sampleExpressionAt(expression, nextTime);
+      nextTime += step;
+    }
+    expression.nextSampleTime = nextTime;
+  }
 }
 
 export async function handleExternalTimeUpdate(timeSeconds) {
@@ -486,7 +531,7 @@ export async function handleExternalTimeUpdate(timeSeconds) {
   const settings = getSettings();
   const step = stepSize(settings);
   const minTime = samplingRangeStart(settings);
-  const maxTime = numericTime + settings.offsetSeconds;
+  const maxTime = numericTime + (settings.windowDuration / 2);
 
   for (const expression of registeredExpressions.values()) {
     pruneSamples(expression, minTime - step);

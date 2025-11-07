@@ -6,6 +6,95 @@ import { startWebSocketServer, stopWebSocketServer } from '../io/websocketServer
 import { showModal } from '../ui/modal.mjs';
 import { initializeMockControls } from '../io/mockControlInputs.mjs';
 import { startMockTimeGenerator } from '../io/mockTimeGenerator.mjs';
+import { registerVisualisation } from '../ui/serialVis/visualisationController.mjs';
+import { toggleSerialVis } from '../editors/editorConfig.mjs';
+
+const DEFAULT_NO_MODULE_EXPRESSIONS = [
+  { exprType: 'a1', code: '(a1 bar)' },
+  { exprType: 'a2', code: '(a2 (slow 2 bar))' }
+];
+
+function ensureSerialVisPanelVisibleForNoModule() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return;
+  }
+
+  const panel = document.getElementById('panel-vis');
+  if (!panel) {
+    return;
+  }
+
+  const computed = window.getComputedStyle(panel);
+  const hidden = panel.hidden || computed.display === 'none' || computed.visibility === 'hidden';
+  if (!hidden) {
+    return;
+  }
+
+  let panelShown = false;
+
+  try {
+    panelShown = Boolean(toggleSerialVis());
+  } catch (error) {
+    console.warn('Failed to toggle serial visualisation panel automatically via helper:', error);
+  }
+
+  if (!panelShown) {
+    panel.hidden = false;
+    panel.style.display = 'block';
+    panel.style.visibility = 'visible';
+    panel.style.opacity = '0.7';
+    panel.style.pointerEvents = 'none';
+
+    const canvas = document.getElementById('serialcanvas');
+    if (canvas) {
+      canvas.style.display = 'block';
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      canvas.style.position = 'absolute';
+      canvas.style.top = '0';
+      canvas.style.left = '0';
+      canvas.style.pointerEvents = 'none';
+
+      try {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      } catch (dimensionError) {
+        console.warn('Failed to resize serial visualisation canvas during fallback:', dimensionError);
+      }
+    }
+
+    panelShown = true;
+  }
+
+  if (panelShown && typeof window.dispatchEvent === 'function') {
+    const CustomEventCtor = window.CustomEvent || globalThis?.CustomEvent;
+    if (typeof CustomEventCtor === 'function') {
+      try {
+        window.dispatchEvent(new CustomEventCtor('useq-serialvis-auto-open', { detail: { source: 'no-module-startup' } }));
+      } catch (dispatchError) {
+        console.warn('Failed to dispatch serial visualisation auto-open event:', dispatchError);
+      }
+    }
+  }
+}
+
+async function activateNoModuleExpression({ exprType, code }) {
+  try {
+    await registerVisualisation(exprType, code);
+    post(`uSEQ: ${code}`);
+  } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const safeMessage = rawMessage.replace(/`/g, '\\`');
+    post(`**Error**: Failed to evaluate ${code}: ${safeMessage}`);
+    console.warn(`No-module startup expression failed for ${exprType}`, error);
+  }
+}
+
+async function activateDefaultNoModuleExpressions() {
+  for (const expression of DEFAULT_NO_MODULE_EXPRESSIONS) {
+    await activateNoModuleExpression(expression);
+  }
+}
 
 export function createApp(appUI, environmentState) {
   const app = {
@@ -63,6 +152,9 @@ export function createApp(appUI, environmentState) {
           }
 
           post('uSEQ: mock module connected.');
+
+          ensureSerialVisPanelVisibleForNoModule();
+          await activateDefaultNoModuleExpressions();
         } catch (error) {
           post('**Error**: Failed to initialise the in-browser interpreter.');
         }

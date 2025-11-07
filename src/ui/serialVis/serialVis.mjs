@@ -38,8 +38,7 @@ function drawSerialVis() {
   const currentTime = Number.isFinite(displayTime) ? displayTime : rawTime;
   const { lineWidth = 1.5, digitalLaneGap: rawDigitalGap = 4 } = settings;
   const futureLineAlpha = settings.futureDashed === false ? 0.85 : 0.6;
-  const offset = settings.offsetSeconds || 0.5;
-  const totalWindow = offset * 2;
+  const totalWindow = settings.windowDuration || 1;
   const hasExpressions = expressions.size > 0;
 
   // Enable antialiasing for smoother lines
@@ -127,8 +126,9 @@ function drawSerialVis() {
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
 
-  const startTime = currentTime - offset;
-  const endTime = currentTime + offset;
+  const halfWindow = totalWindow / 2;
+  const startTime = currentTime - halfWindow;
+  const endTime = currentTime + halfWindow;
 
   // Draw each registered expression
   for (const expression of expressions.values()) {
@@ -166,7 +166,7 @@ function drawSerialVis() {
         1,
         lineWidth,
         currentTime,
-        offset,
+        halfWindow,
         totalWindow,
         c.width,
         mapValueToY,
@@ -187,7 +187,7 @@ function drawSerialVis() {
         futureLineAlpha,
         lineWidth,
         currentTime,
-        offset,
+        halfWindow,
         totalWindow,
         c.width,
         mapValueToY,
@@ -222,8 +222,8 @@ function findLastPastIndex(samples, currentTime, startIndex, endIndex) {
   return result;
 }
 
-function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineWidth, currentTime, offset, totalWindow, canvasWidth, mapValueToY, dashPattern = [], options = {}) {
-  const points = buildSegmentPoints(samples, startIndex, endIndex, currentTime, offset, totalWindow, canvasWidth, mapValueToY, options);
+function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineWidth, currentTime, halfWindow, totalWindow, canvasWidth, mapValueToY, dashPattern = [], options = {}) {
+  const points = buildSegmentPoints(samples, startIndex, endIndex, currentTime, halfWindow, totalWindow, canvasWidth, mapValueToY, options);
   if (!points || points.length < 2) {
     return null;
   }
@@ -249,13 +249,13 @@ function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineW
   return points;
 }
 
-function buildSegmentPoints(samples, startIndex, endIndex, currentTime, offset, totalWindow, canvasWidth, mapValueToY, options = {}) {
+function buildSegmentPoints(samples, startIndex, endIndex, currentTime, halfWindow, totalWindow, canvasWidth, mapValueToY, options = {}) {
   if (!samples || endIndex - startIndex < 2) {
     return null;
   }
 
   const points = [];
-  const windowStart = currentTime - offset;
+  const windowStart = currentTime - halfWindow;
   const useStepMode = options?.stepMode === true;
   let previousPoint = null;
 

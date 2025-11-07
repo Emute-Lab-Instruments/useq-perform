@@ -40,11 +40,6 @@ async function tick() {
   const elapsedMs = nowMs - startTimeMs;
   currentMockTime = elapsedMs / 1000; // Convert to seconds
 
-  // Log first tick and every 60 ticks (~1 second)
-  if (tickCount === 1 || tickCount % 60 === 0) {
-    console.log(`Mock time generator: tick #${tickCount}, t=${currentMockTime.toFixed(3)}s`);
-  }
-
   try {
     await handleExternalTimeUpdate(currentMockTime);
   } catch (error) {
