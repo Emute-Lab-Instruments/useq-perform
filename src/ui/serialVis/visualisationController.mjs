@@ -11,11 +11,85 @@ let settingsCache = null;
 let pendingRegistration = new Map();
 let displayTimeSeconds = 0;
 let lastDisplayUpdateMs = null;
+let fullRebuildPromise = null;
+
+const CODE_EVALUATED_EVENT = "useq-code-evaluated";
 
 const DEFAULT_FUTURE_LEAD_SECONDS = 1;
 const MAX_FUTURE_LEAD_SECONDS = 8;
 const DISPLAY_RATE_SECONDS_PER_SECOND = 1;
 const SAMPLE_EPSILON = 1e-9;
+
+function sampleStep(settings) {
+  const windowDuration = Number.isFinite(settings.windowDuration) ? settings.windowDuration : 0;
+  const sampleCount = Number.isFinite(settings.sampleCount) ? settings.sampleCount : 0;
+  if (sampleCount <= 1) {
+    return windowDuration;
+  }
+  if (windowDuration <= 0) {
+    return 0;
+  }
+  return windowDuration / (sampleCount - 1);
+}
+
+function quantizeToStep(value, step) {
+  if (!Number.isFinite(step) || step <= 0) {
+    return value;
+  }
+  return Math.round(value / step) * step;
+}
+
+function ensureGridAlignment(expression, settings, { forceReset = false } = {}) {
+  const step = sampleStep(settings);
+  const stepDiffers = !Number.isFinite(expression.gridStep) || Math.abs(expression.gridStep - step) > SAMPLE_EPSILON;
+  const needsReset = forceReset || stepDiffers || expression.gridSampleCount !== settings.sampleCount || expression.gridWindowDuration !== settings.windowDuration;
+
+  if (needsReset) {
+    const halfWindow = settings.windowDuration / 2;
+    const referenceTime = Number.isFinite(currentTimeSeconds) ? currentTimeSeconds : 0;
+    const centre = quantizeToStep(referenceTime, step);
+    const start = Number.isFinite(centre) ? centre - halfWindow : -halfWindow;
+    expression.gridStart = start;
+    expression.gridStep = step;
+    expression.gridSampleCount = settings.sampleCount;
+    expression.gridWindowDuration = settings.windowDuration;
+    expression.samples = [];
+    expression.nextSampleTime = start;
+  } else if (!Array.isArray(expression.samples)) {
+    expression.samples = [];
+  }
+
+  expression.gridFutureLead = settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS;
+  return needsReset;
+}
+
+function totalSamplesForSettings(expression, settings) {
+  const baseCount = Math.max(1, settings.sampleCount);
+  const step = Number.isFinite(expression.gridStep) ? expression.gridStep : sampleStep(settings);
+  if (!Number.isFinite(step) || step <= SAMPLE_EPSILON) {
+    return baseCount;
+  }
+  const lead = settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS;
+  const extra = lead > SAMPLE_EPSILON ? Math.ceil(lead / step) : 0;
+  return baseCount + extra;
+}
+
+function finalizeSamplingState(expression, settings) {
+  const step = Number.isFinite(expression.gridStep) ? expression.gridStep : sampleStep(settings);
+  if (expression.samples.length > 0) {
+    expression.gridStart = expression.samples[0].time;
+    const lastTime = expression.samples[expression.samples.length - 1].time;
+    expression.nextSampleTime = Number.isFinite(step) ? lastTime + step : lastTime;
+  } else {
+    expression.nextSampleTime = expression.gridStart;
+  }
+
+  if (!Number.isFinite(expression.nextSampleTime)) {
+    expression.nextSampleTime = Number.POSITIVE_INFINITY;
+  }
+
+  expression.needsFutureRefresh = false;
+}
 
 function getDefaults() {
   return {
@@ -158,18 +232,12 @@ function getSettings() {
   return settingsCache;
 }
 
-function stepSize(settings) {
-  const { windowDuration, sampleCount } = settings;
-  if (sampleCount <= 1) {
-    return windowDuration;
-  }
-  return windowDuration / (sampleCount - 1);
-}
-
 function notifyStateChanged(kind = "change") {
   try {
     const settings = getSettings();
     const displayTime = updateDisplayClock(settings);
+    const summary = Array.from(registeredExpressions.values()).map((expr) => `${expr.exprType}:${expr.samples?.length ?? 0}`);
+    dbg(`visualisationController: state change (${kind}), expressions=${summary.join(', ')}`);
     window.dispatchEvent(
       new CustomEvent('useq-visualisation-changed', {
         detail: {
@@ -242,71 +310,97 @@ function refreshExpressionColorsFromSettings(settings = getSettings()) {
   }
 }
 
-function samplingRangeStart(settings) {
-  return currentTimeSeconds - (settings.windowDuration / 2);
-}
-
-function samplingRangeEnd(settings) {
-  const lead = settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS;
-  return currentTimeSeconds + (settings.windowDuration / 2) + lead;
-}
-
-function resetSamples(expression, settings) {
-  expression.samples = [];
-  expression.nextSampleTime = samplingRangeStart(settings);
-  expression.needsFutureRefresh = false;
-}
-
 async function sampleExpressionAt(expression, targetTime) {
   const value = await evalOutputAtTime(expression.exprType, targetTime);
-  expression.samples.push({ time: targetTime, value });
+  return { time: targetTime, value };
 }
 
-async function repopulateExpressionSamples(expression, settings) {
-  const start = samplingRangeStart(settings);
-  const end = samplingRangeEnd(settings);
-  const step = stepSize(settings);
+async function rebuildSamples(expression, settings, totalSamples) {
+  const step = Number.isFinite(expression.gridStep) ? expression.gridStep : sampleStep(settings);
+  const start = expression.gridStart;
+  const end = totalSamples > 1 ? start + step * (totalSamples - 1) : start;
 
-  if (!Number.isFinite(step) || step <= 0) {
+  if (totalSamples <= 0) {
     expression.samples = [];
-    const end = samplingRangeEnd(settings);
-    await sampleExpressionAt(expression, end);
-    expression.nextSampleTime = end + step;
-    expression.needsFutureRefresh = false;
     return;
   }
-
-  // Use batch evaluation for efficient sampling
-  const numSamples = settings.sampleCount;
 
   try {
     const batchResults = await evalOutputsInTimeWindow(
       [expression.exprType],
       start,
       end,
-      numSamples
+      totalSamples
     );
-
-    // Direct assignment - batch API returns data in correct format
-    expression.samples = batchResults.get(expression.exprType) || [];
-    expression.nextSampleTime = end + step;
-    expression.needsFutureRefresh = false;
+    const samples = batchResults.get(expression.exprType) || [];
+    dbg(`visualisationController: rebuild ${expression.exprType} received ${samples.length} samples`);
+    expression.samples = samples;
   } catch (error) {
-    dbg(`visualisationController: batch evaluation failed for ${expression.exprType}, falling back to single samples: ${error}`);
-
-    // Fallback to single-sample evaluation if batch fails
-    expression.samples = [];
-    for (let time = start; time <= end + SAMPLE_EPSILON; time += step) {
-      await sampleExpressionAt(expression, time);
+    dbg(`visualisationController: batch rebuild failed for ${expression.exprType}, falling back to single sampling: ${error}`);
+    const samples = [];
+    if (totalSamples === 1) {
+      samples.push(await sampleExpressionAt(expression, start));
+    } else {
+      for (let i = 0; i < totalSamples; i++) {
+        const time = start + step * i;
+        samples.push(await sampleExpressionAt(expression, time));
+      }
     }
-    expression.nextSampleTime = end + step;
-    expression.needsFutureRefresh = false;
+    expression.samples = samples;
   }
 }
 
+async function resampleExistingSamples(expression, settings) {
+  const count = expression.samples.length;
+  if (count === 0) {
+    return;
+  }
+
+  const start = expression.samples[0].time;
+  const end = expression.samples[count - 1].time;
+
+  try {
+    const batchResults = await evalOutputsInTimeWindow(
+      [expression.exprType],
+      start,
+      end,
+      count
+    );
+    const newSamples = batchResults.get(expression.exprType) || [];
+    if (newSamples.length === count) {
+      expression.samples = newSamples;
+      return;
+    }
+    dbg(`visualisationController: expected ${count} samples but received ${newSamples.length} for ${expression.exprType}; falling back to per-sample evaluation.`);
+  } catch (error) {
+    dbg(`visualisationController: batch refresh failed for ${expression.exprType}, falling back to single sampling: ${error}`);
+  }
+
+  const refreshed = [];
+  for (const sample of expression.samples) {
+    const value = await evalOutputAtTime(expression.exprType, sample.time);
+    refreshed.push({ time: sample.time, value });
+  }
+  expression.samples = refreshed;
+}
+
+async function repopulateExpressionSamples(expression, settings, options = {}) {
+  const { forceRebuild = false } = options;
+  const totalSamples = totalSamplesForSettings(expression, settings);
+  const needsRebuild = forceRebuild || expression.samples.length !== totalSamples || expression.samples.length === 0;
+
+  if (needsRebuild) {
+    await rebuildSamples(expression, settings, totalSamples);
+  } else {
+    await resampleExistingSamples(expression, settings);
+  }
+
+  finalizeSamplingState(expression, settings);
+}
+
 async function initialiseSamples(expression, settings) {
-  resetSamples(expression, settings);
-  await repopulateExpressionSamples(expression, settings);
+  ensureGridAlignment(expression, settings, { forceReset: true });
+  await repopulateExpressionSamples(expression, settings, { forceRebuild: true });
 }
 
 async function ensureRegistered(exprType, expressionText, settings) {
@@ -314,7 +408,8 @@ async function ensureRegistered(exprType, expressionText, settings) {
   if (existing) {
     existing.expressionText = expressionText;
     existing.color = resolveColor(exprType);
-    await initialiseSamples(existing, settings);
+    const gridReset = ensureGridAlignment(existing, settings);
+    await repopulateExpressionSamples(existing, settings, { forceRebuild: gridReset });
     return existing;
   }
 
@@ -325,9 +420,15 @@ async function ensureRegistered(exprType, expressionText, settings) {
     color: resolveColor(exprType),
     nextSampleTime: 0,
     needsFutureRefresh: false,
+    gridStart: 0,
+    gridStep: sampleStep(settings),
+    gridSampleCount: settings.sampleCount,
+    gridWindowDuration: settings.windowDuration,
+    gridFutureLead: settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS,
   };
   registeredExpressions.set(exprType, entry);
-  await initialiseSamples(entry, settings);
+  ensureGridAlignment(entry, settings, { forceReset: true });
+  await repopulateExpressionSamples(entry, settings, { forceRebuild: true });
   return entry;
 }
 
@@ -351,6 +452,7 @@ export async function refreshVisualisedExpression(exprType, expressionText) {
   }
 
   const settings = getSettings();
+  ensureGridAlignment(entry, settings);
   await repopulateExpressionSamples(entry, settings);
   notifyStateChanged('update');
 }
@@ -383,27 +485,74 @@ export function getVisualisedExpressionText(exprType) {
   return registeredExpressions.get(exprType)?.expressionText ?? null;
 }
 
-export function notifyExpressionEvaluated(exprType = null) {
+function markExpressionsForRefresh(targetExprType = null) {
   if (registeredExpressions.size === 0) {
     return;
   }
 
-  if (exprType && registeredExpressions.has(exprType)) {
-    registeredExpressions.get(exprType).needsFutureRefresh = true;
-  }
-
-  if (!exprType) {
+  if (!targetExprType) {
     for (const expression of registeredExpressions.values()) {
       expression.needsFutureRefresh = true;
     }
     return;
   }
 
+  const target = registeredExpressions.get(targetExprType);
+  if (target) {
+    target.needsFutureRefresh = true;
+  }
+
   for (const expression of registeredExpressions.values()) {
-    if (expression.exprType !== exprType) {
+    if (expression.exprType !== targetExprType) {
       expression.needsFutureRefresh = true;
     }
   }
+}
+
+function scheduleFullRebuild(reason = "data") {
+  if (fullRebuildPromise) {
+    return fullRebuildPromise;
+  }
+
+  const expressions = Array.from(registeredExpressions.values());
+  if (expressions.length === 0) {
+    return Promise.resolve();
+  }
+
+  const settings = getSettings();
+
+  fullRebuildPromise = (async () => {
+    for (const expression of expressions) {
+      if (!registeredExpressions.has(expression.exprType)) {
+        continue;
+      }
+
+      try {
+        await repopulateExpressionSamples(expression, settings, { forceRebuild: true });
+      } catch (error) {
+        dbg(`visualisationController: failed to rebuild ${expression.exprType} after evaluation: ${error}`);
+      }
+    }
+
+    notifyStateChanged(reason);
+  })()
+    .catch((error) => {
+      dbg(`visualisationController: unhandled error during serialVis rebuild: ${error}`);
+    })
+    .finally(() => {
+      fullRebuildPromise = null;
+    });
+
+  return fullRebuildPromise;
+}
+
+export function notifyExpressionEvaluated(exprType = null) {
+  if (registeredExpressions.size === 0) {
+    return;
+  }
+
+  markExpressionsForRefresh(exprType);
+  scheduleFullRebuild();
 }
 
 export async function registerVisualisation(exprType, expressionText) {
@@ -455,38 +604,61 @@ export async function toggleVisualisation(exprType, expressionText) {
   await registerVisualisation(exprType, expressionText);
 }
 
-function pruneSamples(expression, minTime) {
-  expression.samples = expression.samples.filter((sample) => sample.time >= minTime);
+function pruneSamples(expression, minTime, settings) {
+  if (!expression.samples.length) {
+    expression.gridStart = Number.isFinite(minTime) ? minTime : expression.gridStart;
+    return;
+  }
+
+  let removeCount = 0;
+  while (removeCount < expression.samples.length && expression.samples[removeCount].time < minTime) {
+    removeCount++;
+  }
+
+  if (removeCount > 0) {
+    expression.samples.splice(0, removeCount);
+  }
+
+  if (expression.samples.length) {
+    expression.gridStart = expression.samples[0].time;
+  } else {
+    const step = Number.isFinite(expression.gridStep) ? expression.gridStep : sampleStep(settings);
+    expression.gridStart = Number.isFinite(minTime) ? minTime : expression.gridStart;
+    expression.nextSampleTime = Number.isFinite(step) ? expression.gridStart + step : expression.gridStart;
+  }
 }
 
 async function advanceExpressionSamples(expression, settings, maxTime) {
-  const step = stepSize(settings);
-  if (!Number.isFinite(step) || step <= 0) {
-    expression.samples = [];
-    await sampleExpressionAt(expression, maxTime);
-    expression.nextSampleTime = maxTime + step;
+  const step = Number.isFinite(expression.gridStep) ? expression.gridStep : sampleStep(settings);
+  if (!Number.isFinite(step) || step <= SAMPLE_EPSILON) {
+    expression.nextSampleTime = Number.POSITIVE_INFINITY;
     return;
   }
 
   const futureTarget = maxTime + (settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS);
   const lastSampleTime = expression.samples.length > 0
     ? expression.samples[expression.samples.length - 1].time
-    : samplingRangeStart(settings) - step;
+    : expression.gridStart - step;
 
-  let nextTime = expression.nextSampleTime ?? futureTarget;
+  let nextTime = Number.isFinite(expression.nextSampleTime)
+    ? expression.nextSampleTime
+    : lastSampleTime + step;
   nextTime = Math.max(nextTime, lastSampleTime + step);
 
-  // Calculate how many new samples we need
-  const numNewSamples = Math.floor((futureTarget - nextTime) / step) + 1;
+  if (nextTime > futureTarget + SAMPLE_EPSILON) {
+    expression.nextSampleTime = nextTime;
+    return;
+  }
 
+  const numNewSamples = Math.floor((futureTarget - nextTime) / step) + 1;
   if (numNewSamples <= 0) {
     expression.nextSampleTime = nextTime;
     return;
   }
 
+  const endTime = nextTime + step * (numNewSamples - 1);
+
   try {
-    // Use batch evaluation for efficient future sampling
-    const endTime = nextTime + (numNewSamples - 1) * step;
     const batchResults = await evalOutputsInTimeWindow(
       [expression.exprType],
       nextTime,
@@ -494,20 +666,18 @@ async function advanceExpressionSamples(expression, settings, maxTime) {
       numNewSamples
     );
 
-    // Append new samples to existing ones
     const newSamples = batchResults.get(expression.exprType) || [];
     expression.samples.push(...newSamples);
-    expression.nextSampleTime = endTime + step;
   } catch (error) {
     dbg(`visualisationController: batch advance failed for ${expression.exprType}, falling back to single samples: ${error}`);
 
-    // Fallback to single-sample evaluation
-    while (nextTime <= futureTarget + SAMPLE_EPSILON) {
-      await sampleExpressionAt(expression, nextTime);
-      nextTime += step;
+    for (let i = 0; i < numNewSamples; i++) {
+      const time = nextTime + step * i;
+      expression.samples.push(await sampleExpressionAt(expression, time));
     }
-    expression.nextSampleTime = nextTime;
   }
+
+  expression.nextSampleTime = endTime + step;
 }
 
 export async function handleExternalTimeUpdate(timeSeconds) {
@@ -529,12 +699,13 @@ export async function handleExternalTimeUpdate(timeSeconds) {
   }
 
   const settings = getSettings();
-  const step = stepSize(settings);
-  const minTime = samplingRangeStart(settings);
-  const maxTime = numericTime + (settings.windowDuration / 2);
+  const step = sampleStep(settings);
+  const halfWindow = settings.windowDuration / 2;
+  const minTime = numericTime - halfWindow;
+  const maxTime = numericTime + halfWindow;
 
   for (const expression of registeredExpressions.values()) {
-    pruneSamples(expression, minTime - step);
+    pruneSamples(expression, minTime - step, settings);
     try {
       if (expression.needsFutureRefresh) {
         await repopulateExpressionSamples(expression, settings);
@@ -582,6 +753,11 @@ window.addEventListener('useq-settings-changed', () => {
 });
 
 if (typeof window !== 'undefined') {
+  window.addEventListener(CODE_EVALUATED_EVENT, () => {
+    markExpressionsForRefresh();
+    scheduleFullRebuild();
+  });
+
   window.addEventListener('useq-serialvis-palette-changed', () => {
     refreshExpressionColorsFromSettings();
     notifyStateChanged('palette');

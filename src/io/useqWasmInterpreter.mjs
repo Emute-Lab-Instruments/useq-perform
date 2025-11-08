@@ -3,6 +3,194 @@ import { dbg } from "../utils.mjs";
 const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise = null;
 let runtimePromise = null;
+const CODE_EVALUATED_EVENT = "useq-code-evaluated";
+
+function tryCwrap(module, symbol, returnType, argTypes) {
+  try {
+    return module.cwrap(symbol, returnType, argTypes);
+  } catch (error) {
+    dbg(`useqWasmInterpreter: ${symbol} is not exported (${error instanceof Error ? error.message : String(error)})`);
+    return null;
+  }
+}
+
+function clampSampleCount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1) {
+    return 1;
+  }
+  return Math.max(1, Math.floor(numeric));
+}
+
+function buildSampleSeries(outputs, startTime, endTime, sampleCount, readValue) {
+  const result = new Map();
+  if (!Array.isArray(outputs) || outputs.length === 0 || sampleCount < 1) {
+    return result;
+  }
+
+  const step = sampleCount > 1 ? (endTime - startTime) / (sampleCount - 1) : 0;
+
+  for (let channelIndex = 0; channelIndex < outputs.length; channelIndex++) {
+    const channelName = outputs[channelIndex];
+    if (typeof channelName !== "string" || !channelName) {
+      continue;
+    }
+
+    const samples = new Array(sampleCount);
+    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+      const time = startTime + sampleIndex * step;
+      const value = readValue(channelIndex, sampleIndex);
+      samples[sampleIndex] = { time, value };
+    }
+    result.set(channelName, samples);
+  }
+
+  return result;
+}
+
+function createBatchEvaluator(module) {
+  const legacyEval = module.cwrap("useq_eval_outputs_time_window", "string", ["string", "number", "number", "number"]);
+  const typedEval = tryCwrap(module, "useq_eval_outputs_time_window_into", "number", ["string", "number", "number", "number", "number", "number"]);
+  const readLastError = typedEval ? module.cwrap("useq_last_error", "string", []) : null;
+
+  const bufferState = {
+    pointer: 0,
+    capacity: 0,
+    view: null,
+    heapBuffer: null,
+  };
+
+  const ensureCapacity = (requiredLength) => {
+    const currentHeapBuffer = module.HEAPF64?.buffer ?? null;
+
+    if (bufferState.pointer && requiredLength <= bufferState.capacity) {
+      if (bufferState.view && bufferState.heapBuffer === currentHeapBuffer) {
+        return bufferState;
+      }
+
+      const start = bufferState.pointer / Float64Array.BYTES_PER_ELEMENT;
+      bufferState.view = module.HEAPF64.subarray(start, start + bufferState.capacity);
+      bufferState.heapBuffer = currentHeapBuffer;
+      return bufferState;
+    }
+
+    if (bufferState.pointer) {
+      module._free(bufferState.pointer);
+      bufferState.pointer = 0;
+      bufferState.capacity = 0;
+      bufferState.view = null;
+      bufferState.heapBuffer = null;
+    }
+
+    if (requiredLength === 0) {
+      return bufferState;
+    }
+
+    const bytes = requiredLength * Float64Array.BYTES_PER_ELEMENT;
+    const pointer = module._malloc(bytes);
+    if (!pointer) {
+      throw new Error("Failed to allocate uSEQ batch buffer");
+    }
+
+    bufferState.pointer = pointer;
+    bufferState.capacity = requiredLength;
+    const start = pointer / Float64Array.BYTES_PER_ELEMENT;
+    bufferState.view = module.HEAPF64.subarray(start, start + requiredLength);
+    bufferState.heapBuffer = module.HEAPF64?.buffer ?? null;
+    return bufferState;
+  };
+
+  const release = () => {
+    if (bufferState.pointer) {
+      module._free(bufferState.pointer);
+      bufferState.pointer = 0;
+      bufferState.capacity = 0;
+      bufferState.view = null;
+      bufferState.heapBuffer = null;
+    }
+  };
+
+  const evaluateTyped = (outputsArray, outputsJson, start, end, sampleCount) => {
+    if (!typedEval) {
+      throw new Error("Typed batch evaluation is unavailable");
+    }
+
+    if (outputsArray.length === 0) {
+      return new Map();
+    }
+
+    const totalEntries = outputsArray.length * sampleCount;
+    const { pointer, view } = ensureCapacity(totalEntries);
+    if (!view || view.length < totalEntries) {
+      throw new Error("uSEQ WASM buffer view is unavailable");
+    }
+    const status = typedEval(outputsJson, start, end, sampleCount, pointer, totalEntries);
+    if (status < 0) {
+      const message = typeof readLastError === "function" ? readLastError() : "uSEQ WASM batch evaluation failed";
+      throw new Error(message || "uSEQ WASM batch evaluation failed");
+    }
+
+    dbg(`useqWasmInterpreter: typed batch returned status ${status} for ${outputsArray.length} channels x ${sampleCount} samples`);
+
+    const validChannels = Math.min(outputsArray.length, Math.max(status, 0));
+    return buildSampleSeries(outputsArray, start, end, sampleCount, (channelIndex, sampleIndex) => {
+      if (!view || channelIndex >= validChannels) {
+        return Number.NaN;
+      }
+      const valueIndex = channelIndex * sampleCount + sampleIndex;
+      if (valueIndex < 0 || valueIndex >= view.length) {
+        return Number.NaN;
+      }
+      return view[valueIndex];
+    });
+  };
+
+  const evaluateLegacy = (outputsArray, outputsJson, start, end, sampleCount) => {
+    const resultJson = legacyEval(outputsJson, start, end, sampleCount);
+    const parsed = JSON.parse(resultJson);
+
+    if (parsed && typeof parsed === "object" && Object.prototype.hasOwnProperty.call(parsed, "error")) {
+      throw new Error(parsed.error);
+    }
+
+    const channelNames = Object.keys(parsed || {});
+    return buildSampleSeries(channelNames, start, end, sampleCount, (channelIndex, sampleIndex) => {
+      const values = parsed?.[channelNames[channelIndex]];
+      if (!Array.isArray(values) || sampleIndex >= values.length) {
+        return Number.NaN;
+      }
+      return values[sampleIndex];
+    });
+  };
+
+  const evaluate = (outputs, startTime, endTime, numSamples) => {
+    const outputsArray = Array.isArray(outputs) ? Array.from(outputs) : [];
+    const outputsJson = JSON.stringify(outputsArray);
+    const start = Number(startTime) || 0;
+    const end = Number(endTime) || 0;
+    const sampleCount = clampSampleCount(numSamples);
+
+    if (!typedEval) {
+      return evaluateLegacy(outputsArray, outputsJson, start, end, sampleCount);
+    }
+
+    try {
+      return evaluateTyped(outputsArray, outputsJson, start, end, sampleCount);
+    } catch (error) {
+      if (!legacyEval) {
+        throw error;
+      }
+
+      dbg(`useqWasmInterpreter: typed batch evaluation failed (${error instanceof Error ? error.message : String(error)}); falling back to JSON bridge`);
+      return evaluateLegacy(outputsArray, outputsJson, start, end, sampleCount);
+    }
+  };
+
+  return {
+    evaluate,
+    release,
+  };
+}
 
 function loadWasmScript() {
   if (typeof window === "undefined") {
@@ -60,7 +248,7 @@ async function instantiateInterpreter() {
   const useq_eval = module.cwrap("useq_eval", "string", ["string"]);
   const useq_update_time = module.cwrap("useq_update_time", null, ["number"]);
   const useq_eval_output = module.cwrap("useq_eval_output", "number", ["string", "number"]);
-  const useq_eval_outputs_time_window = module.cwrap("useq_eval_outputs_time_window", "string", ["string", "number", "number", "number"]);
+  const batchEvaluator = createBatchEvaluator(module);
 
   useq_init();
   dbg("uSEQ WASM interpreter initialised");
@@ -91,25 +279,13 @@ async function instantiateInterpreter() {
     },
     evaluateOutputsTimeWindow: (outputs, startTime, endTime, numSamples) => {
       try {
-        const outputsJson = JSON.stringify(outputs);
-        const resultJson = useq_eval_outputs_time_window(
-          outputsJson,
-          Number(startTime) || 0,
-          Number(endTime) || 0,
-          Number(numSamples) || 1
-        );
-
-        const parsed = JSON.parse(resultJson);
-
-        // Check for error response
-        if (parsed && typeof parsed === 'object' && 'error' in parsed) {
-          throw new Error(parsed.error);
-        }
-
-        return parsed;
+        return batchEvaluator.evaluate(outputs, startTime, endTime, numSamples);
       } catch (error) {
         throw new Error(`uSEQ WASM batch evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
       }
+    },
+    release: () => {
+      batchEvaluator.release();
     }
   };
 }
@@ -128,7 +304,17 @@ export function ensureUseqWasmLoaded() {
 
 export async function evalInUseqWasm(code) {
   const runtime = await ensureUseqWasmLoaded();
-  return runtime.evaluate(code);
+  const result = runtime.evaluate(code);
+
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    try {
+      window.dispatchEvent(new CustomEvent(CODE_EVALUATED_EVENT, { detail: { code } }));
+    } catch (error) {
+      dbg(`useqWasmInterpreter: failed to dispatch ${CODE_EVALUATED_EVENT} event: ${error}`);
+    }
+  }
+
+  return result;
 }
 
 export async function updateUseqWasmTime(timeSeconds) {
@@ -151,40 +337,9 @@ export async function evalOutputAtTime(name, timeSeconds) {
  */
 export async function evalOutputsInTimeWindow(outputs, startTime, endTime, numSamples) {
   const runtime = await ensureUseqWasmLoaded();
-
-  // Get channel-series data from C++ (object with arrays)
-  // Format: {"a1": [0.5, 0.6, ...], "a2": [0.3, 0.4, ...]}
-  const channelData = runtime.evaluateOutputsTimeWindow(outputs, startTime, endTime, numSamples);
-
-  // Validate channel-series format
-  if (typeof channelData !== 'object' || channelData === null || Array.isArray(channelData)) {
-    throw new Error('Expected channel-indexed object from WASM, got: ' + typeof channelData);
+  const sampleMap = runtime.evaluateOutputsTimeWindow(outputs, startTime, endTime, numSamples);
+  if (!(sampleMap instanceof Map)) {
+    throw new Error("uSEQ WASM batch evaluation returned unexpected data");
   }
-
-  // Transform to Map with {time, value} objects for visualisationController
-  // Format: Map { "a1" => [{time: 0, value: 0.5}, {time: 1, value: 0.6}], ... }
-  const result = new Map();
-  const timeStep = numSamples > 1 ? (endTime - startTime) / (numSamples - 1) : 0;
-
-  for (const [outputName, valueArray] of Object.entries(channelData)) {
-    if (!Array.isArray(valueArray)) {
-      dbg(`Warning: Output ${outputName} is not an array, skipping`);
-      continue;
-    }
-
-    // Validate array length matches expected sample count
-    if (valueArray.length !== numSamples) {
-      dbg(`Warning: Output ${outputName} has ${valueArray.length} samples, expected ${numSamples}`);
-    }
-
-    // Convert raw values to {time, value} objects
-    const samples = valueArray.map((value, idx) => ({
-      time: startTime + (idx * timeStep),
-      value: value
-    }));
-
-    result.set(outputName, samples);
-  }
-
-  return result;
+  return sampleMap;
 }
