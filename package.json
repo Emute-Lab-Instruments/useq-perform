@@ -42,6 +42,7 @@
     "build": "npm run build:legacy && npm run build:solid",
     "build:legacy": "node build.js",
     "build:solid": "vite build",
+    "build:wasm": "cd src-useq && ./scripts/build_wasm.sh",
     "watch": "npm-run-all --parallel watch:legacy watch:solid",
     "watch:legacy": "node build.js --watch",
     "watch:solid": "vite build --watch",
