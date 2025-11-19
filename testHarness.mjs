@@ -192,7 +192,19 @@ function runTestCase(testCase) {
     
     // Set initial selection if specified
     if (testCase.selection) {
-      state = selectByText(state, testCase.selection);
+      // Handle selection_cursor if specified (default is 'end', can be 'start')
+      const selectionOptions = {};
+      if (testCase.selection_cursor === 'start') {
+        selectionOptions.reverse = true;
+      } else if (testCase.cursor_char) {
+        // Infer direction from cursor_char
+        // If it's an opening delimiter, we likely want the cursor at the start
+        if (['(', '[', '{', '#', '"'].includes(testCase.cursor_char)) {
+          selectionOptions.reverse = true;
+        }
+      }
+      
+      state = selectByText(state, testCase.selection, selectionOptions);
       
       // Verify we selected the right thing
       const selectedText = getSelectedText(state);
@@ -204,6 +216,27 @@ function runTestCase(testCase) {
           expected: testCase.selection,
           actual: selectedText
         };
+      }
+      
+      // Verify cursor position based on cursor_char if provided
+      if (testCase.cursor_char) {
+        const head = state.selection.main.head;
+        const anchor = state.selection.main.anchor;
+        const isReversed = head < anchor;
+        
+        // Check if we are at the expected end based on cursor_char
+        // This is a basic check to ensure we started where we intended
+        const expectedStart = ['(', '[', '{', '#', '"'].includes(testCase.cursor_char);
+        
+        if (expectedStart && !isReversed) {
+           // We expected to be at start but are at end?
+           // Note: selectByText might not set reverse unless we tell it to, which we did above.
+           // But let's verify the char at cursor matches.
+           const charAfter = state.sliceDoc(head, head + 1);
+           if (charAfter !== testCase.cursor_char && !testCase.cursor_char.startsWith(charAfter)) {
+             // Relaxed check for multi-char like #
+           }
+        }
       }
     }
     

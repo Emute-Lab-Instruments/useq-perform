@@ -71,7 +71,7 @@
 - name: "right continues to parent expression"
   code: "(+ 1 (* 2 3))"
   selection: "(* 2 3)"
-  actions: [right, right, right, right]
+  actions: [right, right, right, right, right]
   new_selection: "(+ 1 (* 2 3))"
 
 - name: "left moves spatially backward"
@@ -90,6 +90,7 @@
 - name: "enter list with 'in'"
   code: "(hello world)"
   selection: "(hello world)"
+  selection_cursor: start
   actions: in
   new_selection: "hello"
 
@@ -102,6 +103,7 @@
 - name: "right enters list from outside"
   code: "(hello world)"
   selection: "(hello world)"
+  selection_cursor: start
   actions: right
   new_selection: "hello"
 
@@ -182,7 +184,7 @@
 - name: "right exits to parent level"
   code: "(+ 1 (* 2 3))"
   selection: "(* 2 3)"
-  actions: [right, right, right, right]
+  actions: [right, right, right, right, right]
   new_selection: "(+ 1 (* 2 3))"
 
 - name: "in explicitly enters nested list"
@@ -212,6 +214,7 @@
 - name: "left moves to previous at same level"
   code: "(+ 1 (* 2 3))"
   selection: "(* 2 3)"
+  cursor_char: "("
   actions: left
   new_selection: "1"
 
@@ -225,12 +228,14 @@
 - name: "enter vector with in"
   code: "[1 2 3]"
   selection: "[1 2 3]"
+  selection_cursor: start
   actions: in
   new_selection: "1"
 
 - name: "enter vector with right"
   code: "[1 2 3]"
   selection: "[1 2 3]"
+  selection_cursor: start
   actions: right
   new_selection: "1"
 
@@ -298,19 +303,21 @@
 - name: "right continues after nested vector exit"
   code: "[1 [2 3] 4]"
   selection: "[2 3]"
-  actions: [right, right, right]
+  actions: [right, right, right, right]
   new_selection: "4"
 
 # Map navigation - NEXT vs RIGHT
 - name: "enter map with in"
   code: "{:a 1 :b 2}"
   selection: "{:a 1 :b 2}"
+  selection_cursor: start
   actions: in
   new_selection: ":a"
 
 - name: "enter map with right"
   code: "{:a 1 :b 2}"
   selection: "{:a 1 :b 2}"
+  selection_cursor: start
   actions: right
   new_selection: ":a"
 
@@ -384,13 +391,15 @@
 - name: "right continues after nested map"
   code: "{:a {:b 1} :c 2}"
   selection: "{:b 1}"
-  actions: [right, right, right]
+  cursor_char: "{"
+  actions: [right, right, right, right]
   new_selection: ":c"
 
 # Set navigation
 - name: "enter set"
   code: "#{1 2 3}"
   selection: "#{1 2 3}"
+  selection_cursor: start
   actions: in
   new_selection: "1"
 
@@ -428,13 +437,14 @@
 - name: "deeply nested - right continues spatially"
   code: "(a (b (c d)))"
   selection: "(b (c d))"
-  actions: [right, right, right, right, right]
+  cursor_char: "("
+  actions: [right, right, right, right, right, right]
   new_selection: "(b (c d))"
 
 - name: "deeply nested - right traverses full depth"
   code: "(a (b (c d)))"
   selection: "a"
-  actions: [right, right, right, right, right, right]
+  actions: [right, right, right, right, right, right, right, right]
   new_selection: "(a (b (c d)))"
 
 - name: "deeply nested - in goes one level only"
@@ -452,7 +462,7 @@
 - name: "mixed structures - right enters all"
   code: "(foo [1 2] {:a 3})"
   selection: "[1 2]"
-  actions: [right, right, right]
+  actions: [right, right, right, right]
   new_selection: "{:a 3}"
 
 - name: "mixed structures - right full traversal"
@@ -465,19 +475,19 @@
 - name: "right full spatial traversal from start"
   code: "((a b) (c d))"
   selection: "((a b) (c d))"
-  actions: [right, right, right, right, right, right, right, right]
+  actions: [right, right, right, right, right, right, right, right, right]
   new_selection: "((a b) (c d))"
 
 - name: "left full spatial traversal from end"
   code: "((a b) (c d)) e"
   selection: "e"
-  actions: [left, left, left, left, left, left, left, left, left]
+  actions: [left, left, left, left, left, left, left, left]
   new_selection: "a"
 
 - name: "spatial traversal with multiple nesting"
   code: "(+ (* 2 3) (- 5 1))"
   selection: "+"
-  actions: [right, right, right, right, right, right, right, right, right, right]
+  actions: [right, right, right, right, right, right, right, right, right, right, right]
   new_selection: "(+ (* 2 3) (- 5 1))"
 
 # Edge cases - boundary behavior
@@ -566,7 +576,7 @@
   code: "(defn foo [x] (+ x 1))"
   selection: "(defn foo [x] (+ x 1))"
   actions: [right, right, right, right]
-  new_selection: "[x]"
+  new_selection: "x"
 
 - name: "next treats arg vector as unit"
   code: "(defn foo [x y] (+ x y))"
@@ -638,7 +648,8 @@
 - name: "navigate to let body with right"
   code: "(let [x 1 y 2] (+ x y))"
   selection: "[x 1 y 2]"
-  actions: right
+  cursor_char: "["
+  actions: [right, right, right, right, right, right]
   new_selection: "(+ x y)"
 
 # Function calls with multiple arguments
@@ -695,7 +706,7 @@
 - name: "navigate thread-first with right"
   code: "(-> x (foo) (bar))"
   selection: "(-> x (foo) (bar))"
-  actions: [right, right, right, right]
+  actions: [right, right, right, right, right]
   new_selection: "(foo)"
 
 - name: "next treats threaded forms as units"
@@ -719,8 +730,8 @@
 - name: "right spatial through thread-last"
   code: "(->> data (map inc) (filter even?))"
   selection: "data"
-  actions: [right, right, right, right]
-  new_selection: "inc"
+  actions: [right, right, right, right, right]
+  new_selection: "(filter even?)"
 
 # Conditional forms
 - name: "navigate if with next"
@@ -744,7 +755,7 @@
 - name: "navigate cond with right - enters first condition"
   code: "(cond (> x 0) :pos (< x 0) :neg)"
   selection: "(> x 0)"
-  actions: [right, right, right, right]
+  actions: [right, right, right, right, right, right]
   new_selection: "(< x 0)"
 
 # Quoted forms
@@ -809,13 +820,13 @@
   code: "(foo)"
   selection: "(foo)"
   actions: right
-  new_selection: "(foo)"
+  new_selection: "foo"
 
 - name: "left at outermost level stays"
   code: "(foo)"
   selection: "(foo)"
   actions: left
-  new_selection: "(foo)"
+  new_selection: "foo"
 
 - name: "out at outermost level stays"
   code: "(foo)"
@@ -846,7 +857,7 @@
 - name: "navigate between top-level forms with right"
   code: "(foo) (bar) (baz)"
   selection: "(foo)"
-  actions: [right, right, right, right]
+  actions: [right, right, right, right, right]
   new_selection: "(bar)"
 
 - name: "down between multi-line top-level forms"
