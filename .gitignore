@@ -9,4 +9,6 @@ public/bundle.css.map
 public/assets
 public/solid-dist
 public/wasm
+public/useq.js
 *.backup
+
