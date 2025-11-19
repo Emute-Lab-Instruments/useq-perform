@@ -1,10 +1,10 @@
 ## Build and Run
 
-`deno task build` builds the application to `public/bundle.mjs`, along with a sourcemap file for debugging.
+`npm run build` builds the application to `public/bundle.mjs`, along with a sourcemap file for debugging.
 
-`deno task start` launches the server.
+`npm run start` launches the server.
 
-`deno task dev` will run the server and watch for file changes, rebuilding automatically.
+`npm run dev` will run the server and watch for file changes, rebuilding automatically.
 
 ## Url parameters
 
