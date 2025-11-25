@@ -5,8 +5,11 @@ import { Decoration, EditorView } from "@codemirror/view";
 // Effect to trigger highlight
 export const evalHighlightEffect = StateEffect.define();
 
-// Decoration for highlight
+// Decoration for highlight (normal eval - yellow for connected, grey for disconnected)
 const evalHighlightDeco = Decoration.mark({ class: "cm-evaluated-code" });
+
+// Decoration for soft eval preview (cyan/blue color)
+const evalPreviewHighlightDeco = Decoration.mark({ class: "cm-evaluated-code cm-evaluated-preview" });
 
 // StateField to manage highlight
 export const evalHighlightField = StateField.define({
@@ -22,8 +25,10 @@ export const evalHighlightField = StateField.define({
           // Special effect to clear highlight
           return Decoration.none;
         }
+        // Use preview decoration if isPreview flag is set
+        const deco = e.value.isPreview ? evalPreviewHighlightDeco : evalHighlightDeco;
         return Decoration.set([
-          evalHighlightDeco.range(e.value.from, e.value.to)
+          deco.range(e.value.from, e.value.to)
         ]);
       }
     }
@@ -59,10 +64,13 @@ function getTopLevelRange(state) {
 }
 
 // Helper to dispatch highlight effect and clear it after 1s
-export function flashEvalHighlight(view, from, to) {
+// Options: { isPreview: boolean } - use preview color for soft eval
+export function flashEvalHighlight(view, from, to, options = {}) {
+  const { isPreview = false } = options;
+
   // If range is provided, use it
   if (from !== undefined && to !== undefined && from !== to) {
-    view.dispatch({ effects: evalHighlightEffect.of({ from, to }) });
+    view.dispatch({ effects: evalHighlightEffect.of({ from, to, isPreview }) });
     setTimeout(() => {
       view.dispatch({ effects: evalHighlightEffect.of({ from: 0, to: 0 }) });
     }, 1000);
@@ -76,7 +84,7 @@ export function flashEvalHighlight(view, from, to) {
     view.dispatch({ effects: evalHighlightEffect.of({ from: 0, to: 0 }) });
     return;
   }
-  view.dispatch({ effects: evalHighlightEffect.of({ from: range.from, to: range.to }) });
+  view.dispatch({ effects: evalHighlightEffect.of({ from: range.from, to: range.to, isPreview }) });
   setTimeout(() => {
     view.dispatch({ effects: evalHighlightEffect.of({ from: 0, to: 0 }) });
   }, 1000);

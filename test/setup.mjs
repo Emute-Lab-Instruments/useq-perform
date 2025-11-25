@@ -56,6 +56,9 @@ global.getComputedStyle = global.window.getComputedStyle = (element) => ({
     if (property === '--code-eval-highlight-color-disconnected') {
       return '#ff0000';
     }
+    if (property === '--code-eval-highlight-color-preview') {
+      return 'rgba(100, 200, 255, 0.7)';
+    }
     return '';
   },
   backgroundColor: element.classList.contains('modal') ? 'rgb(45, 45, 45)' : 'rgb(255, 255, 255)',

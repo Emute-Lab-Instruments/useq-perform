@@ -7,6 +7,7 @@ import {
   toggleVid,
   evalNow,
   evalQuantised,
+  softEval,
   toggleHelp,
   toggleSerialVis,
   toggleDocumentation,
@@ -51,6 +52,7 @@ const completeKeymapModified = completeClojureKeymap.map((binding) => {
 export const useq_keymap = [
   { key: "Mod-Enter", run: (view) => evalNow({ view, state: view.state }) },
   { key: "Alt-Enter", run: (view) => evalQuantised({ view, state: view.state }) },
+  { key: "Mod-Shift-Enter", run: (view) => softEval({ view, state: view.state }) },
   {
     key: "Alt-h",
     run: toggleHelp,

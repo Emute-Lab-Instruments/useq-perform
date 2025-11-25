@@ -135,6 +135,47 @@ export function evalQuantised(opts) {
   return evalToplevel(opts);
 }
 
+// Soft eval: evaluate in WASM interpreter only (no hardware)
+// Allows previewing output visualizations without affecting the running hardware module
+export function softEval(opts) {
+  const state = opts.state;
+  const code = top_level_string(state);
+
+  if (!code || !code.trim()) {
+    return false;
+  }
+
+  // Strip leading @ if present for WASM eval
+  const isImmediate = code.startsWith("@");
+  const wasmCode = isImmediate ? code.slice(1) : code;
+
+  // Track expression evaluation for visualization
+  const hasView = opts.view && typeof opts.view.dispatch === 'function';
+  if (hasView) {
+    detectAndTrackExpressionEvaluation(opts.view);
+    // Flash with preview color (cyan/blue)
+    flashEvalHighlight(opts.view, undefined, undefined, { isPreview: true });
+  }
+
+  // Only evaluate in WASM - do NOT send to hardware
+  evalInUseqWasm(wasmCode)
+    .then((result) => {
+      const output = typeof result === 'string' ? result : String(result ?? '');
+      const trimmed = output.trim();
+      if (trimmed.length > 0) {
+        post(\`Preview: \${trimmed}\`);
+      } else {
+        post(\`Preview: \${wasmCode.trim().substring(0, 40)}\${wasmCode.length > 40 ? '...' : ''}\`);
+      }
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      post(\`**Preview Error**: \${message.replace(/\`/g, '\\\\\`')}\`);
+    });
+
+  return true;
+}
+
 export function toggleHelp() {
   $("#panel-help").toggle();
   return true;

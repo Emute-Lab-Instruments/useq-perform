@@ -32,6 +32,16 @@
   0% { background-color: var(--code-eval-highlight-color); }
   100% { background-color: transparent; }
 }
+
+/* Soft eval preview highlight (WASM-only, no hardware) */
+.cm-evaluated-preview {
+  animation-name: flash-highlight-preview;
+}
+
+@keyframes flash-highlight-preview {
+  0% { background-color: var(--code-eval-highlight-color-preview); }
+  100% { background-color: transparent; }
+}
 /* Current node highlighting */
 .cm-current-node {
   background-color: rgba(255, 100, 150, 0.2);
