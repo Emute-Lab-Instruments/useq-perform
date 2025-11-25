@@ -326,6 +326,55 @@ function setPlaybackState(state) {
     updatePlaybackUI();
 }
 
+// Query transport state from hardware and update UI
+async function queryTransportState() {
+    if (!isConnected) return;
+
+    try {
+        const response = await sendTouSEQ('(useq-get-transport-state)', (text) => {
+            const state = text.trim().replace(/"/g, ''); // Remove quotes from string response
+            switch (state) {
+                case 'playing':
+                    setPlaybackState(PlaybackState.Playing);
+                    break;
+                case 'paused':
+                    setPlaybackState(PlaybackState.Paused);
+                    break;
+                case 'stopped':
+                    setPlaybackState(PlaybackState.Stopped);
+                    break;
+                default:
+                    dbg('Unknown transport state from hardware:', state);
+            }
+        });
+    } catch (error) {
+        dbg('Failed to query transport state:', error);
+    }
+}
+
+// Handle transport state pushed from hardware via JSON meta
+function handleTransportStatePush(event) {
+    const detail = event?.detail;
+    const meta = detail?.response?.meta;
+
+    if (meta && typeof meta.transport === 'string') {
+        const state = meta.transport;
+        switch (state) {
+            case 'playing':
+                setPlaybackState(PlaybackState.Playing);
+                break;
+            case 'paused':
+                setPlaybackState(PlaybackState.Paused);
+                break;
+            case 'stopped':
+                setPlaybackState(PlaybackState.Stopped);
+                break;
+            default:
+                dbg('Unknown transport state in meta:', state);
+        }
+    }
+}
+
 function updatePlaybackUI() {
     const $play = $('#button-play');
     const $pause = $('#button-pause');
@@ -376,7 +425,8 @@ function initPlaybackToolbar() {
         isConnected = !!isConnectedToModule();
     } catch (e) { isConnected = false; }
 
-    // Initial state
+    // Hardware boots in "playing" state by default
+    playbackState = PlaybackState.Playing;
     updatePlaybackUI();
 
     $play.on('click', () => {
@@ -411,7 +461,19 @@ function initPlaybackToolbar() {
 
     // React to connection status changes
     window.addEventListener('useq-connection-changed', (e) => {
+        const wasConnected = isConnected;
         isConnected = !!(e && e.detail && e.detail.connected);
         updatePlaybackUI();
+
+        // Query transport state from hardware when newly connected
+        if (!wasConnected && isConnected) {
+            // Small delay to ensure connection is fully established
+            setTimeout(() => {
+                queryTransportState();
+            }, 100);
+        }
     });
+
+    // Listen for transport state updates pushed from hardware via JSON meta
+    window.addEventListener('useq-json-meta', handleTransportStatePush);
 }
