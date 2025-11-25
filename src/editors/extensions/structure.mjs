@@ -2,11 +2,51 @@
 // These functions do not mutate state; they return new selection positions or perform navigation
 // by dispatching a transaction on the provided Editorstate instance.
 
-import { EditorSelection, StateField, Transaction, RangeSetBuilder } from "@codemirror/state";
+import { EditorSelection, StateField, Transaction, RangeSetBuilder, Annotation } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
-import { ASTCursor } from "../../utils/astCursor.mjs";
+import { findNodeAt, navigationMetaField, navigationMetaEffect, navigateIn, navigateOut, navigateNext, navigatePrev, navigateRight, navigateLeft, navigateUp, navigateDown, isContainerNode } from "./structure/new-structure.mjs";
 import { EditorView, Decoration, ViewPlugin, gutter, GutterMarker } from "@codemirror/view";
 import { getSerialVisPalette, getSerialVisChannelColor } from "../../ui/serialVis/utils.mjs";
+
+// Re-export navigation functions for backward compatibility
+export { navigateIn, navigateOut, navigateNext, navigatePrev, navigateRight, navigateLeft, navigateUp, navigateDown };
+
+/**
+ * Helper to apply a navigation function to a view, preserving the navigation metadata.
+ * This is necessary because navigation functions return a State, but we need to dispatch a Transaction
+ * that includes the navigationMetaEffect to persist the traversal history.
+ * 
+ * @param {EditorView} view - The editor view
+ * @param {Function} navFunction - A function that takes EditorState and returns EditorState (e.g. navigateRight)
+ * @returns {boolean} - True if navigation occurred (state changed), false otherwise
+ */
+export function performNavigation(view, navFunction) {
+    const newState = navFunction(view.state);
+    if (newState === view.state) return false;
+    
+    let newMeta = null;
+    try {
+        newMeta = newState.field(navigationMetaField);
+        // console.log('performNavigation: retrieved meta', newMeta);
+    } catch (e) {
+        console.error('performNavigation: Failed to retrieve navigationMetaField', e);
+    }
+
+    const transactionSpec = {
+        selection: newState.selection,
+        scrollIntoView: true
+    };
+    
+    if (newMeta) {
+        transactionSpec.effects = navigationMetaEffect.of(newMeta);
+    } else {
+        console.warn('performNavigation: newMeta is null or undefined, navigation history might be lost');
+    }
+    
+    view.dispatch(transactionSpec);
+    return true;
+}
+
 import { sendTouSEQ, isConnectedToModule } from "../../io/serialComms.mjs";
 import {
   isExpressionVisualised,
@@ -18,236 +58,8 @@ import {
 import { dbg } from "../../utils.mjs";
 import { activeUserSettings } from "../../utils/persistentUserSettings.mjs";
 
-// Helper functions for tree processing
-function treeToJson(node, state) {
-    // For structural tokens like parentheses, include the full text including their contents
-    const isStructural = isStructuralToken(node.type.name);
-    const text = state.sliceDoc(
-        node.from,
-        node.to
-    );
-
-    return {
-        type: node.type.name,
-        from: node.from,
-        to: node.to,
-        text: isStructural ? text : text,
-        children: collectChildren(node, state)
-    };
-}
-
-function collectChildren(node, state) {
-    const children = [];
-    for (let child = node.firstChild; child; child = child.nextSibling) {
-        children.push(treeToJson(child, state));
-    }
-    return children.length > 0 ? children : undefined;
-}
-
-export function isStructuralToken(type) {
-    return ["(", ")", "[", "]", "{", "}", "Brace", "Bracket", "Paren"].includes(type);
-}
-
-export function isOperatorNode(node) {
-    return !!(node && node.type === "Operator" && node.children && node.children.length > 0);
-}
-
-function filterStructuralAndLiftOperatorNodes(node) {
-    if (isStructuralToken(node.type)) {
-        if (node.children) {
-            return node.children.map(filterStructuralAndLiftOperatorNodes).filter(Boolean).flat();
-        }
-        return undefined;
-    }
-    if (isOperatorNode(node)) {
-        // Replace Operator node with its first child (lift it)
-        return filterStructuralAndLiftOperatorNodes(node.children[0]);
-    }
-    const children = node.children
-        ? node.children.map(filterStructuralAndLiftOperatorNodes).filter(Boolean).flat()
-        : undefined;
-    return { ...node, children };
-}
-
-export function isContainerNode(node) {
-    return !!(node && (node.type === "List" || node.type === "Vector" ||
-        node.type === "Program" || node.type === "Map"));
-}
-
-function distributeWhitespace(children, parentFrom, parentTo) {
-    if (!children || children.length === 0) return [];
-
-    const result = [];
-
-    // Process the first child
-    const firstChild = { ...children[0] };
-    result.push(firstChild);
-
-    // Process middle children with whitespace distribution
-    for (let i = 1; i < children.length; i++) {
-        const prev = result[i - 1];
-        const current = { ...children[i] };
-
-        // Calculate whitespace between elements
-        const whitespace = current.from - prev.to;
-        if (whitespace > 0) {
-            if (whitespace === 1) {
-                prev.to += 1;
-            } else {
-                const half = Math.floor(whitespace / 2);
-                prev.to += half;
-                current.from = prev.to;
-            }
-        }
-
-        result.push(current);
-    }
-
-    // --- FIX: Do NOT extend last child's .to to parentTo ---
-    // The last child's .to should remain as-is, so it doesn't include the closing delimiter.
-    // Remove or comment out the following lines:
-    // if (result.length > 0) {
-    //     const last = result[result.length - 1];
-    //     last.to = parentTo;
-    // }
-
-    return result;
-}
-
-function createAdjustedTree(node) {
-    // Non-container nodes pass through unchanged
-    if (!isContainerNode(node)) {
-        return {
-            ...node,
-            children: node.children ? node.children.map(createAdjustedTree) : undefined
-        };
-    }
-
-    // For container nodes, process children first
-    const processedChildren = node.children
-        ? node.children.map(createAdjustedTree)
-        : [];
-
-    // Then distribute whitespace among children
-    const adjustedChildren = distributeWhitespace(
-        processedChildren,
-        node.from,
-        node.to
-    );
-
-    // Return the node with adjusted children
-    return {
-        ...node,
-        children: adjustedChildren
-    };
-}
-
-function resolveNodeAtPosition(tree, pos) {
-    // Base case: outside tree bounds
-    if (pos < tree.from || pos >= tree.to) return null;
-
-    // If this is a container node with children, delegate to them
-    if (isContainerNode(tree) && tree.children && tree.children.length > 0) {
-        for (const child of tree.children) {
-            if (pos >= child.from && pos < child.to) {
-                return resolveNodeAtPosition(child, pos);
-            }
-        }
-
-        // If we get here, position is in the container but not in any child
-        // This shouldn't happen with proper whitespace distribution
-        return tree;
-    }
-
-    // Non-container node or leaf node
-    return tree;
-}
-
-// Helper: find path to node at a given position
-function findPathToNodeAtPosition(node, pos, path = []) {
-    if (pos < node.from || pos >= node.to) return null;
-    if (!node.children || node.children.length === 0) return path;
-    for (let i = 0; i < node.children.length; i++) {
-        const child = node.children[i];
-        const childPath = findPathToNodeAtPosition(child, pos, [...path, i]);
-        if (childPath) return childPath;
-    }
-    return path;
-}
-
-// Combines all tree adjustment steps into one function
-function processSyntaxTree(state) {
-    const tree = syntaxTree(state);
-    const jsonTree = treeToJson(tree.topNode, state);
-    const filteredTree = filterStructuralAndLiftOperatorNodes(jsonTree);
-    const adjustedTree = createAdjustedTree(filteredTree);
-    return adjustedTree;
-}
-
-// State field to track the processed syntax tree
-export const nodeTreeField = StateField.define({
-    create(state) {
-        return processSyntaxTree(state);
-    },
-
-    update(value, transaction) {
-        if (transaction.docChanged) {
-            const processedTree =  processSyntaxTree(transaction.state);
-            return processedTree;
-        }
-        else {
-            return value;
-        }
-    }
-});
-
-// Function to print the current node of the ASTCursor
-function printCurrentNode(cursor) {
-    // console.log("Printing current cursor node...");
-    if (cursor && cursor.getNode) {
-        // eslint-disable-next-line no-console
-        // console.log('ASTCursor current node:', cursor.getNode());
-    }
-}
-
-// State field to track the ASTCursor for the current node tree
-export const nodeTreeCursorField = StateField.define({
-    create(state) {
-        const nodeTree = state.field(nodeTreeField, false);
-        const cursor = nodeTree ? new ASTCursor(nodeTree) : null;
-        if (!cursor) return null;
-        // Set cursor to node at initial selection
-        const pos = state.selection?.main.head || 0;
-        const path = nodeTree ? findPathToNodeAtPosition(nodeTree, pos) : [];
-        cursor.setPath(path);
-        printCurrentNode(cursor);
-        return cursor;
-    },
-    update(prevCursor, tr) {
-        const prevNodeTree = tr.startState.field(nodeTreeField, false);
-        const nodeTree = tr.state.field(nodeTreeField, false);
-        const prevPos = tr.startState.selection?.main.head || 0;
-        const pos = tr.state.selection?.main.head || 0;
-        // If nothing changed, return previous cursor
-        if (nodeTree === prevNodeTree && pos === prevPos && prevCursor) {
-            return prevCursor;
-        }
-        // If only the cursor position changed, reuse ASTCursor and just update path
-        if (nodeTree === prevNodeTree && prevCursor) {
-            const path = findPathToNodeAtPosition(nodeTree, pos);
-            prevCursor.setPath(path);
-            printCurrentNode(prevCursor);
-            return prevCursor;
-        }
-        // Otherwise, create a new ASTCursor
-        const cursor = nodeTree ? new ASTCursor(nodeTree) : null;
-        if (!cursor) return null;
-        const path = nodeTree ? findPathToNodeAtPosition(nodeTree, pos) : [];
-        cursor.setPath(path);
-        printCurrentNode(cursor);
-        return cursor;
-    }
-});
+// Helper functions for tree processing - REMOVED in favor of standard syntax tree
+// The new structural editing extension uses standard Lezer syntax tree and findNodeAt helper.
 
 // Helper to trim whitespace and get adjusted range
 export function getTrimmedRange(node, state) {
@@ -266,25 +78,34 @@ export function getTrimmedRange(node, state) {
     };
 }
 
+  function getContainerNodeAt(state, pos) {
+    const tree = syntaxTree(state);
+    let node = tree.resolveInner(pos, 0);
+    while (node && node.parent && !isContainerNode(node)) {
+      node = node.parent;
+    }
+    return node && isContainerNode(node) ? node : null;
+  }
+
 // StateField for highlighting the current node (trimmed)
 export const nodeHighlightField = StateField.define({
     create(state) {
-        const cursor = state.field(nodeTreeCursorField, false);
-        // console.log("[nodeHighlightField.create] cursor:", cursor);
-        if (!cursor || !cursor.getNode) return Decoration.none;
-        const node = cursor.getNode();
-        // console.log("[nodeHighlightField.create] node:", node);
-        const range = getTrimmedRange(node, state);
-        // console.log("[nodeHighlightField.create] range:", range);
-        // Add parent node highlight
+        const selection = state.selection.main;
+        const node = findNodeAt(state, selection.from, selection.to);
+        const containerNode = getContainerNodeAt(state, selection.from);
+        if (!node && !containerNode) return Decoration.none;
+        const range = node ? getTrimmedRange(node, state) : null;
+        
+        // Container highlight (list/vector/map/set)
         let parentRange = null;
         let parentIsProgram = false;
-        let parent = null;
-        if (cursor.peekParent) {
-            parent = cursor.peekParent();
-            parentIsProgram = parent && parent.type === "Program";
+        const parent = containerNode;
+        
+        if (parent) {
+            parentIsProgram = parent.type.name === "Program";
             parentRange = getTrimmedRange(parent, state);
         }
+        
         const decorations = [];
         if (range) {
             decorations.push(Decoration.mark({class: "cm-current-node"}).range(range.from, range.to));
@@ -298,56 +119,48 @@ export const nodeHighlightField = StateField.define({
         return decorations.length ? Decoration.set(decorations) : Decoration.none;
     },
     update(deco, tr) {
-        const cursor = tr.state.field(nodeTreeCursorField, false);
-        // console.log("[nodeHighlightField.update] cursor:", cursor);
-        if (!cursor || !cursor.getNode) return Decoration.none;
-        const node = cursor.getNode();
-        // console.log("[nodeHighlightField.update] node:", node);
-        const range = getTrimmedRange(node, tr.state);
-        // console.log("[nodeHighlightField.update] range:", range);
-        // Add parent node highlight
-        let parentRange = null;
-        let parentIsProgram = false;
-        let parent = null;
-        if (cursor.peekParent) {
-            parent = cursor.peekParent();
-            parentIsProgram = parent && parent.type === "Program";
-            parentRange = getTrimmedRange(parent, tr.state);
+        if (!tr.docChanged && !tr.selection) return deco;
+        
+        try {
+            const selection = tr.state.selection.main;
+            const node = findNodeAt(tr.state, selection.from, selection.to);
+            const containerNode = getContainerNodeAt(tr.state, selection.from);
+            if (!node && !containerNode) return Decoration.none;
+
+            const range = node ? getTrimmedRange(node, tr.state) : null;
+            
+            // Container highlight
+            let parentRange = null;
+            let parentIsProgram = false;
+            const parent = containerNode;
+            
+            if (parent) {
+                parentIsProgram = parent.type.name === "Program";
+                parentRange = getTrimmedRange(parent, tr.state);
+            }
+            
+            const decorations = [];
+            if (range) {
+                decorations.push(Decoration.mark({class: "cm-current-node"}).range(range.from, range.to));
+            }
+            if (parentIsProgram) {
+                decorations.push(Decoration.mark({class: "cm-parent-node-editor-area"}).range(0, tr.state.doc.length));
+            } else if (parentRange) {
+                decorations.push(Decoration.mark({class: "cm-parent-node"}).range(parentRange.from, parentRange.to));
+            }
+            decorations.sort((a, b) => a.from - b.from);
+            return decorations.length ? Decoration.set(decorations) : Decoration.none;
+        } catch (e) {
+            console.error("nodeHighlightField update failed", e);
+            return Decoration.none;
         }
-        const decorations = [];
-        if (range) {
-            decorations.push(Decoration.mark({class: "cm-current-node"}).range(range.from, range.to));
-        }
-        if (parentIsProgram) {
-            decorations.push(Decoration.mark({class: "cm-parent-node-editor-area"}).range(0, tr.state.doc.length));
-        } else if (parentRange) {
-            decorations.push(Decoration.mark({class: "cm-parent-node"}).range(parentRange.from, parentRange.to));
-        }
-        decorations.sort((a, b) => a.from - b.from);
-        return decorations.length ? Decoration.set(decorations) : Decoration.none;
     },
     provide: f => EditorView.decorations.from(f)
 });
 
 // --- New: StateField to track last child index for navigation ---
-export const lastChildIndexField = StateField.define({
-    create() {
-        return null; // { parentPath: [...], childIndex: n }
-    },
-    update(value, tr) {
-        const meta = tr.annotation(lastChildIndexAnnotation);
-        if (meta && typeof meta.childIndex === "number" && Array.isArray(meta.parentPath)) {
-            return { parentPath: meta.parentPath, childIndex: meta.childIndex };
-        }
-        if (meta && meta.reset) {
-            return null;
-        }
-        return value;
-    }
-});
+// REMOVED: Replaced by navigationMetaField in new-structure.mjs
 
-import { Annotation } from "@codemirror/state";
-export const lastChildIndexAnnotation = Annotation.define();
 export const settingsChangedAnnotation = Annotation.define();
 
 // --- Expression Evaluation Tracking ---
@@ -427,25 +240,20 @@ export function detectAndTrackExpressionEvaluation(view) {
         return;
     }
 
-    // Determine evaluated top-level range using the same cursor-derived logic as highlight
-    const cursorField = state.field(nodeTreeCursorField, false);
-    let evalFrom = 0, evalTo = 0;
-    if (cursorField && cursorField.getPath) {
-        const path = cursorField.getPath();
-        if (Array.isArray(path) && path.length > 0) {
-            const topIndex = path[0];
-            let topNode = cursorField.root;
-            if (topNode && topNode.children && topNode.children.length > topIndex) {
-                const tn = topNode.children[topIndex];
-                if (typeof tn.from === 'number' && typeof tn.to === 'number') {
-                    evalFrom = tn.from;
-                    evalTo = tn.to;
-                }
-            }
-        } else {
-            // Fallback: whole document
-            evalFrom = 0;
-            evalTo = doc.length;
+    // Determine evaluated top-level range using standard syntax tree
+    let evalFrom = 0, evalTo = doc.length;
+    const selection = state.selection.main;
+    let node = findNodeAt(state, selection.from, selection.to);
+    
+    if (node) {
+        // Walk up to find the top-level node (child of Program)
+        while (node.parent && node.parent.type.name !== "Program") {
+            node = node.parent;
+        }
+        // If parent is Program, then 'node' is a top-level node
+        if (node.parent && node.parent.type.name === "Program") {
+            evalFrom = node.from;
+            evalTo = node.to;
         }
     }
 
@@ -511,119 +319,7 @@ export function detectAndTrackExpressionEvaluation(view) {
     }
 }
 
-// Helper: get path to node at position
-export function getChildIndexFromPath(path) {
-    if (!Array.isArray(path) || path.length === 0) return 0;
-    return path[path.length - 1];
-}
-
-export function getParentPath(path) {
-    if (!Array.isArray(path) || path.length === 0) return [];
-    return path.slice(0, -1);
-}
-
-// --- Navigation commands for structure navigation ---
-
-/**
- * Move cursor in (to first child node or last visited child) and return a transaction to update selection.
- */
-export function navigateIn(state) {
-    const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor || !cursor.hasChildren()) {
-        return null;
-    }
-    const lastChildInfo = state.field(lastChildIndexField, false);
-    const currentPath = cursor.getPath ? cursor.getPath() : [];
-    let childIndex = 0;
-    if (
-        lastChildInfo &&
-        Array.isArray(lastChildInfo.parentPath) &&
-        JSON.stringify(lastChildInfo.parentPath) === JSON.stringify(currentPath) &&
-        typeof lastChildInfo.childIndex === "number"
-    ) {
-        childIndex = lastChildInfo.childIndex;
-    }
-    const node = cursor.getNode ? cursor.getNode() : null;
-    const children = node && node.children ? node.children : [];
-    if (childIndex < 0 || childIndex >= children.length) {
-        childIndex = 0;
-    }
-    const fork = cursor.fork().in(childIndex);
-    const childNode = fork.getNode();
-    if (!childNode || typeof childNode.from !== 'number') {
-        return null;
-    }
-    return state.update({
-        selection: EditorSelection.single(childNode.from),
-        scrollIntoView: true,
-        annotations: lastChildIndexAnnotation.of({ reset: true })
-    });
-}
-
-/**
- * Move cursor out (to parent node) and return a transaction to update selection.
- */
-export function navigateOut(state) {
-    const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor || !cursor.canGoOut()) {
-        return null;
-    }
-    const currentPath = cursor.getPath ? cursor.getPath() : [];
-    const parentPath = getParentPath(currentPath);
-    const childIndex = getChildIndexFromPath(currentPath);
-    const fork = cursor.fork().out();
-    const node = fork.getNode();
-    if (!node || typeof node.from !== 'number') {
-        return null;
-    }
-    return state.update({
-        selection: EditorSelection.single(node.from),
-        scrollIntoView: true,
-        annotations: lastChildIndexAnnotation.of({ parentPath, childIndex })
-    });
-}
-
-/**
- * Move cursor to previous sibling and return a transaction to update selection.
- * Resets lastChildIndexField.
- */
-export function navigatePrev(state) {
-    const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor || !cursor.hasPrev()) {
-        return null;
-    }
-    const fork = cursor.fork().prev();
-    const node = fork.getNode();
-    if (!node || typeof node.from !== 'number') {
-        return null;
-    }
-    return state.update({
-        selection: EditorSelection.single(node.from),
-        scrollIntoView: true,
-        annotations: lastChildIndexAnnotation.of({ reset: true })
-    });
-}
-
-/**
- * Move cursor to next sibling and return a transaction to update selection.
- * Resets lastChildIndexField.
- */
-export function navigateNext(state) {
-    const cursor = state.field(nodeTreeCursorField, false);
-    if (!cursor || !cursor.hasNext()) {
-        return null;
-    }
-    const fork = cursor.fork().next();
-    const node = fork.getNode();
-    if (!node || typeof node.from !== 'number') {
-        return null;
-    }
-    return state.update({
-        selection: EditorSelection.single(node.from),
-        scrollIntoView: true,
-        annotations: lastChildIndexAnnotation.of({ reset: true })
-    });
-}
+// Navigation commands have been moved to ./structure/new-structure.mjs
 
 // --- Expression Gutter for 'a' or 'd' followed by digit and space ---
 
@@ -770,7 +466,7 @@ export class ExpressionGutterMarker extends GutterMarker {
 }
 
 // Helper: find expression boundaries by looking for brackets
-function findExpressionBounds(state, matchPos) {
+export function findExpressionBounds(state, matchPos) {
   const doc = state.doc;
   const tree = syntaxTree(state);
   
@@ -1155,10 +851,8 @@ export const expressionGutter = gutter({
 // Export the structural extension as just the state field
 // Consumers can add their own event handlers to call the navigation functions
 export let structureExtensions = [
-    nodeTreeField,
-    nodeTreeCursorField,
+    navigationMetaField,
     nodeHighlightField,
-    lastChildIndexField,
     lastEvaluatedExpressionField,
     expressionClearClickPlugin,
     expressionGutterField,

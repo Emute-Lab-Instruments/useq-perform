@@ -214,6 +214,7 @@ export class ASTCursor {
      */
     setPath(pathArray) {
       this.reset();
+      if (!pathArray) return this;
       for (let i = 0; i < pathArray.length; i++) {
         const index = pathArray[i];
         if (!this.current.children || index >= this.current.children.length) {

@@ -6,11 +6,13 @@
 
 import fs from 'fs';
 import yaml from 'js-yaml';
+import { EditorSelection } from '@codemirror/state';
 import {
   createStructuralEditor,
   selectByText,
+  findNodeAt,
   navigateNext,
-  navigatePrevious,
+  navigatePrev,
   navigateIn,
   navigateOut,
   navigateLeft,
@@ -37,8 +39,10 @@ import {
   insertFunctionCall,
   insertFunctionCallBefore,
   wrapInFunction,
-  clearClipboard
-} from './newStructuralEditingExtensions.mjs';
+  duplicateExpression,
+  clearClipboard,
+  navigateRightChar
+} from './src/editors/extensions/structure/new-structure.mjs';
 
 /**
  * Action function mapping
@@ -46,19 +50,21 @@ import {
 const actionMap = {
   // Navigation
   'next': navigateNext,
-  'previous': navigatePrevious,
+  'previous': navigatePrev,
   'in': navigateIn,
   'out': navigateOut,
   'left': navigateLeft,
   'right': navigateRight,
   'up': navigateUp,
   'down': navigateDown,
+  'right_char': navigateRightChar,
   
   // Editing
   'delete': deleteExpression,
   'cut': cutExpression,
   'paste': pasteExpression,
   'paste_before': pasteExpressionBefore,
+  'duplicate': duplicateExpression,
   
   // Slurp/Barf
   'slurp_right': slurpRight,
@@ -83,6 +89,64 @@ const actionMap = {
 function getSelectedText(state) {
   const selection = state.selection.main;
   return state.sliceDoc(selection.from, selection.to);
+}
+
+function parseCaretString(value) {
+  if (typeof value !== 'string') {
+    return { text: value, caretOffset: null };
+  }
+  const index = value.indexOf('^');
+  if (index === -1) {
+    return { text: value, caretOffset: null };
+  }
+  return {
+    text: value.slice(0, index) + value.slice(index + 1),
+    caretOffset: index
+  };
+}
+
+function normalizeSelectionSpec(value) {
+  if (value == null) return null;
+  if (Array.isArray(value)) {
+    const [text, occurrence] = value;
+    const normalizedOccurrence = Number.isInteger(occurrence) && occurrence > 0 ? occurrence : 1;
+    if (typeof text !== 'string') return null;
+    const parsed = parseCaretString(text);
+    return { text: parsed.text, occurrence: normalizedOccurrence, caretOffset: parsed.caretOffset };
+  }
+  if (typeof value === 'string') {
+    const parsed = parseCaretString(value);
+    return { text: parsed.text, occurrence: 1, caretOffset: parsed.caretOffset };
+  }
+  return null;
+}
+
+function parseStepSelection(value) {
+  if (value === undefined) return null;
+  if (value === null) return { text: '', caretOffset: null };
+  return parseCaretString(value);
+}
+
+function findNthOccurrence(haystack, needle, occurrence) {
+  if (!haystack || !needle) return -1;
+  const desired = Number.isInteger(occurrence) && occurrence > 0 ? occurrence : 1;
+  let start = 0;
+  let count = 0;
+  while (count < desired) {
+    const index = haystack.indexOf(needle, start);
+    if (index === -1) return -1;
+    count++;
+    if (count === desired) {
+      return index;
+    }
+    start = index + needle.length;
+  }
+  return -1;
+}
+
+function getSelectionStart(state) {
+  const { from, to } = state.selection.main;
+  return Math.min(from, to);
 }
 
 /**
@@ -187,11 +251,19 @@ function runTestCase(testCase) {
     // Clear clipboard at start of each test to avoid cross-test contamination
     clearClipboard();
     
-    // Create editor with initial code
-    let state = createStructuralEditor(testCase.code);
-    
+    // Create editor with initial code (strip caret markers if present)
+    const codeSpec = parseCaretString(testCase.code || '');
+    let state = createStructuralEditor(codeSpec.text);
+    const initialCode = state.doc.toString();
+    if (codeSpec.caretOffset != null) {
+      state = state.update({
+        selection: EditorSelection.single(codeSpec.caretOffset)
+      }).state;
+    }
+
     // Set initial selection if specified
-    if (testCase.selection) {
+    const selectionSpec = normalizeSelectionSpec(testCase.selection);
+    if (selectionSpec) {
       // Handle selection_cursor if specified (default is 'end', can be 'start')
       const selectionOptions = {};
       if (testCase.selection_cursor === 'start') {
@@ -204,20 +276,55 @@ function runTestCase(testCase) {
         }
       }
       
-      state = selectByText(state, testCase.selection, selectionOptions);
-      
-      // Verify we selected the right thing
-      const selectedText = getSelectedText(state);
-      if (selectedText !== testCase.selection) {
+      const selectionStart = findNthOccurrence(initialCode, selectionSpec.text, selectionSpec.occurrence);
+      if (selectionStart === -1) {
         return {
           passed: false,
           name: testCase.name,
-          error: `Failed to select "${testCase.selection}". Got "${selectedText}" instead.`,
-          expected: testCase.selection,
+          error: `Could not find occurrence ${selectionSpec.occurrence} of "${selectionSpec.text}" in initial code`,
+          expected: selectionSpec.text,
+          actual: initialCode
+        };
+      }
+
+      selectionOptions.occurrence = selectionSpec.occurrence;
+      state = selectByText(state, selectionSpec.text, selectionOptions);
+      
+      // Verify we selected the right thing
+      const selectedText = getSelectedText(state);
+      if (selectedText !== selectionSpec.text) {
+        return {
+          passed: false,
+          name: testCase.name,
+          error: `Failed to select "${selectionSpec.text}". Got "${selectedText}" instead.`,
+          expected: selectionSpec.text,
           actual: selectedText
         };
       }
-      
+
+      // Verify that the selection corresponds to a structural node
+      const node = findNodeAt(state, state.selection.main.from, state.selection.main.to);
+      if (!node && selectionSpec.text) {
+        return {
+          passed: false,
+          name: testCase.name,
+          error: `Selection does not correspond to a structural node`,
+          expected: selectionSpec.text,
+          actual: "No node found"
+        };
+      }
+
+      const actualSelectionStart = getSelectionStart(state);
+      if (actualSelectionStart !== selectionStart) {
+        return {
+          passed: false,
+          name: testCase.name,
+          error: `Selection occurrence mismatch for "${selectionSpec.text}"`,
+          expected: selectionStart,
+          actual: actualSelectionStart
+        };
+      }
+
       // Verify cursor position based on cursor_char if provided
       if (testCase.cursor_char) {
         const head = state.selection.main.head;
@@ -241,7 +348,58 @@ function runTestCase(testCase) {
     }
     
     // Apply actions
-    if (testCase.actions) {
+    if (testCase.steps) {
+      for (let i = 0; i < testCase.steps.length; i++) {
+        const step = testCase.steps[i];
+        state = applyAction(state, step.action);
+        
+        // Check step selection
+        const stepSelectionSpec = parseStepSelection(step.new_selection);
+        if (stepSelectionSpec) {
+          const currentSelection = getSelectedText(state);
+          const expectedSelection = stepSelectionSpec.text ?? "";
+          
+          if (currentSelection !== expectedSelection) {
+             return {
+               passed: false,
+               name: `${testCase.name} (step ${i+1})`,
+               error: `Selection mismatch after action '${step.action}'`,
+               expected: expectedSelection,
+               actual: currentSelection
+             };
+          }
+          if (stepSelectionSpec.caretOffset != null) {
+            const selectionStart = getSelectionStart(state);
+            const expectedHead = selectionStart + stepSelectionSpec.caretOffset;
+            if (state.selection.main.head !== expectedHead) {
+              return {
+                passed: false,
+                name: `${testCase.name} (step ${i+1})`,
+                error: `Cursor position mismatch after action '${step.action}'`,
+                expected: expectedHead,
+                actual: state.selection.main.head
+              };
+            }
+          }
+        }
+        
+        // Check cursor char if provided
+        if (step.cursor_char) {
+           const head = state.selection.main.head;
+           const charAfter = state.sliceDoc(head, head + 1);
+           const charBefore = head > 0 ? state.sliceDoc(head - 1, head) : '';
+           if (charAfter !== step.cursor_char && charBefore !== step.cursor_char) {
+             return {
+               passed: false,
+               name: `${testCase.name} (step ${i+1})`,
+               error: `Cursor char mismatch after action '${step.action}'`,
+               expected: step.cursor_char,
+               actual: charAfter
+             };
+           }
+        }
+      }
+    } else if (testCase.actions) {
       state = applyAction(state, testCase.actions);
     }
     
@@ -263,17 +421,52 @@ function runTestCase(testCase) {
     }
     
     // Check final selection if specified
-    if (testCase.new_selection) {
+    const finalSelectionSpec = normalizeSelectionSpec(testCase.new_selection);
+    if (finalSelectionSpec) {
       const finalSelection = getSelectedText(state);
-      if (finalSelection !== testCase.new_selection) {
+      if (finalSelection !== finalSelectionSpec.text) {
         return {
           passed: false,
           name: testCase.name,
           error: `Selection mismatch after actions`,
-          expected: testCase.new_selection,
+          expected: finalSelectionSpec.text,
           actual: finalSelection,
           finalCode: finalCode
         };
+      }
+
+      const expectedFinalStart = findNthOccurrence(finalCode, finalSelectionSpec.text, finalSelectionSpec.occurrence);
+      if (expectedFinalStart === -1) {
+        return {
+          passed: false,
+          name: testCase.name,
+          error: `Could not find occurrence ${finalSelectionSpec.occurrence} of "${finalSelectionSpec.text}" in final code`,
+          expected: finalSelectionSpec.text,
+          actual: finalCode
+        };
+      }
+
+      const actualFinalStart = getSelectionStart(state);
+      if (actualFinalStart !== expectedFinalStart) {
+        return {
+          passed: false,
+          name: testCase.name,
+          error: `Final selection occurrence mismatch for "${finalSelectionSpec.text}"`,
+          expected: expectedFinalStart,
+          actual: actualFinalStart
+        };
+      }
+      if (finalSelectionSpec.caretOffset != null) {
+        const expectedHead = actualFinalStart + finalSelectionSpec.caretOffset;
+        if (state.selection.main.head !== expectedHead) {
+          return {
+            passed: false,
+            name: testCase.name,
+            error: `Final cursor position mismatch for "${finalSelectionSpec.text}"`,
+            expected: expectedHead,
+            actual: state.selection.main.head
+          };
+        }
       }
     }
     
@@ -366,8 +559,9 @@ function runAllTests() {
   console.log('==========================================');
   
   const testFiles = [
-    './test/new_structural/navigation_tests.yaml',
-    './test/new_structural/editing_tests.yaml'
+    './test/new_structural/repro_loop.yaml'
+    //'./test/new_structural/navigation_tests.yaml',
+    //'./test/new_structural/editing_tests.yaml'
   ];
   
   let totalPassed = 0;

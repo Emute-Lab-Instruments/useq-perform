@@ -6,15 +6,23 @@ import {
   navigateIn,
   navigateNext,
   navigateOut,
-  navigatePrev
-} from "./extensions/structure/navigation.mjs";
-import { nodeTreeCursorField, getTrimmedRange } from "./extensions/structure.mjs";
+  navigatePrev,
+  navigateRight,
+  navigateLeft,
+  navigateUp,
+  navigateDown,
+  findNodeAt
+} from "./extensions/structure/new-structure.mjs";
+import { getTrimmedRange, performNavigation } from "./extensions/structure.mjs";
+import { syntaxTree } from "@codemirror/language";
 import { showPickerMenu, showNumberPickerMenu } from "../ui/pickerMenu.mjs";
 import { showHierarchicalGridPicker } from "../ui/hierarchicalPickerMenu.mjs";
 import { showRadialPickerMenu } from "../ui/radialPickerMenu.mjs";
 import { buildHierarchicalMenuModel } from "../ui/pickers/menuData.mjs";
 import { activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { evalNow } from "./editorConfig.mjs";
+import { virtualGamepad } from "../urlParams.mjs";
+import { getVirtualGamepadState } from "../ui/virtualGamepad.mjs";
 
 const DEFAULT_POLL_INTERVAL = 50;
 const DEFAULT_REPEAT_CONFIG = {
@@ -197,9 +205,8 @@ function dispatchPickerEvent(target, detail, logger) {
 
 function getCursorNode(view) {
   if (!view) return null;
-  const cursorField = view.state.field(nodeTreeCursorField, false);
-  if (!cursorField || typeof cursorField.getNode !== "function") return null;
-  return cursorField.getNode();
+  const selection = view.state.selection.main;
+  return findNodeAt(view.state, selection.from, selection.to);
 }
 
 function deleteNodeAtCursor(view) {
@@ -274,170 +281,7 @@ function adjustNumberAtCursor(view, delta) {
   return true;
 }
 
-function getNodeLineAndColumn(node, state) {
-  const line = state.doc.lineAt(node.from);
-  const col = node.from - line.from;
-  return { line: line.number, col };
-}
 
-function getAllNodes(state) {
-  const tree = state.field(nodeTreeCursorField, false)?.root;
-  if (!tree) return [];
-  const nodes = [];
-  function visit(n) {
-    if (!n) return;
-    nodes.push(n);
-    if (n.children) n.children.forEach(visit);
-  }
-  visit(tree);
-  return nodes;
-}
-
-function spatialNavigateLeft(state) {
-  const cursor = state.field(nodeTreeCursorField, false);
-  if (!cursor) return null;
-  const node = cursor.getNode?.();
-  if (!node) return null;
-  const { line, col } = getNodeLineAndColumn(node, state);
-  const nodes = getAllNodes(state).filter(n => n !== node);
-  let best = null;
-  let bestDist = Infinity;
-  for (const n of nodes) {
-    const nLine = state.doc.lineAt(n.from).number;
-    const nCol = n.from - state.doc.lineAt(n.from).from;
-    if (nLine === line && n.from < node.from) {
-      const dist = col - nCol;
-      if (dist > 0 && dist < bestDist) {
-        best = n;
-        bestDist = dist;
-      }
-    }
-  }
-  if (best) {
-    return state.update({
-      selection: { anchor: best.from },
-      scrollIntoView: true
-    });
-  }
-  return null;
-}
-
-function spatialNavigateRight(state) {
-  const cursor = state.field(nodeTreeCursorField, false);
-  if (!cursor) return null;
-  const node = cursor.getNode?.();
-  if (!node) return null;
-  const { line, col } = getNodeLineAndColumn(node, state);
-  const nodes = getAllNodes(state).filter(n => n !== node);
-  let best = null;
-  let bestDist = Infinity;
-  for (const n of nodes) {
-    const nLine = state.doc.lineAt(n.from).number;
-    const nCol = n.from - state.doc.lineAt(n.from).from;
-    if (nLine === line && n.from > node.from) {
-      const dist = nCol - col;
-      if (dist > 0 && dist < bestDist) {
-        best = n;
-        bestDist = dist;
-      }
-    }
-  }
-  if (node.children && node.children.length > 0) {
-    for (const child of node.children) {
-      const childLine = state.doc.lineAt(child.from).number;
-      const childCol = child.from - state.doc.lineAt(child.from).from;
-      if (childLine === line && child.from > node.from) {
-        const dist = childCol - col;
-        if (dist > 0 && dist < bestDist) {
-          best = child;
-          bestDist = dist;
-        }
-      }
-    }
-  }
-  if (best) {
-    return state.update({
-      selection: { anchor: best.from },
-      scrollIntoView: true
-    });
-  }
-  return null;
-}
-
-function spatialNavigateUp(state) {
-  const cursor = state.field(nodeTreeCursorField, false);
-  if (!cursor) return null;
-  const node = cursor.getNode?.();
-  if (!node) return null;
-  const { line, col } = getNodeLineAndColumn(node, state);
-  const nodes = getAllNodes(state).filter(n => n !== node);
-  let targetLine = -1;
-  for (let l = line - 1; l >= 1; l -= 1) {
-    if (nodes.some(n => state.doc.lineAt(n.from).number === l)) {
-      targetLine = l;
-      break;
-    }
-  }
-  if (targetLine === -1) return null;
-  let closest = null;
-  let minColDiff = Infinity;
-  for (const n of nodes) {
-    const nLine = state.doc.lineAt(n.from).number;
-    if (nLine === targetLine) {
-      const nCol = n.from - state.doc.lineAt(n.from).from;
-      const colDiff = Math.abs(nCol - col);
-      if (colDiff < minColDiff) {
-        minColDiff = colDiff;
-        closest = n;
-      }
-    }
-  }
-  if (closest) {
-    return state.update({
-      selection: { anchor: closest.from },
-      scrollIntoView: true
-    });
-  }
-  return null;
-}
-
-function spatialNavigateDown(state) {
-  const cursor = state.field(nodeTreeCursorField, false);
-  if (!cursor) return null;
-  const node = cursor.getNode?.();
-  if (!node) return null;
-  const { line, col } = getNodeLineAndColumn(node, state);
-  const nodes = getAllNodes(state).filter(n => n !== node);
-  const maxLine = state.doc.lines;
-  let targetLine = -1;
-  for (let l = line + 1; l <= maxLine; l += 1) {
-    if (nodes.some(n => state.doc.lineAt(n.from).number === l)) {
-      targetLine = l;
-      break;
-    }
-  }
-  if (targetLine === -1) return null;
-  let closest = null;
-  let minColDiff = Infinity;
-  for (const n of nodes) {
-    const nLine = state.doc.lineAt(n.from).number;
-    if (nLine === targetLine) {
-      const nCol = n.from - state.doc.lineAt(n.from).from;
-      const colDiff = Math.abs(nCol - col);
-      if (colDiff < minColDiff) {
-        minColDiff = colDiff;
-        closest = n;
-      }
-    }
-  }
-  if (closest) {
-    return state.update({
-      selection: { anchor: closest.from },
-      scrollIntoView: true
-    });
-  }
-  return null;
-}
 
 class GamepadController {
   constructor({
@@ -476,7 +320,7 @@ class GamepadController {
       mode: "normal",
       picker: null,
       numberPicker: null,
-      navigationMode: "structural",
+      navigationMode: "spatial",
       buttonRepeat: {},
       prevSnapshot: cloneGamepadSnapshot(createEmptyGamepadState({ now: this.now }))
     };
@@ -557,10 +401,10 @@ class GamepadController {
     const now = this.now();
     const navigationMap = this.state.navigationMode === "spatial"
       ? {
-          Up: spatialNavigateUp,
-          Down: spatialNavigateDown,
-          Left: spatialNavigateLeft,
-          Right: spatialNavigateRight
+          Up: navigateUp,
+          Down: navigateDown,
+          Left: navigateLeft,
+          Right: navigateRight
         }
       : {
           Up: navigatePrev,
@@ -574,10 +418,14 @@ class GamepadController {
     }
 
     if (isNewPress("A", snapshot, prevSnapshot)) {
-      this.dispatchTransaction(navigateIn(this.view.state));
+      if (performNavigation(this.view, navigateIn)) {
+        this.hideEditorCursor();
+      }
     }
     if (isNewPress("B", snapshot, prevSnapshot)) {
-      this.dispatchTransaction(navigateOut(this.view.state));
+      if (performNavigation(this.view, navigateOut)) {
+        this.hideEditorCursor();
+      }
     }
   }
 
@@ -593,9 +441,8 @@ class GamepadController {
     this.state.buttonRepeat[button] = repeat.state;
     if (!repeat.shouldTrigger) return;
 
-    const transaction = handler(this.view.state);
-    if (transaction) {
-      this.dispatchTransaction(transaction);
+    if (performNavigation(this.view, handler)) {
+      this.hideEditorCursor();
     }
   }
 
@@ -780,8 +627,82 @@ export function createGamepadController(options = {}) {
   return new GamepadController(options);
 }
 
+function getMergedGamepads() {
+  const real = navigator.getGamepads ? Array.from(navigator.getGamepads()) : [];
+  if (!virtualGamepad) return real;
+  
+  const virt = getVirtualGamepadState();
+  
+  // Find first connected real gamepad or create a base
+  let baseIdx = real.findIndex(g => g && g.connected);
+  let base = baseIdx !== -1 ? real[baseIdx] : null;
+  
+  if (!base) {
+     // Create synthetic base
+     base = {
+         index: 0,
+         id: 'Virtual Controller',
+         connected: true,
+         timestamp: virt.timestamp,
+         buttons: virt.buttons.map(b => ({ pressed: b.pressed, value: b.value })),
+         axes: virt.axes.slice()
+     };
+     return [base];
+  }
+  
+  // Merge virt into base
+  // We clone strictly necessary properties
+  const mergedButtons = [];
+  for(let i=0; i<base.buttons.length; i++) {
+      const b = base.buttons[i];
+      const v = virt.buttons[i];
+      const pressed = b.pressed || (v && v.pressed);
+      const value = Math.max(b.value, (v && v.value) || 0);
+      mergedButtons.push({ pressed, value });
+  }
+  // Ensure we cover virtual buttons if real has fewer
+  for(let i=base.buttons.length; i<virt.buttons.length; i++) {
+      mergedButtons.push(virt.buttons[i]);
+  }
+
+  const mergedAxes = [];
+  for(let i=0; i<base.axes.length; i++) {
+      const a = base.axes[i];
+      const v = virt.axes[i];
+      if (Math.abs(v) > 0.1) mergedAxes.push(v);
+      else mergedAxes.push(a);
+  }
+
+  const merged = {
+      ...base,
+      buttons: mergedButtons,
+      axes: mergedAxes,
+      timestamp: Math.max(base.timestamp, virt.timestamp)
+  };
+  
+  const result = real.slice();
+  result[baseIdx] = merged;
+  return result;
+}
+
+let activeController = null;
+
 export function initGamepadControl(view, options = {}) {
-  const controller = createGamepadController({ view, ...options });
+  if (activeController) {
+    console.debug('[gamepadControl] Disposing existing controller before initialization');
+    activeController.dispose();
+    activeController = null;
+  }
+
+  const gamepadManager = createGamepadManager({
+      getGamepads: getMergedGamepads
+  });
+  const controller = createGamepadController({ 
+      view, 
+      gamepadManager,
+      ...options 
+  });
   controller.start();
+  activeController = controller;
   return controller;
 }

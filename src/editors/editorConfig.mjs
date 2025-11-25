@@ -67,19 +67,11 @@ export function evalToplevel(opts, prefix = "") {
   if (hasView && isConnectedToModule()) {
     // Highlight the evaluated region
     const sel = state.selection.main;
-    // If selection is empty, highlight the current top-level node
-    let from = sel.from, to = sel.to;
-    if (from === to && typeof state.field === 'function') {
-      // Try to get the top-level node from the syntax tree
-      try {
-        const tree = state.tree || (state.syntaxTree && state.syntaxTree());
-        if (tree && tree.topNode) {
-          from = tree.topNode.from;
-          to = tree.topNode.to;
-        }
-      } catch (e) {}
+    if (!sel.empty) {
+      flashEvalHighlight(opts.view, sel.from, sel.to);
+    } else {
+      flashEvalHighlight(opts.view);
     }
-    flashEvalHighlight(opts.view, from, to);
   }
 
   evalInUseqWasm(wasmCode)
@@ -128,13 +120,9 @@ export function evalNow(opts) {
   if (state?.selection) {
     const main = state.selection.main;
     if (main && !main.empty) {
-      const startLine = state.doc.lineAt(main.from).number;
-      const endLine = state.doc.lineAt(Math.max(main.to - 1, main.from)).number;
-      if (startLine !== endLine) {
-        const evaluated = evalSelection(opts, "@");
-        if (evaluated) {
-          return true;
-        }
+      const evaluated = evalSelection(opts, "@");
+      if (evaluated) {
+        return true;
       }
     }
   }

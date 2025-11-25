@@ -551,6 +551,24 @@
   new_selection: "a"
 
 # ============================================================================
+# DUPLICATE OPERATIONS
+# ============================================================================
+
+- name: "duplicate symbol"
+  code: "(a b c)"
+  selection: "b"
+  actions: duplicate
+  new_code: "(a b b c)"
+  new_selection: ["b", 2]
+
+- name: "duplicate expression"
+  code: "(+ 1 2) 3"
+  selection: "(+ 1 2)"
+  actions: duplicate
+  new_code: "(+ 1 2) (+ 1 2) 3"
+  new_selection: ["(+ 1 2)", 2]
+
+# ============================================================================
 # COMBINED OPERATIONS - REFACTORING EXAMPLES
 # ============================================================================
 
