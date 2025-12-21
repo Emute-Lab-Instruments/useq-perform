@@ -6,6 +6,7 @@ import { dbg, toggleDbg } from "./utils.mjs";
 export let devmode = false;
 export let disableWebSerial = false;
 export let noModuleMode = false;
+export let virtualGamepad = false;
 
 export function handleURLParameters() {
   const urlParams = new URLSearchParams(window.location.search);

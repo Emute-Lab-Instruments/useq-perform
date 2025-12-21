@@ -11,24 +11,42 @@ import {
   navigateLeft,
   navigateUp,
   navigateDown,
-  findNodeAt
+  findNodeAt,
+  insertSymbol,
+  insertSymbolBefore,
+  insertFunctionCall,
+  insertFunctionCallBefore,
+  wrapInFunction
 } from "./extensions/structure/new-structure.mjs";
 import { getTrimmedRange, performNavigation } from "./extensions/structure.mjs";
 import { syntaxTree } from "@codemirror/language";
 import { showPickerMenu, showNumberPickerMenu } from "../ui/pickerMenu.mjs";
 import { showHierarchicalGridPicker } from "../ui/hierarchicalPickerMenu.mjs";
 import { showRadialPickerMenu } from "../ui/radialPickerMenu.mjs";
+import { showDoubleRadialPickerMenu } from "../ui/doubleRadialPickerMenu.mjs";
 import { buildHierarchicalMenuModel } from "../ui/pickers/menuData.mjs";
 import { activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { evalNow } from "./editorConfig.mjs";
 import { virtualGamepad } from "../urlParams.mjs";
 import { getVirtualGamepadState } from "../ui/virtualGamepad.mjs";
+import { sendSerialInputStreamValue } from "../io/serialComms.mjs";
+import {
+  clearManualControlBinding,
+  getManualControlBinding,
+  setManualControlBinding,
+  slotForStick,
+} from "./manualControlState.mjs";
 
 const DEFAULT_POLL_INTERVAL = 50;
 const DEFAULT_REPEAT_CONFIG = {
   initialDelay: 300,
   repeatInterval: 60
 };
+
+const MANUAL_CONTROL_SEND_HZ = 30;
+const MANUAL_CONTROL_SEND_INTERVAL_MS = Math.ceil(1000 / MANUAL_CONTROL_SEND_HZ);
+const MANUAL_CONTROL_EPSILON = 1e-6;
+const MANUAL_CONTROL_AXIS_DEADZONE = 0.12;
 
 const noop = () => {};
 const nullLogger = {
@@ -73,7 +91,7 @@ const COMMAND_REGISTRY = [
   {
     combo: ["X"],
     mode: "normal",
-    action: controller => controller.openCreateMenu("replace")
+    action: controller => controller.openDoubleRadialCreateMenu("replace")
   },
   {
     combo: ["Y"],
@@ -91,6 +109,14 @@ const COMMAND_REGISTRY = [
     action: controller => controller.toggleNavigationMode()
   }
 ];
+
+// Double radial menu button actions
+const DOUBLE_RADIAL_ACTIONS = {
+  RB: "replace",      // Replace currently selected node
+  RT: "apply_call",   // Insert as function call
+  LB: "apply_pre",     // Insert to the left
+  LT: "apply"         // Insert to the right
+};
 
 function cloneGamepadSnapshot(snapshot) {
   if (!snapshot) {
@@ -270,6 +296,47 @@ function setNumberNodeValue(view, node, value) {
   });
 }
 
+function formatManualControlNumber(value) {
+  if (!Number.isFinite(value)) return "0";
+  if (Object.is(value, -0)) value = 0;
+  const abs = Math.abs(value);
+  let text;
+  if (abs === 0) {
+    text = "0";
+  } else if (abs < 0.001) {
+    text = value.toExponential(3);
+  } else if (abs < 100) {
+    text = value.toFixed(4);
+  } else if (abs < 10000) {
+    text = value.toFixed(2);
+  } else {
+    text = String(Math.round(value));
+  }
+
+  // Trim trailing zeros for fixed formats.
+  if (text.includes(".") && !text.includes("e")) {
+    text = text.replace(/\.?0+$/, "");
+  }
+  return text;
+}
+
+function getNodeRangeAtCursor(view) {
+  if (!view) return null;
+  const node = getCursorNode(view);
+  if (!node) return null;
+  const range = getTrimmedRange(node, view.state) || node;
+  if (typeof range?.from !== "number" || typeof range?.to !== "number") return null;
+  return { from: range.from, to: range.to };
+}
+
+function getNumericSeedFromText(text) {
+  if (typeof text !== "string") return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed);
+  return Number.isFinite(num) ? num : null;
+}
+
 function adjustNumberAtCursor(view, delta) {
   if (!view) return false;
   const state = view.state;
@@ -390,6 +457,7 @@ class GamepadController {
 
     if (this.state.mode === "normal") {
       this.handleNumberAdjustment(snapshot, prevSnapshot);
+      this.handleManualControl(snapshot, prevSnapshot);
       this.handleButtonCommands(snapshot, prevSnapshot);
     }
 
@@ -463,6 +531,20 @@ class GamepadController {
       dispatchPickerEvent(this.eventTarget, { action: "cancel" }, this.logger);
       this.cancelAction();
     }
+
+    // Handle trigger buttons for double radial menu actions
+    if (this.state.picker?.direction === "replace") {
+      // Double radial menu is open, check for trigger buttons
+      if (isNewPress("RB", snapshot, prevSnapshot)) {
+        dispatchPickerEvent(this.eventTarget, { action: "apply", mode: "replace" }, this.logger);
+      } else if (isNewPress("RT", snapshot, prevSnapshot)) {
+        dispatchPickerEvent(this.eventTarget, { action: "apply", mode: "apply_call" }, this.logger);
+      } else if (isNewPress("LB", snapshot, prevSnapshot)) {
+        dispatchPickerEvent(this.eventTarget, { action: "apply", mode: "apply_pre" }, this.logger);
+      } else if (isNewPress("LT", snapshot, prevSnapshot)) {
+        dispatchPickerEvent(this.eventTarget, { action: "apply", mode: "apply" }, this.logger);
+      }
+    }
   }
 
   handleNumberAdjustment(snapshot, prevSnapshot) {
@@ -474,6 +556,116 @@ class GamepadController {
       const adjusted = adjustNumberAtCursor(this.view, 1);
       if (adjusted) this.hideEditorCursor();
     }
+  }
+
+  handleManualControl(snapshot, prevSnapshot) {
+    if (!this.view) return;
+
+    const now = this.now();
+
+    // Toggle bindings.
+    if (isNewPress("LeftStickPress", snapshot, prevSnapshot)) {
+      this.toggleManualControl("left", now);
+    }
+    if (isNewPress("RightStickPress", snapshot, prevSnapshot)) {
+      this.toggleManualControl("right", now);
+    }
+
+    // Apply continuous updates.
+    this.updateManualControl("left", snapshot, now);
+    this.updateManualControl("right", snapshot, now);
+  }
+
+  toggleManualControl(stick, nowMs) {
+    const existing = getManualControlBinding(stick);
+    if (existing) {
+      clearManualControlBinding(stick);
+      return;
+    }
+
+    const range = getNodeRangeAtCursor(this.view);
+    if (!range) return;
+
+    const originalText = this.view.state.doc.sliceString(range.from, range.to);
+    const seed = getNumericSeedFromText(originalText);
+    const value = seed ?? 0;
+    const slot = slotForStick(stick);
+
+    const text = formatManualControlNumber(value);
+    this.view.dispatch({
+      changes: { from: range.from, to: range.to, insert: text },
+      selection: { anchor: range.from + text.length },
+      scrollIntoView: true,
+      userEvent: "manualControl.bind"
+    });
+    this.hideEditorCursor();
+
+    const binding = {
+      stick,
+      slot,
+      from: range.from,
+      to: range.from + text.length,
+      value,
+      originalText,
+      lastSentAt: 0,
+      lastSentValue: NaN
+    };
+    setManualControlBinding(stick, binding);
+
+    // Send initial value immediately (best-effort).
+    sendSerialInputStreamValue(slot, value).catch(() => {});
+  }
+
+  updateManualControl(stick, snapshot, nowMs) {
+    const binding = getManualControlBinding(stick);
+    if (!binding) return;
+
+    // Enforce <= 30Hz (or slower).
+    if (binding.lastSentAt && nowMs - binding.lastSentAt < MANUAL_CONTROL_SEND_INTERVAL_MS) {
+      return;
+    }
+
+    const axisX = Number(snapshot?.axes?.[stick === "right" ? "RightStickX" : "LeftStickX"] || 0);
+    const axisY = Number(snapshot?.axes?.[stick === "right" ? "RightStickY" : "LeftStickY"] || 0);
+
+    const x = Math.abs(axisX) < MANUAL_CONTROL_AXIS_DEADZONE ? 0 : axisX;
+    const y = Math.abs(axisY) < MANUAL_CONTROL_AXIS_DEADZONE ? 0 : axisY;
+
+    // If no meaningful movement, still allow sending the first value (handled above).
+    if (x === 0 && y === 0) {
+      binding.lastSentAt = nowMs;
+      return;
+    }
+
+    const base = 0.01 * Math.max(1, Math.abs(binding.value));
+    const k = 3; // ~3 decades over full stick travel
+    const sensitivity = base * Math.pow(10, k * x);
+    const nextValue = binding.value + (-y) * sensitivity;
+
+    if (Number.isFinite(binding.lastSentValue) &&
+        Math.abs(nextValue - binding.lastSentValue) < MANUAL_CONTROL_EPSILON) {
+      binding.lastSentAt = nowMs;
+      return;
+    }
+
+    binding.value = nextValue;
+    binding.lastSentValue = nextValue;
+    binding.lastSentAt = nowMs;
+
+    const text = formatManualControlNumber(nextValue);
+
+    // Update the document at the bound range.
+    // Note: this assumes the bound value stays at the same location while active.
+    this.view.dispatch({
+      changes: { from: binding.from, to: binding.to, insert: text },
+      selection: { anchor: binding.from + text.length },
+      scrollIntoView: false,
+      userEvent: "manualControl.update"
+    });
+    binding.to = binding.from + text.length;
+
+    // Stream to module (best-effort).
+    sendSerialInputStreamValue(binding.slot, nextValue).catch(() => {});
   }
 
   handleButtonCommands(snapshot, prevSnapshot) {
@@ -543,6 +735,33 @@ class GamepadController {
     };
   }
 
+  async openDoubleRadialCreateMenu(direction) {
+    if (this.state.mode === "picker") {
+      this.logger.debug?.("[gamepadControl] Picker already open; ignoring create menu request");
+      return;
+    }
+
+    const categories = await buildHierarchicalMenuModel();
+
+    this.state.mode = "picker";
+    this.state.picker = {
+      direction,
+      closeMenu: null
+    };
+
+    const closeMenu = showDoubleRadialPickerMenu({
+      categories,
+      title: "Create",
+      onSelect: (entry) => this.handleCreateSelection(entry, direction),
+      onCancel: () => this.cancelAction()
+    });
+
+    this.state.picker = {
+      direction,
+      closeMenu
+    };
+  }
+
   handleCreateSelection(entry, direction) {
     if (this.onPickerSelect) {
       this.onPickerSelect(entry, 0, direction);
@@ -550,22 +769,87 @@ class GamepadController {
       this.state.picker = null;
       return;
     }
+    
+    const view = this.view;
+    if (!view) { this.state.mode = "normal"; this.state.picker = null; return; }
+    
     const text = (entry && entry.insertText) ? entry.insertText : String(entry?.value ?? '');
     if (!text) {
       this.state.mode = "normal"; this.state.picker = null; return;
     }
-    const view = this.view;
-    if (!view) { this.state.mode = "normal"; this.state.picker = null; return; }
-    const node = getCursorNode(view);
-    const range = node ? getTrimmedRange(node, view.state) : view.state.selection.main;
-    const from = typeof range?.from === 'number' ? range.from : view.state.selection.main.from;
-    const to = typeof range?.to === 'number' ? range.to : view.state.selection.main.to;
-    view.dispatch({
-      changes: { from, to, insert: text },
-      selection: { anchor: from + text.length },
-      scrollIntoView: true,
-      userEvent: 'insert.picker'
-    });
+    
+    const applyMode = entry?.applyMode || "apply"; // Default to simple insert
+    const symbol = text.trim();
+    
+    // Handle different apply modes
+    try {
+      switch (applyMode) {
+        case "replace":
+          // Replace current node with the symbol
+          const node = getCursorNode(view);
+          const range = node ? getTrimmedRange(node, view.state) : view.state.selection.main;
+          const from = typeof range?.from === 'number' ? range.from : view.state.selection.main.from;
+          const to = typeof range?.to === 'number' ? range.to : view.state.selection.main.to;
+          view.dispatch({
+            changes: { from, to, insert: symbol },
+            selection: { anchor: from + symbol.length },
+            scrollIntoView: true,
+            userEvent: 'replace.picker'
+          });
+          break;
+          
+        case "apply_call":
+          // Insert as function call after current node: (symbol _)
+          const currentNode = getCursorNode(view);
+          const currentRange = currentNode ? getTrimmedRange(currentNode, view.state) : view.state.selection.main;
+          const insertPos = typeof currentRange?.to === 'number' ? currentRange.to : view.state.selection.main.to;
+          const funcCall = ` (${symbol} _)`;
+          view.dispatch({
+            changes: { from: insertPos, to: insertPos, insert: funcCall },
+            selection: { anchor: insertPos + funcCall.indexOf('_') },
+            scrollIntoView: true,
+            userEvent: 'insert.call.picker'
+          });
+          break;
+          
+        case "apply_pre":
+          // Insert before current node: symbol 
+          const prevNode = getCursorNode(view);
+          const prevRange = prevNode ? getTrimmedRange(prevNode, view.state) : view.state.selection.main;
+          const beforePos = typeof prevRange?.from === 'number' ? prevRange.from : view.state.selection.main.from;
+          view.dispatch({
+            changes: { from: beforePos, to: beforePos, insert: symbol + ' ' },
+            selection: { anchor: beforePos },
+            scrollIntoView: true,
+            userEvent: 'insert.before.picker'
+          });
+          break;
+          
+        case "apply":
+        default:
+          // Insert after current node:  symbol
+          const nextNode = getCursorNode(view);
+          const nextRange = nextNode ? getTrimmedRange(nextNode, view.state) : view.state.selection.main;
+          const afterPos = typeof nextRange?.to === 'number' ? nextRange.to : view.state.selection.main.to;
+          view.dispatch({
+            changes: { from: afterPos, to: afterPos, insert: ' ' + symbol },
+            selection: { anchor: afterPos + 1 },
+            scrollIntoView: true,
+            userEvent: 'insert.after.picker'
+          });
+          break;
+      }
+    } catch (error) {
+      this.logger.error?.(`[gamepadControl] Error applying selection: ${error.message}`);
+      // Fallback to simple insert
+      view.dispatch({
+        changes: { from: view.state.selection.main.from, to: view.state.selection.main.to, insert: text },
+        selection: { anchor: view.state.selection.main.from + text.length },
+        scrollIntoView: true,
+        userEvent: 'insert.picker.fallback'
+      });
+    }
+    
     this.state.mode = "normal";
     this.state.picker = null;
     this.hideEditorCursor();
