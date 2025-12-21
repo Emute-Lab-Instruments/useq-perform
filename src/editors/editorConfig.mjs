@@ -1,6 +1,7 @@
 // CODEMIRROR IMPORTS
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { deleteCharForward } from "@codemirror/commands";
+import { syntaxTree } from "@codemirror/language";
 
 // NEXTJOURNAL (clojure-mode)
 import {
@@ -14,6 +15,7 @@ import { sendTouSEQ, isConnectedToModule } from "../io/serialComms.mjs";
 import { post } from "../io/console.mjs";
 import { evalInUseqWasm } from "../io/useqWasmInterpreter.mjs";
 import { noModuleMode } from "../urlParams.mjs";
+import { rewriteCodeSliceForModule } from "./manualControlState.mjs";
 
 // UI STATE
 import { openCam } from "../ui/camera.mjs";
@@ -26,6 +28,29 @@ import { dbg } from "../utils.mjs";
 import { flashEvalHighlight } from "./extensions/evalHighlight.mjs";
 import { detectAndTrackExpressionEvaluation } from "./extensions/structure.mjs";
 
+function getTopLevelFormRange(state) {
+  if (!state?.selection) return null;
+  const pos = state.selection.main.from;
+  const tree = syntaxTree(state);
+
+  // Try a couple resolve strategies to avoid landing on Program for whitespace positions.
+  let node = tree.resolveInner(pos, 0);
+  if (node?.type?.name === "Program") {
+    node = tree.resolveInner(pos, 1);
+  }
+  if (node?.type?.name === "Program") {
+    node = tree.resolveInner(pos, -1);
+  }
+
+  // Walk up until we're directly under Program.
+  while (node && node.parent && node.parent.type?.name !== "Program") {
+    node = node.parent;
+  }
+
+  if (!node || node.type?.name === "Program") return null;
+  return { from: node.from, to: node.to };
+}
+
 function evalSelection(opts, prefix = "") {
   const state = opts.state;
   if (!state?.selection) {
@@ -37,7 +62,9 @@ function evalSelection(opts, prefix = "") {
     return false;
   }
 
-  const code = prefix + state.doc.sliceString(main.from, main.to);
+  const slice = state.doc.sliceString(main.from, main.to);
+  const rewritten = rewriteCodeSliceForModule(slice, main.from, main.to);
+  const code = prefix + rewritten;
   if (!code.trim()) {
     return false;
   }
@@ -53,7 +80,15 @@ function evalSelection(opts, prefix = "") {
 // Evaluate the current top-level form, optionally with a prefix (e.g., "@" for async)
 export function evalToplevel(opts, prefix = "") {
   const state = opts.state;
-  const code = prefix + top_level_string(state);
+  const range = getTopLevelFormRange(state);
+  const slice = range
+    ? state.doc.sliceString(range.from, range.to)
+    : top_level_string(state);
+
+  const code = prefix + slice;
+  const moduleCode = range
+    ? prefix + rewriteCodeSliceForModule(slice, range.from, range.to)
+    : code;
 
   const isImmediate = code.startsWith("@");
   const wasmCode = isImmediate ? code.slice(1) : code;
@@ -103,7 +138,7 @@ export function evalToplevel(opts, prefix = "") {
     });
 
   if (!noModuleMode) {
-    sendTouSEQ(code);
+    sendTouSEQ(moduleCode);
   }
   return true;
 }
@@ -163,14 +198,14 @@ export function softEval(opts) {
       const output = typeof result === 'string' ? result : String(result ?? '');
       const trimmed = output.trim();
       if (trimmed.length > 0) {
-        post(\`Preview: \${trimmed}\`);
+        post(`Preview: ${trimmed}`);
       } else {
-        post(\`Preview: \${wasmCode.trim().substring(0, 40)}\${wasmCode.length > 40 ? '...' : ''}\`);
+        post(`Preview: ${wasmCode.trim().substring(0, 40)}${wasmCode.length > 40 ? '...' : ''}`);
       }
     })
     .catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      post(\`**Preview Error**: \${message.replace(/\`/g, '\\\\\`')}\`);
+      post(`**Preview Error**: ${message.replace(/`/g, '\\`')}`);
     });
 
   return true;

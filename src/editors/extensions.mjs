@@ -18,6 +18,7 @@ import { themeCompartment, fontSizeCompartment } from "./state.mjs";
 import {structureExtensions} from "./extensions/structure.mjs";
 import { evalHighlightField } from "./extensions/evalHighlight.mjs";
 import { dbg } from "../utils.mjs";
+import { mapManualControlBindingsThroughChanges } from "./manualControlState.mjs";
 
 dbg('extensions.mjs: Loading...');
 dbg('extensions.mjs: Active user settings:', activeUserSettings);
@@ -29,6 +30,11 @@ export const updateListener = EditorView.updateListener.of((update) => {
   const userSessionConfig = activeUserSettings.storage || { saveCodeLocally: true };
   if (update.docChanged && userSessionConfig.saveCodeLocally) {
     window.localStorage.setItem(codeStorageKey, update.state.doc.toString());
+  }
+
+  // Keep manual-control bindings stable across arbitrary edits.
+  if (update.docChanged) {
+    mapManualControlBindingsThroughChanges(update.changes);
   }
 });
 
