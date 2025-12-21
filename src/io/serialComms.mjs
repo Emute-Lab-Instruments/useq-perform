@@ -151,9 +151,14 @@ const protocolState = {
   negotiationAttempted: false,
   requestIdCounter: 0,
   pendingRequests: new Map(),
+  ioConfig: null,
+  heartbeatInterval: null,
 };
 
 const JSON_PROTOCOL_MIN_VERSION = { major: 1, minor: 2, patch: 0 };
+const EDITOR_VERSION = '1.2.0';
+const HEARTBEAT_INTERVAL_MS = 60000;
+const HEARTBEAT_TIMEOUT_MS = 10000;
 
 function resetProtocolState() {
   protocolState.pendingRequests.forEach((pending) => {
@@ -165,6 +170,44 @@ function resetProtocolState() {
   protocolState.negotiationAttempted = false;
   protocolState.requestIdCounter = 0;
   protocolState.pendingRequests.clear();
+  protocolState.ioConfig = null;
+  stopHeartbeat();
+}
+
+function startHeartbeat() {
+  if (protocolState.heartbeatInterval) {
+    return;
+  }
+
+  protocolState.heartbeatInterval = setInterval(async () => {
+    if (protocolState.mode !== PROTOCOL_MODES.JSON || !serialport?.writable) {
+      stopHeartbeat();
+      return;
+    }
+
+    // Avoid interfering with in-flight requests (firmware buffers console output per active request).
+    if (protocolState.pendingRequests.size > 0) {
+      return;
+    }
+
+    try {
+      await writeJsonRequest(
+        { type: 'ping' },
+        { skipConsole: true, timeout: HEARTBEAT_TIMEOUT_MS }
+      );
+    } catch (err) {
+      console.warn('Heartbeat failed:', err);
+      post('**Warning**: Heartbeat timeout - connection may be lost. Reconnect if needed.');
+      stopHeartbeat();
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeat() {
+  if (protocolState.heartbeatInterval) {
+    clearInterval(protocolState.heartbeatInterval);
+    protocolState.heartbeatInterval = null;
+  }
 }
 
 function versionAtLeast(version, target) {
@@ -208,14 +251,25 @@ async function maybeNegotiateJsonProtocol() {
   protocolState.negotiationAttempted = true;
 
   try {
-    const response = await sendJsonEval('(useq-talk-in-json)', {
-      force: true,
+    const helloPayload = {
+      type: 'hello',
+      client: 'editor',
+      version: EDITOR_VERSION,
+    };
+
+    const response = await writeJsonRequest(helloPayload, {
       skipConsole: true,
+      timeout: 5000,
     });
 
-    if (response.success) {
+    if (response.success && response.mode === 'json') {
       protocolState.mode = PROTOCOL_MODES.JSON;
-      post('**Info**: Using structured JSON protocol for this session.');
+      if (response.config) {
+        protocolState.ioConfig = response.config;
+        sendDefaultStreamConfig(response.config);
+      }
+      post(`**Info**: Using structured JSON protocol (fw: ${response.fw || 'unknown'}).`);
+      startHeartbeat();
     } else {
       post(`**Warning**: JSON negotiation failed (${response.text || 'no details'}), using legacy mode.`);
     }
@@ -225,8 +279,105 @@ async function maybeNegotiateJsonProtocol() {
   }
 }
 
+const DEFAULT_STREAM_MAX_RATE_HZ = 30;
+
+function buildDefaultStreamConfig(ioConfig) {
+  const channels = [];
+
+  if (ioConfig?.inputs) {
+    for (const input of ioConfig.inputs) {
+      channels.push({
+        id: input.index,
+        name: input.name,
+        enabled: true,
+        maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ,
+      });
+    }
+  }
+
+  return {
+    type: 'stream-config',
+    maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ,
+    channels,
+  };
+}
+
+async function sendDefaultStreamConfig(ioConfig) {
+  if (!ioConfig) {
+    return;
+  }
+
+  try {
+    const config = buildDefaultStreamConfig(ioConfig);
+    await writeJsonRequest(config, { skipConsole: true, timeout: 5000 });
+    dbg('Stream config sent:', config);
+  } catch (err) {
+    console.warn('Failed to send stream config:', err);
+  }
+}
+
+export async function sendStreamConfig(channels, maxRateHz = DEFAULT_STREAM_MAX_RATE_HZ) {
+  if (protocolState.mode !== PROTOCOL_MODES.JSON) {
+    return Promise.reject(new Error('JSON protocol not active'));
+  }
+
+  const payload = {
+    type: 'stream-config',
+    maxRateHz,
+    channels,
+  };
+
+  return writeJsonRequest(payload, { skipConsole: true, timeout: 5000 });
+}
+
+/**
+ * Send a serial input stream update to the module (host -> device).
+ *
+ * Wire format (10 bytes):
+ *   [0x1F][channel: uint8][value: float64 little-endian]
+ *
+ * Channel numbering is 1-based to align with firmware `(ssin N)` where N ∈ [1, NUM_SERIAL_INS].
+ *
+ * This is out-of-band (does not use JSON requests) and is safe to send while JSON protocol is active.
+ */
+export async function sendSerialInputStreamValue(channel, value) {
+  const ch = Number(channel);
+  const val = Number(value);
+
+  if (!Number.isFinite(ch) || ch < 1 || ch > 255) {
+    return Promise.reject(new Error(`Invalid stream channel: ${channel}`));
+  }
+  if (!Number.isFinite(val)) {
+    return Promise.reject(new Error(`Invalid stream value: ${value}`));
+  }
+
+  // Dev mode: allow callers to update UI/WASM without requiring hardware.
+  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const isDevMode = urlParams.has('devmode') && urlParams.get('devmode') === 'true';
+  if (isDevMode && !serialport) {
+    return Promise.resolve();
+  }
+
+  if (!serialport || !serialport.writable) {
+    return Promise.reject(new Error('Serial port is not writable'));
+  }
+
+  // 0: start marker, 1: channel, 2..9: float64 LE
+  const packet = Buffer.alloc(10);
+  packet.writeUInt8(MESSAGE_START_MARKER, 0);
+  packet.writeUInt8(ch & 0xff, 1);
+  packet.writeDoubleLE(val, 2);
+
+  const writer = serialport.writable.getWriter();
+  try {
+    await writer.write(packet);
+  } finally {
+    writer.releaseLock();
+  }
+}
+
 function sendJsonEval(code, options = {}) {
-  const { capture = null, force = false, skipConsole = false } = options;
+  const { capture = null, force = false, skipConsole = false, exec = null } = options;
 
   if (!serialport || !serialport.writable) {
     return Promise.reject(new Error('Serial port is not writable'));
@@ -241,7 +392,19 @@ function sendJsonEval(code, options = {}) {
     code,
   };
 
+  if (exec) {
+    payload.exec = exec;
+  }
+
   return writeJsonRequest(payload, { capture, skipConsole });
+}
+
+export function getIoConfig() {
+  return protocolState.ioConfig;
+}
+
+export function isJsonProtocolActive() {
+  return protocolState.mode === PROTOCOL_MODES.JSON;
 }
 
 function writeJsonRequest(payload, options = {}) {
@@ -257,6 +420,7 @@ function writeJsonRequest(payload, options = {}) {
     reject: null,
     capture: options.capture || null,
     skipConsole: options.skipConsole || false,
+    timeoutId: null,
   };
 
   const message = `${JSON.stringify(payload)}\n`;
@@ -264,6 +428,14 @@ function writeJsonRequest(payload, options = {}) {
   return new Promise((resolve, reject) => {
     pending.resolve = resolve;
     pending.reject = reject;
+
+    if (options.timeout && options.timeout > 0) {
+      pending.timeoutId = setTimeout(() => {
+        protocolState.pendingRequests.delete(requestId);
+        reject(new Error(`Request ${requestId} timed out`));
+      }, options.timeout);
+    }
+
     protocolState.pendingRequests.set(requestId, pending);
 
     const writer = serialport.writable.getWriter();
@@ -274,6 +446,9 @@ function writeJsonRequest(payload, options = {}) {
       })
       .catch((error) => {
         writer.releaseLock();
+        if (pending.timeoutId) {
+          clearTimeout(pending.timeoutId);
+        }
         protocolState.pendingRequests.delete(requestId);
         reject(error);
       });
@@ -694,29 +869,41 @@ function handleJsonMessage(rawMessage) {
     return;
   }
 
-  const { requestId, text, meta, success } = parsed;
+  const { requestId, text, meta, success, type: responseType } = parsed;
+  const consoleText = parsed.console;
+  const adminText = parsed.admin;
   let pending = null;
 
   if (requestId && protocolState.pendingRequests.has(requestId)) {
     pending = protocolState.pendingRequests.get(requestId);
     protocolState.pendingRequests.delete(requestId);
+
+    if (pending.timeoutId) {
+      clearTimeout(pending.timeoutId);
+    }
   }
 
   if (pending) {
     if (pending.capture) {
       try {
-        pending.capture(text ?? '');
+        pending.capture(consoleText ?? text ?? '');
       } catch (captureError) {
         console.error('Error running capture callback for JSON response', captureError);
       }
-    } else if (!pending.skipConsole && text) {
-      post(`uSEQ: ${text}`);
+    } else if (!pending.skipConsole) {
+      const displayText = consoleText ?? text;
+      if (displayText) {
+        post(`uSEQ: ${displayText}`);
+      }
     }
 
     pending.resolve(parsed);
-  } else if (text) {
-    const prefix = success === false ? '**Error**: ' : 'uSEQ: ';
-    post(`${prefix}${text}`);
+  } else {
+    const displayText = consoleText ?? text;
+    if (displayText) {
+      const prefix = success === false ? '**Error**: ' : 'uSEQ: ';
+      post(`${prefix}${displayText}`);
+    }
   }
 
   if (meta) {
