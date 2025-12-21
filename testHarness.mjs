@@ -559,9 +559,8 @@ function runAllTests() {
   console.log('==========================================');
   
   const testFiles = [
-    './test/new_structural/repro_loop.yaml'
-    //'./test/new_structural/navigation_tests.yaml',
-    //'./test/new_structural/editing_tests.yaml'
+    './test/new_structural/navigation_tests.yaml',
+    './test/new_structural/editing_tests.yaml'
   ];
   
   let totalPassed = 0;

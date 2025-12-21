@@ -12,3 +12,9 @@ public/wasm
 public/useq.js
 *.backup
 
+
+# Temporary Assets
+gemini_radial_menu.zip
+
+# Developer Notes
+devnotes/
