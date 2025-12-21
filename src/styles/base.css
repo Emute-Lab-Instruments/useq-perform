@@ -20,7 +20,7 @@
     --code-font: 'IBM Plex Mono', monospace;
     --panel-bg: rgba(30, 30, 30, 0.95);
     --panel-border: rgba(255, 255, 255, 0.2);
-    --panel-section-bg: rgba(255, 255, 255, 0.05);
+    --panel-section-bg: rgba(30, 30, 30, 0.6);
     --panel-item-hover-bg: rgba(255, 255, 255, 0.1);
     --panel-item-active-bg: rgba(255, 255, 255, 0.15);
     --panel-control-bg: rgba(0, 0, 0, 0.2);

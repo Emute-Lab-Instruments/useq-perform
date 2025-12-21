@@ -153,7 +153,7 @@ function adjustPanelsToTheme(themeName) {
     document.documentElement.style.setProperty('--panel-bg', adjustedHelpBackground + "F0");
     document.documentElement.style.setProperty('--toolbar-bg', adjustedConsoleBackground);
     document.documentElement.style.setProperty('--panel-border', 'rgba(255, 255, 255, 0.2)');
-    document.documentElement.style.setProperty('--panel-section-bg', 'rgba(255, 255, 255, 0.05)');
+    document.documentElement.style.setProperty('--panel-section-bg', adjustedHelpBackground + "E0");
     document.documentElement.style.setProperty('--panel-item-hover-bg', 'rgba(255, 255, 255, 0.1)');
     document.documentElement.style.setProperty('--panel-item-active-bg', 'rgba(255, 255, 255, 0.15)');
     document.documentElement.style.setProperty('--panel-control-bg', 'rgba(0, 0, 0, 0.2)');
