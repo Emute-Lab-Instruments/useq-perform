@@ -238,6 +238,16 @@ function nextRequestId() {
 // Initialise connection-dependent UI state after protocol state is ready
 setConnectedToModule(false);
 
+function dispatchProtocolReady() {
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('useq-protocol-ready'));
+    }
+  } catch (e) {
+    console.warn('Failed to dispatch useq-protocol-ready', e);
+  }
+}
+
 async function maybeNegotiateJsonProtocol() {
   if (protocolState.negotiationAttempted) {
     return;
@@ -245,6 +255,7 @@ async function maybeNegotiateJsonProtocol() {
 
   if (!jsonEligibleVersion()) {
     protocolState.negotiationAttempted = true;
+    dispatchProtocolReady();
     return;
   }
 
@@ -276,6 +287,8 @@ async function maybeNegotiateJsonProtocol() {
   } catch (err) {
     console.error('JSON negotiation error', err);
     post('**Warning**: Unable to switch to JSON protocol, staying in legacy mode.');
+  } finally {
+    dispatchProtocolReady();
   }
 }
 

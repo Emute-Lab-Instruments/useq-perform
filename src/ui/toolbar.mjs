@@ -4,6 +4,7 @@ import { setFontSize, toggleSerialVis } from "../editors/editorConfig.mjs";
 import { toggleConnect, sendTouSEQ, isConnectedToModule } from "../io/serialComms.mjs";
 import { devmode } from "../urlParams.mjs";
 import { initToolbarBarProgress } from "./toolbarBarProgress.mjs";
+import { startMockTimeGenerator, stopMockTimeGenerator, resumeMockTimeGenerator, resetMockTimeGenerator } from "../io/mockTimeGenerator.mjs";
 
 const TOP_TOOLBAR_ID = "panel-top-toolbar";
 const TOP_TOOLBAR_HEIGHT_VAR = "--top-toolbar-height";
@@ -385,12 +386,6 @@ function updatePlaybackUI() {
     // Reset classes
     [$play, $pause, $stop, $rewind, $clear].forEach($b => $b.removeClass('primary disabled'));
 
-    // If not connected, gray out all controls
-    if (!isConnected) {
-        [$play, $pause, $stop, $rewind, $clear].forEach($b => $b.addClass('disabled'));
-        return;
-    }
-
     switch (playbackState) {
         case PlaybackState.Playing:
             $play.addClass('primary disabled');
@@ -431,46 +426,72 @@ function initPlaybackToolbar() {
 
     $play.on('click', () => {
         if ($play.hasClass('disabled')) return;
-        sendTouSEQ('(useq-play)');
+        
+        if (isConnected) {
+            sendTouSEQ('(useq-play)');
+        } else {
+            if (playbackState === PlaybackState.Paused) {
+                resumeMockTimeGenerator();
+            } else {
+                startMockTimeGenerator();
+            }
+        }
         setPlaybackState(PlaybackState.Playing);
     });
 
     $pause.on('click', () => {
         if ($pause.hasClass('disabled')) return;
-        sendTouSEQ('(useq-pause)');
+        
+        if (isConnected) {
+            sendTouSEQ('(useq-pause)');
+        } else {
+            stopMockTimeGenerator();
+        }
         setPlaybackState(PlaybackState.Paused);
     });
 
     $stop.on('click', () => {
         if ($stop.hasClass('disabled')) return;
-        sendTouSEQ('(useq-stop)');
+        
+        if (isConnected) {
+            sendTouSEQ('(useq-stop)');
+        } else {
+            stopMockTimeGenerator();
+            resetMockTimeGenerator();
+        }
         setPlaybackState(PlaybackState.Stopped);
     });
 
     $rewind.on('click', () => {
         if ($rewind.hasClass('disabled')) return;
-        sendTouSEQ('(useq-rewind)');
+        
+        if (isConnected) {
+            sendTouSEQ('(useq-rewind)');
+        } else {
+            resetMockTimeGenerator();
+        }
         // After rewind, consider state stopped
         setPlaybackState(PlaybackState.Stopped);
     });
 
     $clear.on('click', () => {
         if ($clear.hasClass('disabled')) return;
-        sendTouSEQ('(useq-clear-outs)');
+        
+        if (isConnected) {
+            sendTouSEQ('(useq-clear-outs)');
+        }
     });
 
     // React to connection status changes
     window.addEventListener('useq-connection-changed', (e) => {
-        const wasConnected = isConnected;
         isConnected = !!(e && e.detail && e.detail.connected);
         updatePlaybackUI();
-
-        // Query transport state from hardware when newly connected
-        if (!wasConnected && isConnected) {
-            // Small delay to ensure connection is fully established
-            setTimeout(() => {
-                queryTransportState();
-            }, 100);
+    });
+    
+    // Listen for protocol ready event to query state
+    window.addEventListener('useq-protocol-ready', () => {
+        if (isConnected) {
+            queryTransportState();
         }
     });
 

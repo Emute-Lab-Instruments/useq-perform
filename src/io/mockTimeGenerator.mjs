@@ -135,3 +135,23 @@ export function resetMockTimeGenerator() {
 
   dbg('mockTimeGenerator: reset to t=0');
 }
+
+/**
+ * Resume the mock time generator from where it left off
+ * @returns {boolean} True if resumed successfully, false if already running
+ */
+export function resumeMockTimeGenerator() {
+  if (isRunning) {
+    return false;
+  }
+
+  dbg('mockTimeGenerator: resuming');
+  isRunning = true;
+  // Calculate startTimeMs such that currentMockTime is preserved
+  // currentMockTime = (now - startTime) / 1000
+  // startTime = now - (currentMockTime * 1000)
+  startTimeMs = performanceNow() - (currentMockTime * 1000);
+
+  animationFrameId = window.requestAnimationFrame(tick);
+  return true;
+}
