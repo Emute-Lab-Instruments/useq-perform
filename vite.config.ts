@@ -10,7 +10,8 @@ export default defineConfig({
       input: {
         // Entry points for each island
         'test-island': 'src-solid/islands/test-island.tsx',
-        'double-radial-menu': 'src-solid/islands/double-radial-menu.tsx'
+        'double-radial-menu': 'src-solid/islands/double-radial-menu.tsx',
+        'transport-toolbar': 'src-solid/islands/transport-toolbar.tsx'
       },
       output: {
         entryFileNames: '[name].js',

@@ -1,9 +1,18 @@
 import { dbg } from "../utils.mjs";
+import { activeUserSettings } from "../utils/persistentUserSettings.mjs";
 
 const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise = null;
 let runtimePromise = null;
 const CODE_EVALUATED_EVENT = "useq-code-evaluated";
+
+function isUseqWasmEnabled() {
+  try {
+    return activeUserSettings?.wasm?.enabled ?? true;
+  } catch (e) {
+    return true;
+  }
+}
 
 function tryCwrap(module, symbol, returnType, argTypes) {
   try {
@@ -303,6 +312,10 @@ export function ensureUseqWasmLoaded() {
 }
 
 export async function evalInUseqWasm(code) {
+  if (!isUseqWasmEnabled()) {
+    return null;
+  }
+
   const runtime = await ensureUseqWasmLoaded();
   const result = runtime.evaluate(code);
 
@@ -318,11 +331,17 @@ export async function evalInUseqWasm(code) {
 }
 
 export async function updateUseqWasmTime(timeSeconds) {
+  if (!isUseqWasmEnabled()) {
+    return;
+  }
   const runtime = await ensureUseqWasmLoaded();
   runtime.updateTime(timeSeconds);
 }
 
 export async function evalOutputAtTime(name, timeSeconds) {
+  if (!isUseqWasmEnabled()) {
+    return Number.NaN;
+  }
   const runtime = await ensureUseqWasmLoaded();
   return runtime.evaluateOutputAtTime(name, timeSeconds);
 }
@@ -336,6 +355,10 @@ export async function evalOutputAtTime(name, timeSeconds) {
  * @returns {Promise<Map<string, Array<{time: number, value: number}>>>} Map of output names to time series
  */
 export async function evalOutputsInTimeWindow(outputs, startTime, endTime, numSamples) {
+  if (!isUseqWasmEnabled()) {
+    return new Map();
+  }
+
   const runtime = await ensureUseqWasmLoaded();
   const sampleMap = runtime.evaluateOutputsTimeWindow(outputs, startTime, endTime, numSamples);
   if (!(sampleMap instanceof Map)) {

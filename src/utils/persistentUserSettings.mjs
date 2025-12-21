@@ -52,6 +52,9 @@ const defaultUserSettings = {
     futureMaskWidth: 12,
     circularOffset: 0,
     digitalLaneGap: 4
+  },
+  wasm: {
+    enabled: true
   }
 };
 
@@ -83,7 +86,8 @@ export function loadUserSettings() {
         editor: { ...activeUserSettings.editor, ...retrievedSettings.editor },
         storage: { ...activeUserSettings.storage, ...retrievedSettings.storage },
         ui: { ...activeUserSettings.ui, ...retrievedSettings.ui },
-        visualisation: { ...activeUserSettings.visualisation, ...retrievedSettings.visualisation }
+        visualisation: { ...activeUserSettings.visualisation, ...retrievedSettings.visualisation },
+        wasm: { ...activeUserSettings.wasm, ...retrievedSettings.wasm }
       };
       dbg("Active user settings:", activeUserSettings);
     } else {
@@ -111,6 +115,9 @@ return activeUserSettings;
       ...defaultUserSettings.visualisation,
       ...(activeUserSettings.visualisation || {})
     };
+
+    if (!activeUserSettings.wasm) activeUserSettings.wasm = {};
+    activeUserSettings.wasm = { ...defaultUserSettings.wasm, ...activeUserSettings.wasm };
     
     // Auto-detect OS family (mac vs pc) if unset
     if (!activeUserSettings.ui.osFamily) {
@@ -168,7 +175,8 @@ export function updateUserSettings(values) {
     editor: values.editor ? { ...activeUserSettings.editor, ...values.editor } : activeUserSettings.editor,
     storage: values.storage ? { ...activeUserSettings.storage, ...values.storage } : activeUserSettings.storage,
     ui: values.ui ? { ...activeUserSettings.ui, ...values.ui } : activeUserSettings.ui,
-    visualisation: values.visualisation ? { ...activeUserSettings.visualisation, ...values.visualisation } : activeUserSettings.visualisation
+    visualisation: values.visualisation ? { ...activeUserSettings.visualisation, ...values.visualisation } : activeUserSettings.visualisation,
+    wasm: values.wasm ? { ...activeUserSettings.wasm, ...values.wasm } : activeUserSettings.wasm
   };
   saveUserSettings();
   try {

@@ -5,6 +5,7 @@ import { toggleConnect, sendTouSEQ, isConnectedToModule } from "../io/serialComm
 import { devmode } from "../urlParams.mjs";
 import { initToolbarBarProgress } from "./toolbarBarProgress.mjs";
 import { startMockTimeGenerator, stopMockTimeGenerator, resumeMockTimeGenerator, resetMockTimeGenerator } from "../io/mockTimeGenerator.mjs";
+import { evalInUseqWasm } from "../io/useqWasmInterpreter.mjs";
 
 const TOP_TOOLBAR_ID = "panel-top-toolbar";
 const TOP_TOOLBAR_HEIGHT_VAR = "--top-toolbar-height";
@@ -322,6 +323,34 @@ const PlaybackState = Object.freeze({
 let playbackState = PlaybackState.Stopped;
 let isConnected = false;
 
+function isWasmInterpreterEnabled() {
+    try {
+        return activeUserSettings?.wasm?.enabled ?? true;
+    } catch (e) {
+        return true;
+    }
+}
+
+function syncWasmTransportState(state) {
+    if (!isWasmInterpreterEnabled()) {
+        return;
+    }
+
+    switch (state) {
+        case 'playing':
+            evalInUseqWasm('(useq-play)');
+            break;
+        case 'paused':
+            evalInUseqWasm('(useq-pause)');
+            break;
+        case 'stopped':
+            evalInUseqWasm('(useq-stop)');
+            break;
+        default:
+            break;
+    }
+}
+
 function setPlaybackState(state) {
     playbackState = state;
     updatePlaybackUI();
@@ -337,12 +366,15 @@ async function queryTransportState() {
             switch (state) {
                 case 'playing':
                     setPlaybackState(PlaybackState.Playing);
+                    syncWasmTransportState('playing');
                     break;
                 case 'paused':
                     setPlaybackState(PlaybackState.Paused);
+                    syncWasmTransportState('paused');
                     break;
                 case 'stopped':
                     setPlaybackState(PlaybackState.Stopped);
+                    syncWasmTransportState('stopped');
                     break;
                 default:
                     dbg('Unknown transport state from hardware:', state);
@@ -363,12 +395,15 @@ function handleTransportStatePush(event) {
         switch (state) {
             case 'playing':
                 setPlaybackState(PlaybackState.Playing);
+                syncWasmTransportState('playing');
                 break;
             case 'paused':
                 setPlaybackState(PlaybackState.Paused);
+                syncWasmTransportState('paused');
                 break;
             case 'stopped':
                 setPlaybackState(PlaybackState.Stopped);
+                syncWasmTransportState('stopped');
                 break;
             default:
                 dbg('Unknown transport state in meta:', state);
@@ -385,6 +420,12 @@ function updatePlaybackUI() {
 
     // Reset classes
     [$play, $pause, $stop, $rewind, $clear].forEach($b => $b.removeClass('primary disabled'));
+
+    if (!isConnected && !isWasmInterpreterEnabled()) {
+        [$play, $pause, $stop, $rewind, $clear].forEach($b => $b.addClass('disabled'));
+        $stop.addClass('primary');
+        return;
+    }
 
     switch (playbackState) {
         case PlaybackState.Playing:
@@ -424,12 +465,21 @@ function initPlaybackToolbar() {
     playbackState = PlaybackState.Playing;
     updatePlaybackUI();
 
+    const sendTransportCommand = (cmd) => {
+        if (isConnected) {
+            sendTouSEQ(cmd);
+        }
+        if (isWasmInterpreterEnabled()) {
+            evalInUseqWasm(cmd);
+        }
+    };
+
     $play.on('click', () => {
         if ($play.hasClass('disabled')) return;
         
-        if (isConnected) {
-            sendTouSEQ('(useq-play)');
-        } else {
+        sendTransportCommand('(useq-play)');
+        
+        if (!isConnected && isWasmInterpreterEnabled()) {
             if (playbackState === PlaybackState.Paused) {
                 resumeMockTimeGenerator();
             } else {
@@ -442,9 +492,9 @@ function initPlaybackToolbar() {
     $pause.on('click', () => {
         if ($pause.hasClass('disabled')) return;
         
-        if (isConnected) {
-            sendTouSEQ('(useq-pause)');
-        } else {
+        sendTransportCommand('(useq-pause)');
+        
+        if (!isConnected && isWasmInterpreterEnabled()) {
             stopMockTimeGenerator();
         }
         setPlaybackState(PlaybackState.Paused);
@@ -453,9 +503,9 @@ function initPlaybackToolbar() {
     $stop.on('click', () => {
         if ($stop.hasClass('disabled')) return;
         
-        if (isConnected) {
-            sendTouSEQ('(useq-stop)');
-        } else {
+        sendTransportCommand('(useq-stop)');
+        
+        if (!isConnected && isWasmInterpreterEnabled()) {
             stopMockTimeGenerator();
             resetMockTimeGenerator();
         }
@@ -465,9 +515,9 @@ function initPlaybackToolbar() {
     $rewind.on('click', () => {
         if ($rewind.hasClass('disabled')) return;
         
-        if (isConnected) {
-            sendTouSEQ('(useq-rewind)');
-        } else {
+        sendTransportCommand('(useq-rewind)');
+        
+        if (!isConnected && isWasmInterpreterEnabled()) {
             resetMockTimeGenerator();
         }
         // After rewind, consider state stopped
@@ -477,14 +527,19 @@ function initPlaybackToolbar() {
     $clear.on('click', () => {
         if ($clear.hasClass('disabled')) return;
         
-        if (isConnected) {
-            sendTouSEQ('(useq-clear-outs)');
-        }
+        sendTransportCommand('(useq-clear)');
     });
 
     // React to connection status changes
     window.addEventListener('useq-connection-changed', (e) => {
         isConnected = !!(e && e.detail && e.detail.connected);
+        
+        // Ensure mock time generator is stopped when connected so it doesn't interfere
+        // with hardware time updates or lack thereof (when paused)
+        if (isConnected) {
+            stopMockTimeGenerator();
+        }
+        
         updatePlaybackUI();
     });
     
