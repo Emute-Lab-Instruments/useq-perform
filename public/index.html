@@ -42,11 +42,13 @@
         };
 
         // Connect to WebSocket server for hot reload
+        let hasConnected = false;
         const connectWebSocket = () => {
           const ws = new WebSocket('ws://localhost:8080');
           
           ws.onopen = () => {
             console.log('Connected to hot reload server');
+            hasConnected = true;
           };
           
           ws.onmessage = (event) => {
@@ -57,12 +59,18 @@
           };
           
           ws.onclose = () => {
-            console.log('Hot reload disconnected, reconnecting in 2s...');
-            setTimeout(connectWebSocket, 2000);
+            if (hasConnected) {
+              console.log('Hot reload disconnected, reconnecting in 5s...');
+              hasConnected = false;
+            }
+            setTimeout(connectWebSocket, 5000);
           };
           
-          ws.onerror = (error) => {
-            console.error('Hot reload WebSocket error:', error);
+          ws.onerror = () => {
+            // Silently fail connection attempts if not previously connected
+            if (hasConnected) {
+              console.warn('Hot reload WebSocket connection lost');
+            }
           };
         };
         

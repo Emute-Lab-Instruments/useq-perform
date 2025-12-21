@@ -14,10 +14,10 @@ let server = null;
 
 /**
  * Start the WebSocket server for dev mode
- * @param {number} port - Port to run the WebSocket server on (default: 8080)
+ * @param {number} port - Port to run the WebSocket server on (default: 8082)
  * @returns {Promise<void>}
  */
-export async function startWebSocketServer(port = 8080) {
+export async function startWebSocketServer(port = 8082) {
   return new Promise((resolve, reject) => {
     try {
       // Create HTTP server for WebSocket

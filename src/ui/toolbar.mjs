@@ -1,7 +1,7 @@
 import { dbg } from "../utils.mjs";
 import { saveUserSettings, activeUserSettings } from "../utils/persistentUserSettings.mjs";
 import { setFontSize, toggleSerialVis } from "../editors/editorConfig.mjs";
-import { toggleConnect, sendTouSEQ, isConnectedToModule } from "../io/serialComms.mjs";
+import { toggleConnect, sendTouSEQ, isConnectedToModule, getSerialPort } from "../io/serialComms.mjs";
 import { devmode } from "../urlParams.mjs";
 import { initToolbarBarProgress } from "./toolbarBarProgress.mjs";
 import { startMockTimeGenerator, stopMockTimeGenerator, resumeMockTimeGenerator, resetMockTimeGenerator } from "../io/mockTimeGenerator.mjs";
@@ -479,7 +479,11 @@ function initPlaybackToolbar() {
         
         sendTransportCommand('(useq-play)');
         
-        if (!isConnected && isWasmInterpreterEnabled()) {
+        // If not connected to real hardware (disconnected OR mock connection)
+        // and WASM is enabled, we need to drive the time generator
+        const isRealConnection = isConnected && !!getSerialPort();
+
+        if (!isRealConnection && isWasmInterpreterEnabled()) {
             if (playbackState === PlaybackState.Paused) {
                 resumeMockTimeGenerator();
             } else {
@@ -494,7 +498,9 @@ function initPlaybackToolbar() {
         
         sendTransportCommand('(useq-pause)');
         
-        if (!isConnected && isWasmInterpreterEnabled()) {
+        const isRealConnection = isConnected && !!getSerialPort();
+
+        if (!isRealConnection && isWasmInterpreterEnabled()) {
             stopMockTimeGenerator();
         }
         setPlaybackState(PlaybackState.Paused);
@@ -505,7 +511,9 @@ function initPlaybackToolbar() {
         
         sendTransportCommand('(useq-stop)');
         
-        if (!isConnected && isWasmInterpreterEnabled()) {
+        const isRealConnection = isConnected && !!getSerialPort();
+
+        if (!isRealConnection && isWasmInterpreterEnabled()) {
             stopMockTimeGenerator();
             resetMockTimeGenerator();
         }
@@ -517,7 +525,9 @@ function initPlaybackToolbar() {
         
         sendTransportCommand('(useq-rewind)');
         
-        if (!isConnected && isWasmInterpreterEnabled()) {
+        const isRealConnection = isConnected && !!getSerialPort();
+
+        if (!isRealConnection && isWasmInterpreterEnabled()) {
             resetMockTimeGenerator();
         }
         // After rewind, consider state stopped
@@ -536,7 +546,10 @@ function initPlaybackToolbar() {
         
         // Ensure mock time generator is stopped when connected so it doesn't interfere
         // with hardware time updates or lack thereof (when paused)
-        if (isConnected) {
+        // ONLY if it is a real hardware connection!
+        const isRealConnection = isConnected && !!getSerialPort();
+        
+        if (isRealConnection) {
             stopMockTimeGenerator();
         }
         

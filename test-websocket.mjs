@@ -13,7 +13,7 @@
 
 import WebSocket from 'ws';
 
-const WS_URL = 'ws://localhost:8080';
+const WS_URL = 'ws://localhost:8082';
 
 console.log('🔌 Testing WebSocket dev mode functionality...');
 console.log(`📍 Connecting to ${WS_URL}`);
@@ -58,5 +58,5 @@ ws.on('error', (error) => {
   console.log('\n💡 Make sure:');
   console.log('   1. The dev server is running with ?devmode=true');
   console.log('   2. The WebSocket server started successfully');
-  console.log('   3. No other process is using port 8080');
+  console.log('   3. No other process is using port 8082');
 });
