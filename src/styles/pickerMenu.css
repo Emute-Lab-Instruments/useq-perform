@@ -84,6 +84,78 @@
   text-align: center;
 }
 
+/* --- Solid Double Radial Menu --- */
+
+.double-radial-overlay {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.double-radial-menu {
+  max-width: min(1100px, 96vw);
+  padding: 1.25em 1.5em;
+}
+
+.double-radial-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2.5rem;
+}
+
+.double-radial-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.double-radial-heading {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.double-radial-status {
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+.double-radial-hint {
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  text-align: center;
+}
+
+.radial-menu {
+  border-radius: 9999px;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.radial-menu.is-disabled {
+  opacity: 0.6;
+  filter: grayscale(1);
+}
+
+.radial-menu-svg.pointer {
+  cursor: crosshair;
+}
+
+.double-radial-glow-cyan {
+  box-shadow: 0 0 30px rgba(6, 182, 212, 0.35);
+}
+
+.double-radial-glow-rose {
+  box-shadow: 0 0 30px rgba(244, 63, 94, 0.32);
+}
+
 @media (max-width: 600px) {
   .picker-menu {
     min-width: 90vw;
@@ -92,5 +164,10 @@
   .picker-menu-items.grid {
     grid-template-columns: 1fr 1fr;
     max-width: 100%;
+  }
+
+  .double-radial-row {
+    flex-direction: column;
+    gap: 1.25rem;
   }
 }

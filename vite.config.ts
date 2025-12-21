@@ -9,7 +9,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         // Entry points for each island
-        'test-island': 'src-solid/islands/test-island.tsx'
+        'test-island': 'src-solid/islands/test-island.tsx',
+        'double-radial-menu': 'src-solid/islands/double-radial-menu.tsx'
       },
       output: {
         entryFileNames: '[name].js',
