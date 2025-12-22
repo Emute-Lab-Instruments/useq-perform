@@ -19,7 +19,8 @@ export default defineConfig({
         'test-island': 'src-solid/islands/test-island.tsx',
         'double-radial-menu': 'src-solid/islands/double-radial-menu.tsx',
         'transport-toolbar': 'src-solid/islands/transport-toolbar.tsx',
-        'main-toolbar': 'src-solid/islands/main-toolbar.tsx'
+        'main-toolbar': 'src-solid/islands/main-toolbar.tsx',
+        'settings-panel': 'src-solid/islands/settings-panel.tsx'
       },
       output: {
         entryFileNames: '[name].js',
@@ -31,26 +32,39 @@ export default defineConfig({
   publicDir: false // Don't copy public dir since we're building into it
   ,
   test: {
-    projects: [{
-      extends: true,
-      plugins: [
-      // The plugin will run tests for the stories defined in your Storybook config
-      // See options at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon#storybooktest
-      storybookTest({
-        configDir: path.join(dirname, '.storybook')
-      })],
-      test: {
-        name: 'storybook',
-        browser: {
-          enabled: true,
-          headless: true,
-          provider: playwright({}),
-          instances: [{
-            browser: 'chromium'
-          }]
-        },
-        setupFiles: ['.storybook/vitest.setup.ts']
+    projects: [
+      {
+        extends: true,
+        plugins: [
+          // The plugin will run tests for the stories defined in your Storybook config
+          // See options at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon#storybooktest
+          storybookTest({
+            configDir: path.join(dirname, '.storybook')
+          })
+        ],
+        test: {
+          name: 'storybook',
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright({}),
+            instances: [{
+              browser: 'chromium'
+            }]
+          },
+          setupFiles: ['.storybook/vitest.setup.ts']
+        }
+      },
+      {
+        plugins: [solid()],
+        test: {
+          name: 'unit',
+          environment: 'jsdom',
+          include: ['src-solid/**/*.test.tsx', 'src-solid/**/*.test.ts'],
+          globals: true,
+          setupFiles: []
+        }
       }
-    }]
+    ]
   }
 });
