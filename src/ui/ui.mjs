@@ -66,6 +66,11 @@ let editor = null;
 export async function createAppUI(environmentState) {
     // Initialize editor first so we can pass its instance to other panels
     editor = initEditorPanel("#panel-main-editor");
+    if (window.__setUseqEditor) {
+        window.__setUseqEditor(editor);
+    } else {
+        window.__useqEditor = editor;
+    }
     // Add structure navigation panel to the top of the editor panel
     // const editorPanel = document.querySelector('#panel-main-editor');
     // if (editorPanel) {
