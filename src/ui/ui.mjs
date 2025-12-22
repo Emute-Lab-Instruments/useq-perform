@@ -4,7 +4,6 @@ import { initIcons } from './icons.mjs';
 import { makeVis } from "./serialVis/serialVis.mjs";
 import { makeConsole as makeConsole } from "./console.mjs";
 import { initEditorPanel } from "../editors/main.mjs";
-import { makeSettings as makeSettings } from "./settings/settings.mjs";
 import { makeToolbar } from "./toolbar.mjs";
 import { initSnippetsPanel } from "./snippets.mjs";
 import { initVisLegend } from "./visLegend.mjs";
@@ -83,8 +82,9 @@ export async function createAppUI(environmentState) {
     const visPanel = makeVis();
     $("#panel-vis").hide();
 
-    const settingsComponents = makeSettings();
-    $("#panel-settings").append(...settingsComponents);
+    if (window.mountSettingsPanel) {
+        window.mountSettingsPanel("panel-settings");
+    }
 
     const helpComponents = await makeHelp();
     $("#panel-help").append(...helpComponents);
