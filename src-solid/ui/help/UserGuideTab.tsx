@@ -1,4 +1,6 @@
-import { Component, createSignal, createResource, Show } from "solid-js";
+import { Component, createSignal, createResource } from "solid-js";
+import { ExperienceLevelSelector } from "./ExperienceLevelSelector";
+import { UserGuideContent } from "./UserGuideContent";
 
 export const UserGuideTab: Component = () => {
   const [experienceLevel, setExperienceLevel] = createSignal(
@@ -20,25 +22,15 @@ export const UserGuideTab: Component = () => {
 
   return (
     <div id="userguide-container">
-      <div id="userguide-dropdown">
-        <label for="userguide-select">Experience level: </label>
-        <select 
-          id="userguide-select" 
-          value={experienceLevel()} 
-          onChange={(e) => handleLevelChange(e.currentTarget.value)}
-        >
-          <option value="beginner">Beginner</option>
-          <option value="advanced">Advanced</option>
-        </select>
-      </div>
-      <div id="userguide-content">
-        <Show when={!guideContent.loading} fallback={<div>Loading user guide...</div>}>
-          <div innerHTML={guideContent()} />
-        </Show>
-        <Show when={guideContent.error}>
-          <p>Error loading user guide. Please try refreshing the page.</p>
-        </Show>
-      </div>
+      <ExperienceLevelSelector 
+        level={experienceLevel()} 
+        onLevelChange={handleLevelChange} 
+      />
+      <UserGuideContent 
+        content={guideContent()} 
+        loading={guideContent.loading} 
+        error={guideContent.error} 
+      />
     </div>
   );
 };
