@@ -11,6 +11,7 @@ $(document).ready(async () => {
     const config = await loadConfiguration();
     // Merge into activeUserSettings
     Object.assign(activeUserSettings, config);
+    window.dispatchEvent(new CustomEvent('useq-settings-changed', { detail: activeUserSettings }));
     console.log('✅ Configuration loaded successfully');
   } catch (error) {
     console.warn('⚠️ Failed to load configuration, using defaults:', error);
