@@ -19,6 +19,7 @@ export default defineConfig({
         'test-island': 'src-solid/islands/test-island.tsx',
         'double-radial-menu': 'src-solid/islands/double-radial-menu.tsx',
         'transport-toolbar': 'src-solid/islands/transport-toolbar.tsx',
+        'main-toolbar': 'src-solid/islands/main-toolbar.tsx'
       },
       output: {
         entryFileNames: '[name].js',
