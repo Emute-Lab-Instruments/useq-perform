@@ -1,0 +1,33 @@
+import { resetUserSettings } from "../../../src/utils/persistentUserSettings.mjs";
+import { PersonalSettings } from "./PersonalSettings";
+import { EditorSettings } from "./EditorSettings";
+import { StorageSettings } from "./StorageSettings";
+import { UISettings } from "./UISettings";
+import { VisualisationSettings } from "./VisualisationSettings";
+import { ConfigurationManagement } from "./ConfigurationManagement";
+
+export function GeneralSettings() {
+  const handleReset = () => {
+    if (confirm("Are you sure you want to reset all settings to default values?")) {
+      resetUserSettings();
+      window.location.reload();
+    }
+  };
+
+  return (
+    <div class="panel-tab-content">
+      <PersonalSettings />
+      <EditorSettings />
+      <StorageSettings />
+      <UISettings />
+      <VisualisationSettings />
+      <ConfigurationManagement />
+      
+      <div class="panel-section">
+        <button class="panel-button reset" onClick={handleReset}>
+          Reset All Settings
+        </button>
+      </div>
+    </div>
+  );
+}
