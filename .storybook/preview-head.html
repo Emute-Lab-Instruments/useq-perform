@@ -1,0 +1,23 @@
+<script src="../public/lib/jquery-3.7.1.js"></script>
+<script src="../public/lib/lucide.min.js"></script>
+<script>
+  // Mocks for legacy global state/functions
+  window.useq = window.useq || {};
+  window.isConnectedToModule = () => false;
+  window.toggleConnect = () => console.log('Mock: toggleConnect');
+  window.toggleSerialVis = () => console.log('Mock: toggleSerialVis');
+  
+  // Lucide initialization helper
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  });
+</script>
+<style>
+  body {
+    background-color: #0b1220;
+    color: #cbd5e1;
+    padding: 2rem;
+  }
+</style>
