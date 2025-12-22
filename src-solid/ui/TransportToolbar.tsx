@@ -5,6 +5,7 @@ import { transportMachine } from "../machines/transport.machine";
 import { useActorSignal } from "../lib/useActorSignal";
 import { Effect } from "effect";
 import { play, pause, stop, rewind, clear } from "../effects/transport";
+import { ProgressBar } from "./ProgressBar";
 
 // We'll need a way to call createIcons since we're using data-lucide attributes
 declare const lucide: any;
@@ -79,6 +80,7 @@ export function TransportToolbar() {
           <i data-lucide="x"></i>
         </a>
       </div>
+      <ProgressBar />
     </div>
   );
 }
