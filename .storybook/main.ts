@@ -12,6 +12,7 @@ const config: StorybookConfig = {
     "@storybook/addon-a11y",
     "@storybook/addon-docs"
   ],
-  "framework": "storybook-solidjs-vite"
+  "framework": "storybook-solidjs-vite",
+  "staticDirs": ["../public"]
 };
 export default config;

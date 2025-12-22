@@ -20,7 +20,8 @@ export default defineConfig({
         'double-radial-menu': 'src-solid/islands/double-radial-menu.tsx',
         'transport-toolbar': 'src-solid/islands/transport-toolbar.tsx',
         'main-toolbar': 'src-solid/islands/main-toolbar.tsx',
-        'settings-panel': 'src-solid/islands/settings-panel.tsx'
+        'settings-panel': 'src-solid/islands/settings-panel.tsx',
+        'help-panel': 'src-solid/islands/help-panel.tsx'
       },
       output: {
         entryFileNames: '[name].js',

@@ -1,5 +1,4 @@
 import { dbg } from "../utils.mjs";
-import { makeHelp } from './help/help.mjs';
 import { initIcons } from './icons.mjs';
 import { makeVis } from "./serialVis/serialVis.mjs";
 import { makeConsole as makeConsole } from "./console.mjs";
@@ -86,8 +85,11 @@ export async function createAppUI(environmentState) {
         window.mountSettingsPanel("panel-settings");
     }
 
-    const helpComponents = await makeHelp();
-    $("#panel-help").append(...helpComponents);
+    if (window.mountHelpPanel) {
+        window.mountHelpPanel("panel-help");
+    }
+    // const helpComponents = await makeHelp();
+    // $("#panel-help").append(...helpComponents);
 
     let devmodeComponent = null;
     // Initialize dev mode panel if dev mode is active
