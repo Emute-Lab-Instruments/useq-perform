@@ -778,7 +778,11 @@ class GamepadController {
       this.state.mode = "normal"; this.state.picker = null; return;
     }
     
-    const applyMode = entry?.applyMode || "apply"; // Default to simple insert
+    const applyMode = entry?.applyMode || (
+      direction === "replace" ? "replace"
+        : direction === "before" ? "apply_pre"
+        : "apply"
+    );
     const symbol = text.trim();
     
     // Handle different apply modes

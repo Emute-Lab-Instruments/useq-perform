@@ -303,7 +303,7 @@ describe('Expression Detection & Processing', () => {
       assert.equal(marker.isMid, false);
       assert.equal(marker.isActive, true);
       assert.equal(marker.exprType, "a1");
-      assert.equal(marker.showClear, false);
+      assert.equal(marker.showPlayButton, false);
     });
 
     it('should implement equality correctly', () => {

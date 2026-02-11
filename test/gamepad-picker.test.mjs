@@ -34,6 +34,9 @@ describe('Gamepad picker menus', () => {
 
     const view = createEditor('OLD', []);
     document.body.appendChild(view.dom);
+    view.dispatch({
+      selection: { anchor: 0, head: view.state.doc.length }
+    });
 
     const controller = createGamepadController({ view, pollInterval: 999999 });
     // Directly open picker
@@ -56,6 +59,9 @@ describe('Gamepad picker menus', () => {
     updateUserSettings({ ui: { gamepadPickerStyle: 'radial' } });
     const view = createEditor('OLD', []);
     document.body.appendChild(view.dom);
+    view.dispatch({
+      selection: { anchor: 0, head: view.state.doc.length }
+    });
     const controller = createGamepadController({ view, pollInterval: 999999 });
     await controller.openCreateMenu('replace');
     await tick(10);

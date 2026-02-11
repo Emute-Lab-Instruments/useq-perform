@@ -4,12 +4,36 @@
 
 import { EditorSelection, StateField, Transaction, RangeSetBuilder, Annotation } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
-import { findNodeAt, navigationMetaField, navigationMetaEffect, navigateIn, navigateOut, navigateNext, navigatePrev, navigateRight, navigateLeft, navigateUp, navigateDown, isContainerNode } from "./structure/new-structure.mjs";
+import { findNodeAt, navigationMetaField, navigationMetaEffect, navigateIn, navigateOut, navigateNext, navigatePrev, navigateRight, navigateLeft, navigateUp, navigateDown, isContainerNode as isContainerNodeInternal, isStructuralToken as isStructuralTokenInternal } from "./structure/new-structure.mjs";
 import { EditorView, Decoration, ViewPlugin, gutter, GutterMarker } from "@codemirror/view";
 import { getSerialVisPalette, getSerialVisChannelColor } from "../../ui/serialVis/utils.mjs";
 
 // Re-export navigation functions for backward compatibility
 export { navigateIn, navigateOut, navigateNext, navigatePrev, navigateRight, navigateLeft, navigateUp, navigateDown };
+
+// Backward-compatible utility exports used by legacy tests/helpers.
+export function isStructuralToken(nodeOrToken) {
+    if (!nodeOrToken) return false;
+    if (typeof nodeOrToken === "string") {
+        return new Set(["(", ")", "[", "]", "{", "}", "Brace", "Bracket", "Paren", "#", "'", "LineComment", "BlockComment", "Comment"]).has(nodeOrToken);
+    }
+    if (nodeOrToken?.type && typeof nodeOrToken.type === "string") {
+        return isStructuralToken(nodeOrToken.type);
+    }
+    return isStructuralTokenInternal(nodeOrToken);
+}
+
+export function isContainerNode(node) {
+    if (!node) return false;
+    if (typeof node.type === "string") {
+        return new Set(["List", "Vector", "Program", "Map", "Set"]).has(node.type);
+    }
+    return isContainerNodeInternal(node);
+}
+
+export function isOperatorNode(node) {
+    return Boolean(node && node.type === "Operator" && Array.isArray(node.children) && node.children.length > 0);
+}
 
 /**
  * Helper to apply a navigation function to a view, preserving the navigation metadata.

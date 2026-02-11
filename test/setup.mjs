@@ -23,6 +23,19 @@ global.HTMLElement = dom.window.HTMLElement;
 global.HTMLDivElement = dom.window.HTMLDivElement;
 global.HTMLCanvasElement = dom.window.HTMLCanvasElement;
 global.Element = dom.window.Element;
+global.CustomEvent = dom.window.CustomEvent;
+global.Range = dom.window.Range;
+
+if (global.Range && global.Range.prototype) {
+  if (!global.Range.prototype.getClientRects) {
+    global.Range.prototype.getClientRects = () => ({ length: 0, item: () => null, [Symbol.iterator]: function* () {} });
+  }
+  if (!global.Range.prototype.getBoundingClientRect) {
+    global.Range.prototype.getBoundingClientRect = () => ({
+      x: 0, y: 0, top: 0, right: 0, bottom: 0, left: 0, width: 0, height: 0
+    });
+  }
+}
 
 // Mock matchMedia since jsdom doesn't provide it by default
 global.window.matchMedia = (query) => ({
@@ -119,6 +132,13 @@ global.$ = (selector) => {
       }
       return { ...mockJQuery, length: 0 };
     },
+    children: () => ({
+      ...mockJQuery,
+      eq: () => ({
+        ...mockJQuery,
+        focus: () => mockJQuery
+      })
+    }),
     val: (value) => value !== undefined ? mockJQuery : '',
     html: (content) => {
       if (content !== undefined) {

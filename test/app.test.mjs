@@ -64,3 +64,45 @@ it('has devmode buttons when in devmode', async () => {
     let appUI = await createAppUI(environmentState);
     expect (appUI.toolbar).to.have.property('devmodeBtn');
 });
+
+it('mounts Solid settings/help panels when mount hooks are available', async () => {
+    const settingsCalls = [];
+    const helpCalls = [];
+
+    const originalMountSettingsPanel = window.mountSettingsPanel;
+    const originalMountHelpPanel = window.mountHelpPanel;
+
+    const solidTopRoot = document.createElement('div');
+    const solidMainRoot = document.createElement('div');
+    const settingsPanel = document.createElement('div');
+    const helpPanel = document.createElement('div');
+
+    try {
+        window.mountSettingsPanel = (id) => settingsCalls.push(id);
+        window.mountHelpPanel = (id) => helpCalls.push(id);
+
+        solidTopRoot.id = 'panel-top-toolbar-root';
+        document.body.appendChild(solidTopRoot);
+
+        solidMainRoot.id = 'panel-toolbar-root';
+        document.body.appendChild(solidMainRoot);
+
+        settingsPanel.id = 'panel-settings';
+        document.body.appendChild(settingsPanel);
+
+        helpPanel.id = 'panel-help';
+        document.body.appendChild(helpPanel);
+
+        await createAppUI(environmentState);
+
+        expect(settingsCalls).to.deep.equal(['panel-settings']);
+        expect(helpCalls).to.deep.equal(['panel-help']);
+    } finally {
+        window.mountSettingsPanel = originalMountSettingsPanel;
+        window.mountHelpPanel = originalMountHelpPanel;
+        solidTopRoot.remove();
+        solidMainRoot.remove();
+        settingsPanel.remove();
+        helpPanel.remove();
+    }
+});
