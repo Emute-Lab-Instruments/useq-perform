@@ -21,7 +21,8 @@ export default defineConfig({
         'transport-toolbar': 'src-solid/islands/transport-toolbar.tsx',
         'main-toolbar': 'src-solid/islands/main-toolbar.tsx',
         'settings-panel': 'src-solid/islands/settings-panel.tsx',
-        'help-panel': 'src-solid/islands/help-panel.tsx'
+        'help-panel': 'src-solid/islands/help-panel.tsx',
+        'console-panel': 'src-solid/islands/console-panel.tsx'
       },
       output: {
         entryFileNames: '[name].js',

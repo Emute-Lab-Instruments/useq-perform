@@ -35,6 +35,7 @@
     "@nextjournal/clojure-mode": "^0.3.3",
     "@solidjs/router": "^0.15.3",
     "@stdlib/number-float64-base-from-int64-bytes": "^0.2.2",
+    "@tanstack/solid-virtual": "^3.13.18",
     "buffer": "^6.0.3",
     "codemirror": "^6.0.1",
     "color-convert": "^3.0.1",

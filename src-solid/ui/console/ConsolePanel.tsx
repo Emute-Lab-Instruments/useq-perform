@@ -1,4 +1,5 @@
-import { For, createEffect, onMount, onCleanup, createSignal } from "solid-js";
+import { createEffect, onCleanup } from "solid-js";
+import { createVirtualizer } from "@tanstack/solid-virtual";
 import { consoleStore, clearConsole, ConsoleMessageType } from "../../utils/consoleStore";
 
 interface ConsolePanelProps {
@@ -38,24 +39,24 @@ export function ConsolePanel(props: ConsolePanelProps) {
   let containerRef: HTMLDivElement | undefined;
   let shouldAutoScroll = true;
 
+  const virtualizer = createVirtualizer({
+    count: () => consoleStore.messages.length,
+    getScrollElement: () => containerRef || null,
+    estimateSize: () => 24, // Approximate line height
+    overscan: 10,
+  });
+
   const handleScroll = () => {
     if (!containerRef) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef;
-    // Auto-scroll if user is near bottom (within 50px)
     shouldAutoScroll = scrollHeight - scrollTop - clientHeight < 50;
   };
 
   createEffect(() => {
-    // Trigger on messages change
     const _ = consoleStore.messages.length;
     if (shouldAutoScroll && containerRef) {
-      containerRef.scrollTop = containerRef.scrollHeight;
-    }
-  });
-
-  onMount(() => {
-    if (containerRef) {
-      containerRef.addEventListener("scroll", handleScroll);
+      // Scroll to bottom when new messages arrive
+      virtualizer().scrollToIndex(consoleStore.messages.length - 1, { align: "end" });
     }
   });
 
@@ -64,6 +65,8 @@ export function ConsolePanel(props: ConsolePanelProps) {
       containerRef.removeEventListener("scroll", handleScroll);
     }
   });
+
+  const items = () => virtualizer().getVirtualItems();
 
   return (
     <div
@@ -90,7 +93,7 @@ export function ConsolePanel(props: ConsolePanelProps) {
         }}
       >
         <span style={{ "font-weight": 500, color: "var(--text-primary, #e2e8f0)" }}>
-          Console
+          Console ({consoleStore.messages.length})
         </span>
         <button
           onClick={clearConsole}
@@ -116,7 +119,12 @@ export function ConsolePanel(props: ConsolePanelProps) {
       </div>
 
       <div
-        ref={containerRef}
+        ref={(el) => {
+          containerRef = el;
+          if (el) {
+            el.addEventListener("scroll", handleScroll);
+          }
+        }}
         style={{
           flex: 1,
           "max-height": maxHeight(),
@@ -125,21 +133,7 @@ export function ConsolePanel(props: ConsolePanelProps) {
           "line-height": "1.5",
         }}
       >
-        <For each={consoleStore.messages}>
-          {(msg) => (
-            <div
-              style={{
-                "margin-bottom": "4px",
-                color: getMessageColor(msg.type),
-                "word-break": "break-word",
-              }}
-            >
-              <span style={{ "font-weight": "bold" }}>{getMessagePrefix(msg.type)}</span>
-              <span innerHTML={msg.content} />
-            </div>
-          )}
-        </For>
-        {consoleStore.messages.length === 0 && (
+        {consoleStore.messages.length === 0 ? (
           <div
             style={{
               color: "var(--text-muted, #64748b)",
@@ -149,6 +143,37 @@ export function ConsolePanel(props: ConsolePanelProps) {
             }}
           >
             No messages yet...
+          </div>
+        ) : (
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              height: `${virtualizer().getTotalSize()}px`,
+            }}
+          >
+            {items().map((virtualRow) => {
+              const msg = consoleStore.messages[virtualRow.index];
+              return (
+                <div
+                  data-index={virtualRow.index}
+                  ref={(el) => virtualizer().measureElement(el)}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                    "margin-bottom": "4px",
+                    color: getMessageColor(msg.type),
+                    "word-break": "break-word",
+                  }}
+                >
+                  <span style={{ "font-weight": "bold" }}>{getMessagePrefix(msg.type)}</span>
+                  <span innerHTML={msg.content} />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
