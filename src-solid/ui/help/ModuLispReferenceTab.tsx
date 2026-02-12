@@ -11,6 +11,7 @@ import {
 import { ReferenceItem } from "./ReferenceItem";
 import { ReferenceFilters } from "./ReferenceFilters";
 import { currentVersion as connectedFirmwareVersion } from "../../../src/utils/upgradeCheck.mjs";
+import { loadReferenceDataFromCandidates } from "./referenceDataLoader";
 
 const normalizeEntry = (raw: any): ReferenceEntry | null => {
   if (!raw || typeof raw !== "object") return null;
@@ -33,10 +34,11 @@ const normalizeEntry = (raw: any): ReferenceEntry | null => {
 export const ModuLispReferenceTab: Component = () => {
   const [selectedTags, setSelectedTags] = createSignal<Set<string>>(new Set());
 
-  const fetchReferenceData = async () => {
-    const response = await fetch("assets/modulisp_reference_data.json");
-    const data = await response.json();
-    const normalized = data.map(normalizeEntry).filter(Boolean);
+  const fetchReferenceData = async (): Promise<ReferenceEntry[]> => {
+    const data = await loadReferenceDataFromCandidates();
+    const normalized = data
+      .map(normalizeEntry)
+      .filter((entry): entry is ReferenceEntry => Boolean(entry));
     setReferenceStore("data", normalized);
     return normalized;
   };
