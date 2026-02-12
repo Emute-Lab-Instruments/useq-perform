@@ -32,6 +32,10 @@ export const SnippetModal: Component<SnippetModalProps> = (props) => {
   });
 
   const handleSave = () => {
+    if (!title().trim()) {
+      alert("Please enter a title");
+      return;
+    }
     const tagList = tags().split(",").map(t => t.trim()).filter(t => t);
     if (isNew()) {
       addSnippet({ title: title(), code: code(), tags: tagList });

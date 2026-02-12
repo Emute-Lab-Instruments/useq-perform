@@ -12,8 +12,9 @@ const MAX_CONSOLE_LINES = 1000;
  */
 export function post(value, type = 'log') {
   // If Solid console is mounted, use its store
+  // Note: Solid ConsolePanel adds its own prefix, so only send the content
   if (typeof window.__solidConsolePost === 'function') {
-    const htmlContent = '<span style="color: var(--accent-color); font-weight: bold; display: inline;">> </span>' + marked.parse(value).replace(/^<p>|<\/p>$/g, '');
+    const htmlContent = marked.parse(value).replace(/^<p>|<\/p>$/g, '');
     window.__solidConsolePost(htmlContent, type);
     return;
   }

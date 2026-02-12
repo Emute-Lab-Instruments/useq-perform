@@ -17,10 +17,10 @@ export function VisLegend(props: VisLegendProps) {
 
     return SERIAL_VIS_CHANNELS.map((channel, index) => {
       const expr = expressions[channel];
+      const clampedOffset = ((offset % SERIAL_VIS_CHANNELS.length) + SERIAL_VIS_CHANNELS.length) % SERIAL_VIS_CHANNELS.length;
       const paletteIndex =
         palette.length > 0
-          ? (index + ((offset % SERIAL_VIS_CHANNELS.length) + SERIAL_VIS_CHANNELS.length)) %
-            palette.length
+          ? (index + clampedOffset) % palette.length
           : -1;
       const color = expr?.color ?? (paletteIndex >= 0 ? palette[paletteIndex] : null);
 
