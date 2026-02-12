@@ -4,6 +4,8 @@ import { SettingsPanel } from "../ui/settings/SettingsPanel";
 const mountSettingsPanel = (elementId: string) => {
   const el = document.getElementById(elementId);
   if (el) {
+    // Clear any existing mount to avoid duplicate trees on repeated bootstrap.
+    el.innerHTML = "";
     render(() => <SettingsPanel />, el);
   }
 };
