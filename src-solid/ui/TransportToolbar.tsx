@@ -201,12 +201,24 @@ export function TransportToolbar() {
   const isPlaying = () => state().value === "playing";
   const isPaused = () => state().value === "paused";
   const isStopped = () => state().value === "stopped";
+  const isModeNone = () => state().context.mode === "none";
+
+  const playButtonClass = () =>
+    `toolbar-button ${isModeNone() ? "disabled" : (isPlaying() ? "primary disabled" : "")}`;
+  const pauseButtonClass = () =>
+    `toolbar-button ${isModeNone() ? "disabled" : `${isPaused() ? "primary disabled" : ""} ${isStopped() ? "disabled" : ""}`}`;
+  const stopButtonClass = () =>
+    `toolbar-button ${isModeNone() ? "primary disabled" : (isStopped() ? "primary disabled" : "")}`;
+  const rewindButtonClass = () =>
+    `toolbar-button ${isModeNone() ? "disabled" : ""}`;
+  const clearButtonClass = () =>
+    `toolbar-button ${isModeNone() ? "disabled" : ""}`;
 
   return (
     <div id="panel-top-toolbar" ref={toolbarRef}>
       <div class="toolbar-row">
         <a
-          class={`toolbar-button ${isPlaying() ? 'primary disabled' : ''}`}
+          class={playButtonClass()}
           id="button-play"
           title="Play"
           onClick={() => !isPlaying() && send({ type: "PLAY" })}
@@ -214,7 +226,7 @@ export function TransportToolbar() {
           <i data-lucide="play"></i>
         </a>
         <a
-          class={`toolbar-button ${isPaused() ? 'primary disabled' : ''} ${isStopped() ? 'disabled' : ''}`}
+          class={pauseButtonClass()}
           id="button-pause"
           title="Pause"
           onClick={() => !isPaused() && !isStopped() && send({ type: "PAUSE" })}
@@ -222,7 +234,7 @@ export function TransportToolbar() {
           <i data-lucide="pause"></i>
         </a>
         <a
-          class={`toolbar-button ${isStopped() ? 'primary disabled' : ''}`}
+          class={stopButtonClass()}
           id="button-stop"
           title="Stop"
           onClick={() => !isStopped() && send({ type: "STOP" })}
@@ -230,7 +242,7 @@ export function TransportToolbar() {
           <i data-lucide="square"></i>
         </a>
         <a
-          class="toolbar-button"
+          class={rewindButtonClass()}
           id="button-rewind"
           title="Rewind"
           onClick={() => send({ type: "REWIND" })}
@@ -238,7 +250,7 @@ export function TransportToolbar() {
           <i data-lucide="rewind"></i>
         </a>
         <a
-          class="toolbar-button"
+          class={clearButtonClass()}
           id="button-clear"
           title="Clear"
           onClick={() => send({ type: "CLEAR" })}
