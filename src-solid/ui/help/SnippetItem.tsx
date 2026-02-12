@@ -1,4 +1,4 @@
-import { Component, createSignal, Show, For } from "solid-js";
+import { Component, createSignal, Show, For, onCleanup } from "solid-js";
 import {
   snippetStore,
   toggleStar,
@@ -15,11 +15,18 @@ interface SnippetItemProps {
 
 export const SnippetItem: Component<SnippetItemProps> = (props) => {
   const [isVisualizing, setIsVisualizing] = createSignal(false);
+  const [copyFeedback, setCopyFeedback] = createSignal(false);
+  const [insertFeedback, setInsertFeedback] = createSignal(false);
+  let copyFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
+  let insertFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
 
   const isStarred = () => snippetStore.starred.has(props.snippet.id);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(props.snippet.code);
+    setCopyFeedback(true);
+    if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
+    copyFeedbackTimer = setTimeout(() => setCopyFeedback(false), 1500);
   };
 
   const handleInsert = () => {
@@ -33,6 +40,9 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
         },
       });
       editor.dispatch(transaction);
+      setInsertFeedback(true);
+      if (insertFeedbackTimer) clearTimeout(insertFeedbackTimer);
+      insertFeedbackTimer = setTimeout(() => setInsertFeedback(false), 1500);
     }
   };
 
@@ -52,6 +62,11 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
       console.error("Failed to toggle visualization:", error);
     }
   };
+
+  onCleanup(() => {
+    if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
+    if (insertFeedbackTimer) clearTimeout(insertFeedbackTimer);
+  });
 
   return (
     <div 
@@ -84,8 +99,12 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
         <CodeMirrorEditor code={props.snippet.code} readOnly={true} />
       </div>
       <div class="code-snippet-actions">
-        <button class="code-snippet-action-btn" onClick={handleCopy} title="Copy to clipboard">📋</button>
-        <button class="code-snippet-action-btn" onClick={handleInsert} title="Insert at top">⬆</button>
+        <button class="code-snippet-action-btn" onClick={handleCopy} title="Copy to clipboard">
+          {copyFeedback() ? "✅" : "📋"}
+        </button>
+        <button class="code-snippet-action-btn" onClick={handleInsert} title="Insert at top">
+          {insertFeedback() ? "✅" : "⬆"}
+        </button>
         <button 
           class="code-snippet-action-btn" 
           classList={{ active: isVisualizing() }} 

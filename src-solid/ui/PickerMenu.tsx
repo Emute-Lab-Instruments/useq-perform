@@ -38,6 +38,10 @@ export function PickerMenu(props: PickerMenuProps) {
   const [activeIdx, setActiveIdx] = createSignal(computedInitial());
 
   let itemsRef: HTMLDivElement | undefined;
+  const initializeLucideIcons = () => {
+    const lucide = (window as any).lucide;
+    lucide?.createIcons?.();
+  };
 
   const focusActive = () => {
     if (!itemsRef) return;
@@ -189,6 +193,12 @@ export function PickerMenu(props: PickerMenuProps) {
     // Lock body scroll
     document.body.style.overflow = "hidden";
     focusActive();
+    initializeLucideIcons();
+  });
+
+  createEffect(() => {
+    items();
+    queueMicrotask(() => initializeLucideIcons());
   });
 
   onCleanup(() => {

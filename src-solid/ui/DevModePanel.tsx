@@ -1,7 +1,6 @@
 import {
   For,
   Show,
-  createEffect,
   createSignal,
   onCleanup,
   onMount,
@@ -144,6 +143,94 @@ function DebugTab(props: {
       <Show when={props.mockControlInputs}>
         {(api) => <ControlInputsSection api={api()} />}
       </Show>
+      <ConfigManagementSection />
+    </div>
+  );
+}
+
+type ConfigServerStatus = "checking" | "connected" | "unavailable" | "error";
+
+function ConfigManagementSection() {
+  const [status, setStatus] = createSignal<ConfigServerStatus>("checking");
+  const [saving, setSaving] = createSignal(false);
+
+  const checkConfigServerStatus = async () => {
+    try {
+      const configManager = await import("../../src/config/configManager.mjs");
+      const ws = await configManager.connectToConfigServer();
+      setStatus(ws ? "connected" : "unavailable");
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    setSaving(true);
+    try {
+      const configManager = await import("../../src/config/configManager.mjs");
+      const result: any = await configManager.saveConfiguration({
+        includeDevMode: true,
+        includeCode: false,
+      });
+
+      if (result.success && result.method === "websocket") {
+        setStatus("connected");
+        alert(
+          `Configuration saved to:\n${result.path}\n\nAll current UI settings and mock control values have been saved.\nCommit this file to preserve your configuration!`,
+        );
+      } else if (result.success && result.method === "filesystem-api") {
+        alert(`Configuration saved to:\n${result.name}`);
+      } else if (result.success && result.method === "download") {
+        alert(
+          "Configuration downloaded.\n\nCopy the file to:\nsrc/config/default-config.json\n\nto make changes persist across builds.",
+        );
+      } else {
+        alert(`Configuration exported via ${result.method}`);
+      }
+    } catch (error: any) {
+      alert(`Failed to save configuration:\n${error?.message ?? error}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  onMount(() => {
+    void checkConfigServerStatus();
+  });
+
+  const statusClass = () =>
+    status() === "connected"
+      ? "devmode-status-connected"
+      : "devmode-status-disconnected";
+
+  const statusText = () => {
+    if (status() === "checking") return "Config server status: checking...";
+    if (status() === "connected") return "Config server: Connected";
+    if (status() === "unavailable") return "Config server: Not available";
+    return "Config server: Error";
+  };
+
+  return (
+    <div class="devmode-section">
+      <h3>Configuration Management</h3>
+      <div class={`devmode-status-display ${statusClass()}`}>
+        <strong>{statusText()}</strong>
+      </div>
+      <button
+        class="devmode-button devmode-button-success"
+        disabled={saving()}
+        onClick={() => void handleSaveConfig()}
+      >
+        Save Config to Source File
+      </button>
+      <div class="devmode-info">
+        <p>
+          <strong>Config Persistence:</strong> Saves all UI settings and mock
+          control values to <code>src/config/default-config.json</code>. When
+          the config server is running (via npm run dev), changes write
+          directly to the source file.
+        </p>
+      </div>
     </div>
   );
 }

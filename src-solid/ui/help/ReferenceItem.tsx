@@ -1,4 +1,4 @@
-import { Component, For, Show } from "solid-js";
+import { Component, For, Show, createSignal, onCleanup } from "solid-js";
 import { 
   toggleStarred, 
   toggleExpanded, 
@@ -13,6 +13,8 @@ import { marked } from "marked";
 export const ReferenceItem: Component<{ entry: ReferenceEntry; targetVersion: Version | null }> = (props) => {
   const isExpanded = () => referenceStore.expanded.has(props.entry.name);
   const isStarred = () => referenceStore.starred.has(props.entry.name);
+  const [copiedExample, setCopiedExample] = createSignal<string | null>(null);
+  let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 
   const isAvailable = () => {
     if (!props.targetVersion || !props.entry.meta.introduced) return true;
@@ -23,6 +25,19 @@ export const ReferenceItem: Component<{ entry: ReferenceEntry; targetVersion: Ve
     if (!props.targetVersion || !props.entry.meta.changed) return false;
     return compareVersions(props.targetVersion, props.entry.meta.changed) < 0;
   };
+
+  const handleCopyExample = async (example: string) => {
+    await navigator.clipboard.writeText(example);
+    setCopiedExample(example);
+    if (copyResetTimer) clearTimeout(copyResetTimer);
+    copyResetTimer = setTimeout(() => {
+      setCopiedExample((current) => (current === example ? null : current));
+    }, 2000);
+  };
+
+  onCleanup(() => {
+    if (copyResetTimer) clearTimeout(copyResetTimer);
+  });
 
   return (
     <div 
@@ -102,12 +117,12 @@ export const ReferenceItem: Component<{ entry: ReferenceEntry; targetVersion: Ve
                     <CodeMirrorEditor code={example} readOnly={true} fontSize="12px" minHeight="30px" />
                     <button 
                       class="doc-copy-button" 
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        navigator.clipboard.writeText(example);
+                        await handleCopyExample(example);
                       }}
                     >
-                      Copy
+                      {copiedExample() === example ? "Copied!" : "Copy"}
                     </button>
                   </div>
                 )}

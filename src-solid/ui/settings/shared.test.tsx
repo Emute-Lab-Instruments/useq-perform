@@ -192,4 +192,19 @@ describe("RangeInput", () => {
       container.querySelector(".panel-range-wrapper--disabled")
     ).toBeTruthy();
   });
+
+  it("updates display on input and only commits on change", () => {
+    const onChange = vi.fn();
+    render(() => (
+      <RangeInput value={10} min={0} max={100} step={1} onChange={onChange} />
+    ));
+
+    const input = screen.getByRole("slider") as HTMLInputElement;
+    fireEvent.input(input, { target: { value: "42" } });
+    expect(screen.getByText("42")).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "42" } });
+    expect(onChange).toHaveBeenCalledWith(42);
+  });
 });

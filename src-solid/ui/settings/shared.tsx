@@ -1,4 +1,4 @@
-import { JSX } from "solid-js";
+import { JSX, createEffect, createSignal } from "solid-js";
 
 export function Section(props: { title: string; children: JSX.Element }) {
   return (
@@ -99,6 +99,12 @@ export function RangeInput(props: {
   disabled?: boolean;
   onChange: (value: number) => void;
 }) {
+  const [displayValue, setDisplayValue] = createSignal(props.value);
+
+  createEffect(() => {
+    setDisplayValue(props.value);
+  });
+
   return (
     <div class={`panel-range-wrapper ${props.disabled ? 'panel-range-wrapper--disabled' : ''}`}>
       <input
@@ -109,10 +115,13 @@ export function RangeInput(props: {
         step={props.step}
         value={props.value}
         disabled={props.disabled}
-        onInput={(e) => props.onChange(parseFloat(e.currentTarget.value))}
+        onInput={(e) => setDisplayValue(parseFloat(e.currentTarget.value))}
+        onChange={(e) => props.onChange(parseFloat(e.currentTarget.value))}
       />
       <span class="panel-range-value">
-        {props.formatValue ? props.formatValue(props.value) : props.value}
+        {props.formatValue
+          ? props.formatValue(displayValue())
+          : displayValue()}
       </span>
     </div>
   );
