@@ -1,3 +1,4 @@
+import './styles/index.css';
 import { createAppUI } from './ui/ui.mjs';
 import { examineEnvironment } from './app/environment.mjs';
 import { createApp } from './app/application.mjs';
