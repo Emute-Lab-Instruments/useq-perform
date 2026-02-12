@@ -5,6 +5,11 @@ const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise = null;
 let runtimePromise = null;
 const CODE_EVALUATED_EVENT = "useq-code-evaluated";
+const TRANSPORT_STATE_TO_COMMAND = Object.freeze({
+  playing: "(useq-play)",
+  paused: "(useq-pause)",
+  stopped: "(useq-stop)",
+});
 
 function isUseqWasmEnabled() {
   try {
@@ -328,6 +333,14 @@ export async function evalInUseqWasm(code) {
   }
 
   return result;
+}
+
+export async function syncWasmTransportState(state) {
+  const command = TRANSPORT_STATE_TO_COMMAND[state];
+  if (!command) {
+    return null;
+  }
+  return evalInUseqWasm(command);
 }
 
 export async function updateUseqWasmTime(timeSeconds) {

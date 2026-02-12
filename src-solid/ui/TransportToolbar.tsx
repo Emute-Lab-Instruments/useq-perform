@@ -9,6 +9,7 @@ import {
   play, pause, stop, rewind, clear,
   queryHardwareTransportState,
   extractTransportStateFromMeta,
+  syncWasmTransportState,
   resolveTransportMode,
   isRealHardwareConnection,
   isWasmEnabled,
@@ -113,6 +114,7 @@ export function TransportToolbar() {
   const syncState = (transportState: TransportState | null) => {
     if (transportState) {
       send({ type: "SYNC", state: transportState });
+      Effect.runPromise(syncWasmTransportState(transportState)).catch(() => undefined);
     }
   };
 

@@ -8,14 +8,22 @@ vi.mock("../../src/io/serialComms.mjs", () => ({
 }));
 vi.mock("../../src/io/useqWasmInterpreter.mjs", () => ({
   evalInUseqWasm: vi.fn(),
+  syncWasmTransportState: vi.fn(),
 }));
 vi.mock("../../src/utils/persistentUserSettings.mjs", () => ({
   activeUserSettings: { wasm: { enabled: true } },
 }));
 
-import { parseTransportState, extractTransportStateFromMeta, resolveTransportMode } from "./transport";
+import {
+  parseTransportState,
+  extractTransportStateFromMeta,
+  resolveTransportMode,
+  syncWasmTransportState,
+} from "./transport";
 import { isConnectedToModule } from "../../src/io/serialComms.mjs";
 import { activeUserSettings } from "../../src/utils/persistentUserSettings.mjs";
+import { syncWasmTransportState as syncWasmTransportStateInInterpreter } from "../../src/io/useqWasmInterpreter.mjs";
+import { Effect } from "effect";
 
 describe("parseTransportState", () => {
   it("parses 'playing'", () => {
@@ -114,5 +122,20 @@ describe("resolveTransportMode", () => {
   it("returns 'both' when connected and wasm enabled", () => {
     vi.mocked(isConnectedToModule).mockReturnValue(true);
     expect(resolveTransportMode()).toBe("both");
+  });
+});
+
+describe("syncWasmTransportState", () => {
+  it("forwards state to wasm interpreter sync helper", async () => {
+    vi.mocked(syncWasmTransportStateInInterpreter).mockResolvedValue("ok");
+    const result = await Effect.runPromise(syncWasmTransportState("paused"));
+    expect(syncWasmTransportStateInInterpreter).toHaveBeenCalledWith("paused");
+    expect(result).toBe("ok");
+  });
+
+  it("returns null when interpreter sync throws", async () => {
+    vi.mocked(syncWasmTransportStateInInterpreter).mockRejectedValue(new Error("boom"));
+    const result = await Effect.runPromise(syncWasmTransportState("playing"));
+    expect(result).toBeNull();
   });
 });

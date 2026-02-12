@@ -3,7 +3,10 @@ import { Effect } from "effect";
 // @ts-ignore - Importing from .mjs in src
 import { sendTouSEQ, isConnectedToModule, getSerialPort } from "../../src/io/serialComms.mjs";
 // @ts-ignore - Importing from .mjs in src
-import { evalInUseqWasm } from "../../src/io/useqWasmInterpreter.mjs";
+import {
+  evalInUseqWasm,
+  syncWasmTransportState as syncWasmTransportStateInInterpreter,
+} from "../../src/io/useqWasmInterpreter.mjs";
 // @ts-ignore - Importing from .mjs in src
 import { activeUserSettings } from "../../src/utils/persistentUserSettings.mjs";
 import type { TransportState } from "../machines/transport.machine";
@@ -117,3 +120,12 @@ export const stop = () => sendTransportCommand("(useq-stop)");
 export const rewind = () => sendTransportCommand("(useq-rewind)");
 export const clear = () => sendTransportCommand("(useq-clear)");
 export const queryState = () => sendTransportCommand("(useq-get-transport-state)");
+
+/**
+ * Mirror a hardware transport state into WASM without sending commands back to hardware.
+ */
+export const syncWasmTransportState = (state: TransportState) =>
+  Effect.tryPromise({
+    try: () => syncWasmTransportStateInInterpreter(state),
+    catch: (error) => new Error(`WASM sync error: ${error}`),
+  }).pipe(Effect.catchAll(() => Effect.succeed(null as string | null)));
