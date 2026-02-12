@@ -15,6 +15,8 @@ export default defineConfig({
     outDir: "public/solid-dist",
     rollupOptions: {
       input: {
+        // Legacy entry point (replaces esbuild bundle)
+        'bundle': 'src/main.mjs',
         // Entry points for each island
         'test-island': 'src-solid/islands/test-island.tsx',
         'double-radial-menu': 'src-solid/islands/double-radial-menu.tsx',
