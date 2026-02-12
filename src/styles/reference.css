@@ -444,3 +444,28 @@
   gap: 0.3em;
   align-items: center;
 }
+
+/* Reference search notification toast (Alt-F symbol lookup) */
+.useq-reference-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(1rem);
+  background: var(--panel-bg, #23272e);
+  color: var(--panel-text, #c8ccd4);
+  border: 1px solid var(--panel-border, #3a3f4b);
+  padding: 0.6em 1.2em;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+.useq-reference-toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

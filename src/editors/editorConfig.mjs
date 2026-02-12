@@ -22,7 +22,8 @@ import { openCam } from "../ui/camera.mjs";
 import { getUserSettings } from "../utils/persistentUserSettings.mjs";
 import { fontSizeCompartment } from "./state.mjs";
 
-import { showDocumentationForSymbol as showDocForSymbol } from "../ui/help/moduLispReference.mjs";
+// Legacy reference lookup (still used by the legacy jQuery panel)
+// import { showDocumentationForSymbol as showDocForSymbol } from "../ui/help/moduLispReference.mjs";
 import { dbg } from "../utils.mjs";
 
 import { flashEvalHighlight } from "./extensions/evalHighlight.mjs";
@@ -462,6 +463,41 @@ export function toggleDocumentation() {
 
 // Show ModuLisp Reference for symbol at cursor
 export function showDocumentationForSymbol(view) {
-  showDocForSymbol(view);
+  if (!view || !view.state) return false;
+
+  const state = view.state;
+  const { from, to } = state.selection.main;
+
+  let symbol = "";
+  if (from !== to) {
+    // Use selection if there is one
+    symbol = state.doc.sliceString(from, to).trim();
+  } else {
+    // Get word at cursor using line text and scanning for word chars
+    const cursor = from;
+    const line = state.doc.lineAt(cursor);
+    const lineText = line.text;
+    let start = cursor - line.from;
+    let end = start;
+
+    while (start > 0 && /[\w\-!?*+<>=]/.test(lineText.charAt(start - 1))) {
+      start -= 1;
+    }
+    while (end < lineText.length && /[\w\-!?*+<>=]/.test(lineText.charAt(end))) {
+      end += 1;
+    }
+
+    if (start < end) {
+      symbol = lineText.substring(start, end);
+    }
+  }
+
+  if (!symbol) return false;
+
+  // Dispatch custom event for the Solid reference panel to handle
+  window.dispatchEvent(new CustomEvent("useq-reference-search", {
+    detail: { symbol }
+  }));
+
   return true;
 }
