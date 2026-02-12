@@ -5,6 +5,7 @@ import { StorageSettings } from "./StorageSettings";
 import { UISettings } from "./UISettings";
 import { VisualisationSettings } from "./VisualisationSettings";
 import { ConfigurationManagement } from "./ConfigurationManagement";
+import { AdvancedSettings } from "./AdvancedSettings";
 
 export function GeneralSettings() {
   const handleReset = () => {
@@ -21,6 +22,7 @@ export function GeneralSettings() {
       <StorageSettings />
       <UISettings />
       <VisualisationSettings />
+      <AdvancedSettings />
       <ConfigurationManagement />
       
       <div class="panel-section">
