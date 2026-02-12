@@ -68,6 +68,9 @@ export function TransportToolbar() {
       emitStop: () => { Effect.runPromise(stop()); },
       emitRewind: () => { Effect.runPromise(rewind()); },
       emitClear: () => { Effect.runPromise(clear()); },
+      syncWasmPlay: () => { Effect.runPromise(syncWasmTransportState("playing")).catch(() => undefined); },
+      syncWasmPause: () => { Effect.runPromise(syncWasmTransportState("paused")).catch(() => undefined); },
+      syncWasmStop: () => { Effect.runPromise(syncWasmTransportState("stopped")).catch(() => undefined); },
     }
   });
   const actor = createActor(machine);
@@ -114,7 +117,6 @@ export function TransportToolbar() {
   const syncState = (transportState: TransportState | null) => {
     if (transportState) {
       send({ type: "SYNC", state: transportState });
-      Effect.runPromise(syncWasmTransportState(transportState)).catch(() => undefined);
     }
   };
 

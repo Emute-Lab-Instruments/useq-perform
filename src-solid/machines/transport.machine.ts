@@ -34,14 +34,17 @@ export const transportMachine = createMachine(
         {
           target: ".playing",
           guard: ({ event }) => event.type === "SYNC" && event.state === "playing",
+          actions: "syncWasmPlay",
         },
         {
           target: ".paused",
           guard: ({ event }) => event.type === "SYNC" && event.state === "paused",
+          actions: "syncWasmPause",
         },
         {
           target: ".stopped",
           guard: ({ event }) => event.type === "SYNC" && event.state === "stopped",
+          actions: "syncWasmStop",
         },
       ],
       UPDATE_MODE: {
@@ -106,6 +109,9 @@ export const transportMachine = createMachine(
       emitStop: () => {},
       emitRewind: () => {},
       emitClear: () => {},
+      syncWasmPlay: () => {},
+      syncWasmPause: () => {},
+      syncWasmStop: () => {},
     },
   }
 );

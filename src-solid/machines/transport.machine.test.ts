@@ -9,6 +9,9 @@ function createTestActor(overrides?: Record<string, () => void>) {
     emitStop: vi.fn(),
     emitRewind: vi.fn(),
     emitClear: vi.fn(),
+    syncWasmPlay: vi.fn(),
+    syncWasmPause: vi.fn(),
+    syncWasmStop: vi.fn(),
     ...overrides,
   };
   const machine = transportMachine.provide({ actions });
@@ -122,13 +125,41 @@ describe("transportMachine", () => {
       expect(actor.getSnapshot().value).toBe("playing");
     });
 
-    it("SYNC does not fire emit actions (sync is silent)", () => {
+    it("SYNC does not fire emit actions (no hardware feedback loop)", () => {
       const { actor, actions } = createTestActor();
       actor.send({ type: "SYNC", state: "stopped" });
       expect(actions.emitPlay).not.toHaveBeenCalled();
       expect(actions.emitPause).not.toHaveBeenCalled();
       expect(actions.emitStop).not.toHaveBeenCalled();
       expect(actions.emitRewind).not.toHaveBeenCalled();
+    });
+
+    it("SYNC to stopped fires syncWasmStop", () => {
+      const { actor, actions } = createTestActor();
+      actor.send({ type: "SYNC", state: "stopped" });
+      expect(actions.syncWasmStop).toHaveBeenCalledOnce();
+      expect(actions.syncWasmPlay).not.toHaveBeenCalled();
+      expect(actions.syncWasmPause).not.toHaveBeenCalled();
+    });
+
+    it("SYNC to paused fires syncWasmPause", () => {
+      const { actor, actions } = createTestActor();
+      actor.send({ type: "SYNC", state: "paused" });
+      expect(actions.syncWasmPause).toHaveBeenCalledOnce();
+      expect(actions.syncWasmPlay).not.toHaveBeenCalled();
+      expect(actions.syncWasmStop).not.toHaveBeenCalled();
+    });
+
+    it("SYNC to playing fires syncWasmPlay", () => {
+      const { actor, actions } = createTestActor();
+      actor.send({ type: "STOP" });
+      actions.syncWasmPlay.mockClear();
+      actions.syncWasmPause.mockClear();
+      actions.syncWasmStop.mockClear();
+      actor.send({ type: "SYNC", state: "playing" });
+      expect(actions.syncWasmPlay).toHaveBeenCalledOnce();
+      expect(actions.syncWasmPause).not.toHaveBeenCalled();
+      expect(actions.syncWasmStop).not.toHaveBeenCalled();
     });
 
     it("SYNC to the same state is a no-op", () => {
