@@ -76,7 +76,19 @@ Handles URL parameters for session configuration and sharing.
 The application provides a CodeMirror-based editor with Clojure-like syntax highlighting and auto-formatting. Users can write and execute code that controls the uSEQ hardware in real-time.
 
 ### Serial Communication
-The application uses the Web Serial API to communicate with the uSEQ hardware. It handles serializing commands from the code editor and parsing the responses and data streams from the device.
+The application uses the Web Serial API to communicate with the uSEQ hardware at 115200 baud. Two protocol modes are supported:
+
+**Legacy mode** (firmware < 1.2.0): Raw text commands terminated by newline. Responses are text messages framed with a start marker byte (`0x1F`).
+
+**JSON mode** (firmware >= 1.2.0): After connecting, the editor negotiates JSON mode via a `hello` handshake. The firmware responds with ioConfig (available input channels). All subsequent requests use JSON with `requestId` tracking and promise-based responses. Supported request types:
+- `hello` — Protocol negotiation, returns device config
+- `ping` — Heartbeat (every 60s) to detect connection loss
+- `stream-config` — Configure input channel streaming rates
+- `eval` — Evaluate a LISP expression, returns console output and optional metadata
+
+Responses include `console` (preferred) and `text` fields, plus an optional `meta` object. Transport builtins (`useq-play`/`pause`/`stop`/`rewind`) push state changes via `meta.transport`, which the toolbar UI listens for to keep play/pause/stop buttons in sync.
+
+Binary stream data (sensor values from the device) uses a compact 11-byte frame: `[0x1F][channel:uint8][value:float64-LE]`, stored in 9 circular buffers of 400 samples each for real-time visualization.
 
 ### Data Visualization
 A canvas-based visualization system displays data from the device in real-time, with smooth animations and custom rendering.
