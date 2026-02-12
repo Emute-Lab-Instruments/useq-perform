@@ -198,6 +198,30 @@
   white-space: nowrap;
 }
 
+/* Expand/Collapse Animation Wrapper */
+.doc-function-content-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.doc-function-content-wrapper--expanded {
+  grid-template-rows: 1fr;
+}
+
+.doc-function-content-inner {
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+              transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.doc-function-content-wrapper--expanded > .doc-function-content-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* Function Content */
 .doc-function-content {
   padding: 1em;
