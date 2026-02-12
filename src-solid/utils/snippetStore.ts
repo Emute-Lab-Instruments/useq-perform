@@ -17,9 +17,14 @@ const STORAGE_KEYS = {
 
 const loadInitialState = () => {
   try {
-    const snippets = JSON.parse(localStorage.getItem(STORAGE_KEYS.snippets) || "[]");
-    const starred = JSON.parse(localStorage.getItem(STORAGE_KEYS.starred) || "[]");
-    const nextId = parseInt(localStorage.getItem(STORAGE_KEYS.nextId) || "1", 10);
+    const snippetsRaw = JSON.parse(localStorage.getItem(STORAGE_KEYS.snippets) || "[]");
+    const starredRaw = JSON.parse(localStorage.getItem(STORAGE_KEYS.starred) || "[]");
+    const nextIdRaw = parseInt(localStorage.getItem(STORAGE_KEYS.nextId) || "1", 10);
+
+    const snippets = Array.isArray(snippetsRaw) ? snippetsRaw : [];
+    const starred = Array.isArray(starredRaw) ? starredRaw : [];
+    const nextId = Number.isFinite(nextIdRaw) && nextIdRaw > 0 ? nextIdRaw : 1;
+
     return {
       snippets,
       starred: new Set<number>(starred),
