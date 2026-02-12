@@ -22,7 +22,10 @@ export default defineConfig({
         'main-toolbar': 'src-solid/islands/main-toolbar.tsx',
         'settings-panel': 'src-solid/islands/settings-panel.tsx',
         'help-panel': 'src-solid/islands/help-panel.tsx',
-        'console-panel': 'src-solid/islands/console-panel.tsx'
+        'console-panel': 'src-solid/islands/console-panel.tsx',
+        'picker-menu': 'src-solid/islands/picker-menu.tsx',
+        'modal': 'src-solid/islands/modal.tsx',
+        'snippets-panel': 'src-solid/islands/snippets-panel.tsx'
       },
       output: {
         entryFileNames: '[name].js',
