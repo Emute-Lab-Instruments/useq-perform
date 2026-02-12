@@ -19,10 +19,16 @@ import {
   extractTransportStateFromMeta,
   resolveTransportMode,
   syncWasmTransportState,
+  sendTransportCommand,
+  play,
+  pause,
+  stop,
+  rewind,
+  clear,
 } from "./transport";
-import { isConnectedToModule } from "../../src/io/serialComms.mjs";
+import { isConnectedToModule, sendTouSEQ } from "../../src/io/serialComms.mjs";
 import { activeUserSettings } from "../../src/utils/persistentUserSettings.mjs";
-import { syncWasmTransportState as syncWasmTransportStateInInterpreter } from "../../src/io/useqWasmInterpreter.mjs";
+import { evalInUseqWasm, syncWasmTransportState as syncWasmTransportStateInInterpreter } from "../../src/io/useqWasmInterpreter.mjs";
 import { Effect } from "effect";
 
 describe("parseTransportState", () => {
@@ -137,5 +143,83 @@ describe("syncWasmTransportState", () => {
     vi.mocked(syncWasmTransportStateInInterpreter).mockRejectedValue(new Error("boom"));
     const result = await Effect.runPromise(syncWasmTransportState("playing"));
     expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Acceptance criteria: fan-out tests for sendTransportCommand
+// ---------------------------------------------------------------------------
+describe("sendTransportCommand fan-out", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isConnectedToModule).mockReturnValue(false);
+    (activeUserSettings as any).wasm = { enabled: true };
+    vi.mocked(sendTouSEQ).mockResolvedValue(undefined);
+    vi.mocked(evalInUseqWasm).mockResolvedValue("ok");
+  });
+
+  it("sends to WASM only when not connected to hardware", async () => {
+    await Effect.runPromise(sendTransportCommand("(useq-pause)"));
+    expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-pause)");
+    expect(sendTouSEQ).not.toHaveBeenCalled();
+  });
+
+  it("sends to hardware only when connected but WASM disabled", async () => {
+    vi.mocked(isConnectedToModule).mockReturnValue(true);
+    (activeUserSettings as any).wasm = { enabled: false };
+    await Effect.runPromise(sendTransportCommand("(useq-play)"));
+    expect(sendTouSEQ).toHaveBeenCalledWith("(useq-play)");
+    expect(evalInUseqWasm).not.toHaveBeenCalled();
+  });
+
+  it("sends to both hardware and WASM when connected and WASM enabled", async () => {
+    vi.mocked(isConnectedToModule).mockReturnValue(true);
+    await Effect.runPromise(sendTransportCommand("(useq-stop)"));
+    expect(sendTouSEQ).toHaveBeenCalledWith("(useq-stop)");
+    expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-stop)");
+  });
+
+  it("sends to neither when not connected and WASM disabled", async () => {
+    (activeUserSettings as any).wasm = { enabled: false };
+    await Effect.runPromise(sendTransportCommand("(useq-rewind)"));
+    expect(sendTouSEQ).not.toHaveBeenCalled();
+    expect(evalInUseqWasm).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Acceptance criteria: named transport helpers use correct canonical commands
+// ---------------------------------------------------------------------------
+describe("transport command helpers use canonical code strings", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isConnectedToModule).mockReturnValue(false);
+    (activeUserSettings as any).wasm = { enabled: true };
+    vi.mocked(evalInUseqWasm).mockResolvedValue("ok");
+  });
+
+  it("play() sends (useq-play)", async () => {
+    await Effect.runPromise(play());
+    expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-play)");
+  });
+
+  it("pause() sends (useq-pause)", async () => {
+    await Effect.runPromise(pause());
+    expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-pause)");
+  });
+
+  it("stop() sends (useq-stop)", async () => {
+    await Effect.runPromise(stop());
+    expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-stop)");
+  });
+
+  it("rewind() sends (useq-rewind)", async () => {
+    await Effect.runPromise(rewind());
+    expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-rewind)");
+  });
+
+  it("clear() sends (useq-clear)", async () => {
+    await Effect.runPromise(clear());
+    expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-clear)");
   });
 });
