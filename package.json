@@ -59,7 +59,11 @@
     "dev": "npm-run-all --parallel config-server start watch",
     "config-server": "node scripts/config-server.mjs",
     "start": "serve public -p 5000 --cors --config serve.json",
-    "test": "mocha \"test/**/*.mjs\"",
+    "test:mocha": "mocha \"test/**/*.mjs\"",
+    "test:unit": "vitest run --project unit",
+    "test:all": "npm-run-all test:mocha test:unit",
+    "test": "npm run test:all",
+    "typecheck": "tsc --noEmit",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },

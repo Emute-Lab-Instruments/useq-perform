@@ -11,12 +11,33 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "noEmit": true,
     "declaration": false,
     "jsx": "preserve",
     "jsxImportSource": "solid-js"
   },
-  "include": ["src-solid/**/*"],
-  "exclude": ["node_modules", "public", "src", "test"]
+  "include": [
+    "src/lib/**/*.ts",
+    "src/machines/**/*.ts",
+    "src/utils/consoleStore.ts",
+    "src/utils/geometry.ts",
+    "src/utils/referenceStore.ts",
+    "src/utils/snippetStore.ts",
+    "src/utils/visualisationStore.ts",
+    "src/ui/ProgressBar.tsx",
+    "src/ui/Tabs.tsx",
+    "vitest.shims.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "public",
+    "src/legacy/**",
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "test/**"
+  ]
 }

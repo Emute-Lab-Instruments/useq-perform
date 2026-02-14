@@ -1,5 +1,5 @@
 import type { Preview } from 'storybook-solidjs-vite'
-import '../src/styles/index.css';
+import '../src/legacy/styles/index.css';
 
 const preview: Preview = {
   parameters: {

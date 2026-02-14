@@ -28,7 +28,7 @@ import { activeUserSettings } from "../utils/persistentUserSettings.ts";
 import { evalNow } from "./editorConfig.ts";
 import { virtualGamepad } from "../urlParams.ts";
 
-// Bridge functions for picker menu (provided by src-solid/islands/picker-menu.tsx via window.__pickerMenu)
+// Bridge functions for picker menu (provided by src/islands/picker-menu.tsx via window.__pickerMenu)
 function showPickerMenu(opts) {
   return window.__pickerMenu?.showPickerMenu?.(opts) ?? (() => {});
 }
@@ -39,7 +39,7 @@ function showHierarchicalGridPicker(opts) {
   return window.__pickerMenu?.showHierarchicalGridPicker?.(opts) ?? (() => {});
 }
 
-// Bridge function for virtual gamepad (provided by src-solid/ui/VirtualGamepad.tsx via window.__virtualGamepad)
+// Bridge function for virtual gamepad (provided by src/ui/VirtualGamepad.tsx via window.__virtualGamepad)
 function getVirtualGamepadState() {
   return window.__virtualGamepad?.get?.() ?? { buttons: [], axes: [0, 0, 0, 0], timestamp: 0 };
 }

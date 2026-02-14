@@ -5,16 +5,15 @@ import { createEditor } from '../src/legacy/editors/main.ts';
 import { createGamepadController } from '../src/legacy/editors/gamepadControl.ts';
 import { updateUserSettings } from '../src/legacy/utils/persistentUserSettings.ts';
 import { buildHierarchicalMenuModel } from '../src/legacy/ui/pickers/menuData.ts';
-import { showPickerMenu, showNumberPickerMenu } from '../src/ui/pickerMenu.mjs';
-import { showHierarchicalGridPicker } from '../src/ui/hierarchicalPickerMenu.mjs';
 
-// Set up window.__pickerMenu bridge for gamepadControl.ts bridge functions
-window.__pickerMenu = {
-  showPickerMenu,
-  showNumberPickerMenu,
-  showHierarchicalGridPicker,
-  close: () => {}
-};
+async function loadPickerMenuBridge() {
+  try {
+    // Prefer active runtime island exports; fall back in Node-only test runtime.
+    return await import('../src/islands/picker-menu.tsx');
+  } catch {
+    return await import('./helpers/picker-menu-fallback.mjs');
+  }
+}
 
 // Helper to flush microtasks/timeouts
 function tick(ms = 0) {
@@ -26,6 +25,16 @@ function setStarred(list) {
 }
 
 describe('Gamepad picker menus', () => {
+  before(async () => {
+    const { showPickerMenu, showNumberPickerMenu, showHierarchicalGridPicker } = await loadPickerMenuBridge();
+    window.__pickerMenu = {
+      showPickerMenu,
+      showNumberPickerMenu,
+      showHierarchicalGridPicker,
+      close: () => {}
+    };
+  });
+
   beforeEach(() => {
     // Mock fetch to return a tiny reference set
     global.window.fetch = async () => ({ ok: true, json: async () => ([

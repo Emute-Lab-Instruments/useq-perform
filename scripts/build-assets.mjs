@@ -30,6 +30,15 @@ const wasmBundleFile = {
   dest: path.join('public', 'wasm', 'useq.js'),
 };
 
+const fontFiles = [
+  'IBMPlexMono-Regular.woff2',
+  'IBMPlexMono-Medium.woff2',
+  'IBMPlexMono-SemiBold.woff2',
+].map((file) => ({
+  src: path.join('assets', 'fonts', 'ibm-plex-mono', file),
+  dest: path.join('public', 'assets', 'fonts', 'ibm-plex-mono', file),
+}));
+
 let warnedMissingWasmBundle = false;
 
 // --- Helpers ---
@@ -97,6 +106,18 @@ function copyUseqWasmBundle() {
   }
 }
 
+function copyFonts() {
+  for (const font of fontFiles) {
+    try {
+      ensureDirectoryExists(path.dirname(font.dest));
+      fs.copyFileSync(font.src, font.dest);
+      console.log(`Copied ${font.src} -> ${font.dest}`);
+    } catch (error) {
+      console.error(`Failed to copy ${font.src}:`, error.message);
+    }
+  }
+}
+
 // --- Main ---
 
 function buildAll() {
@@ -104,6 +125,7 @@ function buildAll() {
   buildMarkdown();
   copyReferenceData();
   copyUseqWasmBundle();
+  copyFonts();
   console.log('Assets build complete.');
 }
 
@@ -121,6 +143,10 @@ function watchMode() {
 
       if (filename === path.basename(referenceDataFile.src)) {
         copyReferenceData();
+      }
+
+      if (filename.endsWith('.woff2')) {
+        copyFonts();
       }
     });
     console.log(`Watching ${markdownConfig.inputDir}/ for changes...`);

@@ -1,16 +1,39 @@
+# uSEQ Perform
+
+Web-based live coding interface for the uSEQ hardware module.
+
 ## Build and Run
 
-`npm run build` builds the application to `public/bundle.mjs`, along with a sourcemap file for debugging.
+- `npm run dev` - starts config server, static server, and watch builds.
+- `npm run build` - copies non-code assets and builds Vite bundles to `public/solid-dist/`.
+- `npm run start` - serves `public/` on port `5000`.
+- `npm run storybook` - Storybook dev server.
+- `npm run build-storybook` - static Storybook build.
 
-`npm run start` launches the server.
+## Tests and Typecheck
 
-`npm run dev` will run the server and watch for file changes, rebuilding automatically.
+- `npm run test:mocha` - legacy/browser integration tests in `test/**/*.mjs`.
+- `npm run test:unit` - Vitest unit tests (`unit` project).
+- `npm run test:all` - runs Mocha + Vitest unit tests.
+- `npm test` - alias for `npm run test:all`.
+- `npm run typecheck` - TypeScript check for the modern typed boundary (`src/lib`, `src/machines`, selected `src/utils`, and selected `src/ui` TSX components).
 
-## Url parameters
+## Source Layout
 
-**nosave** don't load or save with local storage 
-**gist=<url>** load from a gist
+- `src/` - canonical source tree.
+- `src/legacy/` - retained legacy runtime modules and styles.
+- `src/islands/` - Solid mount points and bridge exports.
+- `src/ui/` - modern Solid UI components.
+- `scripts/build-assets.mjs` - markdown/reference/wasm/font asset pipeline.
+- `src-useq/` - firmware submodule.
+
+`src-solid/` has been removed after migration consolidation.
+
+## URL Parameters
+
+- `?nosave` - do not read/write local storage.
+- `?gist=<url>` - load code from gist.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE)
