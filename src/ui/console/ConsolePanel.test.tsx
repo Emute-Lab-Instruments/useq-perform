@@ -10,21 +10,18 @@ import {
 
 // Mock createVirtualizer since jsdom has no layout engine
 vi.mock("@tanstack/solid-virtual", () => ({
-  createVirtualizer: (opts: any) => {
-    // Return a simple accessor that mimics the virtualizer API
-    return () => ({
-      getVirtualItems: () =>
-        Array.from({ length: opts.count() }, (_, i) => ({
-          index: i,
-          start: i * 24,
-          size: 24,
-          key: i,
-        })),
-      getTotalSize: () => opts.count() * 24,
-      scrollToIndex: vi.fn(),
-      measureElement: vi.fn(),
-    });
-  },
+  createVirtualizer: (opts: any) => ({
+    getVirtualItems: () =>
+      Array.from({ length: opts.count() }, (_, i) => ({
+        index: i,
+        start: i * 24,
+        size: 24,
+        key: i,
+      })),
+    getTotalSize: () => opts.count() * 24,
+    scrollToIndex: vi.fn(),
+    measureElement: vi.fn(),
+  }),
 }));
 
 describe("ConsolePanel", () => {

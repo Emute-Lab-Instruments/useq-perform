@@ -53,10 +53,10 @@ export function ConsolePanel(props: ConsolePanelProps) {
   };
 
   createEffect(() => {
-    const _ = consoleStore.messages.length;
-    if (shouldAutoScroll && containerRef) {
+    const messageCount = consoleStore.messages.length;
+    if (shouldAutoScroll && containerRef && messageCount > 0) {
       // Scroll to bottom when new messages arrive
-      virtualizer().scrollToIndex(consoleStore.messages.length - 1, { align: "end" });
+      virtualizer.scrollToIndex(messageCount - 1, { align: "end" });
     }
   });
 
@@ -66,7 +66,7 @@ export function ConsolePanel(props: ConsolePanelProps) {
     }
   });
 
-  const items = () => virtualizer().getVirtualItems();
+  const items = () => virtualizer.getVirtualItems();
 
   return (
     <div
@@ -149,7 +149,7 @@ export function ConsolePanel(props: ConsolePanelProps) {
             style={{
               position: "relative",
               width: "100%",
-              height: `${virtualizer().getTotalSize()}px`,
+              height: `${virtualizer.getTotalSize()}px`,
             }}
           >
             {items().map((virtualRow) => {
@@ -157,7 +157,7 @@ export function ConsolePanel(props: ConsolePanelProps) {
               return (
                 <div
                   data-index={virtualRow.index}
-                  ref={(el) => virtualizer().measureElement(el)}
+                  ref={(el) => virtualizer.measureElement(el)}
                   style={{
                     position: "absolute",
                     top: 0,
