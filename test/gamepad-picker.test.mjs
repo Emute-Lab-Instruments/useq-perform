@@ -1,10 +1,20 @@
 import { expect } from 'chai';
 import './setup.mjs';
 
-import { createEditor } from '../src/editors/main.mjs';
-import { createGamepadController } from '../src/editors/gamepadControl.mjs';
-import { updateUserSettings } from '../src/utils/persistentUserSettings.mjs';
-import { buildHierarchicalMenuModel } from '../src/ui/pickers/menuData.mjs';
+import { createEditor } from '../src/legacy/editors/main.ts';
+import { createGamepadController } from '../src/legacy/editors/gamepadControl.ts';
+import { updateUserSettings } from '../src/legacy/utils/persistentUserSettings.ts';
+import { buildHierarchicalMenuModel } from '../src/legacy/ui/pickers/menuData.ts';
+import { showPickerMenu, showNumberPickerMenu } from '../src/ui/pickerMenu.mjs';
+import { showHierarchicalGridPicker } from '../src/ui/hierarchicalPickerMenu.mjs';
+
+// Set up window.__pickerMenu bridge for gamepadControl.ts bridge functions
+window.__pickerMenu = {
+  showPickerMenu,
+  showNumberPickerMenu,
+  showHierarchicalGridPicker,
+  close: () => {}
+};
 
 // Helper to flush microtasks/timeouts
 function tick(ms = 0) {

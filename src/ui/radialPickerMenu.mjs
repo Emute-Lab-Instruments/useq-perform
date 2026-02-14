@@ -2,13 +2,13 @@
 // Left stick selects category slice; right stick selects item slice.
 
 import { dbg } from "../utils.mjs";
+import { el } from "../utils/dom.mjs";
 
 const TAU = Math.PI * 2;
 
 function angleFromVec(x, y) {
-  // y is inverted in many gamepad APIs; treat up as negative y
   const ang = Math.atan2(-y, x);
-  return (ang + TAU) % TAU; // 0..TAU
+  return (ang + TAU) % TAU;
 }
 
 function sectorFromAngle(angle, count) {
@@ -23,25 +23,26 @@ function sectorFromAngle(angle, count) {
 export function showRadialPickerMenu({ categories, title = 'Create', onSelect }) {
   if (!Array.isArray(categories) || categories.length === 0) return () => {};
 
-  const $overlay = $('<div>', { class: 'picker-menu-overlay radial-picker-overlay' });
-  const $menu = $('<div>', { class: 'radial-picker' });
-  if (title) $menu.append($('<div>', { class: 'picker-menu-title', text: title }));
+  const overlay = el('div', { class: 'picker-menu-overlay radial-picker-overlay' });
+  const menu = el('div', { class: 'radial-picker' });
+  if (title) menu.appendChild(el('div', { class: 'picker-menu-title', text: title }));
 
-  const $row = $('<div>', { class: 'radial-picker-row' });
-  const $left = $('<canvas>', { class: 'radial-canvas radial-left', width: 220, height: 220 });
-  const $right = $('<canvas>', { class: 'radial-canvas radial-right', width: 220, height: 220 });
-  $row.append($left, $right);
-  $menu.append($row);
-  $overlay.append($menu);
-  $(document.body).append($overlay);
+  const row = el('div', { class: 'radial-picker-row' });
+  const leftCanvas = el('canvas', { class: 'radial-canvas radial-left', width: 220, height: 220 });
+  const rightCanvas = el('canvas', { class: 'radial-canvas radial-right', width: 220, height: 220 });
+  row.appendChild(leftCanvas);
+  row.appendChild(rightCanvas);
+  menu.appendChild(row);
+  overlay.appendChild(menu);
+  document.body.appendChild(overlay);
 
   let activeCat = 0;
   let activeItem = 0;
   let items = Array.isArray(categories[0]?.items) ? categories[0].items : [];
 
-  function drawRadial($c, count, activeIndex, labels) {
+  function drawRadial(canvas, count, activeIndex, labels) {
     try {
-      const ctx = $c[0].getContext('2d');
+      const ctx = canvas.getContext('2d');
       const r = 100; const cx = 110; const cy = 110;
       ctx.clearRect(0,0,220,220);
       ctx.save();
@@ -57,7 +58,6 @@ export function showRadialPickerMenu({ categories, title = 'Create', onSelect })
         ctx.lineWidth = 1;
         ctx.fill();
         ctx.stroke();
-        // label
         if (labels && labels[i]) {
           const mid = (start+end)/2;
           const lx = cx + Math.cos(mid) * (r * 0.6);
@@ -74,14 +74,14 @@ export function showRadialPickerMenu({ categories, title = 'Create', onSelect })
   }
 
   function render() {
-    drawRadial($left, categories.length, activeCat, categories.map(c => c.label));
-    drawRadial($right, Math.max(1, items.length), Math.min(activeItem, Math.max(0, items.length-1)), items.map(i => i.label));
+    drawRadial(leftCanvas, categories.length, activeCat, categories.map(c => c.label));
+    drawRadial(rightCanvas, Math.max(1, items.length), Math.min(activeItem, Math.max(0, items.length-1)), items.map(i => i.label));
   }
 
   function close() {
-    $overlay.removeClass('visible');
-    $menu.removeClass('visible');
-    setTimeout(() => $overlay.remove(), 150);
+    overlay.classList.remove('visible');
+    menu.classList.remove('visible');
+    setTimeout(() => overlay.remove(), 150);
     window.removeEventListener('gamepadpickerinput', onPickerEvent);
   }
 
@@ -97,7 +97,6 @@ export function showRadialPickerMenu({ categories, title = 'Create', onSelect })
     if (action === 'cancel') return close();
     if (action === 'select') return confirm();
 
-    // Allow D-pad fallback to cycle
     if (direction === 'left') { activeCat = (activeCat + categories.length - 1) % categories.length; items = categories[activeCat].items || []; activeItem = 0; render(); return; }
     if (direction === 'right') { activeCat = (activeCat + 1) % categories.length; items = categories[activeCat].items || []; activeItem = 0; render(); return; }
     if (direction === 'up') { if (items.length) { activeItem = (activeItem + items.length - 1) % items.length; render(); } return; }
@@ -127,7 +126,6 @@ export function showRadialPickerMenu({ categories, title = 'Create', onSelect })
 
   window.addEventListener('gamepadpickerinput', onPickerEvent);
 
-  setTimeout(() => { $overlay.addClass('visible'); $menu.addClass('visible'); render(); }, 10);
+  setTimeout(() => { overlay.classList.add('visible'); menu.classList.add('visible'); render(); }, 10);
   return close;
 }
-

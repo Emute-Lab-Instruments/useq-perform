@@ -16,19 +16,23 @@ let topToolbarResizeListener = null;
 
 let editorInstance = null;
 
+function hideAllAuxPanels() {
+    document.querySelectorAll(".panel-aux").forEach(el => el.style.display = "none");
+}
 
 function toggleAuxPanel(panelID) {
-    const panel = $(panelID);
+    const panel = document.querySelector(panelID);
+    if (!panel) return;
 
-    if (panel.is(":visible")) { 
-        $(`.panel-aux`).hide();
+    if (panel.offsetParent !== null) {
+        hideAllAuxPanels();
     } else {
-        $(`.panel-aux`).hide();
-        panel.show();
-        
+        hideAllAuxPanels();
+        panel.style.display = "";
+
         // Make sure the panel has an expand toggle button
         ensurePanelHasExpandToggle(panel);
-        
+
         // Make sure the panel has a close button
         ensurePanelHasCloseButton(panel);
     }
@@ -36,21 +40,22 @@ function toggleAuxPanel(panelID) {
 
 // Toggle expanded state of panel
 function togglePanelExpand(panelElement) {
-    const panel = $(panelElement);
-    panel.toggleClass('panel-expanded');
-    
+    panelElement.classList.toggle('panel-expanded');
+
     // Update the button's icon based on the panel's state
-    const isExpanded = panel.hasClass('panel-expanded');
-    const toggleButton = panel.find('.panel-expand-toggle');
-    const iconElement = toggleButton.find('.expand-icon');
-    
+    const isExpanded = panelElement.classList.contains('panel-expanded');
+    const toggleButton = panelElement.querySelector('.panel-expand-toggle');
+    const iconElement = toggleButton ? toggleButton.querySelector('.expand-icon') : null;
+
     // First remove the old icon element
-    iconElement.remove();
-    
+    if (iconElement) iconElement.remove();
+
     // Create a new icon element with the correct icon name
-    const newIcon = $(`<i class="expand-icon" data-lucide="${isExpanded ? 'chevron-right' : 'chevron-left'}"></i>`);
-    toggleButton.append(newIcon);
-    
+    const newIcon = document.createElement('i');
+    newIcon.className = 'expand-icon';
+    newIcon.setAttribute('data-lucide', isExpanded ? 'chevron-right' : 'chevron-left');
+    if (toggleButton) toggleButton.appendChild(newIcon);
+
     // Force the Lucide icon to render immediately
     if (window.lucide) {
         window.lucide.createIcons({
@@ -63,25 +68,25 @@ function togglePanelExpand(panelElement) {
 
 // Add expand toggle button to panel if it doesn't exist
 function ensurePanelHasExpandToggle(panel) {
-    const panelId = panel.attr('id');
-    
+    const panelId = panel.getAttribute('id');
+
     // Check if button already exists
-    if (panel.find('.panel-expand-toggle').length === 0) {
-        const toggleButton = $(`
-            <div class="panel-expand-toggle" data-panel="${panelId}" title="Toggle expand panel">
-                <i class="expand-icon" data-lucide="chevron-left"></i>
-            </div>
-        `);
-        
+    if (!panel.querySelector('.panel-expand-toggle')) {
+        const toggleButton = document.createElement('div');
+        toggleButton.className = 'panel-expand-toggle';
+        toggleButton.setAttribute('data-panel', panelId);
+        toggleButton.title = 'Toggle expand panel';
+        toggleButton.innerHTML = '<i class="expand-icon" data-lucide="chevron-left"></i>';
+
         // Append button to the panel
-        panel.append(toggleButton);
-        
+        panel.appendChild(toggleButton);
+
         // Add click event handler
-        toggleButton.on('click', function(e) {
+        toggleButton.addEventListener('click', function(e) {
             e.stopPropagation();
             togglePanelExpand(panel);
         });
-        
+
         // Initialize Lucide icon
         if (window.lucide) {
             window.lucide.createIcons();
@@ -91,25 +96,25 @@ function ensurePanelHasExpandToggle(panel) {
 
 // Add close button to panel if it doesn't exist
 function ensurePanelHasCloseButton(panel) {
-    const panelId = panel.attr('id');
-    
+    const panelId = panel.getAttribute('id');
+
     // Check if button already exists
-    if (panel.find('.panel-close-button').length === 0) {
-        const closeButton = $(`
-            <button class="panel-close-button" data-panel="${panelId}" title="Close panel">
-                <i class="close-icon" data-lucide="x"></i>
-            </button>
-        `);
-        
+    if (!panel.querySelector('.panel-close-button')) {
+        const closeButton = document.createElement('button');
+        closeButton.className = 'panel-close-button';
+        closeButton.setAttribute('data-panel', panelId);
+        closeButton.title = 'Close panel';
+        closeButton.innerHTML = '<i class="close-icon" data-lucide="x"></i>';
+
         // Append button to the panel
-        panel.append(closeButton);
-        
+        panel.appendChild(closeButton);
+
         // Add click event handler
-        closeButton.on('click', function(e) {
+        closeButton.addEventListener('click', function(e) {
             e.stopPropagation();
-            $(`.panel-aux`).hide();
+            hideAllAuxPanels();
         });
-        
+
         // Initialize Lucide icon
         if (window.lucide) {
             window.lucide.createIcons();
@@ -122,69 +127,73 @@ function ensurePanelHasCloseButton(panel) {
  */
 function addDevModeButton() {
     dbg("Adding dev mode button to toolbar");
-    
+
     // Create the dev mode button
-    const $devModeButton = $('<a>', {
-        class: 'toolbar-button',
-        id: 'button-devmode',
-        title: 'Dev Mode Tools',
-        html: '<i data-lucide="wrench"></i>'
-    });
-    
+    const devModeButton = document.createElement('a');
+    devModeButton.className = 'toolbar-button';
+    devModeButton.id = 'button-devmode';
+    devModeButton.title = 'Dev Mode Tools';
+    devModeButton.innerHTML = '<i data-lucide="wrench"></i>';
+
     // Find the last toolbar row and add the button there
-    const $lastToolbarRow = $('.toolbar-row').last();
-    $lastToolbarRow.append($devModeButton);
-    
+    const toolbarRows = document.querySelectorAll('.toolbar-row');
+    const lastToolbarRow = toolbarRows[toolbarRows.length - 1];
+    if (lastToolbarRow) lastToolbarRow.appendChild(devModeButton);
+
     // Initialize the Lucide icon
     if (window.lucide) {
         window.lucide.createIcons();
     }
-    
+
     dbg("Dev mode button added to toolbar");
+}
+
+function addClickHandler(id, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("click", handler);
 }
 
 export function makeToolbar(editor) {
     // Store editor reference
     editorInstance = editor;
-    
+
     // Add dev mode button if dev mode is active
     if (devmode) {
         addDevModeButton();
     }
-    
+
     // Set up UI event handlers
-    $("#button-increase-font").on("click", () => {
+    addClickHandler("button-increase-font", () => {
         activeUserSettings.editor.fontSize++;
         setFontSize(editorInstance, activeUserSettings.editor.fontSize);
         saveUserSettings();
     });
-    
-    $("#button-decrease-font").on("click", () => {
+
+    addClickHandler("button-decrease-font", () => {
         activeUserSettings.editor.fontSize--;
         setFontSize(editorInstance, activeUserSettings.editor.fontSize);
         saveUserSettings();
     });
-    
-    $("#button-connect").on("click", function() {
+
+    addClickHandler("button-connect", () => {
         toggleConnect();
     });
 
-
-    $("#button-graph").on("click", function() {
+    addClickHandler("button-graph", () => {
         toggleSerialVis();
     });
 
-    $("#button-settings").on("click", function() {
+    addClickHandler("button-settings", () => {
         toggleAuxPanel("#panel-settings");
     });
 
-    $("#button-help").on("click", function() {
+    addClickHandler("button-help", () => {
         toggleAuxPanel("#panel-help");
     });
 
     // Dev mode button - only set up handler if dev mode is active
     if (devmode) {
-        $("#button-devmode").on("click", function() {
+        addClickHandler("button-devmode", () => {
             toggleAuxPanel("#panel-devmode");
         });
         dbg("Dev mode button handler registered");
@@ -193,8 +202,8 @@ export function makeToolbar(editor) {
     const transportRow = document.querySelector('#panel-top-toolbar .toolbar-row');
     initToolbarBarProgress(transportRow);
     initTopToolbarHeightTracking();
-    
-    $("#button-load").on("click", async () => {
+
+    addClickHandler("button-load", async () => {
         let fileHandle;
         [fileHandle] = await window.showOpenFilePicker();
         const file = await fileHandle.getFile();
@@ -204,19 +213,19 @@ export function makeToolbar(editor) {
         const transaction = editorInstance.state.update(transactionSpec);
         editorInstance.dispatch(transaction);
     });
-    
-    $("#button-save").on("click", async () => {
-        const fileData = { 
+
+    addClickHandler("button-save", async () => {
+        const fileData = {
             "text": editorInstance.state.doc.toString(),
-            "format_version": 1 
+            "format_version": 1
         };
         await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
     });
-    
+
     // Initialize expand toggles and close buttons for all existing panels when the UI is first loaded
-    $('.panel-aux').each(function() {
-        ensurePanelHasExpandToggle($(this));
-        ensurePanelHasCloseButton($(this));
+    document.querySelectorAll('.panel-aux').forEach(panel => {
+        ensurePanelHasExpandToggle(panel);
+        ensurePanelHasCloseButton(panel);
     });
 
     // Setup top playback toolbar interactions
@@ -301,13 +310,13 @@ async function saveToFile(fileContents, ext, desc) {
         const handle = await window.showSaveFilePicker(options);
         return handle;
     }
-    
+
     async function writeFile(fileHandle, contents) {
         const writable = await fileHandle.createWritable();
         await writable.write(contents);
         await writable.close();
     }
-    
+
     const filehandle = await getNewFileHandle(ext, desc);
     await writeFile(filehandle, fileContents);
 }
@@ -412,47 +421,49 @@ function handleTransportStatePush(event) {
 }
 
 function updatePlaybackUI() {
-    const $play = $('#button-play');
-    const $pause = $('#button-pause');
-    const $stop = $('#button-stop');
-    const $rewind = $('#button-rewind');
-    const $clear = $('#button-clear');
+    const play = document.getElementById('button-play');
+    const pause = document.getElementById('button-pause');
+    const stop = document.getElementById('button-stop');
+    const rewind = document.getElementById('button-rewind');
+    const clear = document.getElementById('button-clear');
+
+    const buttons = [play, pause, stop, rewind, clear];
 
     // Reset classes
-    [$play, $pause, $stop, $rewind, $clear].forEach($b => $b.removeClass('primary disabled'));
+    buttons.forEach(b => { if (b) { b.classList.remove('primary', 'disabled'); } });
 
     if (!isConnected && !isWasmInterpreterEnabled()) {
-        [$play, $pause, $stop, $rewind, $clear].forEach($b => $b.addClass('disabled'));
-        $stop.addClass('primary');
+        buttons.forEach(b => { if (b) b.classList.add('disabled'); });
+        if (stop) stop.classList.add('primary');
         return;
     }
 
     switch (playbackState) {
         case PlaybackState.Playing:
-            $play.addClass('primary disabled');
+            if (play) play.classList.add('primary', 'disabled');
             // pause, stop, rewind, clear enabled
             break;
         case PlaybackState.Paused:
-            $pause.addClass('primary disabled');
+            if (pause) pause.classList.add('primary', 'disabled');
             // play, stop, rewind, clear enabled
             break;
         case PlaybackState.Stopped:
         default:
-            $stop.addClass('primary disabled');
+            if (stop) stop.classList.add('primary', 'disabled');
             // play enabled, pause disabled; rewind, clear enabled
-            $pause.addClass('disabled');
+            if (pause) pause.classList.add('disabled');
             break;
     }
 }
 
 function initPlaybackToolbar() {
-    const $play = $('#button-play');
-    const $pause = $('#button-pause');
-    const $stop = $('#button-stop');
-    const $rewind = $('#button-rewind');
-    const $clear = $('#button-clear');
+    const play = document.getElementById('button-play');
+    const pause = document.getElementById('button-pause');
+    const stop = document.getElementById('button-stop');
+    const rewind = document.getElementById('button-rewind');
+    const clear = document.getElementById('button-clear');
 
-    if (!($play.length && $pause.length && $stop.length && $rewind.length)) {
+    if (!(play && pause && stop && rewind)) {
         return; // Top toolbar not present
     }
 
@@ -474,11 +485,11 @@ function initPlaybackToolbar() {
         }
     };
 
-    $play.on('click', () => {
-        if ($play.hasClass('disabled')) return;
-        
+    play.addEventListener('click', () => {
+        if (play.classList.contains('disabled')) return;
+
         sendTransportCommand('(useq-play)');
-        
+
         // If not connected to real hardware (disconnected OR mock connection)
         // and WASM is enabled, we need to drive the time generator
         const isRealConnection = isConnected && !!getSerialPort();
@@ -493,11 +504,11 @@ function initPlaybackToolbar() {
         setPlaybackState(PlaybackState.Playing);
     });
 
-    $pause.on('click', () => {
-        if ($pause.hasClass('disabled')) return;
-        
+    pause.addEventListener('click', () => {
+        if (pause.classList.contains('disabled')) return;
+
         sendTransportCommand('(useq-pause)');
-        
+
         const isRealConnection = isConnected && !!getSerialPort();
 
         if (!isRealConnection && isWasmInterpreterEnabled()) {
@@ -506,11 +517,11 @@ function initPlaybackToolbar() {
         setPlaybackState(PlaybackState.Paused);
     });
 
-    $stop.on('click', () => {
-        if ($stop.hasClass('disabled')) return;
-        
+    stop.addEventListener('click', () => {
+        if (stop.classList.contains('disabled')) return;
+
         sendTransportCommand('(useq-stop)');
-        
+
         const isRealConnection = isConnected && !!getSerialPort();
 
         if (!isRealConnection && isWasmInterpreterEnabled()) {
@@ -520,11 +531,11 @@ function initPlaybackToolbar() {
         setPlaybackState(PlaybackState.Stopped);
     });
 
-    $rewind.on('click', () => {
-        if ($rewind.hasClass('disabled')) return;
-        
+    rewind.addEventListener('click', () => {
+        if (rewind.classList.contains('disabled')) return;
+
         sendTransportCommand('(useq-rewind)');
-        
+
         const isRealConnection = isConnected && !!getSerialPort();
 
         if (!isRealConnection && isWasmInterpreterEnabled()) {
@@ -534,28 +545,30 @@ function initPlaybackToolbar() {
         setPlaybackState(PlaybackState.Stopped);
     });
 
-    $clear.on('click', () => {
-        if ($clear.hasClass('disabled')) return;
-        
-        sendTransportCommand('(useq-clear)');
-    });
+    if (clear) {
+        clear.addEventListener('click', () => {
+            if (clear.classList.contains('disabled')) return;
+
+            sendTransportCommand('(useq-clear)');
+        });
+    }
 
     // React to connection status changes
     window.addEventListener('useq-connection-changed', (e) => {
         isConnected = !!(e && e.detail && e.detail.connected);
-        
+
         // Ensure mock time generator is stopped when connected so it doesn't interfere
         // with hardware time updates or lack thereof (when paused)
         // ONLY if it is a real hardware connection!
         const isRealConnection = isConnected && !!getSerialPort();
-        
+
         if (isRealConnection) {
             stopMockTimeGenerator();
         }
-        
+
         updatePlaybackUI();
     });
-    
+
     // Listen for protocol ready event to query state
     window.addEventListener('useq-protocol-ready', () => {
         if (isConnected) {

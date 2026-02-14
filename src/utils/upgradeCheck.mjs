@@ -30,14 +30,21 @@ function parseVersion(versionString) {
  * Fetches the latest release information from GitHub
  */
 function fetchLatestRelease() {
-  return $.ajax({
-    url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
-    type: "GET",
-    data: { "accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-    error: function (xhr, ajaxOptions, thrownError) {
-      dbg("Failed to fetch releases:", thrownError);
-    }
-  });
+  return fetch("https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases", {
+    method: "GET",
+    headers: {
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  })
+    .then(response => {
+      if (!response.ok) throw new Error("Failed to fetch releases");
+      return response.json();
+    })
+    .catch(error => {
+      dbg("Failed to fetch releases:", error);
+      return null;
+    });
 }
 
 /**

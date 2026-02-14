@@ -21,10 +21,10 @@
  *   2. The menu will handle keyboard navigation, focus, and closing.
  *   3. Only one picker menu can be open at a time.
  *
- * See pickerMenu.css for required styles. Uses jQuery for DOM manipulation and events.
+ * See pickerMenu.css for required styles. Uses native DOM APIs.
  */
-// pickerMenu.mjs: jQuery-based pop-up picker menu with overlay
-// Usage: call showPickerMenu({items, onSelect, title, layout, initialIndex})
+
+import { el } from "../utils/dom.mjs";
 
 /**
  * Show a picker menu pop-up. Returns a function to close the menu.
@@ -39,14 +39,14 @@
 export function showPickerMenu({items, onSelect, title = '', layout = 'grid', initialIndex} = {}) {
   if (!Array.isArray(items) || items.length === 0) return () => {};
   // Remove any existing picker
-  $(document.body).find('.picker-menu-overlay').remove();
+  document.querySelectorAll('.picker-menu-overlay').forEach(e => e.remove());
 
   // Overlay
-  const $overlay = $('<div>', {class: 'picker-menu-overlay'});
+  const overlay = el('div', {class: 'picker-menu-overlay'});
   // Menu
-  const $menu = $('<div>', {class: 'picker-menu'});
-  if (title) $menu.append($('<div>', {class: 'picker-menu-title', text: title}));
-  const $items = $('<div>', {class: `picker-menu-items ${layout === 'vertical' ? 'vertical' : 'grid'}`});
+  const menu = el('div', {class: 'picker-menu'});
+  if (title) menu.appendChild(el('div', {class: 'picker-menu-title', text: title}));
+  const itemsContainer = el('div', {class: `picker-menu-items ${layout === 'vertical' ? 'vertical' : 'grid'}`});
 
   // Determine initial active index
   let activeIdx = typeof initialIndex === 'number' ? initialIndex : Math.floor(items.length / 2);
@@ -54,38 +54,43 @@ export function showPickerMenu({items, onSelect, title = '', layout = 'grid', in
 
   // Render items
   items.forEach((item, i) => {
-    const $it = $('<div>', {
+    const it = el('div', {
       class: 'picker-menu-item' + (i === activeIdx ? ' active' : ''),
       tabindex: 0,
       html: item.icon ? `<i class="lucide" data-lucide="${item.icon}"></i> ${item.label}` : item.label
     });
-    $it.on('click', e => {
+    it.addEventListener('click', e => {
       e.stopPropagation();
       selectItem(i);
     });
-    $it.on('mouseenter', () => setActive(i));
-    $items.append($it);
+    it.addEventListener('mouseenter', () => setActive(i));
+    itemsContainer.appendChild(it);
   });
-  $menu.append($items);
-  $overlay.append($menu);
-  $(document.body).append($overlay);
+  menu.appendChild(itemsContainer);
+  overlay.appendChild(menu);
+  document.body.appendChild(overlay);
 
   // Fade in
   setTimeout(() => {
-    $overlay.addClass('visible');
-    $menu.addClass('visible');
+    overlay.classList.add('visible');
+    menu.classList.add('visible');
     if (window.lucide) window.lucide.createIcons();
     focusActive();
   }, 10);
 
 
   // Keyboard/gamepad navigation
+  function getItemChildren() {
+    return Array.from(itemsContainer.children);
+  }
   function focusActive() {
-    $items.children().eq(activeIdx).focus();
+    const children = getItemChildren();
+    if (children[activeIdx]) children[activeIdx].focus();
   }
   function setActive(idx) {
-    $items.children().removeClass('active');
-    $items.children().eq(idx).addClass('active');
+    const children = getItemChildren();
+    children.forEach(c => c.classList.remove('active'));
+    if (children[idx]) children[idx].classList.add('active');
     activeIdx = idx;
     focusActive();
   }
@@ -94,11 +99,12 @@ export function showPickerMenu({items, onSelect, title = '', layout = 'grid', in
     closeMenu();
   }
   function closeMenu() {
-    $overlay.removeClass('visible');
-    $menu.removeClass('visible');
-    setTimeout(() => $overlay.remove(), 180);
-    $(window).off('keydown.pickerMenu');
+    overlay.classList.remove('visible');
+    menu.classList.remove('visible');
+    setTimeout(() => overlay.remove(), 180);
+    window.removeEventListener('keydown', keydownHandler);
     window.removeEventListener('gamepadpickerinput', handleGamepadInput);
+    document.body.style.overflow = '';
   }
 
   // Gamepad navigation event handler
@@ -107,72 +113,45 @@ export function showPickerMenu({items, onSelect, title = '', layout = 'grid', in
     const { direction, action } = e.detail || {};
 
     if (layout === 'grid') {
-      // Use a fixed number of columns (3) to match our CSS
       const numColumns = 3;
       const numRows = Math.ceil(items.length / numColumns);
-
-      // Current position in grid
       const currentRow = Math.floor(activeIdx / numColumns);
       const currentCol = activeIdx % numColumns;
-
       let newRow = currentRow;
       let newCol = currentCol;
 
-      // Reverse directional navigation
       if (direction === 'left') {
-        // Move right instead of left
         const maxColInRow = Math.min(numColumns, items.length - (currentRow * numColumns)) - 1;
         newCol = (currentCol < maxColInRow) ? currentCol + 1 : 0;
       } else if (direction === 'right') {
-        // Move left instead of right
         newCol = (currentCol > 0) ? currentCol - 1 : numColumns - 1;
         if (newRow * numColumns + newCol >= items.length) {
           newCol = items.length - 1 - (newRow * numColumns);
         }
       } else if (direction === 'up') {
-        // Move down instead of up, keep column fixed, wrap rows
         newRow = (currentRow < numRows - 1) ? currentRow + 1 : 0;
-        // If the new cell is out of bounds, wrap to first valid row for this column
         if (newRow * numColumns + currentCol >= items.length) {
           newRow = 0;
         }
         newCol = currentCol;
       } else if (direction === 'down') {
-        // Move up instead of down, keep column fixed, wrap rows
-        console.debug('DOWN: currentRow', currentRow, 'currentCol', currentCol, 'numRows', numRows, 'numColumns', numColumns);
         let found = false;
         let tries = 0;
-        let startRow = currentRow;
         do {
           newRow = (newRow > 0) ? newRow - 1 : numRows - 1;
           tries++;
-          // Check if this row/col is valid
           if (newRow * numColumns + currentCol < items.length) {
             found = true;
           }
         } while (!found && tries < numRows);
         newCol = currentCol;
-        console.debug('DOWN: final newRow', newRow, 'newCol', newCol);
       }
 
-      // Calculate new index
       let newIdx = newRow * numColumns + newCol;
-      console.debug('DOWN: calculated newIdx', newIdx, 'activeIdx', activeIdx);
-
-      // Final safety check to ensure we're within bounds
-      if (newIdx >= items.length) {
-        newIdx = items.length - 1;
-      } else if (newIdx < 0) {
-        newIdx = 0;
-      }
-
-      if (newIdx !== activeIdx) {
-        setActive(newIdx);
-      } else {
-        console.debug('DOWN: newIdx is same as activeIdx, no change');
-      }
+      if (newIdx >= items.length) newIdx = items.length - 1;
+      else if (newIdx < 0) newIdx = 0;
+      if (newIdx !== activeIdx) setActive(newIdx);
     } else {
-      // Vertical layout - simple prev/next navigation (reversed)
       if (direction === 'left' || direction === 'up') {
         setActive((activeIdx + 1) % items.length);
       } else if (direction === 'right' || direction === 'down') {
@@ -180,53 +159,40 @@ export function showPickerMenu({items, onSelect, title = '', layout = 'grid', in
       }
     }
 
-    if (action === 'select') {
-      selectItem(activeIdx);
-    } else if (action === 'cancel') {
-      closeMenu();
-    }
+    if (action === 'select') selectItem(activeIdx);
+    else if (action === 'cancel') closeMenu();
   }
   window.addEventListener('gamepadpickerinput', handleGamepadInput);
 
-  $overlay.on('click', e => {
-    if (e.target === $overlay[0]) closeMenu();
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) closeMenu();
   });
 
-  $(window).on('keydown.pickerMenu', e => {
+  function keydownHandler(e) {
     if (e.key === 'Escape') closeMenu();
     else if (e.key === 'Enter' || e.key === ' ') {
       selectItem(activeIdx);
     } else if (layout === 'grid') {
-      // Use a fixed number of columns (3) to match our CSS
       const numColumns = 3;
       const numRows = Math.ceil(items.length / numColumns);
-
       const currentRow = Math.floor(activeIdx / numColumns);
       const currentCol = activeIdx % numColumns;
-
       let newRow = currentRow;
       let newCol = currentCol;
 
-      // Reverse directional navigation for keyboard
       if (e.key === 'ArrowLeft') {
-        // Move right instead of left
         const maxColInRow = Math.min(numColumns, items.length - (currentRow * numColumns)) - 1;
         newCol = (currentCol < maxColInRow) ? currentCol + 1 : 0;
       } else if (e.key === 'ArrowRight') {
-        // Move left instead of right
         newCol = (currentCol > 0) ? currentCol - 1 : numColumns - 1;
         if (newRow * numColumns + newCol >= items.length) {
           newCol = items.length - 1 - (newRow * numColumns);
         }
       } else if (e.key === 'ArrowUp') {
-        // Move down instead of up, keep column fixed, wrap rows
         newRow = (currentRow < numRows - 1) ? currentRow + 1 : 0;
-        if (newRow * numColumns + currentCol >= items.length) {
-          newRow = 0;
-        }
+        if (newRow * numColumns + currentCol >= items.length) newRow = 0;
         newCol = currentCol;
       } else if (e.key === 'ArrowDown') {
-        // Move up instead of down, keep column fixed, wrap rows
         newRow = (currentRow > 0) ? currentRow - 1 : numRows - 1;
         if (newRow * numColumns + currentCol >= items.length) {
           newRow = numRows - 1;
@@ -237,46 +203,28 @@ export function showPickerMenu({items, onSelect, title = '', layout = 'grid', in
         newCol = currentCol;
       }
 
-      // Calculate new index
       let newIdx = newRow * numColumns + newCol;
-
-      // Final safety check to ensure we're within bounds
-      if (newIdx >= items.length) {
-        newIdx = items.length - 1;
-      } else if (newIdx < 0) {
-        newIdx = 0;
-      }
-
+      if (newIdx >= items.length) newIdx = items.length - 1;
+      else if (newIdx < 0) newIdx = 0;
       setActive(newIdx);
     } else {
-      // Vertical layout - simple prev/next navigation (reversed)
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         setActive((activeIdx + 1) % items.length);
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         setActive((activeIdx - 1 + items.length) % items.length);
       }
     }
-  });
+  }
+  window.addEventListener('keydown', keydownHandler);
 
   // Prevent scroll on body
   document.body.style.overflow = 'hidden';
-  $overlay.on('remove', () => {
-    document.body.style.overflow = '';
-  });
 
   return closeMenu;
 }
 
 /**
  * Show a number picker menu pop-up. Returns a function to close the menu.
- * @param {Object} opts
- * @param {Function} opts.onSelect - Called with (numberValue) when selected
- * @param {string} [opts.title] - Optional title
- * @param {number} [opts.initialValue] - Initial value (default: 0)
- * @param {number} [opts.min] - Minimum allowed value (default: -Infinity)
- * @param {number} [opts.max] - Maximum allowed value (default: +Infinity)
- * @param {number} [opts.step] - Step size for increment/decrement (default: 1)
- * @returns {Function} closeMenu - Call to close the menu
  */
 export function showNumberPickerMenu({
   onSelect,
@@ -287,52 +235,43 @@ export function showNumberPickerMenu({
   step = 1
 } = {}) {
   // Remove any existing picker
-  $(document.body).find('.picker-menu-overlay').remove();
+  document.querySelectorAll('.picker-menu-overlay').forEach(e => e.remove());
 
-  // Overlay
-  const $overlay = $('<div>', {class: 'picker-menu-overlay'});
-  // Menu
-  const $menu = $('<div>', {class: 'picker-menu number-picker-menu'});
-  if (title) $menu.append($('<div>', {class: 'picker-menu-title', text: title}));
+  const overlay = el('div', {class: 'picker-menu-overlay'});
+  const menu = el('div', {class: 'picker-menu number-picker-menu'});
+  if (title) menu.appendChild(el('div', {class: 'picker-menu-title', text: title}));
 
-  // Number input UI
   let value = typeof initialValue === 'number' ? initialValue : 0;
   value = Math.max(min, Math.min(max, value));
 
-  const $inputRow = $('<div>', {class: 'number-picker-row'});
-  const $decr = $('<button>', {class: 'number-picker-btn', text: '−', tabindex: 0});
-  const $input = $('<input>', {
-    class: 'number-picker-input',
-    type: 'number',
-    value: value,
-    min: min,
-    max: max,
-    step: step,
-    tabindex: 0
-  });
-  const $incr = $('<button>', {class: 'number-picker-btn', text: '+', tabindex: 0});
-  $inputRow.append($decr, $input, $incr);
+  const inputRow = el('div', {class: 'number-picker-row'});
+  const decr = el('button', {class: 'number-picker-btn', text: '\u2212', tabindex: 0});
+  const input = el('input', {class: 'number-picker-input', type: 'number', value: value, min: min, max: max, step: step, tabindex: 0});
+  const incr = el('button', {class: 'number-picker-btn', text: '+', tabindex: 0});
+  inputRow.appendChild(decr);
+  inputRow.appendChild(input);
+  inputRow.appendChild(incr);
 
-  // Confirm/cancel buttons
-  const $actions = $('<div>', {class: 'number-picker-actions'});
-  const $ok = $('<button>', {class: 'picker-menu-action', text: 'OK', tabindex: 0});
-  const $cancel = $('<button>', {class: 'picker-menu-action', text: 'Cancel', tabindex: 0});
-  $actions.append($ok, $cancel);
+  const actions = el('div', {class: 'number-picker-actions'});
+  const ok = el('button', {class: 'picker-menu-action', text: 'OK', tabindex: 0});
+  const cancel = el('button', {class: 'picker-menu-action', text: 'Cancel', tabindex: 0});
+  actions.appendChild(ok);
+  actions.appendChild(cancel);
 
-  $menu.append($inputRow, $actions);
-  $overlay.append($menu);
-  $(document.body).append($overlay);
+  menu.appendChild(inputRow);
+  menu.appendChild(actions);
+  overlay.appendChild(menu);
+  document.body.appendChild(overlay);
 
-  // Fade in
   setTimeout(() => {
-    $overlay.addClass('visible');
-    $menu.addClass('visible');
-    $input.focus();
+    overlay.classList.add('visible');
+    menu.classList.add('visible');
+    input.focus();
   }, 10);
 
   function setValue(newVal) {
     value = Math.max(min, Math.min(max, Number(newVal) || 0));
-    $input.val(value);
+    input.value = value;
   }
 
   function confirm() {
@@ -340,28 +279,28 @@ export function showNumberPickerMenu({
     closeMenu();
   }
   function closeMenu() {
-    $overlay.removeClass('visible');
-    $menu.removeClass('visible');
-    setTimeout(() => $overlay.remove(), 180);
-    $(window).off('keydown.numberPickerMenu');
+    overlay.classList.remove('visible');
+    menu.classList.remove('visible');
+    setTimeout(() => overlay.remove(), 180);
+    window.removeEventListener('keydown', keydownHandler);
     window.removeEventListener('gamepadpickerinput', handleGamepadInput);
+    document.body.style.overflow = '';
   }
 
-  $decr.on('click', () => setValue(value - step));
-  $incr.on('click', () => setValue(value + step));
-  $input.on('input', () => setValue($input.val()));
-  $ok.on('click', confirm);
-  $cancel.on('click', closeMenu);
+  decr.addEventListener('click', () => setValue(value - step));
+  incr.addEventListener('click', () => setValue(value + step));
+  input.addEventListener('input', () => setValue(input.value));
+  ok.addEventListener('click', confirm);
+  cancel.addEventListener('click', closeMenu);
 
-  // Keyboard/gamepad navigation
-  $(window).on('keydown.numberPickerMenu', e => {
+  function keydownHandler(e) {
     if (e.key === 'Escape') closeMenu();
     else if (e.key === 'Enter') confirm();
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') setValue(value - step);
     else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') setValue(value + step);
-  });
+  }
+  window.addEventListener('keydown', keydownHandler);
 
-  // Gamepad navigation event handler
   function handleGamepadInput(e) {
     const { direction, action } = e.detail || {};
     if (direction === 'left' || direction === 'down') setValue(value - step);
@@ -371,11 +310,7 @@ export function showNumberPickerMenu({
   }
   window.addEventListener('gamepadpickerinput', handleGamepadInput);
 
-  // Prevent scroll on body
   document.body.style.overflow = 'hidden';
-  $overlay.on('remove', () => {
-    document.body.style.overflow = '';
-  });
 
   return closeMenu;
 }

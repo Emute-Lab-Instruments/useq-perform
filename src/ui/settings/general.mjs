@@ -2,454 +2,270 @@ import {activeUserSettings, updateUserSettings, resetUserSettings, getUserSettin
 import {themes} from "../../editors/themes/themeManager.mjs";
 import { setMainEditorTheme } from "../../editors/themes/themeManager.mjs";
 import { serialVisChannels } from "../serialVis/utils.mjs";
+import { el } from "../../utils/dom.mjs";
 
 export function makeGeneralTab() {
-    const $container = $('<div>').addClass('panel-tab-content');
+    const container = el('div', { class: 'panel-tab-content' });
 
-    // Create main sections
-    const $personalSection = createSection('Personal Settings');
-    const $editorSection = createSection('Editor Settings');
-    const $storageSection = createSection('Storage Settings');
-    const $uiSection = createSection('UI Settings');
-    
-    // Add to container
-    $container.append($personalSection, $editorSection, $storageSection, $uiSection);
-    
-    // Build personal settings
-    buildPersonalSettings($personalSection);
+    const personalSection = createSection('Personal Settings');
+    const editorSection = createSection('Editor Settings');
+    const storageSection = createSection('Storage Settings');
+    const uiSection = createSection('UI Settings');
 
-    // Build editor settings
-    buildEditorSettings($editorSection);
+    container.appendChild(personalSection);
+    container.appendChild(editorSection);
+    container.appendChild(storageSection);
+    container.appendChild(uiSection);
 
-    // Build storage settings
-    buildStorageSettings($storageSection);
+    buildPersonalSettings(personalSection);
+    buildEditorSettings(editorSection);
+    buildStorageSettings(storageSection);
+    buildUISettings(uiSection);
+    buildConfigurationSection(container);
 
-    // Build UI settings
-    buildUISettings($uiSection);
+    const resetButtonContainer = el('div', { class: 'panel-section' });
+    const resetButton = el('button', { class: 'panel-button reset', text: 'Reset All Settings' });
+    resetButton.addEventListener('click', () => {
+        if (confirm('Are you sure you want to reset all settings to default values?')) {
+            resetUserSettings();
+            window.location.reload();
+        }
+    });
+    resetButtonContainer.appendChild(resetButton);
+    container.appendChild(resetButtonContainer);
 
-    // Build configuration management section
-    buildConfigurationSection($container);
-
-    // Add reset button at the bottom
-    const $resetButtonContainer = $('<div>').addClass('panel-section');
-    const $resetButton = $('<button>')
-        .addClass('panel-button reset')
-        .text('Reset All Settings')
-        .on('click', () => {
-            if (confirm('Are you sure you want to reset all settings to default values?')) {
-                resetUserSettings();
-                window.location.reload();
-            }
-        });
-    
-    $resetButtonContainer.append($resetButton);
-    $container.append($resetButtonContainer);
-
-    return $container;
+    return container;
 }
 
-/**
- * Create a settings section with a title
- */
 function createSection(title) {
-    const $section = $('<div>').addClass('panel-section');
-    const $sectionTitle = $('<h3>')
-        .addClass('panel-section-title')
-        .text(title);
-    $section.append($sectionTitle);
-    return $section;
+    const section = el('div', { class: 'panel-section' });
+    section.appendChild(el('h3', { class: 'panel-section-title', text: title }));
+    return section;
 }
 
-/**
- * Create a form row with label and control
- */
-function createFormRow(labelText, $controlElement) {
-    const $row = $('<div>').addClass('panel-row');
-    const $label = $('<label>')
-        .addClass('panel-label')
-        .text(labelText);
-    const $control = $('<div>')
-        .addClass('panel-control')
-        .append($controlElement);
-    return $row.append($label, $control);
+function createFormRow(labelText, controlElement) {
+    const row = el('div', { class: 'panel-row' });
+    row.appendChild(el('label', { class: 'panel-label', text: labelText }));
+    const control = el('div', { class: 'panel-control' });
+    control.appendChild(controlElement);
+    row.appendChild(control);
+    return row;
 }
 
-/**
- * Build the personal settings section
- */
-function buildPersonalSettings($container) {
-    const $nameInput = $('<input>')
-        .attr('type', 'text')
-        .addClass('panel-text-input')
-        .val(activeUserSettings.name || '')
-        .attr('placeholder', 'Enter your name')
-        .on('change', () => {
-            updateUserSettings({ name: $nameInput.val() });
-        });
-    
-    $container.append(createFormRow('Your Name', $nameInput));
+function buildPersonalSettings(container) {
+    const nameInput = el('input', { type: 'text', class: 'panel-text-input', placeholder: 'Enter your name', value: activeUserSettings.name || '' });
+    nameInput.addEventListener('change', () => {
+        updateUserSettings({ name: nameInput.value });
+    });
+    container.appendChild(createFormRow('Your Name', nameInput));
 }
 
-/**
- * Build the editor settings section
- */
-function buildEditorSettings($container) {
-    const $themeSelect = $('<select>').addClass('panel-select');
-    
+function buildEditorSettings(container) {
+    const themeSelect = el('select', { class: 'panel-select' });
     Object.keys(themes).forEach(themeName => {
-        $('<option>')
-            .val(themeName)
-            .text(themeName)
-            .prop('selected', activeUserSettings.editor?.theme === themeName)
-            .appendTo($themeSelect);
+        const opt = el('option', { value: themeName, text: themeName });
+        if (activeUserSettings.editor?.theme === themeName) opt.selected = true;
+        themeSelect.appendChild(opt);
     });
-    
-    $themeSelect.on('change', () => {
-        const newSettings = {
-            editor: {
-                ...activeUserSettings.editor,
-                theme: $themeSelect.val()
-            }
-        };
-        updateUserSettings(newSettings);
-        setMainEditorTheme($themeSelect.val());
+    themeSelect.addEventListener('change', () => {
+        updateUserSettings({ editor: { ...activeUserSettings.editor, theme: themeSelect.value } });
+        setMainEditorTheme(themeSelect.value);
     });
-    
-    $container.append(createFormRow('Editor Theme', $themeSelect));
+    container.appendChild(createFormRow('Editor Theme', themeSelect));
 
-    const $fontSizeInput = $('<input>')
-        .attr('type', 'number')
-        .addClass('panel-number-input')
-        .attr('min', 8)
-        .attr('max', 32)
-        .val(activeUserSettings.editor?.fontSize || 16)
-        .on('change', () => {
-            const fontSize = parseInt($fontSizeInput.val(), 10);
-            if (fontSize >= 8 && fontSize <= 32) {
-                const newSettings = {
-                    editor: {
-                        ...activeUserSettings.editor,
-                        fontSize: fontSize
-                    }
-                };
-                updateUserSettings(newSettings);
-                const editor = EditorView.findFromDOM(document.querySelector("#panel-main-editor .cm-editor"));
-                if (editor) {
-                    setFontSize(editor, fontSize);
-                }
-            }
-        });
-    
-    $container.append(createFormRow('Font Size', $fontSizeInput));
-    
-    const $preventBracketUnbalancingCheckbox = $('<input>')
-        .attr('type', 'checkbox')
-        .addClass('panel-checkbox')
-        .prop('checked', activeUserSettings.editor?.preventBracketUnbalancing ?? true)
-        .on('change', () => {
-            const isChecked = $preventBracketUnbalancingCheckbox.prop('checked');
-            console.log("Settings: preventBracketUnbalancing changed to:", isChecked);
-            const currentSettings = getUserSettings();
-            const newSettings = {
-                editor: {
-                    ...currentSettings.editor,
-                    preventBracketUnbalancing: isChecked
-                }
-            };
-            console.log("Settings: updating with:", newSettings);
-            updateUserSettings(newSettings);
-        });
-    
-    $container.append(createFormRow('Prevent bracket unbalancing', $preventBracketUnbalancingCheckbox));
+    const fontSizeInput = el('input', { type: 'number', class: 'panel-number-input', min: 8, max: 32, value: activeUserSettings.editor?.fontSize || 16 });
+    fontSizeInput.addEventListener('change', () => {
+        const fontSize = parseInt(fontSizeInput.value, 10);
+        if (fontSize >= 8 && fontSize <= 32) {
+            updateUserSettings({ editor: { ...activeUserSettings.editor, fontSize } });
+        }
+    });
+    container.appendChild(createFormRow('Font Size', fontSizeInput));
+
+    const bracketCheckbox = el('input', { type: 'checkbox', class: 'panel-checkbox' });
+    bracketCheckbox.checked = activeUserSettings.editor?.preventBracketUnbalancing ?? true;
+    bracketCheckbox.addEventListener('change', () => {
+        const currentSettings = getUserSettings();
+        updateUserSettings({ editor: { ...currentSettings.editor, preventBracketUnbalancing: bracketCheckbox.checked } });
+    });
+    container.appendChild(createFormRow('Prevent bracket unbalancing', bracketCheckbox));
 }
 
-/**
- * Build the storage settings section
- */
-function buildStorageSettings($container) {
-    const $saveLocallyCheckbox = $('<input>')
-        .attr('type', 'checkbox')
-        .addClass('panel-checkbox')
-        .prop('checked', activeUserSettings.storage?.saveCodeLocally !== false)
-        .on('change', () => {
-            const newSettings = {
-                storage: {
-                    ...activeUserSettings.storage,
-                    saveCodeLocally: $saveLocallyCheckbox.prop('checked')
-                }
-            };
-            updateUserSettings(newSettings);
-        });
-    
-    $container.append(createFormRow('Save Code Locally', $saveLocallyCheckbox));
-    
-    const $autoSaveCheckbox = $('<input>')
-        .attr('type', 'checkbox')
-        .addClass('panel-checkbox')
-        .prop('checked', activeUserSettings.storage?.autoSaveEnabled !== false)
-        .on('change', () => {
-            const newSettings = {
-                storage: {
-                    ...activeUserSettings.storage,
-                    autoSaveEnabled: $autoSaveCheckbox.prop('checked')
-                }
-            };
-            updateUserSettings(newSettings);
-            $autoSaveIntervalInput.prop('disabled', !$autoSaveCheckbox.prop('checked'));
-        });
-    
-    $container.append(createFormRow('Auto-Save Enabled', $autoSaveCheckbox));
-    
-    const $autoSaveIntervalInput = $('<input>')
-        .attr('type', 'number')
-        .addClass('panel-number-input')
-        .attr('min', 1000)
-        .attr('max', 60000)
-        .attr('step', 1000)
-        .val(activeUserSettings.storage?.autoSaveInterval || 5000)
-        .prop('disabled', !$autoSaveCheckbox.prop('checked'))
-        .on('change', () => {
-            const interval = parseInt($autoSaveIntervalInput.val(), 10);
-            if (interval >= 1000 && interval <= 60000) {
-                const newSettings = {
-                    storage: {
-                        ...activeUserSettings.storage,
-                        autoSaveInterval: interval
-                    }
-                };
-                updateUserSettings(newSettings);
-            }
-        });
-    
-    $container.append(createFormRow('Auto-Save Interval (ms)', $autoSaveIntervalInput));
+function buildStorageSettings(container) {
+    const saveLocallyCheckbox = el('input', { type: 'checkbox', class: 'panel-checkbox' });
+    saveLocallyCheckbox.checked = activeUserSettings.storage?.saveCodeLocally !== false;
+    saveLocallyCheckbox.addEventListener('change', () => {
+        updateUserSettings({ storage: { ...activeUserSettings.storage, saveCodeLocally: saveLocallyCheckbox.checked } });
+    });
+    container.appendChild(createFormRow('Save Code Locally', saveLocallyCheckbox));
+
+    const autoSaveIntervalInput = el('input', { type: 'number', class: 'panel-number-input', min: 1000, max: 60000, step: 1000, value: activeUserSettings.storage?.autoSaveInterval || 5000 });
+
+    const autoSaveCheckbox = el('input', { type: 'checkbox', class: 'panel-checkbox' });
+    autoSaveCheckbox.checked = activeUserSettings.storage?.autoSaveEnabled !== false;
+    autoSaveCheckbox.addEventListener('change', () => {
+        updateUserSettings({ storage: { ...activeUserSettings.storage, autoSaveEnabled: autoSaveCheckbox.checked } });
+        autoSaveIntervalInput.disabled = !autoSaveCheckbox.checked;
+    });
+    container.appendChild(createFormRow('Auto-Save Enabled', autoSaveCheckbox));
+
+    autoSaveIntervalInput.disabled = !autoSaveCheckbox.checked;
+    autoSaveIntervalInput.addEventListener('change', () => {
+        const interval = parseInt(autoSaveIntervalInput.value, 10);
+        if (interval >= 1000 && interval <= 60000) {
+            updateUserSettings({ storage: { ...activeUserSettings.storage, autoSaveInterval: interval } });
+        }
+    });
+    container.appendChild(createFormRow('Auto-Save Interval (ms)', autoSaveIntervalInput));
 }
 
-/**
- * Build the UI settings section
- */
-function buildUISettings($container) {
-    const $consoleLinesInput = $('<input>')
-        .attr('type', 'number')
-        .addClass('panel-number-input')
-        .attr('min', 100)
-        .attr('max', 10000)
-        .val(activeUserSettings.ui?.consoleLinesLimit || 1000)
-        .on('change', () => {
-            const lines = parseInt($consoleLinesInput.val(), 10);
-            if (lines >= 100 && lines <= 10000) {
-                const newSettings = {
-                    ui: {
-                        ...activeUserSettings.ui,
-                        consoleLinesLimit: lines
-                    }
-                };
-                updateUserSettings(newSettings);
-            }
-        });
-    
-    $container.append(createFormRow('Console Line Limit', $consoleLinesInput));
+function buildUISettings(container) {
+    const consoleLinesInput = el('input', { type: 'number', class: 'panel-number-input', min: 100, max: 10000, value: activeUserSettings.ui?.consoleLinesLimit || 1000 });
+    consoleLinesInput.addEventListener('change', () => {
+        const lines = parseInt(consoleLinesInput.value, 10);
+        if (lines >= 100 && lines <= 10000) {
+            updateUserSettings({ ui: { ...activeUserSettings.ui, consoleLinesLimit: lines } });
+        }
+    });
+    container.appendChild(createFormRow('Console Line Limit', consoleLinesInput));
 
-    // Expression tracking & gutter options
     const ui = activeUserSettings.ui || {};
 
-    const $gutterEnabled = $('<input>')
-        .attr('type', 'checkbox')
-        .addClass('panel-checkbox')
-        .prop('checked', ui.expressionGutterEnabled !== false)
-        .on('change', () => {
-            updateUserSettings({ ui: { ...activeUserSettings.ui, expressionGutterEnabled: $gutterEnabled.prop('checked') } });
-        });
-    $container.append(createFormRow('Show expression gutter bars', $gutterEnabled));
+    const gutterEnabled = el('input', { type: 'checkbox', class: 'panel-checkbox' });
+    gutterEnabled.checked = ui.expressionGutterEnabled !== false;
+    gutterEnabled.addEventListener('change', () => {
+        updateUserSettings({ ui: { ...activeUserSettings.ui, expressionGutterEnabled: gutterEnabled.checked } });
+    });
+    container.appendChild(createFormRow('Show expression gutter bars', gutterEnabled));
 
-    const $lastTrackingEnabled = $('<input>')
-        .attr('type', 'checkbox')
-        .addClass('panel-checkbox')
-        .prop('checked', ui.expressionLastTrackingEnabled !== false)
-        .on('change', () => {
-            updateUserSettings({ ui: { ...activeUserSettings.ui, expressionLastTrackingEnabled: $lastTrackingEnabled.prop('checked') } });
-        });
-    $container.append(createFormRow('Track last expression per type', $lastTrackingEnabled));
+    const lastTrackingEnabled = el('input', { type: 'checkbox', class: 'panel-checkbox' });
+    lastTrackingEnabled.checked = ui.expressionLastTrackingEnabled !== false;
+    lastTrackingEnabled.addEventListener('change', () => {
+        updateUserSettings({ ui: { ...activeUserSettings.ui, expressionLastTrackingEnabled: lastTrackingEnabled.checked } });
+    });
+    container.appendChild(createFormRow('Track last expression per type', lastTrackingEnabled));
 
-    const $clearButtonEnabled = $('<input>')
-        .attr('type', 'checkbox')
-        .addClass('panel-checkbox')
-        .prop('checked', ui.expressionClearButtonEnabled !== false)
-        .on('change', () => {
-            updateUserSettings({ ui: { ...activeUserSettings.ui, expressionClearButtonEnabled: $clearButtonEnabled.prop('checked') } });
-        });
-    $container.append(createFormRow('Show clear (×) button on active expression', $clearButtonEnabled));
+    const clearButtonEnabled = el('input', { type: 'checkbox', class: 'panel-checkbox' });
+    clearButtonEnabled.checked = ui.expressionClearButtonEnabled !== false;
+    clearButtonEnabled.addEventListener('change', () => {
+        updateUserSettings({ ui: { ...activeUserSettings.ui, expressionClearButtonEnabled: clearButtonEnabled.checked } });
+    });
+    container.appendChild(createFormRow('Show clear (x) button on active expression', clearButtonEnabled));
 
-    // Gamepad picker style select
-    const $pickerStyleSelect = $('<select>')
-        .addClass('panel-select')
-        .append($('<option>').val('grid').text('Grid (D-pad, nested)'))
-        .append($('<option>').val('radial').text('Radial (dual sticks)'))
-        .val((activeUserSettings.ui && activeUserSettings.ui.gamepadPickerStyle) || 'grid')
-        .on('change', () => {
-            const style = $pickerStyleSelect.val();
-            updateUserSettings({ ui: { ...activeUserSettings.ui, gamepadPickerStyle: style } });
-        });
-    $container.append(createFormRow('Gamepad Picker Style', $pickerStyleSelect));
+    const pickerStyleSelect = el('select', { class: 'panel-select' });
+    const gridOpt = el('option', { value: 'grid', text: 'Grid (D-pad, nested)' });
+    const radialOpt = el('option', { value: 'radial', text: 'Radial (dual sticks)' });
+    pickerStyleSelect.appendChild(gridOpt);
+    pickerStyleSelect.appendChild(radialOpt);
+    pickerStyleSelect.value = (ui.gamepadPickerStyle) || 'grid';
+    pickerStyleSelect.addEventListener('change', () => {
+        updateUserSettings({ ui: { ...activeUserSettings.ui, gamepadPickerStyle: pickerStyleSelect.value } });
+    });
+    container.appendChild(createFormRow('Gamepad Picker Style', pickerStyleSelect));
 
     const visual = activeUserSettings.visualisation || {};
     let updateMaskControlsState = () => {};
 
-    const $offsetWrapper = $('<div>').addClass('panel-range-wrapper');
-    const $offsetLabel = $('<span>').addClass('panel-range-value').text(`${visual.offsetSeconds?.toFixed?.(1) || '5.0'}s`);
-    const $offsetSlider = $('<input>')
-        .attr({ type: 'range', min: 0.5, max: 10, step: 0.5 })
-        .addClass('panel-range-input')
-        .val(visual.offsetSeconds ?? 5)
-        .on('input', () => {
-            const value = parseFloat($offsetSlider.val());
-            $offsetLabel.text(`${value.toFixed(1)}s`);
-        })
-        .on('change', () => {
-            const value = parseFloat($offsetSlider.val());
-            updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, offsetSeconds: value } });
-        });
-    $offsetWrapper.append($offsetSlider, $offsetLabel);
-    $container.append(createFormRow('Visual offset window', $offsetWrapper));
+    // Offset slider
+    const offsetWrapper = el('div', { class: 'panel-range-wrapper' });
+    const offsetLabel = el('span', { class: 'panel-range-value', text: `${visual.offsetSeconds?.toFixed?.(1) || '5.0'}s` });
+    const offsetSlider = el('input', { type: 'range', class: 'panel-range-input', min: 0.5, max: 10, step: 0.5, value: visual.offsetSeconds ?? 5 });
+    offsetSlider.addEventListener('input', () => { offsetLabel.textContent = `${parseFloat(offsetSlider.value).toFixed(1)}s`; });
+    offsetSlider.addEventListener('change', () => { updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, offsetSeconds: parseFloat(offsetSlider.value) } }); });
+    offsetWrapper.appendChild(offsetSlider);
+    offsetWrapper.appendChild(offsetLabel);
+    container.appendChild(createFormRow('Visual offset window', offsetWrapper));
 
-    const $sampleCountInput = $('<input>')
-        .attr({ type: 'number', min: 10, max: 400, step: 10 })
-        .addClass('panel-number-input')
-        .val(visual.sampleCount ?? 100)
-        .on('change', () => {
-            const value = parseInt($sampleCountInput.val(), 10);
-            if (!Number.isNaN(value)) {
-                updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, sampleCount: value } });
-            }
-        });
-    $container.append(createFormRow('Visual sample count', $sampleCountInput));
+    // Sample count
+    const sampleCountInput = el('input', { type: 'number', class: 'panel-number-input', min: 10, max: 400, step: 10, value: visual.sampleCount ?? 100 });
+    sampleCountInput.addEventListener('change', () => {
+        const value = parseInt(sampleCountInput.value, 10);
+        if (!Number.isNaN(value)) updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, sampleCount: value } });
+    });
+    container.appendChild(createFormRow('Visual sample count', sampleCountInput));
 
-    const $lineWidthWrapper = $('<div>').addClass('panel-range-wrapper');
-    const $lineWidthLabel = $('<span>').addClass('panel-range-value').text(`${visual.lineWidth?.toFixed?.(2) || '1.50'}px`);
-    const $lineWidthSlider = $('<input>')
-        .attr({ type: 'range', min: 0.5, max: 5, step: 0.1 })
-        .addClass('panel-range-input')
-        .val(visual.lineWidth ?? 1.5)
-        .on('input', () => {
-            const value = parseFloat($lineWidthSlider.val());
-            $lineWidthLabel.text(`${value.toFixed(2)}px`);
-        })
-        .on('change', () => {
-            const value = parseFloat($lineWidthSlider.val());
-            updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, lineWidth: value } });
-        });
-    $lineWidthWrapper.append($lineWidthSlider, $lineWidthLabel);
-    $container.append(createFormRow('Waveform line width', $lineWidthWrapper));
+    // Line width slider
+    const lineWidthWrapper = el('div', { class: 'panel-range-wrapper' });
+    const lineWidthLabel = el('span', { class: 'panel-range-value', text: `${visual.lineWidth?.toFixed?.(2) || '1.50'}px` });
+    const lineWidthSlider = el('input', { type: 'range', class: 'panel-range-input', min: 0.5, max: 5, step: 0.1, value: visual.lineWidth ?? 1.5 });
+    lineWidthSlider.addEventListener('input', () => { lineWidthLabel.textContent = `${parseFloat(lineWidthSlider.value).toFixed(2)}px`; });
+    lineWidthSlider.addEventListener('change', () => { updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, lineWidth: parseFloat(lineWidthSlider.value) } }); });
+    lineWidthWrapper.appendChild(lineWidthSlider);
+    lineWidthWrapper.appendChild(lineWidthLabel);
+    container.appendChild(createFormRow('Waveform line width', lineWidthWrapper));
 
+    // Digital gap slider
     const parsedDigitalGap = Number.parseInt(visual.digitalLaneGap, 10);
     const rawDigitalGap = Number.isFinite(parsedDigitalGap) ? parsedDigitalGap : 4;
-    const $digitalGapWrapper = $('<div>').addClass('panel-range-wrapper');
-    const $digitalGapLabel = $('<span>').addClass('panel-range-value').text(`${Math.round(rawDigitalGap)}px`);
-    const $digitalGapSlider = $('<input>')
-        .attr({ type: 'range', min: 0, max: 40, step: 1 })
-        .addClass('panel-range-input')
-        .val(rawDigitalGap)
-        .on('input', () => {
-            const value = parseInt($digitalGapSlider.val(), 10) || 0;
-            $digitalGapLabel.text(`${value}px`);
-        })
-        .on('change', () => {
-            const value = parseInt($digitalGapSlider.val(), 10) || 0;
-            updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, digitalLaneGap: value } });
-        });
-    $digitalGapWrapper.append($digitalGapSlider, $digitalGapLabel);
-    $container.append(createFormRow('Digital channel gap', $digitalGapWrapper));
+    const digitalGapWrapper = el('div', { class: 'panel-range-wrapper' });
+    const digitalGapLabel = el('span', { class: 'panel-range-value', text: `${Math.round(rawDigitalGap)}px` });
+    const digitalGapSlider = el('input', { type: 'range', class: 'panel-range-input', min: 0, max: 40, step: 1, value: rawDigitalGap });
+    digitalGapSlider.addEventListener('input', () => { digitalGapLabel.textContent = `${parseInt(digitalGapSlider.value, 10) || 0}px`; });
+    digitalGapSlider.addEventListener('change', () => { updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, digitalLaneGap: parseInt(digitalGapSlider.value, 10) || 0 } }); });
+    digitalGapWrapper.appendChild(digitalGapSlider);
+    digitalGapWrapper.appendChild(digitalGapLabel);
+    container.appendChild(createFormRow('Digital channel gap', digitalGapWrapper));
 
+    // Circular offset slider
     const offsetRangeLength = Math.max(1, (serialVisChannels?.length || 1));
     const maxCircularOffset = offsetRangeLength - 1;
     const rawCircularOffset = Number(visual.circularOffset ?? 0);
     const safeCircularOffset = ((rawCircularOffset % offsetRangeLength) + offsetRangeLength) % offsetRangeLength;
-    const $circularOffsetWrapper = $('<div>').addClass('panel-range-wrapper');
-    const $circularOffsetLabel = $('<span>').addClass('panel-range-value').text(`${safeCircularOffset}`);
-    const $circularOffsetSlider = $('<input>')
-        .attr({ type: 'range', min: 0, max: maxCircularOffset, step: 1 })
-        .addClass('panel-range-input')
-        .val(safeCircularOffset)
-        .prop('disabled', maxCircularOffset === 0)
-        .on('input', () => {
-            const value = parseInt($circularOffsetSlider.val(), 10) || 0;
-            $circularOffsetLabel.text(`${value}`);
-        })
-        .on('change', () => {
-            const value = parseInt($circularOffsetSlider.val(), 10) || 0;
-            updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, circularOffset: value } });
-        });
-    $circularOffsetWrapper.append($circularOffsetSlider, $circularOffsetLabel);
-    $container.append(createFormRow('Color circular offset', $circularOffsetWrapper));
+    const circularOffsetWrapper = el('div', { class: 'panel-range-wrapper' });
+    const circularOffsetLabel = el('span', { class: 'panel-range-value', text: `${safeCircularOffset}` });
+    const circularOffsetSlider = el('input', { type: 'range', class: 'panel-range-input', min: 0, max: maxCircularOffset, step: 1, value: safeCircularOffset });
+    if (maxCircularOffset === 0) circularOffsetSlider.disabled = true;
+    circularOffsetSlider.addEventListener('input', () => { circularOffsetLabel.textContent = `${parseInt(circularOffsetSlider.value, 10) || 0}`; });
+    circularOffsetSlider.addEventListener('change', () => { updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, circularOffset: parseInt(circularOffsetSlider.value, 10) || 0 } }); });
+    circularOffsetWrapper.appendChild(circularOffsetSlider);
+    circularOffsetWrapper.appendChild(circularOffsetLabel);
+    container.appendChild(createFormRow('Color circular offset', circularOffsetWrapper));
 
-    const $futureDashedCheckbox = $('<input>')
-        .attr('type', 'checkbox')
-        .addClass('panel-checkbox')
-        .prop('checked', visual.futureDashed !== false)
-        .on('change', () => {
-            const value = $futureDashedCheckbox.prop('checked');
-            updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, futureDashed: value } });
-            updateMaskControlsState(value);
-        });
-    $container.append(createFormRow('Show future mask/dashes', $futureDashedCheckbox));
+    // Future dashed checkbox
+    const futureDashedCheckbox = el('input', { type: 'checkbox', class: 'panel-checkbox' });
+    futureDashedCheckbox.checked = visual.futureDashed !== false;
+    futureDashedCheckbox.addEventListener('change', () => {
+        updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, futureDashed: futureDashedCheckbox.checked } });
+        updateMaskControlsState(futureDashedCheckbox.checked);
+    });
+    container.appendChild(createFormRow('Show future mask/dashes', futureDashedCheckbox));
 
-    const $maskOpacityWrapper = $('<div>').addClass('panel-range-wrapper');
-    const $maskOpacityLabel = $('<span>').addClass('panel-range-value').text(`${(visual.futureMaskOpacity ?? 0.35).toFixed(2)}`);
-    const $maskOpacitySlider = $('<input>')
-        .attr({ type: 'range', min: 0, max: 1, step: 0.05 })
-        .addClass('panel-range-input')
-        .val(visual.futureMaskOpacity ?? 0.35)
-        .on('input', () => {
-            const value = parseFloat($maskOpacitySlider.val());
-            $maskOpacityLabel.text(value.toFixed(2));
-        })
-        .on('change', () => {
-            const value = parseFloat($maskOpacitySlider.val());
-            updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, futureMaskOpacity: value } });
-        });
-    $maskOpacityWrapper.append($maskOpacitySlider, $maskOpacityLabel);
-    $container.append(createFormRow('Future shading intensity', $maskOpacityWrapper));
+    // Mask opacity slider
+    const maskOpacityWrapper = el('div', { class: 'panel-range-wrapper' });
+    const maskOpacityLabel = el('span', { class: 'panel-range-value', text: `${(visual.futureMaskOpacity ?? 0.35).toFixed(2)}` });
+    const maskOpacitySlider = el('input', { type: 'range', class: 'panel-range-input', min: 0, max: 1, step: 0.05, value: visual.futureMaskOpacity ?? 0.35 });
+    maskOpacitySlider.addEventListener('input', () => { maskOpacityLabel.textContent = parseFloat(maskOpacitySlider.value).toFixed(2); });
+    maskOpacitySlider.addEventListener('change', () => { updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, futureMaskOpacity: parseFloat(maskOpacitySlider.value) } }); });
+    maskOpacityWrapper.appendChild(maskOpacitySlider);
+    maskOpacityWrapper.appendChild(maskOpacityLabel);
+    container.appendChild(createFormRow('Future shading intensity', maskOpacityWrapper));
 
-    const $maskWidthWrapper = $('<div>').addClass('panel-range-wrapper');
-    const $maskWidthLabel = $('<span>').addClass('panel-range-value').text(`${visual.futureMaskWidth ?? 12}px`);
-    const $maskWidthSlider = $('<input>')
-        .attr({ type: 'range', min: 4, max: 40, step: 1 })
-        .addClass('panel-range-input')
-        .val(visual.futureMaskWidth ?? 12)
-        .on('input', () => {
-            const value = parseInt($maskWidthSlider.val(), 10);
-            $maskWidthLabel.text(`${value}px`);
-        })
-        .on('change', () => {
-            const value = parseInt($maskWidthSlider.val(), 10);
-            updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, futureMaskWidth: value } });
-        });
-    $maskWidthWrapper.append($maskWidthSlider, $maskWidthLabel);
-    $container.append(createFormRow('Future mask stripe width', $maskWidthWrapper));
+    // Mask width slider
+    const maskWidthWrapper = el('div', { class: 'panel-range-wrapper' });
+    const maskWidthLabel = el('span', { class: 'panel-range-value', text: `${visual.futureMaskWidth ?? 12}px` });
+    const maskWidthSlider = el('input', { type: 'range', class: 'panel-range-input', min: 4, max: 40, step: 1, value: visual.futureMaskWidth ?? 12 });
+    maskWidthSlider.addEventListener('input', () => { maskWidthLabel.textContent = `${parseInt(maskWidthSlider.value, 10)}px`; });
+    maskWidthSlider.addEventListener('change', () => { updateUserSettings({ visualisation: { ...activeUserSettings.visualisation, futureMaskWidth: parseInt(maskWidthSlider.value, 10) } }); });
+    maskWidthWrapper.appendChild(maskWidthSlider);
+    maskWidthWrapper.appendChild(maskWidthLabel);
+    container.appendChild(createFormRow('Future mask stripe width', maskWidthWrapper));
 
     updateMaskControlsState = (enabled) => {
         const isEnabled = !!enabled;
-        [$maskOpacitySlider, $maskWidthSlider].forEach(($input) => {
-            $input.prop('disabled', !isEnabled);
-            if (isEnabled) {
-                $input.removeClass('panel-control-disabled');
-            } else {
-                $input.addClass('panel-control-disabled');
-            }
-            $input.attr('aria-disabled', isEnabled ? 'false' : 'true');
+        [maskOpacitySlider, maskWidthSlider].forEach(input => {
+            input.disabled = !isEnabled;
+            input.classList.toggle('panel-control-disabled', !isEnabled);
+            input.setAttribute('aria-disabled', isEnabled ? 'false' : 'true');
         });
-        [$maskOpacityWrapper, $maskWidthWrapper].forEach(($wrapper) => {
-            $wrapper.toggleClass('panel-range-wrapper--disabled', !isEnabled);
+        [maskOpacityWrapper, maskWidthWrapper].forEach(wrapper => {
+            wrapper.classList.toggle('panel-range-wrapper--disabled', !isEnabled);
         });
     };
 
     updateMaskControlsState(visual.futureDashed !== false);
 }
 
-/**
- * Build the configuration management section
- */
-function buildConfigurationSection($container) {
-    // Lazy import configuration manager to avoid circular dependencies
+function buildConfigurationSection(container) {
     const loadConfigManager = async () => {
         try {
             return await import('../../config/configManager.mjs');
@@ -459,84 +275,63 @@ function buildConfigurationSection($container) {
         }
     };
 
-    const $section = createSection('Configuration Management');
+    const section = createSection('Configuration Management');
 
-    const $infoText = $('<p>')
-        .addClass('panel-info-text')
-        .html(`
-            Export your current settings to a file, or import settings from a previously saved configuration.
-            In dev mode with the config server running, configurations can be saved directly to the source directory.
-        `);
-    $section.append($infoText);
+    const infoText = el('p', { class: 'panel-info-text', html: `
+        Export your current settings to a file, or import settings from a previously saved configuration.
+        In dev mode with the config server running, configurations can be saved directly to the source directory.
+    ` });
+    section.appendChild(infoText);
 
-    // Export button
-    const $exportBtn = $('<button>')
-        .addClass('panel-button')
-        .text('💾 Export Configuration')
-        .on('click', async () => {
-            const configManager = await loadConfigManager();
-            if (!configManager) {
-                alert('Failed to load configuration manager');
-                return;
+    const exportBtn = el('button', { class: 'panel-button', text: 'Export Configuration' });
+    exportBtn.addEventListener('click', async () => {
+        const configManager = await loadConfigManager();
+        if (!configManager) { alert('Failed to load configuration manager'); return; }
+        try {
+            const result = await configManager.saveConfiguration({
+                includeCode: false,
+                includeDevMode: window.location.search.includes('devmode=true')
+            });
+            if (result.method === 'websocket') {
+                alert(`Configuration saved to:\n${result.path}\n\nYou can now commit this file to git!`);
+            } else if (result.method === 'filesystem-api') {
+                alert(`Configuration saved to:\n${result.name}`);
+            } else if (result.method === 'download') {
+                alert('Configuration downloaded.\n\nCopy the file to:\nsrc/config/default-config.json\n\nto make changes persist across builds.');
             }
+        } catch (error) {
+            console.error('Export error:', error);
+            alert(`Failed to export configuration:\n${error.message}`);
+        }
+    });
 
-            try {
-                const result = await configManager.saveConfiguration({
-                    includeCode: false,
-                    includeDevMode: window.location.search.includes('devmode=true')
-                });
-
-                if (result.method === 'websocket') {
-                    alert(`✅ Configuration saved to:\n${result.path}\n\nYou can now commit this file to git!`);
-                } else if (result.method === 'filesystem-api') {
-                    alert(`✅ Configuration saved to:\n${result.name}`);
-                } else if (result.method === 'download') {
-                    alert('⬇️ Configuration downloaded.\n\nCopy the file to:\nsrc/config/default-config.json\n\nto make changes persist across builds.');
-                }
-            } catch (error) {
-                console.error('Export error:', error);
-                alert(`❌ Failed to export configuration:\n${error.message}`);
+    const importBtn = el('button', { class: 'panel-button', text: 'Import Configuration' });
+    importBtn.addEventListener('click', async () => {
+        const configManager = await loadConfigManager();
+        if (!configManager) { alert('Failed to load configuration manager'); return; }
+        try {
+            const config = await configManager.loadConfigurationFromFile();
+            const preview = configManager.previewConfiguration(config);
+            let confirmMessage = 'Apply this configuration?\n\n';
+            if (preview.hasChanges) {
+                confirmMessage += 'Changes:\n' + preview.diffs.join('\n') + '\n\n';
+            } else {
+                confirmMessage += 'No changes detected.\n\n';
             }
-        });
-
-    // Import button
-    const $importBtn = $('<button>')
-        .addClass('panel-button')
-        .text('📥 Import Configuration')
-        .on('click', async () => {
-            const configManager = await loadConfigManager();
-            if (!configManager) {
-                alert('Failed to load configuration manager');
-                return;
+            confirmMessage += 'The page will reload to apply changes.';
+            if (confirm(confirmMessage)) {
+                configManager.importConfiguration(config);
+                window.location.reload();
             }
+        } catch (error) {
+            console.error('Import error:', error);
+            alert(`Failed to import configuration:\n${error.message}`);
+        }
+    });
 
-            try {
-                const config = await configManager.loadConfigurationFromFile();
-
-                const preview = configManager.previewConfiguration(config);
-
-                let confirmMessage = 'Apply this configuration?\n\n';
-                if (preview.hasChanges) {
-                    confirmMessage += 'Changes:\n' + preview.diffs.join('\n') + '\n\n';
-                } else {
-                    confirmMessage += 'No changes detected.\n\n';
-                }
-                confirmMessage += 'The page will reload to apply changes.';
-
-                if (confirm(confirmMessage)) {
-                    configManager.importConfiguration(config);
-                    window.location.reload();
-                }
-            } catch (error) {
-                console.error('Import error:', error);
-                alert(`❌ Failed to import configuration:\n${error.message}`);
-            }
-        });
-
-    const $buttonGroup = $('<div>')
-        .addClass('panel-button-group')
-        .append($exportBtn, $importBtn);
-
-    $section.append($buttonGroup);
-    $container.append($section);
+    const buttonGroup = el('div', { class: 'panel-button-group' });
+    buttonGroup.appendChild(exportBtn);
+    buttonGroup.appendChild(importBtn);
+    section.appendChild(buttonGroup);
+    container.appendChild(section);
 }

@@ -1,7 +1,10 @@
 
 
 export function initSnippetsPanel() {
-    $("#snippetsButton").on("click", () => {
-        toggleAuxPanel("#panel-snippets");
-    });
+    const btn = document.getElementById("snippetsButton");
+    if (btn) {
+        btn.addEventListener("click", () => {
+            toggleAuxPanel("#panel-snippets");
+        });
+    }
 }

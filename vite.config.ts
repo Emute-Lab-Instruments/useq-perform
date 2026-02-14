@@ -16,18 +16,18 @@ export default defineConfig({
     rollupOptions: {
       input: {
         // Legacy entry point (replaces esbuild bundle)
-        'bundle': 'src/main.mjs',
+        'bundle': 'src/legacy/main.ts',
         // Entry points for each island
-        'test-island': 'src-solid/islands/test-island.tsx',
-        'double-radial-menu': 'src-solid/islands/double-radial-menu.tsx',
-        'transport-toolbar': 'src-solid/islands/transport-toolbar.tsx',
-        'main-toolbar': 'src-solid/islands/main-toolbar.tsx',
-        'settings-panel': 'src-solid/islands/settings-panel.tsx',
-        'help-panel': 'src-solid/islands/help-panel.tsx',
-        'console-panel': 'src-solid/islands/console-panel.tsx',
-        'picker-menu': 'src-solid/islands/picker-menu.tsx',
-        'modal': 'src-solid/islands/modal.tsx',
-        'snippets-panel': 'src-solid/islands/snippets-panel.tsx'
+        'test-island': 'src/islands/test-island.tsx',
+        'double-radial-menu': 'src/islands/double-radial-menu.tsx',
+        'transport-toolbar': 'src/islands/transport-toolbar.tsx',
+        'main-toolbar': 'src/islands/main-toolbar.tsx',
+        'settings-panel': 'src/islands/settings-panel.tsx',
+        'help-panel': 'src/islands/help-panel.tsx',
+        'console-panel': 'src/islands/console-panel.tsx',
+        'picker-menu': 'src/islands/picker-menu.tsx',
+        'modal': 'src/islands/modal.tsx',
+        'snippets-panel': 'src/islands/snippets-panel.tsx'
       },
       output: {
         entryFileNames: '[name].js',
@@ -68,7 +68,8 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'jsdom',
-          include: ['src-solid/**/*.test.tsx', 'src-solid/**/*.test.ts'],
+          include: ['src/**/*.test.tsx', 'src/**/*.test.ts'],
+          exclude: ['src/legacy/editors/extensions/__tests__/**'],
           globals: true,
           setupFiles: []
         }

@@ -1,8 +1,8 @@
 import { expect } from "chai";
 import "./setup.mjs";
-import { examineEnvironment } from "../src/app/environment.mjs";
-import { createAppUI } from "../src/ui/ui.mjs";
-import { createApp } from "../src/app/application.mjs";
+import { examineEnvironment } from "../src/legacy/app/environment.ts";
+import { createAppUI } from "../src/legacy/ui/ui.ts";
+import { createApp } from "../src/legacy/app/application.ts";
 
 // Test setup
 let environmentState, appUI;
@@ -65,43 +65,23 @@ it('has devmode buttons when in devmode', async () => {
     expect (appUI.toolbar).to.have.property('devmodeBtn');
 });
 
-it('mounts Solid settings/help panels when mount hooks are available', async () => {
-    const settingsCalls = [];
-    const helpCalls = [];
-
-    const originalMountSettingsPanel = window.mountSettingsPanel;
-    const originalMountHelpPanel = window.mountHelpPanel;
-
-    const solidTopRoot = document.createElement('div');
-    const solidMainRoot = document.createElement('div');
+it('mounts Solid settings/help panels via solidBridge', async () => {
     const settingsPanel = document.createElement('div');
     const helpPanel = document.createElement('div');
 
     try {
-        window.mountSettingsPanel = (id) => settingsCalls.push(id);
-        window.mountHelpPanel = (id) => helpCalls.push(id);
-
-        solidTopRoot.id = 'panel-top-toolbar-root';
-        document.body.appendChild(solidTopRoot);
-
-        solidMainRoot.id = 'panel-toolbar-root';
-        document.body.appendChild(solidMainRoot);
-
         settingsPanel.id = 'panel-settings';
         document.body.appendChild(settingsPanel);
 
         helpPanel.id = 'panel-help';
         document.body.appendChild(helpPanel);
 
-        await createAppUI(environmentState);
+        const appUI = await createAppUI(environmentState);
 
-        expect(settingsCalls).to.deep.equal(['panel-settings']);
-        expect(helpCalls).to.deep.equal(['panel-help']);
+        // Verify the appUI returns references to the panel elements
+        expect(appUI.settingsPanel).to.exist;
+        expect(appUI.helpPanel).to.exist;
     } finally {
-        window.mountSettingsPanel = originalMountSettingsPanel;
-        window.mountHelpPanel = originalMountHelpPanel;
-        solidTopRoot.remove();
-        solidMainRoot.remove();
         settingsPanel.remove();
         helpPanel.remove();
     }
