@@ -23,73 +23,11 @@
     <!-- External libraries and styles -->
     <link rel="stylesheet" href="solid-dist/bundle.css" />
     <script src="lib/lucide.min.js"></script>
-    <script>
-      // Initialize Lucide icons after DOM content is loaded
-      document.addEventListener("DOMContentLoaded", () => {
-        lucide.createIcons();
-      });
-    </script>
   </head>
   <body>
-    <!-- Top playback toolbar -->
-    <div id="panel-top-toolbar">
-      <div class="toolbar-row">
-        <a class="toolbar-button" id="button-play" title="Play">
-          <i data-lucide="play"></i>
-        </a>
-        <a class="toolbar-button" id="button-pause" title="Pause">
-          <i data-lucide="pause"></i>
-        </a>
-        <a class="toolbar-button" id="button-stop" title="Stop">
-          <i data-lucide="square"></i>
-        </a>
-        <a class="toolbar-button" id="button-rewind" title="Rewind">
-          <i data-lucide="rewind"></i>
-        </a>
-        <a class="toolbar-button" id="button-clear" title="Clear">
-          <i data-lucide="x"></i>
-        </a>
-      </div>
-    </div>
-    <!-- Toolbar panel with buttons -->
-    <div id="panel-toolbar">
-      <div class="toolbar-row">
-        <!-- Connection and graph buttons -->
-        <a class="toolbar-button" id="button-connect" title="Connect"
-          ><i data-lucide="cable"></i
-        ></a>
-        <a class="toolbar-button" id="button-graph" title="Graph"
-          ><i data-lucide="chart-spline"></i
-        ></a>
-      </div>
-      <div class="toolbar-row">
-        <!-- Save and load buttons -->
-        <a class="toolbar-button" id="button-load" title="Load Code"
-          ><i data-lucide="file"></i
-        ></a>
-        <a class="toolbar-button" id="button-save" title="Save Code"
-          ><i data-lucide="save"></i
-        ></a>
-      </div>
-      <div class="toolbar-row">
-        <!-- Font size adjustment buttons -->
-        <a class="toolbar-button" id="button-decrease-font" title="Font size--"
-          ><i data-lucide="a-arrow-down"></i
-        ></a>
-        <a class="toolbar-button" id="button-increase-font" title="Font size++"
-          ><i data-lucide="a-arrow-up"></i
-        ></a>
-      </div>
-      <div class="toolbar-row">
-        <!-- Help and settings buttons -->
-        <a class="toolbar-button" id="button-help" title="Help!"
-          ><i data-lucide="circle-help"></i
-        ></a>
-        <a class="toolbar-button" id="button-settings" title="Settings"
-          ><i data-lucide="settings"></i
-        ></a>
-      </div>
-    </div>
+    <!-- Toolbar mount points (replaced by Solid components) -->
+    <div id="panel-top-toolbar"></div>
+    <div id="panel-toolbar"></div>
 
     <!-- Console and main editor panels -->
     <div id="panel-main-editor"></div>
@@ -111,9 +49,6 @@
     <!-- Dev mode panel (only used when devmode=true) -->
     <div id="panel-devmode" class="panel-aux" style="display: none"></div>
     
-    <!-- SolidJS Test Island -->
-    <!-- <div id="test-island" style="position: fixed; top: 10px; right: 10px; z-index: 10000;"></div> -->
-
     <!-- Main JavaScript module (Vite-built single bundle) -->
     <script type="module" src="solid-dist/bundle.js"></script>
   </body>
