@@ -5,6 +5,7 @@ import { themes, setTheme, setMainEditorTheme } from "../../legacy/editors/theme
 import { baseExtensions } from "../../legacy/editors/extensions.ts";
 import { defaultThemeEditorStartingCode } from "../../legacy/editors/defaults.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
+import { hidePanel } from "../adapters/panels";
 
 function ThemePreview(props: { themeName: string; themeExtension: any }) {
   let editorParent: HTMLDivElement | undefined;
@@ -38,12 +39,9 @@ function ThemePreview(props: { themeName: string; themeExtension: any }) {
       },
     });
     setMainEditorTheme(props.themeName);
-    
-    // Close the settings panel if it's open (legacy compatibility)
-    const settingsPanel = document.getElementById('panel-settings');
-    if (settingsPanel && settingsPanel.style.display !== 'none') {
-        settingsPanel.style.display = settingsPanel.style.display === 'none' ? '' : 'none';
-    }
+
+    // Close the settings panel using adapter API
+    hidePanel("settings");
   };
 
   return (

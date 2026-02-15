@@ -47,6 +47,27 @@ export function togglePanelVisibility(panelId: string) {
 }
 
 /**
+ * Show a specific panel by panelId.
+ */
+export function showPanel(panelId: string) {
+  const setter = visibilitySetters[panelId];
+  if (setter) {
+    hideAllPanels();
+    setter(true);
+  }
+}
+
+/**
+ * Hide a specific panel by panelId.
+ */
+export function hidePanel(panelId: string) {
+  const setter = visibilitySetters[panelId];
+  if (setter) {
+    setter(false);
+  }
+}
+
+/**
  * Hide all chrome-managed panels.
  */
 export function hideAllPanels() {

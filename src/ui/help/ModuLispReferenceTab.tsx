@@ -13,6 +13,8 @@ import { ReferenceItem } from "./ReferenceItem";
 import { ReferenceFilters } from "./ReferenceFilters";
 import { currentVersion as connectedFirmwareVersion } from "../../legacy/utils/upgradeCheck.ts";
 import { loadReferenceDataFromCandidates } from "./referenceDataLoader";
+import { showPanel } from "../adapters/panels";
+import { HELP_PANEL_SWITCH_EVENT } from "./HelpPanel";
 
 const normalizeEntry = (raw: any): ReferenceEntry | null => {
   if (!raw || typeof raw !== "object") return null;
@@ -155,17 +157,13 @@ export const ModuLispReferenceTab: Component = () => {
       return;
     }
 
-    // Show the help panel if hidden
-    const helpPanel = document.getElementById("panel-help");
-    if (helpPanel && helpPanel.style.display === "none") {
-      helpPanel.style.display = "";
-    }
+    // Show the help panel using adapter API
+    showPanel("help");
 
-    // Switch to the Reference tab by clicking its button
-    const refTabButton = document.getElementById("panel-help-tab-reference-button");
-    if (refTabButton) {
-      refTabButton.click();
-    }
+    // Switch to the Reference tab via custom event
+    window.dispatchEvent(new CustomEvent(HELP_PANEL_SWITCH_EVENT, {
+      detail: { tabId: "panel-help-tab-reference" }
+    }));
 
     // Clear tag filters so the entry is visible
     setSelectedTags(new Set());
