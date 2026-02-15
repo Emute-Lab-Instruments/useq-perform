@@ -1,5 +1,5 @@
-/* Auxiliary panel - positioned on the right side of the screen */
-/* Start of Selection */
+/* Auxiliary panel - legacy fallback for DOM-based panels (e.g. devmode).
+   Settings and Help panels now use PanelChrome components. */
 .panel-aux {
   /* Positioning */
   position: absolute;
@@ -11,34 +11,13 @@
   display: flex;
   flex-direction: column;
   text-align: left;
-  
+
   /* Dimensions */
   padding: 0;
   height: 75%;
   min-width: 20%;
   max-width: 40%;
-  
-  /* Enable resizing - fixed properties that were blocking resize */
-  resize: both;
-  overflow: auto; /* Change from hidden to auto to allow resize */
-  
-  /* Add a pseudo-element for the resize handle */
-  &::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 15px;
-    height: 15px;
-    background: linear-gradient(135deg, transparent 50%, var(--accent-color) 50%);
-    cursor: nwse-resize; /* Show resize cursor */
-    opacity: 0.7;
-    transition: opacity 0.2s ease;
-  }
-  
-  &:hover::after {
-    opacity: 1;
-  }
+  overflow: hidden;
 
   /* Visual styling */
   border: 1px solid var(--panel-border);
@@ -51,94 +30,13 @@
   color: var(--text-primary);
   font-family: var(--code-font);
 
-  /* Animation - improved for smoother transitions */
-  transition: 
-    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    right 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    top 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.2s ease;
+  /* Animation */
+  transition: border-color 0.2s ease;
 
-  /* Hover state merged into main class */
   &:hover {
     border-color: var(--accent-color);
   }
-
-  /* Add close button styling */
-  .panel-close-button {
-    position: absolute;
-    right: 10px;
-    top: 10px;
-    width: 24px;
-    height: 24px;
-    background-color: transparent;
-    border: none;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    opacity: 0.7;
-    transition: all 0.2s ease;
-  }
-
-  .panel-close-button:hover {
-    opacity: 1;
-    background-color: var(--panel-item-hover-bg);
-  }
-
-  .panel-close-button .close-icon {
-    color: var(--text-primary);
-    font-size: 16px;
-  }
 }
-
-/* Panel expanded state */
-.panel-aux.panel-expanded {
-  /* Center and enlarge the panel */
-  left: 10%;
-  right: 10%;
-  top: 10%;
-  transform: none;
-  width: 80%;
-  height: 80%;
-  max-width: none;
-}
-
-/* Toggle expand button */
-.panel-expand-toggle {
-  position: absolute;
-  left: 2px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 15px;
-  height: 35px;
-  /* background-color: var(--panel-bg); */
-  /* border: 1px solid var(--panel-border); */
-  border-left: none;
-  border-top-right-radius: 50%;
-  border-bottom-right-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.panel-expand-toggle:hover {
-  background-color: var(--panel-item-hover-bg);
-  border-color: var(--accent-color);
-}
-
-.panel-expand-toggle .expand-icon {
-  transition: transform 0.2s ease;
-  color: var(--text-primary);
-}
-
-/* End of Selection */
 
 /* The main container that holds both the nav bar and tab contents */
 .panel-tab-container {
@@ -163,11 +61,9 @@
   /* Visual styling */
   background-color: var(--toolbar-bg);
   border-bottom: 1px solid var(--panel-border);
-  
+
   /* Typography */
   font-family: var(--code-font);
-
-  /* Positioning */
 }
 
 /* Tab button styling */
@@ -185,7 +81,7 @@
   /* Visual styling */
   background-color: var(--panel-control-bg);
   border: 1px solid transparent;
-  
+
   /* Interaction */
   cursor: pointer;
   transition: all 0.2s ease;
@@ -214,20 +110,18 @@
   background-color: var(--panel-section-bg);
   padding: 0px;
   padding-left: 25px;
-  
+
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
- 
-  /* the individual tabs */
 
   &::-webkit-scrollbar {
     width: 8px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background-color: var(--accent-color);
     opacity: 0.5;
@@ -262,5 +156,3 @@
     opacity: 1;
   }
 }
-
-

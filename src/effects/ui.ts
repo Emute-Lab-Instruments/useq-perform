@@ -11,76 +11,50 @@ export const toggleConnection = () =>
 export const toggleGraph = () =>
   Effect.sync(() => toggleSerialVis());
 
-const rerenderLucideIcons = () => {
-  const lucide = (window as any).lucide;
-  lucide?.createIcons?.();
-};
+// ---- Panel visibility (delegated to adapter signals) ----
+
+let _togglePanelVisibility: ((panelId: string) => void) | null = null;
+let _hideAllPanels: (() => void) | null = null;
+
+// Lazy-load the adapter to avoid circular imports and keep Node.js compat.
+import("../ui/adapters/panels.tsx")
+  .then((m) => {
+    _togglePanelVisibility = m.togglePanelVisibility;
+    _hideAllPanels = m.hideAllPanels;
+  })
+  .catch(() => {});
 
 function hideAllAuxPanels() {
+  if (_hideAllPanels) {
+    _hideAllPanels();
+  }
+  // Also hide any remaining legacy .panel-aux elements (e.g. devmode panel)
   document.querySelectorAll(".panel-aux").forEach(el => (el as HTMLElement).style.display = "none");
 }
 
-const togglePanelExpand = (panel: HTMLElement) => {
-  panel.classList.toggle("panel-expanded");
-  const isExpanded = panel.classList.contains("panel-expanded");
-  const toggleButton = panel.querySelector(".panel-expand-toggle");
-  if (toggleButton) {
-    const oldIcon = toggleButton.querySelector(".expand-icon");
-    if (oldIcon) oldIcon.remove();
-    const iconName = isExpanded ? "chevron-right" : "chevron-left";
-    const newIcon = document.createElement("i");
-    newIcon.className = "expand-icon";
-    newIcon.setAttribute("data-lucide", iconName);
-    toggleButton.appendChild(newIcon);
-  }
-  rerenderLucideIcons();
-};
+export { hideAllAuxPanels };
 
-const ensurePanelHasExpandToggle = (panel: HTMLElement) => {
-  const panelId = panel.getAttribute("id");
-  if (panel.querySelector(".panel-expand-toggle")) return;
-
-  const toggleButton = document.createElement("div");
-  toggleButton.className = "panel-expand-toggle";
-  toggleButton.setAttribute("data-panel", panelId || "");
-  toggleButton.title = "Toggle expand panel";
-  toggleButton.innerHTML = '<i class="expand-icon" data-lucide="chevron-left"></i>';
-  panel.appendChild(toggleButton);
-  toggleButton.addEventListener("click", (e: Event) => {
-    e.stopPropagation();
-    togglePanelExpand(panel);
-  });
-  rerenderLucideIcons();
-};
-
-const ensurePanelHasCloseButton = (panel: HTMLElement) => {
-  const panelId = panel.getAttribute("id");
-  if (panel.querySelector(".panel-close-button")) return;
-
-  const closeButton = document.createElement("button");
-  closeButton.className = "panel-close-button";
-  closeButton.setAttribute("data-panel", panelId || "");
-  closeButton.title = "Close panel";
-  closeButton.innerHTML = '<i class="close-icon" data-lucide="x"></i>';
-  panel.appendChild(closeButton);
-  closeButton.addEventListener("click", (e: Event) => {
-    e.stopPropagation();
-    hideAllAuxPanels();
-  });
-  rerenderLucideIcons();
-};
-
+/**
+ * Toggle panel by ID string. Supports both chrome-managed panels
+ * ("settings", "help") and legacy DOM panels ("#panel-devmode").
+ */
 export const togglePanel = (panelId: string) =>
   Effect.sync(() => {
+    // Chrome-managed panels use short names
+    const chromeId = panelId.replace(/^#panel-/, "");
+    if (_togglePanelVisibility && (chromeId === "settings" || chromeId === "help")) {
+      _togglePanelVisibility(chromeId);
+      return;
+    }
+
+    // Fallback: legacy DOM-based panel toggle (e.g. devmode)
     const panel = document.querySelector(panelId) as HTMLElement | null;
     if (!panel) return;
 
     if (panel.offsetParent !== null) {
-        hideAllAuxPanels();
+      hideAllAuxPanels();
     } else {
-        hideAllAuxPanels();
-        panel.style.display = "";
-        ensurePanelHasExpandToggle(panel);
-        ensurePanelHasCloseButton(panel);
+      hideAllAuxPanels();
+      panel.style.display = "";
     }
   });

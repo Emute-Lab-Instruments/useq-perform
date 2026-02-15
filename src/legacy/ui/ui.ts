@@ -1,6 +1,7 @@
 import { initEditorPanel } from "../editors/main.ts";
 import { initGamepadControl } from "../editors/gamepadControl.ts";
 import { setEditor, mountSettingsPanel, mountHelpPanel } from "./solidBridge.ts";
+import { devmode } from "../urlParams.ts";
 
 let editor: any = null;
 let topToolbarResizeObserver: ResizeObserver | null = null;
@@ -74,6 +75,11 @@ export async function createAppUI(environmentState: any) {
     mountSettingsPanel("panel-settings");
     mountHelpPanel("panel-help");
 
+    // Mount the chrome design selector (devmode only)
+    import("../../ui/adapters/panels.tsx")
+      .then((m) => m.mountDesignSelector(devmode))
+      .catch(() => {});
+
     initTopToolbarHeightTracking();
 
     initGamepadControl(editor);
@@ -94,6 +100,11 @@ export async function createAppUI(environmentState: any) {
 function initEventHandlers() {
     document.addEventListener("keydown", function (e: KeyboardEvent) {
         if (e.key === "Escape") {
+            // Hide chrome-managed panels via adapter signal
+            import("../../ui/adapters/panels.tsx")
+              .then((m) => m.hideAllPanels())
+              .catch(() => {});
+            // Also hide any legacy .panel-aux elements (e.g. devmode)
             document.querySelectorAll(".panel-aux").forEach(el => {
                 (el as HTMLElement).style.display = "none";
             });
