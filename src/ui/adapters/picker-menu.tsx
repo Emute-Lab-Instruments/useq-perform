@@ -1,3 +1,9 @@
+/**
+ * Picker menu adapter - imperative picker menu API without island dependency.
+ *
+ * This module provides the same API as the islands/picker-menu.tsx island but
+ * can be imported directly without requiring a separate script tag.
+ */
 import { render } from "solid-js/web";
 import { Show, createSignal } from "solid-js";
 import {
@@ -6,12 +12,12 @@ import {
   type PickerMenuItem,
   type PickerMenuProps,
   type NumberPickerMenuProps,
-} from "../ui/PickerMenu";
+} from "../PickerMenu";
 import {
   HierarchicalPickerMenu,
   type HierarchicalCategory,
   type HierarchicalItem,
-} from "../ui/HierarchicalPickerMenu";
+} from "../HierarchicalPickerMenu";
 
 type MenuState =
   | { kind: "closed" }
@@ -24,32 +30,9 @@ type MenuState =
       onSelect: (item: HierarchicalItem) => void;
     };
 
-type API = {
-  showPickerMenu: (opts: {
-    items: PickerMenuItem[];
-    onSelect: (item: PickerMenuItem, index: number) => void;
-    title?: string;
-    layout?: "grid" | "vertical";
-    initialIndex?: number;
-  }) => () => void;
-  showNumberPickerMenu: (opts: {
-    onSelect: (value: number) => void;
-    title?: string;
-    initialValue?: number;
-    min?: number;
-    max?: number;
-    step?: number;
-  }) => () => void;
-  showHierarchicalGridPicker: (opts: {
-    categories: HierarchicalCategory[];
-    title?: string;
-    onSelect: (item: HierarchicalItem) => void;
-  }) => () => void;
-  close: () => void;
-};
+const [menuState, setMenuState] = createSignal<MenuState>({ kind: "closed" });
 
-
-function ensureRootElement() {
+function ensurePickerRoot(): HTMLElement {
   const existing = document.getElementById("picker-menu-root");
   if (existing) return existing;
 
@@ -63,13 +46,15 @@ function ensureRootElement() {
   return el;
 }
 
-const [menuState, setMenuState] = createSignal<MenuState>({ kind: "closed" });
-
-function close() {
+function closeMenu(): void {
   setMenuState({ kind: "closed" });
 }
 
-function showPickerMenu(opts: {
+/**
+ * Show a picker menu with the given items.
+ * Returns a close function.
+ */
+export function showPickerMenu(opts: {
   items: PickerMenuItem[];
   onSelect: (item: PickerMenuItem, index: number) => void;
   title?: string;
@@ -82,16 +67,20 @@ function showPickerMenu(opts: {
     opts: {
       items: opts.items,
       onSelect: opts.onSelect,
-      onClose: close,
+      onClose: closeMenu,
       title: opts.title,
       layout: opts.layout,
       initialIndex: opts.initialIndex,
     },
   });
-  return close;
+  return closeMenu;
 }
 
-function showNumberPickerMenu(opts: {
+/**
+ * Show a number picker menu.
+ * Returns a close function.
+ */
+export function showNumberPickerMenu(opts: {
   onSelect: (value: number) => void;
   title?: string;
   initialValue?: number;
@@ -103,7 +92,7 @@ function showNumberPickerMenu(opts: {
     kind: "number",
     opts: {
       onSelect: opts.onSelect,
-      onClose: close,
+      onClose: closeMenu,
       title: opts.title,
       initialValue: opts.initialValue,
       min: opts.min,
@@ -111,10 +100,14 @@ function showNumberPickerMenu(opts: {
       step: opts.step,
     },
   });
-  return close;
+  return closeMenu;
 }
 
-function showHierarchicalGridPicker(opts: {
+/**
+ * Show a hierarchical grid picker.
+ * Returns a close function.
+ */
+export function showHierarchicalGridPicker(opts: {
   categories: HierarchicalCategory[];
   title?: string;
   onSelect: (item: HierarchicalItem) => void;
@@ -127,13 +120,36 @@ function showHierarchicalGridPicker(opts: {
     title: opts.title,
     onSelect: opts.onSelect,
   });
-  return close;
+  return closeMenu;
 }
 
-export { showPickerMenu, showNumberPickerMenu, showHierarchicalGridPicker, close };
+/**
+ * Close any open picker menu.
+ */
+export function close(): void {
+  closeMenu();
+}
 
-export function mountPickerMenu(root?: HTMLElement) {
-  const el = root || ensureRootElement();
+let mounted = false;
+
+/**
+ * Check if we're in a browser environment.
+ */
+function isBrowser(): boolean {
+  return typeof document !== "undefined" && typeof window !== "undefined";
+}
+
+/**
+ * Mount the picker root element and render the picker component.
+ * Safe to call multiple times; will only mount once.
+ * In non-browser environments (e.g., Node.js tests), this is a no-op.
+ */
+export function mountPickerMenu(root?: HTMLElement): void {
+  if (mounted) return;
+  if (!isBrowser()) return;
+  mounted = true;
+
+  const el = root || ensurePickerRoot();
   render(
     () => {
       const state = menuState();
@@ -147,7 +163,7 @@ export function mountPickerMenu(root?: HTMLElement) {
                   <PickerMenu
                     items={st.opts.items}
                     onSelect={st.opts.onSelect}
-                    onClose={close}
+                    onClose={closeMenu}
                     title={st.opts.title}
                     layout={st.opts.layout}
                     initialIndex={st.opts.initialIndex}
@@ -161,7 +177,7 @@ export function mountPickerMenu(root?: HTMLElement) {
                 return (
                   <NumberPickerMenu
                     onSelect={st.opts.onSelect}
-                    onClose={close}
+                    onClose={closeMenu}
                     title={st.opts.title}
                     initialValue={st.opts.initialValue}
                     min={st.opts.min}
@@ -180,9 +196,9 @@ export function mountPickerMenu(root?: HTMLElement) {
                     title={st.title}
                     onSelect={(item) => {
                       st.onSelect(item);
-                      close();
+                      closeMenu();
                     }}
-                    onClose={close}
+                    onClose={closeMenu}
                   />
                 );
               }}
@@ -194,6 +210,3 @@ export function mountPickerMenu(root?: HTMLElement) {
     el,
   );
 }
-
-// Auto-mount for backward compatibility (islands are still loaded as separate scripts)
-mountPickerMenu();

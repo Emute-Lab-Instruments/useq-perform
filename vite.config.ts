@@ -16,19 +16,9 @@ export default defineConfig({
     outDir: "public/solid-dist",
     rollupOptions: {
       input: {
-        // Legacy entry point (replaces esbuild bundle)
-        'bundle': 'src/legacy/main.ts',
-        // Entry points for each island
-        'test-island': 'src/islands/test-island.tsx',
-        'double-radial-menu': 'src/islands/double-radial-menu.tsx',
-        'transport-toolbar': 'src/islands/transport-toolbar.tsx',
-        'main-toolbar': 'src/islands/main-toolbar.tsx',
-        'settings-panel': 'src/islands/settings-panel.tsx',
-        'help-panel': 'src/islands/help-panel.tsx',
-        'console-panel': 'src/islands/console-panel.tsx',
-        'picker-menu': 'src/islands/picker-menu.tsx',
-        'modal': 'src/islands/modal.tsx',
-        'snippets-panel': 'src/islands/snippets-panel.tsx'
+        // Single entry point for the entire application
+        // Islands have been eliminated; adapters are imported directly
+        'bundle': 'src/legacy/main.ts'
       },
       output: {
         entryFileNames: '[name].js',

@@ -1,5 +1,5 @@
 /**
- * Bridge module for Solid island functions.
+ * Bridge module for Solid UI adapter functions.
  *
  * In the Vite runtime, this eagerly imports the real implementations from
  * TypeScript / TSX modules.  Under Mocha (plain Node.js), those imports
@@ -7,6 +7,8 @@
  *
  * This allows legacy .mjs files that have Mocha tests to continue working
  * without requiring the Node.js test runner to understand .tsx files.
+ *
+ * NOTE: This module now imports from adapters, not islands.
  */
 
 let _setEditor = () => {};
@@ -20,11 +22,11 @@ import("../../lib/editorStore.ts")
   .then((m) => { _setEditor = m.setEditor; })
   .catch(() => {});
 
-import("../../islands/settings-panel.tsx")
+import("../../ui/adapters/panels.tsx")
   .then((m) => { _mountSettingsPanel = m.mountSettingsPanel; })
   .catch(() => {});
 
-import("../../islands/help-panel.tsx")
+import("../../ui/adapters/panels.tsx")
   .then((m) => { _mountHelpPanel = m.mountHelpPanel; })
   .catch(() => {});
 

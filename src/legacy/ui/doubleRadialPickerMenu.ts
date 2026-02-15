@@ -1,10 +1,10 @@
-// Solid-backed double radial picker menu wrapper.
-// Imports the island API via dynamic import (falls back to no-op under Mocha).
+// Double radial picker menu wrapper using adapters.
+// Imports the adapter API via dynamic import (falls back to no-op under Mocha).
 
 let _open = null;
 let _close = null;
 
-import("../../islands/double-radial-menu.tsx")
+import("../../ui/adapters/double-radial-menu.tsx")
   .then((m) => { _open = m.open; _close = m.close; })
   .catch(() => {});
 

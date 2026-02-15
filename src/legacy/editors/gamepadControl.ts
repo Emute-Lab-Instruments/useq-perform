@@ -28,21 +28,15 @@ import { activeUserSettings } from "../utils/persistentUserSettings.ts";
 import { evalNow } from "./editorConfig.ts";
 import { virtualGamepad } from "../urlParams.ts";
 
-// Bridge functions for picker menu (provided by src/islands/picker-menu.tsx via window.__pickerMenu)
-function showPickerMenu(opts) {
-  return window.__pickerMenu?.showPickerMenu?.(opts) ?? (() => {});
-}
-function showNumberPickerMenu(opts) {
-  return window.__pickerMenu?.showNumberPickerMenu?.(opts) ?? (() => {});
-}
-function showHierarchicalGridPicker(opts) {
-  return window.__pickerMenu?.showHierarchicalGridPicker?.(opts) ?? (() => {});
-}
+// Import picker menu functions from adapters (no island dependency)
+import {
+  showPickerMenu,
+  showNumberPickerMenu,
+  showHierarchicalGridPicker
+} from "../../ui/adapters/picker-menu.tsx";
 
-// Bridge function for virtual gamepad (provided by src/ui/VirtualGamepad.tsx via window.__virtualGamepad)
-function getVirtualGamepadState() {
-  return window.__virtualGamepad?.get?.() ?? { buttons: [], axes: [0, 0, 0, 0], timestamp: 0 };
-}
+// Import virtual gamepad state directly (no island dependency)
+import { getVirtualGamepadState } from "../../ui/VirtualGamepad.tsx";
 import { sendSerialInputStreamValue } from "../io/serialComms.ts";
 import {
   clearManualControlBinding,

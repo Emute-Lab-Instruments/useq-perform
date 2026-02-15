@@ -3,7 +3,7 @@ import { checkForSavedPortAndMaybeConnect, setConnectedToModule } from '../io/se
 import { ensureUseqWasmLoaded } from '../io/useqWasmInterpreter.ts';
 import { noModuleMode } from '../urlParams.ts';
 import { startWebSocketServer, stopWebSocketServer } from '../io/websocketServer.ts';
-import { showModal } from '../../islands/modal.tsx';
+import { showModal } from '../../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../io/mockControlInputs.ts';
 import { startMockTimeGenerator } from '../io/mockTimeGenerator.ts';
 import { registerVisualisation } from '../ui/serialVis/visualisationController.ts';

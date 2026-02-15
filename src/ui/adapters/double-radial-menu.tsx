@@ -1,6 +1,12 @@
+/**
+ * Double radial menu adapter - imperative API without island dependency.
+ *
+ * This module provides the same API as the islands/double-radial-menu.tsx island but
+ * can be imported directly without requiring a separate script tag.
+ */
 import { render } from "solid-js/web";
 import { Show, createSignal } from "solid-js";
-import { DoubleRadialPicker, type PickerCategory, type PickerEntry } from "../ui/DoubleRadialPicker";
+import { DoubleRadialPicker, type PickerCategory, type PickerEntry } from "../DoubleRadialPicker";
 
 type OpenOptions = {
   categories: PickerCategory[];
@@ -11,28 +17,6 @@ type OpenOptions = {
   innerRadiusRatio?: number;
   stickThreshold?: number;
 };
-
-type API = {
-  open: (opts: OpenOptions) => () => void;
-  close: () => void;
-};
-
-
-function ensureRootElement() {
-  const existing = document.getElementById("double-radial-menu-root");
-  if (existing) return existing;
-
-  const el = document.createElement("div");
-  el.id = "double-radial-menu-root";
-  // Keep it above existing overlays.
-  el.style.position = "fixed";
-  el.style.inset = "0";
-  el.style.zIndex = "1100";
-  el.style.pointerEvents = "none";
-
-  document.body.appendChild(el);
-  return el;
-}
 
 const [isOpen, setIsOpen] = createSignal(false);
 const [title, setTitle] = createSignal<string | undefined>(undefined);
@@ -46,24 +30,28 @@ let onCancelRef: (() => void) | null = null;
 
 let prevBodyOverflow: string | null = null;
 
-function lockScroll() {
+function lockScroll(): void {
   if (prevBodyOverflow !== null) return;
   prevBodyOverflow = document.body.style.overflow;
   document.body.style.overflow = "hidden";
 }
 
-function unlockScroll() {
+function unlockScroll(): void {
   if (prevBodyOverflow === null) return;
   document.body.style.overflow = prevBodyOverflow;
   prevBodyOverflow = null;
 }
 
-function close() {
+function closeMenu(): void {
   setIsOpen(false);
   unlockScroll();
 }
 
-function open(opts: OpenOptions) {
+/**
+ * Open the double radial menu with the given options.
+ * Returns a close function.
+ */
+export function open(opts: OpenOptions): () => void {
   setTitle(opts.title);
   setCategories(Array.isArray(opts.categories) ? opts.categories : []);
   setMenuSize(opts.menuSize);
@@ -76,13 +64,50 @@ function open(opts: OpenOptions) {
   lockScroll();
   setIsOpen(true);
 
-  return () => close();
+  return closeMenu;
 }
 
-export { open, close };
+/**
+ * Close the double radial menu.
+ */
+export function close(): void {
+  closeMenu();
+}
 
-export function mountDoubleRadialMenu(root?: HTMLElement) {
-  const el = root || ensureRootElement();
+function ensureDoubleRadialRoot(): HTMLElement {
+  const existing = document.getElementById("double-radial-menu-root");
+  if (existing) return existing;
+
+  const el = document.createElement("div");
+  el.id = "double-radial-menu-root";
+  el.style.position = "fixed";
+  el.style.inset = "0";
+  el.style.zIndex = "1100";
+  el.style.pointerEvents = "none";
+  document.body.appendChild(el);
+  return el;
+}
+
+let mounted = false;
+
+/**
+ * Check if we're in a browser environment.
+ */
+function isBrowser(): boolean {
+  return typeof document !== "undefined" && typeof window !== "undefined";
+}
+
+/**
+ * Mount the double radial menu root element and render the component.
+ * Safe to call multiple times; will only mount once.
+ * In non-browser environments (e.g., Node.js tests), this is a no-op.
+ */
+export function mountDoubleRadialMenu(root?: HTMLElement): void {
+  if (mounted) return;
+  if (!isBrowser()) return;
+  mounted = true;
+
+  const el = root || ensureDoubleRadialRoot();
   render(
     () => (
       <Show when={isOpen()}>
@@ -97,23 +122,20 @@ export function mountDoubleRadialMenu(root?: HTMLElement) {
               try {
                 onSelectRef?.(entry);
               } finally {
-                close();
+                closeMenu();
               }
             }}
             onCancel={() => {
               try {
                 onCancelRef?.();
               } finally {
-                close();
+                closeMenu();
               }
             }}
           />
         </div>
       </Show>
     ),
-    el
+    el,
   );
 }
-
-// Auto-mount for backward compatibility (islands are still loaded as separate scripts)
-mountDoubleRadialMenu();

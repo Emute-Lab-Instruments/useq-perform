@@ -22,12 +22,16 @@ Web-based live coding interface for the uSEQ hardware module.
 
 - `src/` - canonical source tree.
 - `src/legacy/` - retained legacy runtime modules and styles.
-- `src/islands/` - Solid mount points and bridge exports.
 - `src/ui/` - modern Solid UI components.
+- `src/ui/adapters/` - imperative adapters for mounting Solid UI components.
 - `scripts/build-assets.mjs` - markdown/reference/wasm/font asset pipeline.
 - `src-useq/` - firmware submodule.
 
-`src-solid/` has been removed after migration consolidation.
+`src-solid/` and `src/islands/` have been removed after migration consolidation.
+
+## Architecture
+
+The application uses a single-bundle Vite build. UI components are mounted via adapter modules that provide imperative APIs (e.g., `mountSettingsPanel()`, `showModal()`). Legacy code imports these adapters directly instead of using separate entrypoints or bridge APIs.
 
 ## URL Parameters
 

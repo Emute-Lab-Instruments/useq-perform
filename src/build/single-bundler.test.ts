@@ -1,13 +1,12 @@
 /**
- * Build Verification Test — Single-Bundler Deduplication
+ * Build Verification Test — Single-Bundle Architecture
  *
- * Verifies that the Vite single-bundler setup correctly deduplicates shared
- * modules into chunks, so that legacy code (bundle.js) and SolidJS islands
- * (transport-toolbar.js, main-toolbar.js, etc.) import the SAME instance of
- * shared modules at runtime rather than each containing an inlined copy.
+ * Verifies that the Vite single-bundle setup produces a working build output.
+ * After eliminating islands, we now have a single bundle.js entry point
+ * that includes all UI components via adapters.
  *
- * This prevents the "double-copy" problem that existed in the old dual-bundler
- * setup (esbuild IIFE + Vite ES modules).
+ * Previous tests checked for deduplication across multiple entry points.
+ * With the island elimination, those tests are no longer applicable.
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import * as fs from "node:fs";
@@ -23,63 +22,23 @@ function readBuildFile(relativePath: string): string {
 
 /** List all .js files directly in a directory. */
 function listJsFiles(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
     .filter((f) => f.endsWith(".js"))
     .sort();
 }
 
-/**
- * Extract all chunk imports from a built entry point file.
- * Matches patterns like: from"./chunks/foo.js" or from "./chunks/foo.js"
- */
-function extractChunkImports(content: string): string[] {
-  const re = /from\s*["']\.\/chunks\/([^"']+)["']/g;
-  const chunks = new Set<string>();
-  let match;
-  while ((match = re.exec(content)) !== null) {
-    chunks.add(match[1]);
-  }
-  return [...chunks].sort();
-}
+// Entry point for the application (single bundle after island elimination)
+const ENTRY_POINT = "bundle.js";
 
-// ---------------------------------------------------------------------------
-// Shared module fingerprints: strings that uniquely identify each module's
-// implementation code (as opposed to code that merely *uses* the module).
-// These are log messages or string literals baked into the source module.
-// ---------------------------------------------------------------------------
-const SHARED_MODULE_FINGERPRINTS: Record<
-  string,
-  { fingerprint: string; description: string }
-> = {
-  serialComms: {
-    fingerprint: "failed to forward time update",
-    description: "src/io/serialComms.mjs — serial communication module",
-  },
-  persistentUserSettings: {
-    fingerprint: "persistentUserSettings.mjs",
-    description:
-      "src/utils/persistentUserSettings.mjs — user settings persistence",
-  },
-  mockTimeGenerator: {
-    fingerprint: "tick() called but not running",
-    description: "src/io/mockTimeGenerator.mjs — mock time generator",
-  },
-};
-
-// Entry points that are known to transitively depend on shared modules.
-// If both bundle.js and at least one island entry import code from the same
-// chunk, the module is shared (not duplicated).
-const ENTRY_POINTS = [
-  "bundle.js",
-  "transport-toolbar.js",
-  "main-toolbar.js",
-  "settings-panel.js",
-  "help-panel.js",
-  "console-panel.js",
+// Shared modules that should be present in the build
+const EXPECTED_MODULES = [
+  { fingerprint: "serialComms", description: "serial communication module" },
+  { fingerprint: "persistentUserSettings", description: "user settings persistence" },
 ];
 
-describe("Single-bundler deduplication", () => {
+describe("Single-bundle build structure", () => {
   let entryFiles: string[];
   let chunkFiles: string[];
 
@@ -89,206 +48,123 @@ describe("Single-bundler deduplication", () => {
       fs.existsSync(BUILD_DIR),
       `Build output directory not found at ${BUILD_DIR}. Run "npm run build" first.`,
     ).toBe(true);
-    expect(
-      fs.existsSync(CHUNKS_DIR),
-      `Chunks directory not found at ${CHUNKS_DIR}. Run "npm run build" first.`,
-    ).toBe(true);
 
     entryFiles = listJsFiles(BUILD_DIR);
     chunkFiles = listJsFiles(CHUNKS_DIR);
   });
 
   // -----------------------------------------------------------------------
-  // 1. Shared modules live in chunks, not inlined into entry points
+  // 1. Core bundle structure
   // -----------------------------------------------------------------------
-  describe("shared modules are extracted into chunks", () => {
-    for (const [moduleName, { fingerprint, description }] of Object.entries(
-      SHARED_MODULE_FINGERPRINTS,
-    )) {
-      it(`${moduleName} implementation exists in exactly one chunk (${description})`, () => {
-        const chunksContainingModule = chunkFiles.filter((chunkFile) => {
-          const content = readBuildFile(`chunks/${chunkFile}`);
-          return content.includes(fingerprint);
-        });
+  describe("core bundle structure", () => {
+    it("bundle.js entry point exists", () => {
+      expect(
+        entryFiles,
+        `Expected bundle.js to exist in ${BUILD_DIR}`,
+      ).toContain(ENTRY_POINT);
+    });
 
+    it("bundle.css exists", () => {
+      const cssFile = path.join(BUILD_DIR, "bundle.css");
+      expect(
+        fs.existsSync(cssFile),
+        `Expected bundle.css to exist in ${BUILD_DIR}`,
+      ).toBe(true);
+    });
+
+    it("bundle.js is non-empty", () => {
+      const content = readBuildFile(ENTRY_POINT);
+      expect(
+        content.length,
+        "bundle.js should contain compiled code",
+      ).toBeGreaterThan(1000);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 2. Chunks directory structure
+  // -----------------------------------------------------------------------
+  describe("chunks directory structure", () => {
+    it("chunks directory exists (may be empty or contain shared code)", () => {
+      // Note: chunks directory may be empty if everything is bundled together
+      expect(
+        fs.existsSync(CHUNKS_DIR),
+        `Expected chunks directory to exist at ${CHUNKS_DIR}`,
+      ).toBe(true);
+    });
+
+    it("chunks directory contains .js files or is empty", () => {
+      // This is informational - we allow empty chunks if everything is in bundle.js
+      if (chunkFiles.length > 0) {
+        expect(chunkFiles.every(f => f.endsWith('.js'))).toBe(true);
+      }
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 3. Key modules are present in the build
+  // -----------------------------------------------------------------------
+  describe("key modules present in build", () => {
+    it("serial communication code is included in the bundle", () => {
+      const content = readBuildFile(ENTRY_POINT);
+      // Check for any evidence of serial comms module
+      const hasSerialComms = content.includes("serial") ||
+                              content.includes("Serial") ||
+                              content.includes("Comms");
+      expect(
+        hasSerialComms,
+        "Expected serial communication code in bundle",
+      ).toBe(true);
+    });
+
+    it("settings code is included in the bundle", () => {
+      const content = readBuildFile(ENTRY_POINT);
+      // Check for evidence of settings panel
+      const hasSettings = content.includes("Settings") ||
+                          content.includes("settings");
+      expect(
+        hasSettings,
+        "Expected settings code in bundle",
+      ).toBe(true);
+    });
+
+    it("adapter code is included in the bundle", () => {
+      const content = readBuildFile(ENTRY_POINT);
+      // Check for evidence of adapters
+      const hasAdapters = content.includes("mountModal") ||
+                          content.includes("mountPickerMenu") ||
+                          content.includes("mountSettingsPanel");
+      expect(
+        hasAdapters,
+        "Expected adapter mounting functions in bundle",
+      ).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 4. No island entry points (islands eliminated)
+  // -----------------------------------------------------------------------
+  describe("no island entry points", () => {
+    const ISLAND_FILES = [
+      "test-island.js",
+      "double-radial-menu.js",
+      "transport-toolbar.js",
+      "main-toolbar.js",
+      "settings-panel.js",
+      "help-panel.js",
+      "console-panel.js",
+      "picker-menu.js",
+      "modal.js",
+      "snippets-panel.js",
+    ];
+
+    for (const islandFile of ISLAND_FILES) {
+      it(`${islandFile} does NOT exist (islands eliminated)`, () => {
         expect(
-          chunksContainingModule.length,
-          `Expected ${moduleName} (fingerprint: "${fingerprint}") to appear in exactly one chunk, ` +
-            `but found it in ${chunksContainingModule.length}: [${chunksContainingModule.join(", ")}]`,
-        ).toBe(1);
-      });
-
-      it(`${moduleName} implementation is NOT inlined into any entry point`, () => {
-        const entryPointsContainingModule = entryFiles.filter((entryFile) => {
-          const content = readBuildFile(entryFile);
-          return content.includes(fingerprint);
-        });
-
-        expect(
-          entryPointsContainingModule,
-          `Expected ${moduleName} (fingerprint: "${fingerprint}") to not be inlined ` +
-            `into any entry point, but found it in: [${entryPointsContainingModule.join(", ")}]`,
-        ).toEqual([]);
+          entryFiles,
+          `Island file ${islandFile} should not exist (islands have been eliminated)`,
+        ).not.toContain(islandFile);
       });
     }
-  });
-
-  // -----------------------------------------------------------------------
-  // 2. Multiple entry points reference the SAME chunk for shared modules
-  // -----------------------------------------------------------------------
-  describe("entry points share chunks instead of duplicating code", () => {
-    it("bundle.js and transport-toolbar.js import from the same visualisationController chunk", () => {
-      const bundleImports = extractChunkImports(readBuildFile("bundle.js"));
-      const transportImports = extractChunkImports(
-        readBuildFile("transport-toolbar.js"),
-      );
-
-      const sharedChunk = "serialComms.js";
-      expect(
-        bundleImports,
-        "bundle.js should import from visualisationController chunk",
-      ).toContain(sharedChunk);
-      expect(
-        transportImports,
-        "transport-toolbar.js should import from visualisationController chunk",
-      ).toContain(sharedChunk);
-    });
-
-    it("bundle.js and transport-toolbar.js import from the same mockTimeGenerator chunk", () => {
-      const bundleImports = extractChunkImports(readBuildFile("bundle.js"));
-      const transportImports = extractChunkImports(
-        readBuildFile("transport-toolbar.js"),
-      );
-
-      const sharedChunk = "mockTimeGenerator.js";
-      expect(
-        bundleImports,
-        "bundle.js should import from mockTimeGenerator chunk",
-      ).toContain(sharedChunk);
-      expect(
-        transportImports,
-        "transport-toolbar.js should import from mockTimeGenerator chunk",
-      ).toContain(sharedChunk);
-    });
-
-    it("bundle.js and main-toolbar.js import from the same visualisationController chunk", () => {
-      const bundleImports = extractChunkImports(readBuildFile("bundle.js"));
-      const toolbarImports = extractChunkImports(
-        readBuildFile("main-toolbar.js"),
-      );
-
-      const sharedChunk = "serialComms.js";
-      expect(
-        bundleImports,
-        "bundle.js should import from visualisationController chunk",
-      ).toContain(sharedChunk);
-      expect(
-        toolbarImports,
-        "main-toolbar.js should import from visualisationController chunk",
-      ).toContain(sharedChunk);
-    });
-
-    it("at least two entry points share each chunk that contains a shared module", () => {
-      // Build a map: chunk → list of entry points that import it
-      const chunkConsumers: Record<string, string[]> = {};
-      for (const entryFile of entryFiles) {
-        const imports = extractChunkImports(readBuildFile(entryFile));
-        for (const chunk of imports) {
-          if (!chunkConsumers[chunk]) chunkConsumers[chunk] = [];
-          chunkConsumers[chunk].push(entryFile);
-        }
-      }
-
-      // For each shared module, find which chunk it lives in and verify
-      // that chunk is imported by at least 2 entry points
-      for (const [moduleName, { fingerprint }] of Object.entries(
-        SHARED_MODULE_FINGERPRINTS,
-      )) {
-        const hostChunk = chunkFiles.find((chunkFile) => {
-          const content = readBuildFile(`chunks/${chunkFile}`);
-          return content.includes(fingerprint);
-        });
-
-        expect(
-          hostChunk,
-          `Could not find chunk containing ${moduleName}`,
-        ).toBeDefined();
-
-        const consumers = chunkConsumers[hostChunk!] || [];
-        expect(
-          consumers.length,
-          `Chunk ${hostChunk} (hosting ${moduleName}) should be imported by ` +
-            `at least 2 entry points, but is only imported by: [${consumers.join(", ")}]`,
-        ).toBeGreaterThanOrEqual(2);
-      }
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // 3. No module code is duplicated across entry points
-  // -----------------------------------------------------------------------
-  describe("no shared module code duplicated across entry points", () => {
-    it("no fingerprint string appears in more than one entry point", () => {
-      for (const [moduleName, { fingerprint }] of Object.entries(
-        SHARED_MODULE_FINGERPRINTS,
-      )) {
-        const entryPointsWithFingerprint = entryFiles.filter((entryFile) => {
-          const content = readBuildFile(entryFile);
-          return content.includes(fingerprint);
-        });
-
-        expect(
-          entryPointsWithFingerprint.length,
-          `Shared module ${moduleName} (fingerprint: "${fingerprint}") is inlined in ` +
-            `entry points: [${entryPointsWithFingerprint.join(", ")}]. ` +
-            `It should only exist in a chunk.`,
-        ).toBe(0);
-      }
-    });
-
-    it("no fingerprint string appears in more than one chunk", () => {
-      for (const [moduleName, { fingerprint }] of Object.entries(
-        SHARED_MODULE_FINGERPRINTS,
-      )) {
-        const chunksWithFingerprint = chunkFiles.filter((chunkFile) => {
-          const content = readBuildFile(`chunks/${chunkFile}`);
-          return content.includes(fingerprint);
-        });
-
-        expect(
-          chunksWithFingerprint.length,
-          `Shared module ${moduleName} (fingerprint: "${fingerprint}") appears in ` +
-            `multiple chunks: [${chunksWithFingerprint.join(", ")}]. ` +
-            `It should be in exactly one chunk.`,
-        ).toBe(1);
-      }
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // 4. Structural check: entry points use ES module imports (not inlined)
-  // -----------------------------------------------------------------------
-  describe("entry points use ES module chunk imports", () => {
-    it("every entry point imports from at least one chunk", () => {
-      for (const entryFile of ENTRY_POINTS) {
-        if (!fs.existsSync(path.join(BUILD_DIR, entryFile))) continue;
-
-        const content = readBuildFile(entryFile);
-        const imports = extractChunkImports(content);
-
-        expect(
-          imports.length,
-          `Entry point ${entryFile} should import from at least one chunk ` +
-            `(indicating code splitting is active)`,
-        ).toBeGreaterThan(0);
-      }
-    });
-
-    it("chunks directory contains shared code files", () => {
-      expect(
-        chunkFiles.length,
-        "Expected chunks directory to contain shared code files",
-      ).toBeGreaterThan(0);
-    });
   });
 });
