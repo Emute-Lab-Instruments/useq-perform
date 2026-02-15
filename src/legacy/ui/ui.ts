@@ -72,10 +72,17 @@ export async function createAppUI(environmentState: any) {
     const visPanelEl = document.getElementById("panel-vis");
     if (visPanelEl) visPanelEl.style.display = "none";
 
-    // Mount panels via adapter directly (awaited to avoid race with solidBridge).
+    // Mount Solid UI adapters (awaited to avoid race with solidBridge).
     // The try/catch handles Node.js test environments where .tsx imports fail.
     try {
-        const panels = await import("../../ui/adapters/panels.tsx");
+        const [panels, toolbars] = await Promise.all([
+            import("../../ui/adapters/panels.tsx"),
+            import("../../ui/adapters/toolbars.tsx"),
+        ]);
+        // Mount toolbars first (they replace the static HTML toolbar elements)
+        toolbars.mountTransportToolbar();
+        toolbars.mountMainToolbar();
+        // Mount panels and design selector
         panels.mountSettingsPanel();
         panels.mountHelpPanel();
         panels.mountDesignSelector(devmode);
