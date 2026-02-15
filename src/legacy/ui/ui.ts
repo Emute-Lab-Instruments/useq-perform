@@ -72,13 +72,18 @@ export async function createAppUI(environmentState: any) {
     const visPanelEl = document.getElementById("panel-vis");
     if (visPanelEl) visPanelEl.style.display = "none";
 
-    mountSettingsPanel("panel-settings");
-    mountHelpPanel("panel-help");
-
-    // Mount the chrome design selector (devmode only)
-    import("../../ui/adapters/panels.tsx")
-      .then((m) => m.mountDesignSelector(devmode))
-      .catch(() => {});
+    // Mount panels via adapter directly (awaited to avoid race with solidBridge).
+    // The try/catch handles Node.js test environments where .tsx imports fail.
+    try {
+        const panels = await import("../../ui/adapters/panels.tsx");
+        panels.mountSettingsPanel();
+        panels.mountHelpPanel();
+        panels.mountDesignSelector(devmode);
+    } catch (_) {
+        // Fallback to solidBridge (may be no-ops in test env)
+        mountSettingsPanel("panel-settings");
+        mountHelpPanel("panel-help");
+    }
 
     initTopToolbarHeightTracking();
 
