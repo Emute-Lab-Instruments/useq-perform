@@ -1,0 +1,327 @@
+/* ===================================================================
+   Panel Chrome — shared styles for all three chrome designs
+   =================================================================== */
+
+/* ---------- Common chrome container ---------- */
+
+.panel-chrome {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-border-radius, 8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  background-color: var(--panel-bg);
+  color: var(--text-primary);
+  font-family: var(--code-font);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ---------- Title bar ---------- */
+
+.panel-chrome-title-bar {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  background-color: var(--toolbar-bg);
+  border-bottom: 1px solid var(--panel-border);
+  cursor: default;
+  gap: 8px;
+}
+
+.panel-chrome-title-bar .title-text {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel-chrome-title-bar .chrome-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.panel-chrome-title-bar .chrome-btn:hover {
+  background: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary);
+}
+
+/* ---------- Content area ---------- */
+
+.panel-chrome-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  user-select: text;
+}
+
+/* ===================================================================
+   Design 1 — Pane (Classic Window Manager)
+   =================================================================== */
+
+.panel-chrome--pane .panel-chrome-title-bar {
+  cursor: grab;
+}
+
+.panel-chrome--pane .panel-chrome-title-bar:active {
+  cursor: grabbing;
+}
+
+/* Resize zones: invisible 6px hit targets on edges and corners */
+.pane-resize-zone {
+  position: absolute;
+  z-index: 1;
+}
+
+.pane-resize-zone--n  { top: -3px;    left: 6px;     right: 6px;    height: 6px; cursor: n-resize; }
+.pane-resize-zone--s  { bottom: -3px; left: 6px;     right: 6px;    height: 6px; cursor: s-resize; }
+.pane-resize-zone--w  { left: -3px;   top: 6px;      bottom: 6px;   width: 6px;  cursor: w-resize; }
+.pane-resize-zone--e  { right: -3px;  top: 6px;      bottom: 6px;   width: 6px;  cursor: e-resize; }
+.pane-resize-zone--nw { top: -3px;    left: -3px;    width: 10px;   height: 10px; cursor: nw-resize; }
+.pane-resize-zone--ne { top: -3px;    right: -3px;   width: 10px;   height: 10px; cursor: ne-resize; }
+.pane-resize-zone--sw { bottom: -3px; left: -3px;    width: 10px;   height: 10px; cursor: sw-resize; }
+.pane-resize-zone--se { bottom: -3px; right: -3px;   width: 10px;   height: 10px; cursor: se-resize; }
+
+/* Collapsed chip */
+.pane-collapsed-chip {
+  position: fixed;
+  right: 8px;
+  width: 48px;
+  height: 48px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: background 0.15s ease;
+}
+
+.pane-collapsed-chip:hover {
+  background: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
+}
+
+/* ===================================================================
+   Design 2 — Drawer (Sliding Edge Drawer)
+   =================================================================== */
+
+.panel-chrome--drawer {
+  top: var(--top-toolbar-height, 0px);
+  right: 0;
+  bottom: 0;
+  border-radius: 0;
+  border-right: none;
+  border-top: none;
+  border-bottom: none;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.panel-chrome--drawer .panel-chrome-title-bar {
+  cursor: default;
+}
+
+/* Left-edge resize handle */
+.drawer-resize-edge {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 1;
+}
+
+/* Collapsed tab handle */
+.drawer-collapsed-tab {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 4px;
+  border-radius: 8px 0 0 8px;
+  border: 1px solid var(--panel-border);
+  border-right: none;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 600;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  cursor: pointer;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+  transition: background 0.15s ease;
+}
+
+.drawer-collapsed-tab:hover {
+  background: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
+}
+
+/* ===================================================================
+   Design 3 — Tile (Snap Grid)
+   =================================================================== */
+
+.panel-chrome--tile {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.panel-chrome--tile .panel-chrome-title-bar {
+  cursor: default;
+}
+
+/* Collapsed chip for tile mode */
+.tile-collapsed-chip {
+  position: fixed;
+  right: 8px;
+  height: 36px;
+  min-width: 120px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 18px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tile-collapsed-chip:hover {
+  background: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
+  transform: scale(1.05);
+}
+
+/* Layout picker popover */
+.tile-layout-picker {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 30;
+}
+
+.tile-layout-picker-item {
+  width: 48px;
+  height: 36px;
+  position: relative;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: var(--panel-section-bg);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tile-layout-picker-item:hover {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 1px var(--accent-color);
+}
+
+.tile-layout-picker-item.active {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-color);
+}
+
+/* Miniature slot preview highlight inside each picker item */
+.tile-layout-picker-item .slot-preview {
+  position: absolute;
+  background: var(--accent-color);
+  opacity: 0.35;
+  border-radius: 2px;
+}
+
+.tile-layout-picker-item:hover .slot-preview,
+.tile-layout-picker-item.active .slot-preview {
+  opacity: 0.6;
+}
+
+/* ===================================================================
+   Design Selector (devmode widget)
+   =================================================================== */
+
+.design-selector {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  z-index: 25;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  font-family: var(--code-font);
+}
+
+.design-selector button {
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.design-selector button:hover {
+  background: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary);
+}
+
+.design-selector button.active {
+  background: var(--accent-color);
+  color: var(--panel-bg, #000);
+  border-color: var(--accent-color);
+}
