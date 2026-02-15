@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal } from "solid-js";
 import type { ChromeProps, ChromeMode, Geometry } from "./types";
 import { usePointerDrag } from "./usePointerDrag";
 
@@ -85,67 +85,47 @@ export function PaneChrome(props: ChromeProps) {
     }
   }
 
-  function collapse() {
-    if (mode() !== "collapsed") setPrevGeo(geo());
-    setMode("collapsed");
-  }
-
-  function restore() {
-    setGeo(prevGeo());
-    setMode("normal");
-  }
-
   // ---- Render ----
 
   return (
-    <>
-      <Show when={mode() === "collapsed"}>
-        <div
-          class="pane-collapsed-chip"
-          style={{ top: `${prevGeo().y}px` }}
-          onClick={restore}
-          title={`Restore ${props.title}`}
-        >
-          {props.title.slice(0, 3)}
-        </div>
-      </Show>
+    <div
+      class="panel-chrome panel-chrome--pane"
+      style={{
+        left: `${geo().x}px`,
+        top: `${geo().y}px`,
+        width: `${geo().w}px`,
+        height: `${geo().h}px`,
+      }}
+    >
+      {/* Resize zones */}
+      <div class="pane-resize-zone pane-resize-zone--n"  onPointerDown={resizeN} />
+      <div class="pane-resize-zone pane-resize-zone--s"  onPointerDown={resizeS} />
+      <div class="pane-resize-zone pane-resize-zone--e"  onPointerDown={resizeE} />
+      <div class="pane-resize-zone pane-resize-zone--w"  onPointerDown={resizeW} />
+      <div class="pane-resize-zone pane-resize-zone--nw" onPointerDown={resizeNW} />
+      <div class="pane-resize-zone pane-resize-zone--ne" onPointerDown={resizeNE} />
+      <div class="pane-resize-zone pane-resize-zone--sw" onPointerDown={resizeSW} />
+      <div class="pane-resize-zone pane-resize-zone--se" onPointerDown={resizeSE} />
 
-      <Show when={mode() !== "collapsed"}>
-        <div
-          class="panel-chrome panel-chrome--pane"
-          style={{
-            left: `${geo().x}px`,
-            top: `${geo().y}px`,
-            width: `${geo().w}px`,
-            height: `${geo().h}px`,
-          }}
-        >
-          {/* Resize zones */}
-          <div class="pane-resize-zone pane-resize-zone--n"  onPointerDown={resizeN} />
-          <div class="pane-resize-zone pane-resize-zone--s"  onPointerDown={resizeS} />
-          <div class="pane-resize-zone pane-resize-zone--e"  onPointerDown={resizeE} />
-          <div class="pane-resize-zone pane-resize-zone--w"  onPointerDown={resizeW} />
-          <div class="pane-resize-zone pane-resize-zone--nw" onPointerDown={resizeNW} />
-          <div class="pane-resize-zone pane-resize-zone--ne" onPointerDown={resizeNE} />
-          <div class="pane-resize-zone pane-resize-zone--sw" onPointerDown={resizeSW} />
-          <div class="pane-resize-zone pane-resize-zone--se" onPointerDown={resizeSE} />
+      {/* Expand/collapse button centered on left edge */}
+      <button
+        class="pane-edge-expand-btn"
+        onClick={toggleExpand}
+        title={mode() === "expanded" ? "Collapse" : "Expand"}
+      >
+        <span class={`pane-edge-caret ${mode() === "expanded" ? "pane-edge-caret--right" : "pane-edge-caret--left"}`} />
+      </button>
 
-          {/* Title bar */}
-          <div class="panel-chrome-title-bar" onPointerDown={titleDrag}>
-            <span class="title-text">{props.title}</span>
-            <button class="chrome-btn" onClick={collapse} title="Collapse">_</button>
-            <button class="chrome-btn" onClick={toggleExpand} title="Expand">
-              {mode() === "expanded" ? "\u25A3" : "\u25A1"}
-            </button>
-            <button class="chrome-btn" onClick={() => props.onClose()} title="Close">&times;</button>
-          </div>
+      {/* Title bar */}
+      <div class="panel-chrome-title-bar" onPointerDown={titleDrag}>
+        <span class="title-text">{props.title}</span>
+        <button class="chrome-btn" onClick={() => props.onClose()} title="Close">&times;</button>
+      </div>
 
-          {/* Content */}
-          <div class="panel-chrome-content">
-            {props.children}
-          </div>
-        </div>
-      </Show>
-    </>
+      {/* Content */}
+      <div class="panel-chrome-content">
+        {props.children}
+      </div>
+    </div>
   );
 }

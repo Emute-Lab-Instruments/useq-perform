@@ -19,6 +19,11 @@
   user-select: none;
 }
 
+/* Pane needs overflow:visible so the edge expand button can extend past the left border */
+.panel-chrome--pane {
+  overflow: visible;
+}
+
 /* ---------- Title bar ---------- */
 
 .panel-chrome-title-bar {
@@ -74,6 +79,28 @@
   min-height: 0;
   overflow: auto;
   user-select: text;
+  /* Slick thin scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-color, #666) transparent;
+}
+
+.panel-chrome-content::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.panel-chrome-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-chrome-content::-webkit-scrollbar-thumb {
+  background: var(--accent-color, #666);
+  border-radius: 3px;
+}
+
+.panel-chrome-content::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-color, #888);
+  filter: brightness(1.3);
 }
 
 /* ===================================================================
@@ -88,45 +115,68 @@
   cursor: grabbing;
 }
 
-/* Resize zones: invisible 6px hit targets on edges and corners */
+/* Resize zones: invisible hit targets on edges and corners */
 .pane-resize-zone {
   position: absolute;
   z-index: 1;
 }
 
-.pane-resize-zone--n  { top: -3px;    left: 6px;     right: 6px;    height: 6px; cursor: n-resize; }
-.pane-resize-zone--s  { bottom: -3px; left: 6px;     right: 6px;    height: 6px; cursor: s-resize; }
-.pane-resize-zone--w  { left: -3px;   top: 6px;      bottom: 6px;   width: 6px;  cursor: w-resize; }
-.pane-resize-zone--e  { right: -3px;  top: 6px;      bottom: 6px;   width: 6px;  cursor: e-resize; }
-.pane-resize-zone--nw { top: -3px;    left: -3px;    width: 10px;   height: 10px; cursor: nw-resize; }
-.pane-resize-zone--ne { top: -3px;    right: -3px;   width: 10px;   height: 10px; cursor: ne-resize; }
-.pane-resize-zone--sw { bottom: -3px; left: -3px;    width: 10px;   height: 10px; cursor: sw-resize; }
-.pane-resize-zone--se { bottom: -3px; right: -3px;   width: 10px;   height: 10px; cursor: se-resize; }
+.pane-resize-zone--n  { top: -6px;    left: 18px;    right: 18px;   height: 12px; cursor: n-resize; }
+.pane-resize-zone--s  { bottom: -6px; left: 18px;    right: 18px;   height: 12px; cursor: s-resize; }
+.pane-resize-zone--w  { left: -6px;   top: 18px;     bottom: 18px;  width: 12px;  cursor: w-resize; }
+.pane-resize-zone--e  { right: -6px;  top: 18px;     bottom: 18px;  width: 12px;  cursor: e-resize; }
+.pane-resize-zone--nw { top: -6px;    left: -6px;    width: 18px;   height: 18px; cursor: nw-resize; }
+.pane-resize-zone--ne { top: -6px;    right: -6px;   width: 18px;   height: 18px; cursor: ne-resize; }
+.pane-resize-zone--sw { bottom: -6px; left: -6px;    width: 18px;   height: 18px; cursor: sw-resize; }
+.pane-resize-zone--se { bottom: -6px; right: -6px;   width: 18px;   height: 18px; cursor: se-resize; }
 
-/* Collapsed chip */
-.pane-collapsed-chip {
-  position: fixed;
-  right: 8px;
-  width: 48px;
-  height: 48px;
-  z-index: 20;
+/* Edge expand/collapse button — circle centered on left edge */
+.pane-edge-expand-btn {
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  color: var(--text-primary);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transition: background 0.15s ease;
+  padding: 0;
+  z-index: 2;
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.2);
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.pane-collapsed-chip:hover {
+.pane-edge-expand-btn:hover {
   background: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary);
+}
+
+/* CSS caret arrows inside the edge button */
+.pane-edge-caret {
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+}
+
+/* Left-pointing caret (expand) */
+.pane-edge-caret--left {
+  border-width: 5px 7px 5px 0;
+  border-color: transparent currentColor transparent transparent;
+  margin-right: 1px;
+}
+
+/* Right-pointing caret (collapse back to normal) */
+.pane-edge-caret--right {
+  border-width: 5px 0 5px 7px;
+  border-color: transparent transparent transparent currentColor;
+  margin-left: 1px;
 }
 
 /* ===================================================================
