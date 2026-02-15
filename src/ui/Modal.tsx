@@ -1,4 +1,5 @@
 import { Show, onMount, onCleanup, type JSX } from "solid-js";
+import { sanitizeHtml } from "../utils/sanitize";
 
 export type ModalProps = {
   id?: string;
@@ -8,14 +9,55 @@ export type ModalProps = {
 };
 
 export function Modal(props: ModalProps) {
+  let modalRef: HTMLDivElement | undefined;
+  let focusableElements: HTMLElement[] = [];
+
+  const getFocusableElements = (): HTMLElement[] => {
+    if (!modalRef) return [];
+    const selector =
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    return Array.from(modalRef.querySelectorAll(selector)).filter(
+      (el) => !el.hasAttribute("disabled")
+    ) as HTMLElement[];
+  };
+
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
       props.onClose();
+      return;
+    }
+
+    if (e.key === "Tab") {
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement as HTMLElement;
+
+      if (e.shiftKey) {
+        // Shift+Tab - cycle backwards
+        if (activeElement === firstElement) {
+          e.preventDefault();
+          lastElement.focus();
+        }
+      } else {
+        // Tab - cycle forwards
+        if (activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
+        }
+      }
     }
   };
 
   onMount(() => {
     document.addEventListener("keydown", handleKeyDown);
+
+    // Get focusable elements and focus the first one
+    focusableElements = getFocusableElements();
+    if (focusableElements.length > 0) {
+      focusableElements[0].focus();
+    }
   });
 
   onCleanup(() => {
@@ -30,6 +72,8 @@ export function Modal(props: ModalProps) {
     return "";
   };
 
+  const titleId = () => (props.id ? `${props.id}-title` : "modal-title");
+
   return (
     <>
       <div
@@ -41,14 +85,18 @@ export function Modal(props: ModalProps) {
         }}
       />
       <div
+        ref={modalRef}
         class={`modal ${themeClass()}`}
         id={props.id}
         style={{ display: "block", "z-index": 1001 }}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={titleId()}
       >
         <div class="modal-header">
-          <h3 class="modal-title">{props.title}</h3>
+          <h3 class="modal-title" id={titleId()}>
+            {props.title}
+          </h3>
           <button class="modal-close" onClick={props.onClose}>
             ×
           </button>
@@ -69,7 +117,7 @@ export type HtmlModalProps = {
 export function HtmlModal(props: HtmlModalProps) {
   return (
     <Modal id={props.id} title={props.title} onClose={props.onClose}>
-      <div innerHTML={props.content} />
+      <div innerHTML={sanitizeHtml(props.content)} />
     </Modal>
   );
 }

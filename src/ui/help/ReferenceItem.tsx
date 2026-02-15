@@ -9,6 +9,7 @@ import {
 } from "../../utils/referenceStore";
 import { CodeMirrorEditor } from "./CodeMirrorEditor";
 import { marked } from "marked";
+import { sanitizeHtml } from "../../utils/sanitize";
 
 export const ReferenceItem: Component<{ entry: ReferenceEntry; targetVersion: Version | null }> = (props) => {
   const isExpanded = () => referenceStore.expanded.has(props.entry.name);
@@ -85,7 +86,7 @@ export const ReferenceItem: Component<{ entry: ReferenceEntry; targetVersion: Ve
               </div>
             </Show>
 
-            <div class="doc-function-description" innerHTML={marked.parse(props.entry.description) as string} />
+            <div class="doc-function-description" innerHTML={sanitizeHtml(marked.parse(props.entry.description) as string)} />
 
             <Show when={props.entry.meta.changed}>
               <div class={`doc-function-change-note ${hasUpcomingChange() ? 'doc-function-change-note--upcoming' : ''}`}>

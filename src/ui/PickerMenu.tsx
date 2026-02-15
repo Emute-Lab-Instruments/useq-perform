@@ -236,12 +236,12 @@ export function PickerMenu(props: PickerMenuProps) {
                 }}
                 onMouseEnter={() => setActiveIdx(i())}
                 onFocus={() => setActiveIdx(i())}
-                innerHTML={
-                  item.icon
-                    ? `<i class="lucide" data-lucide="${item.icon}"></i> ${item.label}`
-                    : item.label
-                }
-              />
+              >
+                <Show when={item.icon}>
+                  <i class="lucide" data-lucide={item.icon}></i>{" "}
+                </Show>
+                {item.label}
+              </div>
             )}
           </For>
         </div>

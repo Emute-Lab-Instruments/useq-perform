@@ -1,6 +1,7 @@
 import { createEffect, onCleanup } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import { consoleStore, clearConsole, ConsoleMessageType } from "../../utils/consoleStore";
+import { sanitizeHtml } from "../../utils/sanitize";
 
 interface ConsolePanelProps {
   maxHeight?: string;
@@ -170,7 +171,7 @@ export function ConsolePanel(props: ConsolePanelProps) {
                   }}
                 >
                   <span style={{ "font-weight": "bold" }}>{getMessagePrefix(msg.type)}</span>
-                  <span innerHTML={msg.content} />
+                  <span innerHTML={sanitizeHtml(msg.content)} />
                 </div>
               );
             })}
