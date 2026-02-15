@@ -62,11 +62,11 @@ describe("TransportToolbar", () => {
   it("shows all transport buttons as disabled in none mode with stop as primary", () => {
     const { container } = render(() => <TransportToolbar />);
 
-    const play = container.querySelector("#button-play");
-    const pause = container.querySelector("#button-pause");
-    const stop = container.querySelector("#button-stop");
-    const rewind = container.querySelector("#button-rewind");
-    const clear = container.querySelector("#button-clear");
+    const play = container.querySelector("[title='Play']");
+    const pause = container.querySelector("[title='Pause']");
+    const stop = container.querySelector("[title='Stop']");
+    const rewind = container.querySelector("[title='Rewind']");
+    const clear = container.querySelector("[title='Clear']");
 
     expect(play?.classList.contains("disabled")).toBe(true);
     expect(pause?.classList.contains("disabled")).toBe(true);
@@ -83,9 +83,9 @@ describe("TransportToolbar", () => {
 
     const { container } = render(() => <TransportToolbar />);
 
-    const playBtn = container.querySelector("#button-play");
-    const pauseBtn = container.querySelector("#button-pause");
-    const stopBtn = container.querySelector("#button-stop");
+    const playBtn = container.querySelector("[title='Play']");
+    const pauseBtn = container.querySelector("[title='Pause']");
+    const stopBtn = container.querySelector("[title='Stop']");
 
     // In playing state with wasm mode: play is primary disabled
     expect(playBtn?.classList.contains("primary")).toBe(true);
@@ -116,9 +116,9 @@ describe("TransportToolbar", () => {
     // Allow reactive updates to flush
     await new Promise((r) => setTimeout(r, 0));
 
-    const playBtn = container.querySelector("#button-play");
-    const pauseBtn = container.querySelector("#button-pause");
-    const stopBtn = container.querySelector("#button-stop");
+    const playBtn = container.querySelector("[title='Play']");
+    const pauseBtn = container.querySelector("[title='Pause']");
+    const stopBtn = container.querySelector("[title='Stop']");
 
     // In paused state: pause is primary disabled
     expect(pauseBtn?.classList.contains("primary")).toBe(true);
@@ -176,7 +176,7 @@ describe("TransportToolbar", () => {
       vi.mocked(resetMockTimeGenerator).mockClear();
 
       // Now click play to go from stopped -> playing
-      const playBtn = container.querySelector("#button-play") as HTMLElement;
+      const playBtn = container.querySelector("[title='Play']") as HTMLElement;
       playBtn.click();
       await new Promise((r) => setTimeout(r, 0));
 
@@ -187,7 +187,7 @@ describe("TransportToolbar", () => {
       const { container } = render(() => <TransportToolbar />);
 
       // Machine starts in playing state. Click pause to transition.
-      const pauseBtn = container.querySelector("#button-pause") as HTMLElement;
+      const pauseBtn = container.querySelector("[title='Pause']") as HTMLElement;
       pauseBtn.click();
       await new Promise((r) => setTimeout(r, 0));
 
@@ -198,7 +198,7 @@ describe("TransportToolbar", () => {
       const { container } = render(() => <TransportToolbar />);
 
       // Machine starts in playing state. Click stop to transition.
-      const stopBtn = container.querySelector("#button-stop") as HTMLElement;
+      const stopBtn = container.querySelector("[title='Stop']") as HTMLElement;
       stopBtn.click();
       await new Promise((r) => setTimeout(r, 0));
 
@@ -244,7 +244,7 @@ describe("TransportToolbar", () => {
       const { container } = render(() => <TransportToolbar />);
 
       // Machine starts in playing -- pause is valid
-      const pauseBtn = container.querySelector("#button-pause") as HTMLElement;
+      const pauseBtn = container.querySelector("[title='Pause']") as HTMLElement;
       pauseBtn.click();
       await new Promise((r) => setTimeout(r, 0));
 
@@ -254,7 +254,7 @@ describe("TransportToolbar", () => {
     it("stop button calls stop() effect", async () => {
       const { container } = render(() => <TransportToolbar />);
 
-      const stopBtn = container.querySelector("#button-stop") as HTMLElement;
+      const stopBtn = container.querySelector("[title='Stop']") as HTMLElement;
       stopBtn.click();
       await new Promise((r) => setTimeout(r, 0));
 
@@ -275,7 +275,7 @@ describe("TransportToolbar", () => {
       await new Promise((r) => setTimeout(r, 0));
 
       vi.mocked(play).mockClear();
-      const playBtn = container.querySelector("#button-play") as HTMLElement;
+      const playBtn = container.querySelector("[title='Play']") as HTMLElement;
       playBtn.click();
       await new Promise((r) => setTimeout(r, 0));
 
@@ -285,7 +285,7 @@ describe("TransportToolbar", () => {
     it("rewind button calls rewind() effect", async () => {
       const { container } = render(() => <TransportToolbar />);
 
-      const rewindBtn = container.querySelector("#button-rewind") as HTMLElement;
+      const rewindBtn = container.querySelector("[title='Rewind']") as HTMLElement;
       rewindBtn.click();
       await new Promise((r) => setTimeout(r, 0));
 
@@ -295,7 +295,7 @@ describe("TransportToolbar", () => {
     it("clear button calls clear() effect", async () => {
       const { container } = render(() => <TransportToolbar />);
 
-      const clearBtn = container.querySelector("#button-clear") as HTMLElement;
+      const clearBtn = container.querySelector("[title='Clear']") as HTMLElement;
       clearBtn.click();
       await new Promise((r) => setTimeout(r, 0));
 
@@ -327,7 +327,7 @@ describe("TransportToolbar", () => {
       expect(syncWasmTransportState).toHaveBeenCalledWith("paused");
 
       // UI should reflect paused state
-      const pauseBtn = container.querySelector("#button-pause");
+      const pauseBtn = container.querySelector("[title='Pause']");
       expect(pauseBtn?.classList.contains("primary")).toBe(true);
       expect(pauseBtn?.classList.contains("disabled")).toBe(true);
     });
@@ -356,7 +356,7 @@ describe("TransportToolbar", () => {
       const { container } = render(() => <TransportToolbar />);
 
       // Verify buttons are enabled initially
-      const playBtn = container.querySelector("#button-play");
+      const playBtn = container.querySelector("[title='Play']");
       // play is primary+disabled in playing state but NOT because of none mode
 
       // Now simulate settings change to disable WASM
@@ -365,8 +365,8 @@ describe("TransportToolbar", () => {
       await new Promise((r) => setTimeout(r, 0));
 
       // All buttons should now be disabled
-      const rewindBtn = container.querySelector("#button-rewind");
-      const clearBtn = container.querySelector("#button-clear");
+      const rewindBtn = container.querySelector("[title='Rewind']");
+      const clearBtn = container.querySelector("[title='Clear']");
       expect(rewindBtn?.classList.contains("disabled")).toBe(true);
       expect(clearBtn?.classList.contains("disabled")).toBe(true);
     });

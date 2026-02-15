@@ -102,14 +102,15 @@ export function TileChrome(props: ChromeProps) {
               class="chrome-btn"
               onClick={() => setPickerOpen(!pickerOpen())}
               title="Layout"
+              aria-label="Layout"
             >
               &#9638;
             </button>
-            <button class="chrome-btn" onClick={collapse} title="Collapse">_</button>
-            <button class="chrome-btn" onClick={toggleExpand} title="Expand">
+            <button class="chrome-btn" onClick={collapse} title="Collapse" aria-label="Collapse">_</button>
+            <button class="chrome-btn" onClick={toggleExpand} title="Expand" aria-label="Expand">
               {mode() === "expanded" ? "\u25A3" : "\u25A1"}
             </button>
-            <button class="chrome-btn" onClick={() => props.onClose()} title="Close">&times;</button>
+            <button class="chrome-btn" onClick={() => props.onClose()} title="Close" aria-label="Close">&times;</button>
 
             {/* Layout picker popover */}
             <Show when={pickerOpen()}>

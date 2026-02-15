@@ -216,49 +216,60 @@ export function TransportToolbar() {
   const clearButtonClass = () =>
     `toolbar-button ${isModeNone() ? "disabled" : ""}`;
 
+  const isPlayDisabled = () => isModeNone() || isPlaying();
+  const isPauseDisabled = () => isModeNone() || isPaused() || isStopped();
+  const isStopDisabled = () => isModeNone() || isStopped();
+  const isRewindDisabled = () => isModeNone();
+  const isClearDisabled = () => isModeNone();
+
   return (
     <div id="panel-top-toolbar" ref={toolbarRef}>
       <div class="toolbar-row">
-        <a
+        <button
           class={playButtonClass()}
-          id="button-play"
           title="Play"
+          aria-label="Play"
+          disabled={isPlayDisabled()}
           onClick={() => !isPlaying() && send({ type: "PLAY" })}
         >
           <i data-lucide="play"></i>
-        </a>
-        <a
+        </button>
+        <button
           class={pauseButtonClass()}
-          id="button-pause"
           title="Pause"
+          aria-label="Pause"
+          disabled={isPauseDisabled()}
           onClick={() => !isPaused() && !isStopped() && send({ type: "PAUSE" })}
         >
           <i data-lucide="pause"></i>
-        </a>
-        <a
+        </button>
+        <button
           class={stopButtonClass()}
-          id="button-stop"
           title="Stop"
+          aria-label="Stop"
+          disabled={isStopDisabled()}
           onClick={() => !isStopped() && send({ type: "STOP" })}
         >
           <i data-lucide="square"></i>
-        </a>
-        <a
+        </button>
+        <button
           class={rewindButtonClass()}
-          id="button-rewind"
           title="Rewind"
+          aria-label="Rewind"
+          disabled={isRewindDisabled()}
           onClick={() => send({ type: "REWIND" })}
         >
           <i data-lucide="rewind"></i>
-        </a>
-        <a
+        </button>
+        <button
           class={clearButtonClass()}
-          id="button-clear"
           title="Clear"
+          aria-label="Clear"
+          disabled={isClearDisabled()}
           onClick={() => send({ type: "CLEAR" })}
         >
           <i data-lucide="x"></i>
-        </a>
+        </button>
       </div>
       <ProgressBar />
     </div>

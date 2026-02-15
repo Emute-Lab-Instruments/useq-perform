@@ -65,11 +65,11 @@ export function DrawerChrome(props: ChromeProps) {
           {/* Title bar */}
           <div class="panel-chrome-title-bar">
             <span class="title-text">{props.title}</span>
-            <button class="chrome-btn" onClick={collapse} title="Collapse">&laquo;</button>
-            <button class="chrome-btn" onClick={toggleExpand} title="Expand">
+            <button class="chrome-btn" onClick={collapse} title="Collapse" aria-label="Collapse">&laquo;</button>
+            <button class="chrome-btn" onClick={toggleExpand} title="Expand" aria-label="Expand">
               {mode() === "expanded" ? "\u25C0" : "\u25B6"}
             </button>
-            <button class="chrome-btn" onClick={() => props.onClose()} title="Close">&times;</button>
+            <button class="chrome-btn" onClick={() => props.onClose()} title="Close" aria-label="Close">&times;</button>
           </div>
 
           {/* Content */}

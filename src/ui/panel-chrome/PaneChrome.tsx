@@ -119,7 +119,7 @@ export function PaneChrome(props: ChromeProps) {
       {/* Title bar */}
       <div class="panel-chrome-title-bar" onPointerDown={titleDrag}>
         <span class="title-text">{props.title}</span>
-        <button class="chrome-btn" onClick={() => props.onClose()} title="Close">&times;</button>
+        <button class="chrome-btn" onClick={() => props.onClose()} title="Close" aria-label="Close">&times;</button>
       </div>
 
       {/* Content */}

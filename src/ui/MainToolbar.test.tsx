@@ -38,20 +38,20 @@ describe("MainToolbar", () => {
   it("renders all toolbar buttons", () => {
     const { container } = render(() => <MainToolbar />);
 
-    expect(container.querySelector("#button-connect")).toBeTruthy();
-    expect(container.querySelector("#button-graph")).toBeTruthy();
-    expect(container.querySelector("#button-load")).toBeTruthy();
-    expect(container.querySelector("#button-save")).toBeTruthy();
-    expect(container.querySelector("#button-decrease-font")).toBeTruthy();
-    expect(container.querySelector("#button-increase-font")).toBeTruthy();
-    expect(container.querySelector("#button-help")).toBeTruthy();
-    expect(container.querySelector("#button-settings")).toBeTruthy();
+    expect(container.querySelector(`[title="Connect"]`)).toBeTruthy();
+    expect(container.querySelector(`[title="Graph"]`)).toBeTruthy();
+    expect(container.querySelector(`[title="Load Code"]`)).toBeTruthy();
+    expect(container.querySelector(`[title="Save Code"]`)).toBeTruthy();
+    expect(container.querySelector(`[title="Font size--"]`)).toBeTruthy();
+    expect(container.querySelector(`[title="Font size++"]`)).toBeTruthy();
+    expect(container.querySelector(`[title="Help!"]`)).toBeTruthy();
+    expect(container.querySelector(`[title="Settings"]`)).toBeTruthy();
   });
 
   it("renders connect button with disconnected class when not connected", () => {
     const { container } = render(() => <MainToolbar />);
 
-    const connectBtn = container.querySelector("#button-connect");
+    const connectBtn = container.querySelector(`[title="Connect"]`);
     expect(connectBtn?.classList.contains("disconnected")).toBe(true);
     expect(connectBtn?.classList.contains("connected")).toBe(false);
   });
@@ -61,7 +61,7 @@ describe("MainToolbar", () => {
 
     const { container } = render(() => <MainToolbar />);
 
-    const connectBtn = container.querySelector("#button-connect");
+    const connectBtn = container.querySelector(`[title="Connect"]`);
     expect(connectBtn?.classList.contains("connected")).toBe(true);
     expect(connectBtn?.classList.contains("disconnected")).toBe(false);
   });
@@ -69,7 +69,7 @@ describe("MainToolbar", () => {
   it("updates connect button class on useq-connection-changed event", () => {
     const { container } = render(() => <MainToolbar />);
 
-    const connectBtn = container.querySelector("#button-connect");
+    const connectBtn = container.querySelector(`[title="Connect"]`);
     expect(connectBtn?.classList.contains("disconnected")).toBe(true);
 
     window.dispatchEvent(
@@ -94,7 +94,7 @@ describe("MainToolbar", () => {
   it("does not render devmode button when devmode is false", () => {
     const { container } = render(() => <MainToolbar />);
 
-    expect(container.querySelector("#button-devmode")).toBeNull();
+    expect(container.querySelector(`[title="Dev Mode Tools"]`)).toBeNull();
   });
 
   it("renders devmode button when devmode is true", async () => {
@@ -107,7 +107,7 @@ describe("MainToolbar", () => {
 
     const { container } = render(() => <MainToolbar />);
 
-    expect(container.querySelector("#button-devmode")).toBeTruthy();
+    expect(container.querySelector(`[title="Dev Mode Tools"]`)).toBeTruthy();
 
     // restore
     Object.defineProperty(urlParams, "devmode", {

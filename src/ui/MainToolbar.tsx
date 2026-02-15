@@ -35,88 +35,88 @@ export function MainToolbar() {
   return (
     <div id="panel-toolbar">
       <div class="toolbar-row">
-        <a 
-          class={`toolbar-button ${isConnected() ? 'connected' : 'disconnected'}`} 
-          id="button-connect" 
+        <button
+          class={`toolbar-button ${isConnected() ? 'connected' : 'disconnected'}`}
           title="Connect"
+          aria-label="Connect"
           onClick={() => run(toggleConnection())}
         >
           <i data-lucide="cable"></i>
-        </a>
-        <a 
-          class="toolbar-button" 
-          id="button-graph" 
+        </button>
+        <button
+          class="toolbar-button"
           title="Graph"
+          aria-label="Graph"
           onClick={() => run(toggleGraph())}
         >
           <i data-lucide="chart-spline"></i>
-        </a>
+        </button>
       </div>
-      
+
       <div class="toolbar-row">
-        <a 
-          class="toolbar-button" 
-          id="button-load" 
+        <button
+          class="toolbar-button"
           title="Load Code"
+          aria-label="Load Code"
           onClick={() => run(loadCode())}
         >
           <i data-lucide="file"></i>
-        </a>
-        <a 
-          class="toolbar-button" 
-          id="button-save" 
+        </button>
+        <button
+          class="toolbar-button"
           title="Save Code"
+          aria-label="Save Code"
           onClick={() => run(saveCode())}
         >
           <i data-lucide="save"></i>
-        </a>
+        </button>
       </div>
-      
+
       <div class="toolbar-row">
-        <a 
-          class="toolbar-button" 
-          id="button-decrease-font" 
+        <button
+          class="toolbar-button"
           title="Font size--"
+          aria-label="Font size--"
           onClick={() => run(adjustFontSize(-1))}
         >
           <i data-lucide="a-arrow-down"></i>
-        </a>
-        <a 
-          class="toolbar-button" 
-          id="button-increase-font" 
+        </button>
+        <button
+          class="toolbar-button"
           title="Font size++"
+          aria-label="Font size++"
           onClick={() => run(adjustFontSize(1))}
         >
           <i data-lucide="a-arrow-up"></i>
-        </a>
+        </button>
       </div>
-      
+
       <div class="toolbar-row">
-        <a 
-          class="toolbar-button" 
-          id="button-help" 
+        <button
+          class="toolbar-button"
           title="Help!"
+          aria-label="Help!"
           onClick={() => run(togglePanel("#panel-help"))}
         >
           <i data-lucide="circle-help"></i>
-        </a>
-        <a 
-          class="toolbar-button" 
-          id="button-settings" 
+        </button>
+        <button
+          class="toolbar-button"
           title="Settings"
+          aria-label="Settings"
           onClick={() => run(togglePanel("#panel-settings"))}
         >
           <i data-lucide="settings"></i>
-        </a>
+        </button>
         <Show when={devmode}>
-          <a 
-            class="toolbar-button" 
-            id="button-devmode" 
+          <button
+            class="toolbar-button"
             title="Dev Mode Tools"
+            aria-label="Dev Mode Tools"
             onClick={() => run(togglePanel("#panel-devmode"))}
           >
             <i data-lucide="wrench"></i>
-          </a>
+          </button>
         </Show>
       </div>
     </div>
