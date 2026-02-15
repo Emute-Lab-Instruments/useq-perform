@@ -33,6 +33,12 @@ Web-based live coding interface for the uSEQ hardware module.
 
 The application uses a single-bundle Vite build. UI components are mounted via adapter modules that provide imperative APIs (e.g., `mountSettingsPanel()`, `showModal()`). Legacy code imports these adapters directly instead of using separate entrypoints or bridge APIs.
 
+## Dev-Mode Component Labels
+
+During `npm run dev`, every Solid component's root element is automatically annotated with `data-component` and `data-source` attributes via a Babel plugin (`plugins/babel-solid-label.cjs`). These are stripped from production builds.
+
+Inspect any element in browser devtools to see the component name and source file path — useful for navigating the codebase or giving AI coding agents a precise pointer.
+
 ## URL Parameters
 
 - `?nosave` - do not read/write local storage.
