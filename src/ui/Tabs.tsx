@@ -1,9 +1,10 @@
-import { createSignal, For, JSX } from "solid-js";
+import { createSignal, For, Show, JSX } from "solid-js";
 
 export interface Tab {
   id: string;
   name: string;
-  content: JSX.Element;
+  /** Render function called lazily when the tab becomes active. */
+  content: () => JSX.Element;
 }
 
 export interface TabsProps {
@@ -35,13 +36,11 @@ export function Tabs(props: TabsProps) {
       <div class="panel-tab-window">
         <For each={props.tabs}>
           {(tab) => (
-            <div
-              class="panel-tab"
-              classList={{ active: activeTabId() === tab.id }}
-              id={tab.id}
-            >
-              {tab.content}
-            </div>
+            <Show when={activeTabId() === tab.id}>
+              <div class="panel-tab active" id={tab.id}>
+                {tab.content()}
+              </div>
+            </Show>
           )}
         </For>
       </div>

@@ -9,22 +9,22 @@ export function HelpPanel() {
     {
       id: "panel-help-tab-guide",
       name: "User Guide",
-      content: <UserGuideTab />,
+      content: () => <UserGuideTab />,
     },
     {
       id: "panel-help-tab-reference",
       name: "ModuLisp Reference",
-      content: <ModuLispReferenceTab />,
+      content: () => <ModuLispReferenceTab />,
     },
     {
       id: "panel-help-tab-snippets",
       name: "Code Snippets",
-      content: <CodeSnippetsTab />,
+      content: () => <CodeSnippetsTab />,
     },
     {
-      id: "panel-settings-tab-keybindings",
+      id: "panel-help-tab-keybindings",
       name: "Keybindings",
-      content: <KeybindingsTab />,
+      content: () => <KeybindingsTab />,
     },
   ];
 

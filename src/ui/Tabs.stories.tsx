@@ -21,9 +21,9 @@ type Story = StoryObj;
 export const Default: Story = {
   args: {
     tabs: [
-      { id: "tab1", name: "Tab 1", content: <div>Content 1</div> },
-      { id: "tab2", name: "Tab 2", content: <div>Content 2</div> },
-      { id: "tab3", name: "Tab 3", content: <div>Content 3</div> },
+      { id: "tab1", name: "Tab 1", content: () => <div>Content 1</div> },
+      { id: "tab2", name: "Tab 2", content: () => <div>Content 2</div> },
+      { id: "tab3", name: "Tab 3", content: () => <div>Content 3</div> },
     ],
   },
 };

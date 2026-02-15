@@ -151,62 +151,59 @@ export function mountPickerMenu(root?: HTMLElement): void {
 
   const el = root || ensurePickerRoot();
   render(
-    () => {
-      const state = menuState();
-      return (
-        <Show when={state.kind !== "closed"}>
-          <div style={{ "pointer-events": "auto" }}>
-            <Show when={state.kind === "picker" && state}>
-              {(s) => {
-                const st = s() as Extract<MenuState, { kind: "picker" }>;
-                return (
-                  <PickerMenu
-                    items={st.opts.items}
-                    onSelect={st.opts.onSelect}
-                    onClose={closeMenu}
-                    title={st.opts.title}
-                    layout={st.opts.layout}
-                    initialIndex={st.opts.initialIndex}
-                  />
-                );
-              }}
-            </Show>
-            <Show when={state.kind === "number" && state}>
-              {(s) => {
-                const st = s() as Extract<MenuState, { kind: "number" }>;
-                return (
-                  <NumberPickerMenu
-                    onSelect={st.opts.onSelect}
-                    onClose={closeMenu}
-                    title={st.opts.title}
-                    initialValue={st.opts.initialValue}
-                    min={st.opts.min}
-                    max={st.opts.max}
-                    step={st.opts.step}
-                  />
-                );
-              }}
-            </Show>
-            <Show when={state.kind === "hierarchical" && state}>
-              {(s) => {
-                const st = s() as Extract<MenuState, { kind: "hierarchical" }>;
-                return (
-                  <HierarchicalPickerMenu
-                    categories={st.categories}
-                    title={st.title}
-                    onSelect={(item) => {
-                      st.onSelect(item);
-                      closeMenu();
-                    }}
-                    onClose={closeMenu}
-                  />
-                );
-              }}
-            </Show>
-          </div>
-        </Show>
-      );
-    },
+    () => (
+      <Show when={menuState().kind !== "closed"}>
+        <div style={{ "pointer-events": "auto" }}>
+          <Show when={menuState().kind === "picker" ? menuState() : false}>
+            {(s) => {
+              const st = s() as Extract<MenuState, { kind: "picker" }>;
+              return (
+                <PickerMenu
+                  items={st.opts.items}
+                  onSelect={st.opts.onSelect}
+                  onClose={closeMenu}
+                  title={st.opts.title}
+                  layout={st.opts.layout}
+                  initialIndex={st.opts.initialIndex}
+                />
+              );
+            }}
+          </Show>
+          <Show when={menuState().kind === "number" ? menuState() : false}>
+            {(s) => {
+              const st = s() as Extract<MenuState, { kind: "number" }>;
+              return (
+                <NumberPickerMenu
+                  onSelect={st.opts.onSelect}
+                  onClose={closeMenu}
+                  title={st.opts.title}
+                  initialValue={st.opts.initialValue}
+                  min={st.opts.min}
+                  max={st.opts.max}
+                  step={st.opts.step}
+                />
+              );
+            }}
+          </Show>
+          <Show when={menuState().kind === "hierarchical" ? menuState() : false}>
+            {(s) => {
+              const st = s() as Extract<MenuState, { kind: "hierarchical" }>;
+              return (
+                <HierarchicalPickerMenu
+                  categories={st.categories}
+                  title={st.title}
+                  onSelect={(item) => {
+                    st.onSelect(item);
+                    closeMenu();
+                  }}
+                  onClose={closeMenu}
+                />
+              );
+            }}
+          </Show>
+        </div>
+      </Show>
+    ),
     el,
   );
 }

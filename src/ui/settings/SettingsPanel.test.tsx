@@ -29,9 +29,11 @@ describe("SettingsPanel", () => {
     expect(generalBtn).toHaveClass("active");
   });
 
-  it("renders both tab contents in DOM", () => {
+  it("renders only the active tab content in DOM", () => {
     render(() => <SettingsPanel />);
+    // General tab is active by default
     expect(screen.getByTestId("general-settings")).toBeTruthy();
-    expect(screen.getByTestId("theme-settings")).toBeTruthy();
+    // Inactive tab content should not be in the DOM (lazy rendering)
+    expect(screen.queryByTestId("theme-settings")).toBeNull();
   });
 });

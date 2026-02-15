@@ -7,12 +7,12 @@ export function SettingsPanel() {
     {
       id: "general-settings-tab",
       name: "General",
-      content: <GeneralSettings />,
+      content: () => <GeneralSettings />,
     },
     {
       id: "theme-settings-tab",
       name: "Themes",
-      content: <ThemeSettings />,
+      content: () => <ThemeSettings />,
     },
   ];
 
