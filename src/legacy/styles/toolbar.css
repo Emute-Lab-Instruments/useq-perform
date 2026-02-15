@@ -110,32 +110,28 @@
     opacity: 0.5;
     pointer-events: none;
   }
-  
-  #button-connect {
+
+  /* Connection button styling - matches first toolbar button */
+  .toolbar-row:first-child .toolbar-button:first-child {
     box-shadow: 0 0 20px var(--accent-color);
     transform-origin: center;
     transition: transform 0.2s ease-in-out;
   }
-  
-  #button-connect:hover {
+
+  .toolbar-row:first-child .toolbar-button:first-child:hover {
     box-shadow: 0 0 20px var(--accent-color-hover);
   }
-  
+
   /* High-specificity selector for connected state */
-  #button-connect.connected {
+  .toolbar-row:first-child .toolbar-button.connected {
     color: rgba(0, 255, 0, 0.75) !important;
     box-shadow: 0 0 20px rgba(0, 255, 0, 0.6) !important;
   }
-  
+
   /* High-specificity selector for disconnected state */
-  #button-connect.disconnected {
+  .toolbar-row:first-child .toolbar-button.disconnected {
     box-shadow: 0 0 20px rgba(255, 0, 0, 0.6) !important;
     color: rgba(255, 0, 0, 0.75) !important;
-  }
-  
-   /* High-specificity selector for disconnected state */
-   #button-connect.plugged-in {
-    color: rgba(255, 255, 0, 0.8) !important;
   }
 
   @media all and (max-width:30em) {

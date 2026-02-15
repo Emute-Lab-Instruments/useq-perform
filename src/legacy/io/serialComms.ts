@@ -179,29 +179,16 @@ export function setConnectedToModule(connected: boolean): void {
 
   // Update code highlight color
   setCodeHighlightColor(connected);
-  // Make sure the DOM is ready before modifying the 'connect' button
-  setTimeout(() => {
-    const button = document.getElementById("button-connect");
-    if (button) {
-      button.classList.remove("plugged-in");
 
-      if (connected) {
-        button.classList.remove("disconnected");
-        button.classList.add("connected");
-      } else {
-        button.classList.remove("connected");
-        button.classList.add("disconnected");
-      }
-    } else {
-      console.log("Button not found when trying to set color!");
-    }
-    // Notify other UI components about connection status changes
-    try {
+  // Notify UI components about connection status changes via custom event.
+  // Solid toolbars listen to this event to update their own state.
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
       window.dispatchEvent(new CustomEvent('useq-connection-changed', { detail: { connected } }));
-    } catch (_e) {
-      // no-op if window not available
     }
-  }, 0);
+  } catch (_e) {
+    // no-op if window not available
+  }
 }
 
 export function isConnectedToModule(): boolean {
@@ -752,23 +739,17 @@ function handleNotConnected(): void {
 }
 
 /**
- * Animate the connect button to draw attention
+ * Dispatch an event to animate the connect button to draw attention.
+ * Solid toolbars can listen to this event to provide visual feedback.
  */
 function animateConnectButton(): void {
-  const button = document.getElementById("button-connect");
-  if (!button) return;
-
-  button.animate([
-    { transform: 'scale(1)' },
-    { transform: 'scale(1.2)' },
-    { transform: 'scale(1)' },
-    { transform: 'rotate(-3deg)' },
-    { transform: 'rotate(3deg)' },
-    { transform: 'rotate(0deg)' }
-  ], {
-    duration: 700,
-    easing: 'ease-in-out'
-  });
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('useq-animate-connect'));
+    }
+  } catch (_e) {
+    // no-op if window not available
+  }
 }
 
 
@@ -1230,10 +1211,11 @@ export function checkForWebserialSupport(): boolean {
       console.log(e);
       const port = getSerialPort();
       if (port) {
-        const connectBtn = document.getElementById("button-connect");
-        if (connectBtn) {
-          connectBtn.classList.remove("connected", "disconnected");
-          connectBtn.classList.add("plugged-in");
+        // Notify UI that physical device was plugged in
+        try {
+          window.dispatchEvent(new CustomEvent('useq-device-plugged-in'));
+        } catch (_e) {
+          // no-op if window not available
         }
         toggleConnect();
       }

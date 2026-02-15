@@ -103,9 +103,7 @@ export async function createAppUI(environmentState: any) {
         settingsPanel: document.getElementById("panel-settings") || null,
         helpPanel: document.getElementById("panel-help") || null,
         logConsole: null,
-        toolbar: getToolbarComponents(),
         statusBar: getStatusBarComponent(),
-        transportControls: getTransportControlsComponent(),
     };
 }
 
@@ -124,32 +122,6 @@ function initEventHandlers() {
     });
 }
 
-function getToolbarComponents() {
-    return {
-        connectionBtn: document.getElementById("button-connect"),
-        visBtn: document.getElementById("button-graph"),
-        saveBtn: document.getElementById("button-save"),
-        loadBtn: document.getElementById("button-load"),
-        fontDecreaseBtn: document.getElementById("button-decrease-font"),
-        fontIncreaseBtn: document.getElementById("button-increase-font"),
-        undoBtn: document.getElementById("button-undo"),
-        redoBtn: document.getElementById("button-redo"),
-        helpBtn: document.getElementById("button-help"),
-        settingsBtn: document.getElementById("button-settings"),
-        devmodeBtn: document.getElementById("button-devmode")
-    };
-}
-
 function getStatusBarComponent() {
     return document.getElementById("status-bar") || null;
-}
-
-function getTransportControlsComponent() {
-    return {
-        playBtn: document.getElementById("button-play"),
-        pauseBtn: document.getElementById("button-pause"),
-        stopBtn: document.getElementById("button-stop"),
-        rewindBtn: document.getElementById("button-rewind"),
-        clearBtn: document.getElementById("button-clear")
-    };
 }

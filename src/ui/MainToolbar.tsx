@@ -11,6 +11,7 @@ declare const lucide: any;
 
 export function MainToolbar() {
   const [isConnected, setIsConnected] = createSignal(isConnectedToModule());
+  let connectButtonRef: HTMLButtonElement | undefined;
 
   const handleConnectionChange = (e: Event) => {
     const detail = (e as CustomEvent).detail;
@@ -19,8 +20,25 @@ export function MainToolbar() {
     }
   };
 
+  const handleAnimateConnect = () => {
+    if (connectButtonRef) {
+      connectButtonRef.animate([
+        { transform: 'scale(1)' },
+        { transform: 'scale(1.2)' },
+        { transform: 'scale(1)' },
+        { transform: 'rotate(-3deg)' },
+        { transform: 'rotate(3deg)' },
+        { transform: 'rotate(0deg)' }
+      ], {
+        duration: 700,
+        easing: 'ease-in-out'
+      });
+    }
+  };
+
   onMount(() => {
     window.addEventListener("useq-connection-changed", handleConnectionChange);
+    window.addEventListener("useq-animate-connect", handleAnimateConnect);
     if (typeof lucide !== "undefined") {
       lucide.createIcons();
     }
@@ -28,6 +46,7 @@ export function MainToolbar() {
 
   onCleanup(() => {
     window.removeEventListener("useq-connection-changed", handleConnectionChange);
+    window.removeEventListener("useq-animate-connect", handleAnimateConnect);
   });
 
   const run = (effect: Effect.Effect<any, any, any>) => Effect.runPromise(effect);
@@ -36,6 +55,7 @@ export function MainToolbar() {
     <div id="panel-toolbar">
       <div class="toolbar-row">
         <button
+          ref={connectButtonRef}
           class={`toolbar-button ${isConnected() ? 'connected' : 'disconnected'}`}
           title="Connect"
           aria-label="Connect"
