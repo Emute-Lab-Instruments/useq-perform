@@ -210,10 +210,10 @@ export function softEval(opts: EvalOpts): boolean {
 }
 
 export function toggleHelp(): boolean {
-  const el = document.getElementById("panel-help");
-  if (el) {
-    el.style.display = el.style.display === "none" ? "" : "none";
-  }
+  // Delegate to the Solid panels adapter signal system
+  import("../../ui/adapters/panels.tsx")
+    .then((m) => m.togglePanelVisibility("help"))
+    .catch(() => {});
   return true;
 }
 

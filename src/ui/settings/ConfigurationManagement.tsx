@@ -1,5 +1,5 @@
 import { saveConfiguration, loadConfigurationFromFile, previewConfiguration, importConfiguration } from "../../legacy/config/configManager.ts";
-import { Section } from "./shared";
+import { Section } from "./FormControls";
 
 export function ConfigurationManagement() {
   const handleExport = async () => {

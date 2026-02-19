@@ -1,5 +1,5 @@
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
-import { Section, FormRow, Checkbox } from "./shared";
+import { Section, FormRow, Checkbox } from "./FormControls";
 
 export function AdvancedSettings() {
   const handleWasmEnabledChange = (enabled: boolean) => {

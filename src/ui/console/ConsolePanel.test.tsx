@@ -76,9 +76,9 @@ describe("ConsolePanel", () => {
     addConsoleMessage("wasm msg", "wasm");
     addConsoleMessage("log msg", "log");
 
-    // Check prefixes are rendered (they're in bold spans)
+    // Check prefixes are rendered (they're in .console-panel-prefix spans)
     const container = document.body;
-    const boldSpans = container.querySelectorAll("span[style*='font-weight']");
+    const boldSpans = container.querySelectorAll(".console-panel-prefix");
     const prefixes = Array.from(boldSpans).map((el) => el.textContent?.trim());
 
     // Should have prefixes for each message type

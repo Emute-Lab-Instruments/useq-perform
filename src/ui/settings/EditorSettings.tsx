@@ -1,5 +1,5 @@
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
-import { Section, FormRow, Select, NumberInput, Checkbox } from "./shared";
+import { Section, FormRow, Select, NumberInput, Checkbox } from "./FormControls";
 import { themes, setMainEditorTheme } from "../../legacy/editors/themes/themeManager.ts";
 import { setFontSize } from "../../legacy/editors/editorConfig.ts";
 import { EditorView } from "@codemirror/view";

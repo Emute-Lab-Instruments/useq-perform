@@ -107,12 +107,7 @@ function adjustPanelsToTheme(themeName) {
     consolePanel.style.borderColor = themeRecipe.settings.foreground;
   }
 
-  // Update help panel
-  const helpPanel = document.getElementById("panel-help");
-  if (helpPanel) {
-    helpPanel.style.backgroundColor = adjustedHelpBackground + "F0"; // Add 94% opacity
-    helpPanel.style.color = foregroundColor;
-  }
+  // Note: help panel is now a Solid component with CSS-variable-based theming; no DOM update needed.
 
   // Update toolbar panel
   const toolbarPanel = document.getElementById("panel-toolbar");

@@ -8,7 +8,7 @@ import {
   Checkbox,
   Select,
   RangeInput,
-} from "./shared";
+} from "./FormControls";
 
 describe("Section", () => {
   it("renders title and children", () => {

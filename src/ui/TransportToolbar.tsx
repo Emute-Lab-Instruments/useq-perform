@@ -22,9 +22,7 @@ import {
   resetMockTimeGenerator,
 } from "../legacy/io/mockTimeGenerator.ts";
 import { ProgressBar } from "./ProgressBar";
-
-// We'll need a way to call createIcons since we're using data-lucide attributes
-declare const lucide: any;
+import { Play, Pause, Square, Rewind, X } from "lucide-solid";
 
 /**
  * Determine whether the mock time generator should drive visualizations.
@@ -159,10 +157,6 @@ export function TransportToolbar() {
   };
 
   onMount(() => {
-    if (typeof lucide !== "undefined") {
-      lucide.createIcons();
-    }
-
     // Set initial mode
     refreshMode();
 
@@ -232,7 +226,7 @@ export function TransportToolbar() {
           disabled={isPlayDisabled()}
           onClick={() => !isPlaying() && send({ type: "PLAY" })}
         >
-          <i data-lucide="play"></i>
+          <Play />
         </button>
         <button
           class={pauseButtonClass()}
@@ -241,7 +235,7 @@ export function TransportToolbar() {
           disabled={isPauseDisabled()}
           onClick={() => !isPaused() && !isStopped() && send({ type: "PAUSE" })}
         >
-          <i data-lucide="pause"></i>
+          <Pause />
         </button>
         <button
           class={stopButtonClass()}
@@ -250,7 +244,7 @@ export function TransportToolbar() {
           disabled={isStopDisabled()}
           onClick={() => !isStopped() && send({ type: "STOP" })}
         >
-          <i data-lucide="square"></i>
+          <Square />
         </button>
         <button
           class={rewindButtonClass()}
@@ -259,7 +253,7 @@ export function TransportToolbar() {
           disabled={isRewindDisabled()}
           onClick={() => send({ type: "REWIND" })}
         >
-          <i data-lucide="rewind"></i>
+          <Rewind />
         </button>
         <button
           class={clearButtonClass()}
@@ -268,7 +262,7 @@ export function TransportToolbar() {
           disabled={isClearDisabled()}
           onClick={() => send({ type: "CLEAR" })}
         >
-          <i data-lucide="x"></i>
+          <X />
         </button>
       </div>
       <ProgressBar />

@@ -34,7 +34,7 @@ import {
 } from "../../ui/adapters/picker-menu.tsx";
 
 // Import virtual gamepad state directly (no island dependency)
-import { getVirtualGamepadState } from "../../ui/VirtualGamepad.tsx";
+import { getVirtualGamepadState } from "../../utils/virtualGamepad";
 import { sendSerialInputStreamValue } from "../io/serialComms.ts";
 import {
   clearManualControlBinding,

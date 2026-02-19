@@ -5,7 +5,7 @@
  * can be imported directly without requiring a separate script tag.
  */
 import { render } from "solid-js/web";
-import { Show, createSignal } from "solid-js";
+import { Show, createSignal, type Component } from "solid-js";
 import {
   PickerMenu,
   NumberPickerMenu,
@@ -13,6 +13,27 @@ import {
   type PickerMenuProps,
   type NumberPickerMenuProps,
 } from "../PickerMenu";
+
+/**
+ * Icons available in picker menus. Populated lazily at mount time via dynamic import
+ * so this module remains safe to import in Node.js/mocha test environments.
+ * Add new lucide-solid imports in initIcons() below when new icons are needed.
+ */
+const iconRegistry: Record<string, Component> = {};
+
+async function initIcons(): Promise<void> {
+  try {
+    const { Calculator, Clock, ArrowLeftRight, Wrench } = await import("lucide-solid");
+    Object.assign(iconRegistry, {
+      calculator: Calculator,
+      clock: Clock,
+      "arrow-left-right": ArrowLeftRight,
+      wrench: Wrench,
+    });
+  } catch {
+    // Non-browser or missing package — icons degrade gracefully (labels remain visible)
+  }
+}
 import {
   HierarchicalPickerMenu,
   type HierarchicalCategory,
@@ -149,6 +170,9 @@ export function mountPickerMenu(root?: HTMLElement): void {
   if (!isBrowser()) return;
   mounted = true;
 
+  // Fire-and-forget: resolves long before first user interaction opens a picker
+  void initIcons();
+
   const el = root || ensurePickerRoot();
   render(
     () => (
@@ -165,6 +189,7 @@ export function mountPickerMenu(root?: HTMLElement): void {
                   title={st.opts.title}
                   layout={st.opts.layout}
                   initialIndex={st.opts.initialIndex}
+                  iconRegistry={iconRegistry}
                 />
               );
             }}

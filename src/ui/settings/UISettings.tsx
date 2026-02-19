@@ -1,5 +1,5 @@
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
-import { Section, FormRow, Checkbox, NumberInput, Select } from "./shared";
+import { Section, FormRow, Checkbox, NumberInput, Select } from "./FormControls";
 
 export function UISettings() {
   const handleConsoleLinesLimitChange = (consoleLinesLimit: number) => {

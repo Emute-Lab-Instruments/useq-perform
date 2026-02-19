@@ -6,8 +6,7 @@ import { adjustFontSize, loadCode, saveCode } from "../effects/editor";
 import { devmode } from "../legacy/urlParams.ts";
 // @ts-ignore
 import { isConnectedToModule } from "../legacy/io/serialComms.ts";
-
-declare const lucide: any;
+import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings, Wrench } from "lucide-solid";
 
 export function MainToolbar() {
   const [isConnected, setIsConnected] = createSignal(isConnectedToModule());
@@ -39,9 +38,6 @@ export function MainToolbar() {
   onMount(() => {
     window.addEventListener("useq-connection-changed", handleConnectionChange);
     window.addEventListener("useq-animate-connect", handleAnimateConnect);
-    if (typeof lucide !== "undefined") {
-      lucide.createIcons();
-    }
   });
 
   onCleanup(() => {
@@ -61,7 +57,7 @@ export function MainToolbar() {
           aria-label="Connect"
           onClick={() => run(toggleConnection())}
         >
-          <i data-lucide="cable"></i>
+          <Cable />
         </button>
         <button
           class="toolbar-button"
@@ -69,7 +65,7 @@ export function MainToolbar() {
           aria-label="Graph"
           onClick={() => run(toggleGraph())}
         >
-          <i data-lucide="chart-spline"></i>
+          <ChartSpline />
         </button>
       </div>
 
@@ -80,7 +76,7 @@ export function MainToolbar() {
           aria-label="Load Code"
           onClick={() => run(loadCode())}
         >
-          <i data-lucide="file"></i>
+          <File />
         </button>
         <button
           class="toolbar-button"
@@ -88,7 +84,7 @@ export function MainToolbar() {
           aria-label="Save Code"
           onClick={() => run(saveCode())}
         >
-          <i data-lucide="save"></i>
+          <Save />
         </button>
       </div>
 
@@ -99,7 +95,7 @@ export function MainToolbar() {
           aria-label="Font size--"
           onClick={() => run(adjustFontSize(-1))}
         >
-          <i data-lucide="a-arrow-down"></i>
+          <AArrowDown />
         </button>
         <button
           class="toolbar-button"
@@ -107,7 +103,7 @@ export function MainToolbar() {
           aria-label="Font size++"
           onClick={() => run(adjustFontSize(1))}
         >
-          <i data-lucide="a-arrow-up"></i>
+          <AArrowUp />
         </button>
       </div>
 
@@ -118,7 +114,7 @@ export function MainToolbar() {
           aria-label="Help!"
           onClick={() => run(togglePanel("#panel-help"))}
         >
-          <i data-lucide="circle-help"></i>
+          <CircleHelp />
         </button>
         <button
           class="toolbar-button"
@@ -126,7 +122,7 @@ export function MainToolbar() {
           aria-label="Settings"
           onClick={() => run(togglePanel("#panel-settings"))}
         >
-          <i data-lucide="settings"></i>
+          <Settings />
         </button>
         <Show when={devmode}>
           <button
@@ -135,7 +131,7 @@ export function MainToolbar() {
             aria-label="Dev Mode Tools"
             onClick={() => run(togglePanel("#panel-devmode"))}
           >
-            <i data-lucide="wrench"></i>
+            <Wrench />
           </button>
         </Show>
       </div>

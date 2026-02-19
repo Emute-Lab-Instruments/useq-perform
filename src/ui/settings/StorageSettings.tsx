@@ -1,5 +1,5 @@
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
-import { Section, FormRow, Checkbox, NumberInput } from "./shared";
+import { Section, FormRow, Checkbox, NumberInput } from "./FormControls";
 
 export function StorageSettings() {
   const handleSaveLocallyChange = (saveCodeLocally: boolean) => {

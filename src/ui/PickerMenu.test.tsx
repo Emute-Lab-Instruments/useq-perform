@@ -5,12 +5,7 @@ import { HierarchicalPickerMenu } from "./HierarchicalPickerMenu";
 import type { PickerMenuItem } from "./PickerMenu";
 import type { HierarchicalCategory } from "./HierarchicalPickerMenu";
 
-beforeEach(() => {
-  vi.stubGlobal("lucide", { createIcons: vi.fn() });
-});
-
 afterEach(() => {
-  vi.unstubAllGlobals();
   document.body.style.overflow = "";
 });
 

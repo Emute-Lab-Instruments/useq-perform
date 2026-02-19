@@ -3,7 +3,7 @@ import {
   getVirtualGamepadState,
   setVirtualGamepadState,
   resetVirtualGamepadState,
-} from "./VirtualGamepad";
+} from "../utils/virtualGamepad";
 
 const VirtualGamepadDemo = () => {
   const state = () => getVirtualGamepadState();

@@ -1,11 +1,14 @@
 import {
   For,
   Show,
-  createEffect,
   createSignal,
   onCleanup,
   onMount,
+  type Component,
 } from "solid-js";
+
+/** Map of icon name strings to icon components. Provided by the adapter (browser-only). */
+export type IconRegistry = Record<string, Component>;
 
 export type PickerMenuItem = {
   label: string;
@@ -21,6 +24,8 @@ export type PickerMenuProps = {
   title?: string;
   layout?: "grid" | "vertical";
   initialIndex?: number;
+  /** Icon registry mapping icon name strings to components. Provided by the adapter in browser contexts. */
+  iconRegistry?: IconRegistry;
 };
 
 export function PickerMenu(props: PickerMenuProps) {
@@ -38,10 +43,6 @@ export function PickerMenu(props: PickerMenuProps) {
   const [activeIdx, setActiveIdx] = createSignal(computedInitial());
 
   let itemsRef: HTMLDivElement | undefined;
-  const initializeLucideIcons = () => {
-    const lucide = (window as any).lucide;
-    lucide?.createIcons?.();
-  };
 
   const focusActive = () => {
     if (!itemsRef) return;
@@ -193,12 +194,6 @@ export function PickerMenu(props: PickerMenuProps) {
     // Lock body scroll
     document.body.style.overflow = "hidden";
     focusActive();
-    initializeLucideIcons();
-  });
-
-  createEffect(() => {
-    items();
-    queueMicrotask(() => initializeLucideIcons());
   });
 
   onCleanup(() => {
@@ -237,8 +232,8 @@ export function PickerMenu(props: PickerMenuProps) {
                 onMouseEnter={() => setActiveIdx(i())}
                 onFocus={() => setActiveIdx(i())}
               >
-                <Show when={item.icon}>
-                  <i class="lucide" data-lucide={item.icon}></i>{" "}
+                <Show when={item.icon && props.iconRegistry?.[item.icon!]}>
+                  {(() => { const Icon = props.iconRegistry![item.icon!]; return <Icon />; })()}{" "}
                 </Show>
                 {item.label}
               </div>

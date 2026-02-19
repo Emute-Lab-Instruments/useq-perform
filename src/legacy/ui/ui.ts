@@ -98,8 +98,6 @@ export async function createAppUI(environmentState: any) {
     return {
         mainEditor: editor,
         serialVis: document.getElementById("panel-vis") || null,
-        settingsPanel: document.getElementById("panel-settings") || null,
-        helpPanel: document.getElementById("panel-help") || null,
         logConsole: null,
         statusBar: getStatusBarComponent(),
     };

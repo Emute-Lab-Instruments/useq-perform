@@ -9,7 +9,7 @@ import {
   Checkbox, 
   Select, 
   RangeInput 
-} from "./shared";
+} from "./FormControls";
 
 const meta: Meta = {
   title: "UI/Settings/Shared",

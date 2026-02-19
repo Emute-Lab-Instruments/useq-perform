@@ -43,6 +43,7 @@
     "effect": "^3.17.9",
     "lezer": "^0.13.5",
     "lucide": "^0.475.0",
+    "lucide-solid": "^0.575.0",
     "marked": "^15.0.8",
     "solid-js": "^1.9.9",
     "squint-cljs": "^0.8.134",

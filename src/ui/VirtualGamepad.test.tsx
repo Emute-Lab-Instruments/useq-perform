@@ -3,7 +3,7 @@ import {
   getVirtualGamepadState,
   setVirtualGamepadState,
   resetVirtualGamepadState,
-} from "./VirtualGamepad";
+} from "../utils/virtualGamepad";
 
 describe("VirtualGamepad", () => {
   beforeEach(() => {

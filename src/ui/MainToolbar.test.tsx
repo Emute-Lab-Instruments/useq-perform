@@ -27,12 +27,10 @@ describe("MainToolbar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedIsConnected.mockReturnValue(false);
-    vi.stubGlobal("lucide", { createIcons: vi.fn() });
   });
 
   afterEach(() => {
     cleanup();
-    vi.unstubAllGlobals();
   });
 
   it("renders all toolbar buttons", () => {
@@ -132,9 +130,4 @@ describe("MainToolbar", () => {
     removeSpy.mockRestore();
   });
 
-  it("calls lucide.createIcons on mount", () => {
-    render(() => <MainToolbar />);
-
-    expect(lucide.createIcons).toHaveBeenCalled();
-  });
 });

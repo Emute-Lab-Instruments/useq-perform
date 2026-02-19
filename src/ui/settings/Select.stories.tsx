@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/html";
-import { Select } from "./shared";
+import { Select } from "./FormControls";
 import { render } from "solid-js/web";
 
 const meta: Meta = {

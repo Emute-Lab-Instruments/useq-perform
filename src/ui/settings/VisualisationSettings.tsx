@@ -1,5 +1,5 @@
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
-import { Section, FormRow, Checkbox, NumberInput, RangeInput } from "./shared";
+import { Section, FormRow, Checkbox, NumberInput, RangeInput } from "./FormControls";
 import { serialVisChannels } from "../../legacy/ui/serialVis/utils.ts";
 
 export function VisualisationSettings() {

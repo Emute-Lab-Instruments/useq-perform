@@ -1,5 +1,5 @@
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
-import { Section, FormRow, TextInput } from "./shared";
+import { Section, FormRow, TextInput } from "./FormControls";
 
 export function PersonalSettings() {
   return (
