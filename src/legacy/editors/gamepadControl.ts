@@ -21,10 +21,8 @@ import {
 } from "./extensions/structure/new-structure.ts";
 import { getTrimmedRange, performNavigation } from "./extensions/structure.ts";
 import { syntaxTree } from "@codemirror/language";
-import { showRadialPickerMenu } from "../ui/radialPickerMenu.ts";
-import { showDoubleRadialPickerMenu } from "../ui/doubleRadialPickerMenu.ts";
+import { open as openDoubleRadialMenu } from "../../ui/adapters/double-radial-menu.tsx";
 import { buildHierarchicalMenuModel } from "../ui/pickers/menuData.ts";
-import { activeUserSettings } from "../utils/persistentUserSettings.ts";
 import { evalNow } from "./editorConfig.ts";
 import { virtualGamepad } from "../urlParams.ts";
 
@@ -724,18 +722,11 @@ class GamepadController {
       closeMenu: null
     };
 
-    const style = activeUserSettings?.ui?.gamepadPickerStyle || 'grid';
-    const closeMenu = (style === 'radial')
-      ? showRadialPickerMenu({
-          categories,
-          title: 'Create',
-          onSelect: (entry) => this.handleCreateSelection(entry, direction)
-        })
-      : showHierarchicalGridPicker({
-          categories,
-          title: 'Create',
-          onSelect: (entry) => this.handleCreateSelection(entry, direction)
-        });
+    const closeMenu = showHierarchicalGridPicker({
+      categories,
+      title: 'Create',
+      onSelect: (entry) => this.handleCreateSelection(entry, direction)
+    });
 
     this.state.picker = {
       direction,
@@ -757,7 +748,7 @@ class GamepadController {
       closeMenu: null
     };
 
-    const closeMenu = showDoubleRadialPickerMenu({
+    const closeMenu = openDoubleRadialMenu({
       categories,
       title: "Create",
       onSelect: (entry) => this.handleCreateSelection(entry, direction),

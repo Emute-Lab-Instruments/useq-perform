@@ -52,7 +52,8 @@ export const saveCode = () =>
     await saveToFile(JSON.stringify(fileData), ".useq", "uSEQ Code");
   });
 
-// Re-implementing saveToFile since it's not exported from toolbar.mjs
+// Local implementation of saveToFile using the File System Access API.
+// toolbar.mjs no longer exists; this is the canonical save helper for this module.
 async function saveToFile(fileContents: string, ext: string, desc: string) {
     async function getNewFileHandle(ext: string, desc: string) {
         const options = {
