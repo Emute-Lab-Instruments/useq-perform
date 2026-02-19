@@ -1,8 +1,3 @@
-#panel-help {
-    border: 1px solid var(--accent-color);
-    border-radius: var(--panel-border-radius);
-}
-
 /* Keybinding Edit Modal */
 .keybinding-overlay {
     position: fixed;
