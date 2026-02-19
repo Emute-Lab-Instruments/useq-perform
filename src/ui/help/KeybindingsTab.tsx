@@ -1,4 +1,4 @@
-import { Component, For, createSignal, Show } from "solid-js";
+import { Component, For, createSignal, Show, onMount } from "solid-js";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 
 interface Binding {
@@ -230,6 +230,8 @@ const KeybindingEditModal: Component<{
   onSave: (newKey: string) => void;
 }> = (props) => {
   const [newKey, setNewKey] = createSignal("Press keys...");
+  let bindingEl: HTMLDivElement | undefined;
+  onMount(() => bindingEl?.focus());
 
   const handleKeyDown = (e: KeyboardEvent) => {
     e.preventDefault();
@@ -266,7 +268,7 @@ const KeybindingEditModal: Component<{
             class="new-binding"
             tabindex="0"
             onKeyDown={handleKeyDown}
-            ref={(el) => setTimeout(() => el.focus(), 0)}
+            ref={bindingEl}
           >
             {newKey()}
           </div>

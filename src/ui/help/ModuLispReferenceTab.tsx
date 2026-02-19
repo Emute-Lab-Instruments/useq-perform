@@ -50,9 +50,14 @@ const normalizeEntry = (raw: unknown): ReferenceEntry | null => {
 /**
  * Show a transient notification toast that auto-dismisses after a delay.
  */
+let _toastTimer: ReturnType<typeof setTimeout> | undefined;
+
 function showNotification(message: string, durationMs = 2500): void {
   const existing = document.querySelector(".useq-reference-toast");
-  if (existing) existing.remove();
+  if (existing) {
+    existing.remove();
+    clearTimeout(_toastTimer);
+  }
 
   const toast = document.createElement("div");
   toast.className = "useq-reference-toast";
@@ -63,7 +68,7 @@ function showNotification(message: string, durationMs = 2500): void {
   void toast.offsetWidth;
   toast.classList.add("useq-reference-toast--visible");
 
-  setTimeout(() => {
+  _toastTimer = setTimeout(() => {
     toast.classList.remove("useq-reference-toast--visible");
     toast.addEventListener("transitionend", () => toast.remove(), { once: true });
     // Fallback removal in case transitionend doesn't fire
@@ -186,13 +191,11 @@ export const ModuLispReferenceTab: Component = () => {
       toggleExpanded(entry.name);
     }
 
-    // Scroll the entry into view after a short delay to allow DOM updates
-    setTimeout(() => {
+    // Scroll after Solid has flushed the DOM update.
+    queueMicrotask(() => requestAnimationFrame(() => {
       const el = document.querySelector(`[data-function="${entry.name}"]`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }, 100);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }));
   };
 
   onMount(() => {

@@ -82,7 +82,7 @@ export function Select(props: {
       onChange={(e) => props.onChange(e.currentTarget.value)}
     >
       {props.options.map((opt) => (
-        <option value={opt.value} selected={opt.value === props.value}>
+        <option value={opt.value}>
           {opt.label}
         </option>
       ))}

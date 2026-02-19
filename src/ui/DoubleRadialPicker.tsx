@@ -142,7 +142,6 @@ export function DoubleRadialPicker(props: DoubleRadialPickerProps) {
   });
 
   createEffect(() => {
-    // Get items without creating reactive dependency
     const cats = safeCategories();
     if (!cats.length) return;
     const leftIdx = leftLocked();
