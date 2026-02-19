@@ -3,6 +3,7 @@ import { EditorView } from "@codemirror/view";
 import { EditorState, Extension } from "@codemirror/state";
 import {
   activeUserSettings,
+  codeStorageKey,
   loadUserSettings,
 } from "../utils/persistentUserSettings.ts";
 import {
@@ -11,19 +12,24 @@ import {
 } from "./extensions.ts";
 import { setMainEditorTheme } from "./themes/themeManager.ts";
 import { setFontSize } from "./editorConfig.ts";
-import { codeStorageKey, updateUserSettings } from "../utils/persistentUserSettings.ts";
 
-// Window extensions for debugging/legacy bridges
+// Window extensions for debugging
 declare global {
   interface Window {
     editor: EditorView;
-    __useq_autosave_settings_listener?: boolean;
-    updateUserSettings?: (values: any) => any;
   }
 }
 
-// Autosave timer reference (module scoped)
+// Autosave timer and editor reference (module scoped)
 let autosaveTimer: ReturnType<typeof setInterval> | null = null;
+let _mainEditor: EditorView | null = null;
+
+// Re-setup autosave timer whenever settings change
+window.addEventListener("useq-settings-changed", () => {
+  if (_mainEditor) {
+    setupAutosaveTimer(_mainEditor, activeUserSettings);
+  }
+});
 
 function setupAutosaveTimer(editor: EditorView, settings: any): void {
     if (autosaveTimer) {
@@ -93,23 +99,14 @@ export function createMainEditor(initialText?: string): EditorView {
     mainEditorExtensions
   );
 
+  // Store module-level reference for settings change listener
+  _mainEditor = editor;
+
   // Add the editor to window for debugging
   window.editor = editor;
 
   // Set up autosave timer
   setupAutosaveTimer(editor, activeUserSettings);
-
-  // Listen for settings changes to update autosave timer
-  if (!window.__useq_autosave_settings_listener) {
-    window.__useq_autosave_settings_listener = true;
-    const origUpdateUserSettings = updateUserSettings;
-    window.updateUserSettings = function (values: any) {
-      const result = origUpdateUserSettings(values);
-      // Use latest settings
-      setupAutosaveTimer(window.editor, activeUserSettings);
-      return result;
-    };
-  }
 
   return editor;
 }
