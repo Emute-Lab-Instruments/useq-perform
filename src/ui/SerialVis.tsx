@@ -241,7 +241,7 @@ function drawFrame(
   };
 
   const makeDigitalMapper = (exprType: string) => {
-    const laneIndex = DIGITAL_CHANNELS.indexOf(exprType as any);
+    const laneIndex = (DIGITAL_CHANNELS as readonly string[]).indexOf(exprType);
     if (laneIndex < 0) return mapAnalogValueToY;
 
     const laneTop =

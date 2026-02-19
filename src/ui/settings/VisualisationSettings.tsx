@@ -3,7 +3,7 @@ import { Section, FormRow, Checkbox, NumberInput, RangeInput } from "./FormContr
 import { serialVisChannels } from "../../legacy/ui/serialVis/utils.ts";
 
 export function VisualisationSettings() {
-  const updateVisField = (field: string, value: any) => {
+  const updateVisField = (field: string, value: string | number | boolean) => {
     updateSettingsStore({
       visualisation: {
         ...settings.visualisation,

@@ -14,7 +14,7 @@ import {
   isRealHardwareConnection,
   isWasmEnabled,
 } from "../effects/transport";
-// @ts-ignore - Importing from legacy .mjs
+// @ts-ignore - Importing from legacy untyped module
 import {
   startMockTimeGenerator,
   stopMockTimeGenerator,

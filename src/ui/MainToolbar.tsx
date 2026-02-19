@@ -2,9 +2,9 @@ import { createSignal, onMount, onCleanup, Show } from "solid-js";
 import { Effect } from "effect";
 import { toggleConnection, toggleGraph, togglePanel } from "../effects/ui";
 import { adjustFontSize, loadCode, saveCode } from "../effects/editor";
-// @ts-ignore
+// @ts-ignore - Importing from legacy untyped module
 import { devmode } from "../legacy/urlParams.ts";
-// @ts-ignore
+// @ts-ignore - Importing from legacy untyped module
 import { isConnectedToModule } from "../legacy/io/serialComms.ts";
 import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings, Wrench } from "lucide-solid";
 
@@ -45,7 +45,8 @@ export function MainToolbar() {
     window.removeEventListener("useq-animate-connect", handleAnimateConnect);
   });
 
-  const run = (effect: Effect.Effect<any, any, any>) => Effect.runPromise(effect);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const run = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromise(effect);
 
   return (
     <div id="panel-toolbar">

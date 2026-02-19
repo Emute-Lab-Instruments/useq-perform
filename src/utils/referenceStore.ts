@@ -36,8 +36,8 @@ const STORAGE_KEYS = {
 const loadSet = (key: string) => {
   try {
     const raw = localStorage.getItem(key);
-    return new Set<string>(JSON.parse(raw || "[]"));
-  } catch (e) {
+    return new Set<string>(JSON.parse(raw || "[]") as string[]);
+  } catch {
     return new Set<string>();
   }
 };
@@ -97,7 +97,7 @@ export const setTargetVersion = (version: string | null) => {
 };
 
 // Version utilities
-export const parseVersionString = (version: any): Version | null => {
+export const parseVersionString = (version: unknown): Version | null => {
   if (!version || typeof version !== "string") return null;
   const trimmed = version.trim().replace(/^v/i, "");
   if (!trimmed) return null;

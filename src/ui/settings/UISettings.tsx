@@ -13,7 +13,7 @@ export function UISettings() {
     }
   };
 
-  const updateUIField = (field: string, value: any) => {
+  const updateUIField = (field: string, value: string | number | boolean) => {
     updateSettingsStore({
       ui: {
         ...settings.ui,

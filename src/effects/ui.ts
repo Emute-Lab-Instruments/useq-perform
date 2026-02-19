@@ -1,8 +1,8 @@
 // src/effects/ui.ts
 import { Effect } from "effect";
-// @ts-ignore
+// @ts-ignore - Importing from legacy untyped module
 import { toggleConnect } from "../legacy/io/serialComms.ts";
-// @ts-ignore
+// @ts-ignore - Importing from legacy untyped module
 import { toggleSerialVis } from "../legacy/editors/editorConfig.ts";
 
 export const toggleConnection = () =>

@@ -16,9 +16,9 @@ export function ConfigurationManagement() {
       } else if (result.method === 'download') {
         alert('⬇️ Configuration downloaded.\n\nCopy the file to:\nsrc/config/default-config.json\n\nto make changes persist across builds.');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Export error:', error);
-      alert(`❌ Failed to export configuration:\n${error.message}`);
+      alert(`❌ Failed to export configuration:\n${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -39,9 +39,9 @@ export function ConfigurationManagement() {
         importConfiguration(config);
         window.location.reload();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Import error:', error);
-      alert(`❌ Failed to import configuration:\n${error.message}`);
+      alert(`❌ Failed to import configuration:\n${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

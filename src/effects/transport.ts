@@ -1,13 +1,13 @@
 // src/effects/transport.ts
 import { Effect } from "effect";
-// @ts-ignore - Importing from legacy .mjs
+// @ts-ignore - Importing from legacy untyped module
 import { sendTouSEQ, isConnectedToModule, getSerialPort } from "../legacy/io/serialComms.ts";
-// @ts-ignore - Importing from legacy .mjs
+// @ts-ignore - Importing from legacy untyped module
 import {
   evalInUseqWasm,
   syncWasmTransportState as syncWasmTransportStateInInterpreter,
 } from "../legacy/io/useqWasmInterpreter.ts";
-// @ts-ignore - Importing from legacy .mjs
+// @ts-ignore - Importing from legacy untyped module
 import { activeUserSettings } from "../legacy/utils/persistentUserSettings.ts";
 import type { TransportState } from "../machines/transport.machine";
 
@@ -101,11 +101,23 @@ export const queryHardwareTransportState = () =>
     catch: () => null as TransportState | null,
   });
 
+/** Shape of the `useq-json-meta` CustomEvent detail payload. */
+interface JsonMetaEventDetail {
+  response?: {
+    meta?: {
+      transport?: string;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 /**
  * Extract transport state from a useq-json-meta event's detail.
  */
 export const extractTransportStateFromMeta = (
-  detail: any
+  detail: JsonMetaEventDetail
 ): TransportState | null => {
   const meta = detail?.response?.meta;
   if (meta && typeof meta.transport === "string") {

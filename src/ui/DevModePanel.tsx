@@ -6,6 +6,14 @@ import {
   onMount,
 } from "solid-js";
 
+/** Result shape returned by the legacy configManager.saveConfiguration() call. */
+type SaveConfigurationResult = {
+  success: boolean;
+  method: "websocket" | "filesystem-api" | "download" | string;
+  path?: string;
+  name?: string;
+};
+
 // Types for the external APIs (lazy-loaded from legacy code)
 type MockTimeGeneratorAPI = {
   startMockTimeGenerator: () => boolean;
@@ -168,10 +176,10 @@ function ConfigManagementSection() {
     setSaving(true);
     try {
       const configManager = await import("../legacy/config/configManager.ts");
-      const result: any = await configManager.saveConfiguration({
+      const result = await configManager.saveConfiguration({
         includeDevMode: true,
         includeCode: false,
-      });
+      }) as SaveConfigurationResult;
 
       if (result.success && result.method === "websocket") {
         setStatus("connected");
@@ -187,8 +195,8 @@ function ConfigManagementSection() {
       } else {
         alert(`Configuration exported via ${result.method}`);
       }
-    } catch (error: any) {
-      alert(`Failed to save configuration:\n${error?.message ?? error}`);
+    } catch (error: unknown) {
+      alert(`Failed to save configuration:\n${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setSaving(false);
     }

@@ -1,13 +1,13 @@
 import { onMount, onCleanup, For } from "solid-js";
 import { EditorView } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
 import { themes, setTheme, setMainEditorTheme } from "../../legacy/editors/themes/themeManager.ts";
 import { baseExtensions } from "../../legacy/editors/extensions.ts";
 import { defaultThemeEditorStartingCode } from "../../legacy/editors/defaults.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 import { hidePanel } from "../adapters/panels";
 
-function ThemePreview(props: { themeName: string; themeExtension: any }) {
+function ThemePreview(props: { themeName: string; themeExtension: Extension }) {
   let editorParent: HTMLDivElement | undefined;
   let view: EditorView | undefined;
 

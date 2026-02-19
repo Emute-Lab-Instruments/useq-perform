@@ -22,7 +22,10 @@ export const CodeMirrorEditor: Component<CodeMirrorEditorProps> = (props) => {
     if (!editorContainer) return;
 
     const currentTheme = settings.editor?.theme || "oneDark";
-    const themeExtension = (themes as any)[currentTheme] || (themes as any).oneDark;
+    // themes is imported from a legacy @ts-nocheck module with no exported type.
+    // Treat it as a name-keyed record of CodeMirror Extension values.
+    const themesRecord = themes as Record<string, Extension>;
+    const themeExtension = themesRecord[currentTheme] ?? themesRecord["oneDark"];
 
     const extensions: Extension[] = [
       ...baseExtensions,

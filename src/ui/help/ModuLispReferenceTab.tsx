@@ -13,23 +13,36 @@ import { ReferenceItem } from "./ReferenceItem";
 import { ReferenceFilters } from "./ReferenceFilters";
 import { currentVersion as connectedFirmwareVersion } from "../../legacy/utils/upgradeCheck.ts";
 import { loadReferenceDataFromCandidates } from "./referenceDataLoader";
+
+/** Raw shape of a reference entry as loaded from JSON (before normalization). */
+interface RawReferenceEntry {
+  name?: unknown;
+  aliases?: unknown;
+  tags?: unknown;
+  parameters?: unknown;
+  examples?: unknown;
+  introduced_in_version?: unknown;
+  changed_in_version?: unknown;
+  [key: string]: unknown;
+}
 import { showPanel } from "../adapters/panels";
 import { HELP_PANEL_SWITCH_EVENT } from "./HelpPanel";
 
-const normalizeEntry = (raw: any): ReferenceEntry | null => {
+const normalizeEntry = (raw: unknown): ReferenceEntry | null => {
   if (!raw || typeof raw !== "object") return null;
+  const r = raw as RawReferenceEntry;
   return {
-    ...raw,
-    name: raw.name || "",
-    aliases: Array.isArray(raw.aliases) ? raw.aliases : [],
-    tags: Array.isArray(raw.tags) ? raw.tags : [],
-    parameters: Array.isArray(raw.parameters) ? raw.parameters.map((p: any) =>
-      typeof p === "string" ? { name: p, description: "" } : p
+    ...r,
+    name: typeof r.name === "string" ? r.name : "",
+    aliases: Array.isArray(r.aliases) ? (r.aliases as unknown[]).filter((a): a is string => typeof a === "string") : [],
+    tags: Array.isArray(r.tags) ? (r.tags as unknown[]).filter((t): t is string => typeof t === "string") : [],
+    parameters: Array.isArray(r.parameters) ? (r.parameters as unknown[]).map((p) =>
+      typeof p === "string" ? { name: p, description: "" } : (p as { name: string; description: string })
     ) : [],
-    examples: Array.isArray(raw.examples) ? raw.examples : [],
+    examples: Array.isArray(r.examples) ? (r.examples as string[]) : [],
     meta: {
-      introduced: parseVersionString(raw.introduced_in_version),
-      changed: parseVersionString(raw.changed_in_version),
+      introduced: parseVersionString(r.introduced_in_version),
+      changed: parseVersionString(r.changed_in_version),
     },
   };
 };

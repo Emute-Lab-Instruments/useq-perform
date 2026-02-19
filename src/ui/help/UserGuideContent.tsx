@@ -4,7 +4,7 @@ import { sanitizeHtml } from "../../utils/sanitize";
 interface UserGuideContentProps {
   content?: string;
   loading: boolean;
-  error: any;
+  error: unknown;
 }
 
 export const UserGuideContent: Component<UserGuideContentProps> = (props) => {
