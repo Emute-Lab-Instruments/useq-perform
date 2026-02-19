@@ -1,6 +1,5 @@
 import { initEditorPanel } from "../editors/main.ts";
 import { initGamepadControl } from "../editors/gamepadControl.ts";
-import { setEditor, mountSettingsPanel, mountHelpPanel } from "./solidBridge.ts";
 import { devmode } from "../urlParams.ts";
 
 let editor: any = null;
@@ -67,18 +66,19 @@ function updateTopToolbarHeight() {
 
 export async function createAppUI(environmentState: any) {
     editor = initEditorPanel("#panel-main-editor");
-    setEditor(editor);
 
     const visPanelEl = document.getElementById("panel-vis");
     if (visPanelEl) visPanelEl.style.display = "none";
 
-    // Mount Solid UI adapters (awaited to avoid race with solidBridge).
-    // The try/catch handles Node.js test environments where .tsx imports fail.
+    // Mount Solid UI adapters and wire editor store.
+    // The try/catch handles Node.js test environments where .tsx/.ts Solid imports fail.
     try {
-        const [panels, toolbars] = await Promise.all([
+        const [editorStore, panels, toolbars] = await Promise.all([
+            import("../../lib/editorStore.ts"),
             import("../../ui/adapters/panels.tsx"),
             import("../../ui/adapters/toolbars.tsx"),
         ]);
+        editorStore.setEditor(editor);
         // Mount toolbars first (they replace the static HTML toolbar elements)
         toolbars.mountTransportToolbar();
         toolbars.mountMainToolbar();
@@ -87,9 +87,7 @@ export async function createAppUI(environmentState: any) {
         panels.mountHelpPanel();
         panels.mountDesignSelector(devmode);
     } catch (_) {
-        // Fallback to solidBridge (may be no-ops in test env)
-        mountSettingsPanel("panel-settings");
-        mountHelpPanel("panel-help");
+        // In Node.js test environments, Solid imports fail gracefully — no-op.
     }
 
     initTopToolbarHeightTracking();
