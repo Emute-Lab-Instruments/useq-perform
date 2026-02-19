@@ -10,7 +10,7 @@ import { extension as eval_ext, cursor_node_string, top_level_string } from "@ne
 
 // SERIAL COMMUNICATION
 import { sendTouSEQ, isConnectedToModule } from "../io/serialComms.ts";
-import { post } from "../io/console.ts";
+import { post } from "../../utils/consoleStore.ts";
 import { evalInUseqWasm } from "../io/useqWasmInterpreter.ts";
 import { noModuleMode } from "../urlParams.ts";
 import { rewriteCodeSliceForModule } from "./manualControlState.ts";

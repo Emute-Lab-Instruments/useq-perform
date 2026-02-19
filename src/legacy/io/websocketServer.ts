@@ -6,7 +6,7 @@
  */
 import { WebSocketServer } from 'ws';
 import { disconnect } from './serialComms.ts';
-import { post } from './console.ts';
+import { post } from '../../utils/consoleStore.ts';
 import { dbg } from '../utils.ts';
 
 // ws package has no bundled types; use `any` for WS-related objects

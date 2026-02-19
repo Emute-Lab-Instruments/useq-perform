@@ -1,4 +1,4 @@
-import { post } from './io/console.ts';
+import { post } from '../utils/consoleStore.ts';
 import { setConnectedToModule } from "./io/serialComms.ts";
 import { activeUserSettings } from "./utils/persistentUserSettings.ts";
 import { dbg, toggleDbg } from "./utils.ts";

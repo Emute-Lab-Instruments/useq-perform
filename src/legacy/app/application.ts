@@ -1,4 +1,4 @@
-import { post } from '../io/console.ts';
+import { post } from '../../utils/consoleStore.ts';
 import { checkForSavedPortAndMaybeConnect, setConnectedToModule } from '../io/serialComms.ts';
 import { ensureUseqWasmLoaded } from '../io/useqWasmInterpreter.ts';
 import { noModuleMode } from '../urlParams.ts';

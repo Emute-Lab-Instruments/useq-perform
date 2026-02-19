@@ -1,4 +1,5 @@
 import { createStore } from "solid-js/store";
+import { marked } from "marked";
 
 export type ConsoleMessageType = "log" | "warn" | "error" | "wasm";
 
@@ -51,3 +52,13 @@ export const clearConsole = () => {
 export const postToConsole = (content: string) => {
   addConsoleMessage(content, "log");
 };
+
+/**
+ * Parse a Markdown string and post the resulting HTML to the console.
+ * Wrapping `<p>` tags added by marked are stripped so inline content
+ * renders without extra block-level whitespace.
+ */
+export function post(value: string, type: ConsoleMessageType = "log"): void {
+  const htmlContent = (marked.parse(value) as string).replace(/^<p>|<\/p>$/g, "");
+  addConsoleMessage(htmlContent, type);
+}

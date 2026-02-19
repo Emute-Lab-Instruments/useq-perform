@@ -6,7 +6,7 @@
  */
 import { CircularBuffer } from "../utils/CircularBuffer.ts";
 import { Buffer } from "buffer";
-import { post } from "./console.ts";
+import { post } from "../../utils/consoleStore.ts";
 import { upgradeCheck, currentVersion } from "../utils/upgradeCheck.ts";
 import { dbg } from "../utils.ts";
 import { handleExternalTimeUpdate } from "../ui/serialVis/visualisationController.ts";

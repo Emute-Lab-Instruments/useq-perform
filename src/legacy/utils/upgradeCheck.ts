@@ -1,4 +1,4 @@
-import { post } from '../io/console.ts';
+import { post } from '../../utils/consoleStore.ts';
 import { dbg } from '../utils.ts';
 import { showUpdateNotification } from './upgradeFlow.ts';
 
