@@ -1,5 +1,6 @@
 import { Show, onMount, onCleanup, type JSX } from "solid-js";
 import { sanitizeHtml } from "../utils/sanitize";
+import { pushOverlay } from "./overlayManager";
 
 export type ModalProps = {
   id?: string;
@@ -21,37 +22,33 @@ export function Modal(props: ModalProps) {
     ) as HTMLElement[];
   };
 
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      props.onClose();
-      return;
-    }
+  // Tab-trap handler remains local — it is a focus-management concern, not
+  // an overlay-stack concern.
+  const handleTabKey = (e: KeyboardEvent) => {
+    if (e.key !== "Tab") return;
+    if (focusableElements.length === 0) return;
 
-    if (e.key === "Tab") {
-      if (focusableElements.length === 0) return;
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement as HTMLElement;
 
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-      const activeElement = document.activeElement as HTMLElement;
-
-      if (e.shiftKey) {
-        // Shift+Tab - cycle backwards
-        if (activeElement === firstElement) {
-          e.preventDefault();
-          lastElement.focus();
-        }
-      } else {
-        // Tab - cycle forwards
-        if (activeElement === lastElement) {
-          e.preventDefault();
-          firstElement.focus();
-        }
+    if (e.shiftKey) {
+      // Shift+Tab - cycle backwards
+      if (activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+      }
+    } else {
+      // Tab - cycle forwards
+      if (activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
       }
     }
   };
 
   onMount(() => {
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleTabKey);
 
     // Get focusable elements and focus the first one
     focusableElements = getFocusableElements();
@@ -61,7 +58,16 @@ export function Modal(props: ModalProps) {
   });
 
   onCleanup(() => {
-    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keydown", handleTabKey);
+  });
+
+  // Register with the overlay manager for Escape handling and scroll lock.
+  let popOverlay: (() => void) | undefined;
+  onMount(() => {
+    popOverlay = pushOverlay(props.id ?? "modal", () => props.onClose());
+  });
+  onCleanup(() => {
+    popOverlay?.();
   });
 
   // Inherit theme class from document root

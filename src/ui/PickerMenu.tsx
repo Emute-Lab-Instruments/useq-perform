@@ -6,6 +6,7 @@ import {
   onMount,
   type Component,
 } from "solid-js";
+import { pushOverlay } from "./overlayManager";
 
 /** Map of icon name strings to icon components. Provided by the adapter (browser-only). */
 export type IconRegistry = Record<string, Component>;
@@ -185,24 +186,30 @@ export function PickerMenu(props: PickerMenuProps) {
     }
   };
 
+  // Non-Escape keyboard navigation — still handled locally via window listener.
+  const handleKeyDownNav = (e: KeyboardEvent) => {
+    if (e.key === "Escape") return; // Escape is handled by the overlay manager
+    handleKeyDown(e);
+  };
+
+  let popOverlay: (() => void) | undefined;
   onMount(() => {
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDownNav);
     window.addEventListener(
       "gamepadpickerinput",
       handleGamepadInput as EventListener,
     );
-    // Lock body scroll
-    document.body.style.overflow = "hidden";
+    popOverlay = pushOverlay("picker-menu", () => close());
     focusActive();
   });
 
   onCleanup(() => {
-    window.removeEventListener("keydown", handleKeyDown);
+    window.removeEventListener("keydown", handleKeyDownNav);
     window.removeEventListener(
       "gamepadpickerinput",
       handleGamepadInput as EventListener,
     );
-    document.body.style.overflow = "";
+    popOverlay?.();
   });
 
   return (
@@ -304,23 +311,29 @@ export function NumberPickerMenu(props: NumberPickerMenuProps) {
     else if (action === "cancel") close();
   };
 
+  const handleKeyDownNav = (e: KeyboardEvent) => {
+    if (e.key === "Escape") return; // Escape is handled by the overlay manager
+    handleKeyDown(e);
+  };
+
+  let popOverlay: (() => void) | undefined;
   onMount(() => {
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDownNav);
     window.addEventListener(
       "gamepadpickerinput",
       handleGamepadInput as EventListener,
     );
-    document.body.style.overflow = "hidden";
+    popOverlay = pushOverlay("number-picker-menu", () => close());
     inputRef?.focus();
   });
 
   onCleanup(() => {
-    window.removeEventListener("keydown", handleKeyDown);
+    window.removeEventListener("keydown", handleKeyDownNav);
     window.removeEventListener(
       "gamepadpickerinput",
       handleGamepadInput as EventListener,
     );
-    document.body.style.overflow = "";
+    popOverlay?.();
   });
 
   return (

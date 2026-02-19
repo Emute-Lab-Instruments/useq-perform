@@ -1,6 +1,11 @@
 import { render, screen, fireEvent } from "@solidjs/testing-library";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { Modal, HtmlModal } from "./Modal";
+import { _resetForTesting } from "./overlayManager";
+
+afterEach(() => {
+  _resetForTesting();
+});
 
 describe("Modal", () => {
   it("renders title text", () => {

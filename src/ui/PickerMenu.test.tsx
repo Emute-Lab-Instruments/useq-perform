@@ -4,9 +4,11 @@ import { PickerMenu, NumberPickerMenu } from "./PickerMenu";
 import { HierarchicalPickerMenu } from "./HierarchicalPickerMenu";
 import type { PickerMenuItem } from "./PickerMenu";
 import type { HierarchicalCategory } from "./HierarchicalPickerMenu";
+import { _resetForTesting } from "./overlayManager";
 
 afterEach(() => {
-  document.body.style.overflow = "";
+  // Reset overlay manager state so tests don't bleed into each other
+  _resetForTesting();
 });
 
 // ---------------------------------------------------------------------------
@@ -96,7 +98,8 @@ describe("PickerMenu", () => {
     render(() => (
       <PickerMenu items={sampleItems} onSelect={() => {}} onClose={onClose} />
     ));
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    // Escape is handled by the overlay manager which listens on document
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
@@ -382,7 +385,8 @@ describe("NumberPickerMenu", () => {
         onClose={onClose}
       />
     ));
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    // Escape is handled by the overlay manager which listens on document
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
@@ -495,8 +499,8 @@ describe("HierarchicalPickerMenu", () => {
         onClose={onClose}
       />
     ));
-    // Press Escape at category level
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    // Press Escape at category level (overlay manager listens on document)
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
@@ -516,8 +520,8 @@ describe("HierarchicalPickerMenu", () => {
     fireEvent.click(categoryItems[0]);
     const callsAfterDrill = onClose.mock.calls.length;
 
-    // Now press Escape at items level -- should call onClose again
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    // Now press Escape at items level -- should call onClose again (overlay manager listens on document)
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     expect(onClose.mock.calls.length).toBe(callsAfterDrill + 1);
   });
 
