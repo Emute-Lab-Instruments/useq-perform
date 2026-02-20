@@ -11,6 +11,7 @@
  */
 
 import { WebSocketServer } from 'ws';
+import net from 'net';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -19,7 +20,24 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.join(__dirname, '..');
 
-const PORT = 8081;
+const PREFERRED_PORT = parseInt(process.env.CONFIG_SERVER_PORT ?? process.argv[2] ?? '8081', 10);
+
+function findAvailablePort(startPort) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.listen(startPort, () => {
+      const { port } = server.address();
+      server.close(() => resolve(port));
+    });
+    server.on('error', () => resolve(findAvailablePort(startPort + 1)));
+  });
+}
+
+const PORT = await findAvailablePort(PREFERRED_PORT);
+if (PORT !== PREFERRED_PORT) {
+  console.warn(`⚠️  Port ${PREFERRED_PORT} in use, using ${PORT} instead`);
+}
+
 const wss = new WebSocketServer({ port: PORT });
 
 console.log('');
