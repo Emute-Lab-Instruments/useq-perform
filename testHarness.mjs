@@ -42,7 +42,7 @@ import {
   duplicateExpression,
   clearClipboard,
   navigateRightChar
-} from './src/editors/extensions/structure/new-structure.mjs';
+} from './src/legacy/editors/extensions/structure/new-structure.ts';
 
 /**
  * Action function mapping
