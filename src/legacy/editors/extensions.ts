@@ -18,6 +18,7 @@ import { baseKeymap, mainEditorKeymap } from "./keymaps.ts";
 import { themeCompartment, fontSizeCompartment } from "./state.ts";
 import {structureExtensions} from "./extensions/structure.ts";
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
+import { visReadabilityPlugin } from "./extensions/visReadability.ts";
 import { dbg } from "../utils.ts";
 import { mapManualControlBindingsThroughChanges } from "./manualControlState.ts";
 
@@ -89,7 +90,8 @@ export const baseExtensions = [
   ...themeExtensions,
   ...default_clojure_extensions,
   ...structureExtensions,
-  evalHighlightField
+  evalHighlightField,
+  visReadabilityPlugin,
 ];
 
 // Main editor combines all extensions
