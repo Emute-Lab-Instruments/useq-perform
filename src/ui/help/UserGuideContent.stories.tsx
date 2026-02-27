@@ -30,6 +30,21 @@ export const WithContent: Story = {
   },
 };
 
+export const WithCodeBlocks: Story = {
+  args: {
+    loading: false,
+    content: `
+<h2>Code Examples</h2>
+<p>Try these patterns:</p>
+<pre><code class="language-lisp">(d1 (sqr bar))</code></pre>
+<p>A more complex sequence:</p>
+<pre><code class="language-lisp">(d3 (seq [1 0 0 1 1 0 1 0] bar))</code></pre>
+<p>Analog output:</p>
+<pre><code class="language-lisp">(a1 (sin bar))</code></pre>`,
+    error: null,
+  },
+};
+
 export const Error: Story = {
   args: {
     loading: false,
