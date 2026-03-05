@@ -33,6 +33,12 @@ Web-based live coding interface for the uSEQ hardware module.
 
 The application uses a single-bundle Vite build. UI components are mounted via adapter modules that provide imperative APIs (e.g., `mountSettingsPanel()`, `showModal()`). Legacy code imports these adapters directly instead of using separate entrypoints or bridge APIs.
 
+## Beads Backend
+
+This repo uses the Dolt-backed Beads backend. Shared connection defaults live in `.beads/config.yaml`, while machine-specific overrides should stay local in `.beads/metadata.json` or `BEADS_DOLT_*` environment variables.
+
+See `docs/BEADS_BACKEND.md` for the supported backend options, the repo's chosen defaults, and the remaining remote-sync setup step.
+
 ## Dev-Mode Component Labels
 
 During `npm run dev`, every Solid component's root element is automatically annotated with `data-component` and `data-source` attributes via a Babel plugin (`plugins/babel-solid-label.cjs`). These are stripped from production builds.
