@@ -1,4 +1,6 @@
 .DS_Store
+.dolt/
+*.db
 node_modules
 public/bundle.mjs
 public/bundle.mjs.map
