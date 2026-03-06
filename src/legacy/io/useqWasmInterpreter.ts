@@ -1,5 +1,6 @@
 import { dbg } from "../utils.ts";
 import { activeUserSettings } from "../utils/persistentUserSettings.ts";
+import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract";
 
 /** Time-series sample point */
 export interface TimeSample {
@@ -42,12 +43,6 @@ const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise: Promise<void> | null = null;
 let runtimePromise: Promise<UseqRuntime> | null = null;
 const CODE_EVALUATED_EVENT = "useq-code-evaluated";
-const TRANSPORT_STATE_TO_COMMAND: Readonly<Record<TransportState, string>> = Object.freeze({
-  playing: "(useq-play)",
-  paused: "(useq-pause)",
-  stopped: "(useq-stop)",
-});
-
 function isUseqWasmEnabled(): boolean {
   try {
     return (activeUserSettings as any)?.wasm?.enabled ?? true;

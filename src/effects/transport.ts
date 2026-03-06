@@ -9,6 +9,10 @@ import {
 } from "../legacy/io/useqWasmInterpreter.ts";
 // @ts-ignore - Importing from legacy untyped module
 import { activeUserSettings } from "../legacy/utils/persistentUserSettings.ts";
+import {
+  SHARED_TRANSPORT_COMMANDS,
+  type SharedTransportCommand,
+} from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
 
 /**
@@ -35,9 +39,10 @@ export const resolveTransportMode = (): "hardware" | "wasm" | "both" | "none" =>
 };
 
 /**
- * Fan-out a transport command to both hardware (if connected) and WASM (if enabled).
+ * Fan-out only the shared transport builtins to both hardware (if connected)
+ * and WASM (if enabled).
  */
-export const sendTransportCommand = (command: string) =>
+export const sendTransportCommand = (command: SharedTransportCommand) =>
   Effect.gen(function* (_) {
     const connected = isConnectedToModule();
     const wasmEnabled = isWasmEnabled();
@@ -94,7 +99,7 @@ export const queryHardwareTransportState = () =>
   Effect.tryPromise<TransportState | null>({
     try: () =>
       new Promise<TransportState | null>((resolve) => {
-        sendTouSEQ("(useq-get-transport-state)", (text: string) => {
+        sendTouSEQ(SHARED_TRANSPORT_COMMANDS.getState, (text: string) => {
           resolve(parseTransportState(text));
         });
       }),
@@ -126,12 +131,12 @@ export const extractTransportStateFromMeta = (
   return null;
 };
 
-export const play = () => sendTransportCommand("(useq-play)");
-export const pause = () => sendTransportCommand("(useq-pause)");
-export const stop = () => sendTransportCommand("(useq-stop)");
-export const rewind = () => sendTransportCommand("(useq-rewind)");
-export const clear = () => sendTransportCommand("(useq-clear)");
-export const queryState = () => sendTransportCommand("(useq-get-transport-state)");
+export const play = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.play);
+export const pause = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.pause);
+export const stop = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.stop);
+export const rewind = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.rewind);
+export const clear = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.clear);
+export const queryState = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.getState);
 
 /**
  * Mirror a hardware transport state into WASM without sending commands back to hardware.

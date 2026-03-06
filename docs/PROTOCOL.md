@@ -96,6 +96,8 @@ Send raw ASCII text ending with `\n`:
 
 All JSON requests are sent as a single-line JSON object followed by `\n`. Every request must include a `requestId` field; the editor generates these automatically.
 
+`code` is required only for `type: "eval"`. The control requests `hello`, `ping`, and `stream-config` do not include `code`.
+
 ```json
 {"type":"hello","client":"editor","version":"1.2.0","requestId":"req-1"}\n
 ```

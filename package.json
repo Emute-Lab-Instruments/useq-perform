@@ -56,6 +56,7 @@
     "build": "npm run build:assets && vite build",
     "build:assets": "node scripts/build-assets.mjs",
     "build:wasm": "cd src-useq && ./scripts/build_wasm.sh",
+    "src-useq:status": "node scripts/src-useq-status.mjs",
     "watch": "npm-run-all --parallel watch:assets watch:vite",
     "watch:assets": "node scripts/build-assets.mjs --watch",
     "watch:vite": "vite build --watch",

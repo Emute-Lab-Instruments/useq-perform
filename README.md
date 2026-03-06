@@ -17,6 +17,7 @@ Web-based live coding interface for the uSEQ hardware module.
 - `npm run test:all` - runs Mocha + Vitest unit tests.
 - `npm test` - alias for `npm run test:all`.
 - `npm run typecheck` - TypeScript check for the modern typed boundary (`src/lib`, `src/machines`, selected `src/utils`, and selected `src/ui` TSX components).
+- `npm run src-useq:status` - print the authoritative `src-useq` submodule repo/branch/commit metadata the editor currently depends on.
 
 ## Source Layout
 
@@ -32,6 +33,8 @@ Web-based live coding interface for the uSEQ hardware module.
 ## Architecture
 
 The application uses a single-bundle Vite build. UI components are mounted via adapter modules that provide imperative APIs (e.g., `mountSettingsPanel()`, `showModal()`). Legacy code imports these adapters directly instead of using separate entrypoints or bridge APIs.
+
+Editor-facing firmware and WASM capability rules live in `docs/RUNTIME_CONTRACT.md`. Read that before auditing `src-useq` behavior or promoting standalone firmware work into the submodule.
 
 ## Beads Backend
 
