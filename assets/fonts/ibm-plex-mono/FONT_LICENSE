@@ -1,0 +1,16 @@
+IBM Plex Mono
+Version 1.1.0
+Source: https://www.npmjs.com/package/@ibm/plex-mono
+License: SIL Open Font License 1.1
+
+Files:
+- IBMPlexMono-Regular.woff2
+- IBMPlexMono-Medium.woff2  
+- IBMPlexMono-SemiBold.woff2
+
+SHA-256 checksums:
+8c2c290cbd998fa1f647e4572aca6ebbd72589551b0f3f9f8bb8628fbb8219d5  IBMPlexMono-Medium.woff2
+49ce58b41a0e1cb921c0f58d9a5b8b96a2cc21437c7066f3ba4f24873076d131  IBMPlexMono-Regular.woff2
+ed5eaca7522336959d6c3810bd9bb78424f0d964082d581bfbea169ee08d14e3  IBMPlexMono-SemiBold.woff2
+
+Installed: 2026-02-15 via npm pack @ibm/plex-mono@1.1.0
