@@ -65,6 +65,43 @@ class HeartbeatCodexRunnerTests(unittest.TestCase):
         self.assertIn("database offline", message)
         self.assertIn("Resume from wave 2 phase execute_issues", message)
 
+    def test_build_verify_prompt_uses_context_file_and_allows_open_parent_epic(self) -> None:
+        prompt = runner.build_verify_prompt(
+            {"branch": "codex/test"},
+            pathlib.Path("/tmp/run"),
+            1,
+            pathlib.Path("/tmp/run/wave-1/verification.json"),
+        )
+        self.assertIn("/tmp/run/wave-1/verification-context.json", prompt)
+        self.assertIn("parent wave epic may still be open", prompt)
+
+    def test_close_wave_epic_if_ready_closes_parent_after_successful_verification(self) -> None:
+        state = {
+            "waves": {
+                "1": {
+                    "wave_epic_id": "bd-wave",
+                    "phases": {},
+                }
+            }
+        }
+        with (
+            patch.object(runner, "remaining_wave_issues", return_value=[]),
+            patch.object(runner, "show_issue", return_value={"id": "bd-wave", "status": "open"}),
+            patch.object(runner, "run_cmd") as run_cmd,
+            patch.object(runner, "export_bd_state") as export_bd_state,
+        ):
+            runner.close_wave_epic_if_ready(
+                state,
+                pathlib.Path("/tmp/run"),
+                1,
+                {"status": "ready_for_next_wave", "summary": "Wave ready."},
+            )
+
+        run_cmd.assert_called_once_with(
+            ["bd", "close", "bd-wave", "--reason", "Wave ready.", "--json"]
+        )
+        export_bd_state.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
