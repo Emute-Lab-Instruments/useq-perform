@@ -1,9 +1,7 @@
 @import './base.css';
-/* Test hot reload */
 @import './toolbar.css';
 @import './editor.css';
 @import './panels.css';
-@import './console.css';
 @import './reference.css';
 @import './settings.css';
 @import './updates.css';

@@ -6,9 +6,9 @@ export function examineEnvironment() {
   // Handle URL parameters first to set up global state
   handleURLParameters();
 
-  // Detect if we're in a browser vs desktop app
+  // Desktop/Electron runtime support is out of scope for the reset.
   const areInBrowser = typeof window !== 'undefined' && window.navigator;
-  const areInDesktopApp = !areInBrowser || (window.electronAPI !== undefined);
+  const areInDesktopApp = false;
 
   // Check for Web Serial API support (can be disabled via URL parameter)
   const isWebSerialAvailable = disableWebSerial ? false : checkForWebserialSupport();

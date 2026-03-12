@@ -2,16 +2,13 @@
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
 import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
-import { sendTouSEQ } from "../io/serialComms.ts";
 import { historyKeymap, deleteCharBackward } from "@codemirror/commands";
 import {
-  toggleVid,
   evalNow,
   evalQuantised,
   softEval,
   toggleHelp,
   toggleSerialVis,
-  toggleDocumentation,
   showDocumentationForSymbol
 } from "./editorConfig.ts";
 // import { 
@@ -57,12 +54,6 @@ export const useq_keymap = [
   {
     key: "Alt-h",
     run: toggleHelp,
-    preventDefault: true,
-    stopPropagation: true,
-  },
-  {
-    key: "Alt-v",
-    run: toggleVid,
     preventDefault: true,
     stopPropagation: true,
   },

@@ -2,24 +2,12 @@
     z-index: 0;
 }
 
-#panel-console {
-    z-index: 10;
-}
-
 #panel-top-toolbar {
     z-index: 9;
 }
 
 #panel-toolbar {
     z-index: 10;
-}
-
-.panel-aux {
-    z-index: 20;
-
-    /* &::after {
-        z-index: 1001;
-    } */
 }
 
 /* Update notification should appear above everything */

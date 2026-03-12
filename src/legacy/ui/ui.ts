@@ -1,6 +1,7 @@
 import { initEditorPanel } from "../editors/main.ts";
 import { initGamepadControl } from "../editors/gamepadControl.ts";
 import { devmode } from "../urlParams.ts";
+import { reportBootstrapFailure } from "../../runtime/runtimeDiagnostics.ts";
 
 let editor: any = null;
 let topToolbarResizeObserver: ResizeObserver | null = null;
@@ -73,21 +74,27 @@ export async function createAppUI(environmentState: any) {
     // Mount Solid UI adapters and wire editor store.
     // The try/catch handles Node.js test environments where .tsx/.ts Solid imports fail.
     try {
-        const [editorStore, panels, toolbars] = await Promise.all([
+        const [editorStore, panels, toolbars, modal, pickerMenu, doubleRadialMenu] = await Promise.all([
             import("../../lib/editorStore.ts"),
             import("../../ui/adapters/panels.tsx"),
             import("../../ui/adapters/toolbars.tsx"),
+            import("../../ui/adapters/modal.tsx"),
+            import("../../ui/adapters/picker-menu.tsx"),
+            import("../../ui/adapters/double-radial-menu.tsx"),
         ]);
         editorStore.setEditor(editor);
         // Mount toolbars first (they replace the static HTML toolbar elements)
         toolbars.mountTransportToolbar();
         toolbars.mountMainToolbar();
+        modal.mountModal();
+        pickerMenu.mountPickerMenu();
+        doubleRadialMenu.mountDoubleRadialMenu();
         // Mount panels and design selector
         panels.mountSettingsPanel();
         panels.mountHelpPanel();
         panels.mountDesignSelector(devmode);
-    } catch (_) {
-        // In Node.js test environments, Solid imports fail gracefully — no-op.
+    } catch (error) {
+        reportBootstrapFailure("ui-adapter-mount", error);
     }
 
     initTopToolbarHeightTracking();
@@ -106,14 +113,11 @@ export async function createAppUI(environmentState: any) {
 function initEventHandlers() {
     document.addEventListener("keydown", function (e: KeyboardEvent) {
         if (e.key === "Escape") {
-            // Hide chrome-managed panels via adapter signal
             import("../../ui/adapters/panels.tsx")
               .then((m) => m.hideAllPanels())
-              .catch(() => {});
-            // Also hide any legacy .panel-aux elements (e.g. devmode)
-            document.querySelectorAll(".panel-aux").forEach(el => {
-                (el as HTMLElement).style.display = "none";
-            });
+              .catch((error) => {
+                  reportBootstrapFailure("ui-panel-hide", error);
+              });
         }
     });
 }

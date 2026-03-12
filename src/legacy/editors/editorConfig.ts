@@ -15,14 +15,6 @@ import { evalInUseqWasm } from "../io/useqWasmInterpreter.ts";
 import { noModuleMode } from "../urlParams.ts";
 import { rewriteCodeSliceForModule } from "./manualControlState.ts";
 
-// UI STATE
-// Camera panel is opened via the Solid CameraPanel component
-function openCam(): void {
-    const api = typeof window !== 'undefined' ? (window as any).__cameraPanel : null;
-    if (api && typeof api.open === 'function') {
-        api.open();
-    }
-}
 import { getUserSettings } from "../utils/persistentUserSettings.ts";
 import { fontSizeCompartment } from "./state.ts";
 
@@ -30,8 +22,6 @@ import { dbg } from "../utils.ts";
 
 import { flashEvalHighlight } from "./extensions/evalHighlight.ts";
 import { detectAndTrackExpressionEvaluation } from "./extensions/structure.ts";
-
-declare function toggleAuxPanel(selector: string): void;
 
 interface EvalOpts {
   state: EditorState;
@@ -217,28 +207,6 @@ export function toggleHelp(): boolean {
   return true;
 }
 
-let isCameraOpen = false;
-
-export function toggleVid(): boolean {
-  if (!isCameraOpen) {
-    if (openCam()) {
-      isCameraOpen = true;
-    } else {
-      post("There was an error opening the video camera");
-      return false;
-    }
-  }
-
-  if (isCameraOpen) {
-    const vidEl = document.getElementById("vidcontainer");
-    if (vidEl) {
-      vidEl.style.display = vidEl.style.display === "none" ? "" : "none";
-    }
-  }
-
-  return true;
-}
-
 export function toggleSerialVisInternal(): boolean {
   const visPanel = document.getElementById("panel-vis");
   if (visPanel) {
@@ -404,11 +372,6 @@ export function makeDeleteWrapper(originalRun: (view: EditorView) => boolean) {
     }
     return originalRun(view);
   };
-}
-
-export function toggleDocumentation(): boolean {
-  toggleAuxPanel("#panel-documentation");
-  return true;
 }
 
 export function showDocumentationForSymbol(view: EditorView): boolean {

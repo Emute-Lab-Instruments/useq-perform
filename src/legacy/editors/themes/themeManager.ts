@@ -98,28 +98,12 @@ function adjustPanelsToTheme(themeName) {
     adjustedHelpBackground = "#" + convert.hsv.hex(helpHsv);
   }
   
-  // Update console panel
-  const consolePanel = document.getElementById("panel-console");
-  if (consolePanel) {
-    consolePanel.style.backgroundColor = adjustedConsoleBackground;
-    consolePanel.style.color = foregroundColor;
-    consolePanel.style.boxShadow = `0 4px 12px ${themeRecipe.settings.foreground}`;
-    consolePanel.style.borderColor = themeRecipe.settings.foreground;
-  }
-
-  // Note: help panel is now a Solid component with CSS-variable-based theming; no DOM update needed.
-
   // Update toolbar panel
   const toolbarPanel = document.getElementById("panel-toolbar");
   if (toolbarPanel) {
     toolbarPanel.style.backgroundColor = adjustedConsoleBackground;
     toolbarPanel.style.borderColor = themeRecipe.settings.foreground;
   }
-
-  // Update all other auxiliary panels
-  document.querySelectorAll(".panel-aux").forEach(el => {
-    (el as HTMLElement).style.color = foregroundColor;
-  });
   
   // For light themes, we need to adjust contrast on form controls and borders
   if (isLightTheme) {

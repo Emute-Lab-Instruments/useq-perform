@@ -1,36 +1,24 @@
-/* Auxiliary panel - legacy fallback for DOM-based panels (e.g. devmode).
-   Settings and Help panels now use PanelChrome components. */
+/* Legacy auxiliary panels retained for upgrade/update flows. */
 .panel-aux {
-  /* Positioning */
   position: absolute;
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-
-  /* Layout */
   display: flex;
   flex-direction: column;
   text-align: left;
-
-  /* Dimensions */
   padding: 0;
   height: 75%;
   min-width: 20%;
   max-width: 40%;
   overflow: hidden;
-
-  /* Visual styling */
   border: 1px solid var(--panel-border);
   border-color: var(--accent-color);
   border-radius: var(--panel-border-radius);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   opacity: 100%;
-
-  /* Typography */
   color: var(--text-primary);
   font-family: var(--code-font);
-
-  /* Animation */
   transition: border-color 0.2s ease;
 
   &:hover {
@@ -38,9 +26,7 @@
   }
 }
 
-/* The main container that holds both the nav bar and tab contents */
 .panel-tab-container {
-  /* Fill the entire panel-aux container */
   width: 100%;
   height: 100%;
   display: flex;
@@ -48,45 +34,30 @@
   overflow: hidden;
 }
 
-/* Tab bar container - holds the tab buttons in a horizontal row */
 .panel-nav-bar {
-  /* Layout */
   display: flex;
   flex-direction: row;
   justify-content: flex-start;
   align-items: center;
   min-height: 48px;
   padding: 8px;
-
-  /* Visual styling */
   background-color: var(--toolbar-bg);
   border-bottom: 1px solid var(--panel-border);
-
-  /* Typography */
   font-family: var(--code-font);
 }
 
-/* Tab button styling */
 .panel-tab-button {
-  /* Layout and spacing */
   padding: 8px 16px;
   margin: 4px;
   border-radius: 4px;
-
-  /* Typography */
   font-family: var(--code-font);
   font-weight: 500;
   color: var(--text-primary);
-
-  /* Visual styling */
   background-color: var(--panel-control-bg);
   border: 1px solid transparent;
-
-  /* Interaction */
   cursor: pointer;
   transition: all 0.2s ease;
 
-  /* States */
   &:hover {
     background-color: var(--panel-item-hover-bg);
     border-color: var(--accent-color);
@@ -100,7 +71,6 @@
   }
 }
 
-/* the container that holds all the tab contents */
 .panel-tab-window {
   flex-grow: 1;
   display: flex;
@@ -108,9 +78,8 @@
   overflow: hidden;
   min-height: 0;
   background-color: var(--panel-section-bg);
-  padding: 0px;
+  padding: 0;
   padding-left: 25px;
-
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
 
@@ -146,4 +115,3 @@
     overflow-y: auto;
   }
 }
-

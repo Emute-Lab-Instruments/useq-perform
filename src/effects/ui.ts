@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { toggleConnect } from "../legacy/io/serialComms.ts";
 // @ts-ignore - Importing from legacy untyped module
 import { toggleSerialVis } from "../legacy/editors/editorConfig.ts";
+import { reportBootstrapFailure } from "../runtime/runtimeDiagnostics.ts";
 
 export const toggleConnection = () =>
   Effect.promise(() => toggleConnect());
@@ -22,21 +23,20 @@ import("../ui/adapters/panels.tsx")
     _togglePanelVisibility = m.togglePanelVisibility;
     _hideAllPanels = m.hideAllPanels;
   })
-  .catch(() => {});
+  .catch((error) => {
+    reportBootstrapFailure("ui-effects-adapter-load", error);
+  });
 
 function hideAllAuxPanels() {
   if (_hideAllPanels) {
     _hideAllPanels();
   }
-  // Also hide any remaining legacy .panel-aux elements (e.g. devmode panel)
-  document.querySelectorAll(".panel-aux").forEach(el => (el as HTMLElement).style.display = "none");
 }
 
 export { hideAllAuxPanels };
 
 /**
- * Toggle panel by ID string. Supports both chrome-managed panels
- * ("settings", "help") and legacy DOM panels ("#panel-devmode").
+ * Toggle panel by ID string. Chrome-managed panels use the "#panel-*" convention.
  */
 export const togglePanel = (panelId: string) =>
   Effect.sync(() => {
@@ -47,7 +47,7 @@ export const togglePanel = (panelId: string) =>
       return;
     }
 
-    // Fallback: legacy DOM-based panel toggle (e.g. devmode)
+    // Fallback for any remaining DOM-managed panel.
     const panel = document.querySelector(panelId) as HTMLElement | null;
     if (!panel) return;
 

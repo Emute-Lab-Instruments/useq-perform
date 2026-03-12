@@ -24,7 +24,6 @@ import { syntaxTree } from "@codemirror/language";
 import { open as openDoubleRadialMenu } from "../../ui/adapters/double-radial-menu.tsx";
 import { buildHierarchicalMenuModel } from "../ui/pickers/menuData.ts";
 import { evalNow } from "./editorConfig.ts";
-import { virtualGamepad } from "../urlParams.ts";
 
 // Import picker menu functions from adapters (no island dependency)
 import {
@@ -32,9 +31,6 @@ import {
   showNumberPickerMenu,
   showHierarchicalGridPicker
 } from "../../ui/adapters/picker-menu.tsx";
-
-// Import virtual gamepad state directly (no island dependency)
-import { getVirtualGamepadState } from "../../utils/virtualGamepad";
 import { sendSerialInputStreamValue } from "../io/serialComms.ts";
 import {
   clearManualControlBinding,
@@ -915,61 +911,10 @@ export function createGamepadController(options = {}) {
 }
 
 function getMergedGamepads() {
-  const real = navigator.getGamepads ? Array.from(navigator.getGamepads()) : [];
-  if (!virtualGamepad) return real;
-  
-  const virt = getVirtualGamepadState();
-  
-  // Find first connected real gamepad or create a base
-  let baseIdx = real.findIndex(g => g && g.connected);
-  let base = baseIdx !== -1 ? real[baseIdx] : null;
-  
-  if (!base) {
-     // Create synthetic base
-     base = {
-         index: 0,
-         id: 'Virtual Controller',
-         connected: true,
-         timestamp: virt.timestamp,
-         buttons: virt.buttons.map(b => ({ pressed: b.pressed, value: b.value })),
-         axes: virt.axes.slice()
-     };
-     return [base];
+  if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") {
+    return [];
   }
-  
-  // Merge virt into base
-  // We clone strictly necessary properties
-  const mergedButtons = [];
-  for(let i=0; i<base.buttons.length; i++) {
-      const b = base.buttons[i];
-      const v = virt.buttons[i];
-      const pressed = b.pressed || (v && v.pressed);
-      const value = Math.max(b.value, (v && v.value) || 0);
-      mergedButtons.push({ pressed, value });
-  }
-  // Ensure we cover virtual buttons if real has fewer
-  for(let i=base.buttons.length; i<virt.buttons.length; i++) {
-      mergedButtons.push(virt.buttons[i]);
-  }
-
-  const mergedAxes = [];
-  for(let i=0; i<base.axes.length; i++) {
-      const a = base.axes[i];
-      const v = virt.axes[i];
-      if (Math.abs(v) > 0.1) mergedAxes.push(v);
-      else mergedAxes.push(a);
-  }
-
-  const merged = {
-      ...base,
-      buttons: mergedButtons,
-      axes: mergedAxes,
-      timestamp: Math.max(base.timestamp, virt.timestamp)
-  };
-  
-  const result = real.slice();
-  result[baseIdx] = merged;
-  return result;
+  return Array.from(navigator.getGamepads());
 }
 
 let activeController = null;
