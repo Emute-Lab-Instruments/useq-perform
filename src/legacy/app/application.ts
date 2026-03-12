@@ -1,5 +1,5 @@
 import { post } from '../../utils/consoleStore.ts';
-import { checkForSavedPortAndMaybeConnect, setConnectedToModule } from '../io/serialComms.ts';
+import { announceRuntimeSession, checkForSavedPortAndMaybeConnect } from '../io/serialComms.ts';
 import { ensureUseqWasmLoaded } from '../io/useqWasmInterpreter.ts';
 import { noModuleMode } from '../urlParams.ts';
 import { startWebSocketServer, stopWebSocketServer } from '../io/websocketServer.ts';
@@ -96,28 +96,39 @@ async function activateDefaultNoModuleExpressions() {
   }
 }
 
+async function startBrowserLocalRuntime(options: {
+  announceMessage: string;
+  seedDefaultExpressions?: boolean;
+}) {
+  await ensureUseqWasmLoaded();
+  announceRuntimeSession();
+
+  try {
+    await initializeMockControls();
+  } catch (error) {
+    console.warn('Failed to initialise mock controls:', error);
+  }
+
+  try {
+    startMockTimeGenerator();
+  } catch (error) {
+    console.warn('Failed to start mock time generator:', error);
+  }
+
+  post(options.announceMessage);
+
+  if (options.seedDefaultExpressions) {
+    post('uSEQ: mock module connected.');
+    ensureSerialVisPanelVisibleForNoModule();
+    await activateDefaultNoModuleExpressions();
+  }
+}
+
 export function createApp(appUI, environmentState) {
   const app = {
     modals: {},
 
     async start() {
-      // Show warning modal if Web Serial is not available in browser
-      if (!noModuleMode && environmentState.areInBrowser && !environmentState.isWebSerialAvailable) {
-        const modalContent = `
-          <p>This browser doesn't support the WebSerial API. Please try using a Chrome or Chromium-based browser, like Brave or Microsoft Edge.</p>
-          <p>The WebSerial API is required to connect to your uSEQ hardware module.</p>
-        `;
-
-        app.modals.webserialWarning = showModal(
-          'webserial-warning-modal',
-          'Browser Not Supported',
-          modalContent
-        );
-
-        post('Web Serial API is not available in this browser. Please use a supported browser.');
-        return;
-      }
-
       // Start WebSocket server if in dev mode
       if (environmentState.isInDevmode) {
         try {
@@ -131,33 +142,61 @@ export function createApp(appUI, environmentState) {
       const userName = environmentState.userSettings.name || 'User';
       post(`Hello, ${userName}!`);
 
-      // Check for saved port and maybe connect
+      const isWasmEnabled = environmentState.userSettings?.wasm?.enabled !== false;
+      const startLocallyWithoutHardware =
+        environmentState.userSettings?.runtime?.startLocallyWithoutHardware !== false;
+
       if (noModuleMode) {
         try {
-          await ensureUseqWasmLoaded();
-          post('No-module mode active: expressions will run on the in-browser interpreter.');
-
-          setConnectedToModule(true);
-
-          try {
-            await initializeMockControls();
-          } catch (error) {
-            console.warn('Failed to initialise mock controls:', error);
-          }
-
-          try {
-            startMockTimeGenerator();
-          } catch (error) {
-            console.warn('Failed to start mock time generator:', error);
-          }
-
-          post('uSEQ: mock module connected.');
-
-          ensureSerialVisPanelVisibleForNoModule();
-          await activateDefaultNoModuleExpressions();
+          await startBrowserLocalRuntime({
+            announceMessage: 'No-module mode active: expressions will run on the in-browser interpreter.',
+            seedDefaultExpressions: true,
+          });
         } catch (error) {
           post('**Error**: Failed to initialise the in-browser interpreter.');
         }
+        return;
+      }
+
+      if (!environmentState.isWebSerialAvailable) {
+        if (isWasmEnabled) {
+          try {
+            await startBrowserLocalRuntime({
+              announceMessage:
+                'Web Serial is unavailable. Browser-local uSEQ is ready, and hardware can be paired later from a supported browser.',
+            });
+          } catch (_error) {
+            post('**Error**: Failed to initialise the in-browser interpreter.');
+          }
+        } else {
+          const modalContent = `
+            <p>This browser doesn't support the WebSerial API, and browser-local WASM is disabled in settings.</p>
+            <p>Use a Chromium-based browser or re-enable the browser-local runtime to keep working locally.</p>
+          `;
+
+          app.modals.webserialWarning = showModal(
+            'webserial-warning-modal',
+            'Browser Runtime Required',
+            modalContent
+          );
+
+          post('**Warning**: Web Serial is unavailable and browser-local uSEQ is disabled.');
+          announceRuntimeSession();
+        }
+        return;
+      }
+
+      if (isWasmEnabled && startLocallyWithoutHardware) {
+        try {
+          await startBrowserLocalRuntime({
+            announceMessage:
+              'Browser-local uSEQ is ready. You can start editing and evaluating before hardware reconnect finishes.',
+          });
+        } catch (_error) {
+          post('**Error**: Failed to initialise the in-browser interpreter.');
+        }
+
+        void checkForSavedPortAndMaybeConnect();
         return;
       }
 

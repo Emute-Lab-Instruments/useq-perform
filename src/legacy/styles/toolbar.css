@@ -134,6 +134,42 @@
     color: rgba(255, 0, 0, 0.75) !important;
   }
 
+  .toolbar-row:first-child .toolbar-button.runtime-browser {
+    box-shadow: 0 0 20px rgba(74, 144, 226, 0.65) !important;
+    color: rgba(74, 144, 226, 0.9) !important;
+  }
+
+  .toolbar-runtime-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.1em;
+    padding: 0.1em 0.7em;
+    border: 1px solid var(--panel-border);
+    border-radius: 999px;
+    background: var(--panel-control-bg);
+    color: var(--text-secondary, var(--text-primary));
+    font-family: monospace;
+    font-size: 0.82rem;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .toolbar-runtime-pill.runtime-hardware {
+    border-color: rgba(0, 255, 0, 0.45);
+    color: rgba(0, 255, 0, 0.82);
+  }
+
+  .toolbar-runtime-pill.runtime-browser {
+    border-color: rgba(74, 144, 226, 0.45);
+    color: rgba(74, 144, 226, 0.92);
+  }
+
+  .toolbar-runtime-pill.runtime-none {
+    border-color: rgba(255, 0, 0, 0.35);
+    color: rgba(255, 120, 120, 0.88);
+  }
+
   @media all and (max-width:30em) {
     .toolbar-button {
       display: inline-flex;

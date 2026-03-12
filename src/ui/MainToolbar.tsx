@@ -1,21 +1,29 @@
-import { createSignal, onMount, onCleanup, Show } from "solid-js";
+import { createSignal, onMount, onCleanup } from "solid-js";
 import { Effect } from "effect";
 import { toggleConnection, toggleGraph, togglePanel } from "../effects/ui";
 import { adjustFontSize, loadCode, saveCode } from "../effects/editor";
 // @ts-ignore - Importing from legacy untyped module
-import { devmode } from "../legacy/urlParams.ts";
-// @ts-ignore - Importing from legacy untyped module
 import { isConnectedToModule } from "../legacy/io/serialComms.ts";
-import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings, Wrench } from "lucide-solid";
+import { getRuntimeSessionSnapshot } from "../effects/transport";
+import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings } from "lucide-solid";
 
 export function MainToolbar() {
+  const initialSession = getRuntimeSessionSnapshot();
   const [isConnected, setIsConnected] = createSignal(isConnectedToModule());
+  const [connectionMode, setConnectionMode] = createSignal(initialSession.connectionMode);
+  const [transportMode, setTransportMode] = createSignal(initialSession.transportMode);
   let connectButtonRef: HTMLButtonElement | undefined;
 
   const handleConnectionChange = (e: Event) => {
     const detail = (e as CustomEvent).detail;
     if (detail && typeof detail.connected === "boolean") {
       setIsConnected(detail.connected);
+    }
+    if (detail?.connectionMode) {
+      setConnectionMode(detail.connectionMode);
+    }
+    if (detail?.transportMode) {
+      setTransportMode(detail.transportMode);
     }
   };
 
@@ -47,19 +55,36 @@ export function MainToolbar() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const run = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromise(effect);
+  const runtimeStatus = () => {
+    if (connectionMode() === "hardware") {
+      return transportMode() === "both" ? "Hardware + WASM" : "Hardware";
+    }
+
+    if (connectionMode() === "browser") {
+      return "Browser-local";
+    }
+
+    return "Disconnected";
+  };
+
+  const connectButtonClass = () =>
+    `toolbar-button ${isConnected() ? "connected" : "disconnected"} runtime-${connectionMode()}`;
 
   return (
     <div id="panel-toolbar">
       <div class="toolbar-row">
         <button
           ref={connectButtonRef}
-          class={`toolbar-button ${isConnected() ? 'connected' : 'disconnected'}`}
-          title="Connect"
-          aria-label="Connect"
+          class={connectButtonClass()}
+          title={`Connect (${runtimeStatus()})`}
+          aria-label={`Connect (${runtimeStatus()})`}
           onClick={() => run(toggleConnection())}
         >
           <Cable />
         </button>
+        <span class={`toolbar-runtime-pill runtime-${connectionMode()}`}>
+          {runtimeStatus()}
+        </span>
         <button
           class="toolbar-button"
           title="Graph"
@@ -125,16 +150,6 @@ export function MainToolbar() {
         >
           <Settings />
         </button>
-        <Show when={devmode}>
-          <button
-            class="toolbar-button"
-            title="Dev Mode Tools"
-            aria-label="Dev Mode Tools"
-            onClick={() => run(togglePanel("#panel-devmode"))}
-          >
-            <Wrench />
-          </button>
-        </Show>
       </div>
     </div>
   );

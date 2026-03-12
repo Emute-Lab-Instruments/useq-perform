@@ -17,11 +17,12 @@ dbg('persistentUserSettings.mjs: Available themes:', Object.keys(themes));
 
 export const settingsStorageKey = "uSEQ-Perform-User-Settings";
 export const codeStorageKey = "uSEQ-Perform-User-Code";
+const legacyCodeStorageKey = "useqcode";
 
 // Default application configuration
-const defaultUserSettings = { 
+export const defaultUserSettings = {
   name: "Livecoder",
-  editor: { 
+  editor: {
     code: defaultMainEditorStartingCode,
     theme: defaultTheme,
     fontSize: defaultFontSize,
@@ -53,6 +54,10 @@ const defaultUserSettings = {
     circularOffset: 0,
     digitalLaneGap: 4
   },
+  runtime: {
+    autoReconnect: true,
+    startLocallyWithoutHardware: true
+  },
   wasm: {
     enabled: true
   }
@@ -60,8 +65,198 @@ const defaultUserSettings = {
 
 dbg('persistentUserSettings.mjs: Default settings theme:', defaultUserSettings.editor.theme);
 
+function cloneDefaultUserSettings() {
+  return {
+    ...defaultUserSettings,
+    editor: { ...defaultUserSettings.editor },
+    storage: { ...defaultUserSettings.storage },
+    ui: { ...defaultUserSettings.ui },
+    visualisation: { ...defaultUserSettings.visualisation },
+    runtime: { ...defaultUserSettings.runtime },
+    wasm: { ...defaultUserSettings.wasm },
+  };
+}
+
+export function mergeUserSettings(base, values = {}) {
+  return {
+    ...base,
+    ...values,
+    editor: values.editor ? { ...base.editor, ...values.editor } : { ...base.editor },
+    storage: values.storage ? { ...base.storage, ...values.storage } : { ...base.storage },
+    ui: values.ui ? { ...base.ui, ...values.ui } : { ...base.ui },
+    visualisation: values.visualisation
+      ? { ...base.visualisation, ...values.visualisation }
+      : { ...base.visualisation },
+    runtime: values.runtime ? { ...base.runtime, ...values.runtime } : { ...base.runtime },
+    wasm: values.wasm ? { ...base.wasm, ...values.wasm } : { ...base.wasm },
+  };
+}
+
+function isLocalStorageBypassed() {
+  if (typeof window === "undefined" || !window.location?.search) {
+    return false;
+  }
+
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.has("nosave");
+  } catch (error) {
+    dbg("persistentUserSettings.mjs: Failed to inspect URL params for nosave:", error);
+    return false;
+  }
+}
+
+function decodeStoredCode(code) {
+  if (typeof code !== "string") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(code);
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+  } catch (_) {
+    // The canonical format is plain text; keep legacy JSON-string values compatible.
+  }
+
+  return code;
+}
+
+function detectOsFamily() {
+  const platformStr =
+    (typeof navigator !== "undefined" && (navigator.platform || navigator.userAgent || "")) || "";
+  return /Mac|iPhone|iPad|iPod/i.test(platformStr) ? "mac" : "pc";
+}
+
+function normalizeUserSettings(settings = {}) {
+  let normalized = mergeUserSettings(cloneDefaultUserSettings(), settings);
+
+  if (typeof normalized.editor?.code !== "string") {
+    normalized = mergeUserSettings(normalized, {
+      editor: { code: defaultMainEditorStartingCode },
+    });
+  }
+
+  if (normalized.editor?.theme === "default") {
+    dbg("persistentUserSettings.mjs: Converting legacy 'default' theme to:", defaultTheme);
+    normalized.editor.theme = defaultTheme;
+  }
+
+  if (!themes[normalized.editor?.theme]) {
+    dbg("persistentUserSettings.mjs: Theme not found in available themes, resetting to:", defaultTheme);
+    normalized.editor.theme = defaultTheme;
+  }
+
+  if (!normalized.ui?.osFamily) {
+    normalized.ui.osFamily = detectOsFamily();
+  }
+
+  return normalized;
+}
+
+function persistUserSettings(settings) {
+  if (isLocalStorageBypassed()) {
+    return;
+  }
+
+  try {
+    const normalized = normalizeUserSettings(settings);
+    const settingsWithoutCode = {
+      ...normalized,
+      editor: { ...normalized.editor },
+    };
+    const code = settingsWithoutCode.editor.code;
+    delete settingsWithoutCode.editor.code;
+
+    window.localStorage.setItem(settingsStorageKey, JSON.stringify(settingsWithoutCode));
+    window.localStorage.setItem(codeStorageKey, code);
+  } catch (error) {
+    console.error("Error saving configuration:", error);
+  }
+}
+
+function hasLegacySettings() {
+  return Boolean(
+    window.localStorage.getItem("editorConfig") ||
+      window.localStorage.getItem("useqConfig") ||
+      window.localStorage.getItem(legacyCodeStorageKey)
+  );
+}
+
+function dispatchSettingsChanged() {
+  try {
+    window.dispatchEvent(new CustomEvent("useq-settings-changed", { detail: activeUserSettings }));
+  } catch (_) {}
+}
+
+export function replaceUserSettings(values, options = {}) {
+  const { persist = false, dispatch = false } = options;
+  activeUserSettings = normalizeUserSettings(values);
+
+  if (persist) {
+    persistUserSettings(activeUserSettings);
+  }
+
+  if (dispatch) {
+    dispatchSettingsChanged();
+  }
+
+  return activeUserSettings;
+}
+
+export function readPersistedUserSettings() {
+  if (typeof window === "undefined" || isLocalStorageBypassed()) {
+    return null;
+  }
+
+  dbg("persistentUserSettings.mjs: Loading user settings...");
+
+  try {
+    const retrievedSettingsStr = window.localStorage.getItem(settingsStorageKey);
+    const legacySettingsPresent = hasLegacySettings();
+    const storedCodeValue =
+      window.localStorage.getItem(codeStorageKey) ?? window.localStorage.getItem(legacyCodeStorageKey);
+
+    if (!retrievedSettingsStr && !legacySettingsPresent && storedCodeValue == null) {
+      return null;
+    }
+
+    let settings = cloneDefaultUserSettings();
+    let migratedLegacySettings = false;
+
+    if (retrievedSettingsStr) {
+      const retrievedSettings = JSON.parse(retrievedSettingsStr);
+      dbg("persistentUserSettings.mjs: Retrieved settings theme:", retrievedSettings.editor?.theme);
+      settings = mergeUserSettings(settings, retrievedSettings);
+    } else if (legacySettingsPresent) {
+      dbg("persistentUserSettings.mjs: No settings found, checking legacy config...");
+      settings = migrateLegacyConfig(settings);
+      migratedLegacySettings = true;
+    }
+
+    const decodedCode = decodeStoredCode(storedCodeValue);
+    if (decodedCode !== null) {
+      settings = mergeUserSettings(settings, {
+        editor: { code: decodedCode },
+      });
+    }
+
+    const normalized = normalizeUserSettings(settings);
+
+    if (migratedLegacySettings) {
+      persistUserSettings(normalized);
+    }
+
+    return normalized;
+  } catch (error) {
+    console.error("Error loading user settings:", error);
+    return null;
+  }
+}
+
 // Active configuration (initialized with defaults)
-export let activeUserSettings = { ...defaultUserSettings };
+export let activeUserSettings = normalizeUserSettings(cloneDefaultUserSettings());
 dbg('persistentUserSettings.mjs: Initial active settings theme:', activeUserSettings.editor.theme);
 
 /**
@@ -69,78 +264,8 @@ dbg('persistentUserSettings.mjs: Initial active settings theme:', activeUserSett
  * @returns {Object} The merged configuration (defaults + saved values)
  */
 export function loadUserSettings() {
-  dbg("persistentUserSettings.mjs: Loading user settings...");
-  try {
-    // Check if the (new) user settings exist in localStorage
-    const retrievedSettingsStr = window.localStorage.getItem(settingsStorageKey);
-    dbg('persistentUserSettings.mjs: Loading settings from storage:', retrievedSettingsStr);
-
-    // If they exist, parse them and set as active settings
-    if (retrievedSettingsStr) {
-      const retrievedSettings = JSON.parse(retrievedSettingsStr);
-      dbg('persistentUserSettings.mjs: Retrieved settings theme:', retrievedSettings.editor?.theme);
-      // Deep merge to preserve default values that weren't saved
-      activeUserSettings = {
-        ...activeUserSettings,
-        ...retrievedSettings,
-        editor: { ...activeUserSettings.editor, ...retrievedSettings.editor },
-        storage: { ...activeUserSettings.storage, ...retrievedSettings.storage },
-        ui: { ...activeUserSettings.ui, ...retrievedSettings.ui },
-        visualisation: { ...activeUserSettings.visualisation, ...retrievedSettings.visualisation },
-        wasm: { ...activeUserSettings.wasm, ...retrievedSettings.wasm }
-      };
-      dbg("Active user settings:", activeUserSettings);
-    } else {
-      // If not, check to see if the old settings exist
-      dbg('persistentUserSettings.mjs: No settings found, checking legacy config...');
-      activeUserSettings = migrateLegacyConfig(activeUserSettings);
-      dbg('persistentUserSettings.mjs: Settings after legacy migration:', activeUserSettings.editor.theme);
-    }
-
-    // If they don't either, activeUserSettings will have remained default by now
-    dbg("Active user settings after migration:", activeUserSettings);
-return activeUserSettings;
-  } catch (error) {
-    console.error("Error loading user settings:", error);
-    activeUserSettings = { ...defaultUserSettings };
-  }
-
-  // Ensure UI section exists and has all defaults
-  try {
-    if (!activeUserSettings.ui) activeUserSettings.ui = {};
-    // Ensure all UI defaults are present
-    activeUserSettings.ui = { ...defaultUserSettings.ui, ...activeUserSettings.ui };
-
-    activeUserSettings.visualisation = {
-      ...defaultUserSettings.visualisation,
-      ...(activeUserSettings.visualisation || {})
-    };
-
-    if (!activeUserSettings.wasm) activeUserSettings.wasm = {};
-    activeUserSettings.wasm = { ...defaultUserSettings.wasm, ...activeUserSettings.wasm };
-    
-    // Auto-detect OS family (mac vs pc) if unset
-    if (!activeUserSettings.ui.osFamily) {
-      const platformStr = (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent || '')) || '';
-      const isMac = /Mac|iPhone|iPad|iPod/i.test(platformStr);
-      activeUserSettings.ui.osFamily = isMac ? 'mac' : 'pc';
-      dbg('Detected OS family:', activeUserSettings.ui.osFamily);
-    }
-  } catch (e) {}
-
-  // Legacy handling for old theme name
-  if (activeUserSettings.editor?.theme === 'default') {
-    dbg("persistentUserSettings.mjs: Converting legacy 'default' theme to:", defaultTheme);
-    activeUserSettings.editor.theme = defaultTheme;
-  }
-
-  if (!themes[activeUserSettings.editor?.theme]) {
-    dbg("persistentUserSettings.mjs: Theme not found in available themes, resetting to:", defaultTheme);
-    activeUserSettings.editor.theme = defaultTheme;
-  }
-
-  dbg("persistentUserSettings.mjs: Final theme value:", activeUserSettings.editor?.theme);
-  return activeUserSettings;
+  const persistedSettings = readPersistedUserSettings();
+  return replaceUserSettings(persistedSettings ?? cloneDefaultUserSettings());
 }
 
 /**
@@ -148,17 +273,7 @@ return activeUserSettings;
  */
 export function saveUserSettings() {
   dbg("persistentUserSettings.mjs: Saving settings with theme:", activeUserSettings.editor?.theme);
-  try {
-
-    const code = activeUserSettings.editor.code;
-    let settingsWithoutCode = { ...activeUserSettings};
-    delete settingsWithoutCode.editor.code;
-
-    window.localStorage.setItem(settingsStorageKey, JSON.stringify(activeUserSettings));
-    window.localStorage.setItem(codeStorageKey, JSON.stringify(code));
-  } catch (error) {
-    console.error("Error saving configuration:", error);
-  }
+  persistUserSettings(activeUserSettings);
 }
 
 /**
@@ -168,20 +283,10 @@ export function saveUserSettings() {
  */
 export function updateUserSettings(values) {
   dbg("persistentUserSettings.mjs: Updating settings with:", values);
-  // Deep merge to preserve existing nested settings
-  activeUserSettings = {
-    ...activeUserSettings,
-    ...values,
-    editor: values.editor ? { ...activeUserSettings.editor, ...values.editor } : activeUserSettings.editor,
-    storage: values.storage ? { ...activeUserSettings.storage, ...values.storage } : activeUserSettings.storage,
-    ui: values.ui ? { ...activeUserSettings.ui, ...values.ui } : activeUserSettings.ui,
-    visualisation: values.visualisation ? { ...activeUserSettings.visualisation, ...values.visualisation } : activeUserSettings.visualisation,
-    wasm: values.wasm ? { ...activeUserSettings.wasm, ...values.wasm } : activeUserSettings.wasm
-  };
-  saveUserSettings();
-  try {
-    window.dispatchEvent(new CustomEvent('useq-settings-changed', { detail: activeUserSettings }));
-  } catch (e) {}
+  replaceUserSettings(mergeUserSettings(activeUserSettings, values), {
+    persist: true,
+    dispatch: true,
+  });
 }
 
 /**
@@ -202,11 +307,12 @@ export function getUserSettings(section) {
  */
 export function resetUserSettings(section) {
   if (section && defaultUserSettings[section]) {
-    activeUserSettings[section] = { ...defaultUserSettings[section] };
+    replaceUserSettings(mergeUserSettings(activeUserSettings, {
+      [section]: { ...defaultUserSettings[section] },
+    }), { persist: true, dispatch: true });
   } else {
-    activeUserSettings = { ...defaultUserSettings };
+    replaceUserSettings(cloneDefaultUserSettings(), { persist: true, dispatch: true });
   }
-  saveUserSettings();
 }
 
 function migrateLegacyConfig(settings) {
@@ -281,12 +387,13 @@ function migrateLegacyConfig(settings) {
     window.localStorage.removeItem("useqConfig");
   }
 
-  const codeStr = window.localStorage.getItem(codeStorageKey);
+  const codeStr =
+    window.localStorage.getItem(legacyCodeStorageKey) ?? window.localStorage.getItem(codeStorageKey);
   if (codeStr) {
     dbg("Found code:", codeStr);
-    settings.editor.code = codeStr;
+    settings.editor.code = decodeStoredCode(codeStr) ?? defaultMainEditorStartingCode;
     // Remove legacy config from local storage
-    window.localStorage.removeItem("useqcode");
+    window.localStorage.removeItem(legacyCodeStorageKey);
   }
   
   return settings;
@@ -294,8 +401,9 @@ function migrateLegacyConfig(settings) {
 
 export function deleteLocalStorage() {
   window.localStorage.removeItem(settingsStorageKey);
+  window.localStorage.removeItem(codeStorageKey);
   window.localStorage.removeItem("editorConfig");
   window.localStorage.removeItem("useqConfig");
-  window.localStorage.removeItem("useqcode");
+  window.localStorage.removeItem(legacyCodeStorageKey);
   dbg("Local storage cleared.");
 }

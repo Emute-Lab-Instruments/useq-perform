@@ -1,6 +1,6 @@
 # uSEQ Perform
 
-Web-based live coding interface for the uSEQ hardware module.
+Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WASM runtime.
 
 ## Build and Run
 
@@ -21,9 +21,9 @@ Web-based live coding interface for the uSEQ hardware module.
 
 ## Source Layout
 
-- `src/` - canonical source tree.
-- `src/legacy/` - retained legacy runtime modules and styles.
-- `src/ui/` - modern Solid UI components.
+- `src/` - typed application modules and modern UI components.
+- `src/legacy/` - the current production entrypoint and retained runtime modules.
+- `src/ui/` - Solid UI components mounted from the legacy runtime.
 - `src/ui/adapters/` - imperative adapters for mounting Solid UI components.
 - `scripts/build-assets.mjs` - markdown/reference/wasm/font asset pipeline.
 - `src-useq/` - firmware submodule.
@@ -32,7 +32,9 @@ Web-based live coding interface for the uSEQ hardware module.
 
 ## Architecture
 
-The application uses a single-bundle Vite build. UI components are mounted via adapter modules that provide imperative APIs (e.g., `mountSettingsPanel()`, `showModal()`). Legacy code imports these adapters directly instead of using separate entrypoints or bridge APIs.
+The application uses a single-bundle Vite build. The live bundle still starts at `src/legacy/main.ts`, loads configuration, mounts the UI shell, and then prefers browser-local WASM startup by default while reconnecting saved hardware opportunistically unless the user opts out. UI components are mounted via adapter modules that provide imperative APIs (for example `mountSettingsPanel()` and `showModal()`).
+
+The reset scope and compatibility cuts live in `docs/STABLE_CORE.md`. Read that before treating old panels, dormant runtime modes, or stale docs as supported product surface.
 
 Editor-facing firmware and WASM capability rules live in `docs/RUNTIME_CONTRACT.md`. Read that before auditing `src-useq` behavior or promoting standalone firmware work into the submodule.
 
@@ -50,8 +52,13 @@ Inspect any element in browser devtools to see the component name and source fil
 
 ## URL Parameters
 
+- `?config=<url>` - load a user configuration JSON file.
+- `?noModuleMode=true` - force the internal no-module/browser-local debug path.
+- `?disableWebSerial=true` - force browser-local containment even in a Web Serial-capable browser.
+- `?devmode=true` - enable internal debug/dev tooling.
 - `?nosave` - do not read/write local storage.
-- `?gist=<url>` - load code from gist.
+- `?gist=<id-or-url>` - load editor code from a GitHub gist.
+- `?txt=<url>` - load editor code from a plain-text URL.
 
 ## License
 

@@ -10,6 +10,20 @@ import { post } from "../../utils/consoleStore.ts";
 import { upgradeCheck, currentVersion } from "../utils/upgradeCheck.ts";
 import { dbg } from "../utils.ts";
 import { handleExternalTimeUpdate } from "../ui/serialVis/visualisationController.ts";
+import { activeUserSettings } from "../utils/persistentUserSettings.ts";
+import { noModuleMode } from "../urlParams.ts";
+import { createRuntimeSessionSnapshot } from "../../runtime/runtimeSession.ts";
+import {
+  buildDefaultStreamConfig,
+  buildHeartbeatRequest,
+  buildHelloRequest,
+  DEFAULT_STREAM_MAX_RATE_HZ,
+  isJsonEligibleVersion,
+  type FirmwareVersion,
+  type IoConfig,
+  type StreamChannelConfig,
+} from "../../runtime/jsonProtocol.ts";
+import { publishRuntimeDiagnostics } from "../../runtime/runtimeDiagnostics.ts";
 import {
   setCodeHighlightColor,
   cleanCode,
@@ -21,6 +35,10 @@ import {
   isPortReadableAndUnlocked,
   isPortWritable
 } from "./utils.ts";
+
+function isAutoReconnectEnabled(): boolean {
+  return activeUserSettings?.runtime?.autoReconnect !== false;
+}
 
 
 // Extend Window for enterBootloaderMode
@@ -38,28 +56,6 @@ interface SerialProcessingState {
   mode: number;
   processed: boolean;
   remainingBytes: Uint8Array;
-}
-
-/** Version object used for protocol negotiation */
-export interface FirmwareVersion {
-  major: number;
-  minor: number;
-  patch: number;
-}
-
-/** IO config received from device during protocol negotiation */
-export interface IoConfig {
-  inputs?: Array<{ index: number; name: string }>;
-  outputs?: Array<{ index: number; name: string }>;
-  [key: string]: unknown;
-}
-
-/** Stream channel configuration */
-export interface StreamChannelConfig {
-  id: number;
-  name: string;
-  enabled: boolean;
-  maxRateHz: number;
 }
 
 /** Pending JSON request state */
@@ -170,6 +166,32 @@ export function askForPortAndConnect(): void {
 
 let connectedToModule = false;
 
+function emitConnectionChanged(): void {
+  const runtimeSession = createRuntimeSessionSnapshot({
+    hasHardwareConnection: connectedToModule && !!serialport,
+    noModuleMode,
+    wasmEnabled: activeUserSettings?.wasm?.enabled ?? true,
+  });
+  const detail = {
+    connected: connectedToModule,
+    protocolMode: getProtocolMode(),
+    ...runtimeSession,
+  };
+
+  publishRuntimeDiagnostics({
+    protocolMode: getProtocolMode(),
+    runtimeSession,
+  });
+
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent('useq-connection-changed', { detail }));
+    }
+  } catch (_e) {
+    // no-op if window not available
+  }
+}
+
 export function setConnectedToModule(connected: boolean): void {
   connectedToModule = connected;
 
@@ -180,15 +202,11 @@ export function setConnectedToModule(connected: boolean): void {
   // Update code highlight color
   setCodeHighlightColor(connected);
 
-  // Notify UI components about connection status changes via custom event.
-  // Solid toolbars listen to this event to update their own state.
-  try {
-    if (typeof window !== 'undefined' && window.dispatchEvent) {
-      window.dispatchEvent(new CustomEvent('useq-connection-changed', { detail: { connected } }));
-    }
-  } catch (_e) {
-    // no-op if window not available
-  }
+  emitConnectionChanged();
+}
+
+export function announceRuntimeSession(): void {
+  emitConnectionChanged();
 }
 
 export function isConnectedToModule(): boolean {
@@ -230,7 +248,6 @@ const protocolState: ProtocolState = {
   heartbeatInterval: null,
 };
 
-const JSON_PROTOCOL_MIN_VERSION: FirmwareVersion = { major: 1, minor: 2, patch: 0 };
 const EDITOR_VERSION = '1.2.0';
 const HEARTBEAT_INTERVAL_MS = 60000;
 const HEARTBEAT_TIMEOUT_MS = 10000;
@@ -247,6 +264,9 @@ function resetProtocolState(): void {
   protocolState.pendingRequests.clear();
   protocolState.ioConfig = null;
   stopHeartbeat();
+  publishRuntimeDiagnostics({
+    protocolMode: getProtocolMode(),
+  });
 }
 
 function startHeartbeat(): void {
@@ -267,7 +287,7 @@ function startHeartbeat(): void {
 
     try {
       await writeJsonRequest(
-        { type: 'ping' },
+        buildHeartbeatRequest(),
         { skipConsole: true, timeout: HEARTBEAT_TIMEOUT_MS }
       );
     } catch (err) {
@@ -285,24 +305,8 @@ function stopHeartbeat(): void {
   }
 }
 
-function versionAtLeast(version: FirmwareVersion | null, target: FirmwareVersion): boolean {
-  if (!version) {
-    return false;
-  }
-
-  if (version.major !== target.major) {
-    return version.major > target.major;
-  }
-
-  if (version.minor !== target.minor) {
-    return version.minor > target.minor;
-  }
-
-  return version.patch >= target.patch;
-}
-
 function jsonEligibleVersion(): boolean {
-  return versionAtLeast(currentVersion as FirmwareVersion | null, JSON_PROTOCOL_MIN_VERSION);
+  return isJsonEligibleVersion(currentVersion as FirmwareVersion | null);
 }
 
 function nextRequestId(): string {
@@ -314,9 +318,15 @@ function nextRequestId(): string {
 setConnectedToModule(false);
 
 function dispatchProtocolReady(): void {
+  publishRuntimeDiagnostics({
+    protocolMode: getProtocolMode(),
+  });
+
   try {
     if (typeof window !== 'undefined' && window.dispatchEvent) {
-      window.dispatchEvent(new CustomEvent('useq-protocol-ready'));
+      window.dispatchEvent(new CustomEvent('useq-protocol-ready', {
+        detail: { protocolMode: getProtocolMode() },
+      }));
     }
   } catch (_e) {
     console.warn('Failed to dispatch useq-protocol-ready', _e);
@@ -337,13 +347,7 @@ async function maybeNegotiateJsonProtocol(): Promise<void> {
   protocolState.negotiationAttempted = true;
 
   try {
-    const helloPayload = {
-      type: 'hello',
-      client: 'editor',
-      version: EDITOR_VERSION,
-    };
-
-    const response: JsonResponse = await writeJsonRequest(helloPayload, {
+    const response: JsonResponse = await writeJsonRequest(buildHelloRequest(EDITOR_VERSION), {
       skipConsole: true,
       timeout: 5000,
     });
@@ -365,29 +369,6 @@ async function maybeNegotiateJsonProtocol(): Promise<void> {
   } finally {
     dispatchProtocolReady();
   }
-}
-
-const DEFAULT_STREAM_MAX_RATE_HZ = 30;
-
-function buildDefaultStreamConfig(ioConfig: IoConfig): Record<string, unknown> {
-  const channels: StreamChannelConfig[] = [];
-
-  if (ioConfig?.inputs) {
-    for (const input of ioConfig.inputs) {
-      channels.push({
-        id: input.index,
-        name: input.name,
-        enabled: true,
-        maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ,
-      });
-    }
-  }
-
-  return {
-    type: 'stream-config',
-    maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ,
-    channels,
-  };
 }
 
 async function sendDefaultStreamConfig(ioConfig: IoConfig): Promise<void> {
@@ -416,6 +397,10 @@ export async function sendStreamConfig(channels: StreamChannelConfig[], maxRateH
   };
 
   return writeJsonRequest(payload, { skipConsole: true, timeout: 5000 });
+}
+
+export function getProtocolMode(): 'legacy' | 'json' {
+  return protocolState.mode === PROTOCOL_MODES.JSON ? 'json' : 'legacy';
 }
 
 /**
@@ -625,6 +610,11 @@ async function checkForSavedPort(): Promise<SerialPort | null | undefined> {
  * Check for a previously saved serial port and attempt to reconnect automatically
  */
 export async function checkForSavedPortAndMaybeConnect(): Promise<SerialPort | null> {
+  if (!isAutoReconnectEnabled()) {
+    displayConnectInstructions();
+    return null;
+  }
+
   const savedPort = await checkForSavedPort();
   return savedPort ?
     handleFoundSavedPort(savedPort) :
@@ -1168,8 +1158,8 @@ function openSerialConnection(port: SerialPort): Promise<void> {
  */
 async function setupConnectedPort(port: SerialPort): Promise<void> {
   resetProtocolState();
-  setConnectedToModule(true);
   setSerialPort(port);
+  setConnectedToModule(true);
   serialReader();
 
   // FIXME In case we just updated the firmware, give the interpreter some time to boot before communication

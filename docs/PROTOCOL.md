@@ -11,9 +11,11 @@
 uSEQ communicates with editor software over USB CDC serial at 115200 baud. The protocol has two modes:
 
 - **Legacy mode** — plain-text LISP evaluation, used when firmware < 1.2.0 or JSON negotiation fails.
-- **JSON mode** — structured request/response with IDs, error propagation, and stream configuration. Available on firmware ≥ 1.2.0.
+- **JSON mode** — structured request/response with IDs, error propagation, and stream configuration. Available on firmware >= 1.2.0.
 
 The mode is negotiated automatically at connect time via the `hello` handshake.
+
+Per `docs/STABLE_CORE.md`, firmware `1.2.0` and newer is the fully supported hardware floor for the reset. Legacy mode is retained only as a compatibility bridge while the runtime contract reset lands; it is not the target architecture for future simplification.
 
 ---
 
@@ -277,7 +279,7 @@ connect
 
 ### Port Persistence
 
-The editor stores `usbVendorId` and `usbProductId` in `localStorage` (`key: "uSEQ-Serial-Port-Info"`) after a successful connection. On the next load, it attempts to reconnect to the matching port automatically.
+The editor stores `usbVendorId` and `usbProductId` in `localStorage` (`key: "uSEQ-Serial-Port-Info"`) after a successful connection. On the next load, it attempts to reconnect to the matching port automatically unless the persisted runtime setting disables startup reconnect.
 
 ### Disconnect
 
