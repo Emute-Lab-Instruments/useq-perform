@@ -25,3 +25,6 @@ storybook-static
 agent.log
 
 .beads
+
+history/heartbeat-runs
+__pycache__/

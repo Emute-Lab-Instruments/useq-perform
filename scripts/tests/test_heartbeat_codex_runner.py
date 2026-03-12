@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import pathlib
 import sys
 import tempfile
@@ -16,6 +17,41 @@ SPEC.loader.exec_module(runner)
 
 
 class HeartbeatCodexRunnerTests(unittest.TestCase):
+    def test_codex_live_log_path_uses_output_stem(self) -> None:
+        path = runner.codex_live_log_path(pathlib.Path("/tmp/run/wave-1/verification.json"))
+        self.assertEqual(path, pathlib.Path("/tmp/run/wave-1/verification.live.log"))
+
+    def test_format_codex_event_line_summarizes_agent_messages(self) -> None:
+        line = json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "type": "agent_message",
+                    "status": "completed",
+                    "text": "Inspecting the runtime contract and startup path before making changes.",
+                },
+            }
+        )
+        formatted = runner.format_codex_event_line(line)
+        self.assertIn("item.completed: agent_message status=completed", formatted)
+        self.assertIn("Inspecting the runtime contract", formatted)
+
+    def test_format_codex_event_line_summarizes_command_completion(self) -> None:
+        line = json.dumps(
+            {
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "status": "completed",
+                    "command": "/usr/bin/zsh -lc 'npm run typecheck'",
+                    "exit_code": 0,
+                },
+            }
+        )
+        formatted = runner.format_codex_event_line(line)
+        self.assertIn("item.completed: command status=completed exit=0", formatted)
+        self.assertIn("npm run typecheck", formatted)
+
     def test_should_attempt_issue_close_when_completed_even_if_issue_closed_false(self) -> None:
         self.assertTrue(runner.should_attempt_issue_close({"status": "completed", "issue_closed": False}))
 
