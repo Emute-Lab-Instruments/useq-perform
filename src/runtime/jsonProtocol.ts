@@ -4,15 +4,23 @@ export interface FirmwareVersion {
   patch: number;
 }
 
+export interface IoChannelConfig {
+  index: number;
+  name: string;
+}
+
 export interface IoConfig {
-  inputs?: Array<{ index: number; name: string }>;
-  outputs?: Array<{ index: number; name: string }>;
+  inputs?: IoChannelConfig[];
+  outputs?: IoChannelConfig[];
   [key: string]: unknown;
 }
+
+export type StreamChannelDirection = "input" | "output";
 
 export interface StreamChannelConfig {
   id: number;
   name: string;
+  direction: StreamChannelDirection;
   enabled: boolean;
   maxRateHz: number;
 }
@@ -40,6 +48,7 @@ export const JSON_PROTOCOL_MIN_VERSION: FirmwareVersion = Object.freeze({
 });
 
 export const DEFAULT_STREAM_MAX_RATE_HZ = 30;
+export const SERIAL_OUTPUT_TIME_NAME = "time";
 
 export function versionAtLeast(
   version: FirmwareVersion | null,
@@ -86,6 +95,17 @@ export function buildDefaultStreamConfig(
     channels.push({
       id: input.index,
       name: input.name,
+      direction: "input",
+      enabled: true,
+      maxRateHz,
+    });
+  }
+
+  for (const output of ioConfig?.outputs ?? []) {
+    channels.push({
+      id: output.index,
+      name: output.name,
+      direction: "output",
       enabled: true,
       maxRateHz,
     });
@@ -96,4 +116,28 @@ export function buildDefaultStreamConfig(
     maxRateHz,
     channels,
   };
+}
+
+export function buildSerialOutputRouting(ioConfig: IoConfig | null | undefined): Record<number, number> {
+  const routing: Record<number, number> = {};
+
+  for (const output of ioConfig?.outputs ?? []) {
+    if (!Number.isInteger(output.index) || output.index < 1) {
+      continue;
+    }
+
+    if (output.name === SERIAL_OUTPUT_TIME_NAME) {
+      routing[output.index] = 0;
+      continue;
+    }
+
+    const match = /^s([1-9]\d*)$/.exec(output.name);
+    if (!match) {
+      continue;
+    }
+
+    routing[output.index] = Number.parseInt(match[1], 10);
+  }
+
+  return routing;
 }

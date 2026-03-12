@@ -76,7 +76,7 @@ The canonical editor constants live in `src/contracts/useqRuntimeContract.ts`, a
 The following checks are the minimum guardrail against contract drift:
 
 - `src/contracts/useqRuntimeContract.test.ts` verifies the shared command set and the hardware-only/WASM-only split.
-- `src-useq/test/hardware/test_json_protocol.cpp` verifies that `hello`, `ping`, and `stream-config` parse without `code`, while malformed eval requests still fail.
+- `src-useq/test/hardware/test_json_protocol.cpp` verifies the `hello` I/O contract, `stream-config` output enablement/rate parsing, and that `hello`, `ping`, and `stream-config` parse without `code` while malformed eval requests still fail.
 - `assertEditorRuntimeContract()` throws during module load if the editor’s transport state mapping stops matching the shared command set.
 
 ## Promotion Workflow

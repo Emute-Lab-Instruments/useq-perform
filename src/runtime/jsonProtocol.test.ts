@@ -5,6 +5,7 @@ import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
   buildHelloRequest,
+  buildSerialOutputRouting,
   isJsonEligibleVersion,
   versionAtLeast,
 } from "./jsonProtocol";
@@ -25,21 +26,44 @@ describe("jsonProtocol", () => {
     expect(buildHeartbeatRequest()).toEqual({ type: "ping" });
   });
 
-  it("maps firmware inputs into the default stream-config request", () => {
+  it("maps firmware inputs and outputs into the default stream-config request", () => {
     expect(
       buildDefaultStreamConfig({
         inputs: [
           { index: 1, name: "ssin1" },
           { index: 4, name: "ssin4" },
         ],
+        outputs: [
+          { index: 1, name: "time" },
+          { index: 2, name: "s1" },
+        ],
       })
     ).toEqual({
       type: "stream-config",
       maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ,
       channels: [
-        { id: 1, name: "ssin1", enabled: true, maxRateHz: 30 },
-        { id: 4, name: "ssin4", enabled: true, maxRateHz: 30 },
+        { id: 1, name: "ssin1", direction: "input", enabled: true, maxRateHz: 30 },
+        { id: 4, name: "ssin4", direction: "input", enabled: true, maxRateHz: 30 },
+        { id: 1, name: "time", direction: "output", enabled: true, maxRateHz: 30 },
+        { id: 2, name: "s1", direction: "output", enabled: true, maxRateHz: 30 },
       ],
+    });
+  });
+
+  it("builds a named routing table for streamed serial outputs", () => {
+    expect(
+      buildSerialOutputRouting({
+        outputs: [
+          { index: 7, name: "time" },
+          { index: 3, name: "s1" },
+          { index: 4, name: "s2" },
+          { index: 9, name: "unknown" },
+        ],
+      })
+    ).toEqual({
+      3: 1,
+      4: 2,
+      7: 0,
     });
   });
 });

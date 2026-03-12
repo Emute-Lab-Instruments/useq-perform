@@ -64,6 +64,8 @@ Byte 2+: payload
 
 Channel numbering is 1-based (`[1, NUM_SERIAL_INS]`) to match the firmware `(ssin N)` builtin.
 
+For device-to-host `STREAM` frames in JSON mode, the authoritative channel map comes from `hello.config.outputs`. In the current pinned firmware, output index `1` is `time`, and `2..9` are `s1..s8`.
+
 > **Documentation correction**: The firmware user manual (`docs/useq.md`) incorrectly states the stream frame is 10 bytes. The correct frame size is **11 bytes** (1 marker + 1 type + 1 channel + 8 data).
 
 ### TEXT / MSG_TO_EDITOR / JSON frame layout
@@ -152,8 +154,8 @@ Triggered automatically after connecting when firmware version ≥ 1.2.0.
   "mode": "json",
   "fw": "1.2.0",
   "config": {
-    "inputs": [{"index": 1, "name": "in1"}, ...],
-    "outputs": [{"index": 1, "name": "out1"}, ...]
+    "inputs": [{"index": 1, "name": "ssin1"}, ...],
+    "outputs": [{"index": 1, "name": "time"}, {"index": 2, "name": "s1"}, ...]
   }
 }
 ```
@@ -226,12 +228,15 @@ Sent automatically after a successful `hello` response using I/O config from the
   "type": "stream-config",
   "maxRateHz": 30,
   "channels": [
-    {"id": 1, "name": "in1", "enabled": true, "maxRateHz": 30},
-    {"id": 2, "name": "in2", "enabled": true, "maxRateHz": 30}
+    {"id": 1, "name": "ssin1", "direction": "input", "enabled": true, "maxRateHz": 30},
+    {"id": 1, "name": "time", "direction": "output", "enabled": true, "maxRateHz": 30},
+    {"id": 2, "name": "s1", "direction": "output", "enabled": true, "maxRateHz": 30}
   ],
   "requestId": "req-4"
 }
 ```
+
+The editor enables all advertised channels by default. Firmware currently uses the top-level `maxRateHz` as the global output cadence and honors per-channel `enabled` flags for streamed outputs such as `time` and `s1..s8`.
 
 **Response**:
 

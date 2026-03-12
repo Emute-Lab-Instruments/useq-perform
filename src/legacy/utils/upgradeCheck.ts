@@ -1,102 +1,37 @@
-import { post } from '../../utils/consoleStore.ts';
-import { dbg } from '../utils.ts';
-import { showUpdateNotification } from './upgradeFlow.ts';
+import { post } from "../../utils/consoleStore.ts";
+import { dbg } from "../utils.ts";
 
-/**
- * Parses a version string into major, minor, patch components and keeps the original string
- */
-function parseVersion(versionString) {
-  const verRE = /([0-9])\.([0-9])(.([0-9]))?/g;
-  const groups = verRE.exec(versionString);
-  dbg(groups);
-  
-  const major = parseInt(groups[1], 10);
-  const minor = parseInt(groups[2], 10);
-  let patch = 0;
-  
-  if (groups[4]) {
-    patch = parseInt(groups[4], 10);
-  }
-  
-  return { 
-    major, 
-    minor, 
-    patch,
-    string: versionString
-  };
+interface ConnectedFirmwareVersion {
+  major: number;
+  minor: number;
+  patch: number;
+  string: string;
 }
 
-/**
- * Fetches the latest release information from GitHub
- */
-function fetchLatestRelease() {
-  return $.ajax({
-    url: "https://api.github.com/repos/Emute-Lab-Instruments/uSEQ/releases",
-    type: "GET",
-    data: { "accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-    error: function (xhr, ajaxOptions, thrownError) {
-      dbg("Failed to fetch releases:", thrownError);
-    }
-  });
-}
+const VERSION_PATTERN = /(\d+)\.(\d+)(?:\.(\d+))?/;
 
-/**
- * Extracts version information from a GitHub release tag
- */
-function parseReleaseTag(tagName) {
-  const re = /uSEQ_(.*)_(([0-9])\.([0-9])\.([0-9]))_[0-9]{8}/g;
-  const matches = re.exec(tagName);
-  
-  if (!matches) {
+function parseVersion(versionString: unknown): ConnectedFirmwareVersion | null {
+  const text = String(versionString ?? "").trim();
+  const groups = VERSION_PATTERN.exec(text);
+  if (!groups) {
+    dbg(`upgradeCheck: could not parse firmware version "${text}"`);
     return null;
   }
-  
+
   return {
-    major: parseInt(matches[3], 10),
-    minor: parseInt(matches[4], 10),
-    patch: parseInt(matches[5], 10),
-    string: matches[2]
+    major: Number.parseInt(groups[1], 10),
+    minor: Number.parseInt(groups[2], 10),
+    patch: Number.parseInt(groups[3] ?? "0", 10),
+    string: text,
   };
 }
 
-/**
- * Determines if a newer version is available
- */
-function isNewerVersionAvailable(current, latest) {
-  return (
-    latest.major > current.major ||
-    (latest.minor > current.minor && latest.major >= current.major) ||
-    (latest.patch > current.patch && latest.minor >= current.minor && latest.major >= current.major)
+export let currentVersion: ConnectedFirmwareVersion | null = null;
+
+export function upgradeCheck(versionMsg: unknown): void {
+  currentVersion = parseVersion(versionMsg);
+  const versionLabel = currentVersion?.string ?? String(versionMsg ?? "unknown");
+  post(
+    `<span style="color: var(--accent-color); font-weight: bold; display: inline;">**Connected to uSEQ (v${versionLabel})**</span>`
   );
 }
-
-/**
- * Checks if a firmware upgrade is available
- */
-
-export let currentVersion = null;
-
-export function upgradeCheck(versionMsg) {
-  currentVersion = parseVersion(versionMsg);
-  post(`<span style="color: var(--accent-color); font-weight: bold; display: inline;">**Connected to uSEQ (v${currentVersion.string})**</span>`);
-  
-  fetchLatestRelease().then(function(data) {
-    if (!data || !data.length) {
-      return;
-    }
-    
-    const latestRelease = parseReleaseTag(data[0]['tag_name']);
-    if (!latestRelease) {
-      return;
-    }
-    
-    dbg(latestRelease.string);
-    
-    if (isNewerVersionAvailable(currentVersion, latestRelease)) {
-      showUpdateNotification(currentVersion.string, latestRelease.string, data[0]['html_url']);
-    }
-  });
-}
-
-
-

@@ -17,6 +17,7 @@ import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
   buildHelloRequest,
+  buildSerialOutputRouting,
   DEFAULT_STREAM_MAX_RATE_HZ,
   isJsonEligibleVersion,
   type FirmwareVersion,
@@ -218,6 +219,7 @@ let serialport: SerialPort | null = null;
 const serialVars: { capture: boolean; captureFunc: CaptureCallback | null } = { capture: false, captureFunc: null };
 const encoder = new TextEncoder();
 const serialBuffers: CircularBuffer[] = Array.from({ length: 9 }, () => new CircularBuffer(400));
+let serialOutputBufferRouting: Record<number, number> = {};
 
 // Add reader reference that can be accessed globally
 let currentReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
@@ -263,6 +265,7 @@ function resetProtocolState(): void {
   protocolState.requestIdCounter = 0;
   protocolState.pendingRequests.clear();
   protocolState.ioConfig = null;
+  serialOutputBufferRouting = {};
   stopHeartbeat();
   publishRuntimeDiagnostics({
     protocolMode: getProtocolMode(),
@@ -356,6 +359,7 @@ async function maybeNegotiateJsonProtocol(): Promise<void> {
       protocolState.mode = PROTOCOL_MODES.JSON;
       if (response.config) {
         protocolState.ioConfig = response.config;
+        serialOutputBufferRouting = buildSerialOutputRouting(response.config);
         sendDefaultStreamConfig(response.config);
       }
       post(`**Info**: Using structured JSON protocol (fw: ${response.fw || 'unknown'}).`);
@@ -898,8 +902,8 @@ function processSerialStreamValue(byteArray: Uint8Array): void {
   const buf = Buffer.from(byteArray);
   const val = buf.readDoubleLE(3);
 
-  // Store value in circular buffer for that channel
-  const bufferIndex = channel - 1;
+  // Prefer the negotiated output-name mapping from hello; fall back to legacy slot order.
+  const bufferIndex = serialOutputBufferRouting[channel] ?? (channel - 1);
   if (bufferIndex >= 0 && bufferIndex < serialBuffers.length) {
     updateSerialBuffer(bufferIndex, val);
   }
@@ -980,7 +984,7 @@ function updateSerialBuffer(bufferIndex: number, value: number): void {
   // Push the final smoothed value to the buffer
   buffer.push(value);
 
-  // Channel 0 (buffer index 0) carries transport time in seconds.
+  // Buffer index 0 is reserved for the stream output named "time" when present.
   if (bufferIndex === 0) {
     handleExternalTimeUpdate(value).catch((error: unknown) => {
       dbg(`serialComms: failed to forward time update: ${error}`);
