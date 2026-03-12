@@ -4,7 +4,6 @@ import { EditorState, Extension } from "@codemirror/state";
 import {
   activeUserSettings,
   codeStorageKey,
-  loadUserSettings,
 } from "../utils/persistentUserSettings.ts";
 import {
   exampleEditorExtensions,
@@ -48,13 +47,6 @@ function setupAutosaveTimer(editor: EditorView, settings: any): void {
 }
 
 export function createEditor(startingText: string, extensions: Extension[]): EditorView {
-  // Load configuration
-  const appConfig = loadUserSettings();
-  const config = {
-    saveCodeLocally: appConfig.storage.saveCodeLocally,
-    evalScope: "top",
-  };
-
   // Create editor state with provided extensions
   const state = EditorState.create({
     doc: startingText || "",
@@ -81,19 +73,7 @@ export function createMainEditor(initialText?: string): EditorView {
     }
   );
 
-  // Always prefer the latest saved code if available and settings allow
   let codeToLoad = activeUserSettings.editor.code;
-  const storage = activeUserSettings.storage || {};
-  if (storage.saveCodeLocally) {
-    try {
-      const saved = window.localStorage.getItem(codeStorageKey);
-      if (typeof saved === 'string' && saved.length > 0) {
-        codeToLoad = saved;
-      }
-    } catch (e) {
-      dbg('main.mjs: Error loading saved code from localStorage:', e);
-    }
-  }
   let editor = createEditor(
     initialText || codeToLoad,
     mainEditorExtensions

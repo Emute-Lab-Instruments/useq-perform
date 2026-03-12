@@ -10,8 +10,88 @@
 
 // @ts-ignore - JSON import with assertion
 import defaultConfig from './default-config.json' assert { type: 'json' };
-import { mergeConfigurations, validateConfiguration } from './configSchema.ts';
+import { validateConfiguration } from './configSchema.ts';
 import { dbg } from '../utils.ts';
+import {
+  defaultUserSettings,
+  mergeUserSettings,
+  readPersistedUserSettings,
+} from '../utils/persistentUserSettings.ts';
+import type { RuntimeSettingsSource } from '../../runtime/runtimeDiagnostics.ts';
+
+const GIST_NOT_FOUND_MESSAGE = 'gist not found';
+const TEXT_NOT_FOUND_MESSAGE = 'code not found';
+
+function isLocalStorageBypassed() {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.has('nosave');
+}
+
+function parseGistId(rawValue) {
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const maybeUrl = new URL(rawValue);
+    const segments = maybeUrl.pathname.split('/').filter(Boolean);
+    return segments[segments.length - 1] || rawValue;
+  } catch (_) {
+    return rawValue;
+  }
+}
+
+async function loadCodeOverrideFromURL() {
+  const urlParams = new URLSearchParams(window.location.search);
+
+  if (urlParams.has('gist')) {
+    const gistId = parseGistId(urlParams.get('gist'));
+    if (!gistId) {
+      return GIST_NOT_FOUND_MESSAGE;
+    }
+
+    try {
+      const response = await fetch(`https://api.github.com/gists/${encodeURIComponent(gistId)}`, {
+        headers: {
+          accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const files = Object.values(data?.files || {});
+      const file = files.find((entry) => typeof entry?.content === 'string');
+      return typeof file?.content === 'string' ? file.content : GIST_NOT_FOUND_MESSAGE;
+    } catch (error) {
+      console.error('configLoader: Failed to load gist from URL:', error);
+      return GIST_NOT_FOUND_MESSAGE;
+    }
+  }
+
+  if (urlParams.has('txt')) {
+    const textUrl = urlParams.get('txt');
+    if (!textUrl) {
+      return TEXT_NOT_FOUND_MESSAGE;
+    }
+
+    try {
+      const response = await fetch(textUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return await response.text();
+    } catch (error) {
+      console.error('configLoader: Failed to load text from URL:', error);
+      return TEXT_NOT_FOUND_MESSAGE;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Load configuration from default-config.json
@@ -33,12 +113,15 @@ export function loadDefaultConfiguration() {
  */
 export function loadLocalStorageConfiguration() {
   try {
-    const settingsStr = window.localStorage.getItem('uSEQ-Perform-User-Settings');
-    if (!settingsStr) {
+    if (isLocalStorageBypassed()) {
       return null;
     }
 
-    const settings = JSON.parse(settingsStr);
+    const settings = readPersistedUserSettings();
+    if (!settings) {
+      return null;
+    }
+
     dbg('configLoader: Loaded configuration from localStorage');
     return settings;
   } catch (error) {
@@ -88,27 +171,56 @@ export async function loadURLConfiguration() {
  * @returns {Promise<Object>} Merged configuration
  */
 export async function loadConfiguration() {
+  const result = await loadConfigurationWithMetadata();
+  return result.config;
+}
+
+export async function loadConfigurationWithMetadata() {
   dbg('configLoader: Starting configuration load');
+  const settingsSources: RuntimeSettingsSource[] = ['defaults'];
 
-  // 1. Start with default-config.json (compiled defaults)
-  let config = loadDefaultConfiguration();
+  // 1. Start with hardcoded defaults so omitted nested fields stay intact.
+  let config = mergeUserSettings(defaultUserSettings, {});
 
-  // 2. Merge with localStorage (user's persistent settings)
+  // 2. Merge committed defaults from default-config.json.
+  config = mergeUserSettings(config, loadDefaultConfiguration());
+
+  // 3. Merge with localStorage (user's persistent settings)
   const localConfig = loadLocalStorageConfiguration();
   if (localConfig) {
-    config = mergeConfigurations(config, localConfig);
+    config = mergeUserSettings(config, localConfig);
+    settingsSources.push('local-storage');
     dbg('configLoader: Merged localStorage configuration');
   }
 
-  // 3. Apply URL parameter overrides (highest priority)
+  // 4. Apply URL parameter overrides (highest priority)
   const urlConfig = await loadURLConfiguration();
   if (urlConfig) {
-    config = mergeConfigurations(config, urlConfig);
+    config = mergeUserSettings(config, urlConfig);
+    settingsSources.push('url-config');
     dbg('configLoader: Merged URL configuration');
   }
 
+  // 5. Apply retained URL code sources after config precedence is resolved.
+  const urlCode = await loadCodeOverrideFromURL();
+  if (typeof urlCode === 'string') {
+    config = mergeUserSettings(config, {
+      editor: { code: urlCode },
+    });
+    settingsSources.push('url-code');
+    dbg('configLoader: Merged URL code override');
+  }
+
+  // 6. ?nosave disables local persistence regardless of lower-precedence sources.
+  if (isLocalStorageBypassed()) {
+    config = mergeUserSettings(config, {
+      storage: { saveCodeLocally: false },
+    });
+    settingsSources.push('nosave');
+  }
+
   dbg('configLoader: Final configuration loaded');
-  return config;
+  return { config, settingsSources };
 }
 
 /**

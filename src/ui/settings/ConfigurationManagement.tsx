@@ -14,7 +14,7 @@ export function ConfigurationManagement() {
       } else if (result.method === 'filesystem-api') {
         alert(`✅ Configuration saved to:\n${result.name}`);
       } else if (result.method === 'download') {
-        alert('⬇️ Configuration downloaded.\n\nCopy the file to:\nsrc/config/default-config.json\n\nto make changes persist across builds.');
+        alert('⬇️ Configuration downloaded.\n\nCopy the file to:\nsrc/legacy/config/default-config.json\n\nto make changes persist across builds.');
       }
     } catch (error: unknown) {
       console.error('Export error:', error);

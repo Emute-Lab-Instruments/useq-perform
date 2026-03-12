@@ -17,7 +17,7 @@ import { getAllControlValues } from '../io/mockControlInputs.ts';
 import { dbg } from '../utils.ts';
 
 const CONFIG_WS_URL = 'ws://localhost:8081';
-const CONFIG_DEFAULT_PATH = 'src/config/default-config.json';
+const CONFIG_DEFAULT_PATH = 'src/legacy/config/default-config.json';
 
 let configWebSocket = null;
 let connectionAttempted = false;

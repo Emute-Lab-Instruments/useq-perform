@@ -14,6 +14,19 @@ import {
   type SharedTransportCommand,
 } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
+import {
+  createRuntimeSessionSnapshot,
+  supportsHardwareTransport,
+  supportsWasmTransport,
+} from "../runtime/runtimeSession";
+import { noModuleMode } from "../legacy/urlParams.ts";
+
+export const getRuntimeSessionSnapshot = () =>
+  createRuntimeSessionSnapshot({
+    hasHardwareConnection: isConnectedToModule() && !!getSerialPort(),
+    noModuleMode,
+    wasmEnabled: isWasmEnabled(),
+  });
 
 /**
  * Check if the WASM interpreter is enabled in user settings.
@@ -24,18 +37,13 @@ export const isWasmEnabled = () => activeUserSettings?.wasm?.enabled ?? true;
  * Check if currently connected to a real hardware serial port.
  */
 export const isRealHardwareConnection = () =>
-  isConnectedToModule() && !!getSerialPort();
+  getRuntimeSessionSnapshot().hasHardwareConnection;
 
 /**
  * Determine the current transport mode based on connection state and settings.
  */
 export const resolveTransportMode = (): "hardware" | "wasm" | "both" | "none" => {
-  const hw = isConnectedToModule();
-  const wasm = isWasmEnabled();
-  if (hw && wasm) return "both";
-  if (hw) return "hardware";
-  if (wasm) return "wasm";
-  return "none";
+  return getRuntimeSessionSnapshot().transportMode;
 };
 
 /**
@@ -44,12 +52,11 @@ export const resolveTransportMode = (): "hardware" | "wasm" | "both" | "none" =>
  */
 export const sendTransportCommand = (command: SharedTransportCommand) =>
   Effect.gen(function* (_) {
-    const connected = isConnectedToModule();
-    const wasmEnabled = isWasmEnabled();
+    const session = getRuntimeSessionSnapshot();
 
     const effects = [];
 
-    if (connected) {
+    if (supportsHardwareTransport(session.transportMode)) {
       effects.push(
         Effect.tryPromise({
           try: () => sendTouSEQ(command),
@@ -58,7 +65,7 @@ export const sendTransportCommand = (command: SharedTransportCommand) =>
       );
     }
 
-    if (wasmEnabled) {
+    if (supportsWasmTransport(session.transportMode)) {
       effects.push(
         Effect.tryPromise({
           try: () => evalInUseqWasm(command),

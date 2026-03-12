@@ -34,6 +34,8 @@ export const EDITOR_RUNTIME_CONTRACT = Object.freeze({
   wasmOnlyCapabilities: Object.freeze([
     "update-time",
     "output-sampling",
+  ] as const),
+  optionalWasmCapabilities: Object.freeze([
     "batch-output-sampling",
   ] as const),
 });

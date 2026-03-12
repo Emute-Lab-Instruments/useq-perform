@@ -13,6 +13,9 @@ vi.mock("../legacy/io/useqWasmInterpreter.ts", () => ({
 vi.mock("../legacy/utils/persistentUserSettings.ts", () => ({
   activeUserSettings: { wasm: { enabled: true } },
 }));
+vi.mock("../legacy/urlParams.ts", () => ({
+  noModuleMode: false,
+}));
 
 import {
   parseTransportState,
@@ -26,10 +29,11 @@ import {
   rewind,
   clear,
 } from "./transport";
-import { isConnectedToModule, sendTouSEQ } from "../legacy/io/serialComms.ts";
+import { getSerialPort, isConnectedToModule, sendTouSEQ } from "../legacy/io/serialComms.ts";
 import { activeUserSettings } from "../legacy/utils/persistentUserSettings.ts";
 import { evalInUseqWasm, syncWasmTransportState as syncWasmTransportStateInInterpreter } from "../legacy/io/useqWasmInterpreter.ts";
 import { Effect } from "effect";
+import * as urlParams from "../legacy/urlParams.ts";
 
 describe("parseTransportState", () => {
   it("parses 'playing'", () => {
@@ -107,7 +111,13 @@ describe("extractTransportStateFromMeta", () => {
 describe("resolveTransportMode", () => {
   beforeEach(() => {
     vi.mocked(isConnectedToModule).mockReturnValue(false);
+    vi.mocked(getSerialPort).mockReturnValue(null);
     (activeUserSettings as any).wasm = { enabled: true };
+    Object.defineProperty(urlParams, "noModuleMode", {
+      value: false,
+      writable: true,
+      configurable: true,
+    });
   });
 
   it("returns 'none' when not connected and wasm disabled", () => {
@@ -121,13 +131,25 @@ describe("resolveTransportMode", () => {
 
   it("returns 'hardware' when connected but wasm disabled", () => {
     vi.mocked(isConnectedToModule).mockReturnValue(true);
+    vi.mocked(getSerialPort).mockReturnValue({} as SerialPort);
     (activeUserSettings as any).wasm = { enabled: false };
     expect(resolveTransportMode()).toBe("hardware");
   });
 
   it("returns 'both' when connected and wasm enabled", () => {
     vi.mocked(isConnectedToModule).mockReturnValue(true);
+    vi.mocked(getSerialPort).mockReturnValue({} as SerialPort);
     expect(resolveTransportMode()).toBe("both");
+  });
+
+  it("returns 'wasm' in explicit no-module mode even if legacy connected state is stale", () => {
+    vi.mocked(isConnectedToModule).mockReturnValue(true);
+    Object.defineProperty(urlParams, "noModuleMode", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
+    expect(resolveTransportMode()).toBe("wasm");
   });
 });
 
@@ -153,7 +175,13 @@ describe("sendTransportCommand fan-out", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(isConnectedToModule).mockReturnValue(false);
+    vi.mocked(getSerialPort).mockReturnValue(null);
     (activeUserSettings as any).wasm = { enabled: true };
+    Object.defineProperty(urlParams, "noModuleMode", {
+      value: false,
+      writable: true,
+      configurable: true,
+    });
     vi.mocked(sendTouSEQ).mockResolvedValue(undefined);
     vi.mocked(evalInUseqWasm).mockResolvedValue("ok");
   });
@@ -166,6 +194,7 @@ describe("sendTransportCommand fan-out", () => {
 
   it("sends to hardware only when connected but WASM disabled", async () => {
     vi.mocked(isConnectedToModule).mockReturnValue(true);
+    vi.mocked(getSerialPort).mockReturnValue({} as SerialPort);
     (activeUserSettings as any).wasm = { enabled: false };
     await Effect.runPromise(sendTransportCommand("(useq-play)"));
     expect(sendTouSEQ).toHaveBeenCalledWith("(useq-play)");
@@ -174,8 +203,21 @@ describe("sendTransportCommand fan-out", () => {
 
   it("sends to both hardware and WASM when connected and WASM enabled", async () => {
     vi.mocked(isConnectedToModule).mockReturnValue(true);
+    vi.mocked(getSerialPort).mockReturnValue({} as SerialPort);
     await Effect.runPromise(sendTransportCommand("(useq-stop)"));
     expect(sendTouSEQ).toHaveBeenCalledWith("(useq-stop)");
+    expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-stop)");
+  });
+
+  it("keeps no-module transport wasm-only even if legacy connected state is stale", async () => {
+    vi.mocked(isConnectedToModule).mockReturnValue(true);
+    Object.defineProperty(urlParams, "noModuleMode", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
+    await Effect.runPromise(sendTransportCommand("(useq-stop)"));
+    expect(sendTouSEQ).not.toHaveBeenCalled();
     expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-stop)");
   });
 

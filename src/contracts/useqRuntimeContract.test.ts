@@ -37,6 +37,9 @@ describe("useqRuntimeContract", () => {
       "serial-output-streams"
     );
     expect(EDITOR_RUNTIME_CONTRACT.wasmOnlyCapabilities).toContain(
+      "output-sampling"
+    );
+    expect(EDITOR_RUNTIME_CONTRACT.optionalWasmCapabilities).toContain(
       "batch-output-sampling"
     );
   });

@@ -34,6 +34,10 @@ export const updateListener = EditorView.updateListener.of((update) => {
     window.localStorage.setItem(codeStorageKey, update.state.doc.toString());
   }
 
+  if (update.docChanged && activeUserSettings.editor) {
+    activeUserSettings.editor.code = update.state.doc.toString();
+  }
+
   // Keep manual-control bindings stable across arbitrary edits.
   if (update.docChanged) {
     mapManualControlBindingsThroughChanges(update.changes);

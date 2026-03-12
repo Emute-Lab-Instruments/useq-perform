@@ -119,10 +119,15 @@ interface BatchEvaluator {
   release: () => void;
 }
 
-function createBatchEvaluator(module: EmscriptenModule): BatchEvaluator {
-  const legacyEval = module.cwrap("useq_eval_outputs_time_window", "string", ["string", "number", "number", "number"]);
+function createBatchEvaluator(
+  module: EmscriptenModule,
+  evaluateOutputAtTime: (name: string, timeSeconds: number) => number
+): BatchEvaluator {
+  const legacyEval = tryCwrap(module, "useq_eval_outputs_time_window", "string", ["string", "number", "number", "number"]);
   const typedEval = tryCwrap(module, "useq_eval_outputs_time_window_into", "number", ["string", "number", "number", "number", "number", "number"]);
-  const readLastError = typedEval ? module.cwrap("useq_last_error", "string", []) : null;
+  const readLastError = typedEval
+    ? tryCwrap(module, "useq_last_error", "string", [])
+    : null;
 
   const bufferState: BufferState = {
     pointer: 0,
@@ -217,6 +222,10 @@ function createBatchEvaluator(module: EmscriptenModule): BatchEvaluator {
   };
 
   const evaluateLegacy = (outputsArray: string[], outputsJson: string, start: number, end: number, sampleCount: number): SampleSeriesMap => {
+    if (!legacyEval) {
+      throw new Error("Legacy batch evaluation is unavailable");
+    }
+
     const resultJson = legacyEval(outputsJson, start, end, sampleCount) as string;
     const parsed = JSON.parse(resultJson) as Record<string, number[]> | { error: string };
 
@@ -234,12 +243,43 @@ function createBatchEvaluator(module: EmscriptenModule): BatchEvaluator {
     });
   };
 
+  const evaluateBySampling = (
+    outputsArray: string[],
+    start: number,
+    end: number,
+    sampleCount: number
+  ): SampleSeriesMap =>
+    buildSampleSeries(
+      outputsArray,
+      start,
+      end,
+      sampleCount,
+      (channelIndex: number, sampleIndex: number): number => {
+        const channelName = outputsArray[channelIndex];
+        if (typeof channelName !== "string" || !channelName) {
+          return Number.NaN;
+        }
+
+        const time =
+          sampleCount > 1
+            ? start + ((end - start) * sampleIndex) / (sampleCount - 1)
+            : start;
+
+        return evaluateOutputAtTime(channelName, time);
+      }
+    );
+
   const evaluate = (outputs: string[], startTime: number, endTime: number, numSamples: number): SampleSeriesMap => {
     const outputsArray = Array.isArray(outputs) ? Array.from(outputs) : [];
     const outputsJson = JSON.stringify(outputsArray);
     const start = Number(startTime) || 0;
     const end = Number(endTime) || 0;
     const sampleCount = clampSampleCount(numSamples);
+
+    if (!typedEval && !legacyEval) {
+      dbg("useqWasmInterpreter: batch helpers unavailable; sampling via useq_eval_output()");
+      return evaluateBySampling(outputsArray, start, end, sampleCount);
+    }
 
     if (!typedEval) {
       return evaluateLegacy(outputsArray, outputsJson, start, end, sampleCount);
@@ -249,7 +289,8 @@ function createBatchEvaluator(module: EmscriptenModule): BatchEvaluator {
       return evaluateTyped(outputsArray, outputsJson, start, end, sampleCount);
     } catch (error) {
       if (!legacyEval) {
-        throw error;
+        dbg(`useqWasmInterpreter: typed batch evaluation failed (${error instanceof Error ? error.message : String(error)}); sampling via useq_eval_output()`);
+        return evaluateBySampling(outputsArray, start, end, sampleCount);
       }
 
       dbg(`useqWasmInterpreter: typed batch evaluation failed (${error instanceof Error ? error.message : String(error)}); falling back to JSON bridge`);
@@ -319,7 +360,11 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const useq_eval = module.cwrap("useq_eval", "string", ["string"]) as (code: string) => string;
   const useq_update_time = module.cwrap("useq_update_time", null, ["number"]) as (t: number) => void;
   const useq_eval_output = module.cwrap("useq_eval_output", "number", ["string", "number"]) as (name: string, t: number) => number;
-  const batchEvaluator = createBatchEvaluator(module);
+  const evaluateOutputAtTime = (name: string, timeSeconds: number): number => {
+    const value = useq_eval_output(name, Number(timeSeconds) || 0);
+    return Number.isNaN(value) ? NaN : value;
+  };
+  const batchEvaluator = createBatchEvaluator(module, evaluateOutputAtTime);
 
   useq_init();
   dbg("uSEQ WASM interpreter initialised");
@@ -342,8 +387,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     },
     evaluateOutputAtTime: (name: string, timeSeconds: number): number => {
       try {
-        const value = useq_eval_output(name, Number(timeSeconds) || 0);
-        return Number.isNaN(value) ? NaN : value;
+        return evaluateOutputAtTime(name, timeSeconds);
       } catch (error) {
         throw new Error(`uSEQ WASM output evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
       }

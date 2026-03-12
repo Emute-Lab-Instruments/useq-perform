@@ -2,6 +2,8 @@
 
 This document is the editor-facing contract for the firmware and WASM runtimes that `useq-perform` consumes.
 
+For the higher-level product boundary and compatibility cuts, read `docs/STABLE_CORE.md` first. This file is narrower: it defines what the editor may assume about hardware and WASM runtimes.
+
 ## Canonical `src-useq` Source Of Truth
 
 The authoritative firmware behavior for this repo is the `src-useq/` submodule checked into this repository, not any standalone local clone.
@@ -11,7 +13,7 @@ As of 2026-03-06, the superproject `HEAD` pins:
 - Repo: `git@github.com:Emute-Lab-Instruments/uSEQ.git`
 - Path: `src-useq/`
 - Branch currently checked out in the submodule: `feat/json-protocol-transport`
-- Authoritative pinned commit: `7ccae70291d065a939b067d8e416aac0fafe48b6`
+- Authoritative pinned commit: `930a30063b5b143cfb3faa6b2c23d32fe7adf6af`
 
 To cite the exact firmware commit that editor work depends on, run:
 
@@ -49,7 +51,19 @@ WASM-only capabilities:
 
 - Direct time injection via `useq_update_time`
 - Single-output sampling via `useq_eval_output`
-- Batched output sampling via `useq_eval_outputs_time_window` and `useq_eval_outputs_time_window_into`
+- Optional batched output sampling when the generated bundle exports batch helpers
+
+## Current Pinned WASM Export Floor
+
+The pinned `src-useq/scripts/build_wasm.sh` export list guarantees only:
+
+- `useq_init`
+- `useq_eval`
+- `useq_update_time`
+- `useq_eval_output`
+- `_free`
+
+The source tree contains batch-evaluation helpers, but the checked-in generated bundle does not export them today. Treat batch sampling as a probed optimization, not as part of the guaranteed stable core, until `useq-perform-tgf.1.3` explicitly resets that contract.
 
 ## Contract Decision
 
