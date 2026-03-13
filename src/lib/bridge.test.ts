@@ -93,6 +93,123 @@ describe("useActorSignal", () => {
       dispose();
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Emit after dispose (cleanup timing)
+  // -----------------------------------------------------------------------
+  it("emit after dispose does not update the signal (subscription was cleaned up)", () => {
+    // Use a mock that respects unsubscribe — stops forwarding after unsub
+    let subscriber: ((snap: any) => void) | null = null;
+    const unsubscribe = vi.fn(() => {
+      subscriber = null;
+    });
+    const actor = {
+      getSnapshot: vi.fn(() => "initial"),
+      subscribe: vi.fn((fn: any) => {
+        subscriber = fn;
+        return { unsubscribe };
+      }),
+      send: vi.fn(),
+    };
+
+    let readState: (() => any) | null = null;
+
+    createRoot((dispose) => {
+      const { state } = useActorSignal(actor as any);
+      readState = state;
+
+      // Emit while alive — signal updates
+      subscriber?.("alive");
+      expect(state()).toBe("alive");
+
+      dispose();
+    });
+
+    // After dispose, unsubscribe was called, subscriber is null
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(subscriber).toBeNull();
+  });
+
+  // -----------------------------------------------------------------------
+  // Multiple consumers sharing one actor
+  // -----------------------------------------------------------------------
+  it("multiple useActorSignal calls on the same actor get independent signals", () => {
+    const mock = createMockActor({ count: 0 });
+    // Override subscribe to support multiple subscribers
+    const subscribers: Array<(snap: any) => void> = [];
+    mock.actor.subscribe = vi.fn((fn: any) => {
+      subscribers.push(fn);
+      return {
+        unsubscribe: vi.fn(() => {
+          const idx = subscribers.indexOf(fn);
+          if (idx >= 0) subscribers.splice(idx, 1);
+        }),
+      };
+    }) as any;
+
+    createRoot((dispose) => {
+      const a = useActorSignal(mock.actor as any);
+      const b = useActorSignal(mock.actor as any);
+
+      expect(mock.actor.subscribe).toHaveBeenCalledTimes(2);
+
+      // Both start with the same initial snapshot
+      expect(a.state()).toEqual({ count: 0 });
+      expect(b.state()).toEqual({ count: 0 });
+
+      // Emit to all subscribers
+      const newSnap = { count: 1 };
+      for (const sub of subscribers) sub(newSnap);
+
+      // Both see the update
+      expect(a.state()).toEqual({ count: 1 });
+      expect(b.state()).toEqual({ count: 1 });
+
+      dispose();
+    });
+
+    // Both unsubscribed
+    expect(subscribers).toHaveLength(0);
+  });
+
+  // -----------------------------------------------------------------------
+  // Rapid emissions
+  // -----------------------------------------------------------------------
+  it("rapid emissions always settle on the latest snapshot", () => {
+    const mock = createMockActor(0);
+
+    createRoot((dispose) => {
+      const { state } = useActorSignal(mock.actor as any);
+
+      for (let i = 1; i <= 100; i++) {
+        mock.emit(i);
+      }
+
+      expect(state()).toBe(100);
+      dispose();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Subscription object without unsubscribe (optional chaining guard)
+  // -----------------------------------------------------------------------
+  it("handles subscription object where unsubscribe is undefined", () => {
+    const actor = {
+      getSnapshot: vi.fn(() => "ok"),
+      subscribe: vi.fn(() => ({
+        // unsubscribe intentionally missing
+      })),
+      send: vi.fn(),
+    };
+
+    createRoot((dispose) => {
+      const { state } = useActorSignal(actor as any);
+      expect(state()).toBe("ok");
+
+      // dispose should not throw even though unsubscribe is undefined
+      expect(() => dispose()).not.toThrow();
+    });
+  });
 });
 
 // ===========================================================================

@@ -515,6 +515,359 @@ describe("visualisationStore", () => {
   });
 
   // -----------------------------------------------------------------------
+  // High-frequency ingestion
+  // -----------------------------------------------------------------------
+  describe("high-frequency ingestion", () => {
+    it("handles rapid sequential event application without data corruption", async () => {
+      const { visStore, applyVisualisationEvent } = await loadVisStore();
+
+      // Simulate 100 rapid data-tick events (typical during live performance)
+      for (let i = 0; i < 100; i++) {
+        applyVisualisationEvent({
+          kind: "data",
+          currentTimeSeconds: i * 0.01,
+          displayTimeSeconds: i * 0.01 + 0.001,
+          bar: (i % 100) / 100,
+          expressions: {
+            a1: {
+              exprType: "a1",
+              expressionText: "(sin t)",
+              samples: [{ time: i * 0.01, value: Math.sin(i * 0.01) }],
+              color: "#ff0000",
+            },
+          },
+        });
+      }
+
+      // Final state should reflect last event, not a blend
+      expect(visStore.currentTime).toBeCloseTo(0.99);
+      expect(visStore.displayTime).toBeCloseTo(0.991);
+      expect(visStore.lastChangeKind).toBe("data");
+      expect(visStore.expressions.a1.samples).toHaveLength(1);
+      expect(visStore.expressions.a1.samples[0].time).toBeCloseTo(0.99);
+    });
+
+    it("expressions are fully replaced on each event (no stale keys accumulate)", async () => {
+      const { visStore, applyVisualisationEvent } = await loadVisStore();
+
+      // First event registers a1 and a2
+      applyVisualisationEvent({
+        expressions: {
+          a1: { exprType: "a1", expressionText: "(sin t)", samples: [], color: "#f00" },
+          a2: { exprType: "a2", expressionText: "(cos t)", samples: [], color: "#0f0" },
+        },
+      });
+      expect(Object.keys(visStore.expressions)).toEqual(["a1", "a2"]);
+
+      // Second event only has a1 — a2 must be gone
+      applyVisualisationEvent({
+        expressions: {
+          a1: { exprType: "a1", expressionText: "(sin t)", samples: [], color: "#f00" },
+        },
+      });
+      expect(Object.keys(visStore.expressions)).toEqual(["a1"]);
+      expect(visStore.expressions.a2).toBeUndefined();
+
+      // Third event adds d1, removes a1
+      applyVisualisationEvent({
+        expressions: {
+          d1: { exprType: "d1", expressionText: "(> t 0)", samples: [], color: "#00f" },
+        },
+      });
+      expect(Object.keys(visStore.expressions)).toEqual(["d1"]);
+      expect(visStore.expressions.a1).toBeUndefined();
+    });
+
+    it("expression samples array is replaced, not appended", async () => {
+      const { visStore, applyVisualisationEvent } = await loadVisStore();
+
+      applyVisualisationEvent({
+        expressions: {
+          a1: {
+            exprType: "a1",
+            expressionText: "(sin t)",
+            samples: [{ time: 0, value: 0 }, { time: 1, value: 1 }],
+            color: null,
+          },
+        },
+      });
+      expect(visStore.expressions.a1.samples).toHaveLength(2);
+
+      // New event with different samples
+      applyVisualisationEvent({
+        expressions: {
+          a1: {
+            exprType: "a1",
+            expressionText: "(sin t)",
+            samples: [{ time: 2, value: 0.5 }],
+            color: null,
+          },
+        },
+      });
+      expect(visStore.expressions.a1.samples).toHaveLength(1);
+      expect(visStore.expressions.a1.samples[0]).toEqual({ time: 2, value: 0.5 });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // snapshotSerialBuffers — consistency and edge cases
+  // -----------------------------------------------------------------------
+  describe("snapshotSerialBuffers consistency", () => {
+    function createMockBuffer(values: number[]) {
+      return {
+        length: values.length,
+        oldest: (i: number) => values[i],
+        capacity: values.length + 10,
+      };
+    }
+
+    it("handles 9 channels (matching real hardware buffer count)", async () => {
+      const { visStore, snapshotSerialBuffers } = await loadVisStore();
+
+      const buffers = Array.from({ length: 9 }, (_, ch) =>
+        createMockBuffer(Array.from({ length: 50 }, (_, i) => ch * 100 + i))
+      );
+
+      snapshotSerialBuffers(buffers);
+
+      expect(visStore.serialBuffers.channels).toHaveLength(9);
+      expect(visStore.serialBuffers.lengths).toHaveLength(9);
+      // Spot-check: channel 0 first value, channel 8 last value
+      expect(visStore.serialBuffers.channels[0][0]).toBe(0);
+      expect(visStore.serialBuffers.channels[8][49]).toBe(849);
+    });
+
+    it("re-snapshot reflects buffer content changes (simulating circular buffer wrap)", async () => {
+      const { visStore, snapshotSerialBuffers } = await loadVisStore();
+
+      // First snapshot: buffer has [1, 2, 3]
+      const values = [1, 2, 3];
+      const buf = {
+        get length() { return values.length; },
+        oldest: (i: number) => values[i],
+        capacity: 10,
+      };
+
+      snapshotSerialBuffers([buf]);
+      expect(visStore.serialBuffers.channels[0]).toEqual([1, 2, 3]);
+
+      // Simulate wrap: oldest value dropped, new value added
+      values.shift();
+      values.push(4);
+
+      snapshotSerialBuffers([buf]);
+      expect(visStore.serialBuffers.channels[0]).toEqual([2, 3, 4]);
+    });
+
+    it("previous snapshot data is independent from subsequent snapshots", async () => {
+      const { visStore, snapshotSerialBuffers } = await loadVisStore();
+
+      snapshotSerialBuffers([createMockBuffer([10, 20, 30])]);
+      // Grab a reference to the current channels array
+      const firstChannels = visStore.serialBuffers.channels[0];
+
+      snapshotSerialBuffers([createMockBuffer([40, 50])]);
+
+      // After reconcile, the store should reflect the new data
+      expect(visStore.serialBuffers.channels[0]).toEqual([40, 50]);
+      expect(visStore.serialBuffers.lengths[0]).toBe(2);
+    });
+
+    it("handles buffers with varying lengths across channels", async () => {
+      const { visStore, snapshotSerialBuffers } = await loadVisStore();
+
+      snapshotSerialBuffers([
+        createMockBuffer([1, 2, 3, 4, 5]),  // 5 samples
+        createMockBuffer([10]),               // 1 sample
+        createMockBuffer([]),                 // 0 samples
+        createMockBuffer([100, 200]),         // 2 samples
+      ]);
+
+      expect(visStore.serialBuffers.lengths).toEqual([5, 1, 0, 2]);
+      expect(visStore.serialBuffers.channels[0]).toEqual([1, 2, 3, 4, 5]);
+      expect(visStore.serialBuffers.channels[1]).toEqual([10]);
+      expect(visStore.serialBuffers.channels[2]).toEqual([]);
+      expect(visStore.serialBuffers.channels[3]).toEqual([100, 200]);
+    });
+
+    it("channel count can change between snapshots", async () => {
+      const { visStore, snapshotSerialBuffers } = await loadVisStore();
+
+      // Start with 2 channels
+      snapshotSerialBuffers([
+        createMockBuffer([1]),
+        createMockBuffer([2]),
+      ]);
+      expect(visStore.serialBuffers.channels).toHaveLength(2);
+
+      // Now snapshot with 4 channels
+      snapshotSerialBuffers([
+        createMockBuffer([10]),
+        createMockBuffer([20]),
+        createMockBuffer([30]),
+        createMockBuffer([40]),
+      ]);
+      expect(visStore.serialBuffers.channels).toHaveLength(4);
+
+      // Back to 1 channel — old channels must be gone
+      snapshotSerialBuffers([createMockBuffer([99])]);
+      expect(visStore.serialBuffers.channels).toHaveLength(1);
+      expect(visStore.serialBuffers.channels[0]).toEqual([99]);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Palette and expression coexistence
+  // -----------------------------------------------------------------------
+  describe("palette and expression coexistence", () => {
+    it("palette and expression colors are independent", async () => {
+      const { visStore, applyVisualisationEvent, setVisPalette } = await loadVisStore();
+
+      setVisPalette(["#aaa", "#bbb", "#ccc"]);
+
+      applyVisualisationEvent({
+        expressions: {
+          a1: { exprType: "a1", expressionText: "(sin t)", samples: [], color: "#ff0000" },
+          a2: { exprType: "a2", expressionText: "(cos t)", samples: [], color: null },
+        },
+      });
+
+      // Both are present and independent
+      expect(visStore.palette).toEqual(["#aaa", "#bbb", "#ccc"]);
+      expect(visStore.expressions.a1.color).toBe("#ff0000");
+      expect(visStore.expressions.a2.color).toBeNull();
+    });
+
+    it("clearing expressions does not affect palette", async () => {
+      const { visStore, applyVisualisationEvent, setVisPalette } = await loadVisStore();
+
+      setVisPalette(["#111", "#222"]);
+      applyVisualisationEvent({
+        expressions: {
+          a1: { exprType: "a1", expressionText: "(sin t)", samples: [], color: "#f00" },
+        },
+      });
+
+      // Clear expressions by sending empty
+      applyVisualisationEvent({ expressions: {} });
+
+      expect(visStore.expressions).toEqual({});
+      expect(visStore.palette).toEqual(["#111", "#222"]);
+    });
+
+    it("replacing palette does not affect expression state", async () => {
+      const { visStore, applyVisualisationEvent, setVisPalette } = await loadVisStore();
+
+      applyVisualisationEvent({
+        kind: "register",
+        currentTimeSeconds: 5,
+        expressions: {
+          a1: { exprType: "a1", expressionText: "(sin t)", samples: [{ time: 0, value: 1 }], color: "#f00" },
+        },
+      });
+
+      setVisPalette(["#new1", "#new2"]);
+
+      // Expression state unchanged
+      expect(visStore.currentTime).toBe(5);
+      expect(visStore.expressions.a1.color).toBe("#f00");
+      expect(visStore.expressions.a1.samples).toHaveLength(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Expression lifecycle across resets
+  // -----------------------------------------------------------------------
+  describe("expression lifecycle", () => {
+    it("full register → data → clear → re-register cycle", async () => {
+      const { visStore, applyVisualisationEvent } = await loadVisStore();
+
+      // Register
+      applyVisualisationEvent({
+        kind: "register",
+        expressions: {
+          a1: { exprType: "a1", expressionText: "(sin t)", samples: [], color: "#f00" },
+          d1: { exprType: "d1", expressionText: "(> t 0)", samples: [], color: "#0f0" },
+        },
+      });
+      expect(Object.keys(visStore.expressions).sort()).toEqual(["a1", "d1"]);
+
+      // Data updates with new samples
+      applyVisualisationEvent({
+        kind: "data",
+        expressions: {
+          a1: {
+            exprType: "a1",
+            expressionText: "(sin t)",
+            samples: [{ time: 1, value: 0.84 }, { time: 2, value: 0.91 }],
+            color: "#f00",
+          },
+          d1: {
+            exprType: "d1",
+            expressionText: "(> t 0)",
+            samples: [{ time: 1, value: 1 }],
+            color: "#0f0",
+          },
+        },
+      });
+      expect(visStore.expressions.a1.samples).toHaveLength(2);
+      expect(visStore.expressions.d1.samples).toHaveLength(1);
+
+      // Clear all expressions
+      applyVisualisationEvent({ kind: "clear", expressions: {} });
+      expect(visStore.expressions).toEqual({});
+      expect(visStore.lastChangeKind).toBe("clear");
+
+      // Re-register with different expressions
+      applyVisualisationEvent({
+        kind: "register",
+        expressions: {
+          a2: { exprType: "a2", expressionText: "(cos t)", samples: [], color: "#00f" },
+        },
+      });
+      expect(Object.keys(visStore.expressions)).toEqual(["a2"]);
+      // Old expressions are fully gone
+      expect(visStore.expressions.a1).toBeUndefined();
+      expect(visStore.expressions.d1).toBeUndefined();
+    });
+
+    it("expression with non-array samples is normalized to empty array", async () => {
+      const { visStore, applyVisualisationEvent } = await loadVisStore();
+
+      applyVisualisationEvent({
+        expressions: {
+          a1: {
+            exprType: "a1",
+            expressionText: "(sin t)",
+            samples: "not an array" as any,
+            color: null,
+          },
+        },
+      });
+
+      expect(Array.isArray(visStore.expressions.a1.samples)).toBe(true);
+      expect(visStore.expressions.a1.samples).toEqual([]);
+    });
+
+    it("expression exprType falls back to the key name when missing", async () => {
+      const { visStore, applyVisualisationEvent } = await loadVisStore();
+
+      applyVisualisationEvent({
+        expressions: {
+          myChannel: {
+            // exprType is undefined
+            expressionText: "(sin t)",
+            samples: [],
+            color: null,
+          },
+        },
+      });
+
+      expect(visStore.expressions.myChannel.exprType).toBe("myChannel");
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Exported constants
   // -----------------------------------------------------------------------
   describe("exported constants", () => {

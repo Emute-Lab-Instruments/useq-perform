@@ -38,7 +38,10 @@ function cloneState(): RuntimeSessionState {
 
 function notifyListeners(): void {
   const snapshot = cloneState();
-  listeners.forEach((listener) => listener(snapshot));
+  const frozen = [...listeners];
+  for (const listener of frozen) {
+    if (listeners.has(listener)) listener(snapshot);
+  }
 }
 
 export function getRuntimeSessionState(): RuntimeSessionState {
@@ -83,4 +86,10 @@ export function resetRuntimeSessionState(): void {
     session: createRuntimeSessionSnapshot(DEFAULT_INPUTS),
   };
   notifyListeners();
+}
+
+/** Remove all listeners and reset state. Test-only. */
+export function teardownRuntimeSessionState(): void {
+  listeners.clear();
+  resetRuntimeSessionState();
 }
