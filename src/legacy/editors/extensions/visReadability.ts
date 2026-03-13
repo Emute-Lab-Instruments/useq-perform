@@ -213,14 +213,8 @@ function isVisPanelVisible(): boolean {
   return isVisualisationPanelVisible();
 }
 
-function rebuildSVG(svg: SVGSVGElement, view: EditorView): void {
-  // Clear existing content.
+function writeSVG(svg: SVGSVGElement, lineBounds: PixelLineBounds[]): void {
   while (svg.firstChild) svg.removeChild(svg.firstChild);
-
-  // Only render polygons when the serialVis overlay is active.
-  if (!isVisPanelVisible()) return;
-
-  const lineBounds = computeVisibleLineBounds(view);
   if (lineBounds.length === 0) return;
 
   const blocks = groupIntoBlocks(lineBounds);
@@ -234,6 +228,18 @@ function rebuildSVG(svg: SVGSVGElement, view: EditorView): void {
     pathEl.setAttribute('fill', FILL_COLOR);
     svg.appendChild(pathEl);
   }
+}
+
+function scheduleSVGRebuild(svg: SVGSVGElement, view: EditorView): void {
+  view.requestMeasure({
+    read(v: EditorView): PixelLineBounds[] {
+      if (!isVisPanelVisible()) return [];
+      return computeVisibleLineBounds(v);
+    },
+    write(lineBounds: PixelLineBounds[]) {
+      writeSVG(svg, lineBounds);
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -265,19 +271,19 @@ class VisReadabilityPlugin {
     view.scrollDOM.insertBefore(this.svg, view.contentDOM);
 
     // Watch for vis panel style changes (display toggled) to refresh polygons.
-    this.mutationObserver = new MutationObserver(() => rebuildSVG(this.svg, this.view));
+    this.mutationObserver = new MutationObserver(() => scheduleSVGRebuild(this.svg, this.view));
     const visPanel = getVisualisationPanel();
     if (visPanel) {
       this.mutationObserver.observe(visPanel, { attributes: true, attributeFilter: ['style'] });
     }
 
-    rebuildSVG(this.svg, view);
+    scheduleSVGRebuild(this.svg, view);
   }
 
   update(update: ViewUpdate): void {
     this.view = update.view;
     if (update.docChanged || update.viewportChanged || update.geometryChanged) {
-      rebuildSVG(this.svg, update.view);
+      scheduleSVGRebuild(this.svg, update.view);
     }
   }
 
