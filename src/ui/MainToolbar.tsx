@@ -62,8 +62,14 @@ export function MainToolbar() {
     return "Disconnected";
   };
 
-  const connectButtonClass = () =>
-    `toolbar-button ${runtimeState().connected ? "connected" : "disconnected"} runtime-${runtimeState().session.connectionMode}`;
+  const connectButtonClass = () => {
+    const { connectionMode, transportMode } = runtimeState().session;
+    let transportClass = "transport-none";
+    if (connectionMode === "browser") transportClass = "transport-wasm";
+    else if (connectionMode === "hardware" && transportMode === "both") transportClass = "transport-both";
+    else if (connectionMode === "hardware") transportClass = "transport-hardware";
+    return `toolbar-button ${transportClass}`;
+  };
 
   return (
     <div id="panel-toolbar">
@@ -77,9 +83,6 @@ export function MainToolbar() {
         >
           <Cable />
         </button>
-        <span class={`toolbar-runtime-pill runtime-${runtimeState().session.connectionMode}`}>
-          {runtimeStatus()}
-        </span>
         <button
           class="toolbar-button"
           title="Graph"

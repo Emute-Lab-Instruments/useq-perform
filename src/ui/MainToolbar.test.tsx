@@ -86,16 +86,13 @@ describe("MainToolbar", () => {
     expect(container.querySelector(`[title="Font size++"]`)).toBeTruthy();
     expect(container.querySelector(`[title="Help!"]`)).toBeTruthy();
     expect(container.querySelector(`[title="Settings"]`)).toBeTruthy();
-    expect(container.textContent).toContain("Browser-local");
   });
 
-  it("renders connect button with disconnected class when browser-local runtime is active", () => {
+  it("renders connect button with transport-wasm class when browser-local runtime is active", () => {
     const { container } = render(() => <MainToolbar />);
 
     const connectBtn = container.querySelector(`[title="Connect (Browser-local)"]`);
-    expect(connectBtn?.classList.contains("disconnected")).toBe(true);
-    expect(connectBtn?.classList.contains("connected")).toBe(false);
-    expect(connectBtn?.classList.contains("runtime-browser")).toBe(true);
+    expect(connectBtn?.classList.contains("transport-wasm")).toBe(true);
   });
 
   it("renders connected hardware status from the runtime service snapshot", () => {
@@ -114,16 +111,14 @@ describe("MainToolbar", () => {
     const { container } = render(() => <MainToolbar />);
 
     const connectBtn = container.querySelector(".toolbar-row .toolbar-button");
-    expect(connectBtn?.classList.contains("connected")).toBe(true);
-    expect(connectBtn?.classList.contains("disconnected")).toBe(false);
-    expect(container.textContent).toContain("Hardware + WASM");
+    expect(connectBtn?.classList.contains("transport-both")).toBe(true);
   });
 
   it("reacts to runtime service updates without reading legacy globals", async () => {
     const { container } = render(() => <MainToolbar />);
 
     const connectBtn = container.querySelector(`[title="Connect (Browser-local)"]`);
-    expect(connectBtn?.classList.contains("disconnected")).toBe(true);
+    expect(connectBtn?.classList.contains("transport-wasm")).toBe(true);
 
     runtimeServiceState.setSnapshot({
       connected: true,
@@ -138,7 +133,7 @@ describe("MainToolbar", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(connectBtn?.classList.contains("connected")).toBe(true);
+    expect(connectBtn?.classList.contains("transport-both")).toBe(true);
     expect(connectBtn?.getAttribute("title")).toBe("Connect (Hardware + WASM)");
 
     runtimeServiceState.setSnapshot({
@@ -154,7 +149,7 @@ describe("MainToolbar", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(connectBtn?.classList.contains("disconnected")).toBe(true);
+    expect(connectBtn?.classList.contains("transport-wasm")).toBe(true);
     expect(connectBtn?.getAttribute("title")).toBe("Connect (Browser-local)");
   });
 

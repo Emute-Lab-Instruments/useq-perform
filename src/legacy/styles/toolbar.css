@@ -122,53 +122,30 @@
     box-shadow: 0 0 20px var(--accent-color-hover);
   }
 
-  /* High-specificity selector for connected state */
-  .toolbar-row:first-child .toolbar-button.connected {
-    color: rgba(0, 255, 0, 0.75) !important;
-    box-shadow: 0 0 20px rgba(0, 255, 0, 0.6) !important;
+  /* transport-none: red — no connection */
+  .toolbar-row:first-child .toolbar-button.transport-none {
+    color: rgba(255, 60, 60, 0.8) !important;
+    box-shadow: 0 0 20px rgba(255, 60, 60, 0.55) !important;
   }
 
-  /* High-specificity selector for disconnected state */
-  .toolbar-row:first-child .toolbar-button.disconnected {
-    box-shadow: 0 0 20px rgba(255, 0, 0, 0.6) !important;
-    color: rgba(255, 0, 0, 0.75) !important;
+  /* transport-wasm: orange — WASM only */
+  .toolbar-row:first-child .toolbar-button.transport-wasm {
+    color: rgba(255, 165, 0, 0.85) !important;
+    box-shadow: 0 0 20px rgba(255, 165, 0, 0.6) !important;
   }
 
-  .toolbar-row:first-child .toolbar-button.runtime-browser {
-    box-shadow: 0 0 20px rgba(74, 144, 226, 0.65) !important;
-    color: rgba(74, 144, 226, 0.9) !important;
+  /* transport-both: green — WASM + hardware */
+  .toolbar-row:first-child .toolbar-button.transport-both {
+    color: rgba(0, 230, 100, 0.85) !important;
+    box-shadow: 0 0 20px rgba(0, 230, 100, 0.6) !important;
   }
 
-  .toolbar-runtime-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2.1em;
-    padding: 0.1em 0.7em;
-    border: 1px solid var(--panel-border);
-    border-radius: 999px;
-    background: var(--panel-control-bg);
-    color: var(--text-secondary, var(--text-primary));
-    font-family: monospace;
-    font-size: 0.82rem;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
+  /* transport-hardware: warm off-green — hardware only */
+  .toolbar-row:first-child .toolbar-button.transport-hardware {
+    color: rgba(120, 210, 80, 0.85) !important;
+    box-shadow: 0 0 20px rgba(120, 210, 80, 0.6) !important;
   }
 
-  .toolbar-runtime-pill.runtime-hardware {
-    border-color: rgba(0, 255, 0, 0.45);
-    color: rgba(0, 255, 0, 0.82);
-  }
-
-  .toolbar-runtime-pill.runtime-browser {
-    border-color: rgba(74, 144, 226, 0.45);
-    color: rgba(74, 144, 226, 0.92);
-  }
-
-  .toolbar-runtime-pill.runtime-none {
-    border-color: rgba(255, 0, 0, 0.35);
-    color: rgba(255, 120, 120, 0.88);
-  }
 
   @media all and (max-width:30em) {
     .toolbar-button {
