@@ -69,11 +69,14 @@ export function Tabs(props: TabsProps) {
       <div class="panel-tab-window">
         <For each={props.tabs}>
           {(tab) => (
-            <Show when={activeTabId() === tab.id}>
-              <div class="panel-tab active" id={tab.id}>
-                {tab.content()}
-              </div>
-            </Show>
+            <div
+              class="panel-tab"
+              classList={{ active: activeTabId() === tab.id }}
+              id={tab.id}
+              style={{ display: activeTabId() === tab.id ? "" : "none" }}
+            >
+              {tab.content()}
+            </div>
           )}
         </For>
       </div>

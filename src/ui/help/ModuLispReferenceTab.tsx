@@ -100,6 +100,9 @@ export const ModuLispReferenceTab: Component = () => {
   const [selectedTags, setSelectedTags] = createSignal<Set<string>>(new Set());
 
   const fetchReferenceData = async (): Promise<ReferenceEntry[]> => {
+    if (referenceStore.data.length > 0) {
+      return referenceStore.data;
+    }
     const data = await loadReferenceDataFromCandidates();
     const normalized = data
       .map(normalizeEntry)

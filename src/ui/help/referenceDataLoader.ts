@@ -45,7 +45,7 @@ export const loadReferenceDataFromCandidates = async (): Promise<unknown[]> => {
 
   for (const candidate of getReferenceDataCandidateUrls()) {
     try {
-      const response = await fetch(candidate, { cache: "no-store" });
+      const response = await fetch(candidate);
       if (!response.ok) {
         errors.push(`${candidate} -> ${response.status}`);
         continue;
