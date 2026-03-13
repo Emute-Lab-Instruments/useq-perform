@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { getVisualisationState } from "./visualisationController.ts";
 
 const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)';

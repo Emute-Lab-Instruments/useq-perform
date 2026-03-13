@@ -1,8 +1,10 @@
 import importlib.util
 import json
 import pathlib
+import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -137,6 +139,127 @@ class HeartbeatCodexRunnerTests(unittest.TestCase):
             ["bd", "close", "bd-wave", "--reason", "Wave ready.", "--json"]
         )
         export_bd_state.assert_called_once()
+
+    def test_run_streaming_cmd_times_out_after_child_quiet_period(self) -> None:
+        class FakePipe:
+            def __iter__(self):
+                return iter(())
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = FakePipe()
+                self.stderr = FakePipe()
+                self.stdin = None
+                self._terminated = False
+                self.terminate_called = False
+                self.kill_called = False
+
+            def poll(self):
+                return 0 if self._terminated else None
+
+            def wait(self, timeout=None):
+                if timeout is not None and not self._terminated:
+                    raise subprocess.TimeoutExpired(cmd=["codex"], timeout=timeout)
+                self._terminated = True
+                return 0
+
+            def terminate(self):
+                self.terminate_called = True
+
+            def kill(self):
+                self.kill_called = True
+                self._terminated = True
+
+        fake_process = FakeProcess()
+        monotonic_values = iter([0.0, 901.0, 901.0])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = pathlib.Path(tmpdir)
+            with (
+                patch.object(runner.subprocess, "Popen", return_value=fake_process),
+                patch.object(runner.time, "monotonic", side_effect=lambda: next(monotonic_values)),
+                patch.object(runner.time, "sleep", return_value=None),
+            ):
+                with self.assertRaises(runner.RunnerError) as exc:
+                    runner.run_streaming_cmd(
+                        ["codex", "exec"],
+                        stdout_path=base / "events.jsonl",
+                        stderr_path=base / "stderr.log",
+                        live_log_path=base / "live.log",
+                        live_label="codex:test",
+                    )
+
+        self.assertIn("stalled after 901s", str(exc.exception))
+        self.assertTrue(fake_process.terminate_called)
+        self.assertTrue(fake_process.kill_called)
+
+    def test_run_streaming_cmd_keepalive_does_not_reset_child_quiet_timer(self) -> None:
+        class FakePipe:
+            def __iter__(self):
+                return iter(())
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = FakePipe()
+                self.stderr = FakePipe()
+                self.stdin = None
+                self.poll_calls = 0
+                self.wait_calls = 0
+
+            def poll(self):
+                self.poll_calls += 1
+                return None if self.poll_calls <= 2 else 0
+
+            def wait(self, timeout=None):
+                self.wait_calls += 1
+                return 0
+
+            def terminate(self):
+                raise AssertionError("terminate should not be called")
+
+            def kill(self):
+                raise AssertionError("kill should not be called")
+
+        fake_process = FakeProcess()
+        monotonic_values = iter([0.0, 25.0, 45.0])
+        emitted: list[str] = []
+
+        real_thread = threading.Thread
+
+        def immediate_thread(*args, **kwargs):
+            kwargs["daemon"] = True
+            thread = real_thread(*args, **kwargs)
+            original_start = thread.start
+
+            def start_and_join():
+                original_start()
+                thread.join()
+
+            thread.start = start_and_join  # type: ignore[assignment]
+            return thread
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = pathlib.Path(tmpdir)
+            live_log = base / "live.log"
+            with (
+                patch.object(runner.subprocess, "Popen", return_value=fake_process),
+                patch.object(runner.time, "monotonic", side_effect=lambda: next(monotonic_values)),
+                patch.object(runner.time, "sleep", return_value=None),
+                patch.object(runner.threading, "Thread", side_effect=immediate_thread),
+                patch.object(runner, "print", side_effect=lambda message, flush=True: emitted.append(message)),
+            ):
+                runner.run_streaming_cmd(
+                    ["codex", "exec"],
+                    stdout_path=base / "events.jsonl",
+                    stderr_path=base / "stderr.log",
+                    live_log_path=live_log,
+                    live_label="codex:test",
+                )
+
+        heartbeat_lines = [line for line in emitted if "heartbeat: still running after" in line]
+        self.assertEqual(len(heartbeat_lines), 2)
+        self.assertIn("25s", heartbeat_lines[0])
+        self.assertIn("45s", heartbeat_lines[1])
 
 
 if __name__ == "__main__":

@@ -8,27 +8,18 @@ const initializeMockControls = vi.fn();
 const startMockTimeGenerator = vi.fn();
 const registerVisualisation = vi.fn();
 const toggleSerialVis = vi.fn(() => true);
-const { urlParamState } = vi.hoisted(() => ({
-  urlParamState: { noModuleMode: true },
-}));
+const showVisualisationPanel = vi.fn(() => true);
 
 vi.mock("../../utils/consoleStore.ts", () => ({
   post,
 }));
 
 vi.mock("../io/serialComms.ts", () => ({
-  announceRuntimeSession,
   checkForSavedPortAndMaybeConnect,
 }));
 
 vi.mock("../io/useqWasmInterpreter.ts", () => ({
   ensureUseqWasmLoaded,
-}));
-
-vi.mock("../urlParams.ts", () => ({
-  get noModuleMode() {
-    return urlParamState.noModuleMode;
-  },
 }));
 
 vi.mock("../io/websocketServer.ts", () => ({
@@ -55,12 +46,18 @@ vi.mock("../ui/serialVis/visualisationController.ts", () => ({
 vi.mock("../editors/editorConfig.ts", () => ({
   toggleSerialVis,
 }));
+vi.mock("../../ui/adapters/visualisationPanel", () => ({
+  showVisualisationPanel,
+}));
+
+vi.mock("../../runtime/runtimeService.ts", () => ({
+  announceRuntimeSession,
+}));
 
 describe("application no-module startup", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    urlParamState.noModuleMode = true;
     document.body.innerHTML = '<div id="panel-vis" style="display:block"></div><canvas id="serialcanvas"></canvas>';
   });
 
@@ -71,6 +68,14 @@ describe("application no-module startup", () => {
       areInDesktopApp: false,
       isWebSerialAvailable: true,
       isInDevmode: false,
+      startupFlags: {
+        debug: false,
+        devmode: false,
+        disableWebSerial: false,
+        noModuleMode: true,
+        nosave: false,
+        params: { noModuleMode: "true" },
+      },
       userSettings: {
         name: "Test User",
         runtime: { startLocallyWithoutHardware: true },
@@ -85,6 +90,7 @@ describe("application no-module startup", () => {
     expect(announceRuntimeSession).toHaveBeenCalledTimes(1);
     expect(initializeMockControls).toHaveBeenCalledTimes(1);
     expect(startMockTimeGenerator).toHaveBeenCalledTimes(1);
+    expect(showVisualisationPanel).toHaveBeenCalledTimes(1);
     expect(registerVisualisation).toHaveBeenNthCalledWith(1, "a1", "(a1 bar)");
     expect(registerVisualisation).toHaveBeenNthCalledWith(2, "a2", "(a2 (slow 2 bar))");
     expect(checkForSavedPortAndMaybeConnect).not.toHaveBeenCalled();
@@ -94,14 +100,20 @@ describe("application no-module startup", () => {
   });
 
   it("starts browser-local runtime first and still kicks off reconnect checks in normal mode", async () => {
-    urlParamState.noModuleMode = false;
-
     const { createApp } = await import("./application.ts");
     const app = createApp(null, {
       areInBrowser: true,
       areInDesktopApp: false,
       isWebSerialAvailable: true,
       isInDevmode: false,
+      startupFlags: {
+        debug: false,
+        devmode: false,
+        disableWebSerial: false,
+        noModuleMode: false,
+        nosave: false,
+        params: {},
+      },
       userSettings: {
         name: "Test User",
         runtime: { startLocallyWithoutHardware: true },

@@ -3,39 +3,51 @@ import { createAppUI } from './ui/ui.ts';
 import { examineEnvironment } from './app/environment.ts';
 import { createApp } from './app/application.ts';
 import { loadConfigurationWithMetadata } from './config/configLoader.ts';
-import { activeUserSettings, replaceUserSettings } from './utils/persistentUserSettings.ts';
-import { noModuleMode } from './urlParams.ts';
-import { createRuntimeSessionSnapshot } from '../runtime/runtimeSession.ts';
 import {
   publishRuntimeDiagnostics,
   reportBootstrapFailure,
-  resolveStartupMode,
   type RuntimeSettingsSource,
 } from '../runtime/runtimeDiagnostics.ts';
+import { resolveBootstrapPlan } from '../runtime/bootstrapPlan.ts';
+import { bootstrapRuntimeSession } from '../runtime/runtimeService.ts';
+import { appSettingsRepository } from '../runtime/appSettingsRepository.ts';
 
 export async function startLegacyApp() {
   let settingsSources: RuntimeSettingsSource[] = ['defaults'];
+  let environmentState = examineEnvironment();
 
   // Load configuration from hardcoded defaults + default-config.json + localStorage + URL params.
   try {
     const result = await loadConfigurationWithMetadata();
     settingsSources = result.settingsSources;
-    const config = result.config;
-    replaceUserSettings(config, { dispatch: true });
+    appSettingsRepository.replaceSettings(result.config, { dispatch: true });
   } catch (error) {
     reportBootstrapFailure('config-loader', error);
     console.warn('Failed to load configuration, using defaults:', error);
   }
 
-  let environmentState = examineEnvironment();
+  environmentState = examineEnvironment(appSettingsRepository.getSettings());
+  const userSettings = environmentState.userSettings;
+  const bootstrapPlan = resolveBootstrapPlan({
+    noModuleMode: environmentState.startupFlags.noModuleMode,
+    isWebSerialAvailable: environmentState.isWebSerialAvailable,
+    wasmEnabled: userSettings.wasm.enabled,
+    startLocallyWithoutHardware: userSettings.runtime.startLocallyWithoutHardware,
+  });
+  const runtimeState = bootstrapRuntimeSession(
+    {
+      hasHardwareConnection: false,
+      noModuleMode: environmentState.startupFlags.noModuleMode,
+      wasmEnabled: userSettings.wasm.enabled,
+    },
+    {
+      connected: false,
+    }
+  );
   publishRuntimeDiagnostics({
-    startupMode: resolveStartupMode({
-      areInBrowser: environmentState.areInBrowser,
-      isWebSerialAvailable: environmentState.isWebSerialAvailable,
-      noModuleMode,
-      startLocallyWithoutHardware:
-        activeUserSettings?.runtime?.startLocallyWithoutHardware !== false,
-    }),
+    startupMode: environmentState.areInBrowser
+      ? bootstrapPlan.startupMode
+      : 'browser-local',
     settingsSources: [...settingsSources],
     activeEnvironment: {
       areInBrowser: environmentState.areInBrowser,
@@ -44,14 +56,11 @@ export async function startLegacyApp() {
       isInDevmode: environmentState.isInDevmode,
       urlParams: environmentState.urlParams,
     },
-    runtimeSession: createRuntimeSessionSnapshot({
-      hasHardwareConnection: false,
-      noModuleMode,
-      wasmEnabled: activeUserSettings?.wasm?.enabled ?? true,
-    }),
+    protocolMode: runtimeState.protocolMode,
+    runtimeSession: runtimeState.session,
   });
   let appUI = await createAppUI(environmentState);
-  let app = createApp(appUI, environmentState);
+  let app = createApp(appUI, environmentState, bootstrapPlan);
   await app.start();
   return { app, appUI, environmentState };
 }

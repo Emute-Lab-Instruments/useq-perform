@@ -19,16 +19,23 @@
     "jsxImportSource": "solid-js"
   },
   "include": [
+    "src/contracts/**/*.ts",
+    "src/effects/**/*.ts",
     "src/lib/**/*.ts",
     "src/machines/**/*.ts",
+    "src/runtime/**/*.ts",
+    "src/legacy/config/appSettings.ts",
+    "src/legacy/config/configLoader.ts",
     "src/utils/consoleStore.ts",
     "src/utils/geometry.ts",
     "src/utils/referenceStore.ts",
     "src/utils/snippetStore.ts",
-    "src/utils/visualisationStore.ts",
+    "src/ui/MainToolbar.tsx",
     "src/ui/ProgressBar.tsx",
     "src/ui/Tabs.tsx",
-    "vitest.shims.d.ts"
+    "src/ui/TransportToolbar.tsx",
+    "vitest.shims.d.ts",
+    "src/types/web-serial.d.ts"
   ],
   "exclude": [
     "node_modules",

@@ -1,9 +1,8 @@
-import { Component, For, createSignal, Show, onMount } from "solid-js";
+import { Component, For } from "solid-js";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 
 interface Binding {
   description: string;
-  action: string;
   key: string;
 }
 
@@ -21,16 +20,12 @@ const formatKeyForDisplay = (key: string, osFamily: string) => {
 const KeybindingRow: Component<{ 
   binding: Binding; 
   osFamily: string;
-  onEdit: (binding: Binding) => void;
 }> = (props) => {
   return (
     <div class="panel-row">
       <label class="panel-label">{props.binding.description}</label>
       <div class="panel-control">
-        <span 
-          class="key-binding" 
-          onClick={() => props.onEdit(props.binding)}
-        >
+        <span class="key-binding key-binding--static">
           {formatKeyForDisplay(props.binding.key, props.osFamily)}
         </span>
       </div>
@@ -39,8 +34,6 @@ const KeybindingRow: Component<{
 };
 
 export const KeybindingsTab: Component = () => {
-  const [editingBinding, setEditingBinding] = createSignal<Binding | null>(null);
-
   const osFamily = () => settings.ui?.osFamily || "pc";
 
   const setOsFamily = (os: "pc" | "mac") => {
@@ -49,97 +42,70 @@ export const KeybindingsTab: Component = () => {
     });
   };
 
-  const getEffectiveKeybinding = (action: string, defaultKey: string) => {
-    return (settings.keymaps && settings.keymaps[action]) || defaultKey;
-  };
-
   const coreBindings = () => [
     {
       description: "Execute Code (now)",
-      action: "evalNow",
-      key: getEffectiveKeybinding("evalNow", "Mod-Enter"),
+      key: "Mod-Enter",
     },
     {
       description: "Execute Code (quantised)",
-      action: "evalQuantised",
-      key: getEffectiveKeybinding("evalQuantised", "Alt-Enter"),
+      key: "Alt-Enter",
     },
     {
       description: "Toggle Help Panel",
-      action: "toggleHelp",
-      key: getEffectiveKeybinding("toggleHelp", "Alt-h"),
+      key: "Alt-h",
     },
     {
       description: "Toggle Signal Visualization",
-      action: "toggleSerialVis",
-      key: getEffectiveKeybinding("toggleSerialVis", "Alt-g"),
+      key: "Alt-g",
     },
     {
       description: "Show Documentation for Symbol around cursor",
-      action: "showDocumentationForSymbol",
-      key: getEffectiveKeybinding("showDocumentationForSymbol", "Alt-f"),
+      key: "Alt-f",
     },
   ];
 
   const editorBindings = () => [
     {
       description: "Delete from cursor till end of current list",
-      action: "slurpForward",
-      key: getEffectiveKeybinding("slurpForward", "Ctrl-k"),
+      key: "Ctrl-k",
     },
     {
       description: "Slurp Forward",
-      action: "slurpForward",
-      key: getEffectiveKeybinding("slurpForward", "Ctrl-]"),
+      key: "Ctrl-]",
     },
     {
       description: "Slurp Backward",
-      action: "slurpBackward",
-      key: getEffectiveKeybinding("slurpBackward", "Ctrl-["),
+      key: "Ctrl-[",
     },
     {
       description: "Barf Forward",
-      action: "barfForward",
-      key: getEffectiveKeybinding("barfForward", "Ctrl-'"),
+      key: "Ctrl-'",
     },
     {
       description: "Barf Backward",
-      action: "barfBackward",
-      key: getEffectiveKeybinding("barfBackward", "Ctrl-;"),
+      key: "Ctrl-;",
     },
     {
       description: "Undo",
-      action: "undo",
-      key: getEffectiveKeybinding("undo", "Mod-z"),
+      key: "Mod-z",
     },
     {
       description: "Redo",
-      action: "redo",
-      key: getEffectiveKeybinding("redo", "Shift-Mod-z"),
+      key: "Shift-Mod-z",
     },
   ];
 
   const navigationBindings = () => [
     {
       description: "Go to Start of Line",
-      action: "goLineStart",
-      key: getEffectiveKeybinding("goLineStart", "Home"),
+      key: "Home",
     },
     {
       description: "Go to End of Line",
-      action: "goLineEnd",
-      key: getEffectiveKeybinding("goLineEnd", "End"),
+      key: "End",
     },
   ];
-
-  const saveKeybinding = (action: string, key: string) => {
-    const updatedKeymaps = {
-      ...(settings.keymaps || {}),
-      [action]: key,
-    };
-    updateSettingsStore({ keymaps: updatedKeymaps });
-    setEditingBinding(null);
-  };
 
   return (
     <div class="panel-tab-content">
@@ -173,13 +139,19 @@ export const KeybindingsTab: Component = () => {
       </div>
 
       <div class="panel-section">
+        <p class="panel-help-copy">
+          Shortcuts are fixed in this build. This tab reflects the live defaults and only
+          changes modifier names for your platform.
+        </p>
+      </div>
+
+      <div class="panel-section">
         <h3 class="panel-section-title">Core Actions</h3>
         <For each={coreBindings()}>
           {(binding) => (
             <KeybindingRow 
               binding={binding} 
               osFamily={osFamily()} 
-              onEdit={setEditingBinding} 
             />
           )}
         </For>
@@ -192,7 +164,6 @@ export const KeybindingsTab: Component = () => {
             <KeybindingRow 
               binding={binding} 
               osFamily={osFamily()} 
-              onEdit={setEditingBinding} 
             />
           )}
         </For>
@@ -205,87 +176,10 @@ export const KeybindingsTab: Component = () => {
             <KeybindingRow 
               binding={binding} 
               osFamily={osFamily()} 
-              onEdit={setEditingBinding} 
             />
           )}
         </For>
       </div>
-
-      <Show when={editingBinding()}>
-        {(binding) => (
-          <KeybindingEditModal 
-            binding={binding()} 
-            onCancel={() => setEditingBinding(null)}
-            onSave={(newKey) => saveKeybinding(binding().action, newKey)}
-          />
-        )}
-      </Show>
     </div>
-  );
-};
-
-const KeybindingEditModal: Component<{
-  binding: Binding;
-  onCancel: () => void;
-  onSave: (newKey: string) => void;
-}> = (props) => {
-  const [newKey, setNewKey] = createSignal("Press keys...");
-  let bindingEl: HTMLDivElement | undefined;
-  onMount(() => bindingEl?.focus());
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Build the key string
-    let keyString = "";
-    if (e.ctrlKey) keyString += "Ctrl-";
-    if (e.altKey) keyString += "Alt-";
-    if (e.shiftKey) keyString += "Shift-";
-    if (e.metaKey) keyString += "Meta-";
-
-    // Get the key name
-    let key = e.key;
-    if (key === " ") key = "Space";
-    if (key === "Control" || key === "Alt" || key === "Shift" || key === "Meta") {
-      // Don't add modifier keys on their own
-      return;
-    }
-
-    keyString += key;
-    setNewKey(keyString);
-  };
-
-  return (
-    <>
-      <div class="keybinding-overlay" onClick={props.onCancel} />
-      <div class="keybinding-modal">
-        <div class="keybinding-content">
-          <h4>Edit Shortcut for: {props.binding.description}</h4>
-          <p>Press the keys you want to use for this action.</p>
-          <div class="current-binding">Current: {props.binding.key}</div>
-          <div
-            class="new-binding"
-            tabindex="0"
-            onKeyDown={handleKeyDown}
-            ref={bindingEl}
-          >
-            {newKey()}
-          </div>
-          <div class="keybinding-buttons">
-            <button class="panel-button" onClick={props.onCancel}>
-              Cancel
-            </button>
-            <button
-              class="panel-button primary"
-              disabled={newKey() === "Press keys..."}
-              onClick={() => props.onSave(newKey())}
-            >
-              Save
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
   );
 };

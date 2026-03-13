@@ -1,9 +1,9 @@
 // @ts-nocheck
-import { EditorView } from "@codemirror/view";
 import { themeCompartment } from "../state.ts";
 import { themes, themeRecipes } from "./builtinThemes.ts";
 import convert from "color-convert";
 import { dbg } from "../../utils.ts";
+import { editor as mainEditor } from "../../../lib/editorStore.ts";
 
 export { themes, themeRecipes };
 
@@ -23,12 +23,11 @@ export function setTheme(editor, themeName) {
 
 export function setMainEditorTheme(themeName) {
   dbg("themename:", themeName);
-  const editorElement = document.querySelector("#panel-main-editor .cm-editor");
-  if (!editorElement) {
-    dbg("Editor element not found, skipping theme setting");
+  const editor = mainEditor();
+  if (!editor) {
+    dbg("Editor session not available, skipping theme setting");
     return false;
   }
-  const editor = EditorView.findFromDOM(editorElement);
   const success = setTheme(editor, themeName);
   if (success) {
     setSnippetEditorsTheme(themeName);

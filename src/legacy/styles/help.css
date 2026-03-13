@@ -64,3 +64,12 @@
     border-color: var(--accent-color);
     color: var(--accent-color);
 }
+
+.key-binding--static {
+    cursor: default;
+}
+
+.key-binding--static:hover {
+    border-color: inherit;
+    color: inherit;
+}

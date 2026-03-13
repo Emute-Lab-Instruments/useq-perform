@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  SERIAL_VIS_PALETTE_CHANGED_EVENT,
+  VISUALISATION_SESSION_EVENT,
+  dispatchVisualisationEvent,
+} from "../contracts/visualisationEvents";
 
 /**
  * Dynamically import a fresh visualisationStore module.
@@ -95,22 +100,23 @@ describe("visualisationStore", () => {
       expect(visStore.lastChangeKind).toBe("");
     });
 
-    it("converts Map-based expressions to plain Record", async () => {
+    it("accepts serializable expression records", async () => {
       const { visStore, applyVisualisationEvent } = await loadVisStore();
 
-      const expressions = new Map<string, any>();
-      expressions.set("a1", {
-        exprType: "a1",
-        expressionText: "(sin t)",
-        samples: [{ time: 0, value: 1 }],
-        color: "#ff0000",
-      });
-      expressions.set("d1", {
-        exprType: "d1",
-        expressionText: "(> t 0.5)",
-        samples: [{ time: 0, value: 0 }],
-        color: null,
-      });
+      const expressions = {
+        a1: {
+          exprType: "a1",
+          expressionText: "(sin t)",
+          samples: [{ time: 0, value: 1 }],
+          color: "#ff0000",
+        },
+        d1: {
+          exprType: "d1",
+          expressionText: "(> t 0.5)",
+          samples: [{ time: 0, value: 0 }],
+          color: null,
+        },
+      };
 
       applyVisualisationEvent({ expressions });
 
@@ -133,13 +139,14 @@ describe("visualisationStore", () => {
     it("handles expression entries with missing optional fields", async () => {
       const { visStore, applyVisualisationEvent } = await loadVisStore();
 
-      const expressions = new Map<string, any>();
-      expressions.set("a1", {
+      const expressions = {
+        a1: {
         exprType: "a1",
         // expressionText missing -> defaults to ""
         // samples missing -> defaults to []
         // color missing -> defaults to null
-      });
+        },
+      };
 
       applyVisualisationEvent({ expressions });
 
@@ -151,10 +158,10 @@ describe("visualisationStore", () => {
       });
     });
 
-    it("handles empty expressions Map", async () => {
+    it("handles empty expression records", async () => {
       const { visStore, applyVisualisationEvent } = await loadVisStore();
 
-      applyVisualisationEvent({ expressions: new Map() });
+      applyVisualisationEvent({ expressions: {} });
       expect(visStore.expressions).toEqual({});
     });
 
@@ -162,13 +169,14 @@ describe("visualisationStore", () => {
       const { visStore, applyVisualisationEvent } = await loadVisStore();
 
       // First set some expressions
-      const expressions = new Map<string, any>();
-      expressions.set("a1", {
-        exprType: "a1",
-        expressionText: "(sin t)",
-        samples: [],
-        color: null,
-      });
+      const expressions = {
+        a1: {
+          exprType: "a1",
+          expressionText: "(sin t)",
+          samples: [],
+          color: null,
+        },
+      };
       applyVisualisationEvent({ expressions });
       expect(Object.keys(visStore.expressions)).toHaveLength(1);
 
@@ -223,13 +231,14 @@ describe("visualisationStore", () => {
     it("applies all fields together in a single call", async () => {
       const { visStore, applyVisualisationEvent } = await loadVisStore();
 
-      const expressions = new Map<string, any>();
-      expressions.set("a1", {
-        exprType: "a1",
-        expressionText: "(sin t)",
-        samples: [{ time: 0, value: 0.5 }],
-        color: "#00ff00",
-      });
+      const expressions = {
+        a1: {
+          exprType: "a1",
+          expressionText: "(sin t)",
+          samples: [{ time: 0, value: 0.5 }],
+          color: "#00ff00",
+        },
+      };
 
       applyVisualisationEvent({
         kind: "register",
@@ -369,28 +378,25 @@ describe("visualisationStore", () => {
   // Window event bridge
   // -----------------------------------------------------------------------
   describe("window event bridge", () => {
-    it("useq-visualisation-changed CustomEvent triggers applyVisualisationEvent", async () => {
+    it("visualisation session events trigger applyVisualisationEvent", async () => {
       const { visStore } = await loadVisStore();
 
-      const expressions = new Map<string, any>();
-      expressions.set("a2", {
-        exprType: "a2",
-        expressionText: "(cos t)",
-        samples: [],
-        color: "#123456",
-      });
+      const expressions = {
+        a2: {
+          exprType: "a2",
+          expressionText: "(cos t)",
+          samples: [],
+          color: "#123456",
+        },
+      };
 
-      window.dispatchEvent(
-        new CustomEvent("useq-visualisation-changed", {
-          detail: {
-            kind: "time",
-            currentTimeSeconds: 33.3,
-            displayTimeSeconds: 34.4,
-            bar: 0.6,
-            expressions,
-          },
-        }),
-      );
+      dispatchVisualisationEvent(VISUALISATION_SESSION_EVENT, {
+        kind: "time",
+        currentTimeSeconds: 33.3,
+        displayTimeSeconds: 34.4,
+        bar: 0.6,
+        expressions,
+      });
 
       expect(visStore.currentTime).toBe(33.3);
       expect(visStore.displayTime).toBe(34.4);
@@ -404,14 +410,12 @@ describe("visualisationStore", () => {
       });
     });
 
-    it("useq-serialvis-palette-changed CustomEvent triggers setVisPalette", async () => {
+    it("palette events trigger setVisPalette", async () => {
       const { visStore } = await loadVisStore();
 
-      window.dispatchEvent(
-        new CustomEvent("useq-serialvis-palette-changed", {
-          detail: { palette: ["#aaa", "#bbb"] },
-        }),
-      );
+      dispatchVisualisationEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, {
+        palette: ["#aaa", "#bbb"],
+      });
 
       expect(visStore.palette).toEqual(["#aaa", "#bbb"]);
     });
@@ -421,7 +425,7 @@ describe("visualisationStore", () => {
 
       // Non-array palette should be ignored
       window.dispatchEvent(
-        new CustomEvent("useq-serialvis-palette-changed", {
+        new CustomEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, {
           detail: { palette: "not-an-array" },
         }),
       );
@@ -429,7 +433,7 @@ describe("visualisationStore", () => {
 
       // Missing palette field should be ignored
       window.dispatchEvent(
-        new CustomEvent("useq-serialvis-palette-changed", {
+        new CustomEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, {
           detail: {},
         }),
       );
@@ -437,7 +441,7 @@ describe("visualisationStore", () => {
 
       // Null detail should be ignored (no crash)
       window.dispatchEvent(
-        new CustomEvent("useq-serialvis-palette-changed", {
+        new CustomEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, {
           detail: null,
         }),
       );
@@ -453,13 +457,14 @@ describe("visualisationStore", () => {
       const { visStore, applyVisualisationEvent } = await loadVisStore();
 
       // Set initial state
-      const expressions = new Map<string, any>();
-      expressions.set("a1", {
-        exprType: "a1",
-        expressionText: "(sin t)",
-        samples: [{ time: 0, value: 1 }],
-        color: "#ff0000",
-      });
+      const expressions = {
+        a1: {
+          exprType: "a1",
+          expressionText: "(sin t)",
+          samples: [{ time: 0, value: 1 }],
+          color: "#ff0000",
+        },
+      };
 
       applyVisualisationEvent({
         kind: "register",

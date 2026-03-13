@@ -1,9 +1,10 @@
 import { render, screen } from "@solidjs/testing-library";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import {
   DoubleRadialPicker,
   type PickerCategory,
 } from "./DoubleRadialPicker";
+import { _resetForTesting } from "./overlayManager";
 
 const sampleCategories: PickerCategory[] = [
   {
@@ -26,7 +27,14 @@ const sampleCategories: PickerCategory[] = [
 ];
 
 describe("DoubleRadialPicker", () => {
+  beforeEach(() => {
+    _resetForTesting();
+    document.body.style.overflow = "";
+  });
+
   afterEach(() => {
+    _resetForTesting();
+    document.body.style.overflow = "";
     // Clean up any overlay elements
     document
       .querySelectorAll(".picker-menu-overlay")
@@ -219,6 +227,25 @@ describe("DoubleRadialPicker", () => {
       new MouseEvent("click", { bubbles: true })
     );
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("uses the shared overlay manager for Escape and scroll lock", () => {
+    const onCancel = vi.fn();
+    const { unmount } = render(() => (
+      <DoubleRadialPicker
+        categories={sampleCategories}
+        onSelect={() => {}}
+        onCancel={onCancel}
+      />
+    ));
+
+    expect(document.body.style.overflow).toBe("hidden");
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(onCancel).toHaveBeenCalledOnce();
+
+    unmount();
+    expect(document.body.style.overflow).toBe("");
   });
 
   it("handles empty categories gracefully", () => {

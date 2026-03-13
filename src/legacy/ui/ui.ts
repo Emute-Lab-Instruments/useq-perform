@@ -1,7 +1,7 @@
 import { initEditorPanel } from "../editors/main.ts";
 import { initGamepadControl } from "../editors/gamepadControl.ts";
-import { devmode } from "../urlParams.ts";
 import { reportBootstrapFailure } from "../../runtime/runtimeDiagnostics.ts";
+import { registerVisualisationPanel } from "../../ui/adapters/visualisationPanel";
 
 let editor: any = null;
 let topToolbarResizeObserver: ResizeObserver | null = null;
@@ -69,6 +69,7 @@ export async function createAppUI(environmentState: any) {
     editor = initEditorPanel("#panel-main-editor");
 
     const visPanelEl = document.getElementById("panel-vis");
+    registerVisualisationPanel(visPanelEl);
     if (visPanelEl) visPanelEl.style.display = "none";
 
     // Mount Solid UI adapters and wire editor store.
@@ -92,7 +93,7 @@ export async function createAppUI(environmentState: any) {
         // Mount panels and design selector
         panels.mountSettingsPanel();
         panels.mountHelpPanel();
-        panels.mountDesignSelector(devmode);
+        panels.mountDesignSelector(environmentState?.startupFlags?.devmode === true);
     } catch (error) {
         reportBootstrapFailure("ui-adapter-mount", error);
     }
@@ -100,7 +101,6 @@ export async function createAppUI(environmentState: any) {
     initTopToolbarHeightTracking();
 
     initGamepadControl(editor);
-    initEventHandlers();
 
     return {
         mainEditor: editor,
@@ -108,18 +108,6 @@ export async function createAppUI(environmentState: any) {
         logConsole: null,
         statusBar: getStatusBarComponent(),
     };
-}
-
-function initEventHandlers() {
-    document.addEventListener("keydown", function (e: KeyboardEvent) {
-        if (e.key === "Escape") {
-            import("../../ui/adapters/panels.tsx")
-              .then((m) => m.hideAllPanels())
-              .catch((error) => {
-                  reportBootstrapFailure("ui-panel-hide", error);
-              });
-        }
-    });
 }
 
 function getStatusBarComponent() {

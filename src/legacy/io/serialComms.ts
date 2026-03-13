@@ -1,3 +1,4 @@
+
 /**
  * Serial Communication Module
  *
@@ -11,8 +12,6 @@ import { upgradeCheck, currentVersion } from "../utils/upgradeCheck.ts";
 import { dbg } from "../utils.ts";
 import { handleExternalTimeUpdate } from "../ui/serialVis/visualisationController.ts";
 import { activeUserSettings } from "../utils/persistentUserSettings.ts";
-import { noModuleMode } from "../urlParams.ts";
-import { createRuntimeSessionSnapshot } from "../../runtime/runtimeSession.ts";
 import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
@@ -25,6 +24,16 @@ import {
   type StreamChannelConfig,
 } from "../../runtime/jsonProtocol.ts";
 import { publishRuntimeDiagnostics } from "../../runtime/runtimeDiagnostics.ts";
+import { updateRuntimeSessionState } from "../../runtime/runtimeSessionStore.ts";
+import {
+  ANIMATE_CONNECT_EVENT,
+  CONNECTION_CHANGED_EVENT,
+  DEVICE_PLUGGED_IN_EVENT,
+  dispatchRuntimeEvent,
+  JSON_META_EVENT,
+  PROTOCOL_READY_EVENT,
+} from "../../contracts/runtimeEvents.ts";
+import { getStartupFlagsSnapshot } from "../../runtime/startupContext.ts";
 import {
   setCodeHighlightColor,
   cleanCode,
@@ -68,7 +77,7 @@ interface PendingRequest {
   timeoutId: ReturnType<typeof setTimeout> | null;
 }
 
-/** JSON protocol response */
+/** JSON protocol response — closed set of fields; no index signature. */
 interface JsonResponse {
   requestId?: string;
   text?: string;
@@ -80,7 +89,6 @@ interface JsonResponse {
   mode?: string;
   config?: IoConfig;
   fw?: string;
-  [key: string]: unknown;
 }
 
 /** Options for writeJsonRequest */
@@ -168,26 +176,27 @@ export function askForPortAndConnect(): void {
 let connectedToModule = false;
 
 function emitConnectionChanged(): void {
-  const runtimeSession = createRuntimeSessionSnapshot({
+  const startupFlags = getStartupFlagsSnapshot();
+  const runtimeState = updateRuntimeSessionState({
+    connected: connectedToModule,
+    protocolMode: getProtocolMode(),
     hasHardwareConnection: connectedToModule && !!serialport,
-    noModuleMode,
+    noModuleMode: startupFlags.noModuleMode,
     wasmEnabled: activeUserSettings?.wasm?.enabled ?? true,
   });
   const detail = {
-    connected: connectedToModule,
-    protocolMode: getProtocolMode(),
-    ...runtimeSession,
+    connected: runtimeState.connected,
+    protocolMode: runtimeState.protocolMode,
+    ...runtimeState.session,
   };
 
   publishRuntimeDiagnostics({
-    protocolMode: getProtocolMode(),
-    runtimeSession,
+    protocolMode: runtimeState.protocolMode,
+    runtimeSession: runtimeState.session,
   });
 
   try {
-    if (typeof window !== 'undefined' && window.dispatchEvent) {
-      window.dispatchEvent(new CustomEvent('useq-connection-changed', { detail }));
-    }
+    dispatchRuntimeEvent(CONNECTION_CHANGED_EVENT, detail);
   } catch (_e) {
     // no-op if window not available
   }
@@ -324,13 +333,12 @@ function dispatchProtocolReady(): void {
   publishRuntimeDiagnostics({
     protocolMode: getProtocolMode(),
   });
+  emitConnectionChanged();
 
   try {
-    if (typeof window !== 'undefined' && window.dispatchEvent) {
-      window.dispatchEvent(new CustomEvent('useq-protocol-ready', {
-        detail: { protocolMode: getProtocolMode() },
-      }));
-    }
+    dispatchRuntimeEvent(PROTOCOL_READY_EVENT, {
+      protocolMode: getProtocolMode(),
+    });
   } catch (_e) {
     console.warn('Failed to dispatch useq-protocol-ready', _e);
   }
@@ -429,8 +437,7 @@ export async function sendSerialInputStreamValue(channel: number, value: number)
   }
 
   // Dev mode: allow callers to update UI/WASM without requiring hardware.
-  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-  const isDevMode = urlParams.has('devmode') && urlParams.get('devmode') === 'true';
+  const isDevMode = getStartupFlagsSnapshot().devmode;
   if (isDevMode && !serialport) {
     return Promise.resolve();
   }
@@ -484,13 +491,14 @@ export function isJsonProtocolActive(): boolean {
   return protocolState.mode === PROTOCOL_MODES.JSON;
 }
 
-function writeJsonRequest(payload: Record<string, unknown>, options: WriteJsonRequestOptions = {}): Promise<JsonResponse> {
+function writeJsonRequest(payload: object, options: WriteJsonRequestOptions = {}): Promise<JsonResponse> {
   if (!serialport || !serialport.writable) {
     return Promise.reject(new Error('Serial port is not writable'));
   }
 
-  const requestId = (payload.requestId as string) || nextRequestId();
-  payload.requestId = requestId;
+  const mutablePayload = payload as Record<string, unknown>;
+  const requestId = (mutablePayload.requestId as string) || nextRequestId();
+  mutablePayload.requestId = requestId;
 
   const pending: PendingRequest = {
     resolve: null,
@@ -663,8 +671,7 @@ function getSerialPort(): SerialPort | null {
 function sendTouSEQ(code: string, capture: CaptureCallback | null = null): Promise<any> {
   const cleanedCode = cleanCode(code);
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const isDevMode = urlParams.has('devmode') && urlParams.get('devmode') === 'true';
+  const isDevMode = getStartupFlagsSnapshot().devmode;
 
   if (isDevMode && !serialport) {
     dbg("Dev mode: Simulating code execution:", cleanedCode);
@@ -738,9 +745,7 @@ function handleNotConnected(): void {
  */
 function animateConnectButton(): void {
   try {
-    if (typeof window !== 'undefined' && window.dispatchEvent) {
-      window.dispatchEvent(new CustomEvent('useq-animate-connect'));
-    }
+    dispatchRuntimeEvent(ANIMATE_CONNECT_EVENT, undefined);
   } catch (_e) {
     // no-op if window not available
   }
@@ -967,9 +972,7 @@ function handleJsonMessage(rawMessage: string): void {
 
   if (meta) {
     try {
-      if (typeof window !== 'undefined' && window.dispatchEvent) {
-        window.dispatchEvent(new CustomEvent('useq-json-meta', { detail: { response: parsed } }));
-      }
+      dispatchRuntimeEvent(JSON_META_EVENT, { response: parsed });
     } catch (dispatchError) {
       console.error('Failed to dispatch useq-json-meta event', dispatchError);
     }
@@ -1005,11 +1008,11 @@ async function serialReader(): Promise<void> {
   if (!isSerialPortValid(serialport)) return;
   dbg("reading...");
 
-  let buffer = new Uint8Array(0);
+  let buffer: Uint8Array = new Uint8Array(0);
 
   // Check if port is readable and not locked
   if (isPortReadableAndUnlocked(serialport)) {
-    buffer = await setupReaderAndProcessData(buffer);
+    buffer = (await setupReaderAndProcessData(buffer)) as Uint8Array;
   } else {
     console.log("Serial port is not readable or is locked");
   }
@@ -1166,7 +1169,8 @@ async function setupConnectedPort(port: SerialPort): Promise<void> {
   setConnectedToModule(true);
   serialReader();
 
-  // FIXME In case we just updated the firmware, give the interpreter some time to boot before communication
+  // Residual debt (useq-perform-0v1): fixed 3500 ms delay before the firmware-info probe.
+  // Replace with an event-driven readiness signal when firmware supports it.
   await waitForInterpreterBoot();
   sendTouSEQ("@(useq-report-firmware-info)", handleFirmwareInfo);
 }
@@ -1207,7 +1211,7 @@ export function checkForWebserialSupport(): boolean {
       if (port) {
         // Notify UI that physical device was plugged in
         try {
-          window.dispatchEvent(new CustomEvent('useq-device-plugged-in'));
+          dispatchRuntimeEvent(DEVICE_PLUGGED_IN_EVENT, undefined);
         } catch (_e) {
           // no-op if window not available
         }

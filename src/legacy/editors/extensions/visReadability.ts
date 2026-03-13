@@ -15,6 +15,10 @@
 
 import { ViewPlugin, EditorView } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
+import {
+  getVisualisationPanel,
+  isVisualisationPanelVisible,
+} from "../../../ui/adapters/visualisationPanel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -206,10 +210,7 @@ const FILL_COLOR = 'rgba(0, 0, 0, 0.62)';
 const PADDING = 3;
 
 function isVisPanelVisible(): boolean {
-  const panel = document.getElementById('panel-vis');
-  if (!panel) return false;
-  const style = window.getComputedStyle(panel);
-  return style.display !== 'none' && style.visibility !== 'hidden';
+  return isVisualisationPanelVisible();
 }
 
 function rebuildSVG(svg: SVGSVGElement, view: EditorView): void {
@@ -265,7 +266,7 @@ class VisReadabilityPlugin {
 
     // Watch for vis panel style changes (display toggled) to refresh polygons.
     this.mutationObserver = new MutationObserver(() => rebuildSVG(this.svg, this.view));
-    const visPanel = document.getElementById('panel-vis');
+    const visPanel = getVisualisationPanel();
     if (visPanel) {
       this.mutationObserver.observe(visPanel, { attributes: true, attributeFilter: ['style'] });
     }

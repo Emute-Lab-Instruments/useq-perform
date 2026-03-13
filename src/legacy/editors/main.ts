@@ -11,22 +11,16 @@ import {
 } from "./extensions.ts";
 import { setMainEditorTheme } from "./themes/themeManager.ts";
 import { setFontSize } from "./editorConfig.ts";
-
-// Window extensions for debugging
-declare global {
-  interface Window {
-    editor: EditorView;
-  }
-}
+import { subscribeAppSettings } from "../../runtime/appSettingsRepository.ts";
 
 // Autosave timer and editor reference (module scoped)
 let autosaveTimer: ReturnType<typeof setInterval> | null = null;
 let _mainEditor: EditorView | null = null;
 
-// Re-setup autosave timer whenever settings change
-window.addEventListener("useq-settings-changed", () => {
+// Re-setup autosave timer whenever settings change via named adapter subscription.
+subscribeAppSettings((settings) => {
   if (_mainEditor) {
-    setupAutosaveTimer(_mainEditor, activeUserSettings);
+    setupAutosaveTimer(_mainEditor, settings);
   }
 });
 
@@ -81,9 +75,6 @@ export function createMainEditor(initialText?: string): EditorView {
 
   // Store module-level reference for settings change listener
   _mainEditor = editor;
-
-  // Add the editor to window for debugging
-  window.editor = editor;
 
   // Set up autosave timer
   setupAutosaveTimer(editor, activeUserSettings);

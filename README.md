@@ -34,6 +34,8 @@ Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WAS
 
 The application uses a single-bundle Vite build. The live bundle still starts at `src/legacy/main.ts`, loads configuration, mounts the UI shell, and then prefers browser-local WASM startup by default while reconnecting saved hardware opportunistically unless the user opts out. UI components are mounted via adapter modules that provide imperative APIs (for example `mountSettingsPanel()` and `showModal()`).
 
+Read `docs/REPO_MAP.md` first before treating older folders, heartbeat artifacts, or retained legacy modules as the current architectural truth.
+
 The reset scope and compatibility cuts live in `docs/STABLE_CORE.md`. Read that before treating old panels, dormant runtime modes, or stale docs as supported product surface.
 
 Editor-facing firmware and WASM capability rules live in `docs/RUNTIME_CONTRACT.md`. Read that before auditing `src-useq` behavior or promoting standalone firmware work into the submodule.

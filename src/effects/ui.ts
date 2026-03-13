@@ -1,36 +1,19 @@
 // src/effects/ui.ts
 import { Effect } from "effect";
-// @ts-ignore - Importing from legacy untyped module
-import { toggleConnect } from "../legacy/io/serialComms.ts";
-// @ts-ignore - Importing from legacy untyped module
-import { toggleSerialVis } from "../legacy/editors/editorConfig.ts";
-import { reportBootstrapFailure } from "../runtime/runtimeDiagnostics.ts";
+import { toggleRuntimeConnection } from "../runtime/runtimeService";
+import { hideChromePanels, toggleChromePanel } from "../ui/adapters/panelControls";
+import { toggleVisualisationPanel } from "../ui/adapters/visualisationPanel";
 
 export const toggleConnection = () =>
-  Effect.promise(() => toggleConnect());
+  Effect.promise(() => toggleRuntimeConnection());
 
 export const toggleGraph = () =>
-  Effect.sync(() => toggleSerialVis());
+  Effect.sync(() => toggleVisualisationPanel());
 
 // ---- Panel visibility (delegated to adapter signals) ----
 
-let _togglePanelVisibility: ((panelId: string) => void) | null = null;
-let _hideAllPanels: (() => void) | null = null;
-
-// Lazy-load the adapter to avoid circular imports and keep Node.js compat.
-import("../ui/adapters/panels.tsx")
-  .then((m) => {
-    _togglePanelVisibility = m.togglePanelVisibility;
-    _hideAllPanels = m.hideAllPanels;
-  })
-  .catch((error) => {
-    reportBootstrapFailure("ui-effects-adapter-load", error);
-  });
-
 function hideAllAuxPanels() {
-  if (_hideAllPanels) {
-    _hideAllPanels();
-  }
+  hideChromePanels();
 }
 
 export { hideAllAuxPanels };
@@ -42,19 +25,5 @@ export const togglePanel = (panelId: string) =>
   Effect.sync(() => {
     // Chrome-managed panels use short names
     const chromeId = panelId.replace(/^#panel-/, "");
-    if (_togglePanelVisibility && (chromeId === "settings" || chromeId === "help")) {
-      _togglePanelVisibility(chromeId);
-      return;
-    }
-
-    // Fallback for any remaining DOM-managed panel.
-    const panel = document.querySelector(panelId) as HTMLElement | null;
-    if (!panel) return;
-
-    if (panel.offsetParent !== null) {
-      hideAllAuxPanels();
-    } else {
-      hideAllAuxPanels();
-      panel.style.display = "";
-    }
+    toggleChromePanel(chromeId);
   });

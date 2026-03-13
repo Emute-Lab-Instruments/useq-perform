@@ -11,6 +11,7 @@ const mountDesignSelector = vi.fn();
 const mountModal = vi.fn();
 const mountPickerMenu = vi.fn();
 const mountDoubleRadialMenu = vi.fn();
+const reportBootstrapFailure = vi.fn();
 
 vi.mock("../editors/main.ts", () => ({
   initEditorPanel,
@@ -49,7 +50,7 @@ vi.mock("../../ui/adapters/double-radial-menu.tsx", () => ({
 }));
 
 vi.mock("../../runtime/runtimeDiagnostics.ts", () => ({
-  reportBootstrapFailure: vi.fn(),
+  reportBootstrapFailure,
 }));
 
 describe("createAppUI", () => {
@@ -67,7 +68,9 @@ describe("createAppUI", () => {
   it("mounts the live adapter roots that the app still uses", async () => {
     const { createAppUI } = await import("./ui.ts");
 
-    const ui = await createAppUI({});
+    const ui = await createAppUI({
+      startupFlags: { devmode: true },
+    });
 
     expect(initEditorPanel).toHaveBeenCalledWith("#panel-main-editor");
     expect(setEditor).toHaveBeenCalledWith({ id: "editor" });
@@ -75,11 +78,28 @@ describe("createAppUI", () => {
     expect(mountMainToolbar).toHaveBeenCalledTimes(1);
     expect(mountSettingsPanel).toHaveBeenCalledTimes(1);
     expect(mountHelpPanel).toHaveBeenCalledTimes(1);
-    expect(mountDesignSelector).toHaveBeenCalledTimes(1);
+    expect(mountDesignSelector).toHaveBeenCalledWith(true);
     expect(mountModal).toHaveBeenCalledTimes(1);
     expect(mountPickerMenu).toHaveBeenCalledTimes(1);
     expect(mountDoubleRadialMenu).toHaveBeenCalledTimes(1);
     expect(initGamepadControl).toHaveBeenCalledWith({ id: "editor" });
     expect(ui.logConsole).toBeNull();
+  });
+
+  it("reports adapter bootstrap failures without aborting UI creation", async () => {
+    mountTransportToolbar.mockImplementationOnce(() => {
+      throw new Error("failed to mount adapter");
+    });
+
+    const { createAppUI } = await import("./ui.ts");
+    const ui = await createAppUI({
+      startupFlags: { devmode: false },
+    });
+
+    expect(reportBootstrapFailure).toHaveBeenCalledWith(
+      "ui-adapter-mount",
+      expect.any(Error),
+    );
+    expect(ui.mainEditor).toEqual({ id: "editor" });
   });
 });

@@ -8,6 +8,11 @@ import { syntaxTree } from "@codemirror/language";
 import { findNodeAt, navigationMetaField, navigationMetaEffect, navigateIn, navigateOut, navigateNext, navigatePrev, navigateRight, navigateLeft, navigateUp, navigateDown, isContainerNode as isContainerNodeInternal, isStructuralToken as isStructuralTokenInternal } from "./structure/new-structure.ts";
 import { EditorView, Decoration, ViewPlugin, gutter, GutterMarker } from "@codemirror/view";
 import { getSerialVisPalette, getSerialVisChannelColor } from "../../ui/serialVis/utils.ts";
+import {
+  VISUALISATION_SESSION_EVENT,
+  addVisualisationEventListener,
+} from "../../../contracts/visualisationEvents";
+import { showVisualisationPanel } from "../../../ui/adapters/visualisationPanel";
 
 // Re-export navigation functions for backward compatibility
 export { navigateIn, navigateOut, navigateNext, navigatePrev, navigateRight, navigateLeft, navigateUp, navigateDown };
@@ -555,29 +560,7 @@ function findExpressionDefinition(view, exprType) {
 }
 
 function ensureSerialVisPanelVisible() {
-  if (typeof document === 'undefined') {
-    return;
-  }
-  const panel = document.getElementById('panel-vis');
-  if (!panel) {
-    return;
-  }
-  const style = window?.getComputedStyle(panel);
-  const isHidden = !style || style.display === 'none' || panel.hidden || style.visibility === 'hidden';
-  if (isHidden) {
-    panel.style.display = 'block';
-    panel.hidden = false;
-    panel.style.opacity = '';
-    panel.style.visibility = 'visible';
-    panel.style.pointerEvents = 'auto';
-    const canvas = panel.querySelector('#serialcanvas');
-    if (canvas) {
-      canvas.style.pointerEvents = 'auto';
-    }
-    try {
-      window.dispatchEvent?.(new CustomEvent('useq-serialvis-auto-open'));
-    } catch (e) {}
-  }
+  showVisualisationPanel({ emitAutoOpenEvent: true });
 }
 
 // --- Pure functions for expression tracking logic ---
@@ -747,14 +730,18 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
     this.onClick = this.onClick.bind(this);
     this.onSettingsChange = this.onSettingsChange.bind(this);
     this.onVisualisationChange = this.onVisualisationChange.bind(this);
+    this.removeVisualisationListener = () => undefined;
     view.dom.addEventListener('click', this.onClick);
     window.addEventListener('useq-settings-changed', this.onSettingsChange);
-    window.addEventListener('useq-visualisation-changed', this.onVisualisationChange);
+    this.removeVisualisationListener = addVisualisationEventListener(
+      VISUALISATION_SESSION_EVENT,
+      () => this.onVisualisationChange()
+    );
   }
   destroy() {
     this.view.dom.removeEventListener('click', this.onClick);
     window.removeEventListener('useq-settings-changed', this.onSettingsChange);
-    window.removeEventListener('useq-visualisation-changed', this.onVisualisationChange);
+    this.removeVisualisationListener();
   }
   update(update) {
   }

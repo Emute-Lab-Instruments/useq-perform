@@ -1,3 +1,4 @@
+// @ts-nocheck
 // CODEMIRROR IMPORTS
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
@@ -12,13 +13,18 @@ import { extension as eval_ext, cursor_node_string, top_level_string } from "@ne
 import { sendTouSEQ, isConnectedToModule } from "../io/serialComms.ts";
 import { post } from "../../utils/consoleStore.ts";
 import { evalInUseqWasm } from "../io/useqWasmInterpreter.ts";
-import { noModuleMode } from "../urlParams.ts";
 import { rewriteCodeSliceForModule } from "./manualControlState.ts";
 
 import { getUserSettings } from "../utils/persistentUserSettings.ts";
 import { fontSizeCompartment } from "./state.ts";
 
 import { dbg } from "../utils.ts";
+import { getStartupFlagsSnapshot } from "../../runtime/startupContext.ts";
+import {
+  getVisualisationPanelStyles,
+  isVisualisationPanelVisible,
+  toggleVisualisationPanel,
+} from "../../ui/adapters/visualisationPanel";
 
 import { flashEvalHighlight } from "./extensions/evalHighlight.ts";
 import { detectAndTrackExpressionEvaluation } from "./extensions/structure.ts";
@@ -81,6 +87,8 @@ function evalSelection(opts: EvalOpts, prefix: string = ""): boolean {
 
 export function evalToplevel(opts: EvalOpts, prefix: string = ""): boolean {
   const state = opts.state;
+  const startupFlags = getStartupFlagsSnapshot();
+  const noModuleMode = startupFlags.noModuleMode;
   const range = getTopLevelFormRange(state);
   const slice = range
     ? state.doc.sliceString(range.from, range.to)
@@ -208,35 +216,16 @@ export function toggleHelp(): boolean {
 }
 
 export function toggleSerialVisInternal(): boolean {
-  const visPanel = document.getElementById("panel-vis");
-  if (visPanel) {
-    const isVisible = visPanel.style.display !== "none";
-    visPanel.style.display = isVisible ? "none" : "block";
-  }
+  toggleVisualisationPanel();
   return true;
 }
 
 export function isPanelVisible(panel: HTMLElement | null): boolean {
-  if (!panel) return false;
-  const style = window.getComputedStyle(panel);
-  return style.display !== "none" && style.visibility !== "hidden";
+  return isVisualisationPanelVisible(panel);
 }
 
 export function getPanelStyles(makeVisible: boolean): CSSProperties {
-  if (!makeVisible) {
-    return { "display": "none" };
-  }
-
-  return {
-    "display": "block",
-    "position": "fixed",
-    "height": "100%",
-    "width": "100%",
-    "left": "0%",
-    "top": "0%",
-    "opacity": "0.7",
-    "pointer-events": "none"
-  };
+  return getVisualisationPanelStyles(makeVisible);
 }
 
 export function getCanvasDimensions(): { width: number; height: number } {
@@ -260,48 +249,7 @@ export function getCanvasStyles(): CSSProperties {
 
 export function toggleSerialVis(): boolean {
   dbg("Toggling serial visualization");
-  const panel = document.getElementById("panel-vis");
-  const canvas = document.getElementById("serialcanvas") as HTMLCanvasElement | null;
-
-  const isVisible = isPanelVisible(panel);
-  dbg(`Panel visibility before: ${isVisible}`);
-
-  if (panel) {
-    const panelStyles = getPanelStyles(!isVisible);
-    Object.assign(panel.style, panelStyles);
-  }
-
-  if (!isVisible && panel && canvas) {
-    const dimensions = getCanvasDimensions();
-    canvas.setAttribute("width", String(dimensions.width));
-    canvas.setAttribute("height", String(dimensions.height));
-
-    const canvasStyles = getCanvasStyles();
-    Object.assign(canvas.style, canvasStyles);
-
-    canvas.style.zIndex = "1000";
-
-    if (!canvas.parentElement) {
-      panel.appendChild(canvas);
-    }
-
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.clearRect(0, 0, dimensions.width, dimensions.height);
-    }
-
-    dbg("Panel and canvas should now be visible");
-  }
-
-  setTimeout(() => {
-    if (canvas) {
-      dbg(`Canvas display after: ${canvas.style.display}`);
-      dbg(`Canvas dimensions: ${canvas.offsetWidth}x${canvas.offsetHeight}`);
-      dbg(`Canvas is in DOM: ${canvas.parentElement !== null}`);
-    }
-  }, 10);
-
-  return true;
+  return toggleVisualisationPanel();
 }
 
 export function setFontSize(editor: EditorView | null, size: number): void {

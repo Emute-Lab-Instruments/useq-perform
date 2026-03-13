@@ -90,4 +90,26 @@ describe("persistentUserSettings", () => {
     expect(window.localStorage.getItem(settingsModule.settingsStorageKey)).toBeNull();
     expect(window.localStorage.getItem(settingsModule.codeStorageKey)).toBeNull();
   });
+
+  it("persists canonical visualisation fields without reintroducing offsetSeconds", async () => {
+    const settingsModule = await import("./persistentUserSettings.ts");
+
+    settingsModule.replaceUserSettings(
+      {
+        ...settingsModule.defaultUserSettings,
+        visualisation: {
+          windowDuration: 6,
+          sampleCount: 180,
+        },
+      },
+      { persist: true },
+    );
+
+    const storedSettings = JSON.parse(
+      window.localStorage.getItem(settingsModule.settingsStorageKey) ?? "{}",
+    );
+
+    expect(storedSettings.visualisation.windowDuration).toBe(6);
+    expect(storedSettings.visualisation.offsetSeconds).toBeUndefined();
+  });
 });

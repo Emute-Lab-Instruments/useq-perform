@@ -1,27 +1,50 @@
-import { activeUserSettings } from '../utils/persistentUserSettings.ts';
 import { checkForWebserialSupport } from '../io/serialComms.ts';
-import { handleURLParameters, devmode, disableWebSerial } from '../urlParams.ts';
+import { getStartupFlags } from '../urlParams.ts';
+import { getAppSettings } from '../../runtime/appSettingsRepository.ts';
+import {
+  applyStartupContext,
+  type EnvironmentCapabilities,
+  type StartupFlags,
+} from '../../runtime/startupContext.ts';
+import type { AppSettings } from '../config/appSettings.ts';
 
-export function examineEnvironment() {
-  // Handle URL parameters first to set up global state
-  handleURLParameters();
+export interface EnvironmentState extends EnvironmentCapabilities {
+  isInDevmode: boolean;
+  startupFlags: StartupFlags;
+  userSettings: AppSettings;
+  urlParams: Record<string, string>;
+}
+
+export function examineEnvironment(
+  userSettings: AppSettings = getAppSettings(),
+): EnvironmentState {
+  const startupFlags = getStartupFlags();
 
   // Desktop/Electron runtime support is out of scope for the reset.
   const areInBrowser = typeof window !== 'undefined' && window.navigator;
   const areInDesktopApp = false;
 
   // Check for Web Serial API support (can be disabled via URL parameter)
-  const isWebSerialAvailable = disableWebSerial ? false : checkForWebserialSupport();
+  const isWebSerialAvailable = startupFlags.disableWebSerial
+    ? false
+    : checkForWebserialSupport();
 
-  // Get current URL parameters
-  const urlParams = new URLSearchParams(window.location.search);
+  applyStartupContext({
+    startupFlags,
+    capabilities: {
+      areInBrowser,
+      areInDesktopApp,
+      isWebSerialAvailable,
+    },
+  });
 
   return {
     areInBrowser,
     areInDesktopApp,
     isWebSerialAvailable,
-    isInDevmode: devmode,
-    userSettings: activeUserSettings,
-    urlParams: Object.fromEntries(urlParams.entries())
+    isInDevmode: startupFlags.devmode,
+    startupFlags,
+    userSettings,
+    urlParams: startupFlags.params,
   };
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Effect } from "effect";
+import { EditorView } from "@codemirror/view";
 
 // Mock legacy modules
 vi.mock("../lib/editorStore", () => ({
@@ -9,8 +10,10 @@ vi.mock("../legacy/utils/persistentUserSettings.ts", () => ({
   activeUserSettings: { editor: { fontSize: 16 } },
   saveUserSettings: vi.fn(),
 }));
-vi.mock("../legacy/editors/editorConfig.ts", () => ({
-  setFontSize: vi.fn(),
+vi.mock("../legacy/editors/state.ts", () => ({
+  fontSizeCompartment: {
+    reconfigure: vi.fn((extension) => ({ extension })),
+  },
 }));
 
 import { adjustFontSize, loadCode, saveCode } from "./editor";
@@ -19,7 +22,7 @@ import {
   activeUserSettings,
   saveUserSettings,
 } from "../legacy/utils/persistentUserSettings.ts";
-import { setFontSize } from "../legacy/editors/editorConfig.ts";
+import { fontSizeCompartment } from "../legacy/editors/state.ts";
 
 // Helper: create a mock CodeMirror editor
 function createMockEditor(docText = "hello world") {
@@ -39,6 +42,9 @@ function createMockEditor(docText = "hello world") {
 describe("adjustFontSize", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(EditorView, "theme").mockImplementation(
+      (styles) => styles as ReturnType<typeof EditorView.theme>,
+    );
     (activeUserSettings as any).editor = { fontSize: 16 };
   });
 
@@ -48,7 +54,9 @@ describe("adjustFontSize", () => {
 
     Effect.runSync(adjustFontSize(2));
 
-    expect(setFontSize).toHaveBeenCalledWith(mockEd, 18);
+    expect(EditorView.theme).toHaveBeenCalledOnce();
+    expect(fontSizeCompartment.reconfigure).toHaveBeenCalledOnce();
+    expect(mockEd.dispatch).toHaveBeenCalledOnce();
     expect(saveUserSettings).toHaveBeenCalledOnce();
     expect((activeUserSettings as any).editor.fontSize).toBe(18);
   });
@@ -59,7 +67,8 @@ describe("adjustFontSize", () => {
 
     Effect.runSync(adjustFontSize(-3));
 
-    expect(setFontSize).toHaveBeenCalledWith(mockEd, 13);
+    expect(fontSizeCompartment.reconfigure).toHaveBeenCalledOnce();
+    expect(mockEd.dispatch).toHaveBeenCalledOnce();
     expect(saveUserSettings).toHaveBeenCalledOnce();
     expect((activeUserSettings as any).editor.fontSize).toBe(13);
   });
@@ -69,7 +78,7 @@ describe("adjustFontSize", () => {
 
     Effect.runSync(adjustFontSize(2));
 
-    expect(setFontSize).not.toHaveBeenCalled();
+    expect(fontSizeCompartment.reconfigure).not.toHaveBeenCalled();
     expect(saveUserSettings).not.toHaveBeenCalled();
   });
 });

@@ -1,12 +1,27 @@
-import { saveConfiguration, loadConfigurationFromFile, previewConfiguration, importConfiguration } from "../../legacy/config/configManager.ts";
 import { Section } from "./FormControls";
+import { getStartupFlagsSnapshot } from "../../runtime/startupContext.ts";
 
-export function ConfigurationManagement() {
+type ConfigurationManagementProps = {
+  devmode?: boolean;
+};
+
+async function loadConfigManager() {
+  return import("../../legacy/config/configManager.ts");
+}
+
+export function ConfigurationManagement(props: ConfigurationManagementProps = {}) {
+  const devmode = props.devmode ?? getStartupFlagsSnapshot().devmode;
+
+  if (!devmode) {
+    return null;
+  }
+
   const handleExport = async () => {
     try {
+      const { saveConfiguration } = await loadConfigManager();
       const result = await saveConfiguration({
         includeCode: false,
-        includeDevMode: window.location.search.includes('devmode=true')
+        includeDevMode: devmode,
       });
 
       if (result.method === 'websocket') {
@@ -24,6 +39,11 @@ export function ConfigurationManagement() {
 
   const handleImport = async () => {
     try {
+      const {
+        importConfiguration,
+        loadConfigurationFromFile,
+        previewConfiguration,
+      } = await loadConfigManager();
       const config = await loadConfigurationFromFile();
       const preview = previewConfiguration(config);
 
@@ -48,8 +68,8 @@ export function ConfigurationManagement() {
   return (
     <Section title="Configuration Management">
       <p class="panel-info-text">
-        Export your current settings to a file, or import settings from a previously saved configuration.
-        In dev mode with the config server running, configurations can be saved directly to the source directory.
+        Internal dev tooling for exporting or importing configuration files.
+        In dev mode with the config server running, configurations can also be written directly to the source tree.
       </p>
       <div class="panel-button-group">
         <button class="panel-button" onClick={handleExport}>

@@ -8,14 +8,7 @@ For the higher-level product boundary and compatibility cuts, read `docs/STABLE_
 
 The authoritative firmware behavior for this repo is the `src-useq/` submodule checked into this repository, not any standalone local clone.
 
-As of 2026-03-06, the superproject `HEAD` pins:
-
-- Repo: `git@github.com:Emute-Lab-Instruments/uSEQ.git`
-- Path: `src-useq/`
-- Branch currently checked out in the submodule: `feat/json-protocol-transport`
-- Authoritative pinned commit: `930a30063b5b143cfb3faa6b2c23d32fe7adf6af`
-
-To cite the exact firmware commit that editor work depends on, run:
+To inspect the exact pin in the current checkout, run:
 
 ```bash
 npm run src-useq:status

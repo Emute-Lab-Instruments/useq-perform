@@ -8,13 +8,27 @@ const createApp = vi.fn(() => ({ start: startApp }));
 const loadConfigurationWithMetadata = vi.fn();
 const publishRuntimeDiagnostics = vi.fn();
 const reportBootstrapFailure = vi.fn();
-
-vi.mock("./utils/persistentUserSettings.ts", () => ({
-  activeUserSettings: {
+const appSettingsRepository = {
+  getSettings: vi.fn(() => ({
     runtime: { startLocallyWithoutHardware: true },
     wasm: { enabled: true },
+  })),
+  replaceSettings: vi.fn(),
+};
+const bootstrapRuntimeSession = vi.fn(() => ({
+  connected: false,
+  protocolMode: "legacy",
+  session: {
+    hasHardwareConnection: false,
+    noModuleMode: false,
+    wasmEnabled: true,
+    connectionMode: "none",
+    transportMode: "wasm",
   },
-  replaceUserSettings,
+}));
+
+vi.mock("../runtime/appSettingsRepository.ts", () => ({
+  appSettingsRepository,
 }));
 
 vi.mock("./app/environment.ts", () => ({
@@ -39,18 +53,8 @@ vi.mock("../runtime/runtimeDiagnostics.ts", () => ({
   resolveStartupMode: vi.fn(() => "browser-local"),
 }));
 
-vi.mock("../runtime/runtimeSession.ts", () => ({
-  createRuntimeSessionSnapshot: vi.fn(() => ({
-    hasHardwareConnection: false,
-    noModuleMode: false,
-    wasmEnabled: true,
-    connectionMode: "none",
-    transportMode: "wasm",
-  })),
-}));
-
-vi.mock("./urlParams.ts", () => ({
-  noModuleMode: false,
+vi.mock("../runtime/runtimeService.ts", () => ({
+  bootstrapRuntimeSession,
 }));
 
 describe("startLegacyApp", () => {
@@ -66,7 +70,19 @@ describe("startLegacyApp", () => {
       areInDesktopApp: false,
       isWebSerialAvailable: true,
       isInDevmode: false,
-      userSettings: { name: "Test User" },
+      startupFlags: {
+        debug: false,
+        devmode: false,
+        disableWebSerial: false,
+        noModuleMode: false,
+        nosave: false,
+        params: {},
+      },
+      userSettings: {
+        name: "Test User",
+        runtime: { startLocallyWithoutHardware: true },
+        wasm: { enabled: true },
+      },
       urlParams: {},
     });
     createAppUI.mockResolvedValue({ mainEditor: {} });
@@ -79,13 +95,21 @@ describe("startLegacyApp", () => {
     await startLegacyApp();
 
     expect(loadConfigurationWithMetadata).toHaveBeenCalledTimes(1);
-    expect(replaceUserSettings).toHaveBeenCalledWith(
+    expect(appSettingsRepository.replaceSettings).toHaveBeenCalledWith(
       { editor: { code: "(play)" } },
       { dispatch: true }
     );
     expect(createAppUI).toHaveBeenCalledWith(examineEnvironment.mock.results[0].value);
     expect(createApp).toHaveBeenCalled();
     expect(startApp).toHaveBeenCalledTimes(1);
+    expect(bootstrapRuntimeSession).toHaveBeenCalledWith(
+      {
+        hasHardwareConnection: false,
+        noModuleMode: false,
+        wasmEnabled: true,
+      },
+      { connected: false }
+    );
     expect(publishRuntimeDiagnostics).toHaveBeenCalledWith(
       expect.objectContaining({
         settingsSources: ["defaults", "local-storage"],

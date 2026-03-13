@@ -1,27 +1,33 @@
 import { createStore, reconcile } from "solid-js/store";
-import { activeUserSettings, updateUserSettings } from "../legacy/utils/persistentUserSettings.ts";
+import {
+  getAppSettings,
+  subscribeAppSettings,
+  updateAppSettings,
+} from "../runtime/appSettingsRepository.ts";
+import { createDefaultUserSettings, mergeUserSettings, type AppSettings } from "../legacy/config/appSettings.ts";
 
 /**
  * SolidJS store for user settings.
  * Wraps the legacy activeUserSettings and provides reactivity.
  */
-export const [settings, setSettings] = createStore({ ...activeUserSettings });
+export const [settings, setSettings] = createStore<AppSettings>(
+  mergeUserSettings(createDefaultUserSettings(), getAppSettings()),
+);
 
 /**
  * Updates user settings and ensures they are persisted and the store is updated.
  * @param values Partial settings object to merge into the active settings
  */
 export function updateSettingsStore(values: Record<string, unknown>) {
-  updateUserSettings(values);
-  // updateUserSettings dispatches 'useq-settings-changed',
-  // which is handled by the listener below.
+  updateAppSettings(values);
 }
 
-// Sync store with legacy settings updates
-window.addEventListener("useq-settings-changed", (event: Event) => {
-  const detail = (event as CustomEvent<typeof activeUserSettings>).detail;
-  setSettings(reconcile(detail));
-});
+function syncSettingsStore(nextSettings: AppSettings): void {
+  setSettings(reconcile(mergeUserSettings(createDefaultUserSettings(), nextSettings)));
+}
 
-// Initial sync to catch any changes made before this module was loaded
-setSettings(reconcile(activeUserSettings));
+// Sync store with the canonical repository while legacy listeners remain supported.
+if (typeof window !== "undefined") {
+  syncSettingsStore(getAppSettings());
+  subscribeAppSettings(syncSettingsStore);
+}

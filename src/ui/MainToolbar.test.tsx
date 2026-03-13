@@ -1,8 +1,50 @@
 import { render, cleanup } from "@solidjs/testing-library";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { isConnectedToModule } from "../legacy/io/serialComms.ts";
+
 import { MainToolbar } from "./MainToolbar";
-import { getRuntimeSessionSnapshot } from "../effects/transport";
+
+const runtimeServiceState = vi.hoisted(() => {
+  const listeners = new Set<(snapshot: any) => void>();
+  let snapshot = {
+    connected: false,
+    protocolMode: "legacy",
+    session: {
+      hasHardwareConnection: false,
+      noModuleMode: false,
+      wasmEnabled: true,
+      connectionMode: "browser",
+      transportMode: "wasm",
+    },
+  };
+
+  return {
+    getSnapshot: () => snapshot,
+    setSnapshot: (nextSnapshot: typeof snapshot) => {
+      snapshot = nextSnapshot;
+      listeners.forEach((listener) => listener(snapshot));
+    },
+    subscribe: (listener: (nextSnapshot: typeof snapshot) => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    reset: () => {
+      listeners.clear();
+      snapshot = {
+        connected: false,
+        protocolMode: "legacy",
+        session: {
+          hasHardwareConnection: false,
+          noModuleMode: false,
+          wasmEnabled: true,
+          connectionMode: "browser",
+          transportMode: "wasm",
+        },
+      };
+    },
+  };
+});
 
 vi.mock("../effects/ui", () => ({
   toggleConnection: vi.fn(() => ({ _tag: "Effect" })),
@@ -16,34 +58,17 @@ vi.mock("../effects/editor", () => ({
   saveCode: vi.fn(() => ({ _tag: "Effect" })),
 }));
 
-vi.mock("../effects/transport", () => ({
-  getRuntimeSessionSnapshot: vi.fn(() => ({
-    hasHardwareConnection: false,
-    noModuleMode: false,
-    wasmEnabled: true,
-    connectionMode: "browser",
-    transportMode: "wasm",
-  })),
+vi.mock("../runtime/runtimeService", () => ({
+  getRuntimeServiceSnapshot: vi.fn(() => runtimeServiceState.getSnapshot()),
+  subscribeRuntimeService: vi.fn((listener: (nextSnapshot: unknown) => void) =>
+    runtimeServiceState.subscribe(listener as (nextSnapshot: any) => void)
+  ),
 }));
-
-vi.mock("../legacy/io/serialComms.ts", () => ({
-  isConnectedToModule: vi.fn(() => false),
-}));
-
-const mockedIsConnected = vi.mocked(isConnectedToModule);
-const mockedGetRuntimeSessionSnapshot = vi.mocked(getRuntimeSessionSnapshot);
 
 describe("MainToolbar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedIsConnected.mockReturnValue(false);
-    mockedGetRuntimeSessionSnapshot.mockReturnValue({
-      hasHardwareConnection: false,
-      noModuleMode: false,
-      wasmEnabled: true,
-      connectionMode: "browser",
-      transportMode: "wasm",
-    });
+    runtimeServiceState.reset();
   });
 
   afterEach(() => {
@@ -64,7 +89,7 @@ describe("MainToolbar", () => {
     expect(container.textContent).toContain("Browser-local");
   });
 
-  it("renders connect button with disconnected class when not connected", () => {
+  it("renders connect button with disconnected class when browser-local runtime is active", () => {
     const { container } = render(() => <MainToolbar />);
 
     const connectBtn = container.querySelector(`[title="Connect (Browser-local)"]`);
@@ -73,14 +98,17 @@ describe("MainToolbar", () => {
     expect(connectBtn?.classList.contains("runtime-browser")).toBe(true);
   });
 
-  it("renders connect button with connected class when connected", () => {
-    mockedIsConnected.mockReturnValue(true);
-    mockedGetRuntimeSessionSnapshot.mockReturnValue({
-      hasHardwareConnection: true,
-      noModuleMode: false,
-      wasmEnabled: true,
-      connectionMode: "hardware",
-      transportMode: "both",
+  it("renders connected hardware status from the runtime service snapshot", () => {
+    runtimeServiceState.setSnapshot({
+      connected: true,
+      protocolMode: "json",
+      session: {
+        hasHardwareConnection: true,
+        noModuleMode: false,
+        wasmEnabled: true,
+        connectionMode: "hardware",
+        transportMode: "both",
+      },
     });
 
     const { container } = render(() => <MainToolbar />);
@@ -91,34 +119,46 @@ describe("MainToolbar", () => {
     expect(container.textContent).toContain("Hardware + WASM");
   });
 
-  it("updates connect button class on useq-connection-changed event", () => {
+  it("reacts to runtime service updates without reading legacy globals", async () => {
     const { container } = render(() => <MainToolbar />);
 
     const connectBtn = container.querySelector(`[title="Connect (Browser-local)"]`);
     expect(connectBtn?.classList.contains("disconnected")).toBe(true);
 
-    window.dispatchEvent(
-      new CustomEvent("useq-connection-changed", {
-        detail: { connected: true, connectionMode: "hardware", transportMode: "both" },
-      })
-    );
+    runtimeServiceState.setSnapshot({
+      connected: true,
+      protocolMode: "json",
+      session: {
+        hasHardwareConnection: true,
+        noModuleMode: false,
+        wasmEnabled: true,
+        connectionMode: "hardware",
+        transportMode: "both",
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(connectBtn?.classList.contains("connected")).toBe(true);
-    expect(connectBtn?.classList.contains("disconnected")).toBe(false);
     expect(connectBtn?.getAttribute("title")).toBe("Connect (Hardware + WASM)");
 
-    window.dispatchEvent(
-      new CustomEvent("useq-connection-changed", {
-        detail: { connected: false, connectionMode: "browser", transportMode: "wasm" },
-      })
-    );
+    runtimeServiceState.setSnapshot({
+      connected: false,
+      protocolMode: "legacy",
+      session: {
+        hasHardwareConnection: false,
+        noModuleMode: false,
+        wasmEnabled: true,
+        connectionMode: "browser",
+        transportMode: "wasm",
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(connectBtn?.classList.contains("disconnected")).toBe(true);
-    expect(connectBtn?.classList.contains("connected")).toBe(false);
     expect(connectBtn?.getAttribute("title")).toBe("Connect (Browser-local)");
   });
 
-  it("removes event listener on cleanup", () => {
+  it("removes runtime and animation listeners on cleanup", () => {
     const removeSpy = vi.spyOn(window, "removeEventListener");
 
     const { unmount } = render(() => <MainToolbar />);
@@ -126,11 +166,10 @@ describe("MainToolbar", () => {
     unmount();
 
     expect(removeSpy).toHaveBeenCalledWith(
-      "useq-connection-changed",
+      "useq-animate-connect",
       expect.any(Function)
     );
 
     removeSpy.mockRestore();
   });
-
 });

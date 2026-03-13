@@ -1,4 +1,4 @@
-import { Component, createSignal, onMount } from "solid-js";
+import { Component, createSignal, onCleanup, onMount } from "solid-js";
 import {
   addSnippet,
   updateSnippet,
@@ -6,6 +6,7 @@ import {
 } from "../../utils/snippetStore";
 import { CodeMirrorEditor } from "./CodeMirrorEditor";
 import { editor as mainEditor } from "../../lib/editorStore";
+import { pushOverlay } from "../overlayManager";
 
 export type EditingSnippet = Snippet | "new";
 
@@ -29,6 +30,14 @@ export const SnippetModal: Component<SnippetModalProps> = (props) => {
       setTags(s.tags.join(", "));
       setCode(s.code);
     }
+  });
+
+  let popOverlay: (() => void) | undefined;
+  onMount(() => {
+    popOverlay = pushOverlay("snippet-modal", props.onClose);
+  });
+  onCleanup(() => {
+    popOverlay?.();
   });
 
   const handleSave = () => {

@@ -1,10 +1,9 @@
 // src/effects/editor.ts
 import { Effect } from "effect";
+import { EditorView } from "@codemirror/view";
 import { editor } from "../lib/editorStore";
-// @ts-ignore - Importing from legacy untyped module
 import { saveUserSettings, activeUserSettings } from "../legacy/utils/persistentUserSettings.ts";
-// @ts-ignore - Importing from legacy untyped module
-import { setFontSize } from "../legacy/editors/editorConfig.ts";
+import { fontSizeCompartment } from "../legacy/editors/state.ts";
 
 /**
  * FileSystemFileHandle is part of the File System Access API (not in all TS lib targets).
@@ -18,6 +17,27 @@ interface FileSystemWritableFileStream {
 interface FileSystemFileHandle {
   getFile(): Promise<File>;
   createWritable(): Promise<FileSystemWritableFileStream>;
+}
+
+export function applyEditorFontSize(
+  currentEditor: Pick<EditorView, "dispatch">,
+  fontSize: number
+): void {
+  currentEditor.dispatch({
+    effects: fontSizeCompartment.reconfigure(
+      EditorView.theme({
+        ".cm-content, .cm-cursor, .cm-gutters, .cm-lineNumbers": {
+          fontSize: `${fontSize}px`,
+          lineHeight: `${Math.ceil(fontSize * 1.5)}px`,
+        },
+        ".cm-gutters .cm-lineNumber": {
+          display: "flex",
+          alignItems: "center",
+          height: "100%",
+        },
+      }),
+    ),
+  });
 }
 
 // Extend Window to declare the File System Access API pickers we use.
@@ -40,7 +60,7 @@ export const adjustFontSize = (delta: number) =>
     if (!currentEditor) return;
 
     activeUserSettings.editor.fontSize += delta;
-    setFontSize(currentEditor, activeUserSettings.editor.fontSize);
+    applyEditorFontSize(currentEditor, activeUserSettings.editor.fontSize);
     saveUserSettings();
   });
 

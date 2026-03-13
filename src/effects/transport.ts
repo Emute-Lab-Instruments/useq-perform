@@ -1,49 +1,39 @@
 // src/effects/transport.ts
-import { Effect } from "effect";
-// @ts-ignore - Importing from legacy untyped module
-import { sendTouSEQ, isConnectedToModule, getSerialPort } from "../legacy/io/serialComms.ts";
-// @ts-ignore - Importing from legacy untyped module
-import {
-  evalInUseqWasm,
-  syncWasmTransportState as syncWasmTransportStateInInterpreter,
-} from "../legacy/io/useqWasmInterpreter.ts";
-// @ts-ignore - Importing from legacy untyped module
-import { activeUserSettings } from "../legacy/utils/persistentUserSettings.ts";
 import {
   SHARED_TRANSPORT_COMMANDS,
   type SharedTransportCommand,
 } from "../contracts/useqRuntimeContract";
+import type { JsonMetaEventDetail } from "../contracts/runtimeEvents";
 import type { TransportState } from "../machines/transport.machine";
 import {
-  createRuntimeSessionSnapshot,
-  supportsHardwareTransport,
-  supportsWasmTransport,
-} from "../runtime/runtimeSession";
-import { noModuleMode } from "../legacy/urlParams.ts";
+  getRuntimeServiceSnapshot,
+  isRuntimeHardwareConnected,
+  isRuntimeWasmEnabled,
+  queryRuntimeHardwareTransportState,
+  resolveRuntimeTransportMode,
+  sendRuntimeTransportCommand,
+  syncRuntimeWasmTransportState,
+} from "../runtime/runtimeService";
 
 export const getRuntimeSessionSnapshot = () =>
-  createRuntimeSessionSnapshot({
-    hasHardwareConnection: isConnectedToModule() && !!getSerialPort(),
-    noModuleMode,
-    wasmEnabled: isWasmEnabled(),
-  });
+  getRuntimeServiceSnapshot().session;
 
 /**
  * Check if the WASM interpreter is enabled in user settings.
  */
-export const isWasmEnabled = () => activeUserSettings?.wasm?.enabled ?? true;
+export const isWasmEnabled = () => isRuntimeWasmEnabled();
 
 /**
  * Check if currently connected to a real hardware serial port.
  */
 export const isRealHardwareConnection = () =>
-  getRuntimeSessionSnapshot().hasHardwareConnection;
+  isRuntimeHardwareConnected();
 
 /**
  * Determine the current transport mode based on connection state and settings.
  */
 export const resolveTransportMode = (): "hardware" | "wasm" | "both" | "none" => {
-  return getRuntimeSessionSnapshot().transportMode;
+  return resolveRuntimeTransportMode();
 };
 
 /**
@@ -51,36 +41,7 @@ export const resolveTransportMode = (): "hardware" | "wasm" | "both" | "none" =>
  * and WASM (if enabled).
  */
 export const sendTransportCommand = (command: SharedTransportCommand) =>
-  Effect.gen(function* (_) {
-    const session = getRuntimeSessionSnapshot();
-
-    const effects = [];
-
-    if (supportsHardwareTransport(session.transportMode)) {
-      effects.push(
-        Effect.tryPromise({
-          try: () => sendTouSEQ(command),
-          catch: (error) => new Error(`Hardware error: ${error}`),
-        })
-      );
-    }
-
-    if (supportsWasmTransport(session.transportMode)) {
-      effects.push(
-        Effect.tryPromise({
-          try: () => evalInUseqWasm(command),
-          catch: (error) => new Error(`WASM error: ${error}`),
-        })
-      );
-    }
-
-    if (effects.length > 0) {
-      // Use all to run them concurrently
-      yield* _(Effect.all(effects, { concurrency: "unbounded" }));
-    }
-
-    return command;
-  });
+  sendRuntimeTransportCommand(command);
 
 /**
  * Parse a raw transport state string from hardware into a typed TransportState.
@@ -103,27 +64,7 @@ export const parseTransportState = (raw: string): TransportState | null => {
  * Resolves with the parsed TransportState or null if unavailable.
  */
 export const queryHardwareTransportState = () =>
-  Effect.tryPromise<TransportState | null>({
-    try: () =>
-      new Promise<TransportState | null>((resolve) => {
-        sendTouSEQ(SHARED_TRANSPORT_COMMANDS.getState, (text: string) => {
-          resolve(parseTransportState(text));
-        });
-      }),
-    catch: () => null as TransportState | null,
-  });
-
-/** Shape of the `useq-json-meta` CustomEvent detail payload. */
-interface JsonMetaEventDetail {
-  response?: {
-    meta?: {
-      transport?: string;
-      [key: string]: unknown;
-    };
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
-}
+  queryRuntimeHardwareTransportState();
 
 /**
  * Extract transport state from a useq-json-meta event's detail.
@@ -149,7 +90,4 @@ export const queryState = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.g
  * Mirror a hardware transport state into WASM without sending commands back to hardware.
  */
 export const syncWasmTransportState = (state: TransportState) =>
-  Effect.tryPromise({
-    try: () => syncWasmTransportStateInInterpreter(state),
-    catch: (error) => new Error(`WASM sync error: ${error}`),
-  }).pipe(Effect.catchAll(() => Effect.succeed(null as string | null)));
+  syncRuntimeWasmTransportState(state);

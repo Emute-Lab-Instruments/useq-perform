@@ -26,14 +26,22 @@
       "gamepadPickerStyle": "radial"
     },
     "visualisation": {
-      "offsetSeconds": 1.5,
-      "sampleCount": 800,
+      "windowDuration": 3,
+      "sampleCount": 100,
       "lineWidth": 3.7,
       "futureDashed": true,
       "futureMaskOpacity": 1,
       "futureMaskWidth": 40,
       "circularOffset": 1,
+      "futureLeadSeconds": 1,
       "digitalLaneGap": 30
+    },
+    "runtime": {
+      "autoReconnect": true,
+      "startLocallyWithoutHardware": true
+    },
+    "wasm": {
+      "enabled": true
     }
   },
   "devMode": {

@@ -123,4 +123,58 @@ describe("configLoader", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://example.com/code.txt");
     expect(config.editor.code).toBe("(from-text-url)");
   });
+
+  it("merges canonical runtime and wasm settings from URL config overrides", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        version: "1.0.0",
+        user: {
+          editor: {
+            theme: "uSEQ Dark",
+            fontSize: 31,
+            preventBracketUnbalancing: true,
+          },
+          storage: {
+            saveCodeLocally: true,
+            autoSaveEnabled: true,
+            autoSaveInterval: 5000,
+          },
+          ui: {
+            consoleLinesLimit: 1000,
+            customThemes: [],
+            osFamily: "pc",
+            expressionGutterEnabled: true,
+            expressionLastTrackingEnabled: true,
+            expressionClearButtonEnabled: true,
+            gamepadPickerStyle: "radial",
+          },
+          runtime: {
+            autoReconnect: false,
+            startLocallyWithoutHardware: false,
+          },
+          wasm: {
+            enabled: false,
+          },
+          visualisation: {
+            windowDuration: 14,
+            futureLeadSeconds: 2,
+          },
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    setLocation("/?config=https://example.com/useq-config.json");
+
+    const { loadConfiguration } = await import("./configLoader.ts");
+    const config = await loadConfiguration();
+
+    expect(config.runtime).toEqual({
+      autoReconnect: false,
+      startLocallyWithoutHardware: false,
+    });
+    expect(config.wasm).toEqual({ enabled: false });
+    expect(config.visualisation.windowDuration).toBe(14);
+    expect(config.visualisation.futureLeadSeconds).toBe(2);
+  });
 });

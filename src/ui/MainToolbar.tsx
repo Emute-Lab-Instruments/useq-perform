@@ -2,30 +2,20 @@ import { createSignal, onMount, onCleanup } from "solid-js";
 import { Effect } from "effect";
 import { toggleConnection, toggleGraph, togglePanel } from "../effects/ui";
 import { adjustFontSize, loadCode, saveCode } from "../effects/editor";
-// @ts-ignore - Importing from legacy untyped module
-import { isConnectedToModule } from "../legacy/io/serialComms.ts";
-import { getRuntimeSessionSnapshot } from "../effects/transport";
+import {
+  addRuntimeEventListener,
+  ANIMATE_CONNECT_EVENT,
+} from "../contracts/runtimeEvents";
+import {
+  getRuntimeServiceSnapshot,
+  subscribeRuntimeService,
+} from "../runtime/runtimeService";
 import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings } from "lucide-solid";
 
 export function MainToolbar() {
-  const initialSession = getRuntimeSessionSnapshot();
-  const [isConnected, setIsConnected] = createSignal(isConnectedToModule());
-  const [connectionMode, setConnectionMode] = createSignal(initialSession.connectionMode);
-  const [transportMode, setTransportMode] = createSignal(initialSession.transportMode);
+  const initialRuntime = getRuntimeServiceSnapshot();
+  const [runtimeState, setRuntimeState] = createSignal(initialRuntime);
   let connectButtonRef: HTMLButtonElement | undefined;
-
-  const handleConnectionChange = (e: Event) => {
-    const detail = (e as CustomEvent).detail;
-    if (detail && typeof detail.connected === "boolean") {
-      setIsConnected(detail.connected);
-    }
-    if (detail?.connectionMode) {
-      setConnectionMode(detail.connectionMode);
-    }
-    if (detail?.transportMode) {
-      setTransportMode(detail.transportMode);
-    }
-  };
 
   const handleAnimateConnect = () => {
     if (connectButtonRef) {
@@ -44,23 +34,28 @@ export function MainToolbar() {
   };
 
   onMount(() => {
-    window.addEventListener("useq-connection-changed", handleConnectionChange);
-    window.addEventListener("useq-animate-connect", handleAnimateConnect);
-  });
+    const unsubscribeRuntime = subscribeRuntimeService((nextState) => {
+      setRuntimeState(nextState);
+    });
+    const removeAnimateListener = addRuntimeEventListener(
+      ANIMATE_CONNECT_EVENT,
+      () => handleAnimateConnect()
+    );
 
-  onCleanup(() => {
-    window.removeEventListener("useq-connection-changed", handleConnectionChange);
-    window.removeEventListener("useq-animate-connect", handleAnimateConnect);
+    onCleanup(() => {
+      unsubscribeRuntime();
+      removeAnimateListener();
+    });
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const run = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromise(effect);
   const runtimeStatus = () => {
-    if (connectionMode() === "hardware") {
-      return transportMode() === "both" ? "Hardware + WASM" : "Hardware";
+    if (runtimeState().session.connectionMode === "hardware") {
+      return runtimeState().session.transportMode === "both" ? "Hardware + WASM" : "Hardware";
     }
 
-    if (connectionMode() === "browser") {
+    if (runtimeState().session.connectionMode === "browser") {
       return "Browser-local";
     }
 
@@ -68,7 +63,7 @@ export function MainToolbar() {
   };
 
   const connectButtonClass = () =>
-    `toolbar-button ${isConnected() ? "connected" : "disconnected"} runtime-${connectionMode()}`;
+    `toolbar-button ${runtimeState().connected ? "connected" : "disconnected"} runtime-${runtimeState().session.connectionMode}`;
 
   return (
     <div id="panel-toolbar">
@@ -82,7 +77,7 @@ export function MainToolbar() {
         >
           <Cable />
         </button>
-        <span class={`toolbar-runtime-pill runtime-${connectionMode()}`}>
+        <span class={`toolbar-runtime-pill runtime-${runtimeState().session.connectionMode}`}>
           {runtimeStatus()}
         </span>
         <button

@@ -1,9 +1,13 @@
+import type { VisualisationSettings as AppVisualisationSettings } from "../../legacy/config/appSettings.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 import { Section, FormRow, Checkbox, NumberInput, RangeInput } from "./FormControls";
 import { serialVisChannels } from "../../legacy/ui/serialVis/utils.ts";
 
 export function VisualisationSettings() {
-  const updateVisField = (field: string, value: string | number | boolean) => {
+  const updateVisField = <K extends keyof AppVisualisationSettings>(
+    field: K,
+    value: AppVisualisationSettings[K],
+  ) => {
     updateSettingsStore({
       visualisation: {
         ...settings.visualisation,
@@ -22,17 +26,27 @@ export function VisualisationSettings() {
 
   return (
     <Section title="Visualisation Settings">
-      <FormRow label="Visual offset window">
+      <FormRow label="Visible window duration">
         <RangeInput
-          value={settings.visualisation?.offsetSeconds ?? 5}
-          min={0.5}
-          max={10}
+          value={settings.visualisation?.windowDuration ?? 10}
+          min={1}
+          max={20}
           step={0.5}
           formatValue={(v) => `${v.toFixed(1)}s`}
-          onChange={(val) => updateVisField("offsetSeconds", val)}
+          onChange={(val) => updateVisField("windowDuration", val)}
         />
       </FormRow>
-      <FormRow label="Visual sample count">
+      <FormRow label="Future lead window">
+        <RangeInput
+          value={settings.visualisation?.futureLeadSeconds ?? 1}
+          min={0}
+          max={8}
+          step={0.5}
+          formatValue={(v) => `${v.toFixed(1)}s`}
+          onChange={(val) => updateVisField("futureLeadSeconds", val)}
+        />
+      </FormRow>
+      <FormRow label="Visible sample count">
         <NumberInput
           value={settings.visualisation?.sampleCount ?? 100}
           min={10}

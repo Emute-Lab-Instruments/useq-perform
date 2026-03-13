@@ -10,11 +10,19 @@ import {
   queryHardwareTransportState,
   extractTransportStateFromMeta,
   syncWasmTransportState,
-  resolveTransportMode,
-  isRealHardwareConnection,
-  isWasmEnabled,
 } from "../effects/transport";
-// @ts-ignore - Importing from legacy untyped module
+import {
+  addRuntimeEventListener,
+  JSON_META_EVENT,
+  PROTOCOL_READY_EVENT,
+  readRuntimeEventDetail,
+  type JsonMetaEventDetail,
+} from "../contracts/runtimeEvents";
+import {
+  getRuntimeServiceSnapshot,
+  subscribeRuntimeService,
+} from "../runtime/runtimeService";
+import type { RuntimeSessionState } from "../runtime/runtimeSessionStore";
 import {
   startMockTimeGenerator,
   stopMockTimeGenerator,
@@ -29,7 +37,8 @@ import { Play, Pause, Square, Rewind, X } from "lucide-solid";
  * True when not connected to real hardware but WASM is enabled.
  */
 function shouldUseMockTime(): boolean {
-  return !isRealHardwareConnection() && isWasmEnabled();
+  const runtimeState = getRuntimeServiceSnapshot();
+  return !runtimeState.session.hasHardwareConnection && runtimeState.session.wasmEnabled;
 }
 
 const TOP_TOOLBAR_HEIGHT_VAR = "--top-toolbar-height";
@@ -119,21 +128,17 @@ export function TransportToolbar() {
   };
 
   /** Refresh the mode context on the machine. */
-  const refreshMode = () => {
-    send({ type: "UPDATE_MODE", mode: resolveTransportMode() });
+  const refreshMode = (runtimeState: RuntimeSessionState = getRuntimeServiceSnapshot()) => {
+    send({ type: "UPDATE_MODE", mode: runtimeState.session.transportMode });
   };
 
   // --- Event handlers ---
-
-  const handleConnectionChanged = (e: Event) => {
-    const connected = !!(e as CustomEvent).detail?.connected;
-
-    // Stop mock time generator when real hardware connects (it would interfere)
-    if (connected && isRealHardwareConnection()) {
+  const handleRuntimeStateChange = (runtimeState: RuntimeSessionState) => {
+    if (runtimeState.connected && runtimeState.session.hasHardwareConnection) {
       stopMockTimeGenerator();
     }
 
-    refreshMode();
+    refreshMode(runtimeState);
   };
 
   const handleProtocolReady = () => {
@@ -142,12 +147,8 @@ export function TransportToolbar() {
   };
 
   const handleJsonMeta = (e: Event) => {
-    const detail = (e as CustomEvent).detail;
+    const detail = readRuntimeEventDetail<typeof JSON_META_EVENT>(e);
     syncState(extractTransportStateFromMeta(detail));
-  };
-
-  const handleSettingsChanged = () => {
-    refreshMode();
   };
 
   // --- Layout height tracking ---
@@ -157,14 +158,25 @@ export function TransportToolbar() {
   };
 
   onMount(() => {
+    let removeProtocolReadyListener: () => void = () => undefined;
+    let removeJsonMetaListener: () => void = () => undefined;
+    let unsubscribeRuntime: () => void = () => undefined;
+
     // Set initial mode
     refreshMode();
 
     // Wire up runtime sync listeners
-    window.addEventListener("useq-connection-changed", handleConnectionChanged);
-    window.addEventListener("useq-protocol-ready", handleProtocolReady);
-    window.addEventListener("useq-json-meta", handleJsonMeta);
-    window.addEventListener("useq-settings-changed", handleSettingsChanged);
+    unsubscribeRuntime = subscribeRuntimeService((runtimeState) => {
+      handleRuntimeStateChange(runtimeState);
+    });
+    removeProtocolReadyListener = addRuntimeEventListener(
+      PROTOCOL_READY_EVENT,
+      () => handleProtocolReady()
+    );
+    removeJsonMetaListener = addRuntimeEventListener(
+      JSON_META_EVENT,
+      (_detail: JsonMetaEventDetail, event) => handleJsonMeta(event)
+    );
 
     // Track toolbar height -> CSS variable
     if (toolbarRef) {
@@ -183,13 +195,15 @@ export function TransportToolbar() {
 
       window.addEventListener("resize", handleWindowResize, { passive: true });
     }
+
+    onCleanup(() => {
+      unsubscribeRuntime();
+      removeProtocolReadyListener();
+      removeJsonMetaListener();
+    });
   });
 
   onCleanup(() => {
-    window.removeEventListener("useq-connection-changed", handleConnectionChanged);
-    window.removeEventListener("useq-protocol-ready", handleProtocolReady);
-    window.removeEventListener("useq-json-meta", handleJsonMeta);
-    window.removeEventListener("useq-settings-changed", handleSettingsChanged);
     window.removeEventListener("resize", handleWindowResize);
     resizeObserver?.disconnect();
   });

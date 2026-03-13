@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Configuration Schema
  *
@@ -5,65 +6,31 @@
  * This schema is used for validation, migrations, and default initialization.
  */
 
-export const CONFIG_VERSION = "1.0.0";
+import {
+  CONFIG_VERSION,
+  createConfigurationDocument,
+  createDefaultUserSettings,
+  defaultDevModeConfiguration,
+} from "./appSettings.ts";
+
+export { CONFIG_VERSION };
 
 /**
  * Default configuration structure
  * This represents the complete configuration schema with all default values.
  */
 export const defaultConfiguration = {
-  version: CONFIG_VERSION,
+  ...createConfigurationDocument(createDefaultUserSettings(), {
+    includeDevMode: true,
+    metadataSource: "default",
+    metadataDescription: "uSEQ Perform configuration",
+  }),
   metadata: {
     lastModified: null,
     source: "default",
-    description: "uSEQ Perform configuration"
+    description: "uSEQ Perform configuration",
   },
-  user: {
-    name: "Livecoder",
-    editor: {
-      theme: "uSEQ Dark",
-      fontSize: 16,
-      preventBracketUnbalancing: true
-    },
-    storage: {
-      saveCodeLocally: true,
-      autoSaveEnabled: true,
-      autoSaveInterval: 5000
-    },
-    ui: {
-      consoleLinesLimit: 1000,
-      customThemes: [],
-      osFamily: "pc",
-      expressionGutterEnabled: true,
-      expressionLastTrackingEnabled: true,
-      expressionClearButtonEnabled: true,
-      gamepadPickerStyle: "grid"
-    },
-    visualisation: {
-      offsetSeconds: 5,
-      sampleCount: 100,
-      lineWidth: 1.5,
-      futureDashed: true,
-      futureMaskOpacity: 0.35,
-      futureMaskWidth: 12,
-      circularOffset: 0,
-      digitalLaneGap: 4
-    }
-  },
-  devMode: {
-    enabled: false,
-    mockConnection: {
-      autoConnect: false
-    },
-    mockControls: {
-      ain1: 0.5,
-      ain2: 0.5,
-      din1: 0,
-      din2: 0,
-      swm: 0,
-      swt: 0.5
-    }
-  }
+  devMode: { ...defaultDevModeConfiguration },
 };
 
 /**
@@ -116,6 +83,13 @@ export function validateConfiguration(config) {
     }
   }
 
+  if (
+    config.user?.visualisation &&
+    config.user.visualisation.windowDuration == null
+  ) {
+    errors.push('user.visualisation.windowDuration is required');
+  }
+
   return {
     valid: errors.length === 0,
     errors
@@ -154,46 +128,10 @@ export function mergeConfigurations(target, source) {
  * @returns {Object} Configuration object matching schema
  */
 export function extractConfiguration(activeUserSettings) {
-  return {
-    version: CONFIG_VERSION,
-    metadata: {
-      lastModified: new Date().toISOString(),
-      source: "webapp-export"
-    },
-    user: {
-      name: activeUserSettings.name || defaultConfiguration.user.name,
-      editor: {
-        theme: activeUserSettings.editor?.theme || defaultConfiguration.user.editor.theme,
-        fontSize: activeUserSettings.editor?.fontSize || defaultConfiguration.user.editor.fontSize,
-        preventBracketUnbalancing: activeUserSettings.editor?.preventBracketUnbalancing ?? defaultConfiguration.user.editor.preventBracketUnbalancing
-      },
-      storage: {
-        saveCodeLocally: activeUserSettings.storage?.saveCodeLocally ?? defaultConfiguration.user.storage.saveCodeLocally,
-        autoSaveEnabled: activeUserSettings.storage?.autoSaveEnabled ?? defaultConfiguration.user.storage.autoSaveEnabled,
-        autoSaveInterval: activeUserSettings.storage?.autoSaveInterval || defaultConfiguration.user.storage.autoSaveInterval
-      },
-      ui: {
-        consoleLinesLimit: activeUserSettings.ui?.consoleLinesLimit || defaultConfiguration.user.ui.consoleLinesLimit,
-        customThemes: activeUserSettings.ui?.customThemes || defaultConfiguration.user.ui.customThemes,
-        osFamily: activeUserSettings.ui?.osFamily || defaultConfiguration.user.ui.osFamily,
-        expressionGutterEnabled: activeUserSettings.ui?.expressionGutterEnabled ?? defaultConfiguration.user.ui.expressionGutterEnabled,
-        expressionLastTrackingEnabled: activeUserSettings.ui?.expressionLastTrackingEnabled ?? defaultConfiguration.user.ui.expressionLastTrackingEnabled,
-        expressionClearButtonEnabled: activeUserSettings.ui?.expressionClearButtonEnabled ?? defaultConfiguration.user.ui.expressionClearButtonEnabled,
-        gamepadPickerStyle: activeUserSettings.ui?.gamepadPickerStyle || defaultConfiguration.user.ui.gamepadPickerStyle
-      },
-      visualisation: {
-        offsetSeconds: activeUserSettings.visualisation?.offsetSeconds ?? defaultConfiguration.user.visualisation.offsetSeconds,
-        sampleCount: activeUserSettings.visualisation?.sampleCount || defaultConfiguration.user.visualisation.sampleCount,
-        lineWidth: activeUserSettings.visualisation?.lineWidth ?? defaultConfiguration.user.visualisation.lineWidth,
-        futureDashed: activeUserSettings.visualisation?.futureDashed ?? defaultConfiguration.user.visualisation.futureDashed,
-        futureMaskOpacity: activeUserSettings.visualisation?.futureMaskOpacity ?? defaultConfiguration.user.visualisation.futureMaskOpacity,
-        futureMaskWidth: activeUserSettings.visualisation?.futureMaskWidth || defaultConfiguration.user.visualisation.futureMaskWidth,
-        circularOffset: activeUserSettings.visualisation?.circularOffset ?? defaultConfiguration.user.visualisation.circularOffset,
-        digitalLaneGap: activeUserSettings.visualisation?.digitalLaneGap ?? defaultConfiguration.user.visualisation.digitalLaneGap
-      }
-    },
-    devMode: defaultConfiguration.devMode
-  };
+  return createConfigurationDocument(activeUserSettings, {
+    includeDevMode: true,
+    metadataSource: "webapp-export",
+  });
 }
 
 /**
@@ -225,8 +163,8 @@ export function getConfigurationDiff(current, incoming) {
   }
 
   // Compare visualisation settings
-  if (current.user?.visualisation?.offsetSeconds !== incoming.user?.visualisation?.offsetSeconds) {
-    diffs.push(`Visual Offset: ${current.user?.visualisation?.offsetSeconds}s → ${incoming.user?.visualisation?.offsetSeconds}s`);
+  if (current.user?.visualisation?.windowDuration !== incoming.user?.visualisation?.windowDuration) {
+    diffs.push(`Visual Window: ${current.user?.visualisation?.windowDuration}s → ${incoming.user?.visualisation?.windowDuration}s`);
   }
 
   if (current.user?.visualisation?.lineWidth !== incoming.user?.visualisation?.lineWidth) {

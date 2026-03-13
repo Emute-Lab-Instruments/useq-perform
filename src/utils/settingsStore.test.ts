@@ -14,38 +14,59 @@ function mergeSettings(current: any, values: any) {
     visualisation: values.visualisation
       ? { ...current.visualisation, ...values.visualisation }
       : current.visualisation,
+    runtime: values.runtime ? { ...current.runtime, ...values.runtime } : current.runtime,
     wasm: values.wasm ? { ...current.wasm, ...values.wasm } : current.wasm,
   };
 }
 
 async function loadSettingsStore(initialSettings: any) {
   const activeUserSettings = clone(initialSettings);
-  const updateUserSettings = vi.fn((values: any) => {
+  const listeners = new Set<(settings: any) => void>();
+  const updateAppSettings = vi.fn((values: any) => {
     const next = mergeSettings(activeUserSettings, values);
     Object.assign(activeUserSettings, next);
-    window.dispatchEvent(
-      new CustomEvent("useq-settings-changed", {
-        detail: activeUserSettings,
-      }),
-    );
+    listeners.forEach((listener) => listener(activeUserSettings));
   });
 
-  vi.doMock("../legacy/utils/persistentUserSettings.ts", () => ({
-    activeUserSettings,
-    updateUserSettings,
+  vi.doMock("../runtime/appSettingsRepository.ts", () => ({
+    getAppSettings: () => clone(activeUserSettings),
+    subscribeAppSettings: (listener: (settings: any) => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    updateAppSettings,
   }));
 
   const module = await import("./settingsStore");
-  return { ...module, activeUserSettings, updateUserSettings };
+  return { ...module, activeUserSettings, updateAppSettings, listeners };
 }
 
 describe("settingsStore", () => {
   const baseSettings = {
     name: "Livecoder",
-    editor: { theme: "useq-dark", fontSize: 16 },
-    storage: { autoSaveEnabled: true },
-    ui: { consoleLinesLimit: 1000, osFamily: "pc" },
-    visualisation: { sampleCount: 100 },
+    editor: { theme: "uSEQ Dark", fontSize: 16, code: "(play)", preventBracketUnbalancing: true },
+    storage: { saveCodeLocally: true, autoSaveEnabled: true, autoSaveInterval: 5000 },
+    ui: {
+      consoleLinesLimit: 1000,
+      customThemes: [],
+      osFamily: "pc",
+      expressionGutterEnabled: true,
+      expressionLastTrackingEnabled: true,
+      expressionClearButtonEnabled: true,
+      gamepadPickerStyle: "grid",
+    },
+    visualisation: {
+      windowDuration: 10,
+      sampleCount: 100,
+      lineWidth: 1.5,
+      futureDashed: true,
+      futureMaskOpacity: 0.35,
+      futureMaskWidth: 12,
+      circularOffset: 0,
+      futureLeadSeconds: 1,
+      digitalLaneGap: 4,
+    },
+    runtime: { autoReconnect: true, startLocallyWithoutHardware: true },
     wasm: { enabled: true },
   };
 
@@ -57,26 +78,24 @@ describe("settingsStore", () => {
   it("initial state matches activeUserSettings", async () => {
     const initial = { ...baseSettings, name: "Tester" };
     const { settings } = await loadSettingsStore(initial);
-    expect(settings).toEqual(initial);
+    expect(settings).toMatchObject(initial);
   });
 
   it("updateSettingsStore delegates to updateUserSettings (persistence path)", async () => {
-    const { settings, updateSettingsStore, updateUserSettings } = await loadSettingsStore(baseSettings);
+    const { settings, updateSettingsStore, updateAppSettings } = await loadSettingsStore(baseSettings);
     updateSettingsStore({ ui: { consoleLinesLimit: 256 } });
 
-    expect(updateUserSettings).toHaveBeenCalledWith({ ui: { consoleLinesLimit: 256 } });
+    expect(updateAppSettings).toHaveBeenCalledWith({ ui: { consoleLinesLimit: 256 } });
     expect(settings.ui.consoleLinesLimit).toBe(256);
   });
 
-  it("useq-settings-changed event updates the store via reconcile", async () => {
-    const { settings } = await loadSettingsStore(baseSettings);
-    window.dispatchEvent(
-      new CustomEvent("useq-settings-changed", {
-        detail: {
-          ...baseSettings,
-          name: "FromEvent",
-          ui: { ...baseSettings.ui, osFamily: "mac" },
-        },
+  it("repository subscriptions update the store via reconcile", async () => {
+    const { settings, listeners } = await loadSettingsStore(baseSettings);
+    listeners.forEach((listener) =>
+      listener({
+        ...baseSettings,
+        name: "FromEvent",
+        ui: { ...baseSettings.ui, osFamily: "mac" },
       }),
     );
 

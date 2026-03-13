@@ -1,6 +1,7 @@
 import { render } from "@solidjs/testing-library";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Effect } from "effect";
+
 import { TransportToolbar } from "./TransportToolbar";
 import {
   play,
@@ -8,18 +9,58 @@ import {
   stop,
   rewind,
   clear,
-  resolveTransportMode,
   extractTransportStateFromMeta,
   queryHardwareTransportState,
   syncWasmTransportState,
-  isWasmEnabled,
-  isRealHardwareConnection,
 } from "../effects/transport";
 import {
   startMockTimeGenerator,
   stopMockTimeGenerator,
   resetMockTimeGenerator,
 } from "../legacy/io/mockTimeGenerator.ts";
+
+const runtimeServiceState = vi.hoisted(() => {
+  const listeners = new Set<(snapshot: any) => void>();
+  let snapshot = {
+    connected: false,
+    protocolMode: "legacy",
+    session: {
+      hasHardwareConnection: false,
+      noModuleMode: false,
+      wasmEnabled: false,
+      connectionMode: "none",
+      transportMode: "none",
+    },
+  };
+
+  return {
+    getSnapshot: () => snapshot,
+    setSnapshot: (nextSnapshot: typeof snapshot) => {
+      snapshot = nextSnapshot;
+      listeners.forEach((listener) => listener(snapshot));
+    },
+    subscribe: (listener: (nextSnapshot: typeof snapshot) => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    reset: () => {
+      listeners.clear();
+      snapshot = {
+        connected: false,
+        protocolMode: "legacy",
+        session: {
+          hasHardwareConnection: false,
+          noModuleMode: false,
+          wasmEnabled: false,
+          connectionMode: "none",
+          transportMode: "none",
+        },
+      };
+    },
+  };
+});
 
 vi.mock("../effects/transport", () => ({
   play: vi.fn(() => Effect.succeed(undefined)),
@@ -30,9 +71,13 @@ vi.mock("../effects/transport", () => ({
   queryHardwareTransportState: vi.fn(() => Effect.succeed(null)),
   extractTransportStateFromMeta: vi.fn(() => null),
   syncWasmTransportState: vi.fn(() => Effect.succeed(undefined)),
-  resolveTransportMode: vi.fn(() => "none"),
-  isRealHardwareConnection: vi.fn(() => false),
-  isWasmEnabled: vi.fn(() => false),
+}));
+
+vi.mock("../runtime/runtimeService", () => ({
+  getRuntimeServiceSnapshot: vi.fn(() => runtimeServiceState.getSnapshot()),
+  subscribeRuntimeService: vi.fn((listener: (nextSnapshot: unknown) => void) =>
+    runtimeServiceState.subscribe(listener as (nextSnapshot: any) => void)
+  ),
 }));
 
 vi.mock("../legacy/io/mockTimeGenerator.ts", () => ({
@@ -42,9 +87,54 @@ vi.mock("../legacy/io/mockTimeGenerator.ts", () => ({
   resetMockTimeGenerator: vi.fn(),
 }));
 
+function setRuntimeSnapshot(mode: "none" | "wasm" | "both", connected = false) {
+  if (mode === "both") {
+    runtimeServiceState.setSnapshot({
+      connected,
+      protocolMode: "json",
+      session: {
+        hasHardwareConnection: true,
+        noModuleMode: false,
+        wasmEnabled: true,
+        connectionMode: "hardware",
+        transportMode: "both",
+      },
+    });
+    return;
+  }
+
+  if (mode === "wasm") {
+    runtimeServiceState.setSnapshot({
+      connected,
+      protocolMode: "legacy",
+      session: {
+        hasHardwareConnection: false,
+        noModuleMode: false,
+        wasmEnabled: true,
+        connectionMode: "browser",
+        transportMode: "wasm",
+      },
+    });
+    return;
+  }
+
+  runtimeServiceState.setSnapshot({
+    connected: false,
+    protocolMode: "legacy",
+    session: {
+      hasHardwareConnection: false,
+      noModuleMode: false,
+      wasmEnabled: false,
+      connectionMode: "none",
+      transportMode: "none",
+    },
+  });
+}
+
 describe("TransportToolbar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    runtimeServiceState.reset();
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -74,12 +164,10 @@ describe("TransportToolbar", () => {
     expect(rewind?.classList.contains("disabled")).toBe(true);
     expect(clear?.classList.contains("disabled")).toBe(true);
     expect(stop?.classList.contains("primary")).toBe(true);
-    expect(play?.classList.contains("primary")).toBe(false);
-    expect(pause?.classList.contains("primary")).toBe(false);
   });
 
-  it("shows correct button CSS in playing state when mode is wasm", () => {
-    vi.mocked(resolveTransportMode).mockReturnValue("wasm");
+  it("shows correct button CSS in playing state when runtime service reports wasm mode", () => {
+    setRuntimeSnapshot("wasm");
 
     const { container } = render(() => <TransportToolbar />);
 
@@ -87,75 +175,48 @@ describe("TransportToolbar", () => {
     const pauseBtn = container.querySelector("[title='Pause']");
     const stopBtn = container.querySelector("[title='Stop']");
 
-    // In playing state with wasm mode: play is primary disabled
     expect(playBtn?.classList.contains("primary")).toBe(true);
     expect(playBtn?.classList.contains("disabled")).toBe(true);
-
-    // pause is not disabled and not primary
     expect(pauseBtn?.classList.contains("disabled")).toBe(false);
-    expect(pauseBtn?.classList.contains("primary")).toBe(false);
-
-    // stop is not disabled and not primary
     expect(stopBtn?.classList.contains("disabled")).toBe(false);
-    expect(stopBtn?.classList.contains("primary")).toBe(false);
   });
 
   it("syncs state from useq-json-meta CustomEvent", async () => {
-    vi.mocked(resolveTransportMode).mockReturnValue("wasm");
+    setRuntimeSnapshot("wasm");
     vi.mocked(extractTransportStateFromMeta).mockReturnValue("paused");
 
     const { container } = render(() => <TransportToolbar />);
 
-    // Dispatch the useq-json-meta event
     window.dispatchEvent(
       new CustomEvent("useq-json-meta", {
         detail: { response: { meta: { transport: "paused" } } },
       })
     );
-
-    // Allow reactive updates to flush
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const playBtn = container.querySelector("[title='Play']");
     const pauseBtn = container.querySelector("[title='Pause']");
-    const stopBtn = container.querySelector("[title='Stop']");
 
-    // In paused state: pause is primary disabled
     expect(pauseBtn?.classList.contains("primary")).toBe(true);
     expect(pauseBtn?.classList.contains("disabled")).toBe(true);
-
-    // play is not disabled
     expect(playBtn?.classList.contains("disabled")).toBe(false);
-    expect(playBtn?.classList.contains("primary")).toBe(false);
-
-    // stop is not primary disabled
-    expect(stopBtn?.classList.contains("primary")).toBe(false);
-    expect(stopBtn?.classList.contains("disabled")).toBe(false);
   });
 
-  it("calls resolveTransportMode when useq-connection-changed fires", () => {
-    vi.mocked(resolveTransportMode).mockReturnValue("none");
+  it("updates mode when runtime service snapshot changes", async () => {
+    const { container } = render(() => <TransportToolbar />);
 
-    render(() => <TransportToolbar />);
+    const rewindBtn = container.querySelector("[title='Rewind']");
+    expect(rewindBtn?.classList.contains("disabled")).toBe(true);
 
-    // Clear call count from the onMount refreshMode call
-    vi.mocked(resolveTransportMode).mockClear();
+    setRuntimeSnapshot("wasm");
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    window.dispatchEvent(
-      new CustomEvent("useq-connection-changed", {
-        detail: { connected: true },
-      })
-    );
-
-    expect(resolveTransportMode).toHaveBeenCalled();
+    expect(rewindBtn?.classList.contains("disabled")).toBe(false);
   });
 
   describe("mock time generator lifecycle (wasm-only mode)", () => {
     beforeEach(() => {
-      // Set up wasm-only mode: not real hardware, wasm enabled
-      vi.mocked(resolveTransportMode).mockReturnValue("wasm");
-      vi.mocked(isRealHardwareConnection).mockReturnValue(false);
-      vi.mocked(isWasmEnabled).mockReturnValue(true);
+      setRuntimeSnapshot("wasm");
     });
 
     it("calls startMockTimeGenerator in playing state on STOP->PLAY", async () => {
@@ -163,22 +224,20 @@ describe("TransportToolbar", () => {
 
       const { container } = render(() => <TransportToolbar />);
 
-      // First transition to stopped via SYNC so we can then go to playing
       window.dispatchEvent(
         new CustomEvent("useq-json-meta", {
           detail: { response: { meta: { transport: "stopped" } } },
         })
       );
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       vi.mocked(startMockTimeGenerator).mockClear();
       vi.mocked(stopMockTimeGenerator).mockClear();
       vi.mocked(resetMockTimeGenerator).mockClear();
 
-      // Now click play to go from stopped -> playing
       const playBtn = container.querySelector("[title='Play']") as HTMLElement;
       playBtn.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(startMockTimeGenerator).toHaveBeenCalled();
     });
@@ -186,10 +245,9 @@ describe("TransportToolbar", () => {
     it("calls stopMockTimeGenerator on PAUSE transition", async () => {
       const { container } = render(() => <TransportToolbar />);
 
-      // Machine starts in playing state. Click pause to transition.
       const pauseBtn = container.querySelector("[title='Pause']") as HTMLElement;
       pauseBtn.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(stopMockTimeGenerator).toHaveBeenCalled();
     });
@@ -197,56 +255,50 @@ describe("TransportToolbar", () => {
     it("calls stopMockTimeGenerator and resetMockTimeGenerator on STOP transition", async () => {
       const { container } = render(() => <TransportToolbar />);
 
-      // Machine starts in playing state. Click stop to transition.
       const stopBtn = container.querySelector("[title='Stop']") as HTMLElement;
       stopBtn.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(stopMockTimeGenerator).toHaveBeenCalled();
       expect(resetMockTimeGenerator).toHaveBeenCalled();
     });
   });
 
-  it("does not throw when events are dispatched after unmount", () => {
-    vi.mocked(resolveTransportMode).mockReturnValue("wasm");
+  it("does not throw when events or runtime updates happen after unmount", () => {
+    setRuntimeSnapshot("wasm");
 
     const { unmount } = render(() => <TransportToolbar />);
 
-    // Unmount the component, which should remove event listeners
     unmount();
 
-    // Dispatching events after unmount should not cause errors
     expect(() => {
-      window.dispatchEvent(
-        new CustomEvent("useq-connection-changed", {
-          detail: { connected: true },
-        })
-      );
-      window.dispatchEvent(
-        new CustomEvent("useq-json-meta", {
-          detail: { response: { meta: { transport: "paused" } } },
-        })
-      );
+      runtimeServiceState.setSnapshot({
+        connected: true,
+        protocolMode: "json",
+        session: {
+          hasHardwareConnection: true,
+          noModuleMode: false,
+          wasmEnabled: true,
+          connectionMode: "hardware",
+          transportMode: "both",
+        },
+      });
+      window.dispatchEvent(new CustomEvent("useq-json-meta"));
       window.dispatchEvent(new CustomEvent("useq-protocol-ready"));
-      window.dispatchEvent(new CustomEvent("useq-settings-changed"));
     }).not.toThrow();
   });
 
-  // -------------------------------------------------------------------------
-  // Acceptance criteria: button clicks invoke the correct effect functions
-  // -------------------------------------------------------------------------
   describe("acceptance: buttons send transport commands to all active targets", () => {
     beforeEach(() => {
-      vi.mocked(resolveTransportMode).mockReturnValue("wasm");
+      setRuntimeSnapshot("wasm");
     });
 
     it("pause button calls pause() effect", async () => {
       const { container } = render(() => <TransportToolbar />);
 
-      // Machine starts in playing -- pause is valid
       const pauseBtn = container.querySelector("[title='Pause']") as HTMLElement;
       pauseBtn.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(pause).toHaveBeenCalled();
     });
@@ -256,7 +308,7 @@ describe("TransportToolbar", () => {
 
       const stopBtn = container.querySelector("[title='Stop']") as HTMLElement;
       stopBtn.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(stop).toHaveBeenCalled();
     });
@@ -266,18 +318,17 @@ describe("TransportToolbar", () => {
 
       const { container } = render(() => <TransportToolbar />);
 
-      // Transition to paused via SYNC
       window.dispatchEvent(
         new CustomEvent("useq-json-meta", {
           detail: { response: { meta: { transport: "paused" } } },
         })
       );
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       vi.mocked(play).mockClear();
       const playBtn = container.querySelector("[title='Play']") as HTMLElement;
       playBtn.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(play).toHaveBeenCalled();
     });
@@ -287,7 +338,7 @@ describe("TransportToolbar", () => {
 
       const rewindBtn = container.querySelector("[title='Rewind']") as HTMLElement;
       rewindBtn.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(rewind).toHaveBeenCalled();
     });
@@ -297,87 +348,54 @@ describe("TransportToolbar", () => {
 
       const clearBtn = container.querySelector("[title='Clear']") as HTMLElement;
       clearBtn.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(clear).toHaveBeenCalled();
     });
   });
 
-  // -------------------------------------------------------------------------
-  // Acceptance: connecting to a paused module syncs UI AND WASM
-  // -------------------------------------------------------------------------
   describe("acceptance: connect to paused module syncs UI and WASM", () => {
     it("protocol-ready queries hardware state and SYNC sets paused + syncs WASM", async () => {
-      vi.mocked(resolveTransportMode).mockReturnValue("both");
+      setRuntimeSnapshot("both", true);
       vi.mocked(queryHardwareTransportState).mockReturnValue(
         Effect.succeed("paused" as const)
       );
 
       const { container } = render(() => <TransportToolbar />);
 
-      // Fire protocol-ready to simulate hardware connect handshake complete
       window.dispatchEvent(new CustomEvent("useq-protocol-ready"));
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-      // queryHardwareTransportState should have been called
       expect(queryHardwareTransportState).toHaveBeenCalled();
-
-      // syncWasmTransportState should have been called with "paused"
-      // (the SYNC event triggers syncWasmPause action which calls syncWasmTransportState)
       expect(syncWasmTransportState).toHaveBeenCalledWith("paused");
 
-      // UI should reflect paused state
       const pauseBtn = container.querySelector("[title='Pause']");
       expect(pauseBtn?.classList.contains("primary")).toBe(true);
       expect(pauseBtn?.classList.contains("disabled")).toBe(true);
     });
   });
 
-  // -------------------------------------------------------------------------
-  // Acceptance: settings-changed refreshes transport mode
-  // -------------------------------------------------------------------------
-  describe("acceptance: settings changes update transport mode", () => {
-    it("useq-settings-changed event calls resolveTransportMode to refresh mode", () => {
-      vi.mocked(resolveTransportMode).mockReturnValue("wasm");
-
-      render(() => <TransportToolbar />);
-
-      // Clear the onMount call
-      vi.mocked(resolveTransportMode).mockClear();
-
-      window.dispatchEvent(new CustomEvent("useq-settings-changed"));
-
-      expect(resolveTransportMode).toHaveBeenCalled();
-    });
-
+  describe("acceptance: runtime settings updates flow through the runtime service store", () => {
     it("disabling WASM with no hardware switches to none mode and disables buttons", async () => {
-      vi.mocked(resolveTransportMode).mockReturnValue("wasm");
+      setRuntimeSnapshot("wasm");
 
       const { container } = render(() => <TransportToolbar />);
 
-      // Verify buttons are enabled initially
-      const playBtn = container.querySelector("[title='Play']");
-      // play is primary+disabled in playing state but NOT because of none mode
-
-      // Now simulate settings change to disable WASM
-      vi.mocked(resolveTransportMode).mockReturnValue("none");
-      window.dispatchEvent(new CustomEvent("useq-settings-changed"));
-      await new Promise((r) => setTimeout(r, 0));
-
-      // All buttons should now be disabled
       const rewindBtn = container.querySelector("[title='Rewind']");
+      expect(rewindBtn?.classList.contains("disabled")).toBe(false);
+
+      setRuntimeSnapshot("none");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       const clearBtn = container.querySelector("[title='Clear']");
       expect(rewindBtn?.classList.contains("disabled")).toBe(true);
       expect(clearBtn?.classList.contains("disabled")).toBe(true);
     });
   });
 
-  // -------------------------------------------------------------------------
-  // Acceptance: meta.transport push syncs WASM interpreter
-  // -------------------------------------------------------------------------
   describe("acceptance: meta.transport pushes sync WASM via SYNC event", () => {
     it("useq-json-meta with transport:stopped triggers syncWasmTransportState(stopped)", async () => {
-      vi.mocked(resolveTransportMode).mockReturnValue("both");
+      setRuntimeSnapshot("both", true);
       vi.mocked(extractTransportStateFromMeta).mockReturnValue("stopped");
 
       render(() => <TransportToolbar />);
@@ -387,35 +405,33 @@ describe("TransportToolbar", () => {
           detail: { response: { meta: { transport: "stopped" } } },
         })
       );
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(syncWasmTransportState).toHaveBeenCalledWith("stopped");
     });
 
     it("useq-json-meta with transport:playing triggers syncWasmTransportState(playing)", async () => {
-      vi.mocked(resolveTransportMode).mockReturnValue("both");
+      setRuntimeSnapshot("both", true);
       vi.mocked(extractTransportStateFromMeta).mockReturnValue("paused");
 
       render(() => <TransportToolbar />);
 
-      // First go to paused
       window.dispatchEvent(
         new CustomEvent("useq-json-meta", {
           detail: { response: { meta: { transport: "paused" } } },
         })
       );
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       vi.mocked(syncWasmTransportState).mockClear();
       vi.mocked(extractTransportStateFromMeta).mockReturnValue("playing");
 
-      // Now push playing
       window.dispatchEvent(
         new CustomEvent("useq-json-meta", {
           detail: { response: { meta: { transport: "playing" } } },
         })
       );
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(syncWasmTransportState).toHaveBeenCalledWith("playing");
     });

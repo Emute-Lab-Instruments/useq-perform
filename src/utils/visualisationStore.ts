@@ -1,4 +1,10 @@
 import { createStore, reconcile } from "solid-js/store";
+import {
+  SERIAL_VIS_PALETTE_CHANGED_EVENT,
+  VISUALISATION_SESSION_EVENT,
+  addVisualisationEventListener,
+  type VisualisationSessionDetail,
+} from "../contracts/visualisationEvents";
 
 // Channel definitions matching legacy serialVis/utils.mjs
 export const SERIAL_VIS_CHANNELS = [
@@ -65,6 +71,14 @@ export interface VisualisationState {
   palette: string[];
 }
 
+/**
+ * Named session type for the cross-layer visualisation payload.
+ *
+ * Components and adapters should reference VisualisationSession rather than
+ * the internal VisualisationState alias so the type boundary is explicit.
+ */
+export type VisualisationSession = VisualisationState;
+
 const DEFAULT_SETTINGS: VisSettings = {
   windowDuration: 10,
   sampleCount: 100,
@@ -100,23 +114,15 @@ export const [visStore, setVisStore] = createStore<VisualisationState>(initialSt
 // ---------------------------------------------------------------------------
 
 /**
- * Ingest a `useq-visualisation-changed` event detail from the legacy
- * visualisationController.  This converts the Map-based expressions into
- * a plain Record so Solid's store proxy can track individual keys.
+ * Ingest a serializable visualisation session snapshot from the legacy
+ * visualisation controller adapter.
  */
-export function applyVisualisationEvent(detail: {
-  kind?: string;
-  currentTimeSeconds?: number;
-  displayTimeSeconds?: number;
-  settings?: Partial<VisSettings>;
-  expressions?: Map<string, any>;
-  bar?: number;
-}) {
+export function applyVisualisationEvent(detail: VisualisationSessionDetail) {
   const expressionsRecord: Record<string, VisExpression> = {};
   if (detail.expressions) {
-    for (const [key, expr] of detail.expressions.entries()) {
+    for (const [key, expr] of Object.entries(detail.expressions)) {
       expressionsRecord[key] = {
-        exprType: expr.exprType,
+        exprType: expr?.exprType ?? key,
         expressionText: expr.expressionText ?? "",
         samples: Array.isArray(expr.samples) ? expr.samples : [],
         color: expr.color ?? null,
@@ -165,17 +171,20 @@ export function setVisPalette(palette: string[]) {
 }
 
 // ---------------------------------------------------------------------------
-// Window event bridge — connects legacy events to the Solid store
+// Named adapter boundary — this is the single authorised place where the
+// visualisation events are ingested into the typed Solid store here. All
+// other modules must consume visualisation state through visStore, not by
+// listening to the browser events directly.
 // ---------------------------------------------------------------------------
 
 if (typeof window !== "undefined") {
-  window.addEventListener("useq-visualisation-changed", ((event: CustomEvent) => {
-    applyVisualisationEvent(event.detail);
-  }) as EventListener);
+  addVisualisationEventListener(VISUALISATION_SESSION_EVENT, (detail) => {
+    applyVisualisationEvent(detail);
+  });
 
-  window.addEventListener("useq-serialvis-palette-changed", ((event: CustomEvent) => {
-    if (Array.isArray(event.detail?.palette)) {
-      setVisPalette(event.detail.palette);
+  addVisualisationEventListener(SERIAL_VIS_PALETTE_CHANGED_EVENT, (detail) => {
+    if (Array.isArray(detail?.palette)) {
+      setVisPalette(detail.palette);
     }
-  }) as EventListener);
+  });
 }

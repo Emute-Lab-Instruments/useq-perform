@@ -1,5 +1,6 @@
-import { Show, createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import { RadialMenu, type RadialTheme } from "./RadialMenu";
+import { pushOverlay } from "./overlayManager";
 
 export type PickerEntry = {
   label: string;
@@ -255,8 +256,15 @@ export function DoubleRadialPicker(props: DoubleRadialPickerProps) {
     }
   };
 
-  window.addEventListener("gamepadpickerinput", onPickerEvent as EventListener);
-  onCleanup(() => window.removeEventListener("gamepadpickerinput", onPickerEvent as EventListener));
+  let popOverlay: (() => void) | undefined;
+  onMount(() => {
+    window.addEventListener("gamepadpickerinput", onPickerEvent as EventListener);
+    popOverlay = pushOverlay("double-radial-picker", cancel);
+  });
+  onCleanup(() => {
+    window.removeEventListener("gamepadpickerinput", onPickerEvent as EventListener);
+    popOverlay?.();
+  });
 
   // Pointer interactions
   const handleLeftSelect = (idx: number) => setCategory(idx);
@@ -327,5 +335,4 @@ export function DoubleRadialPicker(props: DoubleRadialPickerProps) {
     </div>
   );
 }
-
 

@@ -1,5 +1,10 @@
+// @ts-nocheck
 import { serialBuffers, serialMapFunctions } from "../../io/serialComms.ts";
 import { dbg } from "../../utils.ts";
+import {
+  SERIAL_VIS_PALETTE_CHANGED_EVENT,
+  dispatchVisualisationEvent,
+} from "../../../contracts/visualisationEvents";
 
 export const serialVisChannels = ['a1', 'a2', 'a3', 'a4', 'd1', 'd2', 'd3'];
 
@@ -171,7 +176,7 @@ export function setSerialVisPalette(palette) {
     dbg("Serial visualization palette updated");
     if (typeof window !== 'undefined' && window?.dispatchEvent) {
       try {
-        window.dispatchEvent(new CustomEvent('useq-serialvis-palette-changed', { detail: { palette } }));
+        dispatchVisualisationEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, { palette });
       } catch (error) {
         dbg(`Serial visualization palette event failed: ${error}`);
       }

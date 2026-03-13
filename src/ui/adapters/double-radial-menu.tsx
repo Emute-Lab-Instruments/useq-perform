@@ -28,23 +28,8 @@ const [stickThreshold, setStickThreshold] = createSignal<number | undefined>(und
 let onSelectRef: ((entry: PickerEntry) => void) | null = null;
 let onCancelRef: (() => void) | null = null;
 
-let prevBodyOverflow: string | null = null;
-
-function lockScroll(): void {
-  if (prevBodyOverflow !== null) return;
-  prevBodyOverflow = document.body.style.overflow;
-  document.body.style.overflow = "hidden";
-}
-
-function unlockScroll(): void {
-  if (prevBodyOverflow === null) return;
-  document.body.style.overflow = prevBodyOverflow;
-  prevBodyOverflow = null;
-}
-
 function closeMenu(): void {
   setIsOpen(false);
-  unlockScroll();
 }
 
 /**
@@ -61,7 +46,6 @@ export function open(opts: OpenOptions): () => void {
   onSelectRef = typeof opts.onSelect === "function" ? opts.onSelect : null;
   onCancelRef = typeof opts.onCancel === "function" ? opts.onCancel : null;
 
-  lockScroll();
   setIsOpen(true);
 
   return closeMenu;

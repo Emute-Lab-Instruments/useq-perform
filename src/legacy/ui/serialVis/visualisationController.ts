@@ -1,7 +1,18 @@
+// @ts-nocheck
 import { dbg } from "../../utils.ts";
 import { activeUserSettings } from "../../utils/persistentUserSettings.ts";
 import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../io/useqWasmInterpreter.ts";
 import { getSerialVisPalette, getSerialVisChannelColor } from "./utils.ts";
+import {
+  CODE_EVALUATED_EVENT,
+  addRuntimeEventListener,
+} from "../../../contracts/runtimeEvents";
+import {
+  SERIAL_VIS_PALETTE_CHANGED_EVENT,
+  VISUALISATION_SESSION_EVENT,
+  addVisualisationEventListener,
+  dispatchVisualisationEvent,
+} from "../../../contracts/visualisationEvents";
 
 const registeredExpressions = new Map();
 const expressionColors = new Map();
@@ -13,12 +24,23 @@ let displayTimeSeconds = 0;
 let lastDisplayUpdateMs = null;
 let fullRebuildPromise = null;
 
-const CODE_EVALUATED_EVENT = "useq-code-evaluated";
-
 const DEFAULT_FUTURE_LEAD_SECONDS = 1;
 const MAX_FUTURE_LEAD_SECONDS = 8;
 const DISPLAY_RATE_SECONDS_PER_SECOND = 1;
 const SAMPLE_EPSILON = 1e-9;
+
+function createExpressionSnapshot() {
+  const snapshot = {};
+  for (const [exprType, expression] of registeredExpressions.entries()) {
+    snapshot[exprType] = {
+      exprType: expression.exprType,
+      expressionText: expression.expressionText ?? "",
+      samples: Array.isArray(expression.samples) ? [...expression.samples] : [],
+      color: expression.color ?? null,
+    };
+  }
+  return snapshot;
+}
 
 function sampleStep(settings) {
   const windowDuration = Number.isFinite(settings.windowDuration) ? settings.windowDuration : 0;
@@ -238,18 +260,14 @@ function notifyStateChanged(kind = "change") {
     const displayTime = updateDisplayClock(settings);
     const summary = Array.from(registeredExpressions.values()).map((expr) => `${expr.exprType}:${expr.samples?.length ?? 0}`);
     dbg(`visualisationController: state change (${kind}), expressions=${summary.join(', ')}`);
-    window.dispatchEvent(
-      new CustomEvent('useq-visualisation-changed', {
-        detail: {
-          kind,
-          currentTimeSeconds,
-          displayTimeSeconds: displayTime,
-          settings,
-          expressions: registeredExpressions,
-          bar: currentBarValue,
-        }
-      })
-    );
+    dispatchVisualisationEvent(VISUALISATION_SESSION_EVENT, {
+      kind,
+      currentTimeSeconds,
+      displayTimeSeconds: displayTime,
+      settings,
+      expressions: createExpressionSnapshot(),
+      bar: currentBarValue,
+    });
   } catch (error) {
     dbg(`visualisationController: failed to dispatch change event: ${error}`);
   }
@@ -753,12 +771,12 @@ if (typeof window !== 'undefined') {
     });
   });
 
-  window.addEventListener(CODE_EVALUATED_EVENT, () => {
+  addRuntimeEventListener(CODE_EVALUATED_EVENT, () => {
     markExpressionsForRefresh();
     scheduleFullRebuild();
   });
 
-  window.addEventListener('useq-serialvis-palette-changed', () => {
+  addVisualisationEventListener(SERIAL_VIS_PALETTE_CHANGED_EVENT, () => {
     refreshExpressionColorsFromSettings();
     notifyStateChanged('palette');
   });

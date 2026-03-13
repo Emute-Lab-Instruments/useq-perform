@@ -8,7 +8,7 @@ const meta: Meta = {
   render: () => {
     const container = document.createElement("div");
     container.className = "panel-tab-content";
-    render(() => <ConfigurationManagement />, container);
+    render(() => <ConfigurationManagement devmode />, container);
     return container;
   },
 };

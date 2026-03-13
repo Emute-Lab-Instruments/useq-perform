@@ -1,6 +1,10 @@
 import { dbg } from "../utils.ts";
 import { activeUserSettings } from "../utils/persistentUserSettings.ts";
 import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract";
+import {
+  CODE_EVALUATED_EVENT,
+  dispatchRuntimeEvent,
+} from "../../contracts/runtimeEvents";
 
 /** Time-series sample point */
 export interface TimeSample {
@@ -42,7 +46,6 @@ declare global {
 const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise: Promise<void> | null = null;
 let runtimePromise: Promise<UseqRuntime> | null = null;
-const CODE_EVALUATED_EVENT = "useq-code-evaluated";
 function isUseqWasmEnabled(): boolean {
   try {
     return (activeUserSettings as any)?.wasm?.enabled ?? true;
@@ -427,7 +430,7 @@ export async function evalInUseqWasm(code: string): Promise<string | null> {
 
   if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
     try {
-      window.dispatchEvent(new CustomEvent(CODE_EVALUATED_EVENT, { detail: { code } }));
+      dispatchRuntimeEvent(CODE_EVALUATED_EVENT, { code });
     } catch (error) {
       dbg(`useqWasmInterpreter: failed to dispatch ${CODE_EVALUATED_EVENT} event: ${error}`);
     }
@@ -480,3 +483,57 @@ export async function evalOutputsInTimeWindow(
   }
   return sampleMap;
 }
+
+/**
+ * Capability report for a WasmRuntimePort instance.
+ *
+ * Allows callers to discover which operations are actually available before
+ * attempting them, without relying on try/catch at call sites.
+ */
+export interface WasmCapabilities {
+  /** Whether the WASM runtime is enabled in user settings. */
+  readonly enabled: boolean;
+  /** Whether eval operations are available. */
+  readonly supportsEval: boolean;
+  /** Whether time-window batch evaluation is available. */
+  readonly supportsTimeWindow: boolean;
+}
+
+/**
+ * Typed boundary for the uSEQ WASM interpreter capabilities.
+ *
+ * Consumers should depend on this interface rather than importing individual
+ * functions directly, so the concrete implementation can be replaced or mocked.
+ */
+export interface WasmRuntimePort {
+  /** Report what this port can actually do at runtime. */
+  capabilities(): WasmCapabilities;
+  /** Evaluate uSEQ Lisp code and return the result string, or null if WASM is disabled. */
+  eval(code: string): Promise<string | null>;
+  /** Sync the hardware transport state to the WASM interpreter. */
+  syncTransportState(state: TransportState): Promise<string | null>;
+  /** Advance the WASM interpreter's internal clock. */
+  updateTime(timeSeconds: number): Promise<void>;
+  /** Evaluate a single named output at a given time. */
+  evalOutputAtTime(name: string, timeSeconds: number): Promise<number>;
+  /** Evaluate multiple outputs across a time window. */
+  evalOutputsInTimeWindow(
+    outputs: string[],
+    startTime: number,
+    endTime: number,
+    numSamples: number
+  ): Promise<SampleSeriesMap>;
+}
+
+/** Concrete WasmRuntimePort backed by the embedded WASM interpreter. */
+export const wasmRuntimePort: WasmRuntimePort = {
+  capabilities(): WasmCapabilities {
+    const enabled = isUseqWasmEnabled();
+    return { enabled, supportsEval: enabled, supportsTimeWindow: enabled };
+  },
+  eval: evalInUseqWasm,
+  syncTransportState: syncWasmTransportState,
+  updateTime: updateUseqWasmTime,
+  evalOutputAtTime,
+  evalOutputsInTimeWindow,
+};

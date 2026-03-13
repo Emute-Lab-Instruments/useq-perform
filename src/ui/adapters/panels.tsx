@@ -6,11 +6,13 @@
  * (Pane, Drawer, or Tile).
  */
 import { render } from "solid-js/web";
-import { Show, createSignal } from "solid-js";
+import { Show, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { PanelChrome } from "../panel-chrome/PanelChrome";
 import { DesignSelector } from "../panel-chrome/DesignSelector";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import { HelpPanel } from "../help/HelpPanel";
+import { pushOverlay } from "../overlayManager";
+import { registerPanelControls } from "./panelControls";
 import "../panel-chrome/panel-chrome.css";
 
 // ---- Visibility signals ----
@@ -76,6 +78,11 @@ export function hideAllPanels() {
   }
 }
 
+registerPanelControls({
+  hideAllPanels,
+  togglePanelVisibility,
+});
+
 // ---- Mount helpers ----
 
 function isBrowser(): boolean {
@@ -83,6 +90,21 @@ function isBrowser(): boolean {
 }
 
 let panelRootMounted = false;
+
+function ManagedPanel(props: {
+  panelId: string;
+  onClose: () => void;
+  children: JSX.Element;
+}) {
+  let popOverlay: (() => void) | undefined;
+  onMount(() => {
+    popOverlay = pushOverlay(`panel:${props.panelId}`, props.onClose);
+  });
+  onCleanup(() => {
+    popOverlay?.();
+  });
+  return <>{props.children}</>;
+}
 
 function ensurePanelRoot(): HTMLElement {
   const existing = document.getElementById("solid-panel-root");
@@ -104,23 +126,27 @@ function mountPanelRoot() {
     () => (
       <>
         <Show when={settingsVisible()}>
-          <PanelChrome
-            panelId="settings"
-            title="Settings"
-            onClose={() => setSettingsVisible(false)}
-          >
-            <SettingsPanel />
-          </PanelChrome>
+          <ManagedPanel panelId="settings" onClose={() => setSettingsVisible(false)}>
+            <PanelChrome
+              panelId="settings"
+              title="Settings"
+              onClose={() => setSettingsVisible(false)}
+            >
+              <SettingsPanel />
+            </PanelChrome>
+          </ManagedPanel>
         </Show>
 
         <Show when={helpVisible()}>
-          <PanelChrome
-            panelId="help"
-            title="Help"
-            onClose={() => setHelpVisible(false)}
-          >
-            <HelpPanel />
-          </PanelChrome>
+          <ManagedPanel panelId="help" onClose={() => setHelpVisible(false)}>
+            <PanelChrome
+              panelId="help"
+              title="Help"
+              onClose={() => setHelpVisible(false)}
+            >
+              <HelpPanel />
+            </PanelChrome>
+          </ManagedPanel>
         </Show>
       </>
     ),

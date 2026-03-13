@@ -1,8 +1,8 @@
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 import { Section, FormRow, Select, NumberInput, Checkbox } from "./FormControls";
 import { themes, setMainEditorTheme } from "../../legacy/editors/themes/themeManager.ts";
-import { setFontSize } from "../../legacy/editors/editorConfig.ts";
-import { EditorView } from "@codemirror/view";
+import { editor } from "../../lib/editorStore";
+import { applyEditorFontSize } from "../../effects/editor";
 
 export function EditorSettings() {
   const themeOptions = () =>
@@ -29,16 +29,10 @@ export function EditorSettings() {
           fontSize,
         },
       });
-      const editorEl = document.querySelector("#panel-main-editor .cm-editor");
-      if (editorEl) {
-        try {
-          const editor = EditorView.findFromDOM(editorEl);
-          if (editor) {
-            setFontSize(editor, fontSize);
-          }
-        } catch (e) {
-          console.error("Failed to find EditorView from DOM", e);
-        }
+
+      const currentEditor = editor();
+      if (currentEditor) {
+        applyEditorFontSize(currentEditor, fontSize);
       }
     }
   };

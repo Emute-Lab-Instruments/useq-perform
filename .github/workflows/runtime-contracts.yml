@@ -1,0 +1,61 @@
+name: Runtime Contracts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - codex/**
+
+jobs:
+  runtime-contracts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Runtime contract tests
+        run: npm run test:contracts
+
+      - name: Unit tests (jsdom browser environment)
+        run: npm run test:unit
+
+      - name: Install Playwright browsers (Chromium)
+        run: npx playwright install chromium --with-deps
+
+      - name: Storybook browser smoke tests (Chromium)
+        run: npx vitest run --project storybook
+
+      - name: Build app bundle
+        run: npm run build
+
+      - name: Build Storybook
+        run: npm run build-storybook
+
+      - name: Install native test deps
+        run: sudo apt-get update && sudo apt-get install -y meson ninja-build
+
+      - name: Build src-useq JSON protocol test
+        working-directory: src-useq
+        run: |
+          meson setup build --buildtype=debug
+          ninja -C build test/test_json_protocol
+
+      - name: Run src-useq JSON protocol test
+        run: src-useq/build/test/test_json_protocol
+
+      - name: Assert pinned src-useq status
+        run: npm run src-useq:status

@@ -1,4 +1,10 @@
 import type { RuntimeSessionSnapshot } from "./runtimeSession";
+import {
+  BOOTSTRAP_FAILURE_EVENT,
+  dispatchRuntimeEvent,
+  RUNTIME_DIAGNOSTICS_EVENT,
+} from "../contracts/runtimeEvents";
+import { resolveBootstrapPlan } from "./bootstrapPlan";
 
 export type RuntimeProtocolMode = "legacy" | "json";
 export type RuntimeSettingsSource =
@@ -69,19 +75,10 @@ let currentDiagnostics: RuntimeDiagnosticsSnapshot = {
 };
 
 function emitDiagnosticsEvent(
-  name: "useq-runtime-diagnostics" | "useq-bootstrap-failure",
+  name: typeof RUNTIME_DIAGNOSTICS_EVENT | typeof BOOTSTRAP_FAILURE_EVENT,
   detail: RuntimeDiagnosticsSnapshot | RuntimeBootstrapFailure
 ): void {
-  if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
-    return;
-  }
-
-  const EventCtor = window.CustomEvent ?? globalThis.CustomEvent;
-  if (typeof EventCtor !== "function") {
-    return;
-  }
-
-  window.dispatchEvent(new EventCtor(name, { detail }));
+  dispatchRuntimeEvent(name, detail as never);
 }
 
 export function resolveStartupMode(input: {
@@ -89,20 +86,18 @@ export function resolveStartupMode(input: {
   isWebSerialAvailable: boolean;
   noModuleMode: boolean;
   startLocallyWithoutHardware?: boolean;
+  wasmEnabled?: boolean;
 }): StartupMode {
-  if (input.noModuleMode) {
-    return "no-module";
-  }
-
-  if (
-    !input.areInBrowser ||
-    !input.isWebSerialAvailable ||
-    input.startLocallyWithoutHardware
-  ) {
+  if (!input.areInBrowser) {
     return "browser-local";
   }
 
-  return "hardware";
+  return resolveBootstrapPlan({
+    noModuleMode: input.noModuleMode,
+    isWebSerialAvailable: input.isWebSerialAvailable,
+    wasmEnabled: input.wasmEnabled ?? true,
+    startLocallyWithoutHardware: input.startLocallyWithoutHardware ?? true,
+  }).startupMode;
 }
 
 export function getRuntimeDiagnostics(): RuntimeDiagnosticsSnapshot {
@@ -135,7 +130,7 @@ export function publishRuntimeDiagnostics(
       : [...currentDiagnostics.bootstrapFailures],
   };
 
-  emitDiagnosticsEvent("useq-runtime-diagnostics", getRuntimeDiagnostics());
+  emitDiagnosticsEvent(RUNTIME_DIAGNOSTICS_EVENT, getRuntimeDiagnostics());
   return getRuntimeDiagnostics();
 }
 
@@ -153,8 +148,8 @@ export function reportBootstrapFailure(
     bootstrapFailures: [...currentDiagnostics.bootstrapFailures, failure],
   };
 
-  emitDiagnosticsEvent("useq-bootstrap-failure", failure);
-  emitDiagnosticsEvent("useq-runtime-diagnostics", getRuntimeDiagnostics());
+  emitDiagnosticsEvent(BOOTSTRAP_FAILURE_EVENT, failure);
+  emitDiagnosticsEvent(RUNTIME_DIAGNOSTICS_EVENT, getRuntimeDiagnostics());
   return failure;
 }
 

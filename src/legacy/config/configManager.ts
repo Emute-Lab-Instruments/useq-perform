@@ -6,15 +6,18 @@
  */
 
 import {
-  defaultConfiguration,
   validateConfiguration,
-  mergeConfigurations,
-  extractConfiguration,
   getConfigurationDiff
 } from './configSchema.ts';
 import { activeUserSettings, updateUserSettings } from '../utils/persistentUserSettings.ts';
 import { getAllControlValues } from '../io/mockControlInputs.ts';
 import { dbg } from '../utils.ts';
+import {
+  createConfigurationDocument,
+  createDefaultUserSettings,
+  mergeUserSettings,
+  settingsPatchFromConfiguration,
+} from './appSettings.ts';
 
 const CONFIG_WS_URL = 'ws://localhost:8081';
 const CONFIG_DEFAULT_PATH = 'src/legacy/config/default-config.json';
@@ -36,12 +39,11 @@ export function exportConfiguration(options = {}) {
   dbg('configManager: Exporting configuration', options);
 
   // Extract base configuration from active settings
-  const config = extractConfiguration(activeUserSettings);
-
-  // Optionally include editor code
-  if (includeCode && activeUserSettings.editor?.code) {
-    config.user.editor.code = activeUserSettings.editor.code;
-  }
+  const config = createConfigurationDocument(activeUserSettings, {
+    includeCode,
+    includeDevMode,
+    metadataSource: 'webapp-export',
+  });
 
   // Optionally include devMode settings
   if (includeDevMode) {
@@ -77,11 +79,12 @@ export function importConfiguration(config, options = {}) {
   }
 
   // Apply configuration
+  const importedSettings = settingsPatchFromConfiguration(config);
   let newSettings;
   if (merge) {
-    newSettings = mergeConfigurations(activeUserSettings, config.user);
+    newSettings = mergeUserSettings(activeUserSettings, importedSettings);
   } else {
-    newSettings = config.user;
+    newSettings = mergeUserSettings(createDefaultUserSettings(), importedSettings);
   }
 
   // Update active settings
