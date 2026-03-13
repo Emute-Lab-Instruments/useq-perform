@@ -11,6 +11,7 @@ import {
   writePersistedUserSettings,
   type AppSettings,
 } from "../legacy/config/appSettings.ts";
+import { defaultMainEditorStartingCode } from "../legacy/editors/defaults.ts";
 import {
   publishRuntimeDiagnostics,
   type RuntimeSettingsSource,
@@ -85,6 +86,10 @@ function resolveRepositoryStartupFlags(): StartupFlags {
 
 async function loadCodeOverrideFromStartupFlags(): Promise<string | null> {
   const startupFlags = resolveRepositoryStartupFlags();
+
+  if (startupFlags.params.default !== undefined) {
+    return defaultMainEditorStartingCode;
+  }
 
   if (startupFlags.params.gist) {
     const gistId = parseGistId(startupFlags.params.gist);
