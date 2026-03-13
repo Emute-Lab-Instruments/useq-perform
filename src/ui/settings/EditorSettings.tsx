@@ -50,7 +50,7 @@ export function EditorSettings() {
     <Section title="Editor Settings">
       <FormRow label="Editor Theme">
         <Select
-          value={settings.editor?.theme || "default"}
+          value={settings.editor?.theme || "uSEQ Dark"}
           options={themeOptions()}
           onChange={handleThemeChange}
         />

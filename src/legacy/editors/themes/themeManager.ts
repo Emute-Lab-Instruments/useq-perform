@@ -23,33 +23,37 @@ export function setTheme(editor, themeName) {
 
 export function setMainEditorTheme(themeName) {
   dbg("themename:", themeName);
-  const editor = mainEditor();
-  if (!editor) {
-    dbg("Editor session not available, skipping theme setting");
+
+  if (!themeRecipes[themeName]) {
+    console.error("themeManager.mjs: Theme recipe not found:", themeName);
     return false;
   }
-  const success = setTheme(editor, themeName);
-  if (success) {
+
+  // Always update CSS variables — this doesn't depend on the editor signal.
+  adjustPanelsToTheme(themeName);
+
+  // Update the serial visualization palette based on theme variant
+  if (themeRecipes[themeName].variant === "dark") {
+    import("../../ui/serialVis/serialVis.ts").then(module => {
+      if (module.setSerialVisPalette && module.serialVisPaletteDark) {
+        module.setSerialVisPalette(module.serialVisPaletteDark);
+      }
+    });
+  } else {
+    import("../../ui/serialVis/serialVis.ts").then(module => {
+      if (module.setSerialVisPalette && module.serialVisPaletteLight) {
+        module.setSerialVisPalette(module.serialVisPaletteLight);
+      }
+    });
+  }
+
+  // Apply the CodeMirror theme if the editor is available.
+  const editor = mainEditor();
+  if (editor) {
+    setTheme(editor, themeName);
     setSnippetEditorsTheme(themeName);
-    
-    // Update the serial visualization palette based on theme variant
-    if (themeRecipes[themeName] && themeRecipes[themeName].variant === "dark") {
-      // Import and use the setter function from serialVis module
-      import("../../ui/serialVis/serialVis.ts").then(module => {
-        if (module.setSerialVisPalette && module.serialVisPaletteDark) {
-          module.setSerialVisPalette(module.serialVisPaletteDark);
-        }
-      });
-    } else {
-      // Use light theme palette for light themes
-      import("../../ui/serialVis/serialVis.ts").then(module => {
-        if (module.setSerialVisPalette && module.serialVisPaletteLight) {
-          module.setSerialVisPalette(module.serialVisPaletteLight);
-        }
-      });
-    }
-    
-    adjustPanelsToTheme(themeName);
+  } else {
+    dbg("Editor session not available, CSS variables updated but editor theme deferred");
   }
 }
 

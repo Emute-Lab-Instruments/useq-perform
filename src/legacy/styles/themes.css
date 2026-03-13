@@ -1,8 +1,5 @@
 /* Theme Panel Styles */
 
-/* Theme Panel */
-
-
 /* Themes Container */
 .themes-container {
   display: flex;
@@ -10,6 +7,10 @@
   gap: 1.5em;
   width: 100%;
   padding-top: 1em;
+}
+
+.themes-container > h2 {
+  grid-column: 1 / -1;
 }
 
 @media (min-width: 1200px) {
@@ -24,7 +25,7 @@
 .theme-preview {
   padding: 1em;
   border-radius: var(--item-border-radius);
-  border: 1px solid var(--panel-border);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   background-color: var(--panel-section-bg);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -33,19 +34,19 @@
 .theme-preview:hover {
   background-color: var(--panel-item-hover-bg);
   transform: translateY(-2px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .theme-preview.active {
   border: 2px solid var(--accent-color);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-color) 40%, transparent);
 }
 
 /* Theme Name */
 .theme-name {
-  font-size: 1.2em;
-  margin-bottom: 1em;
+  font-size: 1.1em;
+  margin-bottom: 0.75em;
   color: var(--accent-color);
   padding: 0px;
-  border-radius: var(--item-border-radius);
   display: inline-block;
 }

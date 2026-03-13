@@ -1,11 +1,30 @@
 import { onMount, onCleanup, For } from "solid-js";
-import { EditorView } from "@codemirror/view";
+import { EditorView, drawSelection } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
-import { themes, setTheme, setMainEditorTheme } from "../../legacy/editors/themes/themeManager.ts";
-import { baseExtensions } from "../../legacy/editors/extensions.ts";
+import { bracketMatching } from "@codemirror/language";
+import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
+import { themes, setMainEditorTheme } from "../../legacy/editors/themes/themeManager.ts";
 import { defaultThemeEditorStartingCode } from "../../legacy/editors/defaults.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 import { hidePanel } from "../adapters/panels";
+
+/** Lightweight read-only extensions for theme preview cards. */
+const previewBaseExtensions: Extension[] = [
+  EditorView.theme({
+    "&": { height: "auto" },
+    ".cm-content": { fontSize: "13px", padding: "4px 0" },
+    ".cm-scroller": { overflow: "hidden" },
+    ".cm-gutters": { display: "none" },
+    "&.cm-focused": { outline: "0 !important" },
+    ".cm-line": { padding: "0 6px", lineHeight: "1.5" },
+    ".cm-cursor": { display: "none" },
+    ".cm-activeLine": { backgroundColor: "transparent" },
+  }),
+  bracketMatching(),
+  drawSelection(),
+  ...clojureExtensions,
+  EditorState.readOnly.of(true),
+];
 
 function ThemePreview(props: { themeName: string; themeExtension: Extension }) {
   let editorParent: HTMLDivElement | undefined;
@@ -15,21 +34,21 @@ function ThemePreview(props: { themeName: string; themeExtension: Extension }) {
     if (editorParent) {
       const state = EditorState.create({
         doc: defaultThemeEditorStartingCode,
-        extensions: [...baseExtensions, props.themeExtension, EditorState.readOnly.of(true)],
+        extensions: [...previewBaseExtensions, props.themeExtension],
       });
 
       view = new EditorView({
         state,
         parent: editorParent,
       });
-
-      setTheme(view, props.themeName);
     }
   });
 
   onCleanup(() => {
     view?.destroy();
   });
+
+  const isActive = () => settings.editor?.theme === props.themeName;
 
   const handleClick = () => {
     updateSettingsStore({
@@ -45,9 +64,9 @@ function ThemePreview(props: { themeName: string; themeExtension: Extension }) {
   };
 
   return (
-    <div class="theme-preview panel-section" onClick={handleClick}>
+    <div class="theme-preview panel-section" classList={{ active: isActive() }} onClick={handleClick}>
       <div class="theme-name">{props.themeName}</div>
-      <div ref={editorParent} />
+      <div ref={editorParent} style={{ "max-height": "180px", overflow: "hidden", "border-radius": "4px" }} />
     </div>
   );
 }
