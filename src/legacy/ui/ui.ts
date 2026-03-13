@@ -2,6 +2,13 @@ import { initEditorPanel } from "../editors/main.ts";
 import { initGamepadControl } from "../editors/gamepadControl.ts";
 import { reportBootstrapFailure } from "../../runtime/runtimeDiagnostics.ts";
 import { registerVisualisationPanel } from "../../ui/adapters/visualisationPanel";
+// Static imports: these modules are also imported statically by other modules
+// (application.ts, gamepadControl.ts, effects/editor.ts, etc.) so dynamic imports
+// would never move them to a separate chunk.
+import { setEditor } from "../../lib/editorStore.ts";
+import { mountModal } from "../../ui/adapters/modal.tsx";
+import { mountPickerMenu } from "../../ui/adapters/picker-menu.tsx";
+import { mountDoubleRadialMenu } from "../../ui/adapters/double-radial-menu.tsx";
 
 let editor: any = null;
 let topToolbarResizeObserver: ResizeObserver | null = null;
@@ -73,23 +80,20 @@ export async function createAppUI(environmentState: any) {
     if (visPanelEl) visPanelEl.style.display = "none";
 
     // Mount Solid UI adapters and wire editor store.
-    // The try/catch handles Node.js test environments where .tsx/.ts Solid imports fail.
+    // panels.tsx and toolbars.tsx are loaded dynamically so Vite can split them into
+    // separate chunks. The try/catch guards against mount-time failures.
     try {
-        const [editorStore, panels, toolbars, modal, pickerMenu, doubleRadialMenu] = await Promise.all([
-            import("../../lib/editorStore.ts"),
+        const [panels, toolbars] = await Promise.all([
             import("../../ui/adapters/panels.tsx"),
             import("../../ui/adapters/toolbars.tsx"),
-            import("../../ui/adapters/modal.tsx"),
-            import("../../ui/adapters/picker-menu.tsx"),
-            import("../../ui/adapters/double-radial-menu.tsx"),
         ]);
-        editorStore.setEditor(editor);
+        setEditor(editor);
         // Mount toolbars first (they replace the static HTML toolbar elements)
         toolbars.mountTransportToolbar();
         toolbars.mountMainToolbar();
-        modal.mountModal();
-        pickerMenu.mountPickerMenu();
-        doubleRadialMenu.mountDoubleRadialMenu();
+        mountModal();
+        mountPickerMenu();
+        mountDoubleRadialMenu();
         // Mount panels and design selector
         panels.mountSettingsPanel();
         panels.mountHelpPanel();
