@@ -46,30 +46,59 @@ WASM-only capabilities:
 - Single-output sampling via `useq_eval_output`
 - Optional batched output sampling when the generated bundle exports batch helpers
 
-## Current Pinned WASM Export Floor
+## WASM ABI Contract
 
-The pinned `src-useq/scripts/build_wasm.sh` export list guarantees only:
+The canonical WASM ABI definition lives in `src/contracts/wasmAbi.ts`. This is the single source of truth for which symbols the editor expects from the Emscripten-generated WASM bundle.
 
-- `useq_init`
-- `useq_eval`
-- `useq_update_time`
-- `useq_eval_output`
-- `_free`
+### Required exports (stable ABI floor)
 
-The source tree contains batch-evaluation helpers, but the checked-in generated bundle does not export them today. Treat batch sampling as a probed optimization, not as part of the guaranteed stable core, until `useq-perform-tgf.1.3` explicitly resets that contract.
+These symbols are listed in `src-useq/scripts/build_wasm.sh` under `-s EXPORTED_FUNCTIONS` and MUST be present in every conforming bundle:
+
+| Symbol | cwrap return | cwrap args | Purpose |
+|--------|-------------|------------|---------|
+| `useq_init` | `null` | `[]` | Initialize the interpreter |
+| `useq_eval` | `"string"` | `["string"]` | Evaluate ModuLisp code |
+| `useq_update_time` | `null` | `["number"]` | Inject wall-clock time |
+| `useq_eval_output` | `"number"` | `["string", "number"]` | Sample a named output at a time |
+
+Heap helpers `_malloc` and `_free` are also required (the latter is explicit in the build script; `_malloc` is implicitly available with `ALLOW_MEMORY_GROWTH`).
+
+### Optional exports (probed at instantiation)
+
+These are defined in `wasm_wrapper.cpp` but NOT in the build script export list. The editor probes for them via `tryCwrap` and degrades gracefully:
+
+| Symbol | cwrap return | cwrap args | Purpose |
+|--------|-------------|------------|---------|
+| `useq_eval_outputs_time_window` | `"string"` | `["string", "number", "number", "number"]` | Batch evaluate (JSON bridge) |
+| `useq_eval_outputs_time_window_into` | `"number"` | `["string", "number", "number", "number", "number", "number"]` | Batch evaluate (typed buffer) |
+| `useq_last_error` | `"string"` | `[]` | Read last error message |
+
+Treat batch sampling as a probed optimization, not part of the guaranteed stable core, until the build script explicitly adds these symbols to `EXPORTED_FUNCTIONS`.
+
+### ABI validation
+
+`assertWasmAbi()` from `src/contracts/wasmAbi.ts` is called immediately after `createModule()` resolves and BEFORE `useq_init()`. It throws a descriptive error if any required export is missing, catching ABI drift at instantiation time rather than at first use.
 
 ## Contract Decision
 
 WASM must continue to implement the shared transport builtins above. The editor may fan out only those shared builtins to both runtimes; it must not assume JSON protocol or serial stream parity in WASM.
 
-The canonical editor constants live in `src/contracts/useqRuntimeContract.ts`, and both `src/effects/transport.ts` and `src/legacy/io/useqWasmInterpreter.ts` import from that file instead of maintaining separate command lists.
+The canonical editor constants live in:
+
+- `src/contracts/useqRuntimeContract.ts` — shared transport commands and capability split
+- `src/contracts/wasmAbi.ts` — WASM export signatures and ABI validation
+
+Both `src/effects/transport.ts` and `src/legacy/io/useqWasmInterpreter.ts` import from these files instead of maintaining separate command lists or hard-coded symbol strings.
 
 ## Drift Prevention
 
 The following checks are the minimum guardrail against contract drift:
 
+- `src/contracts/wasmAbi.test.ts` verifies the ABI contract constants match the build script export list, tests ABI validation against mock modules, and ensures required/optional export sets are disjoint.
 - `src/contracts/useqRuntimeContract.test.ts` verifies the shared command set and the hardware-only/WASM-only split.
 - `src-useq/test/hardware/test_json_protocol.cpp` verifies the `hello` I/O contract, `stream-config` output enablement/rate parsing, and that `hello`, `ping`, and `stream-config` parse without `code` while malformed eval requests still fail.
+- `assertWasmAbi()` throws at WASM instantiation time if the bundle does not export required symbols.
+- `assertWasmAbiContract()` throws at module load time if the ABI contract constants are internally inconsistent.
 - `assertEditorRuntimeContract()` throws during module load if the editor’s transport state mapping stops matching the shared command set.
 
 ## Promotion Workflow

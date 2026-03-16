@@ -5,6 +5,12 @@ import {
   CODE_EVALUATED_EVENT,
   dispatchRuntimeEvent,
 } from "../../contracts/runtimeEvents";
+import {
+  assertWasmAbi,
+  REQUIRED_WASM_EXPORTS,
+  OPTIONAL_WASM_EXPORTS,
+  type WasmAbiValidation,
+} from "../../contracts/wasmAbi";
 
 /** Time-series sample point */
 export interface TimeSample {
@@ -126,10 +132,15 @@ function createBatchEvaluator(
   module: EmscriptenModule,
   evaluateOutputAtTime: (name: string, timeSeconds: number) => number
 ): BatchEvaluator {
-  const legacyEval = tryCwrap(module, "useq_eval_outputs_time_window", "string", ["string", "number", "number", "number"]);
-  const typedEval = tryCwrap(module, "useq_eval_outputs_time_window_into", "number", ["string", "number", "number", "number", "number", "number"]);
+  const legacyDesc = OPTIONAL_WASM_EXPORTS.useq_eval_outputs_time_window;
+  const legacyEval = tryCwrap(module, legacyDesc.symbol, legacyDesc.returnType as string, legacyDesc.argTypes as unknown as string[]);
+
+  const typedDesc = OPTIONAL_WASM_EXPORTS.useq_eval_outputs_time_window_into;
+  const typedEval = tryCwrap(module, typedDesc.symbol, typedDesc.returnType as string, typedDesc.argTypes as unknown as string[]);
+
+  const errorDesc = OPTIONAL_WASM_EXPORTS.useq_last_error;
   const readLastError = typedEval
-    ? tryCwrap(module, "useq_last_error", "string", [])
+    ? tryCwrap(module, errorDesc.symbol, errorDesc.returnType as string, errorDesc.argTypes as unknown as string[])
     : null;
 
   const bufferState: BufferState = {
@@ -359,10 +370,29 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   }
 
   const module = await factory();
-  const useq_init = module.cwrap("useq_init", null, []) as () => void;
-  const useq_eval = module.cwrap("useq_eval", "string", ["string"]) as (code: string) => string;
-  const useq_update_time = module.cwrap("useq_update_time", null, ["number"]) as (t: number) => void;
-  const useq_eval_output = module.cwrap("useq_eval_output", "number", ["string", "number"]) as (name: string, t: number) => number;
+
+  // Validate ABI before using the module — fail fast on drift
+  const abiResult: WasmAbiValidation = assertWasmAbi(module);
+
+  if (abiResult.missingOptional.length > 0) {
+    dbg(`useqWasmInterpreter: optional ABI exports not present: ${abiResult.missingOptional.join(", ")}`);
+  }
+  if (abiResult.presentOptional.length > 0) {
+    dbg(`useqWasmInterpreter: optional ABI exports detected: ${abiResult.presentOptional.join(", ")}`);
+  }
+
+  // Bind required exports using contract descriptors
+  const initDesc = REQUIRED_WASM_EXPORTS.useq_init;
+  const useq_init = module.cwrap(initDesc.symbol, initDesc.returnType, initDesc.argTypes as unknown as string[]) as () => void;
+
+  const evalDesc = REQUIRED_WASM_EXPORTS.useq_eval;
+  const useq_eval = module.cwrap(evalDesc.symbol, evalDesc.returnType, evalDesc.argTypes as unknown as string[]) as (code: string) => string;
+
+  const timeDesc = REQUIRED_WASM_EXPORTS.useq_update_time;
+  const useq_update_time = module.cwrap(timeDesc.symbol, timeDesc.returnType, timeDesc.argTypes as unknown as string[]) as (t: number) => void;
+
+  const outputDesc = REQUIRED_WASM_EXPORTS.useq_eval_output;
+  const useq_eval_output = module.cwrap(outputDesc.symbol, outputDesc.returnType, outputDesc.argTypes as unknown as string[]) as (name: string, t: number) => number;
   const evaluateOutputAtTime = (name: string, timeSeconds: number): number => {
     const value = useq_eval_output(name, Number(timeSeconds) || 0);
     return Number.isNaN(value) ? NaN : value;
