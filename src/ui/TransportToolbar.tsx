@@ -1,45 +1,14 @@
 // src/ui/TransportToolbar.tsx
-import { createActor } from "xstate";
-import { createEffect, on, onCleanup, onMount } from "solid-js";
-import { transportMachine } from "../machines/transport.machine";
-import type { TransportState } from "../machines/transport.machine";
+//
+// Pure view component: renders transport controls and sends intents.
+// All side-effects (mock-time clock, runtime sync, WASM mirroring) are
+// owned by the transport orchestrator -- see effects/transportOrchestrator.ts.
+
+import { onCleanup, onMount } from "solid-js";
 import { useActorSignal } from "../lib/useActorSignal";
-import { Effect } from "effect";
-import {
-  play, pause, stop, rewind, clear,
-  queryHardwareTransportState,
-  extractTransportStateFromMeta,
-  syncWasmTransportState,
-} from "../effects/transport";
-import {
-  addRuntimeEventListener,
-  JSON_META_EVENT,
-  PROTOCOL_READY_EVENT,
-  readRuntimeEventDetail,
-  type JsonMetaEventDetail,
-} from "../contracts/runtimeEvents";
-import {
-  getRuntimeServiceSnapshot,
-  subscribeRuntimeService,
-  type RuntimeSessionState,
-} from "../runtime/runtimeService";
-import {
-  startMockTimeGenerator,
-  stopMockTimeGenerator,
-  resumeMockTimeGenerator,
-  resetMockTimeGenerator,
-} from "../legacy/io/mockTimeGenerator.ts";
+import { getTransportOrchestrator } from "../effects/transportOrchestrator";
 import { ProgressBar } from "./ProgressBar";
 import { Play, Pause, Square, Rewind, X } from "lucide-solid";
-
-/**
- * Determine whether the mock time generator should drive visualizations.
- * True when not connected to real hardware but WASM is enabled.
- */
-function shouldUseMockTime(): boolean {
-  const runtimeState = getRuntimeServiceSnapshot();
-  return !runtimeState.session.hasHardwareConnection && runtimeState.session.wasmEnabled;
-}
 
 const TOP_TOOLBAR_HEIGHT_VAR = "--top-toolbar-height";
 
@@ -68,88 +37,11 @@ function updateToolbarHeightVar(el: HTMLElement) {
 export function TransportToolbar() {
   let toolbarRef: HTMLDivElement | undefined;
 
-  const machine = transportMachine.provide({
-    actions: {
-      emitPlay: () => { Effect.runPromise(play()); },
-      emitPause: () => { Effect.runPromise(pause()); },
-      emitStop: () => { Effect.runPromise(stop()); },
-      emitRewind: () => { Effect.runPromise(rewind()); },
-      emitClear: () => { Effect.runPromise(clear()); },
-      syncWasmPlay: () => { Effect.runPromise(syncWasmTransportState("playing")).catch(() => undefined); },
-      syncWasmPause: () => { Effect.runPromise(syncWasmTransportState("paused")).catch(() => undefined); },
-      syncWasmStop: () => { Effect.runPromise(syncWasmTransportState("stopped")).catch(() => undefined); },
-    }
-  });
-  const actor = createActor(machine);
+  // Obtain the singleton orchestrator (creates it on first call).
+  const orchestrator = getTransportOrchestrator();
 
-  const { state, send } = useActorSignal(actor);
-
-  actor.start();
-  onCleanup(() => actor.stop());
-
-  // --- Mock time generator management ---
-  // Track the previous transport state so we can distinguish resume vs fresh start
-  let prevTransportState: TransportState = "playing";
-
-  // React to transport state changes and manage mock time generator accordingly
-  createEffect(
-    on(
-      () => state().value as TransportState,
-      (current) => {
-        const prev = prevTransportState;
-        prevTransportState = current;
-
-        if (!shouldUseMockTime()) return;
-
-        if (current === "playing") {
-          if (prev === "paused") {
-            resumeMockTimeGenerator();
-          } else {
-            startMockTimeGenerator();
-          }
-        } else if (current === "paused") {
-          stopMockTimeGenerator();
-        } else if (current === "stopped") {
-          stopMockTimeGenerator();
-          resetMockTimeGenerator();
-        }
-      },
-      { defer: true } // Skip initial value -- hardware boots playing, no mock needed at init
-    )
-  );
-
-  // --- Runtime sync helpers ---
-
-  /** Push a SYNC event into the machine if the state is valid. */
-  const syncState = (transportState: TransportState | null) => {
-    if (transportState) {
-      send({ type: "SYNC", state: transportState });
-    }
-  };
-
-  /** Refresh the mode context on the machine. */
-  const refreshMode = (runtimeState: RuntimeSessionState = getRuntimeServiceSnapshot()) => {
-    send({ type: "UPDATE_MODE", mode: runtimeState.session.transportMode });
-  };
-
-  // --- Event handlers ---
-  const handleRuntimeStateChange = (runtimeState: RuntimeSessionState) => {
-    if (runtimeState.connected && runtimeState.session.hasHardwareConnection) {
-      stopMockTimeGenerator();
-    }
-
-    refreshMode(runtimeState);
-  };
-
-  const handleProtocolReady = () => {
-    // Query hardware for the real transport state and sync the machine.
-    Effect.runPromise(queryHardwareTransportState()).then(syncState);
-  };
-
-  const handleJsonMeta = (e: Event) => {
-    const detail = readRuntimeEventDetail<typeof JSON_META_EVENT>(e);
-    syncState(extractTransportStateFromMeta(detail));
-  };
+  // Bind the actor's state to a Solid signal for reactivity.
+  const { state, send } = useActorSignal(orchestrator.actor as any);
 
   // --- Layout height tracking ---
   let resizeObserver: ResizeObserver | undefined;
@@ -158,30 +50,8 @@ export function TransportToolbar() {
   };
 
   onMount(() => {
-    let removeProtocolReadyListener: () => void = () => undefined;
-    let removeJsonMetaListener: () => void = () => undefined;
-    let unsubscribeRuntime: () => void = () => undefined;
-
-    // Set initial mode
-    refreshMode();
-
-    // Wire up runtime sync listeners
-    unsubscribeRuntime = subscribeRuntimeService((runtimeState) => {
-      handleRuntimeStateChange(runtimeState);
-    });
-    removeProtocolReadyListener = addRuntimeEventListener(
-      PROTOCOL_READY_EVENT,
-      () => handleProtocolReady()
-    );
-    removeJsonMetaListener = addRuntimeEventListener(
-      JSON_META_EVENT,
-      (_detail: JsonMetaEventDetail, event) => handleJsonMeta(event)
-    );
-
-    // Track toolbar height -> CSS variable
     if (toolbarRef) {
       updateToolbarHeightVar(toolbarRef);
-      // Schedule a second measurement after layout settles
       requestAnimationFrame(() => {
         if (toolbarRef) updateToolbarHeightVar(toolbarRef);
       });
@@ -195,12 +65,6 @@ export function TransportToolbar() {
 
       window.addEventListener("resize", handleWindowResize, { passive: true });
     }
-
-    onCleanup(() => {
-      unsubscribeRuntime();
-      removeProtocolReadyListener();
-      removeJsonMetaListener();
-    });
   });
 
   onCleanup(() => {
@@ -208,6 +72,7 @@ export function TransportToolbar() {
     resizeObserver?.disconnect();
   });
 
+  // --- Derived state ---
   const isPlaying = () => state().value === "playing";
   const isPaused = () => state().value === "paused";
   const isStopped = () => state().value === "stopped";

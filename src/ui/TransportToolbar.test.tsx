@@ -1,5 +1,6 @@
 import { render } from "@solidjs/testing-library";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createActor } from "xstate";
 import { Effect } from "effect";
 
 import { TransportToolbar } from "./TransportToolbar";
@@ -18,6 +19,11 @@ import {
   stopMockTimeGenerator,
   resetMockTimeGenerator,
 } from "../legacy/io/mockTimeGenerator.ts";
+import { transportMachine } from "../machines/transport.machine";
+import type { TransportState } from "../machines/transport.machine";
+import { applyMockTimePolicy } from "../effects/transportClock";
+
+// ── Shared mock runtime-service state ──────────────────────────
 
 const runtimeServiceState = vi.hoisted(() => {
   const listeners = new Set<(snapshot: any) => void>();
@@ -62,6 +68,8 @@ const runtimeServiceState = vi.hoisted(() => {
   };
 });
 
+// ── Module mocks ───────────────────────────────────────────────
+
 vi.mock("../effects/transport", () => ({
   play: vi.fn(() => Effect.succeed(undefined)),
   pause: vi.fn(() => Effect.succeed(undefined)),
@@ -86,6 +94,94 @@ vi.mock("../legacy/io/mockTimeGenerator.ts", () => ({
   resumeMockTimeGenerator: vi.fn(),
   resetMockTimeGenerator: vi.fn(),
 }));
+
+// ── Build a fresh orchestrator per test ─────────────────────────
+
+function buildTestOrchestrator() {
+  const machine = transportMachine.provide({
+    actions: {
+      emitPlay:      () => { Effect.runPromise(play()); },
+      emitPause:     () => { Effect.runPromise(pause()); },
+      emitStop:      () => { Effect.runPromise(stop()); },
+      emitRewind:    () => { Effect.runPromise(rewind()); },
+      emitClear:     () => { Effect.runPromise(clear()); },
+      syncWasmPlay:  () => { Effect.runPromise(syncWasmTransportState("playing")).catch(() => undefined); },
+      syncWasmPause: () => { Effect.runPromise(syncWasmTransportState("paused")).catch(() => undefined); },
+      syncWasmStop:  () => { Effect.runPromise(syncWasmTransportState("stopped")).catch(() => undefined); },
+    },
+  });
+
+  const actor = createActor(machine);
+
+  let prevTransportState: TransportState = "playing";
+  const actorSub = actor.subscribe((snapshot) => {
+    const current = snapshot.value as TransportState;
+    if (current === prevTransportState) return;
+    const prev = prevTransportState;
+    prevTransportState = current;
+    applyMockTimePolicy(current, prev);
+  });
+
+  const rs = runtimeServiceState.getSnapshot();
+  actor.send({ type: "UPDATE_MODE", mode: rs.session.transportMode });
+
+  const unsubRuntime = runtimeServiceState.subscribe((nextRs: any) => {
+    if (nextRs.connected && nextRs.session.hasHardwareConnection) {
+      stopMockTimeGenerator();
+    }
+    actor.send({ type: "UPDATE_MODE", mode: nextRs.session.transportMode });
+  });
+
+  const handleProtocolReady = () => {
+    Effect.runPromise(queryHardwareTransportState()).then((state: TransportState | null) => {
+      if (state) actor.send({ type: "SYNC", state });
+    });
+  };
+
+  const handleJsonMeta = (e: Event) => {
+    const ce = e as CustomEvent;
+    const state = extractTransportStateFromMeta(ce.detail);
+    if (state) actor.send({ type: "SYNC", state });
+  };
+
+  window.addEventListener("useq-protocol-ready", handleProtocolReady);
+  window.addEventListener("useq-json-meta", handleJsonMeta);
+
+  actor.start();
+
+  const dispose = () => {
+    actorSub.unsubscribe();
+    unsubRuntime();
+    window.removeEventListener("useq-protocol-ready", handleProtocolReady);
+    window.removeEventListener("useq-json-meta", handleJsonMeta);
+    actor.stop();
+  };
+
+  return {
+    actor,
+    send: actor.send.bind(actor),
+    getSnapshot: () => actor.getSnapshot(),
+    subscribe: (cb: any) => actor.subscribe(cb),
+    dispose,
+  };
+}
+
+let currentOrchestrator: ReturnType<typeof buildTestOrchestrator> | null = null;
+
+vi.mock("../effects/transportOrchestrator", () => ({
+  getTransportOrchestrator: vi.fn(() => {
+    if (!currentOrchestrator) {
+      currentOrchestrator = buildTestOrchestrator();
+    }
+    return currentOrchestrator;
+  }),
+  disposeTransportOrchestrator: vi.fn(() => {
+    currentOrchestrator?.dispose();
+    currentOrchestrator = null;
+  }),
+}));
+
+// ── Helpers ────────────────────────────────────────────────────
 
 function setRuntimeSnapshot(mode: "none" | "wasm" | "both", connected = false) {
   if (mode === "both") {
@@ -131,10 +227,14 @@ function setRuntimeSnapshot(mode: "none" | "wasm" | "both", connected = false) {
   });
 }
 
+// ── Tests ──────────────────────────────────────────────────────
+
 describe("TransportToolbar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     runtimeServiceState.reset();
+    currentOrchestrator?.dispose();
+    currentOrchestrator = null;
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -146,24 +246,26 @@ describe("TransportToolbar", () => {
   });
 
   afterEach(() => {
+    currentOrchestrator?.dispose();
+    currentOrchestrator = null;
     vi.unstubAllGlobals();
   });
 
   it("shows all transport buttons as disabled in none mode with stop as primary", () => {
     const { container } = render(() => <TransportToolbar />);
 
-    const play = container.querySelector("[title='Play']");
-    const pause = container.querySelector("[title='Pause']");
-    const stop = container.querySelector("[title='Stop']");
-    const rewind = container.querySelector("[title='Rewind']");
-    const clear = container.querySelector("[title='Clear']");
+    const playEl = container.querySelector("[title='Play']");
+    const pauseEl = container.querySelector("[title='Pause']");
+    const stopEl = container.querySelector("[title='Stop']");
+    const rewindEl = container.querySelector("[title='Rewind']");
+    const clearEl = container.querySelector("[title='Clear']");
 
-    expect(play?.classList.contains("disabled")).toBe(true);
-    expect(pause?.classList.contains("disabled")).toBe(true);
-    expect(stop?.classList.contains("disabled")).toBe(true);
-    expect(rewind?.classList.contains("disabled")).toBe(true);
-    expect(clear?.classList.contains("disabled")).toBe(true);
-    expect(stop?.classList.contains("primary")).toBe(true);
+    expect(playEl?.classList.contains("disabled")).toBe(true);
+    expect(pauseEl?.classList.contains("disabled")).toBe(true);
+    expect(stopEl?.classList.contains("disabled")).toBe(true);
+    expect(rewindEl?.classList.contains("disabled")).toBe(true);
+    expect(clearEl?.classList.contains("disabled")).toBe(true);
+    expect(stopEl?.classList.contains("primary")).toBe(true);
   });
 
   it("shows correct button CSS in playing state when runtime service reports wasm mode", () => {
