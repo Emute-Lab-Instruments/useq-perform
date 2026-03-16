@@ -19,6 +19,7 @@
     "jsxImportSource": "solid-js"
   },
   "include": [
+    "src/transport/**/*.ts",
     "src/contracts/**/*.ts",
     "src/effects/**/*.ts",
     "src/lib/**/*.ts",
