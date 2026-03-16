@@ -29,7 +29,7 @@ function setLocation(search = "") {
   window.history.replaceState({}, "", suffix);
 }
 
-describe("persistentUserSettings", () => {
+describe("appSettingsRepository persistence", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
@@ -38,13 +38,14 @@ describe("persistentUserSettings", () => {
   });
 
   it("stores editor code only in the canonical code key", async () => {
-    const settingsModule = await import("./persistentUserSettings.ts");
+    const appSettings = await import("../config/appSettings.ts");
+    const repo = await import("../../runtime/appSettingsRepository.ts");
 
-    settingsModule.replaceUserSettings(
+    repo.replaceAppSettings(
       {
-        ...settingsModule.defaultUserSettings,
+        ...appSettings.defaultUserSettings,
         editor: {
-          ...settingsModule.defaultUserSettings.editor,
+          ...appSettings.defaultUserSettings.editor,
           code: "(play)",
           fontSize: 24,
         },
@@ -52,21 +53,22 @@ describe("persistentUserSettings", () => {
       { persist: true },
     );
 
-    const storedSettings = JSON.parse(window.localStorage.getItem(settingsModule.settingsStorageKey) ?? "{}");
+    const storedSettings = JSON.parse(window.localStorage.getItem(appSettings.settingsStorageKey) ?? "{}");
 
     expect(storedSettings.editor.code).toBeUndefined();
-    expect(window.localStorage.getItem(settingsModule.codeStorageKey)).toBe("(play)");
+    expect(window.localStorage.getItem(appSettings.codeStorageKey)).toBe("(play)");
   }, 10000);
 
   it("loads legacy JSON-encoded code values through the canonical bootstrap path", async () => {
-    const settingsModule = await import("./persistentUserSettings.ts");
+    const appSettings = await import("../config/appSettings.ts");
+    const repo = await import("../../runtime/appSettingsRepository.ts");
     window.localStorage.setItem(
-      settingsModule.settingsStorageKey,
+      appSettings.settingsStorageKey,
       JSON.stringify({ editor: { fontSize: 18 } }),
     );
-    window.localStorage.setItem(settingsModule.codeStorageKey, JSON.stringify("(legacy-json-code)"));
+    window.localStorage.setItem(appSettings.codeStorageKey, JSON.stringify("(legacy-json-code)"));
 
-    const loadedSettings = settingsModule.loadUserSettings();
+    const loadedSettings = repo.loadAppSettings();
 
     expect(loadedSettings.editor.fontSize).toBe(18);
     expect(loadedSettings.editor.code).toBe("(legacy-json-code)");
@@ -74,29 +76,31 @@ describe("persistentUserSettings", () => {
 
   it("does not write local storage when ?nosave is active", async () => {
     setLocation("/?nosave");
-    const settingsModule = await import("./persistentUserSettings.ts");
+    const appSettings = await import("../config/appSettings.ts");
+    const repo = await import("../../runtime/appSettingsRepository.ts");
 
-    settingsModule.replaceUserSettings(
+    repo.replaceAppSettings(
       {
-        ...settingsModule.defaultUserSettings,
+        ...appSettings.defaultUserSettings,
         editor: {
-          ...settingsModule.defaultUserSettings.editor,
+          ...appSettings.defaultUserSettings.editor,
           code: "(do-not-persist)",
         },
       },
       { persist: true },
     );
 
-    expect(window.localStorage.getItem(settingsModule.settingsStorageKey)).toBeNull();
-    expect(window.localStorage.getItem(settingsModule.codeStorageKey)).toBeNull();
+    expect(window.localStorage.getItem(appSettings.settingsStorageKey)).toBeNull();
+    expect(window.localStorage.getItem(appSettings.codeStorageKey)).toBeNull();
   });
 
   it("persists canonical visualisation fields without reintroducing offsetSeconds", async () => {
-    const settingsModule = await import("./persistentUserSettings.ts");
+    const appSettings = await import("../config/appSettings.ts");
+    const repo = await import("../../runtime/appSettingsRepository.ts");
 
-    settingsModule.replaceUserSettings(
+    repo.replaceAppSettings(
       {
-        ...settingsModule.defaultUserSettings,
+        ...appSettings.defaultUserSettings,
         visualisation: {
           windowDuration: 6,
           sampleCount: 180,
@@ -106,7 +110,7 @@ describe("persistentUserSettings", () => {
     );
 
     const storedSettings = JSON.parse(
-      window.localStorage.getItem(settingsModule.settingsStorageKey) ?? "{}",
+      window.localStorage.getItem(appSettings.settingsStorageKey) ?? "{}",
     );
 
     expect(storedSettings.visualisation.windowDuration).toBe(6);

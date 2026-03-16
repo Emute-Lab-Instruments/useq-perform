@@ -8,10 +8,10 @@ import {
 } from "@codemirror/language";
 import { default_extensions as default_clojure_extensions } from "@nextjournal/clojure-mode";
 import { EditorView } from "@codemirror/view";
-import { activeUserSettings } from "../utils/persistentUserSettings.ts";
+import { getAppSettings, updateAppSettings } from "../../runtime/appSettingsRepository.ts";
+import { codeStorageKey } from "../config/appSettings.ts";
 import { themes } from "./themes/themeManager.ts";
 import { editorBaseTheme } from "./themes/builtinThemes.ts";
-import { codeStorageKey } from "../utils/persistentUserSettings.ts";
 import { lineNumbers, drawSelection } from "@codemirror/view";
 import { history } from '@codemirror/commands';
 import { baseKeymap, mainEditorKeymap } from "./keymaps.ts";
@@ -23,19 +23,21 @@ import { dbg } from "../utils.ts";
 import { mapManualControlBindingsThroughChanges } from "./manualControlState.ts";
 
 dbg('extensions.mjs: Loading...');
-dbg('extensions.mjs: Active user settings:', activeUserSettings);
+const _initSettings = getAppSettings();
+dbg('extensions.mjs: Active user settings:', _initSettings);
 dbg('extensions.mjs: Theme compartment:', themeCompartment);
 dbg('extensions.mjs: Available themes:', Object.keys(themes));
 
 // Create update listener
 export const updateListener = EditorView.updateListener.of((update) => {
-  const userSessionConfig = activeUserSettings.storage || { saveCodeLocally: true };
+  const currentSettings = getAppSettings();
+  const userSessionConfig = currentSettings.storage || { saveCodeLocally: true };
   if (update.docChanged && userSessionConfig.saveCodeLocally) {
     window.localStorage.setItem(codeStorageKey, update.state.doc.toString());
   }
 
-  if (update.docChanged && activeUserSettings.editor) {
-    activeUserSettings.editor.code = update.state.doc.toString();
+  if (update.docChanged && currentSettings.editor) {
+    updateAppSettings({ editor: { code: update.state.doc.toString() } });
   }
 
   // Keep manual-control bindings stable across arbitrary edits.
@@ -46,19 +48,19 @@ export const updateListener = EditorView.updateListener.of((update) => {
 
 // Theme-related extensions
 dbg('extensions.mjs: Creating theme extensions with:', {
-  theme: activeUserSettings.editor.theme,
-  fontSize: activeUserSettings.editor.fontSize
+  theme: _initSettings.editor.theme,
+  fontSize: _initSettings.editor.fontSize
 });
 
-const selectedTheme = themes[activeUserSettings.editor.theme];
+const selectedTheme = themes[_initSettings.editor.theme];
 dbg('extensions.mjs: Selected theme:', selectedTheme ? 'found' : 'not found');
 
 const themeExtensions = [
   editorBaseTheme,
-  themeCompartment.of(themes[activeUserSettings.editor.theme]),
+  themeCompartment.of(themes[_initSettings.editor.theme]),
   fontSizeCompartment.of(
     EditorView.theme({
-      ".cm-content": { fontSize: `${activeUserSettings.editor.fontSize || 16}px` },
+      ".cm-content": { fontSize: `${_initSettings.editor.fontSize || 16}px` },
     })
   ),
   lineNumbers(),
@@ -69,7 +71,7 @@ export const exampleEditorExtensions = [
   editorBaseTheme,
   fontSizeCompartment.of(
     EditorView.theme({
-      ".cm-content": { fontSize: `${activeUserSettings.editor.fontSize || 16}px` },
+      ".cm-content": { fontSize: `${_initSettings.editor.fontSize || 16}px` },
     })
   ),
   bracketMatching(),

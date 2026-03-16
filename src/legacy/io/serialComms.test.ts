@@ -25,11 +25,11 @@ vi.mock("../ui/serialVis/visualisationController.ts", () => ({
   handleExternalTimeUpdate: handleExternalTimeUpdateMock,
 }));
 
-vi.mock("../utils/persistentUserSettings.ts", () => ({
-  activeUserSettings: {
+vi.mock("../../runtime/appSettingsRepository.ts", () => ({
+  getAppSettings: () => ({
     runtime: { autoReconnect: true },
     wasm: { enabled: true },
-  },
+  }),
 }));
 
 vi.mock("../urlParams.ts", () => ({

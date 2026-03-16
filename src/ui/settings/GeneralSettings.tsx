@@ -1,4 +1,4 @@
-import { resetUserSettings } from "../../legacy/utils/persistentUserSettings.ts";
+import { resetAppSettings } from "../../runtime/appSettingsRepository.ts";
 import { PersonalSettings } from "./PersonalSettings";
 import { EditorSettings } from "./EditorSettings";
 import { StorageSettings } from "./StorageSettings";
@@ -10,7 +10,7 @@ import { AdvancedSettings } from "./AdvancedSettings";
 export function GeneralSettings() {
   const handleReset = () => {
     if (confirm("Are you sure you want to reset all settings to default values?")) {
-      resetUserSettings();
+      resetAppSettings();
       window.location.reload();
     }
   };

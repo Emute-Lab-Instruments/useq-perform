@@ -15,7 +15,7 @@ import { post } from "../../utils/consoleStore.ts";
 import { evalInUseqWasm } from "../io/useqWasmInterpreter.ts";
 import { rewriteCodeSliceForModule } from "./manualControlState.ts";
 
-import { getUserSettings } from "../utils/persistentUserSettings.ts";
+import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 import { fontSizeCompartment } from "./state.ts";
 
 import { dbg } from "../utils.ts";
@@ -290,7 +290,7 @@ export function areMatchingBracketChars(char1: string, char2: string): boolean {
 
 export function makeDeleteWrapper(originalRun: (view: EditorView) => boolean) {
   return (view: EditorView): boolean => {
-    const userSettings = (getUserSettings as any)();
+    const userSettings = getAppSettings();
     const preventUnbalancing = userSettings.editor?.preventBracketUnbalancing ?? true;
     dbg("Delete wrapper - prevent unbalancing setting:", preventUnbalancing);
 

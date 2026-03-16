@@ -1,17 +1,14 @@
 import { dbg } from "../utils.ts";
 import { EditorView } from "@codemirror/view";
 import { EditorState, Extension } from "@codemirror/state";
-import {
-  activeUserSettings,
-  codeStorageKey,
-} from "../utils/persistentUserSettings.ts";
+import { codeStorageKey } from "../config/appSettings.ts";
 import {
   exampleEditorExtensions,
   mainEditorExtensions,
 } from "./extensions.ts";
 import { setMainEditorTheme } from "./themes/themeManager.ts";
 import { setFontSize } from "./editorConfig.ts";
-import { subscribeAppSettings } from "../../runtime/appSettingsRepository.ts";
+import { getAppSettings, subscribeAppSettings } from "../../runtime/appSettingsRepository.ts";
 
 // Autosave timer and editor reference (module scoped)
 let autosaveTimer: ReturnType<typeof setInterval> | null = null;
@@ -53,21 +50,22 @@ export function createEditor(startingText: string, extensions: Extension[]): Edi
   });
 
   // Make sure it's initialised with the current font size
-  setFontSize(view, activeUserSettings.editor.fontSize);
+  setFontSize(view, getAppSettings().editor.fontSize);
 
   return view;
 }
 
 export function createMainEditor(initialText?: string): EditorView {
+  const currentSettings = getAppSettings();
   dbg(
     "main.mjs createMainEditor: Creating main editor with settings:",
     {
-      theme: activeUserSettings.editor?.theme,
-      code: initialText ? initialText.length : activeUserSettings.editor?.code?.length,
+      theme: currentSettings.editor?.theme,
+      code: initialText ? initialText.length : currentSettings.editor?.code?.length,
     }
   );
 
-  let codeToLoad = activeUserSettings.editor.code;
+  let codeToLoad = currentSettings.editor.code;
   let editor = createEditor(
     initialText || codeToLoad,
     mainEditorExtensions
@@ -77,7 +75,7 @@ export function createMainEditor(initialText?: string): EditorView {
   _mainEditor = editor;
 
   // Set up autosave timer
-  setupAutosaveTimer(editor, activeUserSettings);
+  setupAutosaveTimer(editor, currentSettings);
 
   return editor;
 }
@@ -101,7 +99,7 @@ export function initEditorPanel(id: string): EditorView {
   if (editorPanel) {
     editorPanel.appendChild(editor.dom);
   }
-  setMainEditorTheme(activeUserSettings.editor.theme);
+  setMainEditorTheme(getAppSettings().editor.theme);
   return editor;
 }
 

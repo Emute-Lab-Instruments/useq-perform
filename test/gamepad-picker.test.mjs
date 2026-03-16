@@ -3,7 +3,7 @@ import './setup.mjs';
 
 import { createEditor } from '../src/legacy/editors/main.ts';
 import { createGamepadController } from '../src/legacy/editors/gamepadControl.ts';
-import { updateUserSettings } from '../src/legacy/utils/persistentUserSettings.ts';
+import { updateAppSettings } from '../src/runtime/appSettingsRepository.ts';
 import { buildHierarchicalMenuModel } from '../src/legacy/ui/pickers/menuData.ts';
 
 // Helper to flush microtasks/timeouts
@@ -39,7 +39,7 @@ describe('Gamepad picker menus', () => {
   // These integration tests should be run in a browser E2E test environment.
   it.skip('hierarchical grid picker inserts selected entry (replace)', async () => {
     setStarred(['+']);
-    updateUserSettings({ ui: { gamepadPickerStyle: 'grid' } });
+    updateAppSettings({ ui: { gamepadPickerStyle: 'grid' } });
 
     const view = createEditor('OLD', []);
     document.body.appendChild(view.dom);
@@ -65,7 +65,7 @@ describe('Gamepad picker menus', () => {
 
   it.skip('radial picker inserts selected entry with A/select', async () => {
     setStarred(['+']);
-    updateUserSettings({ ui: { gamepadPickerStyle: 'radial' } });
+    updateAppSettings({ ui: { gamepadPickerStyle: 'radial' } });
     const view = createEditor('OLD', []);
     document.body.appendChild(view.dom);
     view.dispatch({

@@ -1,5 +1,5 @@
 import { dbg } from "../utils.ts";
-import { activeUserSettings } from "../utils/persistentUserSettings.ts";
+import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract";
 import {
   CODE_EVALUATED_EVENT,
@@ -54,7 +54,7 @@ let scriptLoadPromise: Promise<void> | null = null;
 let runtimePromise: Promise<UseqRuntime> | null = null;
 function isUseqWasmEnabled(): boolean {
   try {
-    return (activeUserSettings as any)?.wasm?.enabled ?? true;
+    return getAppSettings()?.wasm?.enabled ?? true;
   } catch (_e) {
     return true;
   }
