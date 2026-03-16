@@ -6,7 +6,7 @@ import {
   Snippet
 } from "../../utils/snippetStore";
 import { CodeMirrorEditor } from "./CodeMirrorEditor";
-import { editor as mainEditor } from "../../lib/editorStore";
+import { insertEditorText } from "../../lib/editorStore";
 
 interface SnippetItemProps {
   snippet: Snippet;
@@ -30,16 +30,8 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
   };
 
   const handleInsert = () => {
-    const editor = mainEditor();
-    if (editor) {
-      const transaction = editor.state.update({
-        changes: {
-          from: 0,
-          to: 0,
-          insert: props.snippet.code + "\n",
-        },
-      });
-      editor.dispatch(transaction);
+    const inserted = insertEditorText(props.snippet.code + "\n", 0);
+    if (inserted) {
       setInsertFeedback(true);
       if (insertFeedbackTimer) clearTimeout(insertFeedbackTimer);
       insertFeedbackTimer = setTimeout(() => setInsertFeedback(false), 1500);

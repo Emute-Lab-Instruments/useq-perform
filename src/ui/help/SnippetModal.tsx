@@ -5,7 +5,7 @@ import {
   Snippet
 } from "../../utils/snippetStore";
 import { CodeMirrorEditor } from "./CodeMirrorEditor";
-import { editor as mainEditor } from "../../lib/editorStore";
+import { getEditorContent } from "../../lib/editorStore";
 import { pushOverlay } from "../overlayManager";
 
 export type EditingSnippet = Snippet | "new";
@@ -55,9 +55,9 @@ export const SnippetModal: Component<SnippetModalProps> = (props) => {
   };
 
   const handleUseMainEditor = () => {
-    const editor = mainEditor();
-    if (editor) {
-      setCode(editor.state.doc.toString());
+    const content = getEditorContent();
+    if (content !== null) {
+      setCode(content);
     }
   };
 

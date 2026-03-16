@@ -1,9 +1,11 @@
 // src/effects/editor.ts
 import { Effect } from "effect";
-import { EditorView } from "@codemirror/view";
-import { editor } from "../lib/editorStore";
+import { editor, applyEditorFontSize } from "../lib/editorStore";
 import { getAppSettings, updateAppSettings } from "../runtime/appSettingsRepository.ts";
-import { fontSizeCompartment } from "../legacy/editors/state.ts";
+
+// Re-export applyEditorFontSize so existing consumers that import it from
+// here continue to work without changes.
+export { applyEditorFontSize } from "../lib/editorStore";
 
 /**
  * FileSystemFileHandle is part of the File System Access API (not in all TS lib targets).
@@ -17,27 +19,6 @@ interface FileSystemWritableFileStream {
 interface FileSystemFileHandle {
   getFile(): Promise<File>;
   createWritable(): Promise<FileSystemWritableFileStream>;
-}
-
-export function applyEditorFontSize(
-  currentEditor: Pick<EditorView, "dispatch">,
-  fontSize: number
-): void {
-  currentEditor.dispatch({
-    effects: fontSizeCompartment.reconfigure(
-      EditorView.theme({
-        ".cm-content, .cm-cursor, .cm-gutters, .cm-lineNumbers": {
-          fontSize: `${fontSize}px`,
-          lineHeight: `${Math.ceil(fontSize * 1.5)}px`,
-        },
-        ".cm-gutters .cm-lineNumber": {
-          display: "flex",
-          alignItems: "center",
-          height: "100%",
-        },
-      }),
-    ),
-  });
 }
 
 // Extend Window to declare the File System Access API pickers we use.
