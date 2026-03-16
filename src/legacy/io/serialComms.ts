@@ -23,11 +23,13 @@ import {
   type IoConfig,
   type StreamChannelConfig,
 } from "../../runtime/jsonProtocol.ts";
-import { publishRuntimeDiagnostics } from "../../runtime/runtimeDiagnostics.ts";
-import { updateRuntimeSessionState } from "../../runtime/runtimeSessionStore.ts";
+import {
+  reportTransportConnectionChanged,
+  reportProtocolModeChanged,
+  announceRuntimeSession as announceFromService,
+} from "../../runtime/runtimeService.ts";
 import {
   ANIMATE_CONNECT_EVENT,
-  CONNECTION_CHANGED_EVENT,
   DEVICE_PLUGGED_IN_EVENT,
   dispatchRuntimeEvent,
   JSON_META_EVENT,
@@ -177,29 +179,13 @@ let connectedToModule = false;
 
 function emitConnectionChanged(): void {
   const startupFlags = getStartupFlagsSnapshot();
-  const runtimeState = updateRuntimeSessionState({
+  reportTransportConnectionChanged({
     connected: connectedToModule,
     protocolMode: getProtocolMode(),
     hasHardwareConnection: connectedToModule && !!serialport,
     noModuleMode: startupFlags.noModuleMode,
     wasmEnabled: activeUserSettings?.wasm?.enabled ?? true,
   });
-  const detail = {
-    connected: runtimeState.connected,
-    protocolMode: runtimeState.protocolMode,
-    ...runtimeState.session,
-  };
-
-  publishRuntimeDiagnostics({
-    protocolMode: runtimeState.protocolMode,
-    runtimeSession: runtimeState.session,
-  });
-
-  try {
-    dispatchRuntimeEvent(CONNECTION_CHANGED_EVENT, detail);
-  } catch (_e) {
-    // no-op if window not available
-  }
 }
 
 export function setConnectedToModule(connected: boolean): void {
@@ -216,7 +202,7 @@ export function setConnectedToModule(connected: boolean): void {
 }
 
 export function announceRuntimeSession(): void {
-  emitConnectionChanged();
+  announceFromService();
 }
 
 export function isConnectedToModule(): boolean {
@@ -276,9 +262,7 @@ function resetProtocolState(): void {
   protocolState.ioConfig = null;
   serialOutputBufferRouting = {};
   stopHeartbeat();
-  publishRuntimeDiagnostics({
-    protocolMode: getProtocolMode(),
-  });
+  reportProtocolModeChanged(getProtocolMode());
 }
 
 function startHeartbeat(): void {
@@ -326,13 +310,14 @@ function nextRequestId(): string {
   return `req-${protocolState.requestIdCounter}`;
 }
 
-// Initialise connection-dependent UI state after protocol state is ready
-setConnectedToModule(false);
+// Initialise connection-dependent UI state after protocol state is ready.
+// Use setCodeHighlightColor directly instead of setConnectedToModule to
+// avoid calling reportTransportConnectionChanged during module init,
+// which would trigger a circular-dependency hazard with runtimeService.
+setCodeHighlightColor(false);
 
 function dispatchProtocolReady(): void {
-  publishRuntimeDiagnostics({
-    protocolMode: getProtocolMode(),
-  });
+  // Report protocol mode change and connection update through runtimeService
   emitConnectionChanged();
 
   try {

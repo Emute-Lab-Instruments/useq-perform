@@ -21,8 +21,8 @@ import {
 import {
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
+  type RuntimeSessionState,
 } from "../runtime/runtimeService";
-import type { RuntimeSessionState } from "../runtime/runtimeSessionStore";
 import {
   startMockTimeGenerator,
   stopMockTimeGenerator,

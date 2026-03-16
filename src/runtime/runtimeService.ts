@@ -21,7 +21,6 @@ import {
   resetRuntimeSessionState,
   subscribeRuntimeSessionState,
   updateRuntimeSessionState,
-  type RuntimeSessionState,
 } from "./runtimeSessionStore";
 import {
   supportsHardwareTransport,
@@ -29,6 +28,10 @@ import {
   type RuntimeSessionInputs,
   type TransportMode,
 } from "./runtimeSession";
+
+// Re-export the state type so consumers don't need to reach into the store
+export type { RuntimeSessionState } from "./runtimeSessionStore";
+import type { RuntimeSessionState } from "./runtimeSessionStore";
 
 let adapter: LegacyRuntimeAdapter = legacyRuntimeAdapter;
 
@@ -54,15 +57,21 @@ function toConnectionChangedDetail(
   };
 }
 
-function syncRuntimeStateFromAdapter(options?: {
-  publishDiagnostics?: boolean;
-}): RuntimeSessionState {
-  const legacyState = adapter.readState();
-  const state = updateRuntimeSessionState({
-    ...legacyState.sessionInputs,
-    connected: legacyState.connected,
-    protocolMode: legacyState.protocolMode,
-  });
+/**
+ * Internal helper: update store + optionally publish diagnostics + dispatch event.
+ * This is the single write-path for all runtime session state changes.
+ */
+function applySessionUpdate(
+  updates: Partial<RuntimeSessionInputs> & {
+    connected?: boolean;
+    protocolMode?: RuntimeProtocolMode;
+  },
+  options?: {
+    publishDiagnostics?: boolean;
+    dispatchConnectionChanged?: boolean;
+  }
+): RuntimeSessionState {
+  const state = updateRuntimeSessionState(updates);
 
   if (options?.publishDiagnostics) {
     publishRuntimeDiagnostics({
@@ -71,7 +80,25 @@ function syncRuntimeStateFromAdapter(options?: {
     });
   }
 
+  if (options?.dispatchConnectionChanged) {
+    dispatchRuntimeEvent(CONNECTION_CHANGED_EVENT, toConnectionChangedDetail(state));
+  }
+
   return state;
+}
+
+function syncRuntimeStateFromAdapter(options?: {
+  publishDiagnostics?: boolean;
+}): RuntimeSessionState {
+  const legacyState = adapter.readState();
+  return applySessionUpdate(
+    {
+      ...legacyState.sessionInputs,
+      connected: legacyState.connected,
+      protocolMode: legacyState.protocolMode,
+    },
+    { publishDiagnostics: options?.publishDiagnostics }
+  );
 }
 
 export function bootstrapRuntimeSession(
@@ -81,18 +108,14 @@ export function bootstrapRuntimeSession(
     protocolMode?: RuntimeProtocolMode;
   }
 ): RuntimeSessionState {
-  const state = updateRuntimeSessionState({
-    ...inputs,
-    connected: options?.connected ?? false,
-    protocolMode: options?.protocolMode ?? "legacy",
-  });
-
-  publishRuntimeDiagnostics({
-    protocolMode: state.protocolMode,
-    runtimeSession: state.session,
-  });
-
-  return state;
+  return applySessionUpdate(
+    {
+      ...inputs,
+      connected: options?.connected ?? false,
+      protocolMode: options?.protocolMode ?? "legacy",
+    },
+    { publishDiagnostics: true }
+  );
 }
 
 export function refreshRuntimeSession(): RuntimeSessionState {
@@ -104,6 +127,54 @@ export function announceRuntimeSession(): RuntimeSessionState {
   dispatchRuntimeEvent(CONNECTION_CHANGED_EVENT, toConnectionChangedDetail(state));
   return state;
 }
+
+// ── Transport-fact ingestion (sole owner of state mutation) ──────
+
+/**
+ * Called by transport producers (e.g. serialComms) to report a connection
+ * state change. runtimeService is the sole owner: it updates the session
+ * store, publishes diagnostics, and dispatches the connection-changed event.
+ */
+export function reportTransportConnectionChanged(facts: {
+  connected: boolean;
+  protocolMode: RuntimeProtocolMode;
+  hasHardwareConnection: boolean;
+  noModuleMode: boolean;
+  wasmEnabled: boolean;
+}): RuntimeSessionState {
+  return applySessionUpdate(
+    {
+      connected: facts.connected,
+      protocolMode: facts.protocolMode,
+      hasHardwareConnection: facts.hasHardwareConnection,
+      noModuleMode: facts.noModuleMode,
+      wasmEnabled: facts.wasmEnabled,
+    },
+    { publishDiagnostics: true, dispatchConnectionChanged: true }
+  );
+}
+
+/**
+ * Called by transport producers to publish a diagnostics-only update
+ * (e.g. protocol mode changed without a full connection change).
+ */
+export function reportProtocolModeChanged(
+  protocolMode: RuntimeProtocolMode
+): void {
+  publishRuntimeDiagnostics({ protocolMode });
+}
+
+/**
+ * Called by settings repositories when a setting that affects the runtime
+ * session (e.g. wasm.enabled) changes. runtimeService is the sole owner.
+ */
+export function updateRuntimeSettingsEffect(
+  updates: Partial<RuntimeSessionInputs>
+): RuntimeSessionState {
+  return applySessionUpdate(updates, { publishDiagnostics: true });
+}
+
+// ── Snapshot & subscription ─────────────────────────────────────
 
 export function getRuntimeServiceSnapshot(): RuntimeSessionState {
   return getRuntimeSessionState();

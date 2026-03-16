@@ -12,11 +12,8 @@ import {
   type AppSettings,
 } from "../legacy/config/appSettings.ts";
 import { defaultMainEditorStartingCode } from "../legacy/editors/defaults.ts";
-import {
-  publishRuntimeDiagnostics,
-  type RuntimeSettingsSource,
-} from "./runtimeDiagnostics.ts";
-import { updateRuntimeSessionState } from "./runtimeSessionStore.ts";
+import type { RuntimeSettingsSource } from "./runtimeDiagnostics.ts";
+import { updateRuntimeSettingsEffect } from "./runtimeService.ts";
 import {
   getStartupFlagsSnapshot,
   setStartupFlags,
@@ -45,11 +42,8 @@ function notifyListeners(): void {
 }
 
 function dispatchSettingsChanged(): void {
-  const runtimeState = updateRuntimeSessionState({
+  updateRuntimeSettingsEffect({
     wasmEnabled: activeSettings.wasm.enabled,
-  });
-  publishRuntimeDiagnostics({
-    runtimeSession: runtimeState.session,
   });
 
   try {
