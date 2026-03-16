@@ -6,10 +6,7 @@ import { showModal } from '../../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../io/mockControlInputs.ts';
 import { startMockTimeGenerator } from '../io/mockTimeGenerator.ts';
 import { registerVisualisation } from '../ui/serialVis/visualisationController.ts';
-import {
-  resolveBootstrapPlan,
-  type BootstrapPlan,
-} from '../../runtime/bootstrapPlan.ts';
+import type { BootstrapPlan } from '../../runtime/bootstrapPlan.ts';
 import { announceRuntimeSession } from '../../runtime/runtimeService.ts';
 import { showVisualisationPanel } from '../../ui/adapters/visualisationPanel';
 
@@ -68,7 +65,7 @@ async function startBrowserLocalRuntime(options: {
   }
 }
 
-export function createApp(appUI, environmentState, bootstrapPlan?: BootstrapPlan) {
+export function createApp(appUI, environmentState, bootstrapPlan: BootstrapPlan) {
   const app = {
     modals: {},
 
@@ -86,15 +83,7 @@ export function createApp(appUI, environmentState, bootstrapPlan?: BootstrapPlan
       const userName = environmentState.userSettings.name || 'User';
       post(`Hello, ${userName}!`);
 
-      const plan =
-        bootstrapPlan ||
-        resolveBootstrapPlan({
-          noModuleMode: environmentState.startupFlags.noModuleMode,
-          isWebSerialAvailable: environmentState.isWebSerialAvailable,
-          wasmEnabled: environmentState.userSettings.wasm.enabled,
-          startLocallyWithoutHardware:
-            environmentState.userSettings.runtime.startLocallyWithoutHardware,
-        });
+      const plan = bootstrapPlan;
 
       if (plan.startupMode === 'no-module') {
         try {

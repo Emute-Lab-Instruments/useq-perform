@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveBootstrapPlan } from "../../runtime/bootstrapPlan.ts";
 
 const post = vi.fn();
 const ensureUseqWasmLoaded = vi.fn();
@@ -63,7 +64,7 @@ describe("application no-module startup", () => {
 
   it("boots the browser-local runtime without touching hardware reconnect flow", async () => {
     const { createApp } = await import("./application.ts");
-    const app = createApp(null, {
+    const environmentState = {
       areInBrowser: true,
       areInDesktopApp: false,
       isWebSerialAvailable: true,
@@ -82,7 +83,14 @@ describe("application no-module startup", () => {
         wasm: { enabled: true },
       },
       urlParams: { noModuleMode: "true" },
+    };
+    const plan = resolveBootstrapPlan({
+      noModuleMode: true,
+      isWebSerialAvailable: true,
+      wasmEnabled: true,
+      startLocallyWithoutHardware: true,
     });
+    const app = createApp(null, environmentState, plan);
 
     await app.start();
 
@@ -101,7 +109,7 @@ describe("application no-module startup", () => {
 
   it("starts browser-local runtime first and still kicks off reconnect checks in normal mode", async () => {
     const { createApp } = await import("./application.ts");
-    const app = createApp(null, {
+    const environmentState = {
       areInBrowser: true,
       areInDesktopApp: false,
       isWebSerialAvailable: true,
@@ -120,7 +128,14 @@ describe("application no-module startup", () => {
         wasm: { enabled: true },
       },
       urlParams: {},
+    };
+    const plan = resolveBootstrapPlan({
+      noModuleMode: false,
+      isWebSerialAvailable: true,
+      wasmEnabled: true,
+      startLocallyWithoutHardware: true,
     });
+    const app = createApp(null, environmentState, plan);
 
     await app.start();
 

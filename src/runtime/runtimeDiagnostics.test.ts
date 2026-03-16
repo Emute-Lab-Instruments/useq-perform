@@ -5,43 +5,11 @@ import {
   publishRuntimeDiagnostics,
   reportBootstrapFailure,
   resetRuntimeDiagnostics,
-  resolveStartupMode,
 } from "./runtimeDiagnostics";
 
 describe("runtimeDiagnostics", () => {
   beforeEach(() => {
     resetRuntimeDiagnostics();
-  });
-
-  it("resolves no-module startup explicitly", () => {
-    expect(
-      resolveStartupMode({
-        areInBrowser: true,
-        isWebSerialAvailable: true,
-        noModuleMode: true,
-      })
-    ).toBe("no-module");
-  });
-
-  it("marks missing Web Serial as browser-local startup instead of unsupported", () => {
-    expect(
-      resolveStartupMode({
-        areInBrowser: true,
-        isWebSerialAvailable: false,
-        noModuleMode: false,
-      })
-    ).toBe("browser-local");
-  });
-
-  it("marks start-local preference as browser-local startup", () => {
-    expect(
-      resolveStartupMode({
-        areInBrowser: true,
-        isWebSerialAvailable: true,
-        noModuleMode: false,
-        startLocallyWithoutHardware: true,
-      })
-    ).toBe("browser-local");
   });
 
   it("publishes runtime diagnostics snapshots as browser events", () => {

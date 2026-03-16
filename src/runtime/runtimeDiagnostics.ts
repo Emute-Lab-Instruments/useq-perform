@@ -4,7 +4,6 @@ import {
   dispatchRuntimeEvent,
   RUNTIME_DIAGNOSTICS_EVENT,
 } from "../contracts/runtimeEvents";
-import { resolveBootstrapPlan } from "./bootstrapPlan";
 
 export type RuntimeProtocolMode = "legacy" | "json";
 export type RuntimeSettingsSource =
@@ -79,25 +78,6 @@ function emitDiagnosticsEvent(
   detail: RuntimeDiagnosticsSnapshot | RuntimeBootstrapFailure
 ): void {
   dispatchRuntimeEvent(name, detail as never);
-}
-
-export function resolveStartupMode(input: {
-  areInBrowser: boolean;
-  isWebSerialAvailable: boolean;
-  noModuleMode: boolean;
-  startLocallyWithoutHardware?: boolean;
-  wasmEnabled?: boolean;
-}): StartupMode {
-  if (!input.areInBrowser) {
-    return "browser-local";
-  }
-
-  return resolveBootstrapPlan({
-    noModuleMode: input.noModuleMode,
-    isWebSerialAvailable: input.isWebSerialAvailable,
-    wasmEnabled: input.wasmEnabled ?? true,
-    startLocallyWithoutHardware: input.startLocallyWithoutHardware ?? true,
-  }).startupMode;
 }
 
 export function getRuntimeDiagnostics(): RuntimeDiagnosticsSnapshot {

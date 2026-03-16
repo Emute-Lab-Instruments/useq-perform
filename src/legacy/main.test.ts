@@ -27,37 +27,36 @@ const bootstrapRuntimeSession = vi.fn(() => ({
   },
 }));
 
-vi.mock("../runtime/appSettingsRepository.ts", () => ({
+vi.mock("../../runtime/appSettingsRepository.ts", () => ({
   appSettingsRepository,
 }));
 
-vi.mock("./app/environment.ts", () => ({
+vi.mock("../app/environment.ts", () => ({
   examineEnvironment,
 }));
 
-vi.mock("./ui/ui.ts", () => ({
+vi.mock("../ui/ui.ts", () => ({
   createAppUI,
 }));
 
-vi.mock("./app/application.ts", () => ({
+vi.mock("../app/application.ts", () => ({
   createApp,
 }));
 
-vi.mock("./config/configLoader.ts", () => ({
+vi.mock("../config/configLoader.ts", () => ({
   loadConfigurationWithMetadata,
 }));
 
-vi.mock("../runtime/runtimeDiagnostics.ts", () => ({
+vi.mock("../../runtime/runtimeDiagnostics.ts", () => ({
   publishRuntimeDiagnostics,
   reportBootstrapFailure,
-  resolveStartupMode: vi.fn(() => "browser-local"),
 }));
 
-vi.mock("../runtime/runtimeService.ts", () => ({
+vi.mock("../../runtime/runtimeService.ts", () => ({
   bootstrapRuntimeSession,
 }));
 
-describe("startLegacyApp", () => {
+describe("bootstrap (via startLegacyApp re-export)", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
