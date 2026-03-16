@@ -1,5 +1,5 @@
 import defaultConfig from "../legacy/config/default-config.json";
-import { validateConfiguration } from "../legacy/config/configSchema.ts";
+import { validateConfiguration } from "./configSchema.ts";
 import {
   clearPersistedUserSettings,
   createDefaultUserSettings,
@@ -11,8 +11,8 @@ import {
   settingsPatchFromConfiguration,
   writePersistedUserSettings,
   type AppSettings,
-} from "../legacy/config/appSettings.ts";
-import { defaultMainEditorStartingCode } from "../legacy/editors/defaults.ts";
+} from "../lib/appSettings.ts";
+import { defaultMainEditorStartingCode } from "../lib/editorDefaults.ts";
 import type { RuntimeSettingsSource } from "./runtimeDiagnostics.ts";
 import { updateRuntimeSettingsEffect } from "./runtimeService.ts";
 import {
@@ -20,7 +20,7 @@ import {
   setStartupFlags,
   type StartupFlags,
 } from "./startupContext.ts";
-import { readStartupFlags } from "../legacy/urlParams.ts";
+import { readStartupFlags } from "./urlParams.ts";
 
 const GIST_NOT_FOUND_MESSAGE = "gist not found";
 const TEXT_NOT_FOUND_MESSAGE = "code not found";

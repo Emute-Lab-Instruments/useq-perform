@@ -11,7 +11,7 @@ import {
 } from "../../utils/referenceStore";
 import { ReferenceItem } from "./ReferenceItem";
 import { ReferenceFilters } from "./ReferenceFilters";
-import { currentVersion as connectedFirmwareVersion } from "../../legacy/utils/upgradeCheck.ts";
+import { currentVersion as connectedFirmwareVersion } from "../../transport/upgradeCheck.ts";
 import { loadReferenceDataFromCandidates } from "./referenceDataLoader";
 
 /** Raw shape of a reference entry as loaded from JSON (before normalization). */

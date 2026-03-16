@@ -7,8 +7,8 @@
 
 import { Buffer } from "buffer";
 import { post } from "../utils/consoleStore.ts";
-import { dbg } from "../legacy/utils.ts";
-import { upgradeCheck, currentVersion } from "../legacy/utils/upgradeCheck.ts";
+import { dbg } from "../lib/debug.ts";
+import { upgradeCheck, currentVersion } from "./upgradeCheck.ts";
 import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,

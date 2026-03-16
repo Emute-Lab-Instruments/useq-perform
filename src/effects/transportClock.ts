@@ -14,7 +14,7 @@ import {
   stopMockTimeGenerator,
   resumeMockTimeGenerator,
   resetMockTimeGenerator,
-} from "../legacy/io/mockTimeGenerator";
+} from "./mockTimeGenerator";
 
 // ── Pure policy ─────────────────────────────────────────────────
 

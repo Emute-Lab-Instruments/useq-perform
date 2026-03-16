@@ -4,7 +4,7 @@
 // through the API exported here rather than reaching into legacy modules.
 import { createSignal } from "solid-js";
 import { EditorView } from "@codemirror/view";
-import { fontSizeCompartment } from "../legacy/editors/state.ts";
+import { fontSizeCompartment } from "./editorCompartments.ts";
 
 /**
  * Typed boundary for the active editor session.

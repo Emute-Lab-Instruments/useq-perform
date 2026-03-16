@@ -6,8 +6,8 @@
  */
 
 import { Buffer } from "buffer";
-import { CircularBuffer } from "../legacy/utils/CircularBuffer.ts";
-import { dbg } from "../legacy/utils.ts";
+import { CircularBuffer } from "../lib/CircularBuffer.ts";
+import { dbg } from "../lib/debug.ts";
 import { handleExternalTimeUpdate } from "../legacy/ui/serialVis/visualisationController.ts";
 import {
   combineBuffers,
@@ -16,7 +16,7 @@ import {
   extractMessageText,
   isSerialPortValid,
   isPortReadableAndUnlocked,
-} from "../legacy/io/utils.ts";
+} from "./serial-utils.ts";
 import {
   SERIAL_READ_MODES,
   MESSAGE_START_MARKER,

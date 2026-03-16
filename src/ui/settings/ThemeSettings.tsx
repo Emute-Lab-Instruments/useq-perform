@@ -4,7 +4,7 @@ import { EditorState, type Extension } from "@codemirror/state";
 import { bracketMatching } from "@codemirror/language";
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 import { themes, setMainEditorTheme } from "../../legacy/editors/themes/themeManager.ts";
-import { defaultThemeEditorStartingCode } from "../../legacy/editors/defaults.ts";
+import { defaultThemeEditorStartingCode } from "../../lib/editorDefaults.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 import { hidePanel } from "../adapters/panels";
 

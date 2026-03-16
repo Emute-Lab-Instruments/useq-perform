@@ -1,4 +1,4 @@
-import type { VisualisationSettings as AppVisualisationSettings } from "../../legacy/config/appSettings.ts";
+import type { VisualisationSettings as AppVisualisationSettings } from "../../lib/appSettings.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 import { Section, FormRow, Checkbox, NumberInput, RangeInput } from "./FormControls";
 import { serialVisChannels } from "../../legacy/ui/serialVis/utils.ts";

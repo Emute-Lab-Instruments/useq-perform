@@ -4,7 +4,7 @@
  * These are shared across the connector, protocol drivers, and stream parser.
  */
 
-import type { CircularBuffer } from "../legacy/utils/CircularBuffer.ts";
+import type { CircularBuffer } from "../lib/CircularBuffer.ts";
 import type { IoConfig } from "../runtime/jsonProtocol.ts";
 
 // ── Protocol modes ───────────────────────────────────────────────────

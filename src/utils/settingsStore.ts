@@ -4,7 +4,7 @@ import {
   subscribeAppSettings,
   updateAppSettings,
 } from "../runtime/appSettingsRepository.ts";
-import { createDefaultUserSettings, mergeUserSettings, type AppSettings } from "../legacy/config/appSettings.ts";
+import { createDefaultUserSettings, mergeUserSettings, type AppSettings } from "../lib/appSettings.ts";
 
 /**
  * SolidJS reactive store for user settings.

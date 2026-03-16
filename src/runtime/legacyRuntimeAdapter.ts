@@ -1,10 +1,14 @@
 import {
   getProtocolMode,
+} from "../transport/json-protocol.ts";
+import {
   getSerialPort,
   isConnectedToModule,
-  sendTouSEQ,
   toggleConnect,
-} from "../legacy/io/serialComms.ts";
+} from "../transport/connector.ts";
+import {
+  sendTouSEQ,
+} from "../transport/legacy-text-protocol.ts";
 import {
   evalInUseqWasm,
   syncWasmTransportState as syncWasmTransportStateInInterpreter,

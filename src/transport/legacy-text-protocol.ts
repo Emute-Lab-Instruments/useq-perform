@@ -6,8 +6,8 @@
  */
 
 import { post } from "../utils/consoleStore.ts";
-import { dbg } from "../legacy/utils.ts";
-import { cleanCode, isPortWritable } from "../legacy/io/utils.ts";
+import { dbg } from "../lib/debug.ts";
+import { cleanCode, isPortWritable } from "./serial-utils.ts";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 import {
   dispatchRuntimeEvent,

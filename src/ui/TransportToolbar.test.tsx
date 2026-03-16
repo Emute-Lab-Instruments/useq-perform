@@ -18,7 +18,7 @@ import {
   startMockTimeGenerator,
   stopMockTimeGenerator,
   resetMockTimeGenerator,
-} from "../legacy/io/mockTimeGenerator.ts";
+} from "../effects/mockTimeGenerator.ts";
 import { transportMachine } from "../machines/transport.machine";
 import type { TransportState } from "../machines/transport.machine";
 import { applyMockTimePolicy } from "../effects/transportClock";

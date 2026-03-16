@@ -38,23 +38,67 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
 
 ## Canonical Settings And Bootstrap Files
 
-- `src/legacy/config/appSettings.ts`
+- `src/lib/appSettings.ts`
   Canonical settings schema, defaults, persistence merge rules, and config document conversion.
+  (Legacy shim at `src/legacy/config/appSettings.ts` re-exports for backward compatibility.)
+- `src/lib/editorDefaults.ts`
+  Editor default values (fonts, themes, starter code).
+- `src/lib/editorCompartments.ts`
+  CodeMirror compartments for theme and font-size reconfiguration.
+- `src/runtime/configSchema.ts`
+  Configuration validation and schema utilities.
 - `src/legacy/config/configLoader.ts`
   Bootstrap precedence for committed config, local persistence, and URL overrides.
-- `src/legacy/urlParams.ts`
+- `src/runtime/urlParams.ts`
   Typed startup flag parsing. Do not reintroduce ad hoc URL global reads elsewhere.
+  (Legacy shim at `src/legacy/urlParams.ts` re-exports for backward compatibility.)
 - `src/utils/settingsStore.ts`
-  Transitional UI-facing adapter over settings state. Treat it as a bridge, not the canonical owner.
+  SolidJS reactive adapter over the canonical appSettingsRepository.
 
-## Platform Adapters And High-Risk Legacy Seams
+## Shared Utilities (src/lib/)
+
+- `src/lib/CircularBuffer.ts`
+  Fixed-length ring buffer used by transport stream parsing and visualisation.
+- `src/lib/debug.ts`
+  Debug logging utilities (`dbg`, `toggleDbg`).
+- `src/lib/editorStore.ts`
+  Canonical editor boundary. All modern code interacts with the CodeMirror editor through this facade.
+
+## Transport Layer (src/transport/)
+
+- `src/transport/connector.ts`
+  Serial port lifecycle: opening, closing, reconnection, Web Serial event wiring.
+- `src/transport/json-protocol.ts`
+  JSON protocol driver (firmware >= 1.2.0): negotiation, heartbeat, structured eval.
+- `src/transport/legacy-text-protocol.ts`
+  Legacy text protocol driver (firmware < 1.2.0 fallback).
+- `src/transport/stream-parser.ts`
+  Byte-level parsing and routing of serial data streams.
+- `src/transport/serial-utils.ts`
+  Serial communication utility functions (code cleaning, buffer manipulation, port checks).
+- `src/transport/upgradeCheck.ts`
+  Firmware version parsing and upgrade notifications.
+- `src/transport/types.ts`
+  Shared transport types, constants, and interfaces.
+
+## Effects (src/effects/)
+
+- `src/effects/mockTimeGenerator.ts`
+  Mock time generator for visualisation without hardware.
+- `src/effects/transportClock.ts`
+  Mock-time policy based on transport state transitions.
+- `src/effects/transport.ts`
+  Transport effect wrappers (play, pause, stop, rewind).
+
+## Platform Adapters And Retained Legacy Seams
 
 - `src/legacy/io/serialComms.ts`
-  Retained Web Serial transport adapter and protocol negotiation seam.
+  Re-export shim. All transport logic now lives under `src/transport/`.
 - `src/legacy/io/useqWasmInterpreter.ts`
   Retained WASM adapter and export-probing seam.
 - `src/runtime/legacyRuntimeAdapter.ts`
   Containment layer between the modern runtime service and legacy runtime modules.
+  Now imports directly from `src/transport/` instead of through the serialComms shim.
 - `src/legacy/ui/serialVis/visualisationController.ts`
   Retained visualisation controller with substantial legacy coupling.
 

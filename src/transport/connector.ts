@@ -6,8 +6,8 @@
  */
 
 import { post } from "../utils/consoleStore.ts";
-import { dbg } from "../legacy/utils.ts";
-import { setCodeHighlightColor } from "../legacy/io/utils.ts";
+import { dbg } from "../lib/debug.ts";
+import { setCodeHighlightColor } from "./serial-utils.ts";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 import {
   reportTransportConnectionChanged,
