@@ -42,8 +42,16 @@ async function loadController(overrides: VisualisationOverrides = {}) {
     },
   );
 
+  // Capture subscribers registered via subscribeAppSettings so the test
+  // can invoke them to simulate a settings change.
+  const settingsSubscribers = new Set<(s: unknown) => void>();
+
   vi.doMock("../../../runtime/appSettingsRepository.ts", () => ({
     getAppSettings: () => activeUserSettings,
+    subscribeAppSettings: (listener: (s: unknown) => void) => {
+      settingsSubscribers.add(listener);
+      return () => { settingsSubscribers.delete(listener); };
+    },
   }));
 
   vi.doMock("../../io/useqWasmInterpreter.ts", () => ({
@@ -67,6 +75,10 @@ async function loadController(overrides: VisualisationOverrides = {}) {
     controller,
     activeUserSettings,
     evalOutputsInTimeWindow,
+    /** Notify all settings subscribers (simulates a settings change). */
+    notifySettingsChanged: () => {
+      settingsSubscribers.forEach((fn) => fn(activeUserSettings));
+    },
   };
 }
 
@@ -84,7 +96,7 @@ describe("visualisationController", () => {
   });
 
   it("rebuilds expression samples when canonical visualisation settings change", async () => {
-    const { controller, activeUserSettings, evalOutputsInTimeWindow } = await loadController();
+    const { controller, activeUserSettings, evalOutputsInTimeWindow, notifySettingsChanged } = await loadController();
     const visualisationEvents: Array<Record<string, unknown>> = [];
     const removeVisualisationListener = addVisualisationEventListener(
       VISUALISATION_SESSION_EVENT,
@@ -106,9 +118,7 @@ describe("visualisationController", () => {
       futureLeadSeconds: 2,
     };
 
-    window.dispatchEvent(
-      new CustomEvent("useq-settings-changed", { detail: activeUserSettings }),
-    );
+    notifySettingsChanged();
     await flushAsyncWork();
 
     const updatedState = controller.getVisualisationState();

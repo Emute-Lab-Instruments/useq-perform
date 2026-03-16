@@ -86,7 +86,7 @@ import {
   notifyExpressionEvaluated
 } from "../../ui/serialVis/visualisationController.ts";
 import { dbg } from "../../utils.ts";
-import { getAppSettings } from "../../../runtime/appSettingsRepository.ts";
+import { getAppSettings, subscribeAppSettings } from "../../../runtime/appSettingsRepository.ts";
 
 // Helper functions for tree processing - REMOVED in favor of standard syntax tree
 // The new structural editing extension uses standard Lezer syntax tree and findNodeAt helper.
@@ -731,8 +731,9 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
     this.onSettingsChange = this.onSettingsChange.bind(this);
     this.onVisualisationChange = this.onVisualisationChange.bind(this);
     this.removeVisualisationListener = () => undefined;
+    this.removeSettingsListener = () => undefined;
     view.dom.addEventListener('click', this.onClick);
-    window.addEventListener('useq-settings-changed', this.onSettingsChange);
+    this.removeSettingsListener = subscribeAppSettings(() => this.onSettingsChange());
     this.removeVisualisationListener = addVisualisationEventListener(
       VISUALISATION_SESSION_EVENT,
       () => this.onVisualisationChange()
@@ -740,7 +741,7 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
   }
   destroy() {
     this.view.dom.removeEventListener('click', this.onClick);
-    window.removeEventListener('useq-settings-changed', this.onSettingsChange);
+    this.removeSettingsListener();
     this.removeVisualisationListener();
   }
   update(update) {

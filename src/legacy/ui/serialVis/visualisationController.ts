@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { dbg } from "../../utils.ts";
-import { getAppSettings } from "../../../runtime/appSettingsRepository.ts";
+import { getAppSettings, subscribeAppSettings } from "../../../runtime/appSettingsRepository.ts";
 import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../io/useqWasmInterpreter.ts";
 import { getSerialVisPalette, getSerialVisChannelColor } from "./utils.ts";
 import {
@@ -757,7 +757,7 @@ async function refreshBarValue() {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('useq-settings-changed', () => {
+  subscribeAppSettings(() => {
     const settings = loadSettings();
     const reinitialise = async () => {
       for (const expression of registeredExpressions.values()) {

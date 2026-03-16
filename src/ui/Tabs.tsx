@@ -1,4 +1,5 @@
 import { createSignal, For, Show, JSX, onMount, onCleanup } from "solid-js";
+import type { TypedChannel } from "../lib/typedChannel";
 
 export interface Tab {
   id: string;
@@ -14,8 +15,8 @@ export interface TabsProps {
   activeTabId?: string;
   /** Called when the active tab changes */
   onTabChange?: (tabId: string) => void;
-  /** Event type to listen for external tab switches (e.g., "useq-switch-tab") */
-  externalSwitchEvent?: string;
+  /** Typed channel for external tab switches (replaces window event coupling). */
+  switchChannel?: TypedChannel<{ tabId: string }>;
 }
 
 export function Tabs(props: TabsProps) {
@@ -30,23 +31,14 @@ export function Tabs(props: TabsProps) {
     props.onTabChange?.(id);
   };
 
-  // Handle external tab switch events
-  const handleExternalSwitch = (e: Event) => {
-    const detail = (e as CustomEvent).detail;
-    if (detail?.tabId && props.tabs.some(t => t.id === detail.tabId)) {
-      setActiveTabId(detail.tabId);
-    }
-  };
-
   onMount(() => {
-    if (props.externalSwitchEvent) {
-      window.addEventListener(props.externalSwitchEvent, handleExternalSwitch);
-    }
-  });
-
-  onCleanup(() => {
-    if (props.externalSwitchEvent) {
-      window.removeEventListener(props.externalSwitchEvent, handleExternalSwitch);
+    if (props.switchChannel) {
+      const unsub = props.switchChannel.subscribe(({ tabId }) => {
+        if (tabId && props.tabs.some(t => t.id === tabId)) {
+          setActiveTabId(tabId);
+        }
+      });
+      onCleanup(unsub);
     }
   });
 
