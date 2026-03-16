@@ -14,17 +14,16 @@ public/useq.js
 *.backup
 
 
-# Temporary Assets
-gemini_radial_menu.zip
-
 # Developer Notes
 devnotes/
 
 *storybook.log
 storybook-static
-agent.log
 
+# Local-only files
 .beads
+.claude/
+AGENTS.md
+CLAUDE.md
 
-history/heartbeat-runs
 __pycache__/
