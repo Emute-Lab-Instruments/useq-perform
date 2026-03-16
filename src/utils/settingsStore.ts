@@ -7,8 +7,8 @@ import {
 import { createDefaultUserSettings, mergeUserSettings, type AppSettings } from "../legacy/config/appSettings.ts";
 
 /**
- * SolidJS store for user settings.
- * Wraps the legacy activeUserSettings and provides reactivity.
+ * SolidJS reactive store for user settings.
+ * Syncs with the canonical appSettingsRepository.
  */
 export const [settings, setSettings] = createStore<AppSettings>(
   mergeUserSettings(createDefaultUserSettings(), getAppSettings()),

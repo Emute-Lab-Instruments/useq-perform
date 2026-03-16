@@ -3,8 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../utils/persistentUserSettings.ts", () => ({
-  activeUserSettings: { wasm: { enabled: true } },
+vi.mock("../../runtime/appSettingsRepository.ts", () => ({
+  getAppSettings: () => ({ wasm: { enabled: true } }),
 }));
 
 type MockHandler = (...args: any[]) => any;

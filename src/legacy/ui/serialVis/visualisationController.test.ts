@@ -42,8 +42,8 @@ async function loadController(overrides: VisualisationOverrides = {}) {
     },
   );
 
-  vi.doMock("../../utils/persistentUserSettings.ts", () => ({
-    activeUserSettings,
+  vi.doMock("../../../runtime/appSettingsRepository.ts", () => ({
+    getAppSettings: () => activeUserSettings,
   }));
 
   vi.doMock("../../io/useqWasmInterpreter.ts", () => ({

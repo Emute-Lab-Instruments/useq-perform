@@ -20,7 +20,7 @@ import {
 
 
 import { makeDeleteWrapper } from "./editorConfig.ts";
-import { getUserSettings } from "../utils/persistentUserSettings.ts";
+import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 
 // Modified keybindings to improve usability
 const completeKeymapModified = completeClojureKeymap.map((binding) => {
@@ -106,7 +106,7 @@ export let baseKeymap = [
     {
       key: "Backspace",
       run: (view) => {
-        const prevent = getUserSettings().editor?.preventBracketUnbalancing ?? true;
+        const prevent = getAppSettings().editor?.preventBracketUnbalancing ?? true;
         if (!prevent) {
           // Feature disabled: perform normal backspace and stop propagation
           return deleteCharBackward(view);

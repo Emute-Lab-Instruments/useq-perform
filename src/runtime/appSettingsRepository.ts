@@ -1,6 +1,7 @@
 import defaultConfig from "../legacy/config/default-config.json";
 import { validateConfiguration } from "../legacy/config/configSchema.ts";
 import {
+  clearPersistedUserSettings,
   createDefaultUserSettings,
   defaultUserSettings,
   loadBootstrapSettings,
@@ -249,11 +250,32 @@ export function updateAppSettings(values: unknown): AppSettings {
   });
 }
 
+export function resetAppSettings(section?: keyof AppSettings): AppSettings {
+  const defaults = createDefaultUserSettings();
+
+  if (section && defaults[section]) {
+    return replaceAppSettings(
+      mergeUserSettings(activeSettings, {
+        [section]: defaults[section],
+      }),
+      { persist: true, dispatch: true },
+    );
+  }
+
+  return replaceAppSettings(defaults, { persist: true, dispatch: true });
+}
+
+export function deletePersistedSettings(): void {
+  clearPersistedUserSettings();
+}
+
 export const appSettingsRepository = {
   getSettings: getAppSettings,
   subscribe: subscribeAppSettings,
   replaceSettings: replaceAppSettings,
   loadSettings: loadAppSettings,
   updateSettings: updateAppSettings,
+  resetSettings: resetAppSettings,
+  deletePersistedSettings,
   loadBootstrapSettingsWithMetadata,
 };

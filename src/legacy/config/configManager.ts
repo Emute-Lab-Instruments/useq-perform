@@ -9,7 +9,7 @@ import {
   validateConfiguration,
   getConfigurationDiff
 } from './configSchema.ts';
-import { activeUserSettings, updateUserSettings } from '../utils/persistentUserSettings.ts';
+import { getAppSettings, updateAppSettings } from '../../runtime/appSettingsRepository.ts';
 import { getAllControlValues } from '../io/mockControlInputs.ts';
 import { dbg } from '../utils.ts';
 import {
@@ -39,7 +39,7 @@ export function exportConfiguration(options = {}) {
   dbg('configManager: Exporting configuration', options);
 
   // Extract base configuration from active settings
-  const config = createConfigurationDocument(activeUserSettings, {
+  const config = createConfigurationDocument(getAppSettings(), {
     includeCode,
     includeDevMode,
     metadataSource: 'webapp-export',
@@ -82,13 +82,13 @@ export function importConfiguration(config, options = {}) {
   const importedSettings = settingsPatchFromConfiguration(config);
   let newSettings;
   if (merge) {
-    newSettings = mergeUserSettings(activeUserSettings, importedSettings);
+    newSettings = mergeUserSettings(getAppSettings(), importedSettings);
   } else {
     newSettings = mergeUserSettings(createDefaultUserSettings(), importedSettings);
   }
 
   // Update active settings
-  updateUserSettings(newSettings);
+  updateAppSettings(newSettings);
 
   dbg('configManager: Configuration imported successfully');
 
@@ -374,7 +374,7 @@ export async function loadConfigurationFromFile() {
  */
 export function previewConfiguration(config) {
   const diffs = getConfigurationDiff(
-    { user: activeUserSettings },
+    { user: getAppSettings() },
     config
   );
 

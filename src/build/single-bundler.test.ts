@@ -35,7 +35,7 @@ const ENTRY_POINT = "bundle.js";
 // Shared modules that should be present in the build
 const EXPECTED_MODULES = [
   { fingerprint: "serialComms", description: "serial communication module" },
-  { fingerprint: "persistentUserSettings", description: "user settings persistence" },
+  { fingerprint: "appSettingsRepository", description: "user settings persistence" },
 ];
 
 describe("Single-bundle build structure", () => {

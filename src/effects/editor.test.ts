@@ -2,13 +2,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Effect } from "effect";
 import { EditorView } from "@codemirror/view";
 
-// Mock legacy modules
+// Internal state for the mock
+let mockSettings = { editor: { fontSize: 16 } };
+
+// Mock the canonical settings repository
+vi.mock("../runtime/appSettingsRepository.ts", () => ({
+  getAppSettings: vi.fn(() => ({ ...mockSettings, editor: { ...mockSettings.editor } })),
+  updateAppSettings: vi.fn((values: any) => {
+    if (values?.editor?.fontSize != null) {
+      mockSettings.editor.fontSize = values.editor.fontSize;
+    }
+  }),
+}));
 vi.mock("../lib/editorStore", () => ({
   editor: vi.fn(() => null),
-}));
-vi.mock("../legacy/utils/persistentUserSettings.ts", () => ({
-  activeUserSettings: { editor: { fontSize: 16 } },
-  saveUserSettings: vi.fn(),
 }));
 vi.mock("../legacy/editors/state.ts", () => ({
   fontSizeCompartment: {
@@ -19,9 +26,9 @@ vi.mock("../legacy/editors/state.ts", () => ({
 import { adjustFontSize, loadCode, saveCode } from "./editor";
 import { editor } from "../lib/editorStore";
 import {
-  activeUserSettings,
-  saveUserSettings,
-} from "../legacy/utils/persistentUserSettings.ts";
+  getAppSettings,
+  updateAppSettings,
+} from "../runtime/appSettingsRepository.ts";
 import { fontSizeCompartment } from "../legacy/editors/state.ts";
 
 // Helper: create a mock CodeMirror editor
@@ -45,7 +52,7 @@ describe("adjustFontSize", () => {
     vi.spyOn(EditorView, "theme").mockImplementation(
       (styles) => styles as ReturnType<typeof EditorView.theme>,
     );
-    (activeUserSettings as any).editor = { fontSize: 16 };
+    mockSettings = { editor: { fontSize: 16 } };
   });
 
   it("calls setFontSize with updated size and saves settings", () => {
@@ -57,8 +64,7 @@ describe("adjustFontSize", () => {
     expect(EditorView.theme).toHaveBeenCalledOnce();
     expect(fontSizeCompartment.reconfigure).toHaveBeenCalledOnce();
     expect(mockEd.dispatch).toHaveBeenCalledOnce();
-    expect(saveUserSettings).toHaveBeenCalledOnce();
-    expect((activeUserSettings as any).editor.fontSize).toBe(18);
+    expect(updateAppSettings).toHaveBeenCalledWith({ editor: { fontSize: 18 } });
   });
 
   it("handles negative delta correctly", () => {
@@ -69,8 +75,7 @@ describe("adjustFontSize", () => {
 
     expect(fontSizeCompartment.reconfigure).toHaveBeenCalledOnce();
     expect(mockEd.dispatch).toHaveBeenCalledOnce();
-    expect(saveUserSettings).toHaveBeenCalledOnce();
-    expect((activeUserSettings as any).editor.fontSize).toBe(13);
+    expect(updateAppSettings).toHaveBeenCalledWith({ editor: { fontSize: 13 } });
   });
 
   it("does nothing when editor() returns null", () => {
@@ -79,7 +84,7 @@ describe("adjustFontSize", () => {
     Effect.runSync(adjustFontSize(2));
 
     expect(fontSizeCompartment.reconfigure).not.toHaveBeenCalled();
-    expect(saveUserSettings).not.toHaveBeenCalled();
+    expect(updateAppSettings).not.toHaveBeenCalled();
   });
 });
 

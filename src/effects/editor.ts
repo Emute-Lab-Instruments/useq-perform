@@ -2,7 +2,7 @@
 import { Effect } from "effect";
 import { EditorView } from "@codemirror/view";
 import { editor } from "../lib/editorStore";
-import { saveUserSettings, activeUserSettings } from "../legacy/utils/persistentUserSettings.ts";
+import { getAppSettings, updateAppSettings } from "../runtime/appSettingsRepository.ts";
 import { fontSizeCompartment } from "../legacy/editors/state.ts";
 
 /**
@@ -59,9 +59,10 @@ export const adjustFontSize = (delta: number) =>
     const currentEditor = editor();
     if (!currentEditor) return;
 
-    activeUserSettings.editor.fontSize += delta;
-    applyEditorFontSize(currentEditor, activeUserSettings.editor.fontSize);
-    saveUserSettings();
+    const currentSettings = getAppSettings();
+    const newFontSize = currentSettings.editor.fontSize + delta;
+    applyEditorFontSize(currentEditor, newFontSize);
+    updateAppSettings({ editor: { fontSize: newFontSize } });
   });
 
 export const loadCode = () =>

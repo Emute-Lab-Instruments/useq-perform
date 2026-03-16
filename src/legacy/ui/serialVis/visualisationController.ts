@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { dbg } from "../../utils.ts";
-import { activeUserSettings } from "../../utils/persistentUserSettings.ts";
+import { getAppSettings } from "../../../runtime/appSettingsRepository.ts";
 import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../io/useqWasmInterpreter.ts";
 import { getSerialVisPalette, getSerialVisChannelColor } from "./utils.ts";
 import {
@@ -240,7 +240,7 @@ function updateDisplayClock(settings) {
 }
 
 function loadSettings() {
-  const visual = activeUserSettings.visualisation;
+  const visual = getAppSettings().visualisation;
   settingsCache = clampSettings(visual);
   refreshExpressionColorsFromSettings(settingsCache);
   resetDisplayClock();

@@ -11,7 +11,7 @@ import { post } from "../../utils/consoleStore.ts";
 import { upgradeCheck, currentVersion } from "../utils/upgradeCheck.ts";
 import { dbg } from "../utils.ts";
 import { handleExternalTimeUpdate } from "../ui/serialVis/visualisationController.ts";
-import { activeUserSettings } from "../utils/persistentUserSettings.ts";
+import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
@@ -47,7 +47,7 @@ import {
 } from "./utils.ts";
 
 function isAutoReconnectEnabled(): boolean {
-  return activeUserSettings?.runtime?.autoReconnect !== false;
+  return getAppSettings()?.runtime?.autoReconnect !== false;
 }
 
 
@@ -182,7 +182,7 @@ function emitConnectionChanged(): void {
     protocolMode: getProtocolMode(),
     hasHardwareConnection: connectedToModule && !!serialport,
     noModuleMode: startupFlags.noModuleMode,
-    wasmEnabled: activeUserSettings?.wasm?.enabled ?? true,
+    wasmEnabled: getAppSettings()?.wasm?.enabled ?? true,
   });
   const detail = {
     connected: runtimeState.connected,

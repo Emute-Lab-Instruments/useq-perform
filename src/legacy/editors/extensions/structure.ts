@@ -86,7 +86,7 @@ import {
   notifyExpressionEvaluated
 } from "../../ui/serialVis/visualisationController.ts";
 import { dbg } from "../../utils.ts";
-import { activeUserSettings } from "../../utils/persistentUserSettings.ts";
+import { getAppSettings } from "../../../runtime/appSettingsRepository.ts";
 
 // Helper functions for tree processing - REMOVED in favor of standard syntax tree
 // The new structural editing extension uses standard Lezer syntax tree and findNodeAt helper.
@@ -265,7 +265,7 @@ export function findExpressionAtPosition(cursor, lineText, lineFrom, findBoundsF
 export function detectAndTrackExpressionEvaluation(view) {
     const state = view.state;
     const doc = state.doc;
-    const ui = (activeUserSettings && activeUserSettings.ui) || {};
+    const ui = (getAppSettings()?.ui) || {};
     if (ui.expressionLastTrackingEnabled === false) {
         return;
     }
@@ -365,7 +365,7 @@ export function getCurrentPalette(doc = typeof document !== 'undefined' ? docume
 // Map pattern to palette index
 export function getMatchColor(match) {
   const palette = getCurrentPalette();
-  const offset = activeUserSettings?.visualisation?.circularOffset ?? 0;
+  const offset = getAppSettings()?.visualisation?.circularOffset ?? 0;
   const exprType = `${match[1]}${match[2]}`;
   return getSerialVisChannelColor(exprType, offset, palette);
 }
@@ -614,7 +614,7 @@ export function createMarkersForRange(range, isActive, docLineFn, exprType) {
         const isStart = line === range.from;
         const isEnd = line === range.to;
         const isMid = !isStart && !isEnd;
-        const ui = (activeUserSettings && activeUserSettings.ui) || {};
+        const ui = (getAppSettings()?.ui) || {};
         
         // Show play button on middle line
         const buttonsEnabled = ui.expressionClearButtonEnabled !== false;
@@ -667,7 +667,7 @@ function buildMarkers(state) {
     const builder = new RangeSetBuilder();
     const doc = state.doc;
     // Respect settings toggles
-    const ui = (activeUserSettings && activeUserSettings.ui) || {};
+    const ui = (getAppSettings()?.ui) || {};
     if (ui.expressionGutterEnabled === false) {
         return builder.finish();
     }
@@ -752,7 +752,7 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
     // Handle play button (▶)
     const playBtn = target.closest('.cm-expr-play-btn');
     if (playBtn) {
-      const ui = (activeUserSettings && activeUserSettings.ui) || {};
+      const ui = (getAppSettings()?.ui) || {};
       if (ui.expressionClearButtonEnabled === false) return;
       e.preventDefault();
       e.stopPropagation();
