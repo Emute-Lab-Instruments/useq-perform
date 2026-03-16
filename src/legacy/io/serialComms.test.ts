@@ -2,7 +2,6 @@ import { ReadableStream, WritableStream } from "node:stream/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  CONNECTION_CHANGED_EVENT,
   JSON_META_EVENT,
   PROTOCOL_READY_EVENT,
 } from "../../contracts/runtimeEvents";
@@ -10,7 +9,19 @@ import {
 const postMock = vi.fn();
 const upgradeCheckMock = vi.fn();
 const handleExternalTimeUpdateMock = vi.fn(() => Promise.resolve());
-const publishRuntimeDiagnosticsMock = vi.fn();
+const reportTransportConnectionChangedMock = vi.fn(() => ({
+  connected: false,
+  protocolMode: "legacy",
+  session: {
+    hasHardwareConnection: false,
+    noModuleMode: false,
+    wasmEnabled: true,
+    connectionMode: "none",
+    transportMode: "none",
+  },
+}));
+const reportProtocolModeChangedMock = vi.fn();
+const announceRuntimeSessionMock = vi.fn();
 
 vi.mock("../../utils/consoleStore.ts", () => ({
   post: postMock,
@@ -43,16 +54,11 @@ vi.mock("../urlParams.ts", () => ({
   }),
 }));
 
-vi.mock("../../runtime/runtimeDiagnostics.ts", async () => {
-  const actual = await vi.importActual<typeof import("../../runtime/runtimeDiagnostics.ts")>(
-    "../../runtime/runtimeDiagnostics.ts"
-  );
-
-  return {
-    ...actual,
-    publishRuntimeDiagnostics: publishRuntimeDiagnosticsMock,
-  };
-});
+vi.mock("../../runtime/runtimeService.ts", () => ({
+  reportTransportConnectionChanged: reportTransportConnectionChangedMock,
+  reportProtocolModeChanged: reportProtocolModeChangedMock,
+  announceRuntimeSession: announceRuntimeSessionMock,
+}));
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -240,7 +246,20 @@ describe("serialComms fake host harness", () => {
     upgradeCheckMock.mockReset();
     handleExternalTimeUpdateMock.mockReset();
     handleExternalTimeUpdateMock.mockImplementation(() => Promise.resolve());
-    publishRuntimeDiagnosticsMock.mockReset();
+    reportTransportConnectionChangedMock.mockReset();
+    reportTransportConnectionChangedMock.mockReturnValue({
+      connected: false,
+      protocolMode: "legacy",
+      session: {
+        hasHardwareConnection: false,
+        noModuleMode: false,
+        wasmEnabled: true,
+        connectionMode: "none",
+        transportMode: "none",
+      },
+    });
+    reportProtocolModeChangedMock.mockReset();
+    announceRuntimeSessionMock.mockReset();
   });
 
   afterEach(() => {
@@ -250,13 +269,9 @@ describe("serialComms fake host harness", () => {
   it("proves connect -> firmware info -> hello -> stream-config -> meta/time routing -> disconnect", async () => {
     const serialComms = await loadSerialComms();
     const port = new FakeSerialPort();
-    const connectionEvents: Array<Record<string, unknown>> = [];
     const protocolEvents: Array<Record<string, unknown>> = [];
     const metaEvents: Array<Record<string, unknown>> = [];
 
-    window.addEventListener(CONNECTION_CHANGED_EVENT, (event) => {
-      connectionEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
-    });
     window.addEventListener(PROTOCOL_READY_EVENT, (event) => {
       protocolEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
     });
@@ -279,8 +294,14 @@ describe("serialComms fake host harness", () => {
     ]);
     expect(serialComms.getProtocolMode()).toBe("json");
     expect(protocolEvents).toContainEqual({ protocolMode: "json" });
-    expect(connectionEvents.some((event) => event.connected === true)).toBe(true);
-    expect(connectionEvents.at(-1)?.protocolMode).toBe("json");
+    // Connection state is now reported through runtimeService
+    expect(reportTransportConnectionChangedMock).toHaveBeenCalledWith(
+      expect.objectContaining({ connected: true })
+    );
+    const lastConnectedCall = reportTransportConnectionChangedMock.mock.calls
+      .filter((c: any[]) => c[0].connected === true)
+      .at(-1);
+    expect(lastConnectedCall?.[0].protocolMode).toBe("json");
 
     port.enqueueJson({
       type: "meta",
@@ -301,7 +322,10 @@ describe("serialComms fake host harness", () => {
 
     expect(serialComms.isConnectedToModule()).toBe(false);
     expect(port.closeCalls).toBe(1);
-    expect(connectionEvents.at(-1)?.connected).toBe(false);
+    // Disconnect reported through runtimeService
+    expect(reportTransportConnectionChangedMock).toHaveBeenCalledWith(
+      expect.objectContaining({ connected: false })
+    );
   });
 
   it("surfaces request timeouts on the fake serial harness", async () => {
