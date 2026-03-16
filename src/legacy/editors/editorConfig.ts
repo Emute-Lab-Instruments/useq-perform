@@ -16,7 +16,7 @@ import { evalInUseqWasm } from "../io/useqWasmInterpreter.ts";
 import { rewriteCodeSliceForModule } from "./manualControlState.ts";
 
 import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
-import { fontSizeCompartment } from "./state.ts";
+import { applyEditorFontSize } from "../../lib/editorStore.ts";
 
 import { dbg } from "../utils.ts";
 import { getStartupFlagsSnapshot } from "../../runtime/startupContext.ts";
@@ -254,22 +254,7 @@ export function toggleSerialVis(): boolean {
 
 export function setFontSize(editor: EditorView | null, size: number): void {
   if (!editor) return;
-
-  editor.dispatch({
-    effects: fontSizeCompartment.reconfigure(
-      EditorView.theme({
-        ".cm-content, .cm-cursor, .cm-gutters, .cm-lineNumbers": {
-          fontSize: `${size}px`,
-          lineHeight: `${Math.ceil(size * 1.5)}px`
-        },
-        ".cm-gutters .cm-lineNumber": {
-          display: "flex",
-          alignItems: "center",
-          height: "100%"
-        }
-      })
-    ),
-  });
+  applyEditorFontSize(editor, size);
 }
 
 const openingBracketChars = ["(", "[", "{"];

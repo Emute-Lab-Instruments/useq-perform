@@ -14,14 +14,23 @@ vi.mock("../runtime/appSettingsRepository.ts", () => ({
     }
   }),
 }));
-vi.mock("../lib/editorStore", () => ({
-  editor: vi.fn(() => null),
-}));
+
+// Mock the legacy compartment (transitively used by editorStore.applyEditorFontSize)
+const mockFontSizeCompartment = {
+  reconfigure: vi.fn((extension: any) => ({ extension })),
+};
 vi.mock("../legacy/editors/state.ts", () => ({
-  fontSizeCompartment: {
-    reconfigure: vi.fn((extension) => ({ extension })),
-  },
+  fontSizeCompartment: mockFontSizeCompartment,
 }));
+
+// Mock the editor signal but keep real facade functions (applyEditorFontSize etc.)
+vi.mock("../lib/editorStore", async () => {
+  const actual = await vi.importActual<typeof import("../lib/editorStore")>("../lib/editorStore");
+  return {
+    ...actual,
+    editor: vi.fn(() => null),
+  };
+});
 
 import { adjustFontSize, loadCode, saveCode } from "./editor";
 import { editor } from "../lib/editorStore";
@@ -29,7 +38,6 @@ import {
   getAppSettings,
   updateAppSettings,
 } from "../runtime/appSettingsRepository.ts";
-import { fontSizeCompartment } from "../legacy/editors/state.ts";
 
 // Helper: create a mock CodeMirror editor
 function createMockEditor(docText = "hello world") {
@@ -62,7 +70,7 @@ describe("adjustFontSize", () => {
     Effect.runSync(adjustFontSize(2));
 
     expect(EditorView.theme).toHaveBeenCalledOnce();
-    expect(fontSizeCompartment.reconfigure).toHaveBeenCalledOnce();
+    expect(mockFontSizeCompartment.reconfigure).toHaveBeenCalledOnce();
     expect(mockEd.dispatch).toHaveBeenCalledOnce();
     expect(updateAppSettings).toHaveBeenCalledWith({ editor: { fontSize: 18 } });
   });
@@ -73,7 +81,7 @@ describe("adjustFontSize", () => {
 
     Effect.runSync(adjustFontSize(-3));
 
-    expect(fontSizeCompartment.reconfigure).toHaveBeenCalledOnce();
+    expect(mockFontSizeCompartment.reconfigure).toHaveBeenCalledOnce();
     expect(mockEd.dispatch).toHaveBeenCalledOnce();
     expect(updateAppSettings).toHaveBeenCalledWith({ editor: { fontSize: 13 } });
   });
@@ -83,7 +91,7 @@ describe("adjustFontSize", () => {
 
     Effect.runSync(adjustFontSize(2));
 
-    expect(fontSizeCompartment.reconfigure).not.toHaveBeenCalled();
+    expect(mockFontSizeCompartment.reconfigure).not.toHaveBeenCalled();
     expect(updateAppSettings).not.toHaveBeenCalled();
   });
 });
