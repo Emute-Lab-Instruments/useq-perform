@@ -26,7 +26,7 @@ interface RawReferenceEntry {
   [key: string]: unknown;
 }
 import { showPanel } from "../adapters/panels";
-import { HELP_PANEL_SWITCH_EVENT } from "./HelpPanel";
+import { referenceSearchChannel, helpTabSwitchChannel } from "./helpChannels";
 
 const normalizeEntry = (raw: unknown): ReferenceEntry | null => {
   if (!raw || typeof raw !== "object") return null;
@@ -165,10 +165,8 @@ export const ModuLispReferenceTab: Component = () => {
     setSelectedTags(next);
   };
 
-  // Handle Alt-F symbol reference search events from the editor
-  const handleReferenceSearch = (e: Event) => {
-    const detail = (e as CustomEvent).detail;
-    const symbol: string = detail?.symbol;
+  // Handle Alt-F symbol reference search requests from the editor
+  const handleReferenceSearch = ({ symbol }: { symbol: string }) => {
     if (!symbol) return;
 
     const entry = findReferenceEntry(referenceStore.data, symbol);
@@ -181,10 +179,8 @@ export const ModuLispReferenceTab: Component = () => {
     // Show the help panel using adapter API
     showPanel("help");
 
-    // Switch to the Reference tab via custom event
-    window.dispatchEvent(new CustomEvent(HELP_PANEL_SWITCH_EVENT, {
-      detail: { tabId: "panel-help-tab-reference" }
-    }));
+    // Switch to the Reference tab via typed channel
+    helpTabSwitchChannel.publish({ tabId: "panel-help-tab-reference" });
 
     // Clear tag filters so the entry is visible
     setSelectedTags(new Set());
@@ -202,11 +198,8 @@ export const ModuLispReferenceTab: Component = () => {
   };
 
   onMount(() => {
-    window.addEventListener("useq-reference-search", handleReferenceSearch);
-  });
-
-  onCleanup(() => {
-    window.removeEventListener("useq-reference-search", handleReferenceSearch);
+    const unsub = referenceSearchChannel.subscribe(handleReferenceSearch);
+    onCleanup(unsub);
   });
 
   return (

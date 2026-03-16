@@ -3,9 +3,7 @@ import { KeybindingsTab } from "./KeybindingsTab";
 import { CodeSnippetsTab } from "./CodeSnippetsTab";
 import { ModuLispReferenceTab } from "./ModuLispReferenceTab";
 import { UserGuideTab } from "./UserGuideTab";
-
-/** Event type for external tab switching in help panel */
-export const HELP_PANEL_SWITCH_EVENT = "useq-help-panel-switch-tab";
+import { helpTabSwitchChannel } from "./helpChannels";
 
 export function HelpPanel() {
   const tabs: Tab[] = [
@@ -33,7 +31,7 @@ export function HelpPanel() {
 
   return (
     <div class="panel help-panel">
-      <Tabs tabs={tabs} externalSwitchEvent={HELP_PANEL_SWITCH_EVENT} />
+      <Tabs tabs={tabs} switchChannel={helpTabSwitchChannel} />
     </div>
   );
 }

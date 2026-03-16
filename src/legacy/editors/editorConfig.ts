@@ -17,6 +17,7 @@ import { rewriteCodeSliceForModule } from "./manualControlState.ts";
 
 import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 import { applyEditorFontSize } from "../../lib/editorStore.ts";
+import { referenceSearchChannel } from "../../ui/help/helpChannels.ts";
 
 import { dbg } from "../utils.ts";
 import { getStartupFlagsSnapshot } from "../../runtime/startupContext.ts";
@@ -337,9 +338,7 @@ export function showDocumentationForSymbol(view: EditorView): boolean {
 
   if (!symbol) return false;
 
-  window.dispatchEvent(new CustomEvent("useq-reference-search", {
-    detail: { symbol }
-  }));
+  referenceSearchChannel.publish({ symbol });
 
   return true;
 }

@@ -46,14 +46,9 @@ function dispatchSettingsChanged(): void {
   updateRuntimeSettingsEffect({
     wasmEnabled: activeSettings.wasm.enabled,
   });
-
-  try {
-    window.dispatchEvent(
-      new CustomEvent("useq-settings-changed", { detail: getAppSettings() }),
-    );
-  } catch {
-    // no-op in non-browser tests
-  }
+  // Typed subscribers are notified via notifyListeners() at the call-site.
+  // The previous window CustomEvent ("useq-settings-changed") has been
+  // removed -- all internal consumers now use subscribeAppSettings().
 }
 
 function parseGistId(rawValue: string | null | undefined): string | null {
