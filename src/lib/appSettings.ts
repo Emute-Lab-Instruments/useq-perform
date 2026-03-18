@@ -621,34 +621,37 @@ function migrateLegacySettings(storage: Storage): AppSettingsPatch {
   const settingsConfigStr = storage.getItem(legacySettingsKey);
 
   if (editorConfigStr) {
-    const editorConfig = JSON.parse(editorConfigStr) as Record<string, unknown>;
-    const themeNames = Object.keys(themes);
-    const themeIndex = Number(editorConfig.currentTheme) % themeNames.length;
-    migrated.editor = {
-      ...editorConfig,
-      theme: themeNames[themeIndex] || defaultTheme,
-    };
-    delete (migrated.editor as Record<string, unknown>).currentTheme;
+    try {
+      const editorConfig = JSON.parse(editorConfigStr) as Record<string, unknown>;
+      const themeNames = Object.keys(themes);
+      const themeIndex = Number(editorConfig.currentTheme) % themeNames.length;
+      migrated.editor = {
+        ...editorConfig,
+        theme: themeNames[themeIndex] || defaultTheme,
+      };
+      delete (migrated.editor as Record<string, unknown>).currentTheme;
+    } catch { /* corrupt legacy data, skip migration */ }
     storage.removeItem(legacyEditorConfigKey);
   }
 
   if (settingsConfigStr) {
-    const generalConfig = JSON.parse(settingsConfigStr);
-    if (isRecord(generalConfig.storage)) {
-      migrated.storage = {
-        ...generalConfig.storage,
-        saveCodeLocally:
-          generalConfig.storage.savelocal == null
-            ? undefined
-            : generalConfig.storage.savelocal !== false,
-      };
-      delete (migrated.storage as Record<string, unknown>).savelocal;
-    }
+    try {
+      const generalConfig = JSON.parse(settingsConfigStr);
+      if (isRecord(generalConfig.storage)) {
+        migrated.storage = {
+          ...generalConfig.storage,
+          saveCodeLocally:
+            generalConfig.storage.savelocal == null
+              ? undefined
+              : generalConfig.storage.savelocal !== false,
+        };
+        delete (migrated.storage as Record<string, unknown>).savelocal;
+      }
 
-    if (isRecord(generalConfig.ui)) {
-      migrated.ui = { ...generalConfig.ui };
-    }
-
+      if (isRecord(generalConfig.ui)) {
+        migrated.ui = { ...generalConfig.ui };
+      }
+    } catch { /* corrupt legacy data, skip migration */ }
     storage.removeItem(legacySettingsKey);
   }
 
