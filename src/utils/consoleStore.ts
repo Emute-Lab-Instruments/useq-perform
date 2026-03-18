@@ -15,7 +15,13 @@ interface ConsoleState {
   nextId: number;
 }
 
-const MAX_CONSOLE_LINES = 1000;
+const DEFAULT_CONSOLE_LINES = 1000;
+let _maxConsoleLines = DEFAULT_CONSOLE_LINES;
+
+/** Update the console lines limit (called by settings sync). */
+export function setMaxConsoleLines(limit: number): void {
+  _maxConsoleLines = limit > 0 ? limit : DEFAULT_CONSOLE_LINES;
+}
 
 const initialState: ConsoleState = {
   messages: [],
@@ -37,8 +43,9 @@ export const addConsoleMessage = (
 
   setConsoleStore("messages", (msgs) => {
     const next = [...msgs, newMessage];
-    if (next.length > MAX_CONSOLE_LINES) {
-      return next.slice(next.length - MAX_CONSOLE_LINES);
+    const limit = _maxConsoleLines;
+    if (next.length > limit) {
+      return next.slice(next.length - limit);
     }
     return next;
   });

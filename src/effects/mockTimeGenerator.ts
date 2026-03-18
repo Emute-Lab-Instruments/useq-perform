@@ -12,6 +12,7 @@ let isRunning = false;
 let startTimeMs: number | null = null;
 let animationFrameId: number | null = null;
 let currentMockTime = 0;
+let tickInFlight = false;
 
 /**
  * Get current performance time in milliseconds
@@ -34,6 +35,9 @@ async function tick(): Promise<void> {
     return;
   }
 
+  if (tickInFlight) return;
+  tickInFlight = true;
+
   tickCount++;
   const nowMs = performanceNow();
   const elapsedMs = nowMs - (startTimeMs ?? 0);
@@ -44,6 +48,8 @@ async function tick(): Promise<void> {
   } catch (error) {
     dbg(`mockTimeGenerator: error updating time: ${error}`);
     console.error('Mock time generator: ERROR:', error);
+  } finally {
+    tickInFlight = false;
   }
 
   // Schedule next frame

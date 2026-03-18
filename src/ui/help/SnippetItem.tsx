@@ -52,6 +52,7 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
       }
     } catch (error) {
       console.error("Failed to toggle visualization:", error);
+      setIsVisualizing(isActive);
     }
   };
 

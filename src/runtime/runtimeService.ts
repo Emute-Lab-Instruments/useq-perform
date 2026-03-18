@@ -234,7 +234,7 @@ export function sendRuntimeTransportCommand(command: SharedTransportCommand) {
 }
 
 export function queryRuntimeHardwareTransportState() {
-  const state = syncRuntimeStateFromAdapter();
+  const state = getRuntimeSessionState();
 
   if (!supportsHardwareTransport(state.session.transportMode)) {
     return Effect.succeed(null as TransportState | null);

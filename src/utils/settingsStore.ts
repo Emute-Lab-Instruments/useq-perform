@@ -5,6 +5,7 @@ import {
   updateAppSettings,
 } from "../runtime/appSettingsRepository.ts";
 import { createDefaultUserSettings, mergeUserSettings, type AppSettings } from "../lib/appSettings.ts";
+import { setMaxConsoleLines } from "./consoleStore.ts";
 
 /**
  * SolidJS reactive store for user settings.
@@ -24,6 +25,9 @@ export function updateSettingsStore(values: Record<string, unknown>) {
 
 function syncSettingsStore(nextSettings: AppSettings): void {
   setSettings(reconcile(mergeUserSettings(createDefaultUserSettings(), nextSettings)));
+  if (nextSettings?.ui?.consoleLinesLimit) {
+    setMaxConsoleLines(nextSettings.ui.consoleLinesLimit);
+  }
 }
 
 // Sync store with the canonical repository while legacy listeners remain supported.

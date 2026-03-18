@@ -125,12 +125,14 @@ export async function connectToConfigServer() {
       ws.onerror = (error) => {
         dbg('configManager: Config server not available:', error);
         configWebSocket = null;
+        connectionAttempted = false;
         resolve(null);
       };
 
       ws.onclose = () => {
         dbg('configManager: Config server connection closed');
         configWebSocket = null;
+        connectionAttempted = false;
       };
 
       // Timeout after 2 seconds
@@ -205,9 +207,10 @@ export async function saveConfigurationViaWebSocket(config, relativePath = CONFI
       }
     };
 
-    configWebSocket.addEventListener('message', handler);
+    const ws = configWebSocket;
+    ws.addEventListener('message', handler);
 
-    configWebSocket.send(JSON.stringify({
+    ws.send(JSON.stringify({
       type: 'save-config',
       requestId,
       path: relativePath,
@@ -216,7 +219,7 @@ export async function saveConfigurationViaWebSocket(config, relativePath = CONFI
 
     // Timeout after 5 seconds
     setTimeout(() => {
-      configWebSocket.removeEventListener('message', handler);
+      ws.removeEventListener('message', handler);
       resolve({
         success: false,
         method: 'websocket',
@@ -337,7 +340,20 @@ export async function loadConfigurationFromFile() {
     input.type = 'file';
     input.accept = '.json';
 
+    // Handle cancel: focus returns to window without a file being selected
+    const handleCancel = () => {
+      window.removeEventListener('focus', handleCancel);
+      // Small delay to allow onchange to fire first if a file was selected
+      setTimeout(() => {
+        if (!input.files || input.files.length === 0) {
+          reject(new Error('File selection cancelled'));
+        }
+      }, 300);
+    };
+    window.addEventListener('focus', handleCancel);
+
     input.onchange = async (e) => {
+      window.removeEventListener('focus', handleCancel);
       try {
         const file = e.target.files[0];
         if (!file) {

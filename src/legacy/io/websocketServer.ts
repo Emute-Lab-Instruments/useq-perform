@@ -174,15 +174,20 @@ export async function stopWebSocketServer(): Promise<void> {
         dbg('WebSocket server stopped');
         post('**Info**: Dev mode WebSocket server stopped');
         wss = null;
+
+        if (server) {
+          server.close();
+          server = null;
+        }
+
         resolve();
       });
     } else {
+      if (server) {
+        server.close();
+        server = null;
+      }
       resolve();
-    }
-
-    if (server) {
-      server.close();
-      server = null;
     }
   });
 }

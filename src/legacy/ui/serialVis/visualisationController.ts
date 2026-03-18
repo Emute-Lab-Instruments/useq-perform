@@ -519,12 +519,6 @@ function markExpressionsForRefresh(targetExprType = null) {
   if (target) {
     target.needsFutureRefresh = true;
   }
-
-  for (const expression of registeredExpressions.values()) {
-    if (expression.exprType !== targetExprType) {
-      expression.needsFutureRefresh = true;
-    }
-  }
 }
 
 function scheduleFullRebuild(reason = "data") {

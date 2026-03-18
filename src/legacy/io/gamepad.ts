@@ -177,7 +177,7 @@ function createEmptySnapshot({ now, buttonNames, axisNames }: CreateSnapshotPara
   };
 }
 
-function cloneSnapshot(snapshot: GamepadSnapshot | null): GamepadSnapshot | null {
+export function cloneSnapshot(snapshot: GamepadSnapshot | null): GamepadSnapshot | null {
   if (!snapshot) return null;
   return {
     connected: Boolean(snapshot.connected),

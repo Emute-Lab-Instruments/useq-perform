@@ -744,6 +744,35 @@ function showFileRelocationOption(url) {
     return url;
 }
 
+async function openFilePicker(filename) {
+    try {
+        if (!('showOpenFilePicker' in window)) {
+            post(`**Error**: Your browser doesn't support the File System Access API. ` +
+                `Manually copy **${filename}** from your Downloads folder to the **RP2040** drive.`);
+            return;
+        }
+
+        post(`**Info**: Please select the downloaded **${filename}** file...`);
+
+        const [fileHandle] = await (window as any).showOpenFilePicker({
+            types: [{ description: 'UF2 Firmware', accept: { 'application/octet-stream': ['.uf2'] } }],
+            multiple: false,
+        });
+        const file = await fileHandle.getFile();
+
+        await saveFileToBootloader(file, file.name);
+        post('**Success**: Firmware written to RP2040!');
+    } catch (err: any) {
+        if (err?.name === 'AbortError') {
+            const retryHtml = createRelocationButton(filename);
+            post(`**Info**: File selection cancelled. Click below to try again.${retryHtml}`);
+        } else {
+            post(`**Error**: Failed to save firmware: ${err?.message ?? 'Unknown error'}`);
+            dbg('openFilePicker error:', err);
+        }
+    }
+}
+
 function createRelocationButton(filename) {
     const buttonId = `relocate-btn-${Date.now()}`;
     const buttonHtml = `<button id="${buttonId}" class="relocate-button">Save ${filename} to RP2040</button>`;

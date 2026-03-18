@@ -256,20 +256,22 @@ export async function disconnect(port?: SerialPort | null): Promise<void> {
       await stopSerialReader();
     }
 
+    let disconnectError: unknown = null;
     try {
       if (port.readable || port.writable) {
         await port.close();
-
-        if (port === serialport) {
-          setConnectedToModule(false);
-          post("**Info**: uSEQ disconnected");
-        }
       }
     } catch (err) {
       console.log("Error closing port:", err);
-      if (port === serialport) {
-        setConnectedToModule(false);
-        post("**Warning**: uSEQ disconnected with errors\n" + err);
+      disconnectError = err;
+    }
+
+    if (port === serialport) {
+      setConnectedToModule(false);
+      if (disconnectError) {
+        post("**Warning**: uSEQ disconnected with errors\n" + disconnectError);
+      } else {
+        post("**Info**: uSEQ disconnected");
       }
     }
   }
@@ -289,10 +291,11 @@ export function checkForWebserialSupport(): boolean {
 
   console.log("Web Serial API supported");
 
-  navigator.serial.addEventListener("connect", (_e: Event) => {
-    console.log(_e);
-    const port = getSerialPort();
-    if (port) {
+  navigator.serial.addEventListener("connect", (e: Event) => {
+    const savedPort = getSerialPort();
+    const connectedPort = (e as any).port as SerialPort | undefined;
+    // Only react if the connected port matches the one we're tracking
+    if (savedPort && connectedPort === savedPort) {
       try {
         dispatchRuntimeEvent(DEVICE_PLUGGED_IN_EVENT, undefined);
       } catch (_e) {
@@ -339,6 +342,7 @@ export async function enterBootloaderMode(
     post(
       `Error entering bootloader mode: ${error instanceof Error ? error.message : String(error)}`
     );
+    return false;
   } finally {
     flag_triggeringBootloader = false;
   }
