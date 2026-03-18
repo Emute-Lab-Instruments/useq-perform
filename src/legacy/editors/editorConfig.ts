@@ -301,7 +301,7 @@ export function makeDeleteWrapper(originalRun: (view: EditorView) => boolean) {
         deleteCharForward(view);
         return true;
       } else {
-        return true;
+        return originalRun(view);
       }
     }
     return originalRun(view);
