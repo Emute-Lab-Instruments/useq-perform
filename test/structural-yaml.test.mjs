@@ -12,7 +12,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import yaml from 'js-yaml';
-import { runTestCase } from '../testHarness.mjs';
+import { runTestCase } from './testHarness.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
