@@ -58,7 +58,7 @@ export function combineBuffers(existingBuffer: Uint8Array, newData: Uint8Array):
  */
 export function findMessageStartMarker(byteArray: Uint8Array, markerValue: number): number {
   return byteArray.findIndex(
-    (byte, i) => i < byteArray.length - 1 && byte === markerValue
+    (byte) => byte === markerValue
   );
 }
 

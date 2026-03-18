@@ -121,7 +121,7 @@ async function handleSaveConfig(message, ws) {
     const absolutePath = path.join(PROJECT_ROOT, relativePath);
 
     // Security check: ensure path is within project
-    if (!absolutePath.startsWith(PROJECT_ROOT)) {
+    if (!absolutePath.startsWith(PROJECT_ROOT + path.sep)) {
       throw new Error('Security violation: path outside project directory');
     }
 
@@ -167,7 +167,7 @@ async function handleLoadConfig(message, ws) {
     const absolutePath = path.join(PROJECT_ROOT, relativePath);
 
     // Security check
-    if (!absolutePath.startsWith(PROJECT_ROOT)) {
+    if (!absolutePath.startsWith(PROJECT_ROOT + path.sep)) {
       throw new Error('Security violation: path outside project directory');
     }
 

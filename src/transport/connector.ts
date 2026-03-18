@@ -331,9 +331,14 @@ export async function enterBootloaderMode(
       await disconnect(port);
     }
 
+    if (!port) {
+      post("**Error**: No serial port available for bootloader mode");
+      return false;
+    }
+
     post("Putting uSEQ into bootloader mode...");
-    await port!.open({ baudRate: 1200 });
-    await port!.close();
+    await port.open({ baudRate: 1200 });
+    await port.close();
 
     post("Waiting for device to reappear as a USB drive...");
     await new Promise<void>((resolve) => setTimeout(resolve, 1000));

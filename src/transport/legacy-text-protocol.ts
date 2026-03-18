@@ -120,11 +120,14 @@ function sendToPort(
   writer.write(encoder.encode(code)).then(() => {
     writer.releaseLock();
     dbg("written");
+  }).catch((err) => {
+    writer.releaseLock();
+    console.error("Serial write failed:", err);
   });
 }
 
 function handleNotConnected(): void {
-  post("**Warning**: uSEQ not connected yet - make sure it's ");
+  post("**Warning**: uSEQ not connected yet - make sure it's plugged in and click Connect");
   animateConnectButton();
 }
 

@@ -688,8 +688,10 @@ export function readPersistedUserSettings(options: {
   let loaded: AppSettingsPatch = {};
 
   if (storedSettingsStr) {
-    const parsed = JSON.parse(storedSettingsStr);
-    loaded = isRecord(parsed) ? (parsed as Partial<AppSettings>) : {};
+    try {
+      const parsed = JSON.parse(storedSettingsStr);
+      loaded = isRecord(parsed) ? (parsed as Partial<AppSettings>) : {};
+    } catch { /* corrupt stored settings, fall through to defaults */ }
   } else if (legacySettingsPresent) {
     loaded = migrateLegacySettings(storage);
   }
