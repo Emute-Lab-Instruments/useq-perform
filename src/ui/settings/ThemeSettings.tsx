@@ -6,7 +6,7 @@ import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mo
 import { themes, setMainEditorTheme } from "../../legacy/editors/themes/themeManager.ts";
 import { defaultThemeEditorStartingCode } from "../../lib/editorDefaults.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
-import { hidePanel } from "../adapters/panels";
+import { hideChromePanel } from "../adapters/panelControls";
 
 /** Lightweight read-only extensions for theme preview cards. */
 const previewBaseExtensions: Extension[] = [
@@ -60,7 +60,7 @@ function ThemePreview(props: { themeName: string; themeExtension: Extension }) {
     setMainEditorTheme(props.themeName);
 
     // Close the settings panel using adapter API
-    hidePanel("settings");
+    hideChromePanel("settings");
   };
 
   return (

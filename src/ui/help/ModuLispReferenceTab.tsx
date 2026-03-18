@@ -25,7 +25,7 @@ interface RawReferenceEntry {
   changed_in_version?: unknown;
   [key: string]: unknown;
 }
-import { showPanel } from "../adapters/panels";
+import { showChromePanel } from "../adapters/panelControls";
 import { referenceSearchChannel, helpTabSwitchChannel } from "./helpChannels";
 
 const normalizeEntry = (raw: unknown): ReferenceEntry | null => {
@@ -177,7 +177,7 @@ export const ModuLispReferenceTab: Component = () => {
     }
 
     // Show the help panel using adapter API
-    showPanel("help");
+    showChromePanel("help");
 
     // Switch to the Reference tab via typed channel
     helpTabSwitchChannel.publish({ tabId: "panel-help-tab-reference" });

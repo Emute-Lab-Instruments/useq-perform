@@ -93,9 +93,8 @@ export type RequiredRuntimeMethod = (typeof REQUIRED_RUNTIME_METHODS)[number];
 
 /**
  * Low-level Emscripten helpers the bridge uses for typed-array batch
- * evaluation. `_malloc` and `_free` are always exported (`_free` is
- * explicit in the build script; `_malloc` is implicitly available when
- * ALLOW_MEMORY_GROWTH is set).
+ * evaluation. `_malloc` and `_free` are both explicitly listed in
+ * EXPORTED_FUNCTIONS in build_wasm.sh.
  */
 export const REQUIRED_HEAP_HELPERS = Object.freeze([
   "_malloc",

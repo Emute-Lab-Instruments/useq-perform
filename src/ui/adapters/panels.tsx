@@ -81,6 +81,8 @@ export function hideAllPanels() {
 registerPanelControls({
   hideAllPanels,
   togglePanelVisibility,
+  showPanel,
+  hidePanel,
 });
 
 // ---- Mount helpers ----

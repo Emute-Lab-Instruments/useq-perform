@@ -1,6 +1,8 @@
 interface PanelControlHandlers {
   hideAllPanels: () => void;
   togglePanelVisibility: (panelId: string) => void;
+  showPanel: (panelId: string) => void;
+  hidePanel: (panelId: string) => void;
 }
 
 let handlers: PanelControlHandlers | null = null;
@@ -20,4 +22,12 @@ export function toggleChromePanel(panelId: string): boolean {
 
   handlers.togglePanelVisibility(panelId);
   return true;
+}
+
+export function showChromePanel(panelId: string): void {
+  handlers?.showPanel(panelId);
+}
+
+export function hideChromePanel(panelId: string): void {
+  handlers?.hidePanel(panelId);
 }

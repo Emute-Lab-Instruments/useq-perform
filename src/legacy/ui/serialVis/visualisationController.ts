@@ -757,19 +757,27 @@ async function refreshBarValue() {
 }
 
 if (typeof window !== 'undefined') {
-  subscribeAppSettings(() => {
-    const settings = loadSettings();
-    const reinitialise = async () => {
-      for (const expression of registeredExpressions.values()) {
-        await initialiseSamples(expression, settings);
-      }
-      notifyStateChanged('settings');
-    };
+  // Defer all subscriptions to avoid circular dependency TDZ errors during
+  // module initialisation (appSettingsRepository hasn't finished initialising
+  // its module-level `listeners` Set when this module is first evaluated).
+  // Use setTimeout(0) to push past the ESM module evaluation phase.
+  setTimeout(() => {
+    loadSettings();
 
-    reinitialise().catch((error) => {
-      dbg(`visualisationController: failed to refresh after settings change: ${error}`);
+    subscribeAppSettings(() => {
+      const settings = loadSettings();
+      const reinitialise = async () => {
+        for (const expression of registeredExpressions.values()) {
+          await initialiseSamples(expression, settings);
+        }
+        notifyStateChanged('settings');
+      };
+
+      reinitialise().catch((error) => {
+        dbg(`visualisationController: failed to refresh after settings change: ${error}`);
+      });
     });
-  });
+  }, 0);
 
   addRuntimeEventListener(CODE_EVALUATED_EVENT, () => {
     markExpressionsForRefresh();
@@ -780,9 +788,4 @@ if (typeof window !== 'undefined') {
     refreshExpressionColorsFromSettings();
     notifyStateChanged('palette');
   });
-
-  // Defer loadSettings to avoid circular dependency TDZ errors during
-  // module initialisation (utils.ts -> serialComms.ts -> this module).
-  // Use setTimeout(0) to push past the ESM module evaluation phase.
-  setTimeout(() => loadSettings(), 0);
 }
