@@ -11,6 +11,9 @@ import { MainToolbar } from "../MainToolbar";
 const TRANSPORT_ROOT_ID = "panel-top-toolbar-root";
 const MAIN_ROOT_ID = "panel-toolbar-root";
 
+let transportMounted = false;
+let mainMounted = false;
+
 /**
  * Check if we're in a browser environment.
  */
@@ -58,7 +61,9 @@ function ensureMainRoot(): HTMLElement {
  * In non-browser environments, this is a no-op.
  */
 export function mountTransportToolbar(root?: HTMLElement): void {
+  if (transportMounted) return;
   if (!isBrowser()) return;
+  transportMounted = true;
   const el = root || ensureTransportRoot();
   render(() => <TransportToolbar />, el);
 }
@@ -69,7 +74,9 @@ export function mountTransportToolbar(root?: HTMLElement): void {
  * In non-browser environments, this is a no-op.
  */
 export function mountMainToolbar(root?: HTMLElement): void {
+  if (mainMounted) return;
   if (!isBrowser()) return;
+  mainMounted = true;
   const el = root || ensureMainRoot();
   render(() => <MainToolbar />, el);
 }
