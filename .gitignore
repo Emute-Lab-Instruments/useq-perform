@@ -21,9 +21,12 @@ devnotes/
 storybook-static
 
 # Local-only files
+*.local
+.github
 .beads
 .claude/
 AGENTS.md
 CLAUDE.md
+
 
 __pycache__/
