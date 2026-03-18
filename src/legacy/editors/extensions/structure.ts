@@ -512,15 +512,19 @@ export function findExpressionBounds(state, matchPos) {
   if (current) {
     return {
       from: state.doc.lineAt(current.from).number,
-      to: state.doc.lineAt(current.to).number
+      to: state.doc.lineAt(current.to).number,
+      startPos: current.from,
+      endPos: current.to
     };
   }
-  
+
   // Fallback: just the current line
   const line = state.doc.lineAt(matchPos);
   return {
     from: line.number,
-    to: line.number
+    to: line.number,
+    startPos: line.from,
+    endPos: line.to
   };
 }
 
