@@ -8,6 +8,7 @@ import { WebSocketServer } from 'ws';
 import { disconnect } from './serialComms.ts';
 import { post } from '../../utils/consoleStore.ts';
 import { dbg } from '../utils.ts';
+import { getClientIp } from '../../utils/network.ts';
 
 // ws package has no bundled types; use `any` for WS-related objects
 type WsServer = any;
@@ -31,7 +32,7 @@ export async function startWebSocketServer(port: number = 8082): Promise<void> {
       wss = new WebSocketServer({ server });
 
       wss.on('connection', (ws: WsSocket, req: any) => {
-        const clientInfo = `${req.socket.remoteAddress}:${req.socket.remotePort}`;
+        const clientInfo = `${getClientIp(req)}:${req.socket.remotePort}`;
         dbg(`WebSocket client connected from ${clientInfo}`);
         post(`**Info**: Dev mode WebSocket client connected from ${clientInfo}`);
 

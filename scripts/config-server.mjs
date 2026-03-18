@@ -20,6 +20,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.join(__dirname, '..');
 
+/**
+ * Extract client IP from request, checking x-forwarded-for header first.
+ */
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket.remoteAddress ?? 'unknown';
+}
+
 const PREFERRED_PORT = parseInt(process.env.CONFIG_SERVER_PORT ?? process.argv[2] ?? '8081', 10);
 
 function findAvailablePort(startPort) {
@@ -37,7 +48,6 @@ const PORT = await findAvailablePort(PREFERRED_PORT);
 if (PORT !== PREFERRED_PORT) {
   console.warn(`⚠️  Port ${PREFERRED_PORT} in use, using ${PORT} instead`);
 }
-
 const wss = new WebSocketServer({ port: PORT });
 
 console.log('');
@@ -50,7 +60,7 @@ console.log('✅ Ready to receive configuration saves from webapp');
 console.log('');
 
 wss.on('connection', (ws, req) => {
-  const clientAddr = req.socket.remoteAddress;
+  const clientAddr = getClientIp(req);
   console.log(`🔌 Client connected: ${clientAddr}`);
 
   ws.on('message', async (data) => {
