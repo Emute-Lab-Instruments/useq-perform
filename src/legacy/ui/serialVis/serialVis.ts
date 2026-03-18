@@ -28,7 +28,11 @@ function getAccentColor() {
 const DIGITAL_CHANNELS = ['d1', 'd2', 'd3'];
 
 function drawSerialVis() {
-  const c = document.getElementById("serialcanvas");
+  const c = document.getElementById("serialcanvas") as HTMLCanvasElement | null;
+  if (!c) {
+    window.requestAnimationFrame(drawSerialVis);
+    return;
+  }
   const ctx = c.getContext("2d");
   const verticalPadding = c.height * 0.1;
   const centerY = c.height / 2;
