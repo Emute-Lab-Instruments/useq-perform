@@ -1,5 +1,5 @@
 {
-  "name": "rollup-starter-app",
+  "name": "useq-perform",
   "type": "module",
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.2",
