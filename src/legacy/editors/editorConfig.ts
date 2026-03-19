@@ -10,7 +10,8 @@ import { syntaxTree } from "@codemirror/language";
 import { extension as eval_ext, cursor_node_string, top_level_string } from "@nextjournal/clojure-mode/extensions/eval-region";
 
 // SERIAL COMMUNICATION
-import { sendTouSEQ, isConnectedToModule } from "../io/serialComms.ts";
+import { sendTouSEQ } from "../../transport/legacy-text-protocol.ts";
+import { isConnectedToModule } from "../../transport/connector.ts";
 import { post } from "../../utils/consoleStore.ts";
 import { evalInUseqWasm } from "../io/useqWasmInterpreter.ts";
 import { rewriteCodeSliceForModule } from "./manualControlState.ts";
@@ -19,7 +20,7 @@ import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 import { applyEditorFontSize } from "../../lib/editorStore.ts";
 import { referenceSearchChannel } from "../../ui/help/helpChannels.ts";
 
-import { dbg } from "../utils.ts";
+import { dbg } from "../../lib/debug.ts";
 import { getStartupFlagsSnapshot } from "../../runtime/startupContext.ts";
 import {
   getVisualisationPanelStyles,

@@ -9,17 +9,17 @@ import {
 import { default_extensions as default_clojure_extensions } from "@nextjournal/clojure-mode";
 import { EditorView } from "@codemirror/view";
 import { getAppSettings, updateAppSettings } from "../../runtime/appSettingsRepository.ts";
-import { codeStorageKey } from "../config/appSettings.ts";
+import { codeStorageKey } from "../../lib/appSettings.ts";
 import { themes } from "./themes/themeManager.ts";
 import { editorBaseTheme } from "./themes/builtinThemes.ts";
 import { lineNumbers, drawSelection } from "@codemirror/view";
 import { history } from '@codemirror/commands';
 import { baseKeymap, mainEditorKeymap } from "./keymaps.ts";
-import { themeCompartment, fontSizeCompartment } from "./state.ts";
+import { themeCompartment, fontSizeCompartment } from "../../lib/editorCompartments.ts";
 import {structureExtensions} from "./extensions/structure.ts";
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
-import { dbg } from "../utils.ts";
+import { dbg } from "../../lib/debug.ts";
 import { mapManualControlBindingsThroughChanges } from "./manualControlState.ts";
 
 dbg('extensions.mjs: Loading...');

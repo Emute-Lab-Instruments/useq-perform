@@ -29,7 +29,7 @@ import {
   showNumberPickerMenu,
   showHierarchicalGridPicker
 } from "../../ui/adapters/picker-menu.tsx";
-import { sendSerialInputStreamValue } from "../io/serialComms.ts";
+import { sendSerialInputStreamValue } from "../../transport/json-protocol.ts";
 import {
   clearManualControlBinding,
   getManualControlBinding,

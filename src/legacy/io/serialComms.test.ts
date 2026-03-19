@@ -27,7 +27,7 @@ vi.mock("../../utils/consoleStore.ts", () => ({
   post: postMock,
 }));
 
-vi.mock("../utils/upgradeCheck.ts", () => ({
+vi.mock("../../transport/upgradeCheck.ts", () => ({
   currentVersion: { major: 1, minor: 2, patch: 0 },
   upgradeCheck: upgradeCheckMock,
 }));
@@ -43,7 +43,7 @@ vi.mock("../../runtime/appSettingsRepository.ts", () => ({
   }),
 }));
 
-vi.mock("../urlParams.ts", () => ({
+vi.mock("../../runtime/urlParams.ts", () => ({
   readStartupFlags: () => ({
     debug: false,
     devmode: false,
@@ -213,7 +213,7 @@ class FakeSerialPort {
 
 async function loadSerialComms() {
   vi.resetModules();
-  return import("./serialComms.ts");
+  return import("../../transport/index.ts");
 }
 
 async function flushProtocolWork(): Promise<void> {

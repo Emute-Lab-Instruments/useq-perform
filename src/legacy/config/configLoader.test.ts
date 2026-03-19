@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultMainEditorStartingCode } from "../editors/defaults.ts";
+import { defaultMainEditorStartingCode } from "../../lib/editorDefaults.ts";
 
 function installMockStorage() {
   const store: Record<string, string> = {};
@@ -49,7 +49,7 @@ describe("configLoader", () => {
   });
 
   it("merges local storage settings and the canonical code key into bootstrap config", async () => {
-    const settingsModule = await import("../config/appSettings.ts");
+    const settingsModule = await import("../../lib/appSettings.ts");
     window.localStorage.setItem(
       settingsModule.settingsStorageKey,
       JSON.stringify({
@@ -68,7 +68,7 @@ describe("configLoader", () => {
   });
 
   it("reports the settings sources used for bootstrap diagnostics", async () => {
-    const settingsModule = await import("../config/appSettings.ts");
+    const settingsModule = await import("../../lib/appSettings.ts");
     window.localStorage.setItem(
       settingsModule.settingsStorageKey,
       JSON.stringify({ editor: { fontSize: 18 } }),
@@ -93,7 +93,7 @@ describe("configLoader", () => {
   });
 
   it("skips local storage and disables persistence when ?nosave is present", async () => {
-    const settingsModule = await import("../config/appSettings.ts");
+    const settingsModule = await import("../../lib/appSettings.ts");
     window.localStorage.setItem(
       settingsModule.settingsStorageKey,
       JSON.stringify({ editor: { fontSize: 12 } }),

@@ -1,4 +1,4 @@
-import { dbg } from "../utils.ts";
+import { dbg } from "../../lib/debug.ts";
 import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract";
 import {

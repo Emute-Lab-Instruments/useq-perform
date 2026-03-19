@@ -88,7 +88,7 @@ vi.mock("../runtime/runtimeService", () => ({
   ),
 }));
 
-vi.mock("../legacy/io/mockTimeGenerator.ts", () => ({
+vi.mock("../effects/mockTimeGenerator.ts", () => ({
   startMockTimeGenerator: vi.fn(),
   stopMockTimeGenerator: vi.fn(),
   resumeMockTimeGenerator: vi.fn(),

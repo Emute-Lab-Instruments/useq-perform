@@ -1,6 +1,6 @@
 // @ts-nocheck
-import { serialBuffers, serialMapFunctions } from "../../io/serialComms.ts";
-import { dbg } from "../../utils.ts";
+import { serialBuffers, serialMapFunctions } from "../../../transport/stream-parser.ts";
+import { dbg } from "../../../lib/debug.ts";
 import {
   SERIAL_VIS_PALETTE_CHANGED_EVENT,
   dispatchVisualisationEvent,

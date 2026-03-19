@@ -1,7 +1,7 @@
-import { dbg } from "../utils.ts";
+import { dbg } from "../../lib/debug.ts";
 import { EditorView } from "@codemirror/view";
 import { EditorState, Extension } from "@codemirror/state";
-import { codeStorageKey } from "../config/appSettings.ts";
+import { codeStorageKey } from "../../lib/appSettings.ts";
 import {
   exampleEditorExtensions,
   mainEditorExtensions,

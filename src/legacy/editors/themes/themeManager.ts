@@ -1,8 +1,8 @@
 // @ts-nocheck
-import { themeCompartment } from "../state.ts";
+import { themeCompartment } from "../../../lib/editorCompartments.ts";
 import { themes, themeRecipes } from "./builtinThemes.ts";
 import convert from "color-convert";
-import { dbg } from "../../utils.ts";
+import { dbg } from "../../../lib/debug.ts";
 import { editor as mainEditor } from "../../../lib/editorStore.ts";
 
 export { themes, themeRecipes };

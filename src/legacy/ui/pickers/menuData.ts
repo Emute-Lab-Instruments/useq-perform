@@ -1,4 +1,4 @@
-import { dbg } from "../../utils.ts";
+import { dbg } from "../../../lib/debug.ts";
 
 // Reuse the reference-data loader strategy from the help panel
 function candidateDataUrls() {

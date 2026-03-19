@@ -1,12 +1,12 @@
-import { checkForWebserialSupport } from '../io/serialComms.ts';
-import { getStartupFlags } from '../urlParams.ts';
+import { checkForWebserialSupport } from '../../transport/connector.ts';
+import { getStartupFlags } from '../../runtime/urlParams.ts';
 import { getAppSettings } from '../../runtime/appSettingsRepository.ts';
 import {
   applyStartupContext,
   type EnvironmentCapabilities,
   type StartupFlags,
 } from '../../runtime/startupContext.ts';
-import type { AppSettings } from '../config/appSettings.ts';
+import type { AppSettings } from '../../lib/appSettings.ts';
 
 export interface EnvironmentState extends EnvironmentCapabilities {
   isInDevmode: boolean;

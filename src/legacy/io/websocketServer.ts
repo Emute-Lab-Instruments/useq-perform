@@ -5,9 +5,9 @@
  * and can trigger actions like disconnecting from the uSEQ module.
  */
 import { WebSocketServer } from 'ws';
-import { disconnect } from './serialComms.ts';
+import { disconnect } from '../../transport/connector.ts';
 import { post } from '../../utils/consoleStore.ts';
-import { dbg } from '../utils.ts';
+import { dbg } from '../../lib/debug.ts';
 import { getClientIp } from '../../utils/network.ts';
 
 // ws package has no bundled types; use `any` for WS-related objects

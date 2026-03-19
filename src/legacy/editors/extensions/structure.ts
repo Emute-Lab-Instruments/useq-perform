@@ -77,7 +77,8 @@ export function performNavigation(view, navFunction) {
     return true;
 }
 
-import { sendTouSEQ, isConnectedToModule } from "../../io/serialComms.ts";
+import { sendTouSEQ } from "../../../transport/legacy-text-protocol.ts";
+import { isConnectedToModule } from "../../../transport/connector.ts";
 import {
   isExpressionVisualised,
   toggleVisualisation,
@@ -85,7 +86,7 @@ import {
   refreshVisualisedExpression,
   notifyExpressionEvaluated
 } from "../../ui/serialVis/visualisationController.ts";
-import { dbg } from "../../utils.ts";
+import { dbg } from "../../../lib/debug.ts";
 import { getAppSettings, subscribeAppSettings } from "../../../runtime/appSettingsRepository.ts";
 
 // Helper functions for tree processing - REMOVED in favor of standard syntax tree

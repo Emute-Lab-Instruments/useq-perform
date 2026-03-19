@@ -15,11 +15,11 @@ vi.mock("../runtime/appSettingsRepository.ts", () => ({
   }),
 }));
 
-// Mock the legacy compartment (transitively used by editorStore.applyEditorFontSize)
-const mockFontSizeCompartment = {
+// Mock the compartment (transitively used by editorStore.applyEditorFontSize)
+const mockFontSizeCompartment = vi.hoisted(() => ({
   reconfigure: vi.fn((extension: any) => ({ extension })),
-};
-vi.mock("../legacy/editors/state.ts", () => ({
+}));
+vi.mock("../lib/editorCompartments.ts", () => ({
   fontSizeCompartment: mockFontSizeCompartment,
 }));
 

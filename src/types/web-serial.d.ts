@@ -3,7 +3,7 @@
  *
  * The Web Serial API is a browser-only API not included in the standard
  * TypeScript DOM lib. These declarations cover the surface used by
- * src/legacy/io/serialComms.ts so the file can be type-checked without
+ * src/transport/ modules so files can be type-checked without
  * @ts-nocheck.
  */
 

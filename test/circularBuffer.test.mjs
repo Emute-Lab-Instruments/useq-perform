@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { CircularBuffer } from '../src/legacy/utils/CircularBuffer.ts';
+import { CircularBuffer } from '../src/lib/CircularBuffer.ts';
 
 describe('CircularBuffer', () => {
   it('retrieves values in order before buffer wraps', () => {

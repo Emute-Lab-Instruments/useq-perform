@@ -8,7 +8,7 @@ vi.mock("../utils/consoleStore.ts", () => ({
   post,
 }));
 
-vi.mock("./utils.ts", () => ({
+vi.mock("../lib/debug.ts", () => ({
   dbg,
   toggleDbg,
 }));
@@ -20,7 +20,7 @@ describe("urlParams", () => {
   });
 
   it("parses typed startup flags from the current search string", async () => {
-    const { readStartupFlags } = await import("./urlParams.ts");
+    const { readStartupFlags } = await import("../runtime/urlParams.ts");
 
     expect(
       readStartupFlags(
@@ -44,7 +44,7 @@ describe("urlParams", () => {
 
   it("applies startup side effects only once for the same flag set", async () => {
     const { applyStartupFlags, readStartupFlags, resetStartupFlagsForTests } = await import(
-      "./urlParams.ts"
+      "../runtime/urlParams.ts"
     );
 
     resetStartupFlagsForTests();

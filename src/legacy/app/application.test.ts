@@ -15,7 +15,7 @@ vi.mock("../../utils/consoleStore.ts", () => ({
   post,
 }));
 
-vi.mock("../io/serialComms.ts", () => ({
+vi.mock("../../transport/connector.ts", () => ({
   checkForSavedPortAndMaybeConnect,
 }));
 
@@ -36,7 +36,7 @@ vi.mock("../io/mockControlInputs.ts", () => ({
   initializeMockControls,
 }));
 
-vi.mock("../io/mockTimeGenerator.ts", () => ({
+vi.mock("../../effects/mockTimeGenerator.ts", () => ({
   startMockTimeGenerator,
 }));
 

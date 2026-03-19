@@ -6,7 +6,7 @@
  * in the devmode panel to test code that uses control inputs.
  */
 
-import { dbg } from '../utils.ts';
+import { dbg } from '../../lib/debug.ts';
 import { evalInUseqWasm } from './useqWasmInterpreter.ts';
 
 /** Known control input names */

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { dbg } from "../../utils.ts";
+import { dbg } from "../../../lib/debug.ts";
 import { getAppSettings, subscribeAppSettings } from "../../../runtime/appSettingsRepository.ts";
 import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../io/useqWasmInterpreter.ts";
 import { getSerialVisPalette, getSerialVisChannelColor } from "./utils.ts";

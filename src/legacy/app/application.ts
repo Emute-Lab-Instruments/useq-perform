@@ -1,10 +1,10 @@
 import { post } from '../../utils/consoleStore.ts';
-import { checkForSavedPortAndMaybeConnect } from '../io/serialComms.ts';
+import { checkForSavedPortAndMaybeConnect } from '../../transport/connector.ts';
 import { ensureUseqWasmLoaded } from '../io/useqWasmInterpreter.ts';
 import { startWebSocketServer, stopWebSocketServer } from '../io/websocketServer.ts';
 import { showModal } from '../../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../io/mockControlInputs.ts';
-import { startMockTimeGenerator } from '../io/mockTimeGenerator.ts';
+import { startMockTimeGenerator } from '../../effects/mockTimeGenerator.ts';
 import { registerVisualisation } from '../ui/serialVis/visualisationController.ts';
 import type { BootstrapPlan } from '../../runtime/bootstrapPlan.ts';
 import { announceRuntimeSession } from '../../runtime/runtimeService.ts';
