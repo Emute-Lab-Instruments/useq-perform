@@ -1,7 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import {
-  visualisationSessionChannel,
-} from "../contracts/visualisationChannels";
+import { updateBar } from "../utils/visualisationStore";
 import { ProgressBar } from "./ProgressBar";
 
 const meta: Meta<typeof ProgressBar> = {
@@ -16,7 +14,7 @@ export const Default: Story = {
   render: () => {
     // Helper to simulate progress
     setTimeout(() => {
-      visualisationSessionChannel.publish({ bar: 0.5 });
+      updateBar(0.5);
     }, 500);
 
     return (
@@ -33,7 +31,7 @@ export const Default: Story = {
 export const Full: Story = {
   render: () => {
     setTimeout(() => {
-      visualisationSessionChannel.publish({ bar: 1.0 });
+      updateBar(1.0);
     }, 100);
 
     return (

@@ -18,7 +18,7 @@ export interface HelpTabSwitchRequest {
 
 /**
  * Channel: editor -> ModuLispReferenceTab.
- * Fired by editorConfig.ts when the user invokes Alt-F on a symbol.
+ * Fired by editorKeyboard.ts when the user invokes Alt-F on a symbol.
  */
 export const referenceSearchChannel = createChannel<ReferenceSearchRequest>();
 

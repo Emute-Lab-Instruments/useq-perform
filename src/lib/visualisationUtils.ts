@@ -189,7 +189,7 @@ export function getSerialVisPalette() {
     return serialVisPalette;
   } catch {
     // Fallback when serialVisPalette is in the temporal dead zone due to
-    // circular imports (utils -> serialComms -> visualisationController -> utils).
+    // circular imports during module initialisation.
     return ['#ace397', '#45a5ad', '#fcbf5d', '#ff809f', '#ff005e', '#c9004c', '#93003a', '#00429d'];
   }
 }

@@ -1,6 +1,12 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { SerialVis } from "./SerialVis";
-import { applyVisualisationEvent } from "../utils/visualisationStore";
+import {
+  updateTime,
+  updateBar,
+  updateExpressions,
+  updateSettings,
+  setLastChangeKind,
+} from "../utils/visualisationStore";
 
 const meta: Meta<typeof SerialVis> = {
   title: "UI/SerialVis",
@@ -38,43 +44,34 @@ export const Empty: Story = {
 export const WithAnalogSignals: Story = {
   render: () => {
     setTimeout(() => {
-      applyVisualisationEvent({
-        kind: "data",
-        currentTimeSeconds: 5,
-        displayTimeSeconds: 5,
-        settings: {
-          windowDuration: 10,
-          sampleCount: 200,
-          lineWidth: 1.5,
-          futureDashed: true,
-          futureMaskOpacity: 0.35,
-          futureMaskWidth: 12,
-          circularOffset: 0,
-          futureLeadSeconds: 1,
-          digitalLaneGap: 4,
-        },
-        expressions: new Map([
-          [
-            "a1",
-            {
-              exprType: "a1",
-              expressionText: "(sin (* t 2))",
-              samples: generateSineWaveSamples(0.5, 12, 200),
-              color: "#00ff41",
-            },
-          ],
-          [
-            "a2",
-            {
-              exprType: "a2",
-              expressionText: "(cos (* t 3))",
-              samples: generateSineWaveSamples(0.8, 12, 200, Math.PI / 3),
-              color: "#1adbdb",
-            },
-          ],
-        ]),
-        bar: 0.5,
+      updateTime(5);
+      updateBar(0.5);
+      updateSettings({
+        windowDuration: 10,
+        sampleCount: 200,
+        lineWidth: 1.5,
+        futureDashed: true,
+        futureMaskOpacity: 0.35,
+        futureMaskWidth: 12,
+        circularOffset: 0,
+        futureLeadSeconds: 1,
+        digitalLaneGap: 4,
       });
+      updateExpressions({
+        a1: {
+          exprType: "a1",
+          expressionText: "(sin (* t 2))",
+          samples: generateSineWaveSamples(0.5, 12, 200),
+          color: "#00ff41",
+        },
+        a2: {
+          exprType: "a2",
+          expressionText: "(cos (* t 3))",
+          samples: generateSineWaveSamples(0.8, 12, 200, Math.PI / 3),
+          color: "#1adbdb",
+        },
+      });
+      setLastChangeKind("data");
     }, 100);
 
     return (
@@ -100,52 +97,40 @@ export const WithDigitalSignals: Story = {
     };
 
     setTimeout(() => {
-      applyVisualisationEvent({
-        kind: "data",
-        currentTimeSeconds: 5,
-        displayTimeSeconds: 5,
-        settings: {
-          windowDuration: 10,
-          sampleCount: 200,
-          lineWidth: 1.5,
-          futureDashed: true,
-          futureMaskOpacity: 0.35,
-          futureMaskWidth: 12,
-          circularOffset: 0,
-          futureLeadSeconds: 1,
-          digitalLaneGap: 4,
-        },
-        expressions: new Map([
-          [
-            "d1",
-            {
-              exprType: "d1",
-              expressionText: "(gate 1)",
-              samples: squareWave(0.5, 12, 200),
-              color: "#ff0080",
-            },
-          ],
-          [
-            "d2",
-            {
-              exprType: "d2",
-              expressionText: "(gate 2)",
-              samples: squareWave(1, 12, 200),
-              color: "#ff5500",
-            },
-          ],
-          [
-            "d3",
-            {
-              exprType: "d3",
-              expressionText: "(gate 3)",
-              samples: squareWave(2, 12, 200),
-              color: "#ffee33",
-            },
-          ],
-        ]),
-        bar: 0.3,
+      updateTime(5);
+      updateBar(0.3);
+      updateSettings({
+        windowDuration: 10,
+        sampleCount: 200,
+        lineWidth: 1.5,
+        futureDashed: true,
+        futureMaskOpacity: 0.35,
+        futureMaskWidth: 12,
+        circularOffset: 0,
+        futureLeadSeconds: 1,
+        digitalLaneGap: 4,
       });
+      updateExpressions({
+        d1: {
+          exprType: "d1",
+          expressionText: "(gate 1)",
+          samples: squareWave(0.5, 12, 200),
+          color: "#ff0080",
+        },
+        d2: {
+          exprType: "d2",
+          expressionText: "(gate 2)",
+          samples: squareWave(1, 12, 200),
+          color: "#ff5500",
+        },
+        d3: {
+          exprType: "d3",
+          expressionText: "(gate 3)",
+          samples: squareWave(2, 12, 200),
+          color: "#ffee33",
+        },
+      });
+      setLastChangeKind("data");
     }, 100);
 
     return (

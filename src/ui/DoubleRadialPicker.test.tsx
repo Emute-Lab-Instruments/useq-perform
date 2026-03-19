@@ -5,6 +5,7 @@ import {
   type PickerCategory,
 } from "./DoubleRadialPicker";
 import { _resetForTesting } from "./overlayManager";
+import * as gamepadCh from "../contracts/gamepadChannels";
 
 const sampleCategories: PickerCategory[] = [
   {
@@ -119,7 +120,7 @@ describe("DoubleRadialPicker", () => {
     expect(texts).toContain("-");
   });
 
-  it("calls onCancel when cancel event is dispatched", () => {
+  it("calls onCancel when cancel is published via typed channel", () => {
     const onCancel = vi.fn();
     render(() => (
       <DoubleRadialPicker
@@ -128,15 +129,11 @@ describe("DoubleRadialPicker", () => {
         onCancel={onCancel}
       />
     ));
-    window.dispatchEvent(
-      new CustomEvent("gamepadpickerinput", {
-        detail: { action: "cancel" },
-      })
-    );
+    gamepadCh.pickerCancel.publish({});
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
-  it("calls onSelect when select event is dispatched", () => {
+  it("calls onSelect when select is published via typed channel", () => {
     const onSelect = vi.fn();
     render(() => (
       <DoubleRadialPicker
@@ -146,16 +143,12 @@ describe("DoubleRadialPicker", () => {
       />
     ));
     // Default selection is category 0 (Favorites), item 0 (+)
-    window.dispatchEvent(
-      new CustomEvent("gamepadpickerinput", {
-        detail: { action: "select" },
-      })
-    );
+    gamepadCh.pickerSelect.publish({});
     expect(onSelect).toHaveBeenCalledOnce();
     expect(onSelect.mock.calls[0][0].label).toBe("+");
   });
 
-  it("navigates categories with D-pad left/right", () => {
+  it("navigates categories with D-pad left/right via typed channel", () => {
     const onSelect = vi.fn();
     const { container } = render(() => (
       <DoubleRadialPicker
@@ -166,24 +159,16 @@ describe("DoubleRadialPicker", () => {
     ));
 
     // Navigate right to Maths category
-    window.dispatchEvent(
-      new CustomEvent("gamepadpickerinput", {
-        detail: { direction: "right" },
-      })
-    );
+    gamepadCh.pickerNavigate.publish({ direction: "right" });
 
     // Now select -- should pick from Maths category
-    window.dispatchEvent(
-      new CustomEvent("gamepadpickerinput", {
-        detail: { action: "select" },
-      })
-    );
+    gamepadCh.pickerSelect.publish({});
 
     expect(onSelect).toHaveBeenCalledOnce();
     expect(onSelect.mock.calls[0][0].label).toBe("*");
   });
 
-  it("navigates items with D-pad up/down", () => {
+  it("navigates items with D-pad up/down via typed channel", () => {
     const onSelect = vi.fn();
     render(() => (
       <DoubleRadialPicker
@@ -195,17 +180,9 @@ describe("DoubleRadialPicker", () => {
 
     // Default: Favorites category, item 0 (+)
     // Navigate down to item 1 (-)
-    window.dispatchEvent(
-      new CustomEvent("gamepadpickerinput", {
-        detail: { direction: "down" },
-      })
-    );
+    gamepadCh.pickerNavigate.publish({ direction: "down" });
 
-    window.dispatchEvent(
-      new CustomEvent("gamepadpickerinput", {
-        detail: { action: "select" },
-      })
-    );
+    gamepadCh.pickerSelect.publish({});
 
     expect(onSelect).toHaveBeenCalledOnce();
     expect(onSelect.mock.calls[0][0].label).toBe("-");

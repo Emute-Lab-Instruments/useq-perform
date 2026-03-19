@@ -8,7 +8,6 @@ const checkForSavedPortAndMaybeConnect = vi.fn();
 const initializeMockControls = vi.fn();
 const startMockTimeGenerator = vi.fn();
 const registerVisualisation = vi.fn();
-const toggleSerialVis = vi.fn(() => true);
 const showVisualisationPanel = vi.fn(() => true);
 
 vi.mock("../utils/consoleStore.ts", () => ({
@@ -40,13 +39,10 @@ vi.mock("../effects/mockTimeGenerator.ts", () => ({
   startMockTimeGenerator,
 }));
 
-vi.mock("../ui/visualisation/visualisationController.ts", () => ({
+vi.mock("../effects/visualisationSampler.ts", () => ({
   registerVisualisation,
 }));
 
-vi.mock("../editors/editorConfig.ts", () => ({
-  toggleSerialVis,
-}));
 vi.mock("../ui/adapters/visualisationPanel", () => ({
   showVisualisationPanel,
 }));

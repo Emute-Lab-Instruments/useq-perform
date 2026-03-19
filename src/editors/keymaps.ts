@@ -1,29 +1,19 @@
-// @ts-nocheck
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
+import type { EditorView } from "@codemirror/view";
 import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { historyKeymap, deleteCharBackward } from "@codemirror/commands";
+import { evaluate } from "../effects/editorEvaluation.ts";
 import {
-  evalNow,
-  evalQuantised,
-  softEval,
   toggleHelp,
   toggleSerialVis,
-  showDocumentationForSymbol
-} from "./editorConfig.ts";
-// import { 
-//   navigatePrev, 
-//   navigateNext, 
-//   navigateIn, 
-//   navigateOut 
-// } from "./extensions/structure.ts";
-
-
-import { makeDeleteWrapper } from "./editorConfig.ts";
+  showDocumentationForSymbol,
+  makeDeleteWrapper,
+} from "./editorKeyboard.ts";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 
 // Modified keybindings to improve usability
-const completeKeymapModified = completeClojureKeymap.map((binding) => {
+const completeKeymapModified = completeClojureKeymap.map((binding: any) => {
   switch (binding.key) {
     // Fix Del unbalancing parens
     case "Delete":
@@ -48,9 +38,9 @@ const completeKeymapModified = completeClojureKeymap.map((binding) => {
 
 // Custom keymap for the editor
 export const useq_keymap = [
-  { key: "Mod-Enter", run: (view) => evalNow({ view, state: view.state }) },
-  { key: "Alt-Enter", run: (view) => evalQuantised({ view, state: view.state }) },
-  { key: "Mod-Shift-Enter", run: (view) => softEval({ view, state: view.state }) },
+  { key: "Mod-Enter", run: (view: EditorView) => evaluate(view, "expression") },
+  { key: "Alt-Enter", run: (view: EditorView) => evaluate(view, "toplevel") },
+  { key: "Mod-Shift-Enter", run: (view: EditorView) => evaluate(view, "soft") },
   {
     key: "Alt-h",
     run: toggleHelp,

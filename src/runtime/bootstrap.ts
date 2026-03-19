@@ -16,7 +16,9 @@ import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
 import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepository.ts';
 import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
-import { initGamepadControl } from '../editors/gamepadControl.ts';
+import { createGamepadIntentEmitter } from '../lib/gamepadIntents.ts';
+import { bindGamepadNavigation } from '../editors/gamepadNavigation.ts';
+import { bindGamepadMenuBridge } from '../ui/adapters/gamepadMenuBridge.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
 import { mountModal } from '../ui/adapters/modal.tsx';
 import { mountPickerMenu } from '../ui/adapters/picker-menu.tsx';
@@ -82,7 +84,11 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     reportBootstrapFailure("ui-adapter-mount", error);
   }
 
-  initGamepadControl(editor);
+  // Wire up intent-based gamepad system: emitter → channels → subscribers
+  const gamepadEmitter = createGamepadIntentEmitter();
+  const navHandle = bindGamepadNavigation(editor);
+  const menuHandle = bindGamepadMenuBridge({ view: editor });
+  gamepadEmitter.start();
 
   return {
     mainEditor: editor,

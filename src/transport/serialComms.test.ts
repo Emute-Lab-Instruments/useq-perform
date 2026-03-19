@@ -32,7 +32,7 @@ vi.mock("./upgradeCheck.ts", () => ({
   upgradeCheck: upgradeCheckMock,
 }));
 
-vi.mock("../ui/visualisation/visualisationController.ts", () => ({
+vi.mock("../effects/visualisationSampler.ts", () => ({
   handleExternalTimeUpdate: handleExternalTimeUpdateMock,
 }));
 

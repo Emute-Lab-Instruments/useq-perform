@@ -43,7 +43,7 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
     setIsVisualizing(!isActive);
 
     try {
-      const { toggleVisualisation } = await import("../../ui/visualisation/visualisationController.ts");
+      const { toggleVisualisation } = await import("../../effects/visualisationSampler.ts");
       const exprType = `S${props.snippet.id}`;
       if (!isActive) {
         await toggleVisualisation(exprType, props.snippet.code);

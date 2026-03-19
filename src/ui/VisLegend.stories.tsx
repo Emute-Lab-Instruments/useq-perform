@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { VisLegend } from "./VisLegend";
 import {
-  applyVisualisationEvent,
+  updateExpressions,
   setVisPalette,
+  setLastChangeKind,
 } from "../utils/visualisationStore";
 
 const meta: Meta<typeof VisLegend> = {
@@ -42,38 +43,27 @@ export const WithActiveExpressions: Story = {
   render: () => {
     setTimeout(() => {
       setVisPalette(DARK_PALETTE);
-      applyVisualisationEvent({
-        kind: "register",
-        expressions: new Map([
-          [
-            "a1",
-            {
-              exprType: "a1",
-              expressionText: "(sin (* t 2))",
-              samples: [],
-              color: "#00ff41",
-            },
-          ],
-          [
-            "a2",
-            {
-              exprType: "a2",
-              expressionText: "(cos (* t 3))",
-              samples: [],
-              color: "#1adbdb",
-            },
-          ],
-          [
-            "d1",
-            {
-              exprType: "d1",
-              expressionText: "(gate 1)",
-              samples: [],
-              color: "#ff0080",
-            },
-          ],
-        ]),
+      updateExpressions({
+        a1: {
+          exprType: "a1",
+          expressionText: "(sin (* t 2))",
+          samples: [],
+          color: "#00ff41",
+        },
+        a2: {
+          exprType: "a2",
+          expressionText: "(cos (* t 3))",
+          samples: [],
+          color: "#1adbdb",
+        },
+        d1: {
+          exprType: "d1",
+          expressionText: "(gate 1)",
+          samples: [],
+          color: "#ff0080",
+        },
       });
+      setLastChangeKind("register");
     }, 50);
 
     return (

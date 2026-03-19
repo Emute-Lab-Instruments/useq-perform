@@ -1,20 +1,19 @@
-// @ts-nocheck
-import { getVisualisationState } from "./visualisationController.ts";
+import { visStore } from "../../utils/visualisationStore.ts";
 
 const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)';
 const TEXT_COLOR = 'rgba(255, 255, 255, 0.5)';
 const ACCENT_REFRESH_INTERVAL_MS = 250;
 
-let cachedAccentColor = null;
+let cachedAccentColor: string | null = null;
 let lastAccentColorRead = 0;
 
-function readAccentColor() {
+function readAccentColor(): string {
   const computed = getComputedStyle(document.documentElement).getPropertyValue('--accent-color');
   return (computed && computed.trim()) || '#00ff41';
 }
 
 // Cache accent color lookups to avoid allocating strings every animation frame.
-function getAccentColor() {
+function getAccentColor(): string {
   const now = (window.performance && window.performance.now) ? window.performance.now() : Date.now();
   if (cachedAccentColor !== null && now - lastAccentColorRead <= ACCENT_REFRESH_INTERVAL_MS) {
     return cachedAccentColor;
@@ -27,24 +26,33 @@ function getAccentColor() {
 
 const DIGITAL_CHANNELS = ['d1', 'd2', 'd3'];
 
-function drawSerialVis() {
+function drawSerialVis(): void {
   const c = document.getElementById("serialcanvas") as HTMLCanvasElement | null;
   if (!c) {
     window.requestAnimationFrame(drawSerialVis);
     return;
   }
   const ctx = c.getContext("2d");
+  if (!ctx) {
+    window.requestAnimationFrame(drawSerialVis);
+    return;
+  }
   const verticalPadding = c.height * 0.1;
   const centerY = c.height / 2;
   const drawableHeight = c.height - verticalPadding * 2;
 
-  const state = getVisualisationState();
-  const { displayTime, currentTime: rawTime, settings, expressions } = state;
-  const currentTime = Number.isFinite(displayTime) ? displayTime : rawTime;
+  // Read directly from the reactive store
+  const displayTime = visStore.displayTime;
+  const currentTime = visStore.currentTime;
+  const settings = visStore.settings;
+  const expressions = visStore.expressions;
+
+  const effectiveTime = Number.isFinite(displayTime) ? displayTime : currentTime;
   const { lineWidth = 1.5, digitalLaneGap: rawDigitalGap = 4 } = settings;
   const futureLineAlpha = settings.futureDashed === false ? 0.85 : 0.6;
   const totalWindow = settings.windowDuration || 1;
-  const hasExpressions = expressions.size > 0;
+  const exprKeys = Object.keys(expressions);
+  const hasExpressions = exprKeys.length > 0;
 
   // Enable antialiasing for smoother lines
   ctx.imageSmoothingEnabled = true;
@@ -69,12 +77,12 @@ function drawSerialVis() {
   const availableDigitalHeight = Math.max(0, drawableHeight - totalGapHeight);
   const digitalLaneHeight = laneCount > 0 ? availableDigitalHeight / laneCount : 0;
 
-  const mapAnalogValueToY = (value) => {
+  const mapAnalogValueToY = (value: number): number => {
     const clamped = Math.max(0, Math.min(1, value));
     return c.height - verticalPadding - (clamped * drawableHeight);
   };
 
-  const makeDigitalMapper = (exprType) => {
+  const makeDigitalMapper = (exprType: string): ((value: number) => number) => {
     const laneIndex = DIGITAL_CHANNELS.indexOf(exprType);
     if (laneIndex < 0) {
       return mapAnalogValueToY;
@@ -83,7 +91,7 @@ function drawSerialVis() {
     const laneTop = verticalPadding + laneIndex * (digitalLaneHeight + digitalLaneGap);
     const laneBottom = laneTop + digitalLaneHeight;
 
-    return (value) => {
+    return (value: number) => {
       const clamped = Math.max(0, Math.min(1, value));
       return laneBottom - (clamped * digitalLaneHeight);
     };
@@ -111,17 +119,15 @@ function drawSerialVis() {
   ctx.setLineDash([]);
   ctx.font = '10px Arial';
   ctx.fillStyle = accentColor;
-  ctx.textAlign = 'left';  // Left-align text
+  ctx.textAlign = 'left';
 
-  // Draw markers at quarter intervals
   for (let i = 0; i <= 1; i += 0.25) {
     const y = mapAnalogValueToY(i);
     ctx.beginPath();
-    ctx.moveTo(0, y);          // Start from left side
-    ctx.lineTo(10, y);         // Draw towards right
+    ctx.moveTo(0, y);
+    ctx.lineTo(10, y);
     ctx.stroke();
 
-    // Position text slightly above or below the marking
     const textY = i >= 0.5 ? y - 4 : y + 12;
     ctx.fillText(i.toFixed(2), 12, textY);
   }
@@ -132,11 +138,12 @@ function drawSerialVis() {
   ctx.lineCap = 'round';
 
   const halfWindow = totalWindow / 2;
-  const startTime = currentTime - halfWindow;
-  const endTime = currentTime + halfWindow;
+  const startTime = effectiveTime - halfWindow;
+  const endTime = effectiveTime + halfWindow;
 
   // Draw each registered expression
-  for (const expression of expressions.values()) {
+  for (const key of exprKeys) {
+    const expression = expressions[key];
     const samples = expression.samples;
     if (!samples || samples.length < 2) {
       continue;
@@ -146,10 +153,9 @@ function drawSerialVis() {
     const isDigital = DIGITAL_CHANNELS.includes(exprType);
     const mapValueToY = isDigital ? makeDigitalMapper(exprType) : mapAnalogValueToY;
     const segmentOptions = isDigital
-      ? { stepMode: true, lineJoin: 'miter', lineCap: 'butt' }
+      ? { stepMode: true, lineJoin: 'miter' as const, lineCap: 'butt' as const }
       : {};
 
-    // Samples are kept sorted by time when populated in the controller.
     const windowStartIndex = lowerBound(samples, startTime);
     const windowEndIndex = upperBound(samples, endTime);
     const windowLength = windowEndIndex - windowStartIndex;
@@ -158,7 +164,7 @@ function drawSerialVis() {
     }
 
     const color = expression.color || accentColor;
-    const lastPastIndex = findLastPastIndex(samples, currentTime, windowStartIndex, windowEndIndex);
+    const lastPastIndex = findLastPastIndex(samples, effectiveTime, windowStartIndex, windowEndIndex);
 
     // Past segment
     if (lastPastIndex - windowStartIndex >= 1) {
@@ -170,7 +176,7 @@ function drawSerialVis() {
         color,
         1,
         lineWidth,
-        currentTime,
+        effectiveTime,
         halfWindow,
         totalWindow,
         c.width,
@@ -191,7 +197,7 @@ function drawSerialVis() {
         color,
         futureLineAlpha,
         lineWidth,
-        currentTime,
+        effectiveTime,
         halfWindow,
         totalWindow,
         c.width,
@@ -205,11 +211,26 @@ function drawSerialVis() {
   window.requestAnimationFrame(drawSerialVis);
 }
 
-export function makeVis() {
+export function makeVis(): void {
   window.requestAnimationFrame(drawSerialVis);
 }
 
-function findLastPastIndex(samples, currentTime, startIndex, endIndex) {
+interface SamplePoint {
+  time: number;
+  value: number;
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+function findLastPastIndex(
+  samples: SamplePoint[],
+  currentTime: number,
+  startIndex: number,
+  endIndex: number,
+): number {
   let low = startIndex;
   let high = endIndex - 1;
   let result = -1;
@@ -227,8 +248,26 @@ function findLastPastIndex(samples, currentTime, startIndex, endIndex) {
   return result;
 }
 
-function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineWidth, currentTime, halfWindow, totalWindow, canvasWidth, mapValueToY, dashPattern = [], options = {}) {
-  const points = buildSegmentPoints(samples, startIndex, endIndex, currentTime, halfWindow, totalWindow, canvasWidth, mapValueToY, options);
+function drawPathSegment(
+  ctx: CanvasRenderingContext2D,
+  samples: SamplePoint[],
+  startIndex: number,
+  endIndex: number,
+  color: string,
+  alpha: number,
+  lineWidth: number,
+  currentTime: number,
+  halfWindow: number,
+  totalWindow: number,
+  canvasWidth: number,
+  mapValueToY: (v: number) => number,
+  dashPattern: number[] = [],
+  options: { stepMode?: boolean; lineJoin?: CanvasLineJoin; lineCap?: CanvasLineCap } = {},
+): Point[] | null {
+  const points = buildSegmentPoints(
+    samples, startIndex, endIndex, currentTime, halfWindow,
+    totalWindow, canvasWidth, mapValueToY, options,
+  );
   if (!points || points.length < 2) {
     return null;
   }
@@ -254,15 +293,25 @@ function drawPathSegment(ctx, samples, startIndex, endIndex, color, alpha, lineW
   return points;
 }
 
-function buildSegmentPoints(samples, startIndex, endIndex, currentTime, halfWindow, totalWindow, canvasWidth, mapValueToY, options = {}) {
+function buildSegmentPoints(
+  samples: SamplePoint[],
+  startIndex: number,
+  endIndex: number,
+  currentTime: number,
+  halfWindow: number,
+  totalWindow: number,
+  canvasWidth: number,
+  mapValueToY: (v: number) => number,
+  options: { stepMode?: boolean } = {},
+): Point[] | null {
   if (!samples || endIndex - startIndex < 2) {
     return null;
   }
 
-  const points = [];
+  const points: Point[] = [];
   const windowStart = currentTime - halfWindow;
   const useStepMode = options?.stepMode === true;
-  let previousPoint = null;
+  let previousPoint: Point | null = null;
 
   for (let i = startIndex; i < endIndex; i++) {
     const sample = samples[i];
@@ -280,7 +329,7 @@ function buildSegmentPoints(samples, startIndex, endIndex, currentTime, halfWind
   return points;
 }
 
-function traceSegment(ctx, points) {
+function traceSegment(ctx: CanvasRenderingContext2D, points: Point[]): boolean {
   if (!points || points.length < 2) {
     return false;
   }
@@ -294,7 +343,7 @@ function traceSegment(ctx, points) {
   return true;
 }
 
-function lowerBound(samples, target) {
+function lowerBound(samples: SamplePoint[], target: number): number {
   let low = 0;
   let high = samples.length;
   while (low < high) {
@@ -308,7 +357,7 @@ function lowerBound(samples, target) {
   return low;
 }
 
-function upperBound(samples, target) {
+function upperBound(samples: SamplePoint[], target: number): number {
   let low = 0;
   let high = samples.length;
   while (low < high) {
@@ -322,16 +371,10 @@ function upperBound(samples, target) {
   return low;
 }
 
-function clamp01(value) {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  if (value < 0) {
-    return 0;
-  }
-  if (value > 1) {
-    return 1;
-  }
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
   return value;
 }
 

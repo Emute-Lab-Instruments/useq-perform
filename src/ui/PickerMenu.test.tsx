@@ -5,6 +5,7 @@ import { HierarchicalPickerMenu } from "./HierarchicalPickerMenu";
 import type { PickerMenuItem } from "./PickerMenu";
 import type { HierarchicalCategory } from "./HierarchicalPickerMenu";
 import { _resetForTesting } from "./overlayManager";
+import * as gamepadCh from "../contracts/gamepadChannels";
 
 afterEach(() => {
   // Reset overlay manager state so tests don't bleed into each other
@@ -169,7 +170,7 @@ describe("PickerMenu", () => {
     expect(items[0].classList.contains("active")).toBe(true);
   });
 
-  it("handles gamepad select event", () => {
+  it("handles gamepad select via typed channel", () => {
     const onSelect = vi.fn();
     render(() => (
       <PickerMenu
@@ -178,42 +179,30 @@ describe("PickerMenu", () => {
         onSelect={onSelect}
       />
     ));
-    window.dispatchEvent(
-      new CustomEvent("gamepadpickerinput", {
-        detail: { action: "select" },
-      })
-    );
+    gamepadCh.pickerSelect.publish({});
     expect(onSelect).toHaveBeenCalledOnce();
     expect(onSelect).toHaveBeenCalledWith(sampleItems[1], 1);
   });
 
-  it("handles gamepad cancel event", () => {
+  it("handles gamepad cancel via typed channel", () => {
     const onClose = vi.fn();
     render(() => (
       <PickerMenu items={sampleItems} onSelect={() => {}} onClose={onClose} />
     ));
-    window.dispatchEvent(
-      new CustomEvent("gamepadpickerinput", {
-        detail: { action: "cancel" },
-      })
-    );
+    gamepadCh.pickerCancel.publish({});
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("removes event listeners after unmount", () => {
+  it("removes channel subscriptions after unmount", () => {
     const onClose = vi.fn();
     const { unmount } = render(() => (
       <PickerMenu items={sampleItems} onSelect={() => {}} onClose={onClose} />
     ));
     unmount();
 
-    // After unmount, keydown and gamepadpickerinput should be removed
+    // After unmount, channels and keydown should be unsubscribed
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    window.dispatchEvent(
-      new CustomEvent("gamepadpickerinput", {
-        detail: { action: "cancel" },
-      })
-    );
+    gamepadCh.pickerCancel.publish({});
     expect(onClose).not.toHaveBeenCalled();
   });
 

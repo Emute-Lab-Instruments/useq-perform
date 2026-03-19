@@ -2,8 +2,6 @@ import { expect } from 'chai';
 import './setup.mjs';
 
 import { createEditor } from '../src/lib/editorStore.ts';
-import { createGamepadController } from '../src/editors/gamepadControl.ts';
-import { updateAppSettings } from '../src/runtime/appSettingsRepository.ts';
 import { buildHierarchicalMenuModel } from '../src/lib/pickerMenuModel.ts';
 
 // Helper to flush microtasks/timeouts
@@ -17,7 +15,7 @@ function setStarred(list) {
 
 describe('Gamepad picker menus', () => {
   before(async () => {
-    // Note: Picker menu is now imported directly by gamepadControl.ts
+    // Picker menus now use typed channels via gamepadMenuBridge
     // No need to set up window.__pickerMenu anymore
   });
 

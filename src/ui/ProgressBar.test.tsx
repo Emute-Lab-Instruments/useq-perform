@@ -1,8 +1,6 @@
 import { render } from "@solidjs/testing-library";
 import { describe, it, expect } from "vitest";
-import {
-  visualisationSessionChannel,
-} from "../contracts/visualisationChannels";
+import { updateBar } from "../utils/visualisationStore";
 import { ProgressBar } from "./ProgressBar";
 
 describe("ProgressBar", () => {
@@ -22,13 +20,13 @@ describe("ProgressBar", () => {
     expect(inner.style.transform).toBe("scaleX(0)");
   });
 
-  it("updates bar value from custom event", async () => {
+  it("updates bar value from store", async () => {
     const { container } = render(() => <ProgressBar />);
     const inner = container.querySelector(
       "#toolbar-bar-progress"
     ) as HTMLElement;
 
-    visualisationSessionChannel.publish({ bar: 0.75 });
+    updateBar(0.75);
 
     // SolidJS updates are synchronous
     expect(inner.style.transform).toBe("scaleX(0.75)");
@@ -40,10 +38,10 @@ describe("ProgressBar", () => {
       "#toolbar-bar-progress"
     ) as HTMLElement;
 
-    visualisationSessionChannel.publish({ bar: 1.5 });
+    updateBar(1.5);
     expect(inner.style.transform).toBe("scaleX(1)");
 
-    visualisationSessionChannel.publish({ bar: -0.5 });
+    updateBar(-0.5);
     expect(inner.style.transform).toBe("scaleX(0)");
   });
 

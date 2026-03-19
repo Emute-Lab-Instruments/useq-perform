@@ -1,6 +1,7 @@
 import { Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import { RadialMenu, type RadialTheme } from "./RadialMenu";
 import { pushOverlay } from "./overlayManager";
+import * as gamepadCh from "../contracts/gamepadChannels";
 
 export type PickerEntry = {
   label: string;
@@ -186,39 +187,9 @@ export function DoubleRadialPicker(props: DoubleRadialPickerProps) {
 
   const cancel = () => props.onCancel();
 
-  const onPickerEvent = (e: Event) => {
-    const detail = (e as CustomEvent).detail || {};
-    const action = detail.action as string | undefined;
-    const direction = detail.direction as string | undefined;
-    const leftStick = detail.leftStick as { x?: number; y?: number } | undefined;
-    const rightStick = detail.rightStick as { x?: number; y?: number } | undefined;
-
-    if (action === "cancel") {
-      cancel();
-      return;
-    }
-    if (action === "select") {
-      confirm();
-      return;
-    }
-    
-    // Handle apply actions for different modes
-    if (action === "apply") {
-      const mode = detail.mode as string | undefined;
-      const items = rightItems();
-      if (!items.length) return;
-
-    const rightIdx = rightLocked();
-    const rightHov = rightHover();
-    const idx = (rightIdx ?? rightHov ?? 0);
-      const entry = items[Math.max(0, Math.min(items.length - 1, idx))];
-      if (!entry) return;
-
-      // Add mode to entry for later handling
-      const entryWithMode = { ...entry, applyMode: mode };
-      props.onSelect(entryWithMode);
-      return;
-    }
+  // Gamepad navigation via typed channels
+  const handlePickerNavigate = (detail: { direction?: string; leftStick?: { x: number; y: number }; rightStick?: { x: number; y: number } }) => {
+    const { direction, leftStick, rightStick } = detail;
 
     // D-pad fallback
     const cats = safeCategories();
@@ -256,13 +227,38 @@ export function DoubleRadialPicker(props: DoubleRadialPickerProps) {
     }
   };
 
+  const handlePickerApply = (detail: { mode: string }) => {
+    const items = rightItems();
+    if (!items.length) return;
+
+    const rightIdx = rightLocked();
+    const rightHov = rightHover();
+    const idx = (rightIdx ?? rightHov ?? 0);
+    const entry = items[Math.max(0, Math.min(items.length - 1, idx))];
+    if (!entry) return;
+
+    // Add mode to entry for later handling
+    const entryWithMode = { ...entry, applyMode: detail.mode };
+    props.onSelect(entryWithMode);
+  };
+
   let popOverlay: (() => void) | undefined;
+  let unsubNavigate: (() => void) | undefined;
+  let unsubSelect: (() => void) | undefined;
+  let unsubCancel: (() => void) | undefined;
+  let unsubApply: (() => void) | undefined;
   onMount(() => {
-    window.addEventListener("gamepadpickerinput", onPickerEvent as EventListener);
+    unsubNavigate = gamepadCh.pickerNavigate.subscribe(handlePickerNavigate);
+    unsubSelect = gamepadCh.pickerSelect.subscribe(() => confirm());
+    unsubCancel = gamepadCh.pickerCancel.subscribe(() => cancel());
+    unsubApply = gamepadCh.pickerApply.subscribe(handlePickerApply);
     popOverlay = pushOverlay("double-radial-picker", cancel);
   });
   onCleanup(() => {
-    window.removeEventListener("gamepadpickerinput", onPickerEvent as EventListener);
+    unsubNavigate?.();
+    unsubSelect?.();
+    unsubCancel?.();
+    unsubApply?.();
     popOverlay?.();
   });
 

@@ -25,7 +25,9 @@ const bootstrapRuntimeSession = vi.fn(() => ({
 
 // Mocks for createAppUI dependencies (now inlined in bootstrap.ts)
 const initEditorPanel = vi.fn(async () => ({ id: "editor" }));
-const initGamepadControl = vi.fn();
+const createGamepadIntentEmitter = vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), dispose: vi.fn() }));
+const bindGamepadNavigation = vi.fn(() => ({ dispose: vi.fn() }));
+const bindGamepadMenuBridge = vi.fn(() => ({ dispose: vi.fn() }));
 const setEditor = vi.fn();
 const mountModal = vi.fn();
 const mountPickerMenu = vi.fn();
@@ -75,8 +77,16 @@ vi.mock("./runtime/runtimeService.ts", () => ({
 }));
 
 // Mock createAppUI's inlined dependencies
-vi.mock("./editors/gamepadControl.ts", () => ({
-  initGamepadControl,
+vi.mock("./lib/gamepadIntents.ts", () => ({
+  createGamepadIntentEmitter,
+}));
+
+vi.mock("./editors/gamepadNavigation.ts", () => ({
+  bindGamepadNavigation,
+}));
+
+vi.mock("./ui/adapters/gamepadMenuBridge.ts", () => ({
+  bindGamepadMenuBridge,
 }));
 
 vi.mock("./lib/editorStore.ts", () => ({

@@ -5,7 +5,7 @@
 //
 // Editor creation functions (createEditor, createMainEditor, initEditorPanel)
 // use dynamic import() to resolve their dependencies because several of those
-// modules (themes.ts, editorConfig.ts) import back from this file, and
+// modules (themes.ts, editorKeyboard.ts) import back from this file, and
 // appSettingsRepository.ts triggers module-scope evaluation that causes TDZ
 // errors when loaded in certain orders. Dynamic import() defers resolution
 // until first call, by which time all modules are fully initialized.
@@ -138,11 +138,11 @@ let _dbg: ((...args: any[]) => void) | null = null;
 async function resolveEditorDeps(): Promise<void> {
   if (_getAppSettings) return; // already resolved
 
-  const [repoMod, extsMod, themesMod, editorCfgMod, debugMod] = await Promise.all([
+  const [repoMod, extsMod, themesMod, editorKbMod, debugMod] = await Promise.all([
     import("../runtime/appSettingsRepository.ts"),
     import("../editors/extensions.ts"),
     import("../editors/themes.ts"),
-    import("../editors/editorConfig.ts"),
+    import("../editors/editorKeyboard.ts"),
     import("./debug.ts"),
   ]);
 
@@ -151,7 +151,7 @@ async function resolveEditorDeps(): Promise<void> {
   _mainEditorExtensions = extsMod.mainEditorExtensions;
   _exampleEditorExtensions = extsMod.exampleEditorExtensions;
   _setMainEditorTheme = themesMod.setMainEditorTheme;
-  _setFontSize = editorCfgMod.setFontSize;
+  _setFontSize = editorKbMod.setFontSize;
   _dbg = debugMod.dbg;
 }
 

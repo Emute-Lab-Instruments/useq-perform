@@ -1,9 +1,4 @@
 import { createStore, reconcile } from "solid-js/store";
-import {
-  visualisationSessionChannel,
-  serialVisPaletteChangedChannel,
-} from "../contracts/visualisationChannels";
-import type { VisualisationSessionDetail } from "../contracts/visualisationEvents";
 
 // Channel definitions matching legacy serialVis/utils.mjs
 export const SERIAL_VIS_CHANNELS = [
@@ -52,9 +47,9 @@ export interface SerialBufferSnapshot {
 }
 
 export interface VisualisationState {
-  /** Current simulation time from the controller. */
+  /** Current simulation time from the stream parser / mock generator. */
   currentTime: number;
-  /** Display-clock time (smoothed for rendering). */
+  /** Display-clock time (currently same as currentTime). */
   displayTime: number;
   /** Rendering settings. */
   settings: VisSettings;
@@ -71,10 +66,7 @@ export interface VisualisationState {
 }
 
 /**
- * Named session type for the cross-layer visualisation payload.
- *
- * Components and adapters should reference VisualisationSession rather than
- * the internal VisualisationState alias so the type boundary is explicit.
+ * Named session type for cross-layer consumption.
  */
 export type VisualisationSession = VisualisationState;
 
@@ -106,46 +98,59 @@ const initialState: VisualisationState = {
   palette: [],
 };
 
-export const [visStore, setVisStore] = createStore<VisualisationState>(initialState);
+export const [visStore, setVisStore] =
+  createStore<VisualisationState>(initialState);
 
 // ---------------------------------------------------------------------------
-// Actions
+// Mutation functions — these are the ONLY way to update vis state.
+// The visualisationSampler and stream-parser call these directly.
 // ---------------------------------------------------------------------------
 
-/**
- * Ingest a serializable visualisation session snapshot from the legacy
- * visualisation controller adapter.
- */
-export function applyVisualisationEvent(detail: VisualisationSessionDetail) {
-  const expressionsRecord: Record<string, VisExpression> = {};
-  if (detail.expressions) {
-    for (const [key, expr] of Object.entries(detail.expressions)) {
-      expressionsRecord[key] = {
-        exprType: expr?.exprType ?? key,
-        expressionText: expr.expressionText ?? "",
-        samples: Array.isArray(expr.samples) ? expr.samples : [],
-        color: expr.color ?? null,
-      };
-    }
-  }
+/** Update the current simulation time. */
+export function updateTime(timeSeconds: number): void {
+  setVisStore("currentTime", timeSeconds);
+  setVisStore("displayTime", timeSeconds);
+}
 
-  setVisStore("currentTime", detail.currentTimeSeconds ?? visStore.currentTime);
-  setVisStore("displayTime", detail.displayTimeSeconds ?? visStore.displayTime);
-  setVisStore("bar", detail.bar ?? visStore.bar);
-  setVisStore("lastChangeKind", detail.kind ?? "");
-  if (detail.settings) {
-    setVisStore("settings", reconcile({ ...DEFAULT_SETTINGS, ...detail.settings }));
-  }
-  setVisStore("expressions", reconcile(expressionsRecord));
+/** Update the bar position (0..1). */
+export function updateBar(bar: number): void {
+  setVisStore("bar", bar);
+}
+
+/** Replace all expressions at once. */
+export function updateExpressions(
+  expressions: Record<string, VisExpression>,
+): void {
+  setVisStore("expressions", reconcile(expressions));
+}
+
+/** Remove a single expression by key. */
+export function removeExpression(exprType: string): void {
+  const { [exprType]: _, ...rest } = visStore.expressions;
+  setVisStore("expressions", reconcile(rest));
+}
+
+/** Update rendering settings (full replace). */
+export function updateSettings(settings: VisSettings): void {
+  setVisStore("settings", reconcile(settings));
+}
+
+/** Set the last change kind tag. */
+export function setLastChangeKind(kind: string): void {
+  setVisStore("lastChangeKind", kind);
 }
 
 /**
  * Snapshot serial CircularBuffer instances into plain arrays for reactive
- * consumption.  Call this from the serial-data update path.
- *
- * @param buffers Array of CircularBuffer instances (legacy serialBuffers)
+ * consumption. Call this from the serial-data update path.
  */
-export function snapshotSerialBuffers(buffers: Array<{ length: number; oldest(i: number): number; capacity: number }>) {
+export function snapshotSerialBuffers(
+  buffers: Array<{
+    length: number;
+    oldest(i: number): number;
+    capacity: number;
+  }>,
+): void {
   const channels: number[][] = [];
   const lengths: number[] = [];
 
@@ -165,23 +170,6 @@ export function snapshotSerialBuffers(buffers: Array<{ length: number; oldest(i:
 /**
  * Update the colour palette (called when theme changes or palette is swapped).
  */
-export function setVisPalette(palette: string[]) {
+export function setVisPalette(palette: string[]): void {
   setVisStore("palette", reconcile([...palette]));
 }
-
-// ---------------------------------------------------------------------------
-// Named adapter boundary — this is the single authorised place where the
-// visualisation events are ingested into the typed Solid store here. All
-// other modules must consume visualisation state through visStore, not by
-// listening to the browser events directly.
-// ---------------------------------------------------------------------------
-
-visualisationSessionChannel.subscribe((detail) => {
-  applyVisualisationEvent(detail);
-});
-
-serialVisPaletteChangedChannel.subscribe((detail) => {
-  if (Array.isArray(detail?.palette)) {
-    setVisPalette(detail.palette);
-  }
-});

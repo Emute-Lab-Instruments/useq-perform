@@ -23,7 +23,7 @@ import {
 import { getTrimmedRange, performNavigation } from "./extensions/structure.ts";
 import { open as openDoubleRadialMenu } from "../ui/adapters/double-radial-menu.tsx";
 import { buildHierarchicalMenuModel } from "../lib/pickerMenuModel.ts";
-import { evalNow } from "./editorConfig.ts";
+import { evaluate } from "../effects/editorEvaluation.ts";
 import {
   showPickerMenu,
   showNumberPickerMenu,
@@ -70,10 +70,10 @@ const typedPerformNavigation = performNavigation as (
   navFn: NavigationFn
 ) => boolean;
 
-const typedEvalNow = evalNow as (opts: {
-  state: EditorState;
-  view?: EditorView;
-}) => boolean;
+const typedEvaluate = evaluate as (
+  view: EditorView,
+  strategy: "toplevel" | "expression" | "soft",
+) => boolean;
 
 const typedBuildHierarchicalMenuModel = buildHierarchicalMenuModel as () => Promise<
   HierarchicalCategory[]
@@ -1098,7 +1098,7 @@ class GamepadController {
 
   runEvalNow(): void {
     if (!this.view) return;
-    typedEvalNow({ state: this.view.state, view: this.view });
+    typedEvaluate(this.view, "expression");
   }
 
   toggleNavigationMode(): void {

@@ -7,6 +7,7 @@ import {
   type Component,
 } from "solid-js";
 import { pushOverlay } from "./overlayManager";
+import * as gamepadCh from "../contracts/gamepadChannels";
 
 /** Map of icon name strings to icon components. Provided by the adapter (browser-only). */
 export type IconRegistry = Record<string, Component>;
@@ -127,20 +128,11 @@ export function PickerMenu(props: PickerMenuProps) {
     }
   };
 
-  // Gamepad navigation
-  const handleGamepadInput = (e: Event) => {
+  // Gamepad navigation via typed channels
+  const handleGamepadNavigate = (detail: { direction?: string }) => {
     const len = items().length;
     if (!len) return;
-    const { direction, action } = (e as CustomEvent).detail || {};
-
-    if (action === "select") {
-      selectItem(activeIdx());
-      return;
-    }
-    if (action === "cancel") {
-      close();
-      return;
-    }
+    const { direction } = detail;
 
     if (layout() === "grid") {
       const numRows = Math.ceil(len / NUM_COLUMNS);
@@ -193,22 +185,23 @@ export function PickerMenu(props: PickerMenuProps) {
   };
 
   let popOverlay: (() => void) | undefined;
+  let unsubNavigate: (() => void) | undefined;
+  let unsubSelect: (() => void) | undefined;
+  let unsubCancel: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", handleKeyDownNav);
-    window.addEventListener(
-      "gamepadpickerinput",
-      handleGamepadInput as EventListener,
-    );
+    unsubNavigate = gamepadCh.pickerNavigate.subscribe(handleGamepadNavigate);
+    unsubSelect = gamepadCh.pickerSelect.subscribe(() => selectItem(activeIdx()));
+    unsubCancel = gamepadCh.pickerCancel.subscribe(() => close());
     popOverlay = pushOverlay("picker-menu", () => close());
     focusActive();
   });
 
   onCleanup(() => {
     window.removeEventListener("keydown", handleKeyDownNav);
-    window.removeEventListener(
-      "gamepadpickerinput",
-      handleGamepadInput as EventListener,
-    );
+    unsubNavigate?.();
+    unsubSelect?.();
+    unsubCancel?.();
     popOverlay?.();
   });
 
@@ -301,38 +294,34 @@ export function NumberPickerMenu(props: NumberPickerMenuProps) {
       updateValue(value() + step());
   };
 
-  const handleGamepadInput = (e: Event) => {
-    const { direction, action } = (e as CustomEvent).detail || {};
-    if (direction === "left" || direction === "down")
-      updateValue(value() - step());
-    else if (direction === "right" || direction === "up")
-      updateValue(value() + step());
-    else if (action === "select") confirm();
-    else if (action === "cancel") close();
-  };
-
   const handleKeyDownNav = (e: KeyboardEvent) => {
     if (e.key === "Escape") return; // Escape is handled by the overlay manager
     handleKeyDown(e);
   };
 
   let popOverlay: (() => void) | undefined;
+  let unsubNavigate: (() => void) | undefined;
+  let unsubSelect: (() => void) | undefined;
+  let unsubCancel: (() => void) | undefined;
   onMount(() => {
     window.addEventListener("keydown", handleKeyDownNav);
-    window.addEventListener(
-      "gamepadpickerinput",
-      handleGamepadInput as EventListener,
-    );
+    unsubNavigate = gamepadCh.pickerNavigate.subscribe(({ direction }) => {
+      if (direction === "left" || direction === "down")
+        updateValue(value() - step());
+      else if (direction === "right" || direction === "up")
+        updateValue(value() + step());
+    });
+    unsubSelect = gamepadCh.pickerSelect.subscribe(() => confirm());
+    unsubCancel = gamepadCh.pickerCancel.subscribe(() => close());
     popOverlay = pushOverlay("number-picker-menu", () => close());
     inputRef?.focus();
   });
 
   onCleanup(() => {
     window.removeEventListener("keydown", handleKeyDownNav);
-    window.removeEventListener(
-      "gamepadpickerinput",
-      handleGamepadInput as EventListener,
-    );
+    unsubNavigate?.();
+    unsubSelect?.();
+    unsubCancel?.();
     popOverlay?.();
   });
 
