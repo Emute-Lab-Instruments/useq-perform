@@ -365,7 +365,6 @@ export function handlePlayExpression(view: EditorView, exprType: string): void {
     }
   }
 
-  detectAndTrackExpressionEvaluation(view);
   handleVisualiseExpression(view, exprType, expressionText);
 }
 

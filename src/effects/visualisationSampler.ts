@@ -210,13 +210,14 @@ async function rebuildAllExpressions(
   const exprTypes = Object.keys(expressions);
   if (exprTypes.length === 0) return;
 
-  const updated: Record<string, VisExpression> = {};
+  // Build updated samples for each expression we know about at the start.
+  const rebuilt: Record<string, VisExpression> = {};
   for (const exprType of exprTypes) {
     const expr = expressions[exprType];
     if (!expr) continue;
     try {
       const samples = await sampleExpression(exprType, currentTime, settings);
-      updated[exprType] = {
+      rebuilt[exprType] = {
         ...expr,
         samples,
         color: resolveColor(exprType, settings.circularOffset),
@@ -225,10 +226,21 @@ async function rebuildAllExpressions(
       dbg(
         `visualisationSampler: failed to rebuild ${exprType}: ${error}`,
       );
-      updated[exprType] = { ...expr };
+      rebuilt[exprType] = { ...expr };
     }
   }
-  updateExpressions(updated);
+
+  // Merge with current store state to preserve any expressions that were
+  // registered concurrently (avoids stale-snapshot overwrites).
+  const current = visStore.expressions;
+  const merged = { ...current };
+  for (const [key, value] of Object.entries(rebuilt)) {
+    if (key in current) {
+      merged[key] = value;
+    }
+    // If key was removed from current during rebuild, don't re-add it.
+  }
+  updateExpressions(merged);
 }
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -241,7 +253,6 @@ export async function handleExternalTimeUpdate(
   timeSeconds: number,
 ): Promise<void> {
   const numericTime = Number(timeSeconds) || 0;
-  updateTime(numericTime);
 
   try {
     await updateUseqWasmTime(numericTime);
@@ -254,6 +265,11 @@ export async function handleExternalTimeUpdate(
 
   const settings = visStore.settings;
   await rebuildAllExpressions(settings, numericTime);
+
+  // Update time AFTER samples are rebuilt so the render loop always sees
+  // consistent time + sample data (prevents jitter from stale samples
+  // rendered at the new time position).
+  updateTime(numericTime);
   setLastChangeKind("data");
 }
 
