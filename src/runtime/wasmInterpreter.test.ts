@@ -80,7 +80,9 @@ describe("useqWasmInterpreter", () => {
     expect(buildScript).toContain('\\"_useq_update_time\\"');
     expect(buildScript).toContain('\\"_useq_eval_output\\"');
     expect(buildScript).toContain('\\"_free\\"');
-    expect(buildScript).not.toContain("_useq_eval_outputs_time_window_into");
+    expect(buildScript).toContain('\\"_useq_eval_outputs_time_window\\"');
+    expect(buildScript).toContain('\\"_useq_eval_outputs_time_window_into\\"');
+    expect(buildScript).toContain('\\"_useq_last_error\\"');
   });
 
   it("uses typed batch helpers when the wasm bundle exports them", async () => {

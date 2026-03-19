@@ -44,6 +44,12 @@ const DEFAULT_FUTURE_LEAD_SECONDS = 1;
 const MAX_FUTURE_LEAD_SECONDS = 8;
 const SAMPLE_EPSILON = 1e-9;
 
+// ── Staleness guard ──────────────────────────────────────────────────
+// Monotonic counter incremented on every resampleExpressions() call.
+// If async WASM work finishes and the counter has moved on, the result
+// is stale and must be discarded.
+let samplingSequence = 0;
+
 // ── Settings helpers ─────────────────────────────────────────────────
 
 interface SamplingSettings {
@@ -218,22 +224,51 @@ async function rebuildAllExpressions(
   const exprTypes = Object.keys(expressions);
   if (exprTypes.length === 0) return;
 
-  // Build updated samples for each expression we know about at the start.
+  // Compute the shared sample window ONCE for all expressions.
+  const step = sampleStep(settings);
+  const total = totalSamplesForSettings(step, settings);
+  const halfWindow = settings.windowDuration / 2;
+
+  // Snap window start to the sample grid so samples land on the same
+  // absolute times regardless of when this tick fires. This eliminates
+  // vertical jitter caused by the waveform being sampled at slightly
+  // different phase offsets each frame.
+  const rawStart = currentTime - halfWindow;
+  const start = step > SAMPLE_EPSILON
+    ? Math.floor(rawStart / step) * step
+    : rawStart;
+  const end = start + step * (total - 1);
+
+  // Batch ALL expressions into a single WASM call.
+  let batchResults: Map<string, VisSample[]>;
+  try {
+    batchResults = await evalOutputsInTimeWindow(exprTypes, start, end, total);
+  } catch (error) {
+    dbg(`visualisationSampler: batch rebuild failed, falling back to per-expression: ${error}`);
+    batchResults = new Map();
+    for (const exprType of exprTypes) {
+      try {
+        const samples = await sampleExpression(exprType, currentTime, settings);
+        batchResults.set(exprType, samples);
+      } catch (innerError) {
+        dbg(`visualisationSampler: fallback failed for ${exprType}: ${innerError}`);
+      }
+    }
+  }
+
+  // Build updated expression records from the batch results.
   const rebuilt: Record<string, VisExpression> = {};
   for (const exprType of exprTypes) {
     const expr = expressions[exprType];
     if (!expr) continue;
-    try {
-      const samples = await sampleExpression(exprType, currentTime, settings);
+    const samples = batchResults.get(exprType);
+    if (samples) {
       rebuilt[exprType] = {
         ...expr,
         samples,
         color: resolveColor(exprType, settings.circularOffset),
       };
-    } catch (error) {
-      dbg(
-        `visualisationSampler: failed to rebuild ${exprType}: ${error}`,
-      );
+    } else {
       rebuilt[exprType] = { ...expr };
     }
   }
@@ -267,6 +302,7 @@ async function rebuildAllExpressions(
 export async function resampleExpressions(
   timeSeconds: number,
 ): Promise<void> {
+  const seq = ++samplingSequence;
   const numericTime = Number(timeSeconds) || 0;
 
   try {
@@ -276,12 +312,18 @@ export async function resampleExpressions(
     return;
   }
 
+  // A newer resample request arrived while we were awaiting — discard.
+  if (seq !== samplingSequence) return;
+
   // Bar refresh and expression rebuild are independent — run in parallel
   const settings = visStore.settings;
   await Promise.all([
     refreshBarValue(numericTime),
     rebuildAllExpressions(settings, numericTime),
   ]);
+
+  // Final staleness check after async work completes.
+  if (seq !== samplingSequence) return;
 
   setLastChangeKind("data");
 }

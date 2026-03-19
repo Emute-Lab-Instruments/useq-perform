@@ -34,7 +34,10 @@ function tick(): void {
   elapsedSeconds = (performance.now() - (resetTimeMs ?? 0)) / 1000;
   updateTime(elapsedSeconds);
 
-  // Kick off sampling in the background (skip if still computing)
+  // Coalesce sampling: skip if a WASM evaluation is already running on the
+  // main thread. The sampler's sequence counter discards stale results, but
+  // this guard avoids queuing redundant synchronous WASM work that would
+  // burn CPU and be thrown away.
   if (samplingInFlight) return;
   samplingInFlight = true;
   resampleExpressions(elapsedSeconds)
