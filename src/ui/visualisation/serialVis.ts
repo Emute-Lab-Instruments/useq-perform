@@ -4,12 +4,6 @@ const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)';
 const TEXT_COLOR = 'rgba(255, 255, 255, 0.5)';
 const ACCENT_REFRESH_INTERVAL_MS = 250;
 
-// Smooth time interpolation state — avoids jerky scrolling by
-// interpolating between store time updates using wall-clock time.
-let lastStoreTime = 0;
-let lastStoreWallMs = 0;
-let smoothTime = 0;
-
 let cachedAccentColor: string | null = null;
 let lastAccentColorRead = 0;
 
@@ -47,24 +41,13 @@ function drawSerialVis(): void {
   const centerY = c.height / 2;
   const drawableHeight = c.height - verticalPadding * 2;
 
-  // Read directly from the reactive store
-  const storeTime = visStore.currentTime;
+  // Read from the reactive store — time advances every frame (via localClock
+  // or hardware serial), so no interpolation is needed.
+  const currentTime = visStore.currentTime;
   const settings = visStore.settings;
   const expressions = visStore.expressions;
 
-  // Smooth time interpolation: when the store time advances, extrapolate
-  // linearly between updates so the waveform scrolls smoothly instead
-  // of jumping when the async rebuild completes.
-  const nowMs = performance.now();
-  if (storeTime !== lastStoreTime) {
-    lastStoreTime = storeTime;
-    lastStoreWallMs = nowMs;
-    smoothTime = storeTime;
-  } else if (lastStoreWallMs > 0) {
-    const elapsedSinceUpdate = (nowMs - lastStoreWallMs) / 1000;
-    smoothTime = storeTime + elapsedSinceUpdate;
-  }
-  const effectiveTime = Number.isFinite(smoothTime) ? smoothTime : storeTime;
+  const effectiveTime = currentTime;
   const { lineWidth = 1.5, digitalLaneGap: rawDigitalGap = 4 } = settings;
   const futureLineAlpha = settings.futureDashed === false ? 0.85 : 0.6;
   const totalWindow = settings.windowDuration || 1;

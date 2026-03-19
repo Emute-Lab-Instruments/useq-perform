@@ -26,7 +26,7 @@ import {
   syncRuntimeWasmTransportState,
   type RuntimeSessionState,
 } from "../runtime/runtimeService";
-import { applyMockTimePolicy, listenForHardwareOverride } from "./transportClock";
+import { applyClockPolicy, listenForHardwareOverride } from "./transportClock";
 
 // ── Pure helpers ─────────────────────────────────────────────────
 
@@ -128,7 +128,7 @@ export function createTransportOrchestrator(): TransportOrchestrator {
     if (current === prevTransportState) return;
     const prev = prevTransportState;
     prevTransportState = current;
-    applyMockTimePolicy(current, prev);
+    applyClockPolicy(current, prev);
   });
 
   // ── 3. Runtime-service subscriptions ───────────────────────────

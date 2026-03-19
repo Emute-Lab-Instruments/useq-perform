@@ -35,8 +35,8 @@ vi.mock("../effects/mockControlInputs.ts", () => ({
   initializeMockControls,
 }));
 
-vi.mock("../effects/mockTimeGenerator.ts", () => ({
-  startMockTimeGenerator,
+vi.mock("../effects/localClock.ts", () => ({
+  startLocalClock: startMockTimeGenerator,
 }));
 
 vi.mock("../effects/visualisationSampler.ts", () => ({

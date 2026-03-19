@@ -4,7 +4,7 @@ import { ensureUseqWasmLoaded } from './wasmInterpreter.ts';
 import { startWebSocketServer, stopWebSocketServer } from '../effects/devmodeWebSocketServer.ts';
 import { showModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
-import { startMockTimeGenerator } from '../effects/mockTimeGenerator.ts';
+import { startLocalClock } from '../effects/localClock.ts';
 import { registerVisualisation } from '../effects/visualisationSampler.ts';
 import type { BootstrapPlan } from './bootstrapPlan.ts';
 import { announceRuntimeSession } from './runtimeService.ts';
@@ -51,9 +51,9 @@ async function startBrowserLocalRuntime(options: {
   }
 
   try {
-    startMockTimeGenerator();
+    startLocalClock();
   } catch (error) {
-    console.warn('Failed to start mock time generator:', error);
+    console.warn('Failed to start local clock:', error);
   }
 
   post(options.announceMessage);

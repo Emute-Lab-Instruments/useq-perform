@@ -254,10 +254,17 @@ async function rebuildAllExpressions(
 // ── Public API ───────────────────────────────────────────────────────
 
 /**
- * Handle a time update from the serial stream or mock generator.
- * Updates store time, refreshes bar, and resamples all expressions.
+ * Resample all registered expressions at the given time.
+ *
+ * This is pure sampling work — it does NOT update the store's currentTime.
+ * Callers are responsible for time advancement:
+ * - Local clock: `localClock.ts` updates time on every rAF frame
+ * - Hardware: `stream-parser.ts` updates time when serial data arrives
+ *
+ * This function can safely be called fire-and-forget; if it takes longer
+ * than a frame, the clock keeps ticking and the renderer interpolates.
  */
-export async function handleExternalTimeUpdate(
+export async function resampleExpressions(
   timeSeconds: number,
 ): Promise<void> {
   const numericTime = Number(timeSeconds) || 0;
@@ -269,17 +276,18 @@ export async function handleExternalTimeUpdate(
     return;
   }
 
-  await refreshBarValue(numericTime);
-
+  // Bar refresh and expression rebuild are independent — run in parallel
   const settings = visStore.settings;
-  await rebuildAllExpressions(settings, numericTime);
+  await Promise.all([
+    refreshBarValue(numericTime),
+    rebuildAllExpressions(settings, numericTime),
+  ]);
 
-  // Update time AFTER samples are rebuilt so the render loop always sees
-  // consistent time + sample data (prevents jitter from stale samples
-  // rendered at the new time position).
-  updateTime(numericTime);
   setLastChangeKind("data");
 }
+
+// Backward-compatible alias
+export { resampleExpressions as handleExternalTimeUpdate };
 
 /**
  * Register (or update) an expression for visualisation.

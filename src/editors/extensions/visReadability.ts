@@ -1,16 +1,18 @@
 /**
- * visReadability — SVG polygon readability layer for the CodeMirror editor.
+ * visReadability — backdrop-blur readability layer for the CodeMirror editor.
  *
  * When the serialVis canvas overlays the editor, text can be hard to read
- * against the animated background. This ViewPlugin renders a semi-transparent
- * SVG polygon "backdrop" that hugs only the non-whitespace content on each
- * visible line, grouping adjacent lines into unified staircase-shaped polygons.
+ * against the animated background.  This ViewPlugin places a backdrop-blur
+ * layer *between* the vis canvas and the editor text by restructuring
+ * z-indexes at runtime:
  *
- * Layering:
- *   Editor text (natural CM stacking, above SVG in DOM order)
- *   SVG polygon layer  ← this file
- *   serialVis canvas (#panel-vis, z-index: 19)
- *   #panel-main-editor (z-index: 0, transparent background when vis active)
+ *   #panel-main-editor  z-index: 21  (raised above vis, transparent bg)
+ *   blur overlay         z-index: 20  (backdrop-filter blurs vis below)
+ *   #panel-vis           z-index: 19  (vis canvas, unchanged)
+ *
+ * The blur regions are clipped to staircase-shaped polygons that hug only
+ * the non-whitespace content on each visible line, so the vis is still
+ * fully visible in the gaps between code.
  */
 
 import { ViewPlugin, EditorView } from "@codemirror/view";
@@ -151,46 +153,34 @@ export function buildBlockPolygonPath(group: PixelLineBounds[], padding: number 
 
 /**
  * Computes PixelLineBounds for every visible line that contains non-whitespace
- * content.  Returns coordinates in the CM "document coordinate" space (Y=0 at
- * top of document, independent of scroll position), which matches the SVG
- * overlay positioned at top:0 / left:0 inside the scroll container.
+ * content.  Returns coordinates in **viewport space** (relative to the
+ * browser window), suitable for a fixed-position overlay element.
  */
-function computeVisibleLineBounds(view: EditorView): PixelLineBounds[] {
+function computeVisibleLineBoundsViewport(view: EditorView): PixelLineBounds[] {
   const { from, to } = view.viewport;
-  const scrollRect = view.scrollDOM.getBoundingClientRect();
-  const scrollLeft = view.scrollDOM.scrollLeft;
-  const charWidth = view.defaultCharacterWidth;
 
   const result: PixelLineBounds[] = [];
 
-  // Walk through visible line positions.
   let pos = from;
   while (pos <= to) {
     const line = view.state.doc.lineAt(pos);
-    const block = view.lineBlockAt(pos);
     const text = line.text;
     const { start: charStart, end: charEnd } = getLineContentBounds(text);
 
     if (charStart < charEnd) {
-      // Get viewport-X of the first non-whitespace character via coordsAtPos.
       const startPos = line.from + charStart;
-      const endPos   = line.from + charEnd - 1; // last char position
+      const endPos   = line.from + charEnd;
 
       const startCoords = view.coordsAtPos(startPos);
-      // Use bias=1 (right side) for the end position to get the right edge of the last char.
-      const endCoords = view.coordsAtPos(endPos, 1);
+      const endCoords = view.coordsAtPos(endPos, -1);
 
       if (startCoords && endCoords) {
-        // Convert from viewport-X to document-X (same reference frame as block.top).
-        const left  = startCoords.left - scrollRect.left + scrollLeft;
-        const right = endCoords.right  - scrollRect.left + scrollLeft;
-
         result.push({
           lineIndex: line.number,
-          left,
-          right,
-          top:    block.top,
-          bottom: block.bottom,
+          left:   startCoords.left,
+          right:  endCoords.right,
+          top:    startCoords.top,
+          bottom: startCoords.bottom,
         });
       }
     }
@@ -203,18 +193,38 @@ function computeVisibleLineBounds(view: EditorView): PixelLineBounds[] {
 }
 
 // ---------------------------------------------------------------------------
-// SVG rendering helpers
+// Backdrop-blur rendering helpers
 // ---------------------------------------------------------------------------
 
-const FILL_COLOR = 'rgba(0, 0, 0, 0.62)';
+const BLUR_RADIUS = 6;
 const PADDING = 3;
+/** Gaussian blur stdDeviation applied to the SVG mask shape to feather edges. */
+const EDGE_SOFTNESS = 4;
+const EDITOR_RAISED_Z = '21';
+const BLUR_LAYER_Z = '20';
 
 function isVisPanelVisible(): boolean {
   return isVisualisationPanelVisible();
 }
 
-function writeSVG(svg: SVGSVGElement, lineBounds: PixelLineBounds[]): void {
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
+/**
+ * Build an SVG data-URI mask image with a soft-edged polygon.
+ * The polygon is drawn as white on transparent, with a Gaussian blur filter
+ * so the mask fades out smoothly at the edges.
+ */
+function buildSoftMask(pathStr: string): string {
+  // Use raw # in the SVG — encodeURIComponent will convert it to %23
+  // which is the correct encoding inside a data URI.
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">` +
+    `<defs><filter id="s"><feGaussianBlur stdDeviation="${EDGE_SOFTNESS}"/></filter></defs>` +
+    `<path d="${pathStr}" fill="white" filter="url(#s)"/>` +
+    `</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+function writeBackdrop(overlay: HTMLDivElement, lineBounds: PixelLineBounds[]): void {
+  while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
   if (lineBounds.length === 0) return;
 
   const blocks = groupIntoBlocks(lineBounds);
@@ -223,21 +233,45 @@ function writeSVG(svg: SVGSVGElement, lineBounds: PixelLineBounds[]): void {
     const pathStr = buildBlockPolygonPath(block, PADDING);
     if (!pathStr) continue;
 
-    const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    pathEl.setAttribute('d', pathStr);
-    pathEl.setAttribute('fill', FILL_COLOR);
-    svg.appendChild(pathEl);
+    const mask = buildSoftMask(pathStr);
+    const div = document.createElement('div');
+    div.style.cssText = [
+      'position:fixed',
+      'top:0',
+      'left:0',
+      'width:100vw',
+      'height:100vh',
+      'pointer-events:none',
+      `backdrop-filter:blur(${BLUR_RADIUS}px)`,
+      `-webkit-backdrop-filter:blur(${BLUR_RADIUS}px)`,
+      `-webkit-mask-image:${mask}`,
+      `mask-image:${mask}`,
+      '-webkit-mask-size:100% 100%',
+      'mask-size:100% 100%',
+    ].join(';');
+    overlay.appendChild(div);
   }
 }
 
-function scheduleSVGRebuild(svg: SVGSVGElement, view: EditorView): void {
+interface MeasureResult {
+  lineBounds: PixelLineBounds[];
+  visVisible: boolean;
+}
+
+function scheduleOverlayRebuild(
+  overlay: HTMLDivElement,
+  view: EditorView,
+  onVisChange: (visible: boolean) => void,
+): void {
   view.requestMeasure({
-    read(v: EditorView): PixelLineBounds[] {
-      if (!isVisPanelVisible()) return [];
-      return computeVisibleLineBounds(v);
+    read(v: EditorView): MeasureResult {
+      const visVisible = isVisPanelVisible();
+      if (!visVisible) return { lineBounds: [], visVisible };
+      return { lineBounds: computeVisibleLineBoundsViewport(v), visVisible };
     },
-    write(lineBounds: PixelLineBounds[]) {
-      writeSVG(svg, lineBounds);
+    write({ lineBounds, visVisible }: MeasureResult) {
+      onVisChange(visVisible);
+      writeBackdrop(overlay, lineBounds);
     },
   });
 }
@@ -247,57 +281,89 @@ function scheduleSVGRebuild(svg: SVGSVGElement, view: EditorView): void {
 // ---------------------------------------------------------------------------
 
 class VisReadabilityPlugin {
-  private svg: SVGSVGElement;
+  private overlay: HTMLDivElement;
   private view: EditorView;
   private mutationObserver: MutationObserver;
+  private editorPanel: HTMLElement | null = null;
+  private wasVisVisible = false;
 
   constructor(view: EditorView) {
     this.view = view;
-    this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as SVGSVGElement;
-    // Position absolutely at the top of the scroll container so document
-    // coordinates from lineBlockAt / coordsAtPos map 1:1 to SVG coordinates.
-    this.svg.style.cssText = [
-      'position:absolute',
+
+    // Create a fixed-position overlay as a page-level sibling, between
+    // #panel-vis (z:19) and #panel-main-editor (raised to z:21).
+    this.overlay = document.createElement('div');
+    this.overlay.style.cssText = [
+      'position:fixed',
       'top:0',
       'left:0',
-      'width:100%',
-      'height:100%',
+      'width:100vw',
+      'height:100vh',
       'pointer-events:none',
-      'overflow:visible',
-      'z-index:0',
+      `z-index:${BLUR_LAYER_Z}`,
     ].join(';');
+    document.body.appendChild(this.overlay);
 
-    // Insert before contentDOM so the SVG is painted behind the text.
-    view.scrollDOM.insertBefore(this.svg, view.contentDOM);
+    this.editorPanel = document.getElementById('panel-main-editor');
 
-    // Watch for vis panel style changes (display toggled) to refresh polygons.
-    this.mutationObserver = new MutationObserver(() => scheduleSVGRebuild(this.svg, this.view));
+    // Watch for vis panel style changes (display toggled) to refresh.
+    this.mutationObserver = new MutationObserver(() =>
+      scheduleOverlayRebuild(this.overlay, this.view, (v) => this.applyVisState(v)),
+    );
     const visPanel = getVisualisationPanel();
     if (visPanel) {
       this.mutationObserver.observe(visPanel, { attributes: true, attributeFilter: ['style'] });
     }
 
-    scheduleSVGRebuild(this.svg, view);
+    scheduleOverlayRebuild(this.overlay, view, (v) => this.applyVisState(v));
   }
 
   update(update: ViewUpdate): void {
     this.view = update.view;
     if (update.docChanged || update.viewportChanged || update.geometryChanged) {
-      scheduleSVGRebuild(this.svg, update.view);
+      scheduleOverlayRebuild(this.overlay, update.view, (v) => this.applyVisState(v));
     }
   }
 
   destroy(): void {
     this.mutationObserver.disconnect();
-    this.svg.remove();
+    this.overlay.remove();
+    // Restore editor z-index
+    if (this.editorPanel) {
+      this.editorPanel.style.zIndex = '';
+    }
+    // Restore CM editor background
+    this.view.dom.style.backgroundColor = '';
+  }
+
+  /**
+   * When vis is visible: raise the editor panel above the vis and make
+   * the CM editor background transparent so the vis shows through.
+   * When vis is hidden: restore defaults.
+   */
+  private applyVisState(visVisible: boolean): void {
+    if (visVisible === this.wasVisVisible) return;
+    this.wasVisVisible = visVisible;
+
+    if (visVisible) {
+      if (this.editorPanel) {
+        this.editorPanel.style.zIndex = EDITOR_RAISED_Z;
+      }
+      this.view.dom.style.backgroundColor = 'transparent';
+    } else {
+      if (this.editorPanel) {
+        this.editorPanel.style.zIndex = '';
+      }
+      this.view.dom.style.backgroundColor = '';
+    }
   }
 }
 
 /**
- * CodeMirror extension that renders a semi-transparent SVG polygon background
- * behind the editor text, tightly hugging non-whitespace content per line.
+ * CodeMirror extension that renders a backdrop-blur layer between the editor
+ * text and the vis canvas, blurring the vis colours behind code regions.
  *
- * Add this to your editor's extension list when the serialVis overlay is active
- * so that code remains readable over the animated background.
+ * Restructures z-indexes when vis is active:
+ *   editor (z:21) → blur overlay (z:20) → vis (z:19)
  */
 export const visReadabilityPlugin = ViewPlugin.fromClass(VisReadabilityPlugin);

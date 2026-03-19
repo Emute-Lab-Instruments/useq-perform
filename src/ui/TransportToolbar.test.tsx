@@ -5,13 +5,13 @@ import { Effect } from "effect";
 
 import { TransportToolbar } from "./TransportToolbar";
 import {
-  startMockTimeGenerator,
-  stopMockTimeGenerator,
-  resetMockTimeGenerator,
-} from "../effects/mockTimeGenerator.ts";
+  startLocalClock,
+  stopLocalClock,
+  resetLocalClock,
+} from "../effects/localClock.ts";
 import { transportMachine } from "../machines/transport.machine";
 import type { TransportState } from "../machines/transport.machine";
-import { applyMockTimePolicy } from "../effects/transportClock";
+import { applyClockPolicy } from "../effects/transportClock";
 import {
   sendRuntimeTransportCommand,
   queryRuntimeHardwareTransportState,
@@ -86,11 +86,11 @@ vi.mock("../runtime/runtimeService", () => ({
   syncRuntimeWasmTransportState: vi.fn(() => Effect.succeed(undefined)),
 }));
 
-vi.mock("../effects/mockTimeGenerator.ts", () => ({
-  startMockTimeGenerator: vi.fn(),
-  stopMockTimeGenerator: vi.fn(),
-  resumeMockTimeGenerator: vi.fn(),
-  resetMockTimeGenerator: vi.fn(),
+vi.mock("../effects/localClock.ts", () => ({
+  startLocalClock: vi.fn(),
+  stopLocalClock: vi.fn(),
+  resumeLocalClock: vi.fn(),
+  resetLocalClock: vi.fn(),
 }));
 
 // ── Build a fresh orchestrator per test ─────────────────────────
@@ -117,7 +117,7 @@ function buildTestOrchestrator() {
     if (current === prevTransportState) return;
     const prev = prevTransportState;
     prevTransportState = current;
-    applyMockTimePolicy(current, prev);
+    applyClockPolicy(current, prev);
   });
 
   const rs = runtimeServiceState.getSnapshot();
@@ -125,7 +125,7 @@ function buildTestOrchestrator() {
 
   const unsubRuntime = runtimeServiceState.subscribe((nextRs: any) => {
     if (nextRs.connected && nextRs.session.hasHardwareConnection) {
-      stopMockTimeGenerator();
+      stopLocalClock();
     }
     actor.send({ type: "UPDATE_MODE", mode: nextRs.session.transportMode });
   });
@@ -311,12 +311,12 @@ describe("TransportToolbar", () => {
     expect(rewindBtn?.classList.contains("disabled")).toBe(false);
   });
 
-  describe("mock time generator lifecycle (wasm-only mode)", () => {
+  describe("local clock lifecycle (wasm-only mode)", () => {
     beforeEach(() => {
       setRuntimeSnapshot("wasm");
     });
 
-    it("calls startMockTimeGenerator in playing state on STOP->PLAY", async () => {
+    it("calls startLocalClock in playing state on STOP->PLAY", async () => {
       vi.mocked(extractTransportStateFromMeta).mockReturnValue("stopped");
 
       const { container } = render(() => <TransportToolbar />);
@@ -324,36 +324,36 @@ describe("TransportToolbar", () => {
       jsonMetaChannel.publish({ response: { meta: { transport: "stopped" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      vi.mocked(startMockTimeGenerator).mockClear();
-      vi.mocked(stopMockTimeGenerator).mockClear();
-      vi.mocked(resetMockTimeGenerator).mockClear();
+      vi.mocked(startLocalClock).mockClear();
+      vi.mocked(stopLocalClock).mockClear();
+      vi.mocked(resetLocalClock).mockClear();
 
       const playBtn = container.querySelector("[title='Play']") as HTMLElement;
       playBtn.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(startMockTimeGenerator).toHaveBeenCalled();
+      expect(startLocalClock).toHaveBeenCalled();
     });
 
-    it("calls stopMockTimeGenerator on PAUSE transition", async () => {
+    it("calls stopLocalClock on PAUSE transition", async () => {
       const { container } = render(() => <TransportToolbar />);
 
       const pauseBtn = container.querySelector("[title='Pause']") as HTMLElement;
       pauseBtn.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(stopMockTimeGenerator).toHaveBeenCalled();
+      expect(stopLocalClock).toHaveBeenCalled();
     });
 
-    it("calls stopMockTimeGenerator and resetMockTimeGenerator on STOP transition", async () => {
+    it("calls stopLocalClock and resetLocalClock on STOP transition", async () => {
       const { container } = render(() => <TransportToolbar />);
 
       const stopBtn = container.querySelector("[title='Stop']") as HTMLElement;
       stopBtn.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(stopMockTimeGenerator).toHaveBeenCalled();
-      expect(resetMockTimeGenerator).toHaveBeenCalled();
+      expect(stopLocalClock).toHaveBeenCalled();
+      expect(resetLocalClock).toHaveBeenCalled();
     });
   });
 
