@@ -300,6 +300,8 @@ class VisReadabilityPlugin {
   private scrollBaseline = 0;
   /** Bound scroll handler for cleanup. */
   private handleScroll: () => void;
+  /** Timer for debounced polygon rebuild on scroll. */
+  private scrollRebuildTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(view: EditorView) {
     this.view = view;
@@ -321,10 +323,12 @@ class VisReadabilityPlugin {
 
     this.editorPanel = document.getElementById('panel-main-editor');
 
-    // Track scroll to shift the overlay via CSS transform (no polygon recomputation).
+    // Track scroll: apply immediate CSS transform for smoothness, and
+    // schedule a full polygon rebuild so newly-scrolled-in lines get coverage.
     this.handleScroll = () => {
       const delta = this.view.scrollDOM.scrollTop - this.scrollBaseline;
       this.overlay.style.transform = delta ? `translateY(${-delta}px)` : '';
+      this.debouncedRebuild();
     };
     view.scrollDOM.addEventListener('scroll', this.handleScroll, { passive: true });
 
@@ -348,6 +352,7 @@ class VisReadabilityPlugin {
   }
 
   destroy(): void {
+    if (this.scrollRebuildTimer !== null) clearTimeout(this.scrollRebuildTimer);
     this.view.scrollDOM.removeEventListener('scroll', this.handleScroll);
     this.mutationObserver.disconnect();
     this.overlay.remove();
@@ -357,6 +362,15 @@ class VisReadabilityPlugin {
     }
     // Restore CM editor background
     this.view.dom.style.backgroundColor = '';
+  }
+
+  /** Debounced rebuild — recomputes polygons after scrolling settles. */
+  private debouncedRebuild(): void {
+    if (this.scrollRebuildTimer !== null) clearTimeout(this.scrollRebuildTimer);
+    this.scrollRebuildTimer = setTimeout(() => {
+      this.scrollRebuildTimer = null;
+      this.scheduleRebuild();
+    }, 80);
   }
 
   private scheduleRebuild(): void {
