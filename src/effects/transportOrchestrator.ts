@@ -10,22 +10,65 @@ import { createActor, type AnyActorRef } from "xstate";
 import { Effect } from "effect";
 import { transportMachine, type TransportState } from "../machines/transport.machine";
 import {
-  play, pause, stop, rewind, clear,
-  queryHardwareTransportState,
-  extractTransportStateFromMeta,
-  syncWasmTransportState,
-} from "./transport";
+  SHARED_TRANSPORT_COMMANDS,
+  type SharedTransportCommand,
+} from "../contracts/useqRuntimeContract";
+import type { JsonMetaEventDetail } from "../contracts/runtimeEvents";
 import {
   protocolReady as protocolReadyChannel,
   jsonMeta as jsonMetaChannel,
 } from "../contracts/runtimeChannels";
-import type { JsonMetaEventDetail } from "../contracts/runtimeEvents";
 import {
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
+  sendRuntimeTransportCommand,
+  queryRuntimeHardwareTransportState,
+  syncRuntimeWasmTransportState,
   type RuntimeSessionState,
 } from "../runtime/runtimeService";
 import { applyMockTimePolicy, listenForHardwareOverride } from "./transportClock";
+
+// ── Pure helpers ─────────────────────────────────────────────────
+
+/**
+ * Parse a raw transport state string from hardware into a typed TransportState.
+ * Returns null if the value is unrecognized.
+ */
+export function parseTransportState(raw: string): TransportState | null {
+  const cleaned = raw.trim().replace(/"/g, "");
+  switch (cleaned) {
+    case "playing":
+    case "paused":
+    case "stopped":
+      return cleaned;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Extract transport state from a useq-json-meta event's detail.
+ */
+export function extractTransportStateFromMeta(
+  detail: JsonMetaEventDetail
+): TransportState | null {
+  const meta = detail?.response?.meta;
+  if (meta && typeof meta.transport === "string") {
+    return parseTransportState(meta.transport);
+  }
+  return null;
+}
+
+// ── Transport command helpers (call runtimeService directly) ─────
+
+const sendTransportCommand = (command: SharedTransportCommand) =>
+  sendRuntimeTransportCommand(command);
+
+const play = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.play);
+const pause = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.pause);
+const stop = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.stop);
+const rewind = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.rewind);
+const clear = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.clear);
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -68,9 +111,9 @@ export function createTransportOrchestrator(): TransportOrchestrator {
       emitStop:     () => { Effect.runPromise(stop()); },
       emitRewind:   () => { Effect.runPromise(rewind()); },
       emitClear:    () => { Effect.runPromise(clear()); },
-      syncWasmPlay: () => { Effect.runPromise(syncWasmTransportState("playing")).catch(() => undefined); },
-      syncWasmPause:() => { Effect.runPromise(syncWasmTransportState("paused")).catch(() => undefined); },
-      syncWasmStop: () => { Effect.runPromise(syncWasmTransportState("stopped")).catch(() => undefined); },
+      syncWasmPlay: () => { Effect.runPromise(syncRuntimeWasmTransportState("playing")).catch(() => undefined); },
+      syncWasmPause:() => { Effect.runPromise(syncRuntimeWasmTransportState("paused")).catch(() => undefined); },
+      syncWasmStop: () => { Effect.runPromise(syncRuntimeWasmTransportState("stopped")).catch(() => undefined); },
     },
   });
   const actor = createActor(machine);
@@ -113,7 +156,7 @@ export function createTransportOrchestrator(): TransportOrchestrator {
 
   const removeProtocolReady = protocolReadyChannel.subscribe(
     () => {
-      Effect.runPromise(queryHardwareTransportState()).then(syncState);
+      Effect.runPromise(queryRuntimeHardwareTransportState()).then(syncState);
     }
   );
 

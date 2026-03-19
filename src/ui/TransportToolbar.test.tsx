@@ -5,16 +5,6 @@ import { Effect } from "effect";
 
 import { TransportToolbar } from "./TransportToolbar";
 import {
-  play,
-  pause,
-  stop,
-  rewind,
-  clear,
-  extractTransportStateFromMeta,
-  queryHardwareTransportState,
-  syncWasmTransportState,
-} from "../effects/transport";
-import {
   startMockTimeGenerator,
   stopMockTimeGenerator,
   resetMockTimeGenerator,
@@ -22,6 +12,17 @@ import {
 import { transportMachine } from "../machines/transport.machine";
 import type { TransportState } from "../machines/transport.machine";
 import { applyMockTimePolicy } from "../effects/transportClock";
+import {
+  sendRuntimeTransportCommand,
+  queryRuntimeHardwareTransportState,
+  syncRuntimeWasmTransportState,
+} from "../runtime/runtimeService";
+import {
+  SHARED_TRANSPORT_COMMANDS,
+} from "../contracts/useqRuntimeContract";
+import {
+  extractTransportStateFromMeta,
+} from "../effects/transportOrchestrator";
 import {
   protocolReady as protocolReadyChannel,
   jsonMeta as jsonMetaChannel,
@@ -75,22 +76,14 @@ const runtimeServiceState = vi.hoisted(() => {
 
 // ── Module mocks ───────────────────────────────────────────────
 
-vi.mock("../effects/transport", () => ({
-  play: vi.fn(() => Effect.succeed(undefined)),
-  pause: vi.fn(() => Effect.succeed(undefined)),
-  stop: vi.fn(() => Effect.succeed(undefined)),
-  rewind: vi.fn(() => Effect.succeed(undefined)),
-  clear: vi.fn(() => Effect.succeed(undefined)),
-  queryHardwareTransportState: vi.fn(() => Effect.succeed(null)),
-  extractTransportStateFromMeta: vi.fn(() => null),
-  syncWasmTransportState: vi.fn(() => Effect.succeed(undefined)),
-}));
-
 vi.mock("../runtime/runtimeService", () => ({
   getRuntimeServiceSnapshot: vi.fn(() => runtimeServiceState.getSnapshot()),
   subscribeRuntimeService: vi.fn((listener: (nextSnapshot: unknown) => void) =>
     runtimeServiceState.subscribe(listener as (nextSnapshot: any) => void)
   ),
+  sendRuntimeTransportCommand: vi.fn((command: string) => Effect.succeed(command)),
+  queryRuntimeHardwareTransportState: vi.fn(() => Effect.succeed(null)),
+  syncRuntimeWasmTransportState: vi.fn(() => Effect.succeed(undefined)),
 }));
 
 vi.mock("../effects/mockTimeGenerator.ts", () => ({
@@ -105,14 +98,14 @@ vi.mock("../effects/mockTimeGenerator.ts", () => ({
 function buildTestOrchestrator() {
   const machine = transportMachine.provide({
     actions: {
-      emitPlay:      () => { Effect.runPromise(play()); },
-      emitPause:     () => { Effect.runPromise(pause()); },
-      emitStop:      () => { Effect.runPromise(stop()); },
-      emitRewind:    () => { Effect.runPromise(rewind()); },
-      emitClear:     () => { Effect.runPromise(clear()); },
-      syncWasmPlay:  () => { Effect.runPromise(syncWasmTransportState("playing")).catch(() => undefined); },
-      syncWasmPause: () => { Effect.runPromise(syncWasmTransportState("paused")).catch(() => undefined); },
-      syncWasmStop:  () => { Effect.runPromise(syncWasmTransportState("stopped")).catch(() => undefined); },
+      emitPlay:      () => { Effect.runPromise(sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.play)); },
+      emitPause:     () => { Effect.runPromise(sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.pause)); },
+      emitStop:      () => { Effect.runPromise(sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.stop)); },
+      emitRewind:    () => { Effect.runPromise(sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.rewind)); },
+      emitClear:     () => { Effect.runPromise(sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.clear)); },
+      syncWasmPlay:  () => { Effect.runPromise(syncRuntimeWasmTransportState("playing")).catch(() => undefined); },
+      syncWasmPause: () => { Effect.runPromise(syncRuntimeWasmTransportState("paused")).catch(() => undefined); },
+      syncWasmStop:  () => { Effect.runPromise(syncRuntimeWasmTransportState("stopped")).catch(() => undefined); },
     },
   });
 
@@ -138,7 +131,7 @@ function buildTestOrchestrator() {
   });
 
   const unsubProtocolReady = protocolReadyChannel.subscribe(() => {
-    Effect.runPromise(queryHardwareTransportState()).then((state: TransportState | null) => {
+    Effect.runPromise(queryRuntimeHardwareTransportState()).then((state: TransportState | null) => {
       if (state) actor.send({ type: "SYNC", state });
     });
   });
@@ -169,18 +162,23 @@ function buildTestOrchestrator() {
 
 let currentOrchestrator: ReturnType<typeof buildTestOrchestrator> | null = null;
 
-vi.mock("../effects/transportOrchestrator", () => ({
-  getTransportOrchestrator: vi.fn(() => {
-    if (!currentOrchestrator) {
-      currentOrchestrator = buildTestOrchestrator();
-    }
-    return currentOrchestrator;
-  }),
-  disposeTransportOrchestrator: vi.fn(() => {
-    currentOrchestrator?.dispose();
-    currentOrchestrator = null;
-  }),
-}));
+vi.mock("../effects/transportOrchestrator", async (importOriginal) => {
+  const original = await importOriginal() as any;
+  return {
+    ...original,
+    extractTransportStateFromMeta: vi.fn(original.extractTransportStateFromMeta),
+    getTransportOrchestrator: vi.fn(() => {
+      if (!currentOrchestrator) {
+        currentOrchestrator = buildTestOrchestrator();
+      }
+      return currentOrchestrator;
+    }),
+    disposeTransportOrchestrator: vi.fn(() => {
+      currentOrchestrator?.dispose();
+      currentOrchestrator = null;
+    }),
+  };
+});
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -388,27 +386,27 @@ describe("TransportToolbar", () => {
       setRuntimeSnapshot("wasm");
     });
 
-    it("pause button calls pause() effect", async () => {
+    it("pause button calls sendRuntimeTransportCommand with pause", async () => {
       const { container } = render(() => <TransportToolbar />);
 
       const pauseBtn = container.querySelector("[title='Pause']") as HTMLElement;
       pauseBtn.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(pause).toHaveBeenCalled();
+      expect(sendRuntimeTransportCommand).toHaveBeenCalledWith(SHARED_TRANSPORT_COMMANDS.pause);
     });
 
-    it("stop button calls stop() effect", async () => {
+    it("stop button calls sendRuntimeTransportCommand with stop", async () => {
       const { container } = render(() => <TransportToolbar />);
 
       const stopBtn = container.querySelector("[title='Stop']") as HTMLElement;
       stopBtn.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(stop).toHaveBeenCalled();
+      expect(sendRuntimeTransportCommand).toHaveBeenCalledWith(SHARED_TRANSPORT_COMMANDS.stop);
     });
 
-    it("play button calls play() effect from paused state", async () => {
+    it("play button calls sendRuntimeTransportCommand with play from paused state", async () => {
       vi.mocked(extractTransportStateFromMeta).mockReturnValue("paused");
 
       const { container } = render(() => <TransportToolbar />);
@@ -416,39 +414,39 @@ describe("TransportToolbar", () => {
       jsonMetaChannel.publish({ response: { meta: { transport: "paused" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      vi.mocked(play).mockClear();
+      vi.mocked(sendRuntimeTransportCommand).mockClear();
       const playBtn = container.querySelector("[title='Play']") as HTMLElement;
       playBtn.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(play).toHaveBeenCalled();
+      expect(sendRuntimeTransportCommand).toHaveBeenCalledWith(SHARED_TRANSPORT_COMMANDS.play);
     });
 
-    it("rewind button calls rewind() effect", async () => {
+    it("rewind button calls sendRuntimeTransportCommand with rewind", async () => {
       const { container } = render(() => <TransportToolbar />);
 
       const rewindBtn = container.querySelector("[title='Rewind']") as HTMLElement;
       rewindBtn.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(rewind).toHaveBeenCalled();
+      expect(sendRuntimeTransportCommand).toHaveBeenCalledWith(SHARED_TRANSPORT_COMMANDS.rewind);
     });
 
-    it("clear button calls clear() effect", async () => {
+    it("clear button calls sendRuntimeTransportCommand with clear", async () => {
       const { container } = render(() => <TransportToolbar />);
 
       const clearBtn = container.querySelector("[title='Clear']") as HTMLElement;
       clearBtn.click();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(clear).toHaveBeenCalled();
+      expect(sendRuntimeTransportCommand).toHaveBeenCalledWith(SHARED_TRANSPORT_COMMANDS.clear);
     });
   });
 
   describe("acceptance: connect to paused module syncs UI and WASM", () => {
     it("protocol-ready queries hardware state and SYNC sets paused + syncs WASM", async () => {
       setRuntimeSnapshot("both", true);
-      vi.mocked(queryHardwareTransportState).mockReturnValue(
+      vi.mocked(queryRuntimeHardwareTransportState).mockReturnValue(
         Effect.succeed("paused" as const)
       );
 
@@ -457,8 +455,8 @@ describe("TransportToolbar", () => {
       protocolReadyChannel.publish({ protocolMode: "json" });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(queryHardwareTransportState).toHaveBeenCalled();
-      expect(syncWasmTransportState).toHaveBeenCalledWith("paused");
+      expect(queryRuntimeHardwareTransportState).toHaveBeenCalled();
+      expect(syncRuntimeWasmTransportState).toHaveBeenCalledWith("paused");
 
       const pauseBtn = container.querySelector("[title='Pause']");
       expect(pauseBtn?.classList.contains("primary")).toBe(true);
@@ -485,7 +483,7 @@ describe("TransportToolbar", () => {
   });
 
   describe("acceptance: meta.transport pushes sync WASM via SYNC event", () => {
-    it("useq-json-meta with transport:stopped triggers syncWasmTransportState(stopped)", async () => {
+    it("useq-json-meta with transport:stopped triggers syncRuntimeWasmTransportState(stopped)", async () => {
       setRuntimeSnapshot("both", true);
       vi.mocked(extractTransportStateFromMeta).mockReturnValue("stopped");
 
@@ -494,10 +492,10 @@ describe("TransportToolbar", () => {
       jsonMetaChannel.publish({ response: { meta: { transport: "stopped" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(syncWasmTransportState).toHaveBeenCalledWith("stopped");
+      expect(syncRuntimeWasmTransportState).toHaveBeenCalledWith("stopped");
     });
 
-    it("useq-json-meta with transport:playing triggers syncWasmTransportState(playing)", async () => {
+    it("useq-json-meta with transport:playing triggers syncRuntimeWasmTransportState(playing)", async () => {
       setRuntimeSnapshot("both", true);
       vi.mocked(extractTransportStateFromMeta).mockReturnValue("paused");
 
@@ -506,13 +504,13 @@ describe("TransportToolbar", () => {
       jsonMetaChannel.publish({ response: { meta: { transport: "paused" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      vi.mocked(syncWasmTransportState).mockClear();
+      vi.mocked(syncRuntimeWasmTransportState).mockClear();
       vi.mocked(extractTransportStateFromMeta).mockReturnValue("playing");
 
       jsonMetaChannel.publish({ response: { meta: { transport: "playing" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(syncWasmTransportState).toHaveBeenCalledWith("playing");
+      expect(syncRuntimeWasmTransportState).toHaveBeenCalledWith("playing");
     });
   });
 });
