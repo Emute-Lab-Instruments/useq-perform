@@ -1,12 +1,11 @@
 /**
- * Double radial menu adapter - imperative API without island dependency.
+ * Double radial menu adapter - imperative API.
  *
- * This module provides the same API as the islands/double-radial-menu.tsx island but
- * can be imported directly without requiring a separate script tag.
+ * Uses createSolidAdapter for mount lifecycle.
  */
-import { render } from "solid-js/web";
 import { Show, createSignal } from "solid-js";
 import { DoubleRadialPicker, type PickerCategory, type PickerEntry } from "../DoubleRadialPicker";
+import { createSolidAdapter } from "./createSolidAdapter";
 
 type OpenOptions = {
   categories: PickerCategory[];
@@ -58,28 +57,42 @@ export function close(): void {
   closeMenu();
 }
 
-function ensureDoubleRadialRoot(): HTMLElement {
-  const existing = document.getElementById("double-radial-menu-root");
-  if (existing) return existing;
-
-  const el = document.createElement("div");
-  el.id = "double-radial-menu-root";
-  el.style.position = "fixed";
-  el.style.inset = "0";
-  el.style.zIndex = "1100";
-  el.style.pointerEvents = "none";
-  document.body.appendChild(el);
-  return el;
-}
-
-let mounted = false;
-
-/**
- * Check if we're in a browser environment.
- */
-function isBrowser(): boolean {
-  return typeof document !== "undefined" && typeof window !== "undefined";
-}
+const adapter = createSolidAdapter({
+  containerId: "double-radial-menu-root",
+  containerStyle: {
+    position: "fixed",
+    inset: "0",
+    zIndex: "1100",
+    pointerEvents: "none",
+  },
+  Component: () => (
+    <Show when={isOpen()}>
+      <div style={{ "pointer-events": "auto" }}>
+        <DoubleRadialPicker
+          title={title()}
+          categories={categories()}
+          menuSize={menuSize()}
+          innerRadiusRatio={innerRatio()}
+          stickThreshold={stickThreshold()}
+          onSelect={(entry) => {
+            try {
+              onSelectRef?.(entry);
+            } finally {
+              closeMenu();
+            }
+          }}
+          onCancel={() => {
+            try {
+              onCancelRef?.();
+            } finally {
+              closeMenu();
+            }
+          }}
+        />
+      </div>
+    </Show>
+  ),
+});
 
 /**
  * Mount the double radial menu root element and render the component.
@@ -87,39 +100,5 @@ function isBrowser(): boolean {
  * In non-browser environments (e.g., Node.js tests), this is a no-op.
  */
 export function mountDoubleRadialMenu(root?: HTMLElement): void {
-  if (mounted) return;
-  if (!isBrowser()) return;
-  mounted = true;
-
-  const el = root || ensureDoubleRadialRoot();
-  render(
-    () => (
-      <Show when={isOpen()}>
-        <div style={{ "pointer-events": "auto" }}>
-          <DoubleRadialPicker
-            title={title()}
-            categories={categories()}
-            menuSize={menuSize()}
-            innerRadiusRatio={innerRatio()}
-            stickThreshold={stickThreshold()}
-            onSelect={(entry) => {
-              try {
-                onSelectRef?.(entry);
-              } finally {
-                closeMenu();
-              }
-            }}
-            onCancel={() => {
-              try {
-                onCancelRef?.();
-              } finally {
-                closeMenu();
-              }
-            }}
-          />
-        </div>
-      </Show>
-    ),
-    el,
-  );
+  adapter.mount(root);
 }

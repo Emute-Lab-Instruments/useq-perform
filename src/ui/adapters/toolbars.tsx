@@ -1,25 +1,14 @@
 /**
- * Toolbar adapters - mount functions for toolbars without island dependency.
+ * Toolbar adapters - mount functions for toolbars.
  *
- * This module provides the same API as the islands toolbar islands but
- * can be imported directly without requiring a separate script tag.
+ * Uses createSolidAdapter for mount lifecycle.
  */
-import { render } from "solid-js/web";
 import { TransportToolbar } from "../TransportToolbar";
 import { MainToolbar } from "../MainToolbar";
+import { createSolidAdapter } from "./createSolidAdapter";
 
 const TRANSPORT_ROOT_ID = "panel-top-toolbar-root";
 const MAIN_ROOT_ID = "panel-toolbar-root";
-
-let transportMounted = false;
-let mainMounted = false;
-
-/**
- * Check if we're in a browser environment.
- */
-function isBrowser(): boolean {
-  return typeof document !== "undefined" && typeof window !== "undefined";
-}
 
 function ensureTransportRoot(): HTMLElement {
   const existing = document.getElementById(TRANSPORT_ROOT_ID);
@@ -55,17 +44,25 @@ function ensureMainRoot(): HTMLElement {
   return el;
 }
 
+const transportAdapter = createSolidAdapter({
+  containerId: TRANSPORT_ROOT_ID,
+  ensureRoot: ensureTransportRoot,
+  Component: () => <TransportToolbar />,
+});
+
+const mainAdapter = createSolidAdapter({
+  containerId: MAIN_ROOT_ID,
+  ensureRoot: ensureMainRoot,
+  Component: () => <MainToolbar />,
+});
+
 /**
  * Mount the transport toolbar.
  * Replaces the existing #panel-top-toolbar element if present.
  * In non-browser environments, this is a no-op.
  */
 export function mountTransportToolbar(root?: HTMLElement): void {
-  if (transportMounted) return;
-  if (!isBrowser()) return;
-  transportMounted = true;
-  const el = root || ensureTransportRoot();
-  render(() => <TransportToolbar />, el);
+  transportAdapter.mount(root);
 }
 
 /**
@@ -74,9 +71,5 @@ export function mountTransportToolbar(root?: HTMLElement): void {
  * In non-browser environments, this is a no-op.
  */
 export function mountMainToolbar(root?: HTMLElement): void {
-  if (mainMounted) return;
-  if (!isBrowser()) return;
-  mainMounted = true;
-  const el = root || ensureMainRoot();
-  render(() => <MainToolbar />, el);
+  mainAdapter.mount(root);
 }

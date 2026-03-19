@@ -1,10 +1,8 @@
 /**
- * Picker menu adapter - imperative picker menu API without island dependency.
+ * Picker menu adapter - imperative picker menu API.
  *
- * This module provides the same API as the islands/picker-menu.tsx island but
- * can be imported directly without requiring a separate script tag.
+ * Uses createSolidAdapter for mount lifecycle.
  */
-import { render } from "solid-js/web";
 import { Show, createSignal, type Component } from "solid-js";
 import {
   PickerMenu,
@@ -13,6 +11,7 @@ import {
   type PickerMenuProps,
   type NumberPickerMenuProps,
 } from "../PickerMenu";
+import { createSolidAdapter } from "./createSolidAdapter";
 
 /**
  * Icons available in picker menus. Populated lazily at mount time via dynamic import
@@ -52,20 +51,6 @@ type MenuState =
     };
 
 const [menuState, setMenuState] = createSignal<MenuState>({ kind: "closed" });
-
-function ensurePickerRoot(): HTMLElement {
-  const existing = document.getElementById("picker-menu-root");
-  if (existing) return existing;
-
-  const el = document.createElement("div");
-  el.id = "picker-menu-root";
-  el.style.position = "fixed";
-  el.style.inset = "0";
-  el.style.zIndex = "1000";
-  el.style.pointerEvents = "none";
-  document.body.appendChild(el);
-  return el;
-}
 
 function closeMenu(): void {
   setMenuState({ kind: "closed" });
@@ -151,14 +136,73 @@ export function close(): void {
   closeMenu();
 }
 
-let mounted = false;
-
-/**
- * Check if we're in a browser environment.
- */
-function isBrowser(): boolean {
-  return typeof document !== "undefined" && typeof window !== "undefined";
-}
+const adapter = createSolidAdapter({
+  containerId: "picker-menu-root",
+  containerStyle: {
+    position: "fixed",
+    inset: "0",
+    zIndex: "1000",
+    pointerEvents: "none",
+  },
+  onMount: () => {
+    // Fire-and-forget: resolves long before first user interaction opens a picker
+    void initIcons();
+  },
+  Component: () => (
+    <Show when={menuState().kind !== "closed"}>
+      <div style={{ "pointer-events": "auto" }}>
+        <Show when={menuState().kind === "picker" ? menuState() : false}>
+          {(s) => {
+            const st = s() as Extract<MenuState, { kind: "picker" }>;
+            return (
+              <PickerMenu
+                items={st.opts.items}
+                onSelect={st.opts.onSelect}
+                onClose={closeMenu}
+                title={st.opts.title}
+                layout={st.opts.layout}
+                initialIndex={st.opts.initialIndex}
+                iconRegistry={iconRegistry}
+              />
+            );
+          }}
+        </Show>
+        <Show when={menuState().kind === "number" ? menuState() : false}>
+          {(s) => {
+            const st = s() as Extract<MenuState, { kind: "number" }>;
+            return (
+              <NumberPickerMenu
+                onSelect={st.opts.onSelect}
+                onClose={closeMenu}
+                title={st.opts.title}
+                initialValue={st.opts.initialValue}
+                min={st.opts.min}
+                max={st.opts.max}
+                step={st.opts.step}
+              />
+            );
+          }}
+        </Show>
+        <Show when={menuState().kind === "hierarchical" ? menuState() : false}>
+          {(s) => {
+            const st = s() as Extract<MenuState, { kind: "hierarchical" }>;
+            return (
+              <HierarchicalPickerMenu
+                categories={st.categories}
+                title={st.title}
+                onSelect={(item) => {
+                  st.onSelect(item);
+                  closeMenu();
+                }}
+                onClose={closeMenu}
+              />
+            );
+          }}
+        </Show>
+      </div>
+    </Show>
+  ),
+});
 
 /**
  * Mount the picker root element and render the picker component.
@@ -166,69 +210,5 @@ function isBrowser(): boolean {
  * In non-browser environments (e.g., Node.js tests), this is a no-op.
  */
 export function mountPickerMenu(root?: HTMLElement): void {
-  if (mounted) return;
-  if (!isBrowser()) return;
-  mounted = true;
-
-  // Fire-and-forget: resolves long before first user interaction opens a picker
-  void initIcons();
-
-  const el = root || ensurePickerRoot();
-  render(
-    () => (
-      <Show when={menuState().kind !== "closed"}>
-        <div style={{ "pointer-events": "auto" }}>
-          <Show when={menuState().kind === "picker" ? menuState() : false}>
-            {(s) => {
-              const st = s() as Extract<MenuState, { kind: "picker" }>;
-              return (
-                <PickerMenu
-                  items={st.opts.items}
-                  onSelect={st.opts.onSelect}
-                  onClose={closeMenu}
-                  title={st.opts.title}
-                  layout={st.opts.layout}
-                  initialIndex={st.opts.initialIndex}
-                  iconRegistry={iconRegistry}
-                />
-              );
-            }}
-          </Show>
-          <Show when={menuState().kind === "number" ? menuState() : false}>
-            {(s) => {
-              const st = s() as Extract<MenuState, { kind: "number" }>;
-              return (
-                <NumberPickerMenu
-                  onSelect={st.opts.onSelect}
-                  onClose={closeMenu}
-                  title={st.opts.title}
-                  initialValue={st.opts.initialValue}
-                  min={st.opts.min}
-                  max={st.opts.max}
-                  step={st.opts.step}
-                />
-              );
-            }}
-          </Show>
-          <Show when={menuState().kind === "hierarchical" ? menuState() : false}>
-            {(s) => {
-              const st = s() as Extract<MenuState, { kind: "hierarchical" }>;
-              return (
-                <HierarchicalPickerMenu
-                  categories={st.categories}
-                  title={st.title}
-                  onSelect={(item) => {
-                    st.onSelect(item);
-                    closeMenu();
-                  }}
-                  onClose={closeMenu}
-                />
-              );
-            }}
-          </Show>
-        </div>
-      </Show>
-    ),
-    el,
-  );
+  adapter.mount(root);
 }

@@ -4,8 +4,9 @@
  * Manages panel visibility via Solid signals and renders each panel
  * inside a PanelChrome component that provides the active chrome design
  * (Pane, Drawer, or Tile).
+ *
+ * Uses createSolidAdapter for mount lifecycle.
  */
-import { render } from "solid-js/web";
 import { Show, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { PanelChrome } from "../panel-chrome/PanelChrome";
 import { DesignSelector } from "../panel-chrome/DesignSelector";
@@ -13,6 +14,7 @@ import { SettingsPanel } from "../settings/SettingsPanel";
 import { HelpPanel } from "../help/HelpPanel";
 import { pushOverlay } from "../overlayManager";
 import { registerPanelControls } from "./panelControls";
+import { createSolidAdapter } from "./createSolidAdapter";
 import "../panel-chrome/panel-chrome.css";
 
 // ---- Visibility signals ----
@@ -87,12 +89,6 @@ registerPanelControls({
 
 // ---- Mount helpers ----
 
-function isBrowser(): boolean {
-  return typeof document !== "undefined" && typeof window !== "undefined";
-}
-
-let panelRootMounted = false;
-
 function ManagedPanel(props: {
   panelId: string;
   onClose: () => void;
@@ -108,53 +104,36 @@ function ManagedPanel(props: {
   return <>{props.children}</>;
 }
 
-function ensurePanelRoot(): HTMLElement {
-  const existing = document.getElementById("solid-panel-root");
-  if (existing) return existing;
+const panelRootAdapter = createSolidAdapter({
+  containerId: "solid-panel-root",
+  Component: () => (
+    <>
+      <Show when={settingsVisible()}>
+        <ManagedPanel panelId="settings" onClose={() => setSettingsVisible(false)}>
+          <PanelChrome
+            panelId="settings"
+            title="Settings"
+            onClose={() => setSettingsVisible(false)}
+          >
+            <SettingsPanel />
+          </PanelChrome>
+        </ManagedPanel>
+      </Show>
 
-  const el = document.createElement("div");
-  el.id = "solid-panel-root";
-  document.body.appendChild(el);
-  return el;
-}
-
-function mountPanelRoot() {
-  if (panelRootMounted) return;
-  if (!isBrowser()) return;
-  panelRootMounted = true;
-
-  const root = ensurePanelRoot();
-  render(
-    () => (
-      <>
-        <Show when={settingsVisible()}>
-          <ManagedPanel panelId="settings" onClose={() => setSettingsVisible(false)}>
-            <PanelChrome
-              panelId="settings"
-              title="Settings"
-              onClose={() => setSettingsVisible(false)}
-            >
-              <SettingsPanel />
-            </PanelChrome>
-          </ManagedPanel>
-        </Show>
-
-        <Show when={helpVisible()}>
-          <ManagedPanel panelId="help" onClose={() => setHelpVisible(false)}>
-            <PanelChrome
-              panelId="help"
-              title="Help"
-              onClose={() => setHelpVisible(false)}
-            >
-              <HelpPanel />
-            </PanelChrome>
-          </ManagedPanel>
-        </Show>
-      </>
-    ),
-    root,
-  );
-}
+      <Show when={helpVisible()}>
+        <ManagedPanel panelId="help" onClose={() => setHelpVisible(false)}>
+          <PanelChrome
+            panelId="help"
+            title="Help"
+            onClose={() => setHelpVisible(false)}
+          >
+            <HelpPanel />
+          </PanelChrome>
+        </ManagedPanel>
+      </Show>
+    </>
+  ),
+});
 
 /**
  * Mount the settings panel. Called from legacy solidBridge.
@@ -162,30 +141,29 @@ function mountPanelRoot() {
  * components create their own fixed-position root.
  */
 export function mountSettingsPanel(_elementId?: string) {
-  mountPanelRoot();
+  panelRootAdapter.mount();
 }
 
 /**
  * Mount the help panel. Called from legacy solidBridge.
  */
 export function mountHelpPanel(_elementId?: string) {
-  mountPanelRoot();
+  panelRootAdapter.mount();
 }
 
 // ---- Design selector ----
 
-let designSelectorMounted = false;
+const [devmodeSignal, setDevmodeSignal] = createSignal(false);
+
+const designSelectorAdapter = createSolidAdapter({
+  containerId: "solid-design-selector-root",
+  Component: () => <DesignSelector devmode={devmodeSignal()} />,
+});
 
 /**
  * Mount the DesignSelector widget. Call once when devmode is determined.
  */
 export function mountDesignSelector(devmode: boolean) {
-  if (designSelectorMounted) return;
-  if (!isBrowser()) return;
-  designSelectorMounted = true;
-
-  const el = document.createElement("div");
-  el.id = "solid-design-selector-root";
-  document.body.appendChild(el);
-  render(() => <DesignSelector devmode={devmode} />, el);
+  setDevmodeSignal(devmode);
+  designSelectorAdapter.mount();
 }
