@@ -198,29 +198,11 @@ function computeVisibleLineBoundsViewport(view: EditorView): PixelLineBounds[] {
 
 const BLUR_RADIUS = 6;
 const PADDING = 3;
-/** Gaussian blur stdDeviation applied to the SVG mask shape to feather edges. */
-const EDGE_SOFTNESS = 4;
 const EDITOR_RAISED_Z = '21';
 const BLUR_LAYER_Z = '20';
 
 function isVisPanelVisible(): boolean {
   return isVisualisationPanelVisible();
-}
-
-/**
- * Build an SVG data-URI mask image with a soft-edged polygon.
- * The polygon is drawn as white on transparent, with a Gaussian blur filter
- * so the mask fades out smoothly at the edges.
- */
-function buildSoftMask(pathStr: string): string {
-  // Use raw # in the SVG — encodeURIComponent will convert it to %23
-  // which is the correct encoding inside a data URI.
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">` +
-    `<defs><filter id="s"><feGaussianBlur stdDeviation="${EDGE_SOFTNESS}"/></filter></defs>` +
-    `<path d="${pathStr}" fill="white" filter="url(#s)"/>` +
-    `</svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
 function writeBackdrop(overlay: HTMLDivElement, lineBounds: PixelLineBounds[]): void {
@@ -233,7 +215,6 @@ function writeBackdrop(overlay: HTMLDivElement, lineBounds: PixelLineBounds[]): 
     const pathStr = buildBlockPolygonPath(block, PADDING);
     if (!pathStr) continue;
 
-    const mask = buildSoftMask(pathStr);
     const div = document.createElement('div');
     div.style.cssText = [
       'position:fixed',
@@ -244,10 +225,7 @@ function writeBackdrop(overlay: HTMLDivElement, lineBounds: PixelLineBounds[]): 
       'pointer-events:none',
       `backdrop-filter:blur(${BLUR_RADIUS}px)`,
       `-webkit-backdrop-filter:blur(${BLUR_RADIUS}px)`,
-      `-webkit-mask-image:${mask}`,
-      `mask-image:${mask}`,
-      '-webkit-mask-size:100% 100%',
-      'mask-size:100% 100%',
+      `clip-path:path("${pathStr}")`,
     ].join(';');
     overlay.appendChild(div);
   }
