@@ -113,8 +113,8 @@ describe('Expression Detection & Processing', () => {
 
   describe('findExpressionRanges', () => {
     it('should find all expression ranges in document', () => {
-      const ranges = findExpressionRanges(mockDocLines, mockFindBounds);
-      
+      const ranges = findExpressionRanges(mockDocLines, mockFindBounds, () => "#fff");
+
       // Should find a1, d2, d3, a3 expressions
       assert.ok(ranges.has("a1"));
       assert.ok(ranges.has("d2"));
@@ -124,8 +124,8 @@ describe('Expression Detection & Processing', () => {
     });
 
     it('should group multiple occurrences of same expression type', () => {
-      const ranges = findExpressionRanges(mockDocLines, mockFindBounds);
-      
+      const ranges = findExpressionRanges(mockDocLines, mockFindBounds, () => "#fff");
+
       const a1Ranges = ranges.get("a1");
       assert.equal(a1Ranges.length, 2); // Two a1 expressions
       

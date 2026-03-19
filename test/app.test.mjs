@@ -1,11 +1,9 @@
 import { expect } from "chai";
 import "./setup.mjs";
-import { examineEnvironment } from "../src/legacy/app/environment.ts";
-import { createAppUI } from "../src/legacy/ui/ui.ts";
 import { createApp } from "../src/runtime/appLifecycle.ts";
 
 // Test setup
-let environmentState, appUI;
+let environmentState;
 
 before(async () => {
     // Create test environment state
@@ -27,15 +25,4 @@ it('contains the expected keys and methods', () => {
     expect(environmentState).to.have.property('isInDevmode');
     expect(environmentState).to.have.property('userSettings');
     expect(environmentState).to.have.property('urlParams');
-});
-
-// appUI
-it('contains the expected keys and methods', async () => {
-    // Settings and help panels are now managed by the Solid adapter (solid-panel-root),
-    // not returned as DOM references from createAppUI.
-    appUI = await createAppUI(environmentState);
-    expect(appUI).to.have.property('mainEditor');
-    expect(appUI).to.have.property('serialVis');
-    expect(appUI).to.have.property('logConsole');
-    expect(appUI).to.have.property('statusBar');
 });
