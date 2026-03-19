@@ -152,41 +152,64 @@ export function buildBlockPolygonPath(group: PixelLineBounds[], padding: number 
 // ---------------------------------------------------------------------------
 
 /**
- * Computes PixelLineBounds for every visible line that contains non-whitespace
- * content.  Returns coordinates in **viewport space** (relative to the
- * browser window), suitable for a fixed-position overlay element.
+ * Number of lines to precompute beyond each edge of the viewport.
+ * These lines get estimated bounds so the blur is already in place
+ * when the user scrolls them into view.
+ */
+const OVERSCAN_LINES = 30;
+
+/**
+ * Computes PixelLineBounds for visible lines plus an overscan buffer.
+ *
+ * Lines inside the CM viewport get precise coords via `coordsAtPos`.
+ * Lines in the overscan zone (beyond the viewport) get estimated coords
+ * using `lineBlockAt` (document-space) converted to viewport-space.
  */
 function computeVisibleLineBoundsViewport(view: EditorView): PixelLineBounds[] {
-  const { from, to } = view.viewport;
+  const { from: vpFrom, to: vpTo } = view.viewport;
+  const doc = view.state.doc;
+  const scrollRect = view.scrollDOM.getBoundingClientRect();
+  const scrollTop = view.scrollDOM.scrollTop;
+  const charWidth = view.defaultCharacterWidth;
+
+  // Determine line range: viewport lines plus overscan.
+  const vpFirstLine = doc.lineAt(vpFrom).number;
+  const vpLastLine  = doc.lineAt(vpTo).number;
+  const firstLine = Math.max(1, vpFirstLine - OVERSCAN_LINES);
+  const lastLine  = Math.min(doc.lines, vpLastLine + OVERSCAN_LINES);
 
   const result: PixelLineBounds[] = [];
 
-  let pos = from;
-  while (pos <= to) {
-    const line = view.state.doc.lineAt(pos);
+  for (let lineNum = firstLine; lineNum <= lastLine; lineNum++) {
+    const line = doc.line(lineNum);
     const text = line.text;
     const { start: charStart, end: charEnd } = getLineContentBounds(text);
+    if (charStart >= charEnd) continue;
 
-    if (charStart < charEnd) {
-      const startPos = line.from + charStart;
-      const endPos   = line.from + charEnd;
+    const inViewport = line.from >= vpFrom && line.from <= vpTo;
 
-      const startCoords = view.coordsAtPos(startPos);
-      const endCoords = view.coordsAtPos(endPos, -1);
-
+    if (inViewport) {
+      // Precise measurement via coordsAtPos.
+      const startCoords = view.coordsAtPos(line.from + charStart);
+      const endCoords   = view.coordsAtPos(line.from + charEnd, -1);
       if (startCoords && endCoords) {
         result.push({
-          lineIndex: line.number,
+          lineIndex: lineNum,
           left:   startCoords.left,
           right:  endCoords.right,
           top:    startCoords.top,
           bottom: startCoords.bottom,
         });
       }
+    } else {
+      // Estimated measurement via lineBlockAt (document coords → viewport).
+      const block = view.lineBlockAt(line.from);
+      const top    = block.top - scrollTop + scrollRect.top;
+      const bottom = block.bottom - scrollTop + scrollRect.top;
+      const left   = scrollRect.left + charStart * charWidth;
+      const right  = scrollRect.left + charEnd * charWidth;
+      result.push({ lineIndex: lineNum, left, right, top, bottom });
     }
-
-    if (line.to >= to) break;
-    pos = line.to + 1;
   }
 
   return result;
