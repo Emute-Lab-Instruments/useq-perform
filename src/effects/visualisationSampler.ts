@@ -170,8 +170,16 @@ async function sampleExpression(
   const total = totalSamplesForSettings(step, settings);
   const halfWindow = settings.windowDuration / 2;
   const lead = settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS;
-  const start = currentTime - halfWindow;
-  const end = currentTime + halfWindow + lead;
+
+  // Snap window start to the sample grid so samples land on the same
+  // absolute times regardless of when this tick fires. This eliminates
+  // vertical jitter caused by the waveform being sampled at slightly
+  // different phase offsets each frame.
+  const rawStart = currentTime - halfWindow;
+  const start = step > SAMPLE_EPSILON
+    ? Math.floor(rawStart / step) * step
+    : rawStart;
+  const end = start + step * (total - 1);
   return buildSamples(exprType, start, end, total);
 }
 
