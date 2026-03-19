@@ -61,6 +61,10 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
   registerVisualisationPanel(visPanelEl);
   if (visPanelEl) visPanelEl.style.display = "none";
 
+  // Start the visualisation canvas render loop
+  const { makeVis } = await import("../ui/visualisation/serialVis.ts");
+  makeVis();
+
   // Mount Solid UI adapters and wire editor store.
   // panels.tsx and toolbars.tsx are loaded dynamically so Vite can split them into
   // separate chunks. The try/catch guards against mount-time failures.

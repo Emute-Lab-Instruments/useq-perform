@@ -12,7 +12,6 @@ import { syntaxTree } from "@codemirror/language";
 import { top_level_string } from "@nextjournal/clojure-mode/extensions/eval-region";
 
 import { sendTouSEQ } from "../transport/json-protocol.ts";
-import { isConnectedToModule } from "../transport/connector.ts";
 import { post } from "../utils/consoleStore.ts";
 import { evalInUseqWasm } from "../runtime/wasmInterpreter.ts";
 import { rewriteCodeSliceForModule } from "../lib/manualControlState.ts";
@@ -142,30 +141,6 @@ function evalWasm(
 }
 
 // ---------------------------------------------------------------------------
-// Highlight helper
-// ---------------------------------------------------------------------------
-
-function flashHighlight(
-  view: EditorView,
-  range: { from: number; to: number } | null,
-  isPreview: boolean,
-): void {
-  if (!view || typeof view.dispatch !== "function") return;
-
-  if (range && !isPreview) {
-    // For non-preview, only flash when connected
-    if (!isConnectedToModule()) return;
-  }
-
-  if (range) {
-    flashEvalHighlight(view, range.from, range.to, { isPreview });
-  } else {
-    // Let flashEvalHighlight calculate the top-level range
-    flashEvalHighlight(view, undefined, undefined, { isPreview });
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Main evaluate function
 // ---------------------------------------------------------------------------
 
@@ -188,9 +163,7 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
         const code = "@" + rewritten;
         if (!code.trim()) return false;
 
-        if (isConnectedToModule()) {
-          flashEvalHighlight(view, sel.from, sel.to);
-        }
+        flashEvalHighlight(view, sel.from, sel.to);
         sendTouSEQ(code);
         return true;
       }
@@ -228,7 +201,7 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
     detectAndTrackExpressionEvaluation(view);
   }
 
-  if (hasView && isConnectedToModule()) {
+  if (hasView) {
     const sel = state.selection.main;
     if (!sel.empty) {
       flashEvalHighlight(view, sel.from, sel.to);
