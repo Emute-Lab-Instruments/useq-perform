@@ -40,7 +40,7 @@ describe("configLoader", () => {
   });
 
   it("preserves hardcoded editor defaults when default-config omits nested fields", async () => {
-    const { loadConfiguration } = await import("./configLoader.ts");
+    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
 
     const config = await loadConfiguration();
 
@@ -59,7 +59,7 @@ describe("configLoader", () => {
     );
     window.localStorage.setItem(settingsModule.codeStorageKey, "(saved-from-local-storage)");
 
-    const { loadConfiguration } = await import("./configLoader.ts");
+    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
     const config = await loadConfiguration();
 
     expect(config.editor.fontSize).toBe(18);
@@ -82,7 +82,7 @@ describe("configLoader", () => {
       }),
     );
 
-    const { loadConfigurationWithMetadata } = await import("./configLoader.ts");
+    const { loadConfigurationWithMetadata } = await import("../../runtime/appSettingsRepository.ts");
     const result = await loadConfigurationWithMetadata();
 
     expect(result.settingsSources).toEqual([
@@ -101,7 +101,7 @@ describe("configLoader", () => {
     window.localStorage.setItem(settingsModule.codeStorageKey, "(local-only)");
     setLocation("/?nosave");
 
-    const { loadConfiguration } = await import("./configLoader.ts");
+    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
     const config = await loadConfiguration();
 
     expect(config.editor.fontSize).toBe(31);
@@ -117,7 +117,7 @@ describe("configLoader", () => {
     vi.stubGlobal("fetch", fetchMock);
     setLocation("/?txt=https://example.com/code.txt");
 
-    const { loadConfiguration } = await import("./configLoader.ts");
+    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
     const config = await loadConfiguration();
 
     expect(fetchMock).toHaveBeenCalledWith("https://example.com/code.txt");
@@ -166,7 +166,7 @@ describe("configLoader", () => {
     vi.stubGlobal("fetch", fetchMock);
     setLocation("/?config=https://example.com/useq-config.json");
 
-    const { loadConfiguration } = await import("./configLoader.ts");
+    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
     const config = await loadConfiguration();
 
     expect(config.runtime).toEqual({

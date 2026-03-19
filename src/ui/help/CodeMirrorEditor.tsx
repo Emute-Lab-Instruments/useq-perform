@@ -1,8 +1,8 @@
 import { Component, onMount, onCleanup } from "solid-js";
 import { EditorView } from "@codemirror/view";
 import { EditorState, Extension } from "@codemirror/state";
-import { baseExtensions } from "../../legacy/editors/extensions.ts";
-import { themes } from "../../legacy/editors/themes/themeManager.ts";
+import { baseExtensions } from "../../editors/extensions.ts";
+import { themes } from "../../editors/themes.ts";
 import { settings } from "../../utils/settingsStore";
 
 interface CodeMirrorEditorProps {

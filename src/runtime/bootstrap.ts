@@ -12,10 +12,15 @@
  *      recomputes it.
  */
 
-import { examineEnvironment, type EnvironmentState } from '../legacy/app/environment.ts';
-import { createApp } from '../legacy/app/application.ts';
-import { createAppUI } from '../legacy/ui/ui.ts';
-import { loadConfigurationWithMetadata } from '../legacy/config/configLoader.ts';
+import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
+import { createApp } from './appLifecycle.ts';
+import { loadConfigurationWithMetadata } from './appSettingsRepository.ts';
+import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
+import { initGamepadControl } from '../editors/gamepadControl.ts';
+import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
+import { mountModal } from '../ui/adapters/modal.tsx';
+import { mountPickerMenu } from '../ui/adapters/picker-menu.tsx';
+import { mountDoubleRadialMenu } from '../ui/adapters/double-radial-menu.tsx';
 import {
   publishRuntimeDiagnostics,
   reportBootstrapFailure,
@@ -27,11 +32,61 @@ import { appSettingsRepository } from './appSettingsRepository.ts';
 
 // ── Types ──────────────────────────────────────────────────────────
 
+interface AppUI {
+  mainEditor: any;
+  serialVis: HTMLElement | null;
+  logConsole: null;
+  statusBar: HTMLElement | null;
+}
+
 export interface BootstrapResult {
   app: ReturnType<typeof createApp>;
-  appUI: Awaited<ReturnType<typeof createAppUI>>;
+  appUI: AppUI;
   environmentState: EnvironmentState;
   bootstrapPlan: BootstrapPlan;
+}
+
+// ── UI bootstrap ────────────────────────────────────────────────────
+// Merged from legacy/ui/ui.ts
+
+async function createAppUI(environmentState: any): Promise<AppUI> {
+  const editor = await initEditorPanel("#panel-main-editor");
+
+  const visPanelEl = document.getElementById("panel-vis");
+  registerVisualisationPanel(visPanelEl);
+  if (visPanelEl) visPanelEl.style.display = "none";
+
+  // Mount Solid UI adapters and wire editor store.
+  // panels.tsx and toolbars.tsx are loaded dynamically so Vite can split them into
+  // separate chunks. The try/catch guards against mount-time failures.
+  try {
+    const [panels, toolbars] = await Promise.all([
+      import("../ui/adapters/panels.tsx"),
+      import("../ui/adapters/toolbars.tsx"),
+    ]);
+    setEditor(editor);
+    // Mount toolbars first (they replace the static HTML toolbar elements)
+    toolbars.mountTransportToolbar();
+    toolbars.mountMainToolbar();
+    mountModal();
+    mountPickerMenu();
+    mountDoubleRadialMenu();
+    // Mount panels and design selector
+    panels.mountSettingsPanel();
+    panels.mountHelpPanel();
+    panels.mountDesignSelector(environmentState?.startupFlags?.devmode === true);
+  } catch (error) {
+    reportBootstrapFailure("ui-adapter-mount", error);
+  }
+
+  initGamepadControl(editor);
+
+  return {
+    mainEditor: editor,
+    serialVis: document.getElementById("panel-vis") || null,
+    logConsole: null,
+    statusBar: document.getElementById("status-bar") || null,
+  };
 }
 
 // ── Public API ─────────────────────────────────────────────────────
@@ -60,7 +115,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
   }
 
   // ── Step 2: detect environment ─────────────────────────────────
-  const environmentState = examineEnvironment(appSettingsRepository.getSettings());
+  const environmentState = await examineEnvironment(appSettingsRepository.getSettings());
   const { userSettings, startupFlags } = environmentState;
 
   // ── Step 3: derive bootstrap plan (single call site) ───────────

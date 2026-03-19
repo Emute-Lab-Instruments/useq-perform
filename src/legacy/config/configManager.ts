@@ -10,7 +10,7 @@ import {
   getConfigurationDiff
 } from '../../runtime/configSchema.ts';
 import { getAppSettings, updateAppSettings } from '../../runtime/appSettingsRepository.ts';
-import { getAllControlValues } from '../io/mockControlInputs.ts';
+import { getAllControlValues } from '../../effects/mockControlInputs.ts';
 import { dbg } from '../../lib/debug.ts';
 import {
   createConfigurationDocument,

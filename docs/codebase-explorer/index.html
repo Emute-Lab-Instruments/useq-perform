@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>uSEQ Perform — Codebase Architecture Explorer</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@dagrejs/dagre@1.1.4/dist/dagre.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --text-dim: #8b949e; --accent: #58a6ff;
+    --warn: #f0883e; --error: #f85149; --success: #3fb950;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Mono','JetBrains Mono',monospace; font-size:13px; overflow:hidden; height:100vh; }
+  #app { display:flex; height:100vh; }
+
+  /* ---------------- Sidebar ---------------- */
+  #sidebar { width:380px; min-width:320px; border-right:1px solid var(--border); display:flex; flex-direction:column; background:var(--surface); z-index: 20; }
+  #sidebar-header { padding:16px 20px 12px; border-bottom:1px solid var(--border); }
+  #sidebar-header h1 { font-size:16px; font-weight:600; color:var(--accent); }
+  #sidebar-header h1 small { font-weight:400; color:var(--text-dim); font-size:11px; display:block; margin-top:4px; }
+
+  /* View Switcher */
+  .view-switch { display:flex; margin-top:12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .view-switch button { flex:1; padding:8px 0; background:transparent; border:none; color:var(--text-dim); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; transition:all .15s; }
+  .view-switch button:hover { color:var(--text); background:rgba(88,166,255,.05); }
+  .view-switch button.active { background:rgba(88,166,255,.15); color:var(--accent); }
+
+  /* Sidebar Sections */
+  .sidebar-section-container { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  
+  /* Map Sidebar Tabs */
+  .tab-bar { display:flex; border-bottom:1px solid var(--border); background:var(--bg); }
+  .tab-bar button { flex:1; padding:8px 4px; background:none; border:none; color:var(--text-dim); cursor:pointer; font-family:inherit; font-size:11px; border-bottom:2px solid transparent; transition:all .15s; }
+  .tab-bar button:hover { color:var(--text); background:rgba(88,166,255,.05); }
+  .tab-bar button.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+  .scroll-content { flex:1; overflow-y:auto; padding:12px 16px; }
+  .scroll-content::-webkit-scrollbar { width:6px; }
+  .scroll-content::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+  /* General Typography & Elements */
+  h3 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-dim); margin:16px 0 8px; padding-bottom:4px; border-bottom:1px solid var(--border); }
+  h3:first-child { margin-top:0; }
+  
+  .stat-row { display:flex; gap:12px; margin-bottom:12px; }
+  .stat-box { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; text-align:center; }
+  .stat-box .num { font-size:22px; font-weight:700; color:var(--accent); }
+  .stat-box .label { font-size:10px; color:var(--text-dim); margin-top:2px; }
+
+  .layer-item { display:flex; align-items:center; padding:6px 10px; margin:2px 0; border-radius:6px; cursor:pointer; transition:background .15s; }
+  .layer-item:hover { background:rgba(255,255,255,.05); }
+  .layer-item.active { background:rgba(88,166,255,.12); }
+  .layer-dot { width:10px; height:10px; border-radius:50%; margin-right:10px; flex-shrink:0; }
+  .layer-name { flex:1; font-size:12px; }
+  .layer-count { color:var(--text-dim); font-size:11px; }
+
+  .issue-card { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin:6px 0; }
+  .issue-card h4 { font-size:12px; color:var(--warn); margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+  .issue-card p { font-size:11px; color:var(--text-dim); line-height:1.5; }
+  .issue-card .tag { display:inline-block; font-size:10px; padding:1px 6px; border-radius:10px; margin-top:6px; font-weight:600; }
+  .tag-cycle { background:rgba(248,81,73,.15); color:var(--error); }
+  .tag-violation { background:rgba(240,136,62,.15); color:var(--warn); }
+  .tag-dead { background:rgba(139,148,158,.15); color:var(--text-dim); }
+  .tag-complexity { background:rgba(188,143,243,.15); color:#bc8ff3; }
+
+  .flow-diagram { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:16px; margin:8px 0; font-size:11px; line-height:1.8; white-space:pre; overflow-x:auto; color:var(--text-dim); }
+  .flow-diagram .hl { color:var(--accent); }
+  .flow-diagram .warn { color:var(--warn); }
+  .flow-diagram .err { color:var(--error); }
+
+  .node-detail { display:none; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:8px; }
+  .node-detail.visible { display:block; }
+  .node-detail h4 { color:var(--accent); font-size:13px; margin-bottom:8px; }
+  .node-detail .meta { font-size:11px; color:var(--text-dim); margin-bottom:4px; }
+  .node-detail .deps { font-size:11px; margin-top:8px; }
+  .node-detail .deps span { color:var(--accent); cursor:pointer; }
+  .node-detail .deps span:hover { text-decoration:underline; }
+
+  /* Flow Sidebar Specifics */
+  .flow-btn { display:block; width:100%; text-align:left; padding:8px 12px; margin:3px 0; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:12px; cursor:pointer; transition:all .15s; }
+  .flow-btn:hover { border-color:var(--accent); background:rgba(88,166,255,.06); }
+  .flow-btn.active { border-color:var(--accent); background:rgba(88,166,255,.12); }
+  .flow-btn small { display:block; color:var(--text-dim); font-size:10px; margin-top:2px; }
+  
+  .path-step { display:flex; align-items:flex-start; gap:8px; padding:5px 8px; margin:1px 0; border-radius:4px; font-size:11px; cursor:pointer; transition:background .1s; }
+  .path-step:hover { background:rgba(255,255,255,.05); }
+  .path-step.highlighted { background:rgba(88,166,255,.12); }
+  .path-dot { width:8px; height:8px; border-radius:50%; margin-top:3px; flex-shrink:0; }
+  .path-label { flex:1; line-height:1.4; }
+  .path-label .mod { color:var(--accent); }
+  .path-label .desc { color:var(--text-dim); font-size:10px; }
+  .path-arrow { color:var(--text-dim); font-size:10px; margin:0 0 0 12px; }
+
+  /* ---------------- Main Area ---------------- */
+  #main-area { flex:1; position:relative; overflow:hidden; }
+  .view-container { position:absolute; top:0; left:0; width:100%; height:100%; display:none; flex-direction:column; }
+  .view-container.active { display:flex; }
+  
+  .controls-bar { position:absolute; top:12px; left:12px; display:flex; gap:8px; z-index:10; }
+  .controls-bar button, .controls-bar select { background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:6px; font-family:inherit; font-size:11px; cursor:pointer; transition:all .15s; }
+  .controls-bar button:hover, .controls-bar select:hover { border-color:var(--accent); }
+  .controls-bar button.active { background:rgba(88,166,255,.15); border-color:var(--accent); }
+
+  svg { width:100%; height:100%; display:block; }
+  
+  /* Text Halos for Readability */
+  .halo-text {
+    paint-order: stroke;
+    stroke: var(--bg);
+    stroke-width: 3.5px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Map View SVG Styles */
+  .link { stroke-opacity:.25; fill:none; }
+  .link.highlighted { stroke-opacity:.8; stroke-width:2px!important; }
+  .link.cycle { stroke:var(--error)!important; stroke-opacity:.7; stroke-dasharray:6 3; }
+  .link.violation { stroke:var(--warn)!important; stroke-opacity:.5; stroke-dasharray:4 4; }
+  .link.dimmed { opacity:0.02; } /* Stronger dimming */
+
+  .node circle { stroke-width:1.5px; cursor:pointer; transition:r .2s; }
+  .node circle:hover { filter:brightness(1.3); }
+  .node text { font-family:inherit; font-size:10px; fill:var(--text-dim); pointer-events:none; text-anchor:middle; dominant-baseline:central; font-weight: 500; }
+  .node.highlighted circle { stroke-width:3px; filter:brightness(1.4) drop-shadow(0 0 6px currentColor); }
+  .node.dimmed { opacity:0.05; } /* Stronger dimming */
+
+  #map-legend { position:absolute; bottom:16px; right:16px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 16px; font-size:11px; z-index:10; }
+  #map-legend h4 { margin-bottom:6px; color:var(--text-dim); font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+  .legend-row { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  .legend-dot { width:10px; height:10px; border-radius:50%; }
+
+  /* Flow View SVG Styles */
+  .dag-node rect { rx:6; ry:6; stroke-width:1.5; cursor:pointer; transition:filter .15s; }
+  .dag-node rect:hover { filter:brightness(1.2); }
+  .dag-node text { font-family:inherit; font-size:11px; pointer-events:none; font-weight: 500; }
+  .dag-node.selected rect { stroke-width:3; filter:brightness(1.3) drop-shadow(0 0 8px currentColor); }
+  .dag-node.dimmed { opacity:0.1; }
+  .dag-node.on-path rect { filter:brightness(1.2) drop-shadow(0 0 4px currentColor); stroke-width:2.5; }
+
+  .dag-edge path { fill:none; stroke-width:1.2; stroke-opacity:.3; }
+  .dag-edge polygon { stroke-opacity:.3; fill-opacity:.3; }
+  .dag-edge.on-path path { stroke-opacity:.9; stroke-width:2.5; }
+  .dag-edge.on-path polygon { stroke-opacity:.9; fill-opacity:.9; }
+  .dag-edge.on-path .edge-label { opacity:1; fill: var(--text); font-weight: 600; }
+  .dag-edge.dimmed path { stroke-opacity:0.02; }
+  .dag-edge.dimmed polygon { stroke-opacity:0.02; fill-opacity:0.02; }
+  .dag-edge.dimmed .edge-label { opacity:0; }
+  .dag-edge.cycle path { stroke:var(--error)!important; stroke-dasharray:6 3; stroke-opacity:.7; }
+  .dag-edge.cycle polygon { fill:var(--error)!important; stroke:var(--error)!important; }
+
+  .edge-label { font-family:inherit; font-size:9px; fill:var(--text-dim); opacity:0; pointer-events:none; transition:opacity .2s; }
+  .dag-edge:hover .edge-label { opacity:1; }
+  .show-edge-labels .edge-label { opacity:.8; }
+
+  .layer-band { fill-opacity:0.02; stroke-dasharray:4 4; stroke-width:1px; }
+  .layer-label { font-family:inherit; font-size:12px; fill:var(--text-dim); fill-opacity:.6; font-weight:600; text-transform:uppercase; letter-spacing:1px; }
+
+  #minimap { position:absolute; bottom:16px; right:16px; width:220px; height:160px; background:var(--surface); border:1px solid var(--border); border-radius:6px; overflow:hidden; z-index:10; }
+
+  /* Shared Tooltip */
+  #tooltip { position:absolute; pointer-events:none; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:10px 14px; font-size:11px; max-width:320px; z-index:100; opacity:0; transition:opacity .15s; box-shadow:0 4px 16px rgba(0,0,0,.5); }
+  #tooltip.visible { opacity:1; }
+  #tooltip .tt-title { color:var(--accent); font-weight:600; margin-bottom:4px; font-size: 12px; }
+  #tooltip .tt-meta { color:var(--text-dim); line-height: 1.4; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h1>uSEQ Perform<small>Architecture Explorer &mdash; v1.2.0</small></h1>
+      <div class="view-switch">
+        <button id="btn-view-map" class="active">Explore Map</button>
+        <button id="btn-view-flow">Trace Flows</button>
+      </div>
+    </div>
+
+    <!-- MAP SIDEBAR CONTENT -->
+    <div id="sidebar-map" class="sidebar-section-container">
+      <div class="tab-bar">
+        <button class="active" data-tab="layers">Layers</button>
+        <button data-tab="issues">Issues</button>
+        <button data-tab="dataflow">Dataflow</button>
+        <button data-tab="detail">Detail</button>
+      </div>
+      <div class="scroll-content" id="tab-layers">
+        <div class="stat-row">
+          <div class="stat-box"><div class="num" id="stat-files">0</div><div class="label">Source Files</div></div>
+          <div class="stat-box"><div class="num" id="stat-edges">0</div><div class="label">Dependencies</div></div>
+        </div>
+        <h3>Architectural Layers</h3>
+        <div id="layer-list"></div>
+        <h3 style="margin-top:20px">Top Modules by Fan-In</h3>
+        <div id="fan-in-list"></div>
+      </div>
+      
+      <div class="scroll-content" id="tab-issues" style="display:none">
+        <h3>Circular Dependencies</h3>
+        <div id="issues-cycles-container"></div>
+        <h3 style="margin-top:20px">Cross-Layer Violations</h3>
+        <div id="issues-violations-container"></div>
+      </div>
+
+      <div class="scroll-content" id="tab-dataflow" style="display:none">
+        <h3>Bootstrap Sequence</h3>
+        <div class="flow-diagram"><span class="hl">DOMContentLoaded</span>
+  &rarr; <span class="hl">bootstrap()</span>           runtime/bootstrap.ts
+    1. loadConfiguration()     legacy/config/configLoader
+    2. examineEnvironment()    legacy/app/environment
+    3. resolveBootstrapPlan()  runtime/bootstrapPlan
+    4. bootstrapRuntimeSession()
+    5. createAppUI()           legacy/ui/ui.ts
+    6. createApp().start()     legacy/app/application</div>
+        <h3>Transport State Machine</h3>
+        <div class="flow-diagram"><span class="hl">States:</span> playing | paused | stopped
+<span class="hl">User:</span>
+  playing &mdash;PAUSE&rarr; paused
+  playing &mdash;STOP&rarr;  stopped
+  paused  &mdash;PLAY&rarr;  playing
+  stopped &mdash;PLAY&rarr;  playing
+<span class="hl">Mode:</span> hardware | wasm | both | none</div>
+      </div>
+
+      <div class="scroll-content" id="tab-detail" style="display:none">
+        <p style="color:var(--text-dim);font-size:11px;margin-bottom:12px;">Click a node in the map to see details.</p>
+        <div class="node-detail visible" id="node-detail-panel">
+          <h4 id="detail-title">Select a module</h4>
+          <div class="meta" id="detail-meta"></div>
+          <div class="deps" id="detail-imports"><strong>Imports:</strong> <em>none</em></div>
+          <div class="deps" id="detail-importers"><strong>Imported by:</strong> <em>none</em></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FLOW SIDEBAR CONTENT -->
+    <div id="sidebar-flow" class="sidebar-section-container" style="display:none;">
+      <div class="scroll-content">
+        <h3>Preset Flows</h3>
+        <div id="flow-presets"></div>
+        <h3 style="margin-top:24px">Click-to-Trace</h3>
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Click any node to trace all paths <em>from</em> it (downstream). Shift-click to trace paths <em>to</em> it (upstream).</p>
+        <h3>Active Path</h3>
+        <div id="path-trace"><p style="font-size:11px;color:var(--text-dim);">Select a flow preset or click a node.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN AREA -->
+  <div id="main-area">
+    <!-- MAP VIEW -->
+    <div id="view-map" class="view-container active">
+      <div class="controls-bar">
+        <button id="map-btn-reset">Reset View</button>
+        <button id="map-btn-cycles">Show Cycles</button>
+        <button id="map-btn-violations">Show Violations</button>
+        <button id="map-btn-labels" class="active">Labels</button>
+        <select id="map-filter-layer"><option value="all">All Layers</option></select>
+        <button id="map-btn-no-tests" class="active">Hide Tests</button>
+      </div>
+      <svg id="map-svg"></svg>
+      <div id="map-legend">
+        <h4>Layers</h4>
+        <div id="legend-items"></div>
+        <div style="margin-top:8px; border-top:1px solid var(--border); padding-top:6px;">
+          <div class="legend-row"><div style="width:10px;height:2px;background:var(--error);"></div> Circular dep</div>
+          <div class="legend-row"><div style="width:10px;height:2px;background:var(--warn);border-style:dashed;"></div> Layer violation</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FLOW VIEW -->
+    <div id="view-flow" class="view-container">
+      <div class="controls-bar">
+        <button id="flow-btn-reset">Reset Trace</button>
+        <button id="flow-btn-fit">Fit Graph</button>
+        <button id="flow-btn-labels">Edge Labels</button>
+        <select id="flow-layout-dir">
+          <option value="TB">Top → Bottom</option>
+          <option value="LR">Left → Right</option>
+        </select>
+        <select id="flow-filter-layer"><option value="all">All Layers</option></select>
+      </div>
+      <svg id="flow-svg" class="show-edge-labels"></svg>
+      <div id="minimap">
+        <svg id="minimap-svg">
+          <defs>
+            <mask id="mm-mask">
+              <rect width="100%" height="100%" fill="white" />
+              <rect id="mm-viewport-cutout" fill="black" />
+            </mask>
+          </defs>
+          <g id="mm-g"></g>
+          <rect width="100%" height="100%" fill="rgba(0,0,0,0.65)" mask="url(#mm-mask)"/>
+          <rect id="mm-viewport-stroke" fill="none" stroke="var(--accent)" stroke-width="1.5" />
+        </svg>
+      </div>
+    </div>
+
+    <!-- SHARED TOOLTIP -->
+    <div id="tooltip">
+      <div class="tt-title" id="tt-title"></div>
+      <div class="tt-meta" id="tt-meta"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { 
+  LAYER_COLORS, LAYER_ORDER, LAYER_RANK, MODULE_DESC, EDGE_LABELS, FLOW_PRESETS, KNOWN_CYCLES, KNOWN_VIOLATIONS 
+} from './explorer-data.js';
+
+// Global State
+const state = {
+  raw: null,
+  activeView: 'map', // 'map' | 'flow'
+};
+
+// ============================================================
+// MAIN INIT
+// ============================================================
+async function main() {
+  try {
+    const resp = await fetch('./import-graph.json');
+    state.raw = await resp.json();
+    
+    setupViewSwitcher();
+    initMap(state.raw);
+    initFlow(state.raw);
+    
+    // Trigger initial layout
+    document.getElementById('btn-view-map').click();
+  } catch (err) {
+    console.error("Failed to load graph data", err);
+    document.getElementById('app').innerHTML = `<div style="padding:40px;color:var(--error);">Failed to load ./import-graph.json</div>`;
+  }
+}
+
+function setupViewSwitcher() {
+  const btnMap = document.getElementById('btn-view-map');
+  const btnFlow = document.getElementById('btn-view-flow');
+  
+  const sbMap = document.getElementById('sidebar-map');
+  const sbFlow = document.getElementById('sidebar-flow');
+  
+  const viewMap = document.getElementById('view-map');
+  const viewFlow = document.getElementById('view-flow');
+
+  btnMap.addEventListener('click', () => {
+    state.activeView = 'map';
+    btnMap.classList.add('active'); btnFlow.classList.remove('active');
+    sbMap.style.display = 'flex'; sbFlow.style.display = 'none';
+    viewMap.classList.add('active'); viewFlow.classList.remove('active');
+  });
+
+  btnFlow.addEventListener('click', () => {
+    state.activeView = 'flow';
+    btnFlow.classList.add('active'); btnMap.classList.remove('active');
+    sbFlow.style.display = 'flex'; sbMap.style.display = 'none';
+    viewFlow.classList.add('active'); viewMap.classList.remove('active');
+    // Fit flow graph on first view
+    if (!state.flowFitted) {
+      setTimeout(() => { document.getElementById('flow-btn-fit').click(); state.flowFitted = true; }, 50);
+    }
+  });
+
+  // Map Sidebar Tabs
+  document.querySelectorAll('#sidebar-map .tab-bar button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#sidebar-map .tab-bar button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('#sidebar-map .scroll-content').forEach(tc => tc.style.display = 'none');
+      document.getElementById('tab-' + btn.dataset.tab).style.display = 'block';
+    });
+  });
+}
+
+// Tooltip logic
+const tooltip = document.getElementById('tooltip');
+function showTooltip(ev, title, meta) {
+  tooltip.querySelector('#tt-title').textContent = title;
+  tooltip.querySelector('#tt-meta').innerHTML = meta;
+  const rect = document.getElementById('main-area').getBoundingClientRect();
+  tooltip.style.left = (ev.clientX - rect.left + 14) + 'px';
+  tooltip.style.top = (ev.clientY - rect.top - 10) + 'px';
+  tooltip.classList.add('visible');
+}
+function hideTooltip() { tooltip.classList.remove('visible'); }
+
+// ============================================================
+// MAP VIEW LOGIC
+// ============================================================
+function initMap(data) {
+  let showLabels = true;
+  let hideTests = true;
+  let highlightCycles = false;
+  let highlightViolations = false;
+  let activeLayer = 'all';
+
+  const svg = d3.select('#map-svg');
+  const g = svg.append('g');
+  const linkGroup = g.append('g').attr('class', 'links');
+  const nodeGroup = g.append('g').attr('class', 'nodes');
+
+  const container = document.getElementById('view-map');
+  const zoom = d3.zoom().scaleExtent([0.05, 5]).on('zoom', e => g.attr('transform', e.transform));
+  svg.call(zoom);
+
+  let simulation, nodeElements, linkElements;
+
+  const cycleEdgeSet = new Set();
+  KNOWN_CYCLES.forEach(c => { for(let i=0; i<c.nodes.length; i++) cycleEdgeSet.add(c.nodes[i] + '|' + c.nodes[(i+1)%c.nodes.length]); });
+  const violationEdgeSet = new Set();
+  KNOWN_VIOLATIONS.forEach(v => violationEdgeSet.add(v.from + '|' + v.to));
+
+  // Populate Sidebar
+  const layerCounts = {};
+  data.nodes.filter(n => !n.is_test).forEach(n => { layerCounts[n.layer] = (layerCounts[n.layer]||0)+1; });
+  
+  const layerList = document.getElementById('layer-list');
+  const filterSel = document.getElementById('map-filter-layer');
+  LAYER_ORDER.forEach(layer => {
+    if (!layerCounts[layer]) return;
+    const div = document.createElement('div');
+    div.className = 'layer-item'; div.dataset.layer = layer;
+    div.innerHTML = `<div class="layer-dot" style="background:${LAYER_COLORS[layer]}"></div><span class="layer-name">${layer}</span><span class="layer-count">${layerCounts[layer]} files</span>`;
+    div.addEventListener('click', () => {
+      document.querySelectorAll('#layer-list .layer-item').forEach(el => el.classList.remove('active'));
+      if (activeLayer === layer) { activeLayer = 'all'; filterSel.value = 'all'; }
+      else { activeLayer = layer; div.classList.add('active'); filterSel.value = layer; }
+      rebuildMap();
+    });
+    layerList.appendChild(div);
+    filterSel.appendChild(new Option(layer, layer));
+    
+    // Legend
+    const lrow = document.createElement('div'); lrow.className = 'legend-row';
+    lrow.innerHTML = `<div class="legend-dot" style="background:${LAYER_COLORS[layer]}"></div> ${layer}`;
+    document.getElementById('legend-items').appendChild(lrow);
+  });
+
+  const fanInList = document.getElementById('fan-in-list');
+  [...data.nodes].filter(n=>!n.is_test).sort((a,b)=>b.fan_in - a.fan_in).slice(0,10).forEach(n => {
+    const div = document.createElement('div'); div.className = 'layer-item';
+    div.innerHTML = `<div class="layer-dot" style="background:${LAYER_COLORS[n.layer]}"></div><span class="layer-name" style="font-size:11px">${n.id.split('/').pop()}</span><span class="layer-count">${n.fan_in} in</span>`;
+    div.addEventListener('click', () => selectMapNode(n.id));
+    fanInList.appendChild(div);
+  });
+
+  // Populate Issues
+  const cycCont = document.getElementById('issues-cycles-container');
+  KNOWN_CYCLES.forEach(c => {
+    cycCont.innerHTML += `<div class="issue-card"><h4><span style="color:var(--error)">&#9888;</span> ${c.label}</h4><p>${c.desc}</p><span class="tag tag-cycle">cycle</span></div>`;
+  });
+  const violCont = document.getElementById('issues-violations-container');
+  KNOWN_VIOLATIONS.forEach(v => {
+    violCont.innerHTML += `<div class="issue-card"><h4><span style="color:var(--warn)">&#x26A0;</span> ${v.from.split('/').pop()}</h4><p>${v.desc}</p><span class="tag tag-violation">layer violation</span></div>`;
+  });
+
+  function getFiltered() {
+    let fn = data.nodes, fe = data.edges;
+    if (hideTests) fn = fn.filter(n => !n.is_test && !n.id.includes('.test'));
+    if (activeLayer !== 'all') {
+      const ids = new Set(fn.filter(n => n.layer === activeLayer).map(n => n.id));
+      const nIds = new Set();
+      fe.forEach(e => { if (ids.has(e.from)) nIds.add(e.to); if (ids.has(e.to)) nIds.add(e.from); });
+      const all = new Set([...ids, ...nIds]);
+      fn = fn.filter(n => all.has(n.id));
+    }
+    const fnIds = new Set(fn.map(n=>n.id));
+    return { nodes: fn, edges: fe.filter(e => fnIds.has(e.from) && fnIds.has(e.to)) };
+  }
+
+  function rebuildMap() {
+    const {nodes, edges} = getFiltered();
+    document.getElementById('stat-files').textContent = nodes.length;
+    document.getElementById('stat-edges').textContent = edges.length;
+
+    const w = container.clientWidth || 800, h = container.clientHeight || 600;
+    const simNodes = nodes.map(n => ({...n, x:w/2+(Math.random()-.5)*200, y:h/2+(Math.random()-.5)*200}));
+    const nodeMap = new Map(simNodes.map(n=>[n.id, n]));
+    const simEdges = edges.filter(e=>nodeMap.has(e.from)&&nodeMap.has(e.to)).map(e=>({source:e.from, target:e.to}));
+
+    linkGroup.selectAll('line').remove();
+    linkElements = linkGroup.selectAll('line').data(simEdges).enter().append('line')
+      .attr('stroke', d => {
+        const k = d.source + '|' + d.target;
+        return cycleEdgeSet.has(k) ? '#f85149' : violationEdgeSet.has(k) ? '#f0883e' : (LAYER_COLORS[nodeMap.get(d.source)?.layer] || '#30363d');
+      })
+      .attr('class', d => 'link' + (cycleEdgeSet.has(d.source+'|'+d.target)?' cycle':'') + (violationEdgeSet.has(d.source+'|'+d.target)?' violation':''))
+      .attr('stroke-width', 0.8);
+
+    nodeGroup.selectAll('g').remove();
+    nodeElements = nodeGroup.selectAll('g').data(simNodes).enter().append('g')
+      .attr('class', 'node')
+      .call(d3.drag()
+        .on('start', (e,d)=>{ if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+        .on('drag', (e,d)=>{ d.fx=e.x; d.fy=e.y; })
+        .on('end', (e,d)=>{ if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; })
+      );
+
+    nodeElements.append('circle')
+      .attr('r', d => Math.max(4, Math.min(18, 3 + d.fan_in * 0.8)))
+      .attr('fill', d => LAYER_COLORS[d.layer] || '#666')
+      .attr('stroke', d => d3.color(LAYER_COLORS[d.layer]||'#666').brighter(0.5))
+      .on('mouseover', (e,d) => {
+        const desc = MODULE_DESC[d.id] || '';
+        showTooltip(e, d.id, `Layer: ${d.layer}<br>Fan-in: ${d.fan_in} | Fan-out: ${d.fan_out}${desc ? '<br><br>'+desc : ''}`);
+      })
+      .on('mouseout', hideTooltip)
+      .on('click', (e,d) => selectMapNode(d.id));
+
+    nodeElements.append('text')
+      .attr('class', 'halo-text')
+      .text(d => d.id.split('/').pop())
+      .attr('dy', d => Math.max(4, Math.min(18, 3 + d.fan_in * 0.8)) + 10)
+      .style('display', showLabels ? '' : 'none');
+
+    if(simulation) simulation.stop();
+    // Adjusted simulation parameters for looser graph
+    simulation = d3.forceSimulation(simNodes)
+      .force('link', d3.forceLink(simEdges).id(d=>d.id).distance(120).strength(0.3)) // + distance
+      .force('charge', d3.forceManyBody().strength(-150).distanceMax(400))
+      .force('center', d3.forceCenter(w/2, h/2))
+      .force('collision', d3.forceCollide().radius(d=>Math.max(6, 3+d.fan_in*0.8)+10)) // + padding
+      .force('y', d3.forceY(d => (h*0.15) + (LAYER_RANK[d.layer]??3)*(h*0.12)).strength(0.08))
+      .force('x', d3.forceX(w/2).strength(0.03))
+      .on('tick', () => {
+        linkElements.attr('x1', d=>d.source.x).attr('y1', d=>d.source.y).attr('x2', d=>d.target.x).attr('y2', d=>d.target.y);
+        nodeElements.attr('transform', d=>`translate(${d.x},${d.y})`);
+      });
+
+    applyHighlights();
+  }
+
+  function selectMapNode(id) {
+    const {nodes, edges} = getFiltered();
+    const node = nodes.find(n=>n.id===id);
+    if(!node) return;
+
+    document.querySelectorAll('#sidebar-map .tab-bar button').forEach(b=>b.classList.remove('active'));
+    document.querySelector('#sidebar-map [data-tab="detail"]').classList.add('active');
+    document.querySelectorAll('#sidebar-map .scroll-content').forEach(tc=>tc.style.display='none');
+    document.getElementById('tab-detail').style.display='block';
+
+    document.getElementById('detail-title').textContent = id;
+    document.getElementById('detail-meta').innerHTML = `<strong>Layer:</strong> ${node.layer} &nbsp; <strong>Fan-in:</strong> ${node.fan_in}<br><br>${MODULE_DESC[id]||''}`;
+    
+    const imp = edges.filter(e=>e.from===id).map(e=>e.to);
+    const imper = edges.filter(e=>e.to===id).map(e=>e.from);
+    const impHtml = imp.length ? imp.map(id => `<span onclick="window._selectMapNode('${id}')" style="color:var(--accent);cursor:pointer">${id.split('/').pop()}</span>`).join(', ') : '<em>none</em>';
+    const imperHtml = imper.length ? imper.map(id => `<span onclick="window._selectMapNode('${id}')" style="color:var(--accent);cursor:pointer">${id.split('/').pop()}</span>`).join(', ') : '<em>none</em>';
+    document.getElementById('detail-imports').innerHTML = '<strong>Imports:</strong><br>' + impHtml;
+    document.getElementById('detail-importers').innerHTML = '<strong>Imported by:</strong><br>' + imperHtml;
+
+    // Extreme dimming for focus
+    nodeElements.classed('highlighted', d=>d.id===id);
+    nodeElements.classed('dimmed', d=>d.id!==id && !imp.includes(d.id) && !imper.includes(d.id));
+    linkElements.classed('highlighted', d=>(d.source.id||d.source)===id || (d.target.id||d.target)===id);
+    linkElements.classed('dimmed', d=>(d.source.id||d.source)!==id && (d.target.id||d.target)!==id);
+  }
+  window._selectMapNode = selectMapNode;
+
+  function applyHighlights() {
+    if(!linkElements) return;
+    linkElements.each(function(d) {
+      const src = d.source.id||d.source, tgt = d.target.id||d.target, k = src+'|'+tgt;
+      const c = cycleEdgeSet.has(k), v = violationEdgeSet.has(k);
+      const sel = d3.select(this);
+      sel.classed('cycle', highlightCycles&&c).classed('violation', highlightViolations&&v);
+      if(highlightCycles&&c) sel.attr('stroke-width', 2.5);
+      else if(sel.classed('highlighted')) sel.attr('stroke-width', 2);
+      else sel.attr('stroke-width', 0.8);
+    });
+  }
+
+  // Controls
+  document.getElementById('map-btn-reset').addEventListener('click', () => {
+    svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+    nodeElements.classed('highlighted', false).classed('dimmed', false);
+    linkElements.classed('highlighted', false).classed('dimmed', false);
+  });
+  document.getElementById('map-btn-labels').addEventListener('click', function() {
+    showLabels = !showLabels; this.classList.toggle('active', showLabels);
+    nodeElements.selectAll('text').style('display', showLabels?'':'none');
+  });
+  document.getElementById('map-btn-no-tests').addEventListener('click', function() { hideTests = !hideTests; this.classList.toggle('active'); rebuildMap(); });
+  document.getElementById('map-filter-layer').addEventListener('change', e => {
+    activeLayer = e.target.value;
+    document.querySelectorAll('#layer-list .layer-item').forEach(el => el.classList.toggle('active', el.dataset.layer===activeLayer));
+    rebuildMap();
+  });
+  document.getElementById('map-btn-cycles').addEventListener('click', function() { highlightCycles=!highlightCycles; this.classList.toggle('active'); applyHighlights(); });
+  document.getElementById('map-btn-violations').addEventListener('click', function() { highlightViolations=!highlightViolations; this.classList.toggle('active'); applyHighlights(); });
+
+  svg.on('click', e => {
+    if(e.target.tagName==='svg') {
+      nodeElements.classed('highlighted', false).classed('dimmed', false);
+      linkElements.classed('highlighted', false).classed('dimmed', false);
+    }
+  });
+
+  rebuildMap();
+  // Auto-fit after settle
+  setTimeout(() => {
+    const b = g.node().getBBox();
+    if(b.width) {
+      const c = document.getElementById('view-map');
+      const s = Math.min((c.clientWidth-120)/b.width, (c.clientHeight-120)/b.height, 1.5);
+      svg.transition().duration(800).call(zoom.transform, d3.zoomIdentity.translate(c.clientWidth/2-(b.x+b.width/2)*s, c.clientHeight/2-(b.y+b.height/2)*s).scale(s));
+    }
+  }, 1500);
+}
+
+// ============================================================
+// FLOW VIEW LOGIC
+// ============================================================
+function initFlow(data) {
+  let layoutDir = 'TB';
+  let activeFilter = 'all';
+  let activeTraceNodeIds = null;
+  const allNodes = data.nodes.filter(n => !n.is_test && !n.id.includes('.test'));
+  const allNodeIds = new Set(allNodes.map(n=>n.id));
+  const allEdges = data.edges.filter(e => allNodeIds.has(e.from) && allNodeIds.has(e.to));
+
+  const adjForward = new Map(), adjReverse = new Map();
+  allEdges.forEach(e => {
+    if(!adjForward.has(e.from)) adjForward.set(e.from, []); adjForward.get(e.from).push(e.to);
+    if(!adjReverse.has(e.to)) adjReverse.set(e.to, []); adjReverse.get(e.to).push(e.from);
+  });
+
+  const svg = d3.select('#flow-svg');
+  const mainG = svg.append('g');
+  const bandG = mainG.append('g').attr('class','bands');
+  const edgeG = mainG.append('g').attr('class','edges');
+  const nodeG = mainG.append('g').attr('class','nodes');
+
+  const container = document.getElementById('view-flow');
+  const zoom = d3.zoom().scaleExtent([0.05, 4]).on('zoom', e => {
+    mainG.attr('transform', e.transform);
+    updateMinimap(e.transform);
+  });
+  svg.call(zoom);
+
+  // Minimap references
+  const mmG = d3.select('#mm-g');
+  const mmViewportCutout = d3.select('#mm-viewport-cutout');
+  const mmViewportStroke = d3.select('#mm-viewport-stroke');
+
+  // Sidebar Presets
+  const presetContainer = document.getElementById('flow-presets');
+  FLOW_PRESETS.forEach(preset => {
+    const btn = document.createElement('button'); btn.className = 'flow-btn';
+    btn.innerHTML = `${preset.name}<small>${preset.desc}</small>`;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.flow-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      applyPreset(preset);
+    });
+    presetContainer.appendChild(btn);
+  });
+
+  const filterSel = document.getElementById('flow-filter-layer');
+  LAYER_ORDER.forEach(l => filterSel.appendChild(new Option(l, l)));
+
+  function getFiltered() {
+    let nodes = allNodes, edges = allEdges;
+    if(activeTraceNodeIds) {
+      const ids = new Set(activeTraceNodeIds);
+      nodes = nodes.filter(n=>ids.has(n.id));
+      return { nodes, edges: edges.filter(e => ids.has(e.from) && ids.has(e.to)) };
+    }
+    if(activeFilter !== 'all') {
+      const layerIds = new Set(nodes.filter(n=>n.layer===activeFilter).map(n=>n.id));
+      const neighborIds = new Set();
+      edges.forEach(e => { if(layerIds.has(e.from)) neighborIds.add(e.to); if(layerIds.has(e.to)) neighborIds.add(e.from); });
+      const show = new Set([...layerIds, ...neighborIds]);
+      nodes = nodes.filter(n=>show.has(n.id));
+    }
+    const ids = new Set(nodes.map(n=>n.id));
+    return { nodes, edges: edges.filter(e => ids.has(e.from) && ids.has(e.to)) };
+  }
+
+  function renderFlow() {
+    const {nodes, edges} = getFiltered();
+    const nodeMap = new Map(nodes.map(n=>[n.id, n]));
+
+    const g = new dagre.graphlib.Graph({ compound: true });
+    g.setGraph({
+      rankdir: layoutDir,
+      nodesep: 50,  // Increased spacing
+      edgesep: 25,
+      ranksep: 80,
+      marginx: 40, marginy: 40,
+    });
+    g.setDefaultEdgeLabel(() => ({}));
+
+    LAYER_ORDER.forEach(l => g.setNode('cluster_'+l, { label:l, clusterLabelPos:'top' }));
+    nodes.forEach(n => {
+      const w = Math.max(90, n.id.split('/').pop().length * 7 + 24);
+      g.setNode(n.id, { label:n.id, width:w, height:32 });
+      g.setParent(n.id, 'cluster_'+n.layer);
+    });
+    edges.forEach(e => g.setEdge(e.from, e.to, { weight:1, minlen:1 }));
+
+    dagre.layout(g);
+
+    // Layer Bands
+    const bounds = {};
+    nodes.forEach(n => {
+      const pos = g.node(n.id); if(!pos) return;
+      if(!bounds[n.layer]) bounds[n.layer] = { minX:Infinity, maxX:-Infinity, minY:Infinity, maxY:-Infinity };
+      const b = bounds[n.layer];
+      b.minX = Math.min(b.minX, pos.x - pos.width/2 - 24);
+      b.maxX = Math.max(b.maxX, pos.x + pos.width/2 + 24);
+      b.minY = Math.min(b.minY, pos.y - pos.height/2 - 20);
+      b.maxY = Math.max(b.maxY, pos.y + pos.height/2 + 20);
+    });
+
+    bandG.selectAll('*').remove();
+    Object.entries(bounds).forEach(([layer, b]) => {
+      bandG.append('rect').attr('class','layer-band')
+        .attr('x', b.minX).attr('y', b.minY)
+        .attr('width', b.maxX-b.minX).attr('height', b.maxY-b.minY)
+        .attr('stroke', LAYER_COLORS[layer]||'#666').attr('rx', 8);
+      bandG.append('text').attr('class','layer-label').attr('x', b.minX+6).attr('y', b.minY-6).text(layer);
+    });
+
+    // Edges
+    edgeG.selectAll('*').remove();
+    const edgeEls = [];
+    g.edges().forEach(e => {
+      const edge = g.edge(e); if(!edge||!edge.points) return;
+      const pts = edge.points;
+      const group = edgeG.append('g').attr('class','dag-edge').datum({source:e.v, target:e.w});
+      
+      const color = LAYER_COLORS[nodeMap.get(e.v)?.layer] || '#555';
+      const line = d3.line().x(p=>p.x).y(p=>p.y).curve(d3.curveBasis);
+      group.append('path').attr('d', line(pts)).attr('stroke', color);
+      
+      if(pts.length >= 2) {
+        const p1 = pts[pts.length-2], p2 = pts[pts.length-1];
+        const angle = Math.atan2(p2.y-p1.y, p2.x-p1.x);
+        group.append('polygon').attr('fill', color).attr('stroke', color)
+          .attr('points', [ [p2.x,p2.y], [p2.x-6*Math.cos(angle-.4), p2.y-6*Math.sin(angle-.4)], [p2.x-6*Math.cos(angle+.4), p2.y-6*Math.sin(angle+.4)] ].map(p=>p.join(',')).join(' '));
+      }
+
+      const lbl = EDGE_LABELS[e.v+'|'+e.w];
+      if(lbl) {
+        const mp = pts[Math.floor(pts.length/2)];
+        group.append('text').attr('class','edge-label halo-text').attr('x', mp.x).attr('y', mp.y).attr('text-anchor','middle').text(lbl);
+      }
+      edgeEls.push({el: group, source:e.v, target:e.w});
+    });
+
+    // Nodes
+    nodeG.selectAll('*').remove();
+    const nodeEls = [];
+    nodes.forEach(n => {
+      const pos = g.node(n.id); if(!pos) return;
+      const color = LAYER_COLORS[n.layer] || '#666';
+      const group = nodeG.append('g').attr('class','dag-node')
+        .attr('transform', `translate(${pos.x-pos.width/2},${pos.y-pos.height/2})`).datum(n);
+      
+      group.append('rect').attr('width', pos.width).attr('height', pos.height).attr('fill', d3.color(color).darker(1.8)).attr('stroke', color);
+      group.append('text').attr('class', 'halo-text').attr('x', pos.width/2).attr('y', pos.height/2+1).attr('text-anchor','middle').attr('dominant-baseline','central').attr('fill', color).text(n.id.split('/').pop());
+
+      group.on('mouseover', ev => showTooltip(ev, n.id, `Layer: ${n.layer}<br>${MODULE_DESC[n.id]||''}`));
+      group.on('mouseout', hideTooltip);
+      group.on('click', ev => { ev.stopPropagation(); traceNode(n.id, ev.shiftKey?'upstream':'downstream'); });
+
+      nodeEls.push({el:group, id:n.id, x:pos.x, y:pos.y, w:pos.width, h:pos.height});
+    });
+
+    svg.datum({ nodeEls, edgeEls, g });
+    renderMinimap(g, nodes);
+  }
+
+  function clearFlow() {
+    d3.selectAll('.dag-node').classed('selected dimmed on-path', false);
+    d3.selectAll('.dag-edge').classed('on-path dimmed cycle', false);
+  }
+
+  function highlightFlowPath(nodeIds, edgeKeys) {
+    clearFlow();
+    const nSet = new Set(nodeIds), eSet = new Set(edgeKeys);
+    d3.selectAll('.dag-node').classed('on-path', d=>nSet.has(d.id)).classed('dimmed', d=>!nSet.has(d.id));
+    d3.selectAll('.dag-edge').classed('on-path', d=>eSet.has(d.source+'|'+d.target)).classed('dimmed', d=>!eSet.has(d.source+'|'+d.target));
+  }
+
+  function traceNode(startId, dir) {
+    document.querySelectorAll('.flow-btn').forEach(b=>b.classList.remove('active'));
+    const adj = dir==='downstream' ? adjForward : adjReverse;
+    const vis = new Set([startId]), q = [startId], eKeys = new Set();
+    while(q.length) {
+      const cur = q.shift();
+      (adj.get(cur)||[]).forEach(nxt => {
+        if(allNodeIds.has(nxt)) {
+          eKeys.add(dir==='upstream' ? nxt+'|'+cur : cur+'|'+nxt);
+          if(!vis.has(nxt)) { vis.add(nxt); q.push(nxt); }
+        }
+      });
+    }
+    
+    activeTraceNodeIds = [...vis];
+    renderFlow();
+    highlightFlowPath([...vis], [...eKeys]);
+    
+    // Sidebar update
+    const traceEl = document.getElementById('path-trace');
+    let html = `<p style="font-size:11px;color:var(--accent);margin-bottom:8px;">${dir==='downstream'?'Downstream from':'Upstream of'} <strong>${startId.split('/').pop()}</strong></p>`;
+    [...vis].sort((a,b) => {
+      const la = allNodes.find(n=>n.id===a)?.layer || '';
+      const lb = allNodes.find(n=>n.id===b)?.layer || '';
+      const ra = LAYER_RANK[la] ?? 9;
+      const rb = LAYER_RANK[lb] ?? 9;
+      return ra !== rb ? ra - rb : a.localeCompare(b);
+    }).forEach(id => {
+      const n = allNodes.find(x=>x.id===id); if(!n) return;
+      const desc = MODULE_DESC[id] || '';
+      html += `<div class="path-step ${id===startId?'highlighted':''}" onclick="window._panToFlowNode('${id}')">
+        <div class="path-dot" style="background:${LAYER_COLORS[n.layer]||'#666'}"></div>
+        <div class="path-label">
+          <span class="mod">${id.split('/').pop()}</span> 
+          <span style="color:var(--text-dim);font-size:10px">${n.layer}</span>
+          ${desc ? `<br><span class="desc">${desc}</span>` : ''}
+        </div>
+      </div>`;
+    });
+    traceEl.innerHTML = html;
+    
+    setTimeout(() => document.getElementById('flow-btn-fit').click(), 50);
+  }
+
+  function applyPreset(preset) {
+    const ids = preset.nodes.map(n=>n.id);
+    activeTraceNodeIds = ids;
+    renderFlow();
+
+    const keys = [];
+    for(let i=0; i<ids.length-1; i++) {
+      const fwd = adjForward.get(ids[i])||[];
+      if(fwd.includes(ids[i+1])) keys.push(ids[i]+'|'+ids[i+1]);
+      fwd.forEach(nxt => { if(ids.includes(nxt)) keys.push(ids[i]+'|'+nxt); });
+    }
+    highlightFlowPath(ids, keys);
+
+    const traceEl = document.getElementById('path-trace');
+    let html = `<p style="font-size:11px;color:var(--accent);margin-bottom:10px;"><strong>${preset.name}</strong></p>`;
+    preset.nodes.forEach((pn, i) => {
+      const n = allNodes.find(x=>x.id===pn.id);
+      html += `<div class="path-step" onclick="window._panToFlowNode('${pn.id}')">
+        <div class="path-dot" style="background:${n?LAYER_COLORS[n.layer]:'#666'}"></div>
+        <div class="path-label">
+          <span class="mod">${pn.id.split('/').pop()}</span><br>
+          <span class="desc">${pn.note}</span>
+        </div>
+      </div>`;
+      if(i < preset.nodes.length-1 && preset.edgeLabels[i]) {
+        html += `<div class="path-arrow">&#8595; <span style="color:var(--accent);font-size:9px">${preset.edgeLabels[i]}</span></div>`;
+      }
+    });
+    traceEl.innerHTML = html;
+
+    setTimeout(() => document.getElementById('flow-btn-fit').click(), 50);
+  }
+
+  window._panToFlowNode = (id) => {
+    const dat = svg.datum();
+    const node = dat.nodeEls.find(n => n.id === id);
+    if (node) {
+      const c = document.getElementById('view-flow');
+      const t = d3.zoomIdentity.translate(c.clientWidth/2 - node.x, c.clientHeight/2 - node.y).scale(1);
+      svg.transition().duration(500).call(zoom.transform, t);
+    }
+  };
+
+  // Minimap
+  function renderMinimap(g, nodes) {
+    mmG.selectAll('*').remove();
+    const gw = g.graph().width||800, gh = g.graph().height||600;
+    const scale = Math.min(220/gw, 160/gh) * 0.9;
+    const ox = (220-gw*scale)/2, oy = (160-gh*scale)/2;
+    
+    nodes.forEach(n => {
+      const pos = g.node(n.id); if(!pos) return;
+      mmG.append('rect').attr('x', ox+(pos.x-pos.width/2)*scale).attr('y', oy+(pos.y-pos.height/2)*scale)
+        .attr('width', pos.width*scale).attr('height', pos.height*scale).attr('fill', LAYER_COLORS[n.layer]||'#666');
+    });
+  }
+
+  function updateMinimap(t) {
+    const dat = svg.datum(); if(!dat) return;
+    const gw = dat.g.graph().width||800, gh = dat.g.graph().height||600;
+    const scale = Math.min(220/gw, 160/gh) * 0.9;
+    const ox = (220-gw*scale)/2, oy = (160-gh*scale)/2;
+    const c = document.getElementById('view-flow');
+    
+    // Bounds of viewport mapped into minimap coordinates
+    const vx = (-t.x)/t.k, vy = (-t.y)/t.k, vw = c.clientWidth/t.k, vh = c.clientHeight/t.k;
+    const mx = ox + vx*scale, my = oy + vy*scale, mw = vw*scale, mh = vh*scale;
+    
+    mmViewportCutout.attr('x', mx).attr('y', my).attr('width', mw).attr('height', mh);
+    mmViewportStroke.attr('x', mx).attr('y', my).attr('width', mw).attr('height', mh);
+  }
+
+  // Controls
+  document.getElementById('flow-btn-reset').addEventListener('click', () => {
+    activeTraceNodeIds = null;
+    renderFlow();
+    clearFlow(); 
+    document.querySelectorAll('.flow-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('path-trace').innerHTML = '<p style="font-size:11px;color:var(--text-dim);">Select a flow preset or click a node.</p>';
+    setTimeout(() => document.getElementById('flow-btn-fit').click(), 50);
+  });
+  document.getElementById('flow-btn-fit').addEventListener('click', () => {
+    const b = mainG.node().getBBox(); const c = document.getElementById('view-flow');
+    if (!b.width || !b.height) return;
+    const s = Math.min((c.clientWidth-80)/b.width, (c.clientHeight-80)/b.height, 1.5);
+    svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity.translate(c.clientWidth/2-(b.x+b.width/2)*s, c.clientHeight/2-(b.y+b.height/2)*s).scale(s));
+  });
+  document.getElementById('flow-btn-labels').addEventListener('click', function() {
+    this.classList.toggle('active'); document.getElementById('flow-svg').classList.toggle('show-edge-labels');
+  });
+  document.getElementById('flow-layout-dir').addEventListener('change', e => { layoutDir = e.target.value; renderFlow(); setTimeout(()=>document.getElementById('flow-btn-fit').click(), 100); });
+  document.getElementById('flow-filter-layer').addEventListener('change', e => { activeFilter = e.target.value; renderFlow(); setTimeout(()=>document.getElementById('flow-btn-fit').click(), 100); });
+
+  svg.on('click', () => { 
+    if (activeTraceNodeIds) {
+      activeTraceNodeIds = null;
+      renderFlow();
+      setTimeout(() => document.getElementById('flow-btn-fit').click(), 50);
+    }
+    clearFlow(); 
+    document.querySelectorAll('.flow-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('path-trace').innerHTML = '<p style="font-size:11px;color:var(--text-dim);">Select a flow preset or click a node.</p>';
+  });
+
+  renderFlow();
+}
+
+main();
+</script>
+</body>
+</html>

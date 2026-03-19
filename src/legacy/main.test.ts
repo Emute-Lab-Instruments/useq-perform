@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const replaceUserSettings = vi.fn();
 const examineEnvironment = vi.fn();
-const createAppUI = vi.fn();
 const startApp = vi.fn();
 const createApp = vi.fn(() => ({ start: startApp }));
 const loadConfigurationWithMetadata = vi.fn();
@@ -27,24 +25,44 @@ const bootstrapRuntimeSession = vi.fn(() => ({
   },
 }));
 
+// Mocks for createAppUI dependencies (now inlined in bootstrap.ts)
+const initEditorPanel = vi.fn(async () => ({ id: "editor" }));
+const initGamepadControl = vi.fn();
+const setEditor = vi.fn();
+const mountModal = vi.fn();
+const mountPickerMenu = vi.fn();
+const mountDoubleRadialMenu = vi.fn();
+const registerVisualisationPanel = vi.fn();
+const mountTransportToolbar = vi.fn();
+const mountMainToolbar = vi.fn();
+const mountSettingsPanel = vi.fn();
+const mountHelpPanel = vi.fn();
+const mountDesignSelector = vi.fn();
+
 vi.mock("../../runtime/appSettingsRepository.ts", () => ({
   appSettingsRepository,
-}));
-
-vi.mock("../app/environment.ts", () => ({
-  examineEnvironment,
-}));
-
-vi.mock("../ui/ui.ts", () => ({
-  createAppUI,
-}));
-
-vi.mock("../app/application.ts", () => ({
-  createApp,
-}));
-
-vi.mock("../config/configLoader.ts", () => ({
   loadConfigurationWithMetadata,
+}));
+
+vi.mock("../../runtime/startupContext.ts", () => ({
+  examineEnvironment,
+  getStartupFlagsSnapshot: vi.fn(() => ({
+    debug: false,
+    devmode: false,
+    disableWebSerial: false,
+    noModuleMode: false,
+    nosave: false,
+    params: {},
+  })),
+  setStartupFlags: vi.fn((flags: any) => flags),
+  setEnvironmentCapabilities: vi.fn(),
+  applyStartupContext: vi.fn(),
+  isLocalStorageBypassedInStartupContext: vi.fn(() => false),
+  resetStartupContextForTests: vi.fn(),
+}));
+
+vi.mock("../../runtime/appLifecycle.ts", () => ({
+  createApp,
 }));
 
 vi.mock("../../runtime/runtimeDiagnostics.ts", () => ({
@@ -56,15 +74,67 @@ vi.mock("../../runtime/runtimeService.ts", () => ({
   bootstrapRuntimeSession,
 }));
 
+// Mock createAppUI's inlined dependencies
+vi.mock("../editors/gamepadControl.ts", () => ({
+  initGamepadControl,
+}));
+
+vi.mock("../../lib/editorStore.ts", () => ({
+  setEditor,
+  initEditorPanel,
+}));
+
+vi.mock("../../ui/adapters/modal.tsx", () => ({
+  mountModal,
+}));
+
+vi.mock("../../ui/adapters/picker-menu.tsx", () => ({
+  mountPickerMenu,
+}));
+
+vi.mock("../../ui/adapters/double-radial-menu.tsx", () => ({
+  mountDoubleRadialMenu,
+}));
+
+vi.mock("../../ui/adapters/visualisationPanel", () => ({
+  registerVisualisationPanel,
+}));
+
+vi.mock("../../ui/adapters/panels.tsx", () => ({
+  mountSettingsPanel,
+  mountHelpPanel,
+  mountDesignSelector,
+  hideAllPanels: vi.fn(),
+}));
+
+vi.mock("../../ui/adapters/toolbars.tsx", () => ({
+  mountTransportToolbar,
+  mountMainToolbar,
+}));
+
+vi.mock("../../runtime/bootstrapPlan.ts", () => ({
+  resolveBootstrapPlan: vi.fn(() => ({
+    startupMode: "browser-local",
+  })),
+}));
+
 describe("bootstrap (via startLegacyApp re-export)", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+
+    // Set up DOM elements that createAppUI expects
+    document.body.innerHTML = `
+      <div id="panel-main-editor"></div>
+      <div id="panel-vis"></div>
+      <div id="status-bar"></div>
+    `;
+
     loadConfigurationWithMetadata.mockResolvedValue({
       config: { editor: { code: "(play)" } },
       settingsSources: ["defaults", "local-storage"],
     });
-    examineEnvironment.mockReturnValue({
+    examineEnvironment.mockResolvedValue({
       areInBrowser: true,
       areInDesktopApp: false,
       isWebSerialAvailable: true,
@@ -84,7 +154,6 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
       },
       urlParams: {},
     });
-    createAppUI.mockResolvedValue({ mainEditor: {} });
     startApp.mockResolvedValue(undefined);
   });
 
@@ -98,7 +167,8 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
       { editor: { code: "(play)" } },
       { dispatch: true }
     );
-    expect(createAppUI).toHaveBeenCalledWith(examineEnvironment.mock.results[0].value);
+    expect(initEditorPanel).toHaveBeenCalledWith("#panel-main-editor");
+    expect(setEditor).toHaveBeenCalled();
     expect(createApp).toHaveBeenCalled();
     expect(startApp).toHaveBeenCalledTimes(1);
     expect(bootstrapRuntimeSession).toHaveBeenCalledWith(

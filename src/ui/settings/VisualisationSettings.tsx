@@ -1,7 +1,7 @@
 import type { VisualisationSettings as AppVisualisationSettings } from "../../lib/appSettings.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 import { Section, FormRow, Checkbox, NumberInput, RangeInput } from "./FormControls";
-import { serialVisChannels } from "../../legacy/ui/serialVis/utils.ts";
+import { serialVisChannels } from "../../lib/visualisationUtils.ts";
 
 export function VisualisationSettings() {
   const updateVisField = <K extends keyof AppVisualisationSettings>(

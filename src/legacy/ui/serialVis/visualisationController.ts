@@ -1,8 +1,8 @@
 // @ts-nocheck
 import { dbg } from "../../../lib/debug.ts";
 import { getAppSettings, subscribeAppSettings } from "../../../runtime/appSettingsRepository.ts";
-import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../io/useqWasmInterpreter.ts";
-import { getSerialVisPalette, getSerialVisChannelColor } from "./utils.ts";
+import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../../runtime/wasmInterpreter.ts";
+import { getSerialVisPalette, getSerialVisChannelColor } from "../../../lib/visualisationUtils.ts";
 import {
   CODE_EVALUATED_EVENT,
   addRuntimeEventListener,

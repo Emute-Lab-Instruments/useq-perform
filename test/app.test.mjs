@@ -2,7 +2,7 @@ import { expect } from "chai";
 import "./setup.mjs";
 import { examineEnvironment } from "../src/legacy/app/environment.ts";
 import { createAppUI } from "../src/legacy/ui/ui.ts";
-import { createApp } from "../src/legacy/app/application.ts";
+import { createApp } from "../src/runtime/appLifecycle.ts";
 
 // Test setup
 let environmentState, appUI;

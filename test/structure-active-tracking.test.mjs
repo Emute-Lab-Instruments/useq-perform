@@ -1,6 +1,6 @@
 import './setup.mjs';
 import { strict as assert } from 'assert';
-import { createStructuralEditor, selectByText, findNodeAt, navigateIn } from '../src/legacy/editors/extensions/structure/new-structure.ts';
+import { createStructuralEditor, selectByText, findNodeAt, navigateIn } from '../src/editors/extensions/structure/new-structure.ts';
 
 describe('Active Selection Tracking (new-structure)', () => {
   it('selectByText selects exact expression ranges', () => {

@@ -12,7 +12,7 @@ import {
 import {
   evalInUseqWasm,
   syncWasmTransportState as syncWasmTransportStateInInterpreter,
-} from "../legacy/io/useqWasmInterpreter.ts";
+} from "./wasmInterpreter.ts";
 import type { TransportState } from "../machines/transport.machine";
 import type { RuntimeProtocolMode } from "./runtimeDiagnostics";
 import type { RuntimeSessionInputs } from "./runtimeSession";

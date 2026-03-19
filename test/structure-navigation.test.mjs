@@ -1,6 +1,6 @@
 import './setup.mjs';
 import { strict as assert } from 'assert';
-import { createStructuralEditor, selectByText, navigateIn, navigateOut, navigateNext, navigatePrev } from '../src/legacy/editors/extensions/structure/new-structure.ts';
+import { createStructuralEditor, selectByText, navigateIn, navigateOut, navigateNext, navigatePrev } from '../src/editors/extensions/structure/new-structure.ts';
 
 function selectedText(state) {
   const sel = state.selection.main;

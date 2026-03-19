@@ -80,3 +80,56 @@ export function resetStartupContextForTests(): void {
   currentStartupFlags = cloneStartupFlags(DEFAULT_STARTUP_FLAGS);
   currentEnvironmentCapabilities = { ...DEFAULT_ENVIRONMENT_CAPABILITIES };
 }
+
+// ── Environment examination ─────────────────────────────────────────
+// Merged from legacy/app/environment.ts
+
+import { getStartupFlags } from './urlParams.ts';
+import type { AppSettings } from '../lib/appSettings.ts';
+
+export interface EnvironmentState extends EnvironmentCapabilities {
+  isInDevmode: boolean;
+  startupFlags: StartupFlags;
+  userSettings: AppSettings;
+  urlParams: Record<string, string>;
+}
+
+export async function examineEnvironment(
+  userSettings: AppSettings,
+): Promise<EnvironmentState> {
+  const startupFlags = getStartupFlags();
+
+  // Desktop/Electron runtime support is out of scope for the reset.
+  const areInBrowser = typeof window !== 'undefined' && window.navigator;
+  const areInDesktopApp = false;
+
+  // Check for Web Serial API support (can be disabled via URL parameter).
+  // checkForWebserialSupport is imported lazily to avoid a circular
+  // dependency: connector.ts → appSettingsRepository.ts → configSchema.ts
+  // → appSettings.ts → startupContext.ts.
+  let isWebSerialAvailable = false;
+  if (!startupFlags.disableWebSerial) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { checkForWebserialSupport } = await import('../transport/connector.ts');
+    isWebSerialAvailable = checkForWebserialSupport();
+  }
+
+  applyStartupContext({
+    startupFlags,
+    capabilities: {
+      areInBrowser,
+      areInDesktopApp,
+      isWebSerialAvailable,
+    },
+  });
+
+  return {
+    areInBrowser,
+    areInDesktopApp,
+    isWebSerialAvailable,
+    isInDevmode: startupFlags.devmode,
+    startupFlags,
+    userSettings,
+    urlParams: startupFlags.params,
+  };
+}

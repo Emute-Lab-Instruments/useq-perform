@@ -3,7 +3,7 @@ import {
   defaultMainEditorStartingCode,
   defaultTheme,
 } from "./editorDefaults.ts";
-import { themes } from "../legacy/editors/themes/themeManager.ts";
+import { themes } from "../editors/themes.ts";
 import type { RuntimeSettingsSource } from "../runtime/runtimeDiagnostics.ts";
 import { isLocalStorageBypassedInStartupContext } from "../runtime/startupContext.ts";
 

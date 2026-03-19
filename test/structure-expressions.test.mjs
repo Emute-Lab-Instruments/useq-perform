@@ -7,7 +7,7 @@ import {
   createMarkersForRange,
   processExpressionRanges,
   ExpressionGutterMarker
-} from '../src/legacy/editors/extensions/structure.ts';
+} from '../src/editors/extensions/structure.ts';
 
 describe('Expression Detection & Processing', () => {
   // Mock data for testing

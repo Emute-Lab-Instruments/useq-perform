@@ -1,0 +1,3236 @@
+{
+  "nodes": [
+    {
+      "id": "contracts/runtimeEvents",
+      "layer": "contracts",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "contracts/useqRuntimeContract",
+      "layer": "contracts",
+      "fan_in": 2,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "effects/editor",
+      "layer": "effects",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "effects/editor.test",
+      "layer": "effects",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "effects/mockTimeGenerator",
+      "layer": "effects",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "effects/test",
+      "layer": "effects",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": true
+    },
+    {
+      "id": "effects/transport",
+      "layer": "effects",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "effects/transportClock",
+      "layer": "effects",
+      "fan_in": 2,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "effects/transportOrchestrator",
+      "layer": "effects",
+      "fan_in": 1,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "effects/ui",
+      "layer": "effects",
+      "fan_in": 2,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "effects/ui.test",
+      "layer": "effects",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "legacy/app/application",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 11,
+      "is_test": false
+    },
+    {
+      "id": "legacy/app/application.test",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/app/environment",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 4,
+      "is_test": false
+    },
+    {
+      "id": "legacy/config/appSettings",
+      "layer": "legacy",
+      "fan_in": 3,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/config/configLoader",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/config/configLoader.test",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/config/configManager",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "legacy/config/default-config.json",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/defaults",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/editorConfig",
+      "layer": "legacy",
+      "fan_in": 3,
+      "fan_out": 11,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/extensions",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 11,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/extensions/evalHighlight",
+      "layer": "legacy",
+      "fan_in": 2,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/extensions/structure",
+      "layer": "legacy",
+      "fan_in": 3,
+      "fan_out": 6,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/extensions/structure/new-structure",
+      "layer": "legacy",
+      "fan_in": 2,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/extensions/visReadability",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/gamepadControl",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 5,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/keymaps",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/main",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 5,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/manualControlState",
+      "layer": "legacy",
+      "fan_in": 2,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/state",
+      "layer": "legacy",
+      "fan_in": 2,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes",
+      "layer": "legacy",
+      "fan_in": 2,
+      "fan_out": 18,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/amy",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/ayu-light",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/bespin",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/birds-of-paradise",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/clouds",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/cobalt",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/cool-glow",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/dracula",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/espresso",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/night-lights",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/noctis-lilac",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/rose-pine-dawn",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/smoothy",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/solarized-light",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/tomorrow",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/useq-1337",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/builtinThemes/useq-dark",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/createTheme",
+      "layer": "legacy",
+      "fan_in": 18,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/editors/themes/themeManager",
+      "layer": "legacy",
+      "fan_in": 6,
+      "fan_out": 4,
+      "is_test": false
+    },
+    {
+      "id": "legacy/io/mockControlInputs",
+      "layer": "legacy",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "legacy/io/mockTimeGenerator",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/io/serialComms",
+      "layer": "legacy",
+      "fan_in": 8,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "legacy/io/useqWasmInterpreter",
+      "layer": "legacy",
+      "fan_in": 4,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "legacy/io/utils",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/io/websocketServer",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 4,
+      "is_test": false
+    },
+    {
+      "id": "legacy/main",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "legacy/stories/Button",
+      "layer": "legacy",
+      "fan_in": 2,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/stories/Button.stories",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "legacy/stories/Header",
+      "layer": "legacy",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "legacy/stories/Header.stories",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "legacy/stories/Page",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "legacy/stories/Page.stories",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "legacy/stories/button.css",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/stories/header.css",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/stories/page.css",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/styles/index.css",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/ui/pickers/menuData",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/ui/serialVis/serialVis",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/ui/serialVis/utils",
+      "layer": "legacy",
+      "fan_in": 3,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "legacy/ui/serialVis/visualisationController",
+      "layer": "legacy",
+      "fan_in": 4,
+      "fan_out": 4,
+      "is_test": false
+    },
+    {
+      "id": "legacy/ui/ui",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 8,
+      "is_test": false
+    },
+    {
+      "id": "legacy/urlParams",
+      "layer": "legacy",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "legacy/utils",
+      "layer": "legacy",
+      "fan_in": 13,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/utils/CircularBuffer",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/utils/debug",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/utils/upgradeCheck",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "legacy/utils/upgradeFlow",
+      "layer": "legacy",
+      "fan_in": 0,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "lib/CircularBuffer",
+      "layer": "lib",
+      "fan_in": 3,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "lib/appSettings",
+      "layer": "lib",
+      "fan_in": 2,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "lib/bridge.test",
+      "layer": "lib",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "lib/debug",
+      "layer": "lib",
+      "fan_in": 9,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "lib/editorCompartments",
+      "layer": "lib",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "lib/editorDefaults",
+      "layer": "lib",
+      "fan_in": 2,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "lib/editorStore",
+      "layer": "lib",
+      "fan_in": 8,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "lib/effectResource",
+      "layer": "lib",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "lib/typedChannel",
+      "layer": "lib",
+      "fan_in": 3,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "lib/typedChannel.test",
+      "layer": "lib",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "lib/useActorSignal",
+      "layer": "lib",
+      "fan_in": 3,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "machines/test.machine",
+      "layer": "machines",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "machines/transport.machine",
+      "layer": "machines",
+      "fan_in": 8,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "machines/transport.machine.test",
+      "layer": "machines",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "runtime/appSettingsRepository",
+      "layer": "runtime",
+      "fan_in": 15,
+      "fan_out": 6,
+      "is_test": false
+    },
+    {
+      "id": "runtime/bootstrap",
+      "layer": "runtime",
+      "fan_in": 1,
+      "fan_out": 7,
+      "is_test": false
+    },
+    {
+      "id": "runtime/bootstrapPlan",
+      "layer": "runtime",
+      "fan_in": 4,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "runtime/bootstrapPlan.test",
+      "layer": "runtime",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "runtime/configSchema",
+      "layer": "runtime",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "runtime/jsonProtocol",
+      "layer": "runtime",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "runtime/legacyRuntimeAdapter",
+      "layer": "runtime",
+      "fan_in": 1,
+      "fan_out": 5,
+      "is_test": false
+    },
+    {
+      "id": "runtime/runtimeDiagnostics",
+      "layer": "runtime",
+      "fan_in": 5,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "runtime/runtimeService",
+      "layer": "runtime",
+      "fan_in": 5,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "runtime/runtimeService.test",
+      "layer": "runtime",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "runtime/runtimeSession",
+      "layer": "runtime",
+      "fan_in": 3,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "runtime/runtimeSessionStore",
+      "layer": "runtime",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "runtime/startupContext",
+      "layer": "runtime",
+      "fan_in": 9,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "runtime/urlParams",
+      "layer": "runtime",
+      "fan_in": 1,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "transport/connector",
+      "layer": "transport",
+      "fan_in": 0,
+      "fan_out": 6,
+      "is_test": false
+    },
+    {
+      "id": "transport/index",
+      "layer": "transport",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "transport/json-protocol",
+      "layer": "transport",
+      "fan_in": 1,
+      "fan_out": 5,
+      "is_test": false
+    },
+    {
+      "id": "transport/legacy-text-protocol",
+      "layer": "transport",
+      "fan_in": 2,
+      "fan_out": 5,
+      "is_test": false
+    },
+    {
+      "id": "transport/serial-utils",
+      "layer": "transport",
+      "fan_in": 3,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "transport/stream-parser",
+      "layer": "transport",
+      "fan_in": 1,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "transport/types",
+      "layer": "transport",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "transport/upgradeCheck",
+      "layer": "transport",
+      "fan_in": 3,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/DoubleRadialPicker",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/DoubleRadialPicker.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/DoubleRadialPicker.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/HierarchicalPickerMenu",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/HierarchicalPickerMenu.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/InternalVis",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/InternalVis.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": true
+    },
+    {
+      "id": "ui/MainToolbar",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/MainToolbar.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/MainToolbar.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/Modal",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/Modal.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/Modal.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/PickerMenu",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/PickerMenu.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/PickerMenu.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "ui/ProgressBar",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/ProgressBar.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/ProgressBar.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/RadialMenu",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/RadialMenu.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/RadialMenu.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/SerialVis",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/SerialVis.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": true
+    },
+    {
+      "id": "ui/Tabs",
+      "layer": "ui",
+      "fan_in": 4,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/Tabs.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/Tabs.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/TestComponent",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "ui/TestComponent.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/TransportToolbar",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "ui/TransportToolbar.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/TransportToolbar.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "ui/VisLegend",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/VisLegend.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/adapters/double-radial-menu",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/adapters/modal",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/adapters/panelControls",
+      "layer": "ui",
+      "fan_in": 4,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/adapters/panels",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 7,
+      "is_test": false
+    },
+    {
+      "id": "ui/adapters/picker-menu",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/adapters/toolbars",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/adapters/visualisationPanel",
+      "layer": "ui",
+      "fan_in": 4,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/CodeMirrorEditor",
+      "layer": "ui",
+      "fan_in": 5,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/CodeMirrorEditor.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/CodeSnippetsTab",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/CodeSnippetsTab.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/ExperienceLevelSelector",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/ExperienceLevelSelector.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/ExperienceLevelSelector.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/HelpPanel",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 6,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/HelpPanel.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/HelpPanel.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/KeybindingsTab",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/KeybindingsTab.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/ModuLispReferenceTab",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 6,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/ModuLispReferenceTab.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/ReferenceFilters",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/ReferenceFilters.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/ReferenceFilters.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/ReferenceItem",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/ReferenceItem.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/SnippetItem",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/SnippetItem.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/SnippetModal",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/SnippetModal.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/SnippetModal.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/UserGuideContent",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/UserGuideContent.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/UserGuideTab",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/UserGuideTab.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/help/helpChannels",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/help/referenceDataLoader",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/overlayManager",
+      "layer": "ui",
+      "fan_in": 9,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/panel-chrome/DesignSelector",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/panel-chrome/DrawerChrome",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/panel-chrome/PaneChrome",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/panel-chrome/PanelChrome",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 5,
+      "is_test": false
+    },
+    {
+      "id": "ui/panel-chrome/TileChrome",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/panel-chrome/panel-chrome.css",
+      "layer": "ui",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/panel-chrome/types",
+      "layer": "ui",
+      "fan_in": 5,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/panel-chrome/usePointerDrag",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/AdvancedSettings",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/AdvancedSettings.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/Checkbox.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/ConfigurationManagement",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/ConfigurationManagement.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/ConfigurationManagement.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/EditorSettings",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 4,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/EditorSettings.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/FormControls",
+      "layer": "ui",
+      "fan_in": 12,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/GeneralSettings",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 8,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/GeneralSettings.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/NumberInput.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/PersonalSettings",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/PersonalSettings.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/RangeInput.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/Select.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/SettingsPanel",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 3,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/SettingsPanel.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/SettingsPanel.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/StorageSettings",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/StorageSettings.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/TextInput.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/ThemeSettings",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 4,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/ThemeSettings.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/UISettings",
+      "layer": "ui",
+      "fan_in": 2,
+      "fan_out": 2,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/UISettings.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/VisualisationSettings",
+      "layer": "ui",
+      "fan_in": 3,
+      "fan_out": 4,
+      "is_test": false
+    },
+    {
+      "id": "ui/settings/VisualisationSettings.stories",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": true
+    },
+    {
+      "id": "ui/settings/VisualisationSettings.test",
+      "layer": "ui",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "utils/consoleStore",
+      "layer": "utils",
+      "fan_in": 9,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "utils/geometry",
+      "layer": "utils",
+      "fan_in": 2,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "utils/geometry.test",
+      "layer": "utils",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "utils/network",
+      "layer": "utils",
+      "fan_in": 1,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "utils/referenceStore",
+      "layer": "utils",
+      "fan_in": 2,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "utils/sanitize",
+      "layer": "utils",
+      "fan_in": 4,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "utils/sanitize.test",
+      "layer": "utils",
+      "fan_in": 0,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "utils/settingsStore",
+      "layer": "utils",
+      "fan_in": 9,
+      "fan_out": 1,
+      "is_test": false
+    },
+    {
+      "id": "utils/snippetStore",
+      "layer": "utils",
+      "fan_in": 3,
+      "fan_out": 0,
+      "is_test": false
+    },
+    {
+      "id": "utils/visualisationStore",
+      "layer": "utils",
+      "fan_in": 4,
+      "fan_out": 0,
+      "is_test": false
+    }
+  ],
+  "edges": [
+    {
+      "from": "contracts/runtimeEvents",
+      "to": "runtime/runtimeSession"
+    },
+    {
+      "from": "contracts/useqRuntimeContract",
+      "to": "machines/transport.machine"
+    },
+    {
+      "from": "effects/editor",
+      "to": "lib/editorStore"
+    },
+    {
+      "from": "effects/editor",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "effects/editor.test",
+      "to": "effects/editor"
+    },
+    {
+      "from": "effects/editor.test",
+      "to": "lib/editorStore"
+    },
+    {
+      "from": "effects/mockTimeGenerator",
+      "to": "legacy/ui/serialVis/visualisationController"
+    },
+    {
+      "from": "effects/mockTimeGenerator",
+      "to": "lib/debug"
+    },
+    {
+      "from": "effects/transport",
+      "to": "contracts/runtimeEvents"
+    },
+    {
+      "from": "effects/transport",
+      "to": "machines/transport.machine"
+    },
+    {
+      "from": "effects/transportClock",
+      "to": "machines/transport.machine"
+    },
+    {
+      "from": "effects/transportOrchestrator",
+      "to": "effects/transportClock"
+    },
+    {
+      "from": "effects/transportOrchestrator",
+      "to": "machines/transport.machine"
+    },
+    {
+      "from": "effects/ui",
+      "to": "runtime/runtimeService"
+    },
+    {
+      "from": "effects/ui",
+      "to": "ui/adapters/panelControls"
+    },
+    {
+      "from": "effects/ui",
+      "to": "ui/adapters/visualisationPanel"
+    },
+    {
+      "from": "effects/ui.test",
+      "to": "effects/ui"
+    },
+    {
+      "from": "effects/ui.test",
+      "to": "runtime/runtimeService"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "legacy/io/mockControlInputs"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "legacy/io/mockTimeGenerator"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "legacy/io/serialComms"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "legacy/io/useqWasmInterpreter"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "legacy/io/websocketServer"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "legacy/ui/serialVis/visualisationController"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "runtime/bootstrapPlan"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "runtime/runtimeService"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "ui/adapters/modal"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "ui/adapters/visualisationPanel"
+    },
+    {
+      "from": "legacy/app/application",
+      "to": "utils/consoleStore"
+    },
+    {
+      "from": "legacy/app/application.test",
+      "to": "runtime/bootstrapPlan"
+    },
+    {
+      "from": "legacy/app/environment",
+      "to": "legacy/config/appSettings"
+    },
+    {
+      "from": "legacy/app/environment",
+      "to": "legacy/io/serialComms"
+    },
+    {
+      "from": "legacy/app/environment",
+      "to": "legacy/urlParams"
+    },
+    {
+      "from": "legacy/app/environment",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "legacy/config/configLoader",
+      "to": "runtime/startupContext"
+    },
+    {
+      "from": "legacy/config/configLoader.test",
+      "to": "legacy/editors/defaults"
+    },
+    {
+      "from": "legacy/config/configManager",
+      "to": "legacy/io/mockControlInputs"
+    },
+    {
+      "from": "legacy/config/configManager",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/config/configManager",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "legacy/editors/extensions/evalHighlight"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "legacy/editors/extensions/structure"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "legacy/editors/manualControlState"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "legacy/io/serialComms"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "legacy/io/useqWasmInterpreter"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "lib/editorStore"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "runtime/startupContext"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "ui/help/helpChannels"
+    },
+    {
+      "from": "legacy/editors/editorConfig",
+      "to": "utils/consoleStore"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/config/appSettings"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/editors/extensions/evalHighlight"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/editors/extensions/structure"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/editors/extensions/visReadability"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/editors/keymaps"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/editors/manualControlState"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/editors/state"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/editors/themes/builtinThemes"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/editors/themes/themeManager"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/editors/extensions",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "legacy/editors/extensions/evalHighlight",
+      "to": "legacy/editors/extensions/structure/new-structure"
+    },
+    {
+      "from": "legacy/editors/extensions/structure",
+      "to": "legacy/editors/extensions/structure/new-structure"
+    },
+    {
+      "from": "legacy/editors/extensions/structure",
+      "to": "legacy/io/serialComms"
+    },
+    {
+      "from": "legacy/editors/extensions/structure",
+      "to": "legacy/ui/serialVis/utils"
+    },
+    {
+      "from": "legacy/editors/extensions/structure",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/editors/extensions/structure",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "legacy/editors/extensions/structure",
+      "to": "ui/adapters/visualisationPanel"
+    },
+    {
+      "from": "legacy/editors/gamepadControl",
+      "to": "legacy/editors/editorConfig"
+    },
+    {
+      "from": "legacy/editors/gamepadControl",
+      "to": "legacy/editors/extensions/structure"
+    },
+    {
+      "from": "legacy/editors/gamepadControl",
+      "to": "legacy/io/serialComms"
+    },
+    {
+      "from": "legacy/editors/gamepadControl",
+      "to": "legacy/ui/pickers/menuData"
+    },
+    {
+      "from": "legacy/editors/gamepadControl",
+      "to": "ui/adapters/double-radial-menu"
+    },
+    {
+      "from": "legacy/editors/keymaps",
+      "to": "legacy/editors/editorConfig"
+    },
+    {
+      "from": "legacy/editors/keymaps",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "legacy/editors/main",
+      "to": "legacy/config/appSettings"
+    },
+    {
+      "from": "legacy/editors/main",
+      "to": "legacy/editors/editorConfig"
+    },
+    {
+      "from": "legacy/editors/main",
+      "to": "legacy/editors/themes/themeManager"
+    },
+    {
+      "from": "legacy/editors/main",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/editors/main",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/amy"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/ayu-light"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/bespin"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/birds-of-paradise"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/clouds"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/cobalt"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/cool-glow"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/dracula"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/espresso"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/night-lights"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/noctis-lilac"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/rose-pine-dawn"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/smoothy"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/solarized-light"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/tomorrow"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/useq-1337"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/builtinThemes/useq-dark"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/amy",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/ayu-light",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/bespin",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/birds-of-paradise",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/clouds",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/cobalt",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/cool-glow",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/dracula",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/espresso",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/night-lights",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/noctis-lilac",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/rose-pine-dawn",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/smoothy",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/solarized-light",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/tomorrow",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/useq-1337",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/builtinThemes/useq-dark",
+      "to": "legacy/editors/themes/createTheme"
+    },
+    {
+      "from": "legacy/editors/themes/themeManager",
+      "to": "legacy/editors/state"
+    },
+    {
+      "from": "legacy/editors/themes/themeManager",
+      "to": "legacy/editors/themes/builtinThemes"
+    },
+    {
+      "from": "legacy/editors/themes/themeManager",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/editors/themes/themeManager",
+      "to": "lib/editorStore"
+    },
+    {
+      "from": "legacy/io/mockControlInputs",
+      "to": "legacy/io/useqWasmInterpreter"
+    },
+    {
+      "from": "legacy/io/mockControlInputs",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/io/serialComms",
+      "to": "transport/legacy-text-protocol"
+    },
+    {
+      "from": "legacy/io/serialComms",
+      "to": "transport/types"
+    },
+    {
+      "from": "legacy/io/useqWasmInterpreter",
+      "to": "contracts/useqRuntimeContract"
+    },
+    {
+      "from": "legacy/io/useqWasmInterpreter",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/io/useqWasmInterpreter",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "legacy/io/utils",
+      "to": "transport/serial-utils"
+    },
+    {
+      "from": "legacy/io/websocketServer",
+      "to": "legacy/io/serialComms"
+    },
+    {
+      "from": "legacy/io/websocketServer",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/io/websocketServer",
+      "to": "utils/consoleStore"
+    },
+    {
+      "from": "legacy/io/websocketServer",
+      "to": "utils/network"
+    },
+    {
+      "from": "legacy/main",
+      "to": "legacy/styles/index.css"
+    },
+    {
+      "from": "legacy/main",
+      "to": "runtime/bootstrap"
+    },
+    {
+      "from": "legacy/stories/Button",
+      "to": "legacy/stories/button.css"
+    },
+    {
+      "from": "legacy/stories/Button.stories",
+      "to": "legacy/stories/Button"
+    },
+    {
+      "from": "legacy/stories/Header",
+      "to": "legacy/stories/Button"
+    },
+    {
+      "from": "legacy/stories/Header",
+      "to": "legacy/stories/header.css"
+    },
+    {
+      "from": "legacy/stories/Header.stories",
+      "to": "legacy/stories/Header"
+    },
+    {
+      "from": "legacy/stories/Page",
+      "to": "legacy/stories/Header"
+    },
+    {
+      "from": "legacy/stories/Page",
+      "to": "legacy/stories/page.css"
+    },
+    {
+      "from": "legacy/stories/Page.stories",
+      "to": "legacy/stories/Page"
+    },
+    {
+      "from": "legacy/ui/pickers/menuData",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/ui/serialVis/serialVis",
+      "to": "legacy/ui/serialVis/visualisationController"
+    },
+    {
+      "from": "legacy/ui/serialVis/utils",
+      "to": "legacy/io/serialComms"
+    },
+    {
+      "from": "legacy/ui/serialVis/utils",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/ui/serialVis/visualisationController",
+      "to": "legacy/io/useqWasmInterpreter"
+    },
+    {
+      "from": "legacy/ui/serialVis/visualisationController",
+      "to": "legacy/ui/serialVis/utils"
+    },
+    {
+      "from": "legacy/ui/serialVis/visualisationController",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/ui/serialVis/visualisationController",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "legacy/ui/ui",
+      "to": "legacy/editors/gamepadControl"
+    },
+    {
+      "from": "legacy/ui/ui",
+      "to": "legacy/editors/main"
+    },
+    {
+      "from": "legacy/ui/ui",
+      "to": "lib/editorStore"
+    },
+    {
+      "from": "legacy/ui/ui",
+      "to": "runtime/runtimeDiagnostics"
+    },
+    {
+      "from": "legacy/ui/ui",
+      "to": "ui/adapters/double-radial-menu"
+    },
+    {
+      "from": "legacy/ui/ui",
+      "to": "ui/adapters/modal"
+    },
+    {
+      "from": "legacy/ui/ui",
+      "to": "ui/adapters/picker-menu"
+    },
+    {
+      "from": "legacy/ui/ui",
+      "to": "ui/adapters/visualisationPanel"
+    },
+    {
+      "from": "legacy/utils",
+      "to": "lib/debug"
+    },
+    {
+      "from": "legacy/utils/CircularBuffer",
+      "to": "lib/CircularBuffer"
+    },
+    {
+      "from": "legacy/utils/debug",
+      "to": "lib/debug"
+    },
+    {
+      "from": "legacy/utils/upgradeCheck",
+      "to": "transport/upgradeCheck"
+    },
+    {
+      "from": "legacy/utils/upgradeFlow",
+      "to": "legacy/io/serialComms"
+    },
+    {
+      "from": "legacy/utils/upgradeFlow",
+      "to": "legacy/utils"
+    },
+    {
+      "from": "legacy/utils/upgradeFlow",
+      "to": "utils/consoleStore"
+    },
+    {
+      "from": "lib/appSettings",
+      "to": "legacy/editors/themes/themeManager"
+    },
+    {
+      "from": "lib/appSettings",
+      "to": "runtime/runtimeDiagnostics"
+    },
+    {
+      "from": "lib/appSettings",
+      "to": "runtime/startupContext"
+    },
+    {
+      "from": "lib/bridge.test",
+      "to": "lib/effectResource"
+    },
+    {
+      "from": "lib/bridge.test",
+      "to": "lib/useActorSignal"
+    },
+    {
+      "from": "lib/editorStore",
+      "to": "lib/editorCompartments"
+    },
+    {
+      "from": "lib/typedChannel.test",
+      "to": "lib/typedChannel"
+    },
+    {
+      "from": "machines/transport.machine.test",
+      "to": "machines/transport.machine"
+    },
+    {
+      "from": "runtime/appSettingsRepository",
+      "to": "legacy/config/default-config.json"
+    },
+    {
+      "from": "runtime/appSettingsRepository",
+      "to": "lib/editorDefaults"
+    },
+    {
+      "from": "runtime/appSettingsRepository",
+      "to": "runtime/configSchema"
+    },
+    {
+      "from": "runtime/appSettingsRepository",
+      "to": "runtime/runtimeDiagnostics"
+    },
+    {
+      "from": "runtime/appSettingsRepository",
+      "to": "runtime/runtimeService"
+    },
+    {
+      "from": "runtime/appSettingsRepository",
+      "to": "runtime/urlParams"
+    },
+    {
+      "from": "runtime/bootstrap",
+      "to": "legacy/app/application"
+    },
+    {
+      "from": "runtime/bootstrap",
+      "to": "legacy/app/environment"
+    },
+    {
+      "from": "runtime/bootstrap",
+      "to": "legacy/config/configLoader"
+    },
+    {
+      "from": "runtime/bootstrap",
+      "to": "legacy/ui/ui"
+    },
+    {
+      "from": "runtime/bootstrap",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "runtime/bootstrap",
+      "to": "runtime/bootstrapPlan"
+    },
+    {
+      "from": "runtime/bootstrap",
+      "to": "runtime/runtimeService"
+    },
+    {
+      "from": "runtime/bootstrapPlan.test",
+      "to": "runtime/bootstrapPlan"
+    },
+    {
+      "from": "runtime/legacyRuntimeAdapter",
+      "to": "machines/transport.machine"
+    },
+    {
+      "from": "runtime/legacyRuntimeAdapter",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "runtime/legacyRuntimeAdapter",
+      "to": "runtime/runtimeDiagnostics"
+    },
+    {
+      "from": "runtime/legacyRuntimeAdapter",
+      "to": "runtime/runtimeSession"
+    },
+    {
+      "from": "runtime/legacyRuntimeAdapter",
+      "to": "runtime/startupContext"
+    },
+    {
+      "from": "runtime/runtimeDiagnostics",
+      "to": "runtime/runtimeSession"
+    },
+    {
+      "from": "runtime/runtimeService",
+      "to": "contracts/useqRuntimeContract"
+    },
+    {
+      "from": "runtime/runtimeService",
+      "to": "machines/transport.machine"
+    },
+    {
+      "from": "runtime/runtimeService",
+      "to": "runtime/runtimeSessionStore"
+    },
+    {
+      "from": "runtime/runtimeService.test",
+      "to": "runtime/legacyRuntimeAdapter"
+    },
+    {
+      "from": "runtime/runtimeSessionStore",
+      "to": "runtime/runtimeDiagnostics"
+    },
+    {
+      "from": "runtime/urlParams",
+      "to": "lib/debug"
+    },
+    {
+      "from": "runtime/urlParams",
+      "to": "runtime/startupContext"
+    },
+    {
+      "from": "runtime/urlParams",
+      "to": "utils/consoleStore"
+    },
+    {
+      "from": "transport/connector",
+      "to": "lib/debug"
+    },
+    {
+      "from": "transport/connector",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "transport/connector",
+      "to": "runtime/startupContext"
+    },
+    {
+      "from": "transport/connector",
+      "to": "transport/serial-utils"
+    },
+    {
+      "from": "transport/connector",
+      "to": "transport/types"
+    },
+    {
+      "from": "transport/connector",
+      "to": "utils/consoleStore"
+    },
+    {
+      "from": "transport/index",
+      "to": "transport/legacy-text-protocol"
+    },
+    {
+      "from": "transport/json-protocol",
+      "to": "lib/debug"
+    },
+    {
+      "from": "transport/json-protocol",
+      "to": "runtime/startupContext"
+    },
+    {
+      "from": "transport/json-protocol",
+      "to": "transport/stream-parser"
+    },
+    {
+      "from": "transport/json-protocol",
+      "to": "transport/upgradeCheck"
+    },
+    {
+      "from": "transport/json-protocol",
+      "to": "utils/consoleStore"
+    },
+    {
+      "from": "transport/legacy-text-protocol",
+      "to": "lib/debug"
+    },
+    {
+      "from": "transport/legacy-text-protocol",
+      "to": "runtime/startupContext"
+    },
+    {
+      "from": "transport/legacy-text-protocol",
+      "to": "transport/json-protocol"
+    },
+    {
+      "from": "transport/legacy-text-protocol",
+      "to": "transport/serial-utils"
+    },
+    {
+      "from": "transport/legacy-text-protocol",
+      "to": "utils/consoleStore"
+    },
+    {
+      "from": "transport/stream-parser",
+      "to": "legacy/ui/serialVis/visualisationController"
+    },
+    {
+      "from": "transport/stream-parser",
+      "to": "lib/CircularBuffer"
+    },
+    {
+      "from": "transport/stream-parser",
+      "to": "lib/debug"
+    },
+    {
+      "from": "transport/types",
+      "to": "lib/CircularBuffer"
+    },
+    {
+      "from": "transport/types",
+      "to": "runtime/jsonProtocol"
+    },
+    {
+      "from": "transport/upgradeCheck",
+      "to": "lib/debug"
+    },
+    {
+      "from": "transport/upgradeCheck",
+      "to": "utils/consoleStore"
+    },
+    {
+      "from": "ui/DoubleRadialPicker",
+      "to": "ui/RadialMenu"
+    },
+    {
+      "from": "ui/DoubleRadialPicker",
+      "to": "ui/overlayManager"
+    },
+    {
+      "from": "ui/DoubleRadialPicker.stories",
+      "to": "ui/DoubleRadialPicker"
+    },
+    {
+      "from": "ui/DoubleRadialPicker.test",
+      "to": "ui/overlayManager"
+    },
+    {
+      "from": "ui/HierarchicalPickerMenu.stories",
+      "to": "ui/HierarchicalPickerMenu"
+    },
+    {
+      "from": "ui/InternalVis",
+      "to": "utils/visualisationStore"
+    },
+    {
+      "from": "ui/InternalVis.stories",
+      "to": "ui/InternalVis"
+    },
+    {
+      "from": "ui/InternalVis.stories",
+      "to": "utils/visualisationStore"
+    },
+    {
+      "from": "ui/MainToolbar",
+      "to": "effects/editor"
+    },
+    {
+      "from": "ui/MainToolbar",
+      "to": "effects/ui"
+    },
+    {
+      "from": "ui/MainToolbar.stories",
+      "to": "ui/MainToolbar"
+    },
+    {
+      "from": "ui/MainToolbar.test",
+      "to": "ui/MainToolbar"
+    },
+    {
+      "from": "ui/Modal",
+      "to": "ui/overlayManager"
+    },
+    {
+      "from": "ui/Modal",
+      "to": "utils/sanitize"
+    },
+    {
+      "from": "ui/Modal.stories",
+      "to": "ui/Modal"
+    },
+    {
+      "from": "ui/Modal.test",
+      "to": "ui/Modal"
+    },
+    {
+      "from": "ui/Modal.test",
+      "to": "ui/overlayManager"
+    },
+    {
+      "from": "ui/PickerMenu",
+      "to": "ui/overlayManager"
+    },
+    {
+      "from": "ui/PickerMenu.stories",
+      "to": "ui/PickerMenu"
+    },
+    {
+      "from": "ui/PickerMenu.test",
+      "to": "ui/HierarchicalPickerMenu"
+    },
+    {
+      "from": "ui/PickerMenu.test",
+      "to": "ui/PickerMenu"
+    },
+    {
+      "from": "ui/PickerMenu.test",
+      "to": "ui/overlayManager"
+    },
+    {
+      "from": "ui/ProgressBar",
+      "to": "utils/visualisationStore"
+    },
+    {
+      "from": "ui/ProgressBar.stories",
+      "to": "ui/ProgressBar"
+    },
+    {
+      "from": "ui/ProgressBar.test",
+      "to": "ui/ProgressBar"
+    },
+    {
+      "from": "ui/RadialMenu",
+      "to": "utils/geometry"
+    },
+    {
+      "from": "ui/RadialMenu.stories",
+      "to": "ui/RadialMenu"
+    },
+    {
+      "from": "ui/RadialMenu.test",
+      "to": "ui/RadialMenu"
+    },
+    {
+      "from": "ui/SerialVis.stories",
+      "to": "ui/SerialVis"
+    },
+    {
+      "from": "ui/SerialVis.stories",
+      "to": "utils/visualisationStore"
+    },
+    {
+      "from": "ui/Tabs",
+      "to": "lib/typedChannel"
+    },
+    {
+      "from": "ui/Tabs.stories",
+      "to": "ui/Tabs"
+    },
+    {
+      "from": "ui/Tabs.test",
+      "to": "ui/Tabs"
+    },
+    {
+      "from": "ui/TestComponent",
+      "to": "effects/test"
+    },
+    {
+      "from": "ui/TestComponent",
+      "to": "lib/useActorSignal"
+    },
+    {
+      "from": "ui/TestComponent",
+      "to": "machines/test.machine"
+    },
+    {
+      "from": "ui/TestComponent.stories",
+      "to": "ui/TestComponent"
+    },
+    {
+      "from": "ui/TransportToolbar",
+      "to": "effects/transportOrchestrator"
+    },
+    {
+      "from": "ui/TransportToolbar",
+      "to": "lib/useActorSignal"
+    },
+    {
+      "from": "ui/TransportToolbar",
+      "to": "ui/ProgressBar"
+    },
+    {
+      "from": "ui/TransportToolbar.stories",
+      "to": "ui/TransportToolbar"
+    },
+    {
+      "from": "ui/TransportToolbar.test",
+      "to": "effects/transportClock"
+    },
+    {
+      "from": "ui/TransportToolbar.test",
+      "to": "machines/transport.machine"
+    },
+    {
+      "from": "ui/TransportToolbar.test",
+      "to": "ui/TransportToolbar"
+    },
+    {
+      "from": "ui/VisLegend.stories",
+      "to": "ui/VisLegend"
+    },
+    {
+      "from": "ui/adapters/double-radial-menu",
+      "to": "ui/DoubleRadialPicker"
+    },
+    {
+      "from": "ui/adapters/modal",
+      "to": "ui/Modal"
+    },
+    {
+      "from": "ui/adapters/panels",
+      "to": "ui/adapters/panelControls"
+    },
+    {
+      "from": "ui/adapters/panels",
+      "to": "ui/help/HelpPanel"
+    },
+    {
+      "from": "ui/adapters/panels",
+      "to": "ui/overlayManager"
+    },
+    {
+      "from": "ui/adapters/panels",
+      "to": "ui/panel-chrome/DesignSelector"
+    },
+    {
+      "from": "ui/adapters/panels",
+      "to": "ui/panel-chrome/PanelChrome"
+    },
+    {
+      "from": "ui/adapters/panels",
+      "to": "ui/panel-chrome/panel-chrome.css"
+    },
+    {
+      "from": "ui/adapters/panels",
+      "to": "ui/settings/SettingsPanel"
+    },
+    {
+      "from": "ui/adapters/toolbars",
+      "to": "ui/MainToolbar"
+    },
+    {
+      "from": "ui/adapters/toolbars",
+      "to": "ui/TransportToolbar"
+    },
+    {
+      "from": "ui/help/CodeMirrorEditor",
+      "to": "legacy/editors/extensions"
+    },
+    {
+      "from": "ui/help/CodeMirrorEditor",
+      "to": "legacy/editors/themes/themeManager"
+    },
+    {
+      "from": "ui/help/CodeMirrorEditor",
+      "to": "utils/settingsStore"
+    },
+    {
+      "from": "ui/help/CodeMirrorEditor.stories",
+      "to": "ui/help/CodeMirrorEditor"
+    },
+    {
+      "from": "ui/help/CodeSnippetsTab",
+      "to": "ui/help/SnippetItem"
+    },
+    {
+      "from": "ui/help/CodeSnippetsTab",
+      "to": "ui/help/SnippetModal"
+    },
+    {
+      "from": "ui/help/CodeSnippetsTab.stories",
+      "to": "ui/help/CodeSnippetsTab"
+    },
+    {
+      "from": "ui/help/CodeSnippetsTab.stories",
+      "to": "utils/snippetStore"
+    },
+    {
+      "from": "ui/help/ExperienceLevelSelector.stories",
+      "to": "ui/help/ExperienceLevelSelector"
+    },
+    {
+      "from": "ui/help/ExperienceLevelSelector.test",
+      "to": "ui/help/ExperienceLevelSelector"
+    },
+    {
+      "from": "ui/help/HelpPanel",
+      "to": "ui/Tabs"
+    },
+    {
+      "from": "ui/help/HelpPanel",
+      "to": "ui/help/CodeSnippetsTab"
+    },
+    {
+      "from": "ui/help/HelpPanel",
+      "to": "ui/help/KeybindingsTab"
+    },
+    {
+      "from": "ui/help/HelpPanel",
+      "to": "ui/help/ModuLispReferenceTab"
+    },
+    {
+      "from": "ui/help/HelpPanel",
+      "to": "ui/help/UserGuideTab"
+    },
+    {
+      "from": "ui/help/HelpPanel",
+      "to": "ui/help/helpChannels"
+    },
+    {
+      "from": "ui/help/HelpPanel.stories",
+      "to": "ui/help/HelpPanel"
+    },
+    {
+      "from": "ui/help/HelpPanel.test",
+      "to": "ui/help/HelpPanel"
+    },
+    {
+      "from": "ui/help/KeybindingsTab",
+      "to": "utils/settingsStore"
+    },
+    {
+      "from": "ui/help/KeybindingsTab.stories",
+      "to": "ui/help/KeybindingsTab"
+    },
+    {
+      "from": "ui/help/ModuLispReferenceTab",
+      "to": "transport/upgradeCheck"
+    },
+    {
+      "from": "ui/help/ModuLispReferenceTab",
+      "to": "ui/adapters/panelControls"
+    },
+    {
+      "from": "ui/help/ModuLispReferenceTab",
+      "to": "ui/help/ReferenceFilters"
+    },
+    {
+      "from": "ui/help/ModuLispReferenceTab",
+      "to": "ui/help/ReferenceItem"
+    },
+    {
+      "from": "ui/help/ModuLispReferenceTab",
+      "to": "ui/help/helpChannels"
+    },
+    {
+      "from": "ui/help/ModuLispReferenceTab",
+      "to": "ui/help/referenceDataLoader"
+    },
+    {
+      "from": "ui/help/ModuLispReferenceTab.stories",
+      "to": "ui/help/ModuLispReferenceTab"
+    },
+    {
+      "from": "ui/help/ReferenceFilters",
+      "to": "utils/referenceStore"
+    },
+    {
+      "from": "ui/help/ReferenceFilters.stories",
+      "to": "ui/help/ReferenceFilters"
+    },
+    {
+      "from": "ui/help/ReferenceFilters.test",
+      "to": "ui/help/ReferenceFilters"
+    },
+    {
+      "from": "ui/help/ReferenceItem",
+      "to": "ui/help/CodeMirrorEditor"
+    },
+    {
+      "from": "ui/help/ReferenceItem",
+      "to": "utils/sanitize"
+    },
+    {
+      "from": "ui/help/ReferenceItem.stories",
+      "to": "ui/help/ReferenceItem"
+    },
+    {
+      "from": "ui/help/ReferenceItem.stories",
+      "to": "utils/referenceStore"
+    },
+    {
+      "from": "ui/help/SnippetItem",
+      "to": "lib/editorStore"
+    },
+    {
+      "from": "ui/help/SnippetItem",
+      "to": "ui/help/CodeMirrorEditor"
+    },
+    {
+      "from": "ui/help/SnippetItem.stories",
+      "to": "ui/help/SnippetItem"
+    },
+    {
+      "from": "ui/help/SnippetItem.stories",
+      "to": "utils/snippetStore"
+    },
+    {
+      "from": "ui/help/SnippetModal",
+      "to": "lib/editorStore"
+    },
+    {
+      "from": "ui/help/SnippetModal",
+      "to": "ui/help/CodeMirrorEditor"
+    },
+    {
+      "from": "ui/help/SnippetModal",
+      "to": "ui/overlayManager"
+    },
+    {
+      "from": "ui/help/SnippetModal.stories",
+      "to": "ui/help/SnippetModal"
+    },
+    {
+      "from": "ui/help/SnippetModal.stories",
+      "to": "utils/snippetStore"
+    },
+    {
+      "from": "ui/help/SnippetModal.test",
+      "to": "ui/help/SnippetModal"
+    },
+    {
+      "from": "ui/help/SnippetModal.test",
+      "to": "ui/overlayManager"
+    },
+    {
+      "from": "ui/help/UserGuideContent",
+      "to": "ui/help/CodeMirrorEditor"
+    },
+    {
+      "from": "ui/help/UserGuideContent",
+      "to": "utils/sanitize"
+    },
+    {
+      "from": "ui/help/UserGuideContent.stories",
+      "to": "ui/help/UserGuideContent"
+    },
+    {
+      "from": "ui/help/UserGuideTab",
+      "to": "ui/help/ExperienceLevelSelector"
+    },
+    {
+      "from": "ui/help/UserGuideTab",
+      "to": "ui/help/UserGuideContent"
+    },
+    {
+      "from": "ui/help/UserGuideTab.stories",
+      "to": "ui/help/UserGuideTab"
+    },
+    {
+      "from": "ui/help/helpChannels",
+      "to": "lib/typedChannel"
+    },
+    {
+      "from": "ui/panel-chrome/DesignSelector",
+      "to": "ui/panel-chrome/types"
+    },
+    {
+      "from": "ui/panel-chrome/DrawerChrome",
+      "to": "ui/panel-chrome/types"
+    },
+    {
+      "from": "ui/panel-chrome/DrawerChrome",
+      "to": "ui/panel-chrome/usePointerDrag"
+    },
+    {
+      "from": "ui/panel-chrome/PaneChrome",
+      "to": "ui/panel-chrome/types"
+    },
+    {
+      "from": "ui/panel-chrome/PaneChrome",
+      "to": "ui/panel-chrome/usePointerDrag"
+    },
+    {
+      "from": "ui/panel-chrome/PanelChrome",
+      "to": "ui/panel-chrome/DesignSelector"
+    },
+    {
+      "from": "ui/panel-chrome/PanelChrome",
+      "to": "ui/panel-chrome/DrawerChrome"
+    },
+    {
+      "from": "ui/panel-chrome/PanelChrome",
+      "to": "ui/panel-chrome/PaneChrome"
+    },
+    {
+      "from": "ui/panel-chrome/PanelChrome",
+      "to": "ui/panel-chrome/TileChrome"
+    },
+    {
+      "from": "ui/panel-chrome/PanelChrome",
+      "to": "ui/panel-chrome/types"
+    },
+    {
+      "from": "ui/panel-chrome/TileChrome",
+      "to": "ui/panel-chrome/types"
+    },
+    {
+      "from": "ui/settings/AdvancedSettings",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/AdvancedSettings",
+      "to": "utils/settingsStore"
+    },
+    {
+      "from": "ui/settings/AdvancedSettings.test",
+      "to": "ui/settings/AdvancedSettings"
+    },
+    {
+      "from": "ui/settings/Checkbox.stories",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/ConfigurationManagement",
+      "to": "runtime/startupContext"
+    },
+    {
+      "from": "ui/settings/ConfigurationManagement",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/ConfigurationManagement.stories",
+      "to": "ui/settings/ConfigurationManagement"
+    },
+    {
+      "from": "ui/settings/ConfigurationManagement.test",
+      "to": "ui/settings/ConfigurationManagement"
+    },
+    {
+      "from": "ui/settings/EditorSettings",
+      "to": "legacy/editors/themes/themeManager"
+    },
+    {
+      "from": "ui/settings/EditorSettings",
+      "to": "lib/editorStore"
+    },
+    {
+      "from": "ui/settings/EditorSettings",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/EditorSettings",
+      "to": "utils/settingsStore"
+    },
+    {
+      "from": "ui/settings/EditorSettings.stories",
+      "to": "ui/settings/EditorSettings"
+    },
+    {
+      "from": "ui/settings/GeneralSettings",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "ui/settings/GeneralSettings",
+      "to": "ui/settings/AdvancedSettings"
+    },
+    {
+      "from": "ui/settings/GeneralSettings",
+      "to": "ui/settings/ConfigurationManagement"
+    },
+    {
+      "from": "ui/settings/GeneralSettings",
+      "to": "ui/settings/EditorSettings"
+    },
+    {
+      "from": "ui/settings/GeneralSettings",
+      "to": "ui/settings/PersonalSettings"
+    },
+    {
+      "from": "ui/settings/GeneralSettings",
+      "to": "ui/settings/StorageSettings"
+    },
+    {
+      "from": "ui/settings/GeneralSettings",
+      "to": "ui/settings/UISettings"
+    },
+    {
+      "from": "ui/settings/GeneralSettings",
+      "to": "ui/settings/VisualisationSettings"
+    },
+    {
+      "from": "ui/settings/GeneralSettings.stories",
+      "to": "ui/settings/GeneralSettings"
+    },
+    {
+      "from": "ui/settings/NumberInput.stories",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/PersonalSettings",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/PersonalSettings",
+      "to": "utils/settingsStore"
+    },
+    {
+      "from": "ui/settings/PersonalSettings.stories",
+      "to": "ui/settings/PersonalSettings"
+    },
+    {
+      "from": "ui/settings/RangeInput.stories",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/Select.stories",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/SettingsPanel",
+      "to": "ui/Tabs"
+    },
+    {
+      "from": "ui/settings/SettingsPanel",
+      "to": "ui/settings/GeneralSettings"
+    },
+    {
+      "from": "ui/settings/SettingsPanel",
+      "to": "ui/settings/ThemeSettings"
+    },
+    {
+      "from": "ui/settings/SettingsPanel.stories",
+      "to": "ui/settings/SettingsPanel"
+    },
+    {
+      "from": "ui/settings/SettingsPanel.test",
+      "to": "ui/settings/SettingsPanel"
+    },
+    {
+      "from": "ui/settings/StorageSettings",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/StorageSettings",
+      "to": "utils/settingsStore"
+    },
+    {
+      "from": "ui/settings/StorageSettings.stories",
+      "to": "ui/settings/StorageSettings"
+    },
+    {
+      "from": "ui/settings/TextInput.stories",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/ThemeSettings",
+      "to": "legacy/editors/themes/themeManager"
+    },
+    {
+      "from": "ui/settings/ThemeSettings",
+      "to": "lib/editorDefaults"
+    },
+    {
+      "from": "ui/settings/ThemeSettings",
+      "to": "ui/adapters/panelControls"
+    },
+    {
+      "from": "ui/settings/ThemeSettings",
+      "to": "utils/settingsStore"
+    },
+    {
+      "from": "ui/settings/ThemeSettings.stories",
+      "to": "ui/settings/ThemeSettings"
+    },
+    {
+      "from": "ui/settings/UISettings",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/UISettings",
+      "to": "utils/settingsStore"
+    },
+    {
+      "from": "ui/settings/UISettings.stories",
+      "to": "ui/settings/UISettings"
+    },
+    {
+      "from": "ui/settings/VisualisationSettings",
+      "to": "legacy/ui/serialVis/utils"
+    },
+    {
+      "from": "ui/settings/VisualisationSettings",
+      "to": "lib/appSettings"
+    },
+    {
+      "from": "ui/settings/VisualisationSettings",
+      "to": "ui/settings/FormControls"
+    },
+    {
+      "from": "ui/settings/VisualisationSettings",
+      "to": "utils/settingsStore"
+    },
+    {
+      "from": "ui/settings/VisualisationSettings.stories",
+      "to": "ui/settings/VisualisationSettings"
+    },
+    {
+      "from": "ui/settings/VisualisationSettings.test",
+      "to": "ui/settings/VisualisationSettings"
+    },
+    {
+      "from": "utils/consoleStore",
+      "to": "runtime/appSettingsRepository"
+    },
+    {
+      "from": "utils/geometry.test",
+      "to": "utils/geometry"
+    },
+    {
+      "from": "utils/sanitize.test",
+      "to": "utils/sanitize"
+    },
+    {
+      "from": "utils/settingsStore",
+      "to": "lib/appSettings"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 import { Section, FormRow, Select, NumberInput, Checkbox } from "./FormControls";
-import { themes, setMainEditorTheme } from "../../legacy/editors/themes/themeManager.ts";
+import { themes, setMainEditorTheme } from "../../editors/themes.ts";
 import { editor, applyEditorFontSize } from "../../lib/editorStore";
 
 export function EditorSettings() {

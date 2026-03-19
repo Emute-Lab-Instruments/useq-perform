@@ -3,7 +3,7 @@ import { EditorView, drawSelection } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
 import { bracketMatching } from "@codemirror/language";
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
-import { themes, setMainEditorTheme } from "../../legacy/editors/themes/themeManager.ts";
+import { themes, setMainEditorTheme } from "../../editors/themes.ts";
 import { defaultThemeEditorStartingCode } from "../../lib/editorDefaults.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
 import { hideChromePanel } from "../adapters/panelControls";

@@ -1,0 +1,1 @@
+Using the implementation that's been sketched out in #file:pickerMenu.mjs , can you flesh out the menu picker functionality and entries that I've sketched out here? Ignore the "functionalities to implement" comment for now.

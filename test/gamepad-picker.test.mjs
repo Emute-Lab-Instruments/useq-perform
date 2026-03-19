@@ -1,10 +1,10 @@
 import { expect } from 'chai';
 import './setup.mjs';
 
-import { createEditor } from '../src/legacy/editors/main.ts';
-import { createGamepadController } from '../src/legacy/editors/gamepadControl.ts';
+import { createEditor } from '../src/lib/editorStore.ts';
+import { createGamepadController } from '../src/editors/gamepadControl.ts';
 import { updateAppSettings } from '../src/runtime/appSettingsRepository.ts';
-import { buildHierarchicalMenuModel } from '../src/legacy/ui/pickers/menuData.ts';
+import { buildHierarchicalMenuModel } from '../src/lib/pickerMenuModel.ts';
 
 // Helper to flush microtasks/timeouts
 function tick(ms = 0) {

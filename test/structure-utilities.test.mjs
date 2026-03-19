@@ -1,6 +1,6 @@
 import './setup.mjs';
 import { strict as assert } from 'assert';
-import { createStructuralEditor, findNodeAt, isStructuralToken, isContainerNode } from '../src/legacy/editors/extensions/structure/new-structure.ts';
+import { createStructuralEditor, findNodeAt, isStructuralToken, isContainerNode } from '../src/editors/extensions/structure/new-structure.ts';
 
 describe('Structure Utilities (new-structure)', () => {
   it('identifies structural token nodes', () => {

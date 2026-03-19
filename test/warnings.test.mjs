@@ -1,6 +1,6 @@
 import './setup.mjs';
 import { expect } from 'chai';
-import { createApp } from '../src/legacy/app/application.ts';
+import { createApp } from '../src/runtime/appLifecycle.ts';
 import { resolveBootstrapPlan } from '../src/runtime/bootstrapPlan.ts';
 
 var defaultEnvironmentState = {

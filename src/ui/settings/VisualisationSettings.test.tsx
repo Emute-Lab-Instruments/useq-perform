@@ -22,7 +22,7 @@ vi.mock("../../utils/settingsStore", () => ({
   updateSettingsStore,
 }));
 
-vi.mock("../../legacy/ui/serialVis/utils.ts", () => ({
+vi.mock("../../lib/visualisationUtils.ts", () => ({
   serialVisChannels: ["a1", "a2", "a3"],
 }));
 
