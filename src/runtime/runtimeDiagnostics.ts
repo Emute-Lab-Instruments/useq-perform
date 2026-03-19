@@ -1,9 +1,8 @@
 import type { RuntimeSessionSnapshot } from "./runtimeSession";
 import {
-  BOOTSTRAP_FAILURE_EVENT,
-  dispatchRuntimeEvent,
-  RUNTIME_DIAGNOSTICS_EVENT,
-} from "../contracts/runtimeEvents";
+  runtimeDiagnostics as runtimeDiagnosticsChannel,
+  bootstrapFailure as bootstrapFailureChannel,
+} from "../contracts/runtimeChannels";
 
 export type RuntimeProtocolMode = "legacy" | "json";
 export type RuntimeSettingsSource =
@@ -73,11 +72,12 @@ let currentDiagnostics: RuntimeDiagnosticsSnapshot = {
   bootstrapFailures: [],
 };
 
-function emitDiagnosticsEvent(
-  name: typeof RUNTIME_DIAGNOSTICS_EVENT | typeof BOOTSTRAP_FAILURE_EVENT,
-  detail: RuntimeDiagnosticsSnapshot | RuntimeBootstrapFailure
-): void {
-  dispatchRuntimeEvent(name, detail as never);
+function emitDiagnosticsSnapshot(snapshot: RuntimeDiagnosticsSnapshot): void {
+  runtimeDiagnosticsChannel.publish(snapshot);
+}
+
+function emitBootstrapFailure(failure: RuntimeBootstrapFailure): void {
+  bootstrapFailureChannel.publish(failure);
 }
 
 export function getRuntimeDiagnostics(): RuntimeDiagnosticsSnapshot {
@@ -110,7 +110,7 @@ export function publishRuntimeDiagnostics(
       : [...currentDiagnostics.bootstrapFailures],
   };
 
-  emitDiagnosticsEvent(RUNTIME_DIAGNOSTICS_EVENT, getRuntimeDiagnostics());
+  emitDiagnosticsSnapshot(getRuntimeDiagnostics());
   return getRuntimeDiagnostics();
 }
 
@@ -128,8 +128,8 @@ export function reportBootstrapFailure(
     bootstrapFailures: [...currentDiagnostics.bootstrapFailures, failure],
   };
 
-  emitDiagnosticsEvent(BOOTSTRAP_FAILURE_EVENT, failure);
-  emitDiagnosticsEvent(RUNTIME_DIAGNOSTICS_EVENT, getRuntimeDiagnostics());
+  emitBootstrapFailure(failure);
+  emitDiagnosticsSnapshot(getRuntimeDiagnostics());
   return failure;
 }
 

@@ -1,16 +1,16 @@
 export interface StartupFlags {
-  debug: boolean;
-  devmode: boolean;
-  disableWebSerial: boolean;
-  noModuleMode: boolean;
-  nosave: boolean;
-  params: Record<string, string>;
+  readonly debug: boolean;
+  readonly devmode: boolean;
+  readonly disableWebSerial: boolean;
+  readonly noModuleMode: boolean;
+  readonly nosave: boolean;
+  readonly params: Readonly<Record<string, string>>;
 }
 
 export interface EnvironmentCapabilities {
-  areInBrowser: boolean;
-  areInDesktopApp: boolean;
-  isWebSerialAvailable: boolean;
+  readonly areInBrowser: boolean;
+  readonly areInDesktopApp: boolean;
+  readonly isWebSerialAvailable: boolean;
 }
 
 const DEFAULT_STARTUP_FLAGS: StartupFlags = {
@@ -37,6 +37,17 @@ let currentEnvironmentCapabilities: EnvironmentCapabilities = {
   ...DEFAULT_ENVIRONMENT_CAPABILITIES,
 };
 
+/** True once applyStartupContext() has been called. */
+let frozen = false;
+
+function assertNotFrozen(caller: string): void {
+  if (frozen) {
+    throw new Error(
+      `startupContext is frozen: ${caller}() cannot be called after bootstrap`,
+    );
+  }
+}
+
 function cloneStartupFlags(flags: StartupFlags): StartupFlags {
   return {
     ...flags,
@@ -45,6 +56,7 @@ function cloneStartupFlags(flags: StartupFlags): StartupFlags {
 }
 
 export function setStartupFlags(flags: StartupFlags): StartupFlags {
+  assertNotFrozen("setStartupFlags");
   currentStartupFlags = cloneStartupFlags(flags);
   return getStartupFlagsSnapshot();
 }
@@ -56,6 +68,7 @@ export function getStartupFlagsSnapshot(): StartupFlags {
 export function setEnvironmentCapabilities(
   capabilities: EnvironmentCapabilities,
 ): EnvironmentCapabilities {
+  assertNotFrozen("setEnvironmentCapabilities");
   currentEnvironmentCapabilities = { ...capabilities };
   return getEnvironmentCapabilitiesSnapshot();
 }
@@ -68,15 +81,67 @@ export function applyStartupContext(input: {
   startupFlags: StartupFlags;
   capabilities: EnvironmentCapabilities;
 }): void {
-  setStartupFlags(input.startupFlags);
-  setEnvironmentCapabilities(input.capabilities);
+  assertNotFrozen("applyStartupContext");
+  currentStartupFlags = Object.freeze(cloneStartupFlags(input.startupFlags));
+  currentEnvironmentCapabilities = Object.freeze({ ...input.capabilities });
+  frozen = true;
+}
+
+export function isStartupContextFrozen(): boolean {
+  return frozen;
 }
 
 export function isLocalStorageBypassedInStartupContext(): boolean {
   return currentStartupFlags.nosave;
 }
 
+/**
+ * Test-only: temporarily unfreeze the context, run a callback, then re-freeze.
+ * Replaces the old `resetStartupContextForTests()` pattern.
+ */
+export function withStartupContextOverride<T>(
+  override: {
+    startupFlags?: Partial<StartupFlags>;
+    capabilities?: Partial<EnvironmentCapabilities>;
+  },
+  fn: () => T,
+): T {
+  const prevFlags = currentStartupFlags;
+  const prevCaps = currentEnvironmentCapabilities;
+  const wasFrozen = frozen;
+
+  frozen = false;
+  currentStartupFlags = Object.freeze(
+    cloneStartupFlags({
+      ...DEFAULT_STARTUP_FLAGS,
+      ...override.startupFlags,
+      params: {
+        ...DEFAULT_STARTUP_FLAGS.params,
+        ...(override.startupFlags?.params ?? {}),
+      },
+    }),
+  );
+  currentEnvironmentCapabilities = Object.freeze({
+    ...DEFAULT_ENVIRONMENT_CAPABILITIES,
+    ...override.capabilities,
+  });
+  frozen = true;
+
+  try {
+    return fn();
+  } finally {
+    currentStartupFlags = prevFlags;
+    currentEnvironmentCapabilities = prevCaps;
+    frozen = wasFrozen;
+  }
+}
+
+/**
+ * Test-only: reset the context to defaults and unfreeze it so
+ * setStartupFlags / applyStartupContext can be called again.
+ */
 export function resetStartupContextForTests(): void {
+  frozen = false;
   currentStartupFlags = cloneStartupFlags(DEFAULT_STARTUP_FLAGS);
   currentEnvironmentCapabilities = { ...DEFAULT_ENVIRONMENT_CAPABILITIES };
 }
@@ -91,7 +156,7 @@ export interface EnvironmentState extends EnvironmentCapabilities {
   isInDevmode: boolean;
   startupFlags: StartupFlags;
   userSettings: AppSettings;
-  urlParams: Record<string, string>;
+  urlParams: Readonly<Record<string, string>>;
 }
 
 export async function examineEnvironment(
@@ -100,7 +165,7 @@ export async function examineEnvironment(
   const startupFlags = getStartupFlags();
 
   // Desktop/Electron runtime support is out of scope for the reset.
-  const areInBrowser = typeof window !== 'undefined' && window.navigator;
+  const areInBrowser = typeof window !== 'undefined' && !!window.navigator;
   const areInDesktopApp = false;
 
   // Check for Web Serial API support (can be disabled via URL parameter).

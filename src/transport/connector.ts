@@ -15,10 +15,9 @@ import {
   announceRuntimeSession as announceFromService,
 } from "../runtime/runtimeService.ts";
 import {
-  ANIMATE_CONNECT_EVENT,
-  DEVICE_PLUGGED_IN_EVENT,
-  dispatchRuntimeEvent,
-} from "../contracts/runtimeEvents.ts";
+  animateConnect as animateConnectChannel,
+  devicePluggedIn as devicePluggedInChannel,
+} from "../contracts/runtimeChannels";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 
 import type { CaptureCallback, SerialVars } from "./types.ts";
@@ -296,7 +295,7 @@ export function checkForWebserialSupport(): boolean {
     // Only react if the connected port matches the one we're tracking
     if (savedPort && connectedPort === savedPort) {
       try {
-        dispatchRuntimeEvent(DEVICE_PLUGGED_IN_EVENT, undefined);
+        devicePluggedInChannel.publish(undefined);
       } catch (_e) {
         // no-op
       }

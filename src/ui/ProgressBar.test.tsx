@@ -1,9 +1,8 @@
 import { render } from "@solidjs/testing-library";
 import { describe, it, expect } from "vitest";
 import {
-  VISUALISATION_SESSION_EVENT,
-  dispatchVisualisationEvent,
-} from "../contracts/visualisationEvents";
+  visualisationSessionChannel,
+} from "../contracts/visualisationChannels";
 import { ProgressBar } from "./ProgressBar";
 
 describe("ProgressBar", () => {
@@ -29,7 +28,7 @@ describe("ProgressBar", () => {
       "#toolbar-bar-progress"
     ) as HTMLElement;
 
-    dispatchVisualisationEvent(VISUALISATION_SESSION_EVENT, { bar: 0.75 });
+    visualisationSessionChannel.publish({ bar: 0.75 });
 
     // SolidJS updates are synchronous
     expect(inner.style.transform).toBe("scaleX(0.75)");
@@ -41,10 +40,10 @@ describe("ProgressBar", () => {
       "#toolbar-bar-progress"
     ) as HTMLElement;
 
-    dispatchVisualisationEvent(VISUALISATION_SESSION_EVENT, { bar: 1.5 });
+    visualisationSessionChannel.publish({ bar: 1.5 });
     expect(inner.style.transform).toBe("scaleX(1)");
 
-    dispatchVisualisationEvent(VISUALISATION_SESSION_EVENT, { bar: -0.5 });
+    visualisationSessionChannel.publish({ bar: -0.5 });
     expect(inner.style.transform).toBe("scaleX(0)");
   });
 

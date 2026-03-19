@@ -1,35 +1,26 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  SERIAL_VIS_AUTO_OPEN_EVENT,
-  SERIAL_VIS_PALETTE_CHANGED_EVENT,
-  VISUALISATION_EVENT_NAMES,
-  VISUALISATION_SESSION_EVENT,
-  addVisualisationEventListener,
-  assertVisualisationEventContract,
-  dispatchVisualisationEvent,
-} from "./visualisationEvents";
+  visualisationSessionChannel,
+  serialVisPaletteChangedChannel,
+  serialVisAutoOpenChannel,
+} from "./visualisationChannels";
 
-describe("visualisationEvents", () => {
-  it("keeps visualisation event names unique", () => {
-    expect(new Set(VISUALISATION_EVENT_NAMES).size).toBe(VISUALISATION_EVENT_NAMES.length);
-    expect(() => assertVisualisationEventContract()).not.toThrow();
-  });
+describe("visualisationChannels", () => {
+  it("delivers typed payloads to subscribers and supports unsubscribe", () => {
+    const events: Array<{ channel: string; detail: unknown }> = [];
 
-  it("dispatches typed visualisation events with the expected detail", () => {
-    const events: Array<{ type: string; detail: unknown }> = [];
-
-    addVisualisationEventListener(VISUALISATION_SESSION_EVENT, (detail) => {
-      events.push({ type: VISUALISATION_SESSION_EVENT, detail });
+    const unsubSession = visualisationSessionChannel.subscribe((detail) => {
+      events.push({ channel: "session", detail });
     });
-    addVisualisationEventListener(SERIAL_VIS_PALETTE_CHANGED_EVENT, (detail) => {
-      events.push({ type: SERIAL_VIS_PALETTE_CHANGED_EVENT, detail });
+    const unsubPalette = serialVisPaletteChangedChannel.subscribe((detail) => {
+      events.push({ channel: "palette", detail });
     });
-    addVisualisationEventListener(SERIAL_VIS_AUTO_OPEN_EVENT, (detail) => {
-      events.push({ type: SERIAL_VIS_AUTO_OPEN_EVENT, detail });
+    const unsubAutoOpen = serialVisAutoOpenChannel.subscribe((detail) => {
+      events.push({ channel: "autoOpen", detail });
     });
 
-    dispatchVisualisationEvent(VISUALISATION_SESSION_EVENT, {
+    visualisationSessionChannel.publish({
       kind: "data",
       bar: 0.25,
       expressions: {
@@ -41,24 +32,32 @@ describe("visualisationEvents", () => {
         },
       },
     });
-    dispatchVisualisationEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, {
+    serialVisPaletteChangedChannel.publish({
       palette: ["#111111", "#222222"],
     });
-    dispatchVisualisationEvent(SERIAL_VIS_AUTO_OPEN_EVENT, undefined);
+    serialVisAutoOpenChannel.publish(undefined);
 
     expect(events).toEqual([
       {
-        type: VISUALISATION_SESSION_EVENT,
+        channel: "session",
         detail: expect.objectContaining({ kind: "data", bar: 0.25 }),
       },
       {
-        type: SERIAL_VIS_PALETTE_CHANGED_EVENT,
+        channel: "palette",
         detail: { palette: ["#111111", "#222222"] },
       },
       {
-        type: SERIAL_VIS_AUTO_OPEN_EVENT,
-        detail: null,
+        channel: "autoOpen",
+        detail: undefined,
       },
     ]);
+
+    // Verify unsubscribe works
+    unsubSession();
+    unsubPalette();
+    unsubAutoOpen();
+
+    visualisationSessionChannel.publish({ kind: "after-unsub" });
+    expect(events).toHaveLength(3); // no new events
   });
 });

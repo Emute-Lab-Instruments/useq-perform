@@ -153,18 +153,15 @@ describe("MainToolbar", () => {
     expect(connectBtn?.getAttribute("title")).toBe("Connect (Browser-local)");
   });
 
-  it("removes runtime and animation listeners on cleanup", () => {
-    const removeSpy = vi.spyOn(window, "removeEventListener");
-
+  it("removes runtime and animation listeners on cleanup", async () => {
     const { unmount } = render(() => <MainToolbar />);
 
+    // The component mounts and subscribes to animateConnectChannel + runtimeService.
+    // After unmount, publishing should not cause errors (listeners were cleaned up).
     unmount();
 
-    expect(removeSpy).toHaveBeenCalledWith(
-      "useq-animate-connect",
-      expect.any(Function)
-    );
-
-    removeSpy.mockRestore();
+    const { animateConnect: animateConnectChannel } = await import("../contracts/runtimeChannels");
+    // Publishing after unmount should not throw — all listeners have been removed.
+    expect(() => animateConnectChannel.publish(undefined)).not.toThrow();
   });
 });

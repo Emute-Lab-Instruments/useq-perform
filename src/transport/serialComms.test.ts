@@ -213,7 +213,9 @@ class FakeSerialPort {
 
 async function loadSerialComms() {
   vi.resetModules();
-  return import("./index.ts");
+  const serialComms = await import("./index.ts");
+  const channels = await import("../contracts/runtimeChannels");
+  return { ...serialComms, channels };
 }
 
 async function flushProtocolWork(): Promise<void> {
@@ -267,16 +269,16 @@ describe("serialComms fake host harness", () => {
   });
 
   it("proves connect -> firmware info -> hello -> stream-config -> meta/time routing -> disconnect", async () => {
-    const serialComms = await loadSerialComms();
+    const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
     const protocolEvents: Array<Record<string, unknown>> = [];
     const metaEvents: Array<Record<string, unknown>> = [];
 
-    window.addEventListener(PROTOCOL_READY_EVENT, (event) => {
-      protocolEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
+    channels.protocolReady.subscribe((detail) => {
+      protocolEvents.push(detail as Record<string, unknown>);
     });
-    window.addEventListener(JSON_META_EVENT, (event) => {
-      metaEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
+    channels.jsonMeta.subscribe((detail) => {
+      metaEvents.push(detail as Record<string, unknown>);
     });
 
     const connectPromise = serialComms.connectToSerialPort(
@@ -361,13 +363,13 @@ describe("serialComms fake host harness", () => {
   });
 
   it("falls back to legacy mode when hello negotiation times out", async () => {
-    const serialComms = await loadSerialComms();
+    const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
     port.disableResponses.add("hello");
 
     const protocolEvents: Array<Record<string, unknown>> = [];
-    window.addEventListener(PROTOCOL_READY_EVENT, (event) => {
-      protocolEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
+    channels.protocolReady.subscribe((detail) => {
+      protocolEvents.push(detail as Record<string, unknown>);
     });
 
     const connectPromise = serialComms.connectToSerialPort(
@@ -495,12 +497,12 @@ describe("serialComms fake host harness", () => {
   // ── partial message chunking ──────────────────────────────────────
 
   it("reassembles a JSON message split across two chunks", async () => {
-    const serialComms = await loadSerialComms();
+    const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
     const metaEvents: Array<Record<string, unknown>> = [];
 
-    window.addEventListener(JSON_META_EVENT, (event) => {
-      metaEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
+    channels.jsonMeta.subscribe((detail) => {
+      metaEvents.push(detail as Record<string, unknown>);
     });
 
     const connectPromise = serialComms.connectToSerialPort(
@@ -574,12 +576,12 @@ describe("serialComms fake host harness", () => {
   });
 
   it("handles two complete messages concatenated in a single chunk", async () => {
-    const serialComms = await loadSerialComms();
+    const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
     const metaEvents: Array<Record<string, unknown>> = [];
 
-    window.addEventListener(JSON_META_EVENT, (event) => {
-      metaEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
+    channels.jsonMeta.subscribe((detail) => {
+      metaEvents.push(detail as Record<string, unknown>);
     });
 
     const connectPromise = serialComms.connectToSerialPort(
@@ -609,12 +611,12 @@ describe("serialComms fake host harness", () => {
   // ── malformed JSON resilience ─────────────────────────────────────
 
   it("survives malformed JSON without crashing and continues processing", async () => {
-    const serialComms = await loadSerialComms();
+    const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
     const metaEvents: Array<Record<string, unknown>> = [];
 
-    window.addEventListener(JSON_META_EVENT, (event) => {
-      metaEvents.push((event as CustomEvent<Record<string, unknown>>).detail);
+    channels.jsonMeta.subscribe((detail) => {
+      metaEvents.push(detail as Record<string, unknown>);
     });
 
     const connectPromise = serialComms.connectToSerialPort(

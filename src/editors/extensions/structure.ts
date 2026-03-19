@@ -9,9 +9,8 @@ import { findNodeAt, navigationMetaField, navigationMetaEffect, navigateIn, navi
 import { EditorView, Decoration, ViewPlugin, gutter, GutterMarker } from "@codemirror/view";
 import { getSerialVisPalette, getSerialVisChannelColor } from "../../lib/visualisationUtils.ts";
 import {
-  VISUALISATION_SESSION_EVENT,
-  addVisualisationEventListener,
-} from "../../contracts/visualisationEvents";
+  visualisationSessionChannel,
+} from "../../contracts/visualisationChannels";
 import { showVisualisationPanel } from "../../ui/adapters/visualisationPanel";
 
 // Re-export navigation functions for backward compatibility
@@ -739,8 +738,7 @@ const expressionClearClickPlugin = ViewPlugin.fromClass(class {
     this.removeSettingsListener = () => undefined;
     view.dom.addEventListener('click', this.onClick);
     this.removeSettingsListener = subscribeAppSettings(() => this.onSettingsChange());
-    this.removeVisualisationListener = addVisualisationEventListener(
-      VISUALISATION_SESSION_EVENT,
+    this.removeVisualisationListener = visualisationSessionChannel.subscribe(
       () => this.onVisualisationChange()
     );
   }

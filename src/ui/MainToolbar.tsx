@@ -2,10 +2,7 @@ import { createSignal, onMount, onCleanup } from "solid-js";
 import { Effect } from "effect";
 import { toggleConnection, toggleGraph, togglePanel } from "../effects/ui";
 import { adjustFontSize, loadCode, saveCode } from "../effects/editor";
-import {
-  addRuntimeEventListener,
-  ANIMATE_CONNECT_EVENT,
-} from "../contracts/runtimeEvents";
+import { animateConnect as animateConnectChannel } from "../contracts/runtimeChannels";
 import {
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
@@ -37,8 +34,7 @@ export function MainToolbar() {
     const unsubscribeRuntime = subscribeRuntimeService((nextState) => {
       setRuntimeState(nextState);
     });
-    const removeAnimateListener = addRuntimeEventListener(
-      ANIMATE_CONNECT_EVENT,
+    const removeAnimateListener = animateConnectChannel.subscribe(
       () => handleAnimateConnect()
     );
 

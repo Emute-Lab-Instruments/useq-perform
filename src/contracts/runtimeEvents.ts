@@ -1,9 +1,20 @@
+// src/contracts/runtimeEvents.ts
+//
+// Type definitions and event name constants for runtime events.
+// The CustomEvent dispatch/listen infrastructure has been removed.
+// Runtime events are now communicated through typed channels in
+// src/contracts/runtimeChannels.ts.
+//
+// Event name constants are retained for documentation and test references.
+
 import type {
   RuntimeBootstrapFailure,
   RuntimeDiagnosticsSnapshot,
   RuntimeProtocolMode,
 } from "../runtime/runtimeDiagnostics";
 import type { RuntimeSessionSnapshot } from "../runtime/runtimeSession";
+
+// ── Event name constants (documentation only) ───────────────────
 
 export const CONNECTION_CHANGED_EVENT = "useq-connection-changed";
 export const PROTOCOL_READY_EVENT = "useq-protocol-ready";
@@ -13,6 +24,8 @@ export const BOOTSTRAP_FAILURE_EVENT = "useq-bootstrap-failure";
 export const CODE_EVALUATED_EVENT = "useq-code-evaluated";
 export const ANIMATE_CONNECT_EVENT = "useq-animate-connect";
 export const DEVICE_PLUGGED_IN_EVENT = "useq-device-plugged-in";
+
+// ── Payload types ───────────────────────────────────────────────
 
 export interface ConnectionChangedDetail extends RuntimeSessionSnapshot {
   connected: boolean;
@@ -45,6 +58,8 @@ export interface CodeEvaluatedDetail {
 export type AnimateConnectDetail = undefined;
 export type DevicePluggedInDetail = undefined;
 
+// ── Detail map (kept for type-level reference) ──────────────────
+
 export interface RuntimeEventDetailMap {
   [CONNECTION_CHANGED_EVENT]: ConnectionChangedDetail;
   [PROTOCOL_READY_EVENT]: ProtocolReadyDetail;
@@ -69,76 +84,12 @@ export const RUNTIME_EVENT_NAMES = Object.freeze([
   DEVICE_PLUGGED_IN_EVENT,
 ] as const satisfies readonly RuntimeEventName[]);
 
-function getCustomEventConstructor():
-  | (new <T>(type: string, eventInitDict?: CustomEventInit<T>) => CustomEvent<T>)
-  | null {
-  if (typeof window !== "undefined" && typeof window.CustomEvent === "function") {
-    return window.CustomEvent;
-  }
-
-  if (typeof globalThis.CustomEvent === "function") {
-    return globalThis.CustomEvent;
-  }
-
-  return null;
-}
+// ── Contract assertion ──────────────────────────────────────────
 
 export function assertRuntimeEventContract(): void {
   if (new Set(RUNTIME_EVENT_NAMES).size !== RUNTIME_EVENT_NAMES.length) {
     throw new Error("Runtime event names must be unique");
   }
-}
-
-export function dispatchRuntimeEvent<Name extends RuntimeEventName>(
-  name: Name,
-  detail: RuntimeEventDetailMap[Name],
-  target:
-    | Pick<Window, "dispatchEvent">
-    | undefined = typeof window !== "undefined" ? window : undefined
-): boolean {
-  if (!target || typeof target.dispatchEvent !== "function") {
-    return false;
-  }
-
-  const EventCtor = getCustomEventConstructor();
-  if (!EventCtor) {
-    return false;
-  }
-
-  return target.dispatchEvent(new EventCtor(name, { detail }));
-}
-
-export function readRuntimeEventDetail<Name extends RuntimeEventName>(
-  event: Event
-): RuntimeEventDetailMap[Name] {
-  return (event as CustomEvent<RuntimeEventDetailMap[Name]>).detail;
-}
-
-export function addRuntimeEventListener<Name extends RuntimeEventName>(
-  name: Name,
-  listener: (
-    detail: RuntimeEventDetailMap[Name],
-    event: CustomEvent<RuntimeEventDetailMap[Name]>
-  ) => void,
-  target:
-    | Pick<Window, "addEventListener" | "removeEventListener">
-    | undefined = typeof window !== "undefined" ? window : undefined
-): () => void {
-  if (!target) {
-    return () => undefined;
-  }
-
-  const wrapped = (event: Event): void => {
-    listener(
-      readRuntimeEventDetail<Name>(event),
-      event as CustomEvent<RuntimeEventDetailMap[Name]>
-    );
-  };
-
-  target.addEventListener(name, wrapped as EventListener);
-  return () => {
-    target.removeEventListener(name, wrapped as EventListener);
-  };
 }
 
 assertRuntimeEventContract();

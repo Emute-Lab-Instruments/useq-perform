@@ -1,10 +1,7 @@
 import { dbg } from "../lib/debug.ts";
 import { getAppSettings } from "./appSettingsRepository.ts";
 import { TRANSPORT_STATE_TO_COMMAND } from "../contracts/useqRuntimeContract";
-import {
-  CODE_EVALUATED_EVENT,
-  dispatchRuntimeEvent,
-} from "../contracts/runtimeEvents";
+import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
 import {
   assertWasmAbi,
   REQUIRED_WASM_EXPORTS,
@@ -458,12 +455,10 @@ export async function evalInUseqWasm(code: string): Promise<string | null> {
   const runtime = await ensureUseqWasmLoaded();
   const result = runtime.evaluate(code);
 
-  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
-    try {
-      dispatchRuntimeEvent(CODE_EVALUATED_EVENT, { code });
-    } catch (error) {
-      dbg(`useqWasmInterpreter: failed to dispatch ${CODE_EVALUATED_EVENT} event: ${error}`);
-    }
+  try {
+    codeEvaluatedChannel.publish({ code });
+  } catch (error) {
+    dbg(`useqWasmInterpreter: failed to publish codeEvaluated event: ${error}`);
   }
 
   return result;

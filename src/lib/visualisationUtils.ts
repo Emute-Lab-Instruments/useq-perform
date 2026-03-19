@@ -2,9 +2,8 @@
 import { serialBuffers, serialMapFunctions } from "../transport/stream-parser.ts";
 import { dbg } from "./debug.ts";
 import {
-  SERIAL_VIS_PALETTE_CHANGED_EVENT,
-  dispatchVisualisationEvent,
-} from "../contracts/visualisationEvents";
+  serialVisPaletteChangedChannel,
+} from "../contracts/visualisationChannels";
 
 export const serialVisChannels = ['a1', 'a2', 'a3', 'a4', 'd1', 'd2', 'd3'];
 
@@ -174,12 +173,10 @@ export function setSerialVisPalette(palette) {
     // Force redraw of the plot with new colors
     // plotNeedsRedrawing = true;
     dbg("Serial visualization palette updated");
-    if (typeof window !== 'undefined' && window?.dispatchEvent) {
-      try {
-        dispatchVisualisationEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, { palette });
-      } catch (error) {
-        dbg(`Serial visualization palette event failed: ${error}`);
-      }
+    try {
+      serialVisPaletteChangedChannel.publish({ palette });
+    } catch (error) {
+      dbg(`Serial visualization palette event failed: ${error}`);
     }
     return true;
   }

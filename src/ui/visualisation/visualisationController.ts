@@ -3,16 +3,11 @@ import { dbg } from "../../lib/debug.ts";
 import { getAppSettings, subscribeAppSettings } from "../../runtime/appSettingsRepository.ts";
 import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../runtime/wasmInterpreter.ts";
 import { getSerialVisPalette, getSerialVisChannelColor } from "../../lib/visualisationUtils.ts";
+import { codeEvaluated as codeEvaluatedChannel } from "../../contracts/runtimeChannels";
 import {
-  CODE_EVALUATED_EVENT,
-  addRuntimeEventListener,
-} from "../../contracts/runtimeEvents";
-import {
-  SERIAL_VIS_PALETTE_CHANGED_EVENT,
-  VISUALISATION_SESSION_EVENT,
-  addVisualisationEventListener,
-  dispatchVisualisationEvent,
-} from "../../contracts/visualisationEvents";
+  visualisationSessionChannel,
+  serialVisPaletteChangedChannel,
+} from "../../contracts/visualisationChannels";
 
 const registeredExpressions = new Map();
 const expressionColors = new Map();
@@ -260,7 +255,7 @@ function notifyStateChanged(kind = "change") {
     const displayTime = updateDisplayClock(settings);
     const summary = Array.from(registeredExpressions.values()).map((expr) => `${expr.exprType}:${expr.samples?.length ?? 0}`);
     dbg(`visualisationController: state change (${kind}), expressions=${summary.join(', ')}`);
-    dispatchVisualisationEvent(VISUALISATION_SESSION_EVENT, {
+    visualisationSessionChannel.publish({
       kind,
       currentTimeSeconds,
       displayTimeSeconds: displayTime,
@@ -773,12 +768,12 @@ if (typeof window !== 'undefined') {
     });
   }, 0);
 
-  addRuntimeEventListener(CODE_EVALUATED_EVENT, () => {
+  codeEvaluatedChannel.subscribe(() => {
     markExpressionsForRefresh();
     scheduleFullRebuild();
   });
 
-  addVisualisationEventListener(SERIAL_VIS_PALETTE_CHANGED_EVENT, () => {
+  serialVisPaletteChangedChannel.subscribe(() => {
     refreshExpressionColorsFromSettings();
     notifyStateChanged('palette');
   });

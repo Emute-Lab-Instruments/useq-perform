@@ -1,20 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  SERIAL_VIS_PALETTE_CHANGED_EVENT,
-  VISUALISATION_SESSION_EVENT,
-  dispatchVisualisationEvent,
-} from "../contracts/visualisationEvents";
 
 /**
- * Dynamically import a fresh visualisationStore module.
- * vi.resetModules() ensures we get fresh module-level state (a new
- * createStore call) on each load, which is critical because the store
- * is created at the module top-level.
+ * Dynamically import a fresh visualisationStore module AND its channel
+ * dependencies from the same module-reset context.  vi.resetModules()
+ * ensures we get fresh module-level state (a new createStore call and
+ * new channel instances) on each load.
  */
 async function loadVisStore() {
   vi.resetModules();
-  const module = await import("./visualisationStore");
-  return module;
+  const [storeModule, channelsModule] = await Promise.all([
+    import("./visualisationStore"),
+    import("../contracts/visualisationChannels"),
+  ]);
+  return { ...storeModule, ...channelsModule };
 }
 
 describe("visualisationStore", () => {
@@ -375,11 +373,11 @@ describe("visualisationStore", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Window event bridge
+  // Channel subscriptions
   // -----------------------------------------------------------------------
-  describe("window event bridge", () => {
-    it("visualisation session events trigger applyVisualisationEvent", async () => {
-      const { visStore } = await loadVisStore();
+  describe("channel subscriptions", () => {
+    it("visualisation session channel triggers applyVisualisationEvent", async () => {
+      const { visStore, visualisationSessionChannel } = await loadVisStore();
 
       const expressions = {
         a2: {
@@ -390,7 +388,7 @@ describe("visualisationStore", () => {
         },
       };
 
-      dispatchVisualisationEvent(VISUALISATION_SESSION_EVENT, {
+      visualisationSessionChannel.publish({
         kind: "time",
         currentTimeSeconds: 33.3,
         displayTimeSeconds: 34.4,
@@ -410,40 +408,32 @@ describe("visualisationStore", () => {
       });
     });
 
-    it("palette events trigger setVisPalette", async () => {
-      const { visStore } = await loadVisStore();
+    it("palette channel triggers setVisPalette", async () => {
+      const { visStore, serialVisPaletteChangedChannel } = await loadVisStore();
 
-      dispatchVisualisationEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, {
+      serialVisPaletteChangedChannel.publish({
         palette: ["#aaa", "#bbb"],
       });
 
       expect(visStore.palette).toEqual(["#aaa", "#bbb"]);
     });
 
-    it("palette event validates Array.isArray(event.detail?.palette)", async () => {
-      const { visStore } = await loadVisStore();
+    it("palette channel validates Array.isArray(detail?.palette)", async () => {
+      const { visStore, serialVisPaletteChangedChannel } = await loadVisStore();
 
       // Non-array palette should be ignored
-      window.dispatchEvent(
-        new CustomEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, {
-          detail: { palette: "not-an-array" },
-        }),
+      serialVisPaletteChangedChannel.publish(
+        { palette: "not-an-array" } as any,
       );
       expect(visStore.palette).toEqual([]);
 
       // Missing palette field should be ignored
-      window.dispatchEvent(
-        new CustomEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, {
-          detail: {},
-        }),
-      );
+      serialVisPaletteChangedChannel.publish({} as any);
       expect(visStore.palette).toEqual([]);
 
-      // Null detail should be ignored (no crash)
-      window.dispatchEvent(
-        new CustomEvent(SERIAL_VIS_PALETTE_CHANGED_EVENT, {
-          detail: null,
-        }),
+      // Undefined detail should be ignored (no crash)
+      serialVisPaletteChangedChannel.publish(
+        undefined as any,
       );
       expect(visStore.palette).toEqual([]);
     });

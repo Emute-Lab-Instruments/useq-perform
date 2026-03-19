@@ -22,6 +22,11 @@ import {
 import { transportMachine } from "../machines/transport.machine";
 import type { TransportState } from "../machines/transport.machine";
 import { applyMockTimePolicy } from "../effects/transportClock";
+import {
+  protocolReady as protocolReadyChannel,
+  jsonMeta as jsonMetaChannel,
+} from "../contracts/runtimeChannels";
+import type { JsonMetaEventDetail } from "../contracts/runtimeEvents";
 
 // ── Shared mock runtime-service state ──────────────────────────
 
@@ -132,28 +137,24 @@ function buildTestOrchestrator() {
     actor.send({ type: "UPDATE_MODE", mode: nextRs.session.transportMode });
   });
 
-  const handleProtocolReady = () => {
+  const unsubProtocolReady = protocolReadyChannel.subscribe(() => {
     Effect.runPromise(queryHardwareTransportState()).then((state: TransportState | null) => {
       if (state) actor.send({ type: "SYNC", state });
     });
-  };
+  });
 
-  const handleJsonMeta = (e: Event) => {
-    const ce = e as CustomEvent;
-    const state = extractTransportStateFromMeta(ce.detail);
+  const unsubJsonMeta = jsonMetaChannel.subscribe((detail) => {
+    const state = extractTransportStateFromMeta(detail);
     if (state) actor.send({ type: "SYNC", state });
-  };
-
-  window.addEventListener("useq-protocol-ready", handleProtocolReady);
-  window.addEventListener("useq-json-meta", handleJsonMeta);
+  });
 
   actor.start();
 
   const dispose = () => {
     actorSub.unsubscribe();
     unsubRuntime();
-    window.removeEventListener("useq-protocol-ready", handleProtocolReady);
-    window.removeEventListener("useq-json-meta", handleJsonMeta);
+    unsubProtocolReady();
+    unsubJsonMeta();
     actor.stop();
   };
 
@@ -283,17 +284,13 @@ describe("TransportToolbar", () => {
     expect(stopBtn?.classList.contains("disabled")).toBe(false);
   });
 
-  it("syncs state from useq-json-meta CustomEvent", async () => {
+  it("syncs state from jsonMeta channel", async () => {
     setRuntimeSnapshot("wasm");
     vi.mocked(extractTransportStateFromMeta).mockReturnValue("paused");
 
     const { container } = render(() => <TransportToolbar />);
 
-    window.dispatchEvent(
-      new CustomEvent("useq-json-meta", {
-        detail: { response: { meta: { transport: "paused" } } },
-      })
-    );
+    jsonMetaChannel.publish({ response: { meta: { transport: "paused" } } });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const playBtn = container.querySelector("[title='Play']");
@@ -326,11 +323,7 @@ describe("TransportToolbar", () => {
 
       const { container } = render(() => <TransportToolbar />);
 
-      window.dispatchEvent(
-        new CustomEvent("useq-json-meta", {
-          detail: { response: { meta: { transport: "stopped" } } },
-        })
-      );
+      jsonMetaChannel.publish({ response: { meta: { transport: "stopped" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       vi.mocked(startMockTimeGenerator).mockClear();
@@ -385,8 +378,8 @@ describe("TransportToolbar", () => {
           transportMode: "both",
         },
       });
-      window.dispatchEvent(new CustomEvent("useq-json-meta"));
-      window.dispatchEvent(new CustomEvent("useq-protocol-ready"));
+      jsonMetaChannel.publish({});
+      protocolReadyChannel.publish({ protocolMode: "json" });
     }).not.toThrow();
   });
 
@@ -420,11 +413,7 @@ describe("TransportToolbar", () => {
 
       const { container } = render(() => <TransportToolbar />);
 
-      window.dispatchEvent(
-        new CustomEvent("useq-json-meta", {
-          detail: { response: { meta: { transport: "paused" } } },
-        })
-      );
+      jsonMetaChannel.publish({ response: { meta: { transport: "paused" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       vi.mocked(play).mockClear();
@@ -465,7 +454,7 @@ describe("TransportToolbar", () => {
 
       const { container } = render(() => <TransportToolbar />);
 
-      window.dispatchEvent(new CustomEvent("useq-protocol-ready"));
+      protocolReadyChannel.publish({ protocolMode: "json" });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(queryHardwareTransportState).toHaveBeenCalled();
@@ -502,11 +491,7 @@ describe("TransportToolbar", () => {
 
       render(() => <TransportToolbar />);
 
-      window.dispatchEvent(
-        new CustomEvent("useq-json-meta", {
-          detail: { response: { meta: { transport: "stopped" } } },
-        })
-      );
+      jsonMetaChannel.publish({ response: { meta: { transport: "stopped" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(syncWasmTransportState).toHaveBeenCalledWith("stopped");
@@ -518,21 +503,13 @@ describe("TransportToolbar", () => {
 
       render(() => <TransportToolbar />);
 
-      window.dispatchEvent(
-        new CustomEvent("useq-json-meta", {
-          detail: { response: { meta: { transport: "paused" } } },
-        })
-      );
+      jsonMetaChannel.publish({ response: { meta: { transport: "paused" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       vi.mocked(syncWasmTransportState).mockClear();
       vi.mocked(extractTransportStateFromMeta).mockReturnValue("playing");
 
-      window.dispatchEvent(
-        new CustomEvent("useq-json-meta", {
-          detail: { response: { meta: { transport: "playing" } } },
-        })
-      );
+      jsonMetaChannel.publish({ response: { meta: { transport: "playing" } } });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(syncWasmTransportState).toHaveBeenCalledWith("playing");

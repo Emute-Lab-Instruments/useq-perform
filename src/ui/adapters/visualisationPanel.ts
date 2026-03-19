@@ -1,9 +1,8 @@
 import type { JSX } from "solid-js";
 
 import {
-  SERIAL_VIS_AUTO_OPEN_EVENT,
-  dispatchVisualisationEvent,
-} from "../../contracts/visualisationEvents";
+  serialVisAutoOpenChannel,
+} from "../../contracts/visualisationChannels";
 
 const PANEL_ID = "panel-vis";
 const CANVAS_ID = "serialcanvas";
@@ -128,7 +127,7 @@ export function showVisualisationPanel(options?: { emitAutoOpenEvent?: boolean }
   if (!wasVisible) {
     applyVisibleVisualisationPanelState(panel, getVisualisationCanvas(panel));
     if (options?.emitAutoOpenEvent) {
-      dispatchVisualisationEvent(SERIAL_VIS_AUTO_OPEN_EVENT, undefined);
+      serialVisAutoOpenChannel.publish(undefined);
     }
   }
 

@@ -2,11 +2,8 @@ import { Effect } from "effect";
 
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import { SHARED_TRANSPORT_COMMANDS } from "../contracts/useqRuntimeContract";
-import {
-  CONNECTION_CHANGED_EVENT,
-  dispatchRuntimeEvent,
-  type ConnectionChangedDetail,
-} from "../contracts/runtimeEvents";
+import { connectionChanged as connectionChangedChannel } from "../contracts/runtimeChannels";
+import type { ConnectionChangedDetail } from "../contracts/runtimeEvents";
 import type { TransportState } from "../machines/transport.machine";
 import {
   publishRuntimeDiagnostics,
@@ -81,7 +78,7 @@ function applySessionUpdate(
   }
 
   if (options?.dispatchConnectionChanged) {
-    dispatchRuntimeEvent(CONNECTION_CHANGED_EVENT, toConnectionChangedDetail(state));
+    connectionChangedChannel.publish(toConnectionChangedDetail(state));
   }
 
   return state;
@@ -124,7 +121,7 @@ export function refreshRuntimeSession(): RuntimeSessionState {
 
 export function announceRuntimeSession(): RuntimeSessionState {
   const state = refreshRuntimeSession();
-  dispatchRuntimeEvent(CONNECTION_CHANGED_EVENT, toConnectionChangedDetail(state));
+  connectionChangedChannel.publish(toConnectionChangedDetail(state));
   return state;
 }
 

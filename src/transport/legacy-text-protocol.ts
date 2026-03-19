@@ -9,10 +9,7 @@ import { post } from "../utils/consoleStore.ts";
 import { dbg } from "../lib/debug.ts";
 import { cleanCode, isPortWritable } from "./serial-utils.ts";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
-import {
-  dispatchRuntimeEvent,
-  ANIMATE_CONNECT_EVENT,
-} from "../contracts/runtimeEvents.ts";
+import { animateConnect as animateConnectChannel } from "../contracts/runtimeChannels";
 
 import {
   PROTOCOL_MODES,
@@ -133,7 +130,7 @@ function handleNotConnected(): void {
 
 function animateConnectButton(): void {
   try {
-    dispatchRuntimeEvent(ANIMATE_CONNECT_EVENT, undefined);
+    animateConnectChannel.publish(undefined);
   } catch (_e) {
     // no-op if window not available
   }

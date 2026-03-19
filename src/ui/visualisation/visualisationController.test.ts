@@ -1,8 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  VISUALISATION_SESSION_EVENT,
-  addVisualisationEventListener,
-} from "../../contracts/visualisationEvents";
 
 type VisualisationOverrides = Partial<{
   windowDuration: number;
@@ -70,9 +66,13 @@ async function loadController(overrides: VisualisationOverrides = {}) {
     dbg: vi.fn(),
   }));
 
-  const controller = await import("./visualisationController.ts");
+  const [controller, channels] = await Promise.all([
+    import("./visualisationController.ts"),
+    import("../../contracts/visualisationChannels"),
+  ]);
   return {
     controller,
+    channels,
     activeUserSettings,
     evalOutputsInTimeWindow,
     /** Notify all settings subscribers (simulates a settings change). */
@@ -96,10 +96,13 @@ describe("visualisationController", () => {
   });
 
   it("rebuilds expression samples when canonical visualisation settings change", async () => {
-    const { controller, activeUserSettings, evalOutputsInTimeWindow, notifySettingsChanged } = await loadController();
+    const { controller, channels, activeUserSettings, evalOutputsInTimeWindow, notifySettingsChanged } = await loadController();
+    // Flush the deferred setTimeout(0) in the controller that registers
+    // the subscribeAppSettings callback.
+    await flushAsyncWork();
+
     const visualisationEvents: Array<Record<string, unknown>> = [];
-    const removeVisualisationListener = addVisualisationEventListener(
-      VISUALISATION_SESSION_EVENT,
+    const removeVisualisationListener = channels.visualisationSessionChannel.subscribe(
       (detail) => {
         visualisationEvents.push(detail as Record<string, unknown>);
       }

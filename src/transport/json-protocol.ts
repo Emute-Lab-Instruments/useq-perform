@@ -24,10 +24,9 @@ import {
   reportProtocolModeChanged,
 } from "../runtime/runtimeService.ts";
 import {
-  dispatchRuntimeEvent,
-  JSON_META_EVENT,
-  PROTOCOL_READY_EVENT,
-} from "../contracts/runtimeEvents.ts";
+  protocolReady as protocolReadyChannel,
+  jsonMeta as jsonMetaChannel,
+} from "../contracts/runtimeChannels";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 
 import {
@@ -162,7 +161,7 @@ function dispatchProtocolReady(): void {
   _emitConnectionChanged?.();
 
   try {
-    dispatchRuntimeEvent(PROTOCOL_READY_EVENT, {
+    protocolReadyChannel.publish({
       protocolMode: getProtocolMode(),
     });
   } catch (_e) {
@@ -437,7 +436,7 @@ export function handleJsonMessage(rawMessage: string): void {
 
   if (meta) {
     try {
-      dispatchRuntimeEvent(JSON_META_EVENT, { response: parsed });
+      jsonMetaChannel.publish({ response: parsed });
     } catch (dispatchError) {
       console.error(
         "Failed to dispatch useq-json-meta event",

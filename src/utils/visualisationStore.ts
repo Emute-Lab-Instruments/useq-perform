@@ -1,10 +1,9 @@
 import { createStore, reconcile } from "solid-js/store";
 import {
-  SERIAL_VIS_PALETTE_CHANGED_EVENT,
-  VISUALISATION_SESSION_EVENT,
-  addVisualisationEventListener,
-  type VisualisationSessionDetail,
-} from "../contracts/visualisationEvents";
+  visualisationSessionChannel,
+  serialVisPaletteChangedChannel,
+} from "../contracts/visualisationChannels";
+import type { VisualisationSessionDetail } from "../contracts/visualisationEvents";
 
 // Channel definitions matching legacy serialVis/utils.mjs
 export const SERIAL_VIS_CHANNELS = [
@@ -177,14 +176,12 @@ export function setVisPalette(palette: string[]) {
 // listening to the browser events directly.
 // ---------------------------------------------------------------------------
 
-if (typeof window !== "undefined") {
-  addVisualisationEventListener(VISUALISATION_SESSION_EVENT, (detail) => {
-    applyVisualisationEvent(detail);
-  });
+visualisationSessionChannel.subscribe((detail) => {
+  applyVisualisationEvent(detail);
+});
 
-  addVisualisationEventListener(SERIAL_VIS_PALETTE_CHANGED_EVENT, (detail) => {
-    if (Array.isArray(detail?.palette)) {
-      setVisPalette(detail.palette);
-    }
-  });
-}
+serialVisPaletteChangedChannel.subscribe((detail) => {
+  if (Array.isArray(detail?.palette)) {
+    setVisPalette(detail.palette);
+  }
+});

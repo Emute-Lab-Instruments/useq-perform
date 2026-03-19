@@ -5,16 +5,23 @@ import {
   publishRuntimeDiagnostics,
   reportBootstrapFailure,
   resetRuntimeDiagnostics,
+  type RuntimeDiagnosticsSnapshot,
+  type RuntimeBootstrapFailure,
 } from "./runtimeDiagnostics";
+
+import {
+  runtimeDiagnostics as runtimeDiagnosticsChannel,
+  bootstrapFailure as bootstrapFailureChannel,
+} from "../contracts/runtimeChannels";
 
 describe("runtimeDiagnostics", () => {
   beforeEach(() => {
     resetRuntimeDiagnostics();
   });
 
-  it("publishes runtime diagnostics snapshots as browser events", () => {
-    const events: Event[] = [];
-    window.addEventListener("useq-runtime-diagnostics", (event) => events.push(event));
+  it("publishes runtime diagnostics snapshots via typed channel", () => {
+    const events: RuntimeDiagnosticsSnapshot[] = [];
+    const unsub = runtimeDiagnosticsChannel.subscribe((detail) => events.push(detail));
 
     const snapshot = publishRuntimeDiagnostics({
       startupMode: "hardware",
@@ -42,11 +49,13 @@ describe("runtimeDiagnostics", () => {
       "defaults",
       "local-storage",
     ]);
+
+    unsub();
   });
 
   it("records bootstrap failures in the published diagnostics stream", () => {
-    const failures: Event[] = [];
-    window.addEventListener("useq-bootstrap-failure", (event) => failures.push(event));
+    const failures: RuntimeBootstrapFailure[] = [];
+    const unsub = bootstrapFailureChannel.subscribe((detail) => failures.push(detail));
 
     const failure = reportBootstrapFailure(
       "ui-adapter-import",
@@ -59,5 +68,7 @@ describe("runtimeDiagnostics", () => {
     });
     expect(failures).toHaveLength(1);
     expect(getRuntimeDiagnostics().bootstrapFailures).toContainEqual(failure);
+
+    unsub();
   });
 });

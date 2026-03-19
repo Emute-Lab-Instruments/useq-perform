@@ -16,11 +16,10 @@ import {
   syncWasmTransportState,
 } from "./transport";
 import {
-  addRuntimeEventListener,
-  JSON_META_EVENT,
-  PROTOCOL_READY_EVENT,
-  type JsonMetaEventDetail,
-} from "../contracts/runtimeEvents";
+  protocolReady as protocolReadyChannel,
+  jsonMeta as jsonMetaChannel,
+} from "../contracts/runtimeChannels";
+import type { JsonMetaEventDetail } from "../contracts/runtimeEvents";
 import {
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
@@ -112,15 +111,13 @@ export function createTransportOrchestrator(): TransportOrchestrator {
     }
   };
 
-  const removeProtocolReady = addRuntimeEventListener(
-    PROTOCOL_READY_EVENT,
+  const removeProtocolReady = protocolReadyChannel.subscribe(
     () => {
       Effect.runPromise(queryHardwareTransportState()).then(syncState);
     }
   );
 
-  const removeJsonMeta = addRuntimeEventListener(
-    JSON_META_EVENT,
+  const removeJsonMeta = jsonMetaChannel.subscribe(
     (detail: JsonMetaEventDetail) => {
       syncState(extractTransportStateFromMeta(detail));
     }

@@ -18,7 +18,6 @@ import { updateRuntimeSettingsEffect } from "./runtimeService.ts";
 import { load, save, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 import {
   getStartupFlagsSnapshot,
-  setStartupFlags,
   type StartupFlags,
 } from "./startupContext.ts";
 import { readStartupFlags } from "./urlParams.ts";
@@ -66,13 +65,20 @@ function parseGistId(rawValue: string | null | undefined): string | null {
   }
 }
 
+/**
+ * Read-only resolution of startup flags for repository queries.
+ * After bootstrap, startupContext is frozen so we just read the snapshot.
+ * The fallback to readStartupFlags(window.location.search) handles the
+ * edge case where this is called before examineEnvironment() has run
+ * (e.g. during early settings load) — but it never mutates the context.
+ */
 function resolveRepositoryStartupFlags(): StartupFlags {
   const startupFlags = getStartupFlagsSnapshot();
   if (Object.keys(startupFlags.params).length > 0 || typeof window === "undefined") {
     return startupFlags;
   }
 
-  return setStartupFlags(readStartupFlags(window.location.search));
+  return readStartupFlags(window.location.search);
 }
 
 async function loadCodeOverrideFromStartupFlags(): Promise<string | null> {
