@@ -2,7 +2,9 @@
  * JSON Protocol Driver (firmware >= 1.2.0)
  *
  * Handles protocol negotiation, heartbeat keep-alive, JSON request/response
- * lifecycle, and structured eval.
+ * lifecycle, structured eval, and code sending.
+ *
+ * Initialised via initProtocol(context) which encapsulates all mutable state.
  */
 
 import { Buffer } from "buffer";
@@ -26,15 +28,17 @@ import {
 import {
   protocolReady as protocolReadyChannel,
   jsonMeta as jsonMetaChannel,
+  animateConnect as animateConnectChannel,
 } from "../contracts/runtimeChannels";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
+import { cleanCode, isPortWritable } from "./serial-utils.ts";
 
 import {
-  PROTOCOL_MODES,
   EDITOR_VERSION,
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
   MESSAGE_START_MARKER,
+  type TransportContext,
   type ProtocolState,
   type JsonResponse,
   type WriteJsonRequestOptions,
@@ -43,10 +47,12 @@ import {
 } from "./types.ts";
 import { setSerialOutputBufferRouting } from "./stream-parser.ts";
 
-// ── Protocol state (module-level singleton) ──────────────────────────
+// ── Module state (set once by initProtocol) ──────────────────────────
+
+let _ctx: TransportContext | null = null;
 
 export const protocolState: ProtocolState = {
-  mode: PROTOCOL_MODES.LEGACY,
+  mode: "negotiating",
   negotiationAttempted: false,
   requestIdCounter: 0,
   pendingRequests: new Map(),
@@ -56,36 +62,28 @@ export const protocolState: ProtocolState = {
 
 const encoder = new TextEncoder();
 
-// ── emitConnectionChanged callback ───────────────────────────────────
-// Set by the connector so the protocol layer can trigger connection
-// change broadcasts without a circular import.
+// ── Initialisation ───────────────────────────────────────────────────
 
-let _emitConnectionChanged: (() => void) | null = null;
-
-export function setEmitConnectionChanged(fn: () => void): void {
-  _emitConnectionChanged = fn;
-}
-
-// ── Accessor for the serial port (set by connector) ──────────────────
-
-let _getSerialPort: (() => SerialPort | null) | null = null;
-
-export function setGetSerialPort(fn: () => SerialPort | null): void {
-  _getSerialPort = fn;
+/**
+ * Inject transport dependencies. Called once by connector.ts at module init.
+ * Replaces the old setGetSerialPort / setEmitConnectionChanged setters.
+ */
+export function initProtocol(ctx: TransportContext): void {
+  _ctx = ctx;
 }
 
 function serialport(): SerialPort | null {
-  return _getSerialPort ? _getSerialPort() : null;
+  return _ctx ? _ctx.getSerialPort() : null;
 }
 
 // ── Protocol accessors ──────────────────────────────────────────────
 
 export function getProtocolMode(): "legacy" | "json" {
-  return protocolState.mode === PROTOCOL_MODES.JSON ? "json" : "legacy";
+  return protocolState.mode === "json" ? "json" : "legacy";
 }
 
 export function isJsonProtocolActive(): boolean {
-  return protocolState.mode === PROTOCOL_MODES.JSON;
+  return protocolState.mode === "json";
 }
 
 export function getIoConfig(): IoConfig | null {
@@ -100,7 +98,7 @@ export function resetProtocolState(): void {
       pending.reject(new Error("Connection reset"));
     }
   });
-  protocolState.mode = PROTOCOL_MODES.LEGACY;
+  protocolState.mode = "negotiating";
   protocolState.negotiationAttempted = false;
   protocolState.requestIdCounter = 0;
   protocolState.pendingRequests.clear();
@@ -117,7 +115,7 @@ function startHeartbeat(): void {
 
   protocolState.heartbeatInterval = setInterval(async () => {
     const port = serialport();
-    if (protocolState.mode !== PROTOCOL_MODES.JSON || !port?.writable) {
+    if (protocolState.mode !== "json" || !port?.writable) {
       stopHeartbeat();
       return;
     }
@@ -158,7 +156,7 @@ function nextRequestId(): string {
 }
 
 function dispatchProtocolReady(): void {
-  _emitConnectionChanged?.();
+  _ctx?.emitConnectionChanged();
 
   try {
     protocolReadyChannel.publish({
@@ -187,7 +185,7 @@ export async function maybeNegotiateJsonProtocol(): Promise<void> {
     );
 
     if (response.success && response.mode === "json") {
-      protocolState.mode = PROTOCOL_MODES.JSON;
+      protocolState.mode = "json";
       if (response.config) {
         protocolState.ioConfig = response.config;
         setSerialOutputBufferRouting(
@@ -289,7 +287,7 @@ export async function sendStreamConfig(
   channels: StreamChannelConfig[],
   maxRateHz: number = DEFAULT_STREAM_MAX_RATE_HZ
 ): Promise<JsonResponse> {
-  if (protocolState.mode !== PROTOCOL_MODES.JSON) {
+  if (protocolState.mode !== "json") {
     return Promise.reject(new Error("JSON protocol not active"));
   }
 
@@ -352,7 +350,7 @@ export function sendJsonEval(
     return Promise.reject(new Error("Serial port is not writable"));
   }
 
-  if (!force && protocolState.mode !== PROTOCOL_MODES.JSON) {
+  if (!force && protocolState.mode !== "json") {
     return Promise.reject(new Error("JSON protocol not active"));
   }
 
@@ -360,6 +358,91 @@ export function sendJsonEval(
   if (exec) payload.exec = exec;
 
   return writeJsonRequest(payload, { capture, skipConsole });
+}
+
+// ── sendTouSEQ (primary code-send API) ───────────────────────────────
+
+/**
+ * Send code to the uSEQ device.
+ * Uses JSON eval when the protocol is active; falls back to raw text
+ * serial write during early boot (before negotiation completes).
+ * In dev mode without a port, simulates execution.
+ */
+export function sendTouSEQ(
+  code: string,
+  capture: CaptureCallback | null = null
+): Promise<any> {
+  const cleanedCode = cleanCode(code);
+  const isDevMode = getStartupFlagsSnapshot().devmode;
+  const port = serialport();
+
+  if (isDevMode && !port) {
+    dbg("Dev mode: Simulating code execution:", cleanedCode);
+    if (capture) {
+      capture("Dev mode: Code executed successfully");
+    }
+    return Promise.resolve({
+      success: true,
+      text: "Dev mode: Code executed successfully",
+    });
+  }
+
+  if (!isPortWritable(port)) {
+    handleNotConnected();
+    return Promise.resolve();
+  }
+
+  // JSON protocol active — use structured eval
+  if (protocolState.mode === "json") {
+    return sendJsonEval(cleanedCode, { capture }).catch((error: Error) => {
+      console.error("Failed to send JSON request to uSEQ", error);
+      post(
+        "**Error**: Failed to send request to uSEQ. See console for details."
+      );
+      throw error;
+    });
+  }
+
+  // Pre-negotiation: send as raw text (used for firmware info probe)
+  return writeRawText(port!, cleanedCode, capture);
+}
+
+function handleNotConnected(): void {
+  post("**Warning**: uSEQ not connected yet - make sure it's plugged in and click Connect");
+  try {
+    animateConnectChannel.publish(undefined);
+  } catch (_e) {
+    // no-op if window not available
+  }
+}
+
+// ── Raw text write (pre-negotiation only) ────────────────────────────
+
+/**
+ * Write raw text to the serial port and optionally capture the text
+ * response via the shared serialVars mechanism.
+ * Used for the firmware info probe before JSON negotiation.
+ */
+function writeRawText(
+  port: SerialPort,
+  code: string,
+  capture: CaptureCallback | null
+): Promise<void> {
+  const writer = port.writable!.getWriter();
+  dbg("writing raw text...");
+
+  if (capture && _ctx) {
+    _ctx.serialVars.capture = true;
+    _ctx.serialVars.captureFunc = capture;
+  }
+
+  return writer.write(encoder.encode(code)).then(() => {
+    writer.releaseLock();
+    dbg("raw text written");
+  }).catch((err) => {
+    writer.releaseLock();
+    console.error("Serial write failed:", err);
+  });
 }
 
 // ── Handle firmware info (bridge from text message) ──────────────────

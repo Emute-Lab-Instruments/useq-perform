@@ -76,7 +76,7 @@ export function performNavigation(view, navFunction) {
     return true;
 }
 
-import { sendTouSEQ } from "../../transport/legacy-text-protocol.ts";
+import { sendTouSEQ } from "../../transport/json-protocol.ts";
 import { isConnectedToModule } from "../../transport/connector.ts";
 import {
   isExpressionVisualised,

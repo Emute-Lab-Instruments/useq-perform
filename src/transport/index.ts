@@ -16,10 +16,10 @@ export type {
   ProtocolState,
   SerialVars,
   BufferMapFunction,
+  TransportContext,
 } from "./types.ts";
 
 export {
-  PROTOCOL_MODES,
   SERIAL_READ_MODES,
   MESSAGE_START_MARKER,
   MESSAGE_TYPES,
@@ -55,10 +55,8 @@ export {
   handleFirmwareInfo,
   resetProtocolState,
   protocolState,
+  sendTouSEQ,
 } from "./json-protocol.ts";
-
-// ── Legacy text protocol driver ─────────────────────────────────────
-export { sendTouSEQ } from "./legacy-text-protocol.ts";
 
 // ── Stream parser ───────────────────────────────────────────────────
 export {

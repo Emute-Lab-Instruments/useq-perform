@@ -81,8 +81,6 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
   Serial port lifecycle: opening, closing, reconnection, Web Serial event wiring.
 - `src/transport/json-protocol.ts`
   JSON protocol driver (firmware >= 1.2.0): negotiation, heartbeat, structured eval.
-- `src/transport/legacy-text-protocol.ts`
-  Legacy text protocol driver (firmware < 1.2.0 fallback).
 - `src/transport/stream-parser.ts`
   Byte-level parsing and routing of serial data streams.
 - `src/transport/serial-utils.ts`

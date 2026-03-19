@@ -3,6 +3,9 @@
  *
  * Manages serial port lifecycle: opening, closing, reconnection,
  * saved-port persistence, bootloader mode, and Web Serial event wiring.
+ *
+ * This is the sole assembly point for the transport layer. It creates
+ * the TransportContext and passes it to the protocol driver at init time.
  */
 
 import { post } from "../utils/consoleStore.ts";
@@ -20,7 +23,7 @@ import {
 } from "../contracts/runtimeChannels";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 
-import type { CaptureCallback, SerialVars } from "./types.ts";
+import type { SerialVars, TransportContext } from "./types.ts";
 import {
   serialReader as startSerialReader,
   stopSerialReader,
@@ -30,16 +33,10 @@ import {
   getProtocolMode,
   handleFirmwareInfo,
   handleJsonMessage,
+  initProtocol,
   resetProtocolState,
-  setEmitConnectionChanged,
-  setGetSerialPort as setJsonGetSerialPort,
-} from "./json-protocol.ts";
-import {
   sendTouSEQ,
-  setGetSerialPort as setLegacyGetSerialPort,
-  setGetProtocolMode,
-  setSerialVars,
-} from "./legacy-text-protocol.ts";
+} from "./json-protocol.ts";
 
 // ── Module-level state ──────────────────────────────────────────────
 
@@ -48,23 +45,6 @@ let connectedToModule = false;
 let flag_triggeringBootloader = false;
 
 const serialVars: SerialVars = { capture: false, captureFunc: null };
-const encoder = new TextEncoder();
-
-// ── Wire up cross-module accessors ──────────────────────────────────
-
-function getSerialPortRef(): SerialPort | null {
-  return serialport;
-}
-
-// Provide port accessor to both protocol drivers
-setJsonGetSerialPort(getSerialPortRef);
-setLegacyGetSerialPort(getSerialPortRef);
-setGetProtocolMode(() => getProtocolMode());
-setSerialVars(serialVars);
-setEmitConnectionChanged(() => emitConnectionChanged());
-
-// Initialise connection-dependent UI state.
-setCodeHighlightColor(false);
 
 // ── Connection state ────────────────────────────────────────────────
 
@@ -78,6 +58,22 @@ function emitConnectionChanged(): void {
     wasmEnabled: getAppSettings()?.wasm?.enabled ?? true,
   });
 }
+
+// ── TransportContext — wired once, consumed by protocol driver ───────
+
+const transportContext: TransportContext = {
+  getSerialPort: () => serialport,
+  emitConnectionChanged: () => emitConnectionChanged(),
+  serialVars,
+};
+
+// Initialise the protocol driver with the context
+initProtocol(transportContext);
+
+// Initialise connection-dependent UI state.
+setCodeHighlightColor(false);
+
+// ── Public connection state API ─────────────────────────────────────
 
 export function setConnectedToModule(connected: boolean): void {
   connectedToModule = connected;

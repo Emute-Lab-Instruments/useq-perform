@@ -10,7 +10,7 @@ import { syntaxTree } from "@codemirror/language";
 import { extension as eval_ext, cursor_node_string, top_level_string } from "@nextjournal/clojure-mode/extensions/eval-region";
 
 // SERIAL COMMUNICATION
-import { sendTouSEQ } from "../transport/legacy-text-protocol.ts";
+import { sendTouSEQ } from "../transport/json-protocol.ts";
 import { isConnectedToModule } from "../transport/connector.ts";
 import { post } from "../utils/consoleStore.ts";
 import { evalInUseqWasm } from "../runtime/wasmInterpreter.ts";

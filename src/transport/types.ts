@@ -7,14 +7,15 @@
 import type { CircularBuffer } from "../lib/CircularBuffer.ts";
 import type { IoConfig } from "../runtime/jsonProtocol.ts";
 
-// ── Protocol modes ───────────────────────────────────────────────────
+// ── Wire constants ───────────────────────────────────────────────────
 
-export const PROTOCOL_MODES = {
-  LEGACY: "legacy",
-  JSON: "json",
+export const MESSAGE_START_MARKER = 31;
+
+export const MESSAGE_TYPES = {
+  STREAM: 0,
+  JSON: 101,
+  // Any other value is treated as TEXT
 } as const;
-
-export type ProtocolMode = (typeof PROTOCOL_MODES)[keyof typeof PROTOCOL_MODES];
 
 // ── Serial read mode constants ───────────────────────────────────────
 
@@ -28,21 +29,26 @@ export const SERIAL_READ_MODES = {
 export type SerialReadMode =
   (typeof SERIAL_READ_MODES)[keyof typeof SERIAL_READ_MODES];
 
-// ── Wire constants ───────────────────────────────────────────────────
-
-export const MESSAGE_START_MARKER = 31;
-
-export const MESSAGE_TYPES = {
-  STREAM: 0,
-  JSON: 101,
-  // Any other value is treated as TEXT
-} as const;
-
 // ── Editor/protocol constants ────────────────────────────────────────
 
 export const EDITOR_VERSION = "1.2.0";
 export const HEARTBEAT_INTERVAL_MS = 60_000;
 export const HEARTBEAT_TIMEOUT_MS = 10_000;
+
+// ── Transport context ────────────────────────────────────────────────
+
+/**
+ * Dependencies injected into the transport layer at init time.
+ * Replaces the old setter-based dependency injection pattern.
+ */
+export interface TransportContext {
+  /** Returns the current serial port, or null if not connected. */
+  getSerialPort: () => SerialPort | null;
+  /** Broadcasts a connection-state change to the rest of the app. */
+  emitConnectionChanged: () => void;
+  /** Shared capture state used by the stream parser for text responses. */
+  serialVars: SerialVars;
+}
 
 // ── Callback / request types ─────────────────────────────────────────
 
@@ -97,7 +103,7 @@ export interface SendJsonEvalOptions {
 // ── Protocol state bag ───────────────────────────────────────────────
 
 export interface ProtocolState {
-  mode: string;
+  mode: "negotiating" | "json";
   negotiationAttempted: boolean;
   requestIdCounter: number;
   pendingRequests: Map<string, PendingRequest>;
