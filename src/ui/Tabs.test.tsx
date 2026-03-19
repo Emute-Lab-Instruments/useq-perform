@@ -15,8 +15,10 @@ describe("Tabs", () => {
 
     expect(button1).toHaveClass("active");
     expect(content1.parentElement).toHaveClass("active");
-    // Inactive tab content should not be in the DOM
-    expect(screen.queryByTestId("content2")).toBeNull();
+    // Inactive tab is in the DOM but hidden via CSS display:none
+    const content2 = screen.getByTestId("content2");
+    expect(content2.parentElement).not.toHaveClass("active");
+    expect(content2.parentElement!.style.display).toBe("none");
   });
 
   it("switches tabs when clicked", async () => {
@@ -28,7 +30,9 @@ describe("Tabs", () => {
     expect(button2).toHaveClass("active");
     const content2 = screen.getByTestId("content2");
     expect(content2.parentElement).toHaveClass("active");
-    // Previous tab content should be removed from the DOM
-    expect(screen.queryByTestId("content1")).toBeNull();
+    // Previous tab is still in the DOM but hidden
+    const content1 = screen.getByTestId("content1");
+    expect(content1.parentElement).not.toHaveClass("active");
+    expect(content1.parentElement!.style.display).toBe("none");
   });
 });

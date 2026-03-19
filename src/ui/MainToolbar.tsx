@@ -44,7 +44,6 @@ export function MainToolbar() {
     });
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const run = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromise(effect);
   const runtimeStatus = () => {
     if (runtimeState().session.connectionMode === "hardware") {

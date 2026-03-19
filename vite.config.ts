@@ -70,7 +70,7 @@ export default defineConfig(({ command }) => ({
           name: 'unit',
           environment: 'jsdom',
           include: ['src/**/*.test.tsx', 'src/**/*.test.ts'],
-          exclude: ['src/legacy/editors/extensions/__tests__/**', 'src/editors/extensions/__tests__/**'],
+          exclude: ['src/editors/extensions/__tests__/**'],
           globals: true,
           setupFiles: []
         }

@@ -22,10 +22,12 @@ let server: HttpServer | null = null;
  * Start the WebSocket server for dev mode
  */
 export async function startWebSocketServer(port: number = 8082): Promise<void> {
+  // Dynamic import of node:http to avoid bundler issues in browser builds
+  const http = await import(/* @vite-ignore */ 'node:http');
+
   return new Promise<void>((resolve, reject) => {
     try {
       // Create HTTP server for WebSocket
-      const http = require('http');
       server = http.createServer();
 
       // Create WebSocket server

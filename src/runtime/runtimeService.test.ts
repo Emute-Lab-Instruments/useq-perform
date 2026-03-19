@@ -119,6 +119,7 @@ describe("runtimeService", () => {
     });
 
     setRuntimeAdapterForTests(adapter);
+    refreshRuntimeSession();
 
     await expect(
       Effect.runPromise(queryRuntimeHardwareTransportState())

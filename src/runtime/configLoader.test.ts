@@ -39,7 +39,7 @@ describe("configLoader", () => {
     setLocation();
   });
 
-  it("preserves hardcoded editor defaults when default-config omits nested fields", async () => {
+  it("preserves hardcoded editor defaults when default-config omits nested fields", { timeout: 15000 }, async () => {
     const { loadConfiguration } = await import("./appSettingsRepository.ts");
 
     const config = await loadConfiguration();

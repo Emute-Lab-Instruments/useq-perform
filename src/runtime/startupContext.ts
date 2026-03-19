@@ -174,7 +174,6 @@ export async function examineEnvironment(
   // → appSettings.ts → startupContext.ts.
   let isWebSerialAvailable = false;
   if (!startupFlags.disableWebSerial) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { checkForWebserialSupport } = await import('../transport/connector.ts');
     isWebSerialAvailable = checkForWebserialSupport();
   }
