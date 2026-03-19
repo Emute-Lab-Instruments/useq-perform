@@ -9,7 +9,8 @@ import {
   validateConfiguration,
   getConfigurationDiff
 } from './configSchema.ts';
-import { getAppSettings, updateAppSettings } from './appSettingsRepository.ts';
+import { getAppSettings } from './appSettingsRepository.ts';
+import { updateSettings } from './runtimeService.ts';
 import { getAllControlValues } from '../effects/mockControlInputs.ts';
 import { dbg } from '../lib/debug.ts';
 import {
@@ -88,7 +89,7 @@ export function importConfiguration(config, options = {}) {
   }
 
   // Update active settings
-  updateAppSettings(newSettings);
+  updateSettings(newSettings);
 
   dbg('configManager: Configuration imported successfully');
 

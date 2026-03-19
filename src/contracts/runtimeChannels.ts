@@ -21,6 +21,8 @@ import type {
   RuntimeBootstrapFailure,
 } from "../runtime/runtimeDiagnostics";
 
+import type { AppSettings } from "../lib/appSettings";
+
 // ── Channels ────────────────────────────────────────────────────
 
 /** Transport connection state changed (connected / disconnected / mode change). */
@@ -46,6 +48,9 @@ export const animateConnect = createChannel<AnimateConnectDetail>();
 
 /** A previously-saved serial device was physically plugged in. */
 export const devicePluggedIn = createChannel<DevicePluggedInDetail>();
+
+/** App settings changed (published by runtimeService after any mutation). */
+export const settingsChanged = createChannel<AppSettings>();
 
 // ── Re-export the channel type for convenience ──────────────────
 

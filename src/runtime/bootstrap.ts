@@ -14,7 +14,7 @@
 
 import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
-import { loadConfigurationWithMetadata } from './appSettingsRepository.ts';
+import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepository.ts';
 import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
 import { initGamepadControl } from '../editors/gamepadControl.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
@@ -27,8 +27,11 @@ import {
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
 import { resolveBootstrapPlan, type BootstrapPlan } from './bootstrapPlan.ts';
-import { bootstrapRuntimeSession } from './runtimeService.ts';
-import { appSettingsRepository } from './appSettingsRepository.ts';
+import {
+  bootstrapRuntimeSession,
+  replaceSettings,
+  getSettings,
+} from './runtimeService.ts';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -108,14 +111,14 @@ export async function bootstrap(): Promise<BootstrapResult> {
   try {
     const result = await loadConfigurationWithMetadata();
     settingsSources = result.settingsSources;
-    appSettingsRepository.replaceSettings(result.config, { dispatch: true });
+    replaceSettings(result.config, { dispatch: true });
   } catch (error) {
     reportBootstrapFailure('config-loader', error);
     console.warn('bootstrap: failed to load configuration, using defaults:', error);
   }
 
   // ── Step 2: detect environment ─────────────────────────────────
-  const environmentState = await examineEnvironment(appSettingsRepository.getSettings());
+  const environmentState = await examineEnvironment(getSettings());
   const { userSettings, startupFlags } = environmentState;
 
   // ── Step 3: derive bootstrap plan (single call site) ───────────

@@ -2,9 +2,13 @@ import { Effect } from "effect";
 
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import { SHARED_TRANSPORT_COMMANDS } from "../contracts/useqRuntimeContract";
-import { connectionChanged as connectionChangedChannel } from "../contracts/runtimeChannels";
+import {
+  connectionChanged as connectionChangedChannel,
+  settingsChanged as settingsChangedChannel,
+} from "../contracts/runtimeChannels";
 import type { ConnectionChangedDetail } from "../contracts/runtimeEvents";
 import type { TransportState } from "../machines/transport.machine";
+import type { AppSettings } from "../lib/appSettings";
 import {
   publishRuntimeDiagnostics,
   type RuntimeProtocolMode,
@@ -25,6 +29,14 @@ import {
   type RuntimeSessionInputs,
   type TransportMode,
 } from "./runtimeSession";
+import {
+  getAppSettings,
+  replaceAppSettings as _replaceAppSettings,
+  updateAppSettings as _updateAppSettings,
+  resetAppSettings as _resetAppSettings,
+  loadAppSettings as _loadAppSettings,
+  deletePersistedSettings as _deletePersistedSettings,
+} from "./appSettingsRepository";
 
 // Re-export the state type so consumers don't need to reach into the store
 export type { RuntimeSessionState } from "./runtimeSessionStore";
@@ -258,6 +270,67 @@ export function syncRuntimeWasmTransportState(state: TransportState) {
     try: () => adapter.syncWasmTransportState(state),
     catch: (error) => new Error(`WASM sync error: ${error}`),
   }).pipe(Effect.catchAll(() => Effect.succeed(null as string | null)));
+}
+
+// ── Settings mutations (sole public surface) ────────────────────
+//
+// All settings mutations from outside src/runtime/ MUST go through
+// these methods.  appSettingsRepository write exports are for internal
+// use only (bootstrap + this module).
+
+/**
+ * Replace all settings wholesale (e.g. after loading from bootstrap).
+ * This is the only public API for full settings replacement.
+ */
+export function replaceSettings(
+  values: unknown,
+  options?: { persist?: boolean; dispatch?: boolean },
+): AppSettings {
+  const result = _replaceAppSettings(values, options);
+  settingsChangedChannel.publish(result);
+  return result;
+}
+
+/**
+ * Merge a partial settings patch into active settings, persist, and dispatch.
+ * This is the primary mutation path for incremental settings changes.
+ */
+export function updateSettings(values: unknown): AppSettings {
+  const result = _updateAppSettings(values);
+  settingsChangedChannel.publish(result);
+  return result;
+}
+
+/**
+ * Reset settings to defaults (optionally a single section).
+ */
+export function resetSettings(section?: keyof AppSettings): AppSettings {
+  const result = _resetAppSettings(section);
+  settingsChangedChannel.publish(result);
+  return result;
+}
+
+/**
+ * Reload settings from persistence.
+ */
+export function loadSettings(): AppSettings {
+  const result = _loadAppSettings();
+  settingsChangedChannel.publish(result);
+  return result;
+}
+
+/**
+ * Delete all persisted settings.
+ */
+export function deletePersistedSettings(): void {
+  _deletePersistedSettings();
+}
+
+/**
+ * Read current settings snapshot (read-only, no mutation).
+ */
+export function getSettings(): AppSettings {
+  return getAppSettings();
 }
 
 export function resetRuntimeServiceForTests(): void {

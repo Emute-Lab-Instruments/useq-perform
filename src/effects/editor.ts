@@ -1,7 +1,8 @@
 // src/effects/editor.ts
 import { Effect } from "effect";
 import { editor, applyEditorFontSize } from "../lib/editorStore";
-import { getAppSettings, updateAppSettings } from "../runtime/appSettingsRepository.ts";
+import { getAppSettings } from "../runtime/appSettingsRepository.ts";
+import { updateSettings } from "../runtime/runtimeService.ts";
 
 // Re-export applyEditorFontSize so existing consumers that import it from
 // here continue to work without changes.
@@ -43,7 +44,7 @@ export const adjustFontSize = (delta: number) =>
     const currentSettings = getAppSettings();
     const newFontSize = currentSettings.editor.fontSize + delta;
     applyEditorFontSize(currentEditor, newFontSize);
-    updateAppSettings({ editor: { fontSize: newFontSize } });
+    updateSettings({ editor: { fontSize: newFontSize } });
   });
 
 export const loadCode = () =>

@@ -21,24 +21,36 @@ function mergeSettings(current: any, values: any) {
 
 async function loadSettingsStore(initialSettings: any) {
   const activeUserSettings = clone(initialSettings);
-  const listeners = new Set<(settings: any) => void>();
-  const updateAppSettings = vi.fn((values: any) => {
+  const channelSubscribers = new Set<(settings: any) => void>();
+  const updateSettings = vi.fn((values: any) => {
     const next = mergeSettings(activeUserSettings, values);
     Object.assign(activeUserSettings, next);
-    listeners.forEach((listener) => listener(activeUserSettings));
+    // Simulate runtimeService publishing on the settingsChanged channel
+    channelSubscribers.forEach((listener) => listener(clone(activeUserSettings)));
   });
 
   vi.doMock("../runtime/appSettingsRepository.ts", () => ({
     getAppSettings: () => clone(activeUserSettings),
-    subscribeAppSettings: (listener: (settings: any) => void) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
+  }));
+
+  vi.doMock("../contracts/runtimeChannels.ts", () => ({
+    settingsChanged: {
+      subscribe: (listener: (settings: any) => void) => {
+        channelSubscribers.add(listener);
+        return () => channelSubscribers.delete(listener);
+      },
+      publish: (value: any) => {
+        channelSubscribers.forEach((fn) => fn(value));
+      },
     },
-    updateAppSettings,
+  }));
+
+  vi.doMock("../runtime/runtimeService.ts", () => ({
+    updateSettings,
   }));
 
   const module = await import("./settingsStore");
-  return { ...module, activeUserSettings, updateAppSettings, listeners };
+  return { ...module, activeUserSettings, updateSettings, channelSubscribers };
 }
 
 describe("settingsStore", () => {
@@ -81,25 +93,25 @@ describe("settingsStore", () => {
     expect(settings).toMatchObject(initial);
   });
 
-  it("updateSettingsStore delegates to updateUserSettings (persistence path)", async () => {
-    const { settings, updateSettingsStore, updateAppSettings } = await loadSettingsStore(baseSettings);
+  it("updateSettingsStore delegates to runtimeService.updateSettings", async () => {
+    const { settings, updateSettingsStore, updateSettings } = await loadSettingsStore(baseSettings);
     updateSettingsStore({ ui: { consoleLinesLimit: 256 } });
 
-    expect(updateAppSettings).toHaveBeenCalledWith({ ui: { consoleLinesLimit: 256 } });
+    expect(updateSettings).toHaveBeenCalledWith({ ui: { consoleLinesLimit: 256 } });
     expect(settings.ui.consoleLinesLimit).toBe(256);
   });
 
-  it("repository subscriptions update the store via reconcile", async () => {
-    const { settings, listeners } = await loadSettingsStore(baseSettings);
-    listeners.forEach((listener) =>
+  it("settingsChanged channel updates the store via reconcile", async () => {
+    const { settings, channelSubscribers } = await loadSettingsStore(baseSettings);
+    channelSubscribers.forEach((listener) =>
       listener({
         ...baseSettings,
-        name: "FromEvent",
+        name: "FromChannel",
         ui: { ...baseSettings.ui, osFamily: "mac" },
       }),
     );
 
-    expect(settings.name).toBe("FromEvent");
+    expect(settings.name).toBe("FromChannel");
     expect(settings.ui.osFamily).toBe("mac");
   });
 

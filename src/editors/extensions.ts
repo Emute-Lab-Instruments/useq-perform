@@ -8,7 +8,8 @@ import {
 } from "@codemirror/language";
 import { default_extensions as default_clojure_extensions } from "@nextjournal/clojure-mode";
 import { EditorView } from "@codemirror/view";
-import { getAppSettings, updateAppSettings } from "../runtime/appSettingsRepository.ts";
+import { getAppSettings } from "../runtime/appSettingsRepository.ts";
+import { updateSettings } from "../runtime/runtimeService.ts";
 import { saveRaw, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 import { themes, editorBaseTheme } from "./themes.ts";
 import { lineNumbers, drawSelection } from "@codemirror/view";
@@ -36,7 +37,7 @@ export const updateListener = EditorView.updateListener.of((update) => {
   }
 
   if (update.docChanged && currentSettings.editor) {
-    updateAppSettings({ editor: { code: update.state.doc.toString() } });
+    updateSettings({ editor: { code: update.state.doc.toString() } });
   }
 
   // Keep manual-control bindings stable across arbitrary edits.

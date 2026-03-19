@@ -6,13 +6,11 @@ const createApp = vi.fn(() => ({ start: startApp }));
 const loadConfigurationWithMetadata = vi.fn();
 const publishRuntimeDiagnostics = vi.fn();
 const reportBootstrapFailure = vi.fn();
-const appSettingsRepository = {
-  getSettings: vi.fn(() => ({
-    runtime: { startLocallyWithoutHardware: true },
-    wasm: { enabled: true },
-  })),
-  replaceSettings: vi.fn(),
-};
+const replaceSettings = vi.fn();
+const getSettings = vi.fn(() => ({
+  runtime: { startLocallyWithoutHardware: true },
+  wasm: { enabled: true },
+}));
 const bootstrapRuntimeSession = vi.fn(() => ({
   connected: false,
   protocolMode: "legacy",
@@ -40,8 +38,8 @@ const mountHelpPanel = vi.fn();
 const mountDesignSelector = vi.fn();
 
 vi.mock("./runtime/appSettingsRepository.ts", () => ({
-  appSettingsRepository,
   loadConfigurationWithMetadata,
+  getAppSettings: getSettings,
 }));
 
 vi.mock("./runtime/startupContext.ts", () => ({
@@ -72,6 +70,8 @@ vi.mock("./runtime/runtimeDiagnostics.ts", () => ({
 
 vi.mock("./runtime/runtimeService.ts", () => ({
   bootstrapRuntimeSession,
+  replaceSettings,
+  getSettings,
 }));
 
 // Mock createAppUI's inlined dependencies
@@ -163,7 +163,7 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
     await startLegacyApp();
 
     expect(loadConfigurationWithMetadata).toHaveBeenCalledTimes(1);
-    expect(appSettingsRepository.replaceSettings).toHaveBeenCalledWith(
+    expect(replaceSettings).toHaveBeenCalledWith(
       { editor: { code: "(play)" } },
       { dispatch: true }
     );

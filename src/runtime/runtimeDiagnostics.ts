@@ -1,4 +1,20 @@
+/**
+ * Runtime diagnostics — derived computation.
+ *
+ * getDiagnosticsSnapshot() assembles its result on demand from
+ * startupContext + runtimeSessionStore. No separate mutable store.
+ *
+ * The only genuinely unique state is:
+ *   - bootstrapFailures[] (accumulated during bootstrap)
+ *   - startupMode + settingsSources (written once during bootstrap, never updated)
+ */
+
 import type { RuntimeSessionSnapshot } from "./runtimeSession";
+import {
+  getEnvironmentCapabilitiesSnapshot,
+  getStartupFlagsSnapshot,
+} from "./startupContext";
+import { getRuntimeSessionState } from "./runtimeSessionStore";
 import {
   runtimeDiagnostics as runtimeDiagnosticsChannel,
   bootstrapFailure as bootstrapFailureChannel,
@@ -39,106 +55,107 @@ export interface RuntimeDiagnosticsSnapshot {
   bootstrapFailures: RuntimeBootstrapFailure[];
 }
 
-const DEFAULT_ENVIRONMENT: ActiveEnvironmentSnapshot = {
-  areInBrowser: false,
-  areInDesktopApp: false,
-  isWebSerialAvailable: false,
-  isInDevmode: false,
-  urlParams: {},
-};
+// ── Bootstrap-only state (written once, read many) ──────────────
 
-const DEFAULT_RUNTIME_SESSION: RuntimeSessionSnapshot = {
-  hasHardwareConnection: false,
-  noModuleMode: false,
-  wasmEnabled: true,
-  connectionMode: "none",
-  transportMode: "none",
-};
+let bootstrapStartupMode: StartupMode = "browser-local";
+let bootstrapSettingsSources: RuntimeSettingsSource[] = ["defaults"];
+const bootstrapFailures: RuntimeBootstrapFailure[] = [];
 
-const DEFAULT_DIAGNOSTICS: RuntimeDiagnosticsSnapshot = {
-  startupMode: "browser-local",
-  protocolMode: "legacy",
-  settingsSources: ["defaults"],
-  activeEnvironment: DEFAULT_ENVIRONMENT,
-  runtimeSession: DEFAULT_RUNTIME_SESSION,
-  bootstrapFailures: [],
-};
+// ── Public: one-time bootstrap seeding ──────────────────────────
 
-let currentDiagnostics: RuntimeDiagnosticsSnapshot = {
-  ...DEFAULT_DIAGNOSTICS,
-  settingsSources: [...DEFAULT_DIAGNOSTICS.settingsSources],
-  activeEnvironment: { ...DEFAULT_DIAGNOSTICS.activeEnvironment },
-  runtimeSession: { ...DEFAULT_DIAGNOSTICS.runtimeSession },
-  bootstrapFailures: [],
-};
-
-function emitDiagnosticsSnapshot(snapshot: RuntimeDiagnosticsSnapshot): void {
-  runtimeDiagnosticsChannel.publish(snapshot);
+/**
+ * Called once during bootstrap to record the startup mode and settings sources.
+ * These values never change after bootstrap.
+ */
+export function seedBootstrapDiagnostics(seed: {
+  startupMode: StartupMode;
+  settingsSources: RuntimeSettingsSource[];
+}): void {
+  bootstrapStartupMode = seed.startupMode;
+  bootstrapSettingsSources = [...seed.settingsSources];
 }
 
-function emitBootstrapFailure(failure: RuntimeBootstrapFailure): void {
-  bootstrapFailureChannel.publish(failure);
-}
+// ── Derived snapshot ────────────────────────────────────────────
 
-export function getRuntimeDiagnostics(): RuntimeDiagnosticsSnapshot {
+/**
+ * Pure derivation: assembles a diagnostics snapshot from canonical
+ * state sources on every call. No mutable diagnostics store.
+ */
+export function getDiagnosticsSnapshot(): RuntimeDiagnosticsSnapshot {
+  const caps = getEnvironmentCapabilitiesSnapshot();
+  const flags = getStartupFlagsSnapshot();
+  const sessionState = getRuntimeSessionState();
+
   return {
-    ...currentDiagnostics,
-    settingsSources: [...currentDiagnostics.settingsSources],
-    activeEnvironment: { ...currentDiagnostics.activeEnvironment },
-    runtimeSession: { ...currentDiagnostics.runtimeSession },
-    bootstrapFailures: [...currentDiagnostics.bootstrapFailures],
+    startupMode: bootstrapStartupMode,
+    protocolMode: sessionState.protocolMode,
+    settingsSources: [...bootstrapSettingsSources],
+    activeEnvironment: {
+      areInBrowser: caps.areInBrowser,
+      areInDesktopApp: caps.areInDesktopApp,
+      isWebSerialAvailable: caps.isWebSerialAvailable,
+      isInDevmode: flags.devmode,
+      urlParams: { ...flags.params },
+    },
+    runtimeSession: { ...sessionState.session },
+    bootstrapFailures: [...bootstrapFailures],
   };
 }
 
+/** @deprecated Use getDiagnosticsSnapshot(). Alias kept for migration. */
+export const getRuntimeDiagnostics = getDiagnosticsSnapshot;
+
+// ── Event emission ──────────────────────────────────────────────
+
+/**
+ * Derive and publish the current diagnostics snapshot via the typed channel.
+ * Replaces the old publishRuntimeDiagnostics() that accepted partial updates.
+ */
+export function publishDiagnosticsSnapshot(): RuntimeDiagnosticsSnapshot {
+  const snapshot = getDiagnosticsSnapshot();
+  runtimeDiagnosticsChannel.publish(snapshot);
+  return snapshot;
+}
+
+/**
+ * @deprecated Use seedBootstrapDiagnostics() + publishDiagnosticsSnapshot().
+ * Thin compatibility shim: accepts partial updates, seeds what it can,
+ * then derives and publishes.
+ */
 export function publishRuntimeDiagnostics(
-  updates: Partial<RuntimeDiagnosticsSnapshot>
+  updates: Partial<RuntimeDiagnosticsSnapshot>,
 ): RuntimeDiagnosticsSnapshot {
-  currentDiagnostics = {
-    ...currentDiagnostics,
-    ...updates,
-    settingsSources: updates.settingsSources
-      ? [...updates.settingsSources]
-      : [...currentDiagnostics.settingsSources],
-    activeEnvironment: updates.activeEnvironment
-      ? { ...updates.activeEnvironment }
-      : { ...currentDiagnostics.activeEnvironment },
-    runtimeSession: updates.runtimeSession
-      ? { ...updates.runtimeSession }
-      : { ...currentDiagnostics.runtimeSession },
-    bootstrapFailures: updates.bootstrapFailures
-      ? [...updates.bootstrapFailures]
-      : [...currentDiagnostics.bootstrapFailures],
-  };
-
-  emitDiagnosticsSnapshot(getRuntimeDiagnostics());
-  return getRuntimeDiagnostics();
+  if (updates.startupMode !== undefined || updates.settingsSources !== undefined) {
+    seedBootstrapDiagnostics({
+      startupMode: updates.startupMode ?? bootstrapStartupMode,
+      settingsSources: updates.settingsSources ?? bootstrapSettingsSources,
+    });
+  }
+  return publishDiagnosticsSnapshot();
 }
+
+// ── Bootstrap failure tracking ──────────────────────────────────
 
 export function reportBootstrapFailure(
   scope: string,
-  error: unknown
+  error: unknown,
 ): RuntimeBootstrapFailure {
   const failure: RuntimeBootstrapFailure = {
     scope,
     message: error instanceof Error ? error.message : String(error),
   };
 
-  currentDiagnostics = {
-    ...currentDiagnostics,
-    bootstrapFailures: [...currentDiagnostics.bootstrapFailures, failure],
-  };
+  bootstrapFailures.push(failure);
 
-  emitBootstrapFailure(failure);
-  emitDiagnosticsSnapshot(getRuntimeDiagnostics());
+  bootstrapFailureChannel.publish(failure);
+  runtimeDiagnosticsChannel.publish(getDiagnosticsSnapshot());
   return failure;
 }
 
+// ── Test support ────────────────────────────────────────────────
+
 export function resetRuntimeDiagnostics(): void {
-  currentDiagnostics = {
-    ...DEFAULT_DIAGNOSTICS,
-    settingsSources: [...DEFAULT_DIAGNOSTICS.settingsSources],
-    activeEnvironment: { ...DEFAULT_DIAGNOSTICS.activeEnvironment },
-    runtimeSession: { ...DEFAULT_DIAGNOSTICS.runtimeSession },
-    bootstrapFailures: [],
-  };
+  bootstrapStartupMode = "browser-local";
+  bootstrapSettingsSources = ["defaults"];
+  bootstrapFailures.length = 0;
 }

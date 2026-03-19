@@ -1,4 +1,4 @@
-import { resetAppSettings } from "../../runtime/appSettingsRepository.ts";
+import { resetSettings } from "../../runtime/runtimeService.ts";
 import { PersonalSettings } from "./PersonalSettings";
 import { EditorSettings } from "./EditorSettings";
 import { StorageSettings } from "./StorageSettings";
@@ -10,7 +10,7 @@ import { AdvancedSettings } from "./AdvancedSettings";
 export function GeneralSettings() {
   const handleReset = () => {
     if (confirm("Are you sure you want to reset all settings to default values?")) {
-      resetAppSettings();
+      resetSettings();
       window.location.reload();
     }
   };
