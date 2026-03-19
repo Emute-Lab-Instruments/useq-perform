@@ -217,11 +217,11 @@ function writeBackdrop(overlay: HTMLDivElement, lineBounds: PixelLineBounds[]): 
 
     const div = document.createElement('div');
     div.style.cssText = [
-      'position:fixed',
+      'position:absolute',
       'top:0',
       'left:0',
-      'width:100vw',
-      'height:100vh',
+      'width:100%',
+      'height:100%',
       'pointer-events:none',
       `backdrop-filter:blur(${BLUR_RADIUS}px)`,
       `-webkit-backdrop-filter:blur(${BLUR_RADIUS}px)`,
@@ -234,21 +234,53 @@ function writeBackdrop(overlay: HTMLDivElement, lineBounds: PixelLineBounds[]): 
 interface MeasureResult {
   lineBounds: PixelLineBounds[];
   visVisible: boolean;
+  /** Editor panel's viewport-space bounding rect, used to clip the overlay. */
+  editorRect: { top: number; left: number; width: number; height: number } | null;
+  /** The scrollDOM.scrollTop at the time of measurement. */
+  scrollTop: number;
 }
 
 function scheduleOverlayRebuild(
   overlay: HTMLDivElement,
   view: EditorView,
+  editorPanel: HTMLElement | null,
   onVisChange: (visible: boolean) => void,
+  onScrollBaseline: (scrollTop: number) => void,
 ): void {
   view.requestMeasure({
     read(v: EditorView): MeasureResult {
       const visVisible = isVisPanelVisible();
-      if (!visVisible) return { lineBounds: [], visVisible };
-      return { lineBounds: computeVisibleLineBoundsViewport(v), visVisible };
+      const scrollTop = v.scrollDOM.scrollTop;
+      if (!visVisible) return { lineBounds: [], visVisible, editorRect: null, scrollTop };
+      const rect = editorPanel?.getBoundingClientRect() ?? null;
+      const editorRect = rect
+        ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+        : null;
+      const lineBounds = computeVisibleLineBoundsViewport(v);
+      // Offset line bounds so they're relative to the editor panel, not the window,
+      // since the overlay is positioned at editorRect.top/left.
+      if (editorRect) {
+        for (const lb of lineBounds) {
+          lb.left   -= editorRect.left;
+          lb.right  -= editorRect.left;
+          lb.top    -= editorRect.top;
+          lb.bottom -= editorRect.top;
+        }
+      }
+      return { lineBounds, visVisible, editorRect, scrollTop };
     },
-    write({ lineBounds, visVisible }: MeasureResult) {
+    write({ lineBounds, visVisible, editorRect, scrollTop }: MeasureResult) {
       onVisChange(visVisible);
+      onScrollBaseline(scrollTop);
+      // Reset scroll-tracking transform since we just recomputed positions.
+      overlay.style.transform = '';
+      // Constrain overlay to the editor panel bounds so it doesn't blur toolbars.
+      if (editorRect) {
+        overlay.style.top = `${editorRect.top}px`;
+        overlay.style.left = `${editorRect.left}px`;
+        overlay.style.width = `${editorRect.width}px`;
+        overlay.style.height = `${editorRect.height}px`;
+      }
       writeBackdrop(overlay, lineBounds);
     },
   });
@@ -264,6 +296,10 @@ class VisReadabilityPlugin {
   private mutationObserver: MutationObserver;
   private editorPanel: HTMLElement | null = null;
   private wasVisVisible = false;
+  /** scrollTop at the time polygons were last computed. */
+  private scrollBaseline = 0;
+  /** Bound scroll handler for cleanup. */
+  private handleScroll: () => void;
 
   constructor(view: EditorView) {
     this.view = view;
@@ -275,8 +311,9 @@ class VisReadabilityPlugin {
       'position:fixed',
       'top:0',
       'left:0',
-      'width:100vw',
-      'height:100vh',
+      'width:0',
+      'height:0',
+      'overflow:hidden',
       'pointer-events:none',
       `z-index:${BLUR_LAYER_Z}`,
     ].join(';');
@@ -284,26 +321,34 @@ class VisReadabilityPlugin {
 
     this.editorPanel = document.getElementById('panel-main-editor');
 
+    // Track scroll to shift the overlay via CSS transform (no polygon recomputation).
+    this.handleScroll = () => {
+      const delta = this.view.scrollDOM.scrollTop - this.scrollBaseline;
+      this.overlay.style.transform = delta ? `translateY(${-delta}px)` : '';
+    };
+    view.scrollDOM.addEventListener('scroll', this.handleScroll, { passive: true });
+
     // Watch for vis panel style changes (display toggled) to refresh.
     this.mutationObserver = new MutationObserver(() =>
-      scheduleOverlayRebuild(this.overlay, this.view, (v) => this.applyVisState(v)),
+      this.scheduleRebuild(),
     );
     const visPanel = getVisualisationPanel();
     if (visPanel) {
       this.mutationObserver.observe(visPanel, { attributes: true, attributeFilter: ['style'] });
     }
 
-    scheduleOverlayRebuild(this.overlay, view, (v) => this.applyVisState(v));
+    this.scheduleRebuild();
   }
 
   update(update: ViewUpdate): void {
     this.view = update.view;
     if (update.docChanged || update.viewportChanged || update.geometryChanged) {
-      scheduleOverlayRebuild(this.overlay, update.view, (v) => this.applyVisState(v));
+      this.scheduleRebuild();
     }
   }
 
   destroy(): void {
+    this.view.scrollDOM.removeEventListener('scroll', this.handleScroll);
     this.mutationObserver.disconnect();
     this.overlay.remove();
     // Restore editor z-index
@@ -312,6 +357,16 @@ class VisReadabilityPlugin {
     }
     // Restore CM editor background
     this.view.dom.style.backgroundColor = '';
+  }
+
+  private scheduleRebuild(): void {
+    scheduleOverlayRebuild(
+      this.overlay,
+      this.view,
+      this.editorPanel,
+      (v) => this.applyVisState(v),
+      (st) => { this.scrollBaseline = st; },
+    );
   }
 
   /**
