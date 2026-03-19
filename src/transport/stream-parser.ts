@@ -8,7 +8,7 @@
 import { Buffer } from "buffer";
 import { CircularBuffer } from "../lib/CircularBuffer.ts";
 import { dbg } from "../lib/debug.ts";
-import { handleExternalTimeUpdate } from "../legacy/ui/serialVis/visualisationController.ts";
+import { handleExternalTimeUpdate } from "../ui/visualisation/visualisationController.ts";
 import {
   combineBuffers,
   findMessageStartMarker,

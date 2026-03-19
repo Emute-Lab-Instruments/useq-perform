@@ -6,7 +6,7 @@ It is intentionally narrower than "everything currently in the repo". Downstream
 
 ## Current Product Shape
 
-- The shipped app is a single Vite bundle built from `src/legacy/main.ts` into `public/solid-dist/`.
+- The shipped app is a single Vite bundle built from `src/main.ts` into `public/solid-dist/`.
 - The runtime today is one browser app with one CodeMirror editor session, one transport toolbar, one main toolbar, settings/help panels, and serial visualisation.
 - The app can run against either real uSEQ hardware over Web Serial or the pinned `src-useq` WASM bundle in browser-local mode, which should be available by default in release builds.
 

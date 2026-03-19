@@ -3,8 +3,8 @@
  *
  * All startup orchestration lives in `src/runtime/bootstrap.ts`.
  */
-import './styles/index.css';
-import { bootstrap, type BootstrapResult } from '../runtime/bootstrap.ts';
+import './ui/styles/index.css';
+import { bootstrap, type BootstrapResult } from './runtime/bootstrap.ts';
 
 export { bootstrap as startLegacyApp };
 export type { BootstrapResult };

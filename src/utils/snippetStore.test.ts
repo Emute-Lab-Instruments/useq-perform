@@ -174,7 +174,7 @@ describe("snippetStore", () => {
   });
 
   it("falls back safely when localStorage is corrupt", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { snippetStore } = await loadSnippetStore({
       snippets: "{bad-json",
       starred: "not-json",
@@ -184,6 +184,6 @@ describe("snippetStore", () => {
     expect(snippetStore.snippets).toEqual([]);
     expect(Array.from(snippetStore.starred)).toEqual([]);
     expect(snippetStore.nextId).toBe(1);
-    expect(errorSpy).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
   });
 });

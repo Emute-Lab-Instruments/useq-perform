@@ -21,18 +21,20 @@ Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WAS
 
 ## Source Layout
 
-- `src/` - typed application modules and modern UI components.
-- `src/legacy/` - the current production entrypoint and retained runtime modules.
-- `src/ui/` - Solid UI components mounted from the legacy runtime.
+- `src/` - application source (TypeScript/TSX).
+- `src/ui/` - Solid UI components, styles, and visualisation renderer.
 - `src/ui/adapters/` - imperative adapters for mounting Solid UI components.
+- `src/editors/` - CodeMirror extensions, keymaps, themes, gamepad control.
+- `src/runtime/` - bootstrap, settings repository, config manager, startup context.
+- `src/transport/` - serial port lifecycle, protocol drivers, stream parser.
 - `scripts/build-assets.mjs` - markdown/reference/wasm/font asset pipeline.
 - `src-useq/` - firmware submodule.
 
-`src-solid/` and `src/islands/` have been removed after migration consolidation.
+`src-solid/`, `src/islands/`, and `src/legacy/` have been removed after migration consolidation.
 
 ## Architecture
 
-The application uses a single-bundle Vite build. The live bundle still starts at `src/legacy/main.ts`, loads configuration, mounts the UI shell, and then prefers browser-local WASM startup by default while reconnecting saved hardware opportunistically unless the user opts out. UI components are mounted via adapter modules that provide imperative APIs (for example `mountSettingsPanel()` and `showModal()`).
+The application uses a single-bundle Vite build. The bundle starts at `src/main.ts`, loads configuration, mounts the UI shell, and then prefers browser-local WASM startup by default while reconnecting saved hardware opportunistically unless the user opts out. UI components are mounted via adapter modules that provide imperative APIs (for example `mountSettingsPanel()` and `showModal()`).
 
 Read `docs/REPO_MAP.md` first before treating older folders, heartbeat artifacts, or retained legacy modules as the current architectural truth.
 

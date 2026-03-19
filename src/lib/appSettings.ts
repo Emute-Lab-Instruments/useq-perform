@@ -6,6 +6,7 @@ import {
 import { themes } from "../editors/themes.ts";
 import type { RuntimeSettingsSource } from "../runtime/runtimeDiagnostics.ts";
 import { isLocalStorageBypassedInStartupContext } from "../runtime/startupContext.ts";
+import { load, loadRaw, save, saveRaw, remove, has, PERSISTENCE_KEYS } from "./persistence.ts";
 
 export const CONFIG_VERSION = "1.0.0";
 export const settingsStorageKey = "uSEQ-Perform-User-Settings";
@@ -607,22 +608,20 @@ function decodeStoredCode(code: unknown): string | null {
   return code;
 }
 
-function hasLegacySettings(storage: Storage): boolean {
-  return Boolean(
-    storage.getItem(legacyEditorConfigKey) ||
-      storage.getItem(legacySettingsKey) ||
-      storage.getItem(legacyCodeStorageKey),
+function hasLegacySettings(): boolean {
+  return (
+    has(PERSISTENCE_KEYS.legacyEditorConfig) ||
+    has(PERSISTENCE_KEYS.legacySettings) ||
+    has(PERSISTENCE_KEYS.legacyCode)
   );
 }
 
-function migrateLegacySettings(storage: Storage): AppSettingsPatch {
+function migrateLegacySettings(): AppSettingsPatch {
   const migrated: AppSettingsPatch = {};
-  const editorConfigStr = storage.getItem(legacyEditorConfigKey);
-  const settingsConfigStr = storage.getItem(legacySettingsKey);
+  const editorConfig = load<Record<string, unknown>>(PERSISTENCE_KEYS.legacyEditorConfig);
 
-  if (editorConfigStr) {
+  if (editorConfig) {
     try {
-      const editorConfig = JSON.parse(editorConfigStr) as Record<string, unknown>;
       const themeNames = Object.keys(themes);
       const themeIndex = Number(editorConfig.currentTheme) % themeNames.length;
       migrated.editor = {
@@ -631,19 +630,20 @@ function migrateLegacySettings(storage: Storage): AppSettingsPatch {
       };
       delete (migrated.editor as Record<string, unknown>).currentTheme;
     } catch { /* corrupt legacy data, skip migration */ }
-    storage.removeItem(legacyEditorConfigKey);
+    remove(PERSISTENCE_KEYS.legacyEditorConfig);
   }
 
-  if (settingsConfigStr) {
+  const generalConfig = load<Record<string, unknown>>(PERSISTENCE_KEYS.legacySettings);
+  if (generalConfig) {
     try {
-      const generalConfig = JSON.parse(settingsConfigStr);
       if (isRecord(generalConfig.storage)) {
+        const legacyStorage = generalConfig.storage as Record<string, unknown>;
         migrated.storage = {
-          ...generalConfig.storage,
+          ...legacyStorage,
           saveCodeLocally:
-            generalConfig.storage.savelocal == null
+            legacyStorage.savelocal == null
               ? undefined
-              : generalConfig.storage.savelocal !== false,
+              : legacyStorage.savelocal !== false,
         };
         delete (migrated.storage as Record<string, unknown>).savelocal;
       }
@@ -652,18 +652,18 @@ function migrateLegacySettings(storage: Storage): AppSettingsPatch {
         migrated.ui = { ...generalConfig.ui };
       }
     } catch { /* corrupt legacy data, skip migration */ }
-    storage.removeItem(legacySettingsKey);
+    remove(PERSISTENCE_KEYS.legacySettings);
   }
 
   const legacyCodeValue =
-    storage.getItem(legacyCodeStorageKey) ?? storage.getItem(codeStorageKey);
+    loadRaw(PERSISTENCE_KEYS.legacyCode) ?? loadRaw(PERSISTENCE_KEYS.editorCode);
   const decodedCode = decodeStoredCode(legacyCodeValue);
   if (decodedCode !== null) {
     migrated.editor = {
       ...(migrated.editor || {}),
       code: decodedCode,
     };
-    storage.removeItem(legacyCodeStorageKey);
+    remove(PERSISTENCE_KEYS.legacyCode);
   }
 
   return migrated;
@@ -676,29 +676,25 @@ export function readPersistedUserSettings(options: {
     return null;
   }
 
-  const storage = window.localStorage;
-  const storedSettingsStr = storage.getItem(settingsStorageKey);
-  const legacySettingsPresent = hasLegacySettings(storage);
-  const storedCodeValue = storage.getItem(codeStorageKey);
+  const storedSettings = load<Record<string, unknown>>(PERSISTENCE_KEYS.settings);
+  const legacySettingsPresent = hasLegacySettings();
+  const storedCodeValue = loadRaw(PERSISTENCE_KEYS.editorCode);
 
-  if (!storedSettingsStr && storedCodeValue == null && !legacySettingsPresent) {
+  if (!storedSettings && storedCodeValue == null && !legacySettingsPresent) {
     return null;
   }
 
   let loaded: AppSettingsPatch = {};
 
-  if (storedSettingsStr) {
-    try {
-      const parsed = JSON.parse(storedSettingsStr);
-      loaded = isRecord(parsed) ? (parsed as Partial<AppSettings>) : {};
-    } catch { /* corrupt stored settings, fall through to defaults */ }
+  if (storedSettings) {
+    loaded = isRecord(storedSettings) ? (storedSettings as Partial<AppSettings>) : {};
   } else if (legacySettingsPresent) {
-    loaded = migrateLegacySettings(storage);
+    loaded = migrateLegacySettings();
   }
 
   const legacyCodeValue =
-    !storedSettingsStr && legacySettingsPresent
-      ? storage.getItem(legacyCodeStorageKey)
+    !storedSettings && legacySettingsPresent
+      ? loadRaw(PERSISTENCE_KEYS.legacyCode)
       : null;
   const decodedCode = decodeStoredCode(storedCodeValue ?? legacyCodeValue);
   if (decodedCode !== null) {
@@ -726,8 +722,8 @@ export function writePersistedUserSettings(settings: unknown, options: {
   const normalized = normalizeUserSettings(settings);
   const storedSettings = createStoredSettingsSnapshot(normalized);
 
-  window.localStorage.setItem(settingsStorageKey, JSON.stringify(storedSettings));
-  window.localStorage.setItem(codeStorageKey, normalized.editor.code);
+  save(PERSISTENCE_KEYS.settings, storedSettings);
+  saveRaw(PERSISTENCE_KEYS.editorCode, normalized.editor.code);
 }
 
 export function clearPersistedUserSettings(): void {
@@ -735,12 +731,11 @@ export function clearPersistedUserSettings(): void {
     return;
   }
 
-  const storage = window.localStorage;
-  storage.removeItem(settingsStorageKey);
-  storage.removeItem(codeStorageKey);
-  storage.removeItem(legacyEditorConfigKey);
-  storage.removeItem(legacySettingsKey);
-  storage.removeItem(legacyCodeStorageKey);
+  remove(PERSISTENCE_KEYS.settings);
+  remove(PERSISTENCE_KEYS.editorCode);
+  remove(PERSISTENCE_KEYS.legacyEditorConfig);
+  remove(PERSISTENCE_KEYS.legacySettings);
+  remove(PERSISTENCE_KEYS.legacyCode);
 }
 
 export async function loadBootstrapSettings(options: {

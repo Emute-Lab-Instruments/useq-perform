@@ -1,4 +1,5 @@
 import { dbg } from "./debug.ts";
+import { load, PERSISTENCE_KEYS } from "./persistence.ts";
 
 // Reuse the reference-data loader strategy from the help panel
 function candidateDataUrls() {
@@ -33,13 +34,8 @@ async function loadReferenceData() {
 }
 
 function readStarredFunctions() {
-  try {
-    const raw = window.localStorage.getItem("moduLispReference:starredFunctions");
-    const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? new Set(list) : new Set();
-  } catch (_) {
-    return new Set();
-  }
+  const list = load<string[]>(PERSISTENCE_KEYS.referenceStarred, []);
+  return Array.isArray(list) ? new Set(list) : new Set();
 }
 
 function makeInsertTextForName(name) {

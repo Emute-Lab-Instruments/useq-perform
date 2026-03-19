@@ -9,7 +9,7 @@ import {
 import { default_extensions as default_clojure_extensions } from "@nextjournal/clojure-mode";
 import { EditorView } from "@codemirror/view";
 import { getAppSettings, updateAppSettings } from "../runtime/appSettingsRepository.ts";
-import { codeStorageKey } from "../lib/appSettings.ts";
+import { saveRaw, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 import { themes, editorBaseTheme } from "./themes.ts";
 import { lineNumbers, drawSelection } from "@codemirror/view";
 import { history } from '@codemirror/commands';
@@ -32,7 +32,7 @@ export const updateListener = EditorView.updateListener.of((update) => {
   const currentSettings = getAppSettings();
   const userSessionConfig = currentSettings.storage || { saveCodeLocally: true };
   if (update.docChanged && userSessionConfig.saveCodeLocally) {
-    window.localStorage.setItem(codeStorageKey, update.state.doc.toString());
+    saveRaw(PERSISTENCE_KEYS.editorCode, update.state.doc.toString());
   }
 
   if (update.docChanged && currentSettings.editor) {

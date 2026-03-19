@@ -14,7 +14,7 @@ The canonical surfaces for ongoing work are:
 - Product boundary: `docs/STABLE_CORE.md`
 - Editor-facing runtime contract: `docs/RUNTIME_CONTRACT.md`
 - Serial protocol details: `docs/PROTOCOL.md`
-- Production startup path: `src/legacy/main.ts`, `src/legacy/app/application.ts`, `src/legacy/ui/ui.ts`
+- Production startup path: `src/main.ts`, `src/runtime/bootstrap.ts`
 - Startup and runtime ownership: `src/runtime/bootstrapPlan.ts`, `src/runtime/runtimeService.ts`, `src/runtime/runtimeSession.ts`, `src/runtime/runtimeDiagnostics.ts`
 - Runtime contract definitions: `src/runtime/jsonProtocol.ts`, `src/contracts/useqRuntimeContract.ts`, `src/contracts/runtimeEvents.ts`
 - Settings ownership: `src/lib/appSettings.ts` (schema, defaults, normalization, persistence), `src/runtime/appSettingsRepository.ts` (runtime state, subscription, bootstrap orchestration), `src/runtime/urlParams.ts` (startup flag parsing), `src/runtime/configSchema.ts` (validation)
@@ -24,9 +24,7 @@ Transitional adapters remain real runtime code, but they are not canonical owner
 
 - `src/runtime/legacyRuntimeAdapter.ts`
 - `src/utils/settingsStore.ts`
-- `src/legacy/io/serialComms.ts`
-- `src/legacy/io/useqWasmInterpreter.ts`
-- `src/legacy/ui/serialVis/visualisationController.ts`
+- `src/ui/visualisation/visualisationController.ts`
 
 ## Consequences
 

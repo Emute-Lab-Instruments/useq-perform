@@ -1,10 +1,11 @@
 import { Component, createSignal, createResource } from "solid-js";
 import { ExperienceLevelSelector } from "./ExperienceLevelSelector";
 import { UserGuideContent } from "./UserGuideContent";
+import { loadRaw, saveRaw, PERSISTENCE_KEYS } from "../../lib/persistence.ts";
 
 export const UserGuideTab: Component = () => {
   const [experienceLevel, setExperienceLevel] = createSignal(
-    localStorage.getItem("useqExperienceLevel") || "beginner"
+    loadRaw(PERSISTENCE_KEYS.experienceLevel, "beginner")
   );
 
   const fetchGuide = async (level: string) => {
@@ -17,7 +18,7 @@ export const UserGuideTab: Component = () => {
 
   const handleLevelChange = (level: string) => {
     setExperienceLevel(level);
-    localStorage.setItem("useqExperienceLevel", level);
+    saveRaw(PERSISTENCE_KEYS.experienceLevel, level);
   };
 
   return (

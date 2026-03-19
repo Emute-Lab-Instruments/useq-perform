@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultMainEditorStartingCode } from "../../lib/editorDefaults.ts";
+import { defaultMainEditorStartingCode } from "../lib/editorDefaults.ts";
 
 function installMockStorage() {
   const store: Record<string, string> = {};
@@ -40,7 +40,7 @@ describe("configLoader", () => {
   });
 
   it("preserves hardcoded editor defaults when default-config omits nested fields", async () => {
-    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
+    const { loadConfiguration } = await import("./appSettingsRepository.ts");
 
     const config = await loadConfiguration();
 
@@ -49,7 +49,7 @@ describe("configLoader", () => {
   });
 
   it("merges local storage settings and the canonical code key into bootstrap config", async () => {
-    const settingsModule = await import("../../lib/appSettings.ts");
+    const settingsModule = await import("../lib/appSettings.ts");
     window.localStorage.setItem(
       settingsModule.settingsStorageKey,
       JSON.stringify({
@@ -59,7 +59,7 @@ describe("configLoader", () => {
     );
     window.localStorage.setItem(settingsModule.codeStorageKey, "(saved-from-local-storage)");
 
-    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
+    const { loadConfiguration } = await import("./appSettingsRepository.ts");
     const config = await loadConfiguration();
 
     expect(config.editor.fontSize).toBe(18);
@@ -68,7 +68,7 @@ describe("configLoader", () => {
   });
 
   it("reports the settings sources used for bootstrap diagnostics", async () => {
-    const settingsModule = await import("../../lib/appSettings.ts");
+    const settingsModule = await import("../lib/appSettings.ts");
     window.localStorage.setItem(
       settingsModule.settingsStorageKey,
       JSON.stringify({ editor: { fontSize: 18 } }),
@@ -82,7 +82,7 @@ describe("configLoader", () => {
       }),
     );
 
-    const { loadConfigurationWithMetadata } = await import("../../runtime/appSettingsRepository.ts");
+    const { loadConfigurationWithMetadata } = await import("./appSettingsRepository.ts");
     const result = await loadConfigurationWithMetadata();
 
     expect(result.settingsSources).toEqual([
@@ -93,7 +93,7 @@ describe("configLoader", () => {
   });
 
   it("skips local storage and disables persistence when ?nosave is present", async () => {
-    const settingsModule = await import("../../lib/appSettings.ts");
+    const settingsModule = await import("../lib/appSettings.ts");
     window.localStorage.setItem(
       settingsModule.settingsStorageKey,
       JSON.stringify({ editor: { fontSize: 12 } }),
@@ -101,7 +101,7 @@ describe("configLoader", () => {
     window.localStorage.setItem(settingsModule.codeStorageKey, "(local-only)");
     setLocation("/?nosave");
 
-    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
+    const { loadConfiguration } = await import("./appSettingsRepository.ts");
     const config = await loadConfiguration();
 
     expect(config.editor.fontSize).toBe(31);
@@ -117,7 +117,7 @@ describe("configLoader", () => {
     vi.stubGlobal("fetch", fetchMock);
     setLocation("/?txt=https://example.com/code.txt");
 
-    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
+    const { loadConfiguration } = await import("./appSettingsRepository.ts");
     const config = await loadConfiguration();
 
     expect(fetchMock).toHaveBeenCalledWith("https://example.com/code.txt");
@@ -166,7 +166,7 @@ describe("configLoader", () => {
     vi.stubGlobal("fetch", fetchMock);
     setLocation("/?config=https://example.com/useq-config.json");
 
-    const { loadConfiguration } = await import("../../runtime/appSettingsRepository.ts");
+    const { loadConfiguration } = await import("./appSettingsRepository.ts");
     const config = await loadConfiguration();
 
     expect(config.runtime).toEqual({

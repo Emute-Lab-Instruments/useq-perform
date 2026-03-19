@@ -1,4 +1,4 @@
-import defaultConfig from "../legacy/config/default-config.json";
+import defaultConfig from "./default-config.json";
 import { validateConfiguration } from "./configSchema.ts";
 import {
   clearPersistedUserSettings,
@@ -15,6 +15,7 @@ import {
 import { defaultMainEditorStartingCode } from "../lib/editorDefaults.ts";
 import type { RuntimeSettingsSource } from "./runtimeDiagnostics.ts";
 import { updateRuntimeSettingsEffect } from "./runtimeService.ts";
+import { load, save, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 import {
   getStartupFlagsSnapshot,
   setStartupFlags,
@@ -273,35 +274,16 @@ export const loadConfigurationWithMetadata = loadBootstrapSettingsWithMetadata;
 
 // ── DevMode state persistence ───────────────────────────────────────
 
-const DEVMODE_STORAGE_KEY = "uSEQ-Perform-DevMode-State";
-
 export function loadDevModeConfiguration(): unknown | null {
   if (!getStartupFlagsSnapshot().devmode) {
     return null;
   }
 
-  try {
-    const devModeStr = window.localStorage.getItem(DEVMODE_STORAGE_KEY);
-    if (!devModeStr) {
-      return null;
-    }
-
-    return JSON.parse(devModeStr);
-  } catch (error) {
-    console.error("appSettingsRepository: Failed to load DevMode config:", error);
-    return null;
-  }
+  return load(PERSISTENCE_KEYS.devModeState);
 }
 
 export function saveDevModeConfiguration(devModeConfig: unknown): void {
-  try {
-    window.localStorage.setItem(
-      DEVMODE_STORAGE_KEY,
-      JSON.stringify(devModeConfig),
-    );
-  } catch (error) {
-    console.error("appSettingsRepository: Failed to save DevMode config:", error);
-  }
+  save(PERSISTENCE_KEYS.devModeState, devModeConfig);
 }
 
 export const appSettingsRepository = {

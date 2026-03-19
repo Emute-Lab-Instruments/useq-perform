@@ -39,12 +39,12 @@ const mountSettingsPanel = vi.fn();
 const mountHelpPanel = vi.fn();
 const mountDesignSelector = vi.fn();
 
-vi.mock("../../runtime/appSettingsRepository.ts", () => ({
+vi.mock("./runtime/appSettingsRepository.ts", () => ({
   appSettingsRepository,
   loadConfigurationWithMetadata,
 }));
 
-vi.mock("../../runtime/startupContext.ts", () => ({
+vi.mock("./runtime/startupContext.ts", () => ({
   examineEnvironment,
   getStartupFlagsSnapshot: vi.fn(() => ({
     debug: false,
@@ -61,58 +61,58 @@ vi.mock("../../runtime/startupContext.ts", () => ({
   resetStartupContextForTests: vi.fn(),
 }));
 
-vi.mock("../../runtime/appLifecycle.ts", () => ({
+vi.mock("./runtime/appLifecycle.ts", () => ({
   createApp,
 }));
 
-vi.mock("../../runtime/runtimeDiagnostics.ts", () => ({
+vi.mock("./runtime/runtimeDiagnostics.ts", () => ({
   publishRuntimeDiagnostics,
   reportBootstrapFailure,
 }));
 
-vi.mock("../../runtime/runtimeService.ts", () => ({
+vi.mock("./runtime/runtimeService.ts", () => ({
   bootstrapRuntimeSession,
 }));
 
 // Mock createAppUI's inlined dependencies
-vi.mock("../editors/gamepadControl.ts", () => ({
+vi.mock("./editors/gamepadControl.ts", () => ({
   initGamepadControl,
 }));
 
-vi.mock("../../lib/editorStore.ts", () => ({
+vi.mock("./lib/editorStore.ts", () => ({
   setEditor,
   initEditorPanel,
 }));
 
-vi.mock("../../ui/adapters/modal.tsx", () => ({
+vi.mock("./ui/adapters/modal.tsx", () => ({
   mountModal,
 }));
 
-vi.mock("../../ui/adapters/picker-menu.tsx", () => ({
+vi.mock("./ui/adapters/picker-menu.tsx", () => ({
   mountPickerMenu,
 }));
 
-vi.mock("../../ui/adapters/double-radial-menu.tsx", () => ({
+vi.mock("./ui/adapters/double-radial-menu.tsx", () => ({
   mountDoubleRadialMenu,
 }));
 
-vi.mock("../../ui/adapters/visualisationPanel", () => ({
+vi.mock("./ui/adapters/visualisationPanel", () => ({
   registerVisualisationPanel,
 }));
 
-vi.mock("../../ui/adapters/panels.tsx", () => ({
+vi.mock("./ui/adapters/panels.tsx", () => ({
   mountSettingsPanel,
   mountHelpPanel,
   mountDesignSelector,
   hideAllPanels: vi.fn(),
 }));
 
-vi.mock("../../ui/adapters/toolbars.tsx", () => ({
+vi.mock("./ui/adapters/toolbars.tsx", () => ({
   mountTransportToolbar,
   mountMainToolbar,
 }));
 
-vi.mock("../../runtime/bootstrapPlan.ts", () => ({
+vi.mock("./runtime/bootstrapPlan.ts", () => ({
   resolveBootstrapPlan: vi.fn(() => ({
     startupMode: "browser-local",
   })),

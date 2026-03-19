@@ -5,7 +5,7 @@
  * Useful for testing serialVis behavior without a physical device connection.
  */
 
-import { handleExternalTimeUpdate } from '../legacy/ui/serialVis/visualisationController.ts';
+import { handleExternalTimeUpdate } from '../ui/visualisation/visualisationController.ts';
 import { dbg } from '../lib/debug.ts';
 
 let isRunning = false;

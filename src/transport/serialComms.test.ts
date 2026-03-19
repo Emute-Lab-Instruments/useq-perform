@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   JSON_META_EVENT,
   PROTOCOL_READY_EVENT,
-} from "../../contracts/runtimeEvents";
+} from "../contracts/runtimeEvents";
 
 const postMock = vi.fn();
 const upgradeCheckMock = vi.fn();
@@ -23,27 +23,27 @@ const reportTransportConnectionChangedMock = vi.fn(() => ({
 const reportProtocolModeChangedMock = vi.fn();
 const announceRuntimeSessionMock = vi.fn();
 
-vi.mock("../../utils/consoleStore.ts", () => ({
+vi.mock("../utils/consoleStore.ts", () => ({
   post: postMock,
 }));
 
-vi.mock("../../transport/upgradeCheck.ts", () => ({
+vi.mock("./upgradeCheck.ts", () => ({
   currentVersion: { major: 1, minor: 2, patch: 0 },
   upgradeCheck: upgradeCheckMock,
 }));
 
-vi.mock("../ui/serialVis/visualisationController.ts", () => ({
+vi.mock("../ui/visualisation/visualisationController.ts", () => ({
   handleExternalTimeUpdate: handleExternalTimeUpdateMock,
 }));
 
-vi.mock("../../runtime/appSettingsRepository.ts", () => ({
+vi.mock("../runtime/appSettingsRepository.ts", () => ({
   getAppSettings: () => ({
     runtime: { autoReconnect: true },
     wasm: { enabled: true },
   }),
 }));
 
-vi.mock("../../runtime/urlParams.ts", () => ({
+vi.mock("../runtime/urlParams.ts", () => ({
   readStartupFlags: () => ({
     debug: false,
     devmode: false,
@@ -54,7 +54,7 @@ vi.mock("../../runtime/urlParams.ts", () => ({
   }),
 }));
 
-vi.mock("../../runtime/runtimeService.ts", () => ({
+vi.mock("../runtime/runtimeService.ts", () => ({
   reportTransportConnectionChanged: reportTransportConnectionChangedMock,
   reportProtocolModeChanged: reportProtocolModeChangedMock,
   announceRuntimeSession: announceRuntimeSessionMock,
@@ -213,7 +213,7 @@ class FakeSerialPort {
 
 async function loadSerialComms() {
   vi.resetModules();
-  return import("../../transport/index.ts");
+  return import("./index.ts");
 }
 
 async function flushProtocolWork(): Promise<void> {

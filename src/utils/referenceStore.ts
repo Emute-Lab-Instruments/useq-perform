@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store";
 import { createEffect } from "solid-js";
+import { load, save, loadRaw, saveRaw, remove, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 
 export interface Version {
   major: number;
@@ -27,44 +28,34 @@ export interface ReferenceEntry {
   };
 }
 
-const STORAGE_KEYS = {
-  starred: "moduLispReference:starredFunctions",
-  expanded: "moduLispReference:expandedFunctions",
-  version: "moduLispReference:targetVersion",
-};
-
 const loadSet = (key: string) => {
-  try {
-    const raw = localStorage.getItem(key);
-    return new Set<string>(JSON.parse(raw || "[]") as string[]);
-  } catch {
-    return new Set<string>();
-  }
+  const arr = load<string[]>(key, []);
+  return new Set<string>(Array.isArray(arr) ? arr : []);
 };
 
 export const [referenceStore, setReferenceStore] = createStore({
   data: [] as ReferenceEntry[],
-  starred: loadSet(STORAGE_KEYS.starred),
-  expanded: loadSet(STORAGE_KEYS.expanded),
-  targetVersion: localStorage.getItem(STORAGE_KEYS.version) || null,
+  starred: loadSet(PERSISTENCE_KEYS.referenceStarred),
+  expanded: loadSet(PERSISTENCE_KEYS.referenceExpanded),
+  targetVersion: loadRaw(PERSISTENCE_KEYS.referenceVersion) as string | null,
   isLoading: true,
   error: null as string | null,
 });
 
 // Persistence
 createEffect(() => {
-  localStorage.setItem(STORAGE_KEYS.starred, JSON.stringify(Array.from(referenceStore.starred)));
+  save(PERSISTENCE_KEYS.referenceStarred, Array.from(referenceStore.starred));
 });
 
 createEffect(() => {
-  localStorage.setItem(STORAGE_KEYS.expanded, JSON.stringify(Array.from(referenceStore.expanded)));
+  save(PERSISTENCE_KEYS.referenceExpanded, Array.from(referenceStore.expanded));
 });
 
 createEffect(() => {
   if (referenceStore.targetVersion) {
-    localStorage.setItem(STORAGE_KEYS.version, referenceStore.targetVersion);
+    saveRaw(PERSISTENCE_KEYS.referenceVersion, referenceStore.targetVersion);
   } else {
-    localStorage.removeItem(STORAGE_KEYS.version);
+    remove(PERSISTENCE_KEYS.referenceVersion);
   }
 });
 

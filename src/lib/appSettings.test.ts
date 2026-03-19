@@ -33,7 +33,7 @@ describe("appSettings", () => {
   });
 
   it("ignores legacy visual offset settings outside the one-time migration path", async () => {
-    const settingsModule = await import("../../lib/appSettings.ts");
+    const settingsModule = await import("./appSettings.ts");
 
     const normalized = settingsModule.normalizeUserSettings({
       visualisation: {
@@ -50,7 +50,7 @@ describe("appSettings", () => {
   });
 
   it("migrates legacy storage keys into canonical local storage once", async () => {
-    const settingsModule = await import("../../lib/appSettings.ts");
+    const settingsModule = await import("./appSettings.ts");
     window.localStorage.setItem(
       "editorConfig",
       JSON.stringify({ currentTheme: 0, fontSize: 21 }),
@@ -76,7 +76,7 @@ describe("appSettings", () => {
   });
 
   it("round-trips runtime, wasm, and canonical visualisation fields through configuration documents", async () => {
-    const settingsModule = await import("../../lib/appSettings.ts");
+    const settingsModule = await import("./appSettings.ts");
 
     const document = settingsModule.createConfigurationDocument(
       settingsModule.mergeUserSettings(settingsModule.createDefaultUserSettings(), {

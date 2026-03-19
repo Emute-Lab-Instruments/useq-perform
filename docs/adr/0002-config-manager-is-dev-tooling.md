@@ -5,7 +5,7 @@
 
 ## Context
 
-`src/legacy/config/configManager.ts` can export the current configuration, import a config file, and in dev mode write directly to `src/legacy/config/default-config.json` through `scripts/config-server.mjs` or the File System Access API. That workflow is useful for local development, but it is not part of the stable product core defined in `docs/STABLE_CORE.md`.
+`src/runtime/configManager.ts` can export the current configuration, import a config file, and in dev mode write directly to `src/runtime/default-config.json` through `scripts/config-server.mjs` or the File System Access API. That workflow is useful for local development, but it is not part of the stable product core defined in `docs/STABLE_CORE.md`.
 
 Leaving this surface in the general settings UI creates a false product promise: it looks like a stable end-user feature even though its repo-write path depends on local development setup.
 

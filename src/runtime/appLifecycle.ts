@@ -5,7 +5,7 @@ import { startWebSocketServer, stopWebSocketServer } from '../effects/devmodeWeb
 import { showModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
 import { startMockTimeGenerator } from '../effects/mockTimeGenerator.ts';
-import { registerVisualisation } from '../legacy/ui/serialVis/visualisationController.ts';
+import { registerVisualisation } from '../ui/visualisation/visualisationController.ts';
 import type { BootstrapPlan } from './bootstrapPlan.ts';
 import { announceRuntimeSession } from './runtimeService.ts';
 import { showVisualisationPanel } from '../ui/adapters/visualisationPanel';

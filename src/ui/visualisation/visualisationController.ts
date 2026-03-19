@@ -1,18 +1,18 @@
 // @ts-nocheck
-import { dbg } from "../../../lib/debug.ts";
-import { getAppSettings, subscribeAppSettings } from "../../../runtime/appSettingsRepository.ts";
-import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../../runtime/wasmInterpreter.ts";
-import { getSerialVisPalette, getSerialVisChannelColor } from "../../../lib/visualisationUtils.ts";
+import { dbg } from "../../lib/debug.ts";
+import { getAppSettings, subscribeAppSettings } from "../../runtime/appSettingsRepository.ts";
+import { evalInUseqWasm, updateUseqWasmTime, evalOutputAtTime, evalOutputsInTimeWindow } from "../../runtime/wasmInterpreter.ts";
+import { getSerialVisPalette, getSerialVisChannelColor } from "../../lib/visualisationUtils.ts";
 import {
   CODE_EVALUATED_EVENT,
   addRuntimeEventListener,
-} from "../../../contracts/runtimeEvents";
+} from "../../contracts/runtimeEvents";
 import {
   SERIAL_VIS_PALETTE_CHANGED_EVENT,
   VISUALISATION_SESSION_EVENT,
   addVisualisationEventListener,
   dispatchVisualisationEvent,
-} from "../../../contracts/visualisationEvents";
+} from "../../contracts/visualisationEvents";
 
 const registeredExpressions = new Map();
 const expressionColors = new Map();

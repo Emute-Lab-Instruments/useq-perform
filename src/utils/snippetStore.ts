@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store";
 import { createEffect } from "solid-js";
+import { load, save, saveRaw, loadRaw, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 
 export interface Snippet {
   id: number;
@@ -9,24 +10,17 @@ export interface Snippet {
   createdAt: number;
 }
 
-const STORAGE_KEYS = {
-  snippets: "codeSnippets:snippets",
-  starred: "codeSnippets:starred",
-  nextId: "codeSnippets:nextId",
-};
-
 const loadInitialState = () => {
   try {
-    const snippetsRaw = JSON.parse(localStorage.getItem(STORAGE_KEYS.snippets) || "[]");
-    const starredRaw = JSON.parse(localStorage.getItem(STORAGE_KEYS.starred) || "[]");
-    const nextIdRaw = parseInt(localStorage.getItem(STORAGE_KEYS.nextId) || "1", 10);
+    const snippets = load<Snippet[]>(PERSISTENCE_KEYS.snippets, []);
+    const starredRaw = load<number[]>(PERSISTENCE_KEYS.snippetsStarred, []);
+    const nextIdRaw = parseInt(loadRaw(PERSISTENCE_KEYS.snippetsNextId, "1"), 10);
 
-    const snippets = Array.isArray(snippetsRaw) ? snippetsRaw : [];
     const starred = Array.isArray(starredRaw) ? starredRaw : [];
     const nextId = Number.isFinite(nextIdRaw) && nextIdRaw > 0 ? nextIdRaw : 1;
 
     return {
-      snippets,
+      snippets: Array.isArray(snippets) ? snippets : [],
       starred: new Set<number>(starred),
       nextId,
     };
@@ -50,9 +44,9 @@ export const [snippetStore, setSnippetStore] = createStore({
 
 // Persistence
 createEffect(() => {
-  localStorage.setItem(STORAGE_KEYS.snippets, JSON.stringify(snippetStore.snippets));
-  localStorage.setItem(STORAGE_KEYS.starred, JSON.stringify(Array.from(snippetStore.starred)));
-  localStorage.setItem(STORAGE_KEYS.nextId, snippetStore.nextId.toString());
+  save(PERSISTENCE_KEYS.snippets, snippetStore.snippets);
+  save(PERSISTENCE_KEYS.snippetsStarred, Array.from(snippetStore.starred));
+  saveRaw(PERSISTENCE_KEYS.snippetsNextId, snippetStore.nextId.toString());
 });
 
 export const addSnippet = (snippet: Omit<Snippet, "id" | "createdAt">) => {

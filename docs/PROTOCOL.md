@@ -2,7 +2,7 @@
 
 **Version**: 1.2.0
 **Status**: Current
-**Sources**: `src/legacy/io/serialComms.ts`, `src-useq/uSEQ/src/utils/serial_message.h`
+**Sources**: `src/transport/index.ts`, `src-useq/uSEQ/src/utils/serial_message.h`
 
 ---
 
@@ -319,7 +319,7 @@ namespace SerialMsg {
 }
 ```
 
-From `src/legacy/io/serialComms.ts`:
+From `src/transport/index.ts`:
 
 ```typescript
 const MESSAGE_START_MARKER = 31;       // 0x1F

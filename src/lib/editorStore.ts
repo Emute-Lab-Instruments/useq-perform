@@ -13,7 +13,7 @@ import { createSignal } from "solid-js";
 import { EditorView } from "@codemirror/view";
 import { EditorState, type Extension } from "@codemirror/state";
 import { fontSizeCompartment } from "./editorCompartments.ts";
-import { codeStorageKey } from "./appSettings.ts";
+import { saveRaw, PERSISTENCE_KEYS } from "./persistence.ts";
 
 /**
  * Typed boundary for the active editor session.
@@ -165,7 +165,7 @@ function setupAutosaveTimer(editorView: EditorView, settings: any): void {
     const interval = Math.max(1000, parseInt(storage.autoSaveInterval, 10) || 5000);
     autosaveTimer = setInterval(() => {
       if (editorView && editorView.state) {
-        window.localStorage.setItem(codeStorageKey, editorView.state.doc.toString());
+        saveRaw(PERSISTENCE_KEYS.editorCode, editorView.state.doc.toString());
       }
     }, interval);
   }

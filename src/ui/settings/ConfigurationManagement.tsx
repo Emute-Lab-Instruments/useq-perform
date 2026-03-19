@@ -6,7 +6,7 @@ type ConfigurationManagementProps = {
 };
 
 async function loadConfigManager() {
-  return import("../../legacy/config/configManager.ts");
+  return import("../../runtime/configManager.ts");
 }
 
 export function ConfigurationManagement(props: ConfigurationManagementProps = {}) {
@@ -29,7 +29,7 @@ export function ConfigurationManagement(props: ConfigurationManagementProps = {}
       } else if (result.method === 'filesystem-api') {
         alert(`✅ Configuration saved to:\n${result.name}`);
       } else if (result.method === 'download') {
-        alert('⬇️ Configuration downloaded.\n\nCopy the file to:\nsrc/legacy/config/default-config.json\n\nto make changes persist across builds.');
+        alert('⬇️ Configuration downloaded.\n\nCopy the file to:\nsrc/runtime/default-config.json\n\nto make changes persist across builds.');
       }
     } catch (error: unknown) {
       console.error('Export error:', error);

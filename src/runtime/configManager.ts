@@ -8,19 +8,19 @@
 import {
   validateConfiguration,
   getConfigurationDiff
-} from '../../runtime/configSchema.ts';
-import { getAppSettings, updateAppSettings } from '../../runtime/appSettingsRepository.ts';
-import { getAllControlValues } from '../../effects/mockControlInputs.ts';
-import { dbg } from '../../lib/debug.ts';
+} from './configSchema.ts';
+import { getAppSettings, updateAppSettings } from './appSettingsRepository.ts';
+import { getAllControlValues } from '../effects/mockControlInputs.ts';
+import { dbg } from '../lib/debug.ts';
 import {
   createConfigurationDocument,
   createDefaultUserSettings,
   mergeUserSettings,
   settingsPatchFromConfiguration,
-} from '../../lib/appSettings.ts';
+} from '../lib/appSettings.ts';
 
 const CONFIG_WS_URL = 'ws://localhost:8081';
-const CONFIG_DEFAULT_PATH = 'src/legacy/config/default-config.json';
+const CONFIG_DEFAULT_PATH = 'src/runtime/default-config.json';
 
 let configWebSocket = null;
 let connectionAttempted = false;

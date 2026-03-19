@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   VISUALISATION_SESSION_EVENT,
   addVisualisationEventListener,
-} from "../../../contracts/visualisationEvents";
+} from "../../contracts/visualisationEvents";
 
 type VisualisationOverrides = Partial<{
   windowDuration: number;
@@ -46,7 +46,7 @@ async function loadController(overrides: VisualisationOverrides = {}) {
   // can invoke them to simulate a settings change.
   const settingsSubscribers = new Set<(s: unknown) => void>();
 
-  vi.doMock("../../../runtime/appSettingsRepository.ts", () => ({
+  vi.doMock("../../runtime/appSettingsRepository.ts", () => ({
     getAppSettings: () => activeUserSettings,
     subscribeAppSettings: (listener: (s: unknown) => void) => {
       settingsSubscribers.add(listener);
@@ -54,19 +54,19 @@ async function loadController(overrides: VisualisationOverrides = {}) {
     },
   }));
 
-  vi.doMock("../../io/useqWasmInterpreter.ts", () => ({
+  vi.doMock("../../runtime/wasmInterpreter.ts", () => ({
     evalInUseqWasm,
     updateUseqWasmTime,
     evalOutputAtTime,
     evalOutputsInTimeWindow,
   }));
 
-  vi.doMock("./utils.ts", () => ({
+  vi.doMock("../../lib/visualisationUtils.ts", () => ({
     getSerialVisPalette: () => ["#0ff", "#f0f", "#ff0"],
     getSerialVisChannelColor: () => "#0ff",
   }));
 
-  vi.doMock("../../utils.ts", () => ({
+  vi.doMock("../../lib/debug.ts", () => ({
     dbg: vi.fn(),
   }));
 

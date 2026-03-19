@@ -7,6 +7,7 @@
 
 import { post } from "../utils/consoleStore.ts";
 import { dbg } from "../lib/debug.ts";
+import { save, load, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 import { setCodeHighlightColor } from "./serial-utils.ts";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 import {
@@ -103,7 +104,7 @@ export function announceRuntimeSession(): void {
 export function setSerialPort(newport: SerialPort): void {
   serialport = newport;
   const portInfo = newport.getInfo();
-  localStorage.setItem("uSEQ-Serial-Port-Info", JSON.stringify(portInfo));
+  save(PERSISTENCE_KEYS.serialPortInfo, portInfo);
 }
 
 export function getSerialPort(): SerialPort | null {
@@ -118,9 +119,7 @@ function isAutoReconnectEnabled(): boolean {
 
 async function checkForSavedPort(): Promise<SerialPort | null | undefined> {
   dbg("Checking for saved port...");
-  const savedInfo = JSON.parse(
-    localStorage.getItem("uSEQ-Serial-Port-Info") || "null"
-  );
+  const savedInfo = load(PERSISTENCE_KEYS.serialPortInfo);
 
   if (savedInfo) {
     const ports = await navigator.serial.getPorts();

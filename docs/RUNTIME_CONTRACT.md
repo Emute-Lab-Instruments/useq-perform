@@ -88,7 +88,7 @@ The canonical editor constants live in:
 - `src/contracts/useqRuntimeContract.ts` — shared transport commands and capability split
 - `src/contracts/wasmAbi.ts` — WASM export signatures and ABI validation
 
-Both `src/effects/transport.ts` and `src/legacy/io/useqWasmInterpreter.ts` import from these files instead of maintaining separate command lists or hard-coded symbol strings.
+Both `src/effects/transport.ts` and `src/runtime/wasmInterpreter.ts` import from these files instead of maintaining separate command lists or hard-coded symbol strings.
 
 ## Drift Prevention
 

@@ -37,7 +37,7 @@ The web live-coding interface for uSEQ. This repository.
 The Lisp dialect executed on uSEQ hardware or the in-browser WASM interpreter.
 
 - **Identifiers**: `ModuLispInterpreter`, `modulisp` (submodule at `deps/modulisp/`)
-- **Files**: `deps/modulisp/`, `src/legacy/io/useqWasmInterpreter.ts`
+- **Files**: `deps/modulisp/`, `src/runtime/wasmInterpreter.ts`
 - **Not**: "Lisp" alone (ambiguous)
 - **See also**: WASM, Expression
 
@@ -121,7 +121,7 @@ Gate/trigger output channels `d1`–`d3`.
 Devmode-only simulated hardware inputs for testing without a physical module.
 
 - **Identifiers**: `ain1`, `ain2` (analogue CV, 0–1), `din1`, `din2` (digital pulse, 0/1), `swm` (momentary switch), `swt` (toggle switch, 0/0.5/1)
-- **Files**: `src/legacy/io/mockControlInputs.ts`
+- **Files**: `src/effects/mockControlInputs.ts`
 
 ### Control Definition
 
@@ -129,7 +129,7 @@ Describes a single mock control input for UI rendering: name, label, description
 type (continuous/binary/ternary), min, max, step, default.
 
 - **Identifiers**: `ControlDefinition`, `ControlName`, `ControlType`, `getControlDefinitions()`
-- **Files**: `src/legacy/io/mockControlInputs.ts`
+- **Files**: `src/effects/mockControlInputs.ts`
 
 ### Firmware Version
 
@@ -321,7 +321,7 @@ Captured browser capabilities at startup: WebSerial availability, devmode flag,
 user settings snapshot.
 
 - **Identifiers**: `EnvironmentState`
-- **Files**: `src/legacy/app/environment.ts`
+- **Files**: `src/runtime/startupContext.ts`
 
 ### Connection Mode
 
@@ -461,7 +461,7 @@ visualisation when hardware isn't providing them.
 
 - **Identifiers**: `mockTimeGenerator`
 - **Files**: `src/effects/mockTimeGenerator.ts`
-- **Legacy location** (deprecated): `src/legacy/io/mockTimeGenerator.ts`
+- **Files**: `src/effects/mockTimeGenerator.ts`
 
 ### Editor Effect
 
@@ -1067,7 +1067,7 @@ Alt-F symbol lookup: finds the word at cursor, opens the help panel to the
 reference tab, and auto-expands the matching entry.
 
 - **Identifiers**: `showDocumentationForSymbol()` (keymap action), reference search typed channel
-- **Files**: `src/legacy/editors/keymaps.ts`, `src/ui/help/ModuLispReferenceTab.tsx`
+- **Files**: `src/editors/keymaps.ts`, `src/ui/help/ModuLispReferenceTab.tsx`
 
 ### Reference Toast
 
@@ -1183,7 +1183,7 @@ The high-performance canvas-based waveform renderer. Renders analogue channels
 as continuous lines and digital channels as step-mode lanes.
 
 - **Identifiers**: `SerialVis`
-- **Files**: `src/ui/SerialVis.tsx`, `src/legacy/ui/serialVis/serialVis.ts`
+- **Files**: `src/ui/SerialVis.tsx`, `src/ui/visualisation/serialVis.ts`
 - **DOM element**: `#serialcanvas`
 - **Note**: name is legacy — prefer "visualisation" in new code
 
@@ -1224,7 +1224,7 @@ The colour set used for visualisation waveforms. Switches based on light/dark
 theme variant.
 
 - **Identifiers**: `setSerialVisPalette()`
-- **Files**: `src/legacy/editors/themes/themeManager.ts`
+- **Files**: `src/editors/themes/themeManager.ts`
 - **Event**: `SERIAL_VIS_PALETTE_EVENT` / `useq-serialvis-palette-changed`
 
 ### Visualisation Controller
@@ -1232,13 +1232,13 @@ theme variant.
 Legacy canvas rendering orchestrator for the serial visualisation.
 
 - **Identifiers**: `visualisationController`
-- **Files**: `src/legacy/ui/serialVis/visualisationController.ts`
+- **Files**: `src/ui/visualisation/visualisationController.ts`
 
 ---
 
 ## Editor & CodeMirror
 
-The code editor is CodeMirror 6. Extensions live in `src/legacy/editors/extensions/`
+The code editor is CodeMirror 6. Extensions live in `src/editors/extensions/`
 and canonical state (compartments, store) lives in `src/lib/`.
 
 ### Editor
@@ -1256,14 +1256,14 @@ A CodeMirror reconfiguration slot — allows dynamic swapping of extensions
 (e.g. theme, font size) without rebuilding the full editor state.
 
 - **Identifiers**: `themeCompartment`, `fontSizeCompartment`
-- **Files**: `src/lib/editorCompartments.ts` (canonical), `src/legacy/editors/state.ts` (re-export)
+- **Files**: `src/lib/editorCompartments.ts` (canonical), `src/editors/state.ts` (re-export)
 
 ### Extension
 
 A CodeMirror plugin or behaviour added to the editor. Grouped into bundles.
 
 - **Identifiers**: `baseExtensions`, `themeExtensions`, `functionalExtensions`, `mainEditorExtensions`, `exampleEditorExtensions`
-- **Files**: `src/legacy/editors/extensions.ts`
+- **Files**: `src/editors/extensions.ts`
 - **`themeExtensions`**: theme compartment + font size compartment + lineNumbers + bracketMatching
 - **`functionalExtensions`**: history + foldGutter + drawSelection + updateListener
 - **`baseExtensions`**: core + theme + clojure-mode + structure + evalHighlight + visReadability
@@ -1276,7 +1276,7 @@ cyan for soft/preview eval. Clears after 1 second.
 - **Identifiers**: `evalHighlightField` (StateField), `evalHighlightEffect` (StateEffect), `evalHighlightDeco`, `evalPreviewHighlightDeco`, `flashEvalHighlight()`
 - **CSS classes**: `.cm-evaluated-code`, `.cm-evaluated-preview`
 - **Animations**: `flash-highlight`, `flash-highlight-preview`
-- **Files**: `src/legacy/editors/extensions/evalHighlight.ts`, `src/legacy/styles/editor.css`
+- **Files**: `src/editors/extensions/evalHighlight.ts`, `src/ui/styles/editor.css`
 - **See also**: Eval Request
 
 ### Soft Eval
@@ -1285,7 +1285,7 @@ A preview evaluation that shows what *would* be evaluated without committing it.
 Uses a distinct highlight colour.
 
 - **Identifiers**: `softEval()` (keymap action), `isPreview` (flag in evalHighlightEffect payload)
-- **Files**: `src/legacy/editors/keymaps.ts`
+- **Files**: `src/editors/keymaps.ts`
 - **Keybinding**: Mod-Shift-Enter
 - **See also**: Eval Highlight
 
@@ -1294,7 +1294,7 @@ Uses a distinct highlight colour.
 Evaluation scheduled to fire on the next bar boundary rather than immediately.
 
 - **Identifiers**: `evalQuantised()` (keymap action)
-- **Files**: `src/legacy/editors/keymaps.ts`
+- **Files**: `src/editors/keymaps.ts`
 - **Keybinding**: Alt-Enter
 
 ### Immediate Eval
@@ -1303,7 +1303,7 @@ A code evaluation prefixed with `@` that runs through WASM and prints the result
 to the console, rather than sending to hardware. Used for quick inspection.
 
 - **Identifiers**: `@` prefix handling in `evalNow()`
-- **Files**: `src/legacy/editors/editorConfig.ts`
+- **Files**: `src/editors/editorConfig.ts`
 - **See also**: Eval Request, WASM
 
 ### Expression Gutter
@@ -1315,7 +1315,7 @@ visualisation of individual expressions.
 - **Identifiers**: `expressionGutter` (gutter instance), `expressionGutterField` (StateField), `ExpressionGutterMarker` (GutterMarker subclass), `expressionGutterEnabled` (UISettings)
 - **CSS class**: `.cm-expression-gutter`
 - **Marker properties**: `color`, `isStart`, `isEnd`, `isMid`, `isActive`, `exprType`, `showPlayButton`, `isVisualised`
-- **Files**: `src/legacy/editors/extensions/structure.ts`
+- **Files**: `src/editors/extensions/structure.ts`
 - **See also**: Expression, Play Button
 
 ### Play Button
@@ -1325,7 +1325,7 @@ expression. Visibility controlled by `expressionClearButtonEnabled` setting.
 
 - **Identifiers**: `showPlayButton` (marker property), `expressionClearClickPlugin` (ViewPlugin), `handlePlayExpression()`, `handleVisualiseExpression()`
 - **CSS classes**: `.cm-expr-play-btn`, `.cm-expr-play-btn.is-visualising`
-- **Files**: `src/legacy/editors/extensions/structure.ts`, `src/legacy/styles/editor.css`
+- **Files**: `src/editors/extensions/structure.ts`, `src/ui/styles/editor.css`
 
 ### Expression Tracking
 
@@ -1335,7 +1335,7 @@ colour-code and provide per-expression controls.
 
 - **Identifiers**: `lastEvaluatedExpressionField` (StateField), `expressionEvaluatedAnnotation` (Annotation), `detectAndTrackExpressionEvaluation()`, `findExpressionBounds()`, `findExpressionDefinition()`, `isRangeActive()`, `createMarkersForRange()`, `processExpressionRanges()`, `buildMarkers()`
 - **Pattern regex**: `/\b([ads])([1-8])(?=[\s)(]|$)/g`
-- **Files**: `src/legacy/editors/extensions/structure.ts`
+- **Files**: `src/editors/extensions/structure.ts`
 
 ### Node Highlight
 
@@ -1344,7 +1344,7 @@ Used during structural navigation.
 
 - **Identifiers**: `nodeHighlightField` (StateField)
 - **CSS classes**: `.cm-current-node`, `.cm-parent-node`, `.cm-parent-node-editor-area`, `.cm-left-sibling-underscore`, `.cm-right-sibling-underscore`
-- **Files**: `src/legacy/editors/extensions/structure.ts`, `src/legacy/styles/editor.css`
+- **Files**: `src/editors/extensions/structure.ts`, `src/ui/styles/editor.css`
 - **See also**: Structural Navigation
 
 ### Structural Navigation
@@ -1353,7 +1353,7 @@ Tree-based movement through Lisp S-expressions. Navigates by syntax structure
 rather than characters or words.
 
 - **Identifiers**: `navigateIn()`, `navigateOut()`, `navigateNext()`, `navigatePrev()`, `navigateRight()`, `navigateLeft()`, `navigateUp()`, `navigateDown()`, `navigationMetaField` (StateField), `navigationMetaEffect` (StateEffect)
-- **Files**: `src/legacy/editors/extensions/structure/new-structure.ts`
+- **Files**: `src/editors/extensions/structure/new-structure.ts`
 - **Helpers**: `findNodeAt()`, `isContainerNode()`, `isStructuralToken()`, `createStructuralEditor()`
 - **See also**: Node Highlight
 
@@ -1363,7 +1363,7 @@ Operations that edit code by syntax tree structure rather than raw text:
 slurp, barf, cut/paste expression, wrap in function, move.
 
 - **Identifiers**: `slurpForward()`, `slurpBackward()`, `barfForward()`, `barfBackward()`, `wrapInFunction()`
-- **Files**: `src/legacy/editors/extensions/structure/new-structure.ts`
+- **Files**: `src/editors/extensions/structure/new-structure.ts`
 - **See also**: Structural Navigation
 
 ### Slurp
@@ -1372,7 +1372,7 @@ Structural edit that absorbs the next (or previous) sibling into the current
 container, growing its bounds.
 
 - **Identifiers**: `slurpForward()`, `slurpBackward()`
-- **Files**: `src/legacy/editors/extensions/structure/new-structure.ts`
+- **Files**: `src/editors/extensions/structure/new-structure.ts`
 - **See also**: Barf, Structural Editing
 
 ### Barf
@@ -1381,7 +1381,7 @@ Structural edit that expels the last (or first) child from the current
 container, shrinking its bounds.
 
 - **Identifiers**: `barfForward()`, `barfBackward()`
-- **Files**: `src/legacy/editors/extensions/structure/new-structure.ts`
+- **Files**: `src/editors/extensions/structure/new-structure.ts`
 - **See also**: Slurp, Structural Editing
 
 ### Traversal Stack
@@ -1390,7 +1390,7 @@ Navigation metadata recording which nodes were traversed during structural
 navigation, enabling smart re-entry after ascending to a parent.
 
 - **Identifiers**: `TraversalStack`, `NavigationMeta`, `navigationMetaField`
-- **Files**: `src/legacy/editors/extensions/structure/new-structure.ts`
+- **Files**: `src/editors/extensions/structure/new-structure.ts`
 - **See also**: Structural Navigation
 
 ### Expression Bounds
@@ -1400,7 +1400,7 @@ a matched channel pattern (e.g. `a1`, `d2`). Used by the gutter and
 visualisation to colour-code and provide per-expression controls.
 
 - **Identifiers**: `ExpressionBounds`, `findExpressionBounds()`, `findExpressionDefinition()`
-- **Files**: `src/legacy/editors/extensions/structure.ts`
+- **Files**: `src/editors/extensions/structure.ts`
 - **See also**: Expression Gutter, Expression Tracking
 
 ### Vis Readability
@@ -1410,14 +1410,14 @@ canvas is visible underneath. Ensures text remains readable over waveforms.
 
 - **Identifiers**: `visReadabilityPlugin` (ViewPlugin), `VisReadabilityPlugin` (class)
 - **Helpers**: `getLineContentBounds()`, `groupIntoBlocks()`, `buildBlockPolygonPath()`
-- **Files**: `src/legacy/editors/extensions/visReadability.ts`
+- **Files**: `src/editors/extensions/visReadability.ts`
 
 ### Keymap
 
 A set of key bindings for the editor. Multiple keymaps are composed together.
 
 - **Identifiers**: `useq_keymap` (uSEQ-specific bindings), `completeClojureKeymap` (paredit/structural editing), `structural_navigation_keymap` (tree nav, currently commented out), `baseKeymap`, `mainEditorKeymap`
-- **Files**: `src/legacy/editors/keymaps.ts`
+- **Files**: `src/editors/keymaps.ts`
 - **Key eval bindings**: Mod-Enter → `evalNow()`, Alt-Enter → `evalQuantised()`, Mod-Shift-Enter → `softEval()`
 - **Key UI bindings**: Alt-h → `toggleHelp()`, Alt-g → `toggleSerialVis()`, Alt-f → `showDocumentationForSymbol()`
 
@@ -1427,7 +1427,7 @@ A CodeMirror visual theme. Managed via compartment for live switching.
 Theme changes also sync root CSS variables for non-editor UI.
 
 - **Identifiers**: `setTheme()`, `setMainEditorTheme()`, `adjustPanelsToTheme()`, `setSerialVisPalette()`, `editorBaseTheme`
-- **Files**: `src/legacy/editors/themes/themeManager.ts`, `src/legacy/editors/themes/builtinThemes.ts`
+- **Files**: `src/editors/themes/themeManager.ts`, `src/editors/themes/builtinThemes.ts`
 - **Built-in themes**: `useq-dark`, `uSEQ-1337`, `amy`, `ayu-light`, `bespin`, `birds-of-paradise`, `clouds`, `cobalt`, `cool-glow`, `dracula`, `espresso`, `noctis-lilac`, `rose-pine-dawn`, `solarized-light`, `smoothy`, `tomorrow`
 - **Base theme CSS**: `.cm-content`, `.cm-cursor`, `.cm-gutters`, `.cm-matchingBracket`, `.cm-scroller`
 - **See also**: Compartment
@@ -1439,7 +1439,7 @@ settings (background, foreground, caret, selection, etc.), and syntax highlight
 styles. Used by `createTheme()` to produce a CodeMirror theme extension.
 
 - **Identifiers**: `ThemeRecipe`, `ThemeVariant` (`"light"` | `"dark"`), `ThemeSettings`
-- **Files**: `src/legacy/editors/themes/createTheme.ts`
+- **Files**: `src/editors/themes/createTheme.ts`
 - **See also**: Theme
 
 ### Editor Base Theme
@@ -1448,7 +1448,7 @@ The non-swappable base CodeMirror theme providing layout, cursor, line height,
 font, and gutter scaffolding styles. Always active regardless of selected theme.
 
 - **Identifiers**: `editorBaseTheme`
-- **Files**: `src/legacy/editors/themes/builtinThemes.ts`
+- **Files**: `src/editors/themes/builtinThemes.ts`
 - **See also**: Theme, Compartment
 
 ### Block Polygon
@@ -1458,7 +1458,7 @@ bounds, providing contrast behind editor text when the visualisation canvas is
 visible underneath.
 
 - **Identifiers**: `buildBlockPolygonPath()`, `groupIntoBlocks()`, `getLineContentBounds()`, `PixelLineBounds`
-- **Files**: `src/legacy/editors/extensions/visReadability.ts`
+- **Files**: `src/editors/extensions/visReadability.ts`
 - **See also**: Vis Readability
 
 ### Clojure Mode
@@ -1467,7 +1467,7 @@ The syntax highlighting and paredit support for Lisp/Clojure, provided by
 `@nextjournal/clojure-mode`.
 
 - **Identifiers**: `default_clojure_extensions`
-- **Files**: `src/legacy/editors/extensions.ts`
+- **Files**: `src/editors/extensions.ts`
 - **Not**: "Lisp mode" (the package is Clojure-specific)
 - **See also**: ModuLisp
 
@@ -1476,7 +1476,7 @@ The syntax highlighting and paredit support for Lisp/Clojure, provided by
 Interval-based persistence of editor contents to localStorage.
 
 - **Identifiers**: `autoSaveEnabled`, `autoSaveInterval` (in `StorageSettings`)
-- **Files**: `src/lib/appSettings.ts`, `src/legacy/app/application.ts`
+- **Files**: `src/lib/appSettings.ts`, `src/runtime/bootstrap.ts`
 
 ---
 
@@ -1488,7 +1488,7 @@ The WebAssembly build of the ModuLisp interpreter, compiled via Emscripten.
 Enables in-browser code execution without hardware.
 
 - **Identifiers**: `wasm`, `Wasm` prefix, `public/wasm/` (build output)
-- **Files**: `src/legacy/io/useqWasmInterpreter.ts`
+- **Files**: `src/runtime/wasmInterpreter.ts`
 - **See also**: ModuLisp, No-Module Mode
 
 ### WASM ABI
@@ -1528,7 +1528,7 @@ capabilities check, eval, transport state sync, time update, and batch output
 evaluation.
 
 - **Identifiers**: `WasmRuntimePort`, `wasmRuntimePort`, `WasmCapabilities` (`enabled`, `supportsEval`, `supportsTimeWindow`)
-- **Files**: `src/legacy/io/useqWasmInterpreter.ts`
+- **Files**: `src/runtime/wasmInterpreter.ts`
 - **See also**: WASM, Bridge
 
 ### Time Sample
@@ -1537,7 +1537,7 @@ A single time-series data point `{time, value}` produced by WASM output
 evaluation. Used to build visualisation waveforms.
 
 - **Identifiers**: `TimeSample`, `SampleSeriesMap` (`Map<string, TimeSample[]>`)
-- **Files**: `src/legacy/io/useqWasmInterpreter.ts`
+- **Files**: `src/runtime/wasmInterpreter.ts`
 - **See also**: Vis Sample, Visualisation
 
 ### No-Module Mode
@@ -1557,7 +1557,7 @@ WASM-only execution without hardware. Triggered by user setting or missing WebSe
 Browser Gamepad API integration for controller-driven interaction.
 
 - **Identifiers**: `GamepadManager`, `GamepadSnapshot`
-- **Files**: `src/legacy/io/gamepad.ts`
+- **Files**: `src/editors/gamepadControl.ts`
 
 ### Gamepad Controller
 
@@ -1565,7 +1565,7 @@ High-level controller mapping gamepad buttons/sticks to editor and menu
 operations. Manages modes: normal, picker, number-picker, loading-picker.
 
 - **Identifiers**: `GamepadController`
-- **Files**: `src/legacy/editors/gamepadControl.ts`
+- **Files**: `src/editors/gamepadControl.ts`
 - **Navigation modes**: spatial (arrow keys), structural (prev/next)
 
 ### Button Map
@@ -1573,7 +1573,7 @@ operations. Manages modes: normal, picker, number-picker, loading-picker.
 Mapping from gamepad button indices to named actions.
 
 - **Identifiers**: `BUTTON_MAP`, `ButtonMapType`, `ButtonState`
-- **Files**: `src/legacy/io/gamepad.ts`
+- **Files**: `src/editors/gamepadControl.ts`
 - **Buttons**: A, B, X, Y, LB, RB, LT, RT, Back, Start, LeftStickPress, RightStickPress, Up, Down, Left, Right
 
 ### Axis Map
@@ -1581,7 +1581,7 @@ Mapping from gamepad button indices to named actions.
 Mapping from gamepad axis indices to named axes.
 
 - **Identifiers**: `AXIS_MAP`, `AxisMapType` (`LeftStickX`, `LeftStickY`, `RightStickX`, `RightStickY`)
-- **Files**: `src/legacy/io/gamepad.ts`
+- **Files**: `src/editors/gamepadControl.ts`
 - **Deadzone**: 0.1
 
 ### Manual Control Binding
@@ -1590,7 +1590,7 @@ Mapping from a gamepad stick to a numeric value in the editor. Enables
 real-time control of expression parameters via sticks.
 
 - **Identifiers**: `ManualControlBinding` (`stick`, `slot`, `from`, `to`, `value`, `originalText`), `mapManualControlBindingsThroughChanges()`
-- **Files**: `src/legacy/editors/manualControlState.ts`
+- **Files**: `src/editors/manualControlState.ts`
 - **Update rate**: ~30Hz via `sendSerialInputStreamValue()`
 
 ### Controller Mode
@@ -1599,7 +1599,7 @@ The current operating mode of the gamepad controller, determining how button
 presses are interpreted.
 
 - **Identifiers**: `ControllerMode` (`"normal"`, `"picker"`, `"number-picker"`, `"loading-picker"`)
-- **Files**: `src/legacy/editors/gamepadControl.ts`
+- **Files**: `src/editors/gamepadControl.ts`
 - **See also**: Gamepad Controller, Picker Style
 
 ### Navigation Mode
@@ -1608,7 +1608,7 @@ Whether gamepad D-pad navigation moves spatially (arrow keys) or structurally
 (prev/next through syntax tree nodes).
 
 - **Identifiers**: `NavigationMode` (`"spatial"`, `"structural"`)
-- **Files**: `src/legacy/editors/gamepadControl.ts`
+- **Files**: `src/editors/gamepadControl.ts`
 - **See also**: Structural Navigation, Gamepad Controller
 
 ### Picker Style
@@ -1763,14 +1763,14 @@ Theme-driven CSS variables set on `:root` by `adjustPanelsToTheme()`.
 | `--code-font` | Monospace font stack |
 | `--top-toolbar-height` | Dynamic transport toolbar height |
 
-- **Files**: `src/legacy/editors/themes/themeManager.ts`, `src/legacy/styles/`
+- **Files**: `src/editors/themes/themeManager.ts`, `src/ui/styles/`
 
 ### WebSocket Server
 
 Dev-mode WebSocket server (default port 8082) for external tool integration.
 
 - **Identifiers**: `startWebSocketServer()`, `stopWebSocketServer()`, `getWebSocketServer()`, `isWebSocketServerRunning()`
-- **Files**: `src/legacy/io/websocketServer.ts`
+- **Files**: `src/effects/devmodeWebSocketServer.ts`
 
 ### Config Server
 
@@ -1812,8 +1812,8 @@ avoid them and can recognise them in old code.
 | `src/islands/` | `src/ui/adapters/` | Per-component Astro island pattern, eliminated |
 | `src-solid/` | `src/ui/` | Old Solid component directory, removed |
 | `useqedit` | `useq-perform` | Legacy Python editor |
-| `serialComms` (in `src/legacy/`) | `src/transport/` | Real implementation moved |
-| `mockTimeGenerator` (in `src/legacy/`) | `src/effects/mockTimeGenerator.ts` | Modern version |
+| `serialComms` | `src/transport/` | Real implementation moved |
+| `mockTimeGenerator` | `src/effects/mockTimeGenerator.ts` | Modern version |
 | `"useqcode"` (storage key) | `"uSEQ-Perform-User-Code"` | Legacy localStorage key |
 | `"editorConfig"` (storage key) | `"uSEQ-Perform-User-Settings"` | Legacy localStorage key |
 | `"useqConfig"` (storage key) | `"uSEQ-Perform-User-Settings"` | Legacy localStorage key |

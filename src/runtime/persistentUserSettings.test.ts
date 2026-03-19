@@ -38,8 +38,8 @@ describe("appSettingsRepository persistence", () => {
   });
 
   it("stores editor code only in the canonical code key", async () => {
-    const appSettings = await import("../../lib/appSettings.ts");
-    const repo = await import("../../runtime/appSettingsRepository.ts");
+    const appSettings = await import("../lib/appSettings.ts");
+    const repo = await import("./appSettingsRepository.ts");
 
     repo.replaceAppSettings(
       {
@@ -60,8 +60,8 @@ describe("appSettingsRepository persistence", () => {
   }, 10000);
 
   it("loads legacy JSON-encoded code values through the canonical bootstrap path", async () => {
-    const appSettings = await import("../../lib/appSettings.ts");
-    const repo = await import("../../runtime/appSettingsRepository.ts");
+    const appSettings = await import("../lib/appSettings.ts");
+    const repo = await import("./appSettingsRepository.ts");
     window.localStorage.setItem(
       appSettings.settingsStorageKey,
       JSON.stringify({ editor: { fontSize: 18 } }),
@@ -76,8 +76,8 @@ describe("appSettingsRepository persistence", () => {
 
   it("does not write local storage when ?nosave is active", async () => {
     setLocation("/?nosave");
-    const appSettings = await import("../../lib/appSettings.ts");
-    const repo = await import("../../runtime/appSettingsRepository.ts");
+    const appSettings = await import("../lib/appSettings.ts");
+    const repo = await import("./appSettingsRepository.ts");
 
     repo.replaceAppSettings(
       {
@@ -95,8 +95,8 @@ describe("appSettingsRepository persistence", () => {
   });
 
   it("persists canonical visualisation fields without reintroducing offsetSeconds", async () => {
-    const appSettings = await import("../../lib/appSettings.ts");
-    const repo = await import("../../runtime/appSettingsRepository.ts");
+    const appSettings = await import("../lib/appSettings.ts");
+    const repo = await import("./appSettingsRepository.ts");
 
     repo.replaceAppSettings(
       {

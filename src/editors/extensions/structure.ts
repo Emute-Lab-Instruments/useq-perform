@@ -85,7 +85,7 @@ import {
   reportExpressionColor,
   refreshVisualisedExpression,
   notifyExpressionEvaluated
-} from "../../legacy/ui/serialVis/visualisationController.ts";
+} from "../../ui/visualisation/visualisationController.ts";
 import { dbg } from "../../lib/debug.ts";
 import { getAppSettings, subscribeAppSettings } from "../../runtime/appSettingsRepository.ts";
 

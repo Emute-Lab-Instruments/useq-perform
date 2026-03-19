@@ -40,11 +40,11 @@ vi.mock("../effects/mockTimeGenerator.ts", () => ({
   startMockTimeGenerator,
 }));
 
-vi.mock("../legacy/ui/serialVis/visualisationController.ts", () => ({
+vi.mock("../ui/visualisation/visualisationController.ts", () => ({
   registerVisualisation,
 }));
 
-vi.mock("../legacy/editors/editorConfig.ts", () => ({
+vi.mock("../editors/editorConfig.ts", () => ({
   toggleSerialVis,
 }));
 vi.mock("../ui/adapters/visualisationPanel", () => ({

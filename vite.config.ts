@@ -28,7 +28,7 @@ export default defineConfig(({ command }) => ({
       input: {
         // Single entry point for the entire application
         // Islands have been eliminated; adapters are imported directly
-        'bundle': 'src/legacy/main.ts'
+        'bundle': 'src/main.ts'
       },
       output: {
         entryFileNames: '[name].js',

@@ -12,15 +12,13 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
 
 ## Production Entry Path
 
-- `src/legacy/main.ts`
-  Current production entrypoint. Reads startup flags, loads config, and starts the app.
-- `src/legacy/app/application.ts`
-  Startup orchestration and environment setup.
-- `src/legacy/ui/ui.ts`
-  Mounts the retained DOM shell and the Solid adapter surfaces.
+- `src/main.ts`
+  Production entrypoint. Imports CSS, loads config, and starts the app via `src/runtime/bootstrap.ts`.
 
 ## Canonical Runtime And Startup Owners
 
+- `src/runtime/bootstrap.ts`
+  Startup orchestration: loads configuration, mounts UI, creates app lifecycle.
 - `src/runtime/bootstrapPlan.ts`
   Startup mode selection and capability-aware bootstrap decisions.
 - `src/runtime/runtimeService.ts`
@@ -40,18 +38,16 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
 
 - `src/lib/appSettings.ts`
   Canonical settings schema, defaults, persistence merge rules, and config document conversion.
-  (Legacy shim at `src/legacy/config/appSettings.ts` re-exports for backward compatibility.)
 - `src/lib/editorDefaults.ts`
   Editor default values (fonts, themes, starter code).
 - `src/lib/editorCompartments.ts`
   CodeMirror compartments for theme and font-size reconfiguration.
 - `src/runtime/configSchema.ts`
   Configuration validation and schema utilities.
-- `src/legacy/config/configLoader.ts`
+- `src/runtime/appSettingsRepository.ts`
   Bootstrap precedence for committed config, local persistence, and URL overrides.
 - `src/runtime/urlParams.ts`
   Typed startup flag parsing. Do not reintroduce ad hoc URL global reads elsewhere.
-  (Legacy shim at `src/legacy/urlParams.ts` re-exports for backward compatibility.)
 - `src/utils/settingsStore.ts`
   SolidJS reactive adapter over the canonical appSettingsRepository.
 
@@ -63,6 +59,21 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
   Debug logging utilities (`dbg`, `toggleDbg`).
 - `src/lib/editorStore.ts`
   Canonical editor boundary. All modern code interacts with the CodeMirror editor through this facade.
+
+## Editors (src/editors/)
+
+- `src/editors/extensions.ts`
+  CodeMirror extension bundle and barrel file.
+- `src/editors/extensions/structure.ts`
+  Structural editing extensions (navigation, expression highlighting, visualisation).
+- `src/editors/keymaps.ts`
+  Custom keymaps for the editor.
+- `src/editors/editorConfig.ts`
+  Editor configuration (panels, vis toggling).
+- `src/editors/gamepadControl.ts`
+  Gamepad-based editor navigation.
+- `src/editors/themes.ts`
+  Editor theme definitions and management.
 
 ## Transport Layer (src/transport/)
 
@@ -90,17 +101,19 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
 - `src/effects/transport.ts`
   Transport effect wrappers (play, pause, stop, rewind).
 
-## Platform Adapters And Retained Legacy Seams
+## Visualisation
 
-- `src/legacy/io/serialComms.ts`
-  Re-export shim. All transport logic now lives under `src/transport/`.
-- `src/legacy/io/useqWasmInterpreter.ts`
-  Retained WASM adapter and export-probing seam.
+- `src/ui/visualisation/visualisationController.ts`
+  Visualisation controller: expression registration, WASM sampling, state management.
+- `src/ui/visualisation/serialVis.ts`
+  Canvas 2D rendering loop for serial visualisation.
+
+## Platform Adapters
+
 - `src/runtime/legacyRuntimeAdapter.ts`
-  Containment layer between the modern runtime service and legacy runtime modules.
-  Now imports directly from `src/transport/` instead of through the serialComms shim.
-- `src/legacy/ui/serialVis/visualisationController.ts`
-  Retained visualisation controller with substantial legacy coupling.
+  Containment layer between the modern runtime service and retained runtime modules.
+- `src/runtime/wasmInterpreter.ts`
+  WASM adapter and export-probing seam.
 
 ## UI Surfaces
 
@@ -114,12 +127,14 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
   Imperative mount bridge for settings and help panels.
 - `src/ui/settings/`
   Live settings panel components. Treat `ConfigurationManagement.tsx` as internal dev tooling only.
+- `src/ui/styles/`
+  Application CSS stylesheets.
 
 ## Dev-Only Or Internal Tooling
 
-- `src/legacy/config/configManager.ts`
+- `src/runtime/configManager.ts`
   Internal dev tooling for exporting or importing config files and optionally writing to the repo via the config server. This is not part of the stable public UI surface.
-- `src/legacy/config/configManager.ts` plus `scripts/config-server.mjs`
+- `src/runtime/configManager.ts` plus `scripts/config-server.mjs`
   Source-file persistence path used for local development workflows only.
 - `?devmode=true`, mock controls, mock time, Storybook, and test harnesses
   Internal tooling retained for development, not stable product promises.

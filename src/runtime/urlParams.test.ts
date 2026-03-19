@@ -20,7 +20,7 @@ describe("urlParams", () => {
   });
 
   it("parses typed startup flags from the current search string", async () => {
-    const { readStartupFlags } = await import("../runtime/urlParams.ts");
+    const { readStartupFlags } = await import("./urlParams.ts");
 
     expect(
       readStartupFlags(
@@ -44,7 +44,7 @@ describe("urlParams", () => {
 
   it("applies startup side effects only once for the same flag set", async () => {
     const { applyStartupFlags, readStartupFlags, resetStartupFlagsForTests } = await import(
-      "../runtime/urlParams.ts"
+      "./urlParams.ts"
     );
 
     resetStartupFlagsForTests();
