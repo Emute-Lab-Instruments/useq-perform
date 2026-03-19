@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Unit tests for pure expression tracking functions (browser-independent)
 
 // Copy the pure functions we want to test (to avoid browser dependencies)

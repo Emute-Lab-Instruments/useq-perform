@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Unit tests for expression tracking logic
 import { 
     findExpressionAtPosition, 

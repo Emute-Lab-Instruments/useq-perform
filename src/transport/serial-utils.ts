@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Updates the code highlight color based on connection status
  */

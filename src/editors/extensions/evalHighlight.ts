@@ -1,10 +1,15 @@
-// @ts-nocheck
 // CodeMirror extension for flashing highlight on evaluated code
-import { StateEffect, StateField } from "@codemirror/state";
+import { StateEffect, StateField, type EditorState } from "@codemirror/state";
 import { Decoration, EditorView } from "@codemirror/view";
 
+interface EvalHighlightValue {
+  from: number;
+  to: number;
+  isPreview?: boolean;
+}
+
 // Effect to trigger highlight
-export const evalHighlightEffect = StateEffect.define();
+export const evalHighlightEffect = StateEffect.define<EvalHighlightValue>();
 
 // Decoration for highlight (normal eval - yellow for connected, grey for disconnected)
 const evalHighlightDeco = Decoration.mark({ class: "cm-evaluated-code" });
@@ -45,7 +50,7 @@ import { findNodeAt } from "./structure/new-structure.ts";
 // Helper to find the range of the top-level s-expression as used by evalNow
 
 // Find the range of the top-level node using standard syntax tree
-function getTopLevelRange(state) {
+function getTopLevelRange(state: EditorState): { from: number; to: number } {
   const selection = state.selection.main;
   let node = findNodeAt(state, selection.from, selection.to);
   
@@ -66,7 +71,7 @@ function getTopLevelRange(state) {
 
 // Helper to dispatch highlight effect and clear it after 1s
 // Options: { isPreview: boolean } - use preview color for soft eval
-export function flashEvalHighlight(view, from, to, options = {}) {
+export function flashEvalHighlight(view: EditorView, from?: number, to?: number, options: { isPreview?: boolean } = {}): void {
   const { isPreview = false } = options;
 
   // If range is provided, use it

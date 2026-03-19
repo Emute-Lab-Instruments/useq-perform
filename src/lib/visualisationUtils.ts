@@ -1,13 +1,14 @@
-// @ts-nocheck
 import { serialBuffers, serialMapFunctions } from "../transport/stream-parser.ts";
 import { dbg } from "./debug.ts";
 import {
   serialVisPaletteChangedChannel,
 } from "../contracts/visualisationChannels";
+import type { CircularBuffer } from "./CircularBuffer.ts";
+import { smoothingSettings } from "../transport/serial-utils.ts";
 
 export const serialVisChannels = ['a1', 'a2', 'a3', 'a4', 'd1', 'd2', 'd3'];
 
-const clampOffset = (rawOffset, length) => {
+const clampOffset = (rawOffset: number, length: number): number => {
   if (!length) {
     return 0;
   }
@@ -16,14 +17,14 @@ const clampOffset = (rawOffset, length) => {
   return mod < 0 ? mod + length : mod;
 };
 
-const normalisePalette = (paletteCandidate) => {
+const normalisePalette = (paletteCandidate: string[] | null): string[] => {
   if (Array.isArray(paletteCandidate) && paletteCandidate.length > 0) {
     return paletteCandidate;
   }
   return getSerialVisPalette();
 };
 
-export const getSerialVisChannelColor = (exprType, circularOffset = 0, paletteOverride = null) => {
+export const getSerialVisChannelColor = (exprType: string | null, circularOffset = 0, paletteOverride: string[] | null = null): string | null => {
   if (!exprType) {
     return null;
   }
@@ -41,7 +42,7 @@ export const getSerialVisChannelColor = (exprType, circularOffset = 0, paletteOv
   return palette[paletteIndex] || null;
 };
 
-export const buildSerialVisColorMap = (circularOffset = 0, paletteOverride = null) => {
+export const buildSerialVisColorMap = (circularOffset = 0, paletteOverride: string[] | null = null): Map<string, string> => {
   const palette = normalisePalette(paletteOverride || serialVisPalette);
   return serialVisChannels.reduce((acc, channel) => {
     const color = getSerialVisChannelColor(channel, circularOffset, palette);
@@ -60,7 +61,7 @@ export const buildSerialVisColorMap = (circularOffset = 0, paletteOverride = nul
  * @param {number} phase - The phase offset in radians (default: 0)
  * @returns {number} The sine wave value at the given time
  */
-function sineWaveAt(frequency, time, amplitude = 1.0, phase = 0) {
+function sineWaveAt(frequency: number, time: number, amplitude = 1.0, phase = 0): number {
   return amplitude * Math.sin(2 * Math.PI * frequency * time + phase);
 }
 
@@ -73,7 +74,7 @@ function sineWaveAt(frequency, time, amplitude = 1.0, phase = 0) {
  * @param {number} phase - The phase offset in radians
  * @returns {Array<number>} Array of sine wave values
  */
-function createSineWaveData(frequency, duration, sampleRate, amplitude = 1.0, phase = 0) {
+function createSineWaveData(frequency: number, duration: number, sampleRate: number, amplitude = 1.0, phase = 0): number[] {
   const numSamples = Math.floor(duration * sampleRate);
   return Array.from({ length: numSamples }, (_, i) => {
     const time = i / sampleRate;
@@ -87,7 +88,7 @@ function createSineWaveData(frequency, duration, sampleRate, amplitude = 1.0, ph
  * @param {number} sampleRate - Samples per second (default: 100)
  * @returns {Array<CircularBuffer>} The filled circular buffers
  */
-export function fillSerialBuffersDefault(duration = 2.0, sampleRate = 100) {
+export function fillSerialBuffersDefault(duration = 2.0, sampleRate = 100): CircularBuffer[] {
   // Base frequency and multipliers for each channel (creating harmonic relationships)
   const baseFreq = 0.5; // 0.5 Hz for the first user buffer
   const freqMultipliers = [1, 1.5, 2, 2.5, 3, 4, 5, 6];
@@ -126,7 +127,9 @@ export function fillSerialBuffersDefault(duration = 2.0, sampleRate = 100) {
   return serialBuffers;
 }
 
-export const getCatmullRomPoint = (p0, p1, p2, p3, t) => {
+interface Point2D { x: number; y: number; }
+
+export const getCatmullRomPoint = (p0: Point2D, p1: Point2D, p2: Point2D, p3: Point2D, t: number): Point2D => {
   const t2 = t * t;
   const t3 = t2 * t;
   
@@ -167,7 +170,7 @@ export const serialVisPaletteDark = [
 export let serialVisPalette = serialVisPaletteLight;
 
 // Create a setter function to update the palette
-export function setSerialVisPalette(palette) {
+export function setSerialVisPalette(palette: string[]): boolean {
   if (Array.isArray(palette) && palette.length > 0) {
     serialVisPalette = palette;
     // Force redraw of the plot with new colors
@@ -184,7 +187,7 @@ export function setSerialVisPalette(palette) {
 }
 
 // Getter to access the current palette (safe against circular-import TDZ)
-export function getSerialVisPalette() {
+export function getSerialVisPalette(): string[] {
   try {
     return serialVisPalette;
   } catch {
@@ -200,7 +203,7 @@ export function getSerialVisPalette() {
 /**
  * Create UI controls for smoothing and interpolation settings
  */
-function createSmoothingControls() {
+function createSmoothingControls(): void {
   const visPanel = document.getElementById("panel-vis");
   if (!visPanel) {
     console.error("Visualization panel not found");
@@ -210,7 +213,7 @@ function createSmoothingControls() {
   // Create a control container
   const controlsContainer = document.createElement("div");
   controlsContainer.id = "serial-vis-controls";
-  controlsContainer.Name = "serial-vis-controls";
+  controlsContainer.className = "serial-vis-controls";
   controlsContainer.style.cssText = "padding: 10px; margin-top: 10px; background: rgba(0,0,0,0.1); border-radius: 4px;";
   
   // Create heading
@@ -276,7 +279,7 @@ function createSmoothingControls() {
  * @param {Function} onChange - Change event handler
  * @returns {HTMLDivElement} Container element
  */
-function createToggle(label, initialValue, onChange) {
+function createToggle(label: string, initialValue: boolean, onChange: (checked: boolean) => void): HTMLDivElement {
   const container = document.createElement("div");
   container.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;";
   
@@ -288,7 +291,7 @@ function createToggle(label, initialValue, onChange) {
   const toggle = document.createElement("input");
   toggle.type = "checkbox";
   toggle.checked = initialValue;
-  toggle.addEventListener("change", (e) => onChange(e.target.checked));
+  toggle.addEventListener("change", (e) => onChange((e.target as HTMLInputElement).checked));
   container.appendChild(toggle);
   
   return container;
@@ -304,7 +307,7 @@ function createToggle(label, initialValue, onChange) {
  * @param {Function} onChange - Change event handler
  * @returns {HTMLDivElement} Container element
  */
-function createRangeControl(label, initialValue, min, max, step, onChange) {
+function createRangeControl(label: string, initialValue: number, min: number, max: number, step: number, onChange: (value: string) => void): HTMLDivElement {
   const container = document.createElement("div");
   container.style.cssText = "margin-bottom: 12px;";
   
@@ -317,21 +320,21 @@ function createRangeControl(label, initialValue, min, max, step, onChange) {
   labelContainer.appendChild(labelEl);
   
   const valueEl = document.createElement("span");
-  valueEl.textContent = initialValue;
+  valueEl.textContent = String(initialValue);
   valueEl.style.cssText = "font-size: 12px;";
   labelContainer.appendChild(valueEl);
-  
+
   container.appendChild(labelContainer);
-  
+
   const slider = document.createElement("input");
   slider.type = "range";
-  slider.min = min;
-  slider.max = max;
-  slider.step = step;
-  slider.value = initialValue;
+  slider.min = String(min);
+  slider.max = String(max);
+  slider.step = String(step);
+  slider.value = String(initialValue);
   slider.style.cssText = "width: 100%;";
   slider.addEventListener("input", (e) => {
-    const value = e.target.value;
+    const value = (e.target as HTMLInputElement).value;
     valueEl.textContent = value;
     onChange(value);
   });

@@ -1,7 +1,6 @@
-// @ts-nocheck
 /**
  * New Structural Editing Extensions for CodeMirror
- * 
+ *
  * This module creates a self-contained extension for CodeMirror that wraps/includes
  * the nextjournal clojure-mode extension and implements structural navigation and
  * editing features required by the YAML test cases.
@@ -9,15 +8,28 @@
 
 import { EditorState, EditorSelection, StateEffect, StateField } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
+// @ts-expect-error — @nextjournal/clojure-mode has no type declarations
 import { default_extensions } from '@nextjournal/clojure-mode';
+import type { SyntaxNode, Tree, TreeCursor } from '@lezer/common';
 
 // Global clipboard for cut/paste operations
-let clipboardContent = null;
+let clipboardContent: string | null = null;
+
+interface NavigationMeta {
+  lastExited: { from: number; to: number; direction: string } | null;
+  traversalStack: TraversalEntry[];
+}
+
+interface TraversalEntry {
+  type: string;
+  from: number;
+  to: number;
+}
 
 // Navigation metadata to keep track of traversal state and exit history
-export const navigationMetaEffect = StateEffect.define();
+export const navigationMetaEffect = StateEffect.define<NavigationMeta>();
 
-function createNavigationMeta(overrides = {}) {
+function createNavigationMeta(overrides: Partial<NavigationMeta> = {}): NavigationMeta {
   const traversalStack = overrides.traversalStack
     ? [...overrides.traversalStack]
     : [];
@@ -48,7 +60,7 @@ export const navigationMetaField = StateField.define({
  * @param {string} doc - Initial document content
  * @returns {EditorState} - The editor state
  */
-export function createStructuralEditor(doc = '') {
+export function createStructuralEditor(doc = ''): EditorState {
   return EditorState.create({
     doc,
     extensions: [...default_extensions, navigationMetaField]
@@ -58,7 +70,7 @@ export function createStructuralEditor(doc = '') {
 /**
  * Clear the clipboard (for testing)
  */
-export function clearClipboard() {
+export function clearClipboard(): void {
   clipboardContent = null;
 }
 
@@ -67,7 +79,7 @@ export function clearClipboard() {
  * @param {EditorState} state - Editor state
  * @returns {Tree} - Syntax tree
  */
-function getTree(state) {
+function getTree(state: EditorState): Tree {
   return syntaxTree(state);
 }
 
@@ -78,7 +90,7 @@ function getTree(state) {
  * @param {number} to - End position (optional)
  * @returns {SyntaxNode|null} - Node at position or null
  */
-export function findNodeAt(state, from, to = from) {
+export function findNodeAt(state: EditorState, from: number, to: number = from): SyntaxNode | null {
   try {
       const tree = getTree(state);
       
@@ -86,7 +98,7 @@ export function findNodeAt(state, from, to = from) {
       if (to > from) {
         // Optimization: Try to find the node by walking up from the start position
         // We try side=1 (after) and side=-1 (before) to cover different adjacency cases
-        let node = tree.resolveInner(from, 1);
+        let node: SyntaxNode | null = tree.resolveInner(from, 1);
         if (!node || node.from < from || node.to > to) {
             node = tree.resolveInner(from, -1);
         }
@@ -115,7 +127,6 @@ export function findNodeAt(state, from, to = from) {
       
       // If we resolved to a leaf (not container/program), return it
         if (!isContainerNode(node) && node.type.name !== 'Program') {
-          const nodeText = getNodeText(state, node);
           return node;
         }
       
@@ -175,7 +186,7 @@ export function findNodeAt(state, from, to = from) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state
  */
-export function navigateRightChar(state) {
+export function navigateRightChar(state: EditorState): EditorState {
   const selection = state.selection.main;
   const newHead = Math.min(state.doc.length, selection.head + 1);
   
@@ -209,7 +220,7 @@ export function navigateRightChar(state) {
  * @param {SyntaxNode} node - Current node
  * @returns {SyntaxNode|null} - Next sibling or null
  */
-function getNextSibling(node) {
+function getNextSibling(node: SyntaxNode): SyntaxNode | null {
   if (!node.parent) return null;
   
   let found = false;
@@ -239,7 +250,7 @@ function getNextSibling(node) {
  * @param {SyntaxNode} node - Current node
  * @returns {SyntaxNode|null} - Previous sibling or null
  */
-function getPrevSibling(node) {
+function getPrevSibling(node: SyntaxNode): SyntaxNode | null {
   if (!node.parent) return null;
   
   let prev = null;
@@ -268,7 +279,7 @@ function getPrevSibling(node) {
  * @param {SyntaxNode} node - Syntax node
  * @returns {string} - Text content
  */
-function getNodeText(state, node) {
+function getNodeText(state: EditorState, node: SyntaxNode): string {
   return state.sliceDoc(node.from, node.to);
 }
 
@@ -279,7 +290,7 @@ function getNodeText(state, node) {
  * @param {number} occurrence - 1-based occurrence index to match
  * @returns {SyntaxNode|null} - Found node or null
  */
-function findNodeByText(state, text, occurrence = 1) {
+function findNodeByText(state: EditorState, text: string, occurrence = 1): SyntaxNode | null {
   const tree = getTree(state);
   let found = null;
   let matchCount = 0;
@@ -300,19 +311,19 @@ function findNodeByText(state, text, occurrence = 1) {
   return found;
 }
 
-function getNavigationMeta(state) {
+function getNavigationMeta(state: EditorState): NavigationMeta {
   return state.field ? state.field(navigationMetaField, false) || defaultNavigationMeta : defaultNavigationMeta;
 }
 
-function getTraversalStack(meta) {
+function getTraversalStack(meta: NavigationMeta | null): TraversalEntry[] {
   return meta && Array.isArray(meta.traversalStack) ? meta.traversalStack : [];
 }
 
-function addTraversalEntry(stack, type, node) {
+function addTraversalEntry(stack: TraversalEntry[], type: string, node: SyntaxNode): TraversalEntry[] {
   return [...stack, { type, from: node.from, to: node.to }];
 }
 
-function removeTraversalEntry(stack, type, node) {
+function removeTraversalEntry(stack: TraversalEntry[] | null, type: string, node: SyntaxNode | null): TraversalEntry[] {
   if (!node || !stack || stack.length === 0) return stack || [];
   for (let i = stack.length - 1; i >= 0; i--) {
     const entry = stack[i];
@@ -323,7 +334,7 @@ function removeTraversalEntry(stack, type, node) {
   return stack;
 }
 
-function hasTraversalEntry(meta, type, node) {
+function hasTraversalEntry(meta: NavigationMeta, type: string, node: SyntaxNode | null): { match: TraversalEntry | null; index?: number; stack: TraversalEntry[] } {
   if (!node) return { match: null, stack: getTraversalStack(meta) };
   const stack = getTraversalStack(meta);
   for (let i = stack.length - 1; i >= 0; i--) {
@@ -335,14 +346,14 @@ function hasTraversalEntry(meta, type, node) {
   return { match: null, index: -1, stack };
 }
 
-function makeSelection(state, node, { reverse = false, exitDirection = null, meta = null } = {}) {
+function makeSelection(state: EditorState, node: SyntaxNode | null, { reverse = false, exitDirection = null as string | null, meta = null as Partial<NavigationMeta> | null } = {}): EditorState {
   if (!node) return state;
   const selection = EditorSelection.single(
     reverse ? node.to : node.from,
     reverse ? node.from : node.to
   );
 
-  const metaConfig = {};
+  const metaConfig: Partial<NavigationMeta> = {};
   
   // Use explicitly provided meta if available
   if (meta) {
@@ -396,14 +407,14 @@ function makeSelection(state, node, { reverse = false, exitDirection = null, met
   }
 }
 
-function nodesMatch(metaEntry, node) {
+function nodesMatch(metaEntry: { from: number; to: number } | null, node: SyntaxNode | null): boolean {
   if (!metaEntry || !node) return false;
   return metaEntry.from === node.from && metaEntry.to === node.to;
 }
 
 const closingDelimiterChars = new Set([')', ']', '}']);
 
-function moveCursorPastClosingDelimiter(state) {
+function moveCursorPastClosingDelimiter(state: EditorState): EditorState {
   const selection = state.selection.main;
   if (!selection.empty) return state;
   const head = selection.head;
@@ -417,16 +428,16 @@ function moveCursorPastClosingDelimiter(state) {
 
 const structuralTokenTypes = new Set(['(', ')', '[', ']', '{', '}', 'Brace', 'Bracket', 'Paren', '#', "'", 'LineComment', 'BlockComment', 'Comment']);
 
-export function isStructuralToken(node) {
+export function isStructuralToken(node: SyntaxNode): boolean {
   return structuralTokenTypes.has(node.type.name);
 }
 
-export function isContainerNode(node) {
+export function isContainerNode(node: SyntaxNode | null): boolean {
   if (!node) return false;
   return ['List', 'Vector', 'Map', 'Set'].includes(node.type.name);
 }
 
-function iterateLogicalChildren(node, visitor) {
+function iterateLogicalChildren(node: SyntaxNode | null, visitor: (child: SyntaxNode) => void): void {
   if (!node) return;
   const cursor = node.cursor();
   if (!cursor.firstChild()) return;
@@ -440,23 +451,23 @@ function iterateLogicalChildren(node, visitor) {
   } while (cursor.nextSibling());
 }
 
-function getLogicalChildren(node) {
-  const children = [];
+function getLogicalChildren(node: SyntaxNode): SyntaxNode[] {
+  const children: SyntaxNode[] = [];
   iterateLogicalChildren(node, child => children.push(child));
   return children;
 }
 
-function getFirstContentChild(node) {
+function getFirstContentChild(node: SyntaxNode): SyntaxNode | null {
   const children = getLogicalChildren(node);
   return children.length > 0 ? children[0] : null;
 }
 
-function getLastContentChild(node) {
+function getLastContentChild(node: SyntaxNode): SyntaxNode | null {
   const children = getLogicalChildren(node);
   return children.length > 0 ? children[children.length - 1] : null;
 }
 
-function getChildIndex(parent, child) {
+function getChildIndex(parent: SyntaxNode | null, child: SyntaxNode | null): number | null {
   if (!parent || !child) return null;
   const children = getLogicalChildren(parent);
   for (let i = 0; i < children.length; i++) {
@@ -467,13 +478,13 @@ function getChildIndex(parent, child) {
   return null;
 }
 
-function getChildByIndex(parent, index) {
+function getChildByIndex(parent: SyntaxNode, index: number | null): SyntaxNode | null {
   const children = getLogicalChildren(parent);
   if (index == null || index < 0 || index >= children.length) return null;
   return children[index];
 }
 
-function ascendFromChild(state, node, direction, metaOverrides = null) {
+function ascendFromChild(state: EditorState, node: SyntaxNode, direction: string, metaOverrides: Partial<NavigationMeta> | null = null): EditorState {
   let ancestor = node.parent;
   let child = node;
   
@@ -506,11 +517,11 @@ function ascendFromChild(state, node, direction, metaOverrides = null) {
  * Navigation Functions
  */
 
-function debugNav(command, oldState, newState, oldNode) {
+function debugNav(command: string, oldState: EditorState, newState: EditorState, oldNode: SyntaxNode | null): void {
   const oldHead = oldState.selection.main.head;
   const newHead = newState.selection.main.head;
   
-  const getContext = (state, pos) => {
+  const getContext = (state: EditorState, pos: number): string => {
     const start = Math.max(0, pos - 5);
     const end = Math.min(state.doc.length, pos + 5);
     const before = state.sliceDoc(start, pos);
@@ -534,7 +545,7 @@ function debugNav(command, oldState, newState, oldNode) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with updated selection
  */
-export function navigateNext(state) {
+export function navigateNext(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -552,7 +563,7 @@ export function navigateNext(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with updated selection
  */
-export function navigatePrev(state) {
+export function navigatePrev(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -570,7 +581,7 @@ export function navigatePrev(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with updated selection
  */
-export function navigateIn(state) {
+export function navigateIn(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -589,7 +600,7 @@ export function navigateIn(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with updated selection
  */
-export function navigateOut(state) {
+export function navigateOut(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -609,7 +620,7 @@ export function navigateOut(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with updated selection
  */
-export function navigateRight(state) {
+export function navigateRight(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -656,7 +667,7 @@ export function navigateRight(state) {
       nextState = makeSelection(state, nextSibling, { meta: metaPayload });
     } else if (parent && parent.type.name !== 'Program') {
        // Exit to parent with point selection at the end
-       let ancestor = parent;
+       let ancestor: SyntaxNode | null = parent;
        let child = currentNode;
        let target = null;
        
@@ -705,7 +716,7 @@ export function navigateRight(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with updated selection
  */
-export function navigateLeft(state) {
+export function navigateLeft(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -759,7 +770,7 @@ export function navigateLeft(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with updated selection
  */
-export function navigateUp(state) {
+export function navigateUp(state: EditorState): EditorState {
   return navigateVertical(state, 'up');
 }
 
@@ -768,11 +779,11 @@ export function navigateUp(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with updated selection
  */
-export function navigateDown(state) {
+export function navigateDown(state: EditorState): EditorState {
   return navigateVertical(state, 'down');
 }
 
-function navigateVertical(state, direction) {
+function navigateVertical(state: EditorState, direction: 'up' | 'down'): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   if (!currentNode) return state;
@@ -821,7 +832,7 @@ function navigateVertical(state, direction) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with deleted content and updated selection
  */
-export function deleteExpression(state) {
+export function deleteExpression(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -864,7 +875,7 @@ export function deleteExpression(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with cut content removed and clipboard updated
  */
-export function cutExpression(state) {
+export function cutExpression(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -882,7 +893,7 @@ export function cutExpression(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with pasted content
  */
-export function pasteExpression(state) {
+export function pasteExpression(state: EditorState): EditorState {
   if (!clipboardContent) return state;
   
   const selection = state.selection.main;
@@ -905,7 +916,7 @@ export function pasteExpression(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with pasted content
  */
-export function pasteExpressionBefore(state) {
+export function pasteExpressionBefore(state: EditorState): EditorState {
   if (!clipboardContent) return state;
   
   const selection = state.selection.main;
@@ -929,7 +940,7 @@ export function pasteExpressionBefore(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with duplicated content selected
  */
-export function duplicateExpression(state) {
+export function duplicateExpression(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   if (!currentNode) return state;
@@ -948,7 +959,7 @@ export function duplicateExpression(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with slurped content
  */
-export function slurpRight(state) {
+export function slurpRight(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1010,7 +1021,7 @@ export function slurpRight(state) {
  * @param {EditorState} state - Editor state
  * @returns {EditorState} - New state with slurped content
  */
-export function slurpLeft(state) {
+export function slurpLeft(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1062,7 +1073,7 @@ export function slurpLeft(state) {
   }).state;
 }
 
-export function barfRight(state) {
+export function barfRight(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1126,7 +1137,7 @@ export function barfRight(state) {
   }).state;
 }
 
-export function barfLeft(state) {
+export function barfLeft(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1191,7 +1202,7 @@ export function barfLeft(state) {
  * Move operations - swap elements with siblings
  */
 
-export function moveNext(state) {
+export function moveNext(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1221,7 +1232,7 @@ export function moveNext(state) {
   }).state;
 }
 
-export function movePrevious(state) {
+export function movePrevious(state: EditorState): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1245,25 +1256,25 @@ export function movePrevious(state) {
   }).state;
 }
 
-export function moveRight(state) {
+export function moveRight(state: EditorState): EditorState {
   // Placeholder: For now, just swap with next sibling as a fallback
   return moveNext(state);
 }
 
-export function moveLeft(state) {
+export function moveLeft(state: EditorState): EditorState {
   // Placeholder: For now, just swap with previous sibling as a fallback
   return movePrevious(state);
 }
 
-export function moveUp(state) {
+export function moveUp(state: EditorState): EditorState {
   return moveVertical(state, 'up');
 }
 
-export function moveDown(state) {
+export function moveDown(state: EditorState): EditorState {
   return moveVertical(state, 'down');
 }
 
-function moveVertical(state, direction) {
+function moveVertical(state: EditorState, direction: 'up' | 'down'): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   if (!currentNode) return state;
@@ -1280,7 +1291,7 @@ function moveVertical(state, direction) {
   
   // 1. Find a container on the target line
   // We'll look for the first node that starts on that line
-  let targetContainer = null;
+  let targetContainer: SyntaxNode | null = null;
   const tree = getTree(state);
   
   // Scan the line for the first meaningful node
@@ -1328,15 +1339,17 @@ function moveVertical(state, direction) {
   let insertPos = targetLine.from;
   let insertText = nodeText + ' ';
   
-  if (targetContainer) {
+  if (targetContainer != null) {
+    // TS can't narrow targetContainer through closure assignment in tree.iterate
+    const container = targetContainer as SyntaxNode;
     if (direction === 'down') {
         // Prepend
-        insertPos = targetContainer.from + 1;
+        insertPos = container.from + 1;
         insertText = nodeText + ' ';
     } else {
         // Append
-        // targetContainer.to is after closing bracket. We want before it.
-        insertPos = targetContainer.to - 1;
+        // container.to is after closing bracket. We want before it.
+        insertPos = container.to - 1;
         insertText = ' ' + nodeText;
     }
   } else {
@@ -1423,7 +1436,7 @@ function moveVertical(state, direction) {
  * Insert operations
  */
 
-export function insertSymbol(state, symbol) {
+export function insertSymbol(state: EditorState, symbol: string): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1469,7 +1482,7 @@ export function insertSymbol(state, symbol) {
   }).state;
 }
 
-export function insertSymbolBefore(state, symbol) {
+export function insertSymbolBefore(state: EditorState, symbol: string): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1485,7 +1498,7 @@ export function insertSymbolBefore(state, symbol) {
   }).state;
 }
 
-export function insertFunctionCall(state, symbol) {
+export function insertFunctionCall(state: EditorState, symbol: string): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1505,7 +1518,7 @@ export function insertFunctionCall(state, symbol) {
   }).state;
 }
 
-export function insertFunctionCallBefore(state, symbol) {
+export function insertFunctionCallBefore(state: EditorState, symbol: string): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1525,7 +1538,7 @@ export function insertFunctionCallBefore(state, symbol) {
   }).state;
 }
 
-export function wrapInFunction(state, symbol) {
+export function wrapInFunction(state: EditorState, symbol: string): EditorState {
   const selection = state.selection.main;
   const currentNode = findNodeAt(state, selection.from, selection.to);
   
@@ -1551,7 +1564,7 @@ export function wrapInFunction(state, symbol) {
  * @param {string} text - Text to type
  * @returns {EditorState} - New state with typed text
  */
-export function typeText(state, text) {
+export function typeText(state: EditorState, text: string): EditorState {
   const selection = state.selection.main;
   
   return state.update({
@@ -1567,8 +1580,8 @@ export function typeText(state, text) {
  * @param {Object} options - Selection options (e.g. { reverse: true, occurrence: 2 })
  * @returns {EditorState} - New state with updated selection
  */
-export function selectByText(state, text, options = {}) {
-  const occurrence = Number.isInteger(options.occurrence) && options.occurrence > 0 ? options.occurrence : 1;
+export function selectByText(state: EditorState, text: string, options: { reverse?: boolean; occurrence?: number } = {}): EditorState {
+  const occurrence = (options.occurrence != null && Number.isInteger(options.occurrence) && options.occurrence > 0) ? options.occurrence : 1;
   const node = findNodeByText(state, text, occurrence);
   if (!node) {
     console.warn(`Could not find text "${text}" in document`);
@@ -1579,6 +1592,6 @@ export function selectByText(state, text, options = {}) {
 }
 
 // DEBUG ONLY: remove after troubleshooting
-export function __debugNavigationMeta(state) {
+export function __debugNavigationMeta(state: EditorState): NavigationMeta {
   return getNavigationMeta(state);
 }

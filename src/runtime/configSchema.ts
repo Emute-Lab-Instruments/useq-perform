@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Configuration Schema
  *
@@ -12,6 +11,8 @@ import {
   createDefaultUserSettings,
   defaultDevModeConfiguration,
 } from "../lib/appSettings.ts";
+
+import type { AppConfigDocument, AppSettingsPatch } from "../lib/appSettings.ts";
 
 export { CONFIG_VERSION };
 
@@ -38,54 +39,57 @@ export const defaultConfiguration = {
  * @param {Object} config - Configuration to validate
  * @returns {Object} Validation result with { valid: boolean, errors: string[] }
  */
-export function validateConfiguration(config) {
-  const errors = [];
+export function validateConfiguration(config: unknown): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
 
   // Check required top-level fields
-  if (!config) {
+  if (!config || typeof config !== 'object') {
     return { valid: false, errors: ['Configuration is null or undefined'] };
   }
 
-  if (!config.version) {
+  // Treat as partial config document for property access
+  const cfg = config as Partial<AppConfigDocument>;
+
+  if (!cfg.version) {
     errors.push('Missing version field');
   }
 
-  if (!config.user) {
+  if (!cfg.user) {
     errors.push('Missing user field');
   } else {
     // Validate user section
-    if (!config.user.editor) {
+    if (!cfg.user.editor) {
       errors.push('Missing user.editor field');
     }
-    if (!config.user.storage) {
+    if (!cfg.user.storage) {
       errors.push('Missing user.storage field');
     }
-    if (!config.user.ui) {
+    if (!cfg.user.ui) {
       errors.push('Missing user.ui field');
     }
-    if (!config.user.visualisation) {
+    if (!cfg.user.visualisation) {
       errors.push('Missing user.visualisation field');
     }
   }
 
   // Validate types for critical fields
-  if (config.user?.editor?.fontSize) {
-    const fontSize = config.user.editor.fontSize;
+  if (cfg.user?.editor?.fontSize) {
+    const fontSize = cfg.user.editor.fontSize;
     if (typeof fontSize !== 'number' || fontSize < 8 || fontSize > 32) {
       errors.push('user.editor.fontSize must be a number between 8 and 32');
     }
   }
 
-  if (config.user?.storage?.autoSaveInterval) {
-    const interval = config.user.storage.autoSaveInterval;
+  if (cfg.user?.storage?.autoSaveInterval) {
+    const interval = cfg.user.storage.autoSaveInterval;
     if (typeof interval !== 'number' || interval < 1000) {
       errors.push('user.storage.autoSaveInterval must be a number >= 1000');
     }
   }
 
   if (
-    config.user?.visualisation &&
-    config.user.visualisation.windowDuration == null
+    cfg.user?.visualisation &&
+    cfg.user.visualisation.windowDuration == null
   ) {
     errors.push('user.visualisation.windowDuration is required');
   }
@@ -102,16 +106,16 @@ export function validateConfiguration(config) {
  * @param {Object} source - Configuration to merge in
  * @returns {Object} Merged configuration
  */
-export function mergeConfigurations(target, source) {
-  const result = { ...target };
+export function mergeConfigurations(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...target };
 
   for (const key in source) {
     if (source[key] !== null && typeof source[key] === 'object' && !Array.isArray(source[key])) {
       // Recursively merge objects
       if (key in result && typeof result[key] === 'object' && !Array.isArray(result[key])) {
-        result[key] = mergeConfigurations(result[key], source[key]);
+        result[key] = mergeConfigurations(result[key] as Record<string, unknown>, source[key] as Record<string, unknown>);
       } else {
-        result[key] = { ...source[key] };
+        result[key] = { ...(source[key] as Record<string, unknown>) };
       }
     } else {
       // Directly assign primitives and arrays
@@ -127,7 +131,7 @@ export function mergeConfigurations(target, source) {
  * @param {Object} activeUserSettings - Current active settings
  * @returns {Object} Configuration object matching schema
  */
-export function extractConfiguration(activeUserSettings) {
+export function extractConfiguration(activeUserSettings: AppSettingsPatch): AppConfigDocument {
   return createConfigurationDocument(activeUserSettings, {
     includeDevMode: true,
     metadataSource: "webapp-export",
@@ -139,7 +143,7 @@ export function extractConfiguration(activeUserSettings) {
  * @param {Object} config - Configuration to check
  * @returns {boolean} True if migration is needed
  */
-export function needsMigration(config) {
+export function needsMigration(config: { version?: string }): boolean {
   return config.version !== CONFIG_VERSION;
 }
 
@@ -149,8 +153,8 @@ export function needsMigration(config) {
  * @param {Object} incoming - Incoming configuration
  * @returns {string[]} Array of difference descriptions
  */
-export function getConfigurationDiff(current, incoming) {
-  const diffs = [];
+export function getConfigurationDiff(current: Partial<AppConfigDocument>, incoming: Partial<AppConfigDocument>): string[] {
+  const diffs: string[] = [];
 
   // Compare theme
   if (current.user?.editor?.theme !== incoming.user?.editor?.theme) {
