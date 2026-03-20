@@ -246,13 +246,18 @@ async function rebuildAllExpressions(
   } catch (error) {
     dbg(`visualisationSampler: batch rebuild failed, falling back to per-expression: ${error}`);
     batchResults = new Map();
-    for (const exprType of exprTypes) {
-      try {
-        const samples = await sampleExpression(exprType, currentTime, settings);
-        batchResults.set(exprType, samples);
-      } catch (innerError) {
-        dbg(`visualisationSampler: fallback failed for ${exprType}: ${innerError}`);
-      }
+    const fallbacks = await Promise.all(
+      exprTypes.map((exprType) =>
+        sampleExpression(exprType, currentTime, settings)
+          .then((samples) => [exprType, samples] as const)
+          .catch((innerError) => {
+            dbg(`visualisationSampler: fallback failed for ${exprType}: ${innerError}`);
+            return [exprType, undefined] as const;
+          }),
+      ),
+    );
+    for (const [exprType, samples] of fallbacks) {
+      if (samples) batchResults.set(exprType, samples);
     }
   }
 

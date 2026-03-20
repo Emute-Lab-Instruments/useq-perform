@@ -229,7 +229,7 @@ function isVisPanelVisible(): boolean {
 }
 
 function writeBackdrop(overlay: HTMLDivElement, lineBounds: PixelLineBounds[]): void {
-  while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
+  overlay.replaceChildren();
   if (lineBounds.length === 0) return;
 
   const blocks = groupIntoBlocks(lineBounds);
