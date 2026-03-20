@@ -1,36 +1,13 @@
-import { dbg } from "./debug.ts";
+import { loadReferenceDataFromCandidates } from "./referenceDataLoader.ts";
 import { load, PERSISTENCE_KEYS } from "./persistence.ts";
 
-// Reuse the reference-data loader strategy from the help panel
-function candidateDataUrls() {
-  const candidates = new Set();
-  const rel = [
-    "../../assets/modulisp_reference_data.json",
-    "../assets/modulisp_reference_data.json",
-    "./assets/modulisp_reference_data.json",
-    "assets/modulisp_reference_data.json",
-    "/assets/modulisp_reference_data.json",
-    "/dev/assets/modulisp_reference_data.json"
-  ];
-  const base = (typeof import.meta !== 'undefined' && import.meta.url) ? import.meta.url : (typeof window !== 'undefined' ? window.location.href : null);
-  rel.forEach(p => {
-    try { candidates.add(new URL(p, base || 'http://local/').href); } catch (_) {}
-  });
-  return Array.from(candidates);
-}
-
 async function loadReferenceData() {
-  const urls = candidateDataUrls();
-  for (const url of urls) {
-    try {
-      const res = await fetch(url);
-      if (res && res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) return data;
-      }
-    } catch (e) { dbg('pickerMenuData: fetch failed', url, e); }
+  try {
+    return await loadReferenceDataFromCandidates();
+  } catch {
+    // Fall back to empty array so the picker menu still renders.
+    return [];
   }
-  return [];
 }
 
 function readStarredFunctions() {

@@ -12,7 +12,7 @@ import {
 import { ReferenceItem } from "./ReferenceItem";
 import { ReferenceFilters } from "./ReferenceFilters";
 import { currentVersion as connectedFirmwareVersion } from "../../transport/upgradeCheck.ts";
-import { loadReferenceDataFromCandidates } from "./referenceDataLoader";
+import { loadReferenceDataFromCandidates } from "../../lib/referenceDataLoader";
 
 /** Raw shape of a reference entry as loaded from JSON (before normalization). */
 interface RawReferenceEntry {

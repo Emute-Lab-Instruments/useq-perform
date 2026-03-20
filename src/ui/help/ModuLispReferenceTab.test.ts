@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   getReferenceDataCandidateUrls,
   loadReferenceDataFromCandidates,
-} from "./referenceDataLoader";
+} from "../../lib/referenceDataLoader";
 
 describe("ModuLispReferenceTab data loading", () => {
   beforeEach(() => {});
