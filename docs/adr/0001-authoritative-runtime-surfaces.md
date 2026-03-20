@@ -15,14 +15,14 @@ The canonical surfaces for ongoing work are:
 - Editor-facing runtime contract: `docs/RUNTIME_CONTRACT.md`
 - Serial protocol details: `docs/PROTOCOL.md`
 - Production startup path: `src/main.ts`, `src/runtime/bootstrap.ts`
-- Startup and runtime ownership: `src/runtime/bootstrap.ts` (includes former `bootstrapPlan.ts`), `src/runtime/runtimeService.ts`, `src/runtime/runtimeSession.ts`, `src/runtime/runtimeDiagnostics.ts`
+- Startup and runtime ownership: `src/runtime/bootstrapPlan.ts`, `src/runtime/runtimeService.ts`, `src/runtime/runtimeSession.ts`, `src/runtime/runtimeDiagnostics.ts`
 - Runtime contract definitions: `src/runtime/jsonProtocol.ts`, `src/contracts/useqRuntimeContract.ts`, `src/contracts/runtimeEvents.ts`
-- Settings ownership: `src/lib/appSettings.ts` (schema, defaults, normalization, persistence), `src/runtime/appSettingsRepository.ts` (runtime state, subscription, bootstrap orchestration), `src/runtime/urlParams.ts` (startup flag parsing), `src/lib/settings/normalization.ts` (validation)
+- Settings ownership: `src/lib/appSettings.ts` (schema, defaults, normalization, persistence), `src/runtime/appSettingsRepository.ts` (runtime state, subscription, bootstrap orchestration), `src/runtime/urlParams.ts` (startup flag parsing), `src/runtime/configSchema.ts` (validation)
 - Firmware and WASM source of truth: the pinned `src-useq/` submodule reported by `npm run src-useq:status`
 
 Transitional adapters remain real runtime code, but they are not canonical owners:
 
-- `src/runtime/runtimeService.ts` (formerly `legacyRuntimeAdapter.ts`, now inlined)
+- `src/runtime/legacyRuntimeAdapter.ts`
 - `src/utils/settingsStore.ts`
 - `src/ui/visualisation/visualisationController.ts`
 

@@ -19,7 +19,8 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
 
 - `src/runtime/bootstrap.ts`
   Startup orchestration: loads configuration, mounts UI, creates app lifecycle.
-- `src/runtime/bootstrap.ts` also contains startup mode selection and capability-aware bootstrap decisions (formerly in `bootstrapPlan.ts`).
+- `src/runtime/bootstrapPlan.ts`
+  Startup mode selection and capability-aware bootstrap decisions.
 - `src/runtime/runtimeService.ts`
   Runtime command fan-out, session sync, and runtime lifecycle coordination.
 - `src/runtime/runtimeSession.ts`
@@ -41,8 +42,8 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
   Editor default values (fonts, themes, starter code).
 - `src/lib/editorCompartments.ts`
   CodeMirror compartments for theme and font-size reconfiguration.
-- `src/lib/settings/normalization.ts`
-  Configuration validation and normalization utilities (formerly `src/runtime/configSchema.ts`).
+- `src/runtime/configSchema.ts`
+  Configuration validation and schema utilities.
 - `src/runtime/appSettingsRepository.ts`
   Bootstrap precedence for committed config, local persistence, and URL overrides.
 - `src/runtime/urlParams.ts`
@@ -91,8 +92,8 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
 
 ## Effects (src/effects/)
 
-- `src/effects/localClock.ts`
-  Mock time generator for visualisation without hardware (formerly `mockTimeGenerator.ts`).
+- `src/effects/mockTimeGenerator.ts`
+  Mock time generator for visualisation without hardware.
 - `src/effects/transportClock.ts`
   Mock-time policy based on transport state transitions.
 - `src/effects/transport.ts`
@@ -107,7 +108,8 @@ This is the current "read this first" map for `useq-perform`. Use it to find the
 
 ## Platform Adapters
 
-- `src/runtime/runtimeService.ts` also contains the former legacy runtime adapter (inlined from `legacyRuntimeAdapter.ts`).
+- `src/runtime/legacyRuntimeAdapter.ts`
+  Containment layer between the modern runtime service and retained runtime modules.
 - `src/runtime/wasmInterpreter.ts`
   WASM adapter and export-probing seam.
 

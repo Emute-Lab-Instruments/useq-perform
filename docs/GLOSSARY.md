@@ -306,14 +306,14 @@ The startup decision: which mode to use based on hardware availability, WASM
 support, and user settings.
 
 - **Identifiers**: `BootstrapPlan`, `BootstrapStartupMode`
-- **Files**: `src/runtime/bootstrap.ts`
+- **Files**: `src/runtime/bootstrapPlan.ts`
 
 ### Startup Mode
 
 The resolved startup path chosen by the bootstrap plan.
 
 - **Identifiers**: `BootstrapStartupMode` (`"hardware"` | `"browser-local"` | `"no-module"` | `"unsupported-browser"`)
-- **Files**: `src/runtime/bootstrap.ts`
+- **Files**: `src/runtime/bootstrapPlan.ts`
 
 ### Environment State
 
@@ -399,19 +399,21 @@ during layered settings loading.
 
 ### Legacy Runtime Adapter
 
-Imperative interface formerly bridging modern runtime code to the legacy transport
-subsystem. Now inlined into `runtimeService.ts`.
+Imperative interface bridging modern runtime code to the legacy transport
+subsystem. Provides readState, toggleConnection, sendHardwareCommand,
+evalInWasm, syncWasmTransportState.
 
 - **Identifiers**: `LegacyRuntimeAdapter`, `LegacyRuntimeState`
-- **Files**: `src/runtime/runtimeService.ts`
+- **Files**: `src/runtime/legacyRuntimeAdapter.ts`
 - **Not**: confused with Adapter (UI mounting)
 
-### Configuration Validation
+### Config Schema
 
-Validation and normalization utilities for configuration documents.
+Versioned schema for configuration documents. Provides validation, migration
+detection, and deep-merge utilities.
 
-- **Identifiers**: `validateConfiguration()`, `getConfigurationDiff()`
-- **Files**: `src/lib/settings/normalization.ts`
+- **Identifiers**: `CONFIG_VERSION`, `validateConfiguration()`, `mergeConfigurations()`, `needsMigration()`
+- **Files**: `src/runtime/configSchema.ts`
 - **See also**: AppSettings, AppConfigDocument
 
 ---
@@ -425,7 +427,7 @@ A standalone side-effect module — composable, testable, framework-agnostic.
 - **Identifiers**: varies per module
 - **Files**: `src/effects/` (directory)
 - **Not**: XState's `effect` parameter (different concept)
-- **Modules**: `transport.ts`, `editor.ts`, `ui.ts`, `localClock.ts`, `transportClock.ts`, `transportOrchestrator.ts`
+- **Modules**: `transport.ts`, `editor.ts`, `ui.ts`, `mockTimeGenerator.ts`, `transportClock.ts`, `transportOrchestrator.ts`
 
 ### Transport Effect
 
@@ -458,7 +460,8 @@ A ~60fps animation loop that generates synthetic time values for the
 visualisation when hardware isn't providing them.
 
 - **Identifiers**: `mockTimeGenerator`
-- **Files**: `src/effects/localClock.ts`
+- **Files**: `src/effects/mockTimeGenerator.ts`
+- **Files**: `src/effects/mockTimeGenerator.ts`
 
 ### Editor Effect
 
@@ -645,9 +648,13 @@ WASM-only, or optional. Used for validation and documentation.
 - **Files**: `src/contracts/useqRuntimeContract.ts`
 - **See also**: Transport State, WASM
 
-### Effect Resource (deleted)
+### Effect Resource
 
-Formerly a Solid `createResource` wrapper for Effect-TS. Removed during refactoring.
+Solid `createResource` wrapper that runs an Effect-TS `Effect<A>` as a promise,
+bridging the two reactive systems.
+
+- **Identifiers**: `effectResource()`
+- **Files**: `src/lib/effectResource.ts`
 
 ### Actor Signal
 
@@ -961,18 +968,17 @@ An imperative mounting API that bridges Solid components into legacy code.
 Replaces the former island architecture.
 
 - **Identifiers**: `mount*()` functions
-- **Files**: `src/ui/adapters/` (directory) — `modal.tsx`, `panels.tsx`, `picker-menu.tsx`, `double-radial-menu.tsx`, `toolbars.tsx`, `visualisationPanel.ts`
+- **Files**: `src/ui/adapters/` (directory) — `modal.tsx`, `panels.tsx`, `picker-menu.tsx`, `double-radial-menu.tsx`, `toolbars.tsx`, `visualisationPanel.ts`, `panelControls.ts`
 - **Pattern**: one adapter file per mountable component or group
 - **Not**: "island" (deprecated), "bridge" (that's WASM-to-JS)
 
 ### Panel Controls
 
 Centralised panel control handler registration. Allows late-binding so legacy
-code can call panel operations without importing Solid directly. Now inlined
-into `panels.tsx`.
+code can call panel operations without importing Solid directly.
 
 - **Identifiers**: `panelControls`, `registerPanelControls()`
-- **Files**: `src/ui/adapters/panels.tsx`
+- **Files**: `src/ui/adapters/panelControls.ts`
 - **API**: `hideAllPanels()`, `toggleChromePanel(id)`, `showPanel(id)`, `hidePanel(id)`, `togglePanelVisibility(id)`
 
 ### Visualisation Panel Adapter
@@ -1539,7 +1545,7 @@ evaluation. Used to build visualisation waveforms.
 WASM-only execution without hardware. Triggered by user setting or missing WebSerial.
 
 - **Identifiers**: `noModuleMode`, `startLocallyWithoutHardware`
-- **Files**: `src/runtime/bootstrap.ts`
+- **Files**: `src/runtime/bootstrapPlan.ts`
 - **See also**: Connection Mode `"browser"`
 
 ---
@@ -1807,7 +1813,7 @@ avoid them and can recognise them in old code.
 | `src-solid/` | `src/ui/` | Old Solid component directory, removed |
 | `useqedit` | `useq-perform` | Legacy Python editor |
 | `serialComms` | `src/transport/` | Real implementation moved |
-| `mockTimeGenerator` | `src/effects/localClock.ts` | Modern version |
+| `mockTimeGenerator` | `src/effects/mockTimeGenerator.ts` | Modern version |
 | `"useqcode"` (storage key) | `"uSEQ-Perform-User-Code"` | Legacy localStorage key |
 | `"editorConfig"` (storage key) | `"uSEQ-Perform-User-Settings"` | Legacy localStorage key |
 | `"useqConfig"` (storage key) | `"uSEQ-Perform-User-Settings"` | Legacy localStorage key |
