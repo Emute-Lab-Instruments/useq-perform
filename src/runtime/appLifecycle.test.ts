@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveBootstrapPlan } from "./bootstrapPlan.ts";
+import { resolveBootstrapPlan } from "./bootstrap.ts";
 
 const post = vi.fn();
 const ensureUseqWasmLoaded = vi.fn();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveBootstrapPlan } from "./bootstrapPlan";
+import { resolveBootstrapPlan } from "./bootstrap";
 
 describe("resolveBootstrapPlan", () => {
   it("prefers explicit no-module startup over every other path", () => {

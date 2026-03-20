@@ -1,7 +1,7 @@
 import './setup.mjs';
 import { expect } from 'chai';
 import { createApp } from '../src/runtime/appLifecycle.ts';
-import { resolveBootstrapPlan } from '../src/runtime/bootstrapPlan.ts';
+import { resolveBootstrapPlan } from '../src/runtime/bootstrap.ts';
 
 var defaultEnvironmentState = {
   areInBrowser: true,

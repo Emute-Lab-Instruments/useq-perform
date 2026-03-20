@@ -122,11 +122,6 @@ vi.mock("./ui/adapters/toolbars.tsx", () => ({
   mountMainToolbar,
 }));
 
-vi.mock("./runtime/bootstrapPlan.ts", () => ({
-  resolveBootstrapPlan: vi.fn(() => ({
-    startupMode: "browser-local",
-  })),
-}));
 
 describe("bootstrap (via startLegacyApp re-export)", () => {
   beforeEach(() => {

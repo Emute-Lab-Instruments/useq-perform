@@ -6,7 +6,7 @@ import { showModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
 import { startLocalClock } from '../effects/localClock.ts';
 import { registerVisualisation } from '../effects/visualisationSampler.ts';
-import type { BootstrapPlan } from './bootstrapPlan.ts';
+import type { BootstrapPlan } from './bootstrap.ts';
 import { announceRuntimeSession } from './runtimeService.ts';
 import { showVisualisationPanel } from '../ui/adapters/visualisationPanel';
 

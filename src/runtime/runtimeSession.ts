@@ -46,7 +46,7 @@ export type TransportMode = "hardware" | "wasm" | "both" | "none";
 //   the "both" value and the supportsHardwareTransport / supportsWasmTransport guards.
 //
 // Note on startup mode vs. connection mode:
-//   BootstrapStartupMode (bootstrapPlan.ts) is determined once at boot from URL params and
+//   BootstrapStartupMode (bootstrap.ts) is determined once at boot from URL params and
 //   browser capabilities. RuntimeConnectionMode (this file) is re-derived live whenever the
 //   serial port connects or disconnects. A session that boots as "hardware" startup mode can
 //   temporarily fall back to connectionMode "none" while waiting for the port to reconnect.

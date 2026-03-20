@@ -14,9 +14,19 @@ import {
   type RuntimeProtocolMode,
 } from "./runtimeDiagnostics";
 import {
-  legacyRuntimeAdapter,
-  type LegacyRuntimeAdapter,
-} from "./legacyRuntimeAdapter";
+  getProtocolMode,
+  sendTouSEQ,
+} from "../transport/json-protocol.ts";
+import {
+  getSerialPort,
+  isConnectedToModule,
+  toggleConnect,
+} from "../transport/connector.ts";
+import {
+  evalInUseqWasm,
+  syncWasmTransportState as syncWasmTransportStateInInterpreter,
+} from "./wasmInterpreter.ts";
+import { getStartupFlagsSnapshot } from "./startupContext.ts";
 import {
   getRuntimeSessionState,
   resetRuntimeSessionState,
@@ -42,8 +52,6 @@ import {
 export type { RuntimeSessionState } from "./runtimeSessionStore";
 import type { RuntimeSessionState } from "./runtimeSessionStore";
 
-let adapter: LegacyRuntimeAdapter = legacyRuntimeAdapter;
-
 function parseTransportState(raw: string): TransportState | null {
   const cleaned = raw.trim().replace(/"/g, "");
   switch (cleaned) {
@@ -63,6 +71,30 @@ function toConnectionChangedDetail(
     connected: state.connected,
     protocolMode: state.protocolMode,
     ...state.session,
+  };
+}
+
+// ── Adapter state snapshot ──────────────────────────────────────
+
+interface RuntimeStateSnapshot {
+  connected: boolean;
+  protocolMode: RuntimeProtocolMode;
+  sessionInputs: RuntimeSessionInputs;
+}
+
+function readRuntimeState(): RuntimeStateSnapshot {
+  const connected = isConnectedToModule();
+  const startupFlags = getStartupFlagsSnapshot();
+  const settings = getAppSettings();
+
+  return {
+    connected,
+    protocolMode: getProtocolMode(),
+    sessionInputs: {
+      hasHardwareConnection: connected && !!getSerialPort(),
+      noModuleMode: startupFlags.noModuleMode,
+      wasmEnabled: settings.wasm.enabled,
+    },
   };
 }
 
@@ -96,15 +128,15 @@ function applySessionUpdate(
   return state;
 }
 
-function syncRuntimeStateFromAdapter(options?: {
+function syncRuntimeState(options?: {
   publishDiagnostics?: boolean;
 }): RuntimeSessionState {
-  const legacyState = adapter.readState();
+  const snapshot = readRuntimeState();
   return applySessionUpdate(
     {
-      ...legacyState.sessionInputs,
-      connected: legacyState.connected,
-      protocolMode: legacyState.protocolMode,
+      ...snapshot.sessionInputs,
+      connected: snapshot.connected,
+      protocolMode: snapshot.protocolMode,
     },
     { publishDiagnostics: options?.publishDiagnostics }
   );
@@ -128,7 +160,7 @@ export function bootstrapRuntimeSession(
 }
 
 export function refreshRuntimeSession(): RuntimeSessionState {
-  return syncRuntimeStateFromAdapter({ publishDiagnostics: true });
+  return syncRuntimeState({ publishDiagnostics: true });
 }
 
 export function announceRuntimeSession(): RuntimeSessionState {
@@ -196,7 +228,7 @@ export function subscribeRuntimeService(
 }
 
 export function toggleRuntimeConnection(): Promise<void> {
-  return adapter.toggleConnection();
+  return toggleConnect();
 }
 
 export function resolveRuntimeTransportMode(): TransportMode {
@@ -213,13 +245,13 @@ export function isRuntimeWasmEnabled(): boolean {
 
 export function sendRuntimeTransportCommand(command: SharedTransportCommand) {
   return Effect.gen(function* (_) {
-    const state = syncRuntimeStateFromAdapter();
+    const state = syncRuntimeState();
     const effects = [];
 
     if (supportsHardwareTransport(state.session.transportMode)) {
       effects.push(
         Effect.tryPromise({
-          try: () => adapter.sendHardwareCommand(command),
+          try: () => sendTouSEQ(command),
           catch: (error) => new Error(`Hardware error: ${error}`),
         })
       );
@@ -228,7 +260,7 @@ export function sendRuntimeTransportCommand(command: SharedTransportCommand) {
     if (supportsWasmTransport(state.session.transportMode)) {
       effects.push(
         Effect.tryPromise({
-          try: () => adapter.evalInWasm(command),
+          try: () => evalInUseqWasm(command),
           catch: (error) => new Error(`WASM error: ${error}`),
         })
       );
@@ -252,14 +284,12 @@ export function queryRuntimeHardwareTransportState() {
   return Effect.tryPromise<TransportState | null, TransportState | null>({
     try: (_signal: AbortSignal) =>
       new Promise<TransportState | null>((resolve, reject) => {
-        adapter
-          .sendHardwareCommand(
-            SHARED_TRANSPORT_COMMANDS.getState,
-            (text: string) => {
-              resolve(parseTransportState(text));
-            }
-          )
-          .catch(reject);
+        sendTouSEQ(
+          SHARED_TRANSPORT_COMMANDS.getState,
+          (text: string) => {
+            resolve(parseTransportState(text));
+          }
+        ).catch(reject);
       }),
     catch: () => null,
   });
@@ -267,7 +297,7 @@ export function queryRuntimeHardwareTransportState() {
 
 export function syncRuntimeWasmTransportState(state: TransportState) {
   return Effect.tryPromise({
-    try: () => adapter.syncWasmTransportState(state),
+    try: () => syncWasmTransportStateInInterpreter(state),
     catch: (error) => new Error(`WASM sync error: ${error}`),
   }).pipe(Effect.catchAll(() => Effect.succeed(null as string | null)));
 }
@@ -334,10 +364,5 @@ export function getSettings(): AppSettings {
 }
 
 export function resetRuntimeServiceForTests(): void {
-  adapter = legacyRuntimeAdapter;
   resetRuntimeSessionState();
-}
-
-export function setRuntimeAdapterForTests(nextAdapter: LegacyRuntimeAdapter): void {
-  adapter = nextAdapter;
 }
