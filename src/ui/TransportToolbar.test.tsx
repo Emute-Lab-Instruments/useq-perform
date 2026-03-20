@@ -27,7 +27,7 @@ import {
   protocolReady as protocolReadyChannel,
   jsonMeta as jsonMetaChannel,
 } from "../contracts/runtimeChannels";
-import type { JsonMetaEventDetail } from "../contracts/runtimeEvents";
+import type { JsonMetaEventDetail } from "../contracts/runtimeChannels";
 
 // ── Shared mock runtime-service state ──────────────────────────
 

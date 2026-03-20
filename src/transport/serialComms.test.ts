@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   JSON_META_EVENT,
   PROTOCOL_READY_EVENT,
-} from "../contracts/runtimeEvents";
+} from "../contracts/runtimeChannels";
 
 const postMock = vi.fn();
 const upgradeCheckMock = vi.fn();
@@ -43,7 +43,7 @@ vi.mock("../runtime/appSettingsRepository.ts", () => ({
   }),
 }));
 
-vi.mock("../runtime/urlParams.ts", () => ({
+vi.mock("../runtime/startupContext.ts", () => ({
   readStartupFlags: () => ({
     debug: false,
     devmode: false,

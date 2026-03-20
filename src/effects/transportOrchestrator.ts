@@ -13,7 +13,7 @@ import {
   SHARED_TRANSPORT_COMMANDS,
   type SharedTransportCommand,
 } from "../contracts/useqRuntimeContract";
-import type { JsonMetaEventDetail } from "../contracts/runtimeEvents";
+import type { JsonMetaEventDetail } from "../contracts/runtimeChannels";
 import {
   protocolReady as protocolReadyChannel,
   jsonMeta as jsonMetaChannel,

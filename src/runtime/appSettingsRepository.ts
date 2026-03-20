@@ -20,7 +20,7 @@ import {
   getStartupFlagsSnapshot,
   type StartupFlags,
 } from "./startupContext.ts";
-import { readStartupFlags } from "./urlParams.ts";
+import { readStartupFlags } from "./startupContext.ts";
 
 const GIST_NOT_FOUND_MESSAGE = "gist not found";
 const TEXT_NOT_FOUND_MESSAGE = "code not found";

@@ -11,9 +11,6 @@ import {
   PROTOCOL_READY_EVENT,
   RUNTIME_DIAGNOSTICS_EVENT,
   RUNTIME_EVENT_NAMES,
-} from "./runtimeEvents";
-
-import {
   connectionChanged,
   protocolReady,
   jsonMeta,

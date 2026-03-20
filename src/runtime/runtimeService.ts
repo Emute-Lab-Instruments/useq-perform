@@ -6,7 +6,7 @@ import {
   connectionChanged as connectionChangedChannel,
   settingsChanged as settingsChangedChannel,
 } from "../contracts/runtimeChannels";
-import type { ConnectionChangedDetail } from "../contracts/runtimeEvents";
+import type { ConnectionChangedDetail } from "../contracts/runtimeChannels";
 import type { TransportState } from "../machines/transport.machine";
 import type { AppSettings } from "../lib/appSettings";
 import {

@@ -178,12 +178,11 @@ export default tseslint.config(
     rules: { "import-x/no-restricted-paths": "off" },
   },
   {
-    // contracts/runtimeChannels.ts and runtimeEvents.ts import type
-    // definitions from runtime/runtimeDiagnostics and runtimeSession.
+    // contracts/runtimeChannels.ts imports type definitions from
+    // runtime/runtimeDiagnostics and runtimeSession.
     // These types should eventually move to contracts/ or lib/.
     files: [
       "src/contracts/runtimeChannels.ts",
-      "src/contracts/runtimeEvents.ts",
     ],
     rules: { "import-x/no-restricted-paths": "off" },
   },
