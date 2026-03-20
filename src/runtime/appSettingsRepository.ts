@@ -1,5 +1,4 @@
 import defaultConfig from "./default-config.json";
-import { validateConfiguration } from "./configSchema.ts";
 import {
   clearPersistedUserSettings,
   createDefaultUserSettings,
@@ -9,6 +8,7 @@ import {
   normalizeUserSettings,
   readPersistedUserSettings,
   settingsPatchFromConfiguration,
+  validateConfiguration,
   writePersistedUserSettings,
   type AppSettings,
 } from "../lib/appSettings.ts";

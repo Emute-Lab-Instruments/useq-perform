@@ -5,10 +5,6 @@
  * Provides hybrid saving strategy: WebSocket > File System API > Download
  */
 
-import {
-  validateConfiguration,
-  getConfigurationDiff
-} from './configSchema.ts';
 import { getAppSettings } from './appSettingsRepository.ts';
 import { updateSettings } from './runtimeService.ts';
 import { getAllControlValues } from '../effects/mockControlInputs.ts';
@@ -16,8 +12,10 @@ import { dbg } from '../lib/debug.ts';
 import {
   createConfigurationDocument,
   createDefaultUserSettings,
+  getConfigurationDiff,
   mergeUserSettings,
   settingsPatchFromConfiguration,
+  validateConfiguration,
 } from '../lib/appSettings.ts';
 
 const CONFIG_WS_URL = 'ws://localhost:8081';

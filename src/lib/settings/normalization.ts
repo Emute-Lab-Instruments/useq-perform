@@ -387,3 +387,94 @@ export function settingsPatchFromConfiguration(
 
   return patch;
 }
+
+// ---------------------------------------------------------------------------
+// Configuration document validation & diff
+// (Migrated from src/runtime/configSchema.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate a configuration document (import/URL config format).
+ * Checks required top-level fields and critical value constraints.
+ */
+export function validateConfiguration(config: unknown): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (!config || typeof config !== 'object') {
+    return { valid: false, errors: ['Configuration is null or undefined'] };
+  }
+
+  const cfg = config as Partial<AppConfigDocument>;
+
+  if (!cfg.version) {
+    errors.push('Missing version field');
+  }
+
+  if (!cfg.user) {
+    errors.push('Missing user field');
+  } else {
+    if (!cfg.user.editor) {
+      errors.push('Missing user.editor field');
+    }
+    if (!cfg.user.storage) {
+      errors.push('Missing user.storage field');
+    }
+    if (!cfg.user.ui) {
+      errors.push('Missing user.ui field');
+    }
+    if (!cfg.user.visualisation) {
+      errors.push('Missing user.visualisation field');
+    }
+  }
+
+  if (cfg.user?.editor?.fontSize) {
+    const fontSize = cfg.user.editor.fontSize;
+    if (typeof fontSize !== 'number' || fontSize < 8 || fontSize > 32) {
+      errors.push('user.editor.fontSize must be a number between 8 and 32');
+    }
+  }
+
+  if (cfg.user?.storage?.autoSaveInterval) {
+    const interval = cfg.user.storage.autoSaveInterval;
+    if (typeof interval !== 'number' || interval < 1000) {
+      errors.push('user.storage.autoSaveInterval must be a number >= 1000');
+    }
+  }
+
+  if (
+    cfg.user?.visualisation &&
+    cfg.user.visualisation.windowDuration == null
+  ) {
+    errors.push('user.visualisation.windowDuration is required');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Get a human-readable summary of configuration differences.
+ */
+export function getConfigurationDiff(current: Partial<AppConfigDocument>, incoming: Partial<AppConfigDocument>): string[] {
+  const diffs: string[] = [];
+
+  if (current.user?.editor?.theme !== incoming.user?.editor?.theme) {
+    diffs.push(`Theme: ${current.user?.editor?.theme} → ${incoming.user?.editor?.theme}`);
+  }
+
+  if (current.user?.editor?.fontSize !== incoming.user?.editor?.fontSize) {
+    diffs.push(`Font Size: ${current.user?.editor?.fontSize} → ${incoming.user?.editor?.fontSize}`);
+  }
+
+  if (current.user?.visualisation?.windowDuration !== incoming.user?.visualisation?.windowDuration) {
+    diffs.push(`Visual Window: ${current.user?.visualisation?.windowDuration}s → ${incoming.user?.visualisation?.windowDuration}s`);
+  }
+
+  if (current.user?.visualisation?.lineWidth !== incoming.user?.visualisation?.lineWidth) {
+    diffs.push(`Line Width: ${current.user?.visualisation?.lineWidth}px → ${incoming.user?.visualisation?.lineWidth}px`);
+  }
+
+  return diffs;
+}
