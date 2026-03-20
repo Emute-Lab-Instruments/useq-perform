@@ -25,7 +25,7 @@ interface RawReferenceEntry {
   changed_in_version?: unknown;
   [key: string]: unknown;
 }
-import { showChromePanel } from "../adapters/panelControls";
+import { showChromePanel } from "../adapters/panels";
 import { referenceSearchChannel, helpTabSwitchChannel } from "./helpChannels";
 
 const normalizeEntry = (raw: unknown): ReferenceEntry | null => {

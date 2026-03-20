@@ -13,7 +13,6 @@ import { DesignSelector } from "../panel-chrome/DesignSelector";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import { HelpPanel } from "../help/HelpPanel";
 import { pushOverlay } from "../overlayManager";
-import { registerPanelControls } from "./panelControls";
 import { createSolidAdapter } from "./createSolidAdapter";
 import "../panel-chrome/panel-chrome.css";
 
@@ -80,12 +79,24 @@ export function hideAllPanels() {
   }
 }
 
-registerPanelControls({
-  hideAllPanels,
-  togglePanelVisibility,
-  showPanel,
-  hidePanel,
-});
+// ---- Chrome-panel convenience aliases (previously in panelControls.ts) ----
+
+export function hideChromePanels(): void {
+  hideAllPanels();
+}
+
+export function toggleChromePanel(panelId: string): boolean {
+  togglePanelVisibility(panelId);
+  return true;
+}
+
+export function showChromePanel(panelId: string): void {
+  showPanel(panelId);
+}
+
+export function hideChromePanel(panelId: string): void {
+  hidePanel(panelId);
+}
 
 // ---- Mount helpers ----
 

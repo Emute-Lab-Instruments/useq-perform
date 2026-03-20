@@ -6,7 +6,7 @@ import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mo
 import { themes, setMainEditorTheme } from "../../editors/themes.ts";
 import { defaultThemeEditorStartingCode } from "../../lib/editorDefaults.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
-import { hideChromePanel } from "../adapters/panelControls";
+import { hideChromePanel } from "../adapters/panels";
 
 /** Lightweight read-only extensions for theme preview cards. */
 const previewBaseExtensions: Extension[] = [

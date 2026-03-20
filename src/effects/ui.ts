@@ -1,7 +1,7 @@
 // src/effects/ui.ts
 import { Effect } from "effect";
 import { toggleRuntimeConnection } from "../runtime/runtimeService";
-import { hideChromePanels, toggleChromePanel } from "../ui/adapters/panelControls";
+import { hideChromePanels, toggleChromePanel } from "../ui/adapters/panels";
 import { toggleVisualisationPanel } from "../ui/adapters/visualisationPanel";
 
 export const toggleConnection = () =>

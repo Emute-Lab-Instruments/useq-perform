@@ -1,8 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { createRoot } from "solid-js";
 import { Effect } from "effect";
+import { createResource } from "solid-js";
 import { useActorSignal } from "./useActorSignal";
-import { effectResource } from "./effectResource";
+
+/** Inline of deleted effectResource.ts — wraps an Effect as a Solid resource. */
+const effectResource = <A>(eff: Effect.Effect<A, unknown, never>) =>
+  createResource(() => Effect.runPromise(eff));
 
 // ---------------------------------------------------------------------------
 // Helper: create a mock object that satisfies the AnyActorRef shape

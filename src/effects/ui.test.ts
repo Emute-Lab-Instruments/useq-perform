@@ -11,7 +11,7 @@ const { hideChromePanels, toggleChromePanel, toggleVisualisationPanel } = vi.hoi
 vi.mock("../runtime/runtimeService", () => ({
   toggleRuntimeConnection: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("../ui/adapters/panelControls", () => ({
+vi.mock("../ui/adapters/panels", () => ({
   hideChromePanels,
   toggleChromePanel,
 }));
