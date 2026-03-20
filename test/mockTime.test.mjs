@@ -7,7 +7,7 @@ import {
     resetMockTimeGenerator,
     getCurrentMockTime,
     isMockTimeGeneratorRunning 
-} from '../src/effects/mockTimeGenerator.ts';
+} from '../src/effects/localClock.ts';
 
 // Mock window and performance (if not handled by setup.mjs)
 if (typeof window === 'undefined') {
