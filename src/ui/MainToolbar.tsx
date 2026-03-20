@@ -1,12 +1,14 @@
 import { createSignal, onMount, onCleanup } from "solid-js";
 import { Effect } from "effect";
-import { toggleConnection, toggleGraph, togglePanel } from "../effects/ui";
 import { adjustFontSize, loadCode, saveCode } from "../effects/editor";
 import { animateConnect as animateConnectChannel } from "../contracts/runtimeChannels";
 import {
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
+  toggleRuntimeConnection,
 } from "../runtime/runtimeService";
+import { toggleChromePanel } from "./adapters/panels";
+import { toggleVisualisationPanel } from "./adapters/visualisationPanel";
 import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings } from "lucide-solid";
 
 export function MainToolbar() {
@@ -44,7 +46,6 @@ export function MainToolbar() {
     });
   });
 
-  const run = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromise(effect);
   const runtimeStatus = () => {
     if (runtimeState().session.connectionMode === "hardware") {
       return runtimeState().session.transportMode === "both" ? "Hardware + WASM" : "Hardware";
@@ -74,7 +75,7 @@ export function MainToolbar() {
           class={connectButtonClass()}
           title={`Connect (${runtimeStatus()})`}
           aria-label={`Connect (${runtimeStatus()})`}
-          onClick={() => run(toggleConnection())}
+          onClick={() => toggleRuntimeConnection()}
         >
           <Cable />
         </button>
@@ -82,7 +83,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Graph"
           aria-label="Graph"
-          onClick={() => run(toggleGraph())}
+          onClick={() => toggleVisualisationPanel()}
         >
           <ChartSpline />
         </button>
@@ -93,7 +94,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Load Code"
           aria-label="Load Code"
-          onClick={() => run(loadCode())}
+          onClick={() => Effect.runPromise(loadCode())}
         >
           <File />
         </button>
@@ -101,7 +102,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Save Code"
           aria-label="Save Code"
-          onClick={() => run(saveCode())}
+          onClick={() => Effect.runPromise(saveCode())}
         >
           <Save />
         </button>
@@ -112,7 +113,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Font size--"
           aria-label="Font size--"
-          onClick={() => run(adjustFontSize(-1))}
+          onClick={() => Effect.runPromise(adjustFontSize(-1))}
         >
           <AArrowDown />
         </button>
@@ -120,7 +121,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Font size++"
           aria-label="Font size++"
-          onClick={() => run(adjustFontSize(1))}
+          onClick={() => Effect.runPromise(adjustFontSize(1))}
         >
           <AArrowUp />
         </button>
@@ -131,7 +132,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Help!"
           aria-label="Help!"
-          onClick={() => run(togglePanel("#panel-help"))}
+          onClick={() => toggleChromePanel("help")}
         >
           <CircleHelp />
         </button>
@@ -139,7 +140,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Settings"
           aria-label="Settings"
-          onClick={() => run(togglePanel("#panel-settings"))}
+          onClick={() => toggleChromePanel("settings")}
         >
           <Settings />
         </button>

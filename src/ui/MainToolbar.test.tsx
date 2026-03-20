@@ -46,10 +46,12 @@ const runtimeServiceState = vi.hoisted(() => {
   };
 });
 
-vi.mock("../effects/ui", () => ({
-  toggleConnection: vi.fn(() => ({ _tag: "Effect" })),
-  toggleGraph: vi.fn(() => ({ _tag: "Effect" })),
-  togglePanel: vi.fn(() => ({ _tag: "Effect" })),
+vi.mock("./adapters/panels", () => ({
+  toggleChromePanel: vi.fn(),
+}));
+
+vi.mock("./adapters/visualisationPanel", () => ({
+  toggleVisualisationPanel: vi.fn(),
 }));
 
 vi.mock("../effects/editor", () => ({
@@ -63,6 +65,7 @@ vi.mock("../runtime/runtimeService", () => ({
   subscribeRuntimeService: vi.fn((listener: (nextSnapshot: unknown) => void) =>
     runtimeServiceState.subscribe(listener as (nextSnapshot: any) => void)
   ),
+  toggleRuntimeConnection: vi.fn(() => Promise.resolve()),
 }));
 
 describe("MainToolbar", () => {
