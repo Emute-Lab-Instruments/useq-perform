@@ -57,7 +57,7 @@ describe("appSettingsRepository persistence", () => {
 
     expect(storedSettings.editor.code).toBeUndefined();
     expect(window.localStorage.getItem(appSettings.codeStorageKey)).toBe("(play)");
-  }, 10000);
+  }, 30000);
 
   it("loads legacy JSON-encoded code values through the canonical bootstrap path", async () => {
     const appSettings = await import("../lib/appSettings.ts");

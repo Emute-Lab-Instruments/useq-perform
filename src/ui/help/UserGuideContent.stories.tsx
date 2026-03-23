@@ -45,7 +45,7 @@ export const WithCodeBlocks: Story = {
   },
 };
 
-export const Error: Story = {
+export const WithError: Story = {
   args: {
     loading: false,
     content: "",

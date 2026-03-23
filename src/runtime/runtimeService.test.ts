@@ -29,6 +29,11 @@ vi.mock("./wasmInterpreter.ts", () => ({
 
 vi.mock("./startupContext.ts", () => ({
   getStartupFlagsSnapshot: vi.fn(() => ({ noModuleMode: false })),
+  getEnvironmentCapabilitiesSnapshot: vi.fn(() => ({
+    areInBrowser: false,
+    areInDesktopApp: false,
+    isWebSerialAvailable: false,
+  })),
 }));
 
 vi.mock("./appSettingsRepository", () => ({
@@ -65,6 +70,7 @@ function configureState(config: {
 
 describe("runtimeService", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     resetRuntimeServiceForTests();
   });
 

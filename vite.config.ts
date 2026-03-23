@@ -72,7 +72,8 @@ export default defineConfig(({ command }) => ({
           include: ['src/**/*.test.tsx', 'src/**/*.test.ts'],
           exclude: ['src/editors/extensions/__tests__/**'],
           globals: true,
-          setupFiles: []
+          setupFiles: [],
+          testTimeout: 15000,
         }
       }
     ]

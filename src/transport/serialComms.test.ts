@@ -44,7 +44,7 @@ vi.mock("../runtime/appSettingsRepository.ts", () => ({
 }));
 
 vi.mock("../runtime/startupContext.ts", () => ({
-  readStartupFlags: () => ({
+  getStartupFlagsSnapshot: () => ({
     debug: false,
     devmode: false,
     disableWebSerial: false,
@@ -52,6 +52,7 @@ vi.mock("../runtime/startupContext.ts", () => ({
     nosave: false,
     params: {},
   }),
+  isLocalStorageBypassedInStartupContext: () => false,
 }));
 
 vi.mock("../runtime/runtimeService.ts", () => ({

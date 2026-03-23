@@ -1,14 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveBootstrapPlan } from "./bootstrap.ts";
 
-const post = vi.fn();
-const ensureUseqWasmLoaded = vi.fn();
-const announceRuntimeSession = vi.fn();
-const checkForSavedPortAndMaybeConnect = vi.fn();
-const initializeMockControls = vi.fn();
-const startMockTimeGenerator = vi.fn();
-const registerVisualisation = vi.fn();
-const showVisualisationPanel = vi.fn(() => true);
+const {
+  post,
+  ensureUseqWasmLoaded,
+  announceRuntimeSession,
+  checkForSavedPortAndMaybeConnect,
+  initializeMockControls,
+  startMockTimeGenerator,
+  registerVisualisation,
+  showVisualisationPanel,
+} = vi.hoisted(() => ({
+  post: vi.fn(),
+  ensureUseqWasmLoaded: vi.fn(),
+  announceRuntimeSession: vi.fn(),
+  checkForSavedPortAndMaybeConnect: vi.fn(),
+  initializeMockControls: vi.fn(),
+  startMockTimeGenerator: vi.fn(),
+  registerVisualisation: vi.fn(),
+  showVisualisationPanel: vi.fn(() => true),
+}));
 
 vi.mock("../utils/consoleStore.ts", () => ({
   post,
