@@ -69,6 +69,55 @@ describe("probeHelpers", () => {
     });
   });
 
+  it("preserves trailing wrapper arguments when building contextual code", () => {
+    const source = "(slow 2 (shift 0.25 (fast 3 bar) 0.75))";
+    const state = createStructuralEditor(source);
+
+    const expression = buildProbeExpression(
+      state,
+      rangeOf(source, "bar"),
+      "contextual",
+      2,
+    );
+
+    expect(expression).toEqual({
+      code: "(shift 0.25 (fast 3 bar) 0.75)",
+      maxDepth: 3,
+      appliedDepth: 2,
+    });
+  });
+
+  it("clamps explicit contextual depth overrides to the valid range", () => {
+    const source = "(slow 2 (offset 0.5 (fast 3 bar)))";
+    const state = createStructuralEditor(source);
+
+    expect(
+      buildProbeExpression(
+        state,
+        rangeOf(source, "bar"),
+        "contextual",
+        -10,
+      ),
+    ).toEqual({
+      code: "bar",
+      maxDepth: 3,
+      appliedDepth: 0,
+    });
+
+    expect(
+      buildProbeExpression(
+        state,
+        rangeOf(source, "bar"),
+        "contextual",
+        99,
+      ),
+    ).toEqual({
+      code: "(slow 2 (offset 0.5 (fast 3 bar)))",
+      maxDepth: 3,
+      appliedDepth: 3,
+    });
+  });
+
   it("does not count wrappers when the selected node is not the wrapper target", () => {
     const source = "(slow 2 bar)";
     const state = createStructuralEditor(source);

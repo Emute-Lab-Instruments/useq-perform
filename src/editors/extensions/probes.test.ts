@@ -186,6 +186,35 @@ describe("probe commands", () => {
     view.destroy();
   });
 
+  it("targets the nearest same-line contextual probe even when the cursor is inside a raw probe", async () => {
+    const { contractCurrentProbeContext, probeField, toggleCurrentProbe } = await loadProbeModule();
+    const source = "(slow 2 (fast 3 alpha))  beta";
+    const view = createView(source, probeField, { anchor: anchorOf(source, "alpha") });
+
+    expect(toggleCurrentProbe(view, "contextual")).toBe(true);
+
+    view.dispatch({
+      selection: {
+        anchor: anchorOf(source, "beta"),
+      },
+    });
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
+
+    let probes = view.state.field(probeField).probes;
+    const contextualProbe = probes.find((probe) => probe.mode === "contextual");
+    const rawProbe = probes.find((probe) => probe.mode === "raw");
+    expect(contextualProbe?.depth).toBe(2);
+    expect(rawProbe?.cachedCode).toBe("beta");
+
+    expect(contractCurrentProbeContext(view)).toBe(true);
+
+    probes = view.state.field(probeField).probes;
+    expect(probes.find((probe) => probe.mode === "contextual")?.depth).toBe(1);
+    expect(probes.find((probe) => probe.mode === "raw")?.depth).toBe(0);
+
+    view.destroy();
+  });
+
   it("allows raw and contextual probes to coexist on the same range", async () => {
     const { probeField, toggleCurrentProbe } = await loadProbeModule();
     const source = "(slow 2 bar)";
