@@ -24,7 +24,7 @@ import {
   subscribeAppSettings,
 } from "../runtime/appSettingsRepository.ts";
 import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
-import { serialVisPaletteChangedChannel, visualisationSessionChannel } from "../contracts/visualisationChannels";
+import { serialVisPaletteChangedChannel } from "../contracts/visualisationChannels";
 import type { VisExpression, VisSample, VisSettings } from "../utils/visualisationStore.ts";
 import {
   visStore,
@@ -376,7 +376,7 @@ export async function registerVisualisation(
   if (!trimmed) {
     removeExpression(exprType);
     invalidateSamplingWindowCache();
-    setLastChangeKind("unregister");
+    setLastChangeKind("unregister", { exprType });
     return;
   }
 
@@ -396,8 +396,7 @@ export async function registerVisualisation(
   };
   updateExpressions(expressions);
   invalidateSamplingWindowCache();
-  setLastChangeKind("register");
-  visualisationSessionChannel.publish({ kind: "register", exprType });
+  setLastChangeKind("register", { exprType });
 }
 
 /**
@@ -406,8 +405,7 @@ export async function registerVisualisation(
 export function unregisterVisualisation(exprType: string): void {
   removeExpression(exprType);
   invalidateSamplingWindowCache();
-  setLastChangeKind("unregister");
-  visualisationSessionChannel.publish({ kind: "unregister", exprType });
+  setLastChangeKind("unregister", { exprType });
 }
 
 /**

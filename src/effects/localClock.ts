@@ -15,7 +15,7 @@
  */
 
 import { resampleExpressions } from './visualisationSampler.ts';
-import { updateTime } from '../utils/visualisationStore.ts';
+import { setLastChangeKind, updateTime } from '../utils/visualisationStore.ts';
 import { dbg } from '../lib/debug.ts';
 
 let running = false;
@@ -33,6 +33,10 @@ function tick(): void {
   // Advance time
   elapsedSeconds = (performance.now() - (resetTimeMs ?? 0)) / 1000;
   updateTime(elapsedSeconds);
+  setLastChangeKind("time", {
+    currentTimeSeconds: elapsedSeconds,
+    displayTimeSeconds: elapsedSeconds,
+  });
 
   // Coalesce sampling: skip if a WASM evaluation is already running on the
   // main thread. The sampler's sequence counter discards stale results, but

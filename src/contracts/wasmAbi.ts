@@ -6,8 +6,10 @@
  * how they should be called via `cwrap`.
  *
  * The ABI floor is pinned to what `src-useq/scripts/build_wasm.sh`
- * actually exports via `-s EXPORTED_FUNCTIONS`. Any symbol not in that
- * list is _optional_ and must be probed at instantiation time.
+ * exports via `-s EXPORTED_FUNCTIONS`. The batch helpers are still
+ * probed defensively because stale generated bundles can omit the raw
+ * `_symbol` bindings even when the source build script intends to
+ * export them.
  *
  * @see docs/RUNTIME_CONTRACT.md — "WASM ABI Contract" section
  * @see src-useq/scripts/build_wasm.sh — EXPORTED_FUNCTIONS list
@@ -104,13 +106,15 @@ export const REQUIRED_HEAP_HELPERS = Object.freeze([
 export type RequiredHeapHelper = (typeof REQUIRED_HEAP_HELPERS)[number];
 
 // ---------------------------------------------------------------------------
-// Optional ABI — present in wasm_wrapper.cpp but NOT in build exports
+// Runtime-probed ABI — expected in current generated bundles, but still
+// validated defensively in case the generated artifact drifts from source.
 // ---------------------------------------------------------------------------
 
 /**
- * Optional WASM exports. These are compiled into the wrapper but are
- * NOT listed in `-s EXPORTED_FUNCTIONS` today, so they may or may not
- * be reachable depending on link-time dead-code elimination.
+ * Runtime-probed WASM exports. These are expected on shipped bundles,
+ * but the editor still probes them conservatively because a stale
+ * generated artifact can present callable `cwrap()` wrappers that fail
+ * at first invocation when the raw `_symbol` export is absent.
  *
  * The editor MUST probe for these at instantiation and degrade
  * gracefully if they are missing.
@@ -166,7 +170,7 @@ export function hasRawWasmExport(
   symbol: string
 ): boolean {
   const rawSymbol = `_${symbol}`;
-  return typeof (module as Record<string, unknown>)[rawSymbol] === "function";
+  return typeof (module as unknown as Record<string, unknown>)[rawSymbol] === "function";
 }
 
 /**

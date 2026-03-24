@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./appSettingsRepository.ts", () => ({
@@ -21,6 +22,42 @@ function installLoadedScriptTag(): void {
   script.dataset.useqWasm = "true";
   script.dataset.loaded = "true";
   document.head.appendChild(script);
+}
+
+async function loadGeneratedBundleModule(bundleRelativePath: string): Promise<{
+  [key: string]: unknown;
+}> {
+  const bundlePath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    bundleRelativePath,
+  );
+  const code = readFileSync(bundlePath, "utf8");
+  const context = vm.createContext({
+    console,
+    setTimeout,
+    clearTimeout,
+    TextDecoder,
+    TextEncoder,
+    URL,
+    fetch,
+    performance,
+    WebAssembly,
+    globalThis: {},
+    document: { currentScript: { src: `http://localhost/${path.basename(bundlePath)}` } },
+    exports: {},
+    module: { exports: {} },
+    define: undefined,
+  });
+  context.globalThis = context;
+  vm.runInContext(code, context, { filename: path.basename(bundlePath) });
+  const createModule = ((context.module as { exports?: unknown }).exports ||
+    (context as { createModule?: unknown }).createModule) as
+    | ((options?: Record<string, unknown>) => Promise<Record<string, unknown>>)
+    | undefined;
+  if (typeof createModule !== "function") {
+    throw new Error(`Generated WASM bundle did not expose createModule(): ${bundlePath}`);
+  }
+  return createModule({});
 }
 
 function createBaseModule(options: {
@@ -92,6 +129,15 @@ describe("useqWasmInterpreter", () => {
     expect(buildScript).toContain('\\"_useq_eval_outputs_time_window\\"');
     expect(buildScript).toContain('\\"_useq_eval_outputs_time_window_into\\"');
     expect(buildScript).toContain('\\"_useq_last_error\\"');
+  });
+
+  it("ships a generated bundle with callable raw batch exports", async () => {
+    const module = await loadGeneratedBundleModule("../../public/wasm/useq.js");
+
+    expect(typeof module._useq_eval_output).toBe("function");
+    expect(typeof module._useq_eval_outputs_time_window).toBe("function");
+    expect(typeof module._useq_eval_outputs_time_window_into).toBe("function");
+    expect(typeof module._useq_last_error).toBe("function");
   });
 
   it("uses typed batch helpers when the wasm bundle exports them", async () => {

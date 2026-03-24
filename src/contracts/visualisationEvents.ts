@@ -31,6 +31,7 @@ export interface VisualisationSettingsDetail {
 
 export interface VisualisationSessionDetail {
   kind?: string;
+  exprType?: string;
   currentTimeSeconds?: number;
   displayTimeSeconds?: number;
   settings?: Partial<VisualisationSettingsDetail>;

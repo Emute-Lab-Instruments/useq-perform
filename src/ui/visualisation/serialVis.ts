@@ -267,7 +267,6 @@ function drawSerialVis(): void {
     }
   }
 
-  scheduleNextFrame();
 }
 
 export function makeVis(): void {
@@ -419,7 +418,7 @@ function buildSegmentPoints(
     if (useStepMode && previousPoint && previousPoint.y !== y) {
       points.push({ x, y: previousPoint.y });
     }
-    const point = { x, y };
+    const point: Point = { x, y };
     points.push(point);
     previousPoint = point;
   }

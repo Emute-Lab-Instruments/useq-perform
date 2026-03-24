@@ -44,7 +44,7 @@ WASM-only capabilities:
 
 - Direct time injection via `useq_update_time`
 - Single-output sampling via `useq_eval_output`
-- Optional batched output sampling when the generated bundle exports batch helpers
+- Batched output sampling via `useq_eval_outputs_time_window` / `useq_eval_outputs_time_window_into`
 
 ## WASM ABI Contract
 
@@ -63,9 +63,9 @@ These symbols are listed in `src-useq/scripts/build_wasm.sh` under `-s EXPORTED_
 
 Heap helpers `_malloc` and `_free` are also required (the latter is explicit in the build script; `_malloc` is implicitly available with `ALLOW_MEMORY_GROWTH`).
 
-### Optional exports (probed at instantiation)
+### Runtime-probed batch exports
 
-These are defined in `wasm_wrapper.cpp` but NOT in the build script export list. The editor probes for them via `tryCwrap` and degrades gracefully:
+These helpers are defined in `wasm_wrapper.cpp` and the current build script exports them. The editor still probes them conservatively at instantiation because a stale generated bundle can omit the raw `_symbol` bindings even when source says they should exist:
 
 | Symbol | cwrap return | cwrap args | Purpose |
 |--------|-------------|------------|---------|
@@ -73,7 +73,11 @@ These are defined in `wasm_wrapper.cpp` but NOT in the build script export list.
 | `useq_eval_outputs_time_window_into` | `"number"` | `["string", "number", "number", "number", "number", "number"]` | Batch evaluate (typed buffer) |
 | `useq_last_error` | `"string"` | `[]` | Read last error message |
 
-Treat batch sampling as a probed optimization, not part of the guaranteed stable core, until the build script explicitly adds these symbols to `EXPORTED_FUNCTIONS`.
+Current expectation:
+
+- `src-useq/scripts/build_wasm.sh` exports the batch helpers and `useq_last_error`
+- `src-useq/wasm/useq.js` and `public/wasm/useq.js` should expose raw `_useq_*` bindings for them
+- The editor probes anyway so a stale bundle degrades to per-sample evaluation instead of throwing repeatedly
 
 ### ABI validation
 
@@ -94,7 +98,8 @@ Both `src/effects/transport.ts` and `src/runtime/wasmInterpreter.ts` import from
 
 The following checks are the minimum guardrail against contract drift:
 
-- `src/contracts/wasmAbi.test.ts` verifies the ABI contract constants match the build script export list, tests ABI validation against mock modules, and ensures required/optional export sets are disjoint.
+- `src/contracts/wasmAbi.test.ts` verifies the ABI contract constants match the build script export list, tests ABI validation against mock modules, and ensures required/runtime-probed export sets are disjoint.
+- `src/runtime/wasmInterpreter.test.ts` instantiates the generated `public/wasm/useq.js` bundle and verifies the batch helper raw exports are actually present.
 - `src/contracts/useqRuntimeContract.test.ts` verifies the shared command set and the hardware-only/WASM-only split.
 - `src-useq/test/hardware/test_json_protocol.cpp` verifies the `hello` I/O contract, `stream-config` output enablement/rate parsing, and that `hello`, `ping`, and `stream-config` parse without `code` while malformed eval requests still fail.
 - `assertWasmAbi()` throws at WASM instantiation time if the bundle does not export required symbols.

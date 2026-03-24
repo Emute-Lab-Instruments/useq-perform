@@ -9,7 +9,7 @@ import { Buffer } from "buffer";
 import { CircularBuffer } from "../lib/CircularBuffer.ts";
 import { dbg } from "../lib/debug.ts";
 import { handleExternalTimeUpdate } from "../effects/visualisationSampler.ts";
-import { updateTime } from "../utils/visualisationStore.ts";
+import { setLastChangeKind, updateTime } from "../utils/visualisationStore.ts";
 import {
   combineBuffers,
   findMessageStartMarker,
@@ -331,6 +331,10 @@ function updateSerialBuffer(bufferIndex: number, value: number): void {
   if (bufferIndex === 0) {
     // Update store time immediately for smooth rendering, then sample async
     updateTime(value);
+    setLastChangeKind("time", {
+      currentTimeSeconds: value,
+      displayTimeSeconds: value,
+    });
     handleExternalTimeUpdate(value).catch((error: unknown) => {
       dbg(`streamParser: failed to forward time update: ${error}`);
     });

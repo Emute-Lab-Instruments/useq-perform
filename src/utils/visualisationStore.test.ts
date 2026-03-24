@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../contracts/visualisationChannels", () => ({
+  visualisationSessionChannel: {
+    publish: vi.fn(),
+  },
+}));
+
 /**
  * Dynamically import a fresh visualisationStore module.
  * vi.resetModules() ensures we get fresh module-level state
@@ -78,6 +84,22 @@ describe("visualisationStore", () => {
 
       setLastChangeKind("data");
       expect(visStore.lastChangeKind).toBe("data");
+    });
+
+    it("publishes the matching visualisation session event", async () => {
+      const { visualisationSessionChannel } = await import(
+        "../contracts/visualisationChannels"
+      );
+      const { setLastChangeKind } = await loadVisStore();
+
+      const publish = vi.mocked(visualisationSessionChannel.publish);
+      publish.mockClear();
+
+      setLastChangeKind("register", { exprType: "a1" });
+
+      expect(publish).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "register", exprType: "a1" }),
+      );
     });
   });
 

@@ -91,6 +91,43 @@ describe("serialVis loop control", () => {
     expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
   });
 
+  it("does not self-schedule another frame after drawing", async () => {
+    const callbacks: FrameRequestCallback[] = [];
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callbacks.push(callback);
+        return callbacks.length;
+      });
+
+    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    setVisStore("expressions", {
+      a1: {
+        exprType: "a1",
+        expressionText: "(a1 bar)",
+        samples: [{ time: 0, value: 0.5 }, { time: 1, value: 0.75 }],
+        color: "#0f0",
+      },
+    });
+
+    const panel = document.getElementById("panel-vis") as HTMLDivElement;
+    panel.hidden = false;
+    panel.style.display = "block";
+
+    const canvas = document.getElementById("serialcanvas") as HTMLCanvasElement;
+    canvas.getContext = vi.fn(() => makeContext());
+
+    const { refreshSerialVisLoop } = await import("./serialVis.ts");
+    refreshSerialVisLoop();
+
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(callbacks).toHaveLength(1);
+
+    callbacks[0](performance.now());
+
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+  });
+
   it("draws the empty state once and stops when the panel is visible without expressions", async () => {
     const requestAnimationFrame = vi
       .spyOn(window, "requestAnimationFrame")

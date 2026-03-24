@@ -1,4 +1,6 @@
 import { createStore, reconcile } from "solid-js/store";
+import { visualisationSessionChannel } from "../contracts/visualisationChannels";
+import type { VisualisationSessionDetail } from "../contracts/visualisationEvents";
 
 // Channel definitions matching legacy serialVis/utils.mjs
 export const SERIAL_VIS_CHANNELS = [
@@ -136,8 +138,12 @@ export function updateSettings(settings: VisSettings): void {
 }
 
 /** Set the last change kind tag. */
-export function setLastChangeKind(kind: string): void {
+export function setLastChangeKind(
+  kind: string,
+  detail: VisualisationSessionDetail = {},
+): void {
   setVisStore("lastChangeKind", kind);
+  visualisationSessionChannel.publish({ ...detail, kind });
 }
 
 /**
