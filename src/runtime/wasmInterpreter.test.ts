@@ -193,6 +193,24 @@ describe("useqWasmInterpreter", () => {
     ]);
   });
 
+  it("does not publish codeEvaluated events for silent evals", async () => {
+    installLoadedScriptTag();
+    window.createModule = vi.fn(async () => createBaseModule() as never);
+
+    const runtimeChannels = await import("../contracts/runtimeChannels.ts");
+    const publishSpy = vi
+      .spyOn(runtimeChannels.codeEvaluated, "publish")
+      .mockImplementation(() => {});
+
+    const { evalInUseqWasm, evalInUseqWasmSilently } = await import("./wasmInterpreter.ts");
+
+    await evalInUseqWasmSilently("(+ 1 2)");
+    expect(publishSpy).not.toHaveBeenCalled();
+
+    await evalInUseqWasm("(+ 1 2)");
+    expect(publishSpy).toHaveBeenCalledWith({ code: "(+ 1 2)" });
+  });
+
   it("uses typed batch helpers when the wasm bundle exports them", async () => {
     const typedEval = vi.fn(
       (

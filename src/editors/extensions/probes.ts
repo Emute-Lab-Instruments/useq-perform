@@ -624,12 +624,21 @@ async function computeHighlights(
       }
     }
 
-    const rawFormProbe = probes.some(
-      (probe) =>
-        probe.mode === "raw" &&
-        probe.from === form.formRange.from &&
-        probe.to === form.formRange.to,
-    );
+    const formCode = state.sliceDoc(form.formRange.from, form.formRange.to).trim();
+    const rawFormProbe = probes.some((probe) => {
+      if (probe.mode !== "raw") return false;
+      if (probe.to <= form.formRange.from || probe.from >= form.formRange.to) {
+        return false;
+      }
+
+      const built = buildProbeExpression(
+        state,
+        { from: probe.from, to: probe.to },
+        "raw",
+      );
+
+      return built?.code.trim() === formCode;
+    });
 
     if (!rawFormProbe) {
       continue;

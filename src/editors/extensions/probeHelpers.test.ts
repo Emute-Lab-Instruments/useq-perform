@@ -69,6 +69,23 @@ describe("probeHelpers", () => {
     });
   });
 
+  it("does not count wrappers when the selected node is not the wrapper target", () => {
+    const source = "(slow 2 bar)";
+    const state = createStructuralEditor(source);
+
+    const expression = buildProbeExpression(
+      state,
+      rangeOf(source, "2"),
+      "contextual",
+    );
+
+    expect(expression).toEqual({
+      code: "2",
+      maxDepth: 0,
+      appliedDepth: 0,
+    });
+  });
+
   it("collects visible indexed forms for from-list and shorthand vector calls", () => {
     const source = [
       "(from-list [1 2 3] bar)",
@@ -86,6 +103,23 @@ describe("probeHelpers", () => {
     expect(forms[1]?.elementRanges).toHaveLength(3);
   });
 
+  it("collects supported indexed forms and ignores non-literal collections", () => {
+    const source = [
+      "(from-flat-list [1 2 3] bar)",
+      "(seq (list 4 5 6) bar)",
+      "(from-list xs bar)",
+    ].join("\n");
+    const state = createStructuralEditor(source);
+
+    const forms = collectVisibleIndexedForms(state, [{ from: 0, to: source.length }]);
+
+    expect(forms).toHaveLength(2);
+    expect(forms.map((form) => form.operatorName)).toEqual([
+      "from-flat-list",
+      "seq",
+    ]);
+  });
+
   it("matches the interpreter's from-list index calculation", () => {
     expect(computeFromListIndex(4, -1)).toBe(0);
     expect(computeFromListIndex(4, 0)).toBe(0);
@@ -94,5 +128,11 @@ describe("probeHelpers", () => {
     expect(computeFromListIndex(4, 0.99)).toBe(3);
     expect(computeFromListIndex(4, 1)).toBe(3);
     expect(computeFromListIndex(0, 0.5)).toBeNull();
+  });
+
+  it("returns null for non-finite phasor inputs", () => {
+    expect(computeFromListIndex(4, Number.NaN)).toBeNull();
+    expect(computeFromListIndex(4, Number.POSITIVE_INFINITY)).toBeNull();
+    expect(computeFromListIndex(4, Number.NEGATIVE_INFINITY)).toBeNull();
   });
 });
