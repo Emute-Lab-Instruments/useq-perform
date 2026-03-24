@@ -3,11 +3,11 @@
 }
 
 #panel-top-toolbar {
-    z-index: 9;
+    z-index: 30;
 }
 
 #panel-toolbar {
-    z-index: 10;
+    z-index: 35;
 }
 
 /* Update notification should appear above everything */
