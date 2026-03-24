@@ -10,6 +10,11 @@ import {
   showDocumentationForSymbol,
   makeDeleteWrapper,
 } from "./editorKeyboard.ts";
+import {
+  contractCurrentProbeContext,
+  expandCurrentProbeContext,
+  toggleCurrentProbe,
+} from "./extensions/probes.ts";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 
 // Modified keybindings to improve usability
@@ -42,7 +47,7 @@ export const useq_keymap = [
   { key: "Alt-Enter", run: (view: EditorView) => evaluate(view, "toplevel") },
   { key: "Mod-Shift-Enter", run: (view: EditorView) => evaluate(view, "soft") },
   {
-    key: "Alt-h",
+    key: "Alt-/",
     run: toggleHelp,
     preventDefault: true,
     stopPropagation: true,
@@ -56,6 +61,30 @@ export const useq_keymap = [
   {
     key: "Alt-f",
     run: showDocumentationForSymbol,
+    preventDefault: true,
+    stopPropagation: true,
+  },
+  {
+    key: "Alt-p",
+    run: (view: EditorView) => toggleCurrentProbe(view, "contextual"),
+    preventDefault: true,
+    stopPropagation: true,
+  },
+  {
+    key: "Alt-Shift-p",
+    run: (view: EditorView) => toggleCurrentProbe(view, "raw"),
+    preventDefault: true,
+    stopPropagation: true,
+  },
+  {
+    key: "Alt-h",
+    run: expandCurrentProbeContext,
+    preventDefault: true,
+    stopPropagation: true,
+  },
+  {
+    key: "Alt-s",
+    run: contractCurrentProbeContext,
     preventDefault: true,
     stopPropagation: true,
   },

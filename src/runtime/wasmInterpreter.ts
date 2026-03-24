@@ -519,7 +519,10 @@ export function ensureUseqWasmLoaded(): Promise<UseqRuntime> {
   return runtimePromise;
 }
 
-export async function evalInUseqWasm(code: string): Promise<string | null> {
+async function evalCodeInUseqWasm(
+  code: string,
+  options?: { publish?: boolean },
+): Promise<string | null> {
   if (!isUseqWasmEnabled()) {
     return null;
   }
@@ -527,13 +530,25 @@ export async function evalInUseqWasm(code: string): Promise<string | null> {
   const runtime = await ensureUseqWasmLoaded();
   const result = runtime.evaluate(code);
 
-  try {
-    codeEvaluatedChannel.publish({ code });
-  } catch (error) {
-    dbg(`useqWasmInterpreter: failed to publish codeEvaluated event: ${error}`);
+  if (options?.publish !== false) {
+    try {
+      codeEvaluatedChannel.publish({ code });
+    } catch (error) {
+      dbg(`useqWasmInterpreter: failed to publish codeEvaluated event: ${error}`);
+    }
   }
 
   return result;
+}
+
+export async function evalInUseqWasm(code: string): Promise<string | null> {
+  return evalCodeInUseqWasm(code, { publish: true });
+}
+
+export async function evalInUseqWasmSilently(
+  code: string,
+): Promise<string | null> {
+  return evalCodeInUseqWasm(code, { publish: false });
 }
 
 export async function syncWasmTransportState(state: TransportState): Promise<string | null> {

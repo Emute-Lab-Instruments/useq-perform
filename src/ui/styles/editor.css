@@ -90,6 +90,98 @@
   filter: none;
 }
 
+.cm-probe-widget {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 10px;
+  margin-right: 2px;
+  padding: 6px 7px 7px;
+  min-width: 148px;
+  vertical-align: middle;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(18, 24, 31, 0.96), rgba(11, 15, 21, 0.96));
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.22);
+}
+
+.cm-probe-widget-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.cm-probe-widget-label {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.cm-probe-close-btn {
+  opacity: 0;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  transition: opacity 0.14s ease, color 0.14s ease;
+}
+
+.cm-probe-widget:hover .cm-probe-close-btn {
+  opacity: 1;
+}
+
+.cm-probe-close-btn:hover {
+  color: var(--accent-color, #00ff41);
+}
+
+.cm-probe-widget-body {
+  display: inline-flex;
+  align-items: center;
+  min-height: 46px;
+}
+
+.cm-probe-widget-body canvas {
+  display: block;
+  border-radius: 6px;
+}
+
+.cm-probe-widget-text {
+  display: inline-flex;
+  max-width: 154px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.cm-probe-widget-text.is-error {
+  color: #ff9c9c;
+}
+
+.cm-probe-indexed-item {
+  border-bottom: 2px solid var(--accent-color, #00ff41);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cm-probe-indexed-item-contextual {
+  box-shadow: inset 0 -2px 0 rgba(0, 255, 65, 0.18);
+}
+
+.cm-probe-indexed-item-raw {
+  border-bottom-color: #7ab7ff;
+  background: rgba(122, 183, 255, 0.14);
+}
+
 #toolbar-bar-progress-container {
   height: 5px;
   margin-top: 4px;

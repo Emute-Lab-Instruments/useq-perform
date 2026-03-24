@@ -29,6 +29,7 @@ export const PERSISTENCE_KEYS = {
 
   // Editor autosave
   editorContent: "editorContent",
+  editorProbes: "uSEQ-Perform-Editor-Probes",
 
   // Reference panel
   referenceStarred: "moduLispReference:starredFunctions",

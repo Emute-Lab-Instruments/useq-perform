@@ -19,6 +19,7 @@ import { themeCompartment, fontSizeCompartment } from "../lib/editorCompartments
 import {structureExtensions} from "./extensions/structure.ts";
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
+import { probeExtensions } from "./extensions/probes.ts";
 import { dbg } from "../lib/debug.ts";
 import { mapManualControlBindingsThroughChanges } from "../lib/manualControlState.ts";
 
@@ -96,6 +97,7 @@ export const baseExtensions = [
   ...themeExtensions,
   ...default_clojure_extensions,
   ...structureExtensions,
+  ...probeExtensions,
   evalHighlightField,
   visReadabilityPlugin,
 ];
