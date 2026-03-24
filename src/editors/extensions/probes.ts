@@ -1,7 +1,6 @@
 import {
   StateEffect,
   StateField,
-  RangeSetBuilder,
   type EditorState,
 } from "@codemirror/state";
 import {
@@ -277,31 +276,32 @@ class ProbeWidget extends WidgetType {
 }
 
 function buildDecorations(snapshot: ProbeFieldValue): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
+  const decorations = [];
 
   for (const highlight of snapshot.highlights) {
     const className = highlight.mode === "raw"
       ? "cm-probe-indexed-item cm-probe-indexed-item-raw"
       : "cm-probe-indexed-item cm-probe-indexed-item-contextual";
-    builder.add(
-      highlight.from,
-      highlight.to,
-      Decoration.mark({ class: className }),
+    decorations.push(
+      Decoration.mark({ class: className }).range(
+        highlight.from,
+        highlight.to,
+      ),
     );
   }
 
   for (const probe of snapshot.probes) {
-    builder.add(
-      probe.to,
-      probe.to,
+    decorations.push(
       Decoration.widget({
         widget: new ProbeWidget(probe, snapshot.renderById[probe.id] ?? null),
         side: 1,
-      }),
+      }).range(probe.to),
     );
   }
 
-  return builder.finish();
+  return decorations.length > 0
+    ? Decoration.set(decorations, true)
+    : Decoration.none;
 }
 
 function buildSnapshot(

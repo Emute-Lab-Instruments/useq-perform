@@ -209,6 +209,34 @@ describe("probe commands", () => {
     view.destroy();
   });
 
+  it("does not throw when probes are toggled in reverse document order", async () => {
+    const { probeField, toggleCurrentProbe } = await loadProbeModule();
+    const source = [
+      "(slow 2 first)",
+      "(slow 2 second)",
+    ].join("\n");
+    const view = createView(source, probeField, {
+      anchor: anchorOf(source, "second"),
+    });
+
+    expect(() => toggleCurrentProbe(view, "raw")).not.toThrow();
+
+    view.dispatch({
+      selection: {
+        anchor: anchorOf(source, "first"),
+      },
+    });
+
+    expect(() => toggleCurrentProbe(view, "raw")).not.toThrow();
+    expect(view.state.field(probeField).probes).toHaveLength(2);
+    expect(view.state.field(probeField).probes.map((probe) => probe.cachedCode)).toEqual([
+      "second",
+      "first",
+    ]);
+
+    view.destroy();
+  });
+
   it("creates raw probes without contextual depth", async () => {
     const { probeField, toggleCurrentProbe } = await loadProbeModule();
     const source = "(slow 2 bar)";
