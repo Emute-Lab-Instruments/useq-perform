@@ -140,6 +140,59 @@ describe("useqWasmInterpreter", () => {
     expect(typeof module._useq_last_error).toBe("function");
   });
 
+  it("ships a generated bundle whose typed batch helper is readable through HEAPF64", async () => {
+    const module = await loadGeneratedBundleModule("../../public/wasm/useq.js");
+    const typedModule = module as Record<string, any>;
+
+    expect(typeof typedModule.HEAPF64?.subarray).toBe("function");
+
+    const init = typedModule.cwrap("useq_init", null, []);
+    const evalCode = typedModule.cwrap("useq_eval", "string", ["string"]);
+    const typedEval = typedModule.cwrap(
+      "useq_eval_outputs_time_window_into",
+      "number",
+      ["string", "number", "number", "number", "number", "number"]
+    );
+    const lastError = typedModule.cwrap("useq_last_error", "string", []);
+
+    init();
+    expect(evalCode("(def a1 (bar))")).toBe("a1");
+
+    const sampleCount = 5;
+    const pointer = typedModule._malloc(sampleCount * Float64Array.BYTES_PER_ELEMENT);
+    const start = pointer / Float64Array.BYTES_PER_ELEMENT;
+    const view = typedModule.HEAPF64.subarray(start, start + sampleCount);
+
+    try {
+      const status = typedEval(JSON.stringify(["a1"]), 0, 1, sampleCount, pointer, sampleCount);
+      expect(status).toBe(1);
+      expect(lastError()).toBe("");
+      expect(Array.from(view)).toEqual([0.5, 0.5, 0.5, 0.5, 0.5]);
+    } finally {
+      typedModule._free(pointer);
+    }
+  });
+
+  it("uses the shipped bundle's typed batch path through the runtime bridge", async () => {
+    installLoadedScriptTag();
+    window.createModule = vi.fn(async () =>
+      (await loadGeneratedBundleModule("../../public/wasm/useq.js")) as never
+    );
+
+    const { evalInUseqWasm, evalOutputsInTimeWindow } = await import("./wasmInterpreter.ts");
+
+    expect(await evalInUseqWasm("(def a1 (bar))")).toBe("a1");
+    const samples = await evalOutputsInTimeWindow(["a1"], 0, 1, 5);
+
+    expect(samples.get("a1")).toEqual([
+      { time: 0, value: 0.5 },
+      { time: 0.25, value: 0.5 },
+      { time: 0.5, value: 0.5 },
+      { time: 0.75, value: 0.5 },
+      { time: 1, value: 0.5 },
+    ]);
+  });
+
   it("uses typed batch helpers when the wasm bundle exports them", async () => {
     const typedEval = vi.fn(
       (

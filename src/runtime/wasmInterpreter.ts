@@ -28,6 +28,8 @@ interface EmscriptenModule {
   cwrap(symbol: string, returnType: string | null, argTypes: string[]): (...args: any[]) => any;
   _malloc(size: number): number;
   _free(pointer: number): void;
+  // Exposed via src-useq/wasm/emscripten-post.js so the typed batch bridge can
+  // read values written into the WASM heap without relying on stale copies.
   HEAPF64: Float64Array;
 }
 
@@ -171,7 +173,12 @@ function createBatchEvaluator(
   };
 
   const ensureCapacity = (requiredLength: number): BufferState => {
-    const currentHeapBuffer = module.HEAPF64?.buffer ?? null;
+    const heapF64 = module.HEAPF64;
+    if (!heapF64 || typeof heapF64.subarray !== "function") {
+      throw new Error("uSEQ WASM module does not expose HEAPF64 for typed batch reads");
+    }
+
+    const currentHeapBuffer = heapF64.buffer ?? null;
 
     if (bufferState.pointer && requiredLength <= bufferState.capacity) {
       if (bufferState.view && bufferState.heapBuffer === currentHeapBuffer) {
@@ -179,7 +186,7 @@ function createBatchEvaluator(
       }
 
       const start = bufferState.pointer / Float64Array.BYTES_PER_ELEMENT;
-      bufferState.view = module.HEAPF64.subarray(start, start + bufferState.capacity);
+      bufferState.view = heapF64.subarray(start, start + bufferState.capacity);
       bufferState.heapBuffer = currentHeapBuffer;
       return bufferState;
     }
@@ -205,8 +212,8 @@ function createBatchEvaluator(
     bufferState.pointer = pointer;
     bufferState.capacity = requiredLength;
     const start = pointer / Float64Array.BYTES_PER_ELEMENT;
-    bufferState.view = module.HEAPF64.subarray(start, start + requiredLength);
-    bufferState.heapBuffer = module.HEAPF64?.buffer ?? null;
+    bufferState.view = heapF64.subarray(start, start + requiredLength);
+    bufferState.heapBuffer = currentHeapBuffer;
     return bufferState;
   };
 

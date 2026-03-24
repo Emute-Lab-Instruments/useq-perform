@@ -61,7 +61,7 @@ These symbols are listed in `src-useq/scripts/build_wasm.sh` under `-s EXPORTED_
 | `useq_update_time` | `null` | `["number"]` | Inject wall-clock time |
 | `useq_eval_output` | `"number"` | `["string", "number"]` | Sample a named output at a time |
 
-Heap helpers `_malloc` and `_free` are also required (the latter is explicit in the build script; `_malloc` is implicitly available with `ALLOW_MEMORY_GROWTH`).
+Heap helpers `_malloc` and `_free` are also required. The generated modularized JS wrapper must also expose a live `HEAPF64` view on the module object so the editor can read typed batch output buffers after `useq_eval_outputs_time_window_into()`.
 
 ### Runtime-probed batch exports
 
