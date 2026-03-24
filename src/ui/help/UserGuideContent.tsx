@@ -13,6 +13,19 @@ export const UserGuideContent: Component<UserGuideContentProps> = (props) => {
   let contentRef: HTMLDivElement | undefined;
   const disposers: Array<() => void> = [];
 
+  function handleAnchorClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    const anchor = target.closest<HTMLAnchorElement>("a[href^='#']");
+    if (!anchor) return;
+
+    const id = anchor.getAttribute("href")!.slice(1);
+    const el = document.getElementById(id);
+    if (el) {
+      e.preventDefault();
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
   function mountCodeBlocks() {
     for (const dispose of disposers.splice(0)) dispose();
     if (!contentRef) return;
@@ -37,12 +50,16 @@ export const UserGuideContent: Component<UserGuideContentProps> = (props) => {
     // Track content changes; run after SolidJS flushes innerHTML to DOM.
     props.content;
     if (!props.loading) {
-      queueMicrotask(mountCodeBlocks);
+      queueMicrotask(() => {
+        mountCodeBlocks();
+        contentRef?.addEventListener("click", handleAnchorClick);
+      });
     }
   });
 
   onCleanup(() => {
     for (const dispose of disposers) dispose();
+    contentRef?.removeEventListener("click", handleAnchorClick);
   });
 
   return (

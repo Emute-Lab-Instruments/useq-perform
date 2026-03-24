@@ -11,7 +11,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { marked } from 'marked';
+import { Marked } from 'marked';
 
 // --- Configuration ---
 
@@ -65,7 +65,26 @@ function buildMarkdown() {
       const outputFilePath = path.join(outputDir, file.replace('.md', '.html'));
 
       const markdownContent = fs.readFileSync(filePath, 'utf-8');
-      const htmlContent = marked(markdownContent);
+      const used = new Set();
+
+      const md = new Marked().use({
+        renderer: {
+          heading({ text, depth }) {
+            const raw = text.replace(/<[^>]*>/g, '');
+            const slug = raw.toLowerCase().replace(/[^\w\s-]/g, '').replace(/[\s]+/g, '-');
+            let id = slug;
+            if (used.has(id)) {
+              let n = 1;
+              while (used.has(id + '-' + n)) n++;
+              id += '-' + n;
+            }
+            used.add(id);
+            return `<h${depth} id="${id}">${text}</h${depth}>\n`;
+          },
+        },
+      });
+
+      const htmlContent = md.parse(markdownContent);
 
       fs.writeFileSync(outputFilePath, htmlContent);
       console.log(`Compiled ${file} -> ${outputFilePath}`);

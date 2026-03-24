@@ -12,6 +12,6 @@ export function sanitizeHtml(dirty: string): string {
       "blockquote", "table", "thead", "tbody", "tr", "th", "td",
       "sup", "sub", "hr", "dl", "dt", "dd",
     ],
-    ALLOWED_ATTR: ["href", "target", "rel", "class", "title"],
+    ALLOWED_ATTR: ["href", "target", "rel", "class", "title", "id"],
   });
 }
