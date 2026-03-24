@@ -21,7 +21,8 @@ import {
 
 /** Build a minimal mock module where cwrap always succeeds. */
 function createMockModule(
-  overrides: Partial<Record<string, "missing" | "throws">> = {}
+  overrides: Partial<Record<string, "missing" | "throws">> = {},
+  missingRawSymbols: string[] = []
 ): EmscriptenModuleShape {
   const cwrap = vi.fn(
     (symbol: string, _ret: string | null, _args: string[]) => {
@@ -36,12 +37,23 @@ function createMockModule(
     }
   );
 
-  return {
+  const module = {
     cwrap,
     _malloc: vi.fn((size: number) => size > 0 ? 1024 : 0),
     _free: vi.fn(),
     HEAPF64: new Float64Array(128),
-  } as unknown as EmscriptenModuleShape;
+  } as Record<string, unknown>;
+
+  for (const symbol of [
+    ...REQUIRED_WASM_EXPORT_NAMES,
+    ...OPTIONAL_WASM_EXPORT_NAMES,
+  ]) {
+    if (!missingRawSymbols.includes(symbol) && overrides[symbol] !== "throws") {
+      module[`_${symbol}`] = vi.fn();
+    }
+  }
+
+  return module as unknown as EmscriptenModuleShape;
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +291,20 @@ describe("validateWasmAbi", () => {
     expect(result.presentOptional).toContain(
       "useq_eval_outputs_time_window_into"
     );
+  });
+
+  it("reports optional exports with no raw binding as missing even if cwrap returns a function", () => {
+    const module = createMockModule({}, [
+      "useq_eval_outputs_time_window",
+      "useq_eval_outputs_time_window_into",
+      "useq_last_error",
+    ]);
+    const result = validateWasmAbi(module);
+    expect(result.valid).toBe(true);
+    expect(result.presentOptional).toEqual([]);
+    expect(result.missingOptional).toContain("useq_eval_outputs_time_window");
+    expect(result.missingOptional).toContain("useq_eval_outputs_time_window_into");
+    expect(result.missingOptional).toContain("useq_last_error");
   });
 
   it("accumulates multiple missing required exports", () => {

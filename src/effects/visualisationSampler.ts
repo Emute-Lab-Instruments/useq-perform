@@ -58,6 +58,13 @@ interface SamplingSettings {
   futureLeadSeconds: number;
 }
 
+interface SamplingWindow {
+  start: number;
+  end: number;
+  step: number;
+  total: number;
+}
+
 function getDefaults(): VisSettings {
   return {
     windowDuration: 10,
@@ -134,6 +141,34 @@ function totalSamplesForSettings(
   return baseCount + extra;
 }
 
+function computeSamplingWindow(
+  currentTime: number,
+  settings: SamplingSettings,
+): SamplingWindow {
+  const step = sampleStep(settings);
+  const total = totalSamplesForSettings(step, settings);
+  const halfWindow = settings.windowDuration / 2;
+  const rawStart = currentTime - halfWindow;
+  const start = step > SAMPLE_EPSILON
+    ? Math.floor(rawStart / step) * step
+    : rawStart;
+  const end = start + step * (total - 1);
+
+  return { start, end, step, total };
+}
+
+function samplingWindowKey(window: SamplingWindow): string {
+  return `${window.start}:${window.step}:${window.total}`;
+}
+
+let lastRequestedSamplingWindowKey: string | null = null;
+let lastCompletedSamplingWindowKey: string | null = null;
+
+function invalidateSamplingWindowCache(): void {
+  lastRequestedSamplingWindowKey = null;
+  lastCompletedSamplingWindowKey = null;
+}
+
 // ── Sampling functions ───────────────────────────────────────────────
 
 async function buildSamples(
@@ -172,21 +207,8 @@ async function sampleExpression(
   currentTime: number,
   settings: SamplingSettings,
 ): Promise<VisSample[]> {
-  const step = sampleStep(settings);
-  const total = totalSamplesForSettings(step, settings);
-  const halfWindow = settings.windowDuration / 2;
-  const lead = settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS;
-
-  // Snap window start to the sample grid so samples land on the same
-  // absolute times regardless of when this tick fires. This eliminates
-  // vertical jitter caused by the waveform being sampled at slightly
-  // different phase offsets each frame.
-  const rawStart = currentTime - halfWindow;
-  const start = step > SAMPLE_EPSILON
-    ? Math.floor(rawStart / step) * step
-    : rawStart;
-  const end = start + step * (total - 1);
-  return buildSamples(exprType, start, end, total);
+  const window = computeSamplingWindow(currentTime, settings);
+  return buildSamples(exprType, window.start, window.end, window.total);
 }
 
 function resolveColor(
@@ -225,24 +247,18 @@ async function rebuildAllExpressions(
   if (exprTypes.length === 0) return;
 
   // Compute the shared sample window ONCE for all expressions.
-  const step = sampleStep(settings);
-  const total = totalSamplesForSettings(step, settings);
-  const halfWindow = settings.windowDuration / 2;
-
-  // Snap window start to the sample grid so samples land on the same
-  // absolute times regardless of when this tick fires. This eliminates
-  // vertical jitter caused by the waveform being sampled at slightly
-  // different phase offsets each frame.
-  const rawStart = currentTime - halfWindow;
-  const start = step > SAMPLE_EPSILON
-    ? Math.floor(rawStart / step) * step
-    : rawStart;
-  const end = start + step * (total - 1);
+  const window = computeSamplingWindow(currentTime, settings);
+  const currentWindowKey = samplingWindowKey(window);
 
   // Batch ALL expressions into a single WASM call.
   let batchResults: Map<string, VisSample[]>;
   try {
-    batchResults = await evalOutputsInTimeWindow(exprTypes, start, end, total);
+    batchResults = await evalOutputsInTimeWindow(
+      exprTypes,
+      window.start,
+      window.end,
+      window.total,
+    );
   } catch (error) {
     dbg(`visualisationSampler: batch rebuild failed, falling back to per-expression: ${error}`);
     batchResults = new Map();
@@ -260,6 +276,8 @@ async function rebuildAllExpressions(
       if (samples) batchResults.set(exprType, samples);
     }
   }
+
+  lastCompletedSamplingWindowKey = currentWindowKey;
 
   // Build updated expression records from the batch results.
   const rebuilt: Record<string, VisExpression> = {};
@@ -309,6 +327,7 @@ export async function resampleExpressions(
 ): Promise<void> {
   const seq = ++samplingSequence;
   const numericTime = Number(timeSeconds) || 0;
+  const settings = visStore.settings;
 
   try {
     await updateUseqWasmTime(numericTime);
@@ -320,12 +339,21 @@ export async function resampleExpressions(
   // A newer resample request arrived while we were awaiting — discard.
   if (seq !== samplingSequence) return;
 
-  // Bar refresh and expression rebuild are independent — run in parallel
-  const settings = visStore.settings;
-  await Promise.all([
-    refreshBarValue(numericTime),
-    rebuildAllExpressions(settings, numericTime),
-  ]);
+  await refreshBarValue(numericTime);
+
+  const expressions = visStore.expressions;
+  if (Object.keys(expressions).length > 0) {
+    const currentWindowKey = samplingWindowKey(
+      computeSamplingWindow(numericTime, settings),
+    );
+    const shouldRebuild = currentWindowKey !== lastRequestedSamplingWindowKey
+      && currentWindowKey !== lastCompletedSamplingWindowKey;
+
+    if (shouldRebuild) {
+      lastRequestedSamplingWindowKey = currentWindowKey;
+      await rebuildAllExpressions(settings, numericTime);
+    }
+  }
 
   // Final staleness check after async work completes.
   if (seq !== samplingSequence) return;
@@ -347,6 +375,7 @@ export async function registerVisualisation(
   const trimmed = (expressionText || "").trim();
   if (!trimmed) {
     removeExpression(exprType);
+    invalidateSamplingWindowCache();
     setLastChangeKind("unregister");
     return;
   }
@@ -366,6 +395,7 @@ export async function registerVisualisation(
     color,
   };
   updateExpressions(expressions);
+  invalidateSamplingWindowCache();
   setLastChangeKind("register");
   visualisationSessionChannel.publish({ kind: "register", exprType });
 }
@@ -375,6 +405,7 @@ export async function registerVisualisation(
  */
 export function unregisterVisualisation(exprType: string): void {
   removeExpression(exprType);
+  invalidateSamplingWindowCache();
   setLastChangeKind("unregister");
   visualisationSessionChannel.publish({ kind: "unregister", exprType });
 }
@@ -434,6 +465,7 @@ export async function refreshVisualisedExpression(
     color,
   };
   updateExpressions(expressions);
+  invalidateSamplingWindowCache();
   setLastChangeKind("update");
 }
 
@@ -446,6 +478,7 @@ export function notifyExpressionEvaluated(exprType: string | null = null): void 
 
   const settings = visStore.settings;
   const currentTime = visStore.currentTime;
+  invalidateSamplingWindowCache();
 
   rebuildAllExpressions(settings, currentTime)
     .then(() => setLastChangeKind("data"))
@@ -507,6 +540,7 @@ function refreshAllColors(settings: VisSettings): void {
   if (changed) {
     updateExpressions(updated);
   }
+  invalidateSamplingWindowCache();
 }
 
 if (typeof window !== "undefined") {
@@ -520,6 +554,7 @@ if (typeof window !== "undefined") {
       subscribeAppSettings(() => {
         const newSettings = loadAndApplySettings();
         const currentTime = visStore.currentTime;
+        invalidateSamplingWindowCache();
         rebuildAllExpressions(newSettings, currentTime)
           .then(() => setLastChangeKind("settings"))
           .catch((error) => {

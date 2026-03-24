@@ -4,9 +4,11 @@ import { TRANSPORT_STATE_TO_COMMAND } from "../contracts/useqRuntimeContract";
 import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
 import {
   assertWasmAbi,
+  probeOptionalWasmExport,
   REQUIRED_WASM_EXPORTS,
   OPTIONAL_WASM_EXPORTS,
   type WasmAbiValidation,
+  type CwrapDescriptor,
 } from "../contracts/wasmAbi";
 
 /** Time-series sample point */
@@ -36,6 +38,7 @@ interface UseqRuntime {
   updateTime: (seconds: number) => void;
   evaluateOutputAtTime: (name: string, timeSeconds: number) => number;
   evaluateOutputsTimeWindow: (outputs: string[], startTime: number, endTime: number, numSamples: number) => SampleSeriesMap;
+  supportsTimeWindow: boolean;
   release: () => void;
 }
 
@@ -49,6 +52,7 @@ declare global {
 const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise: Promise<void> | null = null;
 let runtimePromise: Promise<UseqRuntime> | null = null;
+let lastKnownTimeWindowSupport = false;
 function isUseqWasmEnabled(): boolean {
   try {
     return getAppSettings()?.wasm?.enabled ?? true;
@@ -57,18 +61,36 @@ function isUseqWasmEnabled(): boolean {
   }
 }
 
-function tryCwrap(
+function bindOptionalCwrap(
   module: EmscriptenModule,
-  symbol: string,
-  returnType: string,
-  argTypes: string[]
+  desc: CwrapDescriptor
 ): ((...args: any[]) => any) | null {
-  try {
-    return module.cwrap(symbol, returnType, argTypes);
-  } catch (error) {
-    dbg(`useqWasmInterpreter: ${symbol} is not exported (${error instanceof Error ? error.message : String(error)})`);
+  if (!probeOptionalWasmExport(module, desc)) {
+    dbg(`useqWasmInterpreter: ${desc.symbol} is not available on this WASM bundle`);
     return null;
   }
+
+  try {
+    return module.cwrap(
+      desc.symbol,
+      desc.returnType,
+      desc.argTypes as unknown as string[]
+    );
+  } catch (error) {
+    dbg(`useqWasmInterpreter: failed to bind ${desc.symbol} (${error instanceof Error ? error.message : String(error)})`);
+    return null;
+  }
+}
+
+function isBrokenOptionalExportError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.name === "TypeError" &&
+    /func is not a function/i.test(error.message)
+  );
 }
 
 function clampSampleCount(value: number): number {
@@ -122,6 +144,7 @@ interface BufferState {
 
 interface BatchEvaluator {
   evaluate: (outputs: string[], startTime: number, endTime: number, numSamples: number) => SampleSeriesMap;
+  supportsTimeWindow: () => boolean;
   release: () => void;
 }
 
@@ -130,14 +153,14 @@ function createBatchEvaluator(
   evaluateOutputAtTime: (name: string, timeSeconds: number) => number
 ): BatchEvaluator {
   const legacyDesc = OPTIONAL_WASM_EXPORTS.useq_eval_outputs_time_window;
-  const legacyEval = tryCwrap(module, legacyDesc.symbol, legacyDesc.returnType as string, legacyDesc.argTypes as unknown as string[]);
+  let legacyEval = bindOptionalCwrap(module, legacyDesc);
 
   const typedDesc = OPTIONAL_WASM_EXPORTS.useq_eval_outputs_time_window_into;
-  const typedEval = tryCwrap(module, typedDesc.symbol, typedDesc.returnType as string, typedDesc.argTypes as unknown as string[]);
+  let typedEval = bindOptionalCwrap(module, typedDesc);
 
   const errorDesc = OPTIONAL_WASM_EXPORTS.useq_last_error;
-  const readLastError = typedEval
-    ? tryCwrap(module, errorDesc.symbol, errorDesc.returnType as string, errorDesc.argTypes as unknown as string[])
+  let readLastError = typedEval
+    ? bindOptionalCwrap(module, errorDesc)
     : null;
 
   const bufferState: BufferState = {
@@ -211,9 +234,27 @@ function createBatchEvaluator(
     if (!view || view.length < totalEntries) {
       throw new Error("uSEQ WASM buffer view is unavailable");
     }
-    const status = typedEval(outputsJson, start, end, sampleCount, pointer, totalEntries) as number;
+    let status: number;
+    try {
+      status = typedEval(outputsJson, start, end, sampleCount, pointer, totalEntries) as number;
+    } catch (error) {
+      if (isBrokenOptionalExportError(error)) {
+        typedEval = null;
+        readLastError = null;
+      }
+      throw error;
+    }
     if (status < 0) {
-      const message = typeof readLastError === "function" ? readLastError() as string : "uSEQ WASM batch evaluation failed";
+      let message = "uSEQ WASM batch evaluation failed";
+      if (typeof readLastError === "function") {
+        try {
+          message = (readLastError() as string) || message;
+        } catch (error) {
+          if (isBrokenOptionalExportError(error)) {
+            readLastError = null;
+          }
+        }
+      }
       throw new Error(message || "uSEQ WASM batch evaluation failed");
     }
 
@@ -237,7 +278,15 @@ function createBatchEvaluator(
       throw new Error("Legacy batch evaluation is unavailable");
     }
 
-    const resultJson = legacyEval(outputsJson, start, end, sampleCount) as string;
+    let resultJson: string;
+    try {
+      resultJson = legacyEval(outputsJson, start, end, sampleCount) as string;
+    } catch (error) {
+      if (isBrokenOptionalExportError(error)) {
+        legacyEval = null;
+      }
+      throw error;
+    }
     const parsed = JSON.parse(resultJson) as Record<string, number[]> | { error: string };
 
     if (parsed && typeof parsed === "object" && Object.prototype.hasOwnProperty.call(parsed, "error")) {
@@ -293,7 +342,15 @@ function createBatchEvaluator(
     }
 
     if (!typedEval) {
-      return evaluateLegacy(outputsArray, outputsJson, start, end, sampleCount);
+      try {
+        return evaluateLegacy(outputsArray, outputsJson, start, end, sampleCount);
+      } catch (error) {
+        if (!legacyEval) {
+          dbg(`useqWasmInterpreter: legacy batch evaluation failed (${error instanceof Error ? error.message : String(error)}); sampling via useq_eval_output()`);
+          return evaluateBySampling(outputsArray, start, end, sampleCount);
+        }
+        throw error;
+      }
     }
 
     try {
@@ -305,12 +362,21 @@ function createBatchEvaluator(
       }
 
       dbg(`useqWasmInterpreter: typed batch evaluation failed (${error instanceof Error ? error.message : String(error)}); falling back to JSON bridge`);
-      return evaluateLegacy(outputsArray, outputsJson, start, end, sampleCount);
+      try {
+        return evaluateLegacy(outputsArray, outputsJson, start, end, sampleCount);
+      } catch (legacyError) {
+        if (!legacyEval) {
+          dbg(`useqWasmInterpreter: legacy batch evaluation failed (${legacyError instanceof Error ? legacyError.message : String(legacyError)}); sampling via useq_eval_output()`);
+          return evaluateBySampling(outputsArray, start, end, sampleCount);
+        }
+        throw legacyError;
+      }
     }
   };
 
   return {
     evaluate,
+    supportsTimeWindow: (): boolean => typedEval !== null || legacyEval !== null,
     release,
   };
 }
@@ -398,6 +464,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
 
   useq_init();
   dbg("uSEQ WASM interpreter initialised");
+  lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
 
   return {
     module,
@@ -424,11 +491,15 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     },
     evaluateOutputsTimeWindow: (outputs: string[], startTime: number, endTime: number, numSamples: number): SampleSeriesMap => {
       try {
-        return batchEvaluator.evaluate(outputs, startTime, endTime, numSamples);
+        const result = batchEvaluator.evaluate(outputs, startTime, endTime, numSamples);
+        lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
+        return result;
       } catch (error) {
+        lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
         throw new Error(`uSEQ WASM batch evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
+    supportsTimeWindow: batchEvaluator.supportsTimeWindow(),
     release: (): void => {
       batchEvaluator.release();
     }
@@ -440,6 +511,7 @@ export function ensureUseqWasmLoaded(): Promise<UseqRuntime> {
     runtimePromise = instantiateInterpreter().catch((error) => {
       scriptLoadPromise = null;
       runtimePromise = null;
+      lastKnownTimeWindowSupport = false;
       console.error("Failed to load uSEQ WASM interpreter", error);
       throw error;
     });
@@ -554,7 +626,11 @@ export interface WasmRuntimePort {
 export const wasmRuntimePort: WasmRuntimePort = {
   capabilities(): WasmCapabilities {
     const enabled = isUseqWasmEnabled();
-    return { enabled, supportsEval: enabled, supportsTimeWindow: enabled };
+    return {
+      enabled,
+      supportsEval: enabled,
+      supportsTimeWindow: enabled && lastKnownTimeWindowSupport,
+    };
   },
   eval: evalInUseqWasm,
   syncTransportState: syncWasmTransportState,

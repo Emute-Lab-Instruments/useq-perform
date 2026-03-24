@@ -155,6 +155,47 @@ export interface EmscriptenModuleShape {
   HEAPF64: Float64Array;
 }
 
+/**
+ * Optional C exports are only considered available when the generated module
+ * exposes the raw `_symbol` binding. `cwrap()` alone is not sufficient because
+ * Emscripten can return a JS wrapper that fails later when the raw export is
+ * absent.
+ */
+export function hasRawWasmExport(
+  module: EmscriptenModuleShape,
+  symbol: string
+): boolean {
+  const rawSymbol = `_${symbol}`;
+  return typeof (module as Record<string, unknown>)[rawSymbol] === "function";
+}
+
+/**
+ * Probe an optional export conservatively.
+ *
+ * We require both:
+ * - a raw `_symbol` function on the instantiated module
+ * - `cwrap()` to return a callable wrapper
+ */
+export function probeOptionalWasmExport(
+  module: EmscriptenModuleShape,
+  desc: CwrapDescriptor
+): boolean {
+  if (!hasRawWasmExport(module, desc.symbol)) {
+    return false;
+  }
+
+  try {
+    const fn = module.cwrap(
+      desc.symbol,
+      desc.returnType,
+      desc.argTypes as unknown as string[]
+    );
+    return typeof fn === "function";
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // ABI validation
 // ---------------------------------------------------------------------------
@@ -216,18 +257,9 @@ export function validateWasmAbi(
 
   // --- Probe optional exports ---
   for (const desc of Object.values(OPTIONAL_WASM_EXPORTS)) {
-    try {
-      const fn = module.cwrap(
-        desc.symbol,
-        desc.returnType,
-        desc.argTypes as unknown as string[]
-      );
-      if (typeof fn === "function") {
-        presentOptional.push(desc.symbol);
-      } else {
-        missingOptional.push(desc.symbol);
-      }
-    } catch {
+    if (probeOptionalWasmExport(module, desc)) {
+      presentOptional.push(desc.symbol);
+    } else {
       missingOptional.push(desc.symbol);
     }
   }

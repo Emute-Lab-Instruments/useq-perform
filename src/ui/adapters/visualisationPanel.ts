@@ -3,6 +3,10 @@ import type { JSX } from "solid-js";
 import {
   serialVisAutoOpenChannel,
 } from "../../contracts/visualisationChannels";
+import {
+  refreshSerialVisLoop,
+  stopSerialVisLoop,
+} from "../visualisation/serialVis";
 
 const PANEL_ID = "panel-vis";
 const CANVAS_ID = "serialcanvas";
@@ -126,6 +130,7 @@ export function showVisualisationPanel(options?: { emitAutoOpenEvent?: boolean }
   const wasVisible = isVisualisationPanelVisible(panel);
   if (!wasVisible) {
     applyVisibleVisualisationPanelState(panel, getVisualisationCanvas(panel));
+    refreshSerialVisLoop();
     if (options?.emitAutoOpenEvent) {
       serialVisAutoOpenChannel.publish(undefined);
     }
@@ -142,6 +147,7 @@ export function hideVisualisationPanel(): boolean {
 
   const wasVisible = isVisualisationPanelVisible(panel);
   if (wasVisible) {
+    stopSerialVisLoop();
     Object.assign(panel.style, getVisualisationPanelStyles(false));
     panel.hidden = true;
   }

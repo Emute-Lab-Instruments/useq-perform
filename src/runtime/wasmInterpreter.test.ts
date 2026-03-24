@@ -25,9 +25,10 @@ function installLoadedScriptTag(): void {
 
 function createBaseModule(options: {
   missingSymbols?: string[];
+  missingRawSymbols?: string[];
   overrides?: Record<string, MockHandler>;
 } = {}): MockModule {
-  const { missingSymbols = [], overrides = {} } = options;
+  const { missingSymbols = [], missingRawSymbols = [], overrides = {} } = options;
   const handlers: Record<string, MockHandler> = {
     useq_init: vi.fn(),
     useq_eval: vi.fn((code: string) => code),
@@ -41,7 +42,7 @@ function createBaseModule(options: {
     ...overrides,
   };
 
-  return {
+  const module = {
     cwrap: vi.fn((symbol: string) => {
       if (missingSymbols.includes(symbol)) {
         throw new Error(`missing export: ${symbol}`);
@@ -56,7 +57,15 @@ function createBaseModule(options: {
     _malloc: vi.fn(() => Float64Array.BYTES_PER_ELEMENT),
     _free: vi.fn(),
     HEAPF64: new Float64Array(256),
-  };
+  } as MockModule & Record<string, unknown>;
+
+  for (const [symbol, handler] of Object.entries(handlers)) {
+    if (!missingRawSymbols.includes(symbol)) {
+      module[`_${symbol}`] = handler;
+    }
+  }
+
+  return module;
 }
 
 describe("useqWasmInterpreter", () => {
@@ -86,7 +95,6 @@ describe("useqWasmInterpreter", () => {
   });
 
   it("uses typed batch helpers when the wasm bundle exports them", async () => {
-    const module = createBaseModule();
     const typedEval = vi.fn(
       (
         outputsJson: string,
@@ -110,23 +118,15 @@ describe("useqWasmInterpreter", () => {
         return outputs.length;
       }
     );
-
-    module.cwrap.mockImplementation((symbol: string) => {
-      const handlers: Record<string, MockHandler> = {
-        useq_init: vi.fn(),
-        useq_eval: vi.fn((code: string) => code),
-        useq_update_time: vi.fn(),
+    const module = createBaseModule({
+      missingRawSymbols: ["useq_eval_outputs_time_window"],
+      overrides: {
         useq_eval_output: vi.fn(() => {
           throw new Error("per-sample fallback should not run");
         }),
         useq_eval_outputs_time_window_into: typedEval,
         useq_last_error: vi.fn(() => ""),
-      };
-      const handler = handlers[symbol];
-      if (!handler) {
-        throw new Error(`missing export: ${symbol}`);
-      }
-      return handler;
+      },
     });
 
     installLoadedScriptTag();
@@ -175,29 +175,88 @@ describe("useqWasmInterpreter", () => {
   });
 
   it("falls back to per-sample output evaluation when batch helpers are not exported", async () => {
-    const module = createBaseModule();
+    const module = createBaseModule({
+      missingRawSymbols: [
+        "useq_eval_outputs_time_window",
+        "useq_eval_outputs_time_window_into",
+        "useq_last_error",
+      ],
+      overrides: {
+        useq_eval_outputs_time_window: vi.fn(() => {
+          throw new TypeError("func is not a function");
+        }),
+        useq_eval_outputs_time_window_into: vi.fn(() => {
+          throw new TypeError("func is not a function");
+        }),
+        useq_last_error: vi.fn(() => {
+          throw new TypeError("func is not a function");
+        }),
+      },
+    });
     installLoadedScriptTag();
     window.createModule = vi.fn(async () => module as never);
 
-    const { evalOutputsInTimeWindow } = await import("./wasmInterpreter.ts");
+    const { evalOutputsInTimeWindow, wasmRuntimePort } = await import("./wasmInterpreter.ts");
     const samples = await evalOutputsInTimeWindow(["a1"], 0, 1, 3);
 
     expect(window.createModule).toHaveBeenCalledTimes(1);
-    expect(module.cwrap).toHaveBeenCalledWith(
-      "useq_eval_outputs_time_window",
-      "string",
-      ["string", "number", "number", "number"]
-    );
-    expect(module.cwrap).toHaveBeenCalledWith(
-      "useq_eval_outputs_time_window_into",
-      "number",
-      ["string", "number", "number", "number", "number", "number"]
-    );
+    expect(
+      module.cwrap.mock.calls.some(
+        ([symbol]) => symbol === "useq_eval_outputs_time_window"
+      )
+    ).toBe(false);
+    expect(
+      module.cwrap.mock.calls.some(
+        ([symbol]) => symbol === "useq_eval_outputs_time_window_into"
+      )
+    ).toBe(false);
+    expect(wasmRuntimePort.capabilities().supportsTimeWindow).toBe(false);
     expect(samples.get("a1")).toEqual([
       { time: 0, value: 0 },
       { time: 0.5, value: 1 },
       { time: 1, value: 2 },
     ]);
+  });
+
+  it("disables legacy batch mode after the first broken optional export failure", async () => {
+    const legacyBatch = vi
+      .fn(() => {
+        throw new TypeError("func is not a function");
+      })
+      .mockName("legacyBatch");
+    const perSample = vi.fn((name: string, time: number) => {
+      if (name === "a1") {
+        return time * 2;
+      }
+      return Number.NaN;
+    });
+
+    const module = createBaseModule({
+      overrides: {
+        useq_eval_output: perSample,
+        useq_eval_outputs_time_window: legacyBatch,
+      },
+    });
+    installLoadedScriptTag();
+    window.createModule = vi.fn(async () => module as never);
+
+    const { evalOutputsInTimeWindow, wasmRuntimePort } = await import("./wasmInterpreter.ts");
+
+    const first = await evalOutputsInTimeWindow(["a1"], 0, 1, 3);
+    const second = await evalOutputsInTimeWindow(["a1"], 0, 1, 3);
+
+    expect(first.get("a1")).toEqual([
+      { time: 0, value: 0 },
+      { time: 0.5, value: 1 },
+      { time: 1, value: 2 },
+    ]);
+    expect(second.get("a1")).toEqual([
+      { time: 0, value: 0 },
+      { time: 0.5, value: 1 },
+      { time: 1, value: 2 },
+    ]);
+    expect(legacyBatch).toHaveBeenCalledTimes(1);
+    expect(wasmRuntimePort.capabilities().supportsTimeWindow).toBe(false);
   });
 
   it("fails fast when the pinned required wasm exports are missing", async () => {

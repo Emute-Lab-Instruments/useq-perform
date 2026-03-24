@@ -1,3 +1,4 @@
+import { visualisationSessionChannel } from "../../contracts/visualisationChannels";
 import { visStore } from "../../utils/visualisationStore.ts";
 
 const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)';
@@ -25,16 +26,78 @@ function getAccentColor(): string {
 }
 
 const DIGITAL_CHANNELS = ['d1', 'd2', 'd3'];
+const PANEL_ID = "panel-vis";
+const CANVAS_ID = "serialcanvas";
+
+let frameId: number | null = null;
+let subscriptionsBound = false;
+
+function getPanel(): HTMLElement | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return document.getElementById(PANEL_ID);
+}
+
+function getCanvas(): HTMLCanvasElement | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return document.getElementById(CANVAS_ID) as HTMLCanvasElement | null;
+}
+
+function isPanelVisible(): boolean {
+  const panel = getPanel();
+  if (!panel || typeof window === "undefined") {
+    return false;
+  }
+
+  const style = window.getComputedStyle(panel);
+  return style.display !== "none" && style.visibility !== "hidden" && !panel.hidden;
+}
+
+function hasActiveExpressions(): boolean {
+  return Object.keys(visStore.expressions).length > 0;
+}
+
+function clearCanvas(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): void {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawEmptyState(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): void {
+  clearCanvas(canvas, ctx);
+  ctx.fillStyle = TEXT_COLOR;
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('No expressions selected for visualisation', canvas.width / 2, canvas.height / 2);
+}
+
+function scheduleNextFrame(): void {
+  if (frameId !== null || typeof window === "undefined") {
+    return;
+  }
+
+  if (!isPanelVisible() || !hasActiveExpressions()) {
+    return;
+  }
+
+  frameId = window.requestAnimationFrame(drawSerialVis);
+}
 
 function drawSerialVis(): void {
-  const c = document.getElementById("serialcanvas") as HTMLCanvasElement | null;
+  frameId = null;
+
+  const c = getCanvas();
   if (!c) {
-    window.requestAnimationFrame(drawSerialVis);
     return;
   }
   const ctx = c.getContext("2d");
   if (!ctx) {
-    window.requestAnimationFrame(drawSerialVis);
+    return;
+  }
+  if (!isPanelVisible()) {
     return;
   }
   const verticalPadding = c.height * 0.1;
@@ -59,14 +122,10 @@ function drawSerialVis(): void {
   ctx.imageSmoothingQuality = 'high';
 
   // Clear canvas
-  ctx.clearRect(0, 0, c.width, c.height);
+  clearCanvas(c, ctx);
 
   if (!hasExpressions) {
-    ctx.fillStyle = TEXT_COLOR;
-    ctx.font = '12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('No expressions selected for visualisation', c.width / 2, c.height / 2);
-    window.requestAnimationFrame(drawSerialVis);
+    drawEmptyState(c, ctx);
     return;
   }
 
@@ -208,11 +267,50 @@ function drawSerialVis(): void {
     }
   }
 
-  window.requestAnimationFrame(drawSerialVis);
+  scheduleNextFrame();
 }
 
 export function makeVis(): void {
-  window.requestAnimationFrame(drawSerialVis);
+  if (!subscriptionsBound) {
+    subscriptionsBound = true;
+    visualisationSessionChannel.subscribe(() => {
+      refreshSerialVisLoop();
+    });
+  }
+
+  refreshSerialVisLoop();
+}
+
+export function stopSerialVisLoop(): void {
+  if (frameId === null || typeof window === "undefined") {
+    return;
+  }
+
+  window.cancelAnimationFrame(frameId);
+  frameId = null;
+}
+
+export function refreshSerialVisLoop(): void {
+  const canvas = getCanvas();
+  const ctx = canvas?.getContext("2d");
+
+  if (!isPanelVisible()) {
+    stopSerialVisLoop();
+    return;
+  }
+
+  if (!canvas || !ctx) {
+    stopSerialVisLoop();
+    return;
+  }
+
+  if (!hasActiveExpressions()) {
+    stopSerialVisLoop();
+    drawEmptyState(canvas, ctx);
+    return;
+  }
+
+  scheduleNextFrame();
 }
 
 interface SamplePoint {
@@ -380,4 +478,6 @@ function clamp01(value: number): number {
 
 export const __serialVisInternals = {
   buildSegmentPoints,
+  hasActiveExpressions,
+  isPanelVisible,
 };

@@ -152,11 +152,59 @@ describe("visualisationSampler", () => {
       await sampler.handleExternalTimeUpdate(5.033);
       const call2Start = mockEval.mock.calls[0]?.[1];
 
-      // The difference between starts should be a multiple of the step size
+      // With deduped sampling, the second rebuild may be skipped entirely if
+      // the snapped sampling window is unchanged.
+      if (call2Start == null) {
+        expect(mockEval).not.toHaveBeenCalled();
+        return;
+      }
+
+      // Otherwise the difference between starts should be a multiple of the
+      // step size.
       const step = 10 / 99;
       const diff = Math.abs(call2Start - call1Start);
-      // Either same grid point or exactly one step apart
+      // Either same grid point or exactly one step apart.
       expect(diff < 1e-9 || Math.abs(diff - step) < 1e-9 || Math.abs(diff % step) < 1e-9).toBe(true);
+    });
+
+    it("skips rebuilding when consecutive ticks land in the same snapped window", async () => {
+      const { evalOutputsInTimeWindow, evalOutputAtTime } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
+      const mockEvalOutput = vi.mocked(evalOutputAtTime);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      mockEvalWindow.mockClear();
+      mockEvalOutput.mockClear();
+
+      await sampler.handleExternalTimeUpdate(5.016);
+      await sampler.handleExternalTimeUpdate(5.033);
+
+      expect(mockEvalWindow).toHaveBeenCalledTimes(1);
+      expect(mockEvalOutput).toHaveBeenCalledTimes(2);
+    });
+
+    it("rebuilds once the snapped sampling window advances", async () => {
+      const { evalOutputsInTimeWindow, evalOutputAtTime } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
+      const mockEvalOutput = vi.mocked(evalOutputAtTime);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      mockEvalWindow.mockClear();
+      mockEvalOutput.mockClear();
+
+      await sampler.handleExternalTimeUpdate(5.016);
+      await sampler.handleExternalTimeUpdate(5.130);
+
+      expect(mockEvalWindow).toHaveBeenCalledTimes(2);
+      expect(mockEvalOutput).toHaveBeenCalledTimes(2);
     });
   });
 
