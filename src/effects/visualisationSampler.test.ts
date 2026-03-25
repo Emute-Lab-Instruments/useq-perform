@@ -459,5 +459,34 @@ describe("visualisationSampler", () => {
       expect(visStore.expressions.a1?.samples).toBe(previousSamples);
       expect(mockEvalWindow).not.toHaveBeenCalled();
     });
+
+    it("treats a literal {error} eval result as a failed refresh", async () => {
+      const { evalInUseqWasm } = await import("../runtime/wasmInterpreter.ts");
+      const { visStore } = await import("../utils/visualisationStore.ts");
+      const {
+        registerVisualisation,
+        refreshVisualisedExpression,
+      } = await import("./visualisationSampler.ts");
+      const mockEval = vi.mocked(evalInUseqWasm);
+
+      mockEval.mockReset();
+      mockEval.mockResolvedValue("0.5");
+
+      await registerVisualisation("a1", "(a1 (slow 2 bar))", { from: 1, to: 1 });
+      expect(visStore.expressions.a1?.expressionText).toBe("(a1 (slow 2 bar))");
+
+      mockEval.mockResolvedValueOnce("{error}");
+      mockEval.mockResolvedValueOnce("0.5");
+      await refreshVisualisedExpression("a1", "(a1 (slow  bar))", { from: 2, to: 2 });
+
+      expect(visStore.expressions.a1).toMatchObject({
+        expressionText: "(a1 (slow 2 bar))",
+        position: { from: 2, to: 2 },
+      });
+      expect(mockEval.mock.calls.slice(-2)).toEqual([
+        ["(a1 (slow  bar))"],
+        ["(a1 (slow 2 bar))"],
+      ]);
+    });
   });
 });

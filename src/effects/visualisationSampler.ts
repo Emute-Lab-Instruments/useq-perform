@@ -44,6 +44,7 @@ import {
 const DEFAULT_FUTURE_LEAD_SECONDS = 1;
 const MAX_FUTURE_LEAD_SECONDS = 8;
 const SAMPLE_EPSILON = 1e-9;
+const WASM_ERROR_RESULT = "{error}";
 
 // ── Staleness guard ──────────────────────────────────────────────────
 // Monotonic counter incremented on every resampleExpressions() call.
@@ -241,6 +242,10 @@ function resolveColor(
 ): string | null {
   const palette = getSerialVisPalette();
   return getSerialVisChannelColor(exprType, circularOffset, palette);
+}
+
+function isWasmErrorResult(result: string | null | undefined): boolean {
+  return typeof result === "string" && result.trim() === WASM_ERROR_RESULT;
 }
 
 // ── Refresh bar ──────────────────────────────────────────────────────
@@ -490,18 +495,24 @@ export async function refreshVisualisedExpression(
   let nextExpressionText = expr.expressionText;
   let shouldResample = true;
   try {
-    await evalInUseqWasm(trimmed);
+    const result = await evalInUseqWasm(trimmed);
+    if (isWasmErrorResult(result)) {
+      throw new Error(`uSEQ returned ${WASM_ERROR_RESULT}`);
+    }
     nextExpressionText = trimmed;
   } catch (error) {
     dbg(
       `visualisationSampler: failed to update interpreter for ${exprType}: ${error}`,
     );
     try {
-      await evalInUseqWasm(expr.expressionText);
+      const restoreResult = await evalInUseqWasm(expr.expressionText);
+      if (isWasmErrorResult(restoreResult)) {
+        throw new Error(`uSEQ returned ${WASM_ERROR_RESULT}`);
+      }
     } catch (restoreError) {
       dbg(
         `visualisationSampler: failed to restore last good expression for ${exprType}: ${restoreError}`,
-      );
+        );
       shouldResample = false;
     }
   }
