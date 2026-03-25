@@ -34,9 +34,14 @@ import {
 } from "./probeHelpers.ts";
 
 const PROBE_REFRESH_INTERVAL_MS = 180;
-const PROBE_SAMPLE_COUNT = 20;
+const DEFAULT_PROBE_SAMPLE_COUNT = 40;
+const DEFAULT_PROBE_LINE_WIDTH = 2;
+const PROBE_ACCENT_REFRESH_INTERVAL_MS = 250;
 const DEFAULT_BAR_DURATION_SECONDS = 1;
 const ERROR_PREFIX = "Error:";
+
+let cachedAccentColor: string | null = null;
+let lastAccentColorRead = 0;
 
 // Placement choice for v1: inline widget immediately after the probed form.
 // Follow-up options worth testing are block widgets under the form and an
@@ -65,6 +70,27 @@ interface ProbeRenderData {
   windowDuration: number;
   depth: number;
   maxDepth: number;
+}
+
+function readAccentColor(): string {
+  const computed = getComputedStyle(document.documentElement).getPropertyValue(
+    "--accent-color",
+  );
+  return (computed && computed.trim()) || "#00ff41";
+}
+
+function getAccentColor(): string {
+  const now = window.performance?.now?.() ?? Date.now();
+  if (
+    cachedAccentColor !== null &&
+    now - lastAccentColorRead <= PROBE_ACCENT_REFRESH_INTERVAL_MS
+  ) {
+    return cachedAccentColor;
+  }
+
+  cachedAccentColor = readAccentColor();
+  lastAccentColorRead = now;
+  return cachedAccentColor;
 }
 
 interface FromListHighlight {
@@ -146,7 +172,11 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-function drawWaveform(canvas: HTMLCanvasElement, render: ProbeRenderData): void {
+function drawWaveform(
+  canvas: HTMLCanvasElement,
+  render: ProbeRenderData,
+  lineWidth: number,
+): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
@@ -183,8 +213,8 @@ function drawWaveform(canvas: HTMLCanvasElement, render: ProbeRenderData): void 
     max = min + 1;
   }
 
-  ctx.strokeStyle = "var(--accent-color, #00ff41)";
-  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = getAccentColor();
+  ctx.lineWidth = lineWidth;
   ctx.beginPath();
 
   render.samples.forEach((value, index) => {
@@ -263,7 +293,7 @@ class ProbeWidget extends WidgetType {
       const canvas = document.createElement("canvas");
       canvas.width = 138;
       canvas.height = 46;
-      drawWaveform(canvas, render);
+      drawWaveform(canvas, render, visStore.settings.probeLineWidth || DEFAULT_PROBE_LINE_WIDTH);
       body.appendChild(canvas);
     } else {
       const text = document.createElement("span");
@@ -451,36 +481,72 @@ function formatOffset(offsetSeconds: number): string {
   return offsetSeconds.toFixed(6).replace(/\.?0+$/, "");
 }
 
-function withOffset(code: string, offsetSeconds: number): string {
-  if (!Number.isFinite(offsetSeconds) || Math.abs(offsetSeconds) < 1e-9) {
-    return code;
+function buildEvalAtTimeExpression(
+  code: string,
+  timeSeconds: number,
+): string {
+  return `(eval-at-time ${formatOffset(timeSeconds)} ${code})`;
+}
+
+function buildWaveformBatchExpression(
+  code: string,
+  startTime: number,
+  step: number,
+  count: number,
+): string {
+  const expressions: string[] = new Array(count);
+  for (let index = 0; index < count; index++) {
+    const sampleTime = startTime + step * index;
+    expressions[index] = buildEvalAtTimeExpression(code, sampleTime);
   }
-  return `(offset ${formatOffset(offsetSeconds)} ${code})`;
+  return `[${expressions.join(" ")}]`;
+}
+
+function parseNumericVector(text: string): number[] | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+    return null;
+  }
+
+  const inner = trimmed.slice(1, -1).trim();
+  if (!inner) {
+    return [];
+  }
+
+  const parts = inner.split(/[\s,]+/).filter(Boolean);
+  const values = parts.map((part) => Number(part));
+  if (values.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+
+  return values;
 }
 
 async function sampleWaveform(
   code: string,
   currentTime: number,
   windowDuration: number,
+  sampleCount: number,
 ): Promise<{ current: string; samples: number[] }> {
-  const samples: number[] = [];
   const startTime = currentTime - windowDuration;
-  const step = PROBE_SAMPLE_COUNT > 1
-    ? windowDuration / (PROBE_SAMPLE_COUNT - 1)
+  const count = Math.max(2, Math.floor(sampleCount) || DEFAULT_PROBE_SAMPLE_COUNT);
+  const step = count > 1
+    ? windowDuration / (count - 1)
     : windowDuration;
 
-  let currentResult = "";
-  for (let index = 0; index < PROBE_SAMPLE_COUNT; index++) {
-    const sampleTime = startTime + step * index;
-    const result = await evaluateProbeCode(withOffset(code, sampleTime - currentTime));
-    if (index === PROBE_SAMPLE_COUNT - 1) {
-      currentResult = result;
-    }
-    const numeric = Number(result);
-    if (!Number.isFinite(numeric)) {
-      return { current: currentResult || result, samples: [] };
-    }
-    samples.push(numeric);
+  const currentResult = await evaluateProbeCode(
+    buildEvalAtTimeExpression(code, currentTime),
+  );
+  if (!Number.isFinite(Number(currentResult))) {
+    return { current: currentResult, samples: [] };
+  }
+
+  const batchResult = await evaluateProbeCode(
+    buildWaveformBatchExpression(code, startTime, step, count),
+  );
+  const samples = parseNumericVector(batchResult);
+  if (!samples || samples.length !== count) {
+    return { current: currentResult, samples: [] };
   }
 
   return { current: currentResult, samples };
@@ -491,6 +557,7 @@ async function buildRenderForProbe(
   probe: PersistedProbeSpec,
   currentTime: number,
   barDuration: number,
+  settings: { probeSampleCount: number },
 ): Promise<ProbeRenderUpdate | null> {
   const built = buildProbeExpression(
     state,
@@ -505,6 +572,7 @@ async function buildRenderForProbe(
   const temporalScale = built?.temporalScale ?? 1;
   const scaledDuration = barDuration * temporalScale;
   const candidateCode = liveCode || probe.cachedCode;
+  const sampleCount = settings.probeSampleCount || DEFAULT_PROBE_SAMPLE_COUNT;
 
   if (!candidateCode) {
     return {
@@ -530,7 +598,12 @@ async function buildRenderForProbe(
 
   for (const code of attempts) {
     try {
-      const sample = await sampleWaveform(code, currentTime, scaledDuration);
+      const sample = await sampleWaveform(
+        code,
+        currentTime,
+        scaledDuration,
+        sampleCount,
+      );
       if (sample.samples.length === 0) {
         return {
           probe: {
@@ -759,6 +832,7 @@ class ProbePlugin {
     try {
       const currentTime = visStore.currentTime;
       const barDuration = await readBarDurationSeconds();
+      const probeSettings = visStore.settings;
       const updates: ProbeRenderUpdate[] = [];
 
       for (const probe of visibleProbes) {
@@ -767,6 +841,9 @@ class ProbePlugin {
           probe,
           currentTime,
           barDuration,
+          {
+            probeSampleCount: probeSettings.probeSampleCount,
+          },
         );
         if (!next) continue;
         const existing = snapshot.renderById[next.probe.id];

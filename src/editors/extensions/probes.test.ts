@@ -95,6 +95,10 @@ function flushPromises(): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
+function numericVector(count: number, value: number): string {
+  return `[${Array.from({ length: count }, () => String(value)).join(" ")}]`;
+}
+
 async function loadProbeModule() {
   return import("./probes.ts");
 }
@@ -401,8 +405,13 @@ describe("probe commands", () => {
   it("renders a waveform for numeric probe output", async () => {
     evalInUseqWasmSilently.mockImplementation(async (code: string) => {
       if (code === "barDur") return "2";
-      const match = code.match(/^\(offset ([^ ]+) bar\)$/);
-      return String(match ? 100 + Number(match[1]) : 100);
+      if (code.startsWith("[")) {
+        return numericVector(40, 100);
+      }
+      if (code.startsWith("(eval-at-time ")) {
+        return "100";
+      }
+      return "100";
     });
 
     const { setVisStore } = await import("../../utils/visualisationStore.ts");
@@ -424,7 +433,13 @@ describe("probe commands", () => {
       windowDuration: 2,
       currentTime: 4,
     });
-    expect(render.samples).toHaveLength(20);
+    expect(render.samples).toHaveLength(40);
+    expect(evalInUseqWasmSilently).toHaveBeenCalledTimes(3);
+    expect(
+      evalInUseqWasmSilently.mock.calls.filter(([code]) =>
+        String(code).startsWith("["),
+      ),
+    ).toHaveLength(1);
 
     view.destroy();
   });
@@ -432,8 +447,11 @@ describe("probe commands", () => {
   it("retries cached code when rebuilt code fails", async () => {
     evalInUseqWasmSilently.mockImplementation(async (code: string) => {
       if (code === "barDur") return "1";
-      if (code === "baz") {
+      if (String(code).includes("baz")) {
         throw new Error("probe exploded");
+      }
+      if (code.startsWith("[")) {
+        return numericVector(40, 7);
       }
       return "7";
     });
@@ -464,6 +482,7 @@ describe("probe commands", () => {
   it("classifies Error-prefixed output as an error render", async () => {
     evalInUseqWasmSilently.mockImplementation(async (code: string) => {
       if (code === "barDur") return "1";
+      if (code.startsWith("[")) return numericVector(40, 0);
       return "Error: boom";
     });
 
