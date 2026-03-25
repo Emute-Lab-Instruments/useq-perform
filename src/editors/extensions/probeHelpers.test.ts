@@ -31,6 +31,7 @@ describe("probeHelpers", () => {
       code: "(slow 2 bar)",
       maxDepth: 1,
       appliedDepth: 0,
+      temporalScale: 1,
     });
   });
 
@@ -48,6 +49,7 @@ describe("probeHelpers", () => {
       code: "(slow 2 (slow 2 bar))",
       maxDepth: 1,
       appliedDepth: 1,
+      temporalScale: 2,
     });
   });
 
@@ -66,6 +68,7 @@ describe("probeHelpers", () => {
       code: "(offset 0.5 (fast 3 bar))",
       maxDepth: 3,
       appliedDepth: 2,
+      temporalScale: 1 / 3,
     });
   });
 
@@ -84,6 +87,7 @@ describe("probeHelpers", () => {
       code: "(shift 0.25 (fast 3 bar) 0.75)",
       maxDepth: 3,
       appliedDepth: 2,
+      temporalScale: 1 / 3,
     });
   });
 
@@ -102,6 +106,7 @@ describe("probeHelpers", () => {
       code: "bar",
       maxDepth: 3,
       appliedDepth: 0,
+      temporalScale: 1,
     });
 
     expect(
@@ -115,6 +120,7 @@ describe("probeHelpers", () => {
       code: "(slow 2 (offset 0.5 (fast 3 bar)))",
       maxDepth: 3,
       appliedDepth: 3,
+      temporalScale: 2 / 3,
     });
   });
 
@@ -132,6 +138,7 @@ describe("probeHelpers", () => {
       code: "2",
       maxDepth: 0,
       appliedDepth: 0,
+      temporalScale: 1,
     });
   });
 
@@ -167,6 +174,31 @@ describe("probeHelpers", () => {
       "from-flat-list",
       "seq",
     ]);
+  });
+
+  it("computes temporal scale from slow/fast wrapper chains", () => {
+    const slow2bar = "(slow 2 bar)";
+    const state1 = createStructuralEditor(slow2bar);
+    expect(
+      buildProbeExpression(state1, rangeOf(slow2bar, "bar"), "contextual"),
+    ).toMatchObject({ temporalScale: 2 });
+
+    const fast3bar = "(fast 3 bar)";
+    const state2 = createStructuralEditor(fast3bar);
+    expect(
+      buildProbeExpression(state2, rangeOf(fast3bar, "bar"), "contextual"),
+    ).toMatchObject({ temporalScale: 1 / 3 });
+
+    const nested = "(slow 4 (fast 2 bar))";
+    const state3 = createStructuralEditor(nested);
+    expect(
+      buildProbeExpression(state3, rangeOf(nested, "bar"), "contextual"),
+    ).toMatchObject({ temporalScale: 2 });
+
+    // raw mode ignores wrappers
+    expect(
+      buildProbeExpression(state1, rangeOf(slow2bar, "bar"), "raw"),
+    ).toMatchObject({ temporalScale: 1 });
   });
 
   it("matches the interpreter's from-list index calculation", () => {

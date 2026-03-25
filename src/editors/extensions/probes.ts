@@ -171,8 +171,10 @@ function drawWaveform(canvas: HTMLCanvasElement, render: ProbeRenderData): void 
     return;
   }
 
-  let min = finiteSamples[0] ?? 0;
-  let max = finiteSamples[0] ?? 0;
+  // Use [0, 1] as the baseline range so phasor-like signals render at
+  // their true scale.  Expand only when samples exceed that range.
+  let min = 0;
+  let max = 1;
   for (const value of finiteSamples) {
     if (value < min) min = value;
     if (value > max) max = value;
@@ -500,6 +502,8 @@ async function buildRenderForProbe(
   const liveCode = built?.code?.trim() ?? "";
   const maxDepth = built?.maxDepth ?? probe.maxDepth;
   const depth = probe.mode === "raw" ? 0 : Math.min(probe.depth, maxDepth);
+  const temporalScale = built?.temporalScale ?? 1;
+  const scaledDuration = barDuration * temporalScale;
   const candidateCode = liveCode || probe.cachedCode;
 
   if (!candidateCode) {
@@ -511,8 +515,8 @@ async function buildRenderForProbe(
         text: "sampling...",
         samples: [],
         currentTime,
-        windowStart: currentTime - barDuration,
-        windowDuration: barDuration,
+        windowStart: currentTime - scaledDuration,
+        windowDuration: scaledDuration,
         depth,
         maxDepth,
       },
@@ -526,7 +530,7 @@ async function buildRenderForProbe(
 
   for (const code of attempts) {
     try {
-      const sample = await sampleWaveform(code, currentTime, barDuration);
+      const sample = await sampleWaveform(code, currentTime, scaledDuration);
       if (sample.samples.length === 0) {
         return {
           probe: {
@@ -541,8 +545,8 @@ async function buildRenderForProbe(
             text: sample.current || "nil",
             samples: [],
             currentTime,
-            windowStart: currentTime - barDuration,
-            windowDuration: barDuration,
+            windowStart: currentTime - scaledDuration,
+            windowDuration: scaledDuration,
             depth,
             maxDepth,
           },
@@ -562,8 +566,8 @@ async function buildRenderForProbe(
           text: sample.current,
           samples: sample.samples,
           currentTime,
-          windowStart: currentTime - barDuration,
-          windowDuration: barDuration,
+          windowStart: currentTime - scaledDuration,
+          windowDuration: scaledDuration,
           depth,
           maxDepth,
         },
@@ -585,8 +589,8 @@ async function buildRenderForProbe(
       text: probe.cachedCode ? "using last valid expression" : "probe unavailable",
       samples: [],
       currentTime,
-      windowStart: currentTime - barDuration,
-      windowDuration: barDuration,
+      windowStart: currentTime - scaledDuration,
+      windowDuration: scaledDuration,
       depth,
       maxDepth,
     },

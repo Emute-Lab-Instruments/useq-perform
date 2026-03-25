@@ -22,6 +22,7 @@ export interface BuiltProbeExpression {
   code: string;
   maxDepth: number;
   appliedDepth: number;
+  temporalScale: number;
 }
 
 export interface IndexedFormTarget {
@@ -130,6 +131,30 @@ function buildWrapperExpression(
   return `(${parts.join(" ")})`;
 }
 
+/**
+ * Compute the effective temporal scale multiplier from a wrapper chain.
+ * `slow N` multiplies the period by N; `fast N` divides it by N.
+ * Only literal numeric factors are recognised; complex expressions fall
+ * back to a neutral 1× multiplier for that wrapper.
+ */
+function computeTemporalScale(
+  wrappers: TemporalWrapper[],
+  appliedDepth: number,
+): number {
+  let multiplier = 1;
+  for (let index = 0; index < appliedDepth && index < wrappers.length; index++) {
+    const wrapper = wrappers[index];
+    const factor = Number.parseFloat(wrapper.beforeArgs[0] ?? "");
+    if (!Number.isFinite(factor) || factor <= 0) continue;
+    if (wrapper.operatorName === "slow") {
+      multiplier *= factor;
+    } else if (wrapper.operatorName === "fast") {
+      multiplier /= factor;
+    }
+  }
+  return Math.max(0.1, Math.min(multiplier, 32));
+}
+
 function collectTemporalWrappers(
   state: EditorState,
   range: ProbeRange,
@@ -201,7 +226,9 @@ export function buildProbeExpression(
     code = buildWrapperExpression(wrappers[index], code);
   }
 
-  return { code, maxDepth, appliedDepth };
+  const temporalScale = computeTemporalScale(wrappers, appliedDepth);
+
+  return { code, maxDepth, appliedDepth, temporalScale };
 }
 
 function readTrimmedRange(
