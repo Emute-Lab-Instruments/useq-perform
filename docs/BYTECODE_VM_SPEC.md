@@ -345,18 +345,23 @@ This gives full inlining optimization with correct live-coding semantics — red
 
 Each output slot maintains **two compiled graphs**:
 
-- **Current**: the most recently compiled graph
-- **Last-known-good**: the last graph that executed without errors
+- **Active**: the most recently compiled graph. Executes on every sample.
+- **Last-known-good (LKG)**: the most recent graph that ran at least one full sample batch without error. Only changes when the current active graph has been healthy and a new expression supersedes it.
 
-**Error recovery flow**:
+**Invariant**: broken graphs never become LKG. LKG is always a graph that has proven itself by executing a full sample batch cleanly.
 
-1. Compilation succeeds → swap new graph into current, begin executing it
-2. If current graph produces a runtime error during sampling:
-   a. Set error flag with diagnostic info
-   b. Swap back to last-known-good for subsequent samples
-   c. Report error asynchronously (console on web, LED on firmware)
-3. If current graph executes cleanly for one full sample pass → promote to last-known-good
-4. If compilation fails → don't swap, keep executing last-known-good, report compile error
+**State transitions**:
+
+1. **New expression compiled** → new graph becomes active.
+   - If old active was healthy: old active moves to LKG.
+   - If old active was erroring: LKG unchanged.
+2. **Active graph errors at runtime** → execute LKG instead for remaining and subsequent samples. Active stays in its slot (user might fix and resend).
+3. **Compilation fails** → active unchanged, LKG unchanged, output uninterrupted. Report compile error.
+4. **No LKG exists** (first expression ever, or first was broken) → fallback produces `0.0` (safe default; 0V on hardware).
+
+**LKG binding semantics**: LKG graphs use **frozen bindings** — the values that were inlined at compilation time. If a symbol has been redefined since, the LKG graph does not pick up the new value. This is consistent with the inlining model: LKG is a self-contained compiled artifact.
+
+> **Revisit post-MVP**: Frozen bindings mean that falling back to LKG after a failed redefinition plays the *old* version of the signal with the *old* parameter values. Consider whether recompiling LKG with current bindings would be more useful in practice.
 
 **Result**: zero silence during live performance. The performer can experiment freely; broken code gracefully holds the previous working version.
 
@@ -387,45 +392,254 @@ This eliminates dual evaluation paths for signal code and ensures consistent sem
 
 ### 7.1 Guiding Principle
 
-The test suite validates the **mathematical semantics of the language**, not parity with the current tree-walking interpreter. The tree-walker is not gospel — it may have its own semantic bugs. The bytecode VM is an opportunity to establish a canonical, well-tested definition of ModuLisp semantics.
+The test suite validates the **mathematical semantics of the language**, not parity with the current tree-walking interpreter. The tree-walker is not gospel — it may have its own semantic bugs. The bytecode VM is an opportunity to establish a canonical, well-tested definition of ModuLisp semantics. There are no external users yet, so there is no backwards-compatibility obligation.
 
-### 7.2 Test Layers
+### 7.2 Test Infrastructure
 
-**Layer 1: Instruction-level tests**
-- Each bytecode instruction in isolation: `ADD`, `SIN`, `VEC_INDEX`, etc.
-- Edge cases: division by zero, NaN propagation, bounds clamping
-- Phasor boundary behavior (0.0, 1.0, wrap-around)
+**Two complementary systems:**
 
-**Layer 2: Compiler correctness**
-- Constant folding produces correct results
-- Time-warp flattening: `(fast 2 (slow 0.5 expr))` ≡ `expr`
-- Symbol inlining: `(define x 3) (+ x 1)` → `LOAD_CONST 4`
-- CSE: `(+ (sin beat) (sin beat))` → one SIN instruction, result reused
-- Dependency tracking: redefining `x` invalidates graphs that use `x`
+- **YAML golden test suite** — declarative, cross-platform, canonical source of truth for language semantics. Parsed by both C++ (Catch2) and TS (Vitest) test runners. Lives in a shared test fixture directory.
+- **Catch2 C++ tests** — platform-specific tests for VM internals, compiler passes, instruction behavior, and anything that requires inspecting bytecode or internal state.
 
-**Layer 3: Semantic property tests**
-- Property-based / generative testing of mathematical identities:
-  - `(+ a b)` ≡ `(+ b a)` (commutativity)
-  - `(fast k (slow k expr))` ≡ `expr` (inverse time warps)
-  - `(sin 0)` = 0.5 (unipolar convention)
-  - Vector indexing at phasor 0.0 returns first element
-  - Vector indexing at phasor just-below-1.0 returns last element
-- Signal equivalences: verify that `(postmap f (postmap g expr))` ≡ `(postmap (compose f g) expr)`
+**Property-based testing** uses both:
+- **RapidCheck** (C++) for fast-feedback property tests during development
+- **Generated YAML** via a script (Python or JS) that computes expected values for random inputs analytically and emits test cases. Generated corpus is committed and becomes part of the golden suite.
 
-**Layer 4: Integration tests**
-- End-to-end: parse → compile → execute → sample output at multiple time points
-- Batch sampling: `eval_outputs_time_window` produces correct waveforms
-- Live-coding workflow: define → redefine → verify output updates
-- Error recovery: induce runtime error → verify fallback to last-known-good
+### 7.3 YAML Test Schema
 
-**Layer 5: Cross-target tests**
-- Same test inputs run on both firmware (ARM) and WASM builds
-- Compare outputs to within floating-point epsilon
-- Verify computed-goto vs switch dispatch produce identical results
+```yaml
+# Top-level test file structure
+name: "Arithmetic basics"
+description: "Tests for core arithmetic operations"
+default_tolerance: 1e-9          # overridable per test
+default_bpm: 120                 # optional, for deriving beat/bar from t
+default_time_sig: [4, 4]         # optional
 
-### 7.3 Golden Test Suite
+tests:
+  - name: "addition of constants"
+    expr: "(+ 1 2)"
+    samples:
+      - {t: 0.0, expect: 3.0}   # t is ground truth; beat/bar derived from t + bpm
 
-A corpus of ModuLisp expressions with known correct outputs at specific time points, maintained as a standalone test fixture. This serves as the canonical semantic reference and regression guard.
+  - name: "sin at zero phasor is 0.5 (unipolar)"
+    expr: "(sin beat)"
+    samples:
+      - {t: 0.0, expect: 0.5}
+      - {t: 0.25, expect: 1.0}  # quarter beat at 120bpm → beat phasor 0.25
+
+  - name: "vector indexing"
+    expr: "([10 20 30] beat)"
+    samples:
+      - {t: 0.0, expect: 10.0}
+      - {t: 0.166, expect: 10.0}      # still in first third
+      - {t: 0.334, expect: 20.0}      # second third
+      - {t: 0.499, expect: 30.0}      # last third (just before wrap)
+    tolerance: 1e-6                     # per-test override
+
+  - name: "time warp flattening"
+    setup:                               # optional: top-level forms executed before sampling
+      - "(define base (sin beat))"
+    expr: "(fast 2 (slow 2 base))"       # should equal (sin beat)
+    equivalent_to: "(sin beat)"          # assert outputs match at all sample points
+    sample_range: {start: 0.0, end: 2.0, points: 100}
+```
+
+**Schema features:**
+- `t` is the only required temporal input; `beat`, `bar`, `phrase`, etc. are derived from `t` + `bpm` + `time_sig`
+- `tolerance` is per-test configurable, defaults to `1e-9`
+- `setup` allows top-level definitions before the expression under test
+- `equivalent_to` tests signal equivalence: two expressions must produce identical outputs across a sample range
+- `sample_range` for sweep-style tests (sample N points across a time window)
+- `expect_error` for rejection tests (see 7.5)
+
+### 7.4 Test Categories
+
+#### Category 1: Instruction-level (Catch2)
+
+Each bytecode instruction tested in isolation. These are C++ tests that construct bytecode directly (no compiler involved) and execute it.
+
+- Every instruction: `ADD`, `SUB`, `MUL`, `DIV`, `SIN`, `COS`, `VEC_INDEX`, `VEC_LERP`, `BRANCH_IF`, etc.
+- Edge cases: division by zero behavior, NaN propagation, `CLAMP` at boundaries
+- Phasor boundaries: `VEC_INDEX` at 0.0 (first element), at 0.999... (last element), at exactly 1.0 (wrap behavior)
+- `FRAC` instruction: negative inputs, values > 1.0, exact integers
+- `LOAD_TIME` with scale/offset: verify temporal context injection
+
+#### Category 2: Compiler correctness (Catch2 + YAML)
+
+**Bytecode inspection tests** (Catch2 only) — assert on emitted bytecode for stable optimizations:
+- Constant folding: `(+ 1 2)` → single `LOAD_CONST 3`
+- Time-warp flattening: `(fast 2 (sin beat))` → `LOAD_TIME` with `scale=2`, no `FAST` instruction in output
+- Dead code: `(if 1 (sin beat) (cos beat))` → only `SIN` emitted, no branch
+- Affine composition: `(fast 2 (slow 0.5 (offset 0.1 expr)))` → `LOAD_TIME` with `scale=1.0, offset=0.1`
+- `shift` wrapping: `(shift 0.25 (sin beat))` → `LOAD_TIME` + `FRAC` instruction present
+
+**Instruction count tests** (Catch2 only) — assert upper bounds for complex optimizations:
+- CSE: `(+ (sin beat) (sin beat))` → at most 1 `SIN` instruction
+- Inlining: `(define f (fn [x] (sin x))) (f beat)` → no `CALL` instruction, inlined
+- Builtin expansion: `(euclid 3 8 beat)` with constant args → no `CALL_INTRINSIC`
+
+**Semantic correctness** (YAML golden suite):
+- Constant folding produces correct values
+- Time-warp flattening: `(fast k (slow k expr))` ≡ `expr` for various `k`
+- Inlined symbols resolve correctly: `(define x 3) (+ x 1)` → `4.0`
+
+#### Category 3: Semantic property tests (RapidCheck + generated YAML)
+
+**Algebraic properties** (RapidCheck in Catch2):
+- Arithmetic: commutativity `(+ a b) ≡ (+ b a)`, associativity, identity elements
+- Time-warp inverses: `(fast k (slow k expr))` ≡ `expr` for random `k > 0`
+- Shift wrapping: `(shift 1.0 expr)` ≡ `expr` (full period shift is identity)
+- Postmap composition: `(postmap f (postmap g expr))` ≡ `(postmap (compose f g) expr)`
+- Premap composition: `(fast a (fast b expr))` ≡ `(fast (* a b) expr)`
+- Vector indexing monotonicity: for sorted vector, output at phasor `p1 < p2` → `result1 <= result2`
+
+**Unipolar conventions** (generated YAML):
+- `(sin 0.0)` = 0.5, `(sin 0.25)` = 1.0, `(sin 0.5)` = 0.5, `(sin 0.75)` = 0.0
+- `(cos 0.0)` = 1.0, `(cos 0.25)` = 0.5, `(cos 0.5)` = 0.0
+- `(tri 0.0)` = 0.0, `(tri 0.25)` = 0.5, `(tri 0.5)` = 1.0, `(tri 0.75)` = 0.5
+- `(sqr 0.0)` = 1.0, `(sqr 0.5)` = 0.0 (or vice versa — document the convention)
+
+**Phasor derivation** (generated YAML):
+- At 120 BPM: `t=0.0` → `beat=0.0`, `t=0.25` → `beat=0.5`, `t=0.5` → `beat=0.0` (wrapped)
+- `bar`, `phrase`, `section` derivation at known time points
+- `beatNum`, `barNum` integer values at boundaries
+
+#### Category 4: Imperative/signal boundary rejection tests (Catch2 + YAML)
+
+Comprehensive tests that the compiler correctly **rejects** side-effectful forms in signal context:
+
+**Must reject** (compile error with clear message):
+```yaml
+rejection_tests:
+  - expr: "(a1 (do (define x 3) (sin x)))"
+    error_contains: "define"         # error message must mention the offending form
+  - expr: "(a1 (eval \"(sin beat)\"))"
+    error_contains: "eval"
+  - expr: "(a1 (schedule '(foo)))"
+    error_contains: "schedule"
+  - expr: "(a1 (useq-play))"
+    error_contains: "useq-play"
+  - expr: "(a1 (if (> beat 0.5) (define x 1) 0))"
+    error_contains: "define"         # define nested inside if inside signal
+```
+
+**Must accept** (valid programs that look similar):
+```yaml
+acceptance_tests:
+  - expr: "(do (define x 3) (a1 (sin (* x beat))))"
+    description: "top-level do with define and a1"
+  - expr: "(a1 (let ((x 3)) (sin (* x beat))))"
+    description: "let is pure, not a side-effect"
+  - expr: "(do (defn f [x] (sin x)) (a1 (f beat)))"
+    description: "defn at top level, referenced in signal"
+```
+
+#### Category 5: Dependency invalidation tests (Catch2)
+
+Dedicated test category for the dependency tracking and invalidation system:
+
+**Direct dependency:**
+```
+(define x 3) → (a1 (* x beat)) → redefine x=5 → a1 recompiles with x=5
+```
+
+**Transitive dependency:**
+```
+(define a 1) → (define b (+ a 2)) → (a1 (* b beat))
+→ redefine a=10 → a1 must recompile (transitively depends on a through b)
+```
+
+**Diamond dependency:**
+```
+(define a 1)
+(define b (+ a 1))
+(define c (+ a 2))
+(a1 (+ (* b beat) (* c beat)))
+→ redefine a → a1 recompiles once (not twice)
+```
+
+**Orphan redefinition:**
+```
+(define unused 42) → redefine unused=99 → no graphs invalidated
+```
+
+**Cascading redefinition:**
+```
+(define a 1) → (define b (+ a 1)) → (define c (+ b 1))
+→ (a1 (* c beat)) → redefine a → entire chain recompiles
+```
+
+**Rapid successive redefinitions:**
+```
+(define x 1) (a1 (* x beat))
+→ rapid: (define x 2) (define x 3) (define x 4)
+→ debounced compilation: a1 should compile once with x=4 (not three times)
+```
+
+**Schedule-triggered invalidation:**
+```
+(define pattern [1 0 1 0]) → (a1 (seq pattern beat))
+→ schedule fires: (define pattern [1 1 0 0])
+→ a1 must recompile with new pattern
+```
+
+#### Category 6: Last-known-good fallback tests (Catch2)
+
+Full state machine coverage for the error recovery system:
+
+**State machine invariants:**
+- LKG is the most recent graph that ran at least one full sample batch without error
+- LKG only changes when the current active graph has been healthy AND a new expression supersedes it
+- Broken graphs never become LKG
+- When no LKG exists, fallback produces 0.0
+
+**Test scenarios:**
+
+1. **Bootstrap (no LKG):** First expression for output errors → output produces 0.0
+2. **Normal flow:** Working expr A → working expr B → B is active, A is LKG
+3. **Error fallback:** Working A (becomes LKG) → broken B → falls back to A, output matches A's signal
+4. **Cascading errors:** Working A → broken B → broken C → still falls back to A (not B)
+5. **Recovery after error:** Working A → broken B (fallback to A) → working C → C is active, A is still LKG until C proves healthy
+6. **Promotion after healthy run:** Working A → working B (A becomes LKG) → working C (B becomes LKG) → error in C → falls back to B (not A)
+7. **Compile-time error:** Working A → expression that fails to compile → A stays active and LKG unchanged, output uninterrupted
+8. **Runtime error on specific time values:** Graph that errors only at `beat > 0.9` → fallback triggers mid-batch, remaining samples come from LKG
+9. **Stale LKG bindings:** Working with `freq=3` (LKG inlines freq=3) → redefine `freq=5` → new graph errors → LKG executes with frozen `freq=3` (**Note: revisit this decision — see section 6.3**)
+
+#### Category 7: Cross-target validation (YAML)
+
+The same YAML golden test suite runs on both targets:
+- **Desktop/WASM**: C++ compiled with Emscripten, tests run via Node.js or browser
+- **ARM firmware**: C++ cross-compiled for RP2040/RP2350, tests run on hardware or QEMU
+
+Cross-target tests verify:
+- Identical outputs within configured tolerance (default 1e-9, loosened per-test for transcendentals)
+- Computed-goto dispatch (ARM) vs switch dispatch (WASM) produce identical results
+- Struct-based instruction representation works correctly on both architectures
+
+### 7.5 Floating-Point Tolerance
+
+Default tolerance is `1e-9` (tight enough to catch real bugs). Per-test override via the `tolerance` field in YAML.
+
+**Guidance for test authors:**
+- Exact arithmetic (`+`, `-`, `*` with integer-valued doubles): use `1e-15` or `0.0`
+- Single transcendental (`sin`, `cos`): `1e-9` is safe cross-platform
+- Compound expressions with multiple transcendentals: consider `1e-6`
+- Cross-target tests (ARM soft-float vs x86): may need `1e-6` for transcendental chains
+
+### 7.6 Test Phasing
+
+Tests are introduced alongside the implementation phases (section 9):
+
+| Phase | Test focus |
+|-------|-----------|
+| 1 (Core VM) | Category 1: instruction-level tests |
+| 2 (Compiler) | Category 2: compiler correctness, begin YAML golden suite |
+| 3 (Vectors, control flow) | Category 1 additions (VEC_INDEX, branches), YAML vector tests |
+| 4 (Builtins, time warps) | Category 3: property tests, YAML builtin tests, time-warp flattening bytecode inspection |
+| 5 (Functions, inlining) | Category 5: dependency invalidation tests |
+| 6 (Error handling) | Category 4: rejection tests, Category 6: LKG fallback tests |
+| 7 (Optimization) | Instruction count assertions, benchmark suite |
+| 8 (Cross-target) | Category 7: cross-target YAML validation |
 
 ## 8. Future Optimization Paths
 
