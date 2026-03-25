@@ -488,6 +488,7 @@ export async function refreshVisualisedExpression(
   if (expr.expressionText === trimmed && (!position || expr.position?.from === position.from)) return;
 
   let nextExpressionText = expr.expressionText;
+  let shouldResample = true;
   try {
     await evalInUseqWasm(trimmed);
     nextExpressionText = trimmed;
@@ -495,11 +496,21 @@ export async function refreshVisualisedExpression(
     dbg(
       `visualisationSampler: failed to update interpreter for ${exprType}: ${error}`,
     );
+    try {
+      await evalInUseqWasm(expr.expressionText);
+    } catch (restoreError) {
+      dbg(
+        `visualisationSampler: failed to restore last good expression for ${exprType}: ${restoreError}`,
+      );
+      shouldResample = false;
+    }
   }
 
   const settings = visStore.settings;
   const currentTime = visStore.currentTime;
-  const samples = await sampleExpression(exprType, currentTime, settings);
+  const samples = shouldResample
+    ? await sampleExpression(exprType, currentTime, settings)
+    : expr.samples;
   const color = resolveColor(exprType, settings.circularOffset);
 
   const expressions = { ...visStore.expressions };

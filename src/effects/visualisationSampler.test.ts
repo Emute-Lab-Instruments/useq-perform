@@ -409,12 +409,14 @@ describe("visualisationSampler", () => {
 
     it("keeps the last known good expression text when refresh fails", async () => {
       const { evalInUseqWasm } = await import("../runtime/wasmInterpreter.ts");
+      const { evalOutputsInTimeWindow } = await import("../runtime/wasmInterpreter.ts");
       const { visStore } = await import("../utils/visualisationStore.ts");
       const {
         registerVisualisation,
         refreshVisualisedExpression,
       } = await import("./visualisationSampler.ts");
       const mockEval = vi.mocked(evalInUseqWasm);
+      const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
 
       mockEval.mockReset();
       mockEval.mockResolvedValue("0.5");
@@ -423,12 +425,17 @@ describe("visualisationSampler", () => {
       expect(visStore.expressions.a1?.expressionText).toBe("(a1 bar)");
 
       mockEval.mockRejectedValueOnce(new Error("bad expression"));
+      mockEval.mockResolvedValueOnce("0.5");
       await refreshVisualisedExpression("a1", "(a1 (", { from: 2, to: 2 });
 
       expect(visStore.expressions.a1).toMatchObject({
         expressionText: "(a1 bar)",
         position: { from: 2, to: 2 },
       });
+      expect(mockEval.mock.calls.slice(-2)).toEqual([
+        ["(a1 ("],
+        ["(a1 bar)"],
+      ]);
 
       mockEval.mockResolvedValueOnce("0.5");
       await refreshVisualisedExpression("a1", "(a1 beat)", { from: 3, to: 3 });
@@ -437,6 +444,20 @@ describe("visualisationSampler", () => {
         expressionText: "(a1 beat)",
         position: { from: 3, to: 3 },
       });
+
+      mockEvalWindow.mockClear();
+      const previousSamples = visStore.expressions.a1?.samples;
+      mockEval.mockRejectedValueOnce(new Error("bad expression"));
+      mockEval.mockRejectedValueOnce(new Error("restore failed"));
+
+      await refreshVisualisedExpression("a1", "(a1 (/ 1 0", { from: 4, to: 4 });
+
+      expect(visStore.expressions.a1).toMatchObject({
+        expressionText: "(a1 beat)",
+        position: { from: 4, to: 4 },
+      });
+      expect(visStore.expressions.a1?.samples).toBe(previousSamples);
+      expect(mockEvalWindow).not.toHaveBeenCalled();
     });
   });
 });
