@@ -106,12 +106,36 @@ function clampSampleCount(value: number): number {
 
 type ReadValueFn = (channelIndex: number, sampleIndex: number) => number;
 
+interface SampleSeriesCache {
+  byOutput: Map<string, TimeSample[]>;
+}
+
+function getReusableSeries(
+  cache: SampleSeriesCache | undefined,
+  output: string,
+  sampleCount: number,
+): TimeSample[] {
+  if (!cache) {
+    return new Array<TimeSample>(sampleCount);
+  }
+
+  const existing = cache.byOutput.get(output);
+  if (existing && existing.length === sampleCount) {
+    return existing;
+  }
+
+  const created = Array.from({ length: sampleCount }, () => ({ time: 0, value: 0 }));
+  cache.byOutput.set(output, created);
+  return created;
+}
+
 function buildSampleSeries(
   outputs: string[],
   startTime: number,
   endTime: number,
   sampleCount: number,
-  readValue: ReadValueFn
+  readValue: ReadValueFn,
+  cache?: SampleSeriesCache,
 ): SampleSeriesMap {
   perf.begin("build-sample-series");
   const result: SampleSeriesMap = new Map();
@@ -128,11 +152,16 @@ function buildSampleSeries(
       continue;
     }
 
-    const samples = new Array<TimeSample>(sampleCount);
+    // Reuse the same sample objects for the steady-state visualisation path.
+    // This removes the dominant per-rebuild JS allocation churn without
+    // changing the public shape the renderer already consumes.
+    const samples = getReusableSeries(cache, channelName, sampleCount);
     for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
       const time = startTime + sampleIndex * step;
       const value = readValue(channelIndex, sampleIndex);
-      samples[sampleIndex] = { time, value };
+      const sample = samples[sampleIndex]!;
+      sample.time = time;
+      sample.value = value;
     }
     result.set(channelName, samples);
   }
@@ -174,6 +203,9 @@ function createBatchEvaluator(
     capacity: 0,
     view: null,
     heapBuffer: null,
+  };
+  const sampleSeriesCache: SampleSeriesCache = {
+    byOutput: new Map(),
   };
 
   const ensureCapacity = (requiredLength: number): BufferState => {
@@ -229,6 +261,7 @@ function createBatchEvaluator(
       bufferState.view = null;
       bufferState.heapBuffer = null;
     }
+    sampleSeriesCache.byOutput.clear();
   };
 
   const evaluateTyped = (outputsArray: string[], outputsJson: string, start: number, end: number, sampleCount: number): SampleSeriesMap => {
@@ -284,7 +317,7 @@ function createBatchEvaluator(
         return Number.NaN;
       }
       return view[valueIndex];
-    });
+    }, sampleSeriesCache);
   };
 
   const evaluateLegacy = (outputsArray: string[], outputsJson: string, start: number, end: number, sampleCount: number): SampleSeriesMap => {
@@ -314,7 +347,7 @@ function createBatchEvaluator(
         return Number.NaN;
       }
       return values[sampleIndex];
-    });
+    }, sampleSeriesCache);
   };
 
   const evaluateBySampling = (
@@ -340,7 +373,8 @@ function createBatchEvaluator(
             : start;
 
         return evaluateOutputAtTime(channelName, time);
-      }
+      },
+      sampleSeriesCache,
     );
 
   const evaluate = (outputs: string[], startTime: number, endTime: number, numSamples: number): SampleSeriesMap => {

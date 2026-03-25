@@ -278,6 +278,61 @@ describe("useqWasmInterpreter", () => {
     ]);
   });
 
+  it("reuses sample objects across repeated typed batch reads for the same output", async () => {
+    let callCount = 0;
+    const typedEval = vi.fn(
+      (
+        outputsJson: string,
+        _start: number,
+        _end: number,
+        sampleCount: number,
+        pointer: number,
+        totalEntries: number
+      ) => {
+        callCount += 1;
+        const outputs = JSON.parse(outputsJson) as string[];
+        const start = pointer / Float64Array.BYTES_PER_ELEMENT;
+        const view = module.HEAPF64.subarray(start, start + totalEntries);
+
+        outputs.forEach((_, channelIndex) => {
+          for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+            view[channelIndex * sampleCount + sampleIndex] =
+              callCount * 100 + channelIndex * 10 + sampleIndex;
+          }
+        });
+
+        return outputs.length;
+      }
+    );
+    const module = createBaseModule({
+      missingRawSymbols: ["useq_eval_outputs_time_window"],
+      overrides: {
+        useq_eval_output: vi.fn(() => {
+          throw new Error("per-sample fallback should not run");
+        }),
+        useq_eval_outputs_time_window_into: typedEval,
+        useq_last_error: vi.fn(() => ""),
+      },
+    });
+
+    installLoadedScriptTag();
+    window.createModule = vi.fn(async () => module as never);
+
+    const { evalOutputsInTimeWindow } = await import("./wasmInterpreter.ts");
+    const first = (await evalOutputsInTimeWindow(["a1"], 0, 1, 3)).get("a1");
+    const firstSample = first?.[0];
+    const second = (await evalOutputsInTimeWindow(["a1"], 2, 3, 3)).get("a1");
+
+    expect(first).toBeDefined();
+    expect(second).toBe(first);
+    expect(second?.[0]).toBe(firstSample);
+    expect(second).toEqual([
+      { time: 2, value: 200 },
+      { time: 2.5, value: 201 },
+      { time: 3, value: 202 },
+    ]);
+  });
+
   it("falls back to the legacy JSON bridge when typed batch helpers fail", async () => {
     const module = createBaseModule({
       overrides: {
