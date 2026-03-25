@@ -32,8 +32,8 @@ Writing `(+ 1 t)` does not mean "add 1 to the current value of t". It creates a 
 
 Signals support two mapping operations:
 
-- **postmap** (output mapping): `(postmap g signal)` = `g(signal(t))` — transform the output
-- **premap** (input mapping): `(premap f signal)` = `signal(f(t))` — warp the input time
+- **postmap** (output mapping): `(postmap g signal)` = `g(signal(t))` — transform the output. Note: postmap is just normal function application — `(postmap sin expr)` ≡ `(sin expr)`. It requires no special compiler support; it's implicit in the language.
+- **premap** (input mapping): `(premap f signal)` = `signal(f(t))` — warp the input time. Premap requires dedicated compiler support because it changes the time context for the inner subgraph.
 
 The built-in time modifiers are premaps:
 - `(fast k expr)` = `(premap (fn [t] (* k t)) expr)` — speed up
@@ -105,7 +105,7 @@ SIN  r3, r0        ; r3 = sin(r0)
 
 The dispatch mechanism is compile-time selectable:
 
-- **Computed goto** (`__attribute__((musttail))` or `goto *table[opcode]`) on ARM firmware — eliminates branch prediction penalty
+- **Computed goto** (`goto *dispatch_table[opcode]`, GCC/Clang extension) on ARM firmware — eliminates branch prediction penalty of a central switch
 - **Switch dispatch** on WASM — V8/SpiderMonkey JITs optimize the local variables (registers) into CPU registers anyway, so computed goto provides no benefit
 
 Same bytecode format and compiler for both targets. The dispatch is behind a `#ifdef` or template parameter.
@@ -163,7 +163,7 @@ CLAMP   rd, rs, rlo, rhi   ; rd = clamp(rs, rlo, rhi)
 ; Transcendentals (unipolar variants for music: 0..1 range)
 SIN     rd, rs             ; rd = sin(rs * 2π) * 0.5 + 0.5 (unipolar)
 COS     rd, rs             ; rd = cos(rs * 2π) * 0.5 + 0.5 (unipolar)
-TAN     rd, rs
+TAN     rd, rs             ; rd = tan(rs * 2π) (standard, unbounded — user clamps if needed)
 SIN_BI  rd, rs             ; rd = sin(rs * 2π) (bipolar, -1..1)
 COS_BI  rd, rs             ; rd = cos(rs * 2π) (bipolar, -1..1)
 
@@ -216,11 +216,16 @@ Real branches rather than branchless SELECT. This enables future symbolic interv
 ### 4.5 Function Calls
 
 ```
-CALL        #func_id, rd, [args...]  ; call compiled function, result in rd
+CALL        #func_id, rd, rs_first, rs_count
+    ; call compiled function, result in rd
+    ; arguments are in consecutive registers starting at rs_first (rs_count args)
 RET         rs                        ; return value from function
-CALL_INTRINSIC  #intrinsic_id, rd, [args...]
+CALL_INTRINSIC  #intrinsic_id, rd, rs_first, rs_count
     ; call opaque C++ intrinsic (for complex builtins with signal args)
+    ; same argument convention as CALL
 ```
+
+Arguments are passed in a contiguous register range. The compiler allocates argument registers consecutively before emitting `CALL`/`CALL_INTRINSIC`. This keeps instructions fixed-width while supporting variable arity.
 
 The compiler **prefers inlining** lambda bodies at call sites. `CALL` is emitted only when inlining is not possible (recursion, very large bodies, explicit opt-out). `CALL_INTRINSIC` is the escape hatch for builtins that can't be expressed as primitives (or whose args are signals, preventing compile-time pre-computation).
 
@@ -268,8 +273,9 @@ A **dependency set** is recorded: the set of all user-defined symbols that were 
 Each node in the AST is classified as:
 
 - **Constant**: all inputs are constant → evaluate at compile time
-- **Temporal**: depends on time (directly or transitively) → must execute at runtime
-- **External**: depends on external input slot → constant per sample, but varies across time
+- **Runtime**: depends on time or external inputs → must execute at runtime
+
+(For V1, external inputs and temporal variables are both "runtime" — neither can be constant-folded. A future SIMD pass may distinguish them: external inputs are *uniform* across a sample batch while temporal variables differ per sample point. This distinction is deferred.)
 
 This classification drives:
 - **Constant folding**: constant nodes are evaluated once and replaced with `LOAD_CONST`
@@ -294,17 +300,36 @@ LOAD_TIME rd, BEAT, accumulated_scale, accumulated_offset
 
 The `fast`/`slow`/`offset` nodes **vanish from the bytecode**. Nested affine warps compose: `(fast 2 (slow 0.5 (offset 0.1 expr)))` → `scale=1.0, offset=0.1`.
 
-**`shift` (modular phase shift)**: `shift` adds an offset and wraps via `frac()`. This is *not* a pure affine transform — it requires a `FRAC` instruction after the time computation. The compiler handles this by emitting the accumulated affine transform into a register, then applying `FRAC`:
+**`shift` breaks the affine chain.** `shift` adds an offset and wraps via `frac()`, which is non-linear. It cannot be folded into a single `(scale, offset)` pair with surrounding affine transforms because `frac(a * x + b)` ≠ `a * frac(x) + b` in general.
 
+The compiler handles this with a **segmented transform chain**: a list of `(affine, optional_nonlinear)` segments. As the compiler descends:
+1. Affine transforms (`fast`, `slow`, `offset`) accumulate into the current segment's `(scale, offset)`
+2. When `shift` is encountered, it closes the current segment (attaching `FRAC` as the non-linear op), and starts a new segment for the inner expression
+3. At the leaf, the compiler emits all segments in order
+
+**Example: `(fast 2 (shift 0.25 (sin beat)))` — fast outer, shift inner:**
 ```
-LOAD_TIME  r0, BEAT, scale, offset    ; affine part
-FRAC       r0, r0                     ; wrap to 0..1 (shift part)
-; ... inner expression uses r0 as its time source
+; Segment 1: fast 2 + shift 0.25 → affine (2.0, 0.25) + FRAC
+LOAD_TIME  r0, BEAT, 2.0, 0.25    ; beat_phasor * 2 + 0.25
+FRAC       r0, r0                  ; wrap to 0..1
+; Segment 2: no further transforms, compute inner expression
+SIN        r1, r0
 ```
+Result: `sin(frac(beat * 2 + 0.25))` ✓
 
-`shift` can compose with surrounding affine warps: `(fast 2 (shift 0.25 expr))` → `LOAD_TIME r0, BEAT, 2.0, 0.25` then `FRAC r0, r0`.
+**Example: `(shift 0.25 (fast 2 (sin beat)))` — shift outer, fast inner:**
+```
+; Segment 1: shift 0.25 → affine (1.0, 0.25) + FRAC
+LOAD_TIME  r0, BEAT, 1.0, 0.25    ; beat_phasor + 0.25
+FRAC       r0, r0                  ; wrap to 0..1
+; Segment 2: fast 2 → scale the wrapped result
+MUL        r0, r0, const(2.0)     ; apply fast 2 to the wrapped time
+; Inner expression uses modified time
+SIN        r1, r0
+```
+Result: `sin(frac(beat + 0.25) * 2)` ✓ — note this is different from the first example.
 
-**Non-linear premaps** (`premap` with arbitrary function): the compiler emits bytecode to compute the warped time into a register, then threads that register through the inner subgraph as the time source. This is the escape hatch for non-affine time transforms.
+**Non-linear premaps** (`premap` with arbitrary function): handled the same way as `shift` — they close the current affine segment, emit bytecode to compute the warped time, and start a new segment. The segmented chain generalizes naturally to arbitrary combinations of affine and non-linear transforms.
 
 ### 5.5 Builtin Expansion
 
@@ -348,7 +373,7 @@ Each output slot maintains **two compiled graphs**:
 - **Active**: the most recently compiled graph. Executes on every sample.
 - **Last-known-good (LKG)**: the most recent graph that ran at least one full sample batch without error. Only changes when the current active graph has been healthy and a new expression supersedes it.
 
-**Invariant**: broken graphs never become LKG. LKG is always a graph that has proven itself by executing a full sample batch cleanly.
+**Invariant**: broken graphs never become LKG. A graph is considered **healthy** if it is currently executing without errors at the moment a new expression supersedes it (i.e., it was running clean when replaced). Only healthy graphs move to the LKG slot.
 
 **State transitions**:
 
