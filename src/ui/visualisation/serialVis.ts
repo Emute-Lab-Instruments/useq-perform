@@ -98,9 +98,11 @@ function drawSerialVis(): void {
   }
   const ctx = c.getContext("2d");
   if (!ctx) {
+    perf.end("render-frame");
     return;
   }
   if (!isPanelVisible()) {
+    perf.end("render-frame");
     return;
   }
   const verticalPadding = c.height * 0.1;
@@ -129,6 +131,7 @@ function drawSerialVis(): void {
 
   if (!hasExpressions) {
     drawEmptyState(c, ctx);
+    perf.end("render-frame");
     return;
   }
 

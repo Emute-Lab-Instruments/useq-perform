@@ -81,10 +81,13 @@ async function run(channelCount: number = 3, durationSeconds: number = 10): Prom
   console.log(`[useq-bench] Profiling ${channelCount} channels for ${durationSeconds}s...`);
   console.log(`[useq-bench] Open DevTools Performance panel and record during this window.`);
 
-  setTimeout(() => {
-    perf.report();
-    console.log(`[useq-bench] Profiling complete. Channels still active — call window.__useqBench.stop() to tear down.`);
-  }, durationSeconds * 1000);
+  await new Promise<void>((resolve) => {
+    setTimeout(() => {
+      perf.report();
+      console.log(`[useq-bench] Profiling complete. Channels still active — call window.__useqBench.stop() to tear down.`);
+      resolve();
+    }, durationSeconds * 1000);
+  });
 }
 
 async function stop(): Promise<void> {
