@@ -36,9 +36,12 @@ Signals support two mapping operations:
 - **premap** (input mapping): `(premap f signal)` = `signal(f(t))` — warp the input time
 
 The built-in time modifiers are premaps:
-- `(fast k expr)` = `(premap (fn [t] (* k t)) expr)`
-- `(slow k expr)` = `(premap (fn [t] (/ t k)) expr)`
-- `(offset k expr)` = `(premap (fn [t] (+ t k)) expr)`
+- `(fast k expr)` = `(premap (fn [t] (* k t)) expr)` — speed up
+- `(slow k expr)` = `(premap (fn [t] (/ t k)) expr)` — slow down
+- `(offset k expr)` = `(premap (fn [t] (+ t k)) expr)` — shift raw time (no wrapping)
+- `(shift k expr)` = `(premap (fn [t] (frac (+ t k))) expr)` — phase-shift with wrap to 0..1
+
+Note: `offset` and `shift` are distinct operations. `offset` adds to time linearly (unbounded). `shift` adds and wraps via fractional part — a modular phase shift that works for any periodic signal.
 
 ### 2.3 External Input Slots
 
@@ -50,6 +53,40 @@ All built-in functions are pure functions of their inputs:
 - `random` must be deterministically seeded (from time or a hash)
 - `step` / `euclid` / `gates` / `trigs` derive their state purely from phasor position
 - `schedule` is a side-effect that operates at the REPL level, not within the signal graph
+
+### 2.5 Imperative / Signal Boundary
+
+The language has two distinct evaluation contexts:
+
+**Top-level (imperative)**: Forms that execute side-effects once — `define`, `defn`, `a1`-`a8`, `d1`-`d8`, `schedule`, `eval`, transport commands (`useq-play`, `useq-pause`, etc.). Top-level `do` blocks group multiple top-level forms for batch evaluation (e.g., user selects a block and hits eval-hotkey); each child of a top-level `do` is itself a top-level form.
+
+**Signal context (pure)**: The expression subtrees stored by output assignments (`a1`, `a2`, etc.) and passed to sampling. These are pure functions of time + external inputs, compiled to bytecode, and sampled repeatedly.
+
+Side-effectful forms inside signal expressions are a **compile-time error**. The tree-walker tolerated this (silently re-executing `define` 300 times per frame), but the bytecode VM enforces the boundary explicitly. This is a deliberate improvement over the tree-walker's semantics.
+
+### 2.6 Data Types in Signal Context
+
+The VM operates exclusively on **scalar doubles** in signal context. Vectors appear only as data-segment constants indexed by `VEC_INDEX`/`VEC_LERP`.
+
+Quoted lists (`'(...)`) are not used in signal context — they exist only for top-level metaprogramming (`schedule`, `eval`). In signal context, sequences are always vectors (`[...]`), following the Clojure convention: parens for code, brackets for data.
+
+### 2.7 Loops and Comprehensions
+
+`for` in signal context is a **list comprehension** (Clojure-style), not an imperative loop. `(for [i (range 1 9)] (* i 2))` produces `[2 4 6 8 10 12 14 16]` — a constant vector computed at compile time and stored in the data segment. If the body references signals, the compiler unrolls the comprehension into inline code.
+
+No loop instructions (`branch-back`) are needed in the bytecode. `while` is top-level only.
+
+### 2.8 Dynamic `eval` in Signal Context
+
+`eval` (dynamic evaluation of strings) is **top-level only** for V1. Using `eval` inside a signal expression is a compile-time error.
+
+**Revisit post-MVP**: Dynamic `eval` in signal context is a legitimate future use case (e.g., generative code, live-coding tools that construct expressions programmatically). Supporting it would require the VM to invoke the full compile+execute pipeline recursively at runtime. Deferred to avoid scope creep.
+
+### 2.9 Collapsing the Dual-Map Architecture
+
+The current tree-walker maintains two parallel lookup maps (`m_defs` for static bindings, `m_def_exprs` for expression bindings) with an `attempt_expr_eval_first` flag that flips lookup order during output sampling. This complexity exists because the tree-walker doesn't distinguish between imperative and signal contexts.
+
+The bytecode VM eliminates this distinction. The compiler resolves all names at compile time by inlining bindings into the signal graph. There is no runtime symbol lookup during sampling (except for the rare `LOAD_VAR` escape hatch). The dual-map architecture is replaced by the compile-time symbol resolution + dependency invalidation system (section 6.2).
 
 ## 3. VM Architecture
 
@@ -78,13 +115,19 @@ Same bytecode format and compiler for both targets. The dispatch is behind a `#i
 A **compiled graph** consists of:
 
 - **Instruction buffer**: flat array of bytecode instructions
-- **Data segment**: constant pool (scalars, vector data, string literals)
-- **Register allocation table**: maps virtual registers to physical slots
+- **Data segment**: constant pool (scalars, vector data)
+- **Register count**: number of registers used (for allocation)
 - **Dependency set**: set of symbol names this graph transitively references (for invalidation)
 
 ### 3.4 Register Allocation
 
 For V1, a simple linear-scan or tree-coloring allocator is sufficient. ModuLisp expressions are trees (or DAGs after CSE) with no complex control flow, making register allocation straightforward.
+
+### 3.5 Instruction Encoding
+
+**Deferred decision**: V1 uses a struct-based instruction representation (e.g., `{opcode, rd, rs1, rs2, imm}` — ~12-16 bytes per instruction) for clarity and debuggability. Compact binary encoding (16-bit or 32-bit fixed-width) will be designed after V1 is functional and we have real bytecode to profile.
+
+This is acceptable because typical ModuLisp expressions compile to 10-50 instructions. Even at 16 bytes per instruction, a compiled graph is 160-800 bytes — negligible on both WASM and firmware (RP2040 has 264KB RAM).
 
 ## 4. Instruction Set
 
@@ -109,6 +152,7 @@ CMP_EQ  rd, rs1, rs2
 ; Math
 FLOOR   rd, rs
 CEIL    rd, rs
+FRAC    rd, rs             ; rd = rs - floor(rs) (fractional part, for shift wrapping)
 ABS     rd, rs
 MIN     rd, rs1, rs2
 MAX     rd, rs1, rs2
@@ -234,13 +278,12 @@ This classification drives:
 
 ### 5.4 Time-Warp Flattening
 
-The compiler accumulates an **affine time transform** `(scale, offset)` as it descends through `fast`, `slow`, `offset`, `shift` nodes:
+The compiler accumulates an **affine time transform** `(scale, offset)` as it descends through `fast`, `slow`, `offset` nodes:
 
 ```
 (fast k expr)   → scale *= k
 (slow k expr)   → scale /= k
 (offset k expr) → offset += k
-(shift k expr)  → offset += k
 ```
 
 When the compiler reaches a temporal leaf (`beat`, `bar`, `t`, etc.), it emits:
@@ -249,7 +292,17 @@ When the compiler reaches a temporal leaf (`beat`, `bar`, `t`, etc.), it emits:
 LOAD_TIME rd, BEAT, accumulated_scale, accumulated_offset
 ```
 
-The `fast`/`slow`/`offset`/`shift` nodes **vanish from the bytecode**. Nested affine warps compose: `(fast 2 (slow 0.5 (offset 0.1 expr)))` → `scale=1.0, offset=0.1`.
+The `fast`/`slow`/`offset` nodes **vanish from the bytecode**. Nested affine warps compose: `(fast 2 (slow 0.5 (offset 0.1 expr)))` → `scale=1.0, offset=0.1`.
+
+**`shift` (modular phase shift)**: `shift` adds an offset and wraps via `frac()`. This is *not* a pure affine transform — it requires a `FRAC` instruction after the time computation. The compiler handles this by emitting the accumulated affine transform into a register, then applying `FRAC`:
+
+```
+LOAD_TIME  r0, BEAT, scale, offset    ; affine part
+FRAC       r0, r0                     ; wrap to 0..1 (shift part)
+; ... inner expression uses r0 as its time source
+```
+
+`shift` can compose with surrounding affine warps: `(fast 2 (shift 0.25 expr))` → `LOAD_TIME r0, BEAT, 2.0, 0.25` then `FRAC r0, r0`.
 
 **Non-linear premaps** (`premap` with arbitrary function): the compiler emits bytecode to compute the warped time into a register, then threads that register through the inner subgraph as the time source. This is the escape hatch for non-affine time transforms.
 
@@ -286,6 +339,8 @@ When a symbol is redefined (via `define`, `defn`):
 
 This gives full inlining optimization with correct live-coding semantics — redefining `foo` propagates to all outputs that use `foo`, with minimal recompilation.
 
+**Note**: Redefinition can come from multiple sources — user REPL eval, `schedule`d code executing at bar boundaries, or programmatic `eval`. All sources trigger the same invalidation path.
+
 ### 6.3 Last-Known-Good Fallback
 
 Each output slot maintains **two compiled graphs**:
@@ -316,13 +371,17 @@ No WASM ABI changes are needed for V1.
 The bytecode VM replaces the tree-walker for **all evaluation**, including REPL. When `useq_eval(code)` is called:
 
 1. Parse the code into an AST
-2. Compile to bytecode
-3. Execute the bytecode
-4. Return the result
+2. Identify top-level context: if the form is a side-effectful construct (`define`, `defn`, `a1`-`a8`, `schedule`, transport commands, or top-level `do`), execute the side-effect and compile any signal sub-expressions
+3. If the form is a pure expression, compile to bytecode, execute once, return the result
+4. For output assignments, store the compiled signal graph for repeated sampling
 
 For REPL expressions, the compiled bytecode is ephemeral (not cached). For output assignments (`a1`, `a2`, etc.), the compiled graph is stored and reused for sampling.
 
-This eliminates dual evaluation paths and ensures consistent semantics everywhere.
+**Top-level `do` handling**: `(do form1 form2 ... formN)` at the top level is desugared into sequential top-level evaluation of each child form. This matches the user's mental model: select a block, hit eval, each statement executes in order.
+
+**String return values**: `useq_eval()` returns a string representation of the result. The VM evaluates to a `double` internally; the string conversion happens at the API boundary. For non-numeric results (e.g., `(useq-get-transport-state)` → `"playing"`), transport commands and similar queries remain as immediate C++ function calls, not compiled bytecode.
+
+This eliminates dual evaluation paths for signal code and ensures consistent semantics everywhere.
 
 ## 7. Testing Strategy
 
