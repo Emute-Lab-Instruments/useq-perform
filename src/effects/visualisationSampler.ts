@@ -9,6 +9,7 @@
  */
 
 import { dbg } from "../lib/debug.ts";
+import { perf } from "../lib/perfTrace.ts";
 import {
   evalInUseqWasm,
   updateUseqWasmTime,
@@ -279,34 +280,34 @@ async function rebuildAllExpressions(
 
   lastCompletedSamplingWindowKey = currentWindowKey;
 
-  // Build updated expression records from the batch results.
-  const rebuilt: Record<string, VisExpression> = {};
-  for (const exprType of exprTypes) {
-    const expr = expressions[exprType];
+  // Merge batch results into the current store, creating new expression
+  // records only for channels whose data actually changed.
+  const current = visStore.expressions;
+  const merged: Record<string, VisExpression> = {};
+  let changed = false;
+
+  for (const key of Object.keys(current)) {
+    const expr = current[key];
     if (!expr) continue;
-    const samples = batchResults.get(exprType);
+
+    const samples = batchResults.get(key);
     if (samples) {
-      rebuilt[exprType] = {
-        ...expr,
-        samples,
-        color: resolveColor(exprType, settings.circularOffset),
-      };
+      const color = resolveColor(key, settings.circularOffset);
+      // Only create a new object if data or color actually changed.
+      if (samples !== expr.samples || color !== expr.color) {
+        merged[key] = { ...expr, samples, color };
+        changed = true;
+      } else {
+        merged[key] = expr;
+      }
     } else {
-      rebuilt[exprType] = { ...expr };
+      merged[key] = expr;
     }
   }
 
-  // Merge with current store state to preserve any expressions that were
-  // registered concurrently (avoids stale-snapshot overwrites).
-  const current = visStore.expressions;
-  const merged = { ...current };
-  for (const [key, value] of Object.entries(rebuilt)) {
-    if (key in current) {
-      merged[key] = value;
-    }
-    // If key was removed from current during rebuild, don't re-add it.
+  if (changed) {
+    updateExpressions(merged);
   }
-  updateExpressions(merged);
 }
 
 // ── Public API ───────────────────────────────────────────────────────
@@ -325,21 +326,28 @@ async function rebuildAllExpressions(
 export async function resampleExpressions(
   timeSeconds: number,
 ): Promise<void> {
+  perf.begin("resample-total");
   const seq = ++samplingSequence;
   const numericTime = Number(timeSeconds) || 0;
   const settings = visStore.settings;
 
+  perf.begin("wasm-update-time");
   try {
     await updateUseqWasmTime(numericTime);
   } catch (error) {
     dbg(`visualisationSampler: failed to update interpreter time: ${error}`);
+    perf.end("wasm-update-time");
+    perf.end("resample-total");
     return;
   }
+  perf.end("wasm-update-time");
 
   // A newer resample request arrived while we were awaiting — discard.
-  if (seq !== samplingSequence) return;
+  if (seq !== samplingSequence) { perf.end("resample-total"); return; }
 
+  perf.begin("refresh-bar");
   await refreshBarValue(numericTime);
+  perf.end("refresh-bar");
 
   const expressions = visStore.expressions;
   if (Object.keys(expressions).length > 0) {
@@ -351,14 +359,17 @@ export async function resampleExpressions(
 
     if (shouldRebuild) {
       lastRequestedSamplingWindowKey = currentWindowKey;
+      perf.begin("rebuild-all");
       await rebuildAllExpressions(settings, numericTime);
+      perf.end("rebuild-all");
     }
   }
 
   // Final staleness check after async work completes.
-  if (seq !== samplingSequence) return;
+  if (seq !== samplingSequence) { perf.end("resample-total"); return; }
 
   setLastChangeKind("data");
+  perf.end("resample-total");
 }
 
 // Backward-compatible alias
@@ -371,6 +382,7 @@ export { resampleExpressions as handleExternalTimeUpdate };
 export async function registerVisualisation(
   exprType: string,
   expressionText: string,
+  position?: { from: number; to: number },
 ): Promise<void> {
   const trimmed = (expressionText || "").trim();
   if (!trimmed) {
@@ -393,6 +405,7 @@ export async function registerVisualisation(
     expressionText: trimmed,
     samples,
     color,
+    position,
   };
   updateExpressions(expressions);
   invalidateSamplingWindowCache();
@@ -414,19 +427,27 @@ export function unregisterVisualisation(exprType: string): void {
 export async function toggleVisualisation(
   exprType: string,
   expressionText: string,
+  position?: { from: number; to: number },
 ): Promise<void> {
-  if (isExpressionVisualised(exprType)) {
+  if (isExpressionVisualised(exprType, position)) {
     unregisterVisualisation(exprType);
   } else {
-    await registerVisualisation(exprType, expressionText);
+    await registerVisualisation(exprType, expressionText, position);
   }
 }
 
 /**
  * Check if an expression is currently being visualised.
+ * If position is provided, also verifies the expression's position matches.
  */
-export function isExpressionVisualised(exprType: string): boolean {
-  return exprType in visStore.expressions;
+export function isExpressionVisualised(
+  exprType: string,
+  position?: { from: number; to: number },
+): boolean {
+  const expr = visStore.expressions[exprType];
+  if (!expr) return false;
+  if (!position) return true;
+  return expr.position?.from === position.from && expr.position?.to === position.to;
 }
 
 /**
@@ -435,12 +456,13 @@ export function isExpressionVisualised(exprType: string): boolean {
 export async function refreshVisualisedExpression(
   exprType: string,
   expressionText: string,
+  position?: { from: number; to: number },
 ): Promise<void> {
   const expr = visStore.expressions[exprType];
   if (!expr) return;
 
   const trimmed = (expressionText || "").trim();
-  if (expr.expressionText === trimmed) return;
+  if (expr.expressionText === trimmed && (!position || expr.position?.from === position.from)) return;
 
   try {
     await evalInUseqWasm(trimmed);
@@ -461,6 +483,7 @@ export async function refreshVisualisedExpression(
     expressionText: trimmed,
     samples,
     color,
+    position: position || expr.position,
   };
   updateExpressions(expressions);
   invalidateSamplingWindowCache();

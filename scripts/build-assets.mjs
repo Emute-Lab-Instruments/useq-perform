@@ -30,6 +30,11 @@ const wasmBundleFile = {
   dest: path.join('public', 'wasm', 'useq.js'),
 };
 
+const wasmBinaryFile = {
+  src: path.join('src-useq', 'wasm', 'useq.wasm'),
+  dest: path.join('public', 'wasm', 'useq.wasm'),
+};
+
 const fontFiles = [
   'IBMPlexMono-Regular.woff2',
   'IBMPlexMono-Medium.woff2',
@@ -122,6 +127,16 @@ function copyUseqWasmBundle() {
     console.log(`Copied ${wasmBundleFile.src} -> ${wasmBundleFile.dest}`);
   } catch (error) {
     console.error(`Failed to copy ${wasmBundleFile.src}:`, error.message);
+  }
+
+  // Copy separate .wasm binary (SINGLE_FILE=0 build)
+  if (fs.existsSync(wasmBinaryFile.src)) {
+    try {
+      fs.copyFileSync(wasmBinaryFile.src, wasmBinaryFile.dest);
+      console.log(`Copied ${wasmBinaryFile.src} -> ${wasmBinaryFile.dest}`);
+    } catch (error) {
+      console.error(`Failed to copy ${wasmBinaryFile.src}:`, error.message);
+    }
   }
 }
 

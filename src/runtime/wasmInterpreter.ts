@@ -1,4 +1,5 @@
 import { dbg } from "../lib/debug.ts";
+import { perf } from "../lib/perfTrace.ts";
 import { getAppSettings } from "./appSettingsRepository.ts";
 import { TRANSPORT_STATE_TO_COMMAND } from "../contracts/useqRuntimeContract";
 import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
@@ -112,8 +113,10 @@ function buildSampleSeries(
   sampleCount: number,
   readValue: ReadValueFn
 ): SampleSeriesMap {
+  perf.begin("build-sample-series");
   const result: SampleSeriesMap = new Map();
   if (!Array.isArray(outputs) || outputs.length === 0 || sampleCount < 1) {
+    perf.end("build-sample-series");
     return result;
   }
 
@@ -134,6 +137,7 @@ function buildSampleSeries(
     result.set(channelName, samples);
   }
 
+  perf.end("build-sample-series");
   return result;
 }
 
@@ -242,9 +246,12 @@ function createBatchEvaluator(
       throw new Error("uSEQ WASM buffer view is unavailable");
     }
     let status: number;
+    perf.begin("wasm-typed-batch");
     try {
       status = typedEval(outputsJson, start, end, sampleCount, pointer, totalEntries) as number;
+      perf.end("wasm-typed-batch");
     } catch (error) {
+      perf.end("wasm-typed-batch");
       if (isBrokenOptionalExportError(error)) {
         typedEval = null;
         readLastError = null;

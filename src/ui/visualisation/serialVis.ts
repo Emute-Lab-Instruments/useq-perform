@@ -1,4 +1,5 @@
 import { visualisationSessionChannel } from "../../contracts/visualisationChannels";
+import { perf } from "../../lib/perfTrace.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
 
 const AXIS_COLOR = 'rgba(255, 255, 255, 0.12)';
@@ -88,9 +89,11 @@ function scheduleNextFrame(): void {
 
 function drawSerialVis(): void {
   frameId = null;
+  perf.begin("render-frame");
 
   const c = getCanvas();
   if (!c) {
+    perf.end("render-frame");
     return;
   }
   const ctx = c.getContext("2d");
@@ -267,6 +270,7 @@ function drawSerialVis(): void {
     }
   }
 
+  perf.end("render-frame");
 }
 
 export function makeVis(): void {
@@ -317,9 +321,18 @@ interface SamplePoint {
   value: number;
 }
 
-interface Point {
-  x: number;
-  y: number;
+// ── Pre-allocated point buffers ─────────────────────────────────────
+// Reuse Float64Arrays for segment points instead of allocating Point[]
+// every frame. Capacity grows as needed but never shrinks.
+
+let pointBufX = new Float64Array(512);
+let pointBufY = new Float64Array(512);
+
+function ensurePointCapacity(required: number): void {
+  if (required <= pointBufX.length) return;
+  const next = Math.max(required, pointBufX.length * 2);
+  pointBufX = new Float64Array(next);
+  pointBufY = new Float64Array(next);
 }
 
 function findLastPastIndex(
@@ -360,13 +373,13 @@ function drawPathSegment(
   mapValueToY: (v: number) => number,
   dashPattern: number[] = [],
   options: { stepMode?: boolean; lineJoin?: CanvasLineJoin; lineCap?: CanvasLineCap } = {},
-): Point[] | null {
-  const points = buildSegmentPoints(
+): boolean {
+  const pointCount = buildSegmentPointsInto(
     samples, startIndex, endIndex, currentTime, halfWindow,
     totalWindow, canvasWidth, mapValueToY, options,
   );
-  if (!points || points.length < 2) {
-    return null;
+  if (pointCount < 2) {
+    return false;
   }
 
   ctx.save();
@@ -382,15 +395,19 @@ function drawPathSegment(
     ctx.lineCap = options.lineCap;
   }
 
-  if (traceSegment(ctx, points)) {
+  if (traceSegmentFromBuffers(ctx, pointCount)) {
     ctx.stroke();
   }
 
   ctx.restore();
-  return points;
+  return true;
 }
 
-function buildSegmentPoints(
+/**
+ * Write segment points into the pre-allocated pointBufX/pointBufY arrays.
+ * Returns the number of points written. Zero allocations.
+ */
+function buildSegmentPointsInto(
   samples: SamplePoint[],
   startIndex: number,
   endIndex: number,
@@ -400,42 +417,48 @@ function buildSegmentPoints(
   canvasWidth: number,
   mapValueToY: (v: number) => number,
   options: { stepMode?: boolean } = {},
-): Point[] | null {
+): number {
   if (!samples || endIndex - startIndex < 2) {
-    return null;
+    return 0;
   }
 
-  const points: Point[] = [];
+  // Worst case: step mode doubles the point count
+  const maxPoints = (endIndex - startIndex) * 2;
+  ensurePointCapacity(maxPoints);
+
   const windowStart = currentTime - halfWindow;
   const useStepMode = options?.stepMode === true;
-  let previousPoint: Point | null = null;
+  let count = 0;
+  let prevY = NaN;
 
   for (let i = startIndex; i < endIndex; i++) {
     const sample = samples[i];
     const relative = (sample.time - windowStart) / totalWindow;
     const x = clamp01(relative) * canvasWidth;
     const y = mapValueToY(sample.value);
-    if (useStepMode && previousPoint && previousPoint.y !== y) {
-      points.push({ x, y: previousPoint.y });
+    if (useStepMode && count > 0 && prevY !== y) {
+      pointBufX[count] = x;
+      pointBufY[count] = prevY;
+      count++;
     }
-    const point: Point = { x, y };
-    points.push(point);
-    previousPoint = point;
+    pointBufX[count] = x;
+    pointBufY[count] = y;
+    count++;
+    prevY = y;
   }
 
-  return points;
+  return count;
 }
 
-function traceSegment(ctx: CanvasRenderingContext2D, points: Point[]): boolean {
-  if (!points || points.length < 2) {
+function traceSegmentFromBuffers(ctx: CanvasRenderingContext2D, pointCount: number): boolean {
+  if (pointCount < 2) {
     return false;
   }
 
   ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i++) {
-    const point = points[i];
-    ctx.lineTo(point.x, point.y);
+  ctx.moveTo(pointBufX[0], pointBufY[0]);
+  for (let i = 1; i < pointCount; i++) {
+    ctx.lineTo(pointBufX[i], pointBufY[i]);
   }
   return true;
 }
@@ -476,7 +499,7 @@ function clamp01(value: number): number {
 }
 
 export const __serialVisInternals = {
-  buildSegmentPoints,
+  buildSegmentPointsInto,
   hasActiveExpressions,
   isPanelVisible,
 };

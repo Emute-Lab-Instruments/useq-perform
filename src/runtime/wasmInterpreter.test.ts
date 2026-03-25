@@ -57,7 +57,20 @@ async function loadGeneratedBundleModule(bundleRelativePath: string): Promise<{
   if (typeof createModule !== "function") {
     throw new Error(`Generated WASM bundle did not expose createModule(): ${bundlePath}`);
   }
-  return createModule({});
+  const bundleDir = path.dirname(bundlePath);
+  // With SINGLE_FILE=0 the .wasm is a separate file — provide it as a
+  // pre-loaded ArrayBuffer so Emscripten doesn't try to fetch() in Node.
+  const wasmPath = path.resolve(bundleDir, "useq.wasm");
+  let wasmBinary: ArrayBuffer | undefined;
+  try {
+    wasmBinary = readFileSync(wasmPath).buffer;
+  } catch {
+    // SINGLE_FILE=1 builds embed WASM in the JS — no separate file needed.
+  }
+  return createModule({
+    ...(wasmBinary ? { wasmBinary } : {}),
+    locateFile: (filePath: string) => path.resolve(bundleDir, filePath),
+  });
 }
 
 function createBaseModule(options: {

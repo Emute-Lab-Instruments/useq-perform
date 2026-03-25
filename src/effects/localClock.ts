@@ -15,6 +15,7 @@
  */
 
 import { resampleExpressions } from './visualisationSampler.ts';
+import { perf } from '../lib/perfTrace.ts';
 import { setLastChangeKind, updateTime } from '../utils/visualisationStore.ts';
 import { dbg } from '../lib/debug.ts';
 
@@ -26,6 +27,7 @@ let samplingInFlight = false;
 
 function tick(): void {
   if (!running) return;
+  perf.begin("frame-tick");
 
   // Always schedule next frame first — clock is never blocked
   frameId = window.requestAnimationFrame(tick);
@@ -42,11 +44,12 @@ function tick(): void {
   // main thread. The sampler's sequence counter discards stale results, but
   // this guard avoids queuing redundant synchronous WASM work that would
   // burn CPU and be thrown away.
-  if (samplingInFlight) return;
+  if (samplingInFlight) { perf.end("frame-tick"); return; }
   samplingInFlight = true;
   resampleExpressions(elapsedSeconds)
     .catch((e) => dbg(`localClock: sampling error: ${e}`))
     .finally(() => { samplingInFlight = false; });
+  perf.end("frame-tick");
 }
 
 /** Start the local clock from t=0. */
