@@ -311,4 +311,132 @@ describe("visualisationSampler", () => {
       spy.mockRestore();
     });
   });
+
+  describe("multi-expression gutter and vis toggle flow (regression: shared active state)", () => {
+    it("empty buffer - no expressions visualised", async () => {
+      const { isExpressionVisualised } = await import(
+        "./visualisationSampler.ts"
+      );
+      expect(isExpressionVisualised("a1")).toBe(false);
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(false);
+    });
+
+    it("toggle vis on then off for same position", async () => {
+      const { toggleVisualisation, isExpressionVisualised } = await import(
+        "./visualisationSampler.ts"
+      );
+
+      await toggleVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
+
+      await toggleVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(false);
+    });
+
+    it("two expressions at different positions - only one can be visualised at a time", async () => {
+      const { toggleVisualisation, isExpressionVisualised } = await import(
+        "./visualisationSampler.ts"
+      );
+
+      await toggleVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
+      expect(isExpressionVisualised("a1", { from: 5, to: 5 })).toBe(false);
+
+      await toggleVisualisation("a1", "(a1 beat)", { from: 5, to: 5 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(false);
+      expect(isExpressionVisualised("a1", { from: 5, to: 5 })).toBe(true);
+      expect(isExpressionVisualised("a1")).toBe(true);
+    });
+
+    it("toggle off current expr - all vis state cleared", async () => {
+      const { toggleVisualisation, isExpressionVisualised } = await import(
+        "./visualisationSampler.ts"
+      );
+
+      await toggleVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
+
+      await toggleVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(false);
+      expect(isExpressionVisualised("a1")).toBe(false);
+    });
+
+    it("switching vis toggle preserves evaluation tracking (gutter vs vis independent)", async () => {
+      const { toggleVisualisation, isExpressionVisualised } = await import(
+        "./visualisationSampler.ts"
+      );
+
+      await toggleVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
+
+      await toggleVisualisation("a1", "(a1 beat)", { from: 5, to: 5 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(false);
+      expect(isExpressionVisualised("a1", { from: 5, to: 5 })).toBe(true);
+
+      await toggleVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
+      expect(isExpressionVisualised("a1", { from: 5, to: 5 })).toBe(false);
+    });
+
+    it("full flow: toggle first expr, toggle second expr, toggle back to first", async () => {
+      const {
+        toggleVisualisation,
+        isExpressionVisualised,
+      } = await import("./visualisationSampler.ts");
+
+      await toggleVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
+
+      await toggleVisualisation("a1", "(a1 beat)", { from: 5, to: 5 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(false);
+      expect(isExpressionVisualised("a1", { from: 5, to: 5 })).toBe(true);
+
+      await toggleVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
+      expect(isExpressionVisualised("a1", { from: 5, to: 5 })).toBe(false);
+    });
+
+    it("register with position - expression is tracked", async () => {
+      const {
+        registerVisualisation,
+        isExpressionVisualised,
+      } = await import("./visualisationSampler.ts");
+
+      await registerVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1")).toBe(true);
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
+    });
+
+    it("keeps the last known good expression text when refresh fails", async () => {
+      const { evalInUseqWasm } = await import("../runtime/wasmInterpreter.ts");
+      const { visStore } = await import("../utils/visualisationStore.ts");
+      const {
+        registerVisualisation,
+        refreshVisualisedExpression,
+      } = await import("./visualisationSampler.ts");
+      const mockEval = vi.mocked(evalInUseqWasm);
+
+      mockEval.mockReset();
+      mockEval.mockResolvedValue("0.5");
+
+      await registerVisualisation("a1", "(a1 bar)", { from: 1, to: 1 });
+      expect(visStore.expressions.a1?.expressionText).toBe("(a1 bar)");
+
+      mockEval.mockRejectedValueOnce(new Error("bad expression"));
+      await refreshVisualisedExpression("a1", "(a1 (", { from: 2, to: 2 });
+
+      expect(visStore.expressions.a1).toMatchObject({
+        expressionText: "(a1 bar)",
+        position: { from: 2, to: 2 },
+      });
+
+      mockEval.mockResolvedValueOnce("0.5");
+      await refreshVisualisedExpression("a1", "(a1 beat)", { from: 3, to: 3 });
+
+      expect(visStore.expressions.a1).toMatchObject({
+        expressionText: "(a1 beat)",
+        position: { from: 3, to: 3 },
+      });
+    });
+  });
 });
