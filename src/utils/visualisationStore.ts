@@ -27,6 +27,8 @@ export interface VisExpression {
   expressionText: string;
   samples: VisSample[];
   color: string | null;
+  /** Position range of this expression in the editor (from line, to line). */
+  position?: { from: number; to: number };
 }
 
 export interface VisSettings {

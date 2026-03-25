@@ -108,6 +108,50 @@ describe("visualisationSampler", () => {
       await toggleVisualisation("a1", "(a1 (sin 1))");
       expect(isExpressionVisualised("a1")).toBe(false);
     });
+
+    it("only one expression per output can be active at a time (regression: shared active state)", async () => {
+      const { toggleVisualisation, isExpressionVisualised } = await import(
+        "./visualisationSampler.ts"
+      );
+
+      await toggleVisualisation("a1", "(a1 (sin 1))", { from: 1, to: 1 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
+      expect(isExpressionVisualised("a1", { from: 5, to: 5 })).toBe(false);
+
+      await toggleVisualisation("a1", "(a1 (sin 1))", { from: 5, to: 5 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(false);
+      expect(isExpressionVisualised("a1", { from: 5, to: 5 })).toBe(true);
+      expect(isExpressionVisualised("a1")).toBe(true);
+    });
+
+    it("toggling different positions for same exprType tracks both separately", async () => {
+      const { toggleVisualisation, isExpressionVisualised } = await import(
+        "./visualisationSampler.ts"
+      );
+
+      await toggleVisualisation("a1", "(a1 (sin 1))", { from: 1, to: 2 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 2 })).toBe(true);
+      expect(isExpressionVisualised("a1", { from: 10, to: 11 })).toBe(false);
+
+      await toggleVisualisation("a1", "(a1 (sin 1))", { from: 10, to: 11 });
+      expect(isExpressionVisualised("a1", { from: 1, to: 2 })).toBe(false);
+      expect(isExpressionVisualised("a1", { from: 10, to: 11 })).toBe(true);
+
+      await toggleVisualisation("a1", "(a1 (sin 1))", { from: 10, to: 11 });
+      expect(isExpressionVisualised("a1", { from: 10, to: 11 })).toBe(false);
+      expect(isExpressionVisualised("a1")).toBe(false);
+    });
+
+    it("isExpressionVisualised without position returns true if any position is active", async () => {
+      const { toggleVisualisation, isExpressionVisualised } = await import(
+        "./visualisationSampler.ts"
+      );
+
+      await toggleVisualisation("a1", "(a1 (sin 1))", { from: 5, to: 5 });
+      expect(isExpressionVisualised("a1")).toBe(true);
+      expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(false);
+      expect(isExpressionVisualised("a1", { from: 5, to: 5 })).toBe(true);
+    });
   });
 
   describe("sample grid alignment (regression: vertical jitter)", () => {

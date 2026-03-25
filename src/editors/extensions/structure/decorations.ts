@@ -322,6 +322,7 @@ export function createMarkersForRange(
 ): Array<{ pos: number; marker: ExpressionGutterMarker }> {
   const markers: Array<{ pos: number; marker: ExpressionGutterMarker }> = [];
   const midLine = Math.floor((range.from + range.to) / 2);
+  const position = { from: range.from, to: range.to };
 
   for (let line = range.from; line <= range.to; line++) {
     const isStart = line === range.from;
@@ -340,7 +341,7 @@ export function createMarkersForRange(
       isActive,
       exprType,
       showPlayButton,
-      isExpressionVisualised(exprType),
+      isExpressionVisualised(exprType, position),
     );
     const lineObj = docLineFn(line);
     markers.push({ pos: lineObj.from, marker });

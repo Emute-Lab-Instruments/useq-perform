@@ -9,7 +9,7 @@ This repository uses the Dolt-backed `bd` backend.
 - Local overrides: `.beads/metadata.json` or `BEADS_DOLT_*` environment variables
 - Primary issue transport: Dolt, not `sync-branch`
 - Git-carried JSONL: retained as an artifact/backup path, not the canonical sync mechanism
-- Canonical remote: `dolthub://lnfinite-monkeys/useq-perform-beads`
+- Canonical remote: VPS-hosted Dolt remotes API via local SSH tunnel
 
 The shared defaults currently assume a local Dolt SQL server on `127.0.0.1:3307` using database `beads_useq-perform` and user `root`.
 
@@ -43,14 +43,32 @@ According to the Beads docs and current CLI behavior, the practical choices are:
 
 ## Remote Setup
 
-This repo now points at the shared DoltHub remote `dolthub://lnfinite-monkeys/useq-perform-beads`.
+This repo now points at the VPS-hosted Dolt remotes API through a local SSH tunnel.
 
-The underlying Dolt repo should have a matching remote named `origin`. In this repo that means:
+Working setup:
+
+```bash
+ssh -f -N -L 15051:127.0.0.1:50051 w1n5t0n@lnfinitemonkeys.org
+```
+
+With that tunnel running:
 
 ```bash
 cd .beads/dolt/beads_useq-perform
-dolt remote add origin lnfinite-monkeys/useq-perform-beads
+DOLT_REMOTE_PASSWORD='' dolt push --user root --set-upstream origin main
 ```
+
+The remote URL used by this repo is:
+
+```text
+http://127.0.0.1:15051/useqperform
+```
+
+This tunnel-based HTTP setup is required because:
+
+- the VPS remotes API listens on localhost only
+- the installed local Dolt version (`1.59.x`) does not support the newer SSH-native remote path cleanly enough for this workflow
+- `bd dolt push` does not currently expose `--user`, so first-push / explicit push workflows may need plain `dolt push --user root`
 
 ## Other Remote Choices
 

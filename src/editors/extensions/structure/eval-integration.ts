@@ -230,6 +230,33 @@ function ensureSerialVisPanelVisible(): void {
   showVisualisationPanel({ emitAutoOpenEvent: true });
 }
 
+/** Find expression bounds by line number (helper for visualise). */
+function findExpressionDefinitionBounds(
+  view: EditorView,
+  exprType: string,
+): { from: number; to: number } | null {
+  const state = view.state;
+  const doc = state.doc;
+
+  for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
+    const lineObj = doc.line(lineNum);
+    const lineText = lineObj.text;
+    const lineFrom = lineObj.from;
+
+    let match: RegExpExecArray | null;
+    matchPattern.lastIndex = 0;
+    while ((match = matchPattern.exec(lineText)) !== null) {
+      const matchStart = lineFrom + match.index;
+      const foundExprType = `${match[1]}${match[2]}`;
+      if (foundExprType === exprType) {
+        const bounds = findExpressionBounds(state, matchStart);
+        return { from: bounds.from, to: bounds.to };
+      }
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Public eval-integration API
 // ---------------------------------------------------------------------------
@@ -316,13 +343,14 @@ export function detectAndTrackExpressionEvaluation(view: EditorView): void {
       const exprType = info.expressionType;
       notifyExpressionEvaluated(exprType);
 
-      if (!isExpressionVisualised(exprType)) continue;
+      const position = { from: info.position.line, to: info.position.line };
+      if (!isExpressionVisualised(exprType, position)) continue;
 
       const definition = findExpressionDefinition(view, exprType);
       const newText = definition?.expressionText?.trim();
       if (!newText) continue;
 
-      refreshVisualisedExpression(exprType, newText).catch((error: any) => {
+      refreshVisualisedExpression(exprType, newText, position).catch((error: any) => {
         dbg(`Visualise: failed to refresh ${exprType} after evaluation: ${error}`);
       });
     }
@@ -365,7 +393,9 @@ export function handlePlayExpression(view: EditorView, exprType: string): void {
     }
   }
 
-  handleVisualiseExpression(view, exprType, expressionText);
+  const bounds = findExpressionDefinitionBounds(view, exprType);
+  const position = bounds ? { from: bounds.from, to: bounds.to } : undefined;
+  handleVisualiseExpression(view, exprType, expressionText, position);
 }
 
 /** Toggle visualisation for an expression. */
@@ -373,19 +403,27 @@ export function handleVisualiseExpression(
   view: EditorView,
   exprType: string,
   expressionTextOverride: string | null = null,
+  positionOverride?: { from: number; to: number },
 ): void {
   let expressionText =
     typeof expressionTextOverride === "string"
       ? expressionTextOverride.trim()
       : expressionTextOverride;
+  let position = positionOverride;
 
-  if (!expressionText) {
+  if (!expressionText || !position) {
     const definition = findExpressionDefinition(view, exprType);
     if (!definition) {
       dbg(`Visualise: could not find definition for ${exprType}`);
       return;
     }
     expressionText = definition.expressionText.trim();
+    if (!position) {
+      const bounds = findExpressionDefinitionBounds(view, exprType);
+      if (bounds) {
+        position = { from: bounds.from, to: bounds.to };
+      }
+    }
   }
 
   if (!expressionText) {
@@ -393,7 +431,7 @@ export function handleVisualiseExpression(
     return;
   }
 
-  const wasVisualised = isExpressionVisualised(exprType);
+  const wasVisualised = isExpressionVisualised(exprType, position);
 
   if (typeof console !== "undefined" && console.debug) {
     console.debug("useq:visualise-toggle", {
@@ -403,9 +441,9 @@ export function handleVisualiseExpression(
     });
   }
   dbg(`Visualise: toggling ${exprType}, text length ${expressionText.length}`);
-  toggleVisualisation(exprType, expressionText)
+  toggleVisualisation(exprType, expressionText, position)
     .then(() => {
-      const isNowVisualised = isExpressionVisualised(exprType);
+      const isNowVisualised = isExpressionVisualised(exprType, position);
       if (!wasVisualised && isNowVisualised) {
         ensureSerialVisPanelVisible();
       }
