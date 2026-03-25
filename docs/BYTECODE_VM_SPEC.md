@@ -35,13 +35,13 @@ Signals support two mapping operations:
 - **postmap** (output mapping): `(postmap g signal)` = `g(signal(t))` — transform the output. Note: postmap is just normal function application — `(postmap sin expr)` ≡ `(sin expr)`. It requires no special compiler support; it's implicit in the language.
 - **premap** (input mapping): `(premap f signal)` = `signal(f(t))` — warp the input time. Premap requires dedicated compiler support because it changes the time context for the inner subgraph.
 
-The built-in time modifiers are premaps:
+The built-in time modifiers are affine premaps:
 - `(fast k expr)` = `(premap (fn [t] (* k t)) expr)` — speed up
 - `(slow k expr)` = `(premap (fn [t] (/ t k)) expr)` — slow down
-- `(offset k expr)` = `(premap (fn [t] (+ t k)) expr)` — shift raw time (no wrapping)
-- `(shift k expr)` = `(premap (fn [t] (frac (+ t k))) expr)` — phase-shift with wrap to 0..1
+- `(offset k expr)` = `(premap (fn [t] (+ t k)) expr)` — shift time linearly
+- `(shift k expr)` is an alias of `(offset k expr)`
 
-Note: `offset` and `shift` are distinct operations. `offset` adds to time linearly (unbounded). `shift` adds and wraps via fractional part — a modular phase shift that works for any periodic signal.
+For V1 there are no non-linear time-warp semantics in the core language. `shift` does not wrap or phase-normalize; it exists only as a synonym for `offset`.
 
 ### 2.3 External Input Slots
 
@@ -64,17 +64,31 @@ The language has two distinct evaluation contexts:
 
 Side-effectful forms inside signal expressions are a **compile-time error**. The tree-walker tolerated this (silently re-executing `define` 300 times per frame), but the bytecode VM enforces the boundary explicitly. This is a deliberate improvement over the tree-walker's semantics.
 
-### 2.6 Data Types in Signal Context
+### 2.6 Data Types
 
-The VM operates exclusively on **scalar doubles** in signal context. Vectors appear only as data-segment constants indexed by `VEC_INDEX`/`VEC_LERP`.
+The bytecode VM replaces the tree-walking interpreter entirely, so it must support a minimal tagged-value subset of the language rather than only scalar doubles. V1 supports at least:
 
-Quoted lists (`'(...)`) are not used in signal context — they exist only for top-level metaprogramming (`schedule`, `eval`). In signal context, sequences are always vectors (`[...]`), following the Clojure convention: parens for code, brackets for data.
+- `number` (double)
+- `string`
+- `symbol`
+- `keyword`
+- `bool`
+- `nil`
+- `vector`
+- `lambda` / closure
+
+Signal hot paths remain numerically optimized. The compiler specializes arithmetic-heavy signal graphs into numeric fast paths whenever it can prove that an expression stays in the numeric/vector subset required for sampling. General REPL evaluation and mixed-type expressions use the tagged-value execution path.
+
+Quoted lists (`'(...)`) remain part of the general language for metaprogramming, scheduling, and code-as-data. Signal-oriented data is still expected to use vectors (`[...]`) by default, following the Clojure convention: parens for code, brackets for data.
 
 ### 2.7 Loops and Comprehensions
 
-`for` in signal context is a **list comprehension** (Clojure-style), not an imperative loop. `(for [i (range 1 9)] (* i 2))` produces `[2 4 6 8 10 12 14 16]` — a constant vector computed at compile time and stored in the data segment. If the body references signals, the compiler unrolls the comprehension into inline code.
+The current language already contains looping and comprehension-like constructs, and the VM must be able to represent the supported subset rather than wish them away.
 
-No loop instructions (`branch-back`) are needed in the bytecode. `while` is top-level only.
+- `for` remains part of the general language. If we keep the current imperative semantics, the general VM must support them. If we later change `for` to comprehension-only semantics, that will be an explicit language change with dedicated migration and tests.
+- `while` remains part of the general language and therefore part of the full-replacement VM scope, even though it is outside the numeric signal fast path.
+
+The arithmetic/vector fast path does not need to optimize loops in V1, but the general VM must still execute them correctly.
 
 ### 2.8 Dynamic `eval` in Signal Context
 
@@ -115,7 +129,7 @@ Same bytecode format and compiler for both targets. The dispatch is behind a `#i
 A **compiled graph** consists of:
 
 - **Instruction buffer**: flat array of bytecode instructions
-- **Data segment**: constant pool (scalars, vector data)
+- **Data segment**: constant pool (tagged literals, scalars, vector data)
 - **Register count**: number of registers used (for allocation)
 - **Dependency set**: set of symbol names this graph transitively references (for invalidation)
 
@@ -138,11 +152,11 @@ This is acceptable because typical ModuLisp expressions compile to 10-50 instruc
 ADD     rd, rs1, rs2       ; rd = rs1 + rs2
 SUB     rd, rs1, rs2
 MUL     rd, rs1, rs2
-DIV     rd, rs1, rs2       ; division by zero → error
+DIV     rd, rs1, rs2       ; division by zero → runtime error
 MOD     rd, rs1, rs2
 NEG     rd, rs              ; rd = -rs
 
-; Comparison (result: 1.0 or 0.0)
+; Comparison (result: 1.0 or 0.0 in numeric fast paths, tagged bool in general VM)
 CMP_GT  rd, rs1, rs2
 CMP_LT  rd, rs1, rs2
 CMP_GE  rd, rs1, rs2
@@ -152,7 +166,7 @@ CMP_EQ  rd, rs1, rs2
 ; Math
 FLOOR   rd, rs
 CEIL    rd, rs
-FRAC    rd, rs             ; rd = rs - floor(rs) (fractional part, for shift wrapping)
+FRAC    rd, rs             ; rd = rs - floor(rs)
 ABS     rd, rs
 MIN     rd, rs1, rs2
 MAX     rd, rs1, rs2
@@ -160,23 +174,30 @@ POW     rd, rs1, rs2       ; rd = rs1 ^ rs2
 SQRT    rd, rs
 CLAMP   rd, rs, rlo, rhi   ; rd = clamp(rs, rlo, rhi)
 
-; Transcendentals (unipolar variants for music: 0..1 range)
-SIN     rd, rs             ; rd = sin(rs * 2π) * 0.5 + 0.5 (unipolar)
-COS     rd, rs             ; rd = cos(rs * 2π) * 0.5 + 0.5 (unipolar)
-TAN     rd, rs             ; rd = tan(rs * 2π) (standard, unbounded — user clamps if needed)
-SIN_BI  rd, rs             ; rd = sin(rs * 2π) (bipolar, -1..1)
-COS_BI  rd, rs             ; rd = cos(rs * 2π) (bipolar, -1..1)
+; Trigonometry (mathematical by default)
+SIN     rd, rs             ; rd = sin(rs)
+COS     rd, rs             ; rd = cos(rs)
+TAN     rd, rs             ; rd = tan(rs)
 
-; Waveform generators (pure functions of phasor)
-TRI     rd, rs             ; triangle wave from phasor
+; UGen variants (phasor-domain / unipolar convenience ops)
+U_SIN   rd, rs             ; rd = sin(rs * 2π) * 0.5 + 0.5
+U_COS   rd, rs             ; rd = cos(rs * 2π) * 0.5 + 0.5
+U_SIN_BI rd, rs            ; rd = sin(rs * 2π)
+U_COS_BI rd, rs            ; rd = cos(rs * 2π)
+
+; Waveform generators
+TRI     rd, ...            ; exact arity/shape follows language semantics
 SQR     rd, rs             ; square wave from phasor
 PULSE   rd, rs1, rs2       ; pulse wave, rs2 = duty cycle
 ```
+
+The language default is bipolar/mathematical. UGen variants are explicit convenience operations for signal work; they do not replace the normal mathematical meaning of `SIN`, `COS`, or `TAN`.
 
 ### 4.2 Load / Store
 
 ```
 LOAD_CONST  rd, #imm_idx   ; load from constant pool
+                            ; constant pool entries may be tagged values, not just numbers
 LOAD_TIME   rd, channel, scale, offset
                             ; rd = temporal_var(time * scale + offset)
                             ; channel: T, BEAT, BAR, PHRASE, SECTION, BEAT_NUM, BAR_NUM
@@ -284,52 +305,24 @@ This classification drives:
 
 ### 5.4 Time-Warp Flattening
 
-The compiler accumulates an **affine time transform** `(scale, offset)` as it descends through `fast`, `slow`, `offset` nodes:
+The compiler accumulates an **affine time transform** `(scale, offset)` as it descends through `fast`, `slow`, `offset`, and `shift` nodes:
 
 ```
 (fast k expr)   → scale *= k
 (slow k expr)   → scale /= k
 (offset k expr) → offset += k
+(shift k expr)  → offset += k      ; alias of offset
 ```
 
 When the compiler reaches a temporal leaf (`beat`, `bar`, `t`, etc.), it emits:
 
 ```
-LOAD_TIME rd, BEAT, accumulated_scale, accumulated_offset
+LOAD_TIME rd, channel, accumulated_scale, accumulated_offset
 ```
 
-The `fast`/`slow`/`offset` nodes **vanish from the bytecode**. Nested affine warps compose: `(fast 2 (slow 0.5 (offset 0.1 expr)))` → `scale=1.0, offset=0.1`.
+The `fast`/`slow`/`offset`/`shift` nodes **vanish from the numeric signal bytecode**. Nested affine warps compose directly: `(fast 2 (slow 0.5 (shift 0.1 expr)))` → `scale=1.0, offset=0.1`.
 
-**`shift` breaks the affine chain.** `shift` adds an offset and wraps via `frac()`, which is non-linear. It cannot be folded into a single `(scale, offset)` pair with surrounding affine transforms because `frac(a * x + b)` ≠ `a * frac(x) + b` in general.
-
-The compiler handles this with a **segmented transform chain**: a list of `(affine, optional_nonlinear)` segments. As the compiler descends:
-1. Affine transforms (`fast`, `slow`, `offset`) accumulate into the current segment's `(scale, offset)`
-2. When `shift` is encountered, it closes the current segment (attaching `FRAC` as the non-linear op), and starts a new segment for the inner expression
-3. At the leaf, the compiler emits all segments in order
-
-**Example: `(fast 2 (shift 0.25 (sin beat)))` — fast outer, shift inner:**
-```
-; Segment 1: fast 2 + shift 0.25 → affine (2.0, 0.25) + FRAC
-LOAD_TIME  r0, BEAT, 2.0, 0.25    ; beat_phasor * 2 + 0.25
-FRAC       r0, r0                  ; wrap to 0..1
-; Segment 2: no further transforms, compute inner expression
-SIN        r1, r0
-```
-Result: `sin(frac(beat * 2 + 0.25))` ✓
-
-**Example: `(shift 0.25 (fast 2 (sin beat)))` — shift outer, fast inner:**
-```
-; Segment 1: shift 0.25 → affine (1.0, 0.25) + FRAC
-LOAD_TIME  r0, BEAT, 1.0, 0.25    ; beat_phasor + 0.25
-FRAC       r0, r0                  ; wrap to 0..1
-; Segment 2: fast 2 → scale the wrapped result
-MUL        r0, r0, const(2.0)     ; apply fast 2 to the wrapped time
-; Inner expression uses modified time
-SIN        r1, r0
-```
-Result: `sin(frac(beat + 0.25) * 2)` ✓ — note this is different from the first example.
-
-**Non-linear premaps** (`premap` with arbitrary function): handled the same way as `shift` — they close the current affine segment, emit bytecode to compute the warped time, and start a new segment. The segmented chain generalizes naturally to arbitrary combinations of affine and non-linear transforms.
+There is no segmented or non-linear premap chain in V1. If we later add genuinely non-linear time-warp operators, they will require a separate design because they cannot be represented as simple affine composition.
 
 ### 5.5 Builtin Expansion
 
@@ -370,25 +363,29 @@ This gives full inlining optimization with correct live-coding semantics — red
 
 Each output slot maintains **two compiled graphs**:
 
-- **Active**: the most recently compiled graph. Executes on every sample.
-- **Last-known-good (LKG)**: the most recent graph that ran at least one full sample batch without error. Only changes when the current active graph has been healthy and a new expression supersedes it.
+- **Active**: the graph currently used for sampling.
+- **Last-known-good (LKG)**: the most recently **observed-good** graph, meaning it completed at least one full sample batch without error.
 
-**Invariant**: broken graphs never become LKG. A graph is considered **healthy** if it is currently executing without errors at the moment a new expression supersedes it (i.e., it was running clean when replaced). Only healthy graphs move to the LKG slot.
+We cannot prove in general that a graph which succeeded once will never fail later. Time, external inputs, and dynamic values make that undecidable in the general case. So LKG is based on observed behavior, not proof of future safety.
 
-**State transitions**:
+**Recommended runtime model**:
 
-1. **New expression compiled** → new graph becomes active.
-   - If old active was healthy: old active moves to LKG.
-   - If old active was erroring: LKG unchanged.
-2. **Active graph errors at runtime** → execute LKG instead for remaining and subsequent samples. Active stays in its slot (user might fix and resend).
-3. **Compilation fails** → active unchanged, LKG unchanged, output uninterrupted. Report compile error.
-4. **No LKG exists** (first expression ever, or first was broken) → fallback produces `0.0` (safe default; 0V on hardware).
+1. **New expression compiled** → new graph becomes the active graph candidate.
+2. **First healthy batch** from that graph → it becomes eligible for promotion into the LKG chain.
+3. **If a newer graph supersedes a healthy active graph** → the superseded healthy graph becomes LKG.
+4. **Active graph errors at runtime** → switch immediately to LKG for the rest of the current batch and subsequent sampling.
+5. **Compilation fails** → keep the current active graph unchanged.
+6. **No LKG exists** → hold the last valid sample for the remainder of the current batch if one exists; otherwise fall back to neutral defaults.
 
-**LKG binding semantics**: LKG graphs use **frozen bindings** — the values that were inlined at compilation time. If a symbol has been redefined since, the LKG graph does not pick up the new value. This is consistent with the inlining model: LKG is a self-contained compiled artifact.
+**Neutral defaults**:
 
-> **Revisit post-MVP**: Frozen bindings mean that falling back to LKG after a failed redefinition plays the *old* version of the signal with the *old* parameter values. Consider whether recompiling LKG with current bindings would be more useful in practice.
+- Analog outputs: `0.0` by default because the new VM semantics are bipolar by default and `0.0` represents 0V.
+- Digital outputs: `0.0`
+- Serial outputs: `0.0`
 
-**Result**: zero silence during live performance. The performer can experiment freely; broken code gracefully holds the previous working version.
+**LKG binding semantics**: LKG graphs use frozen bindings from the moment they were compiled. This keeps fallback deterministic and avoids recompiling during an error path.
+
+**Result**: no hard drop to silence unless there has never been any valid graph or valid sample to fall back to. In the common case, broken code gracefully holds the most recent working behavior.
 
 ### 6.4 WASM ABI
 
@@ -398,20 +395,22 @@ No WASM ABI changes are needed for V1.
 
 ### 6.5 Replacing the Tree-Walker
 
-The bytecode VM replaces the tree-walker for **all evaluation**, including REPL. When `useq_eval(code)` is called:
+The bytecode VM replaces the tree-walker for **all evaluation**, including REPL, top-level forms, and signal sampling. There is no separate "signal-only VM" beside a retained general interpreter.
+
+When `useq_eval(code)` is called:
 
 1. Parse the code into an AST
-2. Identify top-level context: if the form is a side-effectful construct (`define`, `defn`, `a1`-`a8`, `schedule`, transport commands, or top-level `do`), execute the side-effect and compile any signal sub-expressions
-3. If the form is a pure expression, compile to bytecode, execute once, return the result
-4. For output assignments, store the compiled signal graph for repeated sampling
+2. Compile the form into bytecode for the appropriate execution path
+3. Execute it in the tagged-value VM or the specialized numeric fast path
+4. Persist compiled artifacts for outputs and other long-lived bindings when appropriate
 
-For REPL expressions, the compiled bytecode is ephemeral (not cached). For output assignments (`a1`, `a2`, etc.), the compiled graph is stored and reused for sampling.
+For REPL expressions, compiled bytecode may be ephemeral. For output assignments (`a1`, `a2`, etc.), the compiled graph is stored and reused for sampling.
 
-**Top-level `do` handling**: `(do form1 form2 ... formN)` at the top level is desugared into sequential top-level evaluation of each child form. This matches the user's mental model: select a block, hit eval, each statement executes in order.
+**Top-level `do` handling**: `(do form1 form2 ... formN)` at the top level is still desugared into sequential top-level evaluation of each child form.
 
-**String return values**: `useq_eval()` returns a string representation of the result. The VM evaluates to a `double` internally; the string conversion happens at the API boundary. For non-numeric results (e.g., `(useq-get-transport-state)` → `"playing"`), transport commands and similar queries remain as immediate C++ function calls, not compiled bytecode.
+**Return values**: `useq_eval()` still returns a string representation at the API boundary, but that representation may come from any supported tagged value type, not only numbers. Strings, symbols, keywords, vectors, booleans, and `nil` must all round-trip through the general VM correctly.
 
-This eliminates dual evaluation paths for signal code and ensures consistent semantics everywhere.
+This design preserves one execution engine with two optimization tiers: a general tagged-value VM for language completeness and a specialized numeric fast path for arithmetic/vector-heavy signal evaluation.
 
 ## 7. Testing Strategy
 
@@ -446,8 +445,8 @@ tests:
     samples:
       - {t: 0.0, expect: 3.0}   # t is ground truth; beat/bar derived from t + bpm
 
-  - name: "sin at zero phasor is 0.5 (unipolar)"
-    expr: "(sin beat)"
+  - name: "u-sin at zero phasor is 0.5 (unipolar)"
+    expr: "(u-sin beat)"
     samples:
       - {t: 0.0, expect: 0.5}
       - {t: 0.25, expect: 1.0}  # quarter beat at 120bpm → beat phasor 0.25
@@ -496,7 +495,7 @@ Each bytecode instruction tested in isolation. These are C++ tests that construc
 - Time-warp flattening: `(fast 2 (sin beat))` → `LOAD_TIME` with `scale=2`, no `FAST` instruction in output
 - Dead code: `(if 1 (sin beat) (cos beat))` → only `SIN` emitted, no branch
 - Affine composition: `(fast 2 (slow 0.5 (offset 0.1 expr)))` → `LOAD_TIME` with `scale=1.0, offset=0.1`
-- `shift` wrapping: `(shift 0.25 (sin beat))` → `LOAD_TIME` + `FRAC` instruction present
+- `shift` aliasing: `(shift 0.25 expr)` emits the same affine transform as `(offset 0.25 expr)`
 
 **Instruction count tests** (Catch2 only) — assert upper bounds for complex optimizations:
 - CSE: `(+ (sin beat) (sin beat))` → at most 1 `SIN` instruction
@@ -513,16 +512,16 @@ Each bytecode instruction tested in isolation. These are C++ tests that construc
 **Algebraic properties** (RapidCheck in Catch2):
 - Arithmetic: commutativity `(+ a b) ≡ (+ b a)`, associativity, identity elements
 - Time-warp inverses: `(fast k (slow k expr))` ≡ `expr` for random `k > 0`
-- Shift wrapping: `(shift 1.0 expr)` ≡ `expr` (full period shift is identity)
+- Offset aliasing: `(shift k expr)` ≡ `(offset k expr)` for all `k`
 - Postmap composition: `(postmap f (postmap g expr))` ≡ `(postmap (compose f g) expr)`
 - Premap composition: `(fast a (fast b expr))` ≡ `(fast (* a b) expr)`
 - Vector indexing monotonicity: for sorted vector, output at phasor `p1 < p2` → `result1 <= result2`
 
-**Unipolar conventions** (generated YAML):
-- `(sin 0.0)` = 0.5, `(sin 0.25)` = 1.0, `(sin 0.5)` = 0.5, `(sin 0.75)` = 0.0
-- `(cos 0.0)` = 1.0, `(cos 0.25)` = 0.5, `(cos 0.5)` = 0.0
-- `(tri 0.0)` = 0.0, `(tri 0.25)` = 0.5, `(tri 0.5)` = 1.0, `(tri 0.75)` = 0.5
-- `(sqr 0.0)` = 1.0, `(sqr 0.5)` = 0.0 (or vice versa — document the convention)
+**Trig and waveform conventions** (generated YAML):
+- Mathematical trig: `(sin 0.0)` = `0.0`, `(cos 0.0)` = `1.0`, `(tan 0.0)` = `0.0`
+- UGen trig: `(u-sin 0.0)` = `0.5`, `(u-sin 0.25)` = `1.0`, `(u-sin 0.5)` = `0.5`, `(u-sin 0.75)` = `0.0`
+- UGen trig: `(u-cos 0.0)` = `1.0`, `(u-cos 0.25)` = `0.5`, `(u-cos 0.5)` = `0.0`
+- `tri`, `sqr`, and `pulse` examples must match the actual chosen language-level arity and waveform definitions rather than assuming old unipolar defaults
 
 **Phasor derivation** (generated YAML):
 - At 120 BPM: `t=0.0` → `beat=0.0`, `t=0.25` → `beat=0.5`, `t=0.5` → `beat=0.0` (wrapped)
@@ -614,13 +613,13 @@ Full state machine coverage for the error recovery system:
 
 **State machine invariants:**
 - LKG is the most recent graph that ran at least one full sample batch without error
-- LKG only changes when the current active graph has been healthy AND a new expression supersedes it
-- Broken graphs never become LKG
-- When no LKG exists, fallback produces 0.0
+- LKG is based on observed healthy execution, not proof of future safety
+- Only graphs that have completed at least one healthy batch are eligible to become LKG
+- When no LKG exists, fallback uses the last valid sample if possible, otherwise neutral defaults
 
 **Test scenarios:**
 
-1. **Bootstrap (no LKG):** First expression for output errors → output produces 0.0
+1. **Bootstrap (no LKG):** First expression for output errors → output holds the last valid sample if available, otherwise uses the neutral default
 2. **Normal flow:** Working expr A → working expr B → B is active, A is LKG
 3. **Error fallback:** Working A (becomes LKG) → broken B → falls back to A, output matches A's signal
 4. **Cascading errors:** Working A → broken B → broken C → still falls back to A (not B)
@@ -707,11 +706,12 @@ Move WASM evaluation to a Web Worker with SharedArrayBuffer for batch results. T
 ### Phase 1: Core VM and instruction set
 - Define bytecode instruction encoding (opcode + register operands)
 - Implement VM dispatch loop (switch-based initially)
-- Implement core instruction set: arithmetic, comparisons, math, transcendentals, LOAD_CONST, LOAD_TIME, MOV
+- Implement core instruction set: arithmetic, comparisons, math, transcendentals, tagged constant loading, LOAD_TIME, MOV
 - Unit tests for each instruction
 
 ### Phase 2: Compiler frontend
 - AST → bytecode compiler for simple expressions (arithmetic, temporals)
+- Establish the tagged-value execution path for strings, symbols, keywords, booleans, nil, vectors, and closures
 - Register allocation (linear scan)
 - Constant folding pass
 - Integration with `eval_in()` — compile then execute instead of tree-walk
@@ -743,7 +743,7 @@ Move WASM evaluation to a Web Worker with SharedArrayBuffer for batch results. T
 ### Phase 7: Optimization and dispatch
 - CSE pass
 - Computed-goto dispatch for ARM (behind #ifdef)
-- Non-linear premap support
+- Additional time-warp operators beyond affine composition (if we choose to add them later)
 - Benchmark vs tree-walking baseline
 
 ### Phase 8: Cross-target validation
