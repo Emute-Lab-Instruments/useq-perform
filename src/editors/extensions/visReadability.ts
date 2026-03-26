@@ -22,7 +22,7 @@ import {
   getVisualisationPanel,
   isVisualisationPanelVisible,
 } from "../../ui/adapters/visualisationPanel";
-import { getAppSettings } from "../../runtime/appSettingsRepository";
+import { getAppSettings, subscribeAppSettings } from "../../runtime/appSettingsRepository";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -273,6 +273,8 @@ class VisReadabilityPlugin {
   private rafId: number | null = null;
   /** Editor panel top offset from viewport (cached during measure). */
   private editorTop = 0;
+  /** Unsubscribe from app settings changes. */
+  private unsubSettings: (() => void) | null = null;
 
   constructor(view: EditorView) {
     this.view = view;
@@ -317,6 +319,9 @@ class VisReadabilityPlugin {
       this.mutationObserver.observe(visPanel, { attributes: true, attributeFilter: ['style'] });
     }
 
+    // Rebuild polygons when settings change (padding, etc.).
+    this.unsubSettings = subscribeAppSettings(() => this.scheduleRebuild());
+
     this.scheduleRebuild();
   }
 
@@ -330,6 +335,7 @@ class VisReadabilityPlugin {
   destroy(): void {
     this.stopRenderLoop();
     if (this.scrollRebuildTimer !== null) clearTimeout(this.scrollRebuildTimer);
+    this.unsubSettings?.();
     this.view.scrollDOM.removeEventListener('scroll', this.handleScroll);
     this.mutationObserver.disconnect();
     this.overlayCanvas.remove();
@@ -428,11 +434,15 @@ class VisReadabilityPlugin {
       mCtx.fillStyle = '#fff';
       mCtx.fill(this.clipPath!);
       mCtx.restore();
-      // Blur the mask for soft edges if feather > 0.
+      // Blur the mask for soft edges: copy the sharp mask to the overlay
+      // canvas (temp storage — it'll be cleared in step 3), then clear
+      // the mask buffer and redraw from the overlay with a blur filter.
       if (feather > 0) {
-        // Copy current mask, clear, redraw with blur filter.
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(this.maskBuffer, 0, 0);
+        mCtx.clearRect(0, 0, w, h);
         mCtx.filter = `blur(${feather}px)`;
-        mCtx.drawImage(this.maskBuffer, 0, 0);
+        mCtx.drawImage(this.overlayCanvas, 0, 0);
         mCtx.filter = 'none';
       }
     }
