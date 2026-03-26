@@ -168,6 +168,28 @@ export function VisualisationSettings() {
           onChange={(val) => updateVisField("readabilityPadding", val)}
         />
       </FormRow>
+      <FormRow label="Density passes">
+        <RangeInput
+          value={settings.visualisation?.readabilityPasses ?? 2}
+          min={0}
+          max={5}
+          step={1}
+          disabled={settings.visualisation?.readabilityEnabled === false}
+          formatValue={(v) => `${Math.round(v)}`}
+          onChange={(val) => updateVisField("readabilityPasses", val)}
+        />
+      </FormRow>
+      <FormRow label="Scroll overscan">
+        <RangeInput
+          value={settings.visualisation?.readabilityOverscan ?? 30}
+          min={0}
+          max={100}
+          step={5}
+          disabled={settings.visualisation?.readabilityEnabled === false}
+          formatValue={(v) => `${Math.round(v)} lines`}
+          onChange={(val) => updateVisField("readabilityOverscan", val)}
+        />
+      </FormRow>
       <FormRow label="Show future mask/dashes">
         <Checkbox
           checked={settings.visualisation?.futureDashed !== false}

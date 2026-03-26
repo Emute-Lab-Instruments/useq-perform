@@ -84,6 +84,8 @@ function normalizeVisualisationSettings(
     readabilityPadding: coerceNumber(raw.readabilityPadding, defaults.readabilityPadding),
     readabilityTintOpacity: coerceNumber(raw.readabilityTintOpacity, defaults.readabilityTintOpacity),
     readabilityAlpha: coerceNumber(raw.readabilityAlpha, defaults.readabilityAlpha),
+    readabilityPasses: coerceNumber(raw.readabilityPasses, defaults.readabilityPasses),
+    readabilityOverscan: coerceNumber(raw.readabilityOverscan, defaults.readabilityOverscan),
     readabilityEnabled:
       raw.readabilityEnabled == null ? defaults.readabilityEnabled : raw.readabilityEnabled !== false,
   };
@@ -427,6 +429,20 @@ export function settingsPatchFromConfiguration(
       visualisationPatch.readabilityAlpha = coerceNumber(
         visualisation.readabilityAlpha,
         defaultUserSettings.visualisation.readabilityAlpha,
+      );
+    }
+
+    if ("readabilityPasses" in visualisation) {
+      visualisationPatch.readabilityPasses = coerceNumber(
+        visualisation.readabilityPasses,
+        defaultUserSettings.visualisation.readabilityPasses,
+      );
+    }
+
+    if ("readabilityOverscan" in visualisation) {
+      visualisationPatch.readabilityOverscan = coerceNumber(
+        visualisation.readabilityOverscan,
+        defaultUserSettings.visualisation.readabilityOverscan,
       );
     }
 

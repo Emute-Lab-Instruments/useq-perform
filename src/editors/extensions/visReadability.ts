@@ -154,20 +154,13 @@ export function buildBlockPolygonPath(group: PixelLineBounds[], padding: number 
 // ---------------------------------------------------------------------------
 
 /**
- * Number of lines to precompute beyond each edge of the viewport.
- * These lines get estimated bounds so the blur is already in place
- * when the user scrolls them into view.
- */
-const OVERSCAN_LINES = 30;
-
-/**
  * Computes PixelLineBounds for visible lines plus an overscan buffer.
  *
  * Lines inside the CM viewport get precise coords via `coordsAtPos`.
  * Lines in the overscan zone (beyond the viewport) get estimated coords
  * using `lineBlockAt` (document-space) converted to viewport-space.
  */
-function computeVisibleLineBoundsViewport(view: EditorView): PixelLineBounds[] {
+function computeVisibleLineBoundsViewport(view: EditorView, overscan: number): PixelLineBounds[] {
   const { from: vpFrom, to: vpTo } = view.viewport;
   const doc = view.state.doc;
   const scrollRect = view.scrollDOM.getBoundingClientRect();
@@ -177,8 +170,8 @@ function computeVisibleLineBoundsViewport(view: EditorView): PixelLineBounds[] {
   // Determine line range: viewport lines plus overscan.
   const vpFirstLine = doc.lineAt(vpFrom).number;
   const vpLastLine  = doc.lineAt(vpTo).number;
-  const firstLine = Math.max(1, vpFirstLine - OVERSCAN_LINES);
-  const lastLine  = Math.min(doc.lines, vpLastLine + OVERSCAN_LINES);
+  const firstLine = Math.max(1, vpFirstLine - overscan);
+  const lastLine  = Math.min(doc.lines, vpLastLine + overscan);
 
   const result: PixelLineBounds[] = [];
 
@@ -221,8 +214,6 @@ function computeVisibleLineBoundsViewport(view: EditorView): PixelLineBounds[] {
 // Pre-blurred canvas rendering
 // ---------------------------------------------------------------------------
 
-const DEFAULT_BLUR_RADIUS = 10;
-const DEFAULT_PADDING = 3;
 const EDITOR_RAISED_Z = '21';
 const VIS_CANVAS_ID = 'serialcanvas';
 
@@ -393,9 +384,10 @@ class VisReadabilityPlugin {
       ctx.clearRect(0, 0, w, h);
       return;
     }
-    const blurRadius = visSettings?.readabilityBlurRadius ?? DEFAULT_BLUR_RADIUS;
+    const blurRadius = visSettings?.readabilityBlurRadius ?? 10;
     const tintOpacity = visSettings?.readabilityTintOpacity ?? 0;
     const alpha = visSettings?.readabilityAlpha ?? 1;
+    const passes = Math.max(0, Math.min(5, Math.round(visSettings?.readabilityPasses ?? 2)));
 
     // 1. Blur + darken the vis canvas.
     //    brightness() dims waveform RGB without touching alpha, so the result
@@ -408,10 +400,10 @@ class VisReadabilityPlugin {
     blurCtx.clearRect(0, 0, bw, bh);
     blurCtx.filter = `blur(${blurRadius}px) brightness(${brightness})`;
     blurCtx.drawImage(visCanvas, 0, 0);
-    // Stack additional passes to build up density.
     blurCtx.filter = 'none';
-    blurCtx.drawImage(this.blurBuffer, 0, 0);
-    blurCtx.drawImage(this.blurBuffer, 0, 0);
+    for (let i = 0; i < passes; i++) {
+      blurCtx.drawImage(this.blurBuffer, 0, 0);
+    }
 
     // 2. Clip to the staircase polygons (shifted by scroll delta) and
     //    draw the blur buffer in viewport-fixed coordinates.
@@ -446,7 +438,8 @@ class VisReadabilityPlugin {
         const rect = editorPanel?.getBoundingClientRect() ?? null;
         const editorTop = rect?.top ?? 0;
         if (!visVisible) return { lineBounds: [], visVisible, scrollTop, editorTop };
-        const lineBounds = computeVisibleLineBoundsViewport(v);
+        const overscan = Math.max(0, Math.round(getAppSettings().visualisation?.readabilityOverscan ?? 30));
+        const lineBounds = computeVisibleLineBoundsViewport(v, overscan);
         if (rect) {
           for (const lb of lineBounds) {
             lb.left   -= rect.left;
@@ -462,7 +455,7 @@ class VisReadabilityPlugin {
         self.scrollBaseline = scrollTop;
         self.scrollDelta = 0;
         self.editorTop = editorTop;
-        const padding = getAppSettings().visualisation?.readabilityPadding ?? DEFAULT_PADDING;
+        const padding = getAppSettings().visualisation?.readabilityPadding ?? 3;
         self.clipPath = buildClipPath(lineBounds, padding);
       },
     });

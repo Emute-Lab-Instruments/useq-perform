@@ -58,6 +58,10 @@ export interface VisualisationSettings {
   readabilityTintOpacity: number;
   /** Overall opacity (0–1) of the readability overlay when composited. */
   readabilityAlpha: number;
+  /** Extra blur passes (0–5) that stack alpha for a denser effect without increasing radius. */
+  readabilityPasses: number;
+  /** Lines of overscan beyond the viewport for pre-computed blur coverage during scroll. */
+  readabilityOverscan: number;
   /** Whether the readability blur overlay is enabled at all. */
   readabilityEnabled: boolean;
 }
@@ -147,6 +151,8 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   readabilityPadding: 3,
   readabilityTintOpacity: 0.5,
   readabilityAlpha: 0.85,
+  readabilityPasses: 2,
+  readabilityOverscan: 30,
   readabilityEnabled: true,
 };
 
