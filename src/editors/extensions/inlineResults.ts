@@ -1,6 +1,7 @@
 import {
   StateEffect,
   StateField,
+  type Extension,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -8,7 +9,27 @@ import {
   EditorView,
   WidgetType,
 } from "@codemirror/view";
+import type { EvalResultMode } from "../../lib/settings/schema.ts";
 import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
+
+// ---------------------------------------------------------------------------
+// InlineResultsConfig — dependency injection interface
+// ---------------------------------------------------------------------------
+
+/**
+ * Configuration for the inline results system.
+ * Each field is a specific capability — no app-wide settings objects.
+ */
+export interface InlineResultsConfig {
+  /** Display mode for eval results (read on each result dispatch) */
+  getMode: () => EvalResultMode;
+  /** Maximum characters before truncation (read on each widget render) */
+  getMaxChars: () => number;
+  /** Whether to show a timestamp next to the result */
+  getShowTimestamp: () => boolean;
+  /** Auto-dismiss timeout in ms (0 = manual dismiss) */
+  getAutoDismissMs: () => number;
+}
 
 interface InlineResultPayload {
   text: string;
@@ -30,6 +51,7 @@ class InlineResultWidget extends WidgetType {
     readonly text: string,
     readonly isError: boolean,
     readonly timestamp: string | null,
+    private readonly _getMaxChars: () => number,
   ) {
     super();
   }
@@ -39,7 +61,7 @@ class InlineResultWidget extends WidgetType {
     span.className = this.isError
       ? "cm-inline-result cm-inline-result--error"
       : "cm-inline-result";
-    const display = truncateText(this.text, getMaxChars());
+    const display = truncateText(this.text, this._getMaxChars());
     span.textContent = ` ;=> ${display}`;
     if (this.timestamp) {
       const ts = document.createElement("span");
@@ -67,6 +89,7 @@ class FloatingResultWidget extends WidgetType {
   constructor(
     readonly text: string,
     readonly isError: boolean,
+    private readonly _getMaxChars: () => number,
   ) {
     super();
   }
@@ -76,7 +99,7 @@ class FloatingResultWidget extends WidgetType {
     container.className = this.isError
       ? "cm-floating-result cm-floating-result--error"
       : "cm-floating-result";
-    const display = truncateText(this.text, getMaxChars());
+    const display = truncateText(this.text, this._getMaxChars());
     container.textContent = display;
     return container;
   }
@@ -111,10 +134,6 @@ class FloatingResultWidget extends WidgetType {
 //   }
 // }
 
-function getMaxChars(): number {
-  return getAppSettings().evalResults?.maxChars ?? 200;
-}
-
 function truncateText(text: string, max: number): string {
   if (max <= 0 || text.length <= max) return text;
   return text.slice(0, max) + "…";
@@ -126,76 +145,104 @@ function formatTimestamp(show: boolean): string | null {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+// ---------------------------------------------------------------------------
+// Inline results field factory
+// ---------------------------------------------------------------------------
 
-export const inlineResultsField = StateField.define<DecorationSet>({
-  create() {
-    return Decoration.none;
-  },
-  update(decos, tr) {
-    decos = decos.map(tr.changes);
+/**
+ * Create an inline results StateField with explicit configuration.
+ * Returns an Extension (StateField) that provides editor decorations.
+ */
+export function createInlineResultsField(config: InlineResultsConfig): Extension {
+  let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
-    for (const e of tr.effects) {
-      if (e.is(clearInlineResults)) {
-        if (dismissTimer) {
-          clearTimeout(dismissTimer);
-          dismissTimer = null;
-        }
-        return Decoration.none;
-      }
+  return StateField.define<DecorationSet>({
+    create() {
+      return Decoration.none;
+    },
+    update(decos, tr) {
+      decos = decos.map(tr.changes);
 
-      if (e.is(showInlineResult)) {
-        const settings = getAppSettings().evalResults;
-        const mode = settings?.mode ?? "console";
-        const { text, pos, isError } = e.value;
-
-        if (mode === "console") {
-          continue;
-        }
-
-        const showTs = settings?.showTimestamp ?? false;
-        const ts = formatTimestamp(showTs);
-
-        if (dismissTimer) {
-          clearTimeout(dismissTimer);
-          dismissTimer = null;
-        }
-
-        const widgetSpec = mode === "floating"
-          ? Decoration.widget({
-              widget: new FloatingResultWidget(text, isError ?? false),
-              side: 1,
-              block: false,
-            })
-          : Decoration.widget({
-              widget: new InlineResultWidget(text, isError ?? false, ts),
-              side: 1,
-              block: false,
-            });
-
-        const anchorPos = mode === "floating"
-          ? pos
-          : tr.newDoc.lineAt(pos).to;
-
-        const resultDecos = Decoration.set(widgetSpec.range(anchorPos));
-
-        if (mode === "inline-ephemeral" || mode === "floating") {
-          const delay = settings?.autoDismissMs ?? 3000;
-          if (delay > 0) {
-            dismissTimer = setTimeout(() => {
-              dismissTimer = null;
-            }, delay);
+      for (const e of tr.effects) {
+        if (e.is(clearInlineResults)) {
+          if (dismissTimer) {
+            clearTimeout(dismissTimer);
+            dismissTimer = null;
           }
+          return Decoration.none;
         }
 
-        return resultDecos;
-      }
-    }
+        if (e.is(showInlineResult)) {
+          const mode = config.getMode();
+          const { text, pos, isError } = e.value;
 
-    return decos;
-  },
-  provide: (f) => EditorView.decorations.from(f),
-});
+          if (mode === "console") {
+            continue;
+          }
+
+          const showTs = config.getShowTimestamp();
+          const ts = formatTimestamp(showTs);
+
+          if (dismissTimer) {
+            clearTimeout(dismissTimer);
+            dismissTimer = null;
+          }
+
+          const widgetSpec = mode === "floating"
+            ? Decoration.widget({
+                widget: new FloatingResultWidget(text, isError ?? false, config.getMaxChars),
+                side: 1,
+                block: false,
+              })
+            : Decoration.widget({
+                widget: new InlineResultWidget(text, isError ?? false, ts, config.getMaxChars),
+                side: 1,
+                block: false,
+              });
+
+          const anchorPos = mode === "floating"
+            ? pos
+            : tr.newDoc.lineAt(pos).to;
+
+          const resultDecos = Decoration.set(widgetSpec.range(anchorPos));
+
+          if (mode === "inline-ephemeral" || mode === "floating") {
+            const delay = config.getAutoDismissMs();
+            if (delay > 0) {
+              dismissTimer = setTimeout(() => {
+                dismissTimer = null;
+              }, delay);
+            }
+          }
+
+          return resultDecos;
+        }
+      }
+
+      return decos;
+    },
+    provide: (f) => EditorView.decorations.from(f),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Default config — backward-compatible wrapper using global state
+// ---------------------------------------------------------------------------
+
+/** Default config that reads from the app's global state (backward-compatible). */
+export function createDefaultInlineResultsConfig(): InlineResultsConfig {
+  return {
+    getMode: () => getAppSettings().evalResults?.mode ?? "console",
+    getMaxChars: () => getAppSettings().evalResults?.maxChars ?? 200,
+    getShowTimestamp: () => getAppSettings().evalResults?.showTimestamp ?? false,
+    getAutoDismissMs: () => getAppSettings().evalResults?.autoDismissMs ?? 3000,
+  };
+}
+
+/** Backward-compatible default field instance. */
+export const inlineResultsField: Extension = createInlineResultsField(
+  createDefaultInlineResultsConfig(),
+);
 
 // FIXME: Gutter result field and gutter extension — re-enable when gutter mode
 // is reworked. The gutter renders in a separate column from line numbers and
