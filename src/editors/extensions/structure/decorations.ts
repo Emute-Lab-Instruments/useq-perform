@@ -2,6 +2,7 @@
 
 import {
   Annotation,
+  type Extension,
   RangeSetBuilder,
   StateField,
   type EditorState,
@@ -42,106 +43,318 @@ import {
 } from "./eval-integration.ts";
 
 // ---------------------------------------------------------------------------
+// GutterConfig — dependency injection interface
+// ---------------------------------------------------------------------------
+
+/**
+ * Configuration for the expression gutter system.
+ * Each field is a specific capability the gutter needs — no app-wide settings objects.
+ */
+export interface GutterConfig {
+  /** Whether the expression gutter is enabled (read on each rebuild) */
+  isGutterEnabled: () => boolean;
+  /** Whether play/clear buttons appear on gutter markers (read on each marker creation) */
+  isClearButtonEnabled: () => boolean;
+  /** Whether "last evaluated" tracking highlights are shown */
+  isLastTrackingEnabled: () => boolean;
+  /** Get the color for a matched expression (e.g., 'a1', 'd3') */
+  getExpressionColor: (match: RegExpExecArray) => string;
+  /** Check if an expression is currently being visualised */
+  isVisualised: (exprType: string, position: { from: number; to: number }) => boolean;
+  /** Report the resolved color for an expression type (for external UI sync) */
+  reportColor: (exprType: string, color: string | null) => void;
+  /** Handle play button click on an expression */
+  onPlayExpression: (view: EditorView, exprType: string) => void;
+  /** Subscribe to external changes that should trigger gutter rebuild. Returns unsubscribe function. */
+  onExternalChange: (callback: () => void) => () => void;
+}
+
+// ---------------------------------------------------------------------------
 // Annotations
 // ---------------------------------------------------------------------------
 
 export const settingsChangedAnnotation = Annotation.define<boolean>();
 
-// ---------------------------------------------------------------------------
-// Node highlight StateField
-// ---------------------------------------------------------------------------
+interface LineBounds {
+  lineNumber: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
 
-export const nodeHighlightField = StateField.define({
-  create(state: EditorState) {
-    const selection = state.selection.main;
-    const node = findNodeAt(state, selection.from, selection.to);
-    const containerNode = getContainerNodeAt(state, selection.from);
-    if (!node && !containerNode) return Decoration.none;
+function getLineContentRange(text: string): { start: number; end: number } {
+  let start = 0;
+  while (start < text.length && text[start] === ' ') start++;
+  let end = text.length;
+  while (end > start && text[end - 1] === ' ') end--;
+  return { start, end };
+}
 
-    const range = node ? getTrimmedRange(node, state) : null;
-    let parentRange: { from: number; to: number } | null = null;
-    let parentIsProgram = false;
-    const parent: any = containerNode;
+function computeNodeLineBounds(
+  view: EditorView,
+  nodeFrom: number,
+  nodeTo: number,
+): LineBounds[] {
+  const doc = view.state.doc;
+  const firstLine = doc.lineAt(nodeFrom);
+  const lastLine = doc.lineAt(nodeTo);
+  const charWidth = view.defaultCharacterWidth;
+  const minPadCols = 2;
+  const scrollRect = view.scrollDOM.getBoundingClientRect();
 
-    if (parent) {
-      parentIsProgram = parent.type.name === "Program";
-      parentRange = getTrimmedRange(parent, state);
+  const entries: Array<{ line: any; lineNum: number; block: any; start: number; end: number }> = [];
+  let globalMinCol = Infinity;
+
+  for (let lineNum = firstLine.number; lineNum <= lastLine.number; lineNum++) {
+    const line = doc.line(lineNum);
+    const { start, end } = getLineContentRange(line.text);
+    const block = view.lineBlockAt(line.from);
+    entries.push({ line, lineNum, block, start, end });
+    if (start < end && start < globalMinCol) {
+      globalMinCol = start;
+    }
+  }
+
+  if (globalMinCol === Infinity) {
+    globalMinCol = 0;
+  }
+
+  const leftCoords = view.coordsAtPos(firstLine.from + globalMinCol, -1);
+  const baseLeft = leftCoords ? leftCoords.left - scrollRect.left : globalMinCol * charWidth;
+
+  return entries.map(({ line, lineNum, block, start, end }) => {
+    let rightX: number;
+    if (start < end) {
+      const rightCoords = view.coordsAtPos(line.from + end, 1);
+      rightX = rightCoords ? rightCoords.right - scrollRect.left : end * charWidth;
+    } else {
+      rightX = baseLeft + minPadCols * charWidth;
     }
 
-    const decorations: any[] = [];
-    if (range) {
-      decorations.push(
-        Decoration.mark({ class: "cm-current-node" }).range(range.from, range.to),
-      );
+    return {
+      lineNumber: lineNum,
+      left: baseLeft,
+      right: rightX,
+      top: block.top,
+      bottom: block.bottom,
+    };
+  });
+}
+
+function groupLineBounds(lines: LineBounds[]): LineBounds[][] {
+  if (lines.length === 0) return [];
+  const groups: LineBounds[][] = [];
+  let currentGroup: LineBounds[] = [lines[0]];
+
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].lineNumber === lines[i - 1].lineNumber + 1) {
+      currentGroup.push(lines[i]);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [lines[i]];
     }
-    if (parentIsProgram) {
-      decorations.push(
-        Decoration.mark({ class: "cm-parent-node-editor-area" }).range(
-          0,
-          state.doc.length,
-        ),
-      );
-    } else if (parentRange) {
-      decorations.push(
-        Decoration.mark({ class: "cm-parent-node" }).range(
-          parentRange.from,
-          parentRange.to,
-        ),
-      );
+  }
+  groups.push(currentGroup);
+  return groups;
+}
+
+function buildPolygonPath(group: LineBounds[], padding: number = 2): string {
+  if (group.length === 0) return '';
+  const P = padding;
+  const lines = group.map(lb => ({
+    left: lb.left - P,
+    right: lb.right + P,
+    top: lb.top - P,
+    bottom: lb.bottom + P,
+  }));
+  const pts: [number, number][] = [];
+
+  pts.push([lines[0].right, lines[0].top]);
+  for (let i = 0; i < lines.length - 1; i++) {
+    const curr = lines[i];
+    const next = lines[i + 1];
+    if (next.right !== curr.right) {
+      const stepY = (curr.bottom + next.top) / 2;
+      pts.push([curr.right, stepY]);
+      pts.push([next.right, stepY]);
     }
-    decorations.sort((a: any, b: any) => a.from - b.from);
-    return decorations.length ? Decoration.set(decorations) : Decoration.none;
-  },
+  }
+  pts.push([lines[lines.length - 1].right, lines[lines.length - 1].bottom]);
 
-  update(deco, tr) {
-    if (!tr.docChanged && !tr.selection) return deco;
-    try {
-      const selection = tr.state.selection.main;
-      const node = findNodeAt(tr.state, selection.from, selection.to);
-      const containerNode = getContainerNodeAt(tr.state, selection.from);
-      if (!node && !containerNode) return Decoration.none;
-
-      const range = node ? getTrimmedRange(node, tr.state) : null;
-      let parentRange: { from: number; to: number } | null = null;
-      let parentIsProgram = false;
-      const parent: any = containerNode;
-
-      if (parent) {
-        parentIsProgram = parent.type.name === "Program";
-        parentRange = getTrimmedRange(parent, tr.state);
-      }
-
-      const decorations: any[] = [];
-      if (range) {
-        decorations.push(
-          Decoration.mark({ class: "cm-current-node" }).range(range.from, range.to),
-        );
-      }
-      if (parentIsProgram) {
-        decorations.push(
-          Decoration.mark({ class: "cm-parent-node-editor-area" }).range(
-            0,
-            tr.state.doc.length,
-          ),
-        );
-      } else if (parentRange) {
-        decorations.push(
-          Decoration.mark({ class: "cm-parent-node" }).range(
-            parentRange.from,
-            parentRange.to,
-          ),
-        );
-      }
-      decorations.sort((a: any, b: any) => a.from - b.from);
-      return decorations.length ? Decoration.set(decorations) : Decoration.none;
-    } catch (e) {
-      console.error("nodeHighlightField update failed", e);
-      return Decoration.none;
+  pts.push([lines[lines.length - 1].left, lines[lines.length - 1].bottom]);
+  for (let i = lines.length - 1; i > 0; i--) {
+    const curr = lines[i];
+    const prev = lines[i - 1];
+    if (prev.left !== curr.left) {
+      const stepY = (curr.top + prev.bottom) / 2;
+      pts.push([curr.left, stepY]);
+      pts.push([prev.left, stepY]);
     }
-  },
+  }
+  pts.push([lines[0].left, lines[0].top]);
+  return 'M' + pts.map(([x, y]) => `${x},${y}`).join('L') + 'Z';
+}
 
-  provide: (f) => EditorView.decorations.from(f),
-});
+interface NodeRangeData {
+  nodeFrom: number;
+  nodeTo: number;
+  parentFrom: number | null;
+  parentTo: number | null;
+  parentIsProgram: boolean;
+}
+
+interface PolygonData {
+  pathD: string;
+  isCurrent: boolean;
+}
+
+interface LineData {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+interface NodeHighlightMeasure {
+  nodeRange: NodeRangeData | null;
+  polygons: PolygonData[];
+  parentLines: LineData[];
+  scrollTop: number;
+}
+
+class NodeHighlightPluginClass {
+  private svgOverlay: SVGSVGElement;
+  private view: EditorView;
+
+  constructor(view: EditorView) {
+    this.view = view;
+    this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svgOverlay.style.cssText = `
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      overflow: visible;
+    `;
+    view.scrollDOM.appendChild(this.svgOverlay);
+    this.scheduleMeasure();
+  }
+
+  update(update: ViewUpdate): void {
+    this.view = update.view;
+    if (update.docChanged || update.selectionSet || update.viewportChanged || update.geometryChanged) {
+      this.scheduleMeasure();
+    }
+  }
+
+  destroy(): void {
+    this.svgOverlay.remove();
+  }
+
+  private scheduleMeasure(): void {
+    const self = this;
+    this.view.requestMeasure({
+      read(view: EditorView): NodeHighlightMeasure {
+        const scrollTop = view.scrollDOM.scrollTop;
+        const selection = view.state.selection.main;
+        const node = findNodeAt(view.state, selection.from, selection.to);
+        const containerNode = getContainerNodeAt(view.state, selection.from);
+
+        if (!node && !containerNode) {
+          return { nodeRange: null, polygons: [], parentLines: [], scrollTop };
+        }
+
+        const range = node ? getTrimmedRange(node, view.state) : null;
+        const parent: any = containerNode;
+        let parentRange: { from: number; to: number } | null = null;
+        let parentIsProgram = false;
+        if (parent) {
+          parentIsProgram = parent.type.name === "Program";
+          parentRange = getTrimmedRange(parent, view.state);
+        }
+
+        const nodeRange: NodeRangeData = {
+          nodeFrom: range?.from ?? -1,
+          nodeTo: range?.to ?? -1,
+          parentFrom: parentRange?.from ?? null,
+          parentTo: parentRange?.to ?? null,
+          parentIsProgram,
+        };
+
+        const polygons: PolygonData[] = [];
+
+        if (nodeRange.nodeFrom >= 0) {
+          const lineBounds = computeNodeLineBounds(view, nodeRange.nodeFrom, nodeRange.nodeTo);
+          if (lineBounds.length > 0) {
+            const blocks = groupLineBounds(lineBounds);
+            for (const block of blocks) {
+              const pathD = buildPolygonPath(block, 3);
+              if (pathD) {
+                polygons.push({ pathD, isCurrent: true });
+              }
+            }
+          }
+        }
+
+        const parentLines: LineData[] = [];
+        if (nodeRange.parentFrom !== null && nodeRange.parentTo !== null && !nodeRange.parentIsProgram) {
+          const parentLineBounds = computeNodeLineBounds(view, nodeRange.parentFrom, nodeRange.parentTo);
+          if (parentLineBounds.length > 0) {
+            const lastLine = parentLineBounds[parentLineBounds.length - 1];
+            parentLines.push({
+              x1: lastLine.left - 3,
+              y1: lastLine.bottom + 2,
+              x2: lastLine.right + 3,
+              y2: lastLine.bottom + 2,
+            });
+          }
+        }
+
+        return { nodeRange, polygons, parentLines, scrollTop };
+      },
+      write(measure: NodeHighlightMeasure) {
+        self.renderPolygons(measure.polygons, measure.parentLines);
+      },
+    });
+  }
+
+  private renderPolygons(polygons: PolygonData[], parentLines: LineData[]): void {
+    while (this.svgOverlay.firstChild) {
+      this.svgOverlay.removeChild(this.svgOverlay.firstChild);
+    }
+
+    const scrollWidth = this.view.scrollDOM.scrollWidth;
+    const scrollHeight = this.view.scrollDOM.scrollHeight;
+    this.svgOverlay.setAttribute('width', String(scrollWidth));
+    this.svgOverlay.setAttribute('height', String(scrollHeight));
+
+    for (const poly of polygons) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', poly.pathD);
+      path.setAttribute('fill', 'rgba(255, 100, 150, 0.15)');
+      path.setAttribute('stroke', 'rgba(255, 80, 130, 0.7)');
+      path.setAttribute('stroke-width', '2');
+      this.svgOverlay.appendChild(path);
+    }
+
+    for (const line of parentLines) {
+      const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      lineEl.setAttribute('x1', String(line.x1));
+      lineEl.setAttribute('y1', String(line.y1));
+      lineEl.setAttribute('x2', String(line.x2));
+      lineEl.setAttribute('y2', String(line.y2));
+      lineEl.setAttribute('stroke', 'rgba(100, 255, 100, 0.4)');
+      lineEl.setAttribute('stroke-width', '2');
+      lineEl.setAttribute('stroke-dasharray', '6 4');
+      this.svgOverlay.appendChild(lineEl);
+    }
+  }
+}
+
+export const nodeHighlightPlugin = ViewPlugin.fromClass(NodeHighlightPluginClass);
 
 // ---------------------------------------------------------------------------
 // Color helpers
@@ -155,7 +368,7 @@ export function getMatchColor(match: RegExpExecArray): string {
   const palette = getCurrentPalette();
   const offset = (getAppSettings()?.visualisation as any)?.circularOffset ?? 0;
   const exprType = `${match[1]}${match[2]}`;
-  return getSerialVisChannelColor(exprType, offset, palette as any);
+  return getSerialVisChannelColor(exprType, offset, palette as any) ?? '#888';
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +532,8 @@ export function createMarkersForRange(
   isActive: boolean,
   docLineFn: (line: number) => { from: number },
   exprType: string,
+  isClearButtonEnabled: () => boolean,
+  isVisualisedFn: (exprType: string, position: { from: number; to: number }) => boolean,
 ): Array<{ pos: number; marker: ExpressionGutterMarker }> {
   const markers: Array<{ pos: number; marker: ExpressionGutterMarker }> = [];
   const midLine = Math.floor((range.from + range.to) / 2);
@@ -328,9 +543,8 @@ export function createMarkersForRange(
     const isStart = line === range.from;
     const isEnd = line === range.to;
     const isMid = !isStart && !isEnd;
-    const ui = ((getAppSettings()?.ui) as any) || {};
 
-    const buttonsEnabled = ui.expressionClearButtonEnabled !== false;
+    const buttonsEnabled = isClearButtonEnabled();
     const showPlayButton = buttonsEnabled && line === midLine;
 
     const marker = new ExpressionGutterMarker(
@@ -341,7 +555,7 @@ export function createMarkersForRange(
       isActive,
       exprType,
       showPlayButton,
-      isExpressionVisualised(exprType, position),
+      isVisualisedFn(exprType, position),
     );
     const lineObj = docLineFn(line);
     markers.push({ pos: lineObj.from, marker });
@@ -355,17 +569,20 @@ export function processExpressionRanges(
   expressionRanges: Map<string, Array<{ color: string; from: number; to: number }>>,
   lastEvaluatedMap: Map<string, { line: number }>,
   docLineFn: (line: number) => { from: number },
+  reportColorFn: (exprType: string, color: string | null) => void,
+  isClearButtonEnabled: () => boolean,
+  isVisualisedFn: (exprType: string, position: { from: number; to: number }) => boolean,
 ): Array<{ pos: number; marker: ExpressionGutterMarker }> {
   const allMarkers: Array<{ pos: number; marker: ExpressionGutterMarker }> = [];
 
   for (const [expressionType, ranges] of expressionRanges) {
     const lastEval = lastEvaluatedMap.get(expressionType);
     const firstRange = ranges && ranges.length > 0 ? ranges[0] : null;
-    reportExpressionColor(expressionType, firstRange ? firstRange.color : null);
+    reportColorFn(expressionType, firstRange ? firstRange.color : null);
 
     for (const range of ranges) {
       const active = isRangeActive(range, lastEval);
-      const markers = createMarkersForRange(range, active, docLineFn, expressionType);
+      const markers = createMarkersForRange(range, active, docLineFn, expressionType, isClearButtonEnabled, isVisualisedFn);
       allMarkers.push(...markers);
     }
   }
@@ -375,145 +592,149 @@ export function processExpressionRanges(
 }
 
 // ---------------------------------------------------------------------------
-// Expression gutter StateField
+// Expression gutter factory
 // ---------------------------------------------------------------------------
 
-function buildMarkers(state: EditorState): any {
-  const builder = new RangeSetBuilder<ExpressionGutterMarker>();
-  const doc = state.doc;
-  const ui = ((getAppSettings()?.ui) as any) || {};
-  if (ui.expressionGutterEnabled === false) {
+/**
+ * Create expression gutter extensions with explicit configuration.
+ * Returns [gutterField, clickPlugin, gutter] as an array of extensions.
+ */
+export function createExpressionGutter(config: GutterConfig): Extension[] {
+  function buildMarkers(state: EditorState): any {
+    const builder = new RangeSetBuilder<ExpressionGutterMarker>();
+    const doc = state.doc;
+    if (!config.isGutterEnabled()) {
+      return builder.finish();
+    }
+    const lastEvaluatedRaw: Map<string, { from: number; to: number; line: number }> =
+      state.field(lastEvaluatedExpressionField, false) || new Map();
+    const lastEvaluated =
+      !config.isLastTrackingEnabled() ? new Map() : lastEvaluatedRaw;
+
+    const docLines: Array<{ text: string; from: number }> = [];
+    for (let line = 1; line <= doc.lines; line++) {
+      docLines.push(doc.line(line));
+    }
+
+    const expressionRanges = findExpressionRanges(
+      docLines,
+      (matchStart) => findExpressionBounds(state, matchStart),
+      config.getExpressionColor,
+    );
+
+    const markers = processExpressionRanges(
+      expressionRanges,
+      lastEvaluated,
+      (lineNum) => doc.line(lineNum),
+      config.reportColor,
+      config.isClearButtonEnabled,
+      config.isVisualised,
+    );
+
+    for (const { pos, marker } of markers) {
+      builder.add(pos, pos, marker);
+    }
+
     return builder.finish();
   }
-  const lastEvaluatedRaw: Map<string, { from: number; to: number; line: number }> =
-    state.field(lastEvaluatedExpressionField, false) || new Map();
-  const lastEvaluated =
-    ui.expressionLastTrackingEnabled === false ? new Map() : lastEvaluatedRaw;
 
-  const docLines: Array<{ text: string; from: number }> = [];
-  for (let line = 1; line <= doc.lines; line++) {
-    docLines.push(doc.line(line));
-  }
+  const gutterField = StateField.define({
+    create(state: EditorState) {
+      return buildMarkers(state);
+    },
+    update(markers, tr) {
+      if (tr.docChanged) {
+        return buildMarkers(tr.state);
+      }
+      const prevMap = tr.startState.field(lastEvaluatedExpressionField, false);
+      const nextMap = tr.state.field(lastEvaluatedExpressionField, false);
+      if (prevMap !== nextMap) {
+        return buildMarkers(tr.state);
+      }
+      const settingsChanged = tr.annotation(settingsChangedAnnotation);
+      if (settingsChanged) {
+        return buildMarkers(tr.state);
+      }
+      return markers;
+    },
+  });
 
-  const expressionRanges = findExpressionRanges(
-    docLines,
-    (matchStart) => findExpressionBounds(state, matchStart),
-    getMatchColor,
+  const clickPlugin = ViewPlugin.fromClass(
+    class {
+      private view: EditorView;
+      private onClick: (e: MouseEvent) => void;
+      private removeExternalListener: () => void;
+
+      constructor(view: EditorView) {
+        this.view = view;
+        this.onClick = this._onClick.bind(this);
+        this.removeExternalListener = config.onExternalChange(() =>
+          this.onExternalChange(),
+        );
+        view.dom.addEventListener("click", this.onClick);
+      }
+
+      destroy() {
+        this.view.dom.removeEventListener("click", this.onClick);
+        this.removeExternalListener();
+      }
+
+      update(_update: ViewUpdate) {}
+
+      private _onClick(e: MouseEvent) {
+        const target = e.target;
+        if (!(target instanceof HTMLElement)) return;
+
+        const playBtn = target.closest(".cm-expr-play-btn");
+        if (playBtn) {
+          if (!config.isClearButtonEnabled()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const exprType = (playBtn as HTMLElement).getAttribute("data-expr");
+          if (!exprType) return;
+          config.onPlayExpression(this.view, exprType);
+        }
+      }
+
+      private onExternalChange() {
+        try {
+          this.view.dispatch({
+            annotations: settingsChangedAnnotation.of(true),
+          });
+        } catch (_e) {}
+      }
+    },
   );
 
-  const markers = processExpressionRanges(
-    expressionRanges,
-    lastEvaluated,
-    (lineNum) => doc.line(lineNum),
-  );
+  const gutterExt = gutter({
+    class: "cm-expression-gutter",
+    markers: (v) => v.state.field(gutterField),
+    initialSpacer: () =>
+      new ExpressionGutterMarker("#transparent", false, false, false, true),
+    domEventHandlers: {},
+  });
 
-  for (const { pos, marker } of markers) {
-    builder.add(pos, pos, marker);
-  }
-
-  return builder.finish();
+  return [gutterField, clickPlugin, gutterExt];
 }
 
-const expressionGutterField = StateField.define({
-  create(state: EditorState) {
-    return buildMarkers(state);
-  },
-  update(markers, tr) {
-    if (tr.docChanged) {
-      return buildMarkers(tr.state);
-    }
-    const prevMap = tr.startState.field(lastEvaluatedExpressionField, false);
-    const nextMap = tr.state.field(lastEvaluatedExpressionField, false);
-    if (prevMap !== nextMap) {
-      return buildMarkers(tr.state);
-    }
-    const settingsChanged = tr.annotation(settingsChangedAnnotation);
-    if (settingsChanged) {
-      return buildMarkers(tr.state);
-    }
-    return markers;
-  },
-});
-
 // ---------------------------------------------------------------------------
-// Click handler ViewPlugin
+// Default config — backward-compatible wrapper using global state
 // ---------------------------------------------------------------------------
 
-const expressionClearClickPlugin = ViewPlugin.fromClass(
-  class {
-    private view: EditorView;
-    private onClick: (e: MouseEvent) => void;
-    private removeSettingsListener: () => void;
-    private removeVisualisationListener: () => void;
-
-    constructor(view: EditorView) {
-      this.view = view;
-      this.onClick = this._onClick.bind(this);
-      this.removeSettingsListener = subscribeAppSettings(() =>
-        this.onSettingsChange(),
-      );
-      this.removeVisualisationListener = visualisationSessionChannel.subscribe(
-        () => this.onVisualisationChange(),
-      );
-      view.dom.addEventListener("click", this.onClick);
-    }
-
-    destroy() {
-      this.view.dom.removeEventListener("click", this.onClick);
-      this.removeSettingsListener();
-      this.removeVisualisationListener();
-    }
-
-    update(_update: ViewUpdate) {}
-
-    private _onClick(e: MouseEvent) {
-      const target = e.target;
-      if (!(target instanceof HTMLElement)) return;
-
-      const playBtn = target.closest(".cm-expr-play-btn");
-      if (playBtn) {
-        const ui = ((getAppSettings()?.ui) as any) || {};
-        if (ui.expressionClearButtonEnabled === false) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const exprType = (playBtn as HTMLElement).getAttribute("data-expr");
-        if (!exprType) return;
-        handlePlayExpression(this.view, exprType);
-      }
-    }
-
-    private onSettingsChange() {
-      try {
-        this.view.dispatch({
-          annotations: settingsChangedAnnotation.of(true),
-        });
-      } catch (_e) {}
-    }
-
-    private onVisualisationChange() {
-      try {
-        this.view.dispatch({
-          annotations: settingsChangedAnnotation.of(true),
-        });
-      } catch (_e) {}
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Expression gutter extension
-// ---------------------------------------------------------------------------
-
-export const expressionGutter = gutter({
-  class: "cm-expression-gutter",
-  markers: (v) => v.state.field(expressionGutterField),
-  initialSpacer: () =>
-    new ExpressionGutterMarker("#transparent", false, false, false, true),
-  domEventHandlers: {},
-});
-
-// ---------------------------------------------------------------------------
-// Bundled extensions array
-// ---------------------------------------------------------------------------
-
-export { expressionGutterField, expressionClearClickPlugin };
+/** Default config that reads from the app's global state (backward-compatible). */
+export function createDefaultGutterConfig(): GutterConfig {
+  return {
+    isGutterEnabled: () => ((getAppSettings()?.ui) as any)?.expressionGutterEnabled !== false,
+    isClearButtonEnabled: () => ((getAppSettings()?.ui) as any)?.expressionClearButtonEnabled !== false,
+    isLastTrackingEnabled: () => ((getAppSettings()?.ui) as any)?.expressionLastTrackingEnabled !== false,
+    getExpressionColor: (match: RegExpExecArray) => getMatchColor(match),
+    isVisualised: (exprType, position) => isExpressionVisualised(exprType, position),
+    reportColor: (exprType, color) => reportExpressionColor(exprType, color),
+    onPlayExpression: (view, exprType) => handlePlayExpression(view, exprType),
+    onExternalChange: (callback) => {
+      const unsub1 = subscribeAppSettings(callback);
+      const unsub2 = visualisationSessionChannel.subscribe(callback);
+      return () => { unsub1(); unsub2(); };
+    },
+  };
+}

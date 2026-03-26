@@ -9,10 +9,9 @@ import {
   lastEvaluatedExpressionField,
 } from "./structure/eval-integration.ts";
 import {
-  nodeHighlightField,
-  expressionClearClickPlugin,
-  expressionGutterField,
-  expressionGutter,
+  nodeHighlightPlugin,
+  createExpressionGutter,
+  createDefaultGutterConfig,
 } from "./structure/decorations.ts";
 
 // --- AST / navigation ---
@@ -54,23 +53,21 @@ export {
 // --- Decorations ---
 export {
   settingsChangedAnnotation,
-  nodeHighlightField,
+  nodeHighlightPlugin,
   getCurrentPalette,
   getMatchColor,
   ExpressionGutterMarker,
   createMarkersForRange,
   processExpressionRanges,
-  expressionGutter,
-  expressionGutterField,
-  expressionClearClickPlugin,
+  createExpressionGutter,
+  createDefaultGutterConfig,
 } from "./structure/decorations.ts";
+export type { GutterConfig } from "./structure/decorations.ts";
 
 // --- Bundled extension array ---
 export const structureExtensions = [
   navigationMetaField,
-  nodeHighlightField,
+  nodeHighlightPlugin,
   lastEvaluatedExpressionField,
-  expressionClearClickPlugin,
-  expressionGutterField,
-  expressionGutter,
+  ...createExpressionGutter(createDefaultGutterConfig()),
 ];

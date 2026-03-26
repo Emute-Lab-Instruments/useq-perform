@@ -193,8 +193,8 @@ describe('Expression Detection & Processing', () => {
       const isActive = true;
       const exprType = "a1";
       
-      const markers = createMarkersForRange(range, isActive, mockDocLineFn, exprType);
-      
+      const markers = createMarkersForRange(range, isActive, mockDocLineFn, exprType, () => true, () => false);
+
       assert.equal(markers.length, 1);
       assert.equal(markers[0].pos, 10); // lineNum * 10
       assert.ok(markers[0].marker instanceof ExpressionGutterMarker);
@@ -206,8 +206,8 @@ describe('Expression Detection & Processing', () => {
       const range = { from: 1, to: 3, color: "#ff0000" };
       const isActive = true;
       const exprType = "a1";
-      
-      const markers = createMarkersForRange(range, isActive, mockDocLineFn, exprType);
+
+      const markers = createMarkersForRange(range, isActive, mockDocLineFn, exprType, () => true, () => false);
       
       assert.equal(markers.length, 3);
       
@@ -231,8 +231,8 @@ describe('Expression Detection & Processing', () => {
       const range = { from: 1, to: 1, color: "#ff0000" };
       const exprType = "a1";
       
-      const activeMarkers = createMarkersForRange(range, true, mockDocLineFn, exprType);
-      const inactiveMarkers = createMarkersForRange(range, false, mockDocLineFn, exprType);
+      const activeMarkers = createMarkersForRange(range, true, mockDocLineFn, exprType, () => true, () => false);
+      const inactiveMarkers = createMarkersForRange(range, false, mockDocLineFn, exprType, () => true, () => false);
       
       assert.equal(activeMarkers[0].marker.isActive, true);
       assert.equal(inactiveMarkers[0].marker.isActive, false);
@@ -252,7 +252,7 @@ describe('Expression Detection & Processing', () => {
         // d2 is not in map, so inactive
       ]);
       
-      const markers = processExpressionRanges(expressionRanges, lastEvaluatedMap, mockDocLineFn);
+      const markers = processExpressionRanges(expressionRanges, lastEvaluatedMap, mockDocLineFn, () => {}, () => true, () => false);
       
       // Should have markers for both expressions
       assert.ok(markers.length > 0);
@@ -273,7 +273,7 @@ describe('Expression Detection & Processing', () => {
       const expressionRanges = new Map();
       const lastEvaluatedMap = new Map();
       
-      const markers = processExpressionRanges(expressionRanges, lastEvaluatedMap, mockDocLineFn);
+      const markers = processExpressionRanges(expressionRanges, lastEvaluatedMap, mockDocLineFn, () => {}, () => true, () => false);
       
       assert.equal(markers.length, 0);
     });
@@ -284,7 +284,7 @@ describe('Expression Detection & Processing', () => {
       ]);
       const lastEvaluatedMap = new Map(); // No evaluations
       
-      const markers = processExpressionRanges(expressionRanges, lastEvaluatedMap, mockDocLineFn);
+      const markers = processExpressionRanges(expressionRanges, lastEvaluatedMap, mockDocLineFn, () => {}, () => true, () => false);
       
       assert.ok(markers.length > 0);
       // All markers should be inactive

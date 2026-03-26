@@ -1,6 +1,8 @@
 // Scenario runner — executes inside the iframe.
 // Listens for postMessage from the parent ScenarioViewer and renders the requested scenario.
 
+import { createInspectorEditor } from './framework/editor';
+
 // Auto-discover all scenario modules for dynamic loading
 const scenarioModules = import.meta.glob('./scenarios/**/*.ts');
 
@@ -63,29 +65,17 @@ window.addEventListener('message', async (event: MessageEvent) => {
         root.appendChild(el);
       }
     } else if (definition.editor) {
-      // Editor scenario: render a code preview placeholder
-      // Full CodeMirror integration will be added when editor scenarios are built
+      // Editor scenario: mount a real CodeMirror instance
       const container = document.createElement('div');
-      container.style.padding = '1rem';
-      container.style.fontFamily = 'monospace';
-      container.style.whiteSpace = 'pre-wrap';
-
-      const label = document.createElement('div');
-      label.style.color = '#606080';
-      label.style.marginBottom = '0.5rem';
-      label.style.fontSize = '0.8rem';
-      label.textContent = 'Editor scenario \u2014 CodeMirror integration pending';
-
-      const code = document.createElement('pre');
-      code.style.padding = '1rem';
-      code.style.background = '#12121e';
-      code.style.borderRadius = '4px';
-      code.style.color = '#c0c0e0';
-      code.textContent = definition.editor.editorContent;
-
-      container.appendChild(label);
-      container.appendChild(code);
+      container.style.height = '100%';
+      container.style.width = '100%';
       root.appendChild(container);
+
+      createInspectorEditor(container, definition.editor, {
+        theme: (definition.settings?.['editor.theme'] as string) ?? undefined,
+        fontSize: (definition.settings?.['editor.fontSize'] as number) ?? undefined,
+        readOnly: true,
+      });
     } else {
       root.innerHTML =
         '<div class="scenario-loading" style="color: #e0a040">Scenario has no component or editor setup</div>';
