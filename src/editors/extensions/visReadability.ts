@@ -404,10 +404,14 @@ class VisReadabilityPlugin {
     blurCtx.drawImage(visCanvas, 0, 0);
     blurCtx.filter = 'none';
 
-    // 2. Frosted glass tint: darken only where there is waveform content.
-    //    source-atop paints only over existing non-transparent pixels.
+    // 2. Frosted glass tint: paint a solid dark fill *behind* the blurred
+    //    waveform content using destination-over, then mask to the original
+    //    blurred alpha with destination-in.  This adds an opaque dark
+    //    backing that only appears where the blur has content, and the
+    //    tintOpacity slider controls how much of it shows through.
     if (tintOpacity > 0) {
-      blurCtx.globalCompositeOperation = 'source-atop';
+      // Draw dark fill behind the existing blurred content.
+      blurCtx.globalCompositeOperation = 'destination-over';
       blurCtx.fillStyle = `rgba(0, 0, 0, ${tintOpacity})`;
       blurCtx.fillRect(0, 0, this.blurBuffer.width, this.blurBuffer.height);
       blurCtx.globalCompositeOperation = 'source-over';
