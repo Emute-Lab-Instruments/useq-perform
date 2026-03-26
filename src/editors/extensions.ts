@@ -20,6 +20,8 @@ import {structureExtensions} from "./extensions/structure.ts";
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
 import { probeExtensions } from "./extensions/probes.ts";
+import { inlineResultsField, resultGutter } from "./extensions/inlineResults.ts";
+import { diagnosticField } from "./extensions/diagnostics.ts";
 import { dbg } from "../lib/debug.ts";
 import { mapManualControlBindingsThroughChanges } from "../lib/manualControlState.ts";
 
@@ -79,12 +81,40 @@ export const exampleEditorExtensions = [
   drawSelection()
 ];
 
+// Minimal extension set for read-only code snippets (e.g., user guide).
+// Excludes updateListener, probes, visReadability, and structure extensions
+// that perform position-dependent operations which can fail on small/scrolling docs.
+export const readOnlyExtensions = [
+  editorBaseTheme,
+  fontSizeCompartment.of(
+    EditorView.theme({
+      ".cm-content": { fontSize: `${_initSettings.editor.fontSize || 16}px` },
+    })
+  ),
+  bracketMatching(),
+  drawSelection(),
+  ...default_clojure_extensions,
+];
+
 // Core functionality extensions
 const functionalExtensions = [
   history(),
   foldGutter(),
   drawSelection(),
   updateListener
+];
+
+// Editable extension set for guide playgrounds.
+// Includes clojure mode and editing features but excludes position-dependent
+// plugins (probes, evalHighlight, visReadability, structureExtensions) that
+// track positions across the main editor's document and fail on smaller docs.
+export const guideEditorExtensions = [
+  baseKeymap,
+  history(),
+  foldGutter(),
+  drawSelection(),
+  ...themeExtensions,
+  ...default_clojure_extensions,
 ];
 
 // S-Expression tracking extensions
@@ -99,6 +129,9 @@ export const baseExtensions = [
   ...structureExtensions,
   ...probeExtensions,
   evalHighlightField,
+  inlineResultsField,
+  resultGutter,
+  diagnosticField,
   visReadabilityPlugin,
 ];
 
