@@ -387,38 +387,42 @@ class VisReadabilityPlugin {
       this.blurBuffer.height = visCanvas.height;
     }
 
-    // 1. Blur the vis canvas into the offscreen buffer (one GPU op).
+    // Read settings for this frame.
     const visSettings = getAppSettings().visualisation;
-    const blurRadius = visSettings?.readabilityBlurRadius ?? DEFAULT_BLUR_RADIUS;
     if (visSettings?.readabilityEnabled === false) {
       ctx.clearRect(0, 0, w, h);
       return;
     }
+    const blurRadius = visSettings?.readabilityBlurRadius ?? DEFAULT_BLUR_RADIUS;
+    const tintOpacity = visSettings?.readabilityTintOpacity ?? 0;
+    const alpha = visSettings?.readabilityAlpha ?? 1;
+
+    // 1. Blur the vis canvas into the offscreen buffer (one GPU op).
     blurCtx.clearRect(0, 0, this.blurBuffer.width, this.blurBuffer.height);
+    blurCtx.globalCompositeOperation = 'source-over';
     blurCtx.filter = `blur(${blurRadius}px)`;
     blurCtx.drawImage(visCanvas, 0, 0);
     blurCtx.filter = 'none';
 
-    // 2–3. Clip to the staircase polygons (shifted by scroll delta) and
-    //       draw the blur buffer in viewport-fixed coordinates.
-    //
-    //       The polygon coords are relative to the editor panel (top = Y:0).
-    //       The blur buffer covers the full viewport, so we crop from Y=editorTop
-    //       to align the vis content with the polygon coordinates.
+    // 2. Frosted glass tint: darken only where there is waveform content.
+    //    source-atop paints only over existing non-transparent pixels.
+    if (tintOpacity > 0) {
+      blurCtx.globalCompositeOperation = 'source-atop';
+      blurCtx.fillStyle = `rgba(0, 0, 0, ${tintOpacity})`;
+      blurCtx.fillRect(0, 0, this.blurBuffer.width, this.blurBuffer.height);
+      blurCtx.globalCompositeOperation = 'source-over';
+    }
+
+    // 3. Clip to the staircase polygons (shifted by scroll delta) and
+    //    draw the tinted blur buffer in viewport-fixed coordinates.
+    //    globalAlpha controls overall effect intensity.
     ctx.clearRect(0, 0, w, h);
     ctx.save();
     ctx.translate(0, -this.scrollDelta);
     ctx.clip(this.clipPath);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = alpha;
     ctx.drawImage(this.blurBuffer, 0, this.editorTop, w, h, 0, 0, w, h);
-
-    // 4. Frosted glass tint: draw a dark fill over the blurred region.
-    const tintOpacity = visSettings?.readabilityTintOpacity ?? 0;
-    if (tintOpacity > 0) {
-      ctx.fillStyle = `rgba(0, 0, 0, ${tintOpacity})`;
-      ctx.fillRect(0, 0, w, h);
-    }
-
     ctx.restore();
   }
 

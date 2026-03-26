@@ -83,6 +83,7 @@ function normalizeVisualisationSettings(
     readabilityBlurRadius: coerceNumber(raw.readabilityBlurRadius, defaults.readabilityBlurRadius),
     readabilityPadding: coerceNumber(raw.readabilityPadding, defaults.readabilityPadding),
     readabilityTintOpacity: coerceNumber(raw.readabilityTintOpacity, defaults.readabilityTintOpacity),
+    readabilityAlpha: coerceNumber(raw.readabilityAlpha, defaults.readabilityAlpha),
     readabilityEnabled:
       raw.readabilityEnabled == null ? defaults.readabilityEnabled : raw.readabilityEnabled !== false,
   };
@@ -419,6 +420,13 @@ export function settingsPatchFromConfiguration(
       visualisationPatch.readabilityTintOpacity = coerceNumber(
         visualisation.readabilityTintOpacity,
         defaultUserSettings.visualisation.readabilityTintOpacity,
+      );
+    }
+
+    if ("readabilityAlpha" in visualisation) {
+      visualisationPatch.readabilityAlpha = coerceNumber(
+        visualisation.readabilityAlpha,
+        defaultUserSettings.visualisation.readabilityAlpha,
       );
     }
 

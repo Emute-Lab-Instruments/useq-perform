@@ -146,6 +146,17 @@ export function VisualisationSettings() {
           onChange={(val) => updateVisField("readabilityTintOpacity", val)}
         />
       </FormRow>
+      <FormRow label="Overall opacity">
+        <RangeInput
+          value={settings.visualisation?.readabilityAlpha ?? 0.85}
+          min={0}
+          max={1}
+          step={0.05}
+          disabled={settings.visualisation?.readabilityEnabled === false}
+          formatValue={(v) => v.toFixed(2)}
+          onChange={(val) => updateVisField("readabilityAlpha", val)}
+        />
+      </FormRow>
       <FormRow label="Blur padding">
         <RangeInput
           value={settings.visualisation?.readabilityPadding ?? 3}
