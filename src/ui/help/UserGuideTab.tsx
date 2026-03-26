@@ -2,6 +2,7 @@ import { Component, createSignal, createResource } from "solid-js";
 import { ExperienceLevelSelector } from "./ExperienceLevelSelector";
 import { UserGuideContent } from "./UserGuideContent";
 import { loadRaw, saveRaw, PERSISTENCE_KEYS } from "../../lib/persistence.ts";
+import { getCachedGuide } from "../../lib/helpContentPreloader.ts";
 
 export const UserGuideTab: Component = () => {
   const [experienceLevel, setExperienceLevel] = createSignal(
@@ -9,6 +10,8 @@ export const UserGuideTab: Component = () => {
   );
 
   const fetchGuide = async (level: string) => {
+    const cached = getCachedGuide(level);
+    if (cached) return cached;
     const response = await fetch(`assets/userguide_${level}.html`);
     if (!response.ok) throw new Error("Failed to load user guide");
     return await response.text();

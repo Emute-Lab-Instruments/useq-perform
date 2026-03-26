@@ -26,6 +26,27 @@
   margin-top: 0.5em;
 }
 
+.doc-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  background-color: var(--panel-control-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 0.35em 0.6em;
+  font-size: 0.85em;
+  margin-bottom: 0.5em;
+  outline: none;
+}
+
+.doc-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.doc-search-input:focus {
+  border-color: var(--accent-color);
+}
+
 .doc-filters-controls {
   display: flex;
   flex-wrap: wrap;

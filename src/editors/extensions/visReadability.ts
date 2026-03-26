@@ -3,12 +3,12 @@
  *
  * When the serialVis canvas overlays the editor, text can be hard to read
  * against the animated background.  This ViewPlugin places a backdrop-blur
- * layer *between* the vis canvas and the editor text by restructuring
- * z-indexes at runtime:
+ * layer *inside* the editor panel behind the CodeMirror text:
  *
- *   #panel-main-editor  z-index: 21  (raised above vis, transparent bg)
- *   blur overlay         z-index: 20  (backdrop-filter blurs vis below)
- *   #panel-vis           z-index: 19  (vis canvas, unchanged)
+ *   CM text content               (z-index: auto, within editor stacking context)
+ *   blur overlay (inside editor)  (z-index: -1,   backdrop-filter blurs vis below)
+ *   #panel-main-editor            (z-index: 21,   raised above vis, transparent bg)
+ *   #panel-vis                    (z-index: 19,   vis canvas, unchanged)
  *
  * The blur regions are clipped to staircase-shaped polygons that hug only
  * the non-whitespace content on each visible line, so the vis is still
@@ -222,7 +222,6 @@ function computeVisibleLineBoundsViewport(view: EditorView): PixelLineBounds[] {
 const BLUR_RADIUS = 6;
 const PADDING = 3;
 const EDITOR_RAISED_Z = '21';
-const BLUR_LAYER_Z = '20';
 
 function isVisPanelVisible(): boolean {
   return isVisualisationPanelVisible();
@@ -292,18 +291,11 @@ function scheduleOverlayRebuild(
       }
       return { lineBounds, visVisible, editorRect, scrollTop };
     },
-    write({ lineBounds, visVisible, editorRect, scrollTop }: MeasureResult) {
+    write({ lineBounds, visVisible, editorRect: _editorRect, scrollTop }: MeasureResult) {
       onVisChange(visVisible);
       onScrollBaseline(scrollTop);
       // Reset scroll-tracking transform since we just recomputed positions.
       overlay.style.transform = '';
-      // Constrain overlay to the editor panel bounds so it doesn't blur toolbars.
-      if (editorRect) {
-        overlay.style.top = `${editorRect.top}px`;
-        overlay.style.left = `${editorRect.left}px`;
-        overlay.style.width = `${editorRect.width}px`;
-        overlay.style.height = `${editorRect.height}px`;
-      }
       writeBackdrop(overlay, lineBounds);
     },
   });
@@ -329,22 +321,21 @@ class VisReadabilityPlugin {
   constructor(view: EditorView) {
     this.view = view;
 
-    // Create a fixed-position overlay as a page-level sibling, between
-    // #panel-vis (z:19) and #panel-main-editor (raised to z:21).
+    // Create an overlay *inside* the editor panel at z-index:-1 so it sits
+    // behind the CodeMirror text content.  backdrop-filter on its children
+    // blurs the vis canvas that shows through the transparent parent.
     this.overlay = document.createElement('div');
     this.overlay.style.cssText = [
-      'position:fixed',
-      'top:0',
-      'left:0',
-      'width:0',
-      'height:0',
+      'position:absolute',
+      'inset:0',
       'overflow:hidden',
       'pointer-events:none',
-      `z-index:${BLUR_LAYER_Z}`,
+      'z-index:-1',
     ].join(';');
-    document.body.appendChild(this.overlay);
 
     this.editorPanel = document.getElementById('panel-main-editor');
+    // Append overlay inside the editor panel (or body as fallback).
+    (this.editorPanel ?? document.body).appendChild(this.overlay);
 
     // Track scroll: apply immediate CSS transform for smoothness, and
     // schedule a full polygon rebuild so newly-scrolled-in lines get coverage.
@@ -434,6 +425,6 @@ class VisReadabilityPlugin {
  * text and the vis canvas, blurring the vis colours behind code regions.
  *
  * Restructures z-indexes when vis is active:
- *   editor (z:21) → blur overlay (z:20) → vis (z:19)
+ *   CM text → blur overlay (z:-1 inside editor) → editor (z:21) → vis (z:19)
  */
 export const visReadabilityPlugin = ViewPlugin.fromClass(VisReadabilityPlugin);

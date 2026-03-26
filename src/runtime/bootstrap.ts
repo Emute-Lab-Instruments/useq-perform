@@ -28,6 +28,7 @@ import {
   reportBootstrapFailure,
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
+import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
 // ── Bootstrap plan (pure decision function) ─────────────────────
 
 export type BootstrapStartupMode =
@@ -189,6 +190,9 @@ export async function bootstrap(): Promise<BootstrapResult> {
     reportBootstrapFailure('config-loader', error);
     console.warn('bootstrap: failed to load configuration, using defaults:', error);
   }
+
+  // ── Step 1b: preload help content (fire-and-forget) ────────────
+  preloadHelpContent();
 
   // ── Step 2: detect environment ─────────────────────────────────
   const environmentState = await examineEnvironment(getSettings());
