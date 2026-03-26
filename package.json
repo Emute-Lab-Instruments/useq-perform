@@ -33,6 +33,7 @@
   "dependencies": {
     "@codemirror/commands": "^6.8.0",
     "@codemirror/language": "^6.10.8",
+    "@codemirror/lint": "^6.8.4",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.3",
     "@nextjournal/clojure-mode": "^0.3.3",
@@ -76,6 +77,7 @@
     "typecheck": "tsc --noEmit",
     "docs:explorer": "tsx docs/codebase-explorer/server.ts",
     "storybook": "storybook dev -p 6006",
+    "inspector": "vite dev --config inspector/vite.config.ts",
     "build-storybook": "storybook build"
   },
   "resolutions": {

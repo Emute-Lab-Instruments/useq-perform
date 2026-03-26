@@ -1,0 +1,261 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: system-ui, sans-serif;
+}
+
+#inspector-root {
+  height: 100vh;
+  display: flex;
+}
+
+/* Layout */
+.inspector-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.inspector-nav {
+  width: 280px;
+  min-width: 280px;
+  border-right: 1px solid #2a2a4a;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.inspector-nav-header {
+  padding: 16px;
+  font-weight: 600;
+  border-bottom: 1px solid #2a2a4a;
+  color: #a0a0d0;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.inspector-viewport {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.inspector-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #606080;
+  font-size: 0.9rem;
+}
+
+.inspector-scenario-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #2a2a4a;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inspector-scenario-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.inspector-scenario-category {
+  color: #606080;
+  font-size: 0.8rem;
+  margin-left: auto;
+}
+
+.inspector-scenario-type {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.inspector-scenario-type[data-type="canary"] {
+  background: #3a3a20;
+  color: #e0c040;
+}
+
+.inspector-scenario-type[data-type="contract"] {
+  background: #1a2a3a;
+  color: #60a0e0;
+}
+
+/* Nav Tree */
+.nav-tree {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  outline: none;
+}
+
+.nav-tree-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.85rem;
+  color: #c0c0d0;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.nav-tree-item:hover {
+  background: #22224a;
+}
+
+.nav-tree-focused {
+  background: #2a2a5a !important;
+  outline: 1px solid #4040a0;
+  outline-offset: -1px;
+}
+
+.nav-tree-selected {
+  background: #1a3a5a !important;
+  color: #e0e0ff;
+}
+
+.nav-tree-branch .nav-tree-label {
+  font-weight: 500;
+  color: #a0a0c0;
+}
+
+.nav-tree-leaf .nav-tree-label {
+  color: #d0d0e0;
+}
+
+.nav-tree-arrow {
+  font-size: 0.55rem;
+  transition: transform 0.15s ease;
+  color: #606080;
+  width: 12px;
+  text-align: center;
+}
+
+.nav-tree-arrow-expanded {
+  transform: rotate(90deg);
+}
+
+/* Scenario Viewer */
+.scenario-viewer {
+  flex: 1;
+  display: flex;
+  position: relative;
+}
+
+.scenario-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #1e1e2e;
+}
+
+/* Context Button */
+.context-button {
+  padding: 4px 12px;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  background: #2a2a4a;
+  color: #a0a0d0;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.context-button:hover {
+  background: #3a3a5a;
+  color: #d0d0f0;
+  border-color: #5050a0;
+}
+
+.context-button-copied {
+  background: #1a3a2a;
+  color: #60e080;
+  border-color: #308050;
+}
+
+/* Approval Badge */
+.approval-badge {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.approval-badge-approved {
+  background: #40a060;
+  box-shadow: 0 0 4px #40a06080;
+}
+
+/* Approval Toggle Button */
+.approval-toggle {
+  padding: 4px 12px;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  background: #2a2a4a;
+  color: #a0a0d0;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.approval-toggle:hover {
+  background: #3a3a5a;
+  border-color: #5050a0;
+}
+
+.approval-toggle-approved {
+  background: #1a3a2a;
+  color: #60e080;
+  border-color: #308050;
+}
+
+/* Filter Button */
+.inspector-filter-btn {
+  background: none;
+  border: none;
+  color: #606080;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.inspector-filter-btn:hover {
+  color: #a0a0d0;
+  background: #2a2a4a;
+}
+
+.inspector-filter-btn-active {
+  color: #e0c040;
+  background: #3a3a20;
+}
+
+/* Update nav header to flex for filter button */
+.inspector-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}

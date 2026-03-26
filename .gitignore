@@ -30,3 +30,6 @@ CLAUDE.md
 
 
 __pycache__/
+
+inspector/.approvals.json
+inspector/dist/
