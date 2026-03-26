@@ -85,6 +85,7 @@ function normalizeVisualisationSettings(
     readabilityTintOpacity: coerceNumber(raw.readabilityTintOpacity, defaults.readabilityTintOpacity),
     readabilityAlpha: coerceNumber(raw.readabilityAlpha, defaults.readabilityAlpha),
     readabilityPasses: coerceNumber(raw.readabilityPasses, defaults.readabilityPasses),
+    readabilityFeather: coerceNumber(raw.readabilityFeather, defaults.readabilityFeather),
     readabilityOverscan: coerceNumber(raw.readabilityOverscan, defaults.readabilityOverscan),
     readabilityEnabled:
       raw.readabilityEnabled == null ? defaults.readabilityEnabled : raw.readabilityEnabled !== false,
@@ -436,6 +437,13 @@ export function settingsPatchFromConfiguration(
       visualisationPatch.readabilityPasses = coerceNumber(
         visualisation.readabilityPasses,
         defaultUserSettings.visualisation.readabilityPasses,
+      );
+    }
+
+    if ("readabilityFeather" in visualisation) {
+      visualisationPatch.readabilityFeather = coerceNumber(
+        visualisation.readabilityFeather,
+        defaultUserSettings.visualisation.readabilityFeather,
       );
     }
 

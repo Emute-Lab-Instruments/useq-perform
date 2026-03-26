@@ -252,6 +252,9 @@ class VisReadabilityPlugin {
   private overlayCtx: CanvasRenderingContext2D | null;
   private blurBuffer: HTMLCanvasElement;
   private blurCtx: CanvasRenderingContext2D | null;
+  /** Offscreen canvas for the feathered polygon mask. */
+  private maskBuffer: HTMLCanvasElement;
+  private maskCtx: CanvasRenderingContext2D | null;
   private view: EditorView;
   private mutationObserver: MutationObserver;
   private editorPanel: HTMLElement | null = null;
@@ -289,6 +292,10 @@ class VisReadabilityPlugin {
     // Offscreen buffer for the blurred vis copy.
     this.blurBuffer = document.createElement('canvas');
     this.blurCtx = this.blurBuffer.getContext('2d');
+
+    // Offscreen buffer for the feathered polygon mask.
+    this.maskBuffer = document.createElement('canvas');
+    this.maskCtx = this.maskBuffer.getContext('2d');
 
     this.editorPanel = document.getElementById('panel-main-editor');
     (this.editorPanel ?? document.body).appendChild(this.overlayCanvas);
@@ -405,16 +412,40 @@ class VisReadabilityPlugin {
       blurCtx.drawImage(this.blurBuffer, 0, 0);
     }
 
-    // 2. Clip to the staircase polygons (shifted by scroll delta) and
-    //    draw the blur buffer in viewport-fixed coordinates.
+    // 2. Build a feathered mask from the polygon shapes.
+    //    Draw solid white polygons to the mask buffer, then blur it to
+    //    soften the edges.  The result is an alpha mask with soft falloff.
+    const feather = Math.max(0, visSettings?.readabilityFeather ?? 4);
+    const mCtx = this.maskCtx;
+    if (this.maskBuffer.width !== w || this.maskBuffer.height !== h) {
+      this.maskBuffer.width = w;
+      this.maskBuffer.height = h;
+    }
+    if (mCtx) {
+      mCtx.clearRect(0, 0, w, h);
+      mCtx.save();
+      mCtx.translate(0, -this.scrollDelta);
+      mCtx.fillStyle = '#fff';
+      mCtx.fill(this.clipPath!);
+      mCtx.restore();
+      // Blur the mask for soft edges if feather > 0.
+      if (feather > 0) {
+        // Copy current mask, clear, redraw with blur filter.
+        mCtx.filter = `blur(${feather}px)`;
+        mCtx.drawImage(this.maskBuffer, 0, 0);
+        mCtx.filter = 'none';
+      }
+    }
+
+    // 3. Draw the blur buffer to the overlay, then mask with the
+    //    feathered polygon shape using destination-in.
     ctx.clearRect(0, 0, w, h);
-    ctx.save();
-    ctx.translate(0, -this.scrollDelta);
-    ctx.clip(this.clipPath);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = alpha;
     ctx.drawImage(this.blurBuffer, 0, this.editorTop, w, h, 0, 0, w, h);
-    ctx.restore();
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.globalAlpha = 1;
+    ctx.drawImage(this.maskBuffer, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   // ---- Geometry rebuild ----------------------------------------------------

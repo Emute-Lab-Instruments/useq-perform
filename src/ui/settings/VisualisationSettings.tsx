@@ -157,15 +157,26 @@ export function VisualisationSettings() {
           onChange={(val) => updateVisField("readabilityAlpha", val)}
         />
       </FormRow>
-      <FormRow label="Blur padding">
+      <FormRow label="Mask tightness">
         <RangeInput
           value={settings.visualisation?.readabilityPadding ?? 3}
+          min={0}
+          max={30}
+          step={1}
+          disabled={settings.visualisation?.readabilityEnabled === false}
+          formatValue={(v) => `${Math.round(v)}px`}
+          onChange={(val) => updateVisField("readabilityPadding", val)}
+        />
+      </FormRow>
+      <FormRow label="Edge feather">
+        <RangeInput
+          value={settings.visualisation?.readabilityFeather ?? 4}
           min={0}
           max={20}
           step={1}
           disabled={settings.visualisation?.readabilityEnabled === false}
           formatValue={(v) => `${Math.round(v)}px`}
-          onChange={(val) => updateVisField("readabilityPadding", val)}
+          onChange={(val) => updateVisField("readabilityFeather", val)}
         />
       </FormRow>
       <FormRow label="Density passes">

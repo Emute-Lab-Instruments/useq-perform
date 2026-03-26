@@ -60,6 +60,8 @@ export interface VisualisationSettings {
   readabilityAlpha: number;
   /** Extra blur passes (0–5) that stack alpha for a denser effect without increasing radius. */
   readabilityPasses: number;
+  /** Feather radius (px) to soften the edges of the mask polygons. */
+  readabilityFeather: number;
   /** Lines of overscan beyond the viewport for pre-computed blur coverage during scroll. */
   readabilityOverscan: number;
   /** Whether the readability blur overlay is enabled at all. */
@@ -152,6 +154,7 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   readabilityTintOpacity: 0.5,
   readabilityAlpha: 0.85,
   readabilityPasses: 2,
+  readabilityFeather: 4,
   readabilityOverscan: 30,
   readabilityEnabled: true,
 };
