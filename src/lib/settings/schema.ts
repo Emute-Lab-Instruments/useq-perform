@@ -81,6 +81,48 @@ export interface WasmSettings {
   enabled: boolean;
 }
 
+/**
+ * How evaluation results are displayed in the editor.
+ *
+ * - `"console"`          — results go to the console panel only (legacy default)
+ * - `"inline"`           — result widget appended to the evaluated line, stays until next eval
+ * - `"inline-ephemeral"` — same as inline but auto-dismisses after `autoDismissMs`
+ * - `"floating"`         — floating tooltip near the evaluated expression, auto-dismisses
+ */
+export type EvalResultMode =
+  | "console"
+  | "inline"
+  | "inline-ephemeral"
+  | "floating";
+
+export interface EvalResultsSettings {
+  /** Display mode for eval results. */
+  mode: EvalResultMode;
+  /** Auto-dismiss timeout in ms. 0 = manual dismiss (only applies to ephemeral/floating). */
+  autoDismissMs: number;
+  /** Truncate displayed result text beyond this many characters. 0 = no limit. */
+  maxChars: number;
+  /** Show a timestamp next to the result. */
+  showTimestamp: boolean;
+}
+
+export interface KeybindingsSettings {
+  /** Base profile ID (e.g. "default", "vim", "emacs"). */
+  profile: string;
+  /** Keyboard layout identifier (e.g. "qwerty-us", "dvorak", "azerty"). */
+  layout: string;
+  /** ActionId → key override (sparse — only user-changed bindings). */
+  overrides?: Record<string, string>;
+  /** ActionId → gamepad combo overrides (sparse). */
+  gamepadOverrides?: Record<string, string[]>;
+  /** Milliseconds to wait for the next key in a chord sequence. */
+  chordTimeout?: number;
+  /** Milliseconds before modifier-hold hints appear. */
+  modifierHintDelay?: number;
+  /** Whether modifier keys latch instead of requiring hold. */
+  stickyModifiers?: boolean;
+}
+
 export interface AppSettings {
   name: string;
   editor: EditorSettings;
@@ -89,12 +131,14 @@ export interface AppSettings {
   visualisation: VisualisationSettings;
   runtime: RuntimeSettings;
   wasm: WasmSettings;
+  evalResults: EvalResultsSettings;
+  keybindings?: KeybindingsSettings;
   keymaps?: Record<string, string>;
   [key: string]: unknown;
 }
 
 export type AppSettingsPatch = Partial<
-  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm">
+  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "evalResults" | "keybindings">
 > & {
   editor?: Partial<EditorSettings>;
   storage?: Partial<StorageSettings>;
@@ -102,6 +146,8 @@ export type AppSettingsPatch = Partial<
   visualisation?: Partial<VisualisationSettings>;
   runtime?: Partial<RuntimeSettings>;
   wasm?: Partial<WasmSettings>;
+  evalResults?: Partial<EvalResultsSettings>;
+  keybindings?: Partial<KeybindingsSettings>;
   keymaps?: Record<string, string>;
 };
 
@@ -210,6 +256,16 @@ export const defaultUserSettings: AppSettings = {
   wasm: {
     enabled: true,
   },
+  evalResults: {
+    mode: "inline-ephemeral",
+    autoDismissMs: 3000,
+    maxChars: 200,
+    showTimestamp: false,
+  },
+  keybindings: {
+    profile: "default",
+    layout: "qwerty-us",
+  },
 };
 
 export function createDefaultUserSettings(): AppSettings {
@@ -224,6 +280,10 @@ export function createDefaultUserSettings(): AppSettings {
     visualisation: { ...defaultUserSettings.visualisation },
     runtime: { ...defaultUserSettings.runtime },
     wasm: { ...defaultUserSettings.wasm },
+    evalResults: { ...defaultUserSettings.evalResults },
+    keybindings: defaultUserSettings.keybindings
+      ? { ...defaultUserSettings.keybindings }
+      : undefined,
     keymaps: defaultUserSettings.keymaps
       ? { ...defaultUserSettings.keymaps }
       : undefined,

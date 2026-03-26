@@ -220,4 +220,11 @@ export default tseslint.config(
     files: ["src/lib/settings/persistence.ts"],
     rules: { "import-x/no-restricted-paths": "off" },
   },
+  {
+    // handlers.ts is the keybinding bridge between the action registry and
+    // runtime modules (effects, editors, UI). It must import handler
+    // implementations from higher layers by design.
+    files: ["src/lib/keybindings/handlers.ts"],
+    rules: { "import-x/no-restricted-paths": "off" },
+  },
 );

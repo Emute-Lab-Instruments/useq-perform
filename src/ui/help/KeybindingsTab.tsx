@@ -1,9 +1,61 @@
 import { Component, For } from "solid-js";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
+import { actions, type ActionCategory } from "../../lib/keybindings/actions";
+import { defaultKeyBindings } from "../../lib/keybindings/defaults";
 
 interface Binding {
   description: string;
   key: string;
+}
+
+interface BindingSection {
+  title: string;
+  bindings: Binding[];
+}
+
+// Categories to display and their display names, in order.
+const categoryDisplay: { category: ActionCategory; title: string }[] = [
+  { category: "core", title: "Evaluation" },
+  { category: "ui", title: "Panels" },
+  { category: "editor", title: "Editor" },
+  { category: "structure", title: "Structure" },
+  { category: "probe", title: "Probe" },
+  { category: "navigation", title: "Navigation" },
+];
+
+const displayCategories = new Set(categoryDisplay.map((c) => c.category));
+
+/**
+ * Build sections from the action registry and default bindings.
+ * Skips bindings with `when` clauses (internal/contextual bindings).
+ */
+function buildSections(): BindingSection[] {
+  // Group bindings by category
+  const grouped = new Map<ActionCategory, Binding[]>();
+
+  for (const binding of defaultKeyBindings) {
+    // Skip contextual bindings (picker, backspace gate, etc.)
+    if (binding.when) continue;
+
+    const actionDef = actions[binding.action];
+    if (!actionDef) continue;
+
+    const cat = actionDef.category;
+    if (!displayCategories.has(cat)) continue;
+
+    if (!grouped.has(cat)) grouped.set(cat, []);
+    grouped.get(cat)!.push({
+      description: actionDef.description,
+      key: binding.key,
+    });
+  }
+
+  return categoryDisplay
+    .filter((c) => grouped.has(c.category))
+    .map((c) => ({
+      title: c.title,
+      bindings: grouped.get(c.category)!,
+    }));
 }
 
 const formatKeyForDisplay = (key: string, osFamily: string) => {
@@ -17,8 +69,8 @@ const formatKeyForDisplay = (key: string, osFamily: string) => {
   return out;
 };
 
-const KeybindingRow: Component<{ 
-  binding: Binding; 
+const KeybindingRow: Component<{
+  binding: Binding;
   osFamily: string;
 }> = (props) => {
   return (
@@ -42,70 +94,7 @@ export const KeybindingsTab: Component = () => {
     });
   };
 
-  const coreBindings = () => [
-    {
-      description: "Execute Code (now)",
-      key: "Mod-Enter",
-    },
-    {
-      description: "Execute Code (quantised)",
-      key: "Alt-Enter",
-    },
-    {
-      description: "Toggle Help Panel",
-      key: "Alt-h",
-    },
-    {
-      description: "Toggle Signal Visualization",
-      key: "Alt-g",
-    },
-    {
-      description: "Show Documentation for Symbol around cursor",
-      key: "Alt-f",
-    },
-  ];
-
-  const editorBindings = () => [
-    {
-      description: "Delete from cursor till end of current list",
-      key: "Ctrl-k",
-    },
-    {
-      description: "Slurp Forward",
-      key: "Ctrl-]",
-    },
-    {
-      description: "Slurp Backward",
-      key: "Ctrl-[",
-    },
-    {
-      description: "Barf Forward",
-      key: "Ctrl-'",
-    },
-    {
-      description: "Barf Backward",
-      key: "Ctrl-;",
-    },
-    {
-      description: "Undo",
-      key: "Mod-z",
-    },
-    {
-      description: "Redo",
-      key: "Shift-Mod-z",
-    },
-  ];
-
-  const navigationBindings = () => [
-    {
-      description: "Go to Start of Line",
-      key: "Home",
-    },
-    {
-      description: "Go to End of Line",
-      key: "End",
-    },
-  ];
+  const sections = buildSections();
 
   return (
     <div class="panel-tab-content">
@@ -138,48 +127,21 @@ export const KeybindingsTab: Component = () => {
         </div>
       </div>
 
-      <div class="panel-section">
-        <p class="panel-help-copy">
-          Shortcuts are fixed in this build. This tab reflects the live defaults and only
-          changes modifier names for your platform.
-        </p>
-      </div>
-
-      <div class="panel-section">
-        <h3 class="panel-section-title">Core Actions</h3>
-        <For each={coreBindings()}>
-          {(binding) => (
-            <KeybindingRow 
-              binding={binding} 
-              osFamily={osFamily()} 
-            />
-          )}
-        </For>
-      </div>
-
-      <div class="panel-section">
-        <h3 class="panel-section-title">Editor Actions</h3>
-        <For each={editorBindings()}>
-          {(binding) => (
-            <KeybindingRow 
-              binding={binding} 
-              osFamily={osFamily()} 
-            />
-          )}
-        </For>
-      </div>
-
-      <div class="panel-section">
-        <h3 class="panel-section-title">Navigation</h3>
-        <For each={navigationBindings()}>
-          {(binding) => (
-            <KeybindingRow 
-              binding={binding} 
-              osFamily={osFamily()} 
-            />
-          )}
-        </For>
-      </div>
+      <For each={sections}>
+        {(section) => (
+          <div class="panel-section">
+            <h3 class="panel-section-title">{section.title}</h3>
+            <For each={section.bindings}>
+              {(binding) => (
+                <KeybindingRow
+                  binding={binding}
+                  osFamily={osFamily()}
+                />
+              )}
+            </For>
+          </div>
+        )}
+      </For>
     </div>
   );
 };

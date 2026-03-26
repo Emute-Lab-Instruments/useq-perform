@@ -1,147 +1,569 @@
-/* Settings Panel Styles */
-/* .panel-tab-window-content {
-    padding: 1.5rem;
-    height: 100%;
-    overflow-y: auto;
-    color: var(--text-primary);
-    display: block !important; 
-} */
+/* ======================================================================
+   Settings Panel
+   ====================================================================== */
 
-/* Section Styling */
+/* ---- Collapsible sections ---- */
+
 .panel-section {
-    margin-bottom: 2rem;
-    background: var(--panel-section-bg);
-    border-radius: 8px;
-    padding: 1rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    border: 1px solid var(--panel-border);
-    opacity: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    border-bottom: 1px solid var(--section-separator, rgba(255, 255, 255, 0.08));
+}
+
+.panel-section:last-child {
+    border-bottom: none;
+}
+
+.panel-section-toggle {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 14px;
+    margin: 0;
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+    line-height: inherit;
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none;
+}
+
+.panel-section-toggle:hover {
+    background-color: var(--panel-item-hover-bg);
+}
+
+.panel-section-arrow {
+    color: var(--text-muted);
+    font-size: 0.65em;
+    width: 10px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.panel-section-toggle:hover .panel-section-arrow {
+    color: var(--accent-color);
 }
 
 .panel-section-title {
-    font-size: 1.1rem;
+    font-size: 0.7em;
     font-weight: 600;
-    margin-bottom: 1rem;
+    margin: 0;
+    padding: 0;
+    border: none;
     color: var(--accent-color);
-    padding-bottom: 0.5rem;
-    border-bottom: 2px solid var(--panel-border);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    line-height: 1;
 }
 
-/* Form Row Layout */
+.panel-section-body {
+    padding: 2px 14px 12px 20px;
+    margin-left: 8px;
+    border-left: 1px solid var(--section-separator, rgba(255, 255, 255, 0.08));
+}
+
+/* ---- Sub-groups ---- */
+
+.panel-subgroup {
+    margin-bottom: 2px;
+}
+
+.panel-subgroup:last-child {
+    margin-bottom: 0;
+}
+
+.panel-subgroup-toggle {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 5px 2px;
+    margin: 0;
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none;
+}
+
+.panel-subgroup-arrow {
+    color: var(--text-muted);
+    font-size: 0.55em;
+    width: 8px;
+    flex-shrink: 0;
+    transition: color 0.1s ease;
+}
+
+.panel-subgroup-label {
+    font-family: var(--code-font);
+    font-size: 0.75em;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    transition: color 0.1s ease;
+}
+
+.panel-subgroup-toggle:hover .panel-subgroup-arrow,
+.panel-subgroup-toggle:hover .panel-subgroup-label {
+    color: var(--accent-color);
+}
+
+.panel-subgroup-body {
+    padding: 2px 0 8px 16px;
+    border-left: 1px solid var(--section-separator, rgba(255, 255, 255, 0.06));
+    margin-left: 4px;
+}
+
+/* ---- Form row ---- */
+
 .panel-row {
     display: flex;
     align-items: center;
-    margin-bottom: 1rem;
-    gap: 1rem;
+    margin-bottom: 3px;
+    gap: 12px;
+    padding: 3px 0;
+    min-height: 28px;
 }
 
 .panel-label {
-    flex: 0 0 200px;
-    font-weight: 500;
-    color: var(--text-primary);
+    flex: 0 0 180px;
+    font-weight: 400;
+    font-size: 0.8em;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+    line-height: 1.2;
 }
 
 .panel-control {
     flex: 1;
     display: flex;
     align-items: center;
+    justify-content: center;
+    min-width: 0;
 }
 
-/* Form Controls */
+/* Controls that should stretch full width override the centering */
+.panel-control:has(.panel-number-drag),
+.panel-control:has(.panel-text-input),
+.panel-control:has(.panel-select),
+.panel-control:has(.panel-range) {
+    justify-content: stretch;
+}
+
+/* ---- Text inputs & selects ---- */
+
 .panel-text-input,
-.panel-number-input,
 .panel-select {
     width: 100%;
-    padding: 0.5rem 0.75rem;
+    padding: 4px 8px;
     border: 1px solid var(--panel-border);
-    border-radius: 4px;
-    font-size: 0.9rem;
-    transition: all 0.2s ease;
+    border-radius: var(--item-border-radius);
+    font-size: 0.82em;
+    font-family: var(--code-font);
+    transition: border-color 0.12s ease;
     background-color: var(--panel-control-bg);
     color: var(--text-primary);
 }
 
 .panel-text-input:focus,
-.panel-number-input:focus,
 .panel-select:focus {
     outline: none;
     border-color: var(--accent-color);
-    box-shadow: 0 0 0 2px var(--accent-color);
-    opacity: 0.2;
+    box-shadow: none;
 }
 
-/* Checkbox Styling */
-.panel-checkbox {
-    width: 18px;
-    height: 18px;
-    margin-right: 0.5rem;
-    cursor: pointer;
-    accent-color: var(--accent-color);
+/* ---- Draggable number input ---- */
+
+.panel-number-drag {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    cursor: ns-resize;
+    user-select: none;
 }
 
-.panel-control-disabled {
-    cursor: not-allowed !important;
+.panel-number-drag--editing {
+    cursor: text;
 }
 
-.panel-range-wrapper--disabled {
+.panel-number-drag--disabled {
+    cursor: not-allowed;
     opacity: 0.45;
 }
 
-.panel-range-wrapper--disabled .panel-range-value {
+.panel-number-input {
+    width: 100%;
+    padding: 4px 24px 4px 8px;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--item-border-radius);
+    font-size: 0.82em;
+    font-family: var(--code-font);
+    transition: border-color 0.12s ease, color 0.12s ease;
+    background-color: var(--panel-control-bg);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: inherit;
+    -moz-appearance: textfield;
+}
+
+.panel-number-input::-webkit-inner-spin-button,
+.panel-number-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.panel-number-drag--editing .panel-number-input {
+    border-color: var(--accent-color);
+    outline: none;
+    cursor: text;
+}
+
+.panel-number-drag--dragging .panel-number-input {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.panel-number-drag:not(.panel-number-drag--editing):not(.panel-number-drag--disabled):hover .panel-number-input {
+    border-color: var(--text-secondary, rgba(255, 255, 255, 0.4));
+}
+
+/* Drag hint — always visible, inside input, right-aligned */
+.panel-number-drag-hint {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7em;
+    line-height: 1;
+    color: var(--text-muted);
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.panel-number-drag--disabled .panel-number-drag-hint {
+    display: none;
+}
+
+.panel-number-drag--editing .panel-number-drag-hint {
+    display: none;
+}
+
+/* ---- Toggle switch ---- */
+
+.panel-toggle {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+}
+
+.panel-toggle-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.panel-toggle-track {
+    position: relative;
+    width: 32px;
+    height: 16px;
+    background-color: var(--panel-control-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--item-border-radius);
+    transition: all 0.2s ease;
+    overflow: hidden;
+}
+
+/* Scanline texture on track */
+.panel-toggle-track::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent 0px,
+        transparent 2px,
+        rgba(255, 255, 255, 0.02) 2px,
+        rgba(255, 255, 255, 0.02) 4px
+    );
+    pointer-events: none;
+}
+
+.panel-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    background-color: var(--text-muted);
+    border-radius: 2px;
+    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+                background-color 0.2s ease,
+                box-shadow 0.2s ease;
+}
+
+/* Checked state */
+.panel-toggle-input:checked + .panel-toggle-track {
+    border-color: var(--accent-color);
+    background-color: color-mix(in srgb, var(--accent-color) 12%, transparent);
+}
+
+.panel-toggle-input:checked + .panel-toggle-track .panel-toggle-thumb {
+    transform: translateX(16px);
+    background-color: var(--accent-color);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--accent-color) 50%, transparent);
+}
+
+/* Hover */
+.panel-toggle:hover .panel-toggle-track {
+    border-color: var(--text-secondary, rgba(255, 255, 255, 0.4));
+}
+
+.panel-toggle:hover .panel-toggle-input:checked + .panel-toggle-track {
+    border-color: var(--accent-color);
+}
+
+/* ======================================================================
+   Custom range slider
+   ====================================================================== */
+
+.panel-range {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.panel-range--disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+/* Track container — the clickable/draggable area */
+.panel-range-track {
+    flex: 1;
+    position: relative;
+    height: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    touch-action: none;
+}
+
+/* Background groove */
+.panel-range-track::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 3px;
+    transform: translateY(-50%);
+    background: var(--panel-border);
+    border-radius: 0;
+}
+
+/* Filled portion */
+.panel-range-fill {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    height: 3px;
+    transform: translateY(-50%);
+    background: var(--accent-color);
+    border-radius: 0;
+    pointer-events: none;
+    transition: width 0.03s linear;
+}
+
+/* Active glow on fill */
+.panel-range--active .panel-range-fill,
+.panel-range--hover .panel-range-fill {
+    box-shadow: 0 0 4px color-mix(in srgb, var(--accent-color) 30%, transparent);
+}
+
+/* Tick marks */
+.panel-range-ticks {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 0;
+    pointer-events: none;
+}
+
+.panel-range-tick {
+    position: absolute;
+    top: -1px;
+    width: 1px;
+    height: 3px;
+    background: var(--panel-border);
+    opacity: 0.5;
+    transform: translateX(-50%);
+}
+
+/* Hide first and last ticks (they sit on the edges) */
+.panel-range-tick:first-child,
+.panel-range-tick:last-child {
+    display: none;
+}
+
+/* Thumb — the draggable handle */
+.panel-range-thumb {
+    position: absolute;
+    top: 50%;
+    width: 3px;
+    height: 16px;
+    transform: translate(-50%, -50%);
+    background: var(--accent-color);
+    border-radius: 0;
+    pointer-events: none;
+    transition: height 0.12s ease, box-shadow 0.12s ease, width 0.12s ease;
+    z-index: 1;
+}
+
+/* Thumb glow on hover */
+.panel-range--hover .panel-range-thumb {
+    height: 18px;
+    box-shadow:
+        0 0 0 2px color-mix(in srgb, var(--accent-color) 20%, transparent),
+        0 0 8px color-mix(in srgb, var(--accent-color) 25%, transparent);
+}
+
+/* Thumb pulse on drag */
+.panel-range--active .panel-range-thumb {
+    height: 20px;
+    width: 3px;
+    box-shadow:
+        0 0 0 3px color-mix(in srgb, var(--accent-color) 25%, transparent),
+        0 0 12px color-mix(in srgb, var(--accent-color) 35%, transparent);
+}
+
+/* Hidden native input — accessible but invisible */
+.panel-range-native {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+    padding: 0;
+    margin: -1px;
+}
+
+/* Value readout */
+.panel-range-value {
+    font-family: var(--code-font);
+    font-size: 0.75em;
+    color: var(--text-muted);
+    min-width: 48px;
+    text-align: right;
+    white-space: nowrap;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+    transition: color 0.12s ease;
+}
+
+.panel-range--active .panel-range-value,
+.panel-range--hover .panel-range-value {
+    color: var(--accent-color);
+}
+
+.panel-range--disabled .panel-range-value {
     opacity: 0.7;
 }
 
-/* Button Styling */
+/* ---- Buttons ---- */
+
 .panel-button {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
-    background-color: var(--accent-color);
-    color: white;
+    padding: 5px 14px;
+    border: 1px solid var(--accent-color);
+    border-radius: var(--item-border-radius);
+    background-color: transparent;
+    color: var(--accent-color);
+    font-family: var(--code-font);
+    font-size: 0.75em;
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.12s ease;
 }
 
 .panel-button:hover {
-    background-color: var(--accent-color-hover);
-    transform: translateY(-1px);
+    background-color: var(--accent-color);
+    color: var(--panel-bg, #000);
+    transform: none;
 }
 
 .panel-button:active {
-    background-color: var(--accent-color-active);
-    transform: translateY(0);
+    filter: brightness(0.85);
+    transform: none;
 }
 
-/* Reset Button Special Styling */
 .panel-button.reset {
-    background-color: #ff4d4d;
-    color: white;
+    background-color: transparent;
+    color: #ff4d4d;
+    border-color: #ff4d4d;
 }
 
 .panel-button.reset:hover {
-    background-color: #ff6666;
-    transform: translateY(-1px);
+    background-color: #ff4d4d;
+    color: #fff;
+    transform: none;
 }
 
-.panel-button.reset:active {
-    background-color: #e63939;
-    transform: translateY(0);
+.panel-button-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
-/* Key Bindings */
+.panel-info-text {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+    line-height: 1.45;
+}
+
+/* ---- Key bindings ---- */
+
 .key-binding {
     display: inline-block;
-    padding: 0.25rem 0.5rem;
+    padding: 2px 6px;
     background-color: var(--panel-control-bg);
     border: 1px solid var(--panel-border);
-    border-radius: 4px;
-    font-family: monospace;
-    font-size: 0.9rem;
+    border-radius: var(--item-border-radius);
+    font-family: var(--code-font);
+    font-size: 0.82em;
     color: var(--text-primary);
 }
 
-/* Theme Select Styling */
+/* Theme Select */
 .theme-select {
     color: var(--text-primary);
 }
@@ -151,19 +573,63 @@
     color: var(--text-primary);
 }
 
-/* Dark Theme Adjustments */
-@media (prefers-color-scheme: dark) {
-    .panel-section {
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    }
+/* ---- Search bar ---- */
+
+.settings-search-bar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 8px 14px;
+    background: var(--panel-bg);
+    border-bottom: 1px solid var(--section-separator, rgba(255, 255, 255, 0.08));
 }
 
-/* Responsive Design */
+.settings-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 10px;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--item-border-radius);
+    font-size: 0.82em;
+    font-family: var(--code-font);
+    background-color: var(--panel-control-bg);
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.12s ease;
+}
+
+.settings-search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.settings-search-input:focus {
+    border-color: var(--accent-color);
+}
+
+/* ---- Footer ---- */
+
+.settings-footer {
+    padding: 12px 14px;
+    border-top: 1px solid var(--section-separator, rgba(255, 255, 255, 0.08));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.settings-footer-group {
+    display: flex;
+    gap: 8px;
+}
+
+/* ---- Responsive ---- */
+
 @media (max-width: 768px) {
     .panel-row {
         flex-direction: column;
         align-items: flex-start;
-        gap: 0.5rem;
+        gap: 4px;
     }
 
     .panel-label {
@@ -175,3 +641,72 @@
     }
 }
 
+/* ======================================================================
+   Keybinding rebinding panel
+   ====================================================================== */
+
+.kb-row-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.kb-control {
+    gap: 8px;
+    justify-content: flex-end !important;
+}
+
+.kb-edit-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--item-border-radius);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.85em;
+    padding: 2px 6px;
+    line-height: 1;
+    transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.kb-edit-btn:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+/* Listening / capture state */
+.kb-listening {
+    animation: kb-pulse 1s ease-in-out infinite;
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+@keyframes kb-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+}
+
+/* Conflict / blocked inline UI */
+.kb-conflict {
+    padding: 4px 0 6px 0;
+    margin-left: 180px;
+    font-size: 0.78em;
+}
+
+.kb-conflict-msg {
+    color: #ffaa33;
+}
+
+.kb-conflict-blocked {
+    color: #ff4d4d;
+}
+
+.kb-conflict-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.kb-conflict-btn {
+    font-size: 0.85em !important;
+    padding: 2px 8px !important;
+}

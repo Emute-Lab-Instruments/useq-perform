@@ -23,12 +23,15 @@ import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
 import { mountModal } from '../ui/adapters/modal.tsx';
 import { mountPickerMenu } from '../ui/adapters/picker-menu.tsx';
 import { mountDoubleRadialMenu } from '../ui/adapters/double-radial-menu.tsx';
+import { mountPalette } from '../ui/adapters/palette.tsx';
+import { mountModifierHints } from '../ui/adapters/modifier-hints.tsx';
 import {
   publishRuntimeDiagnostics,
   reportBootstrapFailure,
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
 import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
+import { ensureUseqWasmLoaded } from './wasmInterpreter.ts';
 // ── Bootstrap plan (pure decision function) ─────────────────────
 
 export type BootstrapStartupMode =
@@ -141,9 +144,12 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     // Mount toolbars first (they replace the static HTML toolbar elements)
     toolbars.mountTransportToolbar();
     toolbars.mountMainToolbar();
+    toolbars.mountOnboardingBanner();
     mountModal();
     mountPickerMenu();
     mountDoubleRadialMenu();
+    mountPalette();
+    mountModifierHints();
     // Mount panels and design selector
     panels.mountSettingsPanel();
     panels.mountHelpPanel();
@@ -237,6 +243,13 @@ export async function bootstrap(): Promise<BootstrapResult> {
   const appUI = await createAppUI(environmentState);
   const app = createApp(appUI, environmentState, bootstrapPlan);
   await app.start();
+
+  // ── Step 7: eagerly start loading WASM interpreter (non-blocking) ──
+  if (userSettings.wasm.enabled) {
+    ensureUseqWasmLoaded().catch(() => {
+      // Silently ignore — LiveProbe will show loading indicator
+    });
+  }
 
   return { app, appUI, environmentState, bootstrapPlan };
 }

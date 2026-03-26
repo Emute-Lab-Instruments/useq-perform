@@ -8,7 +8,12 @@
 @import './themes.css';
 @import './help.css';
 @import './userguide.css';
+@import './guide.css';
 @import './codeSnippets.css';
 @import './z_index.css';
 @import './pickerMenu.css';
 @import './modal.css';
+@import './onboarding.css';
+@import './palette.css';
+@import './keyboard-visualiser.css';
+@import './modifier-hints.css';

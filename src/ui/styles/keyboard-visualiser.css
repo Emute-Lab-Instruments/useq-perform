@@ -1,0 +1,363 @@
+/* keyboard-visualiser.css — Keyboard visualiser component styles */
+
+.kv-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(20, 20, 25, 0.85);
+  backdrop-filter: blur(12px);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* Layout wrapper: keyboard + optional command list */
+.kv-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.kv-layout.kv-with-commands {
+  flex-direction: row;
+}
+
+/* Keyboard grid */
+.kv-keyboard {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Row of keys */
+.kv-row {
+  display: flex;
+  gap: 2px;
+}
+
+/* Individual key */
+.kv-key {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 9px;
+  line-height: 1.1;
+  overflow: hidden;
+  cursor: default;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  box-sizing: border-box;
+  padding: 2px 3px;
+}
+
+/* Gap / spacer key */
+.kv-key.kv-gap {
+  background: transparent;
+  border-color: transparent;
+  pointer-events: none;
+}
+
+/* Unbound key — dimmed */
+.kv-key.kv-unbound {
+  opacity: 0.4;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Modifier key base style */
+.kv-key.kv-modifier {
+  opacity: 0.55;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Modifier key that is used in at least one binding — dashed border */
+.kv-key.kv-modifier-used {
+  opacity: 0.75;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Bound key — category colour applied via inline styles */
+.kv-key.kv-bound {
+  opacity: 1;
+}
+
+/* Bound key with modifier — slightly less opaque background */
+.kv-key.kv-has-modifier {
+  opacity: 0.85;
+}
+
+.kv-key.kv-bound:hover {
+  filter: brightness(1.2);
+}
+
+/* Physical key label (top of key) */
+.kv-key-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.kv-key.kv-bound .kv-key-label {
+  font-size: 7px;
+  opacity: 0.6;
+}
+
+/* Action description (bottom of key) */
+.kv-key-action {
+  font-size: 7px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1;
+}
+
+/* Multi-binding indicator badge */
+.kv-key-multi {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 6px;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  padding: 0 2px;
+  line-height: 1.4;
+}
+
+/* Legend bar */
+.kv-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 4px 8px;
+}
+
+.kv-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.kv-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Command list sidebar */
+.kv-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+  max-width: 260px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 4px 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.kv-cmd-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kv-cmd-group-title {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+  opacity: 0.8;
+}
+
+.kv-cmd-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.kv-cmd-key {
+  font-family: var(--font-mono, monospace);
+  font-size: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.8);
+  flex-shrink: 0;
+}
+
+.kv-cmd-desc {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* -----------------------------------------------------------------------
+   Chord mode states
+   ----------------------------------------------------------------------- */
+
+/* Non-completion keys dim in chord mode */
+.kv-key.kv-key--chord-dim {
+  opacity: 0.2;
+  transition: opacity 0.2s ease;
+}
+
+/* Completion keys light up with action category colour (inline styles) */
+.kv-key.kv-key--chord-active {
+  opacity: 1;
+  filter: brightness(1.15);
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.kv-key.kv-key--chord-active:hover {
+  filter: brightness(1.35);
+}
+
+/* Leader key gets a highlighted border */
+.kv-key.kv-key--chord-leader {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.55);
+  border-width: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.15);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Optional: container-level chord mode indicator */
+.kv-container.kv-chord-mode {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* -----------------------------------------------------------------------
+   Heatmap overlay — cool blue to warm red gradient
+   ----------------------------------------------------------------------- */
+
+.kv-key.kv-key--heat-low {
+  background: rgba(66, 165, 245, 0.15) !important;
+  border-color: rgba(66, 165, 245, 0.3) !important;
+}
+
+.kv-key.kv-key--heat-mid {
+  background: rgba(255, 193, 7, 0.25) !important;
+  border-color: rgba(255, 193, 7, 0.4) !important;
+}
+
+.kv-key.kv-key--heat-high {
+  background: rgba(244, 67, 54, 0.35) !important;
+  border-color: rgba(244, 67, 54, 0.5) !important;
+}
+
+/* -----------------------------------------------------------------------
+   Edit mode states
+   ----------------------------------------------------------------------- */
+
+/* Container-level edit mode indicator */
+.kv-container.kv-edit-active {
+  border-color: rgba(66, 165, 245, 0.15);
+}
+
+/* Clickable bound keys in edit mode — show pointer cursor */
+.kv-key.kv-clickable {
+  cursor: pointer;
+}
+
+.kv-key.kv-clickable:hover {
+  filter: brightness(1.3);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Free (unbound, non-modifier) keys in edit mode — subtle available glow */
+.kv-key.kv-free-key {
+  opacity: 0.55;
+  background: rgba(66, 165, 245, 0.04);
+  border-color: rgba(66, 165, 245, 0.12);
+  border-style: dashed;
+}
+
+/* Listening state — pulsing border animation */
+.kv-key.kv-listening {
+  opacity: 1;
+  border-width: 2px;
+  animation: kv-pulse 1s ease-in-out infinite;
+  z-index: 2;
+}
+
+@keyframes kv-pulse {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(66, 165, 245, 0.3);
+    border-color: rgba(66, 165, 245, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(66, 165, 245, 0.5);
+    border-color: rgba(66, 165, 245, 0.9);
+  }
+}
+
+/* Just-rebound flash */
+.kv-key.kv-just-rebound {
+  animation: kv-flash 0.6s ease-out;
+}
+
+@keyframes kv-flash {
+  0% {
+    box-shadow: 0 0 12px rgba(76, 201, 176, 0.7);
+    border-color: rgba(76, 201, 176, 0.9);
+  }
+  100% {
+    box-shadow: none;
+    border-color: inherit;
+  }
+}
+
+/* Inline conflict overlay — small tooltip near the key */
+.kv-conflict-overlay {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 30, 35, 0.95);
+  border: 1px solid rgba(244, 67, 54, 0.5);
+  border-radius: 4px;
+  padding: 3px 6px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.kv-conflict-msg {
+  font-size: 8px;
+  color: rgba(244, 67, 54, 0.9);
+  line-height: 1.2;
+}
+
+/* Edit hint bar below the keyboard */
+.kv-edit-hint {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  padding: 2px 8px;
+}

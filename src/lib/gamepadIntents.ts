@@ -16,6 +16,8 @@ import {
 
 import * as ch from "../contracts/gamepadChannels";
 import type { ControllerMode } from "../contracts/gamepadChannels";
+import { defaultGamepadBindings } from "./keybindings/defaults";
+import type { ActionId } from "./keybindings/actions";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -184,39 +186,23 @@ interface ComboEntry {
   emit: () => void;
 }
 
+const actionEmitters: Partial<Record<ActionId, () => void>> = {
+  "eval.now":        () => ch.evalNow.publish({}),
+  "nav.toggleMode":  () => ch.toggleNavMode.publish({}),
+  "edit.delete":     () => ch.deleteNode.publish({}),
+  "menu.openBefore": () => ch.openMenu.publish({ direction: "before" }),
+  "menu.openAfter":  () => ch.openMenu.publish({ direction: "after" }),
+  "menu.radial":     () => ch.openRadialMenu.publish({ direction: "replace" }),
+};
+
 function buildComboRegistry(): ComboEntry[] {
-  return [
-    {
-      combo: ["LB", "A"],
-      mode: "normal",
-      emit: () => ch.openMenu.publish({ direction: "before" }),
-    },
-    {
-      combo: ["RB", "A"],
-      mode: "normal",
-      emit: () => ch.openMenu.publish({ direction: "after" }),
-    },
-    {
-      combo: ["X"],
-      mode: "normal",
-      emit: () => ch.openRadialMenu.publish({ direction: "replace" }),
-    },
-    {
-      combo: ["Y"],
-      mode: "normal",
-      emit: () => ch.deleteNode.publish({}),
-    },
-    {
-      combo: ["Start"],
-      mode: "normal",
-      emit: () => ch.evalNow.publish({}),
-    },
-    {
-      combo: ["Back"],
-      mode: "normal",
-      emit: () => ch.toggleNavMode.publish({}),
-    },
-  ];
+  return defaultGamepadBindings
+    .map((binding) => {
+      const emitter = actionEmitters[binding.action];
+      if (!emitter) return null;
+      return { combo: binding.combo, mode: "normal" as ControllerMode, emit: emitter };
+    })
+    .filter((entry): entry is ComboEntry => entry !== null);
 }
 
 // ---------------------------------------------------------------------------

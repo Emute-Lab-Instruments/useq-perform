@@ -11,6 +11,8 @@ import type {
   AppDevModeState,
   AppSettings,
   AppSettingsPatch,
+  EvalResultsSettings,
+  KeybindingsSettings,
   StoredAppSettings,
   VisualisationSettings,
 } from "./schema.ts";
@@ -94,6 +96,94 @@ function normalizeVisualisationSettings(
   };
 }
 
+const VALID_EVAL_MODES: ReadonlySet<string> = new Set([
+  "console",
+  "inline",
+  "inline-ephemeral",
+  "floating",
+]);
+
+function normalizeEvalResultsSettings(
+  value: unknown,
+  defaults: EvalResultsSettings = defaultUserSettings.evalResults,
+): EvalResultsSettings {
+  const raw = isRecord(value) ? value : {};
+  const mode =
+    typeof raw.mode === "string" && VALID_EVAL_MODES.has(raw.mode)
+      ? (raw.mode as EvalResultsSettings["mode"])
+      : defaults.mode;
+  return {
+    mode,
+    autoDismissMs: coerceNumber(raw.autoDismissMs, defaults.autoDismissMs),
+    maxChars: coerceNumber(raw.maxChars, defaults.maxChars),
+    showTimestamp:
+      raw.showTimestamp == null ? defaults.showTimestamp : raw.showTimestamp !== false,
+  };
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeKeybindingsSettings(
+  value: unknown,
+  defaults: KeybindingsSettings = defaultUserSettings.keybindings!,
+): KeybindingsSettings {
+  const raw = isRecord(value) ? value : {};
+
+  const result: KeybindingsSettings = {
+    profile:
+      typeof raw.profile === "string" && raw.profile.length > 0
+        ? raw.profile
+        : defaults.profile,
+    layout:
+      typeof raw.layout === "string" && raw.layout.length > 0
+        ? raw.layout
+        : defaults.layout,
+  };
+
+  if (isRecord(raw.overrides)) {
+    result.overrides = Object.fromEntries(
+      Object.entries(raw.overrides).filter(
+        ([k, v]) => typeof k === "string" && typeof v === "string",
+      ),
+    ) as Record<string, string>;
+  }
+
+  if (isRecord(raw.gamepadOverrides)) {
+    const cleaned: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(raw.gamepadOverrides)) {
+      if (typeof k === "string" && Array.isArray(v)) {
+        const filtered = v.filter((s): s is string => typeof s === "string");
+        if (filtered.length > 0) cleaned[k] = filtered;
+      }
+    }
+    if (Object.keys(cleaned).length > 0) result.gamepadOverrides = cleaned;
+  }
+
+  if (raw.chordTimeout != null) {
+    result.chordTimeout = clampNumber(
+      coerceNumber(raw.chordTimeout, 1500),
+      200,
+      5000,
+    );
+  }
+
+  if (raw.modifierHintDelay != null) {
+    result.modifierHintDelay = clampNumber(
+      coerceNumber(raw.modifierHintDelay, 500),
+      100,
+      2000,
+    );
+  }
+
+  if (raw.stickyModifiers != null) {
+    result.stickyModifiers = raw.stickyModifiers === true;
+  }
+
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -107,6 +197,7 @@ export function normalizeUserSettings(value: unknown): AppSettings {
   const ui = isRecord(raw.ui) ? raw.ui : {};
   const runtime = isRecord(raw.runtime) ? raw.runtime : {};
   const wasm = isRecord(raw.wasm) ? raw.wasm : {};
+  const keybindings = isRecord(raw.keybindings) ? raw.keybindings : undefined;
   const keymaps = isRecord(raw.keymaps) ? raw.keymaps : undefined;
 
   return {
@@ -169,6 +260,7 @@ export function normalizeUserSettings(value: unknown): AppSettings {
         ui.gamepadPickerStyle === "radial" ? "radial" : defaults.ui.gamepadPickerStyle,
     },
     visualisation: normalizeVisualisationSettings(raw.visualisation, defaults.visualisation),
+    evalResults: normalizeEvalResultsSettings(raw.evalResults, defaults.evalResults),
     runtime: {
       ...defaults.runtime,
       ...runtime,
@@ -186,6 +278,9 @@ export function normalizeUserSettings(value: unknown): AppSettings {
       ...wasm,
       enabled: wasm.enabled == null ? defaults.wasm.enabled : wasm.enabled !== false,
     },
+    keybindings: keybindings
+      ? normalizeKeybindingsSettings(keybindings, defaults.keybindings)
+      : defaults.keybindings,
     keymaps: keymaps
       ? (Object.fromEntries(
           Object.entries(keymaps).filter(
@@ -218,12 +313,18 @@ export function mergeUserSettings(
     visualisation: isRecord(patch.visualisation)
       ? { ...normalizedBase.visualisation, ...patch.visualisation }
       : normalizedBase.visualisation,
+    evalResults: isRecord(patch.evalResults)
+      ? { ...normalizedBase.evalResults, ...patch.evalResults }
+      : normalizedBase.evalResults,
     runtime: isRecord(patch.runtime)
       ? { ...normalizedBase.runtime, ...patch.runtime }
       : normalizedBase.runtime,
     wasm: isRecord(patch.wasm)
       ? { ...normalizedBase.wasm, ...patch.wasm }
       : normalizedBase.wasm,
+    keybindings: isRecord(patch.keybindings)
+      ? { ...(normalizedBase.keybindings || {}), ...patch.keybindings }
+      : normalizedBase.keybindings,
     keymaps: isRecord(patch.keymaps)
       ? { ...(normalizedBase.keymaps || {}), ...patch.keymaps }
       : normalizedBase.keymaps,
@@ -282,8 +383,10 @@ export function createConfigurationDocument(
         customThemes: [...normalized.ui.customThemes],
       },
       visualisation: { ...normalized.visualisation },
+      evalResults: { ...normalized.evalResults },
       runtime: { ...normalized.runtime },
       wasm: { ...normalized.wasm },
+      ...(normalized.keybindings ? { keybindings: { ...normalized.keybindings } } : {}),
       ...(normalized.keymaps ? { keymaps: { ...normalized.keymaps } } : {}),
     },
     devMode: includeDevMode
@@ -477,12 +580,20 @@ export function settingsPatchFromConfiguration(
     patch.visualisation = visualisationPatch;
   }
 
+  if (isRecord(user.evalResults)) {
+    patch.evalResults = { ...user.evalResults };
+  }
+
   if (isRecord(user.runtime)) {
     patch.runtime = { ...user.runtime };
   }
 
   if (isRecord(user.wasm)) {
     patch.wasm = { ...user.wasm };
+  }
+
+  if (isRecord(user.keybindings)) {
+    patch.keybindings = normalizeKeybindingsSettings(user.keybindings);
   }
 
   if (isRecord(user.keymaps)) {
