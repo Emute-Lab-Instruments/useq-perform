@@ -247,6 +247,8 @@ interface MeasureResult {
   visVisible: boolean;
   /** The scrollDOM.scrollTop at the time of measurement. */
   scrollTop: number;
+  /** Editor panel's top offset from viewport (for aligning blur buffer). */
+  editorTop: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,6 +276,8 @@ class VisReadabilityPlugin {
   private clipPath: Path2D | null = null;
   /** rAF handle for the render loop. */
   private rafId: number | null = null;
+  /** Editor panel top offset from viewport (cached during measure). */
+  private editorTop = 0;
 
   constructor(view: EditorView) {
     this.view = view;
@@ -390,13 +394,16 @@ class VisReadabilityPlugin {
 
     // 2–3. Clip to the staircase polygons (shifted by scroll delta) and
     //       draw the blur buffer in viewport-fixed coordinates.
+    //
+    //       The polygon coords are relative to the editor panel (top = Y:0).
+    //       The blur buffer covers the full viewport, so we crop from Y=editorTop
+    //       to align the vis content with the polygon coordinates.
     ctx.clearRect(0, 0, w, h);
     ctx.save();
     ctx.translate(0, -this.scrollDelta);
     ctx.clip(this.clipPath);
-    // Reset transform so the blur image stays fixed in viewport space.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(this.blurBuffer, 0, 0, w, h);
+    ctx.drawImage(this.blurBuffer, 0, this.editorTop, w, h, 0, 0, w, h);
     ctx.restore();
   }
 
@@ -418,8 +425,9 @@ class VisReadabilityPlugin {
       read(v: EditorView): MeasureResult {
         const visVisible = isVisPanelVisible();
         const scrollTop = v.scrollDOM.scrollTop;
-        if (!visVisible) return { lineBounds: [], visVisible, scrollTop };
         const rect = editorPanel?.getBoundingClientRect() ?? null;
+        const editorTop = rect?.top ?? 0;
+        if (!visVisible) return { lineBounds: [], visVisible, scrollTop, editorTop };
         const lineBounds = computeVisibleLineBoundsViewport(v);
         if (rect) {
           for (const lb of lineBounds) {
@@ -429,12 +437,13 @@ class VisReadabilityPlugin {
             lb.bottom -= rect.top;
           }
         }
-        return { lineBounds, visVisible, scrollTop };
+        return { lineBounds, visVisible, scrollTop, editorTop };
       },
-      write({ lineBounds, visVisible, scrollTop }: MeasureResult) {
+      write({ lineBounds, visVisible, scrollTop, editorTop }: MeasureResult) {
         self.applyVisState(visVisible);
         self.scrollBaseline = scrollTop;
         self.scrollDelta = 0;
+        self.editorTop = editorTop;
         self.clipPath = buildClipPath(lineBounds);
       },
     });
