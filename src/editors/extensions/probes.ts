@@ -38,10 +38,14 @@ const DEFAULT_PROBE_SAMPLE_COUNT = 40;
 const DEFAULT_PROBE_LINE_WIDTH = 2;
 const PROBE_ACCENT_REFRESH_INTERVAL_MS = 250;
 const DEFAULT_BAR_DURATION_SECONDS = 1;
+const BAR_DURATION_CACHE_TTL_MS = 2000;
 const ERROR_PREFIX = "Error:";
 
 let cachedAccentColor: string | null = null;
 let lastAccentColorRead = 0;
+
+let cachedBarDuration: number | null = null;
+let lastBarDurationRead = 0;
 
 // Placement choice for v1: inline widget immediately after the probed form.
 // Follow-up options worth testing are block widgets under the form and an
@@ -149,6 +153,20 @@ function persistProbes(probes: PersistedProbeSpec[]): void {
     return;
   }
   save(PERSISTENCE_KEYS.editorProbes, probes);
+}
+
+/**
+ * Build a lightweight signature string for probe identity comparison.
+ * Avoids the full JSON.stringify overhead on every CodeMirror update
+ * by only encoding the fields that determine probe identity.
+ */
+function buildProbeSignature(probes: PersistedProbeSpec[]): string {
+  if (probes.length === 0) return "";
+  let signature = "";
+  for (const probe of probes) {
+    signature += `${probe.id}:${probe.from}:${probe.to}:${probe.mode}:${probe.depth}:${probe.maxDepth};`;
+  }
+  return signature;
 }
 
 function intersectsViewport(
@@ -462,15 +480,27 @@ function isErrorResult(text: string): boolean {
 }
 
 async function readBarDurationSeconds(): Promise<number> {
+  const now = window.performance?.now?.() ?? Date.now();
+  if (
+    cachedBarDuration !== null &&
+    now - lastBarDurationRead <= BAR_DURATION_CACHE_TTL_MS
+  ) {
+    return cachedBarDuration;
+  }
+
   try {
     const result = await evaluateProbeCode("barDur");
     const numeric = Number(result);
     if (Number.isFinite(numeric) && numeric > 0) {
+      cachedBarDuration = numeric;
+      lastBarDurationRead = now;
       return numeric;
     }
   } catch (error) {
     dbg(`probe: failed to read barDur (${error})`);
   }
+  cachedBarDuration = DEFAULT_BAR_DURATION_SECONDS;
+  lastBarDurationRead = now;
   return DEFAULT_BAR_DURATION_SECONDS;
 }
 
@@ -754,7 +784,7 @@ class ProbePlugin {
   private previousProbeSignature = "";
 
   constructor(private readonly view: EditorView) {
-    this.previousProbeSignature = JSON.stringify(
+    this.previousProbeSignature = buildProbeSignature(
       view.state.field(probeField).probes,
     );
     this.recomputeVisibleForms(view);
@@ -770,7 +800,7 @@ class ProbePlugin {
     }
 
     const probes = update.state.field(probeField).probes;
-    const nextSignature = JSON.stringify(probes);
+    const nextSignature = buildProbeSignature(probes);
     if (nextSignature !== this.previousProbeSignature) {
       this.previousProbeSignature = nextSignature;
       persistProbes(probes);

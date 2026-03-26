@@ -506,6 +506,108 @@ describe("probe commands", () => {
     view.destroy();
   });
 
+  it("uses the configured probe refresh interval to throttle redraws", async () => {
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      if (code === "barDur") return "1";
+      if (code.startsWith("[")) return numericVector(40, 42);
+      return "42";
+    });
+
+    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
+    setVisStore("currentTime", 2);
+
+    const view = createView("bar", probeExtensions, { anchor: 0 });
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
+
+    // First frame at t=1000 should sample
+    await runNextFrame(1000);
+    const firstRender = view.state.field(probeField).renderById;
+    const probeId = view.state.field(probeField).probes[0].id;
+    expect(firstRender[probeId]).toBeDefined();
+    const firstRevision = firstRender[probeId].revision;
+
+    // Second frame within the throttle window (180ms) should be skipped
+    await runNextFrame(1050);
+    const secondRender = view.state.field(probeField).renderById;
+    expect(secondRender[probeId].revision).toBe(firstRevision);
+
+    // Third frame beyond the throttle window should sample again
+    await runNextFrame(1200);
+    const thirdRender = view.state.field(probeField).renderById;
+    expect(thirdRender[probeId].revision).toBeGreaterThan(firstRevision);
+
+    view.destroy();
+  });
+
+  it("caches barDur across rapid ticks to reduce WASM calls", async () => {
+    let barDurCallCount = 0;
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      if (code === "barDur") {
+        barDurCallCount++;
+        return "2";
+      }
+      if (code.startsWith("[")) return numericVector(40, 1);
+      return "1";
+    });
+
+    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
+    setVisStore("currentTime", 5);
+
+    const view = createView("bar", probeExtensions, { anchor: 0 });
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
+
+    // First tick reads barDur
+    await runNextFrame(1000);
+    expect(barDurCallCount).toBe(1);
+
+    // Second tick after throttle interval — barDur should come from cache
+    await runNextFrame(1200);
+    expect(barDurCallCount).toBe(1);
+
+    view.destroy();
+  });
+
+  it("evaluates multiple probes sequentially within a single tick", async () => {
+    const evalOrder: string[] = [];
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      if (code === "barDur") return "1";
+      evalOrder.push(code);
+      if (code.startsWith("[")) return numericVector(40, 0);
+      return "0.5";
+    });
+
+    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
+    setVisStore("currentTime", 3);
+
+    const source = "alpha beta";
+    const view = createView(source, probeExtensions, {
+      anchor: anchorOf(source, "alpha"),
+    });
+
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
+    view.dispatch({ selection: { anchor: anchorOf(source, "beta") } });
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
+
+    const probes = view.state.field(probeField).probes;
+    expect(probes).toHaveLength(2);
+
+    await runNextFrame(1000);
+
+    // Both probes should have render data
+    const snapshot = view.state.field(probeField);
+    for (const probe of snapshot.probes) {
+      expect(snapshot.renderById[probe.id]).toBeDefined();
+    }
+
+    // The eval calls should interleave: current-check then batch for each probe
+    expect(evalOrder.length).toBeGreaterThanOrEqual(4);
+
+    view.destroy();
+  });
+
   it("adds contextual highlights for visible indexed forms without requiring probes", async () => {
     evalInUseqWasmSilently.mockResolvedValue("0.5");
 
