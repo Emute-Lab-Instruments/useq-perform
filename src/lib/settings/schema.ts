@@ -62,6 +62,10 @@ export interface VisualisationSettings {
   readabilityPasses: number;
   /** Feather radius (px) to soften the edges of the mask polygons. */
   readabilityFeather: number;
+  /** Maximum brightness reduction (0–1) the darken slider can apply. */
+  readabilityMaxDarken: number;
+  /** Debounce delay (ms) before polygon rebuild after scrolling stops. */
+  readabilityDebounceMs: number;
   /** Lines of overscan beyond the viewport for pre-computed blur coverage during scroll. */
   readabilityOverscan: number;
   /** Whether the readability blur overlay is enabled at all. */
@@ -155,6 +159,8 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   readabilityAlpha: 0.85,
   readabilityPasses: 2,
   readabilityFeather: 4,
+  readabilityMaxDarken: 0.85,
+  readabilityDebounceMs: 80,
   readabilityOverscan: 30,
   readabilityEnabled: true,
 };

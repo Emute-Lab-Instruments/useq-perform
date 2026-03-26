@@ -190,6 +190,28 @@ export function VisualisationSettings() {
           onChange={(val) => updateVisField("readabilityPasses", val)}
         />
       </FormRow>
+      <FormRow label="Max darken">
+        <RangeInput
+          value={settings.visualisation?.readabilityMaxDarken ?? 0.85}
+          min={0}
+          max={1}
+          step={0.05}
+          disabled={settings.visualisation?.readabilityEnabled === false}
+          formatValue={(v) => v.toFixed(2)}
+          onChange={(val) => updateVisField("readabilityMaxDarken", val)}
+        />
+      </FormRow>
+      <FormRow label="Scroll rebuild delay">
+        <RangeInput
+          value={settings.visualisation?.readabilityDebounceMs ?? 80}
+          min={20}
+          max={300}
+          step={10}
+          disabled={settings.visualisation?.readabilityEnabled === false}
+          formatValue={(v) => `${Math.round(v)}ms`}
+          onChange={(val) => updateVisField("readabilityDebounceMs", val)}
+        />
+      </FormRow>
       <FormRow label="Scroll overscan">
         <RangeInput
           value={settings.visualisation?.readabilityOverscan ?? 30}

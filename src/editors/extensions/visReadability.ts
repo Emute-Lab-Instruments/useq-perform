@@ -407,7 +407,8 @@ class VisReadabilityPlugin {
     //    is only visible where waveforms exist.  Drawing multiple passes
     //    stacks the alpha, making the effect denser/more opaque without
     //    increasing the blur radius (which would smear).
-    const brightness = 1 - tintOpacity * 0.85; // 0→full color, 1→15% brightness
+    const maxDarken = Math.max(0, Math.min(1, visSettings?.readabilityMaxDarken ?? 0.85));
+    const brightness = 1 - tintOpacity * maxDarken;
     const bw = this.blurBuffer.width;
     const bh = this.blurBuffer.height;
     blurCtx.clearRect(0, 0, bw, bh);
@@ -463,10 +464,11 @@ class VisReadabilityPlugin {
   /** Debounced rebuild — recomputes polygons after scrolling settles. */
   private debouncedRebuild(): void {
     if (this.scrollRebuildTimer !== null) clearTimeout(this.scrollRebuildTimer);
+    const delay = Math.max(20, getAppSettings().visualisation?.readabilityDebounceMs ?? 80);
     this.scrollRebuildTimer = setTimeout(() => {
       this.scrollRebuildTimer = null;
       this.scheduleRebuild();
-    }, 80);
+    }, delay);
   }
 
   private scheduleRebuild(): void {

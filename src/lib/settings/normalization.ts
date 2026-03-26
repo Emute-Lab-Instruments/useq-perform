@@ -86,6 +86,8 @@ function normalizeVisualisationSettings(
     readabilityAlpha: coerceNumber(raw.readabilityAlpha, defaults.readabilityAlpha),
     readabilityPasses: coerceNumber(raw.readabilityPasses, defaults.readabilityPasses),
     readabilityFeather: coerceNumber(raw.readabilityFeather, defaults.readabilityFeather),
+    readabilityMaxDarken: coerceNumber(raw.readabilityMaxDarken, defaults.readabilityMaxDarken),
+    readabilityDebounceMs: coerceNumber(raw.readabilityDebounceMs, defaults.readabilityDebounceMs),
     readabilityOverscan: coerceNumber(raw.readabilityOverscan, defaults.readabilityOverscan),
     readabilityEnabled:
       raw.readabilityEnabled == null ? defaults.readabilityEnabled : raw.readabilityEnabled !== false,
@@ -444,6 +446,20 @@ export function settingsPatchFromConfiguration(
       visualisationPatch.readabilityFeather = coerceNumber(
         visualisation.readabilityFeather,
         defaultUserSettings.visualisation.readabilityFeather,
+      );
+    }
+
+    if ("readabilityMaxDarken" in visualisation) {
+      visualisationPatch.readabilityMaxDarken = coerceNumber(
+        visualisation.readabilityMaxDarken,
+        defaultUserSettings.visualisation.readabilityMaxDarken,
+      );
+    }
+
+    if ("readabilityDebounceMs" in visualisation) {
+      visualisationPatch.readabilityDebounceMs = coerceNumber(
+        visualisation.readabilityDebounceMs,
+        defaultUserSettings.visualisation.readabilityDebounceMs,
       );
     }
 
