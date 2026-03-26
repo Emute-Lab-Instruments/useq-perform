@@ -135,9 +135,9 @@ export function VisualisationSettings() {
           onChange={(val) => updateVisField("readabilityBlurRadius", val)}
         />
       </FormRow>
-      <FormRow label="Blur tint opacity">
+      <FormRow label="Darken waveforms">
         <RangeInput
-          value={settings.visualisation?.readabilityTintOpacity ?? 0.4}
+          value={settings.visualisation?.readabilityTintOpacity ?? 0.5}
           min={0}
           max={1}
           step={0.05}

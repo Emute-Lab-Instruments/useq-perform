@@ -397,29 +397,18 @@ class VisReadabilityPlugin {
     const tintOpacity = visSettings?.readabilityTintOpacity ?? 0;
     const alpha = visSettings?.readabilityAlpha ?? 1;
 
-    // 1. Blur the vis canvas into the offscreen buffer (one GPU op).
+    // 1. Blur + darken the vis canvas in a single filter pass.
+    //    brightness() dims the waveform RGB without touching alpha, so the
+    //    result is only visible where waveforms actually exist — transparent
+    //    areas stay transparent.  No composite tricks needed.
+    const brightness = 1 - tintOpacity * 0.85; // 0→full color, 1→15% brightness
     blurCtx.clearRect(0, 0, this.blurBuffer.width, this.blurBuffer.height);
-    blurCtx.globalCompositeOperation = 'source-over';
-    blurCtx.filter = `blur(${blurRadius}px)`;
+    blurCtx.filter = `blur(${blurRadius}px) brightness(${brightness})`;
     blurCtx.drawImage(visCanvas, 0, 0);
     blurCtx.filter = 'none';
 
-    // 2. Frosted glass tint: paint a solid dark fill *behind* the blurred
-    //    waveform content using destination-over, then mask to the original
-    //    blurred alpha with destination-in.  This adds an opaque dark
-    //    backing that only appears where the blur has content, and the
-    //    tintOpacity slider controls how much of it shows through.
-    if (tintOpacity > 0) {
-      // Draw dark fill behind the existing blurred content.
-      blurCtx.globalCompositeOperation = 'destination-over';
-      blurCtx.fillStyle = `rgba(0, 0, 0, ${tintOpacity})`;
-      blurCtx.fillRect(0, 0, this.blurBuffer.width, this.blurBuffer.height);
-      blurCtx.globalCompositeOperation = 'source-over';
-    }
-
-    // 3. Clip to the staircase polygons (shifted by scroll delta) and
-    //    draw the tinted blur buffer in viewport-fixed coordinates.
-    //    globalAlpha controls overall effect intensity.
+    // 2. Clip to the staircase polygons (shifted by scroll delta) and
+    //    draw the blur buffer in viewport-fixed coordinates.
     ctx.clearRect(0, 0, w, h);
     ctx.save();
     ctx.translate(0, -this.scrollDelta);
