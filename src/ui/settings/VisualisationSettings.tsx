@@ -135,6 +135,17 @@ export function VisualisationSettings() {
           onChange={(val) => updateVisField("readabilityBlurRadius", val)}
         />
       </FormRow>
+      <FormRow label="Blur tint opacity">
+        <RangeInput
+          value={settings.visualisation?.readabilityTintOpacity ?? 0.4}
+          min={0}
+          max={1}
+          step={0.05}
+          disabled={settings.visualisation?.readabilityEnabled === false}
+          formatValue={(v) => v.toFixed(2)}
+          onChange={(val) => updateVisField("readabilityTintOpacity", val)}
+        />
+      </FormRow>
       <FormRow label="Blur padding">
         <RangeInput
           value={settings.visualisation?.readabilityPadding ?? 3}

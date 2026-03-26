@@ -54,6 +54,8 @@ export interface VisualisationSettings {
   readabilityBlurRadius: number;
   /** Extra padding (px) around each code line in the blur mask. */
   readabilityPadding: number;
+  /** Opacity (0–1) of a dark tint drawn over the blurred region (frosted glass). */
+  readabilityTintOpacity: number;
   /** Whether the readability blur overlay is enabled at all. */
   readabilityEnabled: boolean;
 }
@@ -141,6 +143,7 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   digitalLaneGap: 4,
   readabilityBlurRadius: 10,
   readabilityPadding: 3,
+  readabilityTintOpacity: 0.4,
   readabilityEnabled: true,
 };
 

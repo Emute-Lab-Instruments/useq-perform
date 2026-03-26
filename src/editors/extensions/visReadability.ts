@@ -411,6 +411,14 @@ class VisReadabilityPlugin {
     ctx.clip(this.clipPath);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.blurBuffer, 0, this.editorTop, w, h, 0, 0, w, h);
+
+    // 4. Frosted glass tint: draw a dark fill over the blurred region.
+    const tintOpacity = visSettings?.readabilityTintOpacity ?? 0;
+    if (tintOpacity > 0) {
+      ctx.fillStyle = `rgba(0, 0, 0, ${tintOpacity})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+
     ctx.restore();
   }
 
