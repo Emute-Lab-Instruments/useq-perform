@@ -65,6 +65,39 @@ export function VisualisationSettings() {
           onChange={(val) => updateVisField("lineWidth", val)}
         />
       </FormRow>
+      <FormRow label="Probe waveform line width">
+        <RangeInput
+          value={settings.visualisation?.probeLineWidth ?? 2}
+          min={0.5}
+          max={5}
+          step={0.1}
+          formatValue={(v) => `${v.toFixed(2)}px`}
+          onChange={(val) => updateVisField("probeLineWidth", val)}
+        />
+      </FormRow>
+      <FormRow label="Probe sample count">
+        <NumberInput
+          value={settings.visualisation?.probeSampleCount ?? 40}
+          min={10}
+          max={400}
+          step={10}
+          onChange={(val) => updateVisField("probeSampleCount", val)}
+        />
+      </FormRow>
+      <FormRow label="Probe refresh rate">
+        <RangeInput
+          value={1000 / (settings.visualisation?.probeRefreshIntervalMs ?? 33)}
+          min={1}
+          max={60}
+          step={1}
+          formatValue={(v) => `${Math.round(v)} fps`}
+          onChange={(val) =>
+            updateVisField(
+              "probeRefreshIntervalMs",
+              Math.max(16, Math.round(1000 / Math.max(1, val))),
+            )}
+        />
+      </FormRow>
       <FormRow label="Digital channel gap">
         <RangeInput
           value={settings.visualisation?.digitalLaneGap ?? 4}
@@ -83,6 +116,34 @@ export function VisualisationSettings() {
           step={1}
           disabled={maxCircularOffset() === 0}
           onChange={(val) => updateVisField("circularOffset", val)}
+        />
+      </FormRow>
+      <FormRow label="Readability blur">
+        <Checkbox
+          checked={settings.visualisation?.readabilityEnabled !== false}
+          onChange={(val) => updateVisField("readabilityEnabled", val)}
+        />
+      </FormRow>
+      <FormRow label="Blur intensity">
+        <RangeInput
+          value={settings.visualisation?.readabilityBlurRadius ?? 10}
+          min={1}
+          max={30}
+          step={1}
+          disabled={settings.visualisation?.readabilityEnabled === false}
+          formatValue={(v) => `${Math.round(v)}px`}
+          onChange={(val) => updateVisField("readabilityBlurRadius", val)}
+        />
+      </FormRow>
+      <FormRow label="Blur padding">
+        <RangeInput
+          value={settings.visualisation?.readabilityPadding ?? 3}
+          min={0}
+          max={20}
+          step={1}
+          disabled={settings.visualisation?.readabilityEnabled === false}
+          formatValue={(v) => `${Math.round(v)}px`}
+          onChange={(val) => updateVisField("readabilityPadding", val)}
         />
       </FormRow>
       <FormRow label="Show future mask/dashes">

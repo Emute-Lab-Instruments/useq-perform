@@ -41,12 +41,21 @@ export interface VisualisationSettings {
   windowDuration: number;
   sampleCount: number;
   lineWidth: number;
+  probeSampleCount: number;
+  probeLineWidth: number;
+  probeRefreshIntervalMs: number;
   futureDashed: boolean;
   futureMaskOpacity: number;
   futureMaskWidth: number;
   circularOffset: number;
   futureLeadSeconds: number;
   digitalLaneGap: number;
+  /** Blur radius (px) for the readability overlay behind code text. */
+  readabilityBlurRadius: number;
+  /** Extra padding (px) around each code line in the blur mask. */
+  readabilityPadding: number;
+  /** Whether the readability blur overlay is enabled at all. */
+  readabilityEnabled: boolean;
 }
 
 export interface RuntimeSettings {
@@ -121,12 +130,18 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   windowDuration: 10,
   sampleCount: 100,
   lineWidth: 1.5,
+  probeSampleCount: 40,
+  probeLineWidth: 2,
+  probeRefreshIntervalMs: 33,
   futureDashed: true,
   futureMaskOpacity: 0.35,
   futureMaskWidth: 12,
   circularOffset: 0,
   futureLeadSeconds: 1,
   digitalLaneGap: 4,
+  readabilityBlurRadius: 10,
+  readabilityPadding: 3,
+  readabilityEnabled: true,
 };
 
 export const defaultDevModeConfiguration: AppDevModeState = {

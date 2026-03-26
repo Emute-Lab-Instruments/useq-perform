@@ -22,6 +22,7 @@ import {
   getVisualisationPanel,
   isVisualisationPanelVisible,
 } from "../../ui/adapters/visualisationPanel";
+import { getAppSettings } from "../../runtime/appSettingsRepository";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -220,8 +221,8 @@ function computeVisibleLineBoundsViewport(view: EditorView): PixelLineBounds[] {
 // Pre-blurred canvas rendering
 // ---------------------------------------------------------------------------
 
-const BLUR_RADIUS = 6;
-const PADDING = 3;
+const DEFAULT_BLUR_RADIUS = 10;
+const DEFAULT_PADDING = 3;
 const EDITOR_RAISED_Z = '21';
 const VIS_CANVAS_ID = 'serialcanvas';
 
@@ -230,13 +231,13 @@ function isVisPanelVisible(): boolean {
 }
 
 /** Build a combined Path2D from line bounds (all blocks in one path). */
-function buildClipPath(lineBounds: PixelLineBounds[]): Path2D | null {
+function buildClipPath(lineBounds: PixelLineBounds[], padding: number): Path2D | null {
   const blocks = groupIntoBlocks(lineBounds);
   if (blocks.length === 0) return null;
 
   const combined = new Path2D();
   for (const block of blocks) {
-    const pathStr = buildBlockPolygonPath(block, PADDING);
+    const pathStr = buildBlockPolygonPath(block, padding);
     if (pathStr) combined.addPath(new Path2D(pathStr));
   }
   return combined;
@@ -387,8 +388,14 @@ class VisReadabilityPlugin {
     }
 
     // 1. Blur the vis canvas into the offscreen buffer (one GPU op).
+    const visSettings = getAppSettings().visualisation;
+    const blurRadius = visSettings?.readabilityBlurRadius ?? DEFAULT_BLUR_RADIUS;
+    if (visSettings?.readabilityEnabled === false) {
+      ctx.clearRect(0, 0, w, h);
+      return;
+    }
     blurCtx.clearRect(0, 0, this.blurBuffer.width, this.blurBuffer.height);
-    blurCtx.filter = `blur(${BLUR_RADIUS}px)`;
+    blurCtx.filter = `blur(${blurRadius}px)`;
     blurCtx.drawImage(visCanvas, 0, 0);
     blurCtx.filter = 'none';
 
@@ -444,7 +451,8 @@ class VisReadabilityPlugin {
         self.scrollBaseline = scrollTop;
         self.scrollDelta = 0;
         self.editorTop = editorTop;
-        self.clipPath = buildClipPath(lineBounds);
+        const padding = getAppSettings().visualisation?.readabilityPadding ?? DEFAULT_PADDING;
+        self.clipPath = buildClipPath(lineBounds, padding);
       },
     });
   }

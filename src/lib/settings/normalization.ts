@@ -64,6 +64,15 @@ function normalizeVisualisationSettings(
     windowDuration: coerceNumber(raw.windowDuration, defaults.windowDuration),
     sampleCount: coerceNumber(raw.sampleCount, defaults.sampleCount),
     lineWidth: coerceNumber(raw.lineWidth, defaults.lineWidth),
+    probeSampleCount: coerceNumber(
+      raw.probeSampleCount,
+      defaults.probeSampleCount,
+    ),
+    probeLineWidth: coerceNumber(raw.probeLineWidth, defaults.probeLineWidth),
+    probeRefreshIntervalMs: coerceNumber(
+      raw.probeRefreshIntervalMs,
+      defaults.probeRefreshIntervalMs,
+    ),
     futureDashed:
       raw.futureDashed == null ? defaults.futureDashed : raw.futureDashed !== false,
     futureMaskOpacity: coerceNumber(raw.futureMaskOpacity, defaults.futureMaskOpacity),
@@ -71,6 +80,10 @@ function normalizeVisualisationSettings(
     circularOffset: coerceNumber(raw.circularOffset, defaults.circularOffset),
     futureLeadSeconds: coerceNumber(raw.futureLeadSeconds, defaults.futureLeadSeconds),
     digitalLaneGap: coerceNumber(raw.digitalLaneGap, defaults.digitalLaneGap),
+    readabilityBlurRadius: coerceNumber(raw.readabilityBlurRadius, defaults.readabilityBlurRadius),
+    readabilityPadding: coerceNumber(raw.readabilityPadding, defaults.readabilityPadding),
+    readabilityEnabled:
+      raw.readabilityEnabled == null ? defaults.readabilityEnabled : raw.readabilityEnabled !== false,
   };
 }
 
@@ -327,6 +340,27 @@ export function settingsPatchFromConfiguration(
       );
     }
 
+    if ("probeSampleCount" in visualisation) {
+      visualisationPatch.probeSampleCount = coerceNumber(
+        visualisation.probeSampleCount,
+        defaultUserSettings.visualisation.probeSampleCount,
+      );
+    }
+
+    if ("probeLineWidth" in visualisation) {
+      visualisationPatch.probeLineWidth = coerceNumber(
+        visualisation.probeLineWidth,
+        defaultUserSettings.visualisation.probeLineWidth,
+      );
+    }
+
+    if ("probeRefreshIntervalMs" in visualisation) {
+      visualisationPatch.probeRefreshIntervalMs = coerceNumber(
+        visualisation.probeRefreshIntervalMs,
+        defaultUserSettings.visualisation.probeRefreshIntervalMs,
+      );
+    }
+
     if ("futureDashed" in visualisation) {
       visualisationPatch.futureDashed = visualisation.futureDashed !== false;
     }
@@ -364,6 +398,24 @@ export function settingsPatchFromConfiguration(
         visualisation.digitalLaneGap,
         defaultUserSettings.visualisation.digitalLaneGap,
       );
+    }
+
+    if ("readabilityBlurRadius" in visualisation) {
+      visualisationPatch.readabilityBlurRadius = coerceNumber(
+        visualisation.readabilityBlurRadius,
+        defaultUserSettings.visualisation.readabilityBlurRadius,
+      );
+    }
+
+    if ("readabilityPadding" in visualisation) {
+      visualisationPatch.readabilityPadding = coerceNumber(
+        visualisation.readabilityPadding,
+        defaultUserSettings.visualisation.readabilityPadding,
+      );
+    }
+
+    if ("readabilityEnabled" in visualisation) {
+      visualisationPatch.readabilityEnabled = visualisation.readabilityEnabled !== false;
     }
 
     patch.visualisation = visualisationPatch;
