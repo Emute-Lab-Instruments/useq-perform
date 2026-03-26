@@ -283,7 +283,7 @@
     "description": "Returns the value of CV input 1\n\nExample: to echo CV input 1 to CV output 1",
     "parameters": [],
     "examples": [
-      "(a1 (ain1))"
+      "(a1 ain1)"
     ],
     "category": "inputs",
     "tags": [
@@ -296,7 +296,7 @@
     "description": "Returns the value of CV input 2\n\nExample: to echo CV input 2 to CV output 2",
     "parameters": [],
     "examples": [
-      "(a2 (ain2))"
+      "(a2 ain2)"
     ],
     "category": "inputs",
     "tags": [
@@ -735,8 +735,8 @@
       }
     ],
     "examples": [
-      "(d2 (gates [0 1 1 0  1 1 1 0  1 1 0 1  1 0 0 1] (+ (swm 1) 0.3) bar))",
-      "(d2 (gates [0 1 1 0 1 0 0 (swt)] 0.5 (fast 2 bar))))",
+      "(d2 (gates [0 1 1 0  1 1 1 0  1 1 0 1  1 0 0 1] (+ swm 0.3) bar))",
+      "(d2 (gates [0 1 1 0 1 0 0 swt] 0.5 (fast 2 bar)))",
       "(d1 (gates [1 0 1 0] bar 2 0.75))"
     ],
     "category": "sequencing",
@@ -823,8 +823,8 @@
     "description": "Returns the value of digital input 1.\n\nExample: to echo digital input 1 to digital output 1",
     "parameters": [],
     "examples": [
-      "(d1 (in1))",
-      "(if (in1) 1 0)"
+      "(d1 in1)",
+      "(if in1 1 0)"
     ],
     "category": "inputs",
     "tags": [
@@ -837,8 +837,8 @@
     "description": "Returns the value of digital input 2.\n\nExample: to echo digital input 2 to digital output 1",
     "parameters": [],
     "examples": [
-      "(d1 (in2))",
-      "(if (in2) 1 0)"
+      "(d1 in2)",
+      "(if in2 1 0)"
     ],
     "category": "inputs",
     "tags": [

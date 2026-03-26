@@ -15,7 +15,6 @@ Welcome to the world of livecoding in your modular system! This guide will help 
     - [Making a Square Wave](#making-a-square-wave)
     - [Creating Rhythms](#creating-rhythms)
     - [Adding Modulation](#adding-modulation)
-  - [What is uSEQ?](#what-is-useq-1)
   - [Core ModuLisp Concepts](#core-modulisp-concepts)
     - [Working with Time](#working-with-time)
     - [Creating Expressions for Outputs](#creating-expressions-for-outputs)
@@ -30,10 +29,10 @@ Welcome to the world of livecoding in your modular system! This guide will help 
   - [Advanced Concepts](#advanced-concepts)
     - [Understanding Time in ModuLisp](#understanding-time-in-modulisp)
     - [Temporal Control Functions](#temporal-control-functions)
-      - [eval-at-time](#eval-at-time)
       - [offset, fast, and slow](#offset-fast-and-slow)
-    - [Creating Predictable Randomness](#creating-predictable-randomness)
-    - [The ModuLisp Architecture](#the-modulisp-architecture)
+    - [Euclidean Rhythms](#euclidean-rhythms)
+    - [Using Inputs](#using-inputs)
+    - [Defining and Reusing Expressions](#defining-and-reusing-expressions)
 
 ## What is uSEQ?
 
@@ -67,7 +66,7 @@ That's it! Once connected, the editor will show you're ready to start coding.
 Your uSEQ module has several parts:
 - **CV Outputs (a1, a2, a3)**: These output continuous voltage signals (-5V to +5V)
 - **Pulse Outputs (d1, d2, d3)**: These output gates/triggers (0V or +5V)
-- **CV Inputs (cv1, cv2)**: These receive external voltage with attenuverters to control the level
+- **CV Inputs (ain1, ain2)**: These receive external voltage with attenuverters to control the level
 - **Pulse Inputs (p1, p2)**: These receive external gate or trigger signals
 - **Controls**: A momentary button and a three-way toggle switch for hands-on interaction
 
@@ -125,30 +124,12 @@ This plays the rhythm twice as fast. Try different numbers instead of `2` to cha
 Now let's add some continuous voltage modulation on output a1:
 
 ```lisp
-(a1 (interp '(1 0.5 0 0.6 1) bar))
+(a1 (interp [1 0.5 0 0.6 1] bar))
 ```
 
 This creates a voltage that moves through the list of values over the course of one bar. The values range from -5V (0) to +5V (1), so this creates a varying voltage that could control an oscillator's pitch, a filter cutoff, or anything else that takes CV.
 
 Try connecting a1 to your oscillator's pitch input and hear how it creates a simple melody!
-
-
-
-## What is uSEQ?
-
-uSEQ is a eurorack module that brings livecoding into your modular system. It's an extremely flexible voltage generator and processor with a LISP-based coding engine called ModuLisp. The module features:
-
-- 2 CV inputs with attenuverters
-- 2 pulse inputs
-- 3 CV outputs (a1, a2, a3)
-- 3 pulse outputs (d1, d2, d3)
-- A momentary switch and three-way toggle switch
-- A powerful, time-aware functional language environment
-
-The uSEQ firmware consists of three core components:
-1. An expression for each output that's repeatedly evaluated
-2. An interpreter/VM for evaluating those expressions
-3. An update loop that reads hardware inputs, evaluates output expressions, and updates hardware outputs
 
 ## Core ModuLisp Concepts
 
@@ -166,7 +147,7 @@ Time-bending functions form the core of ModuLisp's power:
 
 ```lisp
 ;; Examples of time manipulation
-(def my-signal (sin (* 2 PI t)))            ; A sine wave at 1Hz
+(def my-signal (sin (fast 2 t)))             ; A sine wave at 2x speed
 
 ;; Time-shifting with offset (delay/advance by 0.5 seconds)
 (a1 (+ my-signal (offset 0.5 my-signal)))        ; Echo effect
@@ -199,20 +180,25 @@ Your code is automatically saved in your browser's local storage, but you can al
 
 ### Keyboard Shortcuts
 
-Press **Alt+H** to see all available keyboard shortcuts. Some useful ones:
+Press **Alt+/** to toggle the help panel, which includes a full list of keyboard shortcuts. You can also press **Ctrl+Shift+P** to open the action palette and search for any command. Some useful shortcuts:
 
 - **Ctrl+Enter**: Run the current expression immediately
-- **Alt+Enter**: Run the current expression at the start of the next bar
-- **Ctrl+S**: Save your code
+- **Alt+Enter**: Run the current expression at the start of the next bar (quantised)
+- **Ctrl+Shift+Enter**: Run the current expression with soft evaluation
+- **Alt+G**: Toggle the signal visualisation
+- **Alt+P**: Toggle a probe on the expression at cursor
+- **Alt+F**: Show documentation for the symbol at cursor
 
 ### Structural Editing
 
 The editor uses something called "structural editing" which helps you write valid code by handling brackets automatically. It might feel a bit strange at first, but it prevents a lot of errors!
 
 Some useful structural editing commands:
-- **Alt+Right/Left**: Move code in and out of brackets ("slurp" and "barf")
-- **Alt+S**: Splice - remove surrounding brackets while keeping content
-- **Alt+Up/Down**: Move up or down through code structure
+- **Ctrl+]** / **Ctrl+[**: Slurp forward/backward — pull the next or previous form into brackets
+- **Ctrl+'** / **Ctrl+;**: Barf forward/backward — push a form out of brackets
+- **Ctrl+K**: Delete from cursor to end of current list
+
+You can also use chord shortcuts: press **Alt+E** then a bracket key (e.g. **Alt+E** then **]** for slurp forward). All keybindings can be customised in Settings → Keybindings.
 
 If you ever get confused with brackets, you can always select and delete text normally.
 
@@ -235,9 +221,9 @@ Here are some functions you'll use a lot:
 
 - You can run multiple lines of code to control different outputs at the same time
 - Use the `bar` variable to keep everything in sync
-- Try `rnd` for random values (example: `(a2 (rnd))`)
+- Try `random` for random values (example: `(a2 (random))`)
 - Combine functions: `(a1 (scale (sin (fast 4 bar)) 0 1 -3 3))`
-- Use the momentary button with `(btn)` in your code
+- Use the momentary switch with `swm` in your code
 
 ## Troubleshooting
 
@@ -253,7 +239,7 @@ If you're having trouble:
 Once you're comfortable with the basics, you can:
 
 - Create complex multi-track sequences by running multiple lines of code
-- Process incoming CV using the `cv1` and `cv2` variables
+- Process incoming CV using `ain1` and `ain2`
 - Create conditional logic with `if` statements
 - Define your own functions for reuse
 - Check out the full API documentation to see all available functions
@@ -263,7 +249,7 @@ Once you're comfortable with the basics, you can:
 
 ### Understanding Time in ModuLisp
 
-At the core of uSEQ's timing model is the variable `t`. It represents the flow of time in seconds since the module was turned on (or since the last time reset). This variable is automatically updated at the beginning of each tick using the microcontroller's hardware clock. 
+At the core of uSEQ's timing model is the variable `t`. It represents the flow of time in seconds since the module was turned on (or since the last time reset). This variable is automatically updated at the beginning of each tick using the microcontroller's hardware clock.
 
 From `t`, other built-in variables like `beat` and `bar` are derived. These provide convenient reference points for musical timing:
 
@@ -271,64 +257,84 @@ From `t`, other built-in variables like `beat` and `bar` are derived. These prov
 ;; t represents absolute time in seconds
 ;; beat is derived from t based on the current BPM
 ;; bar is derived from beat (usually 4 beats = 1 bar)
-
-(def bar-num (floor (/ t barDur)))  ; Count how many bars have elapsed
+;; phrase = 4 bars, section = 4 phrases
 ```
+
+The timing hierarchy is: `t` → `beat` → `bar` → `phrase` → `section`. Each is a phasor that ramps from 0 to 1 over its duration.
 
 ### Temporal Control Functions
 
-ModuLisp provides powerful functions for manipulating time:
-
-#### eval-at-time
-
-This function evaluates an expression as if time were at a specific point:
-
-```lisp
-(eval-at-time 999 (+ 1 2))       ; => 3
-(eval-at-time 999 t)             ; => 999
-(eval-at-time 999 (+ t 1))       ; => 1000
-```
+ModuLisp provides functions for warping time within signals:
 
 #### offset, fast, and slow
 
-These functions are relative to the context in which they're evaluated:
+These functions transform the time that a signal "sees":
 
 ```lisp
-(eval-at-time 5 (fast 2 (+ t 1)))          ; => 11
-(eval-at-time 5 (fast 2 (fast 2 (+ t 1)))) ; => 21
-(eval-at-time 5 (offset 1 (offset 1 t)))   ; => 7
+;; Double the speed of a sine wave on bar timing
+(a1 (sin (fast 2 bar)))
+
+;; Half-speed triangle wave
+(a2 (tri (slow 2 bar)))
+
+;; Shift a signal forward by half a bar
+(a3 (offset 0.5 (saw bar)))
 ```
 
-### Creating Predictable Randomness
-
-ModuLisp uses indexed randomness for creating sequences that are random-seeming but predictable and repeatable:
+These compose naturally — you can nest them:
 
 ```lisp
-;; A helper signal that tracks bar count
-(def bar-num (floor (/ t barDur)))
-
-;; Create a "random" chord progression that changes each bar
-(def chord (from-list ["Am", "Cm", "E"] (ind-rand 0 bar-num)))
+;; Fast rhythm with a time offset
+(d1 (sqr (offset 0.25 (fast 4 bar))))
 ```
 
-The `ind-rand` function takes a seed and an index, returning a consistent "random" number for the same combination:
+### Euclidean Rhythms
+
+The `euclid` function generates Euclidean rhythms — evenly distributed pulses across a number of steps:
 
 ```lisp
-(ind-rand 1234      5)      ; => 0.2435
-(ind-rand 1234.0001 5)      ; => 0.8924
-(ind-rand 1234      5.0001) ; => 0.3259
+;; 3 hits spread across 8 steps, cycling at bar rate
+(d1 (euclid 3 8 bar))
+
+;; Classic 4-on-the-floor with Euclidean pattern on d2
+(d1 (sqr beat))
+(d2 (euclid 5 16 bar))
 ```
 
-This approach enables:
-- Predictable but seemingly random sequences
-- The ability to change the seed to get completely different patterns
-- The possibility to visualize future events before they happen
+### Using Inputs
 
-### The ModuLisp Architecture
+Read external CV and switches to make your patches interactive:
 
-ModuLisp currently runs on a tree-walking interpreter but is planned to migrate to a bytecode VM with JIT compilation for better performance. The purely-functional approach enables advanced optimizations that wouldn't be possible with a more imperative approach.
+```lisp
+;; Use CV input 1 to control the speed of a pattern
+(d1 (sqr (fast (scale ain1 0 1 1 8) bar)))
 
-Benefits of this architecture:
-- Better performance through optimization
-- Code analysis for visualizing future states
-- Composability of signals and timing functions
+;; Use the momentary switch to toggle between two patterns
+(d2 (if swm
+  (euclid 7 16 bar)
+  (euclid 3 8 bar)))
+
+;; Use the toggle switch to select between three waveforms
+;; swt returns -1, 0, or 1
+(a1 (if (> swt 0) (sin bar)
+     (if (< swt 0) (tri bar)
+       (saw bar))))
+```
+
+### Defining and Reusing Expressions
+
+Use `def` to name expressions and build up complexity:
+
+```lisp
+;; Define a base rhythm
+(def my-rhythm (euclid 5 8 bar))
+
+;; Use it on multiple outputs at different speeds
+(d1 my-rhythm)
+(d2 (fast 2 my-rhythm))
+
+;; Define a modulation shape and reuse it
+(def wobble (sin (fast 3 bar)))
+(a1 wobble)
+(a2 (scale wobble 0 1 0.2 0.8))
+```

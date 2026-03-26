@@ -15,7 +15,6 @@ Welcome to the world of livecoding in your modular system! This guide will help 
     - [Making a Square Wave](#making-a-square-wave)
     - [Creating Rhythms](#creating-rhythms)
     - [Adding Modulation](#adding-modulation)
-  - [What is uSEQ?](#what-is-useq-1)
   - [Core ModuLisp Concepts](#core-modulisp-concepts)
     - [Working with Time](#working-with-time)
     - [Creating Expressions for Outputs](#creating-expressions-for-outputs)
@@ -60,7 +59,7 @@ That's it! Once connected, the editor will show you're ready to start coding.
 Your uSEQ module has several parts:
 - **CV Outputs (a1, a2, a3)**: These output continuous voltage signals (-5V to +5V)
 - **Pulse Outputs (d1, d2, d3)**: These output gates/triggers (0V or +5V)
-- **CV Inputs (cv1, cv2)**: These receive external voltage with attenuverters to control the level
+- **CV Inputs (ain1, ain2)**: These receive external voltage with attenuverters to control the level
 - **Pulse Inputs (p1, p2)**: These receive external gate or trigger signals
 - **Controls**: A momentary button and a three-way toggle switch for hands-on interaction
 
@@ -118,30 +117,12 @@ This plays the rhythm twice as fast. Try different numbers instead of `2` to cha
 Now let's add some continuous voltage modulation on output a1:
 
 ```lisp
-(a1 (interp '(1 0.5 0 0.6 1) bar))
+(a1 (interp [1 0.5 0 0.6 1] bar))
 ```
 
 This creates a voltage that moves through the list of values over the course of one bar. The values range from -5V (0) to +5V (1), so this creates a varying voltage that could control an oscillator's pitch, a filter cutoff, or anything else that takes CV.
 
 Try connecting a1 to your oscillator's pitch input and hear how it creates a simple melody!
-
-
-
-## What is uSEQ?
-
-uSEQ is a eurorack module that brings livecoding into your modular system. It's an extremely flexible voltage generator and processor with a LISP-based coding engine called ModuLisp. The module features:
-
-- 2 CV inputs with attenuverters
-- 2 pulse inputs
-- 3 CV outputs (a1, a2, a3)
-- 3 pulse outputs (d1, d2, d3)
-- A momentary switch and three-way toggle switch
-- A powerful, time-aware functional language environment
-
-The uSEQ firmware consists of three core components:
-1. An expression for each output that's repeatedly evaluated
-2. An interpreter/VM for evaluating those expressions
-3. An update loop that reads hardware inputs, evaluates output expressions, and updates hardware outputs
 
 ## Core ModuLisp Concepts
 
@@ -159,7 +140,7 @@ Time-bending functions form the core of ModuLisp's power:
 
 ```lisp
 ;; Examples of time manipulation
-(def my-signal (sin (* 2 PI t)))            ; A sine wave at 1Hz
+(def my-signal (sin (fast 2 t)))             ; A sine wave at 2x speed
 
 ;; Time-shifting with offset (delay/advance by 0.5 seconds)
 (a1 (+ my-signal (offset 0.5 my-signal)))        ; Echo effect
@@ -191,20 +172,23 @@ Your code is automatically saved in your browser's local storage, but you can al
 
 ### Keyboard Shortcuts
 
-Press **Alt+H** to see all available keyboard shortcuts. Some useful ones:
+Press **Alt+/** to toggle the help panel, which includes a full list of keyboard shortcuts. You can also press **Ctrl+Shift+P** to open the action palette and search for any command. Some useful shortcuts:
 
 - **Ctrl+Enter**: Run the current expression immediately
-- **Alt+Enter**: Run the current expression at the start of the next bar
-- **Ctrl+S**: Save your code
+- **Alt+Enter**: Run the current expression at the start of the next bar (quantised)
+- **Ctrl+Shift+Enter**: Run the current expression with soft evaluation
+- **Alt+G**: Toggle the signal visualisation
 
 ### Structural Editing
 
 The editor uses something called "structural editing" which helps you write valid code by handling brackets automatically. It might feel a bit strange at first, but it prevents a lot of errors!
 
 Some useful structural editing commands:
-- **Alt+Right/Left**: Move code in and out of brackets ("slurp" and "barf")
-- **Alt+S**: Splice - remove surrounding brackets while keeping content
-- **Alt+Up/Down**: Move up or down through code structure
+- **Ctrl+]** / **Ctrl+[**: Slurp forward/backward — pull the next or previous form into brackets
+- **Ctrl+'** / **Ctrl+;**: Barf forward/backward — push a form out of brackets
+- **Ctrl+K**: Delete from cursor to end of current list
+
+You can also use chord shortcuts: press **Alt+E** then a bracket key (e.g. **Alt+E** then **]** for slurp forward).
 
 If you ever get confused with brackets, you can always select and delete text normally.
 
@@ -227,9 +211,9 @@ Here are some functions you'll use a lot:
 
 - You can run multiple lines of code to control different outputs at the same time
 - Use the `bar` variable to keep everything in sync
-- Try `rnd` for random values (example: `(a2 (rnd))`)
+- Try `random` for random values (example: `(a2 (random))`)
 - Combine functions: `(a1 (scale (sin (fast 4 bar)) 0 1 -3 3))`
-- Use the momentary button with `(btn)` in your code
+- Use the momentary switch with `swm` in your code
 
 ## Troubleshooting
 
@@ -245,7 +229,7 @@ If you're having trouble:
 Once you're comfortable with the basics, you can:
 
 - Create complex multi-track sequences by running multiple lines of code.
-- Process incoming CV using the `cv1` and `cv2` variables.
+- Process incoming CV using `ain1` and `ain2`.
 - Create conditional logic with `if` statements.
 - Start building your arsenal of little functions that you can reuse and build upon.
 - Check out the full API documentation to see all available functions.

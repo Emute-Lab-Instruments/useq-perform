@@ -1011,7 +1011,7 @@ Keybindings tabs.
 
 - **Identifiers**: `HelpPanel`, `mountHelpPanel()`
 - **Files**: `src/ui/help/HelpPanel.tsx`, `src/ui/adapters/panels.tsx`
-- **Keybinding**: Alt-h → `toggleHelp()`
+- **Keybinding**: Alt-/ → action `panel.help`
 
 ### User Guide Tab
 
@@ -1060,8 +1060,8 @@ display.
 Alt-F symbol lookup: finds the word at cursor, opens the help panel to the
 reference tab, and auto-expands the matching entry.
 
-- **Identifiers**: `showDocumentationForSymbol()` (keymap action), reference search typed channel
-- **Files**: `src/editors/keymaps.ts`, `src/ui/help/ModuLispReferenceTab.tsx`
+- **Identifiers**: action `doc.symbol`, `showDocumentationForSymbol()`, reference search typed channel
+- **Files**: `src/lib/keybindings/actions.ts`, `src/editors/editorKeyboard.ts`, `src/ui/help/ModuLispReferenceTab.tsx`
 
 ### Reference Toast
 
@@ -1097,11 +1097,40 @@ Read-only variant exists for theme preview cards.
 
 ### Keybindings Tab
 
-Platform-aware keybinding display. Translates Mod → Cmd/Ctrl and Alt → Option
-based on OS family selection.
+Platform-aware keybinding display. Auto-generated from the action registry and
+default bindings — always in sync with runtime. Translates Mod → Cmd/Ctrl and
+Alt → Option based on OS family selection.
 
 - **Identifiers**: `KeybindingsTab`
 - **Files**: `src/ui/help/KeybindingsTab.tsx`
+- **Data sources**: `src/lib/keybindings/actions.ts`, `src/lib/keybindings/defaults.ts`
+
+### Keybindings Panel
+
+User-facing rebinding UI in the Settings panel. Click-to-rebind with conflict
+detection, swap suggestions, and reset-to-defaults. Persists overrides to
+`settings.keybindings.overrides`.
+
+- **Identifiers**: `KeybindingsPanel`
+- **Files**: `src/ui/keybindings/KeybindingsPanel.tsx`
+
+### Action Palette
+
+Fuzzy-searchable command palette (Mod-Shift-P). Lists all actions with current
+bindings, executes on Enter, shows shortcut tip after palette execution.
+
+- **Identifiers**: `ActionPalette`, `openPalette()`, action `palette.open`
+- **Files**: `src/ui/keybindings/ActionPalette.tsx`, `src/ui/adapters/palette.tsx`
+
+### Keyboard Visualiser
+
+Interactive keyboard layout component showing bound actions colour-coded by
+category. Supports view, edit, chord, and heatmap modes. Renders 6 keyboard
+layouts (QWERTY-US/UK, Dvorak, Colemak, AZERTY, QWERTZ).
+
+- **Identifiers**: `KeyboardVisualiser`
+- **Files**: `src/ui/keybindings/KeyboardVisualiser.tsx`
+- **Layout data**: `src/lib/keybindings/layouts/`
 
 ---
 
@@ -1278,8 +1307,8 @@ cyan for soft/preview eval. Clears after 1 second.
 A preview evaluation that shows what *would* be evaluated without committing it.
 Uses a distinct highlight colour.
 
-- **Identifiers**: `softEval()` (keymap action), `isPreview` (flag in evalHighlightEffect payload)
-- **Files**: `src/editors/keymaps.ts`
+- **Identifiers**: action `eval.soft`, `isPreview` (flag in evalHighlightEffect payload)
+- **Files**: `src/lib/keybindings/actions.ts`, `src/effects/editorEvaluation.ts`
 - **Keybinding**: Mod-Shift-Enter
 - **See also**: Eval Highlight
 
@@ -1287,8 +1316,8 @@ Uses a distinct highlight colour.
 
 Evaluation scheduled to fire on the next bar boundary rather than immediately.
 
-- **Identifiers**: `evalQuantised()` (keymap action)
-- **Files**: `src/editors/keymaps.ts`
+- **Identifiers**: action `eval.quantised`
+- **Files**: `src/lib/keybindings/actions.ts`, `src/effects/editorEvaluation.ts`
 - **Keybinding**: Alt-Enter
 
 ### Immediate Eval
@@ -1406,14 +1435,22 @@ canvas is visible underneath. Ensures text remains readable over waveforms.
 - **Helpers**: `getLineContentBounds()`, `groupIntoBlocks()`, `buildBlockPolygonPath()`
 - **Files**: `src/editors/extensions/visReadability.ts`
 
-### Keymap
+### Keybinding System
 
-A set of key bindings for the editor. Multiple keymaps are composed together.
+Unified action-based keybinding system. All actions are registered in a central
+registry; CodeMirror keymaps, the help tab, and the keyboard visualiser all read
+from the same source. User-customisable with conflict detection.
 
-- **Identifiers**: `useq_keymap` (uSEQ-specific bindings), `completeClojureKeymap` (paredit/structural editing), `structural_navigation_keymap` (tree nav, currently commented out), `baseKeymap`, `mainEditorKeymap`
-- **Files**: `src/editors/keymaps.ts`
-- **Key eval bindings**: Mod-Enter → `evalNow()`, Alt-Enter → `evalQuantised()`, Mod-Shift-Enter → `softEval()`
-- **Key UI bindings**: Alt-h → `toggleHelp()`, Alt-g → `toggleSerialVis()`, Alt-f → `showDocumentationForSymbol()`
+- **Action registry**: `src/lib/keybindings/actions.ts` — canonical list of all bindable actions
+- **Default bindings**: `src/lib/keybindings/defaults.ts` — default key→action and gamepad→action maps
+- **Handler registry**: `src/lib/keybindings/handlers.ts` — action→implementation mapping
+- **Binding resolver**: `src/lib/keybindings/resolver.ts` — merges defaults + overrides, generates CodeMirror extensions
+- **CodeMirror integration**: `src/editors/keymaps.ts` — `resolver.toKeymapExtensions()` + clojure-mode passthrough + history
+- **Key eval bindings**: Mod-Enter → `eval.now`, Alt-Enter → `eval.quantised`, Mod-Shift-Enter → `eval.soft`
+- **Key UI bindings**: Alt-/ → `panel.help`, Alt-g → `panel.vis`, Alt-f → `doc.symbol`
+- **Probe bindings**: Alt-p → `probe.toggle`, Alt-h → `probe.expand`, Alt-s → `probe.contract`
+- **Chord namespaces**: Alt-e (structural editing), Alt-o (probes)
+- **Spec**: `docs/KEYBINDING_SYSTEM.md`
 
 ### Theme
 
