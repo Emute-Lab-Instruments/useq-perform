@@ -11,9 +11,9 @@ import {
 } from "./FormControls";
 
 describe("Section", () => {
-  it("renders title and children", () => {
+  it("renders title and children when open", () => {
     render(() => (
-      <Section title="Test Section">
+      <Section title="Test Section" defaultOpen={true}>
         <div data-testid="child">content</div>
       </Section>
     ));
@@ -189,7 +189,7 @@ describe("RangeInput", () => {
     const input = screen.getByRole("slider") as HTMLInputElement;
     expect(input.disabled).toBe(true);
     expect(
-      container.querySelector(".panel-range-wrapper--disabled")
+      container.querySelector(".panel-range--disabled")
     ).toBeTruthy();
   });
 

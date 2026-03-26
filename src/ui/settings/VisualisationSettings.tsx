@@ -1,6 +1,6 @@
 import type { VisualisationSettings as AppVisualisationSettings } from "../../lib/appSettings.ts";
 import { settings, updateSettingsStore } from "../../utils/settingsStore";
-import { Section, FormRow, Checkbox, NumberInput, RangeInput } from "./FormControls";
+import { Section, SubGroup, FormRow, Checkbox, NumberInput, RangeInput } from "./FormControls";
 import { serialVisChannels } from "../../lib/visualisationUtils.ts";
 
 export function VisualisationSettings() {
@@ -25,232 +25,243 @@ export function VisualisationSettings() {
   };
 
   return (
-    <Section title="Visualisation Settings">
-      <FormRow label="Visible window duration">
-        <RangeInput
-          value={settings.visualisation?.windowDuration ?? 10}
-          min={1}
-          max={20}
-          step={0.5}
-          formatValue={(v) => `${v.toFixed(1)}s`}
-          onChange={(val) => updateVisField("windowDuration", val)}
-        />
-      </FormRow>
-      <FormRow label="Future lead window">
-        <RangeInput
-          value={settings.visualisation?.futureLeadSeconds ?? 1}
-          min={0}
-          max={8}
-          step={0.5}
-          formatValue={(v) => `${v.toFixed(1)}s`}
-          onChange={(val) => updateVisField("futureLeadSeconds", val)}
-        />
-      </FormRow>
-      <FormRow label="Visible sample count">
-        <NumberInput
-          value={settings.visualisation?.sampleCount ?? 100}
-          min={10}
-          max={400}
-          step={10}
-          onChange={(val) => updateVisField("sampleCount", val)}
-        />
-      </FormRow>
-      <FormRow label="Waveform line width">
-        <RangeInput
-          value={settings.visualisation?.lineWidth ?? 1.5}
-          min={0.5}
-          max={5}
-          step={0.1}
-          formatValue={(v) => `${v.toFixed(2)}px`}
-          onChange={(val) => updateVisField("lineWidth", val)}
-        />
-      </FormRow>
-      <FormRow label="Probe waveform line width">
-        <RangeInput
-          value={settings.visualisation?.probeLineWidth ?? 2}
-          min={0.5}
-          max={5}
-          step={0.1}
-          formatValue={(v) => `${v.toFixed(2)}px`}
-          onChange={(val) => updateVisField("probeLineWidth", val)}
-        />
-      </FormRow>
-      <FormRow label="Probe sample count">
-        <NumberInput
-          value={settings.visualisation?.probeSampleCount ?? 40}
-          min={10}
-          max={400}
-          step={10}
-          onChange={(val) => updateVisField("probeSampleCount", val)}
-        />
-      </FormRow>
-      <FormRow label="Probe refresh rate">
-        <RangeInput
-          value={1000 / (settings.visualisation?.probeRefreshIntervalMs ?? 33)}
-          min={1}
-          max={60}
-          step={1}
-          formatValue={(v) => `${Math.round(v)} fps`}
-          onChange={(val) =>
-            updateVisField(
-              "probeRefreshIntervalMs",
-              Math.max(16, Math.round(1000 / Math.max(1, val))),
-            )}
-        />
-      </FormRow>
-      <FormRow label="Digital channel gap">
-        <RangeInput
-          value={settings.visualisation?.digitalLaneGap ?? 4}
-          min={0}
-          max={40}
-          step={1}
-          formatValue={(v) => `${Math.round(v)}px`}
-          onChange={(val) => updateVisField("digitalLaneGap", val)}
-        />
-      </FormRow>
-      <FormRow label="Color circular offset">
-        <RangeInput
-          value={safeCircularOffset()}
-          min={0}
-          max={maxCircularOffset()}
-          step={1}
-          disabled={maxCircularOffset() === 0}
-          onChange={(val) => updateVisField("circularOffset", val)}
-        />
-      </FormRow>
-      <FormRow label="Readability blur">
-        <Checkbox
-          checked={settings.visualisation?.readabilityEnabled !== false}
-          onChange={(val) => updateVisField("readabilityEnabled", val)}
-        />
-      </FormRow>
-      <FormRow label="Blur intensity">
-        <RangeInput
-          value={settings.visualisation?.readabilityBlurRadius ?? 10}
-          min={1}
-          max={30}
-          step={1}
-          disabled={settings.visualisation?.readabilityEnabled === false}
-          formatValue={(v) => `${Math.round(v)}px`}
-          onChange={(val) => updateVisField("readabilityBlurRadius", val)}
-        />
-      </FormRow>
-      <FormRow label="Darken waveforms">
-        <RangeInput
-          value={settings.visualisation?.readabilityTintOpacity ?? 0.5}
-          min={0}
-          max={1}
-          step={0.05}
-          disabled={settings.visualisation?.readabilityEnabled === false}
-          formatValue={(v) => v.toFixed(2)}
-          onChange={(val) => updateVisField("readabilityTintOpacity", val)}
-        />
-      </FormRow>
-      <FormRow label="Overall opacity">
-        <RangeInput
-          value={settings.visualisation?.readabilityAlpha ?? 0.85}
-          min={0}
-          max={1}
-          step={0.05}
-          disabled={settings.visualisation?.readabilityEnabled === false}
-          formatValue={(v) => v.toFixed(2)}
-          onChange={(val) => updateVisField("readabilityAlpha", val)}
-        />
-      </FormRow>
-      <FormRow label="Mask tightness">
-        <RangeInput
-          value={settings.visualisation?.readabilityPadding ?? 3}
-          min={0}
-          max={30}
-          step={1}
-          disabled={settings.visualisation?.readabilityEnabled === false}
-          formatValue={(v) => `${Math.round(v)}px`}
-          onChange={(val) => updateVisField("readabilityPadding", val)}
-        />
-      </FormRow>
-      <FormRow label="Edge feather">
-        <RangeInput
-          value={settings.visualisation?.readabilityFeather ?? 4}
-          min={0}
-          max={20}
-          step={1}
-          disabled={settings.visualisation?.readabilityEnabled === false}
-          formatValue={(v) => `${Math.round(v)}px`}
-          onChange={(val) => updateVisField("readabilityFeather", val)}
-        />
-      </FormRow>
-      <FormRow label="Density passes">
-        <RangeInput
-          value={settings.visualisation?.readabilityPasses ?? 2}
-          min={0}
-          max={5}
-          step={1}
-          disabled={settings.visualisation?.readabilityEnabled === false}
-          formatValue={(v) => `${Math.round(v)}`}
-          onChange={(val) => updateVisField("readabilityPasses", val)}
-        />
-      </FormRow>
-      <FormRow label="Max darken">
-        <RangeInput
-          value={settings.visualisation?.readabilityMaxDarken ?? 0.85}
-          min={0}
-          max={1}
-          step={0.05}
-          disabled={settings.visualisation?.readabilityEnabled === false}
-          formatValue={(v) => v.toFixed(2)}
-          onChange={(val) => updateVisField("readabilityMaxDarken", val)}
-        />
-      </FormRow>
-      <FormRow label="Scroll rebuild delay">
-        <RangeInput
-          value={settings.visualisation?.readabilityDebounceMs ?? 80}
-          min={20}
-          max={300}
-          step={10}
-          disabled={settings.visualisation?.readabilityEnabled === false}
-          formatValue={(v) => `${Math.round(v)}ms`}
-          onChange={(val) => updateVisField("readabilityDebounceMs", val)}
-        />
-      </FormRow>
-      <FormRow label="Scroll overscan">
-        <RangeInput
-          value={settings.visualisation?.readabilityOverscan ?? 30}
-          min={0}
-          max={100}
-          step={5}
-          disabled={settings.visualisation?.readabilityEnabled === false}
-          formatValue={(v) => `${Math.round(v)} lines`}
-          onChange={(val) => updateVisField("readabilityOverscan", val)}
-        />
-      </FormRow>
-      <FormRow label="Show future mask/dashes">
-        <Checkbox
-          checked={settings.visualisation?.futureDashed !== false}
-          onChange={(val) => updateVisField("futureDashed", val)}
-        />
-      </FormRow>
-      <FormRow label="Future shading intensity">
-        <RangeInput
-          value={settings.visualisation?.futureMaskOpacity ?? 0.35}
-          min={0}
-          max={1}
-          step={0.05}
-          disabled={settings.visualisation?.futureDashed === false}
-          formatValue={(v) => v.toFixed(2)}
-          onChange={(val) => updateVisField("futureMaskOpacity", val)}
-        />
-      </FormRow>
-      <FormRow label="Future mask stripe width">
-        <RangeInput
-          value={settings.visualisation?.futureMaskWidth ?? 12}
-          min={4}
-          max={40}
-          step={1}
-          disabled={settings.visualisation?.futureDashed === false}
-          formatValue={(v) => `${v}px`}
-          onChange={(val) => updateVisField("futureMaskWidth", val)}
-        />
-      </FormRow>
+    <Section title="Visualisation">
+      <SubGroup label="Waveform display">
+        <FormRow label="Visible window duration">
+          <RangeInput
+            value={settings.visualisation?.windowDuration ?? 10}
+            min={1}
+            max={20}
+            step={0.5}
+            formatValue={(v) => `${v.toFixed(1)}s`}
+            onChange={(val) => updateVisField("windowDuration", val)}
+          />
+        </FormRow>
+        <FormRow label="Future lead window">
+          <RangeInput
+            value={settings.visualisation?.futureLeadSeconds ?? 1}
+            min={0}
+            max={8}
+            step={0.5}
+            formatValue={(v) => `${v.toFixed(1)}s`}
+            onChange={(val) => updateVisField("futureLeadSeconds", val)}
+          />
+        </FormRow>
+        <FormRow label="Visible sample count">
+          <NumberInput
+            value={settings.visualisation?.sampleCount ?? 100}
+            min={10}
+            max={400}
+            step={10}
+            onChange={(val) => updateVisField("sampleCount", val)}
+          />
+        </FormRow>
+        <FormRow label="Waveform line width">
+          <RangeInput
+            value={settings.visualisation?.lineWidth ?? 1.5}
+            min={0.5}
+            max={5}
+            step={0.1}
+            formatValue={(v) => `${v.toFixed(2)}px`}
+            onChange={(val) => updateVisField("lineWidth", val)}
+          />
+        </FormRow>
+        <FormRow label="Digital channel gap">
+          <RangeInput
+            value={settings.visualisation?.digitalLaneGap ?? 4}
+            min={0}
+            max={40}
+            step={1}
+            formatValue={(v) => `${Math.round(v)}px`}
+            onChange={(val) => updateVisField("digitalLaneGap", val)}
+          />
+        </FormRow>
+        <FormRow label="Color circular offset">
+          <RangeInput
+            value={safeCircularOffset()}
+            min={0}
+            max={maxCircularOffset()}
+            step={1}
+            disabled={maxCircularOffset() === 0}
+            onChange={(val) => updateVisField("circularOffset", val)}
+          />
+        </FormRow>
+      </SubGroup>
+
+      <SubGroup label="Probes">
+        <FormRow label="Probe waveform line width">
+          <RangeInput
+            value={settings.visualisation?.probeLineWidth ?? 2}
+            min={0.5}
+            max={5}
+            step={0.1}
+            formatValue={(v) => `${v.toFixed(2)}px`}
+            onChange={(val) => updateVisField("probeLineWidth", val)}
+          />
+        </FormRow>
+        <FormRow label="Probe sample count">
+          <NumberInput
+            value={settings.visualisation?.probeSampleCount ?? 40}
+            min={10}
+            max={400}
+            step={10}
+            onChange={(val) => updateVisField("probeSampleCount", val)}
+          />
+        </FormRow>
+        <FormRow label="Probe refresh rate">
+          <RangeInput
+            value={1000 / (settings.visualisation?.probeRefreshIntervalMs ?? 33)}
+            min={1}
+            max={60}
+            step={1}
+            formatValue={(v) => `${Math.round(v)} fps`}
+            onChange={(val) =>
+              updateVisField(
+                "probeRefreshIntervalMs",
+                Math.max(16, Math.round(1000 / Math.max(1, val))),
+              )}
+          />
+        </FormRow>
+      </SubGroup>
+
+      <SubGroup label="Readability" defaultOpen={false}>
+        <FormRow label="Enable readability blur">
+          <Checkbox
+            checked={settings.visualisation?.readabilityEnabled !== false}
+            onChange={(val) => updateVisField("readabilityEnabled", val)}
+          />
+        </FormRow>
+        <FormRow label="Blur intensity">
+          <RangeInput
+            value={settings.visualisation?.readabilityBlurRadius ?? 10}
+            min={1}
+            max={30}
+            step={1}
+            disabled={settings.visualisation?.readabilityEnabled === false}
+            formatValue={(v) => `${Math.round(v)}px`}
+            onChange={(val) => updateVisField("readabilityBlurRadius", val)}
+          />
+        </FormRow>
+        <FormRow label="Darken waveforms">
+          <RangeInput
+            value={settings.visualisation?.readabilityTintOpacity ?? 0.5}
+            min={0}
+            max={1}
+            step={0.05}
+            disabled={settings.visualisation?.readabilityEnabled === false}
+            formatValue={(v) => v.toFixed(2)}
+            onChange={(val) => updateVisField("readabilityTintOpacity", val)}
+          />
+        </FormRow>
+        <FormRow label="Overall opacity">
+          <RangeInput
+            value={settings.visualisation?.readabilityAlpha ?? 0.85}
+            min={0}
+            max={1}
+            step={0.05}
+            disabled={settings.visualisation?.readabilityEnabled === false}
+            formatValue={(v) => v.toFixed(2)}
+            onChange={(val) => updateVisField("readabilityAlpha", val)}
+          />
+        </FormRow>
+        <FormRow label="Mask tightness">
+          <RangeInput
+            value={settings.visualisation?.readabilityPadding ?? 3}
+            min={0}
+            max={30}
+            step={1}
+            disabled={settings.visualisation?.readabilityEnabled === false}
+            formatValue={(v) => `${Math.round(v)}px`}
+            onChange={(val) => updateVisField("readabilityPadding", val)}
+          />
+        </FormRow>
+        <FormRow label="Edge feather">
+          <RangeInput
+            value={settings.visualisation?.readabilityFeather ?? 4}
+            min={0}
+            max={20}
+            step={1}
+            disabled={settings.visualisation?.readabilityEnabled === false}
+            formatValue={(v) => `${Math.round(v)}px`}
+            onChange={(val) => updateVisField("readabilityFeather", val)}
+          />
+        </FormRow>
+        <FormRow label="Density passes">
+          <RangeInput
+            value={settings.visualisation?.readabilityPasses ?? 2}
+            min={0}
+            max={5}
+            step={1}
+            disabled={settings.visualisation?.readabilityEnabled === false}
+            formatValue={(v) => `${Math.round(v)}`}
+            onChange={(val) => updateVisField("readabilityPasses", val)}
+          />
+        </FormRow>
+        <FormRow label="Max darken">
+          <RangeInput
+            value={settings.visualisation?.readabilityMaxDarken ?? 0.85}
+            min={0}
+            max={1}
+            step={0.05}
+            disabled={settings.visualisation?.readabilityEnabled === false}
+            formatValue={(v) => v.toFixed(2)}
+            onChange={(val) => updateVisField("readabilityMaxDarken", val)}
+          />
+        </FormRow>
+        <FormRow label="Scroll rebuild delay">
+          <RangeInput
+            value={settings.visualisation?.readabilityDebounceMs ?? 80}
+            min={20}
+            max={300}
+            step={10}
+            disabled={settings.visualisation?.readabilityEnabled === false}
+            formatValue={(v) => `${Math.round(v)}ms`}
+            onChange={(val) => updateVisField("readabilityDebounceMs", val)}
+          />
+        </FormRow>
+        <FormRow label="Scroll overscan">
+          <RangeInput
+            value={settings.visualisation?.readabilityOverscan ?? 30}
+            min={0}
+            max={100}
+            step={5}
+            disabled={settings.visualisation?.readabilityEnabled === false}
+            formatValue={(v) => `${Math.round(v)} lines`}
+            onChange={(val) => updateVisField("readabilityOverscan", val)}
+          />
+        </FormRow>
+      </SubGroup>
+
+      <SubGroup label="Future region" defaultOpen={false}>
+        <FormRow label="Show future mask/dashes">
+          <Checkbox
+            checked={settings.visualisation?.futureDashed !== false}
+            onChange={(val) => updateVisField("futureDashed", val)}
+          />
+        </FormRow>
+        <FormRow label="Shading intensity">
+          <RangeInput
+            value={settings.visualisation?.futureMaskOpacity ?? 0.35}
+            min={0}
+            max={1}
+            step={0.05}
+            disabled={settings.visualisation?.futureDashed === false}
+            formatValue={(v) => v.toFixed(2)}
+            onChange={(val) => updateVisField("futureMaskOpacity", val)}
+          />
+        </FormRow>
+        <FormRow label="Mask stripe width">
+          <RangeInput
+            value={settings.visualisation?.futureMaskWidth ?? 12}
+            min={4}
+            max={40}
+            step={1}
+            disabled={settings.visualisation?.futureDashed === false}
+            formatValue={(v) => `${v}px`}
+            onChange={(val) => updateVisField("futureMaskWidth", val)}
+          />
+        </FormRow>
+      </SubGroup>
     </Section>
   );
 }
