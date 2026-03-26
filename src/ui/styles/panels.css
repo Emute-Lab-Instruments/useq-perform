@@ -38,36 +38,55 @@
   display: flex;
   flex-direction: row;
   justify-content: flex-start;
-  align-items: center;
-  min-height: 48px;
-  padding: 8px;
+  align-items: stretch;
+  min-height: 32px;
+  padding: 0;
   background-color: var(--toolbar-bg);
   border-bottom: 1px solid var(--panel-border);
   font-family: var(--code-font);
 }
 
 .panel-tab-button {
-  padding: 8px 16px;
-  margin: 4px;
-  border-radius: 4px;
+  padding: 6px 14px;
+  margin: 0;
+  border-radius: 0;
   font-family: var(--code-font);
   font-weight: 500;
-  color: var(--text-primary);
-  background-color: var(--panel-control-bg);
-  border: 1px solid transparent;
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  background-color: transparent;
+  border: none;
+  border-right: 1px solid var(--section-separator, rgba(255, 255, 255, 0.06));
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.12s ease, background-color 0.12s ease;
+  position: relative;
+
+  &:last-child {
+    border-right: none;
+  }
 
   &:hover {
     background-color: var(--panel-item-hover-bg);
-    border-color: var(--accent-color);
-    color: var(--accent-color);
+    color: var(--text-primary);
+    border-color: var(--section-separator, rgba(255, 255, 255, 0.06));
   }
 
   &.active {
-    background-color: var(--panel-item-active-bg);
+    background-color: var(--panel-section-bg);
     color: var(--accent-color);
-    border-color: var(--accent-color);
+    border-color: var(--section-separator, rgba(255, 255, 255, 0.06));
+  }
+
+  &.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--accent-color);
   }
 }
 
@@ -79,12 +98,12 @@
   min-height: 0;
   background-color: var(--panel-section-bg);
   padding: 0;
-  padding-left: 25px;
+  padding-left: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--accent-color) transparent;
 
   &::-webkit-scrollbar {
-    width: 8px;
+    width: 5px;
   }
 
   &::-webkit-scrollbar-track {
@@ -94,8 +113,7 @@
   &::-webkit-scrollbar-thumb {
     background-color: var(--accent-color);
     opacity: 0.5;
-    border-radius: 4px;
-    border: 2px solid var(--panel-section-bg);
+    border-radius: 0;
   }
 
   &::-webkit-scrollbar-thumb:hover {

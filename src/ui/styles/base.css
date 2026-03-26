@@ -26,7 +26,7 @@
     --panel-control-bg: rgba(0, 0, 0, 0.2);
     --accent-color: #00ff41;
     --text-primary: #f8f8f2;
-    --panel-border-radius: 8px;
+    --panel-border-radius: 4px;
     --item-border-radius: 4px;
     --code-eval-highlight-color-connected: rgba(255, 255, 0, 0.7);
     --code-eval-highlight-color-disconnected: rgb(148, 148, 148);
@@ -34,6 +34,11 @@
     --code-eval-highlight-color: rgba(255, 255, 0, 0.7);
   --editor-background: #15191EFA;
   --top-toolbar-height: 48px;
+
+    /* Hacker panel refinements */
+    --panel-groove: rgba(255, 255, 255, 0.06);
+    --panel-ridge: rgba(255, 255, 255, 0.12);
+    --section-separator: rgba(255, 255, 255, 0.08);
   }
 
 html,
@@ -45,4 +50,14 @@ body {
 
 body {
   margin: 0;
+  font-family: var(--code-font);
+}
+
+/* Ensure everything inherits the mono font */
+*, *::before, *::after {
+  font-family: inherit;
+}
+
+input, button, select, textarea {
+  font-family: var(--code-font);
 }

@@ -10,8 +10,8 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--panel-border);
-  border-radius: var(--panel-border-radius, 8px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  border-radius: var(--panel-border-radius, 2px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   background-color: var(--panel-bg);
   color: var(--text-primary);
   font-family: var(--code-font);
@@ -40,11 +40,11 @@
 
 .panel-chrome-title-bar .title-text {
   flex: 1;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  letter-spacing: 0.1em;
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -57,14 +57,14 @@
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--item-border-radius, 1px);
   background: transparent;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
   cursor: pointer;
   padding: 0;
   font-size: 14px;
   line-height: 1;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .panel-chrome-title-bar .chrome-btn:hover {
@@ -95,7 +95,7 @@
 
 .panel-chrome-content::-webkit-scrollbar-thumb {
   background: var(--accent-color, #666);
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 .panel-chrome-content::-webkit-scrollbar-thumb:hover {
@@ -223,7 +223,7 @@
   align-items: center;
   justify-content: center;
   padding: 12px 4px;
-  border-radius: 8px 0 0 8px;
+  border-radius: var(--panel-border-radius, 2px) 0 0 var(--panel-border-radius, 2px);
   border: 1px solid var(--panel-border);
   border-right: none;
   background: var(--panel-bg);
@@ -264,7 +264,7 @@
   align-items: center;
   justify-content: center;
   padding: 0 12px;
-  border-radius: 18px;
+  border-radius: var(--panel-border-radius, 2px);
   border: 1px solid var(--panel-border);
   background: var(--panel-bg);
   color: var(--text-primary);
@@ -292,7 +292,7 @@
   gap: 6px;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  border-radius: var(--panel-border-radius, 2px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 60;
 }
@@ -302,7 +302,7 @@
   height: 36px;
   position: relative;
   border: 1px solid var(--panel-border);
-  border-radius: 4px;
+  border-radius: var(--item-border-radius, 1px);
   background: var(--panel-section-bg);
   cursor: pointer;
   overflow: hidden;
@@ -344,7 +344,7 @@
   display: flex;
   gap: 4px;
   padding: 4px;
-  border-radius: 8px;
+  border-radius: var(--panel-border-radius, 2px);
   border: 1px solid var(--panel-border);
   background: var(--panel-bg);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -354,7 +354,7 @@
 .design-selector button {
   padding: 4px 10px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--item-border-radius, 1px);
   background: transparent;
   color: var(--text-secondary, rgba(255, 255, 255, 0.7));
   font-size: 11px;

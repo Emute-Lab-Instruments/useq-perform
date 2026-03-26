@@ -1,32 +1,9 @@
-
-
-
-#userguide-content {
-    padding: 15px;
-    /* background: white; */
-    /* border: 1px solid #ddd; */
-    border-radius: 5px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-
-    a {
-        color: var(--accent-color);
-    }
-
-    h1, h2, h3, h4, h5, h6 {
-        color: var(--accent-color);
-        font-family: var(--code-font);
-        margin: 0.5em 0;
-    }
-
-    ol li::marker, ul li::marker {
-        color: var(--accent-color);
-    }
-
-    ol li, ul li {
-        color: inherit; /* This ensures the text keeps the parent's color */
-    }
-
-    .codeblock {
-        color: red;
-    }
+/* Hide blinking cursor in read-only editors until clicked */
+.userguide-cm-wrapper .cm-cursor,
+.userguide-cm-wrapper .cm-cursor::before {
+    display: none !important;
+}
+.userguide-cm-wrapper .cm-editor.cm-focused .cm-cursor,
+.userguide-cm-wrapper .cm-editor.cm-focused .cm-cursor::before {
+    display: block !important;
 }

@@ -14,27 +14,31 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background-color: var(--panel-bg-color, #1e1e1e);
+    background-color: var(--panel-bg, #1e1e1e);
     border: 1px solid var(--accent-color);
-    border-radius: 8px;
-    padding: 20px;
+    border-radius: var(--panel-border-radius);
+    padding: 16px;
     z-index: 2001;
     min-width: 300px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     color: var(--text-primary);
+    font-family: var(--code-font);
 }
 
 .keybinding-content h4 {
     margin-top: 0;
     color: var(--accent-color);
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
 }
 
 .current-binding, .new-binding {
-    margin: 15px 0;
-    padding: 10px;
+    margin: 12px 0;
+    padding: 8px;
     background-color: var(--panel-control-bg);
     border: 1px solid var(--panel-border);
-    border-radius: 4px;
+    border-radius: var(--item-border-radius);
     font-family: var(--code-font);
     text-align: center;
 }
@@ -46,14 +50,14 @@
 }
 
 .new-binding:focus {
-    box-shadow: 0 0 0 2px var(--accent-color);
+    box-shadow: 0 0 0 1px var(--accent-color);
 }
 
 .keybinding-buttons {
     display: flex;
     justify-content: flex-end;
-    gap: 10px;
-    margin-top: 20px;
+    gap: 8px;
+    margin-top: 16px;
 }
 
 .key-binding {
