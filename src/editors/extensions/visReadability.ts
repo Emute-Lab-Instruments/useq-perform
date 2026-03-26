@@ -1,18 +1,19 @@
 /**
- * visReadability — backdrop-blur readability layer for the CodeMirror editor.
+ * visReadability — pre-blurred canvas readability layer for the CodeMirror editor.
  *
  * When the serialVis canvas overlays the editor, text can be hard to read
- * against the animated background.  This ViewPlugin places a backdrop-blur
- * layer *inside* the editor panel behind the CodeMirror text:
+ * against the animated background.  This ViewPlugin maintains a pre-blurred
+ * copy of the vis canvas and masks it to staircase polygons behind the text:
  *
- *   CM text content               (z-index: auto, within editor stacking context)
- *   blur overlay (inside editor)  (z-index: -1,   backdrop-filter blurs vis below)
- *   #panel-main-editor            (z-index: 21,   raised above vis, transparent bg)
- *   #panel-vis                    (z-index: 19,   vis canvas, unchanged)
+ *   CM text content                (z-index: auto, within editor stacking context)
+ *   overlay canvas (inside editor) (z-index: -1,   shows pre-blurred vis through polygon mask)
+ *   #panel-main-editor             (z-index: 21,   raised above vis, transparent bg)
+ *   #panel-vis                     (z-index: 19,   vis canvas, unchanged)
  *
- * The blur regions are clipped to staircase-shaped polygons that hug only
- * the non-whitespace content on each visible line, so the vis is still
- * fully visible in the gaps between code.
+ * The blur is computed once per vis frame into an offscreen buffer, then the
+ * overlay canvas clips that buffer to staircase polygons that hug the code.
+ * Scrolling only shifts the clip mask — no re-blur is needed, so scroll
+ * performance is decoupled from blur cost.
  */
 
 import { ViewPlugin, EditorView } from "@codemirror/view";
@@ -216,89 +217,36 @@ function computeVisibleLineBoundsViewport(view: EditorView): PixelLineBounds[] {
 }
 
 // ---------------------------------------------------------------------------
-// Backdrop-blur rendering helpers
+// Pre-blurred canvas rendering
 // ---------------------------------------------------------------------------
 
 const BLUR_RADIUS = 6;
 const PADDING = 3;
 const EDITOR_RAISED_Z = '21';
+const VIS_CANVAS_ID = 'serialcanvas';
 
 function isVisPanelVisible(): boolean {
   return isVisualisationPanelVisible();
 }
 
-function writeBackdrop(overlay: HTMLDivElement, lineBounds: PixelLineBounds[]): void {
-  overlay.replaceChildren();
-  if (lineBounds.length === 0) return;
-
+/** Build a combined Path2D from line bounds (all blocks in one path). */
+function buildClipPath(lineBounds: PixelLineBounds[]): Path2D | null {
   const blocks = groupIntoBlocks(lineBounds);
+  if (blocks.length === 0) return null;
 
+  const combined = new Path2D();
   for (const block of blocks) {
     const pathStr = buildBlockPolygonPath(block, PADDING);
-    if (!pathStr) continue;
-
-    const div = document.createElement('div');
-    div.style.cssText = [
-      'position:absolute',
-      'top:0',
-      'left:0',
-      'width:100%',
-      'height:100%',
-      'pointer-events:none',
-      `backdrop-filter:blur(${BLUR_RADIUS}px)`,
-      `-webkit-backdrop-filter:blur(${BLUR_RADIUS}px)`,
-      `clip-path:path("${pathStr}")`,
-    ].join(';');
-    overlay.appendChild(div);
+    if (pathStr) combined.addPath(new Path2D(pathStr));
   }
+  return combined;
 }
 
 interface MeasureResult {
   lineBounds: PixelLineBounds[];
   visVisible: boolean;
-  /** Editor panel's viewport-space bounding rect, used to clip the overlay. */
-  editorRect: { top: number; left: number; width: number; height: number } | null;
   /** The scrollDOM.scrollTop at the time of measurement. */
   scrollTop: number;
-}
-
-function scheduleOverlayRebuild(
-  overlay: HTMLDivElement,
-  view: EditorView,
-  editorPanel: HTMLElement | null,
-  onVisChange: (visible: boolean) => void,
-  onScrollBaseline: (scrollTop: number) => void,
-): void {
-  view.requestMeasure({
-    read(v: EditorView): MeasureResult {
-      const visVisible = isVisPanelVisible();
-      const scrollTop = v.scrollDOM.scrollTop;
-      if (!visVisible) return { lineBounds: [], visVisible, editorRect: null, scrollTop };
-      const rect = editorPanel?.getBoundingClientRect() ?? null;
-      const editorRect = rect
-        ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
-        : null;
-      const lineBounds = computeVisibleLineBoundsViewport(v);
-      // Offset line bounds so they're relative to the editor panel, not the window,
-      // since the overlay is positioned at editorRect.top/left.
-      if (editorRect) {
-        for (const lb of lineBounds) {
-          lb.left   -= editorRect.left;
-          lb.right  -= editorRect.left;
-          lb.top    -= editorRect.top;
-          lb.bottom -= editorRect.top;
-        }
-      }
-      return { lineBounds, visVisible, editorRect, scrollTop };
-    },
-    write({ lineBounds, visVisible, editorRect: _editorRect, scrollTop }: MeasureResult) {
-      onVisChange(visVisible);
-      onScrollBaseline(scrollTop);
-      // Reset scroll-tracking transform since we just recomputed positions.
-      overlay.style.transform = '';
-      writeBackdrop(overlay, lineBounds);
-    },
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -306,42 +254,53 @@ function scheduleOverlayRebuild(
 // ---------------------------------------------------------------------------
 
 class VisReadabilityPlugin {
-  private overlay: HTMLDivElement;
+  private overlayCanvas: HTMLCanvasElement;
+  private overlayCtx: CanvasRenderingContext2D | null;
+  private blurBuffer: HTMLCanvasElement;
+  private blurCtx: CanvasRenderingContext2D | null;
   private view: EditorView;
   private mutationObserver: MutationObserver;
   private editorPanel: HTMLElement | null = null;
   private wasVisVisible = false;
   /** scrollTop at the time polygons were last computed. */
   private scrollBaseline = 0;
+  /** Current scroll delta from baseline (updated every scroll event). */
+  private scrollDelta = 0;
   /** Bound scroll handler for cleanup. */
   private handleScroll: () => void;
   /** Timer for debounced polygon rebuild on scroll. */
   private scrollRebuildTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Cached clip path built from staircase polygons. */
+  private clipPath: Path2D | null = null;
+  /** rAF handle for the render loop. */
+  private rafId: number | null = null;
 
   constructor(view: EditorView) {
     this.view = view;
 
-    // Create an overlay *inside* the editor panel at z-index:-1 so it sits
-    // behind the CodeMirror text content.  backdrop-filter on its children
-    // blurs the vis canvas that shows through the transparent parent.
-    this.overlay = document.createElement('div');
-    this.overlay.style.cssText = [
+    // Visible overlay canvas inside the editor panel, behind CM text.
+    this.overlayCanvas = document.createElement('canvas');
+    this.overlayCanvas.style.cssText = [
       'position:absolute',
       'inset:0',
-      'overflow:hidden',
+      'width:100%',
+      'height:100%',
       'pointer-events:none',
       'z-index:-1',
     ].join(';');
+    this.overlayCtx = this.overlayCanvas.getContext('2d');
+
+    // Offscreen buffer for the blurred vis copy.
+    this.blurBuffer = document.createElement('canvas');
+    this.blurCtx = this.blurBuffer.getContext('2d');
 
     this.editorPanel = document.getElementById('panel-main-editor');
-    // Append overlay inside the editor panel (or body as fallback).
-    (this.editorPanel ?? document.body).appendChild(this.overlay);
+    (this.editorPanel ?? document.body).appendChild(this.overlayCanvas);
 
-    // Track scroll: apply immediate CSS transform for smoothness, and
-    // schedule a full polygon rebuild so newly-scrolled-in lines get coverage.
+    // Track scroll: update delta for the render loop, and debounce a
+    // full polygon rebuild for newly-scrolled-in lines.
     this.handleScroll = () => {
-      const delta = this.view.scrollDOM.scrollTop - this.scrollBaseline;
-      this.overlay.style.transform = delta ? `translateY(${-delta}px)` : '';
+      this.scrollDelta = this.view.scrollDOM.scrollTop - this.scrollBaseline;
       this.debouncedRebuild();
     };
     view.scrollDOM.addEventListener('scroll', this.handleScroll, { passive: true });
@@ -366,17 +325,82 @@ class VisReadabilityPlugin {
   }
 
   destroy(): void {
+    this.stopRenderLoop();
     if (this.scrollRebuildTimer !== null) clearTimeout(this.scrollRebuildTimer);
     this.view.scrollDOM.removeEventListener('scroll', this.handleScroll);
     this.mutationObserver.disconnect();
-    this.overlay.remove();
-    // Restore editor z-index
-    if (this.editorPanel) {
-      this.editorPanel.style.zIndex = '';
-    }
-    // Restore CM editor background
+    this.overlayCanvas.remove();
+    if (this.editorPanel) this.editorPanel.style.zIndex = '';
     this.view.dom.style.backgroundColor = '';
   }
+
+  // ---- Render loop ---------------------------------------------------------
+
+  private startRenderLoop(): void {
+    if (this.rafId !== null) return;
+    const tick = () => {
+      this.renderFrame();
+      this.rafId = requestAnimationFrame(tick);
+    };
+    this.rafId = requestAnimationFrame(tick);
+  }
+
+  private stopRenderLoop(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    // Clear the overlay so no stale blur lingers.
+    this.overlayCtx?.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+  }
+
+  /**
+   * Called every animation frame while vis is active.
+   * 1. Copy the vis canvas into the blur buffer (with ctx.filter blur).
+   * 2. Clip the overlay canvas to the staircase polygons (scroll-adjusted).
+   * 3. Draw the blur buffer through the clip mask.
+   */
+  private renderFrame(): void {
+    const ctx = this.overlayCtx;
+    const blurCtx = this.blurCtx;
+    if (!ctx || !blurCtx || !this.clipPath) return;
+
+    const visCanvas = document.getElementById(VIS_CANVAS_ID) as HTMLCanvasElement | null;
+    if (!visCanvas || visCanvas.width === 0 || visCanvas.height === 0) return;
+
+    // Resize overlay canvas pixel buffer to match its CSS layout size.
+    const w = this.overlayCanvas.clientWidth;
+    const h = this.overlayCanvas.clientHeight;
+    if (this.overlayCanvas.width !== w || this.overlayCanvas.height !== h) {
+      this.overlayCanvas.width = w;
+      this.overlayCanvas.height = h;
+    }
+
+    // Resize blur buffer to match the vis canvas.
+    if (this.blurBuffer.width !== visCanvas.width || this.blurBuffer.height !== visCanvas.height) {
+      this.blurBuffer.width = visCanvas.width;
+      this.blurBuffer.height = visCanvas.height;
+    }
+
+    // 1. Blur the vis canvas into the offscreen buffer (one GPU op).
+    blurCtx.clearRect(0, 0, this.blurBuffer.width, this.blurBuffer.height);
+    blurCtx.filter = `blur(${BLUR_RADIUS}px)`;
+    blurCtx.drawImage(visCanvas, 0, 0);
+    blurCtx.filter = 'none';
+
+    // 2–3. Clip to the staircase polygons (shifted by scroll delta) and
+    //       draw the blur buffer in viewport-fixed coordinates.
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(0, -this.scrollDelta);
+    ctx.clip(this.clipPath);
+    // Reset transform so the blur image stays fixed in viewport space.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.blurBuffer, 0, 0, w, h);
+    ctx.restore();
+  }
+
+  // ---- Geometry rebuild ----------------------------------------------------
 
   /** Debounced rebuild — recomputes polygons after scrolling settles. */
   private debouncedRebuild(): void {
@@ -388,43 +412,60 @@ class VisReadabilityPlugin {
   }
 
   private scheduleRebuild(): void {
-    scheduleOverlayRebuild(
-      this.overlay,
-      this.view,
-      this.editorPanel,
-      (v) => this.applyVisState(v),
-      (st) => { this.scrollBaseline = st; },
-    );
+    const { editorPanel } = this;
+    const self = this;
+    this.view.requestMeasure({
+      read(v: EditorView): MeasureResult {
+        const visVisible = isVisPanelVisible();
+        const scrollTop = v.scrollDOM.scrollTop;
+        if (!visVisible) return { lineBounds: [], visVisible, scrollTop };
+        const rect = editorPanel?.getBoundingClientRect() ?? null;
+        const lineBounds = computeVisibleLineBoundsViewport(v);
+        if (rect) {
+          for (const lb of lineBounds) {
+            lb.left   -= rect.left;
+            lb.right  -= rect.left;
+            lb.top    -= rect.top;
+            lb.bottom -= rect.top;
+          }
+        }
+        return { lineBounds, visVisible, scrollTop };
+      },
+      write({ lineBounds, visVisible, scrollTop }: MeasureResult) {
+        self.applyVisState(visVisible);
+        self.scrollBaseline = scrollTop;
+        self.scrollDelta = 0;
+        self.clipPath = buildClipPath(lineBounds);
+      },
+    });
   }
 
   /**
-   * When vis is visible: raise the editor panel above the vis and make
-   * the CM editor background transparent so the vis shows through.
-   * When vis is hidden: restore defaults.
+   * When vis is visible: raise the editor panel above the vis, make the CM
+   * editor background transparent, and start the render loop.
+   * When vis is hidden: restore defaults and stop the render loop.
    */
   private applyVisState(visVisible: boolean): void {
     if (visVisible === this.wasVisVisible) return;
     this.wasVisVisible = visVisible;
 
     if (visVisible) {
-      if (this.editorPanel) {
-        this.editorPanel.style.zIndex = EDITOR_RAISED_Z;
-      }
+      if (this.editorPanel) this.editorPanel.style.zIndex = EDITOR_RAISED_Z;
       this.view.dom.style.backgroundColor = 'transparent';
+      this.startRenderLoop();
     } else {
-      if (this.editorPanel) {
-        this.editorPanel.style.zIndex = '';
-      }
+      if (this.editorPanel) this.editorPanel.style.zIndex = '';
       this.view.dom.style.backgroundColor = '';
+      this.stopRenderLoop();
     }
   }
 }
 
 /**
- * CodeMirror extension that renders a backdrop-blur layer between the editor
- * text and the vis canvas, blurring the vis colours behind code regions.
+ * CodeMirror extension that renders a pre-blurred vis canvas behind the editor
+ * text, masked to staircase polygons that hug the code regions.
  *
  * Restructures z-indexes when vis is active:
- *   CM text → blur overlay (z:-1 inside editor) → editor (z:21) → vis (z:19)
+ *   CM text → overlay canvas (z:-1 inside editor) → editor (z:21) → vis (z:19)
  */
 export const visReadabilityPlugin = ViewPlugin.fromClass(VisReadabilityPlugin);
