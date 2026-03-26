@@ -10,6 +10,36 @@ export interface Snippet {
   createdAt: number;
 }
 
+/** Built-in starter snippets, seeded when the store is first created. */
+export const STARTER_SNIPPETS: Omit<Snippet, "id" | "createdAt">[] = [
+  // Rhythm Patterns
+  { title: "Kick Pattern", code: "(d1 (sqr beat))", tags: ["rhythm", "starter"] },
+  { title: "Hi-Hat Pattern", code: "(d2 (sqr (fast 8 bar)))", tags: ["rhythm", "starter"] },
+  { title: "Euclidean Rhythm", code: "(d3 (euclid 5 8 bar))", tags: ["rhythm", "euclidean", "starter"] },
+
+  // Modulation Shapes
+  { title: "Slow LFO", code: "(a1 (sin (slow 4 bar)))", tags: ["modulation", "starter"] },
+  { title: "Tremolo", code: "(a1 (* (sin (fast 8 bar)) (tri bar)))", tags: ["modulation", "starter"] },
+  { title: "Decay Envelope", code: "(a2 (* (- 1 (fast 4 bar)) (sqr (fast 4 bar))))", tags: ["modulation", "envelope", "starter"] },
+
+  // Melodic Sequences
+  { title: "Step Sequence", code: "(a1 (from-list [0.2 0.4 0.6 0.8 0.5 0.3] bar))", tags: ["melodic", "starter"] },
+  { title: "Smooth Contour", code: "(a2 (interp [0 1 0.3 0.8 0] bar))", tags: ["melodic", "starter"] },
+
+  // Interactive Patches
+  { title: "CV Speed Control", code: "(d1 (sqr (fast (scale 0 1 1 8 ain1) bar)))", tags: ["interactive", "starter"] },
+  { title: "Switch Pattern Select", code: "(d2 (if swm (euclid 7 16 bar) (euclid 3 8 bar)))", tags: ["interactive", "starter"] },
+];
+
+function seedStarters(): { snippets: Snippet[]; nextId: number } {
+  const snippets = STARTER_SNIPPETS.map((s, i) => ({
+    ...s,
+    id: i + 1,
+    createdAt: 0, // sort below user-created snippets
+  }));
+  return { snippets, nextId: snippets.length + 1 };
+}
+
 const loadInitialState = () => {
   try {
     const snippets = load<Snippet[]>(PERSISTENCE_KEYS.snippets, []);
@@ -19,17 +49,30 @@ const loadInitialState = () => {
     const starred = Array.isArray(starredRaw) ? starredRaw : [];
     const nextId = Number.isFinite(nextIdRaw) && nextIdRaw > 0 ? nextIdRaw : 1;
 
+    const validSnippets = Array.isArray(snippets) ? snippets : [];
+
+    // Seed starter snippets when the store has never been populated
+    if (validSnippets.length === 0 && nextId === 1) {
+      const seeded = seedStarters();
+      return {
+        snippets: seeded.snippets,
+        starred: new Set<number>(starred),
+        nextId: seeded.nextId,
+      };
+    }
+
     return {
-      snippets: Array.isArray(snippets) ? snippets : [],
+      snippets: validSnippets,
       starred: new Set<number>(starred),
       nextId,
     };
   } catch (e) {
     console.error("Failed to load snippets from storage", e);
+    const seeded = seedStarters();
     return {
-      snippets: [],
+      snippets: seeded.snippets,
       starred: new Set<number>(),
-      nextId: 1,
+      nextId: seeded.nextId,
     };
   }
 };

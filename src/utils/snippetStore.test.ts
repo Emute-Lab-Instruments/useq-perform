@@ -156,34 +156,57 @@ describe("snippetStore", () => {
   });
 
   it("persists snippets, starred ids, and nextId to localStorage", async () => {
-    const { addSnippet, toggleStar, storage } = await loadSnippetStore();
+    const { addSnippet, toggleStar, storage } = await loadSnippetStore({
+      snippets: [],
+      nextId: "5",
+      starred: [],
+    });
     addSnippet({ title: "Persist me", code: "(ok)", tags: ["persist"] });
-    toggleStar(1);
+    toggleStar(5);
 
-    expect(JSON.parse(storage.getItem("codeSnippets:snippets") || "[]")).toHaveLength(1);
-    expect(JSON.parse(storage.getItem("codeSnippets:starred") || "[]")).toEqual([1]);
-    expect(storage.getItem("codeSnippets:nextId")).toBe("2");
+    const persisted = JSON.parse(storage.getItem("codeSnippets:snippets") || "[]");
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0].id).toBe(5);
+    expect(JSON.parse(storage.getItem("codeSnippets:starred") || "[]")).toEqual([5]);
+    expect(storage.getItem("codeSnippets:nextId")).toBe("6");
   });
 
-  it("loads default state when localStorage is missing", async () => {
-    const { snippetStore } = await loadSnippetStore();
+  it("seeds starter snippets when localStorage is missing", async () => {
+    const { snippetStore, STARTER_SNIPPETS } = await loadSnippetStore();
+
+    expect(snippetStore.snippets).toHaveLength(STARTER_SNIPPETS.length);
+    expect(snippetStore.snippets[0]).toMatchObject({
+      id: 1,
+      title: STARTER_SNIPPETS[0].title,
+      createdAt: 0,
+    });
+    expect(snippetStore.snippets.every((s: { tags: string[] }) => s.tags.includes("starter"))).toBe(true);
+    expect(Array.from(snippetStore.starred)).toEqual([]);
+    expect(snippetStore.nextId).toBe(STARTER_SNIPPETS.length + 1);
+  });
+
+  it("does not re-seed when user has deleted all snippets", async () => {
+    // nextId > 1 means snippets existed before, so don't re-seed
+    const { snippetStore } = await loadSnippetStore({
+      snippets: [],
+      nextId: "5",
+    });
 
     expect(snippetStore.snippets).toEqual([]);
-    expect(Array.from(snippetStore.starred)).toEqual([]);
-    expect(snippetStore.nextId).toBe(1);
+    expect(snippetStore.nextId).toBe(5);
   });
 
-  it("falls back safely when localStorage is corrupt", async () => {
+  it("falls back to starters when localStorage is corrupt", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { snippetStore } = await loadSnippetStore({
+    const { snippetStore, STARTER_SNIPPETS } = await loadSnippetStore({
       snippets: "{bad-json",
       starred: "not-json",
       nextId: "nan",
     });
 
-    expect(snippetStore.snippets).toEqual([]);
+    expect(snippetStore.snippets).toHaveLength(STARTER_SNIPPETS.length);
     expect(Array.from(snippetStore.starred)).toEqual([]);
-    expect(snippetStore.nextId).toBe(1);
+    expect(snippetStore.nextId).toBe(STARTER_SNIPPETS.length + 1);
     expect(warnSpy).toHaveBeenCalled();
   });
 });
