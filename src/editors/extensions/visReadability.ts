@@ -397,15 +397,21 @@ class VisReadabilityPlugin {
     const tintOpacity = visSettings?.readabilityTintOpacity ?? 0;
     const alpha = visSettings?.readabilityAlpha ?? 1;
 
-    // 1. Blur + darken the vis canvas in a single filter pass.
-    //    brightness() dims the waveform RGB without touching alpha, so the
-    //    result is only visible where waveforms actually exist — transparent
-    //    areas stay transparent.  No composite tricks needed.
+    // 1. Blur + darken the vis canvas.
+    //    brightness() dims waveform RGB without touching alpha, so the result
+    //    is only visible where waveforms exist.  Drawing multiple passes
+    //    stacks the alpha, making the effect denser/more opaque without
+    //    increasing the blur radius (which would smear).
     const brightness = 1 - tintOpacity * 0.85; // 0→full color, 1→15% brightness
-    blurCtx.clearRect(0, 0, this.blurBuffer.width, this.blurBuffer.height);
+    const bw = this.blurBuffer.width;
+    const bh = this.blurBuffer.height;
+    blurCtx.clearRect(0, 0, bw, bh);
     blurCtx.filter = `blur(${blurRadius}px) brightness(${brightness})`;
     blurCtx.drawImage(visCanvas, 0, 0);
+    // Stack additional passes to build up density.
     blurCtx.filter = 'none';
+    blurCtx.drawImage(this.blurBuffer, 0, 0);
+    blurCtx.drawImage(this.blurBuffer, 0, 0);
 
     // 2. Clip to the staircase polygons (shifted by scroll delta) and
     //    draw the blur buffer in viewport-fixed coordinates.
