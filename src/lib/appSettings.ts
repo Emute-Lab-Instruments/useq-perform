@@ -25,6 +25,8 @@ export type {
   VisualisationSettings,
   RuntimeSettings,
   WasmSettings,
+  EvalResultMode,
+  EvalResultsSettings,
   AppSettings,
   AppSettingsPatch,
   StoredAppSettings,

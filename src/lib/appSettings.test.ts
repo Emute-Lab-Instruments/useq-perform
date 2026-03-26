@@ -90,6 +90,9 @@ describe("appSettings", () => {
         visualisation: {
           windowDuration: 12,
           futureLeadSeconds: 2.5,
+          probeSampleCount: 48,
+          probeLineWidth: 2.25,
+          probeRefreshIntervalMs: 25,
         },
       }),
       { includeCode: true },
@@ -109,6 +112,9 @@ describe("appSettings", () => {
     expect(document.user.visualisation).toMatchObject({
       windowDuration: 12,
       futureLeadSeconds: 2.5,
+      probeSampleCount: 48,
+      probeLineWidth: 2.25,
+      probeRefreshIntervalMs: 25,
     });
     expect((document.user.visualisation as Record<string, unknown>).offsetSeconds).toBeUndefined();
     expect(roundTripped.runtime).toEqual({
@@ -118,5 +124,8 @@ describe("appSettings", () => {
     expect(roundTripped.wasm).toEqual({ enabled: false });
     expect(roundTripped.visualisation.windowDuration).toBe(12);
     expect(roundTripped.visualisation.futureLeadSeconds).toBe(2.5);
+    expect(roundTripped.visualisation.probeSampleCount).toBe(48);
+    expect(roundTripped.visualisation.probeLineWidth).toBe(2.25);
+    expect(roundTripped.visualisation.probeRefreshIntervalMs).toBe(25);
   });
 });
