@@ -8,12 +8,9 @@ export default defineScenario({
     'src/editors/extensions/structure.ts',
     'src/editors/extensions/structure/decorations.ts',
   ],
-  description: 'Verifies structure highlighting on multiple top-level forms with cursor at the start.',
+  description: 'Three top-level forms with cursor at the opening paren of the first. The entire first (define ...) should be highlighted as a top-level program node.',
   editor: {
     editorContent: '(define freq 440)\n(define amp 0.5)\n(sine freq amp)',
-    cursorPosition: 0,
-  },
-  settings: {
-    'editor.structureHighlights': true,
+    cursorPosition: 0, // at the opening ( of first form
   },
 });
