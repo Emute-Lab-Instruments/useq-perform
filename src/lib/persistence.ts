@@ -43,6 +43,7 @@ export const PERSISTENCE_KEYS = {
 
   // Help / onboarding
   experienceLevel: "useqExperienceLevel",
+  onboardingDismissed: "useq:onboarding-dismissed",
 
   // DevMode
   devModeState: "uSEQ-Perform-DevMode-State",

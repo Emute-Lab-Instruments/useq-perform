@@ -5,6 +5,7 @@
  */
 import { TransportToolbar } from "../TransportToolbar";
 import { MainToolbar } from "../MainToolbar";
+import { OnboardingBanner } from "../OnboardingBanner";
 import { createSolidAdapter } from "./createSolidAdapter";
 
 const TRANSPORT_ROOT_ID = "panel-top-toolbar-root";
@@ -72,4 +73,21 @@ export function mountTransportToolbar(root?: HTMLElement): void {
  */
 export function mountMainToolbar(root?: HTMLElement): void {
   mainAdapter.mount(root);
+}
+
+// ── Onboarding Banner ───────────────────────────────────────────────
+
+const ONBOARDING_ROOT_ID = "onboarding-banner-root";
+
+const onboardingAdapter = createSolidAdapter({
+  containerId: ONBOARDING_ROOT_ID,
+  Component: () => <OnboardingBanner />,
+});
+
+/**
+ * Mount the onboarding banner.
+ * Renders a dismissible inline banner near the Connect button area.
+ */
+export function mountOnboardingBanner(root?: HTMLElement): void {
+  onboardingAdapter.mount(root);
 }
