@@ -701,3 +701,40 @@ export const wasmRuntimePort: WasmRuntimePort = {
   evalOutputAtTime,
   evalOutputsInTimeWindow,
 };
+
+// ---------------------------------------------------------------------------
+// Diagnostic types and readers
+// ---------------------------------------------------------------------------
+
+export interface UseqDiagnostic {
+  start: number;
+  end: number;
+  severity: 'error' | 'warning' | 'info' | 'hint';
+  message: string;
+  suggestion?: string;
+  example?: string;
+}
+
+/** Read diagnostics from the last evaluation. Returns empty array if WASM isn't loaded or has no diagnostic support. */
+export function readLastDiagnostics(): UseqDiagnostic[] {
+  try {
+    const runtime = (globalThis as any).__useqWasmRuntime;
+    if (!runtime?.useq_last_diagnostics) return [];
+    const json = runtime.useq_last_diagnostics();
+    return json ? JSON.parse(json) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Read currently active diagnostics. Returns empty array if WASM isn't loaded or has no diagnostic support. */
+export function readActiveDiagnostics(): UseqDiagnostic[] {
+  try {
+    const runtime = (globalThis as any).__useqWasmRuntime;
+    if (!runtime?.useq_active_diagnostics) return [];
+    const json = runtime.useq_active_diagnostics();
+    return json ? JSON.parse(json) : [];
+  } catch {
+    return [];
+  }
+}

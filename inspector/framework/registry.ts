@@ -34,13 +34,31 @@ export async function loadScenarios(): Promise<ResolvedScenario[]> {
   const scenarios: ResolvedScenario[] = [];
 
   for (const [modulePath, loader] of entries) {
-    const mod = await (loader as () => Promise<{ default: ScenarioDefinition }>)();
-    const definition = mod.default;
-    scenarios.push({
-      ...definition,
-      id: modulePathToId(modulePath),
-      modulePath,
-    });
+    try {
+      const mod = await (loader as () => Promise<{ default: ScenarioDefinition }>)();
+      const definition = mod.default;
+      if (definition && definition.name && definition.category) {
+        scenarios.push({
+          ...definition,
+          id: modulePathToId(modulePath),
+          modulePath,
+        });
+      }
+    } catch (err) {
+      // Scenario failed to load — likely a transitive import crash in the iframe.
+      // Extract an ID so it still appears in the nav tree as broken.
+      const id = modulePathToId(modulePath);
+      console.warn(`[Inspector] Failed to load scenario ${id}:`, (err as Error).message);
+      scenarios.push({
+        name: `⚠ ${id.split('/').pop() ?? id}`,
+        category: id.includes('/') ? id.split('/').slice(0, -1).join(' / ') : 'Broken',
+        type: 'canary',
+        sourceFiles: [],
+        description: `Failed to load: ${(err as Error).message}`,
+        id,
+        modulePath,
+      });
+    }
   }
 
   return scenarios;

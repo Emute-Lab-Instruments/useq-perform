@@ -11,19 +11,10 @@ export default function ScenarioViewer(props: ScenarioViewerProps) {
 
   function sendScenario(scenario: ResolvedScenario) {
     if (!iframeRef?.contentWindow) return;
+    // Only send the scenario ID — the runner loads the module itself.
+    // Functions (render, component) can't be serialized via postMessage.
     iframeRef.contentWindow.postMessage(
-      {
-        type: 'render-scenario',
-        scenario: {
-          id: scenario.id,
-          modulePath: scenario.modulePath,
-          name: scenario.name,
-          category: scenario.category,
-          settings: scenario.settings,
-          editor: scenario.editor,
-          component: scenario.component,
-        },
-      },
+      { type: 'render-scenario', scenarioId: scenario.id },
       '*'
     );
   }
