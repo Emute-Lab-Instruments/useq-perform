@@ -24,6 +24,7 @@ s1 (slow 4
   (from-list
     (list 60 63 67 72)
     (step)))`,
+    extensions: ['structure-highlight'],
     cursorPosition: 75, // inside the a1 sine expression
   },
 });

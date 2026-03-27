@@ -10,5 +10,6 @@ export default defineScenario({
   description: 'Code triggering error, warning, and info diagnostics on different lines. Tests color differentiation between severity levels.',
   editor: {
     editorContent: '(+ 1 (bad-syntax\n(let ((unused 0)) (+ 1 2))\n(* 3 3)',
+    extensions: ['diagnostics'],
   },
 });

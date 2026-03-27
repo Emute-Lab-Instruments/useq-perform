@@ -11,6 +11,7 @@ export default defineScenario({
   description: 'Cursor positioned right at a closing paren followed by an opening paren — tests which node gets highlighted at the )(  boundary.',
   editor: {
     editorContent: '(+ 1 2)(* 3 4)',
+    extensions: ['structure-highlight'],
     cursorPosition: 7, // right at the ( of (* 3 4)
   },
 });

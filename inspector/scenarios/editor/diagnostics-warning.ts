@@ -10,5 +10,6 @@ export default defineScenario({
   description: 'Warning-severity diagnostic squiggles — e.g., an unused variable binding that the interpreter flags.',
   editor: {
     editorContent: '(let ((unused-var 42))\n  (+ 1 2))',
+    extensions: ['diagnostics'],
   },
 });

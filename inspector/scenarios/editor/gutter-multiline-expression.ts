@@ -14,5 +14,6 @@ export default defineScenario({
     editorContent: `a1 (slow 4
   (sine
     (* 110 (+ 1 (sine 0.5)))))`,
+    extensions: ['gutter'],
   },
 });

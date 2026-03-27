@@ -13,5 +13,6 @@ export default defineScenario({
   editor: {
     editorContent: `(define x 10)
 (+ x 5)`,
+    extensions: ['gutter'],
   },
 });

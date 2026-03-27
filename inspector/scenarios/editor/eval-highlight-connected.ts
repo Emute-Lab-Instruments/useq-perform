@@ -10,6 +10,7 @@ export default defineScenario({
   description: 'When the device is connected and the user evaluates code, the top-level expression containing the cursor receives a yellow background flash (cm-evaluated-code decoration) that fades out over 1 second via CSS animation. The first expression (sine 440) should show the yellow highlight.',
   editor: {
     editorContent: '(sine 440)\n(tri 220)',
+    extensions: ['eval-highlight'],
     cursorPosition: 1, // inside (sine 440)
   },
 });

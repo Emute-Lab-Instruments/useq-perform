@@ -10,5 +10,6 @@ export default defineScenario({
   description: 'Inline result widget showing a numeric evaluation result after an expression.',
   editor: {
     editorContent: '(+ 1 2) ;=> 3',
+    extensions: ['inline-results'],
   },
 });

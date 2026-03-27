@@ -10,5 +10,6 @@ export default defineScenario({
   description: 'Diagnostic squiggly underlines for a syntax error — missing closing parenthesis.',
   editor: {
     editorContent: '(+ 1 2\n(* 3 4)',
+    extensions: ['diagnostics'],
   },
 });

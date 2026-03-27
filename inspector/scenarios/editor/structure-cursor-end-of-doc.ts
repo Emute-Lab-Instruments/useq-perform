@@ -11,6 +11,7 @@ export default defineScenario({
   description: 'Cursor positioned after the last closing paren. Tests that no highlight crashes or renders incorrectly when cursor is outside all forms.',
   editor: {
     editorContent: '(sine 440)\n(tri 220)',
+    extensions: ['structure-highlight'],
     cursorPosition: 21, // after the final )
   },
 });

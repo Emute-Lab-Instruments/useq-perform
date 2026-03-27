@@ -10,6 +10,7 @@ export default defineScenario({
   description: 'When code is evaluated in WASM-only preview mode (no device connected), the expression receives a cyan/blue background flash (cm-evaluated-code cm-evaluated-preview decoration) instead of the yellow connected-mode flash. The entire nested expression should show the cyan highlight.',
   editor: {
     editorContent: '(+ (* 2 3) (- 10 5))',
+    extensions: ['eval-highlight'],
     cursorPosition: 1, // inside the top-level form
   },
 });

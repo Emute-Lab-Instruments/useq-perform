@@ -17,6 +17,7 @@ export default defineScenario({
   (begin
     (set! a 0)
     (set! b 0)))`,
+    extensions: ['structure-highlight'],
     cursorPosition: 16, // inside the (begin on line 2
   },
 });

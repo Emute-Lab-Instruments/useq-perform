@@ -11,6 +11,7 @@ export default defineScenario({
   description: 'Five levels of nesting with cursor at the innermost expression. Tests that both the current node polygon and parent dashed line render correctly at extreme depth.',
   editor: {
     editorContent: '(a (b (c (d (e 42)))))',
+    extensions: ['structure-highlight'],
     cursorPosition: 15, // on the 42 inside (e 42)
   },
 });

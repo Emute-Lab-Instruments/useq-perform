@@ -10,5 +10,6 @@ export default defineScenario({
   description: 'Syntactically and semantically valid code — verifies that no diagnostic squiggles appear on correct code.',
   editor: {
     editorContent: '(+ 1 2)\n(* 3 (- 10 4))\n(sin (/ 3.14 2))',
+    extensions: ['diagnostics'],
   },
 });

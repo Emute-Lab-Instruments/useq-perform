@@ -12,5 +12,6 @@ export default defineScenario({
     'A single analog output assignment. Verifies the gutter renders a colored vertical bar and play button for one expression.',
   editor: {
     editorContent: 'a1 (sine 440)',
+    extensions: ['gutter'],
   },
 });

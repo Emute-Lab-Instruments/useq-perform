@@ -11,6 +11,7 @@ export default defineScenario({
   description: 'Cursor on a bare symbol that is not wrapped in parentheses. Tests that the highlight handles non-list nodes at the top level.',
   editor: {
     editorContent: 'freq\n(sine freq 0.5)',
+    extensions: ['structure-highlight'],
     cursorPosition: 2, // on the bare 'freq' symbol
   },
 });

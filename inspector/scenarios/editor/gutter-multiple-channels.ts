@@ -16,5 +16,6 @@ a2 (sine 880)
 d1 (> (phase 1) 0.5)
 d2 (euclidean 8 3 (phase 2))
 s1 (slow 2 (from-list (list 60 64 67) (step)))`,
+    extensions: ['gutter'],
   },
 });

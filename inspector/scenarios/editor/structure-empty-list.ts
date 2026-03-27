@@ -11,6 +11,7 @@ export default defineScenario({
   description: 'Cursor inside an empty list (). Tests that the highlight handles zero-width content nodes gracefully.',
   editor: {
     editorContent: '(define x ())\n(define y (list 1 2))',
+    extensions: ['structure-highlight'],
     cursorPosition: 11, // between the parens of ()
   },
 });

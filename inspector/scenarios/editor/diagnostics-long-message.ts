@@ -10,5 +10,6 @@ export default defineScenario({
   description: 'Code triggering a diagnostic whose message includes a suggestion and example — tests text wrapping behavior in the tooltip overlay.',
   editor: {
     editorContent: '(setq undefined-output 42)',
+    extensions: ['diagnostics'],
   },
 });

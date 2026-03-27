@@ -18,5 +18,6 @@ a4 (sine 440)
 d1 (> (phase 1) 0.5)
 d2 (> (phase 2) 0.5)
 d3 (> (phase 4) 0.5)`,
+    extensions: ['gutter'],
   },
 });

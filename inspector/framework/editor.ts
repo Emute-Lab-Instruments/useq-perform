@@ -1,4 +1,4 @@
-import { EditorState } from '@codemirror/state';
+import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, lineNumbers, drawSelection } from '@codemirror/view';
 import { history } from '@codemirror/commands';
 import { foldGutter, bracketMatching } from '@codemirror/language';
@@ -9,7 +9,44 @@ import { evalHighlightField } from '@src/editors/extensions/evalHighlight';
 import { diagnosticField } from '@src/editors/extensions/diagnostics';
 import { navigationMetaField } from '@src/editors/extensions/structure/ast';
 import { nodeHighlightPlugin } from '@src/editors/extensions/structure/decorations';
+import {
+  lastEvaluatedExpressionField,
+  createExpressionGutter,
+} from '@src/editors/extensions/structure/eval-integration';
+import {
+  createInlineResultsField,
+  type InlineResultsConfig,
+} from '@src/editors/extensions/inlineResults';
 import type { EditorSetup } from './scenario';
+
+/**
+ * Registry of named extensions that scenarios can opt into.
+ * Each entry returns one or more CodeMirror extensions.
+ */
+const extensionRegistry: Record<string, () => Extension | Extension[]> = {
+  'structure-highlight': () => [navigationMetaField, nodeHighlightPlugin],
+  'eval-highlight': () => evalHighlightField,
+  'diagnostics': () => diagnosticField,
+  'gutter': () => [
+    lastEvaluatedExpressionField,
+    ...createExpressionGutter({
+      isGutterEnabled: () => true,
+      isClearButtonEnabled: () => false,
+      isLastTrackingEnabled: () => true,
+      getExpressionColor: () => '#00ff41',
+      isVisualised: () => false,
+      reportColor: () => {},
+      onPlayExpression: () => {},
+      onExternalChange: () => () => {},
+    }),
+  ],
+  'inline-results': () => createInlineResultsField({
+    getMode: () => 'inline',
+    getMaxChars: () => 200,
+    getShowTimestamp: () => false,
+    getAutoDismissMs: () => 0,
+  } as InlineResultsConfig),
+};
 
 export interface EditorConfig {
   /** Which theme to use (key from themes object). Defaults to first available. */
@@ -22,7 +59,10 @@ export interface EditorConfig {
 
 /**
  * Create a CodeMirror EditorView for an Inspector scenario.
- * Mounts into the given container element.
+ *
+ * Only loads extensions listed in setup.extensions (by name from the registry).
+ * If setup.extensions is omitted, no optional extensions are loaded — just the
+ * base editor with syntax highlighting.
  */
 export function createInspectorEditor(
   container: HTMLElement,
@@ -37,7 +77,8 @@ export function createInspectorEditor(
 
   const selectedTheme = themes[theme] ?? Object.values(themes)[0];
 
-  const extensions = [
+  // Base extensions: theme, syntax, line numbers — always loaded
+  const extensions: Extension[] = [
     editorBaseTheme,
     ...selectedTheme,
     EditorView.theme({
@@ -49,11 +90,22 @@ export function createInspectorEditor(
     history(),
     foldGutter(),
     ...clojureMode,
-    evalHighlightField,
-    diagnosticField,
-    navigationMetaField,
-    nodeHighlightPlugin,
   ];
+
+  // Add only the requested optional extensions
+  if (setup.extensions) {
+    for (const name of setup.extensions) {
+      const factory = extensionRegistry[name];
+      if (factory) {
+        const ext = factory();
+        if (Array.isArray(ext)) {
+          extensions.push(...ext);
+        } else {
+          extensions.push(ext);
+        }
+      }
+    }
+  }
 
   if (readOnly) {
     extensions.push(EditorState.readOnly.of(true));
@@ -75,7 +127,6 @@ export function createInspectorEditor(
     view.dispatch({
       selection: { anchor: pos },
     });
-    // Focus to show cursor
     view.focus();
   }
 

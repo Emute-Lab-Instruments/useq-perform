@@ -16,6 +16,7 @@ export default defineScenario({
     (* amp
        (sine (* freq
                 (+ 1 (* 0.01 mod)))))))`,
+    extensions: ['structure-highlight'],
     cursorPosition: 20, // inside the let binding
   },
 });
