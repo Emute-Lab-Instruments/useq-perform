@@ -11,6 +11,7 @@ export default defineScenario({
     'src/ui/MainToolbar.tsx',
   ],
   description: 'Main toolbar when connected to hardware via serial. Connect button should show blue transport-hardware styling with active cable icon.',
+  grepTerms: ['MainToolbar', 'MainToolbarProps', 'ConnectionState', 'transport-hardware', '.toolbar-button'],
   component: {
     render: () => (
       <div style={{ background: '#1e293b', padding: '20px' }}>

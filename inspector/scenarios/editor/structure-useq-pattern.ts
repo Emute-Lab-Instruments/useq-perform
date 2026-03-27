@@ -9,6 +9,7 @@ export default defineScenario({
     'src/editors/extensions/structure/eval-integration.ts',
   ],
   description: 'A realistic uSEQ patch with output assignments (a1, d1, s1), modulation, and typical patterns. Tests highlight rendering on production-like code.',
+  grepTerms: ['nodeHighlightPlugin', 'NodeHighlightPluginClass', 'computeNodeLineBounds', 'buildPolygonPath', 'findNodeAt', 'getContainerNodeAt', '.cm-node-highlight'],
   editor: {
     editorContent: `; FM bass with envelope
 (define lfo (sine 0.25))

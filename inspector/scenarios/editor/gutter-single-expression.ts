@@ -10,6 +10,7 @@ export default defineScenario({
   ],
   description:
     'A single analog output assignment. Verifies the gutter renders a colored vertical bar and play button for one expression.',
+  grepTerms: ['ExpressionGutterMarker', 'expressionGutterField', 'createExpressionGutter', 'GutterConfig', '.cm-expression-gutter', '.cm-expr-play-btn'],
   editor: {
     editorContent: 'a1 (sine 440)',
     extensions: ['gutter'],

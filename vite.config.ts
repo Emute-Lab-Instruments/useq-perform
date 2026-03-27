@@ -66,10 +66,15 @@ export default defineConfig(({ command }) => ({
       },
       {
         plugins: [solid()],
+        resolve: {
+          alias: {
+            '@src': path.resolve(dirname, 'src'),
+          },
+        },
         test: {
           name: 'unit',
           environment: 'jsdom',
-          include: ['src/**/*.test.tsx', 'src/**/*.test.ts'],
+          include: ['src/**/*.test.tsx', 'src/**/*.test.ts', 'inspector/**/*.test.ts'],
           exclude: ['src/editors/extensions/__tests__/**'],
           globals: true,
           setupFiles: [],

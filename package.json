@@ -78,6 +78,7 @@
     "docs:explorer": "tsx docs/codebase-explorer/server.ts",
     "storybook": "storybook dev -p 6006",
     "inspector": "vite dev --config inspector/vite.config.ts",
+    "inspector:validate": "vitest run inspector/scenarios.test.ts --project unit",
     "build-storybook": "storybook build"
   },
   "resolutions": {

@@ -38,6 +38,15 @@ export function buildContextBundle(scenario: ResolvedScenario): string {
     lines.push('');
   }
 
+  if (scenario.grepTerms && scenario.grepTerms.length > 0) {
+    lines.push('### Greppable Terms');
+    lines.push('Use these to find the relevant code:');
+    for (const term of scenario.grepTerms) {
+      lines.push(`- \`${term}\``);
+    }
+    lines.push('');
+  }
+
   if (scenario.settings) {
     lines.push('### Settings Overrides');
     lines.push('```json');

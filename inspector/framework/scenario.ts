@@ -105,6 +105,8 @@ export interface ScenarioDefinition {
   sourceFiles: string[];
   /** Optional longer description */
   description?: string;
+  /** Greppable terms for agent context: function names, class names, CSS classes, prop names */
+  grepTerms?: string[];
   /** Settings overrides to apply */
   settings?: SettingsOverrides;
   /** Editor setup (for editor scenarios) */

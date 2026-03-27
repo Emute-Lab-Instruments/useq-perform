@@ -12,6 +12,6 @@ export default defineScenario({
   editor: {
     editorContent: '(sine 440)\n(tri 220)',
     extensions: ['structure-highlight'],
-    cursorPosition: 21, // after the final )
+    cursorPosition: 20, // after the final )
   },
 });

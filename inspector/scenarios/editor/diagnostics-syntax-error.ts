@@ -8,6 +8,7 @@ export default defineScenario({
     'src/editors/extensions/diagnostics.ts',
   ],
   description: 'Diagnostic squiggly underlines for a syntax error — missing closing parenthesis.',
+  grepTerms: ['diagnosticField', 'pushDiagnostics', 'addDiagnosticsEffect', 'setDiagnostics', 'StoredDiagnostic', '.cm-diagnostic'],
   editor: {
     editorContent: '(+ 1 2\n(* 3 4)',
     extensions: ['diagnostics'],
