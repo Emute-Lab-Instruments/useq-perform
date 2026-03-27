@@ -1,12 +1,28 @@
 import { Show, onMount, onCleanup, type JSX } from "solid-js";
 import { sanitizeHtml } from "../utils/sanitize";
-import { pushOverlay } from "./overlayManager";
+
+/**
+ * Optional overlay registration callback.
+ *
+ * When provided, Modal calls this on mount with its id and escape handler.
+ * The function should return a cleanup callback that removes the overlay.
+ *
+ * In the adapter layer, pass `pushOverlay` from `./overlayManager` here.
+ * When omitted, Modal renders as a pure UI component without overlay-stack
+ * integration (no Escape handling via the overlay manager, no scroll lock).
+ */
+export type OverlayRegisterFn = (
+  id: string,
+  onEscape: () => void
+) => () => void;
 
 export type ModalProps = {
   id?: string;
   title: string;
   onClose: () => void;
   children: JSX.Element;
+  /** Register this modal with an overlay manager (for Escape handling / scroll lock). */
+  onOverlayRegister?: OverlayRegisterFn;
 };
 
 export function Modal(props: ModalProps) {
@@ -61,10 +77,16 @@ export function Modal(props: ModalProps) {
     document.removeEventListener("keydown", handleTabKey);
   });
 
-  // Register with the overlay manager for Escape handling and scroll lock.
+  // Register with the overlay manager for Escape handling and scroll lock,
+  // but only when the caller provides the registration callback.
   let popOverlay: (() => void) | undefined;
   onMount(() => {
-    popOverlay = pushOverlay(props.id ?? "modal", () => props.onClose());
+    if (props.onOverlayRegister) {
+      popOverlay = props.onOverlayRegister(
+        props.id ?? "modal",
+        () => props.onClose()
+      );
+    }
   });
   onCleanup(() => {
     popOverlay?.();
@@ -118,11 +140,18 @@ export type HtmlModalProps = {
   title: string;
   content: string;
   onClose: () => void;
+  /** Register this modal with an overlay manager (for Escape handling / scroll lock). */
+  onOverlayRegister?: OverlayRegisterFn;
 };
 
 export function HtmlModal(props: HtmlModalProps) {
   return (
-    <Modal id={props.id} title={props.title} onClose={props.onClose}>
+    <Modal
+      id={props.id}
+      title={props.title}
+      onClose={props.onClose}
+      onOverlayRegister={props.onOverlayRegister}
+    >
       <div innerHTML={sanitizeHtml(props.content)} />
     </Modal>
   );

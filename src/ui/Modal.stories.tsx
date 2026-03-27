@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Modal, HtmlModal } from "./Modal";
+import { pushOverlay } from "./overlayManager";
 
 const meta: Meta<typeof Modal> = {
   title: "UI/Modal",
@@ -14,6 +15,7 @@ export const Default: Story = {
     id: "demo-modal",
     title: "Example Modal",
     onClose: () => console.log("Close"),
+    onOverlayRegister: pushOverlay,
     children: (
       <div>
         <p>This is a reusable modal component ported from the legacy jQuery system.</p>
@@ -30,6 +32,7 @@ export const HtmlContent: StoryObj<typeof HtmlModal> = {
       title="Browser Not Supported"
       content="<p>This browser doesn't support the WebSerial API.</p><p>Please try using a Chrome or Chromium-based browser.</p>"
       onClose={() => console.log("Close")}
+      onOverlayRegister={pushOverlay}
     />
   ),
 };

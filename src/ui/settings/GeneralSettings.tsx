@@ -1,4 +1,9 @@
-import { resetSettings, getSettings, updateSettings } from "../../runtime/runtimeService.ts";
+import {
+  resetSettings,
+  getSettings,
+  updateSettings,
+} from "../../runtime/runtimeService.ts";
+import { settings as globalSettings, updateSettingsStore } from "../../utils/settingsStore.ts";
 import { settingsQuery, setSettingsQuery } from "./settingsSearch";
 import { PersonalSettings } from "./PersonalSettings";
 import { EditorSettings } from "./EditorSettings";
@@ -9,20 +14,41 @@ import { VisualisationSettings } from "./VisualisationSettings";
 import { ConfigurationManagement } from "./ConfigurationManagement";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { onCleanup } from "solid-js";
+import type { AppSettings } from "../../lib/appSettings.ts";
 
-export function GeneralSettings() {
+export interface GeneralSettingsProps {
+  /** Current settings object. Defaults to the global reactive settings store. */
+  settings?: AppSettings;
+  /** Callback to apply a partial settings update. Defaults to updateSettingsStore. */
+  onUpdateSettings?: (patch: Record<string, unknown>) => void;
+  /** Callback to reset all settings. Defaults to runtimeService.resetSettings. */
+  onResetSettings?: () => void;
+  /** Callback to get the current settings snapshot for export. Defaults to runtimeService.getSettings. */
+  getSettingsSnapshot?: () => AppSettings;
+  /** Callback to apply bulk-imported settings. Defaults to runtimeService.updateSettings. */
+  onImportSettings?: (data: unknown) => void;
+  /** Callback invoked after reset or import when a page reload is needed. Defaults to window.location.reload. */
+  onReload?: () => void;
+}
+
+export function GeneralSettings(props: GeneralSettingsProps = {}) {
+  const s = () => props.settings ?? globalSettings;
+  const update = (patch: Record<string, unknown>) =>
+    (props.onUpdateSettings ?? updateSettingsStore)(patch);
+
   // Clear search when leaving the settings panel
   onCleanup(() => setSettingsQuery(""));
 
   const handleReset = () => {
     if (confirm("Are you sure you want to reset all settings to default values?")) {
-      resetSettings();
-      window.location.reload();
+      (props.onResetSettings ?? resetSettings)();
+      (props.onReload ?? (() => window.location.reload()))();
     }
   };
 
   const handleExport = () => {
-    const data = JSON.stringify(getSettings(), null, 2);
+    const snapshot = (props.getSettingsSnapshot ?? getSettings)();
+    const data = JSON.stringify(snapshot, null, 2);
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -47,8 +73,8 @@ export function GeneralSettings() {
           return;
         }
         if (confirm("Apply imported settings? The page will reload.")) {
-          updateSettings(parsed);
-          window.location.reload();
+          (props.onImportSettings ?? updateSettings)(parsed);
+          (props.onReload ?? (() => window.location.reload()))();
         }
       } catch (e) {
         alert(`Failed to read settings file:\n${e instanceof Error ? e.message : String(e)}`);
@@ -69,13 +95,13 @@ export function GeneralSettings() {
         />
       </div>
 
-      <PersonalSettings />
-      <EditorSettings />
-      <EvalResultsSettings />
-      <StorageSettings />
-      <UISettings />
-      <VisualisationSettings />
-      <AdvancedSettings />
+      <PersonalSettings settings={s()} onUpdateSettings={update} />
+      <EditorSettings settings={s()} onUpdateSettings={update} />
+      <EvalResultsSettings settings={s()} onUpdateSettings={update} />
+      <StorageSettings settings={s()} onUpdateSettings={update} />
+      <UISettings settings={s()} onUpdateSettings={update} />
+      <VisualisationSettings settings={s()} onUpdateSettings={update} />
+      <AdvancedSettings settings={s()} onUpdateSettings={update} />
       <ConfigurationManagement />
 
       <div class="settings-footer">

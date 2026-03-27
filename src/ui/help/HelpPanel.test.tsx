@@ -42,4 +42,16 @@ describe("HelpPanel", () => {
     const { container } = render(() => <HelpPanel />);
     expect(container.querySelector(".help-panel")).toBeTruthy();
   });
+
+  it("renders custom tabs when provided via props", () => {
+    const customTabs = [
+      { id: "custom-1", name: "Alpha", content: () => <div>Alpha content</div> },
+      { id: "custom-2", name: "Beta", content: () => <div>Beta content</div> },
+    ];
+    render(() => <HelpPanel tabs={customTabs} />);
+    expect(screen.getByText("Alpha")).toBeTruthy();
+    expect(screen.getByText("Beta")).toBeTruthy();
+    // Default tabs should NOT be present
+    expect(screen.queryByText("Guide")).toBeNull();
+  });
 });

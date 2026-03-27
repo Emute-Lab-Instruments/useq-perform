@@ -1,41 +1,21 @@
-import { For, Show } from "solid-js";
-import {
-  visStore,
-  SERIAL_VIS_CHANNELS,
-  type SerialVisChannel,
-} from "../utils/visualisationStore";
+import { For } from "solid-js";
+
+export interface VisLegendChannel {
+  channel: string;
+  color: string | null;
+  active: boolean;
+  label: string;
+}
 
 export interface VisLegendProps {
+  channels: VisLegendChannel[];
   class?: string;
 }
 
 export function VisLegend(props: VisLegendProps) {
-  const activeEntries = () => {
-    const expressions = visStore.expressions;
-    const palette = visStore.palette;
-    const offset = visStore.settings.circularOffset ?? 0;
-
-    return SERIAL_VIS_CHANNELS.map((channel, index) => {
-      const expr = expressions[channel];
-      const clampedOffset = ((offset % SERIAL_VIS_CHANNELS.length) + SERIAL_VIS_CHANNELS.length) % SERIAL_VIS_CHANNELS.length;
-      const paletteIndex =
-        palette.length > 0
-          ? (index + clampedOffset) % palette.length
-          : -1;
-      const color = expr?.color ?? (paletteIndex >= 0 ? palette[paletteIndex] : null);
-
-      return {
-        channel,
-        color,
-        active: !!expr,
-        label: expr?.expressionText ?? channel,
-      };
-    });
-  };
-
   return (
     <div class={props.class ?? "vis-legend"}>
-      <For each={activeEntries()}>
+      <For each={props.channels}>
         {(entry) => (
           <div
             class="vis-legend-entry"

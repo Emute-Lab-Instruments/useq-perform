@@ -4,8 +4,13 @@ import { GuideTab } from "./guide/GuideTab";
 import { ReferencePanel } from "./ReferencePanel";
 import { helpTabSwitchChannel } from "./helpChannels";
 
-export function HelpPanel() {
-  const tabs: Tab[] = [
+export interface HelpPanelProps {
+  /** Override the default tabs. When omitted, renders the full app tabs. */
+  tabs?: Tab[];
+}
+
+function defaultTabs(): Tab[] {
+  return [
     {
       id: "panel-help-tab-guide-v2",
       name: "Guide",
@@ -22,6 +27,10 @@ export function HelpPanel() {
       content: () => <CodeSnippetsTab />,
     },
   ];
+}
+
+export function HelpPanel(props: HelpPanelProps = {}) {
+  const tabs = props.tabs ?? defaultTabs();
 
   return (
     <div class="panel help-panel">

@@ -1,19 +1,37 @@
-import { createSignal, onMount, onCleanup } from "solid-js";
-import { Effect } from "effect";
-import { adjustFontSize, loadCode, saveCode } from "../effects/editor";
-import { animateConnect as animateConnectChannel } from "../contracts/runtimeChannels";
-import {
-  getRuntimeServiceSnapshot,
-  subscribeRuntimeService,
-  toggleRuntimeConnection,
-} from "../runtime/runtimeService";
-import { toggleChromePanel } from "./adapters/panels";
-import { toggleVisualisationPanel } from "./adapters/visualisationPanel";
+import { onMount, onCleanup } from "solid-js";
 import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings } from "lucide-solid";
 
-export function MainToolbar() {
-  const initialRuntime = getRuntimeServiceSnapshot();
-  const [runtimeState, setRuntimeState] = createSignal(initialRuntime);
+export type ConnectionState = 'none' | 'wasm' | 'hardware' | 'both';
+
+export interface MainToolbarProps {
+  connectionState: ConnectionState;
+  onConnect: () => void;
+  onToggleGraph: () => void;
+  onLoadCode: () => void;
+  onSaveCode: () => void;
+  onFontSizeUp: () => void;
+  onFontSizeDown: () => void;
+  onSettings: () => void;
+  onHelp: () => void;
+  /** Optional: subscribe to connect-button animation pulses. Returns cleanup fn. */
+  onAnimateConnect?: (callback: () => void) => () => void;
+}
+
+const CONNECTION_LABELS: Record<ConnectionState, string> = {
+  none: 'Disconnected',
+  wasm: 'Browser-local',
+  hardware: 'Hardware',
+  both: 'Hardware + WASM',
+};
+
+const CONNECTION_CLASSES: Record<ConnectionState, string> = {
+  none: 'transport-none',
+  wasm: 'transport-wasm',
+  hardware: 'transport-hardware',
+  both: 'transport-both',
+};
+
+export function MainToolbar(props: MainToolbarProps) {
   let connectButtonRef: HTMLButtonElement | undefined;
 
   const handleAnimateConnect = () => {
@@ -33,39 +51,16 @@ export function MainToolbar() {
   };
 
   onMount(() => {
-    const unsubscribeRuntime = subscribeRuntimeService((nextState) => {
-      setRuntimeState(nextState);
-    });
-    const removeAnimateListener = animateConnectChannel.subscribe(
-      () => handleAnimateConnect()
-    );
-
-    onCleanup(() => {
-      unsubscribeRuntime();
-      removeAnimateListener();
-    });
+    if (props.onAnimateConnect) {
+      const removeListener = props.onAnimateConnect(handleAnimateConnect);
+      onCleanup(removeListener);
+    }
   });
 
-  const runtimeStatus = () => {
-    if (runtimeState().session.connectionMode === "hardware") {
-      return runtimeState().session.transportMode === "both" ? "Hardware + WASM" : "Hardware";
-    }
+  const runtimeStatus = () => CONNECTION_LABELS[props.connectionState];
 
-    if (runtimeState().session.connectionMode === "browser") {
-      return "Browser-local";
-    }
-
-    return "Disconnected";
-  };
-
-  const connectButtonClass = () => {
-    const { connectionMode, transportMode } = runtimeState().session;
-    let transportClass = "transport-none";
-    if (connectionMode === "browser") transportClass = "transport-wasm";
-    else if (connectionMode === "hardware" && transportMode === "both") transportClass = "transport-both";
-    else if (connectionMode === "hardware") transportClass = "transport-hardware";
-    return `toolbar-button ${transportClass}`;
-  };
+  const connectButtonClass = () =>
+    `toolbar-button ${CONNECTION_CLASSES[props.connectionState]}`;
 
   return (
     <div id="panel-toolbar">
@@ -75,7 +70,7 @@ export function MainToolbar() {
           class={connectButtonClass()}
           title={`Connect (${runtimeStatus()})`}
           aria-label={`Connect (${runtimeStatus()})`}
-          onClick={() => toggleRuntimeConnection()}
+          onClick={() => props.onConnect()}
         >
           <Cable />
         </button>
@@ -83,7 +78,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Graph"
           aria-label="Graph"
-          onClick={() => toggleVisualisationPanel()}
+          onClick={() => props.onToggleGraph()}
         >
           <ChartSpline />
         </button>
@@ -94,7 +89,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Load Code"
           aria-label="Load Code"
-          onClick={() => Effect.runPromise(loadCode())}
+          onClick={() => props.onLoadCode()}
         >
           <File />
         </button>
@@ -102,7 +97,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Save Code"
           aria-label="Save Code"
-          onClick={() => Effect.runPromise(saveCode())}
+          onClick={() => props.onSaveCode()}
         >
           <Save />
         </button>
@@ -113,7 +108,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Font size--"
           aria-label="Font size--"
-          onClick={() => Effect.runPromise(adjustFontSize(-1))}
+          onClick={() => props.onFontSizeDown()}
         >
           <AArrowDown />
         </button>
@@ -121,7 +116,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Font size++"
           aria-label="Font size++"
-          onClick={() => Effect.runPromise(adjustFontSize(1))}
+          onClick={() => props.onFontSizeUp()}
         >
           <AArrowUp />
         </button>
@@ -132,7 +127,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Help!"
           aria-label="Help!"
-          onClick={() => toggleChromePanel("help")}
+          onClick={() => props.onHelp()}
         >
           <CircleHelp />
         </button>
@@ -140,7 +135,7 @@ export function MainToolbar() {
           class="toolbar-button"
           title="Settings"
           aria-label="Settings"
-          onClick={() => toggleChromePanel("settings")}
+          onClick={() => props.onSettings()}
         >
           <Settings />
         </button>

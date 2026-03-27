@@ -1,29 +1,39 @@
-import { settings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings as globalSettings, updateSettingsStore } from "../../utils/settingsStore";
 import { Section, FormRow, Checkbox } from "./FormControls";
+import type { AppSettings } from "../../lib/appSettings.ts";
 
-export function AdvancedSettings() {
+export interface AdvancedSettingsProps {
+  settings?: AppSettings;
+  onUpdateSettings?: (patch: Record<string, unknown>) => void;
+}
+
+export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
+  const s = () => props.settings ?? globalSettings;
+  const update = (patch: Record<string, unknown>) =>
+    (props.onUpdateSettings ?? updateSettingsStore)(patch);
+
   const handleAutoReconnectChange = (autoReconnect: boolean) => {
-    updateSettingsStore({
+    update({
       runtime: {
-        ...settings.runtime,
+        ...s().runtime,
         autoReconnect,
       },
     });
   };
 
   const handleStartLocallyWithoutHardwareChange = (startLocallyWithoutHardware: boolean) => {
-    updateSettingsStore({
+    update({
       runtime: {
-        ...settings.runtime,
+        ...s().runtime,
         startLocallyWithoutHardware,
       },
     });
   };
 
   const handleWasmEnabledChange = (enabled: boolean) => {
-    updateSettingsStore({
+    update({
       wasm: {
-        ...settings.wasm,
+        ...s().wasm,
         enabled,
       },
     });
@@ -33,19 +43,19 @@ export function AdvancedSettings() {
     <Section title="Advanced Settings">
       <FormRow label="Reconnect saved hardware on startup">
         <Checkbox
-          checked={settings.runtime?.autoReconnect !== false}
+          checked={s().runtime?.autoReconnect !== false}
           onChange={handleAutoReconnectChange}
         />
       </FormRow>
       <FormRow label="Start locally before hardware connects">
         <Checkbox
-          checked={settings.runtime?.startLocallyWithoutHardware !== false}
+          checked={s().runtime?.startLocallyWithoutHardware !== false}
           onChange={handleStartLocallyWithoutHardwareChange}
         />
       </FormRow>
       <FormRow label="Enable WASM Interpreter">
         <Checkbox
-          checked={settings.wasm?.enabled !== false}
+          checked={s().wasm?.enabled !== false}
           onChange={handleWasmEnabledChange}
         />
       </FormRow>

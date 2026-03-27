@@ -3,13 +3,24 @@
 // Pure view component: renders transport controls and sends intents.
 // All side-effects (mock-time clock, runtime sync, WASM mirroring) are
 // owned by the transport orchestrator -- see effects/transportOrchestrator.ts.
+//
+// Receives state and callbacks as props. The adapter layer
+// (adapters/toolbars.tsx) wires the real orchestrator into props.
 
 import { onCleanup, onMount } from "solid-js";
-import { useActorSignal } from "../lib/useActorSignal";
-import { getTransportOrchestrator } from "../effects/transportOrchestrator";
 import { ProgressBar } from "./ProgressBar";
-import { visStore } from "../utils/visualisationStore";
 import { Play, Pause, Square, Rewind, X } from "lucide-solid";
+
+export interface TransportToolbarProps {
+  state: "playing" | "paused" | "stopped";
+  mode: "none" | "wasm" | "hardware" | "both";
+  progress: number;
+  onPlay: () => void;
+  onPause: () => void;
+  onStop: () => void;
+  onRewind: () => void;
+  onClear: () => void;
+}
 
 const TOP_TOOLBAR_HEIGHT_VAR = "--top-toolbar-height";
 
@@ -35,14 +46,8 @@ function updateToolbarHeightVar(el: HTMLElement) {
   );
 }
 
-export function TransportToolbar() {
+export function TransportToolbar(props: TransportToolbarProps) {
   let toolbarRef: HTMLDivElement | undefined;
-
-  // Obtain the singleton orchestrator (creates it on first call).
-  const orchestrator = getTransportOrchestrator();
-
-  // Bind the actor's state to a Solid signal for reactivity.
-  const { state, send } = useActorSignal(orchestrator.actor as any);
 
   // --- Layout height tracking ---
   let resizeObserver: ResizeObserver | undefined;
@@ -74,10 +79,10 @@ export function TransportToolbar() {
   });
 
   // --- Derived state ---
-  const isPlaying = () => state().value === "playing";
-  const isPaused = () => state().value === "paused";
-  const isStopped = () => state().value === "stopped";
-  const isModeNone = () => state().context.mode === "none";
+  const isPlaying = () => props.state === "playing";
+  const isPaused = () => props.state === "paused";
+  const isStopped = () => props.state === "stopped";
+  const isModeNone = () => props.mode === "none";
 
   const playButtonClass = () =>
     `toolbar-button ${isModeNone() ? "disabled" : (isPlaying() ? "primary disabled" : "")}`;
@@ -104,7 +109,7 @@ export function TransportToolbar() {
           title="Play"
           aria-label="Play"
           disabled={isPlayDisabled()}
-          onClick={() => !isPlaying() && send({ type: "PLAY" })}
+          onClick={() => !isPlayDisabled() && props.onPlay()}
         >
           <Play />
         </button>
@@ -113,7 +118,7 @@ export function TransportToolbar() {
           title="Pause"
           aria-label="Pause"
           disabled={isPauseDisabled()}
-          onClick={() => !isPaused() && !isStopped() && send({ type: "PAUSE" })}
+          onClick={() => !isPauseDisabled() && props.onPause()}
         >
           <Pause />
         </button>
@@ -122,7 +127,7 @@ export function TransportToolbar() {
           title="Stop"
           aria-label="Stop"
           disabled={isStopDisabled()}
-          onClick={() => !isStopped() && send({ type: "STOP" })}
+          onClick={() => !isStopDisabled() && props.onStop()}
         >
           <Square />
         </button>
@@ -131,7 +136,7 @@ export function TransportToolbar() {
           title="Rewind"
           aria-label="Rewind"
           disabled={isRewindDisabled()}
-          onClick={() => send({ type: "REWIND" })}
+          onClick={() => !isRewindDisabled() && props.onRewind()}
         >
           <Rewind />
         </button>
@@ -140,12 +145,12 @@ export function TransportToolbar() {
           title="Clear"
           aria-label="Clear"
           disabled={isClearDisabled()}
-          onClick={() => send({ type: "CLEAR" })}
+          onClick={() => !isClearDisabled() && props.onClear()}
         >
           <X />
         </button>
       </div>
-      <ProgressBar progress={visStore.bar} />
+      <ProgressBar progress={props.progress} />
     </div>
   );
 }

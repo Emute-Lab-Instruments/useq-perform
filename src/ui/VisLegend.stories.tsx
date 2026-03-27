@@ -1,10 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { VisLegend } from "./VisLegend";
-import {
-  updateExpressions,
-  setVisPalette,
-  setLastChangeKind,
-} from "../utils/visualisationStore";
+import { VisLegend, type VisLegendChannel } from "./VisLegend";
 
 const meta: Meta<typeof VisLegend> = {
   title: "UI/VisLegend",
@@ -13,6 +8,8 @@ const meta: Meta<typeof VisLegend> = {
 
 export default meta;
 type Story = StoryObj<typeof VisLegend>;
+
+const CHANNELS = ["a1", "a2", "a3", "a4", "d1", "d2", "d3"] as const;
 
 const DARK_PALETTE = [
   "#00ff41",
@@ -25,51 +22,40 @@ const DARK_PALETTE = [
   "#aa00ff",
 ];
 
-export const Empty: Story = {
-  render: () => {
-    setTimeout(() => {
-      setVisPalette(DARK_PALETTE);
-    }, 50);
+const emptyChannels: VisLegendChannel[] = CHANNELS.map((ch, i) => ({
+  channel: ch,
+  color: DARK_PALETTE[i] ?? null,
+  active: false,
+  label: ch,
+}));
 
-    return (
-      <div style={{ background: "#1e293b", padding: "12px" }}>
-        <VisLegend />
-      </div>
-    );
-  },
+const activeChannels: VisLegendChannel[] = CHANNELS.map((ch, i) => {
+  const activeMap: Record<string, { text: string; color: string }> = {
+    a1: { text: "(sin (* t 2))", color: "#00ff41" },
+    a2: { text: "(cos (* t 3))", color: "#1adbdb" },
+    d1: { text: "(gate 1)", color: "#ff0080" },
+  };
+  const active = activeMap[ch];
+  return {
+    channel: ch,
+    color: active?.color ?? DARK_PALETTE[i] ?? null,
+    active: !!active,
+    label: active?.text ?? ch,
+  };
+});
+
+export const Empty: Story = {
+  render: () => (
+    <div style={{ background: "#1e293b", padding: "12px" }}>
+      <VisLegend channels={emptyChannels} />
+    </div>
+  ),
 };
 
 export const WithActiveExpressions: Story = {
-  render: () => {
-    setTimeout(() => {
-      setVisPalette(DARK_PALETTE);
-      updateExpressions({
-        a1: {
-          exprType: "a1",
-          expressionText: "(sin (* t 2))",
-          samples: [],
-          color: "#00ff41",
-        },
-        a2: {
-          exprType: "a2",
-          expressionText: "(cos (* t 3))",
-          samples: [],
-          color: "#1adbdb",
-        },
-        d1: {
-          exprType: "d1",
-          expressionText: "(gate 1)",
-          samples: [],
-          color: "#ff0080",
-        },
-      });
-      setLastChangeKind("register");
-    }, 50);
-
-    return (
-      <div style={{ background: "#1e293b", padding: "12px", color: "white" }}>
-        <VisLegend />
-      </div>
-    );
-  },
+  render: () => (
+    <div style={{ background: "#1e293b", padding: "12px", color: "white" }}>
+      <VisLegend channels={activeChannels} />
+    </div>
+  ),
 };

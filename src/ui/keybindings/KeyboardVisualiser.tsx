@@ -5,7 +5,6 @@
 // are clickable to rebind actions via a capture-next-keypress flow.
 
 import { createMemo, createSignal, createEffect, For, Show, onCleanup } from "solid-js";
-import { settings } from "../../utils/settingsStore.ts";
 import { getLayout, type KeyboardLayoutId, type KeyDef } from "../../lib/keybindings/layouts/index.ts";
 import { actions, type ActionCategory, type ActionId } from "../../lib/keybindings/actions.ts";
 import { defaultKeyBindings, type KeyBinding } from "../../lib/keybindings/defaults.ts";
@@ -272,16 +271,17 @@ function buildHeatByCode(heatmap: Map<string, number>): Map<string, number> {
 
 /**
  * Build a map from physical key code -> chord completion info for a given
- * leader prefix.  Scans defaultKeyBindings for chords that start with the
+ * leader prefix.  Scans the supplied bindings for chords that start with the
  * leader and extracts their second stroke.
  */
 function buildChordCompletionMap(
   leader: string,
+  bindings: KeyBinding[],
 ): Map<string, ChordCompletionInfo> {
   const map = new Map<string, ChordCompletionInfo>();
   const prefix = leader + " ";
 
-  for (const binding of defaultKeyBindings) {
+  for (const binding of bindings) {
     if (!binding.key.startsWith(prefix)) continue;
 
     const secondStroke = binding.key.slice(prefix.length);
@@ -578,6 +578,8 @@ function CommandList(props: CommandListProps) {
 
 export interface KeyboardVisualiserProps {
   layout?: KeyboardLayoutId;
+  /** Key bindings to display. Defaults to defaultKeyBindings when omitted. */
+  bindings?: KeyBinding[];
   showLegend?: boolean;
   showCommandList?: boolean;
   mode?: "view" | "edit";
@@ -588,15 +590,8 @@ export interface KeyboardVisualiserProps {
 }
 
 export default function KeyboardVisualiser(props: KeyboardVisualiserProps) {
-  const layoutId = (): KeyboardLayoutId => {
-    // Prop override > settings > default
-    if (props.layout) return props.layout;
-    const stored = settings.keybindings?.layout;
-    if (stored && stored in { "qwerty-us": 1, "qwerty-uk": 1, "dvorak": 1, "colemak": 1, "azerty-fr": 1, "qwertz-de": 1 }) {
-      return stored as KeyboardLayoutId;
-    }
-    return "qwerty-us";
-  };
+  const layoutId = (): KeyboardLayoutId => props.layout ?? "qwerty-us";
+  const activeBindings = (): KeyBinding[] => props.bindings ?? defaultKeyBindings;
 
   const layout = createMemo(() => getLayout(layoutId()));
   const isEditMode = () => (props.mode === "edit") && !!props.resolver;
@@ -615,7 +610,7 @@ export default function KeyboardVisualiser(props: KeyboardVisualiserProps) {
       }
       return buildBindingMap(bindings);
     }
-    return buildBindingMap(defaultKeyBindings);
+    return buildBindingMap(activeBindings());
   });
 
   const boundCodes = createMemo(() => buildBoundCodeSet(bindingMap()));
@@ -753,7 +748,7 @@ export default function KeyboardVisualiser(props: KeyboardVisualiserProps) {
                 editConflictCode={editConflictCode()}
                 onKeyClick={handleKeyClick}
                 inChordMode={!!props.pendingChord?.()}
-                chordCompletions={props.pendingChord?.() ? buildChordCompletionMap(props.pendingChord()!) : undefined}
+                chordCompletions={props.pendingChord?.() ? buildChordCompletionMap(props.pendingChord()!, activeBindings()) : undefined}
                 chordLeaderCode={props.pendingChord?.() ? leaderToPhysicalCode(props.pendingChord()!) : null}
                 heatIntensity={props.heatmap ? buildHeatByCode(props.heatmap) : undefined}
               />
@@ -762,7 +757,7 @@ export default function KeyboardVisualiser(props: KeyboardVisualiserProps) {
         </div>
 
         <Show when={showCommandList()}>
-          <CommandList bindings={defaultKeyBindings} />
+          <CommandList bindings={activeBindings()} />
         </Show>
       </div>
 

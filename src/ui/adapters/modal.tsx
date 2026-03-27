@@ -5,6 +5,7 @@
  */
 import { Show, createSignal } from "solid-js";
 import { HtmlModal } from "../Modal";
+import { pushOverlay } from "../overlayManager";
 import { createSolidAdapter } from "./createSolidAdapter";
 
 type ModalState = {
@@ -46,6 +47,7 @@ const adapter = createSolidAdapter({
             title={state().title}
             content={state().content}
             onClose={() => setModalState(null)}
+            onOverlayRegister={pushOverlay}
           />
         </div>
       )}

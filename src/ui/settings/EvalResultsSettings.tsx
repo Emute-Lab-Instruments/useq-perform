@@ -1,5 +1,6 @@
-import { settings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings as globalSettings, updateSettingsStore } from "../../utils/settingsStore";
 import { Section, FormRow, Select, NumberInput, Checkbox } from "./FormControls";
+import type { AppSettings } from "../../lib/appSettings.ts";
 
 const modeOptions = [
   { value: "console", label: "Console only" },
@@ -8,8 +9,17 @@ const modeOptions = [
   { value: "floating", label: "Floating tooltip" },
 ];
 
-export function EvalResultsSettings() {
-  const current = () => settings.evalResults ?? {
+export interface EvalResultsSettingsProps {
+  settings?: AppSettings;
+  onUpdateSettings?: (patch: Record<string, unknown>) => void;
+}
+
+export function EvalResultsSettings(props: EvalResultsSettingsProps = {}) {
+  const s = () => props.settings ?? globalSettings;
+  const update = (patch: Record<string, unknown>) =>
+    (props.onUpdateSettings ?? updateSettingsStore)(patch);
+
+  const current = () => s().evalResults ?? {
     mode: "inline-ephemeral",
     autoDismissMs: 3000,
     maxChars: 200,
@@ -17,14 +27,14 @@ export function EvalResultsSettings() {
   };
 
   const handleModeChange = (mode: string) => {
-    updateSettingsStore({
+    update({
       evalResults: { ...current(), mode: mode as any },
     });
   };
 
   const handleAutoDismissChange = (autoDismissMs: number) => {
     if (autoDismissMs >= 0) {
-      updateSettingsStore({
+      update({
         evalResults: { ...current(), autoDismissMs },
       });
     }
@@ -32,14 +42,14 @@ export function EvalResultsSettings() {
 
   const handleMaxCharsChange = (maxChars: number) => {
     if (maxChars >= 0) {
-      updateSettingsStore({
+      update({
         evalResults: { ...current(), maxChars },
       });
     }
   };
 
   const handleShowTimestampChange = (showTimestamp: boolean) => {
-    updateSettingsStore({
+    update({
       evalResults: { ...current(), showTimestamp },
     });
   };
