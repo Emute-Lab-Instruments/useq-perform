@@ -11,5 +11,10 @@ export default defineScenario({
   editor: {
     editorContent: '(+ 1 (missing-paren 3\n(nonexistent-fn 7)\n(+ "text" 5)',
     extensions: ['diagnostics'],
+    diagnostics: [
+      { start: 5, end: 21, severity: 'error', message: 'Unmatched opening parenthesis' },
+      { start: 22, end: 36, severity: 'error', message: 'Unknown function: nonexistent-fn' },
+      { start: 43, end: 49, severity: 'error', message: 'Type mismatch: expected number, got string' },
+    ],
   },
 });

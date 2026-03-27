@@ -11,5 +11,13 @@ export default defineScenario({
   editor: {
     editorContent: '(setq undefined-output 42)',
     extensions: ['diagnostics'],
+    diagnostics: [
+      {
+        start: 1, end: 5, severity: 'error',
+        message: 'Unknown function: setq',
+        suggestion: 'Did you mean "set!"? Use (set! variable value) to mutate a binding.',
+        example: '(set! my-var 42)',
+      },
+    ],
   },
 });

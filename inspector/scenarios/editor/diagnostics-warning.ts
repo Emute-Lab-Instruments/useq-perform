@@ -11,5 +11,8 @@ export default defineScenario({
   editor: {
     editorContent: '(let ((unused-var 42))\n  (+ 1 2))',
     extensions: ['diagnostics'],
+    diagnostics: [
+      { start: 7, end: 17, severity: 'warning', message: 'Unused variable: unused-var' },
+    ],
   },
 });

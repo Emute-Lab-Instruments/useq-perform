@@ -135,5 +135,11 @@ export async function createInspectorEditor(
     view.focus();
   }
 
+  // Push initial diagnostics if specified
+  if (setup.diagnostics?.length) {
+    const { pushDiagnostics } = await import('@src/editors/extensions/diagnostics');
+    pushDiagnostics(view, setup.diagnostics, 0, 0, view.state.doc.length);
+  }
+
   return view;
 }

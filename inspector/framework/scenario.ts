@@ -4,6 +4,22 @@ export type ScenarioType = 'canary' | 'contract';
 /** What kind of app slice this scenario needs */
 export type ScenarioMode = 'editor' | 'component';
 
+/** A diagnostic to display in the editor */
+export interface ScenarioDiagnostic {
+  /** Start character offset in the document */
+  start: number;
+  /** End character offset in the document */
+  end: number;
+  /** Severity level */
+  severity: 'error' | 'warning' | 'info' | 'hint';
+  /** Diagnostic message */
+  message: string;
+  /** Optional suggestion text */
+  suggestion?: string;
+  /** Optional example text */
+  example?: string;
+}
+
 /** Editor-specific setup */
 export interface EditorSetup {
   /** Code to put in the editor */
@@ -12,6 +28,8 @@ export interface EditorSetup {
   extensions?: string[];
   /** Cursor position (character offset) */
   cursorPosition?: number;
+  /** Diagnostics to display (pushed after editor creation) */
+  diagnostics?: ScenarioDiagnostic[];
 }
 
 /** Component-specific setup */
