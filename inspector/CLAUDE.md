@@ -63,24 +63,59 @@ export default defineScenario({
 });
 ```
 
-### Component scenarios
+### Component scenarios (real JSX — preferred)
 
-```typescript
+Use `.tsx` files that import and render real SolidJS components with props. Most UI components have been refactored to accept props instead of importing singletons.
+
+```tsx
+// inspector/scenarios/toolbar/transport-playing.tsx
+import { defineScenario } from '../../framework/scenario';
+import { TransportToolbar } from '@src/ui/TransportToolbar';
+
 export default defineScenario({
-  category: 'Settings UI / General Settings',
-  name: 'Default state',
+  category: 'Toolbar & Chrome / Transport Toolbar',
+  name: 'Playing state',
   type: 'contract',
-  sourceFiles: ['src/ui/settings/GeneralSettings.tsx'],
+  sourceFiles: ['src/ui/TransportToolbar.tsx'],
+  description: 'Transport toolbar in playing state with play button disabled.',
   component: {
-    component: () => {
-      const el = document.createElement('div');
-      el.innerHTML = '<p>Placeholder — full SolidJS rendering pending</p>';
-      return el;
-    },
-    width: 400,
-    height: 600,
+    render: () => (
+      <TransportToolbar
+        state="playing"
+        mode="hardware"
+        progress={0.6}
+        onPlay={() => {}}
+        onPause={() => {}}
+        onStop={() => {}}
+        onRewind={() => {}}
+        onClear={() => {}}
+      />
+    ),
+    loadAppStyles: true,  // loads src/ui/styles/index.css in the iframe
+    width: 500,
+    height: 80,
   },
 });
+```
+
+**Key points:**
+- Use `render` (returns JSX), not `component` (returns DOM element). The `component` field is legacy.
+- Set `loadAppStyles: true` for components that need the app's CSS.
+- Pass all data and callbacks as props — no store imports in scenarios.
+- Components already refactored to props: MainToolbar, TransportToolbar, ProgressBar, Modal, VisLegend, GeneralSettings (+ sub-panels), HelpPanel, KeyboardVisualiser.
+
+### Component scenarios (legacy DOM placeholder)
+
+Only use this for components that haven't been refactored to props yet:
+
+```typescript
+component: {
+  component: () => {
+    const el = document.createElement('div');
+    el.innerHTML = '<p>Placeholder — real component pending</p>';
+    return el;
+  },
+},
 ```
 
 ### Key rules for scenarios
@@ -243,6 +278,42 @@ export const structureExtensions = [
 - `structure/ast.ts` — pure AST helpers
 - `structure/decorations.ts:nodeHighlightPlugin` — pure geometry + AST
 - `themes.ts` — pure theme specs
+
+## Refactoring UI components for Inspector use
+
+UI components in `src/ui/` that import singletons (stores, services, adapters) can't render in the Inspector iframe. The fix is **props** — push the "where does this data come from" question to the adapter layer.
+
+### The pattern
+
+1. **Define a props interface** with the data and callbacks the component needs
+2. **Refactor the component** to read from props instead of importing singletons
+3. **Update the adapter** (`src/ui/adapters/`) to wire the real implementations into props
+4. **Keep backward compat** — make props optional with defaults where possible
+
+### Already refactored to props
+
+| Component | Props interface | Adapter |
+|---|---|---|
+| ProgressBar | `ProgressBarProps` (progress) | TransportToolbar passes visStore.bar |
+| TransportToolbar | `TransportToolbarProps` (state, mode, progress, callbacks) | `ConnectedTransportToolbar` in toolbars.tsx |
+| MainToolbar | `MainToolbarProps` (connectionState, 8 callbacks) | `WiredMainToolbar` in toolbars.tsx |
+| Modal | `ModalProps` (title, onClose, optional onOverlayRegister) | modal.tsx passes pushOverlay |
+| VisLegend | `VisLegendProps` (channels array) | Not mounted in app yet |
+| GeneralSettings | `GeneralSettingsProps` (settings, callbacks) | Optional props, defaults to globals |
+| HelpPanel | `HelpPanelProps` (optional tabs) | Optional, defaults to real tabs |
+| KeyboardVisualiser | `KeyboardVisualiserProps` (layout, bindings) | Optional, defaults to real bindings |
+
+### Still coupled (components not yet refactored)
+
+| Component | Coupling | Notes |
+|---|---|---|
+| PickerMenu | `pushOverlay`, gamepad channels | Props-friendly shape, needs overlay decoupling |
+| DoubleRadialPicker | `pushOverlay`, gamepad channels | Same pattern as PickerMenu |
+| RadialMenu | Already props-only | Just needs a scenario |
+| ActionPalette | Action registry, keybinding store | Complex — may need scoped refactor |
+| ModifierHints | Keybinding store | Same pattern as ActionPalette |
+| ThemeSettings | settingsStore, editor themes, panel adapters | Medium complexity |
+| FormControls | settingsSearch signal | Minor coupling |
 
 ## Approval workflow
 
