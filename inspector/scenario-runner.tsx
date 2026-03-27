@@ -71,7 +71,7 @@ window.addEventListener('message', async (event: MessageEvent) => {
       container.style.width = '100%';
       root.appendChild(container);
 
-      createInspectorEditor(container, definition.editor, {
+      await createInspectorEditor(container, definition.editor, {
         theme: (definition.settings?.['editor.theme'] as string) ?? undefined,
         fontSize: (definition.settings?.['editor.fontSize'] as number) ?? undefined,
         readOnly: true,

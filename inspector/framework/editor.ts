@@ -5,47 +5,52 @@ import { foldGutter, bracketMatching } from '@codemirror/language';
 // @ts-expect-error — @nextjournal/clojure-mode has no type declarations
 import { default_extensions as clojureMode } from '@nextjournal/clojure-mode';
 import { editorBaseTheme, themes } from '@src/editors/themes';
-import { evalHighlightField } from '@src/editors/extensions/evalHighlight';
-import { diagnosticField } from '@src/editors/extensions/diagnostics';
-import { navigationMetaField } from '@src/editors/extensions/structure/ast';
-import { nodeHighlightPlugin } from '@src/editors/extensions/structure/decorations';
-import {
-  lastEvaluatedExpressionField,
-  createExpressionGutter,
-} from '@src/editors/extensions/structure/eval-integration';
-import {
-  createInlineResultsField,
-  type InlineResultsConfig,
-} from '@src/editors/extensions/inlineResults';
 import type { EditorSetup } from './scenario';
 
 /**
  * Registry of named extensions that scenarios can opt into.
- * Each entry returns one or more CodeMirror extensions.
+ * Uses dynamic imports to avoid pulling in runtime dependencies at module load.
  */
-const extensionRegistry: Record<string, () => Extension | Extension[]> = {
-  'structure-highlight': () => [navigationMetaField, nodeHighlightPlugin],
-  'eval-highlight': () => evalHighlightField,
-  'diagnostics': () => diagnosticField,
-  'gutter': () => [
-    lastEvaluatedExpressionField,
-    ...createExpressionGutter({
-      isGutterEnabled: () => true,
-      isClearButtonEnabled: () => false,
-      isLastTrackingEnabled: () => true,
-      getExpressionColor: () => '#00ff41',
-      isVisualised: () => false,
-      reportColor: () => {},
-      onPlayExpression: () => {},
-      onExternalChange: () => () => {},
-    }),
-  ],
-  'inline-results': () => createInlineResultsField({
-    getMode: () => 'inline',
-    getMaxChars: () => 200,
-    getShowTimestamp: () => false,
-    getAutoDismissMs: () => 0,
-  } as InlineResultsConfig),
+const extensionRegistry: Record<string, () => Promise<Extension | Extension[]>> = {
+  'structure-highlight': async () => {
+    const { navigationMetaField } = await import('@src/editors/extensions/structure/ast');
+    const { nodeHighlightPlugin } = await import('@src/editors/extensions/structure/decorations');
+    return [navigationMetaField, nodeHighlightPlugin];
+  },
+  'eval-highlight': async () => {
+    const { evalHighlightField } = await import('@src/editors/extensions/evalHighlight');
+    return evalHighlightField;
+  },
+  'diagnostics': async () => {
+    const { diagnosticField } = await import('@src/editors/extensions/diagnostics');
+    return diagnosticField;
+  },
+  'gutter': async () => {
+    const { lastEvaluatedExpressionField, createExpressionGutter } =
+      await import('@src/editors/extensions/structure/eval-integration');
+    return [
+      lastEvaluatedExpressionField,
+      ...createExpressionGutter({
+        isGutterEnabled: () => true,
+        isClearButtonEnabled: () => false,
+        isLastTrackingEnabled: () => true,
+        getExpressionColor: () => '#00ff41',
+        isVisualised: () => false,
+        reportColor: () => {},
+        onPlayExpression: () => {},
+        onExternalChange: () => () => {},
+      }),
+    ];
+  },
+  'inline-results': async () => {
+    const { createInlineResultsField } = await import('@src/editors/extensions/inlineResults');
+    return createInlineResultsField({
+      getMode: () => 'inline' as const,
+      getMaxChars: () => 200,
+      getShowTimestamp: () => false,
+      getAutoDismissMs: () => 0,
+    });
+  },
 };
 
 export interface EditorConfig {
@@ -64,11 +69,11 @@ export interface EditorConfig {
  * If setup.extensions is omitted, no optional extensions are loaded — just the
  * base editor with syntax highlighting.
  */
-export function createInspectorEditor(
+export async function createInspectorEditor(
   container: HTMLElement,
   setup: EditorSetup,
   config: EditorConfig = {},
-): EditorView {
+): Promise<EditorView> {
   const {
     theme = 'useq-dark',
     fontSize = 16,
@@ -92,12 +97,12 @@ export function createInspectorEditor(
     ...clojureMode,
   ];
 
-  // Add only the requested optional extensions
+  // Dynamically load only the requested optional extensions
   if (setup.extensions) {
     for (const name of setup.extensions) {
       const factory = extensionRegistry[name];
       if (factory) {
-        const ext = factory();
+        const ext = await factory();
         if (Array.isArray(ext)) {
           extensions.push(...ext);
         } else {
