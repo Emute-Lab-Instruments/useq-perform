@@ -1,7 +1,11 @@
 import { createSignal, onMount, onCleanup } from "solid-js";
-import { visStore } from "../utils/visualisationStore";
 
-export function ProgressBar() {
+export interface ProgressBarProps {
+  /** Progress value from 0 to 1 */
+  progress: number;
+}
+
+export function ProgressBar(props: ProgressBarProps) {
   const [containerWidth, setContainerWidth] = createSignal<number | null>(null);
 
   let containerRef: HTMLDivElement | undefined;
@@ -44,7 +48,7 @@ export function ProgressBar() {
       <div
         id="toolbar-bar-progress"
         style={{
-          transform: `scaleX(${Math.max(0, Math.min(1, visStore.bar))})`,
+          transform: `scaleX(${Math.max(0, Math.min(1, props.progress))})`,
           "pointer-events": "none",
         }}
       />

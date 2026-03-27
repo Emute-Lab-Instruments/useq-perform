@@ -9,8 +9,11 @@ export interface NavTreeNode {
   scenario?: ResolvedScenario;
 }
 
-// Auto-discover all scenario files using Vite's glob import
-const scenarioModules = import.meta.glob('../scenarios/**/*.ts');
+// Auto-discover all scenario files (.ts and .tsx) using Vite's glob import
+const scenarioModules = {
+  ...import.meta.glob('../scenarios/**/*.ts'),
+  ...import.meta.glob('../scenarios/**/*.tsx'),
+};
 
 /**
  * Derive a scenario ID from its module path.
@@ -19,7 +22,7 @@ const scenarioModules = import.meta.glob('../scenarios/**/*.ts');
 function modulePathToId(modulePath: string): string {
   return modulePath
     .replace('../scenarios/', '')
-    .replace(/\.ts$/, '');
+    .replace(/\.tsx?$/, '');
 }
 
 /**

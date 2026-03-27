@@ -8,6 +8,7 @@ import { onCleanup, onMount } from "solid-js";
 import { useActorSignal } from "../lib/useActorSignal";
 import { getTransportOrchestrator } from "../effects/transportOrchestrator";
 import { ProgressBar } from "./ProgressBar";
+import { visStore } from "../utils/visualisationStore";
 import { Play, Pause, Square, Rewind, X } from "lucide-solid";
 
 const TOP_TOOLBAR_HEIGHT_VAR = "--top-toolbar-height";
@@ -144,7 +145,7 @@ export function TransportToolbar() {
           <X />
         </button>
       </div>
-      <ProgressBar />
+      <ProgressBar progress={visStore.bar} />
     </div>
   );
 }

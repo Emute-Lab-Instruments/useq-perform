@@ -79,8 +79,12 @@ export interface EditorSetup {
 
 /** Component-specific setup */
 export interface ComponentSetup {
-  /** The component to render — a function returning a JSX element */
-  component: () => any;
+  /** Legacy: returns a raw DOM element (for placeholder scenarios) */
+  component?: () => HTMLElement;
+  /** Preferred: returns SolidJS JSX. Use for real component rendering. */
+  render?: () => any;
+  /** Whether to load the main app's CSS (src/ui/styles/index.css) */
+  loadAppStyles?: boolean;
   /** Container dimensions */
   width?: number;
   height?: number;

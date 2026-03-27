@@ -1,10 +1,14 @@
 // Scenario runner — executes inside the iframe.
 // Listens for postMessage from the parent ScenarioViewer and renders the requested scenario.
 
+import { render } from 'solid-js/web';
 import { createInspectorEditor } from './framework/editor';
 
-// Auto-discover all scenario modules for dynamic loading
-const scenarioModules = import.meta.glob('./scenarios/**/*.ts');
+// Auto-discover all scenario modules (.ts and .tsx)
+const scenarioModules = {
+  ...import.meta.glob('./scenarios/**/*.ts'),
+  ...import.meta.glob('./scenarios/**/*.tsx'),
+};
 
 interface ScenarioMessage {
   type: 'render-scenario';
@@ -37,9 +41,10 @@ window.addEventListener('message', async (event: MessageEvent) => {
   root.innerHTML = '<div class="scenario-loading">Loading scenario...</div>';
 
   try {
-    // Resolve the module path — try the ID-based path
-    const modulePath = `./scenarios/${data.scenario.id}.ts`;
-    const loader = scenarioModules[modulePath];
+    // Resolve the module path — try .ts then .tsx
+    const tsPath = `./scenarios/${data.scenario.id}.ts`;
+    const tsxPath = `./scenarios/${data.scenario.id}.tsx`;
+    const loader = scenarioModules[tsPath] || scenarioModules[tsxPath];
     if (!loader) {
       root.innerHTML = `<div class="scenario-loading" style="color: #e06060">Scenario module not found: ${data.scenario.id}</div>`;
       return;
@@ -52,17 +57,29 @@ window.addEventListener('message', async (event: MessageEvent) => {
     root.innerHTML = '';
 
     if (definition.component) {
-      // Component scenario: call the component function to get a DOM element or JSX
-      const el = definition.component.component();
-      if (el instanceof HTMLElement) {
-        // Apply optional container dimensions
-        if (definition.component.width) {
-          el.style.width = `${definition.component.width}px`;
+      // Load app CSS if requested
+      if (definition.component.loadAppStyles) {
+        await import('@src/ui/styles/index.css');
+      }
+
+      const container = document.createElement('div');
+      if (definition.component.width) {
+        container.style.width = `${definition.component.width}px`;
+      }
+      if (definition.component.height) {
+        container.style.height = `${definition.component.height}px`;
+      }
+      root.appendChild(container);
+
+      if (definition.component.render) {
+        // SolidJS JSX rendering
+        render(() => definition.component.render(), container);
+      } else if (definition.component.component) {
+        // Legacy DOM element rendering
+        const el = definition.component.component();
+        if (el instanceof HTMLElement) {
+          container.appendChild(el);
         }
-        if (definition.component.height) {
-          el.style.height = `${definition.component.height}px`;
-        }
-        root.appendChild(el);
       }
     } else if (definition.editor) {
       // Editor scenario: mount a real CodeMirror instance
