@@ -32,8 +32,9 @@ inspector/
 1. User selects a scenario in the nav tree
 2. `ScenarioViewer` sends scenario data to the iframe via `postMessage`
 3. `scenario-runner.tsx` receives the message, dynamically imports the scenario module
-4. For editor scenarios: `createInspectorEditor()` boots a CodeMirror instance with only the requested extensions
-5. For component scenarios: the scenario's `component()` function produces a DOM element
+4. For editor scenarios: `createInspectorEditor()` boots a real CodeMirror instance with only the requested extensions, then pushes seed data (diagnostics, eval highlights, inline results)
+5. For component scenarios with `render`: SolidJS `render()` mounts real JSX components
+6. For component scenarios with `component` (legacy): the function returns a raw DOM element
 
 ### The iframe boundary
 
@@ -104,19 +105,9 @@ export default defineScenario({
 - Pass all data and callbacks as props — no store imports in scenarios.
 - Components already refactored to props: MainToolbar, TransportToolbar, ProgressBar, Modal, VisLegend, GeneralSettings (+ sub-panels), HelpPanel, KeyboardVisualiser.
 
-### Component scenarios (legacy DOM placeholder)
+### Component scenarios (legacy DOM — avoid)
 
-Only use this for components that haven't been refactored to props yet:
-
-```typescript
-component: {
-  component: () => {
-    const el = document.createElement('div');
-    el.innerHTML = '<p>Placeholder — real component pending</p>';
-    return el;
-  },
-},
-```
+The `component` field (returns raw DOM element) is legacy. Only the `_example/hello-world.ts` still uses it. All new component scenarios should use `render` (returns JSX).
 
 ### Key rules for scenarios
 
@@ -126,6 +117,7 @@ component: {
 - **Describe what to look for.** The `description` field should say what the reviewer should verify visually.
 - **Use `canary` for edge cases** (breaking = needs review) and `contract` for core behaviors (breaking = regression).
 - **Verify `sourceFiles` paths exist.** These are used in the context-copy bundle — wrong paths make the copy useless.
+- **Add `grepTerms`** — function names, class names, CSS classes, prop names that help an agent find the relevant code. Include them with the dot prefix for CSS (`.cm-evaluated-code`). These appear in the "Copy Context" clipboard bundle.
 
 ### Seed data — making extensions visually active
 
@@ -322,11 +314,33 @@ UI components in `src/ui/` that import singletons (stores, services, adapters) c
 - Filter button (top of nav) toggles showing only unreviewed scenarios
 - Approval state is local-only, not committed to git
 
+## Validation
+
+Run `npm run inspector:validate` to check all scenarios (runs in ~1.6s):
+
+```bash
+npm run inspector:validate
+```
+
+The Vitest test (`inspector/scenarios.test.ts`) validates:
+- Required fields exist (name, category, type, sourceFiles)
+- `type` is `'canary'` or `'contract'`
+- `cursorPosition` is within `editorContent` length
+- `extensions` names are registered in the registry
+- Diagnostic/evalHighlight/inlineResult ranges are within document bounds
+- All `sourceFiles` paths exist on disk
+
+TSX component scenarios are skipped during validation (they need Vite's `@src` alias which isn't available in the jsdom test runner).
+
+**Run validation after creating or modifying scenarios.** It catches bugs like out-of-bounds cursor positions that would silently fail in the browser.
+
 ## Build and verify
 
 ```bash
 npm run inspector                                    # dev server on port 5555
-npx vite build --config inspector/vite.config.ts     # production build
+npm run inspector:validate                           # validate all scenarios
 ```
+
+**Known issue**: `npx vite build --config inspector/vite.config.ts` (production build) fails because real JSX component scenarios pull in the entire app module graph. Dev server works fine. This is not urgent — Inspector is a dev-only tool.
 
 The Inspector shares the main app's `src/` via the `@src` alias. Changes to app source code are reflected via Vite HMR.

@@ -16,6 +16,8 @@ uSEQ Perform is the web live-coding interface for the uSEQ hardware module. This
 - `npm run build` - `build:assets` then Vite build.
 - `npm run watch` - asset + Vite watch builds.
 - `npm run storybook` - Storybook dev server.
+- `npm run inspector` - Inspector dev review tool (port 5555). See `inspector/CLAUDE.md`.
+- `npm run inspector:validate` - Validate all Inspector scenarios (94 scenarios, 565 checks).
 - `npm run lint` - ESLint with import boundary enforcement.
 
 Build outputs:
@@ -63,6 +65,7 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 - `src/ui/styles/` - application CSS stylesheets
 - `src/ui/visualisation/` - canvas visualisation renderer (`serialVis.ts`)
 - `src/utils/` - reactive stores (settings, console, visualisation, reference, snippets, output health)
+- `inspector/` - Inspector dev review tool (separate Vite app, see `inspector/CLAUDE.md`)
 
 ### Key Design Patterns
 
@@ -77,6 +80,10 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 **Visualisation Pipeline**: Stream parser → visualisationStore (direct). No controller class. Reactive data flow.
 
 **Import Boundaries**: Enforced via ESLint (`eslint.config.js`). `src/lib/` and `src/contracts/` must not import from higher layers.
+
+**Dependency Injection for Extensions**: CodeMirror extensions that depend on runtime globals (settings, WASM, stores) use a Config interface + factory pattern instead of importing singletons directly. Each extension declares exactly the capabilities it needs via getter functions. A `createDefaultXxxConfig()` function wires the real app globals for backward compatibility. This makes extensions renderable in isolation (e.g., in the Inspector dev tool). Applied to: `GutterConfig`/`createExpressionGutter()`, `InlineResultsConfig`/`createInlineResultsField()`, `ProbeConfig`/`createProbeExtensions()`.
+
+**Props-Based UI Components**: UI components that previously imported singletons (stores, services, adapters) have been refactored to accept data and callbacks as props. The adapter layer (`src/ui/adapters/`) creates "Wired" wrapper components that read from real singletons and pass them as props. This makes components testable and renderable in isolation. Applied to: MainToolbar, TransportToolbar, ProgressBar, Modal, VisLegend, GeneralSettings (+ sub-panels), HelpPanel, KeyboardVisualiser.
 
 **Diagnostic System**: The WASM interpreter produces structured diagnostics (errors, warnings, hints) with source spans, human-readable messages, and suggestions. These flow from C++ through the WASM ABI to the editor as CodeMirror inline annotations.
 
