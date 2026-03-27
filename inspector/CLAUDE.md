@@ -316,13 +316,15 @@ UI components in `src/ui/` that import singletons (stores, services, adapters) c
 
 ## Validation
 
-Run `npm run inspector:validate` to check all scenarios (runs in ~1.6s):
+Two validation tiers are available:
+
+### Tier 1: Static validation (fast, ~1.6s)
 
 ```bash
 npm run inspector:validate
 ```
 
-The Vitest test (`inspector/scenarios.test.ts`) validates:
+The Vitest test (`inspector/scenarios.test.ts`) validates `.ts` scenarios only (TSX is skipped):
 - Required fields exist (name, category, type, sourceFiles)
 - `type` is `'canary'` or `'contract'`
 - `cursorPosition` is within `editorContent` length
@@ -330,15 +332,71 @@ The Vitest test (`inspector/scenarios.test.ts`) validates:
 - Diagnostic/evalHighlight/inlineResult ranges are within document bounds
 - All `sourceFiles` paths exist on disk
 
-TSX component scenarios are skipped during validation (they need Vite's `@src` alias which isn't available in the jsdom test runner).
+### Tier 2: Runtime validation (thorough, ~15s)
 
-**Run validation after creating or modifying scenarios.** It catches bugs like out-of-bounds cursor positions that would silently fail in the browser.
+```bash
+npm run inspector:validate-runtime           # human-readable
+npm run inspector:validate-runtime -- --json  # structured JSON for AI agents
+```
+
+Uses Playwright to load every scenario in a real Chromium browser — catches **all** errors including:
+- Missing exports in transitive import chains (e.g., a scenario → component → extension → missing function)
+- Module resolution failures
+- Runtime crashes during scenario loading
+- TSX/SolidJS component import failures
+
+**This is the authoritative check.** If a scenario works in `validate` but fails in `validate-runtime`, the runtime error is real and must be fixed.
+
+The `--json` output is designed for AI agent consumption:
+
+```json
+{
+  "total": 110,
+  "passed": 104,
+  "failed": 6,
+  "errors": [
+    {
+      "id": "help/guide-chapter",
+      "status": "error",
+      "error": "The requested module '.../probeHelpers.ts' does not provide an export named 'collectTemporalWrappers'",
+      "summary": "Missing export: 'collectTemporalWrappers'"
+    }
+  ]
+}
+```
+
+### Fixing runtime validation errors
+
+When `validate-runtime` reports failures:
+
+1. **Read the `summary` field** — it identifies the root cause (missing export, missing module, etc.)
+2. **Deduplicate** — multiple scenarios often fail from the same root cause (one broken import in a shared dependency)
+3. **Trace the import chain** — the error message includes the file path of the broken module. The scenario file transitively imports it. Use grep to find who imports what:
+   ```bash
+   # Find what imports the broken module
+   grep -r "from.*probeHelpers" src/editors/extensions/
+   # Find if the named export exists
+   grep "export.*collectTemporalWrappers" src/editors/extensions/probeHelpers.ts
+   ```
+4. **Fix the root cause** — usually one of:
+   - Add the missing `export` keyword to the function/variable
+   - Update the import to use the correct name
+   - Add a missing module or fix the path
+5. **Re-run `validate-runtime`** to confirm the fix
+
+### Validation page (manual)
+
+When the Inspector dev server is running (`npm run inspector`), you can also open `http://localhost:5555/validate.html` in a browser to see validation results as JSON.
+
+**Run both validators after creating or modifying scenarios.**
 
 ## Build and verify
 
 ```bash
 npm run inspector                                    # dev server on port 5555
-npm run inspector:validate                           # validate all scenarios
+npm run inspector:validate                           # fast static checks
+npm run inspector:validate-runtime                   # full browser-based validation
+npm run inspector:validate-runtime -- --json         # JSON for AI agents
 ```
 
 **Known issue**: `npx vite build --config inspector/vite.config.ts` (production build) fails because real JSX component scenarios pull in the entire app module graph. Dev server works fine. This is not urgent — Inspector is a dev-only tool.

@@ -79,6 +79,7 @@
     "storybook": "storybook dev -p 6006",
     "inspector": "vite dev --config inspector/vite.config.ts",
     "inspector:validate": "vitest run inspector/scenarios.test.ts --project unit",
+    "inspector:validate-runtime": "npx vite-node inspector/validate-runtime.ts",
     "build-storybook": "storybook build"
   },
   "resolutions": {
