@@ -129,6 +129,7 @@ Extensions like diagnostics, eval highlight, and inline results only produce vis
 editor: {
   editorContent: '...',
   extensions: ['diagnostics'],
+  loadAppStyles: true,  // load app CSS (needed for eval flash animations, diagnostics styling)
 
   // Squiggly underlines — pushed via pushDiagnostics()
   diagnostics: [
@@ -138,6 +139,8 @@ editor: {
 
   // Eval flash — triggered via flashEvalHighlight()
   evalHighlight: { from: 0, to: 10, isPreview: false },
+  // Re-trigger eval flash periodically so the reviewer sees the animation cycle
+  evalHighlightIntervalMs: 2500,
 
   // Inline result widgets — dispatched via showInlineResult effect
   inlineResults: [
@@ -152,9 +155,33 @@ editor: {
 }
 ```
 
+### CSS variable overrides
+
+Use `cssVariables` on the scenario definition to override CSS custom properties in the iframe. This is useful for simulating runtime state like connection mode:
+
+```typescript
+export default defineScenario({
+  // ...
+  cssVariables: {
+    '--code-eval-highlight-color': 'rgb(148, 148, 148)',  // disconnected gray
+  },
+  editor: {
+    loadAppStyles: true,
+    editorContent: '(sine 440)',
+    extensions: ['eval-highlight'],
+    evalHighlight: { from: 0, to: 10 },
+    evalHighlightIntervalMs: 2500,
+  },
+});
+```
+
+### Periodic animations
+
+For scenarios that demonstrate CSS animations (eval flash, etc.), set `evalHighlightIntervalMs` to auto-replay the animation on a loop. The flash is 1s long, so 2000–3000ms gives a clear gap between replays. Without this, the flash plays once on load and the reviewer misses it.
+
 **When to use seed data:**
 - Diagnostics: always needed — WASM interpreter isn't running in the iframe
-- Eval highlight: always needed — nothing triggers evaluation
+- Eval highlight: always needed — nothing triggers evaluation. Use `evalHighlightIntervalMs` to replay the flash periodically. Set `loadAppStyles: true` so the CSS animation keyframes are loaded.
 - Inline results: always needed — no eval loop
 - Gutter: the gutter pattern-matches `a1-a8`, `d1-d8`, `s1-s8` from the code, so colored bars appear automatically. Use `evaluatedExpressions` to show the "last evaluated" visual state.
 - Structure highlights: NOT needed — these respond to cursor position, which is set via `cursorPosition`
@@ -170,10 +197,13 @@ Editor Decorations / Eval Highlight
 Editor Decorations / Diagnostics
 Editor Decorations / Inline Results
 Editor Decorations / Probes
+Editor Decorations / Vis Readability
 Themes
+Animations & Transitions / ...
 Settings UI / ...
 Help & Reference / ...
 Toolbar & Chrome / ...
+Toolbar & Chrome / Panel Chrome
 Modals & Overlays / ...
 Keybindings / ...
 Visualisation / ...

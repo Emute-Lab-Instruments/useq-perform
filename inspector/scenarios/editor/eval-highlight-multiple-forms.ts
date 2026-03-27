@@ -6,12 +6,17 @@ export default defineScenario({
   type: 'canary',
   sourceFiles: [
     'src/editors/extensions/evalHighlight.ts',
+    'src/ui/styles/editor.css',
   ],
-  description: 'With multiple top-level expressions in the editor, only the form containing the cursor should receive the eval highlight flash. The other forms must remain unhighlighted. Here the cursor is in the second form (tri 220), so only that form should flash.',
+  description:
+    'Only the form containing the cursor flashes — other forms remain unhighlighted. The cursor is in (tri 220), so only that form flashes. Watch the repeating animation to confirm the other two forms stay untouched.',
+  grepTerms: ['flashEvalHighlight', '.cm-evaluated-code', 'getTopLevelRange'],
   editor: {
+    loadAppStyles: true,
     editorContent: '(sine 440)\n(tri 220)\n(saw 110)',
     extensions: ['eval-highlight'],
     cursorPosition: 14,
-    evalHighlight: { from: 11, to: 20 }, // flash only (tri 220)
+    evalHighlight: { from: 11, to: 20 },
+    evalHighlightIntervalMs: 2500,
   },
 });

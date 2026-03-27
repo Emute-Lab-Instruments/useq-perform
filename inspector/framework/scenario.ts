@@ -64,6 +64,8 @@ export interface EditorSetup {
   extensions?: string[];
   /** Cursor position (character offset) */
   cursorPosition?: number;
+  /** Whether to load the main app's CSS (needed for eval highlight animations, diagnostics styling, etc.) */
+  loadAppStyles?: boolean;
 
   // --- Seed data (pushed after editor creation) ---
 
@@ -71,6 +73,13 @@ export interface EditorSetup {
   diagnostics?: ScenarioDiagnostic[];
   /** Eval highlight flash to trigger */
   evalHighlight?: ScenarioEvalHighlight;
+  /**
+   * Re-trigger the eval highlight flash on this interval (ms).
+   * When set, the flash replays periodically so the reviewer can see
+   * the full animation cycle without manual interaction.
+   * Typical value: 2000–3000 (flash is 1s, so 2s gap between flashes).
+   */
+  evalHighlightIntervalMs?: number;
   /** Inline results to display after expressions */
   inlineResults?: ScenarioInlineResult[];
   /** Expressions to mark as "last evaluated" in the gutter */
@@ -89,6 +98,9 @@ export interface ComponentSetup {
   width?: number;
   height?: number;
 }
+
+/** CSS custom property overrides applied to the scenario container */
+export type CssVariableOverrides = Record<string, string>;
 
 /** Settings overrides applied to the scenario */
 export type SettingsOverrides = Record<string, unknown>;
@@ -109,6 +121,8 @@ export interface ScenarioDefinition {
   grepTerms?: string[];
   /** Settings overrides to apply */
   settings?: SettingsOverrides;
+  /** CSS custom property overrides for the scenario container (e.g., connection state colors) */
+  cssVariables?: CssVariableOverrides;
   /** Editor setup (for editor scenarios) */
   editor?: EditorSetup;
   /** Component setup (for component scenarios) */

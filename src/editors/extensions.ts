@@ -20,7 +20,7 @@ import {structureExtensions} from "./extensions/structure.ts";
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
 import { probeExtensions } from "./extensions/probes.ts";
-import { inlineResultsField, resultGutter } from "./extensions/inlineResults.ts";
+import { inlineResultsField } from "./extensions/inlineResults.ts";
 import { diagnosticField } from "./extensions/diagnostics.ts";
 import { dbg } from "../lib/debug.ts";
 import { mapManualControlBindingsThroughChanges } from "../lib/manualControlState.ts";
@@ -130,7 +130,6 @@ export const baseExtensions = [
   ...probeExtensions,
   evalHighlightField,
   inlineResultsField,
-  resultGutter,
   diagnosticField,
   visReadabilityPlugin,
 ];

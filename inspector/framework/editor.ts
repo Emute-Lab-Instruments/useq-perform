@@ -146,6 +146,13 @@ export async function createInspectorEditor(
     const { flashEvalHighlight } = await import('@src/editors/extensions/evalHighlight');
     const { from, to, isPreview } = setup.evalHighlight;
     flashEvalHighlight(view, from, to, { isPreview: isPreview ?? false });
+
+    // Periodic re-trigger so the reviewer can see the full animation cycle
+    if (setup.evalHighlightIntervalMs && setup.evalHighlightIntervalMs > 0) {
+      setInterval(() => {
+        flashEvalHighlight(view, from, to, { isPreview: isPreview ?? false });
+      }, setup.evalHighlightIntervalMs);
+    }
   }
 
   if (setup.inlineResults?.length) {

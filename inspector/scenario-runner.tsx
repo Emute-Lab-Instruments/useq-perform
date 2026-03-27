@@ -35,6 +35,13 @@ window.addEventListener('message', async (event: MessageEvent) => {
 
     root.innerHTML = '';
 
+    // Apply CSS variable overrides to the document root
+    if (definition.cssVariables) {
+      for (const [prop, value] of Object.entries(definition.cssVariables)) {
+        document.documentElement.style.setProperty(prop, value);
+      }
+    }
+
     if (definition.component) {
       if (definition.component.loadAppStyles) {
         await import('@src/ui/styles/index.css');
@@ -52,6 +59,10 @@ window.addEventListener('message', async (event: MessageEvent) => {
         if (el instanceof HTMLElement) container.appendChild(el);
       }
     } else if (definition.editor) {
+      if (definition.editor.loadAppStyles) {
+        await import('@src/ui/styles/index.css');
+      }
+
       const container = document.createElement('div');
       container.style.height = '100%';
       container.style.width = '100%';

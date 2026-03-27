@@ -155,7 +155,7 @@ function computeTemporalScale(
   return Math.max(0.1, Math.min(multiplier, 32));
 }
 
-function collectTemporalWrappers(
+export function collectTemporalWrappers(
   state: EditorState,
   range: ProbeRange,
 ): TemporalWrapper[] {
