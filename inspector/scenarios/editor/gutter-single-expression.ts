@@ -13,5 +13,8 @@ export default defineScenario({
   editor: {
     editorContent: 'a1 (sine 440)',
     extensions: ['gutter'],
+    evaluatedExpressions: [
+      { expressionType: 'a1', position: { from: 0, to: 14, line: 1 } },
+    ],
   },
 });

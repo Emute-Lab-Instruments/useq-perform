@@ -11,6 +11,7 @@ export default defineScenario({
   editor: {
     editorContent: '(define synth\n  (let ((f 440))\n    (sine f)))',
     extensions: ['eval-highlight'],
-    cursorPosition: 28, // inside the let body
+    cursorPosition: 28,
+    evalHighlight: { from: 0, to: 42 }, // entire multi-line form
   },
 });

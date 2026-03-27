@@ -17,5 +17,10 @@ d1 (> (phase 1) 0.5)
 d2 (euclidean 8 3 (phase 2))
 s1 (slow 2 (from-list (list 60 64 67) (step)))`,
     extensions: ['gutter'],
+    evaluatedExpressions: [
+      { expressionType: 'a1', position: { from: 0, to: 13, line: 1 } },
+      { expressionType: 'a2', position: { from: 14, to: 27, line: 2 } },
+      { expressionType: 'd1', position: { from: 28, to: 47, line: 3 } },
+    ],
   },
 });

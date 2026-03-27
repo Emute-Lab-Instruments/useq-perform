@@ -135,10 +135,42 @@ export async function createInspectorEditor(
     view.focus();
   }
 
-  // Push initial diagnostics if specified
+  // --- Push seed data ---
+
   if (setup.diagnostics?.length) {
     const { pushDiagnostics } = await import('@src/editors/extensions/diagnostics');
     pushDiagnostics(view, setup.diagnostics, 0, 0, view.state.doc.length);
+  }
+
+  if (setup.evalHighlight) {
+    const { flashEvalHighlight } = await import('@src/editors/extensions/evalHighlight');
+    const { from, to, isPreview } = setup.evalHighlight;
+    flashEvalHighlight(view, from, to, { isPreview: isPreview ?? false });
+  }
+
+  if (setup.inlineResults?.length) {
+    const { showInlineResult } = await import('@src/editors/extensions/inlineResults');
+    view.dispatch({
+      effects: setup.inlineResults.map(r => showInlineResult.of({
+        text: r.text,
+        pos: r.pos,
+        isError: r.isError,
+      })),
+    });
+  }
+
+  if (setup.evaluatedExpressions?.length) {
+    const { expressionEvaluatedAnnotation } = await import(
+      '@src/editors/extensions/structure/eval-integration'
+    );
+    for (const expr of setup.evaluatedExpressions) {
+      view.dispatch({
+        annotations: expressionEvaluatedAnnotation.of({
+          expressionType: expr.expressionType,
+          position: expr.position,
+        }),
+      });
+    }
   }
 
   return view;

@@ -7,9 +7,12 @@ export default defineScenario({
   sourceFiles: [
     'src/editors/extensions/inlineResults.ts',
   ],
-  description: 'Inline result widget showing a numeric evaluation result after an expression.',
+  description: 'Inline result widget showing a numeric evaluation result after an expression. The ;=> 3 annotation should appear as a styled widget, not as plain text.',
   editor: {
-    editorContent: '(+ 1 2) ;=> 3',
+    editorContent: '(+ 1 2)',
     extensions: ['inline-results'],
+    inlineResults: [
+      { text: '3', pos: 7 },
+    ],
   },
 });

@@ -59,9 +59,6 @@ export default defineScenario({
     editorContent: '(+ (* 2 3) (- 10 (/ 8 4)))',
     extensions: ['structure-highlight'],  // ONLY load what this scenario tests
     cursorPosition: 4,
-    diagnostics: [                        // optional — pushed after editor creation
-      { start: 0, end: 7, severity: 'error', message: 'Something wrong' },
-    ],
   },
 });
 ```
@@ -94,6 +91,46 @@ export default defineScenario({
 - **Describe what to look for.** The `description` field should say what the reviewer should verify visually.
 - **Use `canary` for edge cases** (breaking = needs review) and `contract` for core behaviors (breaking = regression).
 - **Verify `sourceFiles` paths exist.** These are used in the context-copy bundle — wrong paths make the copy useless.
+
+### Seed data — making extensions visually active
+
+Extensions like diagnostics, eval highlight, and inline results only produce visible output when data is pushed into them. In the real app this happens after evaluation; in Inspector, you declare the seed data declaratively in the scenario.
+
+**Available seed data fields** (all on `editor`):
+
+```typescript
+editor: {
+  editorContent: '...',
+  extensions: ['diagnostics'],
+
+  // Squiggly underlines — pushed via pushDiagnostics()
+  diagnostics: [
+    { start: 0, end: 7, severity: 'error', message: 'Unmatched paren',
+      suggestion: 'Add a closing )', example: '(+ 1 2)' },
+  ],
+
+  // Eval flash — triggered via flashEvalHighlight()
+  evalHighlight: { from: 0, to: 10, isPreview: false },
+
+  // Inline result widgets — dispatched via showInlineResult effect
+  inlineResults: [
+    { text: '3', pos: 7 },                    // normal result
+    { text: '{error}', pos: 15, isError: true }, // error result
+  ],
+
+  // Gutter "last evaluated" markers — dispatched via expressionEvaluatedAnnotation
+  evaluatedExpressions: [
+    { expressionType: 'a1', position: { from: 0, to: 14, line: 1 } },
+  ],
+}
+```
+
+**When to use seed data:**
+- Diagnostics: always needed — WASM interpreter isn't running in the iframe
+- Eval highlight: always needed — nothing triggers evaluation
+- Inline results: always needed — no eval loop
+- Gutter: the gutter pattern-matches `a1-a8`, `d1-d8`, `s1-s8` from the code, so colored bars appear automatically. Use `evaluatedExpressions` to show the "last evaluated" visual state.
+- Structure highlights: NOT needed — these respond to cursor position, which is set via `cursorPosition`
 
 ### Category taxonomy
 

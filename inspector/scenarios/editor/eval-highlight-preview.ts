@@ -11,6 +11,7 @@ export default defineScenario({
   editor: {
     editorContent: '(+ (* 2 3) (- 10 5))',
     extensions: ['eval-highlight'],
-    cursorPosition: 1, // inside the top-level form
+    cursorPosition: 1,
+    evalHighlight: { from: 0, to: 20, isPreview: true }, // cyan flash
   },
 });

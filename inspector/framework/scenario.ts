@@ -4,6 +4,10 @@ export type ScenarioType = 'canary' | 'contract';
 /** What kind of app slice this scenario needs */
 export type ScenarioMode = 'editor' | 'component';
 
+// ---------------------------------------------------------------------------
+// Seed data types — initial state pushed into the editor after creation
+// ---------------------------------------------------------------------------
+
 /** A diagnostic to display in the editor */
 export interface ScenarioDiagnostic {
   /** Start character offset in the document */
@@ -20,6 +24,38 @@ export interface ScenarioDiagnostic {
   example?: string;
 }
 
+/** An eval highlight flash to display */
+export interface ScenarioEvalHighlight {
+  /** Start character offset */
+  from: number;
+  /** End character offset */
+  to: number;
+  /** True for cyan preview flash, false/omit for yellow connected flash */
+  isPreview?: boolean;
+}
+
+/** An inline result to display after an expression */
+export interface ScenarioInlineResult {
+  /** The result text to show (e.g., "3", "440.0", "{error}") */
+  text: string;
+  /** Character offset where the result should appear (end of expression) */
+  pos: number;
+  /** True to show as error (red styling) */
+  isError?: boolean;
+}
+
+/** An expression to mark as "last evaluated" in the gutter */
+export interface ScenarioEvaluatedExpression {
+  /** Expression type (e.g., 'a1', 'd2', 's3') */
+  expressionType: string;
+  /** Position of the evaluated expression */
+  position?: { from: number; to: number; line: number };
+}
+
+// ---------------------------------------------------------------------------
+// Editor setup
+// ---------------------------------------------------------------------------
+
 /** Editor-specific setup */
 export interface EditorSetup {
   /** Code to put in the editor */
@@ -28,8 +64,17 @@ export interface EditorSetup {
   extensions?: string[];
   /** Cursor position (character offset) */
   cursorPosition?: number;
-  /** Diagnostics to display (pushed after editor creation) */
+
+  // --- Seed data (pushed after editor creation) ---
+
+  /** Diagnostics to display (squiggly underlines) */
   diagnostics?: ScenarioDiagnostic[];
+  /** Eval highlight flash to trigger */
+  evalHighlight?: ScenarioEvalHighlight;
+  /** Inline results to display after expressions */
+  inlineResults?: ScenarioInlineResult[];
+  /** Expressions to mark as "last evaluated" in the gutter */
+  evaluatedExpressions?: ScenarioEvaluatedExpression[];
 }
 
 /** Component-specific setup */

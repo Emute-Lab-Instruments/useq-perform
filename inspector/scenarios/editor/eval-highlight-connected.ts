@@ -11,6 +11,7 @@ export default defineScenario({
   editor: {
     editorContent: '(sine 440)\n(tri 220)',
     extensions: ['eval-highlight'],
-    cursorPosition: 1, // inside (sine 440)
+    cursorPosition: 1,
+    evalHighlight: { from: 0, to: 10 }, // flash on (sine 440)
   },
 });
