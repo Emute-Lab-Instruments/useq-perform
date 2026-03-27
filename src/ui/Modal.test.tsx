@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Modal, HtmlModal } from "./Modal";
-import { _resetForTesting } from "./overlayManager";
+import { pushOverlay, _resetForTesting } from "./overlayManager";
 
 afterEach(() => {
   _resetForTesting();
@@ -68,15 +68,27 @@ describe("Modal", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("calls onClose when Escape key is pressed", () => {
+  it("calls onClose when Escape key is pressed (with overlay registration)", () => {
+    const onClose = vi.fn();
+    render(() => (
+      <Modal title="Test" onClose={onClose} onOverlayRegister={pushOverlay}>
+        <p>content</p>
+      </Modal>
+    ));
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("does not register overlay when onOverlayRegister is omitted", () => {
     const onClose = vi.fn();
     render(() => (
       <Modal title="Test" onClose={onClose}>
         <p>content</p>
       </Modal>
     ));
+    // Without overlay registration, Escape via overlayManager should NOT trigger onClose
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    expect(onClose).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("calls onClose when clicking overlay background", () => {
