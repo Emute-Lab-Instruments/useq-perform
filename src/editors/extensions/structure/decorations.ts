@@ -39,6 +39,8 @@ import {
   findExpressionBounds,
   findExpressionRanges,
   isRangeActive,
+} from "./eval-state.ts";
+import {
   handlePlayExpression,
 } from "./eval-integration.ts";
 

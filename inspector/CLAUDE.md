@@ -369,11 +369,13 @@ npm run inspector:validate-runtime           # human-readable
 npm run inspector:validate-runtime -- --json  # structured JSON for AI agents
 ```
 
-Uses Playwright to load every scenario in a real Chromium browser — catches **all** errors including:
+Uses Playwright to load AND render every scenario in a real Chromium browser — catches **all** errors including:
 - Missing exports in transitive import chains (e.g., a scenario → component → extension → missing function)
 - Module resolution failures
-- Runtime crashes during scenario loading
-- TSX/SolidJS component import failures
+- Runtime crashes during scenario rendering (e.g., SolidJS context errors from importing stores in the iframe)
+- TSX/SolidJS component import and render failures
+- Out-of-bounds positions that only crash when CodeMirror actually creates the editor
+- Extension registry factory errors (dynamic imports that pull in runtime deps)
 
 **This is the authoritative check.** If a scenario works in `validate` but fails in `validate-runtime`, the runtime error is real and must be fixed.
 
