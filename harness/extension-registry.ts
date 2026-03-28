@@ -107,6 +107,19 @@ export const extensionRegistry: Record<string, () => Promise<Extension | Extensi
 
     return [lastEvaluatedExpressionField, gutterField, gutterExt];
   },
+  'probes': async () => {
+    const { createProbeExtensions } = await import('@src/editors/extensions/probes');
+    return createProbeExtensions({
+      evalExpression: async () => null,
+      getRefreshIntervalMs: () => 1000,
+      getProbeLineWidth: () => 2,
+      getProbeCanvasWidth: () => 138,
+      getProbeCanvasHeight: () => 46,
+      loadPersistedProbes: () => [],
+      savePersistedProbes: () => {},
+      removePersistedProbes: () => {},
+    });
+  },
   'inline-results': async () => {
     const { createInlineResultsField } = await import('@src/editors/extensions/inlineResults');
     return createInlineResultsField({
