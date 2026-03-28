@@ -29,6 +29,7 @@ function EditorSettingsWrapper() {
 
 const meta: Meta = {
   title: 'Settings/Editor',
+  tags: ['autodocs'],
   component: EditorSettingsWrapper,
 };
 export default meta;

@@ -16,6 +16,7 @@ d1 (> (phase 2) 0.5)
 
 const meta: Meta<typeof ScenarioEditor> = {
   title: 'Themes',
+  tags: ['autodocs'],
   component: ScenarioEditor,
   args: {
     editorContent: sampleCode,

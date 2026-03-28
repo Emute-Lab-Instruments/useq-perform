@@ -3,6 +3,7 @@ import { Modal } from '@src/ui/Modal';
 
 const meta: Meta<typeof Modal> = {
   title: 'Modals',
+  tags: ['autodocs'],
   component: Modal,
 };
 export default meta;

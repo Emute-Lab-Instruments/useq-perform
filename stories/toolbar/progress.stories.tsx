@@ -3,6 +3,7 @@ import { ProgressBar } from '@src/ui/ProgressBar';
 
 const meta: Meta<typeof ProgressBar> = {
   title: 'Toolbar/Progress Bar',
+  tags: ['autodocs'],
   component: ProgressBar,
   decorators: [
     (Story) => (

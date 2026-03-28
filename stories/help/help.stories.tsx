@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { HelpPanel } from '@src/ui/help/HelpPanel';
+import { Modal } from '@src/ui/Modal';
 import type { Tab } from '@src/ui/Tabs';
 
 /**
@@ -521,58 +522,40 @@ const referenceSearchTabs: Tab[] = [
 
 const meta: Meta = {
   title: 'Help',
+  tags: ['autodocs'],
 };
 export default meta;
 type Story = StoryObj;
 
 export const FullPanel: Story = {
-  component: () => <HelpPanel tabs={inspectorTabs} />,
+  render: () => <HelpPanel tabs={inspectorTabs} />,
 };
 
 export const GuideChapter: Story = {
-  component: () => <HelpPanel tabs={guideChapterTabs} />,
+  render: () => <HelpPanel tabs={guideChapterTabs} />,
 };
 
 export const InteractivePlayground: Story = {
-  component: () => <HelpPanel tabs={playgroundTabs} />,
+  render: () => <HelpPanel tabs={playgroundTabs} />,
 };
 
 export const LiveProbe: Story = {
-  component: () => <HelpPanel tabs={liveProbeTabs} />,
+  render: () => <HelpPanel tabs={liveProbeTabs} />,
 };
 
 export const SnippetsLibrary: Story = {
-  component: () => <HelpPanel tabs={snippetsTabsTabs} />,
+  render: () => <HelpPanel tabs={snippetsTabsTabs} />,
 };
 
 export const ReferenceSearch: Story = {
-  component: () => <HelpPanel tabs={referenceSearchTabs} />,
+  render: () => <HelpPanel tabs={referenceSearchTabs} />,
 };
 
 export const SnippetModal: Story = {
-  component: () => (
+  render: () => (
     <div style={{ background: 'rgba(0,0,0,0.4)', padding: '2rem', "min-height": '300px', display: 'flex', "align-items": 'center', "justify-content": 'center' }}>
-      <div style={{
-        background: '#1a1a2e',
-        border: '1px solid #333',
-        "border-radius": '8px',
-        width: '500px',
-        "box-shadow": '0 8px 32px rgba(0,0,0,0.6)',
-      }}>
-        {/* Modal header */}
-        <div style={{
-          padding: '0.75rem 1rem',
-          "border-bottom": '1px solid #333',
-          display: 'flex',
-          "justify-content": 'space-between',
-          "align-items": 'center',
-        }}>
-          <h2 style={{ margin: '0', "font-size": '0.95rem', color: '#c0c0e0' }}>Sine LFO</h2>
-          <button style={{ background: 'none', border: 'none', color: '#606080', cursor: 'pointer' }}>×</button>
-        </div>
-
-        {/* Modal content */}
-        <div style={{ padding: '1rem' }}>
+      <Modal title="Sine LFO" onClose={() => {}}>
+        <div style={{ padding: '0' }}>
           {/* Form fields mimicking SnippetModal */}
           <div class="code-snippet-form-group" style={{ "margin-bottom": '0.75rem' }}>
             <label style={{ display: 'block', "font-size": '0.8rem', color: '#808098', "margin-bottom": '0.25rem' }}>Title:</label>
@@ -640,7 +623,7 @@ export const SnippetModal: Story = {
             }}>Save</button>
           </div>
         </div>
-      </div>
+      </Modal>
     </div>
   ),
 };

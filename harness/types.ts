@@ -1,0 +1,58 @@
+// Shared types for scenario harness — used by both Storybook stories and Inspector
+
+// ---------------------------------------------------------------------------
+// Seed data types — state pushed into the editor after creation
+// ---------------------------------------------------------------------------
+
+/** A diagnostic to display in the editor */
+export interface ScenarioDiagnostic {
+  start: number;
+  end: number;
+  severity: 'error' | 'warning' | 'info' | 'hint';
+  message: string;
+  suggestion?: string;
+  example?: string;
+}
+
+/** An eval highlight flash to display */
+export interface ScenarioEvalHighlight {
+  from: number;
+  to: number;
+  isPreview?: boolean;
+}
+
+/** An inline result to display after an expression */
+export interface ScenarioInlineResult {
+  text: string;
+  pos: number;
+  isError?: boolean;
+}
+
+/** An expression to mark as "last evaluated" in the gutter */
+export interface ScenarioEvaluatedExpression {
+  expressionType: string;
+  position?: { from: number; to: number; line: number };
+}
+
+// ---------------------------------------------------------------------------
+// Editor setup — declarative description of a CodeMirror editor state
+// ---------------------------------------------------------------------------
+
+export interface EditorSetup {
+  editorContent: string;
+  extensions?: string[];
+  cursorPosition?: number;
+  loadAppStyles?: boolean;
+
+  // Seed data
+  diagnostics?: ScenarioDiagnostic[];
+  evalHighlight?: ScenarioEvalHighlight;
+  evalHighlightIntervalMs?: number;
+  inlineResults?: ScenarioInlineResult[];
+  evaluatedExpressions?: ScenarioEvaluatedExpression[];
+
+  // Editor config
+  theme?: string;
+  fontSize?: number;
+  readOnly?: boolean;
+}

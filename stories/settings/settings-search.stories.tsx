@@ -42,6 +42,7 @@ function SettingsSearchWrapper() {
 
 const meta: Meta = {
   title: 'Settings/Search',
+  tags: ['autodocs'],
   component: SettingsSearchWrapper,
 };
 export default meta;

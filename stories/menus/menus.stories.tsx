@@ -6,6 +6,7 @@ import { PickerMenu } from '@src/ui/PickerMenu';
 
 const meta: Meta = {
   title: 'Menus',
+  tags: ['autodocs'],
 };
 export default meta;
 type Story = StoryObj;

@@ -7,6 +7,7 @@ import { TileChrome } from '@src/ui/panel-chrome/TileChrome';
 
 const meta: Meta = {
   title: 'Panel Chrome',
+  tags: ['autodocs'],
 };
 export default meta;
 type Story = StoryObj;

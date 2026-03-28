@@ -6,6 +6,7 @@ import { actions, type ActionId } from '@src/lib/keybindings/actions';
 
 const meta: Meta = {
   title: 'Keybindings',
+  tags: ['autodocs'],
 };
 export default meta;
 type Story = StoryObj;

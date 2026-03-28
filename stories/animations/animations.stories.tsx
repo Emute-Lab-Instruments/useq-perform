@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 
 const meta: Meta = {
   title: 'Animations',
+  tags: ['autodocs'],
 };
 export default meta;
 type Story = StoryObj;

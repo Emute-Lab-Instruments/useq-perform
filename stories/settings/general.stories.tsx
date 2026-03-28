@@ -30,6 +30,7 @@ function GeneralSettingsWrapper() {
 
 const meta: Meta = {
   title: 'Settings/General',
+  tags: ['autodocs'],
   component: GeneralSettingsWrapper,
 };
 export default meta;

@@ -5,6 +5,7 @@ const noop = () => {};
 
 const meta: Meta<typeof TransportToolbar> = {
   title: 'Toolbar/Transport',
+  tags: ['autodocs'],
   component: TransportToolbar,
   decorators: [
     (Story) => (

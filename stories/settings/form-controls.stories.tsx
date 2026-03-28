@@ -76,14 +76,15 @@ function CollapsibleSectionsWrapper() {
 
 const meta: Meta = {
   title: 'Settings/Form Controls',
+  tags: ['autodocs'],
 };
 export default meta;
 type Story = StoryObj;
 
 export const DragAdjustNumber: Story = {
-  component: NumberInputWrapper,
+  render: () => <NumberInputWrapper />,
 };
 
 export const CollapsibleSections: Story = {
-  component: CollapsibleSectionsWrapper,
+  render: () => <CollapsibleSectionsWrapper />,
 };

@@ -3,6 +3,7 @@ import { VisLegend } from '@src/ui/VisLegend';
 
 const meta: Meta = {
   title: 'Visualisation',
+  tags: ['autodocs'],
 };
 export default meta;
 type Story = StoryObj;

@@ -69,6 +69,7 @@ function ThemeSettingsWrapper() {
 
 const meta: Meta = {
   title: 'Settings/Theme',
+  tags: ['autodocs'],
   component: ThemeSettingsWrapper,
 };
 export default meta;

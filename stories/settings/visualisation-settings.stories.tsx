@@ -26,6 +26,7 @@ function VisualisationSettingsWrapper() {
 
 const meta: Meta = {
   title: 'Settings/Visualisation',
+  tags: ['autodocs'],
   component: VisualisationSettingsWrapper,
 };
 export default meta;

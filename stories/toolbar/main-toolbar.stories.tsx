@@ -5,6 +5,7 @@ const noop = () => {};
 
 const meta: Meta<typeof MainToolbar> = {
   title: 'Toolbar/Main',
+  tags: ['autodocs'],
   component: MainToolbar,
   decorators: [
     (Story) => (

@@ -3,6 +3,7 @@ import { ScenarioEditor } from '../../harness/ScenarioEditor';
 
 const meta: Meta<typeof ScenarioEditor> = {
   title: 'Editor/Eval Highlight',
+  tags: ['autodocs'],
   component: ScenarioEditor,
 };
 export default meta;

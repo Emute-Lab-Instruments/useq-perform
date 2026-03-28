@@ -8,6 +8,7 @@ import type { PixelLineBounds } from '@src/editors/extensions/visReadability';
 
 const meta: Meta = {
   title: 'Editor/Vis Readability',
+  tags: ['autodocs'],
 };
 export default meta;
 type Story = StoryObj;
