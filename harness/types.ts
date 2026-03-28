@@ -34,6 +34,16 @@ export interface ScenarioEvaluatedExpression {
   position?: { from: number; to: number; line: number };
 }
 
+/** A probe to attach to an expression range */
+export interface ScenarioProbe {
+  /** Start of the expression to probe */
+  from: number;
+  /** End of the expression to probe */
+  to: number;
+  /** Probe mode: 'raw' = waveform, 'contextual' = with temporal context */
+  mode?: 'raw' | 'contextual';
+}
+
 // ---------------------------------------------------------------------------
 // Editor setup — declarative description of a CodeMirror editor state
 // ---------------------------------------------------------------------------
@@ -50,6 +60,8 @@ export interface EditorSetup {
   evalHighlightIntervalMs?: number;
   inlineResults?: ScenarioInlineResult[];
   evaluatedExpressions?: ScenarioEvaluatedExpression[];
+  /** Probes to attach to expression ranges */
+  probes?: ScenarioProbe[];
 
   // Editor config
   theme?: string;

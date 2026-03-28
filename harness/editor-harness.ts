@@ -119,6 +119,17 @@ export async function createScenarioEditor(
     }
   }
 
+  if (setup.probes?.length) {
+    const { toggleCurrentProbe } = await import('@src/editors/extensions/probes');
+    for (const probe of setup.probes) {
+      // Position cursor on the expression, then toggle probe
+      view.dispatch({ selection: { anchor: probe.from } });
+      toggleCurrentProbe(view, probe.mode ?? 'raw');
+    }
+    // Restore cursor to start after seeding probes
+    view.dispatch({ selection: { anchor: setup.cursorPosition ?? 0 } });
+  }
+
   return {
     view,
     dispose: () => {
