@@ -167,6 +167,96 @@
   color: #ff9c9c;
 }
 
+/* Probe depth overlay — positioned at bottom of widget body */
+.cm-probe-depth-overlay {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.06em;
+}
+
+.cm-probe-depth-label {
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  min-width: 24px;
+}
+
+.cm-probe-caret-btn {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.12s ease;
+}
+
+.cm-probe-caret-btn:hover:not(:disabled) {
+  color: var(--accent-color, #00ff41);
+}
+
+.cm-probe-caret-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+/* Probe window duration slider */
+.cm-probe-window-duration {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.cm-probe-window-duration-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.cm-probe-window-duration-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-color, #00ff41);
+  cursor: pointer;
+}
+
+.cm-probe-window-duration-slider::-moz-range-thumb {
+  width: 8px;
+  height: 8px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent-color, #00ff41);
+  cursor: pointer;
+}
+
+.cm-probe-window-duration-value {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.45);
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+}
+
+/* Context line canvas — overlays the scroll area */
+.cm-probe-context-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .cm-probe-indexed-item {
   border-bottom: 2px solid var(--accent-color, #00ff41);
   border-radius: 4px;
@@ -244,4 +334,11 @@
 .cm-scroller {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* Hide bracket matching highlight when node highlight cursor is at the trailing edge */
+.useq-hide-bracket-match .cm-matchingBracket {
+  border-bottom-color: transparent !important;
+  background-color: transparent !important;
+  text-decoration: none !important;
 }

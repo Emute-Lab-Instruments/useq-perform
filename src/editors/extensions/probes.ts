@@ -20,6 +20,7 @@ import {
   save,
 } from "../../lib/persistence.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
+import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 import {
   evalInUseqWasmSilently,
 } from "../../runtime/wasmInterpreter.ts";
@@ -67,12 +68,13 @@ export function createDefaultProbeConfig(): ProbeConfig {
   return {
     evalExpression: (code: string) => evalInUseqWasmSilently(code),
     getRefreshIntervalMs: () => {
-      const raw = Number(visStore.settings.probeRefreshIntervalMs);
+      const vis = getAppSettings().visualisation;
+      const raw = Number(vis?.probeRefreshIntervalMs);
       if (!Number.isFinite(raw)) return DEFAULT_PROBE_REFRESH_INTERVAL_MS;
       return Math.max(16, raw);
     },
-    getLineWidth: () => visStore.settings.probeLineWidth || DEFAULT_PROBE_LINE_WIDTH,
-    getDefaultSamples: () => visStore.settings.probeSampleCount || DEFAULT_PROBE_SAMPLE_COUNT,
+    getLineWidth: () => getAppSettings().visualisation?.probeLineWidth || DEFAULT_PROBE_LINE_WIDTH,
+    getDefaultSamples: () => getAppSettings().visualisation?.probeSampleCount || DEFAULT_PROBE_SAMPLE_COUNT,
     getCurrentTime: () => visStore.currentTime,
     loadPersistedProbes: () => {
       const loaded = load<unknown[]>(PERSISTENCE_KEYS.editorProbes, []);
@@ -229,6 +231,12 @@ function persistProbes(probes: PersistedProbeSpec[]): void {
     return;
   }
   _config.savePersistedProbes(probes);
+}
+
+/** Lightweight signature for detecting probe list changes without JSON.stringify. */
+function probeSignature(probes: PersistedProbeSpec[]): string {
+  if (probes.length === 0) return "";
+  return probes.map((p) => `${p.id}:${p.from}:${p.to}:${p.depth}:${p.windowDurationMs}`).join("|");
 }
 
 function intersectsViewport(
@@ -920,6 +928,9 @@ async function computeHighlights(
   forms: IndexedFormTarget[],
   probes: PersistedProbeSpec[],
 ): Promise<FromListHighlight[]> {
+  // Skip all highlight computation when no probes are active.
+  if (probes.length === 0) return [];
+
   const highlights: FromListHighlight[] = [];
 
   for (const form of forms) {
@@ -997,6 +1008,7 @@ class ProbePlugin {
   private samplingInFlight = false;
   private visibleForms: IndexedFormTarget[] = [];
   private previousProbeSignature = "";
+  private probesActive = false;
   private resizeObserver: ResizeObserver;
   private resizeTimers: Map<string, number> = new Map();
   private contextLineCanvas: HTMLCanvasElement | null = null;
@@ -1004,9 +1016,9 @@ class ProbePlugin {
   private onWindowResize: () => void;
 
   constructor(private readonly view: EditorView) {
-    this.previousProbeSignature = JSON.stringify(
-      view.state.field(probeField).probes,
-    );
+    const probes = view.state.field(probeField).probes;
+    this.previousProbeSignature = probeSignature(probes);
+    this.probesActive = probes.length > 0;
     this.recomputeVisibleForms(view);
     this.onClick = this.onClick.bind(this);
     this.onWindowDurationInput = this.onWindowDurationInput.bind(this);
@@ -1019,7 +1031,9 @@ class ProbePlugin {
     this.resizeObserver = new ResizeObserver(this.onResize);
     this.observeProbeWidgets();
     this.initContextLineCanvas();
-    this.frameId = window.requestAnimationFrame(this.tick);
+    if (this.probesActive) {
+      this.frameId = window.requestAnimationFrame(this.tick);
+    }
   }
 
   update(update: ViewUpdate): void {
@@ -1029,13 +1043,23 @@ class ProbePlugin {
     }
 
     const probes = update.state.field(probeField).probes;
-    const nextSignature = JSON.stringify(probes);
+    const nextSignature = probeSignature(probes);
     if (nextSignature !== this.previousProbeSignature) {
       this.previousProbeSignature = nextSignature;
       persistProbes(probes);
     }
 
-    if (update.docChanged || update.viewportChanged || update.geometryChanged) {
+    // Start or stop the animation frame loop based on whether probes exist.
+    const wasActive = this.probesActive;
+    this.probesActive = probes.length > 0;
+    if (this.probesActive && !wasActive && this.frameId == null) {
+      this.frameId = window.requestAnimationFrame(this.tick);
+    } else if (!this.probesActive && wasActive && this.frameId != null) {
+      window.cancelAnimationFrame(this.frameId);
+      this.frameId = null;
+    }
+
+    if (this.probesActive && (update.docChanged || update.viewportChanged || update.geometryChanged)) {
       this.drawContextLines();
     }
   }

@@ -334,6 +334,9 @@ describe("probe commands", () => {
         depth: 2,
         maxDepth: 3,
         cachedCode: "bar",
+        canvasWidth: 138,
+        canvasHeight: 46,
+        windowDurationMs: 1000,
       },
       {
         id: "raw-probe",
@@ -343,6 +346,9 @@ describe("probe commands", () => {
         depth: 0,
         maxDepth: 0,
         cachedCode: "baz",
+        canvasWidth: 138,
+        canvasHeight: 46,
+        windowDurationMs: 1000,
       },
     ]);
 
@@ -506,13 +512,31 @@ describe("probe commands", () => {
     view.destroy();
   });
 
-  it("adds contextual highlights for visible indexed forms without requiring probes", async () => {
+  it("skips indexed form highlights when no probes are active", async () => {
     evalInUseqWasmSilently.mockResolvedValue("0.5");
 
     const source = "(from-list [10 20 30] bar)";
     const { probeExtensions, probeField } = await loadProbeModule();
     const view = createView(source, probeExtensions, { anchor: anchorOf(source, "bar") });
 
+    // No probes active → no rAF loop → no highlights
+    expect(view.state.field(probeField).highlights).toEqual([]);
+
+    view.destroy();
+  });
+
+  it("adds contextual highlights for visible indexed forms when probes are active", async () => {
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      if (code === "barDur") return "1";
+      return "0.5";
+    });
+
+    const source = "(from-list [10 20 30] bar)";
+    const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
+    const view = createView(source, probeExtensions, { anchor: anchorOf(source, "bar") });
+
+    // Add a probe so the rAF loop starts and highlights are computed
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
     await runNextFrame();
 
     expect(view.state.field(probeField).highlights).toEqual([

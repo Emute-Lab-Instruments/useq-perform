@@ -72,9 +72,6 @@ function getDefaults(): VisSettings {
     windowDuration: 10,
     sampleCount: 100,
     lineWidth: 1.5,
-    probeSampleCount: 40,
-    probeLineWidth: 2,
-    probeRefreshIntervalMs: 33,
     futureDashed: true,
     futureMaskOpacity: 0.35,
     futureMaskWidth: 12,
@@ -98,26 +95,6 @@ function clampSettings(raw: Partial<VisSettings> | null): VisSettings {
   safe.lineWidth = Math.min(
     5,
     Math.max(0.5, Number(safe.lineWidth) || defaults.lineWidth),
-  );
-  safe.probeSampleCount = Math.max(
-    10,
-    Math.min(
-      400,
-      Math.floor(Number(safe.probeSampleCount) || defaults.probeSampleCount),
-    ),
-  );
-  safe.probeLineWidth = Math.min(
-    5,
-    Math.max(0.5, Number(safe.probeLineWidth) || defaults.probeLineWidth),
-  );
-  safe.probeRefreshIntervalMs = Math.min(
-    1000,
-    Math.max(
-      16,
-      Math.floor(
-        Number(safe.probeRefreshIntervalMs) || defaults.probeRefreshIntervalMs,
-      ),
-    ),
   );
   safe.futureDashed = safe.futureDashed !== false;
   const opacity = Number(safe.futureMaskOpacity);

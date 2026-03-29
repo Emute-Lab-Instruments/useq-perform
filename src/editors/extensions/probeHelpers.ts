@@ -16,6 +16,10 @@ export interface TemporalWrapper {
   operatorName: string;
   beforeArgs: string[];
   afterArgs: string[];
+  /** Start offset of the operator name token in the document. */
+  nameFrom: number;
+  /** End offset of the operator name token in the document. */
+  nameTo: number;
 }
 
 export interface BuiltProbeExpression {
@@ -185,6 +189,7 @@ export function collectTemporalWrappers(
         targetChild.from <= node.from &&
         targetChild.to >= node.to
       ) {
+        const nameNode = children[0];
         wrappers.push({
           operatorName,
           beforeArgs: children
@@ -193,6 +198,8 @@ export function collectTemporalWrappers(
           afterArgs: children
             .slice(targetIndex + 1)
             .map((child) => state.sliceDoc(child.from, child.to)),
+          nameFrom: nameNode.from,
+          nameTo: nameNode.to,
         });
       }
     }
