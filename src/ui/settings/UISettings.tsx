@@ -1,4 +1,4 @@
-import { settings as globalSettings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { Section, FormRow, Checkbox, NumberInput, Select } from "./FormControls";
 import type { AppSettings } from "../../lib/appSettings.ts";
 
@@ -10,7 +10,7 @@ export interface UISettingsProps {
 export function UISettings(props: UISettingsProps = {}) {
   const s = () => props.settings ?? globalSettings;
   const update = (patch: Record<string, unknown>) =>
-    (props.onUpdateSettings ?? updateSettingsStore)(patch);
+    (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
 
   const handleConsoleLinesLimitChange = (consoleLinesLimit: number) => {
     if (consoleLinesLimit >= 100 && consoleLinesLimit <= 10000) {
@@ -68,6 +68,79 @@ export function UISettings(props: UISettingsProps = {}) {
             { value: "radial", label: "Radial (dual sticks)" },
           ]}
           onChange={(val) => updateUIField("gamepadPickerStyle", val)}
+        />
+      </FormRow>
+      <FormRow label="Node highlight corner radius">
+        <NumberInput
+          value={s().ui?.nodeHighlightCornerRadius ?? 3}
+          min={0}
+          max={20}
+          onChange={(val) => updateUIField("nodeHighlightCornerRadius", val)}
+        />
+      </FormRow>
+      <FormRow label="Node highlight Y offset">
+        <NumberInput
+          value={s().ui?.nodeHighlightYOffset ?? 0}
+          min={-10}
+          max={10}
+          onChange={(val) => updateUIField("nodeHighlightYOffset", val)}
+        />
+      </FormRow>
+      <FormRow label="Show indent guide">
+        <Checkbox
+          checked={s().ui?.indentGuideEnabled !== false}
+          onChange={(val) => updateUIField("indentGuideEnabled", val)}
+        />
+      </FormRow>
+      <FormRow label="Indent guide width">
+        <NumberInput
+          value={s().ui?.indentGuideWidth ?? 1}
+          min={0.5}
+          max={5}
+          step={0.5}
+          onChange={(val) => updateUIField("indentGuideWidth", val)}
+        />
+      </FormRow>
+      <FormRow label="Indent guide opacity">
+        <NumberInput
+          value={s().ui?.indentGuideOpacity ?? 0.15}
+          min={0}
+          max={1}
+          step={0.05}
+          onChange={(val) => updateUIField("indentGuideOpacity", val)}
+        />
+      </FormRow>
+      <FormRow label="Indent guide luminosity">
+        <NumberInput
+          value={s().ui?.indentGuideLuminosity ?? 0.5}
+          min={0}
+          max={1}
+          step={0.05}
+          onChange={(val) => updateUIField("indentGuideLuminosity", val)}
+        />
+      </FormRow>
+      <FormRow label="Indent guide dash">
+        <NumberInput
+          value={s().ui?.indentGuideDash ?? 4}
+          min={1}
+          max={20}
+          onChange={(val) => updateUIField("indentGuideDash", val)}
+        />
+      </FormRow>
+      <FormRow label="Indent guide gap">
+        <NumberInput
+          value={s().ui?.indentGuideGap ?? 4}
+          min={1}
+          max={20}
+          onChange={(val) => updateUIField("indentGuideGap", val)}
+        />
+      </FormRow>
+      <FormRow label="Indent guide Y padding">
+        <NumberInput
+          value={s().ui?.indentGuideYPadding ?? 2}
+          min={0}
+          max={20}
+          onChange={(val) => updateUIField("indentGuideYPadding", val)}
         />
       </FormRow>
     </Section>

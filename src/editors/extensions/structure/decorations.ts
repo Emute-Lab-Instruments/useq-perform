@@ -31,7 +31,7 @@ import {
 } from "../../../effects/visualisationSampler.ts";
 
 import { findNodeAt } from "./new-structure.ts";
-import { getTrimmedRange, getContainerNodeAt } from "./ast.ts";
+import { getTrimmedRange, getContainerNodeAt, isContainerNode as isContainerNodeCheck } from "./ast.ts";
 import {
   matchPattern,
   expressionEvaluatedAnnotation,
@@ -106,24 +106,65 @@ function computeNodeLineBounds(
   const scrollRect = view.scrollDOM.getBoundingClientRect();
 
   const entries: Array<{ line: any; lineNum: number; block: any; start: number; end: number }> = [];
-  let globalMinCol = Infinity;
 
   for (let lineNum = firstLine.number; lineNum <= lastLine.number; lineNum++) {
     const line = doc.line(lineNum);
-    const { start, end } = getLineContentRange(line.text);
+    // Clamp start/end to the node's actual range within each line
+    let start: number, end: number;
+    if (lineNum === firstLine.number && lineNum === lastLine.number) {
+      // Single-line node: use exact node bounds
+      start = nodeFrom - line.from;
+      end = nodeTo - line.from;
+    } else if (lineNum === firstLine.number) {
+      // First line of multi-line: start at node, end at line content end
+      start = nodeFrom - line.from;
+      end = getLineContentRange(line.text).end;
+    } else if (lineNum === lastLine.number) {
+      // Last line of multi-line: start at line content start, end at node
+      start = getLineContentRange(line.text).start;
+      end = nodeTo - line.from;
+    } else {
+      // Middle lines: full line content
+      ({ start, end } = getLineContentRange(line.text));
+    }
     const block = view.lineBlockAt(line.from);
     entries.push({ line, lineNum, block, start, end });
-    if (start < end && start < globalMinCol) {
-      globalMinCol = start;
+  }
+
+  // Find the minimum start column and compute its pixel X once
+  let minStartCol = Infinity;
+  let minStartLine: any = null;
+  for (const entry of entries) {
+    if (entry.start < entry.end && entry.start < minStartCol) {
+      minStartCol = entry.start;
+      minStartLine = entry.line;
     }
   }
-
-  if (globalMinCol === Infinity) {
-    globalMinCol = 0;
+  let baseLeftX: number;
+  if (minStartLine) {
+    const baseCoords = view.coordsAtPos(minStartLine.from + minStartCol, -1);
+    baseLeftX = baseCoords ? baseCoords.left - scrollRect.left : minStartCol * charWidth;
+  } else {
+    baseLeftX = 0;
   }
 
-  const leftCoords = view.coordsAtPos(firstLine.from + globalMinCol, -1);
-  const baseLeft = leftCoords ? leftCoords.left - scrollRect.left : globalMinCol * charWidth;
+  // Measure cursor height via coordsAtPos at a known text position — this
+  // matches exactly what CodeMirror uses to size the cursor element.
+  let cursorTop: number | null = null;
+  let cursorBottom: number | null = null;
+  if (entries.length > 0) {
+    const samplePos = entries[0].line.from + entries[0].start;
+    const coords = view.coordsAtPos(samplePos, 1);
+    if (coords) {
+      cursorTop = coords.top - scrollRect.top;
+      cursorBottom = coords.bottom - scrollRect.top;
+    }
+  }
+  // Height offset from block.top to cursor.top (consistent across lines with same font)
+  const cursorVOffset = (cursorTop !== null && entries.length > 0)
+    ? cursorTop - entries[0].block.top : null;
+  const cursorH = (cursorTop !== null && cursorBottom !== null)
+    ? cursorBottom - cursorTop : null;
 
   return entries.map(({ line, lineNum, block, start, end }) => {
     let rightX: number;
@@ -131,15 +172,18 @@ function computeNodeLineBounds(
       const rightCoords = view.coordsAtPos(line.from + end, 1);
       rightX = rightCoords ? rightCoords.right - scrollRect.left : end * charWidth;
     } else {
-      rightX = baseLeft + minPadCols * charWidth;
+      rightX = baseLeftX + minPadCols * charWidth;
     }
+
+    const top = (cursorVOffset !== null) ? block.top + cursorVOffset : block.top;
+    const bottom = (cursorH !== null) ? top + cursorH : block.bottom;
 
     return {
       lineNumber: lineNum,
-      left: baseLeft,
+      left: baseLeftX,
       right: rightX,
-      top: block.top,
-      bottom: block.bottom,
+      top,
+      bottom,
     };
   });
 }
@@ -161,14 +205,14 @@ function groupLineBounds(lines: LineBounds[]): LineBounds[][] {
   return groups;
 }
 
-function buildPolygonPath(group: LineBounds[], padding: number = 2): string {
+function buildPolygonPath(group: LineBounds[], padding: number = 2, cornerRadius: number = 0, yOffset: number = 0): string {
   if (group.length === 0) return '';
   const P = padding;
   const lines = group.map(lb => ({
     left: lb.left - P,
     right: lb.right + P,
-    top: lb.top - P,
-    bottom: lb.bottom + P,
+    top: lb.top - P + yOffset,
+    bottom: lb.bottom + P + yOffset,
   }));
   const pts: [number, number][] = [];
 
@@ -195,7 +239,46 @@ function buildPolygonPath(group: LineBounds[], padding: number = 2): string {
     }
   }
   pts.push([lines[0].left, lines[0].top]);
-  return 'M' + pts.map(([x, y]) => `${x},${y}`).join('L') + 'Z';
+
+  if (cornerRadius <= 0) {
+    return 'M' + pts.map(([x, y]) => `${x},${y}`).join('L') + 'Z';
+  }
+
+  // Build path with rounded corners using quadratic bezier curves
+  const r = cornerRadius;
+  const segments: string[] = [];
+  const n = pts.length;
+
+  for (let i = 0; i < n; i++) {
+    const prev = pts[(i - 1 + n) % n];
+    const curr = pts[i];
+    const next = pts[(i + 1) % n];
+
+    // Vector from curr to prev/next
+    const dpx = prev[0] - curr[0], dpy = prev[1] - curr[1];
+    const dnx = next[0] - curr[0], dny = next[1] - curr[1];
+    const dpLen = Math.sqrt(dpx * dpx + dpy * dpy);
+    const dnLen = Math.sqrt(dnx * dnx + dny * dny);
+
+    // Clamp radius to half the shortest adjacent edge
+    const maxR = Math.min(dpLen, dnLen) / 2;
+    const cr = Math.min(r, maxR);
+
+    // Points where the curve starts/ends (offset from corner by cr)
+    const startX = curr[0] + (dpx / dpLen) * cr;
+    const startY = curr[1] + (dpy / dpLen) * cr;
+    const endX = curr[0] + (dnx / dnLen) * cr;
+    const endY = curr[1] + (dny / dnLen) * cr;
+
+    if (i === 0) {
+      segments.push(`M${startX},${startY}`);
+    } else {
+      segments.push(`L${startX},${startY}`);
+    }
+    segments.push(`Q${curr[0]},${curr[1]} ${endX},${endY}`);
+  }
+  segments.push('Z');
+  return segments.join('');
 }
 
 interface NodeRangeData {
@@ -218,16 +301,30 @@ interface LineData {
   y2: number;
 }
 
+interface IndentGuideStyle {
+  width: number;
+  opacity: number;
+  luminosity: number;
+  dash: number;
+  gap: number;
+  yPadding: number;
+}
+
 interface NodeHighlightMeasure {
   nodeRange: NodeRangeData | null;
   polygons: PolygonData[];
   parentLines: LineData[];
+  indentGuides: LineData[];
+  indentStyle: IndentGuideStyle;
+  cursorAtEdge: boolean;
+  cursorInside: boolean;
   scrollTop: number;
 }
 
 class NodeHighlightPluginClass {
   private svgOverlay: SVGSVGElement;
   private view: EditorView;
+  private unsubSettings: (() => void) | null = null;
 
   constructor(view: EditorView) {
     this.view = view;
@@ -242,6 +339,7 @@ class NodeHighlightPluginClass {
       overflow: visible;
     `;
     view.scrollDOM.appendChild(this.svgOverlay);
+    this.unsubSettings = subscribeAppSettings(() => this.scheduleMeasure());
     this.scheduleMeasure();
   }
 
@@ -253,7 +351,12 @@ class NodeHighlightPluginClass {
   }
 
   destroy(): void {
+    // Remove cursor clip before tearing down the SVG that defines it
+    const cursorLayer = this.view.dom.querySelector('.cm-cursorLayer') as HTMLElement | null;
+    if (cursorLayer) cursorLayer.style.clipPath = '';
+    this.view.dom.classList.remove('useq-hide-bracket-match');
     this.svgOverlay.remove();
+    this.unsubSettings?.();
   }
 
   private scheduleMeasure(): void {
@@ -266,7 +369,7 @@ class NodeHighlightPluginClass {
         const containerNode = getContainerNodeAt(view.state, selection.from);
 
         if (!node && !containerNode) {
-          return { nodeRange: null, polygons: [], parentLines: [], scrollTop };
+          return { nodeRange: null, polygons: [], parentLines: [], indentGuides: [], indentStyle: { width: 1, opacity: 0.15, luminosity: 0.5, dash: 4, gap: 4, yPadding: 2 }, cursorAtEdge: false, cursorInside: false, scrollTop };
         }
 
         const range = node ? getTrimmedRange(node, view.state) : null;
@@ -286,6 +389,10 @@ class NodeHighlightPluginClass {
           parentIsProgram,
         };
 
+        const uiSettings = getAppSettings()?.ui;
+        const cornerRadius = uiSettings?.nodeHighlightCornerRadius ?? 3;
+        const yOffset = uiSettings?.nodeHighlightYOffset ?? 0;
+
         const polygons: PolygonData[] = [];
 
         if (nodeRange.nodeFrom >= 0) {
@@ -293,7 +400,7 @@ class NodeHighlightPluginClass {
           if (lineBounds.length > 0) {
             const blocks = groupLineBounds(lineBounds);
             for (const block of blocks) {
-              const pathD = buildPolygonPath(block, 3);
+              const pathD = buildPolygonPath(block, 3, cornerRadius, yOffset);
               if (pathD) {
                 polygons.push({ pathD, isCurrent: true });
               }
@@ -315,15 +422,65 @@ class NodeHighlightPluginClass {
           }
         }
 
-        return { nodeRange, polygons, parentLines, scrollTop };
+        // Indent guides: one vertical dashed line per container in the ancestor
+        // chain that spans multiple lines, including the current node itself
+        const indentGuides: LineData[] = [];
+        const indentEnabled = uiSettings?.indentGuideEnabled !== false;
+        const indentYPad = uiSettings?.indentGuideYPadding ?? 2;
+        if (indentEnabled) {
+          const inset = view.defaultCharacterWidth * 0.6;
+          // Start from the highlighted node if it's a container, otherwise from containerNode
+          let ancestor = (node && isContainerNodeCheck(node)) ? node : containerNode;
+          while (ancestor && ancestor.type.name !== 'Program') {
+            const ancestorRange = getTrimmedRange(ancestor, view.state);
+            if (ancestorRange) {
+              const bounds = computeNodeLineBounds(view, ancestorRange.from, ancestorRange.to);
+              if (bounds.length > 1) {
+                const first = bounds[0];
+                const last = bounds[bounds.length - 1];
+                indentGuides.push({
+                  x1: first.left + inset,
+                  y1: first.bottom + indentYPad,
+                  x2: first.left + inset,
+                  y2: last.bottom - indentYPad,
+                });
+              }
+            }
+            // Walk up to the next container ancestor
+            let p = ancestor.parent;
+            while (p && !isContainerNodeCheck(p) && p.type.name !== 'Program') {
+              p = p.parent;
+            }
+            ancestor = (p && p.type.name !== 'Program') ? p : null;
+          }
+        }
+
+        const indentStyle: IndentGuideStyle = {
+          width: uiSettings?.indentGuideWidth ?? 1,
+          opacity: uiSettings?.indentGuideOpacity ?? 0.15,
+          luminosity: uiSettings?.indentGuideLuminosity ?? 0.5,
+          dash: uiSettings?.indentGuideDash ?? 4,
+          gap: uiSettings?.indentGuideGap ?? 4,
+          yPadding: indentYPad,
+        };
+
+        // Determine cursor-vs-node relationship for clip behaviour:
+        //   inside: cursor strictly within node range → clip cursor to polygon
+        //   atEdge: cursor at nodeTo (trailing edge) → inverted clip (cursor peeks outside)
+        //   outside: cursor not within node range → no clipping
+        const cursorPos = selection.from;
+        const cursorAtEdge = nodeRange.nodeFrom >= 0 && cursorPos === nodeRange.nodeTo;
+        const cursorInside = nodeRange.nodeFrom >= 0 && cursorPos >= nodeRange.nodeFrom && cursorPos < nodeRange.nodeTo;
+
+        return { nodeRange, polygons, parentLines, indentGuides, indentStyle, cursorAtEdge, cursorInside, scrollTop };
       },
       write(measure: NodeHighlightMeasure) {
-        self.renderPolygons(measure.polygons, measure.parentLines);
+        self.renderPolygons(measure.polygons, measure.parentLines, measure.indentGuides, measure.indentStyle, measure.cursorAtEdge, measure.cursorInside);
       },
     });
   }
 
-  private renderPolygons(polygons: PolygonData[], parentLines: LineData[]): void {
+  private renderPolygons(polygons: PolygonData[], parentLines: LineData[], indentGuides: LineData[], indentStyle: IndentGuideStyle, cursorAtEdge: boolean = false, cursorInside: boolean = false): void {
     while (this.svgOverlay.firstChild) {
       this.svgOverlay.removeChild(this.svgOverlay.firstChild);
     }
@@ -332,6 +489,25 @@ class NodeHighlightPluginClass {
     const scrollHeight = this.view.scrollDOM.scrollHeight;
     this.svgOverlay.setAttribute('width', String(scrollWidth));
     this.svgOverlay.setAttribute('height', String(scrollHeight));
+
+    // Interpolate between black (0) and the border color rgb(255,80,130) at luminosity=1
+    const r = Math.round(255 * indentStyle.luminosity);
+    const g = Math.round(80 * indentStyle.luminosity);
+    const b = Math.round(130 * indentStyle.luminosity);
+    const strokeColor = `rgba(${r}, ${g}, ${b}, ${indentStyle.opacity})`;
+    const dashArray = `${indentStyle.dash} ${indentStyle.gap}`;
+
+    for (const guide of indentGuides) {
+      const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      lineEl.setAttribute('x1', String(guide.x1));
+      lineEl.setAttribute('y1', String(guide.y1));
+      lineEl.setAttribute('x2', String(guide.x2));
+      lineEl.setAttribute('y2', String(guide.y2));
+      lineEl.setAttribute('stroke', strokeColor);
+      lineEl.setAttribute('stroke-width', String(indentStyle.width));
+      lineEl.setAttribute('stroke-dasharray', dashArray);
+      this.svgOverlay.appendChild(lineEl);
+    }
 
     for (const poly of polygons) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -353,6 +529,51 @@ class NodeHighlightPluginClass {
       lineEl.setAttribute('stroke-dasharray', '6 4');
       this.svgOverlay.appendChild(lineEl);
     }
+
+    // Clip the cursor layer based on cursor position relative to the node:
+    //   inside → clip to polygon (cursor stays within highlight)
+    //   atEdge → inverted clip (cursor peeks outside trailing edge)
+    //   outside → no clip (cursor fully visible)
+    const cursorLayer = this.view.dom.querySelector('.cm-cursorLayer') as HTMLElement | null;
+    if (cursorLayer) {
+      if (polygons.length > 0 && (cursorInside || cursorAtEdge)) {
+        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+        clipPath.setAttribute('id', 'useq-node-cursor-clip');
+        clipPath.setAttribute('clipPathUnits', 'userSpaceOnUse');
+
+        if (cursorAtEdge) {
+          // Inverted clip: large rect with polygon punched out via even-odd rule
+          // Cursor shows only OUTSIDE the highlight
+          const outerRect = `M-10,-10 H${scrollWidth + 10} V${scrollHeight + 10} H-10 Z`;
+          for (const poly of polygons) {
+            const clipEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            clipEl.setAttribute('d', outerRect + ' ' + poly.pathD);
+            clipEl.setAttribute('clip-rule', 'evenodd');
+            clipPath.appendChild(clipEl);
+          }
+        } else {
+          // Normal clip: cursor shows only INSIDE the highlight
+          for (const poly of polygons) {
+            const clipEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            clipEl.setAttribute('d', poly.pathD);
+            clipPath.appendChild(clipEl);
+          }
+        }
+
+        defs.appendChild(clipPath);
+        this.svgOverlay.appendChild(defs);
+        cursorLayer.style.clipPath = 'url(#useq-node-cursor-clip)';
+      } else {
+        cursorLayer.style.clipPath = '';
+      }
+    }
+
+    // Suppress bracket matching highlights when the node highlight is
+    // active — the highlight already shows structure and the bracket
+    // decorations visually clash (they can't be SVG-clipped like the
+    // cursor since they're inline spans inside .cm-content).
+    this.view.dom.classList.toggle('useq-hide-bracket-match', polygons.length > 0);
   }
 }
 
