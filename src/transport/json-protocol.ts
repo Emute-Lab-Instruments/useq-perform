@@ -130,7 +130,8 @@ function startHeartbeat(): void {
     } catch (err) {
       console.warn("Heartbeat failed:", err);
       post(
-        "**Warning**: Heartbeat timeout - connection may be lost. Reconnect if needed."
+        "Heartbeat timeout — connection may be lost. Reconnect if needed.",
+        "warn"
       );
       stopHeartbeat();
     }
@@ -193,20 +194,12 @@ export async function maybeNegotiateJsonProtocol(): Promise<void> {
         );
         sendDefaultStreamConfig(response.config);
       }
-      post(
-        `**Info**: Using structured JSON protocol (fw: ${response.fw || "unknown"}).`
-      );
       startHeartbeat();
     } else {
-      post(
-        `**Warning**: JSON negotiation failed (${response.text || "no details"}), using legacy mode.`
-      );
+      console.warn("JSON negotiation failed:", response.text || "no details");
     }
   } catch (err) {
     console.error("JSON negotiation error", err);
-    post(
-      "**Warning**: Unable to switch to JSON protocol, staying in legacy mode."
-    );
   } finally {
     dispatchProtocolReady();
   }
@@ -397,7 +390,8 @@ export function sendTouSEQ(
     return sendJsonEval(cleanedCode, { capture }).catch((error: Error) => {
       console.error("Failed to send JSON request to uSEQ", error);
       post(
-        "**Error**: Failed to send request to uSEQ. See console for details."
+        "Failed to send request to uSEQ. See browser console for details.",
+        "error"
       );
       throw error;
     });
@@ -408,7 +402,7 @@ export function sendTouSEQ(
 }
 
 function handleNotConnected(): void {
-  post("**Warning**: uSEQ not connected yet - make sure it's plugged in and click Connect");
+  post("uSEQ not connected yet — make sure it's plugged in and click Connect", "warn");
   try {
     animateConnectChannel.publish(undefined);
   } catch (_e) {
@@ -512,8 +506,11 @@ export function handleJsonMessage(rawMessage: string): void {
   } else {
     const displayText = consoleText ?? text;
     if (displayText) {
-      const prefix = success === false ? "**Error**: " : "uSEQ: ";
-      post(`${prefix}${displayText}`);
+      if (success === false) {
+        post(displayText, "error");
+      } else {
+        post(`uSEQ: ${displayText}`);
+      }
     }
   }
 

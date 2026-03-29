@@ -31,7 +31,5 @@ export let currentVersion: ConnectedFirmwareVersion | null = null;
 export function upgradeCheck(versionMsg: unknown): void {
   currentVersion = parseVersion(versionMsg);
   const versionLabel = currentVersion?.string ?? String(versionMsg ?? "unknown");
-  post(
-    `<span style="color: var(--accent-color); font-weight: bold; display: inline;">**Connected to uSEQ (v${versionLabel})**</span>`
-  );
+  post(`Connected to uSEQ (v${versionLabel})`);
 }

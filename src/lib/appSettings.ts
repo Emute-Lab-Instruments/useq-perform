@@ -26,6 +26,8 @@ export type {
   RuntimeSettings,
   WasmSettings,
   EvalResultMode,
+  ConsoleEntryAnimation,
+  ConsoleSettings,
   EvalResultsSettings,
   AppSettings,
   AppSettingsPatch,

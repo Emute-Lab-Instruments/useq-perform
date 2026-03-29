@@ -3,7 +3,7 @@ import {
   getSettings,
   updateSettings,
 } from "../../runtime/runtimeService.ts";
-import { settings as globalSettings, updateSettingsStore } from "../../utils/settingsStore.ts";
+import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore.ts";
 import { settingsQuery, setSettingsQuery } from "./settingsSearch";
 import { PersonalSettings } from "./PersonalSettings";
 import { EditorSettings } from "./EditorSettings";
@@ -12,6 +12,7 @@ import { StorageSettings } from "./StorageSettings";
 import { UISettings } from "./UISettings";
 import { VisualisationSettings } from "./VisualisationSettings";
 import { ConfigurationManagement } from "./ConfigurationManagement";
+import { ConsoleSettings } from "./ConsoleSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { onCleanup } from "solid-js";
 import type { AppSettings } from "../../lib/appSettings.ts";
@@ -19,7 +20,7 @@ import type { AppSettings } from "../../lib/appSettings.ts";
 export interface GeneralSettingsProps {
   /** Current settings object. Defaults to the global reactive settings store. */
   settings?: AppSettings;
-  /** Callback to apply a partial settings update. Defaults to updateSettingsStore. */
+  /** Callback to apply a partial settings update. Defaults to requestSettingsUpdate. */
   onUpdateSettings?: (patch: Record<string, unknown>) => void;
   /** Callback to reset all settings. Defaults to runtimeService.resetSettings. */
   onResetSettings?: () => void;
@@ -34,7 +35,7 @@ export interface GeneralSettingsProps {
 export function GeneralSettings(props: GeneralSettingsProps = {}) {
   const s = () => props.settings ?? globalSettings;
   const update = (patch: Record<string, unknown>) =>
-    (props.onUpdateSettings ?? updateSettingsStore)(patch);
+    (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
 
   // Clear search when leaving the settings panel
   onCleanup(() => setSettingsQuery(""));
@@ -97,6 +98,7 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
 
       <PersonalSettings settings={s()} onUpdateSettings={update} />
       <EditorSettings settings={s()} onUpdateSettings={update} />
+      <ConsoleSettings settings={s()} onUpdateSettings={update} />
       <EvalResultsSettings settings={s()} onUpdateSettings={update} />
       <StorageSettings settings={s()} onUpdateSettings={update} />
       <UISettings settings={s()} onUpdateSettings={update} />

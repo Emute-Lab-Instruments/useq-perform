@@ -5,7 +5,7 @@
  */
 
 import { defaultTheme } from "../editorDefaults.ts";
-import { themes } from "../../editors/themes.ts";
+import { themeNameSet } from "../themes.ts";
 import type {
   AppConfigDocument,
   AppDevModeState,
@@ -47,13 +47,12 @@ function detectOsFamily(): "pc" | "mac" {
 function normalizeTheme(value: unknown): string {
   const requestedTheme =
     typeof value === "string" && value.length > 0 ? value : defaultTheme;
-  const availableThemes = themes as Record<string, unknown>;
 
   if (requestedTheme === "default") {
     return defaultTheme;
   }
 
-  return availableThemes[requestedTheme] ? requestedTheme : defaultTheme;
+  return themeNameSet.has(requestedTheme) ? requestedTheme : defaultTheme;
 }
 
 function normalizeVisualisationSettings(

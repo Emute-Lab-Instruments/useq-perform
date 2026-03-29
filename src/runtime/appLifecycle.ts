@@ -22,11 +22,9 @@ function ensureSerialVisPanelVisibleForNoModule() {
 async function activateNoModuleExpression({ exprType, code }) {
   try {
     await registerVisualisation(exprType, code);
-    post(`uSEQ: ${code}`);
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : String(error);
-    const safeMessage = rawMessage.replace(/`/g, '\\`');
-    post(`**Error**: Failed to evaluate ${code}: ${safeMessage}`);
+    post(`Failed to evaluate ${code}: ${rawMessage}`, "error");
     console.warn(`No-module startup expression failed for ${exprType}`, error);
   }
 }
@@ -92,7 +90,7 @@ export function createApp(appUI, environmentState, bootstrapPlan: BootstrapPlan)
             seedDefaultExpressions: plan.seedDefaultNoModuleExpressions,
           });
         } catch (error) {
-          post('**Error**: Failed to initialise the in-browser interpreter.');
+          post('Failed to initialise the in-browser interpreter.', 'error');
         }
         return;
       }
@@ -109,7 +107,7 @@ export function createApp(appUI, environmentState, bootstrapPlan: BootstrapPlan)
           modalContent
         );
 
-        post('**Warning**: Web Serial is unavailable and browser-local uSEQ is disabled.');
+        post('Web Serial is unavailable and browser-local uSEQ is disabled.', 'warn');
         announceRuntimeSession();
         return;
       }
@@ -122,7 +120,7 @@ export function createApp(appUI, environmentState, bootstrapPlan: BootstrapPlan)
               : 'Web Serial is unavailable. Browser-local uSEQ is ready, and hardware can be paired later from a supported browser.',
           });
         } catch (_error) {
-          post('**Error**: Failed to initialise the in-browser interpreter.');
+          post('Failed to initialise the in-browser interpreter.', 'error');
         }
 
         if (plan.attemptHardwareReconnect) {

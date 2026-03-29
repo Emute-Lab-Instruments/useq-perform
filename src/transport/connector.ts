@@ -139,7 +139,6 @@ export async function checkForSavedPortAndMaybeConnect(): Promise<SerialPort | n
 
   const savedPort = await checkForSavedPort();
   if (savedPort) {
-    post("**Info**: Found a saved port, connecting automatically...");
     connectToSerialPort(savedPort);
     return savedPort;
   }
@@ -163,7 +162,6 @@ export async function toggleConnect(): Promise<void> {
   } else {
     const savedport = await checkForSavedPort();
     if (savedport) {
-      post("**Info**: Connecting to saved port...");
       connectToSerialPort(savedport);
     } else {
       askForPortAndConnect();
@@ -180,7 +178,7 @@ export function askForPortAndConnect(): void {
       })
       .catch((err: unknown) => {
         console.log("Error requesting port:", err);
-        post("Error requesting port. Please try again.");
+        post("Error requesting port. Please try again.", "error");
       });
   } else {
     post(
@@ -213,7 +211,8 @@ export function connectToSerialPort(port: SerialPort): Promise<boolean> {
     .catch((err: Error) => {
       console.log("Error connecting to serial:", err);
       post(
-        'Connection failed. See <a href="https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting">https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting</a>'
+        'Connection failed. See <a href="https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting">troubleshooting guide</a>',
+        "error"
       );
       return false;
     });
@@ -263,9 +262,9 @@ export async function disconnect(port?: SerialPort | null): Promise<void> {
     if (port === serialport) {
       setConnectedToModule(false);
       if (disconnectError) {
-        post("**Warning**: uSEQ disconnected with errors\n" + disconnectError);
+        post("uSEQ disconnected with errors", "warn");
       } else {
-        post("**Info**: uSEQ disconnected");
+        post("uSEQ disconnected");
       }
     }
   }
@@ -277,9 +276,9 @@ export function checkForWebserialSupport(): boolean {
   console.log("Checking for Web Serial API support...");
   if (typeof navigator === "undefined" || !navigator.serial) {
     post(
-      "A Web Serial compatible browser such as Chrome, Edge or Opera is required, for connection to the uSEQ module"
+      'Web Serial requires Chrome, Edge, or Opera. See <a href="https://caniuse.com/web-serial">browser support</a>',
+      "warn"
     );
-    post("See https://caniuse.com/web-serial for more information");
     return false;
   }
 
@@ -302,7 +301,7 @@ export function checkForWebserialSupport(): boolean {
   navigator.serial.addEventListener("disconnect", (_e: Event) => {
     setConnectedToModule(false);
     if (!flag_triggeringBootloader) {
-      post("**Info**: uSEQ disconnected");
+      post("uSEQ disconnected");
     }
   });
 
@@ -326,7 +325,7 @@ export async function enterBootloaderMode(
     }
 
     if (!port) {
-      post("**Error**: No serial port available for bootloader mode");
+      post("No serial port available for bootloader mode", "error");
       return false;
     }
 
@@ -339,7 +338,8 @@ export async function enterBootloaderMode(
   } catch (error) {
     console.error("Error entering bootloader mode:", error);
     post(
-      `Error entering bootloader mode: ${error instanceof Error ? error.message : String(error)}`
+      `Error entering bootloader mode: ${error instanceof Error ? error.message : String(error)}`,
+      "error"
     );
     return false;
   } finally {

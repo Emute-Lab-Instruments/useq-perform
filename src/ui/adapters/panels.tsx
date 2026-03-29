@@ -12,6 +12,7 @@ import { PanelChrome } from "../panel-chrome/PanelChrome";
 import { DesignSelector } from "../panel-chrome/DesignSelector";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import { HelpPanel } from "../help/HelpPanel";
+import { ConsolePanel } from "../console/ConsolePanel";
 import { pushOverlay } from "../overlayManager";
 import { createSolidAdapter } from "./createSolidAdapter";
 import "../panel-chrome/panel-chrome.css";
@@ -20,29 +21,32 @@ import "../panel-chrome/panel-chrome.css";
 
 const [settingsVisible, setSettingsVisible] = createSignal(false);
 const [helpVisible, setHelpVisible] = createSignal(false);
+const [consoleVisible, setConsoleVisible] = createSignal(true);
 
 /** Map of panelId -> setter for extensibility. */
 const visibilitySetters: Record<string, (v: boolean) => void> = {
   settings: (v) => setSettingsVisible(v),
   help: (v) => setHelpVisible(v),
+  console: (v) => setConsoleVisible(v),
 };
 
 const visibilityGetters: Record<string, () => boolean> = {
   settings: settingsVisible,
   help: helpVisible,
+  console: consoleVisible,
 };
 
 // ---- Public API ----
 
-/**
- * Toggle a panel's visibility by panelId (e.g. "settings", "help").
- */
+/** Panel IDs that don't participate in the "close others" mutual exclusion. */
+const independentPanels = new Set(["console"]);
+
 export function togglePanelVisibility(panelId: string) {
   const getter = visibilityGetters[panelId];
   const setter = visibilitySetters[panelId];
   if (getter && setter) {
-    // If opening a panel, close others first
-    if (!getter()) {
+    // If opening a non-independent panel, close other non-independent panels first
+    if (!getter() && !independentPanels.has(panelId)) {
       hideAllPanels();
     }
     setter(!getter());
@@ -74,8 +78,8 @@ export function hidePanel(panelId: string) {
  * Hide all chrome-managed panels.
  */
 export function hideAllPanels() {
-  for (const setter of Object.values(visibilitySetters)) {
-    setter(false);
+  for (const [id, setter] of Object.entries(visibilitySetters)) {
+    if (!independentPanels.has(id)) setter(false);
   }
 }
 
@@ -141,6 +145,10 @@ const panelRootAdapter = createSolidAdapter({
             <HelpPanel />
           </PanelChrome>
         </ManagedPanel>
+      </Show>
+
+      <Show when={consoleVisible()}>
+        <ConsolePanel />
       </Show>
     </>
   ),

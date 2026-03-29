@@ -35,6 +35,15 @@ export interface UISettings {
   expressionLastTrackingEnabled: boolean;
   expressionClearButtonEnabled: boolean;
   gamepadPickerStyle: "grid" | "radial";
+  nodeHighlightCornerRadius: number;
+  nodeHighlightYOffset: number;
+  indentGuideEnabled: boolean;
+  indentGuideWidth: number;
+  indentGuideOpacity: number;
+  indentGuideLuminosity: number;
+  indentGuideDash: number;
+  indentGuideGap: number;
+  indentGuideYPadding: number;
 }
 
 export interface VisualisationSettings {
@@ -106,6 +115,27 @@ export interface EvalResultsSettings {
   showTimestamp: boolean;
 }
 
+/**
+ * How new console entries appear.
+ *
+ * - `"slide"`      — slide up with a short opacity fade
+ * - `"fade"`       — simple opacity fade
+ * - `"typewriter"` — characters revealed one at a time (rate controlled by `typewriterIntervalMs`)
+ * - `"none"`       — instant, no animation
+ */
+export type ConsoleEntryAnimation = "slide" | "fade" | "typewriter" | "none";
+
+export interface ConsoleSettings {
+  /** Show HH:MM:SS timestamp on each entry. */
+  showTimestamp: boolean;
+  /** Show the type badge (log/warn/error/wasm) on each entry. */
+  showTypeBadge: boolean;
+  /** How new entries animate into the console. */
+  entryAnimation: ConsoleEntryAnimation;
+  /** Interval in ms between each character when using typewriter animation. */
+  typewriterIntervalMs: number;
+}
+
 export interface KeybindingsSettings {
   /** Base profile ID (e.g. "default", "vim", "emacs"). */
   profile: string;
@@ -131,6 +161,7 @@ export interface AppSettings {
   visualisation: VisualisationSettings;
   runtime: RuntimeSettings;
   wasm: WasmSettings;
+  console: ConsoleSettings;
   evalResults: EvalResultsSettings;
   keybindings?: KeybindingsSettings;
   keymaps?: Record<string, string>;
@@ -138,7 +169,7 @@ export interface AppSettings {
 }
 
 export type AppSettingsPatch = Partial<
-  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "evalResults" | "keybindings">
+  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "keybindings">
 > & {
   editor?: Partial<EditorSettings>;
   storage?: Partial<StorageSettings>;
@@ -146,6 +177,7 @@ export type AppSettingsPatch = Partial<
   visualisation?: Partial<VisualisationSettings>;
   runtime?: Partial<RuntimeSettings>;
   wasm?: Partial<WasmSettings>;
+  console?: Partial<ConsoleSettings>;
   evalResults?: Partial<EvalResultsSettings>;
   keybindings?: Partial<KeybindingsSettings>;
   keymaps?: Record<string, string>;
@@ -247,6 +279,15 @@ export const defaultUserSettings: AppSettings = {
     expressionLastTrackingEnabled: true,
     expressionClearButtonEnabled: true,
     gamepadPickerStyle: "grid",
+    nodeHighlightCornerRadius: 3,
+    nodeHighlightYOffset: 0,
+    indentGuideEnabled: true,
+    indentGuideWidth: 1,
+    indentGuideOpacity: 0.15,
+    indentGuideLuminosity: 0.5,
+    indentGuideDash: 4,
+    indentGuideGap: 4,
+    indentGuideYPadding: 2,
   },
   visualisation: { ...DEFAULT_VISUALISATION },
   runtime: {
@@ -255,6 +296,12 @@ export const defaultUserSettings: AppSettings = {
   },
   wasm: {
     enabled: true,
+  },
+  console: {
+    showTimestamp: true,
+    showTypeBadge: true,
+    entryAnimation: "slide",
+    typewriterIntervalMs: 20,
   },
   evalResults: {
     mode: "inline-ephemeral",
@@ -280,6 +327,7 @@ export function createDefaultUserSettings(): AppSettings {
     visualisation: { ...defaultUserSettings.visualisation },
     runtime: { ...defaultUserSettings.runtime },
     wasm: { ...defaultUserSettings.wasm },
+    console: { ...defaultUserSettings.console },
     evalResults: { ...defaultUserSettings.evalResults },
     keybindings: defaultUserSettings.keybindings
       ? { ...defaultUserSettings.keybindings }

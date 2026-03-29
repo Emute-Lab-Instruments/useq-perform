@@ -209,7 +209,7 @@ export function applyStartupFlags(flags: StartupFlags): StartupFlags {
 
   if (flags.noModuleMode) {
     dbg("No-module mode enabled");
-    post("**Info**: Running in no-module mode. Expressions evaluate via the in-browser uSEQ interpreter.");
+    post("No-module mode — expressions evaluate via the in-browser interpreter.");
   }
 
   return flags;

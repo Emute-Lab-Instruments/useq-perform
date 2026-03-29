@@ -173,34 +173,16 @@ function evalWasm(
         for (const outputName of assignedOutputs) {
           if (!hasErrors) {
             markOutputRunning(outputName);
-            post(`${outputName} updated`, "log");
           }
         }
       }
 
       if (opts.isPreview) {
-        if (displayText.length > 0) {
-          post(`Preview: ${displayText}`);
-        } else {
-          const snippet = wasmCode.trim().substring(0, 40);
-          post(`Preview: ${snippet}${wasmCode.length > 40 ? "..." : ""}`);
-        }
         return { text: displayText, isError, pos: evalPos };
       }
 
       if (!opts.noModuleMode) {
         return { text: displayText, isError, pos: evalPos };
-      }
-
-      if (opts.isImmediate) {
-        if (trimmed.length > 0) {
-          post(`uSEQ: ${trimmed}`);
-        }
-      } else {
-        const echoed = wasmCode.trim();
-        if (echoed.length > 0) {
-          post(`uSEQ: ${echoed}`);
-        }
       }
 
       return { text: trimmed, isError: false, pos: evalPos };
@@ -209,9 +191,9 @@ function evalWasm(
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[modulisp] eval error: ${message}`);
       if (opts.isPreview) {
-        post(`**Preview Error**: ${message.replace(/`/g, "\\`")}`);
+        post(message, "error");
       } else if (opts.noModuleMode) {
-        post(`**Error**: ${message.replace(/`/g, "\\`")}`);
+        post(message, "error");
       } else {
         console.error("uSEQ WASM interpreter evaluation failed", error);
       }

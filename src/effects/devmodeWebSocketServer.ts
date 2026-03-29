@@ -36,7 +36,7 @@ export async function startWebSocketServer(port: number = 8082): Promise<void> {
       wss.on('connection', (ws: WsSocket, req: any) => {
         const clientInfo = `${getClientIp(req)}:${req.socket.remotePort}`;
         dbg(`WebSocket client connected from ${clientInfo}`);
-        post(`**Info**: Dev mode WebSocket client connected from ${clientInfo}`);
+        post(`Dev WebSocket client connected from ${clientInfo}`);
 
         ws.on('message', (message: Buffer | string | ArrayBuffer) => {
           handleWebSocketMessage(message, ws);
@@ -44,7 +44,7 @@ export async function startWebSocketServer(port: number = 8082): Promise<void> {
 
         ws.on('close', () => {
           dbg(`WebSocket client disconnected from ${clientInfo}`);
-          post(`**Info**: Dev mode WebSocket client disconnected`);
+          post(`Dev WebSocket client disconnected`);
         });
 
         ws.on('error', (error: Error) => {
@@ -60,7 +60,7 @@ export async function startWebSocketServer(port: number = 8082): Promise<void> {
 
       server.listen(port, () => {
         dbg(`WebSocket server started on port ${port}`);
-        post(`**Info**: Dev mode WebSocket server started on port ${port}`);
+        post(`Dev WebSocket server started on port ${port}`);
         resolve();
       });
 
@@ -106,7 +106,7 @@ function handleWebSocketMessage(message: Buffer | string | ArrayBuffer, ws: WsSo
       handleDisconnectFromModule(ws);
     } else if (parsedMessage.type === 'text') {
       // Echo back text messages for debugging
-      post(`**Dev Mode**: ${parsedMessage.content}`);
+      post(`[dev] ${parsedMessage.content}`);
       ws.send(JSON.stringify({
         type: 'echo',
         content: parsedMessage.content,
@@ -114,7 +114,7 @@ function handleWebSocketMessage(message: Buffer | string | ArrayBuffer, ws: WsSo
       }));
     } else {
       // Handle other structured messages
-      post(`**Dev Mode**: Received structured message: ${JSON.stringify(parsedMessage)}`);
+      dbg(`Dev mode: received structured message: ${JSON.stringify(parsedMessage)}`);
       ws.send(JSON.stringify({
         type: 'ack',
         received: parsedMessage,
@@ -150,7 +150,7 @@ function handleDisconnectFromModule(ws: WsSocket): void {
       timestamp: new Date().toISOString()
     }));
 
-    post('**Info**: Disconnected from uSEQ module via dev mode WebSocket command');
+    post('Disconnected from uSEQ via dev WebSocket command');
 
   } catch (error) {
     console.error('Error disconnecting from module:', error);
@@ -174,7 +174,7 @@ export async function stopWebSocketServer(): Promise<void> {
       dbg('Stopping WebSocket server...');
       wss.close(() => {
         dbg('WebSocket server stopped');
-        post('**Info**: Dev mode WebSocket server stopped');
+        post('Dev WebSocket server stopped');
         wss = null;
 
         if (server) {
