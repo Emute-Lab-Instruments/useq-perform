@@ -234,13 +234,16 @@ function buildClipPath(lineBounds: PixelLineBounds[], padding: number): Path2D |
   return combined;
 }
 
+/** Check if readability is enabled in current settings. */
+function isReadabilityEnabled(): boolean {
+  return getAppSettings().visualisation?.readabilityEnabled !== false;
+}
+
 interface MeasureResult {
   lineBounds: PixelLineBounds[];
   visVisible: boolean;
   /** The scrollDOM.scrollTop at the time of measurement. */
   scrollTop: number;
-  /** Editor panel's top offset from viewport (for aligning blur buffer). */
-  editorTop: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +260,7 @@ class VisReadabilityPlugin {
   private maskCtx: CanvasRenderingContext2D | null;
   private view: EditorView;
   private mutationObserver: MutationObserver;
+  private resizeObserver: ResizeObserver | null = null;
   private editorPanel: HTMLElement | null = null;
   private wasVisVisible = false;
   /** scrollTop at the time polygons were last computed. */
@@ -271,10 +275,10 @@ class VisReadabilityPlugin {
   private clipPath: Path2D | null = null;
   /** rAF handle for the render loop. */
   private rafId: number | null = null;
-  /** Editor panel top offset from viewport (cached during measure). */
-  private editorTop = 0;
   /** Unsubscribe from app settings changes. */
   private unsubSettings: (() => void) | null = null;
+  /** Whether readability was enabled the last time we checked. */
+  private wasEnabled = true;
 
   constructor(view: EditorView) {
     this.view = view;
@@ -305,6 +309,7 @@ class VisReadabilityPlugin {
     // Track scroll: update delta for the render loop, and debounce a
     // full polygon rebuild for newly-scrolled-in lines.
     this.handleScroll = () => {
+      if (!this.wasVisVisible || !this.wasEnabled) return;
       this.scrollDelta = this.view.scrollDOM.scrollTop - this.scrollBaseline;
       this.debouncedRebuild();
     };
@@ -319,14 +324,35 @@ class VisReadabilityPlugin {
       this.mutationObserver.observe(visPanel, { attributes: true, attributeFilter: ['style'] });
     }
 
-    // Rebuild polygons when settings change (padding, etc.).
-    this.unsubSettings = subscribeAppSettings(() => this.scheduleRebuild());
+    // Rebuild when the editor panel resizes (e.g. opening/closing devtools)
+    // so that polygon positions stay in sync with the canvas.
+    if (this.editorPanel) {
+      this.resizeObserver = new ResizeObserver(() => {
+        if (this.wasVisVisible && this.wasEnabled) this.scheduleRebuild();
+      });
+      this.resizeObserver.observe(this.editorPanel);
+    }
 
+    // Rebuild polygons when settings change (padding, etc.).
+    this.unsubSettings = subscribeAppSettings(() => {
+      const enabled = isReadabilityEnabled();
+      if (enabled !== this.wasEnabled) {
+        this.wasEnabled = enabled;
+        if (!enabled) {
+          this.overlayCtx?.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+        }
+      }
+      if (this.wasVisVisible) this.scheduleRebuild();
+    });
+
+    this.wasEnabled = isReadabilityEnabled();
     this.scheduleRebuild();
   }
 
   update(update: ViewUpdate): void {
     this.view = update.view;
+    // Only rebuild polygons when vis is active AND readability is enabled.
+    if (!this.wasVisVisible || !this.wasEnabled) return;
     if (update.docChanged || update.viewportChanged || update.geometryChanged) {
       this.scheduleRebuild();
     }
@@ -336,6 +362,7 @@ class VisReadabilityPlugin {
     this.stopRenderLoop();
     if (this.scrollRebuildTimer !== null) clearTimeout(this.scrollRebuildTimer);
     this.unsubSettings?.();
+    this.resizeObserver?.disconnect();
     this.view.scrollDOM.removeEventListener('scroll', this.handleScroll);
     this.mutationObserver.disconnect();
     this.overlayCanvas.remove();
@@ -374,54 +401,62 @@ class VisReadabilityPlugin {
     const blurCtx = this.blurCtx;
     if (!ctx || !blurCtx || !this.clipPath) return;
 
+    // Check if readability is disabled — skip all GPU work.
+    if (!this.wasEnabled) {
+      ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+      return;
+    }
+
     const visCanvas = document.getElementById(VIS_CANVAS_ID) as HTMLCanvasElement | null;
     if (!visCanvas || visCanvas.width === 0 || visCanvas.height === 0) return;
 
     // Resize overlay canvas pixel buffer to match its CSS layout size.
+    // Use CSS pixels (not DPR-scaled) to avoid GPU memory explosion.
     const w = this.overlayCanvas.clientWidth;
     const h = this.overlayCanvas.clientHeight;
+    if (w === 0 || h === 0) return;
     if (this.overlayCanvas.width !== w || this.overlayCanvas.height !== h) {
       this.overlayCanvas.width = w;
       this.overlayCanvas.height = h;
     }
 
-    // Resize blur buffer to match the vis canvas.
-    if (this.blurBuffer.width !== visCanvas.width || this.blurBuffer.height !== visCanvas.height) {
-      this.blurBuffer.width = visCanvas.width;
-      this.blurBuffer.height = visCanvas.height;
+    // Resize blur buffer to CSS pixel size of the overlay (NOT the DPR-scaled
+    // vis canvas size).  The blur is intentionally soft, so CSS resolution is
+    // plenty.  This keeps GPU memory reasonable on HiDPI displays.
+    if (this.blurBuffer.width !== w || this.blurBuffer.height !== h) {
+      this.blurBuffer.width = w;
+      this.blurBuffer.height = h;
     }
 
     // Read settings for this frame.
     const visSettings = getAppSettings().visualisation;
-    if (visSettings?.readabilityEnabled === false) {
-      ctx.clearRect(0, 0, w, h);
-      return;
-    }
     const blurRadius = visSettings?.readabilityBlurRadius ?? 10;
     const tintOpacity = visSettings?.readabilityTintOpacity ?? 0;
     const alpha = visSettings?.readabilityAlpha ?? 1;
     const passes = Math.max(0, Math.min(5, Math.round(visSettings?.readabilityPasses ?? 2)));
 
+    // Compute the relative offset between the vis canvas and the overlay canvas
+    // so the blurred content aligns with the actual vis behind the editor.
+    const visRect = visCanvas.getBoundingClientRect();
+    const overlayRect = this.overlayCanvas.getBoundingClientRect();
+    const offsetX = visRect.left - overlayRect.left;
+    const offsetY = visRect.top - overlayRect.top;
+
     // 1. Blur + darken the vis canvas.
-    //    brightness() dims waveform RGB without touching alpha, so the result
-    //    is only visible where waveforms exist.  Drawing multiple passes
-    //    stacks the alpha, making the effect denser/more opaque without
-    //    increasing the blur radius (which would smear).
+    //    Draw the vis canvas into the blur buffer at the correct relative offset,
+    //    scaled from DPR resolution to CSS pixels.
     const maxDarken = Math.max(0, Math.min(1, visSettings?.readabilityMaxDarken ?? 0.85));
     const brightness = 1 - tintOpacity * maxDarken;
-    const bw = this.blurBuffer.width;
-    const bh = this.blurBuffer.height;
-    blurCtx.clearRect(0, 0, bw, bh);
+    blurCtx.clearRect(0, 0, w, h);
     blurCtx.filter = `blur(${blurRadius}px) brightness(${brightness})`;
-    blurCtx.drawImage(visCanvas, 0, 0);
+    // Draw vis canvas → blur buffer, mapping vis CSS rect into overlay CSS space.
+    blurCtx.drawImage(visCanvas, offsetX, offsetY, visRect.width, visRect.height);
     blurCtx.filter = 'none';
     for (let i = 0; i < passes; i++) {
       blurCtx.drawImage(this.blurBuffer, 0, 0);
     }
 
     // 2. Build a feathered mask from the polygon shapes.
-    //    Draw solid white polygons to the mask buffer, then blur it to
-    //    soften the edges.  The result is an alpha mask with soft falloff.
     const feather = Math.max(0, visSettings?.readabilityFeather ?? 4);
     const mCtx = this.maskCtx;
     if (this.maskBuffer.width !== w || this.maskBuffer.height !== h) {
@@ -435,9 +470,7 @@ class VisReadabilityPlugin {
       mCtx.fillStyle = '#fff';
       mCtx.fill(this.clipPath!);
       mCtx.restore();
-      // Blur the mask for soft edges: copy the sharp mask to the overlay
-      // canvas (temp storage — it'll be cleared in step 3), then clear
-      // the mask buffer and redraw from the overlay with a blur filter.
+      // Blur the mask for soft edges.
       if (feather > 0) {
         ctx.clearRect(0, 0, w, h);
         ctx.drawImage(this.maskBuffer, 0, 0);
@@ -452,7 +485,7 @@ class VisReadabilityPlugin {
     //    feathered polygon shape using destination-in.
     ctx.clearRect(0, 0, w, h);
     ctx.globalAlpha = alpha;
-    ctx.drawImage(this.blurBuffer, 0, this.editorTop, w, h, 0, 0, w, h);
+    ctx.drawImage(this.blurBuffer, 0, 0);
     ctx.globalCompositeOperation = 'destination-in';
     ctx.globalAlpha = 1;
     ctx.drawImage(this.maskBuffer, 0, 0);
@@ -472,17 +505,15 @@ class VisReadabilityPlugin {
   }
 
   private scheduleRebuild(): void {
-    const { editorPanel } = this;
     const self = this;
     this.view.requestMeasure({
       read(v: EditorView): MeasureResult {
         const visVisible = isVisPanelVisible();
         const scrollTop = v.scrollDOM.scrollTop;
-        const rect = editorPanel?.getBoundingClientRect() ?? null;
-        const editorTop = rect?.top ?? 0;
-        if (!visVisible) return { lineBounds: [], visVisible, scrollTop, editorTop };
+        if (!visVisible || !self.wasEnabled) return { lineBounds: [], visVisible, scrollTop };
         const overscan = Math.max(0, Math.round(getAppSettings().visualisation?.readabilityOverscan ?? 30));
         const lineBounds = computeVisibleLineBoundsViewport(v, overscan);
+        const rect = self.editorPanel?.getBoundingClientRect() ?? null;
         if (rect) {
           for (const lb of lineBounds) {
             lb.left   -= rect.left;
@@ -491,13 +522,12 @@ class VisReadabilityPlugin {
             lb.bottom -= rect.top;
           }
         }
-        return { lineBounds, visVisible, scrollTop, editorTop };
+        return { lineBounds, visVisible, scrollTop };
       },
-      write({ lineBounds, visVisible, scrollTop, editorTop }: MeasureResult) {
+      write({ lineBounds, visVisible, scrollTop }: MeasureResult) {
         self.applyVisState(visVisible);
         self.scrollBaseline = scrollTop;
         self.scrollDelta = 0;
-        self.editorTop = editorTop;
         const padding = getAppSettings().visualisation?.readabilityPadding ?? 3;
         self.clipPath = buildClipPath(lineBounds, padding);
       },

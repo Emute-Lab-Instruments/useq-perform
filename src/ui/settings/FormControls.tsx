@@ -290,12 +290,14 @@ export function RangeInput(props: {
     if (!dragging()) return;
     const val = valueFromPointer(e.clientX);
     setDisplayValue(val);
+    props.onChange(val);
   };
 
   const onPointerUp = () => {
     if (!dragging()) return;
+    const val = displayValue();
     setDragging(false);
-    props.onChange(displayValue());
+    props.onChange(val);
   };
 
   // Hidden native input for keyboard accessibility
