@@ -41,12 +41,33 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
+ * Result of a batched probe sample call.
+ * `samples` is the numeric vector of length `times.length` (NaN for non-finite).
+ * `current` is the string form of the *last* sample (used for the inline label).
+ */
+export interface ProbeBatchResult {
+  samples: number[];
+  current: string;
+}
+
+/**
  * Configuration for the probe system.
  * Each field is a specific capability the probes need — no app-wide settings objects.
  */
 export interface ProbeConfig {
   /** Evaluate a code expression silently via the WASM interpreter and return the result string (or null on error) */
   evalExpression: (code: string) => Promise<string | null>;
+  /**
+   * Evaluate a single expression at a vector of absolute times in ONE WASM
+   * round-trip. Default impl wraps the expression in
+   * `[(eval-at-time t0 expr) (eval-at-time t1 expr) ...]` and parses the
+   * returned numeric vector. Implementations may use a worker / typed batch
+   * later — the contract is "one call per probe per tick".
+   */
+  evalExpressionAtTimes: (
+    code: string,
+    times: readonly number[],
+  ) => Promise<ProbeBatchResult | null>;
   /** Get the probe refresh interval in ms */
   getRefreshIntervalMs: () => number;
   /** Get the probe line width for canvas rendering */
@@ -65,8 +86,11 @@ export interface ProbeConfig {
 
 /** Create a ProbeConfig that delegates to the existing singletons. */
 export function createDefaultProbeConfig(): ProbeConfig {
+  const evalExpression = (code: string) => evalInUseqWasmSilently(code);
   return {
-    evalExpression: (code: string) => evalInUseqWasmSilently(code),
+    evalExpression,
+    evalExpressionAtTimes: (code, times) =>
+      defaultEvalExpressionAtTimes(evalExpression, code, times),
     getRefreshIntervalMs: () => {
       const vis = getAppSettings().visualisation;
       const raw = Number(vis?.probeRefreshIntervalMs);
@@ -87,6 +111,64 @@ export function createDefaultProbeConfig(): ProbeConfig {
       remove(PERSISTENCE_KEYS.editorProbes);
     },
   };
+}
+
+/**
+ * Default batched-sample implementation: one WASM round-trip per probe per
+ * tick instead of one per sample. Builds a single ModuLisp vector form
+ * `[(eval-at-time t0 expr) (eval-at-time t1 expr) ...]`, evaluates it via
+ * the supplied per-call eval, and parses the resulting numeric vector.
+ *
+ * Returns `null` on failure (parse failure, vector length mismatch, eval
+ * threw) so the caller can fall back to per-sample evaluation.
+ */
+async function defaultEvalExpressionAtTimes(
+  evalExpression: (code: string) => Promise<string | null>,
+  code: string,
+  times: readonly number[],
+): Promise<ProbeBatchResult | null> {
+  if (times.length === 0) {
+    return { samples: [], current: "" };
+  }
+
+  const batchExpr = buildBatchSampleExpression(code, times);
+  let raw: string | null;
+  try {
+    raw = await evalExpression(batchExpr);
+  } catch {
+    return null;
+  }
+
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+
+  // Error short-circuit: interpreter returned an error string instead of a
+  // vector. Surface it to the caller so the probe widget can display it.
+  if (trimmed.startsWith(ERROR_PREFIX)) {
+    return { samples: [], current: trimmed };
+  }
+
+  const samples = parseNumericVector(trimmed);
+  if (!samples || samples.length !== times.length) {
+    return null;
+  }
+
+  // The "current" value displayed alongside the waveform is the last sample,
+  // formatted to match what the per-call path would have produced.
+  const last = samples[samples.length - 1];
+  const current = Number.isFinite(last) ? formatSampleScalar(last) : trimmed;
+  return { samples, current };
+}
+
+/**
+ * Format a numeric sample back to a string roughly matching what the
+ * per-call eval path produced. Used to feed the inline label.
+ */
+function formatSampleScalar(value: number): string {
+  if (!Number.isFinite(value)) return String(value);
+  if (Number.isInteger(value)) return String(value);
+  // Trim trailing zeros after a fixed precision pass.
+  return value.toFixed(6).replace(/\.?0+$/, "");
 }
 
 const DEFAULT_PROBE_SAMPLE_COUNT = 40;
@@ -767,31 +849,94 @@ function formatOffset(offsetSeconds: number): string {
   return offsetSeconds.toFixed(6).replace(/\.?0+$/, "");
 }
 
-function withOffset(code: string, offsetSeconds: number): string {
-  if (!Number.isFinite(offsetSeconds) || Math.abs(offsetSeconds) < 1e-9) {
-    return code;
-  }
-  return `(offset ${formatOffset(offsetSeconds)} ${code})`;
+function buildEvalAtTimeExpression(code: string, timeSeconds: number): string {
+  return `(eval-at-time ${formatOffset(timeSeconds)} ${code})`;
 }
 
+/**
+ * Build a single ModuLisp vector form that evaluates `code` at every time
+ * in `times`, returning all values in one call. Used by the default batch
+ * sampler to collapse N WASM round-trips per probe into one.
+ */
+function buildBatchSampleExpression(
+  code: string,
+  times: readonly number[],
+): string {
+  if (times.length === 0) return "[]";
+  const parts: string[] = new Array(times.length);
+  for (let i = 0; i < times.length; i++) {
+    parts[i] = buildEvalAtTimeExpression(code, times[i]);
+  }
+  return `[${parts.join(" ")}]`;
+}
+
+/** Parse a ModuLisp numeric vector `[a b c ...]` into `number[]`. */
+function parseNumericVector(text: string): number[] | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+    return null;
+  }
+  const inner = trimmed.slice(1, -1).trim();
+  if (!inner) return [];
+  const parts = inner.split(/[\s,]+/).filter(Boolean);
+  const values = new Array<number>(parts.length);
+  for (let i = 0; i < parts.length; i++) {
+    const value = Number(parts[i]);
+    if (!Number.isFinite(value)) return null;
+    values[i] = value;
+  }
+  return values;
+}
+
+/**
+ * Sample a probe expression across a window. Issues a single batched WASM
+ * call (via `_config.evalExpressionAtTimes`) instead of one call per
+ * sample; falls back to per-sample evaluation only if the batch returns
+ * `null` (parse failure, length mismatch, or unsupported form).
+ */
 async function sampleWaveform(
   code: string,
   currentTime: number,
   windowDuration: number,
   sampleCount: number,
 ): Promise<{ current: string; samples: number[] }> {
-  const samples: number[] = [];
   const startTime = currentTime - windowDuration;
   const count = Math.max(2, Math.floor(sampleCount) || DEFAULT_PROBE_SAMPLE_COUNT);
-  const step = count > 1
-    ? windowDuration / (count - 1)
-    : windowDuration;
+  const step = count > 1 ? windowDuration / (count - 1) : windowDuration;
 
+  const times = new Array<number>(count);
+  for (let i = 0; i < count; i++) {
+    times[i] = startTime + step * i;
+  }
+
+  // Fast path: one WASM call for the whole window.
+  try {
+    const batch = await _config.evalExpressionAtTimes(code, times);
+    if (batch) {
+      // If the interpreter returned an error or an empty vector, fall
+      // through to the per-sample legacy path so a single misbehaving
+      // sub-expression doesn't kill the whole probe.
+      if (batch.samples.length === count) {
+        return { current: batch.current, samples: batch.samples };
+      }
+      // Empty samples but a current string → propagate as a no-op
+      // (matches the legacy "non-numeric result" branch).
+      if (batch.samples.length === 0 && batch.current) {
+        return { current: batch.current, samples: [] };
+      }
+    }
+  } catch (error) {
+    dbg(`probe: batch sample failed for ${code} (${error})`);
+  }
+
+  // Fallback: per-sample loop. Only reached when the batch path fails or
+  // is unavailable. Preserves original semantics.
+  const samples: number[] = [];
   let currentResult = "";
   for (let index = 0; index < count; index++) {
-    const sampleTime = startTime + step * index;
+    const sampleTime = times[index];
     const result = await evaluateProbeCode(
-      withOffset(code, sampleTime - currentTime),
+      buildEvalAtTimeExpression(code, sampleTime),
     );
     if (index === count - 1) {
       currentResult = result;

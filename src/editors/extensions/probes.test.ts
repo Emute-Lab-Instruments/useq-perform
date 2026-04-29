@@ -593,3 +593,78 @@ describe("probe commands", () => {
     view.destroy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Probe batching: one WASM round-trip per probe per tick instead of N.
+// Stream A2 / bd useq-perform-d5r.
+//
+// The full editor flow is exercised by the "renders a waveform" tests
+// above; these tests pin the *contract* of the default `ProbeConfig`
+// batch sampler in isolation, since the rAF/ProbePlugin path needs
+// ResizeObserver which jsdom doesn't provide here.
+// ---------------------------------------------------------------------------
+describe("probe batch sampler (ProbeConfig.evalExpressionAtTimes)", () => {
+  it("issues a single batched eval that covers all sample times", async () => {
+    const calls: string[] = [];
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      calls.push(code);
+      if (code.startsWith("[") && code.endsWith("]")) {
+        return numericVector(20, 0.5);
+      }
+      return "0";
+    });
+
+    const { createDefaultProbeConfig } = await loadProbeModule();
+    const config = createDefaultProbeConfig();
+    const times = Array.from({ length: 20 }, (_, i) => i * 0.05);
+
+    const result = await config.evalExpressionAtTimes("bar", times);
+
+    expect(result).not.toBeNull();
+    expect(result?.samples).toHaveLength(20);
+    expect(result?.samples.every((v) => v === 0.5)).toBe(true);
+
+    // The defining contract: ONE WASM call regardless of sample count.
+    expect(calls).toHaveLength(1);
+    const batch = calls[0];
+    expect(batch.startsWith("[") && batch.endsWith("]")).toBe(true);
+
+    // The batch expression contains one `eval-at-time` per sample.
+    const occurrences = (batch.match(/\(eval-at-time/g) ?? []).length;
+    expect(occurrences).toBe(20);
+  });
+
+  it("returns null on length mismatch so callers can fall back", async () => {
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      if (code.startsWith("[")) return numericVector(3, 1);
+      return "1";
+    });
+
+    const { createDefaultProbeConfig } = await loadProbeModule();
+    const config = createDefaultProbeConfig();
+    const times = Array.from({ length: 10 }, (_, i) => i);
+
+    const result = await config.evalExpressionAtTimes("bar", times);
+    expect(result).toBeNull();
+  });
+
+  it("propagates interpreter error strings as a current-only result", async () => {
+    evalInUseqWasmSilently.mockResolvedValue("Error: bad form");
+
+    const { createDefaultProbeConfig } = await loadProbeModule();
+    const config = createDefaultProbeConfig();
+
+    const result = await config.evalExpressionAtTimes("bar", [0, 1, 2]);
+    expect(result).toEqual({ samples: [], current: "Error: bad form" });
+  });
+
+  it("returns an empty result for an empty time vector without calling eval", async () => {
+    evalInUseqWasmSilently.mockReset();
+    const { createDefaultProbeConfig } = await loadProbeModule();
+    const config = createDefaultProbeConfig();
+
+    const result = await config.evalExpressionAtTimes("bar", []);
+    expect(result).toEqual({ samples: [], current: "" });
+    expect(evalInUseqWasmSilently).not.toHaveBeenCalled();
+  });
+});
