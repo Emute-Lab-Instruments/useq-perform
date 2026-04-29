@@ -97,11 +97,20 @@ function WiredMainToolbar() {
     deriveConnectionState(getRuntimeServiceSnapshot())
   );
 
+  // Adapter owns the channel subscription; child just registers a callback.
+  let animateCallback: (() => void) | undefined;
+
   onMount(() => {
-    const unsubscribe = subscribeRuntimeService((nextState) => {
+    const unsubRuntimeService = subscribeRuntimeService((nextState) => {
       setConnectionState(deriveConnectionState(nextState));
     });
-    onCleanup(unsubscribe);
+    const unsubAnimateConnect = animateConnectChannel.subscribe(() => {
+      animateCallback?.();
+    });
+    onCleanup(() => {
+      unsubRuntimeService();
+      unsubAnimateConnect();
+    });
   });
 
   return (
@@ -115,7 +124,7 @@ function WiredMainToolbar() {
       onFontSizeDown={() => Effect.runPromise(adjustFontSize(-1))}
       onSettings={() => toggleChromePanel("settings")}
       onHelp={() => toggleChromePanel("help")}
-      onAnimateConnect={(cb) => animateConnectChannel.subscribe(() => cb())}
+      onAnimateConnect={(cb) => { animateCallback = cb; }}
     />
   );
 }

@@ -667,13 +667,32 @@ export const themeSpecsByName: Record<string, ThemeSpec> = Object.create(null);
 /** Name -> compiled CodeMirror Extension lookup. */
 export const themes: Record<string, Extension[]> = Object.create(null);
 
-/** Ordered list of theme names. */
-export const themeNames: string[] = [];
+/** Ordered list of theme names (re-exported from lib/themes.ts). */
+export { themeNames } from "../lib/themes.ts";
+
+import { themeNames as _libThemeNames } from "../lib/themes.ts";
 
 for (const spec of themeSpecs) {
   themeSpecsByName[spec.name] = spec;
   themes[spec.name] = createThemeExtension(spec);
-  themeNames.push(spec.name);
+}
+
+// Validate that the static name list in lib/themes.ts stays in sync with the
+// ThemeSpec array defined above.  This runs once at module load and is
+// essentially free (17 string comparisons).
+{
+  const specNames = themeSpecs.map((s) => s.name);
+  const libNames = [..._libThemeNames];
+  const mismatch =
+    specNames.length !== libNames.length ||
+    specNames.some((n, i) => n !== libNames[i]);
+  if (mismatch) {
+    console.error(
+      "[themes] lib/themes.ts themeNames is out of sync with themeSpecs.\n" +
+        `  specs: ${JSON.stringify(specNames)}\n` +
+        `  lib:   ${JSON.stringify(libNames)}`,
+    );
+  }
 }
 
 // Re-export themeRecipes as an alias for themeSpecsByName (consumed by the

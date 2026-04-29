@@ -3,23 +3,21 @@
  *
  * All fetches are fire-and-forget: errors are logged but never block startup.
  *
- * Heavy imports (referenceStore, referenceDataLoader) are loaded dynamically
- * inside the async preload functions so that importing this module from
- * bootstrap.ts does not pull in solid-js/store at the top level (which would
- * break test environments that lack a full localStorage mock).
+ * Loading is deduplicated via `ensureReferenceDataLoaded()` in the reference
+ * store — if the ModuLispReferenceTab component mounts before this preload
+ * finishes (or vice-versa), only one network request is made.
+ *
+ * Heavy imports (referenceStore) are loaded dynamically inside the async
+ * preload function so that importing this module from bootstrap.ts does not
+ * pull in solid-js/store at the top level (which would break test
+ * environments that lack a full localStorage mock).
  */
 
 // ── Preload orchestration ───────────────────────────────────────────
 
 async function preloadReferenceData(): Promise<void> {
-  const { loadReferenceDataFromCandidates, normalizeEntry } = await import("./referenceDataLoader.ts");
-  const { setReferenceStore } = await import("../utils/referenceStore.ts");
-  const raw = await loadReferenceDataFromCandidates();
-  const normalized = raw
-    .map(normalizeEntry)
-    .filter((entry): entry is NonNullable<ReturnType<typeof normalizeEntry>> => Boolean(entry));
-  setReferenceStore("data", normalized);
-  setReferenceStore("isLoading", false);
+  const { ensureReferenceDataLoaded } = await import("../utils/referenceStore.ts");
+  await ensureReferenceDataLoaded();
 }
 
 /**

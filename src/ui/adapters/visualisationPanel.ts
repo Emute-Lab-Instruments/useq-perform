@@ -66,7 +66,9 @@ export function getVisualisationPanelStyles(makeVisible: boolean): JSX.CSSProper
     width: "100%",
     left: "0%",
     top: "0%",
-    opacity: "0.7",
+    // Transparency is applied at the canvas drawing level (globalAlpha)
+    // rather than via container opacity, which forces an expensive
+    // offscreen compositing pass on every frame.
     "pointer-events": "none",
   };
 }
@@ -91,6 +93,9 @@ function getCanvasStyles(): JSX.CSSProperties {
     position: "absolute",
     top: "0",
     left: "0",
+    // Promote to own GPU compositing layer so repaints don't
+    // trigger full-viewport recomposite through the opacity layer.
+    "will-change": "contents",
   };
 }
 
