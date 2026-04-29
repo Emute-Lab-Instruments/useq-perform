@@ -96,9 +96,9 @@ describe("settingsStore", () => {
     expect(settings).toMatchObject(initial);
   });
 
-  it("updateSettingsStore delegates to runtimeService.updateSettings", async () => {
-    const { settings, updateSettingsStore, updateSettings } = await loadSettingsStore(baseSettings);
-    updateSettingsStore({ ui: { consoleLinesLimit: 256 } });
+  it("requestSettingsUpdate delegates to runtimeService.updateSettings", async () => {
+    const { settings, requestSettingsUpdate, updateSettings } = await loadSettingsStore(baseSettings);
+    requestSettingsUpdate({ ui: { consoleLinesLimit: 256 } });
 
     expect(updateSettings).toHaveBeenCalledWith({ ui: { consoleLinesLimit: 256 } });
     expect(settings.ui.consoleLinesLimit).toBe(256);

@@ -15,11 +15,11 @@ export const [settings, setSettings] = createStore<AppSettings>(
 );
 
 /**
- * Updates user settings and ensures they are persisted and the store is updated.
- * Routes through runtimeService — the sole mutation surface for settings.
+ * Requests a settings update via runtimeService — the sole mutation surface for settings.
+ * The store is updated asynchronously when runtimeService publishes the settingsChanged channel.
  * @param values Partial settings object to merge into the active settings
  */
-export function updateSettingsStore(values: Record<string, unknown>) {
+export function requestSettingsUpdate(values: Record<string, unknown>) {
   updateSettings(values);
 }
 

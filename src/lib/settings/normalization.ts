@@ -2,6 +2,14 @@
  * Settings Normalization
  *
  * Validation, normalization, merging, and configuration document helpers.
+ *
+ * Domain-specific normalizers live in sibling modules:
+ *   - normalizeKeybindings.ts
+ *   - normalizeVisualisation.ts
+ *   - normalizeEvalResults.ts
+ *   - normalizationHelpers.ts (shared utilities)
+ *
+ * This file re-exports all public symbols so existing import sites are unchanged.
  */
 
 import { defaultTheme } from "../editorDefaults.ts";
@@ -11,8 +19,6 @@ import type {
   AppDevModeState,
   AppSettings,
   AppSettingsPatch,
-  EvalResultsSettings,
-  KeybindingsSettings,
   StoredAppSettings,
   VisualisationSettings,
 } from "./schema.ts";
@@ -22,27 +28,14 @@ import {
   defaultDevModeConfiguration,
   defaultUserSettings,
 } from "./schema.ts";
+import { isRecord, coerceNumber, detectOsFamily } from "./normalizationHelpers.ts";
+import { normalizeKeybindingsSettings } from "./normalizeKeybindings.ts";
+import { normalizeVisualisationSettings, extractVisualisationPatch } from "./normalizeVisualisation.ts";
+import { normalizeEvalResultsSettings } from "./normalizeEvalResults.ts";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function coerceNumber(value: unknown, fallback: number): number {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : fallback;
-}
-
-function detectOsFamily(): "pc" | "mac" {
-  const platformStr =
-    (typeof navigator !== "undefined" &&
-      (navigator.platform || navigator.userAgent || "")) ||
-    "";
-  return /Mac|iPhone|iPad|iPod/i.test(platformStr) ? "mac" : "pc";
-}
 
 function normalizeTheme(value: unknown): string {
   const requestedTheme =
@@ -53,134 +46,6 @@ function normalizeTheme(value: unknown): string {
   }
 
   return themeNameSet.has(requestedTheme) ? requestedTheme : defaultTheme;
-}
-
-function normalizeVisualisationSettings(
-  value: unknown,
-  defaults: VisualisationSettings = defaultUserSettings.visualisation,
-): VisualisationSettings {
-  const raw = isRecord(value) ? value : {};
-
-  return {
-    windowDuration: coerceNumber(raw.windowDuration, defaults.windowDuration),
-    sampleCount: coerceNumber(raw.sampleCount, defaults.sampleCount),
-    lineWidth: coerceNumber(raw.lineWidth, defaults.lineWidth),
-    probeSampleCount: coerceNumber(
-      raw.probeSampleCount,
-      defaults.probeSampleCount,
-    ),
-    probeLineWidth: coerceNumber(raw.probeLineWidth, defaults.probeLineWidth),
-    probeRefreshIntervalMs: coerceNumber(
-      raw.probeRefreshIntervalMs,
-      defaults.probeRefreshIntervalMs,
-    ),
-    futureDashed:
-      raw.futureDashed == null ? defaults.futureDashed : raw.futureDashed !== false,
-    futureMaskOpacity: coerceNumber(raw.futureMaskOpacity, defaults.futureMaskOpacity),
-    futureMaskWidth: coerceNumber(raw.futureMaskWidth, defaults.futureMaskWidth),
-    circularOffset: coerceNumber(raw.circularOffset, defaults.circularOffset),
-    futureLeadSeconds: coerceNumber(raw.futureLeadSeconds, defaults.futureLeadSeconds),
-    digitalLaneGap: coerceNumber(raw.digitalLaneGap, defaults.digitalLaneGap),
-    readabilityBlurRadius: coerceNumber(raw.readabilityBlurRadius, defaults.readabilityBlurRadius),
-    readabilityPadding: coerceNumber(raw.readabilityPadding, defaults.readabilityPadding),
-    readabilityTintOpacity: coerceNumber(raw.readabilityTintOpacity, defaults.readabilityTintOpacity),
-    readabilityAlpha: coerceNumber(raw.readabilityAlpha, defaults.readabilityAlpha),
-    readabilityPasses: coerceNumber(raw.readabilityPasses, defaults.readabilityPasses),
-    readabilityFeather: coerceNumber(raw.readabilityFeather, defaults.readabilityFeather),
-    readabilityMaxDarken: coerceNumber(raw.readabilityMaxDarken, defaults.readabilityMaxDarken),
-    readabilityDebounceMs: coerceNumber(raw.readabilityDebounceMs, defaults.readabilityDebounceMs),
-    readabilityOverscan: coerceNumber(raw.readabilityOverscan, defaults.readabilityOverscan),
-    readabilityEnabled:
-      raw.readabilityEnabled == null ? defaults.readabilityEnabled : raw.readabilityEnabled !== false,
-  };
-}
-
-const VALID_EVAL_MODES: ReadonlySet<string> = new Set([
-  "console",
-  "inline",
-  "inline-ephemeral",
-  "floating",
-]);
-
-function normalizeEvalResultsSettings(
-  value: unknown,
-  defaults: EvalResultsSettings = defaultUserSettings.evalResults,
-): EvalResultsSettings {
-  const raw = isRecord(value) ? value : {};
-  const mode =
-    typeof raw.mode === "string" && VALID_EVAL_MODES.has(raw.mode)
-      ? (raw.mode as EvalResultsSettings["mode"])
-      : defaults.mode;
-  return {
-    mode,
-    autoDismissMs: coerceNumber(raw.autoDismissMs, defaults.autoDismissMs),
-    maxChars: coerceNumber(raw.maxChars, defaults.maxChars),
-    showTimestamp:
-      raw.showTimestamp == null ? defaults.showTimestamp : raw.showTimestamp !== false,
-  };
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function normalizeKeybindingsSettings(
-  value: unknown,
-  defaults: KeybindingsSettings = defaultUserSettings.keybindings!,
-): KeybindingsSettings {
-  const raw = isRecord(value) ? value : {};
-
-  const result: KeybindingsSettings = {
-    profile:
-      typeof raw.profile === "string" && raw.profile.length > 0
-        ? raw.profile
-        : defaults.profile,
-    layout:
-      typeof raw.layout === "string" && raw.layout.length > 0
-        ? raw.layout
-        : defaults.layout,
-  };
-
-  if (isRecord(raw.overrides)) {
-    result.overrides = Object.fromEntries(
-      Object.entries(raw.overrides).filter(
-        ([k, v]) => typeof k === "string" && typeof v === "string",
-      ),
-    ) as Record<string, string>;
-  }
-
-  if (isRecord(raw.gamepadOverrides)) {
-    const cleaned: Record<string, string[]> = {};
-    for (const [k, v] of Object.entries(raw.gamepadOverrides)) {
-      if (typeof k === "string" && Array.isArray(v)) {
-        const filtered = v.filter((s): s is string => typeof s === "string");
-        if (filtered.length > 0) cleaned[k] = filtered;
-      }
-    }
-    if (Object.keys(cleaned).length > 0) result.gamepadOverrides = cleaned;
-  }
-
-  if (raw.chordTimeout != null) {
-    result.chordTimeout = clampNumber(
-      coerceNumber(raw.chordTimeout, 1500),
-      200,
-      5000,
-    );
-  }
-
-  if (raw.modifierHintDelay != null) {
-    result.modifierHintDelay = clampNumber(
-      coerceNumber(raw.modifierHintDelay, 500),
-      100,
-      2000,
-    );
-  }
-
-  if (raw.stickyModifiers != null) {
-    result.stickyModifiers = raw.stickyModifiers === true;
-  }
-
-  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -423,160 +288,9 @@ export function settingsPatchFromConfiguration(
   }
 
   if (isRecord(user.visualisation)) {
-    const visualisationPatch: Partial<VisualisationSettings> = {};
-    const visualisation = user.visualisation;
-
-    if ("windowDuration" in visualisation) {
-      visualisationPatch.windowDuration = normalizeVisualisationSettings(
-        {
-          windowDuration: visualisation.windowDuration,
-        },
-        defaultUserSettings.visualisation,
-      ).windowDuration;
-    }
-
-    if ("sampleCount" in visualisation) {
-      visualisationPatch.sampleCount = coerceNumber(
-        visualisation.sampleCount,
-        defaultUserSettings.visualisation.sampleCount,
-      );
-    }
-
-    if ("lineWidth" in visualisation) {
-      visualisationPatch.lineWidth = coerceNumber(
-        visualisation.lineWidth,
-        defaultUserSettings.visualisation.lineWidth,
-      );
-    }
-
-    if ("probeSampleCount" in visualisation) {
-      visualisationPatch.probeSampleCount = coerceNumber(
-        visualisation.probeSampleCount,
-        defaultUserSettings.visualisation.probeSampleCount,
-      );
-    }
-
-    if ("probeLineWidth" in visualisation) {
-      visualisationPatch.probeLineWidth = coerceNumber(
-        visualisation.probeLineWidth,
-        defaultUserSettings.visualisation.probeLineWidth,
-      );
-    }
-
-    if ("probeRefreshIntervalMs" in visualisation) {
-      visualisationPatch.probeRefreshIntervalMs = coerceNumber(
-        visualisation.probeRefreshIntervalMs,
-        defaultUserSettings.visualisation.probeRefreshIntervalMs,
-      );
-    }
-
-    if ("futureDashed" in visualisation) {
-      visualisationPatch.futureDashed = visualisation.futureDashed !== false;
-    }
-
-    if ("futureMaskOpacity" in visualisation) {
-      visualisationPatch.futureMaskOpacity = coerceNumber(
-        visualisation.futureMaskOpacity,
-        defaultUserSettings.visualisation.futureMaskOpacity,
-      );
-    }
-
-    if ("futureMaskWidth" in visualisation) {
-      visualisationPatch.futureMaskWidth = coerceNumber(
-        visualisation.futureMaskWidth,
-        defaultUserSettings.visualisation.futureMaskWidth,
-      );
-    }
-
-    if ("circularOffset" in visualisation) {
-      visualisationPatch.circularOffset = coerceNumber(
-        visualisation.circularOffset,
-        defaultUserSettings.visualisation.circularOffset,
-      );
-    }
-
-    if ("futureLeadSeconds" in visualisation) {
-      visualisationPatch.futureLeadSeconds = coerceNumber(
-        visualisation.futureLeadSeconds,
-        defaultUserSettings.visualisation.futureLeadSeconds,
-      );
-    }
-
-    if ("digitalLaneGap" in visualisation) {
-      visualisationPatch.digitalLaneGap = coerceNumber(
-        visualisation.digitalLaneGap,
-        defaultUserSettings.visualisation.digitalLaneGap,
-      );
-    }
-
-    if ("readabilityBlurRadius" in visualisation) {
-      visualisationPatch.readabilityBlurRadius = coerceNumber(
-        visualisation.readabilityBlurRadius,
-        defaultUserSettings.visualisation.readabilityBlurRadius,
-      );
-    }
-
-    if ("readabilityPadding" in visualisation) {
-      visualisationPatch.readabilityPadding = coerceNumber(
-        visualisation.readabilityPadding,
-        defaultUserSettings.visualisation.readabilityPadding,
-      );
-    }
-
-    if ("readabilityTintOpacity" in visualisation) {
-      visualisationPatch.readabilityTintOpacity = coerceNumber(
-        visualisation.readabilityTintOpacity,
-        defaultUserSettings.visualisation.readabilityTintOpacity,
-      );
-    }
-
-    if ("readabilityAlpha" in visualisation) {
-      visualisationPatch.readabilityAlpha = coerceNumber(
-        visualisation.readabilityAlpha,
-        defaultUserSettings.visualisation.readabilityAlpha,
-      );
-    }
-
-    if ("readabilityPasses" in visualisation) {
-      visualisationPatch.readabilityPasses = coerceNumber(
-        visualisation.readabilityPasses,
-        defaultUserSettings.visualisation.readabilityPasses,
-      );
-    }
-
-    if ("readabilityFeather" in visualisation) {
-      visualisationPatch.readabilityFeather = coerceNumber(
-        visualisation.readabilityFeather,
-        defaultUserSettings.visualisation.readabilityFeather,
-      );
-    }
-
-    if ("readabilityMaxDarken" in visualisation) {
-      visualisationPatch.readabilityMaxDarken = coerceNumber(
-        visualisation.readabilityMaxDarken,
-        defaultUserSettings.visualisation.readabilityMaxDarken,
-      );
-    }
-
-    if ("readabilityDebounceMs" in visualisation) {
-      visualisationPatch.readabilityDebounceMs = coerceNumber(
-        visualisation.readabilityDebounceMs,
-        defaultUserSettings.visualisation.readabilityDebounceMs,
-      );
-    }
-
-    if ("readabilityOverscan" in visualisation) {
-      visualisationPatch.readabilityOverscan = coerceNumber(
-        visualisation.readabilityOverscan,
-        defaultUserSettings.visualisation.readabilityOverscan,
-      );
-    }
-
-    if ("readabilityEnabled" in visualisation) {
-      visualisationPatch.readabilityEnabled = visualisation.readabilityEnabled !== false;
-    }
-
-    patch.visualisation = visualisationPatch;
+    patch.visualisation = extractVisualisationPatch(
+      user.visualisation as Record<string, unknown>,
+    );
   }
 
   if (isRecord(user.evalResults)) {
@@ -608,7 +322,6 @@ export function settingsPatchFromConfiguration(
 
 // ---------------------------------------------------------------------------
 // Configuration document validation & diff
-// (Migrated from src/runtime/configSchema.ts)
 // ---------------------------------------------------------------------------
 
 /**

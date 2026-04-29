@@ -6,7 +6,7 @@
  */
 
 import { defaultTheme } from "../editorDefaults.ts";
-import { themes } from "../../editors/themes.ts";
+import { themeNames } from "../themes.ts";
 import { isLocalStorageBypassedInStartupContext } from "../../runtime/startupContext.ts";
 import { load, loadRaw, save, saveRaw, remove, has, PERSISTENCE_KEYS } from "../persistence.ts";
 import type { AppSettings, AppSettingsPatch } from "./schema.ts";
@@ -16,7 +16,7 @@ import {
   mergeUserSettings,
   normalizeUserSettings,
 } from "./normalization.ts";
-import type { RuntimeSettingsSource } from "../../runtime/runtimeDiagnostics.ts";
+import type { RuntimeSettingsSource } from "../../contracts/runtimeTypes.ts";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -93,7 +93,6 @@ function migrateLegacySettings(): AppSettingsPatch {
 
   if (editorConfig) {
     try {
-      const themeNames = Object.keys(themes);
       const themeIndex = Number(editorConfig.currentTheme) % themeNames.length;
       migrated.editor = {
         ...editorConfig,
