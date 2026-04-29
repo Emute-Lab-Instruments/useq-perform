@@ -87,25 +87,31 @@ The 10–20 channel goal rests on the bytecode VM landing for users.
 SIGSEGV tests blocking the merge — `bd useq-perform-jut` — advance the pin,
 rebuild WASM, smoke-test). Tracked in `bd useq-perform-xbe`.
 
-### 2. WASM eval lives on the main thread; UI freezes are a function of channel count *(2026-04-29)*
+### 2. WASM eval on the main thread is now opt-out, not opt-in *(2026-04-29)*
 
-**What.** `localClock.tick()` runs at rAF, calls `resampleExpressions()`,
-which awaits `updateUseqWasmTime` and `evalOutputsInTimeWindow` in the same
-JS event loop as input handling and rendering. The `samplingInFlight` guard
-(`src/effects/localClock.ts:75`) coalesces frames but doesn't yield the
-thread. Baseline measurements (`history/2026-03-25-browser-profiling-baselines.md`)
-show `rebuild-all` averaging 4.7ms / max 9.4ms at 15 channels — already half a
-frame budget, and that's *before* any inline probes are visible.
+**What.** A worker-backed `WasmRuntimePort` landed via `useq-perform-nri`
+(commit `1a0871e`) behind the `?wasmInWorker=true` URL flag. With the flag
+set, sampling, eval, and transport commands all go through postMessage to
+`src/runtime/workers/wasmRuntime.worker.ts` — the main thread is freed.
+Probe batching from `useq-perform-d5r` (40× WASM-call reduction) makes the
+worker move much cheaper than it would have been per-sample.
 
-**Why it blocks the mission.** The 10–20 channel target is structurally
-unreachable while sampling and rendering share a thread, no matter how fast
-the bytecode VM lands. Probe expansion (`useq-perform-v10`) makes this worse:
-batching probes onto the main thread just shifts the spike shape. CodeMirror
-input latency degrades visibly at high channel counts.
+**What's still missing for "default on":**
+1. The probe sampler (`ProbeConfig.evalExpressionAtTimes`) still calls the
+   in-process WASM directly (`useq-perform-sw0`); with the flag on it
+   silently bypasses the worker.
+2. Diagnostics readback (`useq_last_diagnostics` /
+   `useq_active_diagnostics`) isn't piped across the worker boundary
+   (`useq-perform-cf4`); editor squiggles silently degrade with the flag on.
+3. `evalOutputsInTimeWindow` returns `Map<string, TimeSample[]>` via
+   structured-clone postMessage — at 15+ channels this may dominate
+   (`useq-perform-oxk`); transferable `Float64Array` companion path is the
+   fallback if profiling shows it.
 
-**Cost.** L (Web Worker + transferable buffers + serialise the WASM ABI
-across postMessage; `bd useq-perform-ano`/`nri` are tracked but blocked
-behind the VM merge above).
+Until those three close, `wasmInWorker` is dev-only and the channel-count
+goal is bounded by what the in-process path can handle.
+
+**Cost.** S each for the three follow-up beads above.
 
 ### 3. Visualisation rendering is 2D Canvas; render-frame becomes the second bottleneck at scale *(2026-04-29)*
 
@@ -138,20 +144,13 @@ version gating, and the post-handshake flow now have automated coverage
 in `src/transport/serialLifecycle.test.ts` (Stream C / `useq-perform-ln3`,
 2026-04-29) on top of the original `serialComms.test.ts`.
 
-Two slices remain open:
+One slice remains open:
 
-1. **Tests against the readiness probe.** The 3500ms hardcoded post-open
-   wait was replaced with an observed-readiness probe in `useq-perform-vig`
-   (Stream D-serial, 2026-04-29). Coverage of the probe loop — timeout
-   cases, retry behaviour, legacy-firmware fallback — still needs to be
-   written against the new contract.
-2. ~~**WASM-mode JSON-protocol parity.**~~ Resolved 2026-04-29 by
-   `useq-perform-pcx` (Stream F). WASM mode now goes through the same
-   `hello` / `stream-config` / `eval` / `ping` JSON shapes hardware does,
-   via `runtime/wasmJsonTransport.ts`. `WasmRuntimePort.evalCode` and
-   `sendTransportCommand` no longer call `wasmInterpreter` directly —
-   they flow through the in-memory engine. The runtime layer no longer
-   branches on "WASM vs hardware" for protocol-level concerns.
+- **Tests against the readiness probe.** The 3500ms hardcoded post-open
+  wait was replaced with an observed-readiness probe in `useq-perform-vig`
+  (Stream D-serial, 2026-04-29). Coverage of the probe loop — timeout
+  cases, retry behaviour, legacy-firmware fallback — still needs to be
+  written against the new contract (`useq-perform-0h2`).
 
 **Why it blocked the mission.** Browser-local WASM is **first-class**
 alongside hardware mode — both are the product. The asymmetry of having
