@@ -13,12 +13,34 @@ import {
   ensureCanvasGeometry,
   isVisPanelVisible,
 } from "../visualisation/serialVis";
+import {
+  drawSerialVisGL,
+  ensureGLCanvasGeometry,
+} from "../visualisation/serialVisGL";
+import { settings as settingsStore } from "../../utils/settingsStore";
+
+/**
+ * Read the renderer choice from settings on every paint so that toggling
+ * the dev-mode setting takes effect on the next frame without needing a
+ * reload.  Default to "canvas" if the field is missing or malformed —
+ * keeps the canonical 2D renderer the safe fallback.
+ */
+function activeRenderer(): "canvas" | "webgl" {
+  const r = settingsStore?.visualisation?.renderer;
+  return r === "webgl" ? "webgl" : "canvas";
+}
 
 // Wire the canvas renderer into the visualisation runtime.  The runtime
 // itself lives in `src/effects/` and is forbidden from importing `src/ui/`
-// directly, so this adapter registers the hook at module load.
+// directly, so this adapter registers the hook at module load.  The hook
+// dispatches to either renderer based on `visualisation.renderer`.
 registerVisualisationRenderHook({
   paint: () => {
+    if (activeRenderer() === "webgl") {
+      ensureGLCanvasGeometry();
+      drawSerialVisGL();
+      return;
+    }
     ensureCanvasGeometry();
     drawSerialVis();
   },
@@ -137,9 +159,16 @@ function applyVisibleVisualisationPanelState(
     panel.appendChild(canvas);
   }
 
-  const context = canvas.getContext("2d");
-  if (context) {
-    context.clearRect(0, 0, dimensions.width, dimensions.height);
+  // Only initialise the 2D context up front when the canvas renderer is
+  // selected.  Calling getContext("2d") locks the canvas to that
+  // surface, which would prevent the WebGL2 context from ever being
+  // acquired.  When WebGL is active the GL renderer takes care of its
+  // own clear/init.
+  if (activeRenderer() === "canvas") {
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.clearRect(0, 0, dimensions.width, dimensions.height);
+    }
   }
 }
 

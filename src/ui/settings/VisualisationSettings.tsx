@@ -1,6 +1,6 @@
 import type { VisualisationSettings as AppVisualisationSettings, AppSettings } from "../../lib/appSettings.ts";
 import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
-import { Section, SubGroup, FormRow, Checkbox, NumberInput, RangeInput } from "./FormControls";
+import { Section, SubGroup, FormRow, Checkbox, NumberInput, RangeInput, Select } from "./FormControls";
 import { serialVisChannels } from "../../lib/visualisationUtils.ts";
 
 export interface VisualisationSettingsProps {
@@ -35,6 +35,20 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
 
   return (
     <Section title="Visualisation">
+      <SubGroup label="Renderer (experimental)" level="advanced" defaultOpen={false}>
+        <FormRow label="Backend" level="advanced">
+          <Select
+            value={s().visualisation?.renderer ?? "canvas"}
+            options={[
+              { value: "canvas", label: "Canvas 2D (default)" },
+              { value: "webgl", label: "WebGL2 (experimental)" },
+            ]}
+            onChange={(val) =>
+              updateVisField("renderer", (val === "webgl" ? "webgl" : "canvas") as AppVisualisationSettings["renderer"])}
+          />
+        </FormRow>
+      </SubGroup>
+
       <SubGroup label="Waveform display">
         <FormRow label="Visible window duration">
           <RangeInput

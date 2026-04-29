@@ -114,8 +114,15 @@ no instanced draws. Inline probes have their own per-probe canvas painters.
 **Why it blocks the mission.** Even with a perfect VM and an off-thread
 sampler, a CPU path tracer caps perceived smoothness around the same channel
 count. A WebGL renderer is independent work that can land in parallel and
-both halve render cost and free CPU for sampling. `bd useq-perform-uq8` is
-filed; nothing has shipped.
+both halve render cost and free CPU for sampling.
+
+**Status.** `bd useq-perform-cqw` (Stream B) landed an experimental WebGL2
+painter (`src/ui/visualisation/serialVisGL.ts`) registered as an alternative
+`VisualisationRenderHook`, gated behind a devmode setting (`visualisation.renderer`).
+Default remains `"canvas"` until parity (visual fidelity, line-width on browsers
+that ignore WebGL `lineWidth>1`, performance vs the current 2D path at 15+
+channels) is validated. Inline probes still use per-probe 2D canvases — separate
+follow-up work.
 
 **Cost.** M-L (single shader path for analog lanes, separate digital-lane
 path; the data already arrives as `Float64Array` so most plumbing is done).

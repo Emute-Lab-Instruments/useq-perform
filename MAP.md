@@ -87,7 +87,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `keybindings/` — `KeybindingsPanel.tsx`, `KeyboardVisualiser.tsx`, `ActionPalette.tsx`, `ModifierHints.tsx`.
   - `console/` — `ConsolePanel.tsx` REPL/log panel + CSS.
   - `panel-chrome/` — drawer/pane/tile chrome primitives + CSS.
-  - `visualisation/` — `serialVis.ts` (canvas 2D render loop). Sampling/state live in `effects/visualisationSampler.ts` and `utils/visualisationStore.ts`.
+  - `visualisation/` — `serialVis.ts` (canvas 2D painter, default) and `serialVisGL.ts` (WebGL2 painter, devmode-gated). Both register as `VisualisationRenderHook` via `adapters/visualisationPanel.ts`. Sampling/state live in `effects/visualisationSampler.ts` and `utils/visualisationStore.ts`.
   - `styles/` — all app CSS (entry: `index.css`).
 - `src/utils/` — SolidJS reactive stores and small helpers.
   - `settingsStore.ts` — reactive mirror of `appSettingsRepository`.
