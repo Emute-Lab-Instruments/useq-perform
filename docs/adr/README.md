@@ -9,4 +9,4 @@ These architecture decision records capture the repo-shape decisions that should
 - `0003-archive-boundaries.md`
   Which historical docs, heartbeat artifacts, and helper scripts are archive-only.
 
-Read `docs/REPO_MAP.md` first, then use the ADRs here to understand why those boundaries exist.
+Read `MAP.md` (terse codebase index) and `ALIGNMENT.md` (opinionated diagnosis) at the repo root first, then use the ADRs here to understand why the structural boundaries exist.

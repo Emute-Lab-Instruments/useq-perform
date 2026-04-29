@@ -1,8 +1,8 @@
 # Stable Core And Compatibility Cuts
 
-This document is the Wave 1 scope decision for the `useq-perform` reset. It defines the product surface that must survive near-term cleanup and the surfaces that should not receive accidental compatibility protection.
+This document defines the product surface `useq-perform` is committed to keeping working, and the surfaces that should not receive accidental compatibility protection.
 
-It is intentionally narrower than "everything currently in the repo". Downstream cleanup issues should cite this file instead of inferring scope from stale docs, unmounted components, or leftover migration seams.
+It is intentionally narrower than "everything currently in the repo". Cleanup work should cite this file when justifying what to keep versus prune. Strategic gaps and current diagnoses live in `ALIGNMENT.md`, not here.
 
 ## Current Product Shape
 
@@ -12,7 +12,7 @@ It is intentionally narrower than "everything currently in the repo". Downstream
 
 ## Stable Core
 
-The reset must preserve these workflows:
+These workflows are committed product surface and must keep working:
 
 1. Open the app, edit code, and evaluate expressions from the main editor.
 2. Use transport controls that map to the shared runtime contract in `src/contracts/useqRuntimeContract.ts`.
@@ -73,11 +73,9 @@ These can change shape, move UI, or disappear from the live bundle if the debugg
 - Any ambiguous or desynchronised hybrid state where hardware and WASM are both present but the app cannot clearly tell which runtime is authoritative for a given action or status indicator.
 - Any assumption that `connectedToModule` means "real hardware is attached".
 
-Issue `useq-perform-tgf.1.3` should use this decision to split runtime modes cleanly.
-
 ## Storage And URL Compatibility Promises
 
-### Hard compatibility promises for the reset
+### Hard compatibility promises
 
 - `localStorage["uSEQ-Perform-User-Settings"]`
 - `localStorage["uSEQ-Perform-User-Code"]`
@@ -119,7 +117,7 @@ These should keep working unless the corresponding help/reference/snippet surfac
 
 ### Contain
 
-- Legacy text serial protocol: keep it only as a compatibility bridge while the runtime contract reset lands. It is not the target architecture and should not block simplification aimed at the `1.2.0+` JSON path.
+- Legacy text serial protocol: keep it only as a compatibility bridge for pre-`1.2.0` firmware. It is not the target architecture and should not block simplification aimed at the `1.2.0+` JSON path.
 - `?noModuleMode=true`: keep it only as a development/debugging escape hatch, not as a release-facing compatibility promise.
 - `?devmode=true`: keep the flag, but treat the panel/UI as internal tooling rather than a stable public surface.
 - Visualisation sourced from live serial data: support it as an observation mode, but do not treat future-looking or time-seeking features as compatibility requirements for that path.
@@ -130,15 +128,13 @@ These should keep working unless the corresponding help/reference/snippet surfac
 - MIDI setup and related browser permissions.
 - Desktop / Electron assumptions.
 - Virtual gamepad support.
-- Unmounted console-panel residue and similar dead panel shells.
-- Any requirement to preserve duplicate runtime ownership between legacy and modern UI layers.
-
-Issue `useq-perform-tgf.1.5` should use this list to prune dead or misleading surfaces.
+- Any retained duplication of runtime ownership across UI layers; one runtime fan-out path only.
 
 ## Canonical References
 
-- Repo entry guide and file map: `docs/REPO_MAP.md`.
-- Product scope and reset boundary: this document.
+- Terse codebase index: `MAP.md` (repo root).
+- Opinionated diagnosis of current gaps: `ALIGNMENT.md` (repo root).
+- Product scope and compatibility boundary: this document.
 - Runtime and firmware/WASM contract: `docs/RUNTIME_CONTRACT.md`.
 - Serial framing and JSON message shapes: `docs/PROTOCOL.md`.
 - Authoritative firmware/WASM source of truth: the pinned `src-useq/` submodule commit reported by `npm run src-useq:status`.

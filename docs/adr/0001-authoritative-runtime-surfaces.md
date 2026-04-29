@@ -15,19 +15,13 @@ The canonical surfaces for ongoing work are:
 - Editor-facing runtime contract: `docs/RUNTIME_CONTRACT.md`
 - Serial protocol details: `docs/PROTOCOL.md`
 - Production startup path: `src/main.ts`, `src/runtime/bootstrap.ts`
-- Startup and runtime ownership: `src/runtime/bootstrap.ts` (includes former `bootstrapPlan.ts`), `src/runtime/runtimeService.ts`, `src/runtime/runtimeSession.ts`, `src/runtime/runtimeDiagnostics.ts`
-- Runtime contract definitions: `src/runtime/jsonProtocol.ts`, `src/contracts/useqRuntimeContract.ts`, `src/contracts/runtimeEvents.ts`
-- Settings ownership: `src/lib/appSettings.ts` (schema, defaults, normalization, persistence), `src/runtime/appSettingsRepository.ts` (runtime state, subscription, bootstrap orchestration), `src/runtime/urlParams.ts` (startup flag parsing), `src/lib/settings/normalization.ts` (validation)
+- Startup and runtime ownership: `src/runtime/bootstrap.ts` (also covers startup-mode selection, formerly `bootstrapPlan.ts`), `src/runtime/runtimeService.ts` plus the split services (`runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts`), `src/runtime/runtimeSession.ts`, `src/runtime/runtimeDiagnostics.ts`
+- Runtime contract definitions: `src/runtime/jsonProtocol.ts` (in-runtime helpers), `src/transport/json-protocol.ts` (wire driver), `src/contracts/useqRuntimeContract.ts`, `src/contracts/runtimeChannels.ts`, `src/contracts/runtimeTypes.ts`
+- Settings ownership: `src/lib/settings/` (schema, normalization, persistence; `src/lib/appSettings.ts` is now a thin re-export shim), `src/runtime/appSettingsRepository.ts` (runtime state, subscription, bootstrap orchestration), `src/runtime/startupContext.ts` (startup flag parsing — incorporates former `urlParams.ts`)
 - Firmware and WASM source of truth: the pinned `src-useq/` submodule reported by `npm run src-useq:status`
-
-Transitional adapters remain real runtime code, but they are not canonical owners:
-
-- `src/runtime/runtimeService.ts` (formerly `legacyRuntimeAdapter.ts`, now inlined)
-- `src/utils/settingsStore.ts`
-- `src/ui/visualisation/visualisationController.ts`
 
 ## Consequences
 
-- New repo guidance should link to `docs/REPO_MAP.md` and this ADR pack instead of re-explaining architecture ad hoc.
+- New repo guidance should link to `MAP.md` (terse index) and this ADR pack instead of re-explaining architecture ad hoc.
 - Cleanup work should consolidate ownership toward the canonical files above instead of promoting additional legacy globals or duplicate stores.
 - Audit artifacts under `history/` can inform work, but they do not override the canonical sources listed here.

@@ -20,6 +20,6 @@ These surfaces may preserve useful context, but they are not canonical instructi
 
 ## Consequences
 
-- Current workflow guidance should point contributors at `README.md`, `docs/REPO_MAP.md`, and the live docs in `docs/`.
+- Current workflow guidance should point contributors at `README.md`, `MAP.md`, `ALIGNMENT.md`, and the live docs in `docs/`.
 - Historical scripts or reports can stay in the repo without silently redefining the supported architecture.
 - When a historical artifact still matters, future work should promote the relevant fact into a live doc or test instead of linking back to the archive forever.
