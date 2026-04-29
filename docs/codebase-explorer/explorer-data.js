@@ -289,14 +289,14 @@ export const FLOW_PRESETS = [
     desc: 'UI change → persist → propagate to all consumers',
     nodes: [
       { id: 'ui/settings/SettingsPanel', note: 'User changes a setting' },
-      { id: 'utils/settingsStore', note: 'updateSettingsStore()' },
+      { id: 'utils/settingsStore', note: 'requestSettingsUpdate()' },
       { id: 'runtime/appSettingsRepository', note: 'updateAppSettings()' },
       { id: 'lib/appSettings', note: 'mergeUserSettings + normalize' },
       { id: 'runtime/runtimeService', note: 'updateRuntimeSettingsEffect()' },
       { id: 'runtime/runtimeSessionStore', note: 'Session recomputed' },
     ],
     edgeLabels: [
-      'updateSettingsStore()', 'updateAppSettings()', 'merge + persist(localStorage)', 'dispatchSettingsChanged()', 'updateRuntimeSessionState()'
+      'requestSettingsUpdate()', 'updateAppSettings()', 'merge + persist(localStorage)', 'dispatchSettingsChanged()', 'updateRuntimeSessionState()'
     ]
   },
   {

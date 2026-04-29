@@ -8,7 +8,7 @@ Five SolidJS stores hold all reactive UI state. All are in `src/utils/`.
 
 | Store | Type | Mutated via | Nesting |
 |-------|------|-------------|---------|
-| `settings` | `AppSettings` | `updateSettingsStore()` -> `runtimeService` | 2 levels (section.leaf) |
+| `settings` | `AppSettings` | `requestSettingsUpdate()` -> `runtimeService` | 2 levels (section.leaf) |
 | `visStore` | `VisualisationState` | Named mutation functions in `visualisationStore.ts` | 3-4 levels (expressions have samples) |
 | `consoleStore` | `ConsoleState` | `addConsoleMessage()`, `clearConsole()` | 2 levels |
 | `referenceStore` | Reference data | `toggleStarred()`, `toggleExpanded()`, `setTargetVersion()` | 2 levels (items are read-only) |
@@ -28,7 +28,7 @@ settings
   .keymaps?                       Record<string, string>
 ```
 
-**Mutation surface**: `updateSettingsStore(patch)` -> `runtimeService.updateSettings()` -> `appSettingsRepository` (normalises, persists to localStorage) -> publishes `settingsChanged` channel -> `settingsStore` subscribes, calls `setSettings(reconcile(...))`.
+**Mutation surface**: `requestSettingsUpdate(patch)` -> `runtimeService.updateSettings()` -> `appSettingsRepository` (normalises, persists to localStorage) -> publishes `settingsChanged` channel -> `settingsStore` subscribes, calls `setSettings(reconcile(...))`.
 
 ### visStore (VisualisationState)
 
@@ -153,7 +153,7 @@ CodeMirror edit
 
 ```
 Settings panel event handler
-  -> updateSettingsStore(patch)
+  -> requestSettingsUpdate(patch)
   -> runtimeService.updateSettings()
   -> appSettingsRepository (normalise, persist to localStorage)
   -> settingsChanged channel
