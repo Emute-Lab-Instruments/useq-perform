@@ -56,7 +56,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `appSettingsRepository.ts` — canonical settings store (non-reactive). Mirrored into `settingsStore` via `settingsChanged` channel.
   - `wasmInterpreter.ts` — WASM module load, ABI validation, eval/sample bindings, diagnostics readback.
   - `runtimeDiagnostics.ts` — startup/environment diagnostics surface.
-  - `startupContext.ts`, `urlParams.ts` — URL flag parsing and bootstrap context.
+  - `startupContext.ts` — URL flag parsing and bootstrap context (incorporates the former `urlParams.ts`).
   - `configManager.ts` + `default-config.json` — internal dev tooling for config import/export (paired with `scripts/config-server.mjs`).
   - `jsonProtocol.ts` — lightweight in-runtime helpers (distinct from `transport/json-protocol.ts`).
 - `src/effects/` — composable side-effect modules. Framework-agnostic where possible.
@@ -130,7 +130,6 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - [docs/USER_GUIDE_SPEC.md](docs/USER_GUIDE_SPEC.md) — in-app user guide design.
 - [docs/BEADS_BACKEND.md](docs/BEADS_BACKEND.md) — bd / Dolt backend setup.
 - [docs/adr/](docs/adr/) — architectural decisions (`0001` runtime surfaces, `0002` config-manager scope, `0003` archive boundaries).
-- [docs/REPO_MAP.md](docs/REPO_MAP.md) — predecessor of this file; partially drifted, retained for the read-order list at its top.
 - [src-useq/docs/ERROR_HANDLING_SPEC.md](src-useq/docs/ERROR_HANDLING_SPEC.md) — diagnostic system contract.
 - [inspector/CLAUDE.md](inspector/CLAUDE.md) — Inspector agent guide.
 
