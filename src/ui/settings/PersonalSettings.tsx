@@ -1,4 +1,4 @@
-import { settings as globalSettings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { Section, FormRow, TextInput } from "./FormControls";
 import type { AppSettings } from "../../lib/appSettings.ts";
 
@@ -10,7 +10,7 @@ export interface PersonalSettingsProps {
 export function PersonalSettings(props: PersonalSettingsProps = {}) {
   const s = () => props.settings ?? globalSettings;
   const update = (patch: Record<string, unknown>) =>
-    (props.onUpdateSettings ?? updateSettingsStore)(patch);
+    (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
 
   return (
     <Section title="Personal Settings">

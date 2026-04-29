@@ -1,5 +1,5 @@
 import type { VisualisationSettings as AppVisualisationSettings, AppSettings } from "../../lib/appSettings.ts";
-import { settings as globalSettings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { Section, SubGroup, FormRow, Checkbox, NumberInput, RangeInput } from "./FormControls";
 import { serialVisChannels } from "../../lib/visualisationUtils.ts";
 
@@ -11,7 +11,7 @@ export interface VisualisationSettingsProps {
 export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
   const s = () => props.settings ?? globalSettings;
   const update = (patch: Record<string, unknown>) =>
-    (props.onUpdateSettings ?? updateSettingsStore)(patch);
+    (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
 
   const updateVisField = <K extends keyof AppVisualisationSettings>(
     field: K,

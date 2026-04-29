@@ -29,10 +29,6 @@ function SettingsSearchWrapper() {
       onResetSettings={() => {
         console.log('[Storybook] Reset settings (no-op)');
       }}
-      getSettingsSnapshot={() => settings}
-      onImportSettings={(data) => {
-        console.log('[Storybook] Import settings:', data);
-      }}
       onReload={() => {
         console.log('[Storybook] Reload requested (no-op)');
       }}

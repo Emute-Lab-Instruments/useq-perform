@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, within } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { updateSettingsStore } = vi.hoisted(() => ({
-  updateSettingsStore: vi.fn(),
+const { requestSettingsUpdate } = vi.hoisted(() => ({
+  requestSettingsUpdate: vi.fn(),
 }));
 
 vi.mock("../../utils/settingsStore", () => ({
@@ -22,7 +22,7 @@ vi.mock("../../utils/settingsStore", () => ({
       digitalLaneGap: 4,
     },
   },
-  updateSettingsStore,
+  requestSettingsUpdate,
 }));
 
 vi.mock("../../lib/visualisationUtils.ts", () => ({
@@ -60,7 +60,7 @@ function getRowInput(label: string): HTMLInputElement {
 
 describe("VisualisationSettings", () => {
   beforeEach(() => {
-    updateSettingsStore.mockClear();
+    requestSettingsUpdate.mockClear();
   });
 
   it("renders canonical visualisation controls", () => {
@@ -81,7 +81,7 @@ describe("VisualisationSettings", () => {
       target: { value: "6.5" },
     });
 
-    expect(updateSettingsStore).toHaveBeenCalledWith({
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
       visualisation: expect.objectContaining({
         windowDuration: 6.5,
         futureLeadSeconds: 1,
@@ -89,7 +89,7 @@ describe("VisualisationSettings", () => {
         probeSampleCount: 40,
       }),
     });
-    expect(updateSettingsStore.mock.calls[0][0].visualisation.offsetSeconds).toBeUndefined();
+    expect(requestSettingsUpdate.mock.calls[0][0].visualisation.offsetSeconds).toBeUndefined();
   });
 
   it("updates futureLeadSeconds through the dedicated control", () => {
@@ -100,7 +100,7 @@ describe("VisualisationSettings", () => {
       target: { value: "2.5" },
     });
 
-    expect(updateSettingsStore).toHaveBeenCalledWith({
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
       visualisation: expect.objectContaining({
         futureLeadSeconds: 2.5,
         windowDuration: 10,
@@ -117,18 +117,18 @@ describe("VisualisationSettings", () => {
       target: { value: "2.4" },
     });
 
-    expect(updateSettingsStore).toHaveBeenCalledWith({
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
       visualisation: expect.objectContaining({
         probeLineWidth: 2.4,
       }),
     });
 
-    updateSettingsStore.mockClear();
+    requestSettingsUpdate.mockClear();
     fireEvent.input(getRowInput("Probe sample count"), {
       target: { value: "60" },
     });
 
-    expect(updateSettingsStore).toHaveBeenCalledWith({
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
       visualisation: expect.objectContaining({
         probeSampleCount: 60,
       }),
@@ -143,7 +143,7 @@ describe("VisualisationSettings", () => {
       target: { value: "20" },
     });
 
-    expect(updateSettingsStore).toHaveBeenCalledWith({
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
       visualisation: expect.objectContaining({
         probeRefreshIntervalMs: 50,
       }),

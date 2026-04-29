@@ -50,6 +50,7 @@ export default function ScenarioViewer(props: ScenarioViewerProps) {
         ref={iframeRef}
         class="scenario-iframe"
         src="./scenario-runner.html"
+        tabIndex={-1}
         onLoad={handleIframeLoad}
       />
     </div>

@@ -1,4 +1,4 @@
-import { settings as globalSettings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { Section, FormRow, Select, NumberInput, Checkbox } from "./FormControls";
 import { themes, setMainEditorTheme } from "../../editors/themes.ts";
 import { editor, applyEditorFontSize } from "../../lib/editorStore";
@@ -18,7 +18,7 @@ export interface EditorSettingsProps {
 export function EditorSettings(props: EditorSettingsProps = {}) {
   const s = () => props.settings ?? globalSettings;
   const update = (patch: Record<string, unknown>) =>
-    (props.onUpdateSettings ?? updateSettingsStore)(patch);
+    (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
 
   const themeOptions = () =>
     (props.themeNames ?? Object.keys(themes)).map((themeName) => ({

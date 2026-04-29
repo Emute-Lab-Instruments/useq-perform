@@ -1,7 +1,5 @@
 import {
   resetSettings,
-  getSettings,
-  updateSettings,
 } from "../../runtime/runtimeService.ts";
 import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore.ts";
 import { settingsQuery, setSettingsQuery } from "./settingsSearch";
@@ -11,7 +9,7 @@ import { EvalResultsSettings } from "./EvalResultsSettings";
 import { StorageSettings } from "./StorageSettings";
 import { UISettings } from "./UISettings";
 import { VisualisationSettings } from "./VisualisationSettings";
-import { ConfigurationManagement } from "./ConfigurationManagement";
+import { ConfigurationManagement, handleSettingsExport, handleSettingsImport } from "./ConfigurationManagement";
 import { ConsoleSettings } from "./ConsoleSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { onCleanup } from "solid-js";
@@ -24,10 +22,6 @@ export interface GeneralSettingsProps {
   onUpdateSettings?: (patch: Record<string, unknown>) => void;
   /** Callback to reset all settings. Defaults to runtimeService.resetSettings. */
   onResetSettings?: () => void;
-  /** Callback to get the current settings snapshot for export. Defaults to runtimeService.getSettings. */
-  getSettingsSnapshot?: () => AppSettings;
-  /** Callback to apply bulk-imported settings. Defaults to runtimeService.updateSettings. */
-  onImportSettings?: (data: unknown) => void;
   /** Callback invoked after reset or import when a page reload is needed. Defaults to window.location.reload. */
   onReload?: () => void;
 }
@@ -36,6 +30,7 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
   const s = () => props.settings ?? globalSettings;
   const update = (patch: Record<string, unknown>) =>
     (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
+  const reload = () => (props.onReload ?? (() => window.location.reload()))();
 
   // Clear search when leaving the settings panel
   onCleanup(() => setSettingsQuery(""));
@@ -43,45 +38,8 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
   const handleReset = () => {
     if (confirm("Are you sure you want to reset all settings to default values?")) {
       (props.onResetSettings ?? resetSettings)();
-      (props.onReload ?? (() => window.location.reload()))();
+      reload();
     }
-  };
-
-  const handleExport = () => {
-    const snapshot = (props.getSettingsSnapshot ?? getSettings)();
-    const data = JSON.stringify(snapshot, null, 2);
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `useq-settings-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImport = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json,application/json";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-        if (typeof parsed !== "object" || parsed === null) {
-          alert("Invalid settings file: expected a JSON object.");
-          return;
-        }
-        if (confirm("Apply imported settings? The page will reload.")) {
-          (props.onImportSettings ?? updateSettings)(parsed);
-          (props.onReload ?? (() => window.location.reload()))();
-        }
-      } catch (e) {
-        alert(`Failed to read settings file:\n${e instanceof Error ? e.message : String(e)}`);
-      }
-    };
-    input.click();
   };
 
   return (
@@ -104,14 +62,14 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
       <UISettings settings={s()} onUpdateSettings={update} />
       <VisualisationSettings settings={s()} onUpdateSettings={update} />
       <AdvancedSettings settings={s()} onUpdateSettings={update} />
-      <ConfigurationManagement />
+      <ConfigurationManagement onReload={reload} />
 
       <div class="settings-footer">
         <div class="settings-footer-group">
-          <button class="panel-button" onClick={handleExport}>
+          <button class="panel-button" onClick={handleSettingsExport()}>
             Export settings
           </button>
-          <button class="panel-button" onClick={handleImport}>
+          <button class="panel-button" onClick={handleSettingsImport(reload)}>
             Import settings
           </button>
         </div>

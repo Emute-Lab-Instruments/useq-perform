@@ -1,8 +1,8 @@
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { updateSettingsStore } = vi.hoisted(() => ({
-  updateSettingsStore: vi.fn(),
+const { requestSettingsUpdate } = vi.hoisted(() => ({
+  requestSettingsUpdate: vi.fn(),
 }));
 
 vi.mock("../../utils/settingsStore", () => ({
@@ -13,7 +13,7 @@ vi.mock("../../utils/settingsStore", () => ({
     },
     wasm: { enabled: true },
   },
-  updateSettingsStore,
+  requestSettingsUpdate,
 }));
 
 import { AdvancedSettings } from "./AdvancedSettings";
@@ -29,7 +29,7 @@ function expandSections() {
 
 describe("AdvancedSettings", () => {
   beforeEach(() => {
-    updateSettingsStore.mockClear();
+    requestSettingsUpdate.mockClear();
   });
 
   it("renders WASM interpreter toggle", () => {
@@ -49,7 +49,7 @@ describe("AdvancedSettings", () => {
     expandSections();
     const checkbox = screen.getAllByRole("checkbox")[0];
     fireEvent.input(checkbox, { target: { checked: false } });
-    expect(updateSettingsStore).toHaveBeenCalledWith({
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
       runtime: {
         autoReconnect: false,
         startLocallyWithoutHardware: true,
@@ -62,7 +62,7 @@ describe("AdvancedSettings", () => {
     expandSections();
     const checkbox = screen.getAllByRole("checkbox")[1];
     fireEvent.input(checkbox, { target: { checked: false } });
-    expect(updateSettingsStore).toHaveBeenCalledWith({
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
       runtime: {
         autoReconnect: true,
         startLocallyWithoutHardware: false,
@@ -75,7 +75,7 @@ describe("AdvancedSettings", () => {
     expandSections();
     const checkbox = screen.getAllByRole("checkbox")[2];
     fireEvent.input(checkbox, { target: { checked: false } });
-    expect(updateSettingsStore).toHaveBeenCalledWith({
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
       wasm: { enabled: false },
     });
   });

@@ -5,8 +5,18 @@ import { bracketMatching } from "@codemirror/language";
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 import { themes, setMainEditorTheme } from "../../editors/themes.ts";
 import { defaultThemeEditorStartingCode } from "../../lib/editorDefaults.ts";
-import { settings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { hideChromePanel } from "../adapters/panels";
+import type { AppSettings } from "../../lib/appSettings.ts";
+
+export interface ThemeSettingsProps {
+  settings?: AppSettings;
+  onUpdateSettings?: (patch: Record<string, unknown>) => void;
+  /** Side-effect: apply theme to the main editor. Defaults to setMainEditorTheme. */
+  onApplyTheme?: (theme: string) => void;
+  /** Side-effect: close the settings panel after selection. Defaults to hideChromePanel("settings"). */
+  onClosePanel?: () => void;
+}
 
 /** Lightweight read-only extensions for theme preview cards. */
 const previewBaseExtensions: Extension[] = [
@@ -26,7 +36,12 @@ const previewBaseExtensions: Extension[] = [
   EditorState.readOnly.of(true),
 ];
 
-function ThemePreview(props: { themeName: string; themeExtension: Extension }) {
+function ThemePreview(props: {
+  themeName: string;
+  themeExtension: Extension;
+  settings: () => AppSettings;
+  onSelect: (theme: string) => void;
+}) {
   let editorParent: HTMLDivElement | undefined;
   let view: EditorView | undefined;
 
@@ -48,36 +63,45 @@ function ThemePreview(props: { themeName: string; themeExtension: Extension }) {
     view?.destroy();
   });
 
-  const isActive = () => settings.editor?.theme === props.themeName;
-
-  const handleClick = () => {
-    updateSettingsStore({
-      editor: {
-        ...settings.editor,
-        theme: props.themeName,
-      },
-    });
-    setMainEditorTheme(props.themeName);
-
-    // Close the settings panel using adapter API
-    hideChromePanel("settings");
-  };
+  const isActive = () => props.settings().editor?.theme === props.themeName;
 
   return (
-    <div class="theme-preview panel-section" classList={{ active: isActive() }} onClick={handleClick}>
+    <div class="theme-preview panel-section" classList={{ active: isActive() }} onClick={() => props.onSelect(props.themeName)}>
       <div class="theme-name">{props.themeName}</div>
       <div ref={editorParent} style={{ "max-height": "180px", overflow: "hidden", "border-radius": "4px" }} />
     </div>
   );
 }
 
-export function ThemeSettings() {
+export function ThemeSettings(props: ThemeSettingsProps = {}) {
+  const s = () => props.settings ?? globalSettings;
+  const update = (patch: Record<string, unknown>) =>
+    (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
+  const applyTheme = props.onApplyTheme ?? setMainEditorTheme;
+  const closePanel = props.onClosePanel ?? (() => hideChromePanel("settings"));
+
+  const handleSelect = (themeName: string) => {
+    update({
+      editor: {
+        ...s().editor,
+        theme: themeName,
+      },
+    });
+    applyTheme(themeName);
+    closePanel();
+  };
+
   return (
     <div class="panel-tab-content themes-container" id="panel-settings-themes">
       <h2 class="panel-section-title">Select a Theme</h2>
       <For each={Object.entries(themes)}>
         {([themeName, themeExtension]) => (
-          <ThemePreview themeName={themeName} themeExtension={themeExtension} />
+          <ThemePreview
+            themeName={themeName}
+            themeExtension={themeExtension}
+            settings={s}
+            onSelect={handleSelect}
+          />
         )}
       </For>
     </div>

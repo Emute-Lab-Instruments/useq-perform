@@ -21,8 +21,6 @@ function GeneralSettingsWrapper() {
       settings={settings}
       onUpdateSettings={handleUpdate}
       onResetSettings={() => {}}
-      getSettingsSnapshot={() => settings}
-      onImportSettings={() => {}}
       onReload={() => {}}
     />
   );

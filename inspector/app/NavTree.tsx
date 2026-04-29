@@ -33,6 +33,15 @@ export default function NavTree(props: NavTreeProps) {
     });
   }
 
+  function selectOrToggle(node: NavTreeNode) {
+    if (node.scenario) {
+      props.onSelect(node.id);
+    } else if (node.children) {
+      toggleExpanded(node.id);
+      props.onSelect(node.id);
+    }
+  }
+
   function handleKeyDown(e: KeyboardEvent) {
     const visible = flattenVisible(props.nodes);
     const currentIdx = visible.findIndex(n => n.id === focusedId());
@@ -41,13 +50,17 @@ export default function NavTree(props: NavTreeProps) {
       case 'ArrowDown': {
         e.preventDefault();
         const next = Math.min(currentIdx + 1, visible.length - 1);
-        setFocusedId(visible[next].id);
+        const node = visible[next];
+        setFocusedId(node.id);
+        selectOrToggle(node);
         break;
       }
       case 'ArrowUp': {
         e.preventDefault();
         const prev = Math.max(currentIdx - 1, 0);
-        setFocusedId(visible[prev].id);
+        const node = visible[prev];
+        setFocusedId(node.id);
+        selectOrToggle(node);
         break;
       }
       case 'ArrowRight': {
@@ -69,11 +82,7 @@ export default function NavTree(props: NavTreeProps) {
       case 'Enter': {
         e.preventDefault();
         const node = visible[currentIdx];
-        if (node?.scenario) {
-          props.onSelect(node.id);
-        } else if (node?.children) {
-          toggleExpanded(node.id);
-        }
+        if (node) selectOrToggle(node);
         break;
       }
     }
@@ -103,6 +112,7 @@ export default function NavTree(props: NavTreeProps) {
               props.onSelect(nodeProps.node.id);
             } else if (nodeProps.node.children) {
               toggleExpanded(nodeProps.node.id);
+              props.onSelect(nodeProps.node.id);
             }
           }}
         >
@@ -125,8 +135,24 @@ export default function NavTree(props: NavTreeProps) {
     );
   }
 
+  let treeRef: HTMLUListElement | undefined;
+
+  // Reclaim focus when the iframe (CodeMirror) steals it
+  function handleFocusOut(e: FocusEvent) {
+    // If focus left the tree entirely (e.g. into iframe), reclaim it
+    if (treeRef && !treeRef.contains(e.relatedTarget as Node)) {
+      // Delay to let the browser settle — iframe focus is async
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body ||
+            document.activeElement?.tagName === 'IFRAME') {
+          treeRef!.focus();
+        }
+      });
+    }
+  }
+
   return (
-    <ul class="nav-tree" tabIndex={0} onKeyDown={handleKeyDown}>
+    <ul class="nav-tree" ref={treeRef} tabIndex={0} onKeyDown={handleKeyDown} onFocusOut={handleFocusOut}>
       <For each={props.nodes}>
         {(node) => <TreeNode node={node} depth={0} />}
       </For>

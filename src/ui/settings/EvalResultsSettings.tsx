@@ -1,4 +1,4 @@
-import { settings as globalSettings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { Section, FormRow, Select, NumberInput, Checkbox } from "./FormControls";
 import type { AppSettings } from "../../lib/appSettings.ts";
 
@@ -17,7 +17,7 @@ export interface EvalResultsSettingsProps {
 export function EvalResultsSettings(props: EvalResultsSettingsProps = {}) {
   const s = () => props.settings ?? globalSettings;
   const update = (patch: Record<string, unknown>) =>
-    (props.onUpdateSettings ?? updateSettingsStore)(patch);
+    (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
 
   const current = () => s().evalResults ?? {
     mode: "inline-ephemeral",

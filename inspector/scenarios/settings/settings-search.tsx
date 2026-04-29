@@ -39,10 +39,6 @@ export default defineScenario({
           onResetSettings={() => {
             console.log('[Inspector] Reset settings (no-op)');
           }}
-          getSettingsSnapshot={() => settings}
-          onImportSettings={(data) => {
-            console.log('[Inspector] Import settings:', data);
-          }}
           onReload={() => {
             console.log('[Inspector] Reload requested (no-op)');
           }}

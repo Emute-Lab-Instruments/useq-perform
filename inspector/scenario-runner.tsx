@@ -16,6 +16,10 @@ const root = document.getElementById('scenario-root')!;
 // loads the scenario module itself to avoid postMessage serialization issues
 // (functions like render() can't be cloned across the iframe boundary).
 window.addEventListener('message', async (event: MessageEvent) => {
+  if (event.data?.type === 'set-gallery-mode') {
+    root.classList.toggle('gallery-mode', true);
+    return;
+  }
   if (event.data?.type !== 'render-scenario') return;
   const scenarioId: string = event.data.scenarioId;
 
@@ -64,7 +68,8 @@ window.addEventListener('message', async (event: MessageEvent) => {
       }
 
       const container = document.createElement('div');
-      container.style.height = '100%';
+      const isGallery = root.classList.contains('gallery-mode');
+      container.style.height = isGallery ? 'auto' : '100%';
       container.style.width = '100%';
       root.appendChild(container);
 
@@ -77,7 +82,9 @@ window.addEventListener('message', async (event: MessageEvent) => {
       root.innerHTML = '<div class="scenario-loading" style="color: #e0a040">No component or editor setup</div>';
     }
 
-    window.parent.postMessage({ type: 'scenario-rendered', id: scenarioId }, '*');
+    // Report content height so gallery can auto-size the iframe
+    const contentHeight = root.scrollHeight;
+    window.parent.postMessage({ type: 'scenario-rendered', id: scenarioId, contentHeight }, '*');
   } catch (err) {
     root.innerHTML = `<div class="scenario-loading" style="color: #e06060">Error: ${err instanceof Error ? err.message : String(err)}</div>`;
   }

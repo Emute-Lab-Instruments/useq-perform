@@ -7,20 +7,18 @@ describe("ConfigurationManagement", () => {
     const { container } = render(() => <ConfigurationManagement devmode={false} />);
 
     expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByText("Configuration Management")).toBeNull();
+    expect(screen.queryByText("Developer Tools")).toBeNull();
   });
 
-  it("renders the dev-only configuration controls in devmode", () => {
+  it("renders the dev-only promote-to-defaults control in devmode", () => {
     render(() => <ConfigurationManagement devmode />);
 
     // Title is always visible even when section is collapsed
-    expect(screen.getByText("Configuration Management")).toBeTruthy();
+    expect(screen.getByText("Developer Tools")).toBeTruthy();
 
     // Expand the section to reveal content
-    screen.getByText("Configuration Management").closest("button")?.click();
+    screen.getByText("Developer Tools").closest("button")?.click();
 
-    expect(screen.getByText("Internal dev tooling for exporting or importing configuration files. In dev mode with the config server running, configurations can also be written directly to the source tree.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "💾 Export Configuration" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "📥 Import Configuration" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Promote to Defaults" })).toBeTruthy();
   });
 });
