@@ -250,7 +250,7 @@ The editor enables all advertised channels by default. Firmware currently uses t
 
 ```
 connect
-  └─> sendTouSEQ("@(useq-report-firmware-info)", handleFirmwareInfo)
+  └─> probe firmware-info with retry (700 ms / attempt, ≤ 8 attempts)
         └─> firmware replies with version string (TEXT message)
               └─> versionAtLeast(fw, 1.2.0)?
                     yes ──> send hello request (timeout: 5 s)
@@ -259,7 +259,14 @@ connect
                               │   └─> start heartbeat (60 s)
                               └─ failure / timeout ──> legacy mode
                     no  ──> legacy mode
+        └─> all retries exhausted ──> error posted to console
 ```
+
+The firmware-info probe is sent immediately on port open; the connector
+waits for the device's text response rather than holding a fixed
+post-open delay. On a healthy device this resolves in tens of
+milliseconds; the worst-case budget (8 × ~800 ms) is reserved for slow
+or stuttering boots.
 
 ---
 

@@ -23,10 +23,9 @@ the rest run in parallel against the boundary it defines.
 - **C — Hardware-mode test coverage** *(parallel, independent)*. Issue 4.
   Expand fake-Serial harness to cover reconnect, bootloader, version
   gating.
-- **D — Settings reorg + doc sweep + serial-wait fix** *(parallel,
-  independent)*. Issues 5, 7, 8. devmode-gated settings split, prune
-  REPO_MAP.md and STABLE_CORE.md, replace 3500ms wait with observed
-  readiness.
+- **D — Settings reorg + doc sweep** *(parallel, independent)*. Issues
+  5, 7. devmode-gated settings split, prune REPO_MAP.md and
+  STABLE_CORE.md. (Serial-wait fix landed under `useq-perform-vig`.)
 - **F — WASM-mode protocol parity** *(parallel, independent)*. Bring
   `hello` + `stream-config` negotiation into the browser-local path so
   WASM is genuinely first-class.
@@ -125,9 +124,9 @@ path; the data already arrives as `Float64Array` so most plumbing is done).
 **What.** The transport layer (`src/transport/`, ~1600 LoC across `connector`,
 `json-protocol`, `stream-parser`) has exactly one test file:
 `serialComms.test.ts`. The actual Web Serial event wiring, auto-reconnect,
-saved-port matching, bootloader-mode handoff, and the 3500ms hardcoded
-post-open wait (`connector.ts:238`, tracked in `useq-perform-vig`) are
-exercised mostly by hand. Hardware mode also has no end-to-end contract
+saved-port matching, bootloader-mode handoff, and the firmware-info probe
+retry loop (`connector.ts`) are exercised mostly by hand. Hardware mode
+also has no end-to-end contract
 test — the WASM path gets `wasmAbi.test.ts` and a real-WASM instantiation
 test, the hardware path gets one mock-host suite.
 
@@ -219,19 +218,18 @@ re-accumulates within weeks.
 
 **What.** `bootstrap.ts:206` fires `ensureUseqWasmLoaded()` early
 ("eagerly start loading WASM"), but the resulting module is wired
-synchronously in the main thread on first use. The 3500ms post-open serial
-wait (`connector.ts:238`) is a separate, additive blocker on the hardware
-path. Together: cold start to first useful frame is dominated by waits
-that the architecture commits to rather than mitigates.
+synchronously in the main thread on first use, so cold-start to first
+useful frame is dominated by a wait that the architecture commits to
+rather than mitigates.
 
 **Why it blocks the mission.** Live-coding sessions are short-burst —
 "open browser, plug in, write something" — so startup latency is the most
 common UX. A worker-hosted WASM (defect 2) would also let the preload
 actually run *concurrently* with the rest of bootstrap.
 
-**Cost.** S on the serial wait (replace with observed-readiness, already
-tracked as `useq-perform-vig`); folded into defect 2 for the WASM
-threading half.
+**Cost.** Folded into defect 2 for the WASM threading half. (The
+companion 3500ms hardware-side serial-boot wait was replaced with an
+observed-readiness probe under `useq-perform-vig`.)
 
 ---
 
@@ -270,8 +268,6 @@ Known-not-to-be-fixed; recorded so future sessions don't re-relitigate.
 - **Legacy text serial protocol** — kept as a bridge for pre-1.2.0
   firmware while the JSON path is the target. Tracked in
   `STABLE_CORE.md` §Compatibility Cuts.
-- **3500ms hardcoded serial boot wait** — explicit residual debt
-  (`useq-perform-0v1`); the proper fix (`vig`) is queued.
 - **`?noModuleMode=true`, `?devmode=true`, mock controls/time, Storybook
   remnants** — internal tooling, can change shape without notice.
 - **Pre-existing `src-useq` test SIGSEGVs** (`useq-perform-jut`) — known,
