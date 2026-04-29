@@ -1,22 +1,13 @@
 import { Effect } from "effect";
 
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
-import { SHARED_TRANSPORT_COMMANDS } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
 import {
   publishRuntimeDiagnostics,
   type RuntimeProtocolMode,
 } from "./runtimeDiagnostics";
-import {
-  sendTouSEQ,
-} from "../transport/json-protocol.ts";
-import {
-  toggleConnect,
-} from "../transport/connector.ts";
-import {
-  evalInUseqWasm,
-  syncWasmTransportState as syncWasmTransportStateInInterpreter,
-} from "./wasmInterpreter.ts";
+import { webSerialHostPort } from "../transport/webSerialHostPort";
+import { wasmRuntimePort } from "./wasmRuntimePort";
 import {
   getRuntimeSessionState,
 } from "./runtimeSessionStore";
@@ -27,24 +18,37 @@ import {
 } from "./runtimeSession";
 import { syncRuntimeState } from "./runtimeSessionService";
 
-// ── Internal helpers ───────────────────────────────────────────
+// ── Active port resolution ─────────────────────────────────────
+//
+// "Which ports should this command go to right now?" used to be expressed as
+// branching on the derived TransportMode and calling transport/wasm modules
+// directly. With ports, the runtime layer owns a single helper that returns
+// the active set, and dispatch is just iteration.
+//
+// Each call resolves the set freshly from the session store, so we don't
+// cache stale port choices across connection-state changes.
 
-function parseTransportState(raw: string): TransportState | null {
-  const cleaned = raw.trim().replace(/"/g, "");
-  switch (cleaned) {
-    case "playing":
-    case "paused":
-    case "stopped":
-      return cleaned;
-    default:
-      return null;
-  }
+interface ActivePorts {
+  hardware: typeof webSerialHostPort | null;
+  wasm: typeof wasmRuntimePort | null;
+}
+
+function activePortsForSharedCommands(): ActivePorts {
+  const state = syncRuntimeState();
+  return {
+    hardware: supportsHardwareTransport(state.session.transportMode)
+      ? webSerialHostPort
+      : null,
+    wasm: supportsWasmTransport(state.session.transportMode)
+      ? wasmRuntimePort
+      : null,
+  };
 }
 
 // ── Transport orchestration ────────────────────────────────────
 
 export function toggleRuntimeConnection(): Promise<void> {
-  return toggleConnect();
+  return webSerialHostPort.toggleConnection();
 }
 
 export function resolveRuntimeTransportMode(): TransportMode {
@@ -63,22 +67,22 @@ export function reportProtocolModeChanged(
 
 export function sendRuntimeTransportCommand(command: SharedTransportCommand) {
   return Effect.gen(function* (_) {
-    const state = syncRuntimeState();
+    const ports = activePortsForSharedCommands();
     const effects = [];
 
-    if (supportsHardwareTransport(state.session.transportMode)) {
+    if (ports.hardware) {
       effects.push(
         Effect.tryPromise({
-          try: () => sendTouSEQ(command),
+          try: () => ports.hardware!.sendTransportCommand(command),
           catch: (error) => new Error(`Hardware error: ${error}`),
         })
       );
     }
 
-    if (supportsWasmTransport(state.session.transportMode)) {
+    if (ports.wasm) {
       effects.push(
         Effect.tryPromise({
-          try: () => evalInUseqWasm(command),
+          try: () => ports.wasm!.sendTransportCommand(command),
           catch: (error) => new Error(`WASM error: ${error}`),
         })
       );
@@ -93,29 +97,24 @@ export function sendRuntimeTransportCommand(command: SharedTransportCommand) {
 }
 
 export function queryRuntimeHardwareTransportState() {
-  const state = getRuntimeSessionState();
+  const ports = activePortsForSharedCommands();
 
-  if (!supportsHardwareTransport(state.session.transportMode)) {
+  if (!ports.hardware) {
     return Effect.succeed(null as TransportState | null);
   }
 
   return Effect.tryPromise<TransportState | null, TransportState | null>({
-    try: (_signal: AbortSignal) =>
-      new Promise<TransportState | null>((resolve, reject) => {
-        sendTouSEQ(
-          SHARED_TRANSPORT_COMMANDS.getState,
-          (text: string) => {
-            resolve(parseTransportState(text));
-          }
-        ).catch(reject);
-      }),
+    try: () => ports.hardware!.queryTransportState(),
     catch: () => null,
   });
 }
 
 export function syncRuntimeWasmTransportState(state: TransportState) {
   return Effect.tryPromise({
-    try: () => syncWasmTransportStateInInterpreter(state),
+    try: async () => {
+      await wasmRuntimePort.syncTransportState(state);
+      return state;
+    },
     catch: (error) => new Error(`WASM sync error: ${error}`),
-  }).pipe(Effect.catchAll(() => Effect.succeed(null as string | null)));
+  }).pipe(Effect.catchAll(() => Effect.succeed(null as TransportState | null)));
 }

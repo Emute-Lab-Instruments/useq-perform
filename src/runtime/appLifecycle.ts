@@ -1,6 +1,6 @@
 import { post } from '../utils/consoleStore.ts';
 import { checkForSavedPortAndMaybeConnect } from '../transport/connector.ts';
-import { ensureUseqWasmLoaded } from './wasmInterpreter.ts';
+import { wasmRuntimePort } from './wasmRuntimePort.ts';
 import { startWebSocketServer, stopWebSocketServer } from '../effects/devmodeWebSocketServer.ts';
 import { showModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
@@ -39,7 +39,7 @@ async function startBrowserLocalRuntime(options: {
   announceMessage: string;
   seedDefaultExpressions?: boolean;
 }) {
-  await ensureUseqWasmLoaded();
+  await wasmRuntimePort.ensureLoaded();
   announceRuntimeSession();
 
   try {

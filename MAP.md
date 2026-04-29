@@ -41,21 +41,24 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `runtimeChannels.ts`, `visualisationChannels.ts`, `gamepadChannels.ts` — channel registries.
   - `useqRuntimeContract.ts` — shared transport command set and capability split. See [docs/RUNTIME_CONTRACT.md](docs/RUNTIME_CONTRACT.md).
   - `wasmAbi.ts` — required + runtime-probed WASM exports, `assertWasmAbi()` validator.
+  - `runtimePorts.ts` — typed `WebSerialHostPort` / `WasmRuntimePort` interfaces over the shared transport surface. The runtime layer talks to ports, not transport modules directly. `WasmRuntimePort` is shaped to be the postMessage boundary for the upcoming worker move.
   - `runtimeEvents.ts`, `runtimeTypes.ts`, `visualisationEvents.ts`.
 - `src/transport/` — Web Serial lifecycle and protocol. No UI/editor imports.
   - `connector.ts` — port open/close/reconnect, Web Serial events.
   - `json-protocol.ts` — firmware ≥ 1.2.0 JSON driver (handshake, heartbeat, eval). See [docs/PROTOCOL.md](docs/PROTOCOL.md).
   - `stream-parser.ts` — byte-level parser, routes STREAM/JSON/TEXT, owns 9 `CircularBuffer`s.
+  - `webSerialHostPort.ts` — adapter over `connector.ts` + `json-protocol.ts` implementing the `WebSerialHostPort` contract from `src/contracts/runtimePorts.ts`.
   - `serial-utils.ts`, `upgradeCheck.ts`, `types.ts`, `index.ts`.
   - Tests: `serialComms.test.ts` (parser, framing, eval/meta routing) and `serialLifecycle.test.ts` (Web Serial event wiring, auto-reconnect, saved-port matching, bootloader handoff, firmware version gating, post-handshake flow). Both use the same fake-Serial harness pattern.
 - `src/runtime/` — bootstrap, lifecycle, runtime services. May import UI only from `bootstrap.ts` and `appLifecycle.ts` (eslint exceptions).
   - `bootstrap.ts` — startup orchestration: config load, UI mount, app lifecycle. Includes startup-mode selection (formerly `bootstrapPlan.ts`).
   - `appLifecycle.ts` — top-level lifecycle (orientation lock, about modal, vis panel toggle).
   - `runtimeService.ts` — sole settings-mutation surface; thin façade over the services below.
-  - `runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts` — split runtime concerns.
+  - `runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts` — split runtime concerns. Both transport- and session-services now talk to runtime ports rather than `transport/` or `wasmInterpreter` directly.
   - `runtimeSession.ts`, `runtimeSessionStore.ts` — hardware-vs-WASM precedence, plain-JS listener store.
   - `appSettingsRepository.ts` — canonical settings store (non-reactive). Mirrored into `settingsStore` via `settingsChanged` channel.
-  - `wasmInterpreter.ts` — WASM module load, ABI validation, eval/sample bindings, diagnostics readback.
+  - `wasmInterpreter.ts` — WASM module load, ABI validation, eval/sample bindings, diagnostics readback. Wrapped by `wasmRuntimePort.ts` for callers.
+  - `wasmRuntimePort.ts` — adapter over `wasmInterpreter.ts` implementing the `WasmRuntimePort` contract. Surface is structured-cloneable / async / one-shot so it can become a worker postMessage boundary without re-shaping callers.
   - `runtimeDiagnostics.ts` — startup/environment diagnostics surface.
   - `startupContext.ts` — URL flag parsing and bootstrap context (incorporates the former `urlParams.ts`).
   - `configManager.ts` + `default-config.json` — internal dev tooling for config import/export (paired with `scripts/config-server.mjs`).

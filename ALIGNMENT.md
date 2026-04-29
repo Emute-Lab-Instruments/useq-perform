@@ -138,7 +138,10 @@ Two slices remain open:
 2. **WASM-mode JSON-protocol parity.** WASM mode currently lacks the
    `hello` / `stream-config` negotiation that hardware uses; "first-class
    WASM" implies bringing this parity in — tracked separately as
-   **Stream F** in the active push.
+   **Stream F** in the active push. The port layer this depends on
+   (`useq-perform-6cf`, runtime ports behind typed adapters) has landed;
+   the protocol-parity bead `useq-perform-pcx` now layers on top of those
+   ports.
 
 **Why it blocks the mission.** Browser-local WASM is now confirmed
 **first-class** alongside hardware mode — both are the product. The

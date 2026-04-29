@@ -7,13 +7,7 @@ import {
   publishRuntimeDiagnostics,
   type RuntimeProtocolMode,
 } from "./runtimeDiagnostics";
-import {
-  getProtocolMode,
-} from "../transport/json-protocol.ts";
-import {
-  getSerialPort,
-  isConnectedToModule,
-} from "../transport/connector.ts";
+import { webSerialHostPort } from "../transport/webSerialHostPort.ts";
 import { getStartupFlagsSnapshot } from "./startupContext.ts";
 import {
   getRuntimeSessionState,
@@ -53,15 +47,15 @@ interface RuntimeStateSnapshot {
 }
 
 function readRuntimeState(): RuntimeStateSnapshot {
-  const connected = isConnectedToModule();
+  const hardware = webSerialHostPort.capabilities();
   const startupFlags = getStartupFlagsSnapshot();
   const settings = getAppSettings();
 
   return {
-    connected,
-    protocolMode: getProtocolMode(),
+    connected: hardware.connected,
+    protocolMode: hardware.protocolMode,
     sessionInputs: {
-      hasHardwareConnection: connected && !!getSerialPort(),
+      hasHardwareConnection: hardware.connected && hardware.hasOpenPort,
       noModuleMode: startupFlags.noModuleMode,
       wasmEnabled: settings.wasm.enabled,
     },

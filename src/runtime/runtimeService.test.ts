@@ -146,9 +146,12 @@ describe("runtimeService", () => {
     await expect(
       Effect.runPromise(queryRuntimeHardwareTransportState())
     ).resolves.toBe("paused");
+    // The runtime service no longer returns the inner WASM result; it just
+    // confirms which state was synced (or null on error). The port-level
+    // delegation is verified below.
     await expect(
       Effect.runPromise(syncRuntimeWasmTransportState("paused"))
-    ).resolves.toBe("synced");
+    ).resolves.toBe("paused");
 
     expect(sendTouSEQ).toHaveBeenCalledWith(
       "(useq-get-transport-state)",

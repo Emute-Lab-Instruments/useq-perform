@@ -31,7 +31,7 @@ import {
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
 import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
-import { ensureUseqWasmLoaded } from './wasmInterpreter.ts';
+import { wasmRuntimePort } from './wasmRuntimePort.ts';
 // ── Bootstrap plan (pure decision function) ─────────────────────
 
 export type BootstrapStartupMode =
@@ -203,7 +203,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
   // ── Step 1c: eagerly start loading WASM (fire-and-forget) ──────
   // Start the WASM download + compile immediately instead of waiting
   // until after app.start(), which already needs the WASM runtime.
-  const wasmPreload = ensureUseqWasmLoaded().catch(() => {});
+  const wasmPreload = wasmRuntimePort.ensureLoaded().catch(() => {});
 
 
   // ── Step 2: detect environment ─────────────────────────────────
