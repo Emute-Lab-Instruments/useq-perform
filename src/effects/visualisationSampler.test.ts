@@ -7,7 +7,7 @@
  * cover both modules through their public API.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../runtime/wasmInterpreter.ts", () => ({
   evalInUseqWasm: vi.fn().mockResolvedValue("0.5"),
@@ -254,6 +254,172 @@ describe("visualisation sampling boundary", () => {
 
       expect(mockEvalWindow).toHaveBeenCalledTimes(2);
       expect(mockEvalOutput).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("in-flight stale-batch guard (spec: visualisation.md §1.8)", () => {
+    function defaultBatchImpl(
+      exprTypes: string[],
+      start: number,
+      end: number,
+      count: number,
+    ): Promise<Map<string, Array<{ time: number; value: number }>>> {
+      const result = new Map<string, Array<{ time: number; value: number }>>();
+      const step = count > 1 ? (end - start) / (count - 1) : 0;
+      for (const expr of exprTypes) {
+        const samples = [];
+        for (let i = 0; i < count; i++) {
+          samples.push({ time: start + step * i, value: 0.5 });
+        }
+        result.set(expr, samples);
+      }
+      return Promise.resolve(result);
+    }
+
+    afterEach(async () => {
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      vi.mocked(evalOutputsInTimeWindow).mockReset();
+      vi.mocked(evalOutputsInTimeWindow).mockImplementation(defaultBatchImpl);
+    });
+
+    it("never runs two batches concurrently — newer requests queue behind the in-flight one", async () => {
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+      const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      let inFlight = 0;
+      let maxInFlight = 0;
+      const resolvers: Array<() => void> = [];
+      mockEvalWindow.mockReset();
+      mockEvalWindow.mockImplementation(
+        (exprTypes: string[], start: number, end: number, count: number) => {
+          inFlight++;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          return new Promise((resolve) => {
+            resolvers.push(() => {
+              inFlight--;
+              const result = new Map<
+                string,
+                Array<{ time: number; value: number }>
+              >();
+              const step = count > 1 ? (end - start) / (count - 1) : 0;
+              for (const expr of exprTypes) {
+                const samples = [];
+                for (let i = 0; i < count; i++) {
+                  samples.push({ time: start + step * i, value: 0.5 });
+                }
+                result.set(expr, samples);
+              }
+              resolve(result);
+            });
+          });
+        },
+      );
+
+      runtime.notifyExternalTimeUpdate(5.0);
+      runtime.notifyExternalTimeUpdate(8.0);
+      runtime.notifyExternalTimeUpdate(11.0);
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(mockEvalWindow).toHaveBeenCalledTimes(1);
+      expect(maxInFlight).toBe(1);
+
+      while (resolvers.length > 0) {
+        const next = resolvers.shift()!;
+        next();
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      await runtime._drainForTests();
+
+      expect(maxInFlight).toBe(1);
+      expect(mockEvalWindow.mock.calls.length).toBeLessThanOrEqual(2);
+      const lastCall =
+        mockEvalWindow.mock.calls[mockEvalWindow.mock.calls.length - 1];
+      const [, , lastEnd] = lastCall;
+      expect(lastEnd).toBeGreaterThan(11.0);
+    });
+
+    it("after racing two batches, the store reflects the fresher window — never the stale one", async () => {
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const { visStore } = await import("../utils/visualisationStore.ts");
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+      const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      const STALE_TIME = 5.0;
+      const FRESH_TIME = 25.0;
+
+      const callsRecord: Array<{
+        time: number;
+        start: number;
+        fire: () => void;
+      }> = [];
+      const callTimes: number[] = [STALE_TIME, FRESH_TIME];
+
+      mockEvalWindow.mockReset();
+      mockEvalWindow.mockImplementation(
+        (exprTypes: string[], start: number, end: number, count: number) => {
+          const time = callTimes.shift() ?? FRESH_TIME;
+          return new Promise((resolve) => {
+            callsRecord.push({
+              time,
+              start,
+              fire: () => {
+                const result = new Map<
+                  string,
+                  Array<{ time: number; value: number }>
+                >();
+                const step = count > 1 ? (end - start) / (count - 1) : 0;
+                for (const expr of exprTypes) {
+                  const samples = [];
+                  for (let i = 0; i < count; i++) {
+                    samples.push({
+                      time: start + step * i,
+                      value: time,
+                    });
+                  }
+                  result.set(expr, samples);
+                }
+                resolve(result);
+              },
+            });
+          });
+        },
+      );
+
+      runtime.notifyExternalTimeUpdate(STALE_TIME);
+      await new Promise((r) => setTimeout(r, 0));
+      runtime.notifyExternalTimeUpdate(FRESH_TIME);
+      await new Promise((r) => setTimeout(r, 0));
+
+      const freshIdx = callsRecord.findIndex((c) => c.time === FRESH_TIME);
+      if (freshIdx >= 0) {
+        callsRecord[freshIdx].fire();
+        callsRecord.splice(freshIdx, 1);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      while (callsRecord.length > 0) {
+        callsRecord.shift()!.fire();
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      await runtime._drainForTests();
+
+      const finalSamples = visStore.expressions.a1?.samples ?? [];
+      expect(finalSamples.length).toBeGreaterThan(0);
+      for (const sample of finalSamples) {
+        expect(sample.value).toBe(FRESH_TIME);
+      }
     });
   });
 
