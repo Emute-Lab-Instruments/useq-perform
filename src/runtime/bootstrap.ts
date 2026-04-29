@@ -32,6 +32,10 @@ import {
 } from './runtimeDiagnostics.ts';
 import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
 import { wasmRuntimePort } from './wasmRuntimePort.ts';
+import {
+  getActiveWasmRuntimePort,
+  setActiveWasmRuntimePort,
+} from './activeWasmRuntimePort.ts';
 // ── Bootstrap plan (pure decision function) ─────────────────────
 
 export type BootstrapStartupMode =
@@ -200,10 +204,42 @@ export async function bootstrap(): Promise<BootstrapResult> {
   // ── Step 1b: preload help content (fire-and-forget) ────────────
   preloadHelpContent();
 
-  // ── Step 1c: eagerly start loading WASM (fire-and-forget) ──────
+  // ── Step 1c: select the WASM runtime port (default: in-process). ──
+  // Behind the experimental `?wasmInWorker=true` flag, swap in the
+  // worker-backed port so eval runs off the main thread. The flag is
+  // opt-in only — the worker module is dynamically imported below so
+  // bundlers can split it into a separate chunk and the default path
+  // never loads it.
+  const useWasmWorker =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("wasmInWorker") === "true";
+
+  if (useWasmWorker) {
+    try {
+      const { createWasmRuntimeWorkerPort } = await import(
+        "./wasmRuntimeWorkerPort.ts"
+      );
+      setActiveWasmRuntimePort(createWasmRuntimeWorkerPort());
+      console.info(
+        "[bootstrap] wasmInWorker=true — WASM eval running in dedicated Web Worker (experimental)",
+      );
+    } catch (error) {
+      reportBootstrapFailure("wasm-worker-port", error);
+      console.warn(
+        "[bootstrap] failed to construct WASM worker port; falling back to in-process:",
+        error,
+      );
+    }
+  }
+
   // Start the WASM download + compile immediately instead of waiting
   // until after app.start(), which already needs the WASM runtime.
-  const wasmPreload = wasmRuntimePort.ensureLoaded().catch(() => {});
+  const wasmPreload = getActiveWasmRuntimePort()
+    .ensureLoaded()
+    .catch(() => {});
+  // Reference the legacy import so existing wiring still works
+  // (e.g. `runtimeTransportService` reads from the in-process port).
+  void wasmRuntimePort;
 
 
   // ── Step 2: detect environment ─────────────────────────────────

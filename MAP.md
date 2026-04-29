@@ -59,6 +59,9 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `appSettingsRepository.ts` — canonical settings store (non-reactive). Mirrored into `settingsStore` via `settingsChanged` channel.
   - `wasmInterpreter.ts` — WASM module load, ABI validation, eval/sample bindings, diagnostics readback. Wrapped by `wasmRuntimePort.ts` for callers.
   - `wasmRuntimePort.ts` — adapter over `wasmInterpreter.ts` implementing the `WasmRuntimePort` contract. Surface is structured-cloneable / async / one-shot so it can become a worker postMessage boundary without re-shaping callers.
+  - `wasmRuntimeWorkerPort.ts` — alternative `WasmRuntimePort` that proxies every method to a dedicated Web Worker hosting the WASM interpreter. Opt-in via `?wasmInWorker=true`; default off. Diagnostics readback is not piped across the boundary in this iteration.
+  - `activeWasmRuntimePort.ts` — read-through accessor returning the active `WasmRuntimePort` (in-process default, worker-backed when the opt-in flag is set). Bootstrap is the only writer.
+  - `workers/wasmRuntime.worker.ts` + `workers/wasmRuntimeWorkerProtocol.ts` — classic Web Worker hosting the WASM interpreter and the discriminated-union request/response protocol it speaks.
   - `runtimeDiagnostics.ts` — startup/environment diagnostics surface.
   - `startupContext.ts` — URL flag parsing and bootstrap context (incorporates the former `urlParams.ts`).
   - `configManager.ts` + `default-config.json` — internal dev tooling for config import/export (paired with `scripts/config-server.mjs`).

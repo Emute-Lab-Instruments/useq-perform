@@ -13,7 +13,17 @@ import { top_level_string } from "@nextjournal/clojure-mode/extensions/eval-regi
 
 import { sendTouSEQ } from "../transport/json-protocol.ts";
 import { post } from "../utils/consoleStore.ts";
-import { evalInUseqWasm, readLastDiagnostics } from "../runtime/wasmInterpreter.ts";
+import { readLastDiagnostics } from "../runtime/wasmInterpreter.ts";
+import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
+
+// Editor eval routes through the active WASM runtime port so the
+// `?wasmInWorker=true` opt-in actually moves user-driven evals off the
+// main thread. Diagnostics readback (`readLastDiagnostics`) still hits
+// the legacy main-thread global; with the worker port active that
+// global is absent and diagnostics simply degrade to empty arrays —
+// known limitation behind the experimental flag.
+const evalInUseqWasm = (code: string): Promise<string | null> =>
+  getActiveWasmRuntimePort().evalCode(code);
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import { rewriteCodeSliceForModule } from "../lib/manualControlState.ts";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";

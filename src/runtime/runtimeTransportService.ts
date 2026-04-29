@@ -6,8 +6,9 @@ import {
   publishRuntimeDiagnostics,
   type RuntimeProtocolMode,
 } from "./runtimeDiagnostics";
+import type { WasmRuntimePort } from "../contracts/runtimePorts";
 import { webSerialHostPort } from "../transport/webSerialHostPort";
-import { wasmRuntimePort } from "./wasmRuntimePort";
+import { getActiveWasmRuntimePort } from "./activeWasmRuntimePort";
 import {
   getRuntimeSessionState,
 } from "./runtimeSessionStore";
@@ -30,7 +31,7 @@ import { syncRuntimeState } from "./runtimeSessionService";
 
 interface ActivePorts {
   hardware: typeof webSerialHostPort | null;
-  wasm: typeof wasmRuntimePort | null;
+  wasm: WasmRuntimePort | null;
 }
 
 function activePortsForSharedCommands(): ActivePorts {
@@ -40,7 +41,7 @@ function activePortsForSharedCommands(): ActivePorts {
       ? webSerialHostPort
       : null,
     wasm: supportsWasmTransport(state.session.transportMode)
-      ? wasmRuntimePort
+      ? getActiveWasmRuntimePort()
       : null,
   };
 }
@@ -112,7 +113,7 @@ export function queryRuntimeHardwareTransportState() {
 export function syncRuntimeWasmTransportState(state: TransportState) {
   return Effect.tryPromise({
     try: async () => {
-      await wasmRuntimePort.syncTransportState(state);
+      await getActiveWasmRuntimePort().syncTransportState(state);
       return state;
     },
     catch: (error) => new Error(`WASM sync error: ${error}`),

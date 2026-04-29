@@ -7,7 +7,10 @@
  */
 
 import { dbg } from '../lib/debug.ts';
-import { evalInUseqWasm } from '../runtime/wasmInterpreter.ts';
+import { getActiveWasmRuntimePort } from '../runtime/activeWasmRuntimePort.ts';
+
+const evalInUseqWasm = (code: string): Promise<string | null> =>
+  getActiveWasmRuntimePort().evalCode(code);
 
 /** Known control input names */
 export type ControlName = 'ain1' | 'ain2' | 'din1' | 'din2' | 'swm' | 'swt';

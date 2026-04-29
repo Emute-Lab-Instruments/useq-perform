@@ -14,12 +14,25 @@
  */
 
 import { dbg } from "../lib/debug.ts";
-import {
-  evalInUseqWasm,
-  updateUseqWasmTime,
-  evalOutputAtTime,
-  evalOutputsInTimeWindow,
-} from "../runtime/wasmInterpreter.ts";
+import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
+
+// Hot-path WASM access goes through the active runtime port so the
+// `?wasmInWorker=true` opt-in actually moves the work off the main
+// thread (otherwise the sampler would still call the in-process
+// interpreter directly even when the worker port is selected).
+const wasmPort = () => getActiveWasmRuntimePort();
+const evalInUseqWasm = (code: string): Promise<string | null> =>
+  wasmPort().evalCode(code);
+const updateUseqWasmTime = (timeSeconds: number): Promise<void> =>
+  wasmPort().updateTime(timeSeconds);
+const evalOutputAtTime = (name: string, timeSeconds: number): Promise<number> =>
+  wasmPort().evalOutputAtTime(name, timeSeconds);
+const evalOutputsInTimeWindow = (
+  outputs: string[],
+  startTime: number,
+  endTime: number,
+  numSamples: number,
+) => wasmPort().evalOutputsInTimeWindow(outputs, startTime, endTime, numSamples);
 import {
   getSerialVisPalette,
   getSerialVisChannelColor,
