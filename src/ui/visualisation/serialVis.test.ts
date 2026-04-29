@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { timeToX, xToTime } from "./serialVis.ts";
 
 function makeContext(): CanvasRenderingContext2D {
   return {
@@ -63,5 +64,51 @@ describe("drawSerialVis (pure renderer)", () => {
     document.getElementById("serialcanvas")?.remove();
     const { drawSerialVis } = await import("./serialVis.ts");
     expect(() => drawSerialVis()).not.toThrow();
+  });
+});
+
+describe("time-axis mapping: centre column = now", () => {
+  const WIDTH = 800;
+  const NOW = 1000;
+  const WINDOW = 10;
+  const HALF = WINDOW / 2;
+
+  it("xToTime at centre pixel equals now", () => {
+    expect(xToTime(WIDTH / 2, NOW, HALF, WINDOW, WIDTH)).toBeCloseTo(NOW, 10);
+  });
+
+  it("xToTime at left edge equals now minus half-window", () => {
+    expect(xToTime(0, NOW, HALF, WINDOW, WIDTH)).toBeCloseTo(NOW - HALF, 10);
+  });
+
+  it("xToTime at right edge equals now plus half-window", () => {
+    expect(xToTime(WIDTH, NOW, HALF, WINDOW, WIDTH)).toBeCloseTo(NOW + HALF, 10);
+  });
+
+  it("timeToX at now equals centre pixel", () => {
+    expect(timeToX(NOW, NOW, HALF, WINDOW, WIDTH)).toBeCloseTo(WIDTH / 2, 10);
+  });
+
+  it("timeToX at now minus half-window equals 0", () => {
+    expect(timeToX(NOW - HALF, NOW, HALF, WINDOW, WIDTH)).toBeCloseTo(0, 10);
+  });
+
+  it("timeToX at now plus half-window equals canvasWidth", () => {
+    expect(timeToX(NOW + HALF, NOW, HALF, WINDOW, WIDTH)).toBeCloseTo(WIDTH, 10);
+  });
+
+  it("round-trip: timeToX(xToTime(x)) ≈ x for several values", () => {
+    for (const x of [0, WIDTH * 0.25, WIDTH / 2, WIDTH * 0.75, WIDTH]) {
+      expect(timeToX(xToTime(x, NOW, HALF, WINDOW, WIDTH), NOW, HALF, WINDOW, WIDTH)).toBeCloseTo(x, 10);
+    }
+  });
+
+  it("tiny windowDuration produces no NaN or Infinity", () => {
+    const tiny = 1e-10;
+    const halfTiny = tiny / 2;
+    const x = timeToX(NOW, NOW, halfTiny, tiny, WIDTH);
+    const t = xToTime(WIDTH / 2, NOW, halfTiny, tiny, WIDTH);
+    expect(Number.isFinite(x)).toBe(true);
+    expect(Number.isFinite(t)).toBe(true);
   });
 });

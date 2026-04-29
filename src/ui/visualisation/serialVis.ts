@@ -490,6 +490,17 @@ function clamp01(value: number): number {
   return value;
 }
 
+export function timeToX(t: number, now: number, halfWindow: number, totalWindow: number, canvasWidth: number): number {
+  const windowStart = now - halfWindow;
+  const relative = (t - windowStart) / totalWindow;
+  return clamp01(relative) * canvasWidth;
+}
+
+export function xToTime(x: number, now: number, halfWindow: number, totalWindow: number, canvasWidth: number): number {
+  const windowStart = now - halfWindow;
+  return windowStart + (x / canvasWidth) * totalWindow;
+}
+
 export const __serialVisInternals = {
   buildSegmentPointsInto,
   isVisPanelVisible,
