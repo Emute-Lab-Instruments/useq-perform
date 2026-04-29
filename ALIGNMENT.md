@@ -148,50 +148,7 @@ to be a mission-fit problem until Stream F lands.
 **Cost.** S for the timing-paths tests (write against the readiness
 contract `vig` introduces). M for WASM-mode parity (separate stream).
 
-### 5. Visualisation ownership is split across three modules *(2026-04-29)*
-
-**What.** `src/effects/visualisationSampler.ts` owns sampling. `src/utils/visualisationStore.ts`
-owns reactive state. `src/ui/visualisation/serialVis.ts` owns rendering and
-keeps its own rAF loop independent of the local clock. There is also
-`src/ui/visualisation/visualisationController.ts` referenced in `REPO_MAP.md`
-(line 103-105) which no longer exists in the tree — the doc is stale.
-`bd useq-perform-7hs` ("Consolidate visualisation ownership into single
-boundary") and `useq-perform-a1e` track this.
-
-**Why it blocks the mission.** The split creates two race conditions the
-sampler defends against by hand: a sampling-window cache
-(`lastRequestedSamplingWindowKey`/`lastCompletedSamplingWindowKey`,
-`visualisationSampler.ts:166`) and a monotonic `samplingSequence` to discard
-stale async results. Renderer and sampler each maintain a separate rAF
-loop. Moving sampling to a worker (defect 2) requires touching all three
-modules and the contract between them, with no single boundary to reason
-against.
-
-**Cost.** M, and a prerequisite for the worker move.
-
-### 6. Docs drift faster than they're audited *(2026-04-29)*
-
-**What.** `docs/REPO_MAP.md` references `visualisationController.ts` (gone),
-`src/contracts/runtimeEvents.ts` (the test file exists but the runtime
-file referenced in ADR-0001 was merged into `runtimeChannels.ts` — see
-commit `5bfcce5`), and `src/lib/appSettings.ts` (now a 1.6k stub barrel,
-real settings live in `src/lib/settings/`). `STABLE_CORE.md` is good but
-references compatibility cuts that have already been made (`src/legacy/`
-is gone). The `MEMORY.md` flagged the cognitive-load epic 41 days old; it's
-now substantially complete and the memory note hasn't been updated. The
-canonical doc list itself is 5 entries deep in places.
-
-**Why it blocks the mission.** Each agent session re-reads these docs and
-inherits stale claims as ground truth. The user's own global CLAUDE.md
-explicitly warns "Treat both docs with the same skepticism as the code
-itself" — but right now `STABLE_CORE.md` still has reset-era language
-("the Wave 1 scope decision") that a new contributor would mistake for
-current direction.
-
-**Cost.** S per doc, but only if done at commit time. Otherwise it
-re-accumulates within weeks.
-
-### 7. Bootstrap WASM-on-main-thread blocks the eager preload from helping *(2026-04-29)*
+### 5. Bootstrap WASM-on-main-thread blocks the eager preload from helping *(2026-04-29)*
 
 **What.** `bootstrap.ts:206` fires `ensureUseqWasmLoaded()` early
 ("eagerly start loading WASM"), but the resulting module is wired
