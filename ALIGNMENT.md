@@ -119,32 +119,33 @@ filed; nothing has shipped.
 **Cost.** M-L (single shader path for analog lanes, separate digital-lane
 path; the data already arrives as `Float64Array` so most plumbing is done).
 
-### 4. Hardware-path test coverage is one file *(2026-04-29)*
+### 4. Hardware-path test coverage gaps remain around timing + WASM parity *(2026-04-29)*
 
-**What.** The transport layer (`src/transport/`, ~1600 LoC across `connector`,
-`json-protocol`, `stream-parser`) has exactly one test file:
-`serialComms.test.ts`. The actual Web Serial event wiring, auto-reconnect,
-saved-port matching, bootloader-mode handoff, and the firmware-info probe
-retry loop (`connector.ts`) are exercised mostly by hand. Hardware mode
-also has no end-to-end contract
-test — the WASM path gets `wasmAbi.test.ts` and a real-WASM instantiation
-test, the hardware path gets one mock-host suite.
+**What.** Web Serial event wiring, auto-reconnect on cable replug,
+saved-port matching across sessions, bootloader-mode handoff, firmware
+version gating, and the post-handshake flow now have automated coverage
+in `src/transport/serialLifecycle.test.ts` (Stream C / `useq-perform-ln3`,
+2026-04-29) on top of the original `serialComms.test.ts`.
+
+Two slices remain open:
+
+1. **Tests against the readiness probe.** The 3500ms hardcoded post-open
+   wait was replaced with an observed-readiness probe in `useq-perform-vig`
+   (Stream D-serial, 2026-04-29). Coverage of the probe loop — timeout
+   cases, retry behaviour, legacy-firmware fallback — still needs to be
+   written against the new contract.
+2. **WASM-mode JSON-protocol parity.** WASM mode currently lacks the
+   `hello` / `stream-config` negotiation that hardware uses; "first-class
+   WASM" implies bringing this parity in — tracked separately as
+   **Stream F** in the active push.
 
 **Why it blocks the mission.** Browser-local WASM is now confirmed
-**first-class** alongside hardware mode — both are the product. That makes
-the test asymmetry acute: the path most likely to silently regress
-(hardware) has the least coverage. The user develops mostly against
-browser-local at their desk; a regression in `setupConnectedPort` or the
-JSON `hello` handshake won't show up until plugging in for a session.
+**first-class** alongside hardware mode — both are the product. The
+asymmetry of having a richer protocol on hardware than on WASM continues
+to be a mission-fit problem until Stream F lands.
 
-The corollary: WASM mode currently *lacks* the JSON-protocol parity
-(no `hello`, no `stream-config` negotiation) that hardware uses. "First-
-class WASM" implies bringing this parity in — tracked separately as
-**Stream F** in the active push.
-
-**Cost.** M for tests (fake-Serial harness already exists; expand to cover
-reconnect, bootloader, firmware-version gating, timing-sensitive paths). M
-for WASM-mode parity (separate stream).
+**Cost.** S for the timing-paths tests (write against the readiness
+contract `vig` introduces). M for WASM-mode parity (separate stream).
 
 ### 5. Settings panel needs an audience split (basic vs. dev) *(2026-04-29)*
 

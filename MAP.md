@@ -47,6 +47,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `json-protocol.ts` — firmware ≥ 1.2.0 JSON driver (handshake, heartbeat, eval). See [docs/PROTOCOL.md](docs/PROTOCOL.md).
   - `stream-parser.ts` — byte-level parser, routes STREAM/JSON/TEXT, owns 9 `CircularBuffer`s.
   - `serial-utils.ts`, `upgradeCheck.ts`, `types.ts`, `index.ts`.
+  - Tests: `serialComms.test.ts` (parser, framing, eval/meta routing) and `serialLifecycle.test.ts` (Web Serial event wiring, auto-reconnect, saved-port matching, bootloader handoff, firmware version gating, post-handshake flow). Both use the same fake-Serial harness pattern.
 - `src/runtime/` — bootstrap, lifecycle, runtime services. May import UI only from `bootstrap.ts` and `appLifecycle.ts` (eslint exceptions).
   - `bootstrap.ts` — startup orchestration: config load, UI mount, app lifecycle. Includes startup-mode selection (formerly `bootstrapPlan.ts`).
   - `appLifecycle.ts` — top-level lifecycle (orientation lock, about modal, vis panel toggle).

@@ -68,7 +68,7 @@
     "config-server": "node scripts/config-server.mjs",
     "start": "serve public -p 5000 --cors --config serve.json",
     "test:mocha": "mocha \"test/**/*.mjs\"",
-    "test:contracts": "vitest run --project unit src/contracts/*.test.ts src/runtime/*.test.ts src/ui/TransportToolbar.test.tsx src/lib/appSettings.test.ts src/transport/serialComms.test.ts src/main.test.ts src/ui/visualisation/visualisationController.test.ts",
+    "test:contracts": "vitest run --project unit src/contracts/*.test.ts src/runtime/*.test.ts src/ui/TransportToolbar.test.tsx src/lib/appSettings.test.ts src/transport/serialComms.test.ts src/transport/serialLifecycle.test.ts src/main.test.ts src/ui/visualisation/visualisationController.test.ts",
     "test:unit": "vitest run --project unit",
     "test:all": "npm-run-all test:mocha test:unit",
     "test": "npm run test:all",

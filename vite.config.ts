@@ -77,7 +77,11 @@ export default defineConfig(({ command }) => ({
           include: ['src/**/*.test.tsx', 'src/**/*.test.ts', 'inspector/**/*.test.ts'],
           exclude: ['src/editors/extensions/__tests__/**'],
           globals: true,
-          setupFiles: [],
+          // The path string contains 'jest-dom' so vite-plugin-solid does not
+          // auto-inject @testing-library/jest-dom (which fails to resolve in
+          // worktree setups where node_modules is symlinked). This file is
+          // a no-op stub.
+          setupFiles: ['./vitest.jest-dom.setup.ts'],
           testTimeout: 15000,
         }
       }
