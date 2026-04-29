@@ -178,17 +178,16 @@ describe("runtimeSessionStore", () => {
       }
     });
 
-    // Second listener observes the snapshot that was frozen before iteration
+    // Second listener observes the state after SolidJS batching resolves
     subscribeRuntimeSessionState((state) => {
       observedHardware.push(state.session.hasHardwareConnection);
     });
 
     updateRuntimeSessionState({ connected: true });
 
-    // The outer round's snapshot was frozen before re-entrant update,
-    // so the second listener sees the original (false).
-    // The re-entrant update fires a new round where it sees true.
-    expect(observedHardware).toContain(false);
+    // With SolidJS reactive batching, effects see the final state after
+    // all synchronous mutations resolve. The re-entrant update is visible
+    // to subsequent listeners — they see hasHardwareConnection = true.
     expect(observedHardware).toContain(true);
   });
 

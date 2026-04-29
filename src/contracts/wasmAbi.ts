@@ -135,6 +135,16 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     returnType: "string",
     argTypes: [],
   },
+  useq_last_diagnostics: {
+    symbol: "useq_last_diagnostics",
+    returnType: "string",
+    argTypes: [],
+  },
+  useq_active_diagnostics: {
+    symbol: "useq_active_diagnostics",
+    returnType: "string",
+    argTypes: [],
+  },
 } as const satisfies Record<string, CwrapDescriptor>);
 
 export type OptionalWasmExport = keyof typeof OPTIONAL_WASM_EXPORTS;

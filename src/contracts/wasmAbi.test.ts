@@ -204,6 +204,17 @@ describe("OPTIONAL_WASM_EXPORTS", () => {
     expect(desc.returnType).toBe("string");
     expect(desc.argTypes).toEqual([]);
   });
+
+  it("includes diagnostics helpers", () => {
+    expect(OPTIONAL_WASM_EXPORTS.useq_last_diagnostics).toBeDefined();
+    expect(OPTIONAL_WASM_EXPORTS.useq_active_diagnostics).toBeDefined();
+  });
+
+  it("useq_active_diagnostics has correct signature", () => {
+    const desc = OPTIONAL_WASM_EXPORTS.useq_active_diagnostics;
+    expect(desc.returnType).toBe("string");
+    expect(desc.argTypes).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -294,17 +305,17 @@ describe("validateWasmAbi", () => {
   });
 
   it("reports optional exports with no raw binding as missing even if cwrap returns a function", () => {
-    const module = createMockModule({}, [
-      "useq_eval_outputs_time_window",
-      "useq_eval_outputs_time_window_into",
-      "useq_last_error",
-    ]);
+    // Pass ALL optional export names as missing raw symbols
+    const module = createMockModule({}, [...OPTIONAL_WASM_EXPORT_NAMES]);
     const result = validateWasmAbi(module);
     expect(result.valid).toBe(true);
     expect(result.presentOptional).toEqual([]);
+    expect(result.missingOptional.length).toBe(OPTIONAL_WASM_EXPORT_NAMES.length);
     expect(result.missingOptional).toContain("useq_eval_outputs_time_window");
     expect(result.missingOptional).toContain("useq_eval_outputs_time_window_into");
     expect(result.missingOptional).toContain("useq_last_error");
+    expect(result.missingOptional).toContain("useq_last_diagnostics");
+    expect(result.missingOptional).toContain("useq_active_diagnostics");
   });
 
   it("accumulates multiple missing required exports", () => {

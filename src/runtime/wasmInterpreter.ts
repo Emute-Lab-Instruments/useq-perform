@@ -727,14 +727,22 @@ export function readLastDiagnostics(): UseqDiagnostic[] {
   }
 }
 
+let _lastActiveDiagsJson = '';
+let _lastActiveDiagsResult: UseqDiagnostic[] = [];
+
 /** Read currently active diagnostics. Returns empty array if WASM isn't loaded or has no diagnostic support. */
 export function readActiveDiagnostics(): UseqDiagnostic[] {
   try {
     const runtime = (globalThis as any).__useqWasmRuntime;
-    if (!runtime?.useq_active_diagnostics) return [];
+    if (!runtime?.useq_active_diagnostics) return _lastActiveDiagsResult;
     const json = runtime.useq_active_diagnostics();
-    return json ? JSON.parse(json) : [];
+    if (!json) return _lastActiveDiagsResult;
+    // Skip JSON.parse if the raw string hasn't changed since last frame
+    if (json === _lastActiveDiagsJson) return _lastActiveDiagsResult;
+    _lastActiveDiagsJson = json;
+    _lastActiveDiagsResult = JSON.parse(json);
+    return _lastActiveDiagsResult;
   } catch {
-    return [];
+    return _lastActiveDiagsResult;
   }
 }

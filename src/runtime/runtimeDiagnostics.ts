@@ -9,7 +9,24 @@
  *   - startupMode + settingsSources (written once during bootstrap, never updated)
  */
 
-import type { RuntimeSessionSnapshot } from "./runtimeSession";
+// Re-export types from contracts (canonical location)
+export type {
+  RuntimeProtocolMode,
+  RuntimeSettingsSource,
+  StartupMode,
+  ActiveEnvironmentSnapshot,
+  RuntimeBootstrapFailure,
+  RuntimeDiagnosticsSnapshot,
+} from "../contracts/runtimeTypes";
+
+import type {
+  RuntimeProtocolMode,
+  RuntimeSettingsSource,
+  StartupMode,
+  RuntimeBootstrapFailure,
+  RuntimeDiagnosticsSnapshot,
+} from "../contracts/runtimeTypes";
+import type { RuntimeSessionSnapshot } from "../contracts/runtimeTypes";
 import {
   getEnvironmentCapabilitiesSnapshot,
   getStartupFlagsSnapshot,
@@ -19,41 +36,6 @@ import {
   runtimeDiagnostics as runtimeDiagnosticsChannel,
   bootstrapFailure as bootstrapFailureChannel,
 } from "../contracts/runtimeChannels";
-
-export type RuntimeProtocolMode = "legacy" | "json";
-export type RuntimeSettingsSource =
-  | "defaults"
-  | "local-storage"
-  | "url-config"
-  | "url-code"
-  | "nosave";
-export type StartupMode =
-  | "hardware"
-  | "browser-local"
-  | "no-module"
-  | "unsupported-browser";
-
-export interface ActiveEnvironmentSnapshot {
-  areInBrowser: boolean;
-  areInDesktopApp: boolean;
-  isWebSerialAvailable: boolean;
-  isInDevmode: boolean;
-  urlParams: Record<string, string>;
-}
-
-export interface RuntimeBootstrapFailure {
-  scope: string;
-  message: string;
-}
-
-export interface RuntimeDiagnosticsSnapshot {
-  startupMode: StartupMode;
-  protocolMode: RuntimeProtocolMode;
-  settingsSources: RuntimeSettingsSource[];
-  activeEnvironment: ActiveEnvironmentSnapshot;
-  runtimeSession: RuntimeSessionSnapshot;
-  bootstrapFailures: RuntimeBootstrapFailure[];
-}
 
 // ── Bootstrap-only state (written once, read many) ──────────────
 

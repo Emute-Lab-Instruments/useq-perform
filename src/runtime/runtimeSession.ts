@@ -1,5 +1,17 @@
-export type RuntimeConnectionMode = "hardware" | "browser" | "none";
-export type TransportMode = "hardware" | "wasm" | "both" | "none";
+// Re-export types from contracts (canonical location)
+export type {
+  RuntimeConnectionMode,
+  TransportMode,
+  RuntimeSessionInputs,
+  RuntimeSessionSnapshot,
+} from "../contracts/runtimeTypes";
+
+import type {
+  RuntimeConnectionMode,
+  RuntimeSessionInputs,
+  RuntimeSessionSnapshot,
+  TransportMode,
+} from "../contracts/runtimeTypes";
 
 // ── Valid mode combination matrix ────────────────────────────────────────────
 //
@@ -51,17 +63,6 @@ export type TransportMode = "hardware" | "wasm" | "both" | "none";
 //   serial port connects or disconnects. A session that boots as "hardware" startup mode can
 //   temporarily fall back to connectionMode "none" while waiting for the port to reconnect.
 // ────────────────────────────────────────────────────────────────────────────
-
-export interface RuntimeSessionInputs {
-  hasHardwareConnection: boolean;
-  noModuleMode: boolean;
-  wasmEnabled: boolean;
-}
-
-export interface RuntimeSessionSnapshot extends RuntimeSessionInputs {
-  connectionMode: RuntimeConnectionMode;
-  transportMode: TransportMode;
-}
 
 export function resolveRuntimeConnectionMode(
   inputs: RuntimeSessionInputs

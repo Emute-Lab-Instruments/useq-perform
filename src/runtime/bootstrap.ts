@@ -200,6 +200,12 @@ export async function bootstrap(): Promise<BootstrapResult> {
   // ── Step 1b: preload help content (fire-and-forget) ────────────
   preloadHelpContent();
 
+  // ── Step 1c: eagerly start loading WASM (fire-and-forget) ──────
+  // Start the WASM download + compile immediately instead of waiting
+  // until after app.start(), which already needs the WASM runtime.
+  const wasmPreload = ensureUseqWasmLoaded().catch(() => {});
+
+
   // ── Step 2: detect environment ─────────────────────────────────
   const environmentState = await examineEnvironment(getSettings());
   const { userSettings, startupFlags } = environmentState;
@@ -243,13 +249,6 @@ export async function bootstrap(): Promise<BootstrapResult> {
   const appUI = await createAppUI(environmentState);
   const app = createApp(appUI, environmentState, bootstrapPlan);
   await app.start();
-
-  // ── Step 7: eagerly start loading WASM interpreter (non-blocking) ──
-  if (userSettings.wasm.enabled) {
-    ensureUseqWasmLoaded().catch(() => {
-      // Silently ignore — LiveProbe will show loading indicator
-    });
-  }
 
   return { app, appUI, environmentState, bootstrapPlan };
 }

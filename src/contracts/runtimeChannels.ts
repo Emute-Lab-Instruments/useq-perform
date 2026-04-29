@@ -10,8 +10,8 @@ import type {
   RuntimeBootstrapFailure,
   RuntimeDiagnosticsSnapshot,
   RuntimeProtocolMode,
-} from "../runtime/runtimeDiagnostics";
-import type { RuntimeSessionSnapshot } from "../runtime/runtimeSession";
+  RuntimeSessionSnapshot,
+} from "./runtimeTypes";
 
 import type { AppSettings } from "../lib/appSettings";
 
