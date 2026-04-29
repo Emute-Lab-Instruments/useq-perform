@@ -1,15 +1,14 @@
 /**
- * Regression tests for visualisation sampler.
+ * Regression tests for the visualisation sampling boundary.
  *
- * These tests cover bugs found during the Phase 6 refactor:
- * - Race condition when registering 3+ expressions concurrently
- * - Sample grid alignment for jitter-free rendering
- * - Time/sampling decoupling
+ * After consolidation (`bd useq-perform-7hs`) sampling state lives in
+ * `visualisationRuntime`; the sampler module exposes pure helpers
+ * (`registerVisualisation`, `rebuildAllExpressions`, etc.).  These tests
+ * cover both modules through their public API.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock WASM interpreter before importing sampler
 vi.mock("../runtime/wasmInterpreter.ts", () => ({
   evalInUseqWasm: vi.fn().mockResolvedValue("0.5"),
   updateUseqWasmTime: vi.fn().mockResolvedValue(undefined),
@@ -28,21 +27,19 @@ vi.mock("../runtime/wasmInterpreter.ts", () => ({
       return Promise.resolve(result);
     },
   ),
+  readActiveDiagnostics: vi.fn().mockReturnValue([]),
 }));
 
-// Mock appSettingsRepository
 vi.mock("../runtime/appSettingsRepository.ts", () => ({
   getAppSettings: vi.fn().mockReturnValue({ visualisation: {} }),
   subscribeAppSettings: vi.fn().mockReturnValue(() => {}),
 }));
 
-// Mock visualisationUtils
 vi.mock("../lib/visualisationUtils.ts", () => ({
   getSerialVisPalette: vi.fn().mockReturnValue(["#ff0000", "#00ff00", "#0000ff"]),
   getSerialVisChannelColor: vi.fn().mockReturnValue("#ff0000"),
 }));
 
-// Mock channels
 vi.mock("../contracts/runtimeChannels", () => ({
   codeEvaluated: { subscribe: vi.fn() },
 }));
@@ -52,7 +49,19 @@ vi.mock("../contracts/visualisationChannels", () => ({
   visualisationSessionChannel: { publish: vi.fn() },
 }));
 
-describe("visualisationSampler", () => {
+// Stub out the renderer + diag store so the runtime can `notifyExternalTimeUpdate`
+// without a DOM canvas or output-health side effects.
+vi.mock("../ui/visualisation/serialVis.ts", () => ({
+  drawSerialVis: vi.fn(),
+  ensureCanvasGeometry: vi.fn(),
+  isVisPanelVisible: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock("../utils/outputHealthStore.ts", () => ({
+  refreshOutputHealth: vi.fn(),
+}));
+
+describe("visualisation sampling boundary", () => {
   beforeEach(async () => {
     vi.resetModules();
   });
@@ -74,22 +83,14 @@ describe("visualisationSampler", () => {
 
     it("preserves existing expressions when rebuildAll runs after register", async () => {
       const sampler = await import("./visualisationSampler.ts");
-      const { visStore } = await import("../utils/visualisationStore.ts");
 
-      // Register two expressions
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
       await sampler.registerVisualisation("a2", "(a2 (sin 2))");
-
-      // Now register a third — this should not lose a1 or a2
       await sampler.registerVisualisation("d1", "(d1 (square 1))");
 
-      // Trigger a rebuild (simulating notifyExpressionEvaluated)
       sampler.notifyExpressionEvaluated();
-
-      // Wait for async rebuild to complete
       await new Promise((r) => setTimeout(r, 50));
 
-      // All three must still be present
       expect(sampler.isExpressionVisualised("a1")).toBe(true);
       expect(sampler.isExpressionVisualised("a2")).toBe(true);
       expect(sampler.isExpressionVisualised("d1")).toBe(true);
@@ -160,21 +161,20 @@ describe("visualisationSampler", () => {
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
       const mockEval = vi.mocked(evalOutputsInTimeWindow);
 
-      // Register an expression, then trigger a time update at a non-grid-aligned time
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
       mockEval.mockClear();
-      await sampler.handleExternalTimeUpdate(5.037); // arbitrary non-aligned time
+      runtime.notifyExternalTimeUpdate(5.037);
+      await runtime._drainForTests();
 
       const lastCall = mockEval.mock.calls[mockEval.mock.calls.length - 1];
       const [, start] = lastCall;
 
       // Default: windowDuration=10, sampleCount=100, step=10/99≈0.10101
-      // The start should be snapped to a multiple of step
       const step = 10 / 99;
       const snappedStart = Math.floor(start / step) * step;
-      // The actual start should be exactly on the grid
       expect(Math.abs(start - snappedStart)).toBeLessThan(1e-9);
     });
 
@@ -183,31 +183,30 @@ describe("visualisationSampler", () => {
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
       const mockEval = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
-      // Simulate two time ticks very close together (as would happen between frames)
       mockEval.mockClear();
-      await sampler.handleExternalTimeUpdate(5.016);
+      runtime.notifyExternalTimeUpdate(5.016);
+      await runtime._drainForTests();
       const call1Start = mockEval.mock.calls[0]?.[1];
 
       mockEval.mockClear();
-      await sampler.handleExternalTimeUpdate(5.033);
+      runtime.notifyExternalTimeUpdate(5.033);
+      await runtime._drainForTests();
       const call2Start = mockEval.mock.calls[0]?.[1];
 
-      // With deduped sampling, the second rebuild may be skipped entirely if
-      // the snapped sampling window is unchanged.
+      // With dedup, the second rebuild may be skipped entirely if the
+      // snapped window is unchanged.
       if (call2Start == null) {
         expect(mockEval).not.toHaveBeenCalled();
         return;
       }
 
-      // Otherwise the difference between starts should be a multiple of the
-      // step size.
       const step = 10 / 99;
       const diff = Math.abs(call2Start - call1Start);
-      // Either same grid point or exactly one step apart.
       expect(diff < 1e-9 || Math.abs(diff - step) < 1e-9 || Math.abs(diff % step) < 1e-9).toBe(true);
     });
 
@@ -216,6 +215,7 @@ describe("visualisationSampler", () => {
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
       const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
       const mockEvalOutput = vi.mocked(evalOutputAtTime);
 
@@ -224,8 +224,10 @@ describe("visualisationSampler", () => {
       mockEvalWindow.mockClear();
       mockEvalOutput.mockClear();
 
-      await sampler.handleExternalTimeUpdate(5.016);
-      await sampler.handleExternalTimeUpdate(5.033);
+      runtime.notifyExternalTimeUpdate(5.016);
+      await runtime._drainForTests();
+      runtime.notifyExternalTimeUpdate(5.033);
+      await runtime._drainForTests();
 
       expect(mockEvalWindow).toHaveBeenCalledTimes(1);
       expect(mockEvalOutput).toHaveBeenCalledTimes(2);
@@ -236,6 +238,7 @@ describe("visualisationSampler", () => {
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
       const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
       const mockEvalOutput = vi.mocked(evalOutputAtTime);
 
@@ -244,8 +247,10 @@ describe("visualisationSampler", () => {
       mockEvalWindow.mockClear();
       mockEvalOutput.mockClear();
 
-      await sampler.handleExternalTimeUpdate(5.016);
-      await sampler.handleExternalTimeUpdate(5.130);
+      runtime.notifyExternalTimeUpdate(5.016);
+      await runtime._drainForTests();
+      runtime.notifyExternalTimeUpdate(5.130);
+      await runtime._drainForTests();
 
       expect(mockEvalWindow).toHaveBeenCalledTimes(2);
       expect(mockEvalOutput).toHaveBeenCalledTimes(2);
@@ -290,25 +295,37 @@ describe("visualisationSampler", () => {
     });
   });
 
-  describe("handleExternalTimeUpdate (regression: decoupled time/sampling)", () => {
-    it("does not call updateTime (callers handle time)", async () => {
-      const { updateTime } = await import("../utils/visualisationStore.ts");
-      const { handleExternalTimeUpdate } = await import(
-        "./visualisationSampler.ts"
+  describe("notifyExternalTimeUpdate (regression: decoupled time/sampling)", () => {
+    it("updates the store time eagerly and queues a sample", async () => {
+      const { visStore } = await import("../utils/visualisationStore.ts");
+      const { notifyExternalTimeUpdate, _drainForTests } = await import(
+        "./visualisationRuntime.ts"
       );
 
-      // Spy on updateTime
-      const spy = vi.spyOn(
-        await import("../utils/visualisationStore.ts"),
-        "updateTime",
+      notifyExternalTimeUpdate(2.5);
+      expect(visStore.currentTime).toBe(2.5);
+
+      // The drain promise resolves once the queued sample has run.
+      await _drainForTests();
+    });
+
+    it("ignores non-finite times", async () => {
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
       );
+      const sampler = await import("./visualisationSampler.ts");
+      const { notifyExternalTimeUpdate, _drainForTests } = await import(
+        "./visualisationRuntime.ts"
+      );
+      const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
 
-      await handleExternalTimeUpdate(1.0);
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      mockEvalWindow.mockClear();
 
-      // handleExternalTimeUpdate should NOT call updateTime directly
-      // (callers: localClock and stream-parser do this)
-      expect(spy).not.toHaveBeenCalled();
-      spy.mockRestore();
+      notifyExternalTimeUpdate(Number.NaN);
+      await _drainForTests();
+
+      expect(mockEvalWindow).not.toHaveBeenCalled();
     });
   });
 

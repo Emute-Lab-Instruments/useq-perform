@@ -8,8 +8,7 @@
 import { Buffer } from "buffer";
 import { CircularBuffer } from "../lib/CircularBuffer.ts";
 import { dbg } from "../lib/debug.ts";
-import { handleExternalTimeUpdate } from "../effects/visualisationSampler.ts";
-import { setLastChangeKind, updateTime } from "../utils/visualisationStore.ts";
+import { notifyExternalTimeUpdate } from "../effects/visualisationRuntime.ts";
 import {
   combineBuffers,
   findMessageStartMarker,
@@ -329,15 +328,13 @@ function updateSerialBuffer(bufferIndex: number, value: number): void {
   buffer.push(value);
 
   if (bufferIndex === 0) {
-    // Update store time immediately for smooth rendering, then sample async
-    updateTime(value);
-    setLastChangeKind("time", {
-      currentTimeSeconds: value,
-      displayTimeSeconds: value,
-    });
-    handleExternalTimeUpdate(value).catch((error: unknown) => {
+    // Push the time into the visualisation runtime; it updates the store
+    // immediately and queues a fresh sample (latest-time-wins).
+    try {
+      notifyExternalTimeUpdate(value);
+    } catch (error: unknown) {
       dbg(`streamParser: failed to forward time update: ${error}`);
-    });
+    }
   }
 
   const mapIndex = bufferIndex - 1;

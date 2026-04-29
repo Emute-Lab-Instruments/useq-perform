@@ -1,4 +1,16 @@
-import { visualisationSessionChannel } from "../../contracts/visualisationChannels";
+/**
+ * Serial visualisation canvas renderer.
+ *
+ * Pure renderer: given the current `visStore` snapshot and the canvas
+ * element, paints one frame.  Does **not** own its rAF loop — the
+ * `visualisationRuntime` invokes `drawSerialVis()` once per tick.
+ *
+ * Public API:
+ *   - drawSerialVis()                — paint one frame from `visStore`
+ *   - ensureCanvasGeometry()         — sync canvas buffer to its CSS size
+ *   - isVisPanelVisible()            — visibility check (cached, layout-cheap)
+ */
+
 import { perf } from "../../lib/perfTrace.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
 
@@ -30,9 +42,6 @@ const DIGITAL_CHANNELS = ['d1', 'd2', 'd3'];
 const PANEL_ID = "panel-vis";
 const CANVAS_ID = "serialcanvas";
 
-let frameId: number | null = null;
-let subscriptionsBound = false;
-
 // Throttled visibility check — avoids calling getComputedStyle() on every
 // frame (which forces layout reflow). Cache is valid for 200ms.
 let _panelVisibleCache = false;
@@ -40,22 +49,21 @@ let _panelVisibleCacheTime = 0;
 const PANEL_VISIBLE_CACHE_MS = 200;
 
 function getPanel(): HTMLElement | null {
-  if (typeof document === "undefined") {
-    return null;
-  }
-
+  if (typeof document === "undefined") return null;
   return document.getElementById(PANEL_ID);
 }
 
 function getCanvas(): HTMLCanvasElement | null {
-  if (typeof document === "undefined") {
-    return null;
-  }
-
+  if (typeof document === "undefined") return null;
   return document.getElementById(CANVAS_ID) as HTMLCanvasElement | null;
 }
 
-function isPanelVisible(): boolean {
+/**
+ * True when the visualisation panel is on-screen.  Result cached for
+ * 200ms to avoid layout-thrashing `getComputedStyle()` calls.  The
+ * runtime calls this each tick to gate `drawSerialVis()`.
+ */
+export function isVisPanelVisible(): boolean {
   const now = performance.now();
   if (now - _panelVisibleCacheTime < PANEL_VISIBLE_CACHE_MS) {
     return _panelVisibleCache;
@@ -74,10 +82,6 @@ function isPanelVisible(): boolean {
   return _panelVisibleCache;
 }
 
-function hasActiveExpressions(): boolean {
-  return Object.keys(visStore.expressions).length > 0;
-}
-
 function clearCanvas(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): void {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
@@ -88,18 +92,6 @@ function drawEmptyState(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D
   ctx.font = '12px monospace';
   ctx.textAlign = 'center';
   ctx.fillText('No expressions selected for visualisation', canvas.width / 2, canvas.height / 2);
-}
-
-function scheduleNextFrame(): void {
-  if (frameId !== null || typeof window === "undefined") {
-    return;
-  }
-
-  if (!isPanelVisible() || !hasActiveExpressions()) {
-    return;
-  }
-
-  frameId = window.requestAnimationFrame(drawSerialVis);
 }
 
 /** Sync canvas buffer resolution to its CSS layout size. Only touches the
@@ -115,10 +107,20 @@ function syncCanvasResolution(c: HTMLCanvasElement): void {
   }
 }
 
-function drawSerialVis(): void {
-  frameId = null;
-  perf.begin("render-frame");
+/** Public alias for the runtime to call before render. */
+export function ensureCanvasGeometry(): void {
+  const c = getCanvas();
+  if (c) syncCanvasResolution(c);
+}
 
+/**
+ * Paint one frame of the serial visualisation from `visStore`.  No-ops
+ * silently if the canvas is missing or its 2D context is unavailable.
+ * The runtime is responsible for not calling this when the panel is
+ * hidden — but we re-check anyway for safety.
+ */
+export function drawSerialVis(): void {
+  perf.begin("render-frame");
   const c = getCanvas();
   if (!c) {
     perf.end("render-frame");
@@ -129,12 +131,10 @@ function drawSerialVis(): void {
     perf.end("render-frame");
     return;
   }
-  if (!isPanelVisible()) {
+  if (!isVisPanelVisible()) {
     perf.end("render-frame");
     return;
   }
-
-  syncCanvasResolution(c);
 
   // Panel transparency is applied here instead of via CSS opacity on the
   // container — CSS opacity forces an expensive offscreen compositing pass.
@@ -144,8 +144,8 @@ function drawSerialVis(): void {
   const centerY = c.height / 2;
   const drawableHeight = c.height - verticalPadding * 2;
 
-  // Read from the reactive store — time advances every frame (via localClock
-  // or hardware serial), so no interpolation is needed.
+  // Read from the reactive store — time advances every frame (via local
+  // clock or hardware serial), so no interpolation is needed.
   const currentTime = visStore.currentTime;
   const settings = visStore.settings;
   const expressions = visStore.expressions;
@@ -157,11 +157,9 @@ function drawSerialVis(): void {
   const exprKeys = Object.keys(expressions);
   const hasExpressions = exprKeys.length > 0;
 
-  // Enable antialiasing for smoother lines
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  // Clear canvas
   clearCanvas(c, ctx);
 
   if (!hasExpressions) {
@@ -197,7 +195,7 @@ function drawSerialVis(): void {
     };
   };
 
-  // Draw center axis (0.5) dotted line
+  // Center axis (0.5) dotted line
   ctx.strokeStyle = accentColor;
   ctx.lineWidth = 0.5;
   ctx.setLineDash([5, 3]);
@@ -206,7 +204,7 @@ function drawSerialVis(): void {
   ctx.lineTo(c.width, centerY);
   ctx.stroke();
 
-  // Draw current time vertical line
+  // Current time vertical line
   const centerX = c.width / 2;
   ctx.setLineDash([]);
   ctx.strokeStyle = AXIS_COLOR;
@@ -215,7 +213,7 @@ function drawSerialVis(): void {
   ctx.lineTo(centerX, c.height);
   ctx.stroke();
 
-  // Draw y-axis markings on left side
+  // Y-axis markings
   ctx.setLineDash([]);
   ctx.font = '10px Arial';
   ctx.fillStyle = accentColor;
@@ -232,7 +230,7 @@ function drawSerialVis(): void {
     ctx.fillText(i.toFixed(2), 12, textY);
   }
 
-  // Draw data traces
+  // Data traces
   ctx.lineWidth = lineWidth;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -241,7 +239,6 @@ function drawSerialVis(): void {
   const startTime = effectiveTime - halfWindow;
   const endTime = effectiveTime + halfWindow;
 
-  // Draw each registered expression
   for (const key of exprKeys) {
     const expression = expressions[key];
     const samples = expression.samples;
@@ -309,52 +306,6 @@ function drawSerialVis(): void {
   }
 
   perf.end("render-frame");
-
-  // Re-schedule for continuous animation while panel is visible with data
-  scheduleNextFrame();
-}
-
-export function makeVis(): void {
-  if (!subscriptionsBound) {
-    subscriptionsBound = true;
-    visualisationSessionChannel.subscribe(() => {
-      refreshSerialVisLoop();
-    });
-  }
-
-  refreshSerialVisLoop();
-}
-
-export function stopSerialVisLoop(): void {
-  if (frameId === null || typeof window === "undefined") {
-    return;
-  }
-
-  window.cancelAnimationFrame(frameId);
-  frameId = null;
-}
-
-export function refreshSerialVisLoop(): void {
-  const canvas = getCanvas();
-  const ctx = canvas?.getContext("2d");
-
-  if (!isPanelVisible()) {
-    stopSerialVisLoop();
-    return;
-  }
-
-  if (!canvas || !ctx) {
-    stopSerialVisLoop();
-    return;
-  }
-
-  if (!hasActiveExpressions()) {
-    stopSerialVisLoop();
-    drawEmptyState(canvas, ctx);
-    return;
-  }
-
-  scheduleNextFrame();
 }
 
 interface SamplePoint {
@@ -541,6 +492,5 @@ function clamp01(value: number): number {
 
 export const __serialVisInternals = {
   buildSegmentPointsInto,
-  hasActiveExpressions,
-  isPanelVisible,
+  isVisPanelVisible,
 };

@@ -4,9 +4,26 @@ import {
   serialVisAutoOpenChannel,
 } from "../../contracts/visualisationChannels";
 import {
-  refreshSerialVisLoop,
-  stopSerialVisLoop,
+  pauseVisualisationRender,
+  registerVisualisationRenderHook,
+  requestVisualisationRender,
+} from "../../effects/visualisationRuntime";
+import {
+  drawSerialVis,
+  ensureCanvasGeometry,
+  isVisPanelVisible,
 } from "../visualisation/serialVis";
+
+// Wire the canvas renderer into the visualisation runtime.  The runtime
+// itself lives in `src/effects/` and is forbidden from importing `src/ui/`
+// directly, so this adapter registers the hook at module load.
+registerVisualisationRenderHook({
+  paint: () => {
+    ensureCanvasGeometry();
+    drawSerialVis();
+  },
+  isVisible: () => isVisPanelVisible(),
+});
 
 const PANEL_ID = "panel-vis";
 const CANVAS_ID = "serialcanvas";
@@ -135,7 +152,7 @@ export function showVisualisationPanel(options?: { emitAutoOpenEvent?: boolean }
   const wasVisible = isVisualisationPanelVisible(panel);
   if (!wasVisible) {
     applyVisibleVisualisationPanelState(panel, getVisualisationCanvas(panel));
-    refreshSerialVisLoop();
+    requestVisualisationRender();
     if (options?.emitAutoOpenEvent) {
       serialVisAutoOpenChannel.publish(undefined);
     }
@@ -152,7 +169,7 @@ export function hideVisualisationPanel(): boolean {
 
   const wasVisible = isVisualisationPanelVisible(panel);
   if (wasVisible) {
-    stopSerialVisLoop();
+    pauseVisualisationRender();
     Object.assign(panel.style, getVisualisationPanelStyles(false));
     panel.hidden = true;
   }

@@ -1,137 +1,80 @@
 /**
- * Local Clock
+ * Local Clock — thin shim over `visualisationRuntime`.
  *
- * When no hardware is connected, this is the time source for visualisation.
- * It computes elapsed time since the last transport reset using the browser's
- * high-resolution clock (performance.now).
+ * Historically this module owned its own rAF loop and called the
+ * visualisation sampler directly.  Ownership has moved to
+ * `visualisationRuntime`, which runs a single rAF loop driving both
+ * sampling and rendering.  These exports remain so that
+ * `transportClock.ts` and other callers can keep their existing API
+ * without caring where the loop actually lives.
  *
- * When hardware IS connected, the serial stream provides time values directly
- * and this clock is stopped.
- *
- * Design: time and sampling are independent concerns.
- * - This module advances `visStore.currentTime` every frame (rAF).
- * - The sampler runs in the background, populating expression data
- *   without blocking the clock.
+ * "Local clock running" now means "runtime is in local-time mode" —
+ * i.e. each tick advances `visStore.currentTime` from `performance.now`.
+ * Hardware mode disables local-time mode but the runtime itself stays
+ * running so external time updates still drive sampling and the
+ * renderer continues to draw.
  */
 
-import { resampleExpressions } from './visualisationSampler.ts';
-import { perf } from '../lib/perfTrace.ts';
-import { setLastChangeKind, updateTime } from '../utils/visualisationStore.ts';
-import { dbg } from '../lib/debug.ts';
-import { readActiveDiagnostics } from '../runtime/wasmInterpreter.ts';
-import { refreshOutputHealth } from '../utils/outputHealthStore.ts';
-
-let running = false;
-let resetTimeMs: number | null = null;
-let frameId: number | null = null;
-let elapsedSeconds = 0;
-let samplingInFlight = false;
-let frameCount = 0;
-let lastTickMs = 0;
-
-// Target 30fps — skip rAF callbacks that arrive too soon.
-const TARGET_FRAME_MS = 1000 / 30;
-
-// Poll diagnostics every Nth tick (~5Hz at 30fps).
-const DIAG_POLL_INTERVAL = 6;
-
-function scheduleNext(): void {
-  frameId = window.requestAnimationFrame(tick);
-}
-
-function tick(): void {
-  if (!running) return;
-
-  // Always schedule next rAF first — clock is never blocked
-  scheduleNext();
-
-  // Throttle to 30fps: skip this callback if not enough time has elapsed
-  const now = performance.now();
-  if (now - lastTickMs < TARGET_FRAME_MS) return;
-  lastTickMs = now;
-
-  perf.begin("frame-tick");
-  frameCount++;
-
-  // Advance time
-  elapsedSeconds = (now - (resetTimeMs ?? 0)) / 1000;
-  updateTime(elapsedSeconds);
-  setLastChangeKind("time", {
-    currentTimeSeconds: elapsedSeconds,
-    displayTimeSeconds: elapsedSeconds,
-  });
-
-  // Poll diagnostics at reduced frequency. readActiveDiagnostics() caches
-  // by JSON string identity; refreshOutputHealth bails on reference equality.
-  if (frameCount % DIAG_POLL_INTERVAL === 0) {
-    const activeDiags = readActiveDiagnostics();
-    refreshOutputHealth(activeDiags);
-  }
-
-  // Coalesce sampling: skip if a WASM evaluation is already running on the
-  // main thread. The sampler's sequence counter discards stale results, but
-  // this guard avoids queuing redundant synchronous WASM work that would
-  // burn CPU and be thrown away.
-  if (samplingInFlight) { perf.end("frame-tick"); return; }
-  samplingInFlight = true;
-  resampleExpressions(elapsedSeconds)
-    .catch((e) => dbg(`localClock: sampling error: ${e}`))
-    .finally(() => { samplingInFlight = false; });
-  perf.end("frame-tick");
-}
+import {
+  startVisualisationRuntime,
+  stopVisualisationRuntime,
+  setLocalTimeMode,
+  resetLocalTime,
+  isLocalTimeActive,
+  getLocalTime,
+} from "./visualisationRuntime.ts";
 
 /** Start the local clock from t=0. */
 export function startLocalClock(): boolean {
-  if (running) return false;
-  running = true;
-  resetTimeMs = performance.now();
-  elapsedSeconds = 0;
-  frameId = window.requestAnimationFrame(tick);
+  if (isLocalTimeActive()) return false;
+  resetLocalTime();
+  startVisualisationRuntime();
+  setLocalTimeMode(true);
   return true;
 }
 
-/** Stop the local clock (freeze time). */
+/** Stop the local clock (freeze time).  The runtime keeps running for
+ *  rendering and any external time updates. */
 export function stopLocalClock(): boolean {
-  if (!running) return false;
-  running = false;
-  if (frameId !== null) {
-    window.cancelAnimationFrame(frameId);
-    frameId = null;
-  }
+  if (!isLocalTimeActive()) return false;
+  setLocalTimeMode(false);
   return true;
 }
 
 /** Resume the local clock from where it left off. */
 export function resumeLocalClock(): boolean {
-  if (running) return false;
-  running = true;
-  // Adjust reset time so elapsed time continues from where it stopped
-  resetTimeMs = performance.now() - (elapsedSeconds * 1000);
-  frameId = window.requestAnimationFrame(tick);
+  if (isLocalTimeActive()) return false;
+  startVisualisationRuntime();
+  setLocalTimeMode(true);
   return true;
 }
 
 /** Stop and reset the clock to t=0. */
 export function resetLocalClock(): void {
-  const wasRunning = running;
-  if (wasRunning) stopLocalClock();
-  resetTimeMs = null;
-  elapsedSeconds = 0;
-  if (wasRunning) startLocalClock();
+  const wasRunning = isLocalTimeActive();
+  setLocalTimeMode(false);
+  resetLocalTime();
+  if (wasRunning) setLocalTimeMode(true);
 }
 
-/** Whether the local clock is currently running. */
+/** Whether the local clock is currently advancing time. */
 export function isLocalClockRunning(): boolean {
-  return running;
+  return isLocalTimeActive();
 }
 
 /** Current elapsed time in seconds. */
 export function getLocalClockTime(): number {
-  return elapsedSeconds;
+  return getLocalTime();
+}
+
+/** Tear down both the local-time mode and the rAF loop.  Useful in
+ *  tests; production code should prefer `stopLocalClock`. */
+export function shutdownLocalClock(): void {
+  setLocalTimeMode(false);
+  stopVisualisationRuntime();
 }
 
 // ── Backward-compatible aliases ──────────────────────────────────────
-// TODO: Remove these once all consumers are updated.
 export {
   startLocalClock as startMockTimeGenerator,
   stopLocalClock as stopMockTimeGenerator,

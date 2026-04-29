@@ -1,15 +1,19 @@
 /**
  * Visualisation Sampler
  *
- * Pure WASM sampling logic extracted from the old visualisationController.
- * Provides functions to evaluate expressions over time windows and manage
- * the sampling lifecycle. All state lives in visualisationStore; this module
- * only contains stateless sampling helpers and the side-effectful time-update
- * handler that bridges incoming time ticks to the store.
+ * Pure(-ish) WASM sampling helpers for visualisation.  Owns expression
+ * registration, refresh, and the building blocks for time-window
+ * sampling — but **not** the rAF loop, the in-flight coalescing, or the
+ * sample-window deduplication across consecutive ticks.  Those concerns
+ * live in `visualisationRuntime.ts`, which orchestrates this module.
+ *
+ * The split:
+ *   - `visualisationRuntime`  → "when does sampling run?"
+ *   - `visualisationSampler`  → "how does a single sample run?"
+ *   - `visualisationStore`    → "what is the current state?"
  */
 
 import { dbg } from "../lib/debug.ts";
-import { perf } from "../lib/perfTrace.ts";
 import {
   evalInUseqWasm,
   updateUseqWasmTime,
@@ -29,8 +33,6 @@ import { serialVisPaletteChangedChannel } from "../contracts/visualisationChanne
 import type { VisExpression, VisSample, VisSettings } from "../utils/visualisationStore.ts";
 import {
   visStore,
-  setVisStore,
-  updateTime,
   updateBar,
   updateExpressions,
   updateSettings,
@@ -38,6 +40,7 @@ import {
   removeExpression,
   setLastChangeKind,
 } from "../utils/visualisationStore.ts";
+import { invalidateSamplingCache } from "./visualisationRuntime.ts";
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -45,12 +48,6 @@ const DEFAULT_FUTURE_LEAD_SECONDS = 1;
 const MAX_FUTURE_LEAD_SECONDS = 8;
 const SAMPLE_EPSILON = 1e-9;
 const WASM_ERROR_RESULT = "{error}";
-
-// ── Staleness guard ──────────────────────────────────────────────────
-// Monotonic counter incremented on every resampleExpressions() call.
-// If async WASM work finishes and the counter has moved on, the result
-// is stale and must be discarded.
-let samplingSequence = 0;
 
 // ── Settings helpers ─────────────────────────────────────────────────
 
@@ -60,7 +57,7 @@ interface SamplingSettings {
   futureLeadSeconds: number;
 }
 
-interface SamplingWindow {
+export interface SamplingWindow {
   start: number;
   end: number;
   step: number;
@@ -143,7 +140,8 @@ function totalSamplesForSettings(
   return baseCount + extra;
 }
 
-function computeSamplingWindow(
+/** Compute the snapped sampling window for a given time + settings. */
+export function computeSamplingWindow(
   currentTime: number,
   settings: SamplingSettings,
 ): SamplingWindow {
@@ -159,19 +157,12 @@ function computeSamplingWindow(
   return { start, end, step, total };
 }
 
-function samplingWindowKey(window: SamplingWindow): string {
+/** Stable key for a sampling window — used by the runtime to dedupe. */
+export function samplingWindowKey(window: SamplingWindow): string {
   return `${window.start}:${window.step}:${window.total}`;
 }
 
-let lastRequestedSamplingWindowKey: string | null = null;
-let lastCompletedSamplingWindowKey: string | null = null;
-
-function invalidateSamplingWindowCache(): void {
-  lastRequestedSamplingWindowKey = null;
-  lastCompletedSamplingWindowKey = null;
-}
-
-// ── Sampling functions ───────────────────────────────────────────────
+// ── Sampling primitives ──────────────────────────────────────────────
 
 async function buildSamples(
   exprType: string,
@@ -225,9 +216,10 @@ function isWasmErrorResult(result: string | null | undefined): boolean {
   return typeof result === "string" && result.trim() === WASM_ERROR_RESULT;
 }
 
-// ── Refresh bar ──────────────────────────────────────────────────────
+// ── Bar ──────────────────────────────────────────────────────────────
 
-async function refreshBarValue(timeSeconds: number): Promise<void> {
+/** Read the `bar` output at `timeSeconds` and update the store.  Errors are logged. */
+export async function refreshBarValue(timeSeconds: number): Promise<void> {
   try {
     const result = await evalOutputAtTime("bar", timeSeconds);
     const numeric = Number(result);
@@ -242,9 +234,23 @@ async function refreshBarValue(timeSeconds: number): Promise<void> {
   updateBar(0);
 }
 
+/** Push the current time into WASM so subsequent batch samples are aligned. */
+export async function syncInterpreterTime(timeSeconds: number): Promise<void> {
+  await updateUseqWasmTime(Number(timeSeconds) || 0);
+}
+
 // ── Rebuild all expression samples ───────────────────────────────────
 
-async function rebuildAllExpressions(
+/**
+ * Re-sample every registered expression at `currentTime` using `settings`.
+ * Issues a single batch WASM call and falls back to per-expression eval
+ * on failure.  Merges results into the store; identity-preserving so
+ * Solid reactive consumers don't see spurious change notifications.
+ *
+ * The runtime is responsible for not calling this redundantly across
+ * consecutive ticks — `samplingWindowKey()` provides the dedup key.
+ */
+export async function rebuildAllExpressions(
   settings: VisSettings,
   currentTime: number,
 ): Promise<void> {
@@ -252,11 +258,8 @@ async function rebuildAllExpressions(
   const exprTypes = Object.keys(expressions);
   if (exprTypes.length === 0) return;
 
-  // Compute the shared sample window ONCE for all expressions.
   const window = computeSamplingWindow(currentTime, settings);
-  const currentWindowKey = samplingWindowKey(window);
 
-  // Batch ALL expressions into a single WASM call.
   let batchResults: Map<string, VisSample[]>;
   try {
     batchResults = await evalOutputsInTimeWindow(
@@ -283,10 +286,6 @@ async function rebuildAllExpressions(
     }
   }
 
-  lastCompletedSamplingWindowKey = currentWindowKey;
-
-  // Merge batch results into the current store, creating new expression
-  // records only for channels whose data actually changed.
   const current = visStore.expressions;
   const merged: Record<string, VisExpression> = {};
   let changed = false;
@@ -298,7 +297,6 @@ async function rebuildAllExpressions(
     const samples = batchResults.get(key);
     if (samples) {
       const color = resolveColor(key, settings.circularOffset);
-      // Only create a new object if data or color actually changed.
       if (samples !== expr.samples || color !== expr.color) {
         merged[key] = { ...expr, samples, color };
         changed = true;
@@ -315,74 +313,12 @@ async function rebuildAllExpressions(
   }
 }
 
-// ── Public API ───────────────────────────────────────────────────────
+// ── Public expression API ────────────────────────────────────────────
 
 /**
- * Resample all registered expressions at the given time.
- *
- * This is pure sampling work — it does NOT update the store's currentTime.
- * Callers are responsible for time advancement:
- * - Local clock: `localClock.ts` updates time on every rAF frame
- * - Hardware: `stream-parser.ts` updates time when serial data arrives
- *
- * This function can safely be called fire-and-forget; if it takes longer
- * than a frame, the clock keeps ticking and the renderer interpolates.
- */
-export async function resampleExpressions(
-  timeSeconds: number,
-): Promise<void> {
-  perf.begin("resample-total");
-  const seq = ++samplingSequence;
-  const numericTime = Number(timeSeconds) || 0;
-  const settings = visStore.settings;
-
-  perf.begin("wasm-update-time");
-  try {
-    await updateUseqWasmTime(numericTime);
-  } catch (error) {
-    dbg(`visualisationSampler: failed to update interpreter time: ${error}`);
-    perf.end("wasm-update-time");
-    perf.end("resample-total");
-    return;
-  }
-  perf.end("wasm-update-time");
-
-  // A newer resample request arrived while we were awaiting — discard.
-  if (seq !== samplingSequence) { perf.end("resample-total"); return; }
-
-  perf.begin("refresh-bar");
-  await refreshBarValue(numericTime);
-  perf.end("refresh-bar");
-
-  const expressions = visStore.expressions;
-  if (Object.keys(expressions).length > 0) {
-    const currentWindowKey = samplingWindowKey(
-      computeSamplingWindow(numericTime, settings),
-    );
-    const shouldRebuild = currentWindowKey !== lastRequestedSamplingWindowKey
-      && currentWindowKey !== lastCompletedSamplingWindowKey;
-
-    if (shouldRebuild) {
-      lastRequestedSamplingWindowKey = currentWindowKey;
-      perf.begin("rebuild-all");
-      await rebuildAllExpressions(settings, numericTime);
-      perf.end("rebuild-all");
-    }
-  }
-
-  // Final staleness check after async work completes.
-  if (seq !== samplingSequence) { perf.end("resample-total"); return; }
-
-  setLastChangeKind("data");
-  perf.end("resample-total");
-}
-
-// Backward-compatible alias
-export { resampleExpressions as handleExternalTimeUpdate };
-
-/**
- * Register (or update) an expression for visualisation.
- * Evaluates it in WASM and populates initial samples.
+ * Register (or update) an expression for visualisation.  Evaluates it in
+ * WASM and populates initial samples.  After this returns, the runtime
+ * cache is invalidated so the next tick will re-sample.
  */
 export async function registerVisualisation(
   exprType: string,
@@ -392,7 +328,7 @@ export async function registerVisualisation(
   const trimmed = (expressionText || "").trim();
   if (!trimmed) {
     removeExpression(exprType);
-    invalidateSamplingWindowCache();
+    invalidateSamplingCache();
     setLastChangeKind("unregister", { exprType });
     return;
   }
@@ -413,22 +349,18 @@ export async function registerVisualisation(
     position,
   };
   updateExpressions(expressions);
-  invalidateSamplingWindowCache();
+  invalidateSamplingCache();
   setLastChangeKind("register", { exprType });
 }
 
-/**
- * Remove an expression from visualisation.
- */
+/** Remove an expression from visualisation. */
 export function unregisterVisualisation(exprType: string): void {
   removeExpression(exprType);
-  invalidateSamplingWindowCache();
+  invalidateSamplingCache();
   setLastChangeKind("unregister", { exprType });
 }
 
-/**
- * Toggle an expression on/off in the visualisation.
- */
+/** Toggle an expression on/off in the visualisation. */
 export async function toggleVisualisation(
   exprType: string,
   expressionText: string,
@@ -442,8 +374,8 @@ export async function toggleVisualisation(
 }
 
 /**
- * Check if an expression is currently being visualised.
- * If position is provided, also verifies the expression's position matches.
+ * Check if an expression is currently being visualised.  If `position`
+ * is provided, also verifies the expression's position matches.
  */
 export function isExpressionVisualised(
   exprType: string,
@@ -455,9 +387,7 @@ export function isExpressionVisualised(
   return expr.position?.from === position.from && expr.position?.to === position.to;
 }
 
-/**
- * Refresh a single expression's samples after its code changes.
- */
+/** Refresh a single expression's samples after its code changes. */
 export async function refreshVisualisedExpression(
   exprType: string,
   expressionText: string,
@@ -510,20 +440,22 @@ export async function refreshVisualisedExpression(
     position: position || expr.position,
   };
   updateExpressions(expressions);
-  invalidateSamplingWindowCache();
+  invalidateSamplingCache();
   setLastChangeKind("update");
 }
 
 /**
  * Notify that an expression was evaluated (code changed) and needs re-sampling.
+ * Triggers a cache-invalidating rebuild.  Result is awaited internally; the
+ * `setLastChangeKind('data')` publishes downstream.
  */
-export function notifyExpressionEvaluated(exprType: string | null = null): void {
+export function notifyExpressionEvaluated(_exprType: string | null = null): void {
   const expressions = visStore.expressions;
   if (Object.keys(expressions).length === 0) return;
 
   const settings = visStore.settings;
   const currentTime = visStore.currentTime;
-  invalidateSamplingWindowCache();
+  invalidateSamplingCache();
 
   rebuildAllExpressions(settings, currentTime)
     .then(() => setLastChangeKind("data"))
@@ -534,9 +466,7 @@ export function notifyExpressionEvaluated(exprType: string | null = null): void 
     });
 }
 
-/**
- * Report a color for an expression (used by editor gutter).
- */
+/** Report a color for an expression (used by editor gutter). */
 export function reportExpressionColor(
   exprType: string,
   color: string | null,
@@ -585,13 +515,11 @@ function refreshAllColors(settings: VisSettings): void {
   if (changed) {
     updateExpressions(updated);
   }
-  invalidateSamplingWindowCache();
+  invalidateSamplingCache();
 }
 
 if (typeof window !== "undefined") {
   // Defer subscriptions to avoid TDZ errors during module init.
-  // The entire block is wrapped in try-catch because appSettingsRepository
-  // may not have finished initialising its module-level state.
   setTimeout(() => {
     try {
       const settings = loadAndApplySettings();
@@ -599,7 +527,7 @@ if (typeof window !== "undefined") {
       subscribeAppSettings(() => {
         const newSettings = loadAndApplySettings();
         const currentTime = visStore.currentTime;
-        invalidateSamplingWindowCache();
+        invalidateSamplingCache();
         rebuildAllExpressions(newSettings, currentTime)
           .then(() => setLastChangeKind("settings"))
           .catch((error) => {
@@ -608,6 +536,10 @@ if (typeof window !== "undefined") {
             );
           });
       });
+
+      // Avoid "unused settings" lint noise; the variable documents that
+      // the initial load happened before we subscribed.
+      void settings;
     } catch {
       // TDZ — appSettingsRepository not ready. Settings will be applied
       // when the first time update arrives instead.

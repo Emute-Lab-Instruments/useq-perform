@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { refreshSerialVisLoop, stopSerialVisLoop } = vi.hoisted(() => ({
-  refreshSerialVisLoop: vi.fn(),
-  stopSerialVisLoop: vi.fn(),
+const {
+  requestVisualisationRender,
+  pauseVisualisationRender,
+  registerVisualisationRenderHook,
+} = vi.hoisted(() => ({
+  requestVisualisationRender: vi.fn(),
+  pauseVisualisationRender: vi.fn(),
+  registerVisualisationRenderHook: vi.fn(),
 }));
 
-vi.mock("../visualisation/serialVis", () => ({
-  refreshSerialVisLoop,
-  stopSerialVisLoop,
+vi.mock("../../effects/visualisationRuntime", () => ({
+  requestVisualisationRender,
+  pauseVisualisationRender,
+  registerVisualisationRenderHook,
 }));
 
 describe("visualisationPanel", () => {
@@ -31,7 +37,7 @@ describe("visualisationPanel", () => {
     );
 
     expect(panelModule.showVisualisationPanel()).toBe(true);
-    expect(refreshSerialVisLoop).toHaveBeenCalledTimes(1);
+    expect(requestVisualisationRender).toHaveBeenCalledTimes(1);
     expect(panelModule.isVisualisationPanelVisible()).toBe(true);
   });
 
@@ -43,7 +49,7 @@ describe("visualisationPanel", () => {
     panel.style.display = "block";
 
     expect(panelModule.hideVisualisationPanel()).toBe(true);
-    expect(stopSerialVisLoop).toHaveBeenCalledTimes(1);
+    expect(pauseVisualisationRender).toHaveBeenCalledTimes(1);
     expect(panelModule.isVisualisationPanelVisible()).toBe(false);
   });
 });

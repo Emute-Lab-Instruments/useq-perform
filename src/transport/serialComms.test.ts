@@ -8,7 +8,7 @@ import {
 
 const postMock = vi.fn();
 const upgradeCheckMock = vi.fn();
-const handleExternalTimeUpdateMock = vi.fn(() => Promise.resolve());
+const notifyExternalTimeUpdateMock = vi.fn();
 const reportTransportConnectionChangedMock = vi.fn(() => ({
   connected: false,
   protocolMode: "legacy",
@@ -32,8 +32,8 @@ vi.mock("./upgradeCheck.ts", () => ({
   upgradeCheck: upgradeCheckMock,
 }));
 
-vi.mock("../effects/visualisationSampler.ts", () => ({
-  handleExternalTimeUpdate: handleExternalTimeUpdateMock,
+vi.mock("../effects/visualisationRuntime.ts", () => ({
+  notifyExternalTimeUpdate: notifyExternalTimeUpdateMock,
 }));
 
 vi.mock("../runtime/appSettingsRepository.ts", () => ({
@@ -247,8 +247,7 @@ describe("serialComms fake host harness", () => {
     });
     postMock.mockReset();
     upgradeCheckMock.mockReset();
-    handleExternalTimeUpdateMock.mockReset();
-    handleExternalTimeUpdateMock.mockImplementation(() => Promise.resolve());
+    notifyExternalTimeUpdateMock.mockReset();
     reportTransportConnectionChangedMock.mockReset();
     reportTransportConnectionChangedMock.mockReturnValue({
       connected: false,
@@ -319,7 +318,7 @@ describe("serialComms fake host harness", () => {
         meta: { transport: "playing" },
       },
     });
-    expect(handleExternalTimeUpdateMock).toHaveBeenCalledWith(12.5);
+    expect(notifyExternalTimeUpdateMock).toHaveBeenCalledWith(12.5);
 
     await serialComms.disconnect();
 
