@@ -9,37 +9,29 @@ Last full pass: **2026-04-29**.
 
 ---
 
-## Active push (Press Fire)
+## Active push (Press Fire) — *complete, 2026-04-29*
 
-Five concurrent streams. Stream A1 lands first as a gating prerequisite;
-the rest run in parallel against the boundary it defines.
+All six original streams landed across two waves of parallel agents:
 
-- **A1 — Visualisation consolidation** *(prerequisite, lands first)*. Issue
-  6. Single owner for sampling + state + render with one rAF loop.
-- **A2 — Worker move** *(after A1)*. Issue 2. Off-thread WASM eval +
-  transferable buffers.
-- **B — WebGL renderer** *(after A1)*. Issue 3. GPU path for analog +
-  digital lanes.
-- **C — Hardware-mode test coverage** *(parallel, independent)*. Issue 4.
-  Expand fake-Serial harness to cover reconnect, bootloader, version
-  gating.
-- **D — Settings reorg + doc sweep + serial-wait fix** *(complete,
-  2026-04-29)*. devmode-gated settings split (`useq-perform-9gu`),
-  REPO_MAP.md/STABLE_CORE.md pruned (`useq-perform-3yw`), 3500ms serial
-  wait replaced with observed readiness (`useq-perform-vig`).
-- **F — WASM-mode protocol parity** *(complete, 2026-04-29)*. `hello`
-  + `stream-config` + `eval` + `ping` negotiation now layered in front
-  of `wasmInterpreter` via `runtime/wasmJsonTransport.ts` +
-  `runtime/wasmJsonHandlers.ts`. `WasmRuntimePort.evalCode` and
-  `sendTransportCommand` flow through the same JSON shapes as hardware;
-  sampling helpers stay direct.
+- **A1 — Visualisation consolidation** (`useq-perform-7hs`). Single
+  `visualisationRuntime` owner; one rAF loop; one coalescing slot.
+- **A2 — Off-main-thread WASM** (`useq-perform-d5r` probe batching,
+  `useq-perform-nri` worker move). 40× call reduction + opt-in worker.
+- **B — WebGL renderer** (`useq-perform-cqw`). Alternative
+  `VisualisationRenderHook`; devmode-gated.
+- **C — Hardware-mode test coverage** (`useq-perform-ln3`). 22 new
+  lifecycle tests; paths 1–6 covered.
+- **D — Settings reorg + doc sweep + serial-wait fix**
+  (`useq-perform-9gu`, `-3yw`, `-vig`). devmode split, REPO_MAP/STABLE_CORE
+  pruned, observed-readiness probe replaces 3500ms wait.
+- **F — WASM-mode protocol parity** (`useq-perform-6cf` typed runtime
+  ports, `useq-perform-pcx` JSON parity). Hardware and WASM share the same
+  port abstraction and the same `hello` / `stream-config` / `eval` /
+  `ping` shapes via `runtime/wasmJsonTransport.ts`.
 
-Each stream is a bd dependency chain rooted in a P1 entry-bead so
-`bd ready` returns the active heads when an agent claims work.
-
-Outside the active push, the User Guide content beads (`useq-perform-tef`,
-`-2i1`, `-6ej`, `protocol-gr4`) continue per
-`docs/USER_GUIDE_SPEC.md` as their own independent track.
+Outside the active push, the User Guide content beads (`useq-perform-2i1`,
+`-6ej`, `protocol-gr4`) continue per `docs/USER_GUIDE_SPEC.md` as their
+own independent track.
 
 ---
 
