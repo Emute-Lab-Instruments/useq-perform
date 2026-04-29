@@ -63,7 +63,7 @@ export function EvalResultsSettings(props: EvalResultsSettingsProps = {}) {
           onChange={handleModeChange}
         />
       </FormRow>
-      <FormRow label="Auto-dismiss (ms)">
+      <FormRow label="Auto-dismiss (ms)" level="advanced">
         <NumberInput
           value={current().autoDismissMs}
           min={0}
@@ -73,7 +73,7 @@ export function EvalResultsSettings(props: EvalResultsSettingsProps = {}) {
           onChange={handleAutoDismissChange}
         />
       </FormRow>
-      <FormRow label="Max display chars">
+      <FormRow label="Max display chars" level="advanced">
         <NumberInput
           value={current().maxChars}
           min={0}
@@ -82,7 +82,7 @@ export function EvalResultsSettings(props: EvalResultsSettingsProps = {}) {
           onChange={handleMaxCharsChange}
         />
       </FormRow>
-      <FormRow label="Show timestamp">
+      <FormRow label="Show timestamp" level="advanced">
         <Checkbox
           checked={current().showTimestamp}
           onChange={handleShowTimestampChange}

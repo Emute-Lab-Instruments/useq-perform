@@ -79,7 +79,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `Modal.tsx`, `ProgressBar.tsx`, `Tabs.tsx`, `OnboardingBanner.tsx`, `SerialVis.tsx`, `VisLegend.tsx`, `InternalVis.tsx`.
   - `RadialMenu.tsx`, `DoubleRadialPicker.tsx`, `PickerMenu.tsx`, `HierarchicalPickerMenu.tsx`, `overlayManager.ts`.
   - `adapters/` — imperative mount bridges via `createSolidAdapter()` (toolbars, panels, modal, picker-menu, double-radial-menu, snippets, settings, visualisation, palette, modifier-hints, gamepad-menu-bridge, visualisation-panel).
-  - `settings/` — settings panel + per-section components (General/Editor/Theme/Visualisation/Storage/Personal/Console/UI/EvalResults/Advanced/ConfigurationManagement). Built on `FormControls.tsx` and `settingsSearch.ts`.
+  - `settings/` — settings panel + per-section components (General/Editor/Theme/Visualisation/Storage/Personal/Console/UI/EvalResults/Advanced/ConfigurationManagement). Built on `FormControls.tsx`. `devmodeContext.ts` gates `level="advanced"` rows/sections behind `?devmode=true`.
   - `help/` — help panel, ModuLisp reference tab, code snippets, keybindings tab, snippet modal, `helpChannels.ts`. Sub-dirs: `guide/` (chapter-based user guide, live probes, playground), `lessons/` (`MiniVis.tsx`).
   - `keybindings/` — `KeybindingsPanel.tsx`, `KeyboardVisualiser.tsx`, `ActionPalette.tsx`, `ModifierHints.tsx`.
   - `console/` — `ConsolePanel.tsx` REPL/log panel + CSS.

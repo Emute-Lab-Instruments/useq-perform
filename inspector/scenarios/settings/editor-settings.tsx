@@ -1,18 +1,22 @@
 import { defineScenario } from '../../framework/scenario';
 import { createDefaultUserSettings } from '@src/lib/appSettings';
 import { EditorSettings } from '@src/ui/settings/EditorSettings';
+import { setDevmodeOverride } from '@src/ui/settings/devmodeContext';
 import { createStore } from 'solid-js/store';
 
 export default defineScenario({
   category: 'Settings UI / Editor Settings',
-  name: 'Editor preferences',
+  name: 'Editor preferences (devmode)',
   type: 'contract',
   sourceFiles: ['src/ui/settings/EditorSettings.tsx'],
   description:
-    'Editor settings panel showing theme selector, font size (drag-to-adjust), ' +
-    'and bracket unbalancing toggle. All controls should be interactive.',
+    'Editor settings panel with devmode enabled, showing theme selector, font size ' +
+    '(drag-to-adjust), and bracket unbalancing toggle. The bracket toggle is advanced; ' +
+    'in basic-only mode only theme + font size remain.',
   component: {
     render: () => {
+      // Show advanced controls so the bracket-unbalancing toggle is visible.
+      setDevmodeOverride(true);
       const [settings, setSettings] = createStore(createDefaultUserSettings());
 
       const handleUpdate = (patch: Record<string, unknown>) => {

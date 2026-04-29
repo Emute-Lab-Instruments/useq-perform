@@ -82,7 +82,7 @@ export function EditorSettings(props: EditorSettingsProps = {}) {
           onChange={handleFontSizeChange}
         />
       </FormRow>
-      <FormRow label="Prevent bracket unbalancing">
+      <FormRow label="Prevent bracket unbalancing" level="advanced">
         <Checkbox
           checked={s().editor?.preventBracketUnbalancing ?? true}
           onChange={handleBracketUnbalancingChange}

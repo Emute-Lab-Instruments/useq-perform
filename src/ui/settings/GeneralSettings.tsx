@@ -2,7 +2,6 @@ import {
   resetSettings,
 } from "../../runtime/runtimeService.ts";
 import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore.ts";
-import { settingsQuery, setSettingsQuery } from "./settingsSearch";
 import { PersonalSettings } from "./PersonalSettings";
 import { EditorSettings } from "./EditorSettings";
 import { EvalResultsSettings } from "./EvalResultsSettings";
@@ -12,7 +11,6 @@ import { VisualisationSettings } from "./VisualisationSettings";
 import { ConfigurationManagement, handleSettingsExport, handleSettingsImport } from "./ConfigurationManagement";
 import { ConsoleSettings } from "./ConsoleSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
-import { onCleanup } from "solid-js";
 import type { AppSettings } from "../../lib/appSettings.ts";
 
 export interface GeneralSettingsProps {
@@ -32,9 +30,6 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
     (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
   const reload = () => (props.onReload ?? (() => window.location.reload()))();
 
-  // Clear search when leaving the settings panel
-  onCleanup(() => setSettingsQuery(""));
-
   const handleReset = () => {
     if (confirm("Are you sure you want to reset all settings to default values?")) {
       (props.onResetSettings ?? resetSettings)();
@@ -44,16 +39,6 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
 
   return (
     <div class="panel-tab-content">
-      <div class="settings-search-bar">
-        <input
-          type="text"
-          class="settings-search-input"
-          placeholder="Search settings..."
-          value={settingsQuery()}
-          onInput={(e) => setSettingsQuery(e.currentTarget.value)}
-        />
-      </div>
-
       <PersonalSettings settings={s()} onUpdateSettings={update} />
       <EditorSettings settings={s()} onUpdateSettings={update} />
       <ConsoleSettings settings={s()} onUpdateSettings={update} />

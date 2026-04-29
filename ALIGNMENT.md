@@ -23,9 +23,10 @@ the rest run in parallel against the boundary it defines.
 - **C — Hardware-mode test coverage** *(parallel, independent)*. Issue 4.
   Expand fake-Serial harness to cover reconnect, bootloader, version
   gating.
-- **D — Settings reorg + doc sweep** *(parallel, independent)*. Issues
-  5, 7. devmode-gated settings split, prune REPO_MAP.md and
-  STABLE_CORE.md. (Serial-wait fix landed under `useq-perform-vig`.)
+- **D — Settings reorg + doc sweep + serial-wait fix** *(complete,
+  2026-04-29)*. devmode-gated settings split (`useq-perform-9gu`),
+  REPO_MAP.md/STABLE_CORE.md pruned (`useq-perform-3yw`), 3500ms serial
+  wait replaced with observed readiness (`useq-perform-vig`).
 - **F — WASM-mode protocol parity** *(parallel, independent)*. Bring
   `hello` + `stream-config` negotiation into the browser-local path so
   WASM is genuinely first-class.
@@ -147,32 +148,7 @@ to be a mission-fit problem until Stream F lands.
 **Cost.** S for the timing-paths tests (write against the readiness
 contract `vig` introduces). M for WASM-mode parity (separate stream).
 
-### 5. Settings panel needs an audience split (basic vs. dev) *(2026-04-29)*
-
-**What.** `src/lib/settings/schema.ts` defines 9 top-level sections;
-`UISettings` alone has 17 fields, `VisualisationSettings` 21 (10 of which
-are `readability*` blur tuning knobs). The settings panel has its own
-search box — `src/ui/settings/settingsSearch.ts` — because it's
-overgrown. Most knobs were exposed during dev tuning (commit `48097e0`
-and the readability/probe sliders that followed) and are genuinely useful
-to the author for live tweaking, but irrelevant to a normal user.
-
-**Why it blocks the mission.** Everyone — including the author when not
-in tuning mode — pays the cost of seeing all knobs at once. The settings
-panel has become the place where "the app is overwhelming." For first-time
-users this is an onboarding wall; for the author at a performance, it's
-clutter.
-
-**Direction (decided 2026-04-29).** *Reorg, not cull.* Tag every settings
-field as `basic` or `advanced`; render only `basic` by default, expose
-`advanced` behind `?devmode=true`. Keep all knobs (the author needs
-them); drop the in-panel search box once the basic surface is small
-enough. Custom themes still belong out of `AppSettings` proper.
-
-**Cost.** S-M (one-time taxonomy pass + panel render gate; no logic
-deletion).
-
-### 6. Visualisation ownership is split across three modules *(2026-04-29)*
+### 5. Visualisation ownership is split across three modules *(2026-04-29)*
 
 **What.** `src/effects/visualisationSampler.ts` owns sampling. `src/utils/visualisationStore.ts`
 owns reactive state. `src/ui/visualisation/serialVis.ts` owns rendering and
@@ -193,7 +169,7 @@ against.
 
 **Cost.** M, and a prerequisite for the worker move.
 
-### 7. Docs drift faster than they're audited *(2026-04-29)*
+### 6. Docs drift faster than they're audited *(2026-04-29)*
 
 **What.** `docs/REPO_MAP.md` references `visualisationController.ts` (gone),
 `src/contracts/runtimeEvents.ts` (the test file exists but the runtime
@@ -215,7 +191,7 @@ current direction.
 **Cost.** S per doc, but only if done at commit time. Otherwise it
 re-accumulates within weeks.
 
-### 8. Bootstrap WASM-on-main-thread blocks the eager preload from helping *(2026-04-29)*
+### 7. Bootstrap WASM-on-main-thread blocks the eager preload from helping *(2026-04-29)*
 
 **What.** `bootstrap.ts:206` fires `ensureUseqWasmLoaded()` early
 ("eagerly start loading WASM"), but the resulting module is wired
@@ -274,3 +250,9 @@ Known-not-to-be-fixed; recorded so future sessions don't re-relitigate.
 - **Pre-existing `src-useq` test SIGSEGVs** (`useq-perform-jut`) — known,
   not blocking the front-end mission directly, but blocking the submodule
   pin advance (defect 1).
+- **`customThemes` still inside `AppSettings`** *(2026-04-29)*. Themes are
+  runtime data, not user prefs; flagged for extraction to a themes store
+  during the settings reorg (`useq-perform-9gu`). Deferred — touched 7
+  files (settings store, normalisation, persistence, repository, default
+  config, configLoader test, settings store test) which exceeded the
+  100-LoC budget for that bead. File a follow-up to extract.

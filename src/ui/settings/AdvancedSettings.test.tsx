@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@solidjs/testing-library";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 
 const { requestSettingsUpdate } = vi.hoisted(() => ({
   requestSettingsUpdate: vi.fn(),
@@ -17,6 +17,11 @@ vi.mock("../../utils/settingsStore", () => ({
 }));
 
 import { AdvancedSettings } from "./AdvancedSettings";
+import { setDevmodeOverride } from "./devmodeContext";
+
+// AdvancedSettings is now level="advanced" — render only when devmode is on.
+setDevmodeOverride(true);
+afterAll(() => setDevmodeOverride(null));
 
 function expandSections() {
   for (const btn of document.querySelectorAll<HTMLElement>(".panel-section-toggle")) {

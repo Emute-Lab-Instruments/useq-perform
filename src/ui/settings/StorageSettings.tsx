@@ -49,13 +49,13 @@ export function StorageSettings(props: StorageSettingsProps = {}) {
           onChange={handleSaveLocallyChange}
         />
       </FormRow>
-      <FormRow label="Auto-Save Enabled">
+      <FormRow label="Auto-Save Enabled" level="advanced">
         <Checkbox
           checked={s().storage?.autoSaveEnabled !== false}
           onChange={handleAutoSaveEnabledChange}
         />
       </FormRow>
-      <FormRow label="Auto-Save Interval (ms)">
+      <FormRow label="Auto-Save Interval (ms)" level="advanced">
         <NumberInput
           value={s().storage?.autoSaveInterval || 5000}
           min={1000}

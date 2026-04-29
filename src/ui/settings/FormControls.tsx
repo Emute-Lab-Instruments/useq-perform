@@ -1,63 +1,85 @@
 import { JSX, createEffect, createSignal, Show, onMount, onCleanup } from "solid-js";
-import { settingsQuery } from "./settingsSearch";
+import { isLevelVisible, type SettingsLevel } from "./devmodeContext";
 
-const matches = (text: string, query: string) =>
-  !query || text.toLowerCase().includes(query.toLowerCase());
-
-/** Collapsible section. Collapsed by default unless defaultOpen is true. */
+/**
+ * Collapsible section. Collapsed by default unless `defaultOpen` is true.
+ *
+ * `level` tags this section's audience:
+ *   - `"basic"` (default): always rendered.
+ *   - `"advanced"`: rendered only when `?devmode=true`.
+ */
 export function Section(props: {
   title: string;
   children: JSX.Element;
   defaultOpen?: boolean;
+  level?: SettingsLevel;
 }) {
   const [manualOpen, setManualOpen] = createSignal(props.defaultOpen === true);
-  const searching = () => !!settingsQuery();
-  // When searching, force open so FormRow filtering can work inside
-  const isOpen = () => searching() || manualOpen();
+  const isOpen = () => manualOpen();
+  const visible = () => isLevelVisible(props.level);
 
   return (
-    <div class="panel-section" classList={{ "panel-section--open": isOpen() }}>
-      <button
-        class="panel-section-toggle"
-        onClick={() => setManualOpen(!manualOpen())}
-      >
-        <span class="panel-section-arrow">{isOpen() ? "\u25BE" : "\u25B8"}</span>
-        <h3 class="panel-section-title">{props.title}</h3>
-      </button>
-      <Show when={isOpen()}>
-        <div class="panel-section-body">{props.children}</div>
-      </Show>
-    </div>
+    <Show when={visible()}>
+      <div class="panel-section" classList={{ "panel-section--open": isOpen() }}>
+        <button
+          class="panel-section-toggle"
+          onClick={() => setManualOpen(!manualOpen())}
+        >
+          <span class="panel-section-arrow">{isOpen() ? "▾" : "▸"}</span>
+          <h3 class="panel-section-title">{props.title}</h3>
+        </button>
+        <Show when={isOpen()}>
+          <div class="panel-section-body">{props.children}</div>
+        </Show>
+      </div>
+    </Show>
   );
 }
 
-/** Sub-group inside a section — lighter-weight, also collapsible. */
+/**
+ * Sub-group inside a section. Lighter-weight, also collapsible.
+ *
+ * `level` tags this sub-group's audience (see `Section`).
+ */
 export function SubGroup(props: {
   label: string;
   children: JSX.Element;
   defaultOpen?: boolean;
+  level?: SettingsLevel;
 }) {
   const [manualOpen, setManualOpen] = createSignal(props.defaultOpen === true);
-  const isOpen = () => settingsQuery() ? true : manualOpen();
+  const isOpen = () => manualOpen();
+  const visible = () => isLevelVisible(props.level);
 
   return (
-    <div class="panel-subgroup" classList={{ "panel-subgroup--open": isOpen() }}>
-      <button
-        class="panel-subgroup-toggle"
-        onClick={() => setManualOpen(!manualOpen())}
-      >
-        <span class="panel-subgroup-arrow">{isOpen() ? "\u25BE" : "\u25B8"}</span>
-        <span class="panel-subgroup-label">{props.label}</span>
-      </button>
-      <Show when={isOpen()}>
-        <div class="panel-subgroup-body">{props.children}</div>
-      </Show>
-    </div>
+    <Show when={visible()}>
+      <div class="panel-subgroup" classList={{ "panel-subgroup--open": isOpen() }}>
+        <button
+          class="panel-subgroup-toggle"
+          onClick={() => setManualOpen(!manualOpen())}
+        >
+          <span class="panel-subgroup-arrow">{isOpen() ? "▾" : "▸"}</span>
+          <span class="panel-subgroup-label">{props.label}</span>
+        </button>
+        <Show when={isOpen()}>
+          <div class="panel-subgroup-body">{props.children}</div>
+        </Show>
+      </div>
+    </Show>
   );
 }
 
-export function FormRow(props: { label: string; children: JSX.Element }) {
-  const visible = () => matches(props.label, settingsQuery());
+/**
+ * Single labelled control row.
+ *
+ * `level` tags this row's audience (see `Section`).
+ */
+export function FormRow(props: {
+  label: string;
+  children: JSX.Element;
+  level?: SettingsLevel;
+}) {
+  const visible = () => isLevelVisible(props.level);
 
   return (
     <Show when={visible()}>
@@ -191,7 +213,7 @@ export function NumberInput(props: {
         onBlur={onBlur}
         onKeyDown={onKeyDown}
       />
-      <span class="panel-number-drag-hint">{"\u2195"}</span>
+      <span class="panel-number-drag-hint">{"↕"}</span>
     </div>
   );
 }
@@ -236,7 +258,7 @@ export function Select(props: {
 }
 
 /**
- * Fully custom range slider — no native <input type="range"> styling issues.
+ * Fully custom range slider. No native <input type="range"> styling issues.
  * Built from div track + thumb, with pointer drag handling.
  * Hidden native input for accessibility (keyboard, aria).
  */

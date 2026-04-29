@@ -40,7 +40,7 @@ export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
   };
 
   return (
-    <Section title="Advanced Settings">
+    <Section title="Advanced Settings" level="advanced">
       <FormRow label="Reconnect saved hardware on startup">
         <Checkbox
           checked={s().runtime?.autoReconnect !== false}

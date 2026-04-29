@@ -46,7 +46,7 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
             onChange={(val) => updateVisField("windowDuration", val)}
           />
         </FormRow>
-        <FormRow label="Future lead window">
+        <FormRow label="Future lead window" level="advanced">
           <RangeInput
             value={s().visualisation?.futureLeadSeconds ?? 1}
             min={0}
@@ -56,7 +56,7 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
             onChange={(val) => updateVisField("futureLeadSeconds", val)}
           />
         </FormRow>
-        <FormRow label="Visible sample count">
+        <FormRow label="Visible sample count" level="advanced">
           <NumberInput
             value={s().visualisation?.sampleCount ?? 100}
             min={10}
@@ -75,7 +75,7 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
             onChange={(val) => updateVisField("lineWidth", val)}
           />
         </FormRow>
-        <FormRow label="Digital channel gap">
+        <FormRow label="Digital channel gap" level="advanced">
           <RangeInput
             value={s().visualisation?.digitalLaneGap ?? 4}
             min={0}
@@ -85,7 +85,7 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
             onChange={(val) => updateVisField("digitalLaneGap", val)}
           />
         </FormRow>
-        <FormRow label="Color circular offset">
+        <FormRow label="Color circular offset" level="advanced">
           <RangeInput
             value={safeCircularOffset()}
             min={0}
@@ -97,7 +97,7 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
         </FormRow>
       </SubGroup>
 
-      <SubGroup label="Probes">
+      <SubGroup label="Probes" level="advanced">
         <FormRow label="Probe waveform line width">
           <RangeInput
             value={s().visualisation?.probeLineWidth ?? 2}
@@ -133,7 +133,7 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
         </FormRow>
       </SubGroup>
 
-      <SubGroup label="Readability" defaultOpen={false}>
+      <SubGroup label="Readability" defaultOpen={false} level="advanced">
         <FormRow label="Enable readability blur">
           <Checkbox
             checked={s().visualisation?.readabilityEnabled !== false}
@@ -241,7 +241,7 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
         </FormRow>
       </SubGroup>
 
-      <SubGroup label="Future region" defaultOpen={false}>
+      <SubGroup label="Future region" defaultOpen={false} level="advanced">
         <FormRow label="Show future mask/dashes">
           <Checkbox
             checked={s().visualisation?.futureDashed !== false}

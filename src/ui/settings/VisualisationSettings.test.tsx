@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@solidjs/testing-library";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { requestSettingsUpdate } = vi.hoisted(() => ({
   requestSettingsUpdate: vi.fn(),
@@ -30,6 +30,12 @@ vi.mock("../../lib/visualisationUtils.ts", () => ({
 }));
 
 import { VisualisationSettings } from "./VisualisationSettings";
+import { setDevmodeOverride } from "./devmodeContext";
+
+// Probe + readability subgroups are level="advanced" — exercise them by
+// pretending devmode is on for this suite.
+setDevmodeOverride(true);
+afterAll(() => setDevmodeOverride(null));
 
 /** Open all collapsed sections/sub-groups so form rows become visible. */
 function expandAll() {

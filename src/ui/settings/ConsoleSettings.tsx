@@ -29,7 +29,7 @@ export function ConsoleSettings(props: ConsoleSettingsProps = {}) {
           onChange={(val) => updateField("showTimestamp", val)}
         />
       </FormRow>
-      <FormRow label="Show message type badge">
+      <FormRow label="Show message type badge" level="advanced">
         <Checkbox
           checked={s().console?.showTypeBadge !== false}
           onChange={(val) => updateField("showTypeBadge", val)}
@@ -47,7 +47,7 @@ export function ConsoleSettings(props: ConsoleSettingsProps = {}) {
           onChange={(val) => updateField("entryAnimation", val)}
         />
       </FormRow>
-      <FormRow label="Typewriter speed (ms/char)">
+      <FormRow label="Typewriter speed (ms/char)" level="advanced">
         <NumberInput
           value={s().console?.typewriterIntervalMs ?? 20}
           min={1}
