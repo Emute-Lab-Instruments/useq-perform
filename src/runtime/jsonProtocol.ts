@@ -41,6 +41,42 @@ export interface JsonStreamConfigRequest {
   channels: StreamChannelConfig[];
 }
 
+export type JsonEvalExec = "immediate";
+
+export interface JsonEvalRequest {
+  type: "eval";
+  code: string;
+  exec?: JsonEvalExec;
+}
+
+/**
+ * Discriminated union of every editor → runtime JSON request shape.
+ *
+ * Used by the in-memory transport (WASM-mode parity) so the same request
+ * shapes flow through both hardware and WASM paths. The wire driver in
+ * `src/transport/json-protocol.ts` continues to accept loosely-shaped
+ * `object` payloads for backwards compatibility, but new code should use
+ * this typed union.
+ */
+export type JsonRequest =
+  | JsonHelloRequest
+  | JsonHeartbeatRequest
+  | JsonStreamConfigRequest
+  | JsonEvalRequest;
+
+export interface JsonResponseBody {
+  requestId?: string;
+  success?: boolean;
+  type?: string;
+  mode?: "json" | "legacy";
+  fw?: string;
+  config?: IoConfig;
+  text?: string;
+  console?: string;
+  admin?: string;
+  meta?: Record<string, unknown>;
+}
+
 export const JSON_PROTOCOL_MIN_VERSION: FirmwareVersion = Object.freeze({
   major: 1,
   minor: 2,
@@ -85,6 +121,17 @@ export function buildHeartbeatRequest(): JsonHeartbeatRequest {
   return { type: "ping" };
 }
 
+export function buildEvalRequest(
+  code: string,
+  options: { exec?: JsonEvalExec } = {}
+): JsonEvalRequest {
+  const req: JsonEvalRequest = { type: "eval", code };
+  if (options.exec) {
+    req.exec = options.exec;
+  }
+  return req;
+}
+
 export function buildDefaultStreamConfig(
   ioConfig: IoConfig,
   maxRateHz: number = DEFAULT_STREAM_MAX_RATE_HZ
@@ -116,6 +163,32 @@ export function buildDefaultStreamConfig(
     maxRateHz,
     channels,
   };
+}
+
+/**
+ * The default I/O config advertised by the WASM runtime in its `hello`
+ * response. Mirrors the layout the firmware uses so downstream consumers
+ * (stream routing, channel naming) see the same shape regardless of which
+ * port the response came from.
+ *
+ * Output 1 is `time`; outputs 2..9 are `s1..s8`. Inputs are `ssin1..ssin8`
+ * — the WASM runtime doesn't currently consume serial inputs, but
+ * advertising them keeps the shape consistent and makes contract tests
+ * trivially symmetric.
+ */
+export function buildWasmDefaultIoConfig(): IoConfig {
+  const inputs: IoChannelConfig[] = Array.from({ length: 8 }, (_, i) => ({
+    index: i + 1,
+    name: `ssin${i + 1}`,
+  }));
+  const outputs: IoChannelConfig[] = [
+    { index: 1, name: "time" },
+    ...Array.from({ length: 8 }, (_, i) => ({
+      index: i + 2,
+      name: `s${i + 1}`,
+    })),
+  ];
+  return { inputs, outputs };
 }
 
 export function buildSerialOutputRouting(ioConfig: IoConfig | null | undefined): Record<number, number> {

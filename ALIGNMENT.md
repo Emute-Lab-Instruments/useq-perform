@@ -27,9 +27,12 @@ the rest run in parallel against the boundary it defines.
   2026-04-29)*. devmode-gated settings split (`useq-perform-9gu`),
   REPO_MAP.md/STABLE_CORE.md pruned (`useq-perform-3yw`), 3500ms serial
   wait replaced with observed readiness (`useq-perform-vig`).
-- **F — WASM-mode protocol parity** *(parallel, independent)*. Bring
-  `hello` + `stream-config` negotiation into the browser-local path so
-  WASM is genuinely first-class.
+- **F — WASM-mode protocol parity** *(complete, 2026-04-29)*. `hello`
+  + `stream-config` + `eval` + `ping` negotiation now layered in front
+  of `wasmInterpreter` via `runtime/wasmJsonTransport.ts` +
+  `runtime/wasmJsonHandlers.ts`. `WasmRuntimePort.evalCode` and
+  `sendTransportCommand` flow through the same JSON shapes as hardware;
+  sampling helpers stay direct.
 
 Each stream is a bd dependency chain rooted in a P1 entry-bead so
 `bd ready` returns the active heads when an agent claims work.
@@ -142,21 +145,23 @@ Two slices remain open:
    (Stream D-serial, 2026-04-29). Coverage of the probe loop — timeout
    cases, retry behaviour, legacy-firmware fallback — still needs to be
    written against the new contract.
-2. **WASM-mode JSON-protocol parity.** WASM mode currently lacks the
-   `hello` / `stream-config` negotiation that hardware uses; "first-class
-   WASM" implies bringing this parity in — tracked separately as
-   **Stream F** in the active push. The port layer this depends on
-   (`useq-perform-6cf`, runtime ports behind typed adapters) has landed;
-   the protocol-parity bead `useq-perform-pcx` now layers on top of those
-   ports.
+2. ~~**WASM-mode JSON-protocol parity.**~~ Resolved 2026-04-29 by
+   `useq-perform-pcx` (Stream F). WASM mode now goes through the same
+   `hello` / `stream-config` / `eval` / `ping` JSON shapes hardware does,
+   via `runtime/wasmJsonTransport.ts`. `WasmRuntimePort.evalCode` and
+   `sendTransportCommand` no longer call `wasmInterpreter` directly —
+   they flow through the in-memory engine. The runtime layer no longer
+   branches on "WASM vs hardware" for protocol-level concerns.
 
-**Why it blocks the mission.** Browser-local WASM is now confirmed
-**first-class** alongside hardware mode — both are the product. The
-asymmetry of having a richer protocol on hardware than on WASM continues
-to be a mission-fit problem until Stream F lands.
+**Why it blocked the mission.** Browser-local WASM is **first-class**
+alongside hardware mode — both are the product. The asymmetry of having
+a richer protocol on hardware than on WASM was a mission-fit problem;
+Stream F landing closes that gap for `hello` / `stream-config` /
+`eval` / `ping`. The remaining open slice is the readiness-probe test
+coverage for the firmware probe (slice 1 above).
 
 **Cost.** S for the timing-paths tests (write against the readiness
-contract `vig` introduces). M for WASM-mode parity (separate stream).
+contract `vig` introduces).
 
 ### 5. Bootstrap WASM-on-main-thread blocks the eager preload from helping *(2026-04-29)*
 

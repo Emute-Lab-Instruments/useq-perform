@@ -24,7 +24,23 @@ vi.mock("../transport/connector.ts", () => ({
 
 vi.mock("./wasmInterpreter.ts", () => ({
   evalInUseqWasm: vi.fn(async () => "ok"),
+  evalInUseqWasmSilently: vi.fn(async () => "ok"),
+  // Kept for back-compat with callers that still reference the
+  // wasmInterpreter helper directly. After WASM JSON-protocol parity, the
+  // WasmRuntimePort no longer invokes this — transport state syncs flow
+  // through the JSON eval engine instead.
   syncWasmTransportState: vi.fn(async () => "ok"),
+  ensureUseqWasmLoaded: vi.fn(async () => undefined),
+  evalOutputAtTime: vi.fn(async () => 0),
+  evalOutputsInTimeWindow: vi.fn(async () => new Map()),
+  updateUseqWasmTime: vi.fn(async () => undefined),
+  wasmRuntimePort: {
+    capabilities: () => ({
+      enabled: true,
+      supportsEval: true,
+      supportsTimeWindow: false,
+    }),
+  },
 }));
 
 vi.mock("./startupContext.ts", () => ({
@@ -48,7 +64,7 @@ vi.mock("./appSettingsRepository", () => ({
 // Import the mocked modules so we can configure them per-test
 import { getProtocolMode, sendTouSEQ } from "../transport/json-protocol.ts";
 import { getSerialPort, isConnectedToModule } from "../transport/connector.ts";
-import { evalInUseqWasm, syncWasmTransportState } from "./wasmInterpreter.ts";
+import { evalInUseqWasm } from "./wasmInterpreter.ts";
 import { getStartupFlagsSnapshot } from "./startupContext.ts";
 import { getAppSettings } from "./appSettingsRepository";
 
@@ -139,16 +155,17 @@ describe("runtimeService", () => {
       capture?.(' "paused" ');
       return undefined;
     });
-    (syncWasmTransportState as MockFn).mockResolvedValue("synced");
 
     refreshRuntimeSession();
 
     await expect(
       Effect.runPromise(queryRuntimeHardwareTransportState())
     ).resolves.toBe("paused");
-    // The runtime service no longer returns the inner WASM result; it just
-    // confirms which state was synced (or null on error). The port-level
-    // delegation is verified below.
+    // After WASM JSON-protocol parity (Stream F), the WASM port routes
+    // transport-state syncs through its JSON eval engine rather than the
+    // wasmInterpreter `syncWasmTransportState` shortcut. We assert the
+    // resulting eval was called with the corresponding shared transport
+    // builtin instead.
     await expect(
       Effect.runPromise(syncRuntimeWasmTransportState("paused"))
     ).resolves.toBe("paused");
@@ -157,6 +174,6 @@ describe("runtimeService", () => {
       "(useq-get-transport-state)",
       expect.any(Function)
     );
-    expect(syncWasmTransportState).toHaveBeenCalledWith("paused");
+    expect(evalInUseqWasm).toHaveBeenCalledWith("(useq-pause)");
   });
 });
