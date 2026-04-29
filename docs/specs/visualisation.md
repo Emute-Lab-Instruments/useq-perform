@@ -16,7 +16,7 @@
 
 1.7 **Sampling source.** Future samples come from WASM `evalOutputsInTimeWindow`. Past samples come from the same source (WASM is the authoritative model) or, in hardware-only mode, from the hardware-streamed serial buffers.
 
-1.8 **Sampling guards.** The sampler must coalesce in-flight requests (one batch in flight at a time) and discard stale results via a monotonic sequence counter. A slow batch must never overwrite a fresher one.
+1.8 **Sampling guards.** At most one batch is in flight at a time. If a newer time arrives while a batch is running, the latest pending time is sampled once the current run completes (single pending-time slot). A slow batch must never overwrite a fresher one — this invariant follows from strict serialization, not from post-hoc sequence-counter discard.
 
 1.9 **Render frequency** is animation-frame paced. The renderer no-ops when the panel is not visible. Rendering must remain smooth (≥ 30 FPS) at the documented channel target — see [MAIN.md §3.3](MAIN.md).
 
