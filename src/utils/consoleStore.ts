@@ -1,5 +1,4 @@
 import { createStore } from "solid-js/store";
-import { marked } from "marked";
 
 export type ConsoleMessageType = "log" | "warn" | "error" | "wasm";
 
@@ -60,12 +59,21 @@ export const postToConsole = (content: string) => {
   addConsoleMessage(content, "log");
 };
 
+/** Lightweight inline markdown: **bold**, *italic*, `code`, and [links](url). */
+function inlineMarkdown(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>');
+}
+
 /**
- * Parse a Markdown string and post the resulting HTML to the console.
- * Wrapping `<p>` tags added by marked are stripped so inline content
- * renders without extra block-level whitespace.
+ * Post a message to the console with lightweight inline markdown.
  */
 export function post(value: string, type: ConsoleMessageType = "log"): void {
-  const htmlContent = (marked.parse(value) as string).replace(/^<p>|<\/p>$/g, "");
-  addConsoleMessage(htmlContent, type);
+  addConsoleMessage(inlineMarkdown(value), type);
 }

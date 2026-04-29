@@ -33,6 +33,12 @@ const CANVAS_ID = "serialcanvas";
 let frameId: number | null = null;
 let subscriptionsBound = false;
 
+// Throttled visibility check — avoids calling getComputedStyle() on every
+// frame (which forces layout reflow). Cache is valid for 200ms.
+let _panelVisibleCache = false;
+let _panelVisibleCacheTime = 0;
+const PANEL_VISIBLE_CACHE_MS = 200;
+
 function getPanel(): HTMLElement | null {
   if (typeof document === "undefined") {
     return null;
@@ -50,13 +56,22 @@ function getCanvas(): HTMLCanvasElement | null {
 }
 
 function isPanelVisible(): boolean {
+  const now = performance.now();
+  if (now - _panelVisibleCacheTime < PANEL_VISIBLE_CACHE_MS) {
+    return _panelVisibleCache;
+  }
+
   const panel = getPanel();
   if (!panel || typeof window === "undefined") {
+    _panelVisibleCache = false;
+    _panelVisibleCacheTime = now;
     return false;
   }
 
   const style = window.getComputedStyle(panel);
-  return style.display !== "none" && style.visibility !== "hidden" && !panel.hidden;
+  _panelVisibleCache = style.display !== "none" && style.visibility !== "hidden" && !panel.hidden;
+  _panelVisibleCacheTime = now;
+  return _panelVisibleCache;
 }
 
 function hasActiveExpressions(): boolean {
@@ -87,6 +102,19 @@ function scheduleNextFrame(): void {
   frameId = window.requestAnimationFrame(drawSerialVis);
 }
 
+/** Sync canvas buffer resolution to its CSS layout size. Only touches the
+ *  buffer when the dimensions actually change (avoids clearing the canvas). */
+function syncCanvasResolution(c: HTMLCanvasElement): void {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  const w = Math.round(rect.width * dpr);
+  const h = Math.round(rect.height * dpr);
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+}
+
 function drawSerialVis(): void {
   frameId = null;
   perf.begin("render-frame");
@@ -105,6 +133,13 @@ function drawSerialVis(): void {
     perf.end("render-frame");
     return;
   }
+
+  syncCanvasResolution(c);
+
+  // Panel transparency is applied here instead of via CSS opacity on the
+  // container — CSS opacity forces an expensive offscreen compositing pass.
+  ctx.globalAlpha = 0.7;
+
   const verticalPadding = c.height * 0.1;
   const centerY = c.height / 2;
   const drawableHeight = c.height - verticalPadding * 2;
@@ -274,6 +309,9 @@ function drawSerialVis(): void {
   }
 
   perf.end("render-frame");
+
+  // Re-schedule for continuous animation while panel is visible with data
+  scheduleNextFrame();
 }
 
 export function makeVis(): void {

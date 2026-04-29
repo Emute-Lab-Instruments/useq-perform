@@ -1,4 +1,4 @@
-import { onMount, onCleanup } from "solid-js";
+import { onMount } from "solid-js";
 import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings } from "lucide-solid";
 
 export type ConnectionState = 'none' | 'wasm' | 'hardware' | 'both';
@@ -13,8 +13,8 @@ export interface MainToolbarProps {
   onFontSizeDown: () => void;
   onSettings: () => void;
   onHelp: () => void;
-  /** Optional: subscribe to connect-button animation pulses. Returns cleanup fn. */
-  onAnimateConnect?: (callback: () => void) => () => void;
+  /** Optional: register a callback for connect-button animation pulses. */
+  onAnimateConnect?: (callback: () => void) => void;
 }
 
 const CONNECTION_LABELS: Record<ConnectionState, string> = {
@@ -51,10 +51,7 @@ export function MainToolbar(props: MainToolbarProps) {
   };
 
   onMount(() => {
-    if (props.onAnimateConnect) {
-      const removeListener = props.onAnimateConnect(handleAnimateConnect);
-      onCleanup(removeListener);
-    }
+    props.onAnimateConnect?.(handleAnimateConnect);
   });
 
   const runtimeStatus = () => CONNECTION_LABELS[props.connectionState];

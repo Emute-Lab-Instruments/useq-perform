@@ -1,5 +1,5 @@
 import { Component, For } from "solid-js";
-import { settings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { actions, type ActionCategory } from "../../lib/keybindings/actions";
 import { defaultKeyBindings } from "../../lib/keybindings/defaults";
 
@@ -89,7 +89,7 @@ export const KeybindingsTab: Component = () => {
   const osFamily = () => settings.ui?.osFamily || "pc";
 
   const setOsFamily = (os: "pc" | "mac") => {
-    updateSettingsStore({
+    requestSettingsUpdate({
       ui: { ...settings.ui, osFamily: os }
     });
   };

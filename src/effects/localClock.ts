@@ -18,27 +18,55 @@ import { resampleExpressions } from './visualisationSampler.ts';
 import { perf } from '../lib/perfTrace.ts';
 import { setLastChangeKind, updateTime } from '../utils/visualisationStore.ts';
 import { dbg } from '../lib/debug.ts';
+import { readActiveDiagnostics } from '../runtime/wasmInterpreter.ts';
+import { refreshOutputHealth } from '../utils/outputHealthStore.ts';
 
 let running = false;
 let resetTimeMs: number | null = null;
 let frameId: number | null = null;
 let elapsedSeconds = 0;
 let samplingInFlight = false;
+let frameCount = 0;
+let lastTickMs = 0;
+
+// Target 30fps — skip rAF callbacks that arrive too soon.
+const TARGET_FRAME_MS = 1000 / 30;
+
+// Poll diagnostics every Nth tick (~5Hz at 30fps).
+const DIAG_POLL_INTERVAL = 6;
+
+function scheduleNext(): void {
+  frameId = window.requestAnimationFrame(tick);
+}
 
 function tick(): void {
   if (!running) return;
-  perf.begin("frame-tick");
 
-  // Always schedule next frame first — clock is never blocked
-  frameId = window.requestAnimationFrame(tick);
+  // Always schedule next rAF first — clock is never blocked
+  scheduleNext();
+
+  // Throttle to 30fps: skip this callback if not enough time has elapsed
+  const now = performance.now();
+  if (now - lastTickMs < TARGET_FRAME_MS) return;
+  lastTickMs = now;
+
+  perf.begin("frame-tick");
+  frameCount++;
 
   // Advance time
-  elapsedSeconds = (performance.now() - (resetTimeMs ?? 0)) / 1000;
+  elapsedSeconds = (now - (resetTimeMs ?? 0)) / 1000;
   updateTime(elapsedSeconds);
   setLastChangeKind("time", {
     currentTimeSeconds: elapsedSeconds,
     displayTimeSeconds: elapsedSeconds,
   });
+
+  // Poll diagnostics at reduced frequency. readActiveDiagnostics() caches
+  // by JSON string identity; refreshOutputHealth bails on reference equality.
+  if (frameCount % DIAG_POLL_INTERVAL === 0) {
+    const activeDiags = readActiveDiagnostics();
+    refreshOutputHealth(activeDiags);
+  }
 
   // Coalesce sampling: skip if a WASM evaluation is already running on the
   // main thread. The sampler's sequence counter discards stale results, but

@@ -4,6 +4,7 @@ import {
   setReferenceStore,
   setTargetVersion,
   toggleExpanded,
+  ensureReferenceDataLoaded,
   ReferenceEntry,
   Version,
   parseVersionString,
@@ -12,7 +13,6 @@ import {
 import { ReferenceItem } from "./ReferenceItem";
 import { ReferenceFilters } from "./ReferenceFilters";
 import { currentVersion as connectedFirmwareVersion } from "../../transport/upgradeCheck.ts";
-import { loadReferenceDataFromCandidates, normalizeEntry } from "../../lib/referenceDataLoader";
 import { showChromePanel } from "../adapters/panels";
 import { referenceSearchChannel, helpTabSwitchChannel } from "./helpChannels";
 
@@ -70,22 +70,9 @@ export const ModuLispReferenceTab: Component = () => {
   const [searchQuery, setSearchQuery] = createSignal("");
 
   // Fallback: if the preloader hasn't populated the store yet, load on mount.
-  onMount(async () => {
-    if (referenceStore.data.length > 0) {
-      setReferenceStore("isLoading", false);
-      return;
-    }
-    try {
-      const data = await loadReferenceDataFromCandidates();
-      const normalized = data
-        .map(normalizeEntry)
-        .filter((entry): entry is ReferenceEntry => Boolean(entry));
-      setReferenceStore("data", normalized);
-    } catch (err) {
-      setReferenceStore("error", err instanceof Error ? err.message : String(err));
-    } finally {
-      setReferenceStore("isLoading", false);
-    }
+  // Uses the shared loading guard so at most one fetch runs at a time.
+  onMount(() => {
+    ensureReferenceDataLoaded();
   });
 
   const allTags = createMemo(() => {

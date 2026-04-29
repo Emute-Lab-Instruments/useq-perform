@@ -325,6 +325,7 @@ class NodeHighlightPluginClass {
   private svgOverlay: SVGSVGElement;
   private view: EditorView;
   private unsubSettings: (() => void) | null = null;
+  private pendingRAF: number | null = null;
 
   constructor(view: EditorView) {
     this.view = view;
@@ -339,18 +340,29 @@ class NodeHighlightPluginClass {
       overflow: visible;
     `;
     view.scrollDOM.appendChild(this.svgOverlay);
-    this.unsubSettings = subscribeAppSettings(() => this.scheduleMeasure());
+    this.unsubSettings = subscribeAppSettings(() => this.debouncedMeasure());
     this.scheduleMeasure();
   }
 
   update(update: ViewUpdate): void {
     this.view = update.view;
     if (update.docChanged || update.selectionSet || update.viewportChanged || update.geometryChanged) {
-      this.scheduleMeasure();
+      this.debouncedMeasure();
     }
   }
 
+  /** Debounce to one measure per animation frame — prevents the expensive
+   *  coordsAtPos/getBoundingClientRect cascade from running on every keystroke. */
+  private debouncedMeasure(): void {
+    if (this.pendingRAF !== null) return;
+    this.pendingRAF = requestAnimationFrame(() => {
+      this.pendingRAF = null;
+      this.scheduleMeasure();
+    });
+  }
+
   destroy(): void {
+    if (this.pendingRAF !== null) cancelAnimationFrame(this.pendingRAF);
     // Remove cursor clip before tearing down the SVG that defines it
     const cursorLayer = this.view.dom.querySelector('.cm-cursorLayer') as HTMLElement | null;
     if (cursorLayer) cursorLayer.style.clipPath = '';

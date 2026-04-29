@@ -91,7 +91,7 @@ describe("serialVis loop control", () => {
     expect(cancelAnimationFrame).toHaveBeenCalledWith(7);
   });
 
-  it("does not self-schedule another frame after drawing", async () => {
+  it("self-schedules the next frame after drawing for continuous animation", async () => {
     const callbacks: FrameRequestCallback[] = [];
     const requestAnimationFrame = vi
       .spyOn(window, "requestAnimationFrame")
@@ -123,9 +123,10 @@ describe("serialVis loop control", () => {
     expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
     expect(callbacks).toHaveLength(1);
 
+    // After drawing, the loop re-schedules itself
     callbacks[0](performance.now());
 
-    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
   });
 
   it("draws the empty state once and stops when the panel is visible without expressions", async () => {

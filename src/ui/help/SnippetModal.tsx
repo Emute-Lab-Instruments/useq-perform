@@ -1,18 +1,24 @@
 import { Component, createSignal, onCleanup, onMount } from "solid-js";
 import {
-  addSnippet,
-  updateSnippet,
+  addSnippet as globalAddSnippet,
+  updateSnippet as globalUpdateSnippet,
   Snippet
 } from "../../utils/snippetStore";
 import { CodeMirrorEditor } from "./CodeMirrorEditor";
-import { getEditorContent } from "../../lib/editorStore";
+import { getEditorContent as globalGetEditorContent } from "../../lib/editorStore";
 import { pushOverlay } from "../overlayManager";
 
 export type EditingSnippet = Snippet | "new";
 
-interface SnippetModalProps {
+export interface SnippetModalProps {
   editingSnippet: EditingSnippet;
   onClose: () => void;
+  /** Add a new snippet. Falls back to the global addSnippet. */
+  onAddSnippet?: (snippet: Omit<Snippet, "id" | "createdAt">) => void;
+  /** Update an existing snippet. Falls back to the global updateSnippet. */
+  onUpdateSnippet?: (id: number, updates: Partial<Omit<Snippet, "id" | "createdAt">>) => void;
+  /** Get current editor content. Falls back to the global getEditorContent. */
+  getEditorContent?: () => string | null;
 }
 
 export const SnippetModal: Component<SnippetModalProps> = (props) => {
@@ -40,6 +46,13 @@ export const SnippetModal: Component<SnippetModalProps> = (props) => {
     popOverlay?.();
   });
 
+  const doAddSnippet = (s: Omit<Snippet, "id" | "createdAt">) =>
+    (props.onAddSnippet ?? globalAddSnippet)(s);
+  const doUpdateSnippet = (id: number, updates: Partial<Omit<Snippet, "id" | "createdAt">>) =>
+    (props.onUpdateSnippet ?? globalUpdateSnippet)(id, updates);
+  const doGetEditorContent = () =>
+    (props.getEditorContent ?? globalGetEditorContent)();
+
   const handleSave = () => {
     if (!title().trim()) {
       alert("Please enter a title");
@@ -47,15 +60,15 @@ export const SnippetModal: Component<SnippetModalProps> = (props) => {
     }
     const tagList = tags().split(",").map(t => t.trim()).filter(t => t);
     if (isNew()) {
-      addSnippet({ title: title(), code: code(), tags: tagList });
+      doAddSnippet({ title: title(), code: code(), tags: tagList });
     } else {
-      updateSnippet(snippet()!.id, { title: title(), code: code(), tags: tagList });
+      doUpdateSnippet(snippet()!.id, { title: title(), code: code(), tags: tagList });
     }
     props.onClose();
   };
 
   const handleUseMainEditor = () => {
-    const content = getEditorContent();
+    const content = doGetEditorContent();
     if (content !== null) {
       setCode(content);
     }

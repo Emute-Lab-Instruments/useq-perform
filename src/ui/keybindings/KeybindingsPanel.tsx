@@ -15,7 +15,7 @@ import {
   createEffect,
 } from "solid-js";
 
-import { settings, updateSettingsStore } from "../../utils/settingsStore";
+import { settings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { resolver } from "../../editors/keymaps";
 import {
   actions,
@@ -261,7 +261,7 @@ export const KeybindingsPanel: Component = () => {
       }
     }
 
-    updateSettingsStore({
+    requestSettingsUpdate({
       keybindings: {
         ...settings.keybindings,
         overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
@@ -282,7 +282,7 @@ export const KeybindingsPanel: Component = () => {
       }
     }
 
-    updateSettingsStore({
+    requestSettingsUpdate({
       keybindings: {
         ...settings.keybindings,
         overrides: undefined,

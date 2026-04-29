@@ -106,14 +106,11 @@ describe("MainToolbar", () => {
     expect(onSettings).toHaveBeenCalledOnce();
   });
 
-  it("subscribes to animate connect on mount and cleans up on unmount", () => {
-    const unsubscribe = vi.fn();
-    const onAnimateConnect = vi.fn(() => unsubscribe);
+  it("registers animate connect callback on mount", () => {
+    const onAnimateConnect = vi.fn();
 
-    const { unmount } = render(() => <MainToolbar {...defaultProps({ onAnimateConnect })} />);
+    render(() => <MainToolbar {...defaultProps({ onAnimateConnect })} />);
     expect(onAnimateConnect).toHaveBeenCalledOnce();
-
-    unmount();
-    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(typeof onAnimateConnect.mock.calls[0][0]).toBe("function");
   });
 });

@@ -178,15 +178,6 @@ export default tseslint.config(
     rules: { "import-x/no-restricted-paths": "off" },
   },
   {
-    // contracts/runtimeChannels.ts imports type definitions from
-    // runtime/runtimeDiagnostics and runtimeSession.
-    // These types should eventually move to contracts/ or lib/.
-    files: [
-      "src/contracts/runtimeChannels.ts",
-    ],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
     // editorEvaluation.ts imports from editors/ for eval highlight and
     // structure tracking. This effect is tightly coupled to the editor
     // layer by design — it orchestrates editor-side effects.
@@ -207,16 +198,8 @@ export default tseslint.config(
     rules: { "import-x/no-restricted-paths": "off" },
   },
   {
-    // settings/normalization.ts imports the themes list from editors/themes.ts
-    // to validate theme names during normalization. The theme list should
-    // eventually move to lib/ or contracts/.
-    files: ["src/lib/settings/normalization.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
-    // settings/persistence.ts imports from editors/themes.ts and
-    // runtime/startupContext.ts for theme validation and localStorage bypass.
-    // Same coupling as normalization.ts and lib/persistence.ts.
+    // settings/persistence.ts imports from runtime/startupContext.ts for
+    // localStorage bypass detection. Types now in contracts/runtimeTypes.ts.
     files: ["src/lib/settings/persistence.ts"],
     rules: { "import-x/no-restricted-paths": "off" },
   },

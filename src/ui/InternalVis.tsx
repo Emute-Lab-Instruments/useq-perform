@@ -1,5 +1,6 @@
 import { onMount, onCleanup } from "solid-js";
-import { visStore } from "../utils/visualisationStore";
+import { visStore as globalVisStore } from "../utils/visualisationStore";
+import type { SerialBufferSnapshot } from "../utils/visualisationStore";
 
 interface Point {
   x: number;
@@ -134,7 +135,14 @@ function drawTimeLine(
   ctx.stroke();
 }
 
-export function InternalVis() {
+export interface InternalVisProps {
+  /** Serial buffer snapshot data. Falls back to the global visStore. */
+  serialBuffers?: SerialBufferSnapshot;
+  /** Colour palette for channels. Falls back to the global visStore. */
+  palette?: string[];
+}
+
+export function InternalVis(props: InternalVisProps) {
   let plotCanvasRef: HTMLCanvasElement | undefined;
   let lineCanvasRef: HTMLCanvasElement | undefined;
   let rafId: number | undefined;
@@ -170,11 +178,13 @@ export function InternalVis() {
       const plotCtx = plotCanvasRef.getContext("2d");
       if (plotCtx) {
         // Use serial buffer snapshots from the store, skipping channel 0 (time)
-        const allChannels = visStore.serialBuffers.channels;
+        const buffers = props.serialBuffers ?? globalVisStore.serialBuffers;
+        const allChannels = buffers.channels;
         const dataChannels = allChannels.length > 1 ? allChannels.slice(1) : [];
         const capacity =
           allChannels.length > 1 ? allChannels[1]?.length ?? 0 : 0;
-        drawPlot(plotCtx, dataChannels, visStore.palette, capacity);
+        const palette = props.palette ?? globalVisStore.palette;
+        drawPlot(plotCtx, dataChannels, palette, capacity);
         plotNeedsRedrawing = false;
       }
     }
@@ -194,7 +204,8 @@ export function InternalVis() {
   // which changes whenever snapshotSerialBuffers is called.
   let lastLengthsJson = "";
   function checkBufferChange() {
-    const json = JSON.stringify(visStore.serialBuffers.lengths);
+    const buffers = props.serialBuffers ?? globalVisStore.serialBuffers;
+    const json = JSON.stringify(buffers.lengths);
     if (json !== lastLengthsJson) {
       lastLengthsJson = json;
       plotNeedsRedrawing = true;

@@ -1,26 +1,40 @@
 import { Component, createSignal, Show, For, onCleanup } from "solid-js";
 import {
-  snippetStore,
-  toggleStar,
-  deleteSnippet,
+  snippetStore as globalSnippetStore,
+  toggleStar as globalToggleStar,
+  deleteSnippet as globalDeleteSnippet,
   Snippet
 } from "../../utils/snippetStore";
 import { CodeMirrorEditor } from "./CodeMirrorEditor";
-import { insertEditorText } from "../../lib/editorStore";
+import { insertEditorText as globalInsertEditorText } from "../../lib/editorStore";
 
-interface SnippetItemProps {
+export interface SnippetItemProps {
   snippet: Snippet;
   onEdit: (snippet: Snippet) => void;
+  /** Set of starred snippet IDs. Falls back to the global snippetStore. */
+  starred?: Set<number>;
+  /** Toggle star on a snippet. Falls back to the global toggleStar. */
+  onToggleStar?: (id: number) => void;
+  /** Delete a snippet. Falls back to the global deleteSnippet. */
+  onDeleteSnippet?: (id: number) => void;
+  /** Insert text into the editor. Falls back to the global insertEditorText. */
+  onInsertText?: (text: string, pos: number) => boolean;
 }
 
 export const SnippetItem: Component<SnippetItemProps> = (props) => {
+  const starred = () => props.starred ?? globalSnippetStore.starred;
+  const doToggleStar = (id: number) => (props.onToggleStar ?? globalToggleStar)(id);
+  const doDeleteSnippet = (id: number) => (props.onDeleteSnippet ?? globalDeleteSnippet)(id);
+  const doInsertText = (text: string, pos: number) =>
+    props.onInsertText ? props.onInsertText(text, pos) : globalInsertEditorText(text, pos);
+
   const [isVisualizing, setIsVisualizing] = createSignal(false);
   const [copyFeedback, setCopyFeedback] = createSignal(false);
   const [insertFeedback, setInsertFeedback] = createSignal(false);
   let copyFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
   let insertFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const isStarred = () => snippetStore.starred.has(props.snippet.id);
+  const isStarred = () => starred().has(props.snippet.id);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(props.snippet.code);
@@ -30,7 +44,7 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
   };
 
   const handleInsert = () => {
-    const inserted = insertEditorText(props.snippet.code + "\n", 0);
+    const inserted = doInsertText(props.snippet.code + "\n", 0);
     if (inserted) {
       setInsertFeedback(true);
       if (insertFeedbackTimer) clearTimeout(insertFeedbackTimer);
@@ -74,7 +88,7 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
           <button 
             class="code-snippet-star" 
             classList={{ starred: isStarred() }}
-            onClick={() => toggleStar(props.snippet.id)}
+            onClick={() => doToggleStar(props.snippet.id)}
           >
             {isStarred() ? "★" : "☆"}
           </button>
@@ -107,7 +121,7 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
           👁
         </button>
         <button class="code-snippet-action-btn" onClick={() => props.onEdit(props.snippet)} title="Edit snippet">✏</button>
-        <button class="code-snippet-action-btn delete" onClick={() => { if(confirm("Delete snippet?")) deleteSnippet(props.snippet.id) }} title="Delete snippet">🗑</button>
+        <button class="code-snippet-action-btn delete" onClick={() => { if(confirm("Delete snippet?")) doDeleteSnippet(props.snippet.id) }} title="Delete snippet">🗑</button>
       </div>
     </div>
   );
