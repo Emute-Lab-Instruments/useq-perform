@@ -7,9 +7,8 @@ import {
   onMount,
   onCleanup,
 } from "solid-js";
-import type { Chapter, GuideDomain, Section, ContentBlock } from "./guideTypes";
-import { renderContentBlock } from "./contentBlocks";
-import { PlaygroundBlock } from "./Playground";
+import type { Chapter, GuideDomain } from "./guideTypes";
+import { GuideSection } from "./GuideSection";
 import { loadRaw, saveRaw } from "../../../lib/persistence";
 
 import { chapters } from "./guideData";
@@ -47,57 +46,9 @@ const DOMAIN_LABELS: Record<GuideDomain, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// LazyPlayground — IntersectionObserver-based lazy mount
-// ---------------------------------------------------------------------------
-
-// Playgrounds mount immediately when their parent section is expanded.
-// Sections are collapsed by default, so this is already lazy — no need for
-// an IntersectionObserver (which fails inside scrollable panel containers
-// where the viewport-based root doesn't intersect).
-const LazyPlayground: Component<{ block: ContentBlock & { type: "playground" } }> = (props) => {
-  return <PlaygroundBlock playground={props.block.playground} />;
-};
-
-// ---------------------------------------------------------------------------
-// SectionView
-// ---------------------------------------------------------------------------
-
-const SectionView: Component<{
-  section: Section;
-  expanded: boolean;
-  onToggle: () => void;
-}> = (props) => {
-  return (
-    <div
-      class="guide-section"
-      classList={{ "guide-section--expanded": props.expanded }}
-      id={`guide-section-${props.section.id}`}
-    >
-      <div class="guide-section-header" onClick={props.onToggle}>
-        <span class="guide-section-arrow">{"\u25B6"}</span>
-        <span class="guide-section-title">{props.section.title}</span>
-        <span class="guide-section-summary">{props.section.summary}</span>
-      </div>
-      <div class="guide-section-content">
-        <Show when={props.expanded}>
-          <For each={props.section.content}>
-            {(block) =>
-              block.type === "playground" ? (
-                <LazyPlayground block={block} />
-              ) : (
-                renderContentBlock(block)
-              )
-            }
-          </For>
-        </Show>
-      </div>
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
 // GuideTab
 // ---------------------------------------------------------------------------
+// Section rendering (with lazy-mounted Playgrounds) lives in GuideSection.tsx.
 
 export const GuideTab: Component = () => {
   // -- TOC collapse state --
@@ -305,7 +256,7 @@ export const GuideTab: Component = () => {
                       </div>
                       <For each={chapter.sections}>
                         {(section) => (
-                          <SectionView
+                          <GuideSection
                             section={section}
                             expanded={expandedSections().has(section.id)}
                             onToggle={() => toggleSection(section.id)}
