@@ -12,11 +12,15 @@
  * Design notes:
  *   - One rendering context per canvas; the canvas is locked to WebGL2 once
  *     `drawSerialVisGL()` runs (matching how `serialVis.ts` locks to "2d").
- *   - Two shader programs:
- *       analog  — line-strip with shader-side past/future fade
- *       digital — line-strip in step mode (pre-flattened on CPU; same shader)
- *     Both shaders share an attribute layout `(time, value)` and the
- *     uniforms below.
+ *   - Two rendering paths:
+ *       thin (lineWidth ≤ 1) — GL LINE_STRIP, vertex shader maps
+ *         (time, value) to clip space.  Fast but fixed 1px width.
+ *       thick (lineWidth > 1) — CPU-extruded triangle strip with
+ *         bevel joins.  Geometry is pre-computed in clip space so the
+ *         vertex shader is a pass-through.  Matches the Canvas 2D
+ *         renderer's line width setting.
+ *   - Both share the same fragment shader (past/future alpha split
+ *     via uClipFutureStart).
  *   - Vertex buffers are reused across frames per expression key.  Buffer
  *     re-upload is gated on a `(length, sampleArrayRef)` cache key so a
  *     run of identical-length sample arrays only re-uploads when the
@@ -35,6 +39,7 @@
  */
 
 import { perf } from "../../lib/perfTrace.ts";
+import type { VisExpression } from "../../utils/visualisationStore.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
 import { isVisPanelVisible } from "./serialVis.ts";
 
@@ -201,7 +206,7 @@ interface GLState {
   gl: WebGL2RenderingContext;
   program: WebGLProgram;
   vao: WebGLVertexArrayObject;
-  // Uniform locations
+  // Uniform locations (thin-line program)
   uColor: WebGLUniformLocation | null;
   uAlphaPast: WebGLUniformLocation | null;
   uAlphaFuture: WebGLUniformLocation | null;
@@ -211,8 +216,17 @@ interface GLState {
   uYTop: WebGLUniformLocation | null;
   uYBottom: WebGLUniformLocation | null;
   uClipFutureStart: WebGLUniformLocation | null;
+  // Thick-line program (triangle-strip)
+  thickProgram: WebGLProgram;
+  thickVao: WebGLVertexArrayObject;
+  tuColor: WebGLUniformLocation | null;
+  tuAlphaPast: WebGLUniformLocation | null;
+  tuAlphaFuture: WebGLUniformLocation | null;
+  tuCurrentTime: WebGLUniformLocation | null;
+  tuClipFutureStart: WebGLUniformLocation | null;
   // Per-expression VBO cache
   buffers: Map<string, ExprBuffer>;
+  thickBuffers: Map<string, ThickExprBuffer>;
 }
 
 interface ExprBuffer {
@@ -221,6 +235,14 @@ interface ExprBuffer {
   length: number;
   // Cache key — the array reference of the samples last uploaded.
   samplesRef: object | null;
+}
+
+interface ThickExprBuffer {
+  vbo: WebGLBuffer;
+  capacity: number;
+  vertexCount: number;
+  samplesRef: object | null;
+  lineWidth: number;
 }
 
 let glState: GLState | null = null;
@@ -283,6 +305,34 @@ void main() {
 }
 `;
 
+// ── Thick-line shaders (triangle-strip with bevel joins) ───────────
+//
+// Each polyline vertex becomes two triangle-strip vertices offset
+// perpendicular to the line direction by ±halfWidth.  The vertex
+// shader receives pre-computed clip-space positions (the extrusion is
+// done on CPU so we can compute proper miter/bevel geometry with
+// knowledge of the full polyline topology).
+
+const THICK_VERTEX_SRC = `#version 300 es
+precision mediump float;
+
+in vec2 aPosition;    // pre-computed clip-space XY
+in float aTime;       // original sample time (for past/future split)
+
+uniform float uCurrentTime;
+
+out float vTime;
+out float vIsFuture;
+
+void main() {
+  vTime = aTime;
+  vIsFuture = step(uCurrentTime, aTime);
+  gl_Position = vec4(aPosition, 0.0, 1.0);
+}
+`;
+
+const THICK_FRAGMENT_SRC = FRAGMENT_SHADER_SRC;
+
 function compileShader(gl: WebGL2RenderingContext, kind: number, src: string): WebGLShader | null {
   const sh = gl.createShader(kind);
   if (!sh) return null;
@@ -297,18 +347,24 @@ function compileShader(gl: WebGL2RenderingContext, kind: number, src: string): W
   return sh;
 }
 
-function buildProgram(gl: WebGL2RenderingContext): WebGLProgram | null {
-  const vs = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER_SRC);
-  const fs = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SRC);
+function linkProgram(
+  gl: WebGL2RenderingContext,
+  vsSrc: string,
+  fsSrc: string,
+  attribBindings: [number, string][],
+): WebGLProgram | null {
+  const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc);
+  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc);
   if (!vs || !fs) return null;
   const prog = gl.createProgram();
   if (!prog) return null;
   gl.attachShader(prog, vs);
   gl.attachShader(prog, fs);
-  gl.bindAttribLocation(prog, 0, "aTimeValue");
+  for (const [loc, name] of attribBindings) {
+    gl.bindAttribLocation(prog, loc, name);
+  }
   gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-     
     console.warn("[serialVisGL] program link error:", gl.getProgramInfoLog(prog));
     gl.deleteProgram(prog);
     return null;
@@ -329,14 +385,24 @@ function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
     preserveDrawingBuffer: false,
   }) as WebGL2RenderingContext | null;
   if (!gl) {
-     
     console.warn("[serialVisGL] WebGL2 context unavailable");
     return null;
   }
-  const program = buildProgram(gl);
+
+  const program = linkProgram(gl, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, [
+    [0, "aTimeValue"],
+  ]);
   if (!program) return null;
   const vao = gl.createVertexArray();
   if (!vao) return null;
+
+  const thickProgram = linkProgram(gl, THICK_VERTEX_SRC, THICK_FRAGMENT_SRC, [
+    [0, "aPosition"],
+    [1, "aTime"],
+  ]);
+  if (!thickProgram) return null;
+  const thickVao = gl.createVertexArray();
+  if (!thickVao) return null;
 
   glState = {
     gl,
@@ -351,7 +417,15 @@ function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
     uYTop: gl.getUniformLocation(program, "uYTop"),
     uYBottom: gl.getUniformLocation(program, "uYBottom"),
     uClipFutureStart: gl.getUniformLocation(program, "uClipFutureStart"),
+    thickProgram,
+    thickVao,
+    tuColor: gl.getUniformLocation(thickProgram, "uColor"),
+    tuAlphaPast: gl.getUniformLocation(thickProgram, "uAlphaPast"),
+    tuAlphaFuture: gl.getUniformLocation(thickProgram, "uAlphaFuture"),
+    tuCurrentTime: gl.getUniformLocation(thickProgram, "uCurrentTime"),
+    tuClipFutureStart: gl.getUniformLocation(thickProgram, "uClipFutureStart"),
     buffers: new Map(),
+    thickBuffers: new Map(),
   };
   return glState;
 }
@@ -453,6 +527,211 @@ function uploadIfNeeded(
   return vertexCount;
 }
 
+// ── Thick-line geometry (triangle strip with bevel joins) ──────────
+//
+// Each segment of the polyline becomes a quad (4 vertices, drawn as
+// TRIANGLE_STRIP).  At joins we use a bevel (one extra triangle) to
+// avoid spikes at sharp angles.  The output is interleaved as:
+//   [clipX, clipY, time, clipX, clipY, time, ...]
+// Three floats per vertex (position.xy + time), laid out for a single
+// TRIANGLE_STRIP draw call.
+
+const THICK_FLOATS_PER_VERTEX = 3; // clipX, clipY, time
+
+let thickScratch = new Float32Array(4096);
+function ensureThickScratch(floatCount: number): void {
+  if (thickScratch.length >= floatCount) return;
+  let next = thickScratch.length;
+  while (next < floatCount) next *= 2;
+  thickScratch = new Float32Array(next);
+}
+
+/**
+ * Convert flattened (time, value) polyline data in `scratch` into a
+ * triangle-strip stored in `thickScratch`.
+ *
+ * The function performs the time→clip and value→pixel→clip transforms
+ * itself (same math as the thin-line vertex shader) so the thick-line
+ * vertex shader can be a trivial pass-through.
+ *
+ * Returns the number of vertices written into `thickScratch`.
+ */
+function buildThickLineGeometry(
+  vertexCount: number,
+  halfWidth: number,
+  windowStart: number,
+  windowEnd: number,
+  yTop: number,
+  yBottom: number,
+  viewportW: number,
+  viewportH: number,
+): number {
+  if (vertexCount < 2) return 0;
+
+  // Each segment produces 2 strip vertices; bevel joins add up to 3
+  // degenerate-linking vertices.  Worst case ≈ 5 verts per input point.
+  const maxVerts = vertexCount * 5;
+  ensureThickScratch(maxVerts * THICK_FLOATS_PER_VERTEX);
+
+  const windowSpan = Math.max(windowEnd - windowStart, 1e-6);
+  const invViewportH = 1 / Math.max(viewportH, 1);
+
+  // Pre-compute clip-space positions for every input point.
+  // Reuse a local buffer to avoid per-frame allocation for moderate
+  // channel counts (the hot path).
+  const cx = new Float32Array(vertexCount);
+  const cy = new Float32Array(vertexCount);
+  const times = new Float32Array(vertexCount);
+
+  for (let i = 0; i < vertexCount; i++) {
+    const t = scratch[i * 2];
+    const v = Math.max(0, Math.min(1, scratch[i * 2 + 1]));
+    const relX = (t - windowStart) / windowSpan;
+    cx[i] = relX * 2 - 1;
+    const pixelY = yBottom + (yTop - yBottom) * v;
+    cy[i] = 1 - 2 * pixelY * invViewportH;
+    times[i] = t;
+  }
+
+  // Convert halfWidth from pixels to clip-space units along each axis.
+  const hwX = (halfWidth * 2) / Math.max(viewportW, 1);
+  const hwY = (halfWidth * 2) / Math.max(viewportH, 1);
+
+  let w = 0;
+
+  function emit(x: number, y: number, time: number): void {
+    thickScratch[w++] = x;
+    thickScratch[w++] = y;
+    thickScratch[w++] = time;
+  }
+
+  // For a segment from P[i] to P[i+1], compute the perpendicular
+  // normal in clip space (accounting for non-square aspect ratio).
+  function segmentNormal(i: number): [number, number] {
+    const dx = cx[i + 1] - cx[i];
+    const dy = cy[i + 1] - cy[i];
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1e-10) return [0, hwY];
+    return [-dy / len, dx / len];
+  }
+
+  // First segment cap
+  {
+    const [nx, ny] = segmentNormal(0);
+    emit(cx[0] + nx * hwX, cy[0] + ny * hwY, times[0]);
+    emit(cx[0] - nx * hwX, cy[0] - ny * hwY, times[0]);
+  }
+
+  for (let i = 1; i < vertexCount - 1; i++) {
+    // Compute normals for segments (i-1,i) and (i,i+1), then average
+    // for a miter-like join.  If the miter ratio exceeds 2 we fall
+    // back to a bevel (two sets of offset vertices) to avoid spikes.
+    const [n0x, n0y] = segmentNormal(i - 1);
+    const [n1x, n1y] = segmentNormal(i);
+
+    let mx = (n0x + n1x) * 0.5;
+    let my = (n0y + n1y) * 0.5;
+    let mLen = Math.sqrt(mx * mx + my * my);
+
+    // Degenerate (collinear or near-zero) — just use the incoming normal.
+    if (mLen < 1e-10) {
+      mx = n0x;
+      my = n0y;
+      mLen = 1;
+    }
+
+    // Project miter against one of the segment normals to get the
+    // miter length factor.  Clamp to avoid spikes.
+    const dot = (n0x * mx + n0y * my) / mLen;
+    const miterFactor = dot > 0.5 ? 1 / dot : 2;
+
+    if (miterFactor > 2) {
+      // Bevel: close with incoming normal, start fresh with outgoing.
+      emit(cx[i] + n0x * hwX, cy[i] + n0y * hwY, times[i]);
+      emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
+      // Degenerate triangle to jump to new strip position.
+      emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
+      emit(cx[i] + n1x * hwX, cy[i] + n1y * hwY, times[i]);
+      emit(cx[i] + n1x * hwX, cy[i] + n1y * hwY, times[i]);
+      emit(cx[i] - n1x * hwX, cy[i] - n1y * hwY, times[i]);
+    } else {
+      const scale = miterFactor / Math.max(mLen, 1e-10);
+      const ox = mx * scale * hwX;
+      const oy = my * scale * hwY;
+      emit(cx[i] + ox, cy[i] + oy, times[i]);
+      emit(cx[i] - ox, cy[i] - oy, times[i]);
+    }
+  }
+
+  // Last segment cap
+  {
+    const last = vertexCount - 1;
+    const [nx, ny] = segmentNormal(last - 1);
+    emit(cx[last] + nx * hwX, cy[last] + ny * hwY, times[last]);
+    emit(cx[last] - nx * hwX, cy[last] - ny * hwY, times[last]);
+  }
+
+  return w / THICK_FLOATS_PER_VERTEX;
+}
+
+function getOrCreateThickBuffer(state: GLState, key: string): ThickExprBuffer {
+  let buf = state.thickBuffers.get(key);
+  if (buf) return buf;
+  const vbo = state.gl.createBuffer();
+  if (!vbo) throw new Error("[serialVisGL] failed to create thick VBO");
+  buf = { vbo, capacity: 0, vertexCount: 0, samplesRef: null, lineWidth: 0 };
+  state.thickBuffers.set(key, buf);
+  return buf;
+}
+
+function uploadThickGeometry(
+  state: GLState,
+  buf: ThickExprBuffer,
+  samples: VisSampleLike[],
+  stepMode: boolean,
+  lineWidth: number,
+  windowStart: number,
+  windowEnd: number,
+  yTop: number,
+  yBottom: number,
+  viewportW: number,
+  viewportH: number,
+): number {
+  if (buf.samplesRef === samples && buf.vertexCount > 0 && buf.lineWidth === lineWidth && !stepMode) {
+    return buf.vertexCount;
+  }
+
+  const flatVertexCount = flattenSamples(samples, stepMode);
+  if (flatVertexCount < 2) return 0;
+
+  const halfWidth = Math.max(lineWidth, 1) / 2;
+  const thickVertexCount = buildThickLineGeometry(
+    flatVertexCount, halfWidth,
+    windowStart, windowEnd,
+    yTop, yBottom,
+    viewportW, viewportH,
+  );
+  if (thickVertexCount < 3) return 0;
+
+  const gl = state.gl;
+  const floatCount = thickVertexCount * THICK_FLOATS_PER_VERTEX;
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf.vbo);
+  if (thickVertexCount > buf.capacity) {
+    const grown = Math.max(thickVertexCount, buf.capacity * 2 || 256);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      grown * THICK_FLOATS_PER_VERTEX * Float32Array.BYTES_PER_ELEMENT,
+      gl.DYNAMIC_DRAW,
+    );
+    buf.capacity = grown;
+  }
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, thickScratch.subarray(0, floatCount), 0, floatCount);
+  buf.samplesRef = samples;
+  buf.vertexCount = thickVertexCount;
+  buf.lineWidth = lineWidth;
+  return thickVertexCount;
+}
+
 // ── Color parsing ───────────────────────────────────────────────────
 //
 // CSS colour strings need to become vec3.  Cache results per literal.
@@ -552,10 +831,8 @@ export function drawSerialVisGL(): void {
     return;
   }
 
-  // Note: `settings.lineWidth` is unused here.  WebGL2's `lineWidth` is
-  // fixed at 1px on Chromium/Firefox per spec; matching the 2D path's
-  // line widths needs triangle-strip thick-line rendering, which is
-  // intentionally deferred to a follow-up bead.
+  const lineWidth = settings.lineWidth ?? 1.5;
+  const useThickLines = lineWidth > 1;
   const futureLineAlpha = settings.futureDashed === false ? 0.85 : 0.6;
   const totalWindow = settings.windowDuration || 1;
   const halfWindow = totalWindow / 2;
@@ -565,7 +842,6 @@ export function drawSerialVisGL(): void {
   const verticalPadding = h * 0.1;
   const drawableHeight = h - verticalPadding * 2;
 
-  // For analog: y for value=1 is `verticalPadding`; y for value=0 is `h - verticalPadding`.
   const analogYTop = verticalPadding;
   const analogYBottom = h - verticalPadding;
 
@@ -582,14 +858,44 @@ export function drawSerialVisGL(): void {
     if (idx < 0) return null;
     const laneTop = verticalPadding + idx * (digitalLaneHeight + digitalLaneGap);
     const laneBottom = laneTop + digitalLaneHeight;
-    // value=1 maps to laneTop, value=0 maps to laneBottom (mirrors mapDigitalValueToY)
     return { yTop: laneTop, yBottom: laneBottom };
   }
 
+  if (useThickLines) {
+    drawExpressionsThick(
+      state, gl, w, h, exprKeys, expressions, currentTime,
+      futureLineAlpha, lineWidth, windowStart, windowEnd,
+      analogYTop, analogYBottom, digitalLaneY,
+    );
+  } else {
+    drawExpressionsThin(
+      state, gl, w, h, exprKeys, expressions, currentTime,
+      futureLineAlpha, windowStart, windowEnd,
+      analogYTop, analogYBottom, digitalLaneY,
+    );
+  }
+
+  perf.end("render-frame");
+}
+
+function drawExpressionsThin(
+  state: GLState,
+  gl: WebGL2RenderingContext,
+  w: number,
+  h: number,
+  exprKeys: string[],
+  expressions: Record<string, VisExpression>,
+  currentTime: number,
+  futureLineAlpha: number,
+  windowStart: number,
+  windowEnd: number,
+  analogYTop: number,
+  analogYBottom: number,
+  digitalLaneY: (exprType: string) => { yTop: number; yBottom: number } | null,
+): void {
   gl.useProgram(state.program);
   gl.bindVertexArray(state.vao);
 
-  // Constant uniforms across this frame
   gl.uniform1f(state.uCurrentTime, currentTime);
   gl.uniform1f(state.uWindowStart, windowStart);
   gl.uniform1f(state.uWindowEnd, windowEnd);
@@ -612,8 +918,6 @@ export function drawSerialVisGL(): void {
     const vertexCount = uploadIfNeeded(state, buf, samples, isDigital);
     if (vertexCount < 2) continue;
 
-    // Bind buffer & attrib (the VAO captures this between draws but
-    // we re-bind defensively since we share one VAO across exprs).
     gl.bindBuffer(gl.ARRAY_BUFFER, buf.vbo);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
@@ -626,9 +930,6 @@ export function drawSerialVisGL(): void {
     gl.uniform1f(state.uAlphaPast, 1.0);
     gl.uniform1f(state.uAlphaFuture, Math.min(1, Math.max(0, futureLineAlpha)));
 
-    // Two passes — past then future — so the fragment shader can
-    // discard the unwanted half and we get distinct alphas without
-    // needing two programs.
     gl.uniform1f(state.uClipFutureStart, 0);
     gl.drawArrays(gl.LINE_STRIP, 0, vertexCount);
     gl.uniform1f(state.uClipFutureStart, 1);
@@ -636,7 +937,71 @@ export function drawSerialVisGL(): void {
   }
 
   gl.bindVertexArray(null);
-  perf.end("render-frame");
+}
+
+function drawExpressionsThick(
+  state: GLState,
+  gl: WebGL2RenderingContext,
+  w: number,
+  h: number,
+  exprKeys: string[],
+  expressions: Record<string, VisExpression>,
+  currentTime: number,
+  futureLineAlpha: number,
+  lineWidth: number,
+  windowStart: number,
+  windowEnd: number,
+  analogYTop: number,
+  analogYBottom: number,
+  digitalLaneY: (exprType: string) => { yTop: number; yBottom: number } | null,
+): void {
+  gl.useProgram(state.thickProgram);
+  gl.bindVertexArray(state.thickVao);
+
+  gl.uniform1f(state.tuCurrentTime, currentTime);
+
+  const stride = THICK_FLOATS_PER_VERTEX * Float32Array.BYTES_PER_ELEMENT;
+
+  for (const key of exprKeys) {
+    const expression = expressions[key];
+    const samples = expression.samples;
+    if (!samples || samples.length < 2) continue;
+
+    const exprType = expression.exprType;
+    const isDigital = (DIGITAL_CHANNELS as readonly string[]).includes(exprType);
+
+    const lane = isDigital ? digitalLaneY(exprType) : null;
+    const yTop = lane ? lane.yTop : analogYTop;
+    const yBottom = lane ? lane.yBottom : analogYBottom;
+
+    const buf = getOrCreateThickBuffer(state, key);
+    const vertexCount = uploadThickGeometry(
+      state, buf, samples, isDigital, lineWidth,
+      windowStart, windowEnd, yTop, yBottom, w, h,
+    );
+    if (vertexCount < 3) continue;
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.vbo);
+    // aPosition (location 0): vec2 at offset 0
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, stride, 0);
+    // aTime (location 1): float at offset 8
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 1, gl.FLOAT, false, stride, 2 * Float32Array.BYTES_PER_ELEMENT);
+
+    const colorCss = expression.color || getAccentColor();
+    const [r, g, b] = parseColor(colorCss);
+    gl.uniform3f(state.tuColor, r, g, b);
+    gl.uniform1f(state.tuAlphaPast, 1.0);
+    gl.uniform1f(state.tuAlphaFuture, Math.min(1, Math.max(0, futureLineAlpha)));
+
+    gl.uniform1f(state.tuClipFutureStart, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
+    gl.uniform1f(state.tuClipFutureStart, 1);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
+  }
+
+  gl.bindVertexArray(null);
 }
 
 /**
@@ -648,3 +1013,13 @@ export function _resetGLStateForTests(): void {
   glState = null;
   overlayCanvas = null;
 }
+
+export const __serialVisGLInternals = {
+  flattenSamples,
+  buildThickLineGeometry,
+  parseColor,
+  ensureScratch,
+  scratch: () => scratch,
+  thickScratch: () => thickScratch,
+  THICK_FLOATS_PER_VERTEX,
+};
