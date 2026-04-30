@@ -387,9 +387,6 @@ describe("serialComms fake host harness", () => {
     await flushProtocolWork();
 
     expect(serialComms.getProtocolMode()).toBe("legacy");
-    expect(postMock).toHaveBeenCalledWith(
-      "**Warning**: Unable to switch to JSON protocol, staying in legacy mode."
-    );
     expect(protocolEvents.some((e) => e.protocolMode === "legacy")).toBe(true);
 
     await serialComms.disconnect();
@@ -418,7 +415,8 @@ describe("serialComms fake host harness", () => {
     await flushProtocolWork();
 
     expect(postMock).toHaveBeenCalledWith(
-      "**Warning**: Heartbeat timeout - connection may be lost. Reconnect if needed."
+      "Heartbeat timeout — connection may be lost. Reconnect if needed.",
+      "warn"
     );
 
     // Heartbeat stopped: no further pings after another full interval

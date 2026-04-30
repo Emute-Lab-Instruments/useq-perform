@@ -56,7 +56,7 @@ describe("urlParams", () => {
     expect(toggleDbg).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledWith(
-      "**Info**: Running in no-module mode. Expressions evaluate via the in-browser uSEQ interpreter.",
+      "No-module mode — expressions evaluate via the in-browser interpreter.",
     );
   });
 });

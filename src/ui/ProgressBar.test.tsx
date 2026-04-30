@@ -1,11 +1,11 @@
 import { render } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { describe, it, expect } from "vitest";
-import { updateBar } from "../utils/visualisationStore";
 import { ProgressBar } from "./ProgressBar";
 
 describe("ProgressBar", () => {
   it("renders the container and progress bar elements", () => {
-    const { container } = render(() => <ProgressBar />);
+    const { container } = render(() => <ProgressBar progress={0} />);
     const outer = container.querySelector("#toolbar-bar-progress-container");
     const inner = container.querySelector("#toolbar-bar-progress");
     expect(outer).toBeTruthy();
@@ -13,7 +13,7 @@ describe("ProgressBar", () => {
   });
 
   it("starts with scaleX(0)", () => {
-    const { container } = render(() => <ProgressBar />);
+    const { container } = render(() => <ProgressBar progress={0} />);
     const inner = container.querySelector(
       "#toolbar-bar-progress"
     ) as HTMLElement;
@@ -21,32 +21,33 @@ describe("ProgressBar", () => {
   });
 
   it("updates bar value from store", async () => {
-    const { container } = render(() => <ProgressBar />);
+    const [progress, setProgress] = createSignal(0);
+    const { container } = render(() => <ProgressBar progress={progress()} />);
     const inner = container.querySelector(
       "#toolbar-bar-progress"
     ) as HTMLElement;
 
-    updateBar(0.75);
+    setProgress(0.75);
 
-    // SolidJS updates are synchronous
     expect(inner.style.transform).toBe("scaleX(0.75)");
   });
 
   it("clamps values between 0 and 1", () => {
-    const { container } = render(() => <ProgressBar />);
+    const [progress, setProgress] = createSignal(0);
+    const { container } = render(() => <ProgressBar progress={progress()} />);
     const inner = container.querySelector(
       "#toolbar-bar-progress"
     ) as HTMLElement;
 
-    updateBar(1.5);
+    setProgress(1.5);
     expect(inner.style.transform).toBe("scaleX(1)");
 
-    updateBar(-0.5);
+    setProgress(-0.5);
     expect(inner.style.transform).toBe("scaleX(0)");
   });
 
   it("has pointer-events none", () => {
-    const { container } = render(() => <ProgressBar />);
+    const { container } = render(() => <ProgressBar progress={0} />);
     const outer = container.querySelector(
       "#toolbar-bar-progress-container"
     ) as HTMLElement;

@@ -169,7 +169,7 @@ describe("useqWasmInterpreter", () => {
     const lastError = typedModule.cwrap("useq_last_error", "string", []);
 
     init();
-    expect(evalCode("(def a1 (bar))")).toBe("a1");
+    expect(evalCode("(a1 0.5)")).toBe("ok");
 
     const sampleCount = 5;
     const pointer = typedModule._malloc(sampleCount * Float64Array.BYTES_PER_ELEMENT);
@@ -194,7 +194,7 @@ describe("useqWasmInterpreter", () => {
 
     const { evalInUseqWasm, evalOutputsInTimeWindow } = await import("./wasmInterpreter.ts");
 
-    expect(await evalInUseqWasm("(def a1 (bar))")).toBe("a1");
+    expect(await evalInUseqWasm("(a1 0.5)")).toBe("ok");
     const samples = await evalOutputsInTimeWindow(["a1"], 0, 1, 5);
 
     expect(samples.get("a1")).toEqual([
