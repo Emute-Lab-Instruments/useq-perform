@@ -740,20 +740,25 @@ const probeField = StateField.define<ProbeFieldValue>({
 
     if (tr.docChanged) {
       const docLen = tr.state.doc.length;
+      // Map positions through the change set first, then filter by new
+      // document length. Filtering before mapping would incorrectly drop
+      // probes whose pre-edit positions exceed the new doc length but whose
+      // post-map positions are valid (e.g. a probe at 8-11 in a 12-char doc
+      // maps to 0-3 when the first 8 chars are deleted).
       probes = probes
-        .filter((p) => p.from <= docLen && p.to <= docLen)
         .map((probe) => {
-        const mappedFrom = tr.changes.mapPos(probe.from, 1);
-        const mappedTo = tr.changes.mapPos(probe.to, -1);
-        return updateProbeRangeThroughChanges(
-          {
-            ...probe,
-            from: Math.max(0, Math.min(mappedFrom, mappedTo)),
-            to: Math.max(mappedFrom, mappedTo),
-          },
-          tr.state,
-        );
-      });
+          const mappedFrom = tr.changes.mapPos(probe.from, 1);
+          const mappedTo = tr.changes.mapPos(probe.to, -1);
+          return updateProbeRangeThroughChanges(
+            {
+              ...probe,
+              from: Math.max(0, Math.min(mappedFrom, mappedTo)),
+              to: Math.max(mappedFrom, mappedTo),
+            },
+            tr.state,
+          );
+        })
+        .filter((p) => p.from <= docLen && p.to <= docLen);
       highlights = [];
     }
 

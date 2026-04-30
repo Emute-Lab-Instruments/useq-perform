@@ -409,13 +409,13 @@ describe("probe commands", () => {
   });
 
   it("renders a waveform for numeric probe output", async () => {
+    // The batch expression [(eval-at-time t0 bar) ...] starts with "[" and is
+    // the only evalInUseqWasmSilently call made per probe per tick (batch path).
+    // windowDuration = DEFAULT_PROBE_WINDOW_DURATION_MS / 1000 * temporalScale(1) = 1s
+    // windowStart = currentTime(4) - 1 = 3
     evalInUseqWasmSilently.mockImplementation(async (code: string) => {
-      if (code === "barDur") return "2";
       if (code.startsWith("[")) {
         return numericVector(40, 100);
-      }
-      if (code.startsWith("(eval-at-time ")) {
-        return "100";
       }
       return "100";
     });
@@ -435,12 +435,13 @@ describe("probe commands", () => {
     expect(render).toMatchObject({
       kind: "waveform",
       text: "100",
-      windowStart: 2,
-      windowDuration: 2,
+      windowStart: 3,
+      windowDuration: 1,
       currentTime: 4,
     });
     expect(render.samples).toHaveLength(40);
-    expect(evalInUseqWasmSilently).toHaveBeenCalledTimes(3);
+    // Batch path: one [(...) (...) ...] call covers all sample times.
+    expect(evalInUseqWasmSilently).toHaveBeenCalledTimes(1);
     expect(
       evalInUseqWasmSilently.mock.calls.filter(([code]) =>
         String(code).startsWith("["),
@@ -486,11 +487,11 @@ describe("probe commands", () => {
   });
 
   it("classifies Error-prefixed output as an error render", async () => {
-    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
-      if (code === "barDur") return "1";
-      if (code.startsWith("[")) return numericVector(40, 0);
-      return "Error: boom";
-    });
+    // All evals (including the batch [(eval-at-time ...) ...]) return the error
+    // string. defaultEvalExpressionAtTimes short-circuits on ERROR_PREFIX and
+    // returns { samples: [], current: "Error: boom" }, which buildRenderForProbe
+    // then classifies as kind: "error".
+    evalInUseqWasmSilently.mockResolvedValue("Error: boom");
 
     const { setVisStore } = await import("../../utils/visualisationStore.ts");
     const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();

@@ -11,3 +11,14 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { expect } from "vitest";
 
 expect.extend(matchers as any);
+
+// jsdom does not implement ResizeObserver. Polyfill with a no-op stub so that
+// CodeMirror's ProbePlugin (and any other extension that instantiates a
+// ResizeObserver) can initialise without throwing in unit tests.
+if (typeof global.ResizeObserver === "undefined") {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
