@@ -10,6 +10,8 @@ uSEQ Perform is the web live-coding interface for the uSEQ hardware module. This
 
 **Terminology**: `docs/GLOSSARY.md` is the single source of truth for naming. Consult it before introducing new terms or renaming existing concepts.
 
+**Behavioural specs**: `docs/specs/MAIN.md` is the normative app-behaviour spec. It indexes per-feature sub-specs under `docs/specs/` (bootstrap, runtime modes, eval, transport, probes, visualisation, etc.). These specs define what the app *means* and what tests must verify — where the spec disagrees with the implementation, the spec wins and the implementation is the bug. Consult before changing app behaviour or writing tests.
+
 ## Build and Development
 
 - `npm run dev` - runs config server, static server, and watch builds. (`portless useq-perform npm run dev`)
@@ -57,7 +59,7 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 - `src/editors/extensions/` - CodeMirror extensions: `structure/` (ast, decorations, eval-integration), `evalHighlight`, `visReadability`, `diagnostics` (inline error squiggles from WASM)
 - `src/transport/` - serial port lifecycle, JSON protocol driver, stream parser, serial utilities, connector, firmware upgrade check
 - `src/runtime/` - bootstrap, runtime service, settings repository, startup context, URL params, config schema, config manager, WASM interpreter, app lifecycle, runtime diagnostics, runtime session
-- `src/effects/` - side-effect modules: mock time generator, transport clock policy, transport orchestrator, editor evaluation, visualisation sampler, mock control inputs, websocket server
+- `src/effects/` - side-effect modules: internal clock (rAF time when no hardware), transport clock policy, transport orchestrator, editor evaluation, visualisation sampler, mock control inputs, websocket server
 - `src/machines/` - XState state machines (transport)
 - `src/contracts/` - typed channels (runtime, visualisation, gamepad, help), event types, capability contracts
 - `src/ui/` - Solid UI components (settings, help, toolbar, modals)
@@ -93,7 +95,7 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 - `src/effects/editorEvaluation.ts` — after each eval, reads diagnostics, pushes them to the editor with correct document offsets, shows error messages inline instead of `"{error}"`.
 - `src/contracts/wasmAbi.ts` — `useq_last_diagnostics` and `useq_active_diagnostics` as optional WASM exports.
 
-Full spec: `src-useq/docs/ERROR_HANDLING_SPEC.md`.
+Full spec: `src-useq/docs/specs/diagnostics.md`. See also `src-useq/docs/specs/failure-model.md` for failure semantics (LKG, health states).
 
 ## UI Adapters
 

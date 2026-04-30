@@ -27,11 +27,11 @@
 
 1.5.2 **Remove** unregisters the probe. Visualisation channels for that probe disappear within one frame. From-list highlights are independent of probe activity (§2.4) and are not affected.
 
-1.5.3 **Edit** of the probed range or its enclosing wrappers re-registers the probe with the new text. The probe ID is stable across edits that preserve the probe's anchor; cosmetic edits (whitespace) must not unregister.
+1.5.3 **Live edit** of the probed range or its enclosing wrappers (while the session is active and the user is typing) **re-registers** the probe with the new text. The probe ID is stable across edits that preserve the probe's anchor; cosmetic edits (whitespace) must not unregister. This applies only to edits made during the current session — see §1.8.3 for restore-from-persistence semantics.
 
 1.5.4 If the AST cannot resolve the probe range to a valid expression (e.g. the range was deleted, or now spans broken syntax), the probe enters a **fallback** display state showing the last known good value with a "using last valid expression" note, and the widget reads `"probe unavailable"` if no cached code exists. Fallback must not crash the editor; the probe persists in state until the user removes it.
 
-1.5.5 If the AST resolves the probe range to a *different* expression than `cachedCode` (text has changed at the saved offsets), the probe enters a **stale** state — visible, not sampling, with a "probe text changed" indicator — until the user explicitly re-confirms (re-toggle at the same range) or removes it. Stale probes never silently rebind to mismatched text. See §1.8.3 for restore semantics.
+1.5.5 **Stale state** applies only on **persistence restore** (page reload), not during live editing. If, on restore, the AST resolves the probe range to a *different* expression than `cachedCode` (text has changed at the saved offsets), the probe enters a **stale** state — visible, not sampling, with a warning icon and "probe text changed" tooltip suggesting the user delete and recreate the probe. Stale probes never silently rebind to mismatched text. See §1.8.3 for full restore semantics.
 
 ### 1.6 Probe sampling
 
@@ -74,7 +74,9 @@
 
 ## 2. From-List Highlights
 
-2.1 **Recognised operators.** The set of indexed-list operators is exactly: `from-list`, `from-flat-list`, `seq`. These are recognised syntactically — by the head symbol of the form, not by runtime introspection. The set is closed and hardcoded in `probeHelpers.ts`; this spec is the canonical list. Adding a new indexed-list operator to the language requires a coordinated update to both this section and the implementation. The language semantics doc ([../../src-useq/docs/SEMANTICS.md](../../src-useq/docs/SEMANTICS.md)) cites this section as a downstream consumer.
+2.1 **Recognised operators (v1).** The set of indexed-list operators is currently: `from-list`, `from-flat-list`, `seq`. These are recognised syntactically — by the head symbol of the form, not by runtime introspection. The set is hardcoded in `probeHelpers.ts`; this spec is the canonical list. Adding a new indexed-list operator requires a coordinated update to both this section and the implementation. The language semantics doc ([../../src-useq/docs/SEMANTICS.md](../../src-useq/docs/SEMANTICS.md)) cites this section as a downstream consumer.
+
+&nbsp;&nbsp;&nbsp;&nbsp;2.1.1 **Future direction: runtime detection.** The hardcoded operator set is a v1 simplification. The goal is to detect any phasor-indexed list access at runtime, regardless of operator name — including user-defined wrapper functions that use `seq` internally on a list visible in source code. The mechanism (builtin self-registration, WASM-side tracing, or AST analysis) is undecided. When implemented, §2.1 narrows to the fallback for cases runtime detection cannot reach.
 
 2.2 **Form shape.** A recognised form's first argument is a phasor expression in `[0, 1]`; remaining arguments are list elements. The active element is `floor(elementCount × clamp(phasor, 0, 1))`, clamped to a valid index.
 
@@ -97,6 +99,6 @@
 
 2.8 **Nested and composed forms** (`(seq … (from-list …))`, `(slow 4 (from-list …))`) are recognised independently per nesting level. Each recognised form computes its own highlight from its own phasor.
 
-2.9 **Eval-mode interaction.** From-list highlights reflect the *currently committed* program state, sampled via WASM. A soft eval ([code-evaluation.md §1.1](code-evaluation.md)) does not change the highlights — it is a preview, not a commit. A failed quantised/immediate eval leaves prior highlights unchanged (matching the LKG semantics of [MAIN.md §2.1](MAIN.md)).
+2.9 **Eval-mode interaction.** From-list highlights reflect the *current* program state, sampled via WASM. A soft eval ([code-evaluation.md §1.1](code-evaluation.md)) updates highlights as part of the full local preview — the user sees which list element would be active under the previewed code. A failed quantised/immediate eval leaves prior highlights unchanged (matching the LKG semantics of [MAIN.md §2.1](MAIN.md)).
 
 2.10 **Hardware-only mode.** From-list highlights require WASM (the phasor evaluator). When WASM is disabled ([runtime-modes.md §1.10](runtime-modes.md)), no highlights are rendered, matching probe behaviour in §1.6.3.

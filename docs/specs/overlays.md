@@ -12,6 +12,6 @@
 
 1.5 **Radial menus** are circular pickers driven by mouse hover/click or gamepad stick. Segments are arcs; the active segment is visually distinct. A "double radial" variant nests an inner and outer ring for two-axis selection.
 
-1.6 At most one **modal** is visible at once. Multiple non-modal overlays (e.g. modifier hints + picker) may coexist; they share the overlay stack.
+1.6 At most one **modal** is visible at once. If a second modal is requested while one is showing, it queues and appears after the current modal is dismissed. Multiple non-modal overlays (e.g. modifier hints + picker) may coexist; they share the overlay stack.
 
 1.7 No overlay may steal focus from the editor without an explicit user gesture (key press, click, gamepad button). Auto-popping overlays in response to internal state changes is forbidden.

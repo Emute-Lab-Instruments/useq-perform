@@ -10,7 +10,9 @@
 
 1.4 The settings panel is structured as **three top-level tabs**: General, Themes, Keybindings. The General tab subdivides into Personal, Editor, Console, Eval Results, Storage, UI, Visualisation, Advanced, and Configuration Management sections.
 
-1.5 **Devmode gating.** Settings fields tagged `level: "advanced"` are hidden unless `?devmode=true` is set. The user-facing default surface is the basic-tier subset; the advanced tier is internal/diagnostic and may change shape without notice.
+1.5 **Devmode gating.** Settings fields tagged `level: "advanced"` are hidden unless `?devmode=true` is set. Devmode primarily gates UI visibility of advanced sections and toggles for undecided design choices; it does not change runtime behaviour. The user-facing default surface is the basic-tier subset; the advanced tier is internal/diagnostic and may change shape without notice.
+
+1.5.1 **Test coverage scope.** Tests should cover the full settings schema (all fields including devmode-gated ones): default values, normalisation, clamping, and persistence round-trip. Tests should also verify that each schema field has a corresponding UI control — a field that exists in the schema but has no UI exposure is a signal worth surfacing.
 
 1.6 Default values for user-facing settings must be **safe and unobtrusive**: visualisation enabled with a 10-second window, autosave on at 5-second cadence, autoreconnect on, WASM on, themes on `uSEQ Dark`. A first-time user with no settings should land in a working app.
 

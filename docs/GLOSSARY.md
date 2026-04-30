@@ -103,17 +103,21 @@ A serial stream output channel. Index 1 = `time`, indices 2–9 = `s1`–`s8`.
 
 ### Analogue Channel
 
-Continuous-value output channels `a1`–`a4`.
+Continuous-value output channels. The base uSEQ module has `a1`–`a3`;
+expanders extend the range. The output recognition pattern covers
+`a1`–`a8` to accommodate future hardware.
 
-- **Identifiers**: `a1`, `a2`, `a3`, `a4`, `ANALOGUE_CHANNELS`
+- **Identifiers**: `a1`..`a3` (base), `ANALOGUE_CHANNELS`
 - **Files**: `src/utils/visualisationStore.ts`
 - **Spelling**: "analogue" (British), not "analog"
 
 ### Digital Channel
 
-Gate/trigger output channels `d1`–`d3`.
+Gate/trigger output channels. The base uSEQ module has `d1`–`d3`;
+expanders extend the range. The output recognition pattern covers
+`d1`–`d8` to accommodate future hardware.
 
-- **Identifiers**: `d1`, `d2`, `d3`, `DIGITAL_CHANNELS`
+- **Identifiers**: `d1`..`d3` (base), `DIGITAL_CHANNELS`
 - **Files**: `src/utils/visualisationStore.ts`
 
 ### Mock Control Input
@@ -445,20 +449,22 @@ XState-based orchestration of transport state machine transitions.
 
 ### Transport Clock
 
-Time synchronisation policy between mock clock, WASM, and display rendering.
-Decides whether the mock time generator should run.
+Time synchronisation policy between the internal clock, WASM, and display rendering.
+Decides whether the internal clock should run.
 
-- **Identifiers**: `shouldUseMockTime()`, `applyMockTimePolicy()`
+- **Identifiers**: `shouldUseMockTime()`, `applyMockTimePolicy()` (rename pending)
 - **Files**: `src/effects/transportClock.ts`
-- **See also**: Mock Time Generator
+- **See also**: Internal Time / Internal Clock
 
-### Mock Time Generator
+### Internal Time / Internal Clock
 
-A ~60fps animation loop that generates synthetic time values for the
-visualisation when hardware isn't providing them.
+The ~60fps rAF-driven animation loop (`performance.now`) that provides
+time values when hardware isn't connected. This is the computer's real
+clock, not a mock — it is the authoritative time source in WASM-only mode.
 
-- **Identifiers**: `mockTimeGenerator`
+- **Identifiers**: `mockTimeGenerator` (rename to `internalClock` pending)
 - **Files**: `src/effects/localClock.ts`
+- **Not**: "mock time" (misleading — it's real time, just not hardware time)
 
 ### Editor Effect
 
@@ -1844,7 +1850,8 @@ avoid them and can recognise them in old code.
 | `src-solid/` | `src/ui/` | Old Solid component directory, removed |
 | `useqedit` | `useq-perform` | Legacy Python editor |
 | `serialComms` | `src/transport/` | Real implementation moved |
-| `mockTimeGenerator` | `src/effects/localClock.ts` | Modern version |
+| `mockTimeGenerator` | `src/effects/localClock.ts` | Now "internal clock"; rename to `internalClock` pending |
+| `mock time` / `mock clock` | `internal time` / `internal clock` | Not a mock — it's the computer's real clock in absence of hardware |
 | `"useqcode"` (storage key) | `"uSEQ-Perform-User-Code"` | Legacy localStorage key |
 | `"editorConfig"` (storage key) | `"uSEQ-Perform-User-Settings"` | Legacy localStorage key |
 | `"useqConfig"` (storage key) | `"uSEQ-Perform-User-Settings"` | Legacy localStorage key |

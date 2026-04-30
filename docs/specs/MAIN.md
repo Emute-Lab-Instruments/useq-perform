@@ -51,15 +51,17 @@ App-wide degradation contracts. Cited from feature sub-specs.
 
 2.8 **Diagnostics survive across evals.** Per-output health is queryable and rendered. A successful eval clears prior diagnostics for the affected outputs, not for the whole document.
 
-2.9 **The serial reader and the visualisation renderer must each tolerate the other crashing.** A render-loop exception must not stop the byte stream; a parser error on one channel must not poison the other channels.
+2.9 **The serial reader and the visualisation renderer must each tolerate the other crashing.** A render-loop exception must not stop the byte stream; a parser error on one channel must not poison the other channels. On any parse error, the stream parser resets to scanning for the next `0x1F` start marker.
+
+2.10 **WASM crash recovery in `both` mode.** If the WASM interpreter crashes while hardware is running, the app silently attempts to reinitialise WASM. On success, resume visualisation shadow mode. On failure, fall back to hardware-only with a console warning. Hardware operation is never interrupted by a WASM failure.
 
 ---
 
 ## 3. Performance Targets
 
-3.1 **First useful frame** under typical conditions: editor visible and accepting input within 1 second of bundle load.
+3.1 **First useful frame** under typical conditions (aspirational, not hard CI gates): editor visible and accepting input within 1 second of bundle load.
 
-3.2 **First eval** latency under typical conditions: WASM ready within 2 seconds; hardware ready when the JSON handshake completes (≈ tens of ms on a healthy device, worst case ≈ 6.4 seconds).
+3.2 **First eval** latency under typical conditions (aspirational): WASM ready within 2 seconds; hardware ready when the JSON handshake completes (≈ tens of ms on a healthy device, worst case ≈ 6.4 seconds).
 
 3.3 **Visualisation channel target**: 10–20 simultaneous channels at ≥ 30 FPS without dropped frames. Render-frame budget at the upper end of the channel range stays below the rAF interval.
 
@@ -83,12 +85,12 @@ App-wide degradation contracts. Cited from feature sub-specs.
 - A "don't wait for hardware" setting that lets local editing/eval proceed without a connection gate.
 - Distinct visual indication of hardware-connected vs WASM-only states.
 - Visualisation in both WASM-driven and hardware-streamed modes.
-- Mock time as the WASM clock when no hardware is present.
+- Internal time (rAF-driven `performance.now`) as the WASM clock when no hardware is present.
 - Loading committed config, persisted settings, and retained URL bootstrap overrides.
 
 4.3 The stable URL/storage promises in [url-params.md §1.2](url-params.md) and [persistence.md §1.2/§1.3](persistence.md) are part of the stable core.
 
-4.4 **Compatibility cuts** (kept only as bridges, may shrink without replacement): legacy text serial protocol (pre-1.2.0 firmware), `?noModuleMode=true`, `?devmode=true` UI surface, mock controls/time, Storybook/test harnesses, live-serial visualisation as observation-only (no time-seeking).
+4.4 **Compatibility cuts** (kept only as bridges, may shrink without replacement): legacy text serial protocol (pre-1.2.0 firmware), `?noModuleMode=true`, `?devmode=true` UI surface, mock controls, Storybook/test harnesses, live-serial visualisation as observation-only (no time-seeking).
 
 4.5 **Out of scope** (not compatibility targets, never returning without a mission case): camera workflows, MIDI, desktop/Electron, virtual gamepad, ambiguous hybrid runtime states, multi-user/multi-tenant, telemetry.
 
@@ -100,7 +102,7 @@ Items that span multiple sub-specs. Feature-specific open questions live in the 
 
 5.1 **Behavioural runtime parity.** Whether `(useq-play)` etc. should be contract-tested end-to-end against both runtimes (property tests over both ports) or whether matching the wire protocol is sufficient. Wire parity exists; behavioural parity is open.
 
-5.2 **Inspector permanence.** Whether the Inspector dev tool is a permanent surface (with its own scenario coverage) or a migration aid (delete-on-completion). Affects whether props-based scenario coverage is a P1 concern or a one-off.
+5.2 **Hardware-initiated push messages.** The current protocol only allows hardware to push structured state via the `meta` field inside eval responses. Hardware should be able to push messages at its own initiative (e.g. transport state changes, diagnostic alerts) outside of eval request/response cycles. Proposed: unsolicited JSON frames (0x1F + 0x65 + JSON) with no `requestId` are treated as push notifications from firmware.
 
 ---
 
@@ -140,7 +142,7 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.16 [reactive-flow.md](reactive-flow.md) — typed-channel invariants, mutation surfaces, import boundaries.
 
-6.17 [probes.md](probes.md) — inline probe widgets and the from-list highlight feature gated on probe activity.
+6.17 [probes.md](probes.md) — inline probe widgets and the from-list highlight feature (orthogonal to probe activity).
 
 ---
 
@@ -166,6 +168,6 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 7.10 `../../src-useq/docs/SEMANTICS.md` — language semantics (what programs *mean*). Counterpart to this doc.
 
-7.11 `../../src-useq/docs/ERROR_HANDLING_SPEC.md` — diagnostic system contract (severity, category, source span, ABI surface).
+7.11 `../../src-useq/docs/specs/diagnostics.md` — diagnostic system contract (severity, category, source span, ABI surface). See also `../../src-useq/docs/specs/failure-model.md` for failure semantics (LKG, health states, REPL-vs-output channels).
 
 7.12 If this spec disagrees with any of the above on a point of *app behaviour*, **this spec wins** by intent — bring implementation and other docs into line and file the bug. If it disagrees with the actually-deployed app, that is a bug — file it.

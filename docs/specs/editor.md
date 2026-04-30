@@ -25,11 +25,11 @@
 
 1.11 **Probes** are inline, time-following sample widgets attached to user-marked subexpressions. They display the value of the marked expression sampled at the current transport time. Probes are a main-editor feature; tutorial playgrounds may also include them where pedagogically useful. Full probe contract — modes, depth, persistence, from-list highlights — lives in [probes.md](probes.md).
 
-1.12 The main editor is **focus-respectful**: if the user is typing, no UI surface (modal, picker, autoload) may steal focus without an explicit user gesture. After a modal/picker dismisses, focus must return to the main editor unless the user moved it elsewhere. Secondary editors take focus only on direct user interaction (click, tab) and never auto-focus on mount.
+1.12 The main editor **auto-focuses on initial load** — the user should land in a ready-to-type editor. After initial mount, the editor is **focus-respectful**: if the user is typing, no UI surface (modal, picker, autoload) may steal focus without an explicit user gesture. After a modal/picker dismisses, focus must return to the main editor unless the user moved it elsewhere. Secondary editors take focus only on direct user interaction (click, tab) and never auto-focus on mount.
 
 1.13 **Secondary editor classes** in current use:
 - **Code examples** (help guide, reference): typically read-only or single-line-edit; usually omit autosave, gutter, probes, gamepad nav; may include syntax highlighting and a "copy" or "send to main editor" affordance.
-- **Tutorial playgrounds** (guide chapters): editable, evaluable, may include probes; do **not** persist to main-editor storage; their state is scoped to the lesson/playground instance.
+- **Tutorial playgrounds** (guide chapters): editable, evaluable, may include probes; do **not** persist to main-editor storage; their state is scoped to the lesson/playground instance. Each playground gets its own isolated vis store and probe registry. Evals route to WASM only (never hardware). Results are scoped to that playground's UI context.
 - **Theme demo/preview** (settings, theme picker): editable but ephemeral; pinned to a specific theme regardless of the user's active theme; render representative syntax to convey the theme's look.
 - **Snippet preview** (snippets tab): typically read-only; may render with the user's active theme; the snippet is inserted into the main editor on a user gesture.
 

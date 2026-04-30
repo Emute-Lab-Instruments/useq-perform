@@ -10,7 +10,7 @@
 
 1.4 **Future samples are visually distinct.** Default rendering uses lower alpha for future segments; `visualisation.futureDashed` (boolean) toggles dashed rendering for future segments.
 
-1.5 **Lane layout.** Digital outputs (d1..d8) are rendered as step-mode binary traces in stacked lanes. Analog outputs (a1..a8) are rendered as continuous traces in stacked lanes. Lane height is derived from drawable area divided by lane count.
+1.5 **Lane layout.** Digital outputs are rendered as step-mode binary traces in stacked lanes. Analogue outputs are rendered as continuous traces in stacked lanes. Lane height is derived from drawable area divided by lane count. The channel set is dynamic — determined by the hello handshake for hardware (the main uSEQ module has 3 analogue + 3 digital; expanders add more) and by the output recognition pattern (a1–a8, d1–d8, s1–s8) for WASM.
 
 1.6 **Empty state.** When no expressions are assigned and no probes exist, the panel shows a placeholder ("No expressions selected") and consumes near-zero CPU.
 

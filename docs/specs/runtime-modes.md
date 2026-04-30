@@ -16,7 +16,7 @@
 
 1.6 **Mode determination is observable, not inferred from `connectedToModule`.** Any UI indicator showing "connected" must distinguish hardware from WASM-only — never collapse them.
 
-1.7 **Mode transitions are seamless.** Connecting hardware while in `wasm` upgrades to `both` without losing editor state, console history, or vis state. Disconnecting hardware while in `both` falls back to `wasm`. The user's evaluations across the boundary must continue to produce visible feedback.
+1.7 **Mode transitions are seamless.** Connecting hardware while in `wasm` upgrades to `both` without losing editor state, console history, or vis state. On hardware connect, the app prompts the user: "Hardware connected. Send current program to device?" — letting the user decide whether to sync the current WASM state to hardware. Disconnecting hardware while in `both` falls back to `wasm`. The user's evaluations across the boundary must continue to produce visible feedback.
 
 1.8 Settings provide **`runtime.startLocallyWithoutHardware`** (default true): when true, the app boots into `wasm` mode without waiting for a hardware connection probe.
 

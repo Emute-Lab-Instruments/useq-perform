@@ -70,7 +70,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `jsonProtocol.ts` — lightweight in-runtime helpers (distinct from `transport/json-protocol.ts`).
 - `src/effects/` — composable side-effect modules. Framework-agnostic where possible.
   - `transportOrchestrator.ts`, `transportClock.ts` — XState-driven transport state and clock policy.
-  - `localClock.ts` — rAF-driven mock time when no hardware.
+  - `localClock.ts` — rAF-driven internal clock when no hardware.
   - `editor.ts`, `editorEvaluation.ts` — editor-side eval orchestration (eslint exception: imports editors).
   - `visualisationSampler.ts` — WASM batch sampling, sequence-guarded.
   - `mockControlInputs.ts`, `devmodeWebSocketServer.ts`, `perfBenchmark.ts`.
@@ -140,7 +140,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - [docs/USER_GUIDE_SPEC.md](docs/USER_GUIDE_SPEC.md) — in-app user guide design.
 - [docs/BEADS_BACKEND.md](docs/BEADS_BACKEND.md) — bd / Dolt backend setup.
 - [docs/adr/](docs/adr/) — architectural decisions (`0001` runtime surfaces, `0002` config-manager scope, `0003` archive boundaries).
-- [src-useq/docs/ERROR_HANDLING_SPEC.md](src-useq/docs/ERROR_HANDLING_SPEC.md) — diagnostic system contract.
+- [src-useq/docs/specs/diagnostics.md](src-useq/docs/specs/diagnostics.md) — diagnostic data shapes and ABI; see [src-useq/docs/specs/failure-model.md](src-useq/docs/specs/failure-model.md) for failure semantics.
 - [inspector/CLAUDE.md](inspector/CLAUDE.md) — Inspector agent guide.
 
 ## Local gotchas

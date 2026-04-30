@@ -21,7 +21,7 @@ These workflows are committed product surface and must keep working:
 5. Expose an in-editor "don't wait for hardware to connect" style setting so local editing and evaluation can proceed without blocking on hardware attachment.
 6. Make runtime state legible in the UI so the app and the user can distinguish real hardware connection from WASM-only execution, with different visual indications for each.
 7. Keep visualisation working in both complementary WASM mode and live serial-observation mode, with the understanding that future-looking features only apply to the local/WASM path.
-8. Keep mock time as the WASM interpreter's local clock when no hardware module is present to drive execution.
+8. Keep the internal clock (rAF-driven `performance.now`) as the WASM interpreter's time source when no hardware module is present to drive execution.
 9. Preserve committed config loading, local persistence, and retained URL bootstrap overrides.
 
 ## Supported Environments

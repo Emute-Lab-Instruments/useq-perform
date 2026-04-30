@@ -23,4 +23,6 @@
 
 1.6 **Schema versioning is implicit, not stamped.** Normalisation reads the persisted JSON and fills in missing fields from defaults; unknown fields are dropped. There is no version key.
 
-1.7 `?nosave` fully bypasses every write through the persistence service. Modules that use other persistence channels (e.g. IndexedDB, cookies) must respect the same flag.
+1.7 `?nosave` is a **session-scoped write gate**: every write through the persistence service becomes a silent no-op, but reads still return pre-existing persisted state. The app starts with whatever was previously saved but never writes back. Modules that use other persistence channels (e.g. IndexedDB, cookies) must respect the same flag.
+
+1.8 **Downgrade is unsupported.** Only forward migration (older persisted data → newer app version) is a supported path. An older app version encountering unknown fields from a newer version may drop them; this is acceptable.
