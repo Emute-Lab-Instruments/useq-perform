@@ -90,3 +90,114 @@ describe("diagnostics clear-scoping: per-output, not per-document", () => {
     view.destroy();
   });
 });
+
+describe("diagnostics additive merge across evals (spec §1.6)", () => {
+  // §1.6: Diagnostics persist per-range until that range is re-evaluated
+  // successfully. pushDiagnostics is additive across ranges — diagnostics for
+  // range B are not disturbed when range A is pushed.
+
+  it("eval range A then range B — both diagnostics visible simultaneously", () => {
+    const aForm = "(a1 bad)";
+    const bForm = "(d2 wrong)";
+    const doc = aForm + "\n" + bForm;
+    const bStart = aForm.length + 1;
+    const view = createView(doc);
+
+    const aDiag: UseqDiagnostic = { start: 1, end: 7, severity: "error", message: "range A error" };
+    const bDiag: UseqDiagnostic = { start: 1, end: 9, severity: "error", message: "range B error" };
+
+    pushDiagnostics(view, [aDiag], 0, 0, aForm.length);
+    pushDiagnostics(view, [bDiag], bStart, bStart, bStart + bForm.length);
+
+    const stored = view.state.field(diagnosticField);
+    expect(stored).toHaveLength(2);
+    const messages = stored.map((d) => d.message);
+    expect(messages).toContain("range A error");
+    expect(messages).toContain("range B error");
+
+    view.destroy();
+  });
+
+  it("successful re-eval of range A clears A's diagnostic; B's survives", () => {
+    const aForm = "(a1 bad)";
+    const bForm = "(d2 wrong)";
+    const doc = aForm + "\n" + bForm;
+    const bStart = aForm.length + 1;
+    const view = createView(doc);
+
+    const aDiag: UseqDiagnostic = { start: 1, end: 7, severity: "error", message: "range A error" };
+    const bDiag: UseqDiagnostic = { start: 1, end: 9, severity: "error", message: "range B error" };
+
+    pushDiagnostics(view, [aDiag], 0, 0, aForm.length);
+    pushDiagnostics(view, [bDiag], bStart, bStart, bStart + bForm.length);
+
+    expect(view.state.field(diagnosticField)).toHaveLength(2);
+
+    // Simulate successful re-eval of range A: clear its diagnostics
+    clearDiagnosticsForRange(view, 0, aForm.length);
+
+    const remaining = view.state.field(diagnosticField);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.message).toBe("range B error");
+
+    view.destroy();
+  });
+
+  it("multiple diagnostics from a single range A eval are all present alongside B's", () => {
+    const aForm = "(a1 bad)";
+    const bForm = "(d2 wrong)";
+    const doc = aForm + "\n" + bForm;
+    const bStart = aForm.length + 1;
+    const view = createView(doc);
+
+    const aDiag1: UseqDiagnostic = { start: 1, end: 4, severity: "error", message: "range A error 1" };
+    const aDiag2: UseqDiagnostic = { start: 4, end: 7, severity: "warning", message: "range A warning 2" };
+    const bDiag: UseqDiagnostic = { start: 1, end: 9, severity: "error", message: "range B error" };
+
+    // Push two diagnostics for range A in a single call
+    pushDiagnostics(view, [aDiag1, aDiag2], 0, 0, aForm.length);
+    pushDiagnostics(view, [bDiag], bStart, bStart, bStart + bForm.length);
+
+    const stored = view.state.field(diagnosticField);
+    // Both A diagnostics plus the B diagnostic must all be present
+    expect(stored).toHaveLength(3);
+    const messages = stored.map((d) => d.message);
+    expect(messages).toContain("range A error 1");
+    expect(messages).toContain("range A warning 2");
+    expect(messages).toContain("range B error");
+
+    view.destroy();
+  });
+
+  it("pushDiagnostics does not replace diagnostics at other ranges (additive across ranges)", () => {
+    const aForm = "(a1 bad)";
+    const bForm = "(d2 wrong)";
+    const cForm = "(s3 broken)";
+    const doc = aForm + "\n" + bForm + "\n" + cForm;
+    const bStart = aForm.length + 1;
+    const cStart = bStart + bForm.length + 1;
+    const view = createView(doc);
+
+    const aDiag: UseqDiagnostic = { start: 1, end: 7, severity: "error", message: "range A error" };
+    const bDiag: UseqDiagnostic = { start: 1, end: 9, severity: "error", message: "range B error" };
+    const cDiag: UseqDiagnostic = { start: 1, end: 11, severity: "warning", message: "range C warning" };
+
+    pushDiagnostics(view, [aDiag], 0, 0, aForm.length);
+    expect(view.state.field(diagnosticField)).toHaveLength(1);
+
+    // Pushing to range B must not disturb range A
+    pushDiagnostics(view, [bDiag], bStart, bStart, bStart + bForm.length);
+    expect(view.state.field(diagnosticField)).toHaveLength(2);
+
+    // Pushing to range C must not disturb A or B
+    pushDiagnostics(view, [cDiag], cStart, cStart, cStart + cForm.length);
+    expect(view.state.field(diagnosticField)).toHaveLength(3);
+
+    const messages = view.state.field(diagnosticField).map((d) => d.message);
+    expect(messages).toContain("range A error");
+    expect(messages).toContain("range B error");
+    expect(messages).toContain("range C warning");
+
+    view.destroy();
+  });
+});
