@@ -1078,9 +1078,6 @@ async function computeHighlights(
   forms: IndexedFormTarget[],
   probes: PersistedProbeSpec[],
 ): Promise<FromListHighlight[]> {
-  // Skip all highlight computation when no probes are active.
-  if (probes.length === 0) return [];
-
   const highlights: FromListHighlight[] = [];
 
   for (const form of forms) {
