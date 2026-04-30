@@ -46,7 +46,8 @@ import { isVisPanelVisible } from "./serialVis.ts";
 export { isVisPanelVisible };
 
 const PANEL_ID = "panel-vis";
-const CANVAS_ID = "serialcanvas";
+const CANVAS_2D_ID = "serialcanvas";
+const GL_CANVAS_ID = "serialcanvas-gl";
 const OVERLAY_ID = "serialcanvas-gl-overlay";
 
 const DIGITAL_CHANNELS = ["d1", "d2", "d3"] as const;
@@ -76,14 +77,71 @@ function getAccentColor(): string {
   return cachedAccentColor;
 }
 
+let glCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * Get (or lazily create) a dedicated WebGL canvas.
+ *
+ * The 2D canvas (`#serialcanvas`) is locked to a CanvasRenderingContext2D
+ * the first time `drawSerialVis()` runs, so `getContext("webgl2")` would
+ * return null on it. We create a sibling canvas that is only ever used
+ * for WebGL.
+ */
 function getCanvas(): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
-  return document.getElementById(CANVAS_ID) as HTMLCanvasElement | null;
+  if (glCanvas && glCanvas.isConnected) return glCanvas;
+
+  const existing = document.getElementById(GL_CANVAS_ID) as HTMLCanvasElement | null;
+  if (existing) {
+    glCanvas = existing;
+    return existing;
+  }
+
+  const panel = getPanel();
+  if (!panel) return null;
+
+  const c = document.createElement("canvas");
+  c.id = GL_CANVAS_ID;
+  c.style.display = "block";
+  c.style.width = "100%";
+  c.style.height = "100%";
+  c.style.backgroundColor = "transparent";
+  c.style.position = "absolute";
+  c.style.top = "0";
+  c.style.left = "0";
+  c.style.willChange = "contents";
+  c.style.zIndex = "1000";
+
+  panel.appendChild(c);
+  glCanvas = c;
+  return c;
 }
 
 function getPanel(): HTMLElement | null {
   if (typeof document === "undefined") return null;
   return document.getElementById(PANEL_ID);
+}
+
+/**
+ * Show/hide the WebGL and 2D canvases based on the active renderer.
+ * Called each frame so the switch is seamless.
+ */
+export function activateGLCanvas(): void {
+  const gl = glCanvas;
+  if (!gl) return;
+  if (gl.style.display === "none") gl.style.display = "block";
+  const c2d = typeof document !== "undefined"
+    ? document.getElementById(CANVAS_2D_ID) as HTMLCanvasElement | null
+    : null;
+  if (c2d && c2d.style.display !== "none") c2d.style.display = "none";
+}
+
+export function deactivateGLCanvas(): void {
+  if (glCanvas && glCanvas.style.display !== "none") glCanvas.style.display = "none";
+  const c2d = typeof document !== "undefined"
+    ? document.getElementById(CANVAS_2D_ID) as HTMLCanvasElement | null
+    : null;
+  if (c2d && c2d.style.display === "none") c2d.style.display = "block";
 }
 
 /**
@@ -1026,6 +1084,7 @@ function drawExpressionsThick(
  */
 export function _resetGLStateForTests(): void {
   glState = null;
+  glCanvas = null;
   overlayCanvas = null;
 }
 
