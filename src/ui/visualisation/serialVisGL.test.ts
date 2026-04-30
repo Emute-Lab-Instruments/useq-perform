@@ -6,6 +6,8 @@ const {
   buildThickLineGeometry,
   parseColor,
   ensureScratch,
+  sampleFingerprint,
+  fingerprintChanged,
   scratch: getScratch,
   thickScratch: getThickScratch,
   THICK_FLOATS_PER_VERTEX,
@@ -260,6 +262,42 @@ describe("buildThickLineGeometry", () => {
     for (let i = 0; i < result * THICK_FLOATS_PER_VERTEX; i++) {
       expect(Number.isFinite(buf[i])).toBe(true);
     }
+  });
+});
+
+describe("sampleFingerprint", () => {
+  it("returns zeroed fingerprint for empty array", () => {
+    const fp = sampleFingerprint([]);
+    expect(fp).toEqual({ len: 0, firstTime: 0, lastTime: 0 });
+  });
+
+  it("captures length and boundary times", () => {
+    const samples = makeSamples([[1, 0], [2, 0.5], [3, 1]]);
+    const fp = sampleFingerprint(samples);
+    expect(fp).toEqual({ len: 3, firstTime: 1, lastTime: 3 });
+  });
+
+  it("detects change when time window shifts", () => {
+    const a = sampleFingerprint(makeSamples([[1, 0], [2, 0.5], [3, 1]]));
+    const b = sampleFingerprint(makeSamples([[2, 0], [3, 0.5], [4, 1]]));
+    expect(fingerprintChanged(a, b)).toBe(true);
+  });
+
+  it("detects change when length changes", () => {
+    const a = sampleFingerprint(makeSamples([[1, 0], [2, 0.5]]));
+    const b = sampleFingerprint(makeSamples([[1, 0], [2, 0.5], [3, 1]]));
+    expect(fingerprintChanged(a, b)).toBe(true);
+  });
+
+  it("returns false when fingerprints match", () => {
+    const a = sampleFingerprint(makeSamples([[1, 0], [2, 0.5], [3, 1]]));
+    const b = sampleFingerprint(makeSamples([[1, 0.9], [2, 0.1], [3, 0.5]]));
+    expect(fingerprintChanged(a, b)).toBe(false);
+  });
+
+  it("null fingerprint always counts as changed", () => {
+    const fp = sampleFingerprint(makeSamples([[1, 0]]));
+    expect(fingerprintChanged(null, fp)).toBe(true);
   });
 });
 

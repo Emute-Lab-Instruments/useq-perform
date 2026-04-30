@@ -229,19 +229,37 @@ interface GLState {
   thickBuffers: Map<string, ThickExprBuffer>;
 }
 
+interface SampleFingerprint {
+  len: number;
+  firstTime: number;
+  lastTime: number;
+}
+
+function sampleFingerprint(samples: VisSampleLike[]): SampleFingerprint {
+  if (samples.length === 0) return { len: 0, firstTime: 0, lastTime: 0 };
+  return {
+    len: samples.length,
+    firstTime: samples[0].time,
+    lastTime: samples[samples.length - 1].time,
+  };
+}
+
+function fingerprintChanged(a: SampleFingerprint | null, b: SampleFingerprint): boolean {
+  return !a || a.len !== b.len || a.firstTime !== b.firstTime || a.lastTime !== b.lastTime;
+}
+
 interface ExprBuffer {
   vbo: WebGLBuffer;
   capacity: number;
   length: number;
-  // Cache key — the array reference of the samples last uploaded.
-  samplesRef: object | null;
+  fingerprint: SampleFingerprint | null;
 }
 
 interface ThickExprBuffer {
   vbo: WebGLBuffer;
   capacity: number;
   vertexCount: number;
-  samplesRef: object | null;
+  fingerprint: SampleFingerprint | null;
   lineWidth: number;
 }
 
@@ -484,7 +502,7 @@ function getOrCreateExprBuffer(state: GLState, key: string): ExprBuffer {
   if (!vbo) {
     throw new Error("[serialVisGL] failed to create VBO");
   }
-  buf = { vbo, capacity: 0, length: 0, samplesRef: null };
+  buf = { vbo, capacity: 0, length: 0, fingerprint: null };
   state.buffers.set(key, buf);
   return buf;
 }
@@ -495,18 +513,14 @@ function uploadIfNeeded(
   samples: VisSampleLike[],
   stepMode: boolean,
 ): number {
-  // Identity-cache: if the array reference and length match, we can
-  // skip the flatten + upload entirely.  rebuildAllExpressions tends
-  // to allocate fresh arrays every tick so this rarely fires in
-  // local-time mode but does help when no new sample has landed.
-  if (buf.samplesRef === samples && buf.length > 0 && !stepMode) {
+  const fp = sampleFingerprint(samples);
+  if (!fingerprintChanged(buf.fingerprint, fp) && buf.length > 0 && !stepMode) {
     return buf.length;
   }
   const vertexCount = flattenSamples(samples, stepMode);
   const gl = state.gl;
   gl.bindBuffer(gl.ARRAY_BUFFER, buf.vbo);
   if (vertexCount > buf.capacity) {
-    // Grow with some headroom to avoid frequent re-allocation.
     const grown = Math.max(vertexCount, buf.capacity * 2 || 256);
     gl.bufferData(
       gl.ARRAY_BUFFER,
@@ -522,7 +536,7 @@ function uploadIfNeeded(
     0,
     vertexCount * 2,
   );
-  buf.samplesRef = samples;
+  buf.fingerprint = fp;
   buf.length = vertexCount;
   return vertexCount;
 }
@@ -679,7 +693,7 @@ function getOrCreateThickBuffer(state: GLState, key: string): ThickExprBuffer {
   if (buf) return buf;
   const vbo = state.gl.createBuffer();
   if (!vbo) throw new Error("[serialVisGL] failed to create thick VBO");
-  buf = { vbo, capacity: 0, vertexCount: 0, samplesRef: null, lineWidth: 0 };
+  buf = { vbo, capacity: 0, vertexCount: 0, fingerprint: null, lineWidth: 0 };
   state.thickBuffers.set(key, buf);
   return buf;
 }
@@ -697,7 +711,8 @@ function uploadThickGeometry(
   viewportW: number,
   viewportH: number,
 ): number {
-  if (buf.samplesRef === samples && buf.vertexCount > 0 && buf.lineWidth === lineWidth && !stepMode) {
+  const fp = sampleFingerprint(samples);
+  if (!fingerprintChanged(buf.fingerprint, fp) && buf.vertexCount > 0 && buf.lineWidth === lineWidth && !stepMode) {
     return buf.vertexCount;
   }
 
@@ -726,7 +741,7 @@ function uploadThickGeometry(
     buf.capacity = grown;
   }
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, thickScratch.subarray(0, floatCount), 0, floatCount);
-  buf.samplesRef = samples;
+  buf.fingerprint = fp;
   buf.vertexCount = thickVertexCount;
   buf.lineWidth = lineWidth;
   return thickVertexCount;
@@ -1019,6 +1034,8 @@ export const __serialVisGLInternals = {
   buildThickLineGeometry,
   parseColor,
   ensureScratch,
+  sampleFingerprint,
+  fingerprintChanged,
   scratch: () => scratch,
   thickScratch: () => thickScratch,
   THICK_FLOATS_PER_VERTEX,
