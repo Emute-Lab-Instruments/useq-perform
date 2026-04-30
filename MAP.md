@@ -130,6 +130,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 ## Linked docs index
 
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — terminology, single source of truth for naming.
+- [docs/specs/MAIN.md](docs/specs/MAIN.md) — normative app-behaviour spec (split into per-feature sub-specs under `docs/specs/`); source of truth for tests and correctness.
 - [docs/STABLE_CORE.md](docs/STABLE_CORE.md) — product boundary, stable workflows, compatibility cuts.
 - [docs/RUNTIME_CONTRACT.md](docs/RUNTIME_CONTRACT.md) — editor↔hardware/WASM capability split, WASM ABI floor, promotion workflow.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — serial framing, JSON message shapes.
