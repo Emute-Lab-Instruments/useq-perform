@@ -1,7 +1,7 @@
 import { post } from '../utils/consoleStore.ts';
 import { checkForSavedPortAndMaybeConnect } from '../transport/connector.ts';
 import { getActiveWasmRuntimePort } from './activeWasmRuntimePort.ts';
-import { startWebSocketServer, stopWebSocketServer } from '../effects/devmodeWebSocketServer.ts';
+
 import { showModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
 import { startLocalClock } from '../effects/localClock.ts';
@@ -68,15 +68,6 @@ export function createApp(appUI, environmentState, bootstrapPlan: BootstrapPlan)
     modals: {},
 
     async start() {
-      // Start WebSocket server if in dev mode
-      if (environmentState.isInDevmode) {
-        try {
-          await startWebSocketServer();
-        } catch (error) {
-          console.warn('Failed to start WebSocket server:', error);
-        }
-      }
-
       // Display welcome message
       const userName = environmentState.userSettings.name || 'User';
       post(`Hello, ${userName}!`);
@@ -135,14 +126,6 @@ export function createApp(appUI, environmentState, bootstrapPlan: BootstrapPlan)
     },
 
     async stop() {
-      // Stop WebSocket server if running
-      if (environmentState.isInDevmode) {
-        try {
-          await stopWebSocketServer();
-        } catch (error) {
-          console.warn('Failed to stop WebSocket server:', error);
-        }
-      }
     }
   };
 

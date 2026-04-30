@@ -23,6 +23,7 @@ const {
 
 vi.mock("../utils/consoleStore.ts", () => ({
   post,
+  setMaxConsoleLines: vi.fn(),
 }));
 
 vi.mock("../transport/connector.ts", () => ({
@@ -31,11 +32,6 @@ vi.mock("../transport/connector.ts", () => ({
 
 vi.mock("./wasmInterpreter.ts", () => ({
   ensureUseqWasmLoaded,
-}));
-
-vi.mock("../effects/devmodeWebSocketServer.ts", () => ({
-  startWebSocketServer: vi.fn(),
-  stopWebSocketServer: vi.fn(),
 }));
 
 vi.mock("../ui/adapters/modal.tsx", () => ({
