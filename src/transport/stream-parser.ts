@@ -202,10 +202,15 @@ function processSerialData(
       return processStreamModeData(byteArray);
     case SERIAL_READ_MODES.JSON:
       return processJsonModeData(byteArray, onJsonMessage);
+    case SERIAL_READ_MODES.BARE_JSON:
+      return processBareJsonModeData(byteArray, onJsonMessage);
   }
 
   return state;
 }
+
+// ASCII `{` (0x7b) — start of a bare JSON message per spec §3.3.
+const BARE_JSON_START = 0x7b;
 
 function processAnyModeData(byteArray: Uint8Array): SerialProcessingState {
   let mode: number = SERIAL_READ_MODES.ANY;
@@ -218,6 +223,7 @@ function processAnyModeData(byteArray: Uint8Array): SerialProcessingState {
       if (messageType === MESSAGE_TYPES.STREAM) {
         mode = SERIAL_READ_MODES.SERIALSTREAM;
       } else if (messageType === MESSAGE_TYPES.JSON) {
+        // Legacy 0x1F/0x65 prefix — still accepted during transition window.
         mode = SERIAL_READ_MODES.JSON;
       } else {
         mode = SERIAL_READ_MODES.TEXT;
@@ -225,13 +231,13 @@ function processAnyModeData(byteArray: Uint8Array): SerialProcessingState {
     } else {
       processed = true;
     }
+  } else if (byteArray[0] === BARE_JSON_START) {
+    // Spec §3.3: bare `{...}\n` JSON message — no 0x1F prefix.
+    mode = SERIAL_READ_MODES.BARE_JSON;
   } else {
-    const startIndex = findMessageStartMarker(
-      byteArray,
-      MESSAGE_START_MARKER
-    );
-    remainingBytes = updateRemainingBytes(byteArray, startIndex);
-    processed = true;
+    // Garbage / out-of-sync: advance one byte and re-discriminate (spec §3.1).
+    remainingBytes = byteArray.slice(1);
+    processed = false;
   }
 
   return { mode, processed, remainingBytes };
@@ -288,6 +294,39 @@ function processJsonModeData(
 
   return {
     mode: SERIAL_READ_MODES.JSON,
+    processed: true,
+    remainingBytes: byteArray,
+  };
+}
+
+/**
+ * Process a bare JSON frame: `{...}\n` with no 0x1F prefix (spec §3.3).
+ * Scans from the `{` byte (index 0) for a `\n` or `\r\n` terminator.
+ * Blank lines between messages are silently skipped per the spec.
+ */
+function processBareJsonModeData(
+  byteArray: Uint8Array,
+  onJsonMessage: (msg: string) => void
+): SerialProcessingState {
+  for (let i = 0; i < byteArray.length; i++) {
+    if (byteArray[i] === 10) {
+      // LF at position i — message body is [0, i) without the newline.
+      // If preceded by CR, trim it too.
+      const end = (i > 0 && byteArray[i - 1] === 13) ? i - 1 : i;
+      const messageText = extractMessageText(byteArray.slice(0, end));
+      if (messageText.length > 0) {
+        onJsonMessage(messageText);
+      }
+      return {
+        mode: SERIAL_READ_MODES.ANY,
+        processed: false,
+        remainingBytes: byteArray.slice(i + 1),
+      };
+    }
+  }
+
+  return {
+    mode: SERIAL_READ_MODES.BARE_JSON,
     processed: true,
     remainingBytes: byteArray,
   };

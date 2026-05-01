@@ -24,6 +24,8 @@ export const SERIAL_READ_MODES = {
   TEXT: 1,
   SERIALSTREAM: 2,
   JSON: 3,
+  /** Bare JSON mode: `{...}\n` with no 0x1F prefix (spec §3.3). */
+  BARE_JSON: 4,
 } as const;
 
 export type SerialReadMode =
