@@ -136,7 +136,7 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.13 [keybindings.md](keybindings.md) — action registry, profiles/layouts, OS mapping, contexts, chords, palette, modifier hints.
 
-6.14 [gamepad.md](gamepad.md) — polling, nav modes, stick-bind, picker mode, default bindings.
+6.14 [gamepad.md](gamepad.md) — three-stage pipeline (logical input → gestures + axis → bindings), gesture primitives (tap/hold/held/doubleTap/chord/flick), layered bindings (predicate + transient), eager-with-undo dual-bindings, paradigms (modal-shift / leader / hydra / chord-heavy).
 
 6.15 [themes.md](themes.md) — catalogue, atomic application across editor/chrome/vis, custom themes.
 
