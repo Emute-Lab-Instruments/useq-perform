@@ -21,7 +21,7 @@
 
 1.9 The main editor surfaces inline **eval results** and **diagnostics** as widgets/decorations attached to evaluated ranges. These do not modify the document; they are presentation only. Secondary editors that support evaluation (e.g. tutorial playgrounds) may surface these too; read-only example editors do not.
 
-1.10 The main editor exposes **structural editing** operations (slurp/barf/splice) via keybindings. These act on the s-expression tree and must produce well-formed code on every step. Secondary editors may include structural editing or be plain-text-only.
+1.10 The main editor wires the **structural editing** stack — focus-primary AST navigation and mutation, the Metas annotation layer, and structural vs insertion modes. Full ontology and operation algebra in [structural-editing.md](structural-editing.md). Secondary editors may opt in.
 
 1.11 **Probes** are inline, time-following sample widgets attached to user-marked subexpressions. They display the value of the marked expression sampled at the current transport time. Probes are a main-editor feature; tutorial playgrounds may also include them where pedagogically useful. Full probe contract — modes, depth, persistence, from-list highlights — lives in [probes.md](probes.md).
 

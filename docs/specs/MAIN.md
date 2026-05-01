@@ -126,7 +126,7 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.8 [transport.md](transport.md) — state machine, clock policy, indicator.
 
-6.9 [visualisation.md](visualisation.md) — canvas, time axis, lanes, sampling guards, palette coupling.
+6.9 [visualisation.md](visualisation.md) — canvas, time axis, lanes, faithful past / projected future, output classification, sampling loop, WASM ABI additions, palette coupling.
 
 6.10 [console.md](console.md) — message types, line limit, animation, auto-scroll, markdown.
 
@@ -143,6 +143,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 6.16 [reactive-flow.md](reactive-flow.md) — typed-channel invariants, mutation surfaces, import boundaries.
 
 6.17 [probes.md](probes.md) — inline probe widgets and the from-list highlight feature (orthogonal to probe activity).
+
+6.18 [structural-editing.md](structural-editing.md) — focus-primary ontology, Metas layer (annotations on nodes), algebra of navigation/mutation operations, structural vs insertion modes, multi-cursor.
 
 ---
 
