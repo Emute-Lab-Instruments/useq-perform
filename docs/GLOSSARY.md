@@ -1413,6 +1413,36 @@ container, shrinking its bounds.
 - **Files**: `src/editors/extensions/structure/new-structure.ts`
 - **See also**: Slurp, Structural Editing
 
+### Hole
+
+A first-class structural node kind for unfilled placeholder content. Surface
+syntax is `($ name :type)`; tree-construction folds matching three-element lists
+into a `hole` leaf with core fields `(name, type)`. The head symbol `$` is
+reserved at the parser level. Holes are atomic to structural ops (no inner
+addressability), foldable (rendered as `⟨name⟩` pills by default), and block
+eval per top-level form. Drives the radial menu's auto-chain: when the cursor
+lands on a hole, the menu re-opens scoped to the hole's type. Distinct from
+wrapper-Metas (e.g. `live-edit`), which decorate a host node — a hole has no
+host; the wrapper *is* the form.
+
+- **Identifiers**: `kind: 'hole'`, `HoleType`, `nav.nextHole`, `edit.fillHole`
+- **Spec**: `docs/specs/structural-editing.md §2.9`, `docs/specs/radial-menu.md §8`
+- **See also**: Structural Editing, Wrapper-Meta
+
+### WrapWith vs Enclose
+
+Two distinct "put a form around N" operations. **Enclose** (`edit.enclose.list`,
+`.vector`, `.map`, `.set`) wraps target `N` in a fresh empty bracket pair: result
+is `(N)` / `[N]` / `{N}` / `#{N}`. The picked content is bracket-kind only; no
+content participates beyond the brackets. **WrapWith** (`menu.verb.wrapWith`)
+wraps `N` in a new compound where the picked item participates as a sibling:
+`(picked N)` with `hand: 'left'`, or `(N picked)` with `hand: 'right'`. Live in
+different action namespaces. The radial menu hosts WrapWith; structural-editing
+direct bindings host Enclose.
+
+- **Identifiers**: `edit.enclose.*`, `menu.verb.wrapWith`
+- **Spec**: `structural-editing.md §5.2.7`, `radial-menu.md §5.1.3`
+
 ### Traversal Stack
 
 Navigation metadata recording which nodes were traversed during structural

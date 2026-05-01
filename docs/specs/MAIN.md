@@ -144,7 +144,7 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.17 [probes.md](probes.md) — inline probe widgets and the from-list highlight feature (orthogonal to probe activity).
 
-6.18 [structural-editing.md](structural-editing.md) — focus-primary ontology, Metas layer (annotations on nodes), algebra of navigation/mutation operations, structural vs insertion modes, multi-cursor.
+6.18 [structural-editing.md](structural-editing.md) — focus-primary ontology, Metas layer (annotations on nodes), holes as first-class node kind, algebra of navigation/mutation operations, structural vs insertion modes, multi-cursor.
 
 ---
 

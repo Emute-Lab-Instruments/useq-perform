@@ -26,12 +26,12 @@
 2.1 The document parses to a **tree** via Lezer (`@nextjournal/clojure-mode`). Lezer is an error-recovering incremental parser: a tree always exists, even mid-typing, with `⚠` error nodes inserted where input cannot be reconciled.
 
 2.2 Every node has two layers:
-- **Core** — the structural identity. One of: `symbol`, `number`, `keyword`, `string`, `list`, `vector`, `map`, `set`, or the special `document` root.
+- **Core** — the structural identity. One of: `symbol`, `number`, `keyword`, `string`, `list`, `vector`, `map`, `set`, `hole`, or the special `document` root.
 - **Metas** — an ordered stack of `(kind, payload)` pairs decorating the core (§6). Metas are transparent to structural operations; they ride along with their host node.
 
-2.3 **Leaves vs compounds.** `symbol`, `number`, `keyword`, `string` are leaves: no children. `list`, `vector`, `map`, `set` are compounds: an ordered sequence of child nodes. The `document` is a compound whose children are the top-level forms.
+2.3 **Leaves vs compounds.** `symbol`, `number`, `keyword`, `string`, `hole` are leaves: no children. `list`, `vector`, `map`, `set` are compounds: an ordered sequence of child nodes. The `document` is a compound whose children are the top-level forms.
 
-2.4 The **document root** is the unique node of kind `document`. It has no parent. It is reached when the user presses `nav.up` enough times. It supports bulk operations only (delete-all, cut-all, copy-all, select-all); slurp/barf/raise/wrap/splice/transpose targeted at the root are rejected with a no-op flash (§7.2).
+2.4 The **document root** is the unique node of kind `document`. It has no parent. It is reached when the user presses `nav.up` enough times. It supports bulk operations only (delete-all, cut-all, copy-all, select-all); slurp/barf/raise/enclose/splice/transpose targeted at the root are rejected with a no-op flash (§7.2). The radial menu's `Insert` verb against the document root is a special case: it appends as the last top-level child ([radial-menu.md §5.1.1](radial-menu.md)).
 
 2.5 **Error nodes.** A node with an error-node ancestor is structurally degraded:
 - Navigation onto or past an error node is allowed — the user can move to the broken region.
@@ -43,6 +43,29 @@
 2.7 **`#_` ignore-form is a Meta**, not a comment (§6). The host form remains a first-class node visible to navigation, with an `ignore` Meta marking it. Ignored code stays visible in the document; its sole effect is that the runtime skips evaluation.
 
 2.8 **Cursor identity is a stable tree-node handle**, not a character offset. The editor performs no character-offset arithmetic in structural mode; node start/end positions are queried from Lezer only when composing the underlying text edit for a mutation. This means cursors survive any text-edit that doesn't destroy their target node, regardless of how many characters shifted.
+
+2.9 **Holes.** A **hole** is a structural placeholder for content the user has not yet filled. Core fields:
+- `name: string` — display label (e.g. `"freq"`).
+- `type: HoleType` — one of `'number' | 'symbol' | 'keyword' | 'expr' | 'string'`.
+
+2.9.1 **Surface syntax.** Holes are written in source as `($ name :type)`. This is a parser-level convention — Lezer parses `($ freq :number)` as a three-element list, and the tree-construction step (§2.10) folds any list matching the shape `($ <symbol> <:keyword>)` into a `hole` leaf. The head symbol `$` is **reserved** by structural ontology; user code containing the literal symbol `$` is parsed as a hole. (A list whose head is `$` but whose shape is malformed — wrong arity, non-keyword type — becomes a regular `list` with a structural-warning diagnostic.)
+
+2.9.2 **Atomicity.** Holes are leaves. Structural ops (§5) treat them as single units. The `name` and `type` core fields are not addressable by navigation or mutation — slurp/barf/raise/transpose act on the hole as a whole, never on its inner components. To change a hole's name or type, replace the hole entirely (typically via the radial menu, or hand-edit in insertion mode).
+
+2.9.3 **Eval block.** A top-level form whose subtree contains any `hole` leaf MUST NOT be sent to the runtime. The eval pipeline emits an inline diagnostic at each unfilled hole position ("fill this hole first") and falls back to LKG per [MAIN.md §2.1](MAIN.md). Sibling top-level forms without holes evaluate normally — the gate is per-form, not per-document. See [code-evaluation.md §1.1](code-evaluation.md).
+
+2.9.4 **Auto-chain integration.** When the cursor lands on a hole post-mutation, the editor publishes a `holeFocused` event on the contracts channel registry. The radial menu subscribes and re-opens scoped to the hole's `:type` (see [radial-menu.md §8.2](radial-menu.md)). Other consumers (keyboard hint UI, tutorial overlays) may subscribe.
+
+2.9.5 **Rendering.** Holes are foldable, default folded, rendered as inline placeholder pills (e.g. `⟨freq⟩`). The fold setting follows `structure.foldAllWrappers`. Cursor halos render around the pill, not around the underlying source. When unfolded (e.g. `mode.insert` for hand-editing the type), the source `($ freq :number)` becomes visible until structural mode resumes.
+
+2.9.6 **Holes vs Metas.** Holes are **not** wrapper-Metas. Live-edit, ignore, debug, and other wrapper-Metas (§6) decorate a *host node* — the wrapper is ornamentation; the host is what structural ops act on. A hole has no host: the wrapper *is* the entire form. Holes therefore live in the core kind union (§2.2), not the Metas stack.
+
+2.10 **Tree construction.** The Lezer tree is folded into the internal tree at parse time. Three pattern recognitions run in order:
+1. `($ <symbol> <:keyword>)` (a 3-element list with the literal head symbol `$`, a symbol second, and a keyword third) → `hole{name, type}` leaf.
+2. `(<wrapper-name> ...)` whose head matches a registered wrapper (§6.2) → host node + wrapper-Meta.
+3. Anything else → straight conversion to its core kind.
+
+Recognition is structural, not textual: a list whose head is the literal symbol `$` becomes a hole regardless of formatting (whitespace, comments inside the list are still preserved per §2.6). The tree-construction step is a pure function of the Lezer parse tree.
 
 ---
 
@@ -78,8 +101,15 @@
 
 4.2 **Entering insertion mode** is triggered by:
 - The explicit action `mode.insert`.
-- Any operation that requires user-typed text to complete (e.g. `wrap.list` opens an empty `()` and places the caret at the operator position).
+- Any operation that requires user-typed text to complete (e.g. `enclose.list` opens an empty `()` and places the caret at the operator position — see §5.2.7).
 - Pressing a printable key while focused on a leaf whose contents the user could plausibly want to edit (typing into a focused symbol begins to rename it). This auto-entry is a setting (`structure.autoEnterInsertion`, default true).
+
+4.2.1 **Insertion mode is keyboard-only by intent.** Gamepads have no printable keys; a gamepad-only user has no path out of insertion mode short of a chord. Therefore:
+- When the most recent input event came from a gamepad (tracked via `gamepadStateStore.lastInputAt` vs the keyboard's last-event timestamp), printable-key auto-entry (§4.2 third bullet) is suppressed regardless of `structure.autoEnterInsertion`.
+- `enclose.list/vector/map/set` invoked from a gamepad context inserts an `($ body :expr)` hole as the sole child instead of opening an empty bracket pair and entering insertion mode. The user fills the hole via the radial menu's auto-chain, or via the numpad/T9 sub-mode ([radial-menu.md §14](radial-menu.md)).
+- `mode.insert` is **not** bound in any default gamepad paradigm. Hand-rebinding it remains possible for power users mixing input devices.
+
+The net rule: a gamepad-only user never lands in insertion mode by accident. Renaming a symbol or typing free text requires either a keyboard or the menu's text-entry sub-mode.
 
 4.3 **Exiting insertion mode** is triggered by:
 - The explicit action `mode.structural`.
@@ -114,6 +144,8 @@ Tree unchanged; cursor set updated. All navigation operations apply pointwise to
 
 5.1.7 `nav.intoMeta` — descends from the host node into the payload of its outermost Meta (§6.7). Reverse is `nav.up`. No-op flash if the outermost Meta has no payload.
 
+5.1.8 `nav.nextHole` / `nav.prevHole` — advance the cursor to the next / previous `hole` leaf in document order (across all top-level forms). No-op flash if no hole exists. Used by the radial menu's auto-chain (when stepping between holes within an inserted form) and by the keyboard `Tab` / `Shift-Tab` actions for hole-jumping.
+
 ### 5.2 Mutation
 
 All mutations apply pointwise across the cursor set per §3.5. The descriptions below are written for a single cursor; multi-cursor behaviour is the pointwise lift.
@@ -130,7 +162,7 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 
 5.2.6 **Splice** (`edit.splice`). Precondition: cursor on a compound `L` that is not the document root (splicing a top-level `do` form *into* the document root is fine — the root is `L`'s parent). Action: `L`'s children become siblings of `L` in the parent; `L` itself is removed. Post-condition: cursor moves to the **first** of the spliced children (rationale: pressing `nav.up` to reach the parent is one step; descending back into the spliced region from the parent is several).
 
-5.2.7 **Wrap** (`edit.wrap.list`, `edit.wrap.vector`, `edit.wrap.map`, `edit.wrap.set`). Action: a fresh compound of the requested kind is created with `N` as its sole child, replacing `N` in the parent. Post-condition: cursor moves to the new wrapper. `edit.wrap.list` additionally enters insertion mode at the head position so the user can type the operator name.
+5.2.7 **Enclose** (`edit.enclose.list`, `edit.enclose.vector`, `edit.enclose.map`, `edit.enclose.set`). Action: a fresh compound of the requested kind is created with `N` as its sole child, replacing `N` in the parent. Post-condition: cursor moves to the new wrapper. `edit.enclose.list` from a keyboard context additionally enters insertion mode at the head position so the user can type the operator name; from a gamepad context it inserts a `($ head :symbol)` hole at the head position instead (§4.2.1). The radial menu's `wrapWith` verb ([radial-menu.md §5.1.3](radial-menu.md)) is a distinct operation — it produces `(picked target)` or `(target picked)` rather than the bare-bracket wrap defined here.
 
 5.2.8 **Transpose** (`edit.transposeNext` / `edit.transposePrev`). Action: swap the focused node with its next / previous sibling. Post-condition: cursor follows the focused node to its new position. No-op flash at sibling-boundary.
 
@@ -140,15 +172,17 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 - `slurpForward / slurpBackward` on a range — adjust the outer end of the range; the range itself is unchanged in length, only its outer extent moves.
 - `barfForward / barfBackward` on a range — release one end of the range as an outside sibling; the range shrinks by one.
 - `raise` on a range — the parent is replaced by the range as siblings (the parent's other children are removed).
-- `wrap` on a range — wraps the entire run as the new compound's children; cursor moves to the new wrapper.
+- `enclose` on a range — encloses the entire run as the new compound's children; cursor moves to the new wrapper.
 - `transpose` on a range — swaps the range with the adjacent sibling group of equal length, or with a single sibling (taste call deferred — see §9.2).
 - `splice` on a range — undefined in v1, see §9.2.
+
+5.2.11 **Fill hole** (`edit.fillHole`). Precondition: cursor on a `hole` leaf. Action: replace the hole with the supplied content (a `Tree` fragment passed as op argument). Post-condition: cursor on the inserted content, or on its first hole (in document order) if the inserted fragment itself contains holes. This is the underlying op the radial menu's verbs delegate to when the apply target is a hole ([radial-menu.md §8.5](radial-menu.md)). Handedness is irrelevant — a hole has no siblings-in-the-wrapper-sense; it is replaced wholesale.
 
 ### 5.3 Document-root operations
 
 5.3.1 `doc.deleteAll`, `doc.cutAll`, `doc.copyAll`, `doc.selectAll` — operate on the entire document. After delete/cut, the document is empty and the cursor sits on the now-empty document root. After select-all, the cursor set is replaced by a single cursor on the document root.
 
-5.3.2 No structural mutations (slurp / barf / raise / wrap / splice / transpose) are valid when the cursor is on the document root (§2.4).
+5.3.2 No structural mutations (slurp / barf / raise / enclose / splice / transpose) are valid when the cursor is on the document root (§2.4).
 
 ### 5.4 Mode operations
 
@@ -181,7 +215,7 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 - **Foldable, default visible**: wrapper Metas. A global `structure.foldAllWrappers` setting overrides per-kind defaults.
 - Folded Metas render as a small badge or superscript glyph on the host node. Hovering or focusing reveals the underlying source text inline as a read-only preview.
 
-6.5 **Transparency to structural ops.** All §5 operations act on the **core** of the focused node, ignoring its Metas. Metas ride along through every mutation: slurping `'foo` into `(bar)` produces `(bar 'foo)`; raising a node carries its Meta stack with it; barfing returns a node with its Metas intact.
+6.5 **Transparency to structural ops.** All §5 operations act on the **core** of the focused node, ignoring its Metas. Metas ride along through every mutation: slurping `'foo` into `(bar)` produces `(bar 'foo)`; raising a node carries its Meta stack with it; barfing returns a node with its Metas intact. **Holes are not Metas** (§2.9.6); they are leaves with their own atomicity rules, and the transparency promise here applies unconditionally to every Meta kind.
 
 6.6 **Operations on Metas.**
 - `meta.add <kind>` — add a Meta of the given kind to the focused node (with a payload prompt for kinds that require one).
@@ -223,7 +257,7 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 
 9.3 **Projectional rendering details.** How folded Metas render (badge style, glyph, color), how the drawer is summoned (hover, focus, explicit toggle), and how multi-cursor halos disambiguate from primary-cursor halos are presentation-layer concerns. Tracked in `ALIGNMENT.md` rather than this spec.
 
-9.4 **Wrapper-Meta marker.** Whether the runtime-side marker for opt-in is exactly `^:annotation`, a different keyword, or a richer descriptor (e.g. carrying display hints), is open. The query API the editor uses to enumerate marked wrappers needs to be defined alongside.
+9.4 **Wrapper-Meta marker for user-defined wrappers.** Whether the runtime-side marker for opt-in is exactly `^:annotation`, a different keyword, or a richer descriptor (e.g. carrying display hints), is open. The query API the editor uses to enumerate marked wrappers needs to be defined alongside. Note: this question concerns *user-extensible* wrapper-Metas only; holes (§2.9) are first-class structural nodes and do not depend on this mechanism.
 
 9.5 **Atom-promote target.** Default is `promote-to-vector`. Whether this is the right default — and whether a third option ("smart": vector inside a function-call list, list at the top level) makes sense — is contestable.
 
@@ -232,3 +266,5 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 9.7 **Eval-result and probe follow-along.** Eval-result widgets and probes attached to a range follow that range through structural mutations via CodeMirror's mark behaviour, but the contract is currently implicit. Should be promoted to a normative line either here or in [code-evaluation.md](code-evaluation.md).
 
 9.8 **Document-level transpose.** Whether `edit.transposeNext` on a top-level form (i.e. with the document root as parent) is a structural mutation or a doc-level op is fuzzy — it's structurally well-defined, but feels different in use. Ergonomic question, not a correctness one.
+
+9.9 **Hole serialisation in non-Lezer contexts.** Tools that consume the document outside the editor (linters, formatters, doc generators) must handle `($ name :type)` as a parseable form. Some may want to round-trip through the internal tree's `hole` node kind; others will see the raw three-element list. The surface syntax `($ name :type)` is the canonical interchange.

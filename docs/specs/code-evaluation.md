@@ -8,6 +8,8 @@
 - **Immediate**: prepends the runtime's "execute now" semantics; fires immediately on either runtime.
 - **Soft**: WASM-only local preview that does not send to hardware. Updates all local visual surfaces (inline results, vis panel, probes, from-list highlights, output health) — everything except hardware send. Used to inspect what an expression would produce without committing it to hardware.
 
+Forms whose subtree contains any `hole` leaf (per [structural-editing.md §2.9](structural-editing.md)) are **rejected at submission** with an inline diagnostic at each unfilled hole position ("fill this hole first"). The gate is **per top-level form**, not per-document — sibling forms without holes evaluate normally on the same submission. This applies to all three strategies (quantised, immediate, soft).
+
 1.2 Each eval **fans out** to the active runtime(s). By default, all code the user explicitly sends is evaluated on both hardware and WASM (when both are active). WASM may additionally receive implicit code at the editor's discretion (e.g. probe sampling, from-list highlight evaluation). Hardware may receive code that WASM does not (e.g. hardware-specific diagnostics). In `both` mode, hardware is authoritative for output health; WASM diagnostics are shown but do not override hardware state.
 
 1.3 **An eval that produces a runtime error must not stop the music** (see [MAIN.md §2.1](MAIN.md)). The previously active output programs continue to run (subject to LKG fallback per language semantics §14 in `../../src-useq/docs/SEMANTICS.md`).

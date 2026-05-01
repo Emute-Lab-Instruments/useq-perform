@@ -230,7 +230,7 @@ const afterY: Layer = {
   ttlMs:   800,
   onMiss:  'pop-and-fall-through',
   gestures: {
-    [keyOf(tap('A'))]: 'edit.wrap.list',
+    [keyOf(tap('A'))]: 'edit.enclose.list',
     [keyOf(tap('X'))]: 'edit.splice',
     [keyOf(tap('B'))]: 'system.cancelLeader',
   },
@@ -310,9 +310,10 @@ const reversibleActions = [
   'edit.slurpForward', 'edit.slurpBackward',
   'edit.barfForward',  'edit.barfBackward',
   'edit.raise', 'edit.splice',
-  'edit.wrap.list', 'edit.wrap.vector', 'edit.wrap.map', 'edit.wrap.set',
+  'edit.enclose.list', 'edit.enclose.vector', 'edit.enclose.map', 'edit.enclose.set',
   'edit.transposeNext', 'edit.transposePrev',
-  'edit.delete',
+  'edit.delete', 'edit.fillHole',
+  'menu.verb.insert', 'menu.verb.replace', 'menu.verb.wrapWith', 'menu.verb.call',
   // ...
 ] as const
 
@@ -343,7 +344,7 @@ type ActionId             = ReversibleActionId | NonReversibleActionId
 - If the button is released before the timer expires, the timer is cancelled; the tap action is left committed.
 - If the timer expires while the button is still held: call `editor.undo()` exactly once, then dispatch the `hold` action. The user perceives a brief flicker on the rare hold path; the common tap path has no latency.
 
-5.2.3 When `tap` has a `doubleTap` peer, the recognizer defers tap commitment until the double-tap window (`T_doubleTap = 300 ms`) closes after the first release. If a second press arrives within the window, fire `doubleTap`; otherwise fire `tap`. (No undo gymnastics here — tap simply waits, accepting up to ~300 ms latency on the dual case.)
+5.2.3 When `tap` has a `doubleTap` peer, the dispatcher defers tap commitment until the double-tap window (`T_doubleTap = 300 ms`) closes after the first release. If a second press arrives within the window, fire `doubleTap`; otherwise fire `tap`. (No undo gymnastics here — tap simply waits, accepting up to ~300 ms latency on the dual case.)
 
 5.2.4 When `tap` has both a `hold` peer **and** a `doubleTap` peer: behaviour is the union — eager-on-press tap with hold-undo-rollback (5.2.2), and additionally the eager tap is rolled back if a second press arrives within the double-tap window. This is permitted only if the `tap` action is reversible.
 
@@ -377,8 +378,11 @@ const baseLayer: Layer = {
     [keyOf(tap('Up'))]:    'nav.up',
     [keyOf(held('Up'))]:   'nav.up',
     [keyOf(tap('Down'))]:  'nav.down',
-    [keyOf(tap('A'))]:     'mode.insert',
+    [keyOf(tap('A'))]:     'edit.fillHole',          // gamepad-only stays in structural mode
     [keyOf(tap('Start'))]: 'eval.now',
+    // Note: mode.insert is intentionally NOT bound in any default gamepad paradigm
+    // — insertion mode is keyboard-only by intent (structural-editing §4.2.1). Free-form
+    // text and digit entry happen through the radial menu's numpad/T9 sub-modes.
     // ...
   },
   axes: { right: 'manual-control' },
@@ -418,8 +422,8 @@ const afterY: Layer = {
   ttlMs:  800,
   onMiss: 'pop-and-fall-through',
   gestures: {
-    [keyOf(tap('A'))]: 'edit.wrap.list',
-    [keyOf(tap('X'))]: 'edit.wrap.vector',
+    [keyOf(tap('A'))]: 'edit.enclose.list',
+    [keyOf(tap('X'))]: 'edit.enclose.vector',
     [keyOf(tap('B'))]: 'system.cancelLeader',  // explicit cancel
   },
 }
