@@ -51,6 +51,7 @@ export {
   getIoConfig,
   sendStreamConfig,
   sendSerialInputStreamValue,
+  sendSetLiveInputs,
   handleJsonMessage,
   sendHelloWithRetry,
   resetProtocolState,

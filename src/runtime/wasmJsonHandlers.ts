@@ -36,6 +36,7 @@ import {
   type JsonHeartbeatRequest,
   type JsonRequest,
   type JsonResponseBody,
+  type JsonSetLiveInputsRequest,
   type JsonStreamConfigRequest,
 } from "./jsonProtocol.ts";
 import { EDITOR_VERSION } from "../transport/types.ts";
@@ -133,9 +134,8 @@ export function handleStreamConfigRequest(
  *
  * Mirrors the firmware's `eval` semantics:
  *   - The `code` field is required.
- *   - The optional `exec: "immediate"` field bypasses bar-quantisation on
- *     hardware. WASM has no bar scheduler, so the field is accepted but
- *     does not change behaviour.
+ *   - Wire eval is always immediate; there is no queued/immediate flag on
+ *     the wire (spec §5.7, firmware.md §6.2).
  *   - Errors are returned as `success: false` with a `text` describing the
  *     failure, matching what the wire protocol would produce.
  */
@@ -177,6 +177,24 @@ export async function handleEvalRequest(
 }
 
 /**
+ * Handle a `set-live-inputs` request in WASM mode.
+ *
+ * Full WASM ABI integration (`useq_set_live_inputs`) ships when the live-edit
+ * feature lands. For now the handler acks with `applied: 0` so the protocol
+ * stays exhaustive and the editor's pending-request bookkeeping can flush.
+ */
+export function handleSetLiveInputsRequest(
+  request: JsonSetLiveInputsRequest & { requestId?: string }
+): JsonResponseBody {
+  return {
+    requestId: bumpRequestId(request),
+    success: true,
+    type: "response",
+    applied: 0,
+  } as JsonResponseBody & { applied: number };
+}
+
+/**
  * Single entry point for dispatching any {@link JsonRequest}.
  *
  * The engine uses this; tests call individual handlers directly when they
@@ -196,6 +214,8 @@ export async function dispatchWasmJsonRequest(
       return handleStreamConfigRequest(request);
     case "eval":
       return handleEvalRequest(request, backend, options);
+    case "set-live-inputs":
+      return handleSetLiveInputsRequest(request);
     default: {
       const exhaustive: never = request;
       void exhaustive;

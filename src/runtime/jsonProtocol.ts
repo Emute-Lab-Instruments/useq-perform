@@ -46,6 +46,11 @@ export interface JsonEvalRequest {
   code: string;
 }
 
+export interface JsonSetLiveInputsRequest {
+  type: "set-live-inputs";
+  slots: Record<string, number | boolean | string>;
+}
+
 /**
  * Discriminated union of every editor → runtime JSON request shape.
  *
@@ -59,7 +64,8 @@ export type JsonRequest =
   | JsonHelloRequest
   | JsonHeartbeatRequest
   | JsonStreamConfigRequest
-  | JsonEvalRequest;
+  | JsonEvalRequest
+  | JsonSetLiveInputsRequest;
 
 export interface JsonResponseBody {
   requestId?: string;
@@ -120,6 +126,12 @@ export function buildHeartbeatRequest(): JsonHeartbeatRequest {
 
 export function buildEvalRequest(code: string): JsonEvalRequest {
   return { type: "eval", code };
+}
+
+export function buildSetLiveInputsRequest(
+  slots: Record<string, number | boolean | string>
+): JsonSetLiveInputsRequest {
+  return { type: "set-live-inputs", slots };
 }
 
 export function buildDefaultStreamConfig(

@@ -16,6 +16,7 @@ import {
   buildHeartbeatRequest,
   buildHelloRequest,
   buildSerialOutputRouting,
+  buildSetLiveInputsRequest,
   DEFAULT_STREAM_MAX_RATE_HZ,
   type IoConfig,
   type StreamChannelConfig,
@@ -454,6 +455,31 @@ export function sendJsonEval(
   }
 
   return writeJsonRequest({ type: "eval", code }, { capture, skipConsole });
+}
+
+// ── Send live-input slot values ──────────────────────────────────────
+
+/**
+ * Send a `set-live-inputs` request to the device (spec §5.8).
+ * Fire-and-forget: no requestId is added, the device applies what it can
+ * and emits no response. Resolves as soon as the bytes are written.
+ */
+export function sendSetLiveInputs(
+  slots: Record<string, number | boolean | string>
+): Promise<void> {
+  const port = serialport();
+  if (!port || !port.writable) {
+    return Promise.reject(new Error("Serial port is not writable"));
+  }
+
+  const message = `${JSON.stringify(buildSetLiveInputsRequest(slots))}\n`;
+  const writer = port.writable.getWriter();
+  return writer.write(encoder.encode(message)).then(() => {
+    writer.releaseLock();
+  }).catch((error: Error) => {
+    writer.releaseLock();
+    throw error;
+  });
 }
 
 // ── sendTouSEQ (primary code-send API) ───────────────────────────────

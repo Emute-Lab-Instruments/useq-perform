@@ -457,7 +457,7 @@ describe("wire protocol contract — editor side", () => {
 
   // §5.8 — set-live-inputs request shape.
   // Editor must expose an API that emits exactly this shape.
-  it.skip("T8 [§5.8] set-live-inputs request shape", async () => {
+  it("T8 [§5.8] set-live-inputs request shape", async () => {
     const transport = await loadTransport();
     const port = new SpecCompliantFakeDevice();
     await transport.connectToSerialPort(port as unknown as SerialPort);
