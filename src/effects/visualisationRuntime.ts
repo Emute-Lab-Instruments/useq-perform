@@ -28,7 +28,6 @@ import {
 } from "../utils/visualisationStore.ts";
 import {
   tickAndProject,
-  refreshBarValue,
   syncInterpreterTime,
 } from "./visualisationSampler.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
@@ -278,17 +277,13 @@ async function runSample(timeSeconds: number): Promise<void> {
     }
     perf.end("wasm-update-time");
 
-    perf.begin("refresh-bar");
-    await refreshBarValue(timeSeconds);
-    perf.end("refresh-bar");
-
-    const expressions = visStore.expressions;
-    if (Object.keys(expressions).length > 0) {
-      const settings = visStore.settings;
-      perf.begin("tick-and-project");
-      await tickAndProject(timeSeconds, settings);
-      perf.end("tick-and-project");
-    }
+    // tick-and-project also samples `bar` from the same batch; run it
+    // unconditionally so the bar value stays current even when no
+    // user expressions are registered.
+    const settings = visStore.settings;
+    perf.begin("tick-and-project");
+    await tickAndProject(timeSeconds, settings);
+    perf.end("tick-and-project");
 
     setLastChangeKind("data");
   } finally {

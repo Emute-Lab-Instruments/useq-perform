@@ -248,7 +248,8 @@ describe("vis renderer survives runtime transitions (spec: visualisation.md §1.
 
       expect(mockEval).toHaveBeenCalled();
       const args = mockEval.mock.calls[0];
-      expect(args[0]).toEqual(["a1"]);
+      // Bar is folded into the same batch as user outputs.
+      expect(args[0]).toEqual(["bar", "a1"]);
     });
 
     it("preserves time, bar, and palette across the transition", async () => {

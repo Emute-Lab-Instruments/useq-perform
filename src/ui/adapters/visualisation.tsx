@@ -2,9 +2,10 @@
  * Visualisation adapters - Wired wrappers that read from the global
  * visualisation store and pass data as props to pure vis components.
  *
- * Note: serialVisGL.ts is a WebGL renderer tightly coupled to the store
- * for performance (reading buffer data every animation frame). Only
- * SolidJS components are adapted here.
+ * Note: serialVisGL.ts exposes a pure `drawSerialVisGL(input)` entry plus
+ * a `drawSerialVisGLFromStores()` wrapper.  The wired wrapper is invoked
+ * from `visualisationPanel.ts`'s render hook.  Only SolidJS components
+ * are adapted here.
  */
 import { visStore } from "../../utils/visualisationStore";
 import { InternalVis } from "../InternalVis";

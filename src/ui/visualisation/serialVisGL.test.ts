@@ -1,9 +1,16 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { __serialVisGLInternals } from "./serialVisGL.ts";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PastBuffer } from "../../lib/PastBuffer.ts";
+import {
+  __serialVisGLInternals,
+  drawSerialVisGL,
+  drawSerialVisGLFromStores,
+  type VisRenderInput,
+} from "./serialVisGL.ts";
 
 const {
   flattenSamples,
   buildThickLineGeometry,
+  buildCombinedSamples,
   parseColor,
   ensureScratch,
   sampleFingerprint,
@@ -314,5 +321,133 @@ describe("scratch buffer management", () => {
     const count = flattenSamples(largeSamples, false);
     expect(count).toBe(2000);
     expect(getScratch().length).toBeGreaterThanOrEqual(4000);
+  });
+});
+
+// ── Refactor: pure paint vs wired wrapper ─────────────────────────────
+//
+// `drawSerialVisGL(input)` takes everything it needs as an argument and
+// must not read from `visStore` or call the sampler's `getRenderData()`
+// directly.  `drawSerialVisGLFromStores()` is the wired wrapper that
+// builds the input from those singletons.
+
+describe("buildCombinedSamples (pure)", () => {
+  it("uses the supplied getRenderData function (no singleton reads)", () => {
+    const past = new PastBuffer(4);
+    past.push(0, 0.1);
+    past.push(1, 0.5);
+    past.push(2, 0.9);
+
+    const future = new PastBuffer(4);
+    future.push(3, 0.4);
+    future.push(4, 0.2);
+
+    const calls: string[] = [];
+    const getRenderData = vi.fn((key: string) => {
+      calls.push(key);
+      if (key === "a1") return { pastBuffer: past, futureBuffer: future };
+      return null;
+    });
+
+    const samples = buildCombinedSamples("a1", getRenderData, 2);
+    expect(getRenderData).toHaveBeenCalledWith("a1");
+    expect(calls).toEqual(["a1"]);
+    // 3 past + 2 future where t > currentTime (2): t=3, t=4
+    expect(samples.length).toBe(5);
+    expect(samples[0]).toEqual({ time: 0, value: 0.1 });
+    expect(samples[2]).toEqual({ time: 2, value: 0.9 });
+    expect(samples[3]).toEqual({ time: 3, value: 0.4 });
+    expect(samples[4]).toEqual({ time: 4, value: 0.2 });
+  });
+
+  it("filters future samples whose time <= currentTime", () => {
+    const past = new PastBuffer(2);
+    past.push(0, 0);
+    const future = new PastBuffer(4);
+    future.push(1, 0.1); // <= currentTime=2 → dropped
+    future.push(2, 0.2); // == currentTime → dropped
+    future.push(3, 0.3); // kept
+    future.push(4, 0.4); // kept
+
+    const getRenderData = (k: string) =>
+      k === "a1" ? { pastBuffer: past, futureBuffer: future } : null;
+
+    const samples = buildCombinedSamples("a1", getRenderData, 2);
+    expect(samples.map((s) => s.time)).toEqual([0, 3, 4]);
+  });
+
+  it("returns empty array when getRenderData returns null", () => {
+    const samples = buildCombinedSamples("missing", () => null, 0);
+    expect(samples).toEqual([]);
+  });
+
+  it("handles missing future buffer", () => {
+    const past = new PastBuffer(2);
+    past.push(0, 0.5);
+    past.push(1, 0.7);
+
+    const getRenderData = () => ({ pastBuffer: past, futureBuffer: undefined });
+    const samples = buildCombinedSamples("a1", getRenderData, 0);
+    expect(samples.length).toBe(2);
+    expect(samples[0]).toEqual({ time: 0, value: 0.5 });
+    expect(samples[1]).toEqual({ time: 1, value: 0.7 });
+  });
+});
+
+describe("drawSerialVisGL (pure path)", () => {
+  it("accepts a VisRenderInput without reading from singletons", () => {
+    // No DOM / no panel ⇒ the renderer bails on getCanvas() before any
+    // singleton-coupled work.  This still exercises the parameter
+    // plumbing and proves the API surface compiles + runs.
+    const input: VisRenderInput = {
+      expressions: {},
+      settings: {
+        windowDuration: 10,
+        sampleCount: 100,
+        lineWidth: 1.5,
+        futureDashed: true,
+        futureMaskOpacity: 0.35,
+        futureMaskWidth: 12,
+        circularOffset: 0,
+        futureLeadSeconds: 1,
+        digitalLaneGap: 4,
+      },
+      currentTime: 0,
+      getRenderData: () => null,
+    };
+    expect(() => drawSerialVisGL(input)).not.toThrow();
+  });
+
+  it("never invokes getRenderData when expressions is empty", () => {
+    const getRenderData = vi.fn(() => null);
+    const input: VisRenderInput = {
+      expressions: {},
+      settings: {
+        windowDuration: 10,
+        sampleCount: 100,
+        lineWidth: 1.5,
+        futureDashed: true,
+        futureMaskOpacity: 0.35,
+        futureMaskWidth: 12,
+        circularOffset: 0,
+        futureLeadSeconds: 1,
+        digitalLaneGap: 4,
+      },
+      currentTime: 0,
+      getRenderData,
+    };
+    drawSerialVisGL(input);
+    expect(getRenderData).not.toHaveBeenCalled();
+  });
+});
+
+describe("drawSerialVisGLFromStores (wired)", () => {
+  it("is exported as a no-arg function that wraps the pure entry", () => {
+    // Smoke test: the wrapper must exist, take no arguments, and not
+    // throw when called outside a DOM (it bails inside drawSerialVisGL
+    // when there's no canvas).
+    expect(typeof drawSerialVisGLFromStores).toBe("function");
+    expect(drawSerialVisGLFromStores.length).toBe(0);
+    expect(() => drawSerialVisGLFromStores()).not.toThrow();
   });
 });

@@ -45,8 +45,6 @@ const evalInUseqWasm = (code: string): Promise<string | null> =>
   wasmPort().evalCode(code);
 const updateUseqWasmTime = (timeSeconds: number): Promise<void> =>
   wasmPort().updateTime(timeSeconds);
-const evalOutputAtTime = (name: string, timeSeconds: number): Promise<number> =>
-  wasmPort().evalOutputAtTime(name, timeSeconds);
 const evalOutputsInTimeWindow = (
   outputs: string[],
   startTime: number,
@@ -235,32 +233,43 @@ export async function tickAndProject(
   settings: VisSettings,
 ): Promise<void> {
   const outputs = Object.keys(visStore.expressions);
-  if (outputs.length === 0) return;
 
   // Phase 1: Tick past — advance state and record values.
-  const firstOutputValue = await evalOutputAtTime(outputs[0], timeSeconds);
+  // Bar is folded into the same batch (saves a per-frame round-trip).
+  // Bar must be sampled even when no other outputs are registered.
+  const tickRequest = ["bar", ...outputs];
 
   let tickValues: Map<string, VisSample[]>;
   try {
     tickValues = await evalOutputsInTimeWindow(
-      outputs, timeSeconds, timeSeconds, 1,
+      tickRequest, timeSeconds, timeSeconds, 1,
     );
   } catch {
     tickValues = new Map();
   }
 
+  // Update bar from the same batch.
+  const barSamples = tickValues.get("bar");
+  if (barSamples && barSamples.length > 0) {
+    const numeric = Number(barSamples[0].value);
+    if (Number.isFinite(numeric)) {
+      const wrapped = numeric % 1;
+      updateBar(wrapped < 0 ? wrapped + 1 : wrapped);
+    } else {
+      updateBar(0);
+    }
+  } else {
+    updateBar(0);
+  }
+
+  if (outputs.length === 0) return;
+
   for (const name of outputs) {
     const buf = ensurePastBuffer(name);
     const samples = tickValues.get(name);
-    let value: number;
     if (samples && samples.length > 0 && Number.isFinite(samples[0].value)) {
-      value = samples[0].value;
-    } else if (name === outputs[0] && Number.isFinite(firstOutputValue)) {
-      value = firstOutputValue;
-    } else {
-      continue;
+      buf.push(timeSeconds, samples[0].value);
     }
-    buf.push(timeSeconds, value);
   }
 
   // Phase 2: Future — batch-refill on invalidation, else push one sample.
@@ -304,22 +313,7 @@ export async function tickAndProject(
   }
 }
 
-// ── Bar ──────────────────────────────────────────────────────────────
-
-export async function refreshBarValue(timeSeconds: number): Promise<void> {
-  try {
-    const result = await evalOutputAtTime("bar", timeSeconds);
-    const numeric = Number(result);
-    if (Number.isFinite(numeric)) {
-      const wrapped = numeric % 1;
-      updateBar(wrapped < 0 ? wrapped + 1 : wrapped);
-      return;
-    }
-  } catch (error) {
-    dbg(`visualisationSampler: failed to read bar value: ${error}`);
-  }
-  updateBar(0);
-}
+// ── Time sync ────────────────────────────────────────────────────────
 
 export async function syncInterpreterTime(timeSeconds: number): Promise<void> {
   await updateUseqWasmTime(Number(timeSeconds) || 0);

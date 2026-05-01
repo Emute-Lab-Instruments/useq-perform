@@ -9,7 +9,7 @@ import {
   requestVisualisationRender,
 } from "../../effects/visualisationRuntime";
 import {
-  drawSerialVisGL,
+  drawSerialVisGLFromStores,
   ensureGLCanvasGeometry,
   activateGLCanvas,
   isVisPanelVisible,
@@ -19,7 +19,7 @@ registerVisualisationRenderHook({
   paint: () => {
     activateGLCanvas();
     ensureGLCanvasGeometry();
-    drawSerialVisGL();
+    drawSerialVisGLFromStores();
   },
   isVisible: () => isVisPanelVisible(),
 });

@@ -176,21 +176,27 @@ describe("visualisation sampling boundary", () => {
 
   describe("faithful past / projected future (spec: visualisation.md §2–§3)", () => {
     it("tick advances state and records values in past buffer", async () => {
-      const { evalOutputAtTime } = await import(
+      const { evalOutputsInTimeWindow } = await import(
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
-      const mockOutput = vi.mocked(evalOutputAtTime);
+      const mockBatch = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
-      mockOutput.mockClear();
+      mockBatch.mockClear();
       runtime.notifyExternalTimeUpdate(5.0);
       await runtime._drainForTests();
 
-      // Tick calls evalOutputAtTime to advance state
-      expect(mockOutput).toHaveBeenCalledWith("a1", 5.0);
+      // Tick calls evalOutputsInTimeWindow to advance state. Bar is
+      // folded into the same batch, so the tick-phase call should ask
+      // for ["bar", "a1"] at t=5.0 (single-sample window).
+      const tickCall = mockBatch.mock.calls.find(
+        ([_outputs, start, end, count]) => start === 5.0 && end === 5.0 && count === 1,
+      );
+      expect(tickCall).toBeDefined();
+      expect(tickCall![0]).toEqual(["bar", "a1"]);
 
       // Past buffer should have recorded the value
       const renderData = sampler.getRenderData("a1");

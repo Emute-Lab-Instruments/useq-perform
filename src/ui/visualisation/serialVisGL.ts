@@ -1,11 +1,21 @@
 /**
  * Serial visualisation WebGL renderer — faithful-past / projected-future.
  *
- * Reads per-output data from `getRenderData()` (past + future PastBuffers)
- * and renders via WebGL2.
+ * Two paint entries:
+ *   - drawSerialVisGL(input)         — pure entry; takes a `VisRenderInput`
+ *                                      with all expressions/settings/buffers
+ *                                      it needs.  Suitable for Storybook /
+ *                                      Inspector harnesses with synthetic
+ *                                      data; performs no singleton reads.
+ *   - drawSerialVisGLFromStores()    — wired wrapper that builds the input
+ *                                      from `visStore` + the sampler's
+ *                                      `getRenderData()` and calls through.
+ *                                      This is what the production render
+ *                                      hook invokes.
  *
- *   - drawSerialVisGL()         — paint one frame via WebGL2
+ * Other public helpers:
  *   - ensureGLCanvasGeometry()  — sync canvas buffer to its CSS size
+ *   - activateGLCanvas()        — flip display:none → block on the canvas
  *   - isVisPanelVisible()       — visibility check
  *
  * Design notes:
@@ -29,9 +39,34 @@
  */
 
 import { perf } from "../../lib/perfTrace.ts";
-import type { VisExpression } from "../../utils/visualisationStore.ts";
+import type { VisExpression, VisSettings } from "../../utils/visualisationStore.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
-import { getRenderData } from "../../effects/visualisationSampler.ts";
+import {
+  getRenderData as getRenderDataFromSampler,
+  type OutputRenderData,
+} from "../../effects/visualisationSampler.ts";
+
+/**
+ * All data required to paint one frame of the serial visualisation.
+ *
+ * The pure paint entry (`drawSerialVisGL`) takes this as its sole
+ * argument so it can run with synthetic data in Storybook / Inspector
+ * scenarios.  The wired entry (`drawSerialVisGLFromStores`) builds it
+ * from the global `visStore` + sampler.
+ */
+export interface VisRenderInput {
+  /** Map of exprType → expression descriptor (color, exprType, etc.). */
+  expressions: Record<string, VisExpression>;
+  /** Current rendering settings (lineWidth, windowDuration, ...). */
+  settings: VisSettings;
+  /** Current simulation time, used for past/future split + window. */
+  currentTime: number;
+  /**
+   * Per-output render data accessor.  Returns the past + future
+   * PastBuffers for a given exprType, or null if the output is unknown.
+   */
+  getRenderData: (exprType: string) => OutputRenderData | null;
+}
 
 const PANEL_ID = "panel-vis";
 const GL_CANVAS_ID = "serialcanvas-gl";
@@ -508,12 +543,15 @@ interface VisSampleLike {
   value: number;
 }
 
-function buildCombinedSamples(key: string): VisSampleLike[] {
+function buildCombinedSamples(
+  key: string,
+  getRenderData: (exprType: string) => OutputRenderData | null,
+  currentTime: number,
+): VisSampleLike[] {
   const data = getRenderData(key);
   if (!data) return [];
   const past = data.pastBuffer;
   const fb = data.futureBuffer;
-  const currentTime = visStore.currentTime;
   const result: VisSampleLike[] = new Array(past.length + (fb?.length ?? 0));
   let w = 0;
   for (let i = 0; i < past.length; i++) {
@@ -878,7 +916,17 @@ function parseColor(css: string): [number, number, number] {
 
 // ── Main draw entry ─────────────────────────────────────────────────
 
-export function drawSerialVisGL(): void {
+/**
+ * Pure paint entry — renders one frame from the supplied `VisRenderInput`.
+ *
+ * No singleton reads.  Suitable for Storybook / Inspector harnesses
+ * that want to drive the renderer with synthetic data.  The DOM bits
+ * (`getCanvas`, overlay, panel-visibility cache) still touch the page
+ * because the renderer paints to a real `<canvas id="serialcanvas-gl">`
+ * inside `#panel-vis` — that's by design and is exercised through the
+ * `activateGLCanvas()` / `ensureGLCanvasGeometry()` setup helpers.
+ */
+export function drawSerialVisGL(input: VisRenderInput): void {
   perf.begin("render-frame");
   const canvas = getCanvas();
   if (!canvas) {
@@ -907,9 +955,7 @@ export function drawSerialVisGL(): void {
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
-  const currentTime = visStore.currentTime;
-  const settings = visStore.settings;
-  const expressions = visStore.expressions;
+  const { expressions, settings, currentTime, getRenderData } = input;
   const exprKeys = Object.keys(expressions);
   const hasExpressions = exprKeys.length > 0;
 
@@ -956,16 +1002,32 @@ export function drawSerialVisGL(): void {
       state, gl, w, h, exprKeys, expressions, currentTime,
       futureLineAlpha, lineWidth, windowStart, windowEnd,
       analogYTop, analogYBottom, digitalLaneY,
+      getRenderData,
     );
   } else {
     drawExpressionsThin(
       state, gl, w, h, exprKeys, expressions, currentTime,
       futureLineAlpha, windowStart, windowEnd,
       analogYTop, analogYBottom, digitalLaneY,
+      getRenderData,
     );
   }
 
   perf.end("render-frame");
+}
+
+/**
+ * Wired wrapper — reads from `visStore` and the sampler's `getRenderData`,
+ * then delegates to the pure `drawSerialVisGL`.  This is the path the
+ * production render hook calls.
+ */
+export function drawSerialVisGLFromStores(): void {
+  drawSerialVisGL({
+    expressions: visStore.expressions,
+    settings: visStore.settings,
+    currentTime: visStore.currentTime,
+    getRenderData: getRenderDataFromSampler,
+  });
 }
 
 function drawExpressionsThin(
@@ -982,6 +1044,7 @@ function drawExpressionsThin(
   analogYTop: number,
   analogYBottom: number,
   digitalLaneY: (exprType: string) => { yTop: number; yBottom: number } | null,
+  getRenderData: (exprType: string) => OutputRenderData | null,
 ): void {
   gl.useProgram(state.program);
   gl.bindVertexArray(state.vao);
@@ -994,7 +1057,7 @@ function drawExpressionsThin(
 
   for (const key of exprKeys) {
     const expression = expressions[key];
-    const samples = buildCombinedSamples(key);
+    const samples = buildCombinedSamples(key, getRenderData, currentTime);
     if (samples.length < 2) continue;
 
     const exprType = expression.exprType;
@@ -1044,6 +1107,7 @@ function drawExpressionsThick(
   analogYTop: number,
   analogYBottom: number,
   digitalLaneY: (exprType: string) => { yTop: number; yBottom: number } | null,
+  getRenderData: (exprType: string) => OutputRenderData | null,
 ): void {
   gl.useProgram(state.thickProgram);
   gl.bindVertexArray(state.thickVao);
@@ -1054,7 +1118,7 @@ function drawExpressionsThick(
 
   for (const key of exprKeys) {
     const expression = expressions[key];
-    const samples = buildCombinedSamples(key);
+    const samples = buildCombinedSamples(key, getRenderData, currentTime);
     if (samples.length < 2) continue;
 
     const exprType = expression.exprType;
@@ -1108,6 +1172,7 @@ export function _resetGLStateForTests(): void {
 export const __serialVisGLInternals = {
   flattenSamples,
   buildThickLineGeometry,
+  buildCombinedSamples,
   parseColor,
   ensureScratch,
   sampleFingerprint,
