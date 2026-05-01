@@ -63,6 +63,59 @@ const DEFAULT_HISTORY_HEADROOM = 5;
 const DEFAULT_MAX_HISTORY_SECONDS = 30;
 const ASSUMED_FRAME_RATE = 30;
 
+// ── Past buffer sample rate (pixel-matched) ─────────────────────────
+//
+// Spec visualisation.md §2.2.1: rolling buffer rate is derived from
+// canvas pixel width — `floor(canvasWidth / 2) / (windowDuration / 2)`.
+// The renderer computes this each paint and pushes via
+// `setPastBufferSampleRate()`.  Past buffers are sized for
+// `DEFAULT_MAX_HISTORY_SECONDS` worth of samples at this rate.
+//
+// Future buffers retain the rAF-driven density (one push per frame at
+// the far edge, batch refill on invalidation) — see §2.2.2.
+let pastBufferSampleRate = ASSUMED_FRAME_RATE;
+
+function pastBufferCapacity(): number {
+  return Math.max(
+    1,
+    Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * pastBufferSampleRate),
+  );
+}
+
+export function getPastBufferSampleRate(): number {
+  return pastBufferSampleRate;
+}
+
+/**
+ * Set the target sample-rate (Hz) for the past rolling buffers.
+ *
+ * Called by the renderer each paint with the pixel-matched rate
+ * `floor(canvasWidth / 2) / (windowDuration / 2)`.  Most paints are a
+ * no-op (rate unchanged); on a real change every existing past buffer
+ * is reallocated at the new capacity, **preserving in-bounds samples**.
+ * Future buffers are unaffected.
+ */
+export function setPastBufferSampleRate(hz: number): void {
+  const numeric = Number(hz);
+  if (!Number.isFinite(numeric) || numeric <= 0) return;
+  // Snap to integer Hz to avoid drift between paints from minor
+  // floating-point fluctuations in the reported canvas size.
+  const next = Math.max(1, Math.round(numeric));
+  if (next === pastBufferSampleRate) return;
+  pastBufferSampleRate = next;
+  // Reallocate every past buffer at the new capacity, copying the
+  // existing in-order samples across.  Newest samples win on overflow.
+  const newCapacity = pastBufferCapacity();
+  for (const [key, oldBuf] of pastBuffers) {
+    const replacement = new PastBuffer(newCapacity);
+    const start = Math.max(0, oldBuf.length - newCapacity);
+    for (let i = start; i < oldBuf.length; i++) {
+      replacement.push(oldBuf.timeAt(i), oldBuf.valueAt(i));
+    }
+    pastBuffers.set(key, replacement);
+  }
+}
+
 // ── Past buffers & future buffers ───────────────────────────────────
 
 const pastBuffers = new Map<string, PastBuffer>();
@@ -71,8 +124,7 @@ const futureBuffers = new Map<string, PastBuffer>();
 function ensurePastBuffer(exprType: string): PastBuffer {
   let buf = pastBuffers.get(exprType);
   if (!buf) {
-    const capacity = Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * ASSUMED_FRAME_RATE);
-    buf = new PastBuffer(capacity);
+    buf = new PastBuffer(pastBufferCapacity());
     pastBuffers.set(exprType, buf);
   }
   return buf;
@@ -81,6 +133,8 @@ function ensurePastBuffer(exprType: string): PastBuffer {
 function ensureFutureBuffer(exprType: string): PastBuffer {
   let buf = futureBuffers.get(exprType);
   if (!buf) {
+    // Future buffer capacity stays driven by the assumed frame rate —
+    // it grows by one sample per frame (or batch-refills on invalidate).
     const capacity = Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * ASSUMED_FRAME_RATE);
     buf = new PastBuffer(capacity);
     futureBuffers.set(exprType, buf);

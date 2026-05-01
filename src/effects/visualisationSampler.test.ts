@@ -604,4 +604,56 @@ describe("visualisation sampling boundary", () => {
       ]);
     });
   });
+
+  describe("pixel-matched past buffer sample rate (spec: visualisation.md §2.2.1)", () => {
+    it("setPastBufferSampleRate is a no-op when the rate is unchanged", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+      const before = sampler.getPastBufferSampleRate();
+      sampler.setPastBufferSampleRate(before);
+      expect(sampler.getPastBufferSampleRate()).toBe(before);
+    });
+
+    it("ignores non-finite or non-positive rates", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+      const before = sampler.getPastBufferSampleRate();
+      sampler.setPastBufferSampleRate(Number.NaN);
+      sampler.setPastBufferSampleRate(0);
+      sampler.setPastBufferSampleRate(-50);
+      expect(sampler.getPastBufferSampleRate()).toBe(before);
+    });
+
+    it("snaps fractional rates to the nearest integer Hz", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+      sampler.setPastBufferSampleRate(123.4);
+      expect(sampler.getPastBufferSampleRate()).toBe(123);
+    });
+
+    it("preserves recorded past samples when the rate changes", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      // Start fresh so we know how many samples landed in the buffer.
+      sampler.setPastBufferSampleRate(30);
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+      runtime.notifyExternalTimeUpdate(5.033);
+      await runtime._drainForTests();
+
+      const before = sampler.getRenderData("a1");
+      expect(before).not.toBeNull();
+      const lengthBefore = before!.pastBuffer.length;
+      const newestBefore = before!.pastBuffer.newestTime;
+      expect(lengthBefore).toBeGreaterThan(0);
+
+      // Bump the rate — past samples should survive the reallocation.
+      sampler.setPastBufferSampleRate(150);
+
+      const after = sampler.getRenderData("a1");
+      expect(after).not.toBeNull();
+      expect(after!.pastBuffer.length).toBe(lengthBefore);
+      expect(after!.pastBuffer.newestTime).toBe(newestBefore);
+    });
+  });
 });

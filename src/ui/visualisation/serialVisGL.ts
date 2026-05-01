@@ -43,6 +43,7 @@ import type { VisExpression, VisSettings } from "../../utils/visualisationStore.
 import { visStore } from "../../utils/visualisationStore.ts";
 import {
   getRenderData as getRenderDataFromSampler,
+  setPastBufferSampleRate,
   type OutputRenderData,
 } from "../../effects/visualisationSampler.ts";
 
@@ -543,29 +544,53 @@ interface VisSampleLike {
   value: number;
 }
 
+/**
+ * Module-level reusable scratch for `buildCombinedSamples`.
+ *
+ * The result is consumed synchronously by the caller (read once, then
+ * uploaded to a VBO) so a single shared buffer is safe.  Each entry is
+ * a stable `{time, value}` object that we mutate in place; we grow the
+ * pool lazily and never shrink.  `result.length` tracks the current
+ * write count so consumers see the right size.
+ */
+const combinedScratch: VisSampleLike[] = [];
+
+function ensureCombinedSlot(i: number): VisSampleLike {
+  let slot = combinedScratch[i];
+  if (!slot) {
+    slot = { time: 0, value: 0 };
+    combinedScratch[i] = slot;
+  }
+  return slot;
+}
+
 function buildCombinedSamples(
   key: string,
   getRenderData: (exprType: string) => OutputRenderData | null,
   currentTime: number,
 ): VisSampleLike[] {
+  combinedScratch.length = 0;
   const data = getRenderData(key);
-  if (!data) return [];
+  if (!data) return combinedScratch;
   const past = data.pastBuffer;
   const fb = data.futureBuffer;
-  const result: VisSampleLike[] = new Array(past.length + (fb?.length ?? 0));
   let w = 0;
   for (let i = 0; i < past.length; i++) {
-    result[w++] = { time: past.timeAt(i), value: past.valueAt(i) };
+    const slot = ensureCombinedSlot(w++);
+    slot.time = past.timeAt(i);
+    slot.value = past.valueAt(i);
   }
   if (fb) {
     for (let i = 0; i < fb.length; i++) {
       const t = fb.timeAt(i);
       if (t <= currentTime) continue;
-      result[w++] = { time: t, value: fb.valueAt(i) };
+      const slot = ensureCombinedSlot(w++);
+      slot.time = t;
+      slot.value = fb.valueAt(i);
     }
   }
-  result.length = w;
-  return result;
+  combinedScratch.length = w;
+  return combinedScratch;
 }
 
 /** Reusable scratch Float32Array for upload — grows but never shrinks. */
@@ -958,6 +983,16 @@ export function drawSerialVisGL(input: VisRenderInput): void {
   const { expressions, settings, currentTime, getRenderData } = input;
   const exprKeys = Object.keys(expressions);
   const hasExpressions = exprKeys.length > 0;
+
+  // Push the pixel-matched sample rate to the sampler (spec
+  // visualisation.md §2.2.1).  One sample per horizontal pixel in the
+  // past half eliminates sub-pixel jitter.  The sampler early-returns
+  // when the rate is unchanged, so this is cheap on every paint.
+  const halfWindowSeconds = (settings.windowDuration || 1) / 2;
+  if (halfWindowSeconds > 0 && w > 0) {
+    const targetRate = Math.floor(w / 2) / halfWindowSeconds;
+    if (targetRate > 0) setPastBufferSampleRate(targetRate);
+  }
 
   // Always paint the overlay (cheap; only re-rasterises axes + text).
   drawOverlay(canvas, hasExpressions);
