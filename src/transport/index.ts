@@ -52,7 +52,7 @@ export {
   sendStreamConfig,
   sendSerialInputStreamValue,
   handleJsonMessage,
-  handleFirmwareInfo,
+  sendHelloWithRetry,
   resetProtocolState,
   protocolState,
   sendTouSEQ,

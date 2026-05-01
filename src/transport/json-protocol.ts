@@ -10,15 +10,13 @@
 import { Buffer } from "buffer";
 import { post } from "../utils/consoleStore.ts";
 import { dbg } from "../lib/debug.ts";
-import { upgradeCheck, currentVersion } from "./upgradeCheck.ts";
+import { upgradeCheck } from "./upgradeCheck.ts";
 import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
   buildHelloRequest,
   buildSerialOutputRouting,
   DEFAULT_STREAM_MAX_RATE_HZ,
-  isJsonEligibleVersion,
-  type FirmwareVersion,
   type IoConfig,
   type StreamChannelConfig,
 } from "../runtime/jsonProtocol.ts";
@@ -103,6 +101,9 @@ export function resetProtocolState(): void {
   protocolState.requestIdCounter = 0;
   protocolState.pendingRequests.clear();
   protocolState.ioConfig = null;
+  // Clear handshake signal — new connection starts fresh.
+  _handshakeResolve = null;
+  _handshakePromise = null;
   setSerialOutputBufferRouting({});
   stopHeartbeat();
   reportProtocolModeChanged(getProtocolMode());
@@ -147,8 +148,32 @@ function stopHeartbeat(): void {
 
 // ── Negotiation ──────────────────────────────────────────────────────
 
-function jsonEligibleVersion(): boolean {
-  return isJsonEligibleVersion(currentVersion as FirmwareVersion | null);
+/** Per-attempt timeout for the hello handshake (ms). Spec §7: ≈700 ms. */
+const HELLO_ATTEMPT_TIMEOUT_MS = 700;
+/** Maximum hello attempts before surfacing a connection error. Spec §7: 8. */
+const HELLO_MAX_ATTEMPTS = 8;
+
+/**
+ * Shared handshake completion signal. `sendHelloWithRetry` awaits this;
+ * `retryHelloOnReady` resolves it when the device responds to an
+ * out-of-band hello. Reset by `resetProtocolState` so the next connection
+ * starts fresh.
+ */
+let _handshakeResolve: (() => void) | null = null;
+let _handshakePromise: Promise<void> | null = null;
+
+function createHandshakeSignal(): Promise<void> {
+  _handshakePromise = new Promise<void>((resolve) => {
+    _handshakeResolve = resolve;
+  });
+  return _handshakePromise;
+}
+
+function resolveHandshakeSignal(): void {
+  if (_handshakeResolve) {
+    _handshakeResolve();
+    _handshakeResolve = null;
+  }
 }
 
 function nextRequestId(): string {
@@ -168,41 +193,122 @@ function dispatchProtocolReady(): void {
   }
 }
 
-export async function maybeNegotiateJsonProtocol(): Promise<void> {
-  if (protocolState.negotiationAttempted) return;
+/**
+ * Complete the handshake once we have a successful hello response.
+ * Resolves the shared signal so `sendHelloWithRetry` can exit cleanly.
+ */
+function completeHandshake(response: JsonResponse): void {
+  if (response.success && response.mode === "json") {
+    protocolState.mode = "json";
+    // Populate firmware version for upgrade check.
+    if (response.fw) {
+      upgradeCheck(response.fw);
+    }
+    if (response.config) {
+      protocolState.ioConfig = response.config;
+      setSerialOutputBufferRouting(buildSerialOutputRouting(response.config));
+      sendDefaultStreamConfig(response.config);
+    }
+    startHeartbeat();
+    resolveHandshakeSignal();
+  } else {
+    console.warn("JSON negotiation failed:", response.text || "no details");
+  }
+  dispatchProtocolReady();
+}
 
-  if (!jsonEligibleVersion()) {
-    protocolState.negotiationAttempted = true;
+/**
+ * Send the hello request and wait for a response, with per-attempt timeout.
+ * Rejects on timeout so the retry loop can move to the next attempt.
+ */
+async function sendHelloOnce(): Promise<JsonResponse> {
+  return writeJsonRequest(buildHelloRequest(EDITOR_VERSION), {
+    skipConsole: true,
+    timeout: HELLO_ATTEMPT_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Send hello immediately on port open and retry per spec §4.2.
+ * Called by connector.ts after setSerialPort + setConnectedToModule.
+ * Does not check firmware version — new spec always uses hello (§4.2).
+ *
+ * The loop races each attempt against a shared handshake-complete signal.
+ * When `retryHelloOnReady` resolves that signal (device responded to the
+ * out-of-band ready-triggered hello), the loop exits early without waiting
+ * for the current attempt's timeout.
+ */
+export async function sendHelloWithRetry(): Promise<void> {
+  protocolState.negotiationAttempted = true;
+  const handshakeDone = createHandshakeSignal();
+
+  for (let attempt = 1; attempt <= HELLO_MAX_ATTEMPTS; attempt += 1) {
+    // Re-read mode each iteration; it may have been updated asynchronously.
+    const mode = (): "negotiating" | "json" => protocolState.mode;
+    if (mode() === "json") return;
+
+    const port = serialport();
+    if (!port?.writable) return;
+
+    // Race: either this attempt's hello resolves, the handshake-done signal
+    // fires (via retryHelloOnReady), or the per-attempt timeout rejects.
+    const attemptRace = Promise.race([
+      sendHelloOnce().then((response) => {
+        if (mode() !== "json") completeHandshake(response);
+      }),
+      handshakeDone,
+    ]);
+
+    try {
+      await attemptRace;
+      if (mode() === "json") return;
+    } catch (err) {
+      dbg(`hello attempt ${attempt} failed: ${String(err)}`);
+      if (mode() === "json") return;
+    }
+  }
+
+  if (protocolState.mode !== "json") {
+    post(
+      "uSEQ did not respond to hello. Try unplugging and reconnecting.",
+      "error"
+    );
     dispatchProtocolReady();
+  }
+}
+
+/**
+ * Re-send hello immediately on receiving an unsolicited `ready` frame (spec §4.2).
+ * If the device just finished booting mid-handshake, this gets a fresh response
+ * without waiting for the retry timer to fire.
+ * If handshake is already complete, this is a no-op.
+ */
+export function retryHelloOnReady(): void {
+  if (protocolState.mode === "json") {
+    dbg("Received ready after handshake complete — ignoring (device may have rebooted)");
     return;
   }
 
-  protocolState.negotiationAttempted = true;
-
-  try {
-    const response: JsonResponse = await writeJsonRequest(
-      buildHelloRequest(EDITOR_VERSION),
-      { skipConsole: true, timeout: 5000 }
-    );
-
-    if (response.success && response.mode === "json") {
-      protocolState.mode = "json";
-      if (response.config) {
-        protocolState.ioConfig = response.config;
-        setSerialOutputBufferRouting(
-          buildSerialOutputRouting(response.config)
-        );
-        sendDefaultStreamConfig(response.config);
+  dbg("Received ready — re-sending hello immediately");
+  writeJsonRequest(buildHelloRequest(EDITOR_VERSION), {
+    skipConsole: true,
+    timeout: HELLO_ATTEMPT_TIMEOUT_MS,
+  })
+    .then((response) => {
+      if (protocolState.mode !== "json") {
+        completeHandshake(response);
       }
-      startHeartbeat();
-    } else {
-      console.warn("JSON negotiation failed:", response.text || "no details");
-    }
-  } catch (err) {
-    console.error("JSON negotiation error", err);
-  } finally {
-    dispatchProtocolReady();
-  }
+    })
+    .catch((err) => {
+      dbg(`hello retry after ready failed: ${String(err)}`);
+    });
+}
+
+/**
+ * @deprecated Use sendHelloWithRetry() — kept for any external callers.
+ */
+export async function maybeNegotiateJsonProtocol(): Promise<void> {
+  await sendHelloWithRetry();
 }
 
 async function sendDefaultStreamConfig(ioConfig: IoConfig): Promise<void> {
@@ -335,8 +441,7 @@ export function sendJsonEval(
   code: string,
   options: SendJsonEvalOptions = {}
 ): Promise<JsonResponse> {
-  const { capture = null, force = false, skipConsole = false, exec = null } =
-    options;
+  const { capture = null, force = false, skipConsole = false } = options;
 
   const port = serialport();
   if (!port || !port.writable) {
@@ -347,10 +452,7 @@ export function sendJsonEval(
     return Promise.reject(new Error("JSON protocol not active"));
   }
 
-  const payload: Record<string, unknown> = { type: "eval", code };
-  if (exec) payload.exec = exec;
-
-  return writeJsonRequest(payload, { capture, skipConsole });
+  return writeJsonRequest({ type: "eval", code }, { capture, skipConsole });
 }
 
 // ── sendTouSEQ (primary code-send API) ───────────────────────────────
@@ -464,6 +566,12 @@ export function handleJsonMessage(rawMessage: string): void {
       trimmedMessage,
       error
     );
+    return;
+  }
+
+  // §4.2 / §5.5 — unsolicited `ready` frame: re-send hello immediately.
+  if (parsed.type === "ready") {
+    retryHelloOnReady();
     return;
   }
 

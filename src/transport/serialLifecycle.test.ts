@@ -687,55 +687,15 @@ describe("hardware transport lifecycle", () => {
     });
   });
 
-  // ── Path 5: Firmware version gating ──────────────────────────────
+  // ── Path 5: Hello-on-connect (spec §4.2) ─────────────────────────
+  //
+  // Per wire-protocol.md §1.1 and §4.2, hello is sent immediately on every
+  // port open. There is no firmware-version gate and no legacy text mode.
+  // The version reported in the hello response's `fw` field is used only for
+  // upgrade checking — it does not affect the protocol path.
 
-  describe("firmware version gating (legacy vs JSON)", () => {
-    it("stays in legacy mode when firmware reports < 1.2.0", async () => {
-      // Simulate older firmware: upgradeCheck won't bump to JSON-eligible version.
-      currentVersionMock = { major: 1, minor: 1, patch: 9 };
-
-      const { channels, ...transport } = await loadTransport();
-      const port = new FakeSerialPort({ firmwareString: "uSEQ Firmware 1.1.9" });
-
-      const protocolEvents: Array<{ protocolMode: string }> = [];
-      channels.protocolReady.subscribe((detail) =>
-        protocolEvents.push(detail as { protocolMode: string })
-      );
-
-      const connectPromise = transport.connectToSerialPort(port as unknown as SerialPort);
-      await advancePastPostOpenBootWait();
-      expect(await connectPromise).toBe(true);
-
-      // No hello request should ever be sent for legacy firmware.
-      const helloRequests = port.jsonRequests.filter((r) => r.type === "hello");
-      expect(helloRequests).toHaveLength(0);
-      expect(transport.getProtocolMode()).toBe("legacy");
-      expect(protocolEvents).toContainEqual({ protocolMode: "legacy" });
-    });
-
-    it("falls back to legacy when firmware is unparseable / missing", async () => {
-      currentVersionMock = null;
-
-      const { channels, ...transport } = await loadTransport();
-      const port = new FakeSerialPort({ firmwareString: "garbage" });
-
-      const protocolEvents: Array<{ protocolMode: string }> = [];
-      channels.protocolReady.subscribe((detail) =>
-        protocolEvents.push(detail as { protocolMode: string })
-      );
-
-      const connectPromise = transport.connectToSerialPort(port as unknown as SerialPort);
-      await advancePastPostOpenBootWait();
-      expect(await connectPromise).toBe(true);
-
-      expect(port.jsonRequests.filter((r) => r.type === "hello")).toHaveLength(0);
-      expect(transport.getProtocolMode()).toBe("legacy");
-      expect(protocolEvents).toContainEqual({ protocolMode: "legacy" });
-    });
-
-    it("upgrades to JSON mode when firmware reports >= 1.2.0", async () => {
-      currentVersionMock = { major: 1, minor: 2, patch: 0 };
-
+  describe("hello-on-connect (spec §4.2)", () => {
+    it("sends hello immediately on port open and enters JSON mode", async () => {
       const { channels, ...transport } = await loadTransport();
       const port = new FakeSerialPort();
 
@@ -748,12 +708,44 @@ describe("hardware transport lifecycle", () => {
       await advancePastPostOpenBootWait();
       expect(await connectPromise).toBe(true);
 
+      // Hello is always the first request, regardless of firmware version.
+      const helloRequests = port.jsonRequests.filter((r) => r.type === "hello");
+      expect(helloRequests).toHaveLength(1);
+      expect(transport.getProtocolMode()).toBe("json");
+      expect(protocolEvents).toContainEqual({ protocolMode: "json" });
+    });
+
+    it("hello request carries client=editor and a version string", async () => {
+      const transport = await loadTransport();
+      const port = new FakeSerialPort();
+
+      const connectPromise = transport.connectToSerialPort(port as unknown as SerialPort);
+      await advancePastPostOpenBootWait();
+      await connectPromise;
+
+      const hello = port.jsonRequests.find((r) => r.type === "hello");
+      expect(hello).toBeDefined();
+      expect(hello).toMatchObject({
+        type: "hello",
+        client: "editor",
+        version: expect.any(String),
+        requestId: expect.any(String),
+      });
+    });
+
+    it("sends hello + stream-config after successful handshake", async () => {
+      const transport = await loadTransport();
+      const port = new FakeSerialPort();
+
+      const connectPromise = transport.connectToSerialPort(port as unknown as SerialPort);
+      await advancePastPostOpenBootWait();
+      expect(await connectPromise).toBe(true);
+
       expect(port.jsonRequests.map((r) => r.type)).toEqual([
         "hello",
         "stream-config",
       ]);
       expect(transport.getProtocolMode()).toBe("json");
-      expect(protocolEvents).toContainEqual({ protocolMode: "json" });
     });
   });
 
@@ -821,14 +813,18 @@ describe("hardware transport lifecycle", () => {
       expect(channels.find((c) => c.name === "ssin1" && c.direction === "input")).toBeTruthy();
     });
 
-    it("refuses sendStreamConfig when JSON protocol is not active", async () => {
-      currentVersionMock = { major: 1, minor: 1, patch: 0 };
+    it("refuses sendStreamConfig when hello handshake did not complete", async () => {
+      // Use suppressHello to prevent the device from replying, so the editor
+      // exhausts all retry attempts and never reaches JSON mode.
       const transport = await loadTransport();
-      const port = new FakeSerialPort({ firmwareString: "uSEQ Firmware 1.1.0" });
+      const port = new FakeSerialPort({ suppressHello: true });
 
-      const connectPromise = transport.connectToSerialPort(port as unknown as SerialPort);
-      await advancePastPostOpenBootWait();
-      expect(await connectPromise).toBe(true);
+      // Don't await connectPromise — the handshake retries take time.
+      transport.connectToSerialPort(port as unknown as SerialPort);
+
+      // Advance past a single retry budget but do NOT complete the handshake.
+      await vi.advanceTimersByTimeAsync(700);
+      await flushProtocolWork();
 
       await expect(
         transport.sendStreamConfig(

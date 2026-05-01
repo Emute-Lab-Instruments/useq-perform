@@ -268,7 +268,7 @@ describe("serialComms fake host harness", () => {
     vi.useRealTimers();
   });
 
-  it("proves connect -> firmware info -> hello -> stream-config -> meta/time routing -> disconnect", async () => {
+  it("proves connect -> hello -> stream-config -> meta/time routing -> disconnect", async () => {
     const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
     const protocolEvents: Array<Record<string, unknown>> = [];
@@ -289,7 +289,8 @@ describe("serialComms fake host harness", () => {
     expect(await connectPromise).toBe(true);
     await flushProtocolWork();
 
-    expect(upgradeCheckMock).toHaveBeenCalledWith("uSEQ Firmware 1.2.0");
+    // upgradeCheck is now called with the fw field from the hello response.
+    expect(upgradeCheckMock).toHaveBeenCalledWith("1.2.0");
     expect(port.jsonRequests.map((request) => request.type)).toEqual([
       "hello",
       "stream-config",
@@ -362,7 +363,10 @@ describe("serialComms fake host harness", () => {
     await serialComms.disconnect();
   });
 
-  it("falls back to legacy mode when hello negotiation times out", async () => {
+  it("reports error and stays in negotiating state when all hello retries time out", async () => {
+    // Under the new spec (§4.2), hello is sent on port-open with 8 attempts
+    // at 700 ms each. If none succeed, the editor posts an error and stays
+    // in the pre-JSON mode (getProtocolMode returns "legacy" for any non-JSON state).
     const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
     port.disableResponses.add("hello");
@@ -372,22 +376,25 @@ describe("serialComms fake host harness", () => {
       protocolEvents.push(detail as Record<string, unknown>);
     });
 
+    // Don't await the connect promise yet — the hello retries take 5600 ms.
     const connectPromise = serialComms.connectToSerialPort(
       port as unknown as SerialPort
     );
 
-    // Boot wait (3500 ms fixed delay before firmware-info probe)
-    await vi.advanceTimersByTimeAsync(3500);
-    expect(await connectPromise).toBe(true);
-    // Flush: processes firmware-info text response, sends hello (no response)
+    // Advance past the full hello retry budget: 8 attempts × 700 ms = 5600 ms.
+    await vi.advanceTimersByTimeAsync(6000);
     await flushProtocolWork();
 
-    // Hello has a 5000 ms timeout; advance past it so the request rejects
-    await vi.advanceTimersByTimeAsync(5000);
-    await flushProtocolWork();
+    // Now the connect promise should have resolved.
+    expect(await connectPromise).toBe(true);
 
     expect(serialComms.getProtocolMode()).toBe("legacy");
     expect(protocolEvents.some((e) => e.protocolMode === "legacy")).toBe(true);
+    // An error should have been posted to the console.
+    expect(postMock).toHaveBeenCalledWith(
+      expect.stringContaining("did not respond to hello"),
+      "error"
+    );
 
     await serialComms.disconnect();
   });

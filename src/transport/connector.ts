@@ -31,10 +31,10 @@ import {
 } from "./stream-parser.ts";
 import {
   getProtocolMode,
-  handleFirmwareInfo,
   handleJsonMessage,
   initProtocol,
   resetProtocolState,
+  sendHelloWithRetry,
   sendTouSEQ,
 } from "./json-protocol.ts";
 
@@ -234,95 +234,12 @@ async function setupConnectedPort(port: SerialPort): Promise<void> {
     serialVars
   );
 
-  // Probe for firmware info with retry; replaces former fixed 3500ms wait.
-  await probeFirmwareInfoWithRetry();
-}
-
-// ── Firmware probe (event-driven readiness) ─────────────────────────
-
-/** Per-attempt timeout for the firmware-info probe (ms). */
-const FIRMWARE_PROBE_ATTEMPT_TIMEOUT_MS = 700;
-/** Max number of probe attempts before giving up. */
-const FIRMWARE_PROBE_MAX_ATTEMPTS = 8;
-/** Backoff between attempts (ms) — additive to per-attempt timeout. */
-const FIRMWARE_PROBE_BACKOFF_MS = 100;
-
-/**
- * Send `@(useq-report-firmware-info)` and wait for a text response.
- * Replaces the historical fixed 3500ms post-open wait: we now probe the
- * device immediately and observe its reply, retrying with backoff until
- * we get one or hit the overall budget. On success, hands the version
- * string off to `handleFirmwareInfo` (which triggers JSON negotiation).
- *
- * Total worst-case wait:
- *   FIRMWARE_PROBE_MAX_ATTEMPTS * (FIRMWARE_PROBE_ATTEMPT_TIMEOUT_MS +
- *   FIRMWARE_PROBE_BACKOFF_MS) = 8 * 800ms = 6.4s
- *
- * On a healthy device this resolves in tens of milliseconds.
- */
-async function probeFirmwareInfoWithRetry(): Promise<void> {
-  for (let attempt = 1; attempt <= FIRMWARE_PROBE_MAX_ATTEMPTS; attempt += 1) {
-    if (!connectedToModule || !serialport) {
-      // Disconnected mid-probe — bail silently; disconnect path posts its own message.
-      return;
-    }
-
-    try {
-      const versionMsg = await probeFirmwareInfoOnce();
-      handleFirmwareInfo(versionMsg);
-      return;
-    } catch (err) {
-      dbg(`firmware-info probe attempt ${attempt} failed: ${String(err)}`);
-      if (attempt < FIRMWARE_PROBE_MAX_ATTEMPTS) {
-        await new Promise<void>((r) => setTimeout(r, FIRMWARE_PROBE_BACKOFF_MS));
-      }
-    }
-  }
-
-  if (connectedToModule) {
-    post(
-      "uSEQ did not respond to firmware probe. The device may not be ready — try unplugging and reconnecting.",
-      "error"
-    );
-  }
-}
-
-/**
- * One firmware-info probe round trip. Resolves with the device's version
- * string when it arrives via the text capture path, or rejects on timeout
- * / write failure.
- */
-function probeFirmwareInfoOnce(): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    let settled = false;
-
-    const timeoutId = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      // Clear capture so a late response doesn't leak into the next attempt.
-      if (serialVars.captureFunc === captureWrapper) {
-        serialVars.capture = false;
-        serialVars.captureFunc = null;
-      }
-      reject(new Error("firmware-info probe timed out"));
-    }, FIRMWARE_PROBE_ATTEMPT_TIMEOUT_MS);
-
-    const captureWrapper = (msg: string) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutId);
-      resolve(msg);
-    };
-
-    // sendTouSEQ wires captureWrapper into serialVars for the next text response.
-    Promise.resolve(
-      sendTouSEQ("@(useq-report-firmware-info)", captureWrapper)
-    ).catch((err) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutId);
-      reject(err instanceof Error ? err : new Error(String(err)));
-    });
+  // Spec §4.2: send hello immediately on port open, retry until handshake
+  // completes or the attempt budget is exhausted.
+  // Fire-and-forget: do not block port setup on handshake completion so the
+  // stream reader can process the device's hello response concurrently.
+  sendHelloWithRetry().catch((err) => {
+    console.error("sendHelloWithRetry failed unexpectedly:", err);
   });
 }
 
