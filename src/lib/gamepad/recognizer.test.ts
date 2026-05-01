@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { at, chord, flick, held, hold, tap } from "./gestures";
+import { at, chord, doubleTap, flick, held, hold, tap } from "./gestures";
 import {
   DEFAULT_TIMING,
   INITIAL_STATE,
@@ -858,6 +858,151 @@ describe("recognize: flick + axis (Cycle 6)", () => {
 });
 
 // ===========================================================================
+// Cycle 7 — doubleTap
+//
+// Two complete press-release cycles on the same button within
+// `doubleTapMs`, measured from first press to second press (matches
+// typical OS double-click semantics: time between successive button-
+// down events). Inclusive `<=`. Recognizer is binding-blind: it emits
+// `doubleTap(btn)` at the second press alongside the eager tap; the
+// dispatcher reasons about which to honour and rolls back redundant
+// taps via eager-with-undo.
+//
+// Default doubleTapMs = 300. (When tap is also bound on the same
+// button, the dispatcher — not the recognizer — defers tap commitment
+// per spec §5.2.3.)
+// ===========================================================================
+
+describe("recognize: doubleTap (Cycle 7)", () => {
+  it("press-release-press within window emits doubleTap at the second press", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 50  },
+      { kind: "press",   btn: "A", t: 100 },
+      { kind: "release", btn: "A", t: 150 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("A"), 100),
+      at(doubleTap("A"), 100),
+    ]);
+  });
+
+  it("second press at exactly doubleTapMs from first press emits doubleTap (inclusive)", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 50  },
+      { kind: "press",   btn: "A", t: 300 }, // exactly = doubleTapMs default
+      { kind: "release", btn: "A", t: 320 },
+    ];
+    expect(recognize(events).gestures).toContainEqual(
+      at(doubleTap("A"), 300),
+    );
+  });
+
+  it("second press past doubleTapMs does NOT emit doubleTap", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 50  },
+      { kind: "press",   btn: "A", t: 301 },
+      { kind: "release", btn: "A", t: 320 },
+    ];
+    const out = recognize(events);
+    expect(out.gestures.some(g => g.gesture.kind === "doubleTap")).toBe(false);
+    // Two taps still emitted.
+    expect(
+      out.gestures.filter(g => g.gesture.kind === "tap").map(g => g.t),
+    ).toEqual([0, 301]);
+  });
+
+  it("triple-tap emits two doubleTaps (one per qualifying second press)", () => {
+    // Each press whose prior press-release was within window forms a doubleTap.
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 20  },
+      { kind: "press",   btn: "A", t: 40  }, // doubleTap (40-0)
+      { kind: "release", btn: "A", t: 60  },
+      { kind: "press",   btn: "A", t: 80  }, // doubleTap (80-40)
+      { kind: "release", btn: "A", t: 100 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("A"), 40),
+      at(doubleTap("A"), 40),
+      at(tap("A"), 80),
+      at(doubleTap("A"), 80),
+    ]);
+  });
+
+  it("different buttons do not form a doubleTap", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 50  },
+      { kind: "press",   btn: "B", t: 100 },
+      { kind: "release", btn: "B", t: 150 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("B"), 100),
+    ]);
+  });
+
+  it("doubleTapMs is configurable via timing override", () => {
+    // doubleTapMs=100. Press at 0, release at 50, press at 200 → 200>100, no doubleTap.
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 50  },
+      { kind: "press",   btn: "A", t: 200 },
+      { kind: "release", btn: "A", t: 220 },
+    ];
+    const out = recognize(events, { timing: { doubleTapMs: 100 } });
+    expect(out.gestures.some(g => g.gesture.kind === "doubleTap")).toBe(false);
+  });
+
+  it("a single press alone does not emit doubleTap", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0  },
+      { kind: "release", btn: "A", t: 50 },
+    ];
+    expect(recognize(events).gestures).toEqual([at(tap("A"), 0)]);
+  });
+
+  it("a press-release with no second press does not emit doubleTap", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 50  },
+    ];
+    expect(
+      recognize(events, { evaluateUpTo: 500 })
+        .gestures.some(g => g.gesture.kind === "doubleTap"),
+    ).toBe(false);
+  });
+
+  it("a second press without an intervening release does NOT count as doubleTap", () => {
+    // A pressed, NOT released, then a second press of A. (Stage 1 is
+    // supposed to ensure release-before-press; if it doesn't, we don't
+    // treat the second press as a doubleTap.)
+    const events: readonly LogicalEvent[] = [
+      { kind: "press", btn: "A", t: 0   },
+      { kind: "press", btn: "A", t: 100 }, // no release in between
+    ];
+    expect(
+      recognize(events).gestures.some(g => g.gesture.kind === "doubleTap"),
+    ).toBe(false);
+  });
+
+  it("is deterministic with doubleTap detection", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 50  },
+      { kind: "press",   btn: "A", t: 100 },
+      { kind: "release", btn: "A", t: 150 },
+    ];
+    expect(recognize(events)).toEqual(recognize(events));
+  });
+});
+
+// ===========================================================================
 // step / flush — incremental API contract
 //
 // `step` and `flush` are the primitive API; `recognize` is a fold over them.
@@ -874,6 +1019,7 @@ describe("step / flush", () => {
         LeftStick:  { armed: true, lastEmittedX: 0, lastEmittedY: 0 },
         RightStick: { armed: true, lastEmittedX: 0, lastEmittedY: 0 },
       },
+      previousPresses: {},
     });
   });
 

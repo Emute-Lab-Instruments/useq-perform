@@ -26,8 +26,17 @@
 // Cycle 4 — held (auto-repeat).
 // Cycle 5 — chord.
 // Cycle 6 — flick + AxisFrame (stick processing).
+// Cycle 7 — doubleTap.
 
-import { at, chordFromArray, flick, held, hold, tap } from "./gestures";
+import {
+  at,
+  chordFromArray,
+  doubleTap,
+  flick,
+  held,
+  hold,
+  tap,
+} from "./gestures";
 import {
   assertNever,
   type AxisFrame,
@@ -76,6 +85,12 @@ export type Timing = {
    * the deadzone.
    */
   readonly flickThreshold: number;
+  /**
+   * Maximum elapsed time (inclusive ≤) between the first press and a
+   * second press of the same button for the second press to fire a
+   * doubleTap. Measured press-to-press (matches OS double-click).
+   */
+  readonly doubleTapMs: number;
 };
 
 export const DEFAULT_TIMING: Timing = Object.freeze({
@@ -85,6 +100,7 @@ export const DEFAULT_TIMING: Timing = Object.freeze({
   chordGraceMs: 30,
   stickDeadzone: 0.12,
   flickThreshold: 0.7,
+  doubleTapMs: 300,
 });
 
 // ---------------------------------------------------------------------------
@@ -137,14 +153,16 @@ const INITIAL_STICK_STATE: StickState = Object.freeze({
  * Immutable recognizer state, threaded across `step` calls. Production
  * holds the latest value between polling ticks; tests usually start
  * from `INITIAL_STATE` per case.
- *
- * As later cycles add primitives, this type grows additional fields:
- * lastReleased (per-button for doubleTap), etc.
  */
 export type RecognizerState = {
   readonly pendingHolds: readonly PendingHold[];
   readonly pendingHelds: readonly PendingHeld[];
   readonly sticks: Readonly<Record<StickName, StickState>>;
+  /**
+   * Time of the most-recent fully-completed (released) press of each
+   * button. Set on release; consulted on press for doubleTap detection.
+   */
+  readonly previousPresses: Readonly<Partial<Record<ButtonName, number>>>;
 };
 
 export const INITIAL_STATE: RecognizerState = Object.freeze({
@@ -154,6 +172,7 @@ export const INITIAL_STATE: RecognizerState = Object.freeze({
     LeftStick:  INITIAL_STICK_STATE,
     RightStick: INITIAL_STICK_STATE,
   },
+  previousPresses: {},
 });
 
 // ---------------------------------------------------------------------------
@@ -349,6 +368,13 @@ export function step(
         );
       }
 
+      // DoubleTap detection: was the most recent fully-completed press
+      // of this same button within doubleTapMs of this press?
+      const prevPress = next.previousPresses[event.btn];
+      if (prevPress !== undefined && event.t - prevPress <= timing.doubleTapMs) {
+        gestures.push(at(doubleTap(event.btn), event.t));
+      }
+
       next = {
         ...next,
         pendingHolds: [
@@ -368,13 +394,21 @@ export function step(
       };
       break;
     }
-    case "release":
+    case "release": {
+      // Capture the press time of the cycle just completing so a future
+      // press of the same button can form a doubleTap. The press info
+      // lives on the matching pendingHelds entry until release.
+      const released = next.pendingHelds.find(p => p.btn === event.btn);
       next = {
         ...next,
         pendingHolds: removeFirstPendingHold(next.pendingHolds, event.btn),
         pendingHelds: removeFirstPendingHeld(next.pendingHelds, event.btn),
+        previousPresses: released
+          ? { ...next.previousPresses, [event.btn]: released.pressedAt }
+          : next.previousPresses,
       };
       break;
+    }
     case "axis": {
       const dz = applyDeadzone(event.x, event.y, timing.stickDeadzone);
       const prev = next.sticks[event.stick];
