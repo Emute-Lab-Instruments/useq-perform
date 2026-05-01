@@ -41,12 +41,9 @@ export interface JsonStreamConfigRequest {
   channels: StreamChannelConfig[];
 }
 
-export type JsonEvalExec = "immediate";
-
 export interface JsonEvalRequest {
   type: "eval";
   code: string;
-  exec?: JsonEvalExec;
 }
 
 /**
@@ -121,15 +118,8 @@ export function buildHeartbeatRequest(): JsonHeartbeatRequest {
   return { type: "ping" };
 }
 
-export function buildEvalRequest(
-  code: string,
-  options: { exec?: JsonEvalExec } = {}
-): JsonEvalRequest {
-  const req: JsonEvalRequest = { type: "eval", code };
-  if (options.exec) {
-    req.exec = options.exec;
-  }
-  return req;
+export function buildEvalRequest(code: string): JsonEvalRequest {
+  return { type: "eval", code };
 }
 
 export function buildDefaultStreamConfig(

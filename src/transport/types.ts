@@ -99,7 +99,6 @@ export interface SendJsonEvalOptions {
   capture?: CaptureCallback | null;
   force?: boolean;
   skipConsole?: boolean;
-  exec?: string | null;
 }
 
 // ── Protocol state bag ───────────────────────────────────────────────
