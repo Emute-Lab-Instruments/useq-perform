@@ -6,6 +6,7 @@
 
 import type { CircularBuffer } from "../lib/CircularBuffer.ts";
 import type { IoConfig } from "../runtime/jsonProtocol.ts";
+import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
 
 // ── Wire constants ───────────────────────────────────────────────────
 
@@ -85,6 +86,10 @@ export interface JsonResponse {
   mode?: string;
   config?: IoConfig;
   fw?: string;
+  /** Diagnostics embedded in eval responses (spec §5.7). */
+  diagnostics?: UseqDiagnostic[];
+  /** Unsolicited log level (spec §5.6). */
+  level?: string;
 }
 
 /** Options for writeJsonRequest */
