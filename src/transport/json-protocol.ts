@@ -515,19 +515,14 @@ export function sendTouSEQ(
   }
 
   // JSON protocol active — use structured eval
-  if (protocolState.mode === "json") {
-    return sendJsonEval(cleanedCode, { capture }).catch((error: Error) => {
-      console.error("Failed to send JSON request to uSEQ", error);
-      post(
-        "Failed to send request to uSEQ. See browser console for details.",
-        "error"
-      );
-      throw error;
-    });
-  }
-
-  // Pre-negotiation: send as raw text (used for firmware info probe)
-  return writeRawText(port!, cleanedCode, capture);
+  return sendJsonEval(cleanedCode, { capture }).catch((error: Error) => {
+    console.error("Failed to send JSON request to uSEQ", error);
+    post(
+      "Failed to send request to uSEQ. See browser console for details.",
+      "error"
+    );
+    throw error;
+  });
 }
 
 function handleNotConnected(): void {
@@ -537,42 +532,6 @@ function handleNotConnected(): void {
   } catch (_e) {
     // no-op if window not available
   }
-}
-
-// ── Raw text write (pre-negotiation only) ────────────────────────────
-
-/**
- * Write raw text to the serial port and optionally capture the text
- * response via the shared serialVars mechanism.
- * Used for the firmware info probe before JSON negotiation.
- */
-function writeRawText(
-  port: SerialPort,
-  code: string,
-  capture: CaptureCallback | null
-): Promise<void> {
-  const writer = port.writable!.getWriter();
-  dbg("writing raw text...");
-
-  if (capture && _ctx) {
-    _ctx.serialVars.capture = true;
-    _ctx.serialVars.captureFunc = capture;
-  }
-
-  return writer.write(encoder.encode(code)).then(() => {
-    writer.releaseLock();
-    dbg("raw text written");
-  }).catch((err) => {
-    writer.releaseLock();
-    console.error("Serial write failed:", err);
-  });
-}
-
-// ── Handle firmware info (bridge from text message) ──────────────────
-
-export function handleFirmwareInfo(versionMsg: string): void {
-  upgradeCheck(versionMsg);
-  maybeNegotiateJsonProtocol();
 }
 
 // ── Handle incoming JSON message ─────────────────────────────────────

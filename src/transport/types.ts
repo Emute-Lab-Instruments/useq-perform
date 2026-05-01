@@ -14,17 +14,13 @@ export const MESSAGE_START_MARKER = 31;
 
 export const MESSAGE_TYPES = {
   STREAM: 0,
-  JSON: 101,
-  // Any other value is treated as TEXT
 } as const;
 
 // ── Serial read mode constants ───────────────────────────────────────
 
 export const SERIAL_READ_MODES = {
   ANY: 0,
-  TEXT: 1,
   SERIALSTREAM: 2,
-  JSON: 3,
   /** Bare JSON mode: `{...}\n` with no 0x1F prefix (spec §3.3). */
   BARE_JSON: 4,
 } as const;
@@ -49,13 +45,11 @@ export interface TransportContext {
   getSerialPort: () => SerialPort | null;
   /** Broadcasts a connection-state change to the rest of the app. */
   emitConnectionChanged: () => void;
-  /** Shared capture state used by the stream parser for text responses. */
-  serialVars: SerialVars;
 }
 
 // ── Callback / request types ─────────────────────────────────────────
 
-/** Capture callback type for serial responses */
+/** Capture callback type for JSON request responses */
 export type CaptureCallback = (response: string) => void;
 
 /** Serial processing state threaded through the stream parser */
@@ -115,13 +109,6 @@ export interface ProtocolState {
   pendingRequests: Map<string, PendingRequest>;
   ioConfig: IoConfig | null;
   heartbeatInterval: ReturnType<typeof setInterval> | null;
-}
-
-// ── Serial vars (legacy capture mechanism) ───────────────────────────
-
-export interface SerialVars {
-  capture: boolean;
-  captureFunc: CaptureCallback | null;
 }
 
 // ── Buffer map function type ─────────────────────────────────────────

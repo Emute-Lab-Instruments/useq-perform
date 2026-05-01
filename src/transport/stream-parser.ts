@@ -2,7 +2,7 @@
  * Stream Parser
  *
  * Byte-level parsing and routing of serial data. Splits incoming byte
- * streams into TEXT, JSON, and STREAM messages based on the wire protocol.
+ * streams into STREAM (binary §3.2) and bare-JSON (§3.3) messages.
  */
 
 import { Buffer } from "buffer";
@@ -11,8 +11,6 @@ import { dbg } from "../lib/debug.ts";
 import { notifyExternalTimeUpdate } from "../effects/visualisationRuntime.ts";
 import {
   combineBuffers,
-  findMessageStartMarker,
-  updateRemainingBytes,
   extractMessageText,
   isSerialPortValid,
   isPortReadableAndUnlocked,
@@ -23,7 +21,6 @@ import {
   MESSAGE_TYPES,
   type SerialProcessingState,
   type BufferMapFunction,
-  type SerialVars,
 } from "./types.ts";
 
 // ── Shared mutable state ─────────────────────────────────────────────
@@ -55,9 +52,7 @@ export let readingActive = false;
  */
 export async function serialReader(
   serialport: SerialPort | null,
-  onTextMessage: (msg: string) => void,
-  onJsonMessage: (msg: string) => void,
-  serialVars: SerialVars
+  onJsonMessage: (msg: string) => void
 ): Promise<void> {
   if (!isSerialPortValid(serialport)) return;
   dbg("reading...");
@@ -68,9 +63,7 @@ export async function serialReader(
     buffer = await setupReaderAndProcessData(
       serialport!,
       buffer,
-      onTextMessage,
-      onJsonMessage,
-      serialVars
+      onJsonMessage
     );
   } else {
     console.log("Serial port is not readable or is locked");
@@ -80,9 +73,7 @@ export async function serialReader(
 async function setupReaderAndProcessData(
   port: SerialPort,
   initialBuffer: Uint8Array,
-  onTextMessage: (msg: string) => void,
-  onJsonMessage: (msg: string) => void,
-  serialVars: SerialVars
+  onJsonMessage: (msg: string) => void
 ): Promise<Uint8Array> {
   let buffer = initialBuffer;
   const reader = port.readable!.getReader();
@@ -93,9 +84,7 @@ async function setupReaderAndProcessData(
     buffer = await processSerialDataLoop(
       reader,
       buffer,
-      onTextMessage,
-      onJsonMessage,
-      serialVars
+      onJsonMessage
     );
   } catch (error) {
     console.log("Serial read error:", error);
@@ -109,9 +98,7 @@ async function setupReaderAndProcessData(
 async function processSerialDataLoop(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   buffer: Uint8Array,
-  onTextMessage: (msg: string) => void,
-  onJsonMessage: (msg: string) => void,
-  serialVars: SerialVars
+  onJsonMessage: (msg: string) => void
 ): Promise<Uint8Array> {
   while (readingActive) {
     const readResult = await reader.read();
@@ -123,9 +110,7 @@ async function processSerialDataLoop(
     );
     const state = processAllMessages(
       byteArray,
-      onTextMessage,
-      onJsonMessage,
-      serialVars
+      onJsonMessage
     );
     buffer = state.remainingBytes;
   }
@@ -161,9 +146,7 @@ export async function stopSerialReader(): Promise<void> {
  */
 export function processAllMessages(
   byteArray: Uint8Array,
-  onTextMessage: (msg: string) => void,
-  onJsonMessage: (msg: string) => void,
-  serialVars: SerialVars
+  onJsonMessage: (msg: string) => void
 ): SerialProcessingState {
   let state: SerialProcessingState = {
     mode: SERIAL_READ_MODES.ANY,
@@ -175,9 +158,7 @@ export function processAllMessages(
     state = processSerialData(
       state.remainingBytes,
       state,
-      onTextMessage,
-      onJsonMessage,
-      serialVars
+      onJsonMessage
     );
   }
 
@@ -187,21 +168,15 @@ export function processAllMessages(
 function processSerialData(
   byteArray: Uint8Array,
   state: SerialProcessingState,
-  onTextMessage: (msg: string) => void,
-  onJsonMessage: (msg: string) => void,
-  serialVars: SerialVars
+  onJsonMessage: (msg: string) => void
 ): SerialProcessingState {
   const { mode } = state;
 
   switch (mode) {
     case SERIAL_READ_MODES.ANY:
       return processAnyModeData(byteArray);
-    case SERIAL_READ_MODES.TEXT:
-      return processTextModeData(byteArray, onTextMessage, serialVars);
     case SERIAL_READ_MODES.SERIALSTREAM:
       return processStreamModeData(byteArray);
-    case SERIAL_READ_MODES.JSON:
-      return processJsonModeData(byteArray, onJsonMessage);
     case SERIAL_READ_MODES.BARE_JSON:
       return processBareJsonModeData(byteArray, onJsonMessage);
   }
@@ -213,90 +188,26 @@ function processSerialData(
 const BARE_JSON_START = 0x7b;
 
 function processAnyModeData(byteArray: Uint8Array): SerialProcessingState {
-  let mode: number = SERIAL_READ_MODES.ANY;
-  let processed = false;
-  let remainingBytes = byteArray;
-
   if (byteArray[0] === MESSAGE_START_MARKER) {
-    if (byteArray.length > 1) {
-      const messageType = byteArray[1];
-      if (messageType === MESSAGE_TYPES.STREAM) {
-        mode = SERIAL_READ_MODES.SERIALSTREAM;
-      } else if (messageType === MESSAGE_TYPES.JSON) {
-        // Legacy 0x1F/0x65 prefix — still accepted during transition window.
-        mode = SERIAL_READ_MODES.JSON;
-      } else {
-        mode = SERIAL_READ_MODES.TEXT;
-      }
-    } else {
-      processed = true;
+    if (byteArray.length < 2) {
+      // Not enough bytes yet to read the type byte — wait for more.
+      return { mode: SERIAL_READ_MODES.ANY, processed: true, remainingBytes: byteArray };
     }
-  } else if (byteArray[0] === BARE_JSON_START) {
+    const typebyte = byteArray[1];
+    if (typebyte === MESSAGE_TYPES.STREAM) {
+      return { mode: SERIAL_READ_MODES.SERIALSTREAM, processed: false, remainingBytes: byteArray };
+    }
+    // Unknown binary type byte (§3.4): advance one byte and re-discriminate.
+    return { mode: SERIAL_READ_MODES.ANY, processed: false, remainingBytes: byteArray.slice(1) };
+  }
+
+  if (byteArray[0] === BARE_JSON_START) {
     // Spec §3.3: bare `{...}\n` JSON message — no 0x1F prefix.
-    mode = SERIAL_READ_MODES.BARE_JSON;
-  } else {
-    // Garbage / out-of-sync: advance one byte and re-discriminate (spec §3.1).
-    remainingBytes = byteArray.slice(1);
-    processed = false;
+    return { mode: SERIAL_READ_MODES.BARE_JSON, processed: false, remainingBytes: byteArray };
   }
 
-  return { mode, processed, remainingBytes };
-}
-
-function processTextModeData(
-  byteArray: Uint8Array,
-  onTextMessage: (msg: string) => void,
-  serialVars: SerialVars
-): SerialProcessingState {
-  for (let i = 2; i < byteArray.length - 1; i++) {
-    if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
-      const msg = extractMessageText(byteArray.slice(2, i));
-
-      if (serialVars.capture) {
-        dbg("Serial vars captured");
-        serialVars.captureFunc!(msg);
-        serialVars.capture = false;
-      } else if (msg !== "") {
-        onTextMessage(msg);
-      }
-
-      return {
-        mode: SERIAL_READ_MODES.ANY,
-        processed: false,
-        remainingBytes: byteArray.slice(i + 2),
-      };
-    }
-  }
-
-  return {
-    mode: SERIAL_READ_MODES.TEXT,
-    processed: true,
-    remainingBytes: byteArray,
-  };
-}
-
-function processJsonModeData(
-  byteArray: Uint8Array,
-  onJsonMessage: (msg: string) => void
-): SerialProcessingState {
-  for (let i = 2; i < byteArray.length - 1; i++) {
-    if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
-      const messageText = extractMessageText(byteArray.slice(2, i));
-      onJsonMessage(messageText);
-
-      return {
-        mode: SERIAL_READ_MODES.ANY,
-        processed: false,
-        remainingBytes: byteArray.slice(i + 2),
-      };
-    }
-  }
-
-  return {
-    mode: SERIAL_READ_MODES.JSON,
-    processed: true,
-    remainingBytes: byteArray,
-  };
+  // Garbage / out-of-sync: advance one byte and re-discriminate (spec §3.1).
+  return { mode: SERIAL_READ_MODES.ANY, processed: false, remainingBytes: byteArray.slice(1) };
 }
 
 /**

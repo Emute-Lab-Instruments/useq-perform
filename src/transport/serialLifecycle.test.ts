@@ -92,30 +92,10 @@ vi.mock("../runtime/runtimeService.ts", () => ({
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-const MESSAGE_START_MARKER = 31;
-const JSON_MESSAGE_TYPE = 101;
-const TEXT_MESSAGE_TYPE = 1;
 
-function encodeTextPacket(text: string): Uint8Array {
-  const payload = encoder.encode(text);
-  const packet = new Uint8Array(payload.length + 4);
-  packet[0] = MESSAGE_START_MARKER;
-  packet[1] = TEXT_MESSAGE_TYPE;
-  packet.set(payload, 2);
-  packet[packet.length - 2] = 13;
-  packet[packet.length - 1] = 10;
-  return packet;
-}
-
+/** Encode a JSON message in the bare-JSON format per spec §3.3: `{...}\n`. */
 function encodeJsonPacket(payload: Record<string, unknown>): Uint8Array {
-  const body = encoder.encode(JSON.stringify(payload));
-  const packet = new Uint8Array(body.length + 4);
-  packet[0] = MESSAGE_START_MARKER;
-  packet[1] = JSON_MESSAGE_TYPE;
-  packet.set(body, 2);
-  packet[packet.length - 2] = 13;
-  packet[packet.length - 1] = 10;
-  return packet;
+  return encoder.encode(JSON.stringify(payload) + "\n");
 }
 
 // ── Fake Serial port + navigator.serial harness ──────────────────────
@@ -128,8 +108,6 @@ interface FakePortOptions {
   failOpenWith?: Error;
   /** When set, the close() call will reject with this error. */
   failCloseWith?: Error;
-  /** Firmware version string echoed in response to the firmware-info probe. */
-  firmwareString?: string;
   /** When true, the hello response is suppressed (simulates timeout). */
   suppressHello?: boolean;
   /** Override hello-response firmware version. */
@@ -189,10 +167,6 @@ class FakeSerialPort {
     };
   }
 
-  enqueueText(text: string): void {
-    this.controller?.enqueue(encodeTextPacket(text));
-  }
-
   enqueueJson(payload: Record<string, unknown>): void {
     this.controller?.enqueue(encodeJsonPacket(payload));
   }
@@ -200,12 +174,6 @@ class FakeSerialPort {
   private handleWrite(chunk: Uint8Array): void {
     const text = decoder.decode(chunk);
     this.writes.push(text);
-
-    if (text === "@(useq-report-firmware-info)") {
-      const fw = this.opts.firmwareString ?? "uSEQ Firmware 1.2.0";
-      setTimeout(() => this.enqueueText(fw), 0);
-      return;
-    }
 
     if (!text.endsWith("\n")) return;
 

@@ -64,30 +64,11 @@ vi.mock("../runtime/runtimeService.ts", () => ({
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const MESSAGE_START_MARKER = 31;
-const JSON_MESSAGE_TYPE = 101;
-const TEXT_MESSAGE_TYPE = 1;
 const STREAM_MESSAGE_TYPE = 0;
 
-function encodeTextPacket(text: string): Uint8Array {
-  const payload = encoder.encode(text);
-  const packet = new Uint8Array(payload.length + 4);
-  packet[0] = MESSAGE_START_MARKER;
-  packet[1] = TEXT_MESSAGE_TYPE;
-  packet.set(payload, 2);
-  packet[packet.length - 2] = 13;
-  packet[packet.length - 1] = 10;
-  return packet;
-}
-
+/** Encode a JSON message in the bare-JSON format per spec §3.3: `{...}\n`. */
 function encodeJsonPacket(payload: Record<string, unknown>): Uint8Array {
-  const body = encoder.encode(JSON.stringify(payload));
-  const packet = new Uint8Array(body.length + 4);
-  packet[0] = MESSAGE_START_MARKER;
-  packet[1] = JSON_MESSAGE_TYPE;
-  packet.set(body, 2);
-  packet[packet.length - 2] = 13;
-  packet[packet.length - 1] = 10;
-  return packet;
+  return encoder.encode(JSON.stringify(payload) + "\n");
 }
 
 function encodeStreamPacket(channel: number, value: number): Uint8Array {
@@ -142,10 +123,6 @@ class FakeSerialPort {
     };
   }
 
-  enqueueText(text: string): void {
-    this.controller?.enqueue(encodeTextPacket(text));
-  }
-
   enqueueJson(payload: Record<string, unknown>): void {
     this.controller?.enqueue(encodeJsonPacket(payload));
   }
@@ -162,11 +139,6 @@ class FakeSerialPort {
   private handleWrite(chunk: Uint8Array): void {
     const text = decoder.decode(chunk);
     this.writes.push(text);
-
-    if (text === "@(useq-report-firmware-info)") {
-      setTimeout(() => this.enqueueText("uSEQ Firmware 1.2.0"), 0);
-      return;
-    }
 
     if (!text.endsWith("\n")) {
       return;
@@ -548,38 +520,6 @@ describe("serialComms fake host harness", () => {
     await serialComms.disconnect();
   });
 
-  it("reassembles a text message split across two chunks", async () => {
-    const serialComms = await loadSerialComms();
-    const port = new FakeSerialPort();
-
-    const connectPromise = serialComms.connectToSerialPort(
-      port as unknown as SerialPort
-    );
-    await vi.advanceTimersByTimeAsync(3500);
-    expect(await connectPromise).toBe(true);
-    await flushProtocolWork();
-
-    postMock.mockReset();
-
-    // Build a text packet, split it mid-payload
-    const fullPacket = encodeTextPacket("hello from firmware");
-    const splitPoint = 5; // split inside the header+payload
-    port.enqueueRaw(fullPacket.slice(0, splitPoint));
-    await flushProtocolWork();
-
-    // Nothing posted yet
-    expect(postMock).not.toHaveBeenCalledWith(
-      expect.stringContaining("hello from firmware")
-    );
-
-    port.enqueueRaw(fullPacket.slice(splitPoint));
-    await flushProtocolWork();
-
-    expect(postMock).toHaveBeenCalledWith("uSEQ: hello from firmware");
-
-    await serialComms.disconnect();
-  });
-
   it("handles two complete messages concatenated in a single chunk", async () => {
     const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
@@ -631,14 +571,8 @@ describe("serialComms fake host harness", () => {
     expect(await connectPromise).toBe(true);
     await flushProtocolWork();
 
-    // Send a JSON-typed packet with invalid JSON content
-    const badJson = encoder.encode("{not valid json!!!");
-    const badPacket = new Uint8Array(badJson.length + 4);
-    badPacket[0] = MESSAGE_START_MARKER;
-    badPacket[1] = JSON_MESSAGE_TYPE;
-    badPacket.set(badJson, 2);
-    badPacket[badPacket.length - 2] = 13;
-    badPacket[badPacket.length - 1] = 10;
+    // Send bare-JSON with invalid JSON content (spec §3.3 format, malformed body)
+    const badPacket = encoder.encode("{not valid json!!!\n");
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -675,14 +609,9 @@ describe("serialComms fake host harness", () => {
     expect(await connectPromise).toBe(true);
     await flushProtocolWork();
 
-    // JSON packet with empty body (just whitespace)
-    const emptyBody = encoder.encode("   ");
-    const emptyPacket = new Uint8Array(emptyBody.length + 4);
-    emptyPacket[0] = MESSAGE_START_MARKER;
-    emptyPacket[1] = JSON_MESSAGE_TYPE;
-    emptyPacket.set(emptyBody, 2);
-    emptyPacket[emptyPacket.length - 2] = 13;
-    emptyPacket[emptyPacket.length - 1] = 10;
+    // Send a blank line — spec §3.3 requires blank lines between messages to be
+    // silently skipped. Should not throw or crash the parser.
+    const emptyPacket = encoder.encode("\n");
 
     // Should not throw
     port.enqueueRaw(emptyPacket);

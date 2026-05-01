@@ -23,7 +23,7 @@ import {
 } from "../contracts/runtimeChannels";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 
-import type { SerialVars, TransportContext } from "./types.ts";
+import type { TransportContext } from "./types.ts";
 import {
   serialReader as startSerialReader,
   stopSerialReader,
@@ -44,8 +44,6 @@ let serialport: SerialPort | null = null;
 let connectedToModule = false;
 let flag_triggeringBootloader = false;
 
-const serialVars: SerialVars = { capture: false, captureFunc: null };
-
 // ── Connection state ────────────────────────────────────────────────
 
 function emitConnectionChanged(): void {
@@ -64,7 +62,6 @@ function emitConnectionChanged(): void {
 const transportContext: TransportContext = {
   getSerialPort: () => serialport,
   emitConnectionChanged: () => emitConnectionChanged(),
-  serialVars,
 };
 
 // Initialise the protocol driver with the context
@@ -224,15 +221,7 @@ async function setupConnectedPort(port: SerialPort): Promise<void> {
   setConnectedToModule(true);
 
   // Start reading with message callbacks
-  startSerialReader(
-    port,
-    (msg: string) => {
-      // Text message callback - post to console
-      post("uSEQ: " + msg);
-    },
-    handleJsonMessage,
-    serialVars
-  );
+  startSerialReader(port, handleJsonMessage);
 
   // Spec §4.2: send hello immediately on port open, retry until handshake
   // completes or the attempt budget is exhausted.
