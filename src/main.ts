@@ -16,7 +16,12 @@ export type { BootstrapResult };
 
 // Main entry point
 if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', async () => {
+    const { isZenRoute, mountZenMode } = await import('./zen/index.tsx');
+    if (isZenRoute()) {
+      mountZenMode();
+      return;
+    }
     void bootstrap();
   });
 }
