@@ -11,8 +11,13 @@ const { evalInUseqWasmSilently } = vi.hoisted(() => ({
   evalInUseqWasmSilently: vi.fn(),
 }));
 
-vi.mock("../../runtime/wasmInterpreter.ts", () => ({
-  evalInUseqWasmSilently,
+// Probes now route silent evals through the active WASM runtime port so the
+// worker-mode flag works. Mock the port accessor and return a stub port whose
+// `evalCodeSilently` is the spy used throughout these tests.
+vi.mock("../../runtime/activeWasmRuntimePort.ts", () => ({
+  getActiveWasmRuntimePort: () => ({
+    evalCodeSilently: evalInUseqWasmSilently,
+  }),
 }));
 
 function createMockStorage(): Storage {

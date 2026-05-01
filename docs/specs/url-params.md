@@ -11,8 +11,7 @@
 - `?disableWebSerial=true` — force browser-local mode regardless of browser capability;
 - `?devmode=true` — unlock advanced settings sections;
 - `?nosave` — disable all localStorage writes (load still returns fallback);
-- `?noModuleMode=true` — internal escape hatch; treated as a debug flag, not a public promise;
-- `?wasmInWorker=true` — opt in to the worker-backed WASM port (dev-only, not the default).
+- `?noModuleMode=true` — internal escape hatch; treated as a debug flag, not a public promise.
 
 1.3 If both `?gist` and `?txt` are specified, **`?txt` wins**. `?gist` is ignored.
 

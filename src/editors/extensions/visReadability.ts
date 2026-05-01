@@ -1,7 +1,7 @@
 /**
  * visReadability — pre-blurred canvas readability layer for the CodeMirror editor.
  *
- * When the serialVis canvas overlays the editor, text can be hard to read
+ * When the visualisation canvas overlays the editor, text can be hard to read
  * against the animated background.  This ViewPlugin maintains a pre-blurred
  * copy of the vis canvas and masks it to staircase polygons behind the text:
  *
@@ -215,7 +215,7 @@ function computeVisibleLineBoundsViewport(view: EditorView, overscan: number): P
 // ---------------------------------------------------------------------------
 
 const EDITOR_RAISED_Z = '21';
-const VIS_CANVAS_ID = 'serialcanvas';
+const VIS_CANVAS_ID = 'serialcanvas-gl';
 
 function isVisPanelVisible(): boolean {
   return isVisualisationPanelVisible();

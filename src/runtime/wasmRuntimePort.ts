@@ -26,6 +26,7 @@
  */
 
 import type {
+  RuntimeDiagnostic,
   SampleSeriesMap,
   WasmRuntimeCapabilities,
   WasmRuntimePort,
@@ -161,4 +162,52 @@ export const wasmRuntimePort: WasmRuntimePort = {
   ): Promise<SampleSeriesMap> {
     return evalOutputsInTimeWindow(outputs, startTime, endTime, numSamples);
   },
+
+  async readLastDiagnostics(): Promise<RuntimeDiagnostic[]> {
+    return readLastDiagnosticsSync();
+  },
+
+  async readActiveDiagnostics(): Promise<RuntimeDiagnostic[]> {
+    return readActiveDiagnosticsSync();
+  },
 };
+
+// ---------------------------------------------------------------------------
+// Diagnostic readers (in-process)
+// ---------------------------------------------------------------------------
+//
+// These mirror the standalone helpers in `wasmInterpreter.ts` but live on the
+// port so the worker port can supply its own implementation. The active-diags
+// reader memoizes on the raw JSON string so per-frame polling is cheap when
+// nothing has changed.
+
+function readLastDiagnosticsSync(): RuntimeDiagnostic[] {
+  try {
+    const runtime = (globalThis as { __useqWasmRuntime?: { useq_last_diagnostics?: () => string } })
+      .__useqWasmRuntime;
+    if (!runtime?.useq_last_diagnostics) return [];
+    const json = runtime.useq_last_diagnostics();
+    return json ? (JSON.parse(json) as RuntimeDiagnostic[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+let _lastActiveDiagsJson = "";
+let _lastActiveDiagsResult: RuntimeDiagnostic[] = [];
+
+function readActiveDiagnosticsSync(): RuntimeDiagnostic[] {
+  try {
+    const runtime = (globalThis as { __useqWasmRuntime?: { useq_active_diagnostics?: () => string } })
+      .__useqWasmRuntime;
+    if (!runtime?.useq_active_diagnostics) return _lastActiveDiagsResult;
+    const json = runtime.useq_active_diagnostics();
+    if (!json) return _lastActiveDiagsResult;
+    if (json === _lastActiveDiagsJson) return _lastActiveDiagsResult;
+    _lastActiveDiagsJson = json;
+    _lastActiveDiagsResult = JSON.parse(json) as RuntimeDiagnostic[];
+    return _lastActiveDiagsResult;
+  } catch {
+    return _lastActiveDiagsResult;
+  }
+}

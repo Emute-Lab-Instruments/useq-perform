@@ -62,7 +62,7 @@ describe("application no-module startup", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    document.body.innerHTML = '<div id="panel-vis" style="display:block"></div><canvas id="serialcanvas"></canvas>';
+    document.body.innerHTML = '<div id="panel-vis" style="display:block"></div>';
   });
 
   it("boots the browser-local runtime without touching hardware reconnect flow", async () => {

@@ -1,15 +1,15 @@
 /**
- * Worker-backed `WasmRuntimePort` adapter.
+ * Worker-backed `WasmRuntimePort` adapter — the default port.
  *
- * Mirrors the surface of `wasmRuntimePort.ts` (the in-process port) but
- * routes every method through `postMessage()` to a dedicated Web Worker
- * that hosts the WASM interpreter. This keeps WASM eval, batch sampling,
- * and time updates off the main thread so the editor + UI keep their
- * frame budget.
+ * Mirrors the surface of `wasmRuntimePort.ts` (the in-process fallback)
+ * but routes every method through `postMessage()` to a dedicated Web
+ * Worker that hosts the WASM interpreter. This keeps WASM eval, batch
+ * sampling, and time updates off the main thread so the editor + UI keep
+ * their frame budget.
  *
- * Opt-in only — the bootstrap selects between the in-process port and
- * this worker port based on the `?wasmInWorker=true` URL flag. When the
- * flag is off this module is never instantiated.
+ * Bootstrap chooses this port whenever `Worker` is available
+ * (`bootstrap.ts`); the in-process port remains as a fallback for
+ * environments without Web Workers and as the surface tests mock against.
  *
  * Worker readiness contract (from `src/contracts/runtimePorts.ts`):
  *
@@ -18,18 +18,17 @@
  *   - A `Map<id, { resolve, reject }>` tracks in-flight requests.
  *   - `ensureLoaded()` is the bootstrap handshake (one-shot, idempotent).
  *
- * Known limitations behind the flag:
- *
- *   - Diagnostics readback (`useq_last_diagnostics`,
- *     `useq_active_diagnostics`) is not piped across the worker boundary
- *     in this iteration; the main-thread `__useqWasmRuntime` global is
- *     absent so those readers return empty arrays. Filed as a follow-up.
- *   - The probe sampler (`ProbeConfig.evalExpressionAtTimes`) still uses
- *     the in-process WASM directly. Migrating it is a separate bead.
+ * Diagnostics readback (`useq_last_diagnostics`, `useq_active_diagnostics`)
+ * is piped across the worker boundary via the `readLastDiagnostics` /
+ * `readActiveDiagnostics` request types — the worker reads
+ * `__useqWasmRuntime` in its own scope and returns the parsed diagnostic
+ * array. This keeps inline editor squiggles and per-frame output health
+ * working with the worker port.
  */
 
 import { dbg } from "../lib/debug.ts";
 import type {
+  RuntimeDiagnostic,
   SampleSeriesMap,
   WasmRuntimeCapabilities,
   WasmRuntimePort,
@@ -286,6 +285,30 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
         { type: "syncTransportState", state },
         "syncTransportState-result",
       );
+    },
+
+    async readLastDiagnostics(): Promise<RuntimeDiagnostic[]> {
+      if (!isUseqWasmEnabled()) return [];
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "readLastDiagnostics-result" }>
+      >(
+        { type: "readLastDiagnostics" },
+        "readLastDiagnostics-result",
+      );
+      return response.diagnostics;
+    },
+
+    async readActiveDiagnostics(): Promise<RuntimeDiagnostic[]> {
+      if (!isUseqWasmEnabled()) return [];
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "readActiveDiagnostics-result" }>
+      >(
+        { type: "readActiveDiagnostics" },
+        "readActiveDiagnostics-result",
+      );
+      return response.diagnostics;
     },
   };
 }

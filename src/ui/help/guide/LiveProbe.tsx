@@ -1,12 +1,7 @@
 import { Component, createSignal, createEffect, on, onMount, onCleanup, Show } from "solid-js";
 import { MiniVis } from "../lessons/MiniVis";
 import type { VisSignal } from "./guideTypes";
-import {
-  evalInUseqWasm,
-  evalOutputAtTime,
-  ensureUseqWasmLoaded,
-  wasmRuntimePort,
-} from "../../../runtime/wasmInterpreter";
+import { getActiveWasmRuntimePort } from "../../../runtime/activeWasmRuntimePort";
 
 const SAMPLE_COUNT = 200;
 const DEBOUNCE_MS = 300;
@@ -39,23 +34,17 @@ export const LiveProbe: Component<LiveProbeProps> = (props) => {
 
     // // console.debug("[LiveProbe] probe()", { code: code.slice(0, 60), outputs });
 
-    // Check WASM availability
-    const caps = wasmRuntimePort.capabilities();
-    // console.debug("[LiveProbe] capabilities:", caps);
+    const port = getActiveWasmRuntimePort();
+    const caps = port.capabilities();
     if (!caps.enabled) {
-      // console.debug("[LiveProbe] WASM not enabled, scheduling poll");
       setWasmReady(false);
       scheduleWasmPoll(code, outputs);
       return;
     }
 
-    // Try to ensure WASM is actually loaded (not just enabled in settings)
     try {
-      // console.debug("[LiveProbe] calling ensureUseqWasmLoaded...");
-      await ensureUseqWasmLoaded();
-      // console.debug("[LiveProbe] WASM loaded successfully");
+      await port.ensureLoaded();
     } catch {
-      // console.warn("[LiveProbe] ensureUseqWasmLoaded failed:", e);
       setWasmReady(false);
       scheduleWasmPoll(code, outputs);
       return;
@@ -65,12 +54,8 @@ export const LiveProbe: Component<LiveProbeProps> = (props) => {
     setWasmReady(true);
 
     try {
-      // Evaluate the code to register definitions
-      // console.debug("[LiveProbe] evaluating code...");
-      const evalResult = await evalInUseqWasm(code);
-      // console.debug("[LiveProbe] eval result:", evalResult);
+      await port.evalCode(code);
     } catch {
-      // console.warn("[LiveProbe] evalInUseqWasm failed:", e);
       setHasError(true);
       return;
     }
@@ -96,7 +81,7 @@ export const LiveProbe: Component<LiveProbeProps> = (props) => {
         const barsCount = props.bars ?? 1;
         const time = (i / (SAMPLE_COUNT - 1)) * barsCount;
         try {
-          const value = await evalOutputAtTime(outputName, time);
+          const value = await port.evalOutputAtTime(outputName, time);
           samples.push(Number.isFinite(value) ? value : 0);
         } catch {
           failed = true;

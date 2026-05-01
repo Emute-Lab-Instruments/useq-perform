@@ -21,9 +21,7 @@ import {
 } from "../../lib/persistence.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
 import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
-import {
-  evalInUseqWasmSilently,
-} from "../../runtime/wasmInterpreter.ts";
+import { getActiveWasmRuntimePort } from "../../runtime/activeWasmRuntimePort.ts";
 import { dbg } from "../../lib/debug.ts";
 import {
   buildProbeExpression,
@@ -86,7 +84,10 @@ export interface ProbeConfig {
 
 /** Create a ProbeConfig that delegates to the existing singletons. */
 export function createDefaultProbeConfig(): ProbeConfig {
-  const evalExpression = (code: string) => evalInUseqWasmSilently(code);
+  // Route through the active WASM runtime port so probes work in both
+  // in-process and worker modes. The port is selected during bootstrap.
+  const evalExpression = (code: string) =>
+    getActiveWasmRuntimePort().evalCodeSilently(code);
   return {
     evalExpression,
     evalExpressionAtTimes: (code, times) =>

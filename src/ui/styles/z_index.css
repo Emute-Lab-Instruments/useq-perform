@@ -19,7 +19,8 @@
 #panel-vis {
     z-index: 19;
 
-    & #serialcanvas {
+    & #serialcanvas-gl,
+    & #serialcanvas-gl-overlay {
         z-index: auto;
       }
 }

@@ -22,12 +22,7 @@ describe("visualisationPanel", () => {
     vi.clearAllMocks();
     document.body.innerHTML = `
       <div id="panel-vis" style="display:none" hidden></div>
-      <canvas id="serialcanvas"></canvas>
     `;
-    const canvas = document.getElementById("serialcanvas") as HTMLCanvasElement;
-    canvas.getContext = vi.fn(() => ({
-      clearRect: vi.fn(),
-    })) as typeof canvas.getContext;
   });
 
   it("starts the serial vis loop when the panel is shown", async () => {

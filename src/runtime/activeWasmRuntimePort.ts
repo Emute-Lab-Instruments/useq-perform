@@ -1,29 +1,22 @@
 /**
  * Active WASM runtime port selector.
  *
- * Single read-through accessor that returns either the in-process
- * `wasmRuntimePort` (default) or the worker-backed port (opt-in via the
- * `?wasmInWorker=true` URL flag, see `bootstrap.ts`).
+ * Single read-through accessor that returns the WASM runtime port
+ * selected by `bootstrap.ts`. The default is the worker-backed port; the
+ * in-process port remains available as a fallback for environments where
+ * Web Workers are unavailable (and as the surface tests mock against).
  *
  * Why this indirection exists:
  *
  *   - `bootstrap.ts` is the only place allowed to choose the active port,
  *     so the rest of the codebase asks `getActiveWasmRuntimePort()`
- *     instead of importing a concrete singleton. This keeps the worker
- *     path opt-in: when the flag is off the worker module is never
- *     loaded.
+ *     instead of importing a concrete singleton.
  *   - The runtime services (`runtimeTransportService`, `appLifecycle`)
  *     route through this accessor so the swap is centralised.
- *   - The hot-path samplers (`visualisationSampler`, `editorEvaluation`)
- *     also route through it; calling the port instead of the underlying
- *     interpreter functions is what actually moves the work off the main
- *     thread.
- *
- * Note: the diagnostics reads (`readLastDiagnostics`,
- * `readActiveDiagnostics`) still hit the legacy main-thread globals.
- * When the worker port is active those globals are absent and the
- * readers degrade to empty arrays — a known limitation behind the flag,
- * tracked as a follow-up bead.
+ *   - The hot-path samplers (`visualisationSampler`, `editorEvaluation`),
+ *     the probe sampler, and the diagnostics readers all route through
+ *     it; calling the port instead of underlying interpreter functions
+ *     is what actually moves the work off the main thread.
  */
 import type { WasmRuntimePort } from "../contracts/runtimePorts";
 import { wasmRuntimePort as inProcessPort } from "./wasmRuntimePort.ts";

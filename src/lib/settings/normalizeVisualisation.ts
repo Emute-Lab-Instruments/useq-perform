@@ -4,16 +4,9 @@
  * Validation and normalization for visualisation-related settings.
  */
 
-import type { VisualisationRenderer, VisualisationSettings } from "./schema.ts";
+import type { VisualisationSettings } from "./schema.ts";
 import { defaultUserSettings } from "./schema.ts";
 import { isRecord, coerceNumber } from "./normalizationHelpers.ts";
-
-function normalizeRenderer(
-  value: unknown,
-  fallback: VisualisationRenderer,
-): VisualisationRenderer {
-  return value === "webgl" || value === "canvas" ? value : fallback;
-}
 
 export function normalizeVisualisationSettings(
   value: unknown,
@@ -22,7 +15,6 @@ export function normalizeVisualisationSettings(
   const raw = isRecord(value) ? value : {};
 
   return {
-    renderer: normalizeRenderer(raw.renderer, defaults.renderer),
     windowDuration: coerceNumber(raw.windowDuration, defaults.windowDuration),
     sampleCount: coerceNumber(raw.sampleCount, defaults.sampleCount),
     lineWidth: coerceNumber(raw.lineWidth, defaults.lineWidth),
@@ -65,10 +57,6 @@ export function extractVisualisationPatch(
 ): Partial<VisualisationSettings> {
   const patch: Partial<VisualisationSettings> = {};
   const defaults = defaultUserSettings.visualisation;
-
-  if ("renderer" in visualisation) {
-    patch.renderer = normalizeRenderer(visualisation.renderer, defaults.renderer);
-  }
 
   if ("windowDuration" in visualisation) {
     patch.windowDuration = normalizeVisualisationSettings(

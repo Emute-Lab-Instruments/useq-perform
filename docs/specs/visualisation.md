@@ -186,8 +186,6 @@ Existing settings with unchanged semantics: `windowDuration`, `sampleCount`, `li
 
 ## Open / Deferred
 
-9.1 **Render parity for WebGL renderer.** WebGL2 painter ships behind a devmode setting. Default-on requires visual-fidelity parity, line-width handling on browsers that ignore WebGL `lineWidth>1`, and per-channel performance ≥ the canvas path.
-
 9.2 **Adaptive sample density.** Distant future samples matter less than near-future ones. A non-uniform sample distribution (denser near `t = now`, sparser at the edges) could reduce projection work for stateful outputs. Deferred until profiling shows the uniform approach is a bottleneck.
 
 9.3 **Hardware readback for past values.** In `both` mode, past values could come from hardware readback (actual voltages) rather than WASM ticks. This would require the serial protocol to stream output values at a sufficient rate. Deferred — WASM ticks are faithful enough for v1.

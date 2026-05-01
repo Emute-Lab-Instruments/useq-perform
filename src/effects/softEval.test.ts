@@ -21,6 +21,7 @@ vi.mock("@nextjournal/clojure-mode/extensions/eval-region", () => ({
 vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
   getActiveWasmRuntimePort: () => ({
     evalCode: mockEvalCode,
+    readLastDiagnostics: mockReadLastDiagnostics,
   }),
 }));
 

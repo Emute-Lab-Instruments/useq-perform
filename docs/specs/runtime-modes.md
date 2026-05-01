@@ -26,6 +26,4 @@
 
 1.11 The **shared transport command set** that fans out to both runtimes is exactly: `(useq-play)`, `(useq-pause)`, `(useq-stop)`, `(useq-rewind)`, `(useq-clear)`, `(useq-get-transport-state)`. Anything else is hardware-only or WASM-only and must not be silently sent to the wrong runtime.
 
-## Open / Deferred
-
-2.1 **Worker-default for WASM.** Worker-backed `WasmRuntimePort` is opt-in (`?wasmInWorker=true`). Making it default-on requires: probe sampler also routes through the port, diagnostics readback piped across the worker boundary, and batch sampling profiled at 15+ channels.
+1.12 **WASM eval runs in a Web Worker.** The default `WasmRuntimePort` is the worker-backed port — eval, batch sampling, time advance, probe evaluation, and diagnostics readback all cross the worker boundary via `postMessage`. The in-process port remains as a fallback when `Worker` is unavailable and as the implementation tests mock against. Renderer (WebGL) and editor still run on the main thread.

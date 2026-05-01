@@ -31,12 +31,8 @@
     <!-- Main editor panel -->
     <div id="panel-main-editor"></div>
 
-    <!-- Visualization panel with canvases -->
-    <div id="panel-vis">
-      <canvas id="serialcanvas" style="width: 100%; height: 100%"></canvas>
-      <!-- <canvas id="canvas-plot" width="1000" height="800"></canvas>
-    <canvas id="canvas-timeline" width="1000" height="800"></canvas> -->
-    </div>
+    <!-- Visualization panel — canvases are created lazily by the WebGL renderer -->
+    <div id="panel-vis"></div>
 
     <!-- Main JavaScript module (Vite-built single bundle) -->
     <script type="module" src="solid-dist/bundle.js"></script>

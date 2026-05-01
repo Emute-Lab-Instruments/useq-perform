@@ -11,7 +11,7 @@ var defaultEnvironmentState =
 };
 
 // Create a DOM instance for testing
-const dom = new JSDOM('<!DOCTYPE html><html><head></head><body><canvas id="serialcanvas" width="800" height="400"></canvas></body></html>', {
+const dom = new JSDOM('<!DOCTYPE html><html><head></head><body><div id="panel-vis"></div></body></html>', {
   pretendToBeVisual: true,
   resources: "usable"
 });

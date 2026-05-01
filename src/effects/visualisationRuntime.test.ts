@@ -21,7 +21,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../runtime/wasmInterpreter.ts", () => ({
+// The legacy `wasmInterpreter` mock holds the canonical spy instances —
+// existing tests grab spies from here. The active-port mock below
+// delegates to these so production code (which now goes through the
+// port) and the tests (which assert on the legacy spies) hit the same
+// vi.fn instances.
+const wasmInterpreterMocks = vi.hoisted(() => ({
   evalInUseqWasm: vi.fn().mockResolvedValue("0.5"),
   updateUseqWasmTime: vi.fn().mockResolvedValue(undefined),
   evalOutputAtTime: vi.fn().mockResolvedValue(0.5),
@@ -40,6 +45,28 @@ vi.mock("../runtime/wasmInterpreter.ts", () => ({
     },
   ),
   readActiveDiagnostics: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock("../runtime/wasmInterpreter.ts", () => wasmInterpreterMocks);
+
+vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
+  getActiveWasmRuntimePort: () => ({
+    capabilities: () => ({
+      enabled: true,
+      supportsEval: true,
+      supportsTimeWindow: true,
+    }),
+    ensureLoaded: vi.fn().mockResolvedValue(undefined),
+    evalCode: wasmInterpreterMocks.evalInUseqWasm,
+    evalCodeSilently: wasmInterpreterMocks.evalInUseqWasm,
+    updateTime: wasmInterpreterMocks.updateUseqWasmTime,
+    evalOutputAtTime: wasmInterpreterMocks.evalOutputAtTime,
+    evalOutputsInTimeWindow: wasmInterpreterMocks.evalOutputsInTimeWindow,
+    readActiveDiagnostics: vi.fn().mockResolvedValue([]),
+    readLastDiagnostics: vi.fn().mockResolvedValue([]),
+  }),
+  setActiveWasmRuntimePort: vi.fn(),
+  isUsingInProcessWasmRuntime: () => true,
 }));
 
 vi.mock("../runtime/appSettingsRepository.ts", () => ({
@@ -81,12 +108,6 @@ vi.mock("../contracts/visualisationChannels", () => ({
   serialVisPaletteChangedChannel: { subscribe: vi.fn() },
   visualisationSessionChannel: { publish: vi.fn(), subscribe: vi.fn() },
   serialVisAutoOpenChannel: { publish: vi.fn(), subscribe: vi.fn() },
-}));
-
-vi.mock("../ui/visualisation/serialVis.ts", () => ({
-  drawSerialVis: vi.fn(),
-  ensureCanvasGeometry: vi.fn(),
-  isVisPanelVisible: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock("../utils/outputHealthStore.ts", () => ({

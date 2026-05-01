@@ -16,7 +16,7 @@ import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
 import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepository.ts';
 import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
-import { createGamepadIntentEmitter } from '../lib/gamepadIntents.ts';
+import { createGamepadPipeline } from '../lib/gamepad/index.ts';
 import { bindGamepadNavigation } from '../editors/gamepadNavigation.ts';
 import { bindGamepadMenuBridge } from '../ui/adapters/gamepadMenuBridge.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
@@ -31,7 +31,6 @@ import {
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
 import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
-import { wasmRuntimePort } from './wasmRuntimePort.ts';
 import {
   getActiveWasmRuntimePort,
   setActiveWasmRuntimePort,
@@ -162,11 +161,11 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     reportBootstrapFailure("ui-adapter-mount", error);
   }
 
-  // Wire up intent-based gamepad system: emitter → channels → subscribers
-  const gamepadEmitter = createGamepadIntentEmitter();
+  // Wire up three-stage gamepad pipeline + legacy channel subscribers
+  const gamepadPipeline = createGamepadPipeline({ editor });
   const navHandle = bindGamepadNavigation(editor);
   const menuHandle = bindGamepadMenuBridge({ view: editor });
-  gamepadEmitter.start();
+  gamepadPipeline.start();
 
   return {
     mainEditor: editor,
@@ -204,25 +203,16 @@ export async function bootstrap(): Promise<BootstrapResult> {
   // ── Step 1b: preload help content (fire-and-forget) ────────────
   preloadHelpContent();
 
-  // ── Step 1c: select the WASM runtime port (default: in-process). ──
-  // Behind the experimental `?wasmInWorker=true` flag, swap in the
-  // worker-backed port so eval runs off the main thread. The flag is
-  // opt-in only — the worker module is dynamically imported below so
-  // bundlers can split it into a separate chunk and the default path
-  // never loads it.
-  const useWasmWorker =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("wasmInWorker") === "true";
-
-  if (useWasmWorker) {
+  // ── Step 1c: select the WASM runtime port. ──
+  // Default: worker-backed port — WASM eval runs off the main thread.
+  // The in-process port is the fallback when Web Workers are unavailable
+  // or fail to construct (rare in practice, but keep the recovery path).
+  if (typeof window !== "undefined" && typeof Worker !== "undefined") {
     try {
       const { createWasmRuntimeWorkerPort } = await import(
         "./wasmRuntimeWorkerPort.ts"
       );
       setActiveWasmRuntimePort(createWasmRuntimeWorkerPort());
-      console.info(
-        "[bootstrap] wasmInWorker=true — WASM eval running in dedicated Web Worker (experimental)",
-      );
     } catch (error) {
       reportBootstrapFailure("wasm-worker-port", error);
       console.warn(
@@ -237,9 +227,6 @@ export async function bootstrap(): Promise<BootstrapResult> {
   const wasmPreload = getActiveWasmRuntimePort()
     .ensureLoaded()
     .catch(() => {});
-  // Reference the legacy import so existing wiring still works
-  // (e.g. `runtimeTransportService` reads from the in-process port).
-  void wasmRuntimePort;
 
 
   // ── Step 2: detect environment ─────────────────────────────────

@@ -16,11 +16,12 @@
  *     it is currently main-thread-shaped. Mirroring the WASM-binding
  *     surface keeps the worker file self-contained.
  *   - Diagnostics readback (`useq_last_diagnostics`,
- *     `useq_active_diagnostics`) is intentionally left to the main-side
- *     legacy path. When the worker port is enabled, the main-thread
- *     `__useqWasmRuntime` global is absent and diagnostics simply return
- *     empty arrays — a known degradation behind the experimental opt-in
- *     flag (filed as a follow-up bead).
+ *     `useq_active_diagnostics`) is piped across the worker boundary
+ *     via the `readLastDiagnostics` / `readActiveDiagnostics` request
+ *     types. The reads run inside the worker against the
+ *     worker-local `__useqWasmRuntime` global so the editor's inline
+ *     diagnostics and per-frame output health both keep working when
+ *     the worker port is active.
  *   - Bytewise this duplicates ~50 lines of interpreter binding logic.
  *     Keeping the duplication local lets us iterate on the worker
  *     contract without touching the in-process port.
@@ -35,7 +36,7 @@ import {
   type CwrapDescriptor,
 } from "../../contracts/wasmAbi";
 import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract";
-import type { TimeSample } from "../../contracts/runtimePorts";
+import type { RuntimeDiagnostic, TimeSample } from "../../contracts/runtimePorts";
 import type {
   WasmWorkerRequest,
   WasmWorkerResponse,
@@ -294,6 +295,53 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
   };
 }
 
+// ─── Diagnostic readers (worker-local) ─────────────────────────────────────
+//
+// Mirror of the main-thread readers in `runtime/wasmRuntimePort.ts`. The
+// Emscripten bundle running inside the worker exposes the diagnostic
+// exports on the `__useqWasmRuntime` global; reading from the worker
+// scope is what keeps inline editor diagnostics and per-frame output
+// health alive when the worker port is the active port.
+
+interface UseqRuntimeGlobal {
+  useq_last_diagnostics?: () => string;
+  useq_active_diagnostics?: () => string;
+}
+
+function getUseqRuntimeGlobal(): UseqRuntimeGlobal | undefined {
+  return (globalThis as { __useqWasmRuntime?: UseqRuntimeGlobal })
+    .__useqWasmRuntime;
+}
+
+function readLastDiagnosticsLocal(): RuntimeDiagnostic[] {
+  try {
+    const runtime = getUseqRuntimeGlobal();
+    if (!runtime?.useq_last_diagnostics) return [];
+    const json = runtime.useq_last_diagnostics();
+    return json ? (JSON.parse(json) as RuntimeDiagnostic[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+let _lastActiveDiagsJson = "";
+let _lastActiveDiagsResult: RuntimeDiagnostic[] = [];
+
+function readActiveDiagnosticsLocal(): RuntimeDiagnostic[] {
+  try {
+    const runtime = getUseqRuntimeGlobal();
+    if (!runtime?.useq_active_diagnostics) return _lastActiveDiagsResult;
+    const json = runtime.useq_active_diagnostics();
+    if (!json) return _lastActiveDiagsResult;
+    if (json === _lastActiveDiagsJson) return _lastActiveDiagsResult;
+    _lastActiveDiagsJson = json;
+    _lastActiveDiagsResult = JSON.parse(json) as RuntimeDiagnostic[];
+    return _lastActiveDiagsResult;
+  } catch {
+    return _lastActiveDiagsResult;
+  }
+}
+
 // ─── Capability snapshot ───────────────────────────────────────────────────
 
 function snapshotCapabilities(): WorkerCapabilitySnapshot {
@@ -389,6 +437,22 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           interpreter.evaluate(request.command);
         }
         postResponse({ type: "sendTransportCommand-result", id });
+        return;
+      }
+      case "readLastDiagnostics": {
+        postResponse({
+          type: "readLastDiagnostics-result",
+          id,
+          diagnostics: readLastDiagnosticsLocal(),
+        });
+        return;
+      }
+      case "readActiveDiagnostics": {
+        postResponse({
+          type: "readActiveDiagnostics-result",
+          id,
+          diagnostics: readActiveDiagnosticsLocal(),
+        });
         return;
       }
       default: {

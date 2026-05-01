@@ -31,7 +31,7 @@ import {
   refreshBarValue,
   syncInterpreterTime,
 } from "./visualisationSampler.ts";
-import { readActiveDiagnostics } from "../runtime/wasmInterpreter.ts";
+import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 import { refreshOutputHealth } from "../utils/outputHealthStore.ts";
 
 /**
@@ -73,6 +73,14 @@ let localElapsedSeconds = 0;
 
 let pendingSampleTime: number | null = null;
 let samplingInFlight = false;
+
+// ── Diagnostic poll coalescing ──────────────────────────────────────
+//
+// Diagnostics are read via the active WASM runtime port, which is
+// async (the worker port crosses postMessage). Keep at most one
+// in-flight read at a time and skip starting another while one is
+// pending — a stale frame is fine; we re-poll on the next interval.
+let diagPollInFlight = false;
 
 // ── Render gating ───────────────────────────────────────────────────
 
@@ -181,9 +189,23 @@ function tick(): void {
     requestSampleAt(localElapsedSeconds);
   }
 
-  if (frameCount % DIAG_POLL_INTERVAL === 0) {
-    const activeDiags = readActiveDiagnostics();
-    refreshOutputHealth(activeDiags);
+  if (frameCount % DIAG_POLL_INTERVAL === 0 && !diagPollInFlight) {
+    diagPollInFlight = true;
+    // Fire-and-forget: don't block the rAF tick on the port read. The
+    // worker port crosses postMessage, so the result lands a frame or
+    // two later — that's acceptable for output health UI which polls
+    // every 6 frames anyway.
+    getActiveWasmRuntimePort()
+      .readActiveDiagnostics()
+      .then((activeDiags) => {
+        refreshOutputHealth(activeDiags);
+      })
+      .catch((error: unknown) => {
+        dbg(`visualisationRuntime: failed to read active diagnostics: ${error}`);
+      })
+      .finally(() => {
+        diagPollInFlight = false;
+      });
   }
 
   void drainSamplingQueue();
@@ -287,6 +309,7 @@ export function _resetForTests(): void {
   localElapsedSeconds = 0;
   pendingSampleTime = null;
   samplingInFlight = false;
+  diagPollInFlight = false;
   renderRequested = false;
   frameCount = 0;
   lastTickMs = 0;

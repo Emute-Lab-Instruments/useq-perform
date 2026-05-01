@@ -46,20 +46,7 @@ export interface UISettings {
   indentGuideYPadding: number;
 }
 
-/**
- * Renderer backend for the main visualisation panel.
- *
- * - "canvas" — Canvas 2D path tracer (`src/ui/visualisation/serialVis.ts`).
- *   Default; visually polished and stable.
- * - "webgl"  — Experimental WebGL2 renderer (`serialVisGL.ts`).  Targets
- *   the 10–20 channel ceiling that the 2D path can't reach.  Behind the
- *   advanced settings tier (devmode-only) until parity is validated.
- */
-export type VisualisationRenderer = "canvas" | "webgl";
-
 export interface VisualisationSettings {
-  /** Renderer backend for the main visualisation panel. */
-  renderer: VisualisationRenderer;
   windowDuration: number;
   sampleCount: number;
   lineWidth: number;
@@ -232,7 +219,6 @@ export interface AppDevModeState {
 }
 
 const DEFAULT_VISUALISATION: VisualisationSettings = {
-  renderer: "canvas",
   windowDuration: 10,
   sampleCount: 100,
   lineWidth: 1.5,

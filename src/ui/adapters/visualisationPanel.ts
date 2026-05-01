@@ -9,40 +9,22 @@ import {
   requestVisualisationRender,
 } from "../../effects/visualisationRuntime";
 import {
-  drawSerialVis,
-  ensureCanvasGeometry,
-  isVisPanelVisible,
-} from "../visualisation/serialVis";
-import {
   drawSerialVisGL,
   ensureGLCanvasGeometry,
   activateGLCanvas,
-  deactivateGLCanvas,
+  isVisPanelVisible,
 } from "../visualisation/serialVisGL";
-import { settings as settingsStore } from "../../utils/settingsStore";
-
-function activeRenderer(): "canvas" | "webgl" {
-  const r = settingsStore?.visualisation?.renderer;
-  return r === "webgl" ? "webgl" : "canvas";
-}
 
 registerVisualisationRenderHook({
   paint: () => {
-    if (activeRenderer() === "webgl") {
-      activateGLCanvas();
-      ensureGLCanvasGeometry();
-      drawSerialVisGL();
-      return;
-    }
-    deactivateGLCanvas();
-    ensureCanvasGeometry();
-    drawSerialVis();
+    activateGLCanvas();
+    ensureGLCanvasGeometry();
+    drawSerialVisGL();
   },
   isVisible: () => isVisPanelVisible(),
 });
 
 const PANEL_ID = "panel-vis";
-const CANVAS_ID = "serialcanvas";
 
 let registeredPanel: HTMLElement | null = null;
 
@@ -61,19 +43,6 @@ export function getVisualisationPanel(): HTMLElement | null {
 
   registeredPanel = document.getElementById(PANEL_ID);
   return registeredPanel;
-}
-
-function getVisualisationCanvas(panel: HTMLElement | null): HTMLCanvasElement | null {
-  if (!panel || typeof document === "undefined") {
-    return null;
-  }
-
-  const canvas = panel.querySelector<HTMLCanvasElement>(`#${CANVAS_ID}`);
-  if (canvas) {
-    return canvas;
-  }
-
-  return document.getElementById(CANVAS_ID) as HTMLCanvasElement | null;
 }
 
 export function isVisualisationPanelVisible(
@@ -106,57 +75,11 @@ export function getVisualisationPanelStyles(makeVisible: boolean): JSX.CSSProper
   };
 }
 
-function getCanvasDimensions(): { width: number; height: number } {
-  if (typeof window === "undefined") {
-    return { width: 0, height: 0 };
-  }
-
-  return {
-    width: window.innerWidth,
-    height: window.innerHeight,
-  };
-}
-
-function getCanvasStyles(): JSX.CSSProperties {
-  return {
-    display: "block",
-    width: "100%",
-    height: "100%",
-    "background-color": "transparent",
-    position: "absolute",
-    top: "0",
-    left: "0",
-    // Promote to own GPU compositing layer so repaints don't
-    // trigger full-viewport recomposite through the opacity layer.
-    "will-change": "contents",
-  };
-}
-
-function applyVisibleVisualisationPanelState(
-  panel: HTMLElement,
-  canvas: HTMLCanvasElement | null
-): void {
+function applyVisibleVisualisationPanelState(panel: HTMLElement): void {
   Object.assign(panel.style, getVisualisationPanelStyles(true));
   panel.hidden = false;
-
-  if (!canvas) {
-    return;
-  }
-
-  const dimensions = getCanvasDimensions();
-  canvas.setAttribute("width", String(dimensions.width));
-  canvas.setAttribute("height", String(dimensions.height));
-  Object.assign(canvas.style, getCanvasStyles());
-  canvas.style.zIndex = "1000";
-
-  if (!canvas.parentElement) {
-    panel.appendChild(canvas);
-  }
-
-  // Don't eagerly acquire a 2D context here — the renderer hook handles
-  // context acquisition per-frame.  Calling getContext("2d") would lock
-  // the canvas to that surface, preventing WebGL2 from ever being used.
-  // The initial clear is unnecessary since the first paint handles it.
+  // Canvas creation + sizing is handled lazily by the GL renderer on
+  // first paint (see serialVisGL.getCanvas / ensureGLCanvasGeometry).
 }
 
 export function showVisualisationPanel(options?: { emitAutoOpenEvent?: boolean }): boolean {
@@ -167,7 +90,7 @@ export function showVisualisationPanel(options?: { emitAutoOpenEvent?: boolean }
 
   const wasVisible = isVisualisationPanelVisible(panel);
   if (!wasVisible) {
-    applyVisibleVisualisationPanelState(panel, getVisualisationCanvas(panel));
+    applyVisibleVisualisationPanelState(panel);
     requestVisualisationRender();
     if (options?.emitAutoOpenEvent) {
       serialVisAutoOpenChannel.publish(undefined);

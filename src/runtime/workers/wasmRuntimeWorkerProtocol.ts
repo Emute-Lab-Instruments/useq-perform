@@ -20,7 +20,7 @@
  */
 import type { TransportState } from "../../machines/transport.machine";
 import type { SharedTransportCommand } from "../../contracts/useqRuntimeContract";
-import type { TimeSample } from "../../contracts/runtimePorts";
+import type { RuntimeDiagnostic, TimeSample } from "../../contracts/runtimePorts";
 
 // ─── Request payloads ──────────────────────────────────────────────────────
 
@@ -76,6 +76,16 @@ export interface SendTransportCommandRequest {
   command: SharedTransportCommand;
 }
 
+export interface ReadLastDiagnosticsRequest {
+  type: "readLastDiagnostics";
+  id: number;
+}
+
+export interface ReadActiveDiagnosticsRequest {
+  type: "readActiveDiagnostics";
+  id: number;
+}
+
 export type WasmWorkerRequest =
   | LoadRequest
   | EvalCodeRequest
@@ -83,7 +93,9 @@ export type WasmWorkerRequest =
   | EvalOutputAtTimeRequest
   | EvalOutputsInTimeWindowRequest
   | SyncTransportStateRequest
-  | SendTransportCommandRequest;
+  | SendTransportCommandRequest
+  | ReadLastDiagnosticsRequest
+  | ReadActiveDiagnosticsRequest;
 
 // ─── Response payloads ─────────────────────────────────────────────────────
 
@@ -142,6 +154,18 @@ export interface SendTransportCommandResponse {
   id: number;
 }
 
+export interface ReadLastDiagnosticsResponse {
+  type: "readLastDiagnostics-result";
+  id: number;
+  diagnostics: RuntimeDiagnostic[];
+}
+
+export interface ReadActiveDiagnosticsResponse {
+  type: "readActiveDiagnostics-result";
+  id: number;
+  diagnostics: RuntimeDiagnostic[];
+}
+
 export interface ErrorResponse {
   type: "error";
   id: number;
@@ -156,4 +180,6 @@ export type WasmWorkerResponse =
   | EvalOutputsInTimeWindowResponse
   | SyncTransportStateResponse
   | SendTransportCommandResponse
+  | ReadLastDiagnosticsResponse
+  | ReadActiveDiagnosticsResponse
   | ErrorResponse;

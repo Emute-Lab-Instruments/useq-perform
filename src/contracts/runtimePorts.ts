@@ -228,6 +228,26 @@ export interface WasmRuntimePort extends SharedRuntimePort {
     endTime: number,
     numSamples: number
   ): Promise<SampleSeriesMap>;
+
+  /**
+   * Read structured diagnostics from the most recent evaluation.
+   *
+   * Used by editor evaluation to drive inline error squiggles after each
+   * eval. Resolves to an empty array if the runtime is not loaded, the
+   * diagnostic export is unavailable, or parsing fails.
+   */
+  readLastDiagnostics(): Promise<RuntimeDiagnostic[]>;
+
+  /**
+   * Read currently-active diagnostics across all live outputs.
+   *
+   * Polled per-frame (with backoff) from the visualisation runtime to
+   * drive output health UI. Implementations should memoize on the raw
+   * JSON string so repeated reads of the same state are cheap. Resolves
+   * to an empty array if the runtime is not loaded, the diagnostic
+   * export is unavailable, or parsing fails.
+   */
+  readActiveDiagnostics(): Promise<RuntimeDiagnostic[]>;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,49 +1,67 @@
 /**
  * Serial visualisation WebGL renderer — faithful-past / projected-future.
  *
- * Alternative to `serialVis.ts` (Canvas 2D).  Reads per-output data
- * from `getRenderData()` (past + future PastBuffers) and renders
- * via WebGL2.  Public surface mirrors `serialVis.ts` so adapters can
- * swap by changing imports:
+ * Reads per-output data from `getRenderData()` (past + future PastBuffers)
+ * and renders via WebGL2.
  *
  *   - drawSerialVisGL()         — paint one frame via WebGL2
  *   - ensureGLCanvasGeometry()  — sync canvas buffer to its CSS size
- *   - isVisPanelVisible()       — visibility check (re-exported from serialVis)
+ *   - isVisPanelVisible()       — visibility check
  *
  * Design notes:
  *   - One rendering context per canvas; the canvas is locked to WebGL2 once
- *     `drawSerialVisGL()` runs (matching how `serialVis.ts` locks to "2d").
+ *     `drawSerialVisGL()` runs.
  *   - Two rendering paths:
  *       thin (lineWidth ≤ 1) — GL LINE_STRIP, vertex shader maps
  *         (time, value) to clip space.  Fast but fixed 1px width.
  *       thick (lineWidth > 1) — CPU-extruded triangle strip with
  *         bevel joins.  Geometry is pre-computed in clip space so the
- *         vertex shader is a pass-through.  Matches the Canvas 2D
- *         renderer's line width setting.
+ *         vertex shader is a pass-through.
  *   - Both share the same fragment shader (past/future alpha split
  *     via uClipFutureStart).
  *   - Past/future fade is a fragment-shader uniform: `uCurrentTimeNorm`
  *     (the normalized X for current time) splits past from future.
- *   - The 2D path's axis lines, value labels, and "no expressions"
- *     fallback text are kept on a 2D overlay canvas (created lazily and
- *     stacked under the GL canvas).  Drawing crisp text in WebGL is
- *     out of scope — and the overlay is allocated once, paints rarely
- *     (only on geometry/state changes), and costs nothing in the steady
- *     state.
+ *   - Axis lines, value labels, and "no expressions" fallback text are
+ *     kept on a 2D overlay canvas (created lazily and stacked under the
+ *     GL canvas).  Drawing crisp text in WebGL is out of scope — and the
+ *     overlay is allocated once, paints rarely (only on geometry/state
+ *     changes), and costs nothing in the steady state.
  */
 
 import { perf } from "../../lib/perfTrace.ts";
 import type { VisExpression } from "../../utils/visualisationStore.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
 import { getRenderData } from "../../effects/visualisationSampler.ts";
-import { isVisPanelVisible } from "./serialVis.ts";
-
-export { isVisPanelVisible };
 
 const PANEL_ID = "panel-vis";
-const CANVAS_2D_ID = "serialcanvas";
 const GL_CANVAS_ID = "serialcanvas-gl";
 const OVERLAY_ID = "serialcanvas-gl-overlay";
+
+// ── Panel visibility (cached) ───────────────────────────────────────
+
+let _panelVisibleCache = false;
+let _panelVisibleCacheTime = 0;
+const PANEL_VISIBLE_CACHE_MS = 200;
+
+export function isVisPanelVisible(): boolean {
+  const now = performance.now();
+  if (now - _panelVisibleCacheTime < PANEL_VISIBLE_CACHE_MS) {
+    return _panelVisibleCache;
+  }
+  const panel = getPanel();
+  if (!panel || typeof window === "undefined") {
+    _panelVisibleCache = false;
+    _panelVisibleCacheTime = now;
+    return false;
+  }
+  const style = window.getComputedStyle(panel);
+  _panelVisibleCache =
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    !panel.hidden;
+  _panelVisibleCacheTime = now;
+  return _panelVisibleCache;
+}
 
 const DIGITAL_CHANNELS = ["d1", "d2", "d3"] as const;
 const AXIS_COLOR = "rgba(255, 255, 255, 0.12)";
@@ -75,12 +93,7 @@ function getAccentColor(): string {
 let glCanvas: HTMLCanvasElement | null = null;
 
 /**
- * Get (or lazily create) a dedicated WebGL canvas.
- *
- * The 2D canvas (`#serialcanvas`) is locked to a CanvasRenderingContext2D
- * the first time `drawSerialVis()` runs, so `getContext("webgl2")` would
- * return null on it. We create a sibling canvas that is only ever used
- * for WebGL.
+ * Get (or lazily create) a dedicated WebGL canvas inside the panel.
  */
 function getCanvas(): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
@@ -118,25 +131,12 @@ function getPanel(): HTMLElement | null {
 }
 
 /**
- * Show/hide the WebGL and 2D canvases based on the active renderer.
- * Called each frame so the switch is seamless.
+ * Ensure the GL canvas is visible.  Called each frame from the render hook.
  */
 export function activateGLCanvas(): void {
   const gl = glCanvas;
   if (!gl) return;
   if (gl.style.display === "none") gl.style.display = "block";
-  const c2d = typeof document !== "undefined"
-    ? document.getElementById(CANVAS_2D_ID) as HTMLCanvasElement | null
-    : null;
-  if (c2d && c2d.style.display !== "none") c2d.style.display = "none";
-}
-
-export function deactivateGLCanvas(): void {
-  if (glCanvas && glCanvas.style.display !== "none") glCanvas.style.display = "none";
-  const c2d = typeof document !== "undefined"
-    ? document.getElementById(CANVAS_2D_ID) as HTMLCanvasElement | null
-    : null;
-  if (c2d && c2d.style.display === "none") c2d.style.display = "block";
 }
 
 /**

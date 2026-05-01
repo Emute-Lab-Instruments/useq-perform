@@ -13,15 +13,12 @@ import { top_level_string } from "@nextjournal/clojure-mode/extensions/eval-regi
 
 import { sendTouSEQ } from "../transport/json-protocol.ts";
 import { post } from "../utils/consoleStore.ts";
-import { readLastDiagnostics } from "../runtime/wasmInterpreter.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 
-// Editor eval routes through the active WASM runtime port so the
-// `?wasmInWorker=true` opt-in actually moves user-driven evals off the
-// main thread. Diagnostics readback (`readLastDiagnostics`) still hits
-// the legacy main-thread global; with the worker port active that
-// global is absent and diagnostics simply degrade to empty arrays —
-// known limitation behind the experimental flag.
+// Editor eval and diagnostics readback both route through the active
+// WASM runtime port so the `?wasmInWorker=true` opt-in actually moves
+// user-driven evals off the main thread AND keeps inline error
+// squiggles working from the worker-side diagnostics.
 const evalInUseqWasm = (code: string): Promise<string | null> =>
   getActiveWasmRuntimePort().evalCode(code);
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
@@ -146,12 +143,12 @@ function evalWasm(
   const rangeTo = opts.range?.to ?? (opts.view?.state.doc.length ?? 0);
 
   return evalInUseqWasm(wasmCode)
-    .then((result: unknown) => {
+    .then(async (result: unknown) => {
+      // Read diagnostics after the eval has resolved so the worker (or
+      // in-process) state reflects this evaluation's outcome.
+      const diagnostics = await getActiveWasmRuntimePort().readLastDiagnostics();
       const output = typeof result === "string" ? result : String(result ?? "");
       const trimmed = output.trim();
-
-      // Read diagnostics once
-      const diagnostics = readLastDiagnostics();
 
       if (opts.view) {
         if (diagnostics.length > 0) {
