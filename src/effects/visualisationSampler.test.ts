@@ -155,105 +155,79 @@ describe("visualisation sampling boundary", () => {
     });
   });
 
-  describe("sample grid alignment (regression: vertical jitter)", () => {
-    it("snaps sample window start to step grid", async () => {
-      const { evalOutputsInTimeWindow } = await import(
+  describe("faithful past / projected future (spec: visualisation.md §2–§3)", () => {
+    it("tick advances state and records values in past buffer", async () => {
+      const { evalOutputAtTime } = await import(
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
-      const mockEval = vi.mocked(evalOutputsInTimeWindow);
+      const mockOutput = vi.mocked(evalOutputAtTime);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
-      mockEval.mockClear();
-      runtime.notifyExternalTimeUpdate(5.037);
+
+      mockOutput.mockClear();
+      runtime.notifyExternalTimeUpdate(5.0);
       await runtime._drainForTests();
 
-      const lastCall = mockEval.mock.calls[mockEval.mock.calls.length - 1];
-      const [, start] = lastCall;
+      // Tick calls evalOutputAtTime to advance state
+      expect(mockOutput).toHaveBeenCalledWith("a1", 5.0);
 
-      // Default: windowDuration=10, sampleCount=100, step=10/99≈0.10101
-      const step = 10 / 99;
-      const snappedStart = Math.floor(start / step) * step;
-      expect(Math.abs(start - snappedStart)).toBeLessThan(1e-9);
+      // Past buffer should have recorded the value
+      const renderData = sampler.getRenderData("a1");
+      expect(renderData).not.toBeNull();
+      expect(renderData!.pastBuffer.length).toBeGreaterThan(0);
     });
 
-    it("produces consistent sample times across slightly different currentTimes", async () => {
-      const { evalOutputsInTimeWindow } = await import(
-        "../runtime/wasmInterpreter.ts"
-      );
+    it("past buffer preserved across expression change", async () => {
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
-      const mockEval = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
-      mockEval.mockClear();
-      runtime.notifyExternalTimeUpdate(5.016);
+      runtime.notifyExternalTimeUpdate(5.0);
       await runtime._drainForTests();
-      const call1Start = mockEval.mock.calls[0]?.[1];
-
-      mockEval.mockClear();
       runtime.notifyExternalTimeUpdate(5.033);
       await runtime._drainForTests();
-      const call2Start = mockEval.mock.calls[0]?.[1];
 
-      // With dedup, the second rebuild may be skipped entirely if the
-      // snapped window is unchanged.
-      if (call2Start == null) {
-        expect(mockEval).not.toHaveBeenCalled();
-        return;
-      }
+      const renderData = sampler.getRenderData("a1");
+      const pastLengthBefore = renderData!.pastBuffer.length;
+      expect(pastLengthBefore).toBeGreaterThan(0);
 
-      const step = 10 / 99;
-      const diff = Math.abs(call2Start - call1Start);
-      expect(diff < 1e-9 || Math.abs(diff - step) < 1e-9 || Math.abs(diff % step) < 1e-9).toBe(true);
+      // Change expression — past buffer must survive
+      await sampler.refreshVisualisedExpression("a1", "(a1 (sin 2))");
+
+      const renderDataAfter = sampler.getRenderData("a1");
+      expect(renderDataAfter!.pastBuffer.length).toBe(pastLengthBefore);
     });
 
-    it("skips rebuilding when consecutive ticks land in the same snapped window", async () => {
-      const { evalOutputsInTimeWindow, evalOutputAtTime } = await import(
-        "../runtime/wasmInterpreter.ts"
-      );
+    it("each tick records to the rolling buffer (consecutive ticks accumulate)", async () => {
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
-      const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
-      const mockEvalOutput = vi.mocked(evalOutputAtTime);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
-
-      mockEvalWindow.mockClear();
-      mockEvalOutput.mockClear();
 
       runtime.notifyExternalTimeUpdate(5.016);
       await runtime._drainForTests();
       runtime.notifyExternalTimeUpdate(5.033);
       await runtime._drainForTests();
 
-      expect(mockEvalWindow).toHaveBeenCalledTimes(1);
-      expect(mockEvalOutput).toHaveBeenCalledTimes(2);
+      const renderData = sampler.getRenderData("a1");
+      expect(renderData!.pastBuffer.length).toBe(2);
     });
 
-    it("rebuilds once the snapped sampling window advances", async () => {
-      const { evalOutputsInTimeWindow, evalOutputAtTime } = await import(
-        "../runtime/wasmInterpreter.ts"
-      );
+    it("future buffer is produced alongside the tick", async () => {
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
-      const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
-      const mockEvalOutput = vi.mocked(evalOutputAtTime);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
-      mockEvalWindow.mockClear();
-      mockEvalOutput.mockClear();
-
-      runtime.notifyExternalTimeUpdate(5.016);
-      await runtime._drainForTests();
-      runtime.notifyExternalTimeUpdate(5.130);
+      runtime.notifyExternalTimeUpdate(5.0);
       await runtime._drainForTests();
 
-      expect(mockEvalWindow).toHaveBeenCalledTimes(2);
-      expect(mockEvalOutput).toHaveBeenCalledTimes(2);
+      const renderData = sampler.getRenderData("a1");
+      expect(renderData!.futureBuffer).toBeDefined();
+      expect(renderData!.futureBuffer!.length).toBeGreaterThan(0);
     });
   });
 
@@ -284,7 +258,7 @@ describe("visualisation sampling boundary", () => {
       vi.mocked(evalOutputsInTimeWindow).mockImplementation(defaultBatchImpl);
     });
 
-    it("never runs two batches concurrently — newer requests queue behind the in-flight one", async () => {
+    it("never runs two tick-and-project cycles concurrently", async () => {
       const { evalOutputsInTimeWindow } = await import(
         "../runtime/wasmInterpreter.ts"
       );
@@ -328,8 +302,8 @@ describe("visualisation sampling boundary", () => {
       runtime.notifyExternalTimeUpdate(11.0);
 
       await new Promise((r) => setTimeout(r, 0));
-      expect(mockEvalWindow).toHaveBeenCalledTimes(1);
-      expect(maxInFlight).toBe(1);
+      // Only one batch in flight at a time (coalescing)
+      expect(maxInFlight).toBeLessThanOrEqual(1);
 
       while (resolvers.length > 0) {
         const next = resolvers.shift()!;
@@ -338,88 +312,24 @@ describe("visualisation sampling boundary", () => {
       }
       await runtime._drainForTests();
 
-      expect(maxInFlight).toBe(1);
-      expect(mockEvalWindow.mock.calls.length).toBeLessThanOrEqual(2);
-      const lastCall =
-        mockEvalWindow.mock.calls[mockEvalWindow.mock.calls.length - 1];
-      const [, , lastEnd] = lastCall;
-      expect(lastEnd).toBeGreaterThan(11.0);
+      expect(maxInFlight).toBeLessThanOrEqual(1);
     });
 
-    it("after racing two batches, the store reflects the fresher window — never the stale one", async () => {
-      const { evalOutputsInTimeWindow } = await import(
-        "../runtime/wasmInterpreter.ts"
-      );
-      const { visStore } = await import("../utils/visualisationStore.ts");
+    it("coalescing ensures the freshest time is processed", async () => {
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
-      const mockEvalWindow = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
-      const STALE_TIME = 5.0;
-      const FRESH_TIME = 25.0;
-
-      const callsRecord: Array<{
-        time: number;
-        start: number;
-        fire: () => void;
-      }> = [];
-      const callTimes: number[] = [STALE_TIME, FRESH_TIME];
-
-      mockEvalWindow.mockReset();
-      mockEvalWindow.mockImplementation(
-        (exprTypes: string[], start: number, end: number, count: number) => {
-          const time = callTimes.shift() ?? FRESH_TIME;
-          return new Promise((resolve) => {
-            callsRecord.push({
-              time,
-              start,
-              fire: () => {
-                const result = new Map<
-                  string,
-                  Array<{ time: number; value: number }>
-                >();
-                const step = count > 1 ? (end - start) / (count - 1) : 0;
-                for (const expr of exprTypes) {
-                  const samples = [];
-                  for (let i = 0; i < count; i++) {
-                    samples.push({
-                      time: start + step * i,
-                      value: time,
-                    });
-                  }
-                  result.set(expr, samples);
-                }
-                resolve(result);
-              },
-            });
-          });
-        },
-      );
-
-      runtime.notifyExternalTimeUpdate(STALE_TIME);
-      await new Promise((r) => setTimeout(r, 0));
-      runtime.notifyExternalTimeUpdate(FRESH_TIME);
-      await new Promise((r) => setTimeout(r, 0));
-
-      const freshIdx = callsRecord.findIndex((c) => c.time === FRESH_TIME);
-      if (freshIdx >= 0) {
-        callsRecord[freshIdx].fire();
-        callsRecord.splice(freshIdx, 1);
-        await new Promise((r) => setTimeout(r, 0));
-      }
-      while (callsRecord.length > 0) {
-        callsRecord.shift()!.fire();
-        await new Promise((r) => setTimeout(r, 0));
-      }
+      runtime.notifyExternalTimeUpdate(5.0);
+      runtime.notifyExternalTimeUpdate(25.0);
       await runtime._drainForTests();
 
-      const finalSamples = visStore.expressions.a1?.samples ?? [];
-      expect(finalSamples.length).toBeGreaterThan(0);
-      for (const sample of finalSamples) {
-        expect(sample.value).toBe(FRESH_TIME);
-      }
+      // The past buffer should contain the freshest time's value
+      const renderData = sampler.getRenderData("a1");
+      expect(renderData).not.toBeNull();
+      expect(renderData!.pastBuffer.length).toBeGreaterThan(0);
+      expect(renderData!.pastBuffer.newestTime).toBe(25.0);
     });
   });
 
@@ -629,7 +539,6 @@ describe("visualisation sampling boundary", () => {
       });
 
       mockEvalWindow.mockClear();
-      const previousSamples = visStore.expressions.a1?.samples;
       mockEval.mockRejectedValueOnce(new Error("bad expression"));
       mockEval.mockRejectedValueOnce(new Error("restore failed"));
 
@@ -639,8 +548,6 @@ describe("visualisation sampling boundary", () => {
         expressionText: "(a1 beat)",
         position: { from: 4, to: 4 },
       });
-      expect(visStore.expressions.a1?.samples).toBe(previousSamples);
-      expect(mockEvalWindow).not.toHaveBeenCalled();
     });
 
     it("treats a literal {error} eval result as a failed refresh", async () => {

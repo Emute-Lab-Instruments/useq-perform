@@ -186,25 +186,23 @@ describe("vis renderer survives runtime transitions (spec: visualisation.md §1.
       expect(visStore.expressions.a1).toBe(beforeA1);
     });
 
-    it("does not blank existing sample buffers when mode changes", async () => {
+    it("does not blank existing past buffers when mode changes", async () => {
       await setRuntimeMode({ hasHardwareConnection: false });
 
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
-      const { visStore } = await import("../utils/visualisationStore.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
       runtime.notifyExternalTimeUpdate(2.5);
       await runtime._drainForTests();
 
-      const samplesBefore = visStore.expressions.a1?.samples ?? [];
-      expect(samplesBefore.length).toBeGreaterThan(0);
+      const pastLenBefore = sampler.getRenderData("a1")?.pastBuffer.length ?? 0;
+      expect(pastLenBefore).toBeGreaterThan(0);
 
       await setRuntimeMode({ hasHardwareConnection: true });
 
-      const samplesAfter = visStore.expressions.a1?.samples ?? [];
-      expect(samplesAfter).toBe(samplesBefore);
-      expect(samplesAfter.length).toBe(samplesBefore.length);
+      const pastLenAfter = sampler.getRenderData("a1")?.pastBuffer.length ?? 0;
+      expect(pastLenAfter).toBe(pastLenBefore);
     });
 
     it("sampler keeps producing samples after the transition", async () => {
@@ -307,15 +305,14 @@ describe("vis renderer survives runtime transitions (spec: visualisation.md §1.
       );
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
-      const { visStore } = await import("../utils/visualisationStore.ts");
       const mockEval = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
       runtime.notifyExternalTimeUpdate(1.0);
       await runtime._drainForTests();
 
-      const samplesWhileConnected = visStore.expressions.a1?.samples ?? [];
-      expect(samplesWhileConnected.length).toBeGreaterThan(0);
+      const pastLenBefore = sampler.getRenderData("a1")?.pastBuffer.length ?? 0;
+      expect(pastLenBefore).toBeGreaterThan(0);
 
       // Disconnect.
       await setRuntimeMode({ hasHardwareConnection: false });
@@ -330,8 +327,8 @@ describe("vis renderer survives runtime transitions (spec: visualisation.md §1.
       await runtime._drainForTests();
 
       expect(mockEval).toHaveBeenCalled();
-      const samplesAfterDisconnect = visStore.expressions.a1?.samples ?? [];
-      expect(samplesAfterDisconnect.length).toBeGreaterThan(0);
+      const pastLenAfter = sampler.getRenderData("a1")?.pastBuffer.length ?? 0;
+      expect(pastLenAfter).toBeGreaterThan(pastLenBefore);
     });
 
     it("does not clear time / bar / palette on disconnect", async () => {
@@ -438,32 +435,25 @@ describe("vis renderer survives runtime transitions (spec: visualisation.md §1.
   });
 
   describe("runtime cache invariants across transitions", () => {
-    it("sampling cache is unaffected by mode changes (no spurious invalidation)", async () => {
+    it("mode changes do not interfere with tick-and-project cycle", async () => {
       await setRuntimeMode({ hasHardwareConnection: false });
 
-      const { evalOutputsInTimeWindow } = await import(
-        "../runtime/wasmInterpreter.ts"
-      );
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
-      const mockEval = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
-      // Prime the cache with a sample at t=5.0.
       runtime.notifyExternalTimeUpdate(5.0);
       await runtime._drainForTests();
 
-      mockEval.mockClear();
-
-      // A mode transition should not invalidate the window-key cache:
-      // a subsequent time update that lands in the same snapped window
-      // should still be a no-op on the WASM call.
+      // Mode transition followed by another tick — past buffer accumulates.
       await setRuntimeMode({ hasHardwareConnection: true });
       runtime.notifyExternalTimeUpdate(5.001);
       await runtime._drainForTests();
 
-      expect(mockEval).not.toHaveBeenCalled();
+      const renderData = sampler.getRenderData("a1");
+      expect(renderData).not.toBeNull();
+      expect(renderData!.pastBuffer.length).toBe(2);
     });
   });
 });

@@ -1,6 +1,43 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { timeToX, xToTime } from "./serialVis.ts";
 
+// Bridge old-style samples on the store to the new getRenderData() API.
+// The mock reads from __testVisStore which tests set after each dynamic import.
+vi.mock("../../effects/visualisationSampler.ts", () => ({
+  getRenderData: (exprType: string) => {
+    const store = (globalThis as any).__testVisStore;
+    if (!store) return null;
+    const expr = store.expressions?.[exprType];
+    if (!expr?.samples || expr.samples.length === 0) return null;
+    const samples = expr.samples;
+    const currentTime = store.currentTime ?? 0;
+
+    const pastSamples = samples.filter((s: any) => s.time <= currentTime);
+    const futureSamples = samples.filter((s: any) => s.time > currentTime);
+
+    function makeMockBuffer(sampleList: any[]) {
+      const times = sampleList.map((s: any) => s.time);
+      const values = sampleList.map((s: any) => s.value);
+      return {
+        length: sampleList.length,
+        capacity: sampleList.length,
+        newestTime: sampleList.length > 0 ? sampleList[sampleList.length - 1].time : -Infinity,
+        oldestTime: sampleList.length > 0 ? sampleList[0].time : Infinity,
+        valueAt(i: number) { return i >= 0 && i < values.length ? values[i] : NaN; },
+        timeAt(i: number) { return i >= 0 && i < times.length ? times[i] : NaN; },
+      };
+    }
+
+    return {
+      pastBuffer: makeMockBuffer(pastSamples),
+      futureBuffer: futureSamples.length > 0
+        ? makeMockBuffer(futureSamples)
+        : undefined,
+    };
+  },
+}));
+
+
 function makeContext(): CanvasRenderingContext2D {
   return {
     clearRect: vi.fn(),
@@ -273,7 +310,8 @@ describe("drawSerialVis: lane layout (visualisation.md §1.5)", () => {
     canvas.getContext = vi.fn(() => recorder.ctx);
 
     const { drawSerialVis } = await import("./serialVis.ts");
-    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { setVisStore, visStore } = await import("../../utils/visualisationStore.ts");
+    (globalThis as any).__testVisStore = visStore;
 
     const NOW = 100;
     const WINDOW = 10;
@@ -327,7 +365,8 @@ describe("drawSerialVis: lane layout (visualisation.md §1.5)", () => {
     canvas.getContext = vi.fn(() => recorder.ctx);
 
     const { drawSerialVis } = await import("./serialVis.ts");
-    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { setVisStore, visStore } = await import("../../utils/visualisationStore.ts");
+    (globalThis as any).__testVisStore = visStore;
 
     const NOW = 100;
     const WINDOW = 10;
@@ -382,7 +421,8 @@ describe("drawSerialVis: lane layout (visualisation.md §1.5)", () => {
     canvas.getContext = vi.fn(() => recorder.ctx);
 
     const { drawSerialVis } = await import("./serialVis.ts");
-    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { setVisStore, visStore } = await import("../../utils/visualisationStore.ts");
+    (globalThis as any).__testVisStore = visStore;
 
     const NOW = 100;
     const WINDOW = 10;
@@ -463,7 +503,8 @@ describe("drawSerialVis: future segments (visualisation.md §1.4)", () => {
     canvas.getContext = vi.fn(() => recorder.ctx);
 
     const { drawSerialVis } = await import("./serialVis.ts");
-    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { setVisStore, visStore } = await import("../../utils/visualisationStore.ts");
+    (globalThis as any).__testVisStore = visStore;
 
     const NOW = 100;
     const WINDOW = 10;
@@ -512,7 +553,8 @@ describe("drawSerialVis: future segments (visualisation.md §1.4)", () => {
       canvas.getContext = vi.fn(() => recorder.ctx);
 
       const { drawSerialVis } = await import("./serialVis.ts");
-      const { setVisStore } = await import("../../utils/visualisationStore.ts");
+      const { setVisStore, visStore } = await import("../../utils/visualisationStore.ts");
+    (globalThis as any).__testVisStore = visStore;
 
       const NOW = 100;
       const samples = ramp(NOW - 4, NOW + 4, 16, 0.1, 0.9);
@@ -560,7 +602,8 @@ describe("drawSerialVis: palette swap (visualisation.md §1.10)", () => {
     canvas.getContext = vi.fn(() => recorder.ctx);
 
     const { drawSerialVis } = await import("./serialVis.ts");
-    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { setVisStore, visStore } = await import("../../utils/visualisationStore.ts");
+    (globalThis as any).__testVisStore = visStore;
 
     const NOW = 100;
     const samples = ramp(NOW - 4, NOW - 0.5, 6, 0.2, 0.8);
@@ -610,7 +653,8 @@ describe("drawSerialVis: palette swap (visualisation.md §1.10)", () => {
     canvas.getContext = vi.fn(() => recorder.ctx);
 
     const { drawSerialVis } = await import("./serialVis.ts");
-    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { setVisStore, visStore } = await import("../../utils/visualisationStore.ts");
+    (globalThis as any).__testVisStore = visStore;
 
     const NOW = 100;
     const samples = ramp(NOW - 4, NOW - 0.5, 6, 0.2, 0.8);

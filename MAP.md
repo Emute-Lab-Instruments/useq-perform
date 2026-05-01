@@ -29,12 +29,14 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 
 - `src/lib/` — foundation. No imports from runtime/effects/ui/editors/transport.
   - `settings/` — schema, normalization, persistence (split out of the old `appSettings.ts`).
-  - `keybindings/` — action registry, resolver, layouts, profiles, sticky modifiers, OS-reserved key list. See [docs/KEYBINDING_SYSTEM.md](docs/KEYBINDING_SYSTEM.md).
+  - `keybindings/` — action registry (with `reversible` flag, derives `ReversibleActionId`/`NonReversibleActionId`), resolver, layouts, profiles, sticky modifiers, OS-reserved key list. See [docs/KEYBINDING_SYSTEM.md](docs/KEYBINDING_SYSTEM.md).
   - `editorStore.ts`, `editorDefaults.ts`, `editorCompartments.ts` — CodeMirror facade and config.
   - `typedChannel.ts` — pub/sub primitive used by everything in `contracts/`.
   - `persistence.ts` — central localStorage service (typed keys, nosave, error recovery).
   - `appSettings.ts` — thin re-export shim over `settings/` modules.
-  - `gamepadManager.ts`, `gamepadIntents.ts`, `manualControlState.ts` — gamepad input.
+  - `gamepadManager.ts`, `gamepadIntents.ts` — legacy gamepad polling + intent channel bridge.
+  - `gamepad/` — **new three-stage gamepad pipeline** (spec: `docs/specs/gamepad.md`). `types.ts` (full type vocabulary including Layer, Resolution, DualBinding), `gestures.ts` (smart constructors + keyOf), `recognizer.ts` (Stage 2: pure gesture recognition), `resolver.ts` (Stage 3: layer-stack resolution), `dispatcher.ts` (eager-with-undo action dispatch), `hardware.ts` (Stage 1: snapshot diffing to LogicalEvent[]), `index.ts` (full pipeline wiring, drop-in replacement for `gamepadIntents.ts`). Paradigms: `paradigms/{picker,modal-shift,leader,hydra,chord-heavy}.ts`.
+  - `manualControlState.ts` — manual control state tracking.
   - `pickerMenuModel.ts`, `referenceDataLoader.ts`, `helpContentPreloader.ts`.
   - `CircularBuffer.ts`, `debug.ts`, `perfTrace.ts`, `themes.ts`, `versionUtils.ts`, `visualisationUtils.ts`, `useActorSignal.ts`.
 - `src/contracts/` — shared types/constants and typed channel definitions. See [docs/REACTIVE_FLOW.md](docs/REACTIVE_FLOW.md) for channel inventory.
@@ -72,7 +74,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `transportOrchestrator.ts`, `transportClock.ts` — XState-driven transport state and clock policy.
   - `localClock.ts` — rAF-driven internal clock when no hardware.
   - `editor.ts`, `editorEvaluation.ts` — editor-side eval orchestration (eslint exception: imports editors).
-  - `visualisationSampler.ts` — WASM batch sampling, sequence-guarded.
+  - `visualisationSampler.ts` — WASM sampling with event-driven future projection. Past buffer (one sample/frame) + future buffer (batch-refilled on invalidation, extended one sample/frame).
   - `mockControlInputs.ts`, `devmodeWebSocketServer.ts`, `perfBenchmark.ts`.
 - `src/editors/` — CodeMirror layer. Imports lib/contracts/effects/transport.
   - `extensions.ts` — extension barrel.

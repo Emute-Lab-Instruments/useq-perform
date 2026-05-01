@@ -1,11 +1,12 @@
 /**
- * Serial visualisation WebGL renderer.
+ * Serial visualisation WebGL renderer — faithful-past / projected-future.
  *
- * Alternative to `serialVis.ts` (Canvas 2D) targeting the same `visStore`
- * snapshot.  Public surface mirrors `serialVis.ts` so adapters can swap
- * by changing imports:
+ * Alternative to `serialVis.ts` (Canvas 2D).  Reads per-output data
+ * from `getRenderData()` (past + future PastBuffers) and renders
+ * via WebGL2.  Public surface mirrors `serialVis.ts` so adapters can
+ * swap by changing imports:
  *
- *   - drawSerialVisGL()         — paint one frame from `visStore` via WebGL2
+ *   - drawSerialVisGL()         — paint one frame via WebGL2
  *   - ensureGLCanvasGeometry()  — sync canvas buffer to its CSS size
  *   - isVisPanelVisible()       — visibility check (re-exported from serialVis)
  *
@@ -21,13 +22,6 @@
  *         renderer's line width setting.
  *   - Both share the same fragment shader (past/future alpha split
  *     via uClipFutureStart).
- *   - Vertex buffers are reused across frames per expression key.  Buffer
- *     re-upload is gated on a `(length, sampleArrayRef)` cache key so a
- *     run of identical-length sample arrays only re-uploads when the
- *     array reference changes.  In practice `rebuildAllExpressions`
- *     allocates new arrays each tick, so this still uploads each tick;
- *     however, when samples are stable (e.g. paused, or hardware mode
- *     between time updates) the path is upload-free.
  *   - Past/future fade is a fragment-shader uniform: `uCurrentTimeNorm`
  *     (the normalized X for current time) splits past from future.
  *   - The 2D path's axis lines, value labels, and "no expressions"
@@ -41,6 +35,7 @@
 import { perf } from "../../lib/perfTrace.ts";
 import type { VisExpression } from "../../utils/visualisationStore.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
+import { getRenderData } from "../../effects/visualisationSampler.ts";
 import { isVisPanelVisible } from "./serialVis.ts";
 
 export { isVisPanelVisible };
@@ -513,6 +508,28 @@ interface VisSampleLike {
   value: number;
 }
 
+function buildCombinedSamples(key: string): VisSampleLike[] {
+  const data = getRenderData(key);
+  if (!data) return [];
+  const past = data.pastBuffer;
+  const fb = data.futureBuffer;
+  const currentTime = visStore.currentTime;
+  const result: VisSampleLike[] = new Array(past.length + (fb?.length ?? 0));
+  let w = 0;
+  for (let i = 0; i < past.length; i++) {
+    result[w++] = { time: past.timeAt(i), value: past.valueAt(i) };
+  }
+  if (fb) {
+    for (let i = 0; i < fb.length; i++) {
+      const t = fb.timeAt(i);
+      if (t <= currentTime) continue;
+      result[w++] = { time: t, value: fb.valueAt(i) };
+    }
+  }
+  result.length = w;
+  return result;
+}
+
 /** Reusable scratch Float32Array for upload — grows but never shrinks. */
 let scratch = new Float32Array(2048);
 function ensureScratch(floatCount: number): void {
@@ -977,8 +994,8 @@ function drawExpressionsThin(
 
   for (const key of exprKeys) {
     const expression = expressions[key];
-    const samples = expression.samples;
-    if (!samples || samples.length < 2) continue;
+    const samples = buildCombinedSamples(key);
+    if (samples.length < 2) continue;
 
     const exprType = expression.exprType;
     const isDigital = (DIGITAL_CHANNELS as readonly string[]).includes(exprType);
@@ -1037,8 +1054,8 @@ function drawExpressionsThick(
 
   for (const key of exprKeys) {
     const expression = expressions[key];
-    const samples = expression.samples;
-    if (!samples || samples.length < 2) continue;
+    const samples = buildCombinedSamples(key);
+    if (samples.length < 2) continue;
 
     const exprType = expression.exprType;
     const isDigital = (DIGITAL_CHANNELS as readonly string[]).includes(exprType);

@@ -1,38 +1,22 @@
 /**
- * Visualisation Sampler
+ * Visualisation Sampler — faithful-past / projected-future architecture
  *
- * Pure(-ish) WASM sampling helpers for visualisation.  Owns expression
- * registration, refresh, and the building blocks for time-window
- * sampling — but **not** the rAF loop, the in-flight coalescing, or the
- * sample-window deduplication across consecutive ticks.  Those concerns
- * live in `visualisationRuntime.ts`, which orchestrates this module.
+ * Each frame the runtime calls `tickAndProject()`:
+ *   1. Tick — advance WASM state to t=now, record output values in
+ *      per-output rolling buffers (PastBuffer).
+ *   2. Project — batch-evaluate future window from t=now forward with
+ *      save/restore (live state is not corrupted).
  *
- * The split:
- *   - `visualisationRuntime`  → "when does sampling run?"
- *   - `visualisationSampler`  → "how does a single sample run?"
- *   - `visualisationStore`    → "what is the current state?"
+ * The renderer reads per-output data via `getRenderData()`.
+ *
+ * Expression lifecycle functions (register/unregister/refresh) manage
+ * the rolling buffers and future projections.  Past buffers are never
+ * cleared on expression change — they show what actually happened.
  */
 
 import { dbg } from "../lib/debug.ts";
+import { PastBuffer } from "../lib/PastBuffer.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
-
-// Hot-path WASM access goes through the active runtime port so the
-// `?wasmInWorker=true` opt-in actually moves the work off the main
-// thread (otherwise the sampler would still call the in-process
-// interpreter directly even when the worker port is selected).
-const wasmPort = () => getActiveWasmRuntimePort();
-const evalInUseqWasm = (code: string): Promise<string | null> =>
-  wasmPort().evalCode(code);
-const updateUseqWasmTime = (timeSeconds: number): Promise<void> =>
-  wasmPort().updateTime(timeSeconds);
-const evalOutputAtTime = (name: string, timeSeconds: number): Promise<number> =>
-  wasmPort().evalOutputAtTime(name, timeSeconds);
-const evalOutputsInTimeWindow = (
-  outputs: string[],
-  startTime: number,
-  endTime: number,
-  numSamples: number,
-) => wasmPort().evalOutputsInTimeWindow(outputs, startTime, endTime, numSamples);
 import {
   getSerialVisPalette,
   getSerialVisChannelColor,
@@ -53,29 +37,81 @@ import {
   removeExpression,
   setLastChangeKind,
 } from "../utils/visualisationStore.ts";
-import { invalidateSamplingCache } from "./visualisationRuntime.ts";
+
+// ── WASM port ───────────────────────────────────────────────────────
+
+const wasmPort = () => getActiveWasmRuntimePort();
+const evalInUseqWasm = (code: string): Promise<string | null> =>
+  wasmPort().evalCode(code);
+const updateUseqWasmTime = (timeSeconds: number): Promise<void> =>
+  wasmPort().updateTime(timeSeconds);
+const evalOutputAtTime = (name: string, timeSeconds: number): Promise<number> =>
+  wasmPort().evalOutputAtTime(name, timeSeconds);
+const evalOutputsInTimeWindow = (
+  outputs: string[],
+  startTime: number,
+  endTime: number,
+  numSamples: number,
+) => wasmPort().evalOutputsInTimeWindow(outputs, startTime, endTime, numSamples);
 
 // ── Constants ────────────────────────────────────────────────────────
 
 const DEFAULT_FUTURE_LEAD_SECONDS = 1;
 const MAX_FUTURE_LEAD_SECONDS = 8;
-const SAMPLE_EPSILON = 1e-9;
 const WASM_ERROR_RESULT = "{error}";
 
+// Default history: visible past + 5s headroom, max 30s at ~30fps
+const DEFAULT_HISTORY_HEADROOM = 5;
+const DEFAULT_MAX_HISTORY_SECONDS = 30;
+const ASSUMED_FRAME_RATE = 30;
+
+// ── Past buffers & future buffers ───────────────────────────────────
+
+const pastBuffers = new Map<string, PastBuffer>();
+const futureBuffers = new Map<string, PastBuffer>();
+
+function ensurePastBuffer(exprType: string): PastBuffer {
+  let buf = pastBuffers.get(exprType);
+  if (!buf) {
+    const capacity = Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * ASSUMED_FRAME_RATE);
+    buf = new PastBuffer(capacity);
+    pastBuffers.set(exprType, buf);
+  }
+  return buf;
+}
+
+function ensureFutureBuffer(exprType: string): PastBuffer {
+  let buf = futureBuffers.get(exprType);
+  if (!buf) {
+    const capacity = Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * ASSUMED_FRAME_RATE);
+    buf = new PastBuffer(capacity);
+    futureBuffers.set(exprType, buf);
+  }
+  return buf;
+}
+
+function destroyBuffers(exprType: string): void {
+  pastBuffers.delete(exprType);
+  futureBuffers.delete(exprType);
+}
+
+// ── Render data (read by the renderer each frame) ───────────────────
+
+export interface OutputRenderData {
+  pastBuffer: PastBuffer;
+  futureBuffer: PastBuffer | undefined;
+}
+
+export function getRenderData(exprType: string): OutputRenderData | null {
+  const buf = pastBuffers.get(exprType);
+  if (!buf) return null;
+  return {
+    pastBuffer: buf,
+    futureBuffer: futureBuffers.get(exprType),
+  };
+}
+
 // ── Settings helpers ─────────────────────────────────────────────────
-
-interface SamplingSettings {
-  windowDuration: number;
-  sampleCount: number;
-  futureLeadSeconds: number;
-}
-
-export interface SamplingWindow {
-  start: number;
-  end: number;
-  step: number;
-  total: number;
-}
 
 function getDefaults(): VisSettings {
   return {
@@ -130,93 +166,6 @@ function clampSettings(raw: Partial<VisSettings> | null): VisSettings {
   return safe;
 }
 
-function sampleStep(settings: SamplingSettings): number {
-  const windowDuration = Number.isFinite(settings.windowDuration)
-    ? settings.windowDuration
-    : 0;
-  const sampleCount = Number.isFinite(settings.sampleCount)
-    ? settings.sampleCount
-    : 0;
-  if (sampleCount <= 1) return windowDuration;
-  if (windowDuration <= 0) return 0;
-  return windowDuration / (sampleCount - 1);
-}
-
-function totalSamplesForSettings(
-  step: number,
-  settings: SamplingSettings,
-): number {
-  const baseCount = Math.max(1, settings.sampleCount);
-  if (!Number.isFinite(step) || step <= SAMPLE_EPSILON) return baseCount;
-  const lead = settings.futureLeadSeconds ?? DEFAULT_FUTURE_LEAD_SECONDS;
-  const extra = lead > SAMPLE_EPSILON ? Math.ceil(lead / step) : 0;
-  return baseCount + extra;
-}
-
-/** Compute the snapped sampling window for a given time + settings. */
-export function computeSamplingWindow(
-  currentTime: number,
-  settings: SamplingSettings,
-): SamplingWindow {
-  const step = sampleStep(settings);
-  const total = totalSamplesForSettings(step, settings);
-  const halfWindow = settings.windowDuration / 2;
-  const rawStart = currentTime - halfWindow;
-  const start = step > SAMPLE_EPSILON
-    ? Math.floor(rawStart / step) * step
-    : rawStart;
-  const end = start + step * (total - 1);
-
-  return { start, end, step, total };
-}
-
-/** Stable key for a sampling window — used by the runtime to dedupe. */
-export function samplingWindowKey(window: SamplingWindow): string {
-  return `${window.start}:${window.step}:${window.total}`;
-}
-
-// ── Sampling primitives ──────────────────────────────────────────────
-
-async function buildSamples(
-  exprType: string,
-  start: number,
-  end: number,
-  count: number,
-): Promise<VisSample[]> {
-  if (count <= 0) return [];
-
-  try {
-    const batchResults = await evalOutputsInTimeWindow(
-      [exprType],
-      start,
-      end,
-      count,
-    );
-    return batchResults.get(exprType) || [];
-  } catch (error) {
-    dbg(
-      `visualisationSampler: batch failed for ${exprType}, falling back: ${error}`,
-    );
-    const step = count > 1 ? (end - start) / (count - 1) : 0;
-    const samples: VisSample[] = [];
-    for (let i = 0; i < count; i++) {
-      const time = start + step * i;
-      const value = await evalOutputAtTime(exprType, time);
-      samples.push({ time, value: Number(value) || 0 });
-    }
-    return samples;
-  }
-}
-
-async function sampleExpression(
-  exprType: string,
-  currentTime: number,
-  settings: SamplingSettings,
-): Promise<VisSample[]> {
-  const window = computeSamplingWindow(currentTime, settings);
-  return buildSamples(exprType, window.start, window.end, window.total);
-}
-
 function resolveColor(
   exprType: string,
   circularOffset: number,
@@ -229,9 +178,134 @@ function isWasmErrorResult(result: string | null | undefined): boolean {
   return typeof result === "string" && result.trim() === WASM_ERROR_RESULT;
 }
 
+// ── Future invalidation ────────────────────────────────────────────
+
+let futureInvalidated = false;
+
+export function invalidateFutureProjections(): void {
+  futureInvalidated = true;
+}
+
+async function refillFutureBuffers(
+  timeSeconds: number,
+  settings: VisSettings,
+): Promise<void> {
+  const outputs = Object.keys(visStore.expressions);
+  if (outputs.length === 0) return;
+
+  const halfWindow = settings.windowDuration / 2;
+  const futureEnd = timeSeconds + halfWindow + (settings.futureLeadSeconds || 0);
+  const futureSampleCount = Math.max(
+    2,
+    Math.ceil((futureEnd - timeSeconds) * ASSUMED_FRAME_RATE),
+  );
+
+  let futureResults: Map<string, VisSample[]>;
+  try {
+    futureResults = await evalOutputsInTimeWindow(
+      outputs, timeSeconds, futureEnd, futureSampleCount,
+    );
+  } catch (error) {
+    dbg(`visualisationSampler: future refill failed: ${error}`);
+    return;
+  }
+
+  for (const [name, samples] of futureResults) {
+    const buf = ensureFutureBuffer(name);
+    buf.clear();
+    for (let i = 0; i < samples.length; i++) {
+      if (Number.isFinite(samples[i].value)) {
+        buf.push(samples[i].time, samples[i].value);
+      }
+    }
+  }
+}
+
+// ── Tick & Project ──────────────────────────────────────────────────
+
+/**
+ * Per-frame tick: advance WASM state to t=now, record past values,
+ * and push one future sample at the far edge of the future window.
+ *
+ * Future buffers grow organically (one sample per frame) and are only
+ * batch-refilled on invalidation events (code eval, control changes).
+ */
+export async function tickAndProject(
+  timeSeconds: number,
+  settings: VisSettings,
+): Promise<void> {
+  const outputs = Object.keys(visStore.expressions);
+  if (outputs.length === 0) return;
+
+  // Phase 1: Tick past — advance state and record values.
+  const firstOutputValue = await evalOutputAtTime(outputs[0], timeSeconds);
+
+  let tickValues: Map<string, VisSample[]>;
+  try {
+    tickValues = await evalOutputsInTimeWindow(
+      outputs, timeSeconds, timeSeconds, 1,
+    );
+  } catch {
+    tickValues = new Map();
+  }
+
+  for (const name of outputs) {
+    const buf = ensurePastBuffer(name);
+    const samples = tickValues.get(name);
+    let value: number;
+    if (samples && samples.length > 0 && Number.isFinite(samples[0].value)) {
+      value = samples[0].value;
+    } else if (name === outputs[0] && Number.isFinite(firstOutputValue)) {
+      value = firstOutputValue;
+    } else {
+      continue;
+    }
+    buf.push(timeSeconds, value);
+  }
+
+  // Phase 2: Future — batch-refill on invalidation, else push one sample.
+  if (futureInvalidated) {
+    futureInvalidated = false;
+    await refillFutureBuffers(timeSeconds, settings);
+    return;
+  }
+
+  const halfWindow = settings.windowDuration / 2;
+  const futureEdge = timeSeconds + halfWindow + (settings.futureLeadSeconds || 0);
+
+  // Check if any future buffer needs extending (coverage running out).
+  let needsExtend = false;
+  for (const name of outputs) {
+    const fb = futureBuffers.get(name);
+    if (!fb || fb.length < 2 || fb.newestTime < futureEdge - 0.5) {
+      needsExtend = true;
+      break;
+    }
+  }
+
+  if (needsExtend) {
+    // Batch-refill when coverage is insufficient.
+    await refillFutureBuffers(timeSeconds, settings);
+  } else {
+    // Push one future sample at the far edge (save/restore, no state corruption).
+    let edgeValues: Map<string, VisSample[]>;
+    try {
+      edgeValues = await evalOutputsInTimeWindow(
+        outputs, futureEdge, futureEdge, 1,
+      );
+    } catch {
+      return;
+    }
+    for (const [name, samples] of edgeValues) {
+      if (samples.length > 0 && Number.isFinite(samples[0].value)) {
+        ensureFutureBuffer(name).push(futureEdge, samples[0].value);
+      }
+    }
+  }
+}
+
 // ── Bar ──────────────────────────────────────────────────────────────
 
-/** Read the `bar` output at `timeSeconds` and update the store.  Errors are logged. */
 export async function refreshBarValue(timeSeconds: number): Promise<void> {
   try {
     const result = await evalOutputAtTime("bar", timeSeconds);
@@ -247,92 +321,12 @@ export async function refreshBarValue(timeSeconds: number): Promise<void> {
   updateBar(0);
 }
 
-/** Push the current time into WASM so subsequent batch samples are aligned. */
 export async function syncInterpreterTime(timeSeconds: number): Promise<void> {
   await updateUseqWasmTime(Number(timeSeconds) || 0);
 }
 
-// ── Rebuild all expression samples ───────────────────────────────────
-
-/**
- * Re-sample every registered expression at `currentTime` using `settings`.
- * Issues a single batch WASM call and falls back to per-expression eval
- * on failure.  Merges results into the store; identity-preserving so
- * Solid reactive consumers don't see spurious change notifications.
- *
- * The runtime is responsible for not calling this redundantly across
- * consecutive ticks — `samplingWindowKey()` provides the dedup key.
- */
-export async function rebuildAllExpressions(
-  settings: VisSettings,
-  currentTime: number,
-): Promise<void> {
-  const expressions = visStore.expressions;
-  const exprTypes = Object.keys(expressions);
-  if (exprTypes.length === 0) return;
-
-  const window = computeSamplingWindow(currentTime, settings);
-
-  let batchResults: Map<string, VisSample[]>;
-  try {
-    batchResults = await evalOutputsInTimeWindow(
-      exprTypes,
-      window.start,
-      window.end,
-      window.total,
-    );
-  } catch (error) {
-    dbg(`visualisationSampler: batch rebuild failed, falling back to per-expression: ${error}`);
-    batchResults = new Map();
-    const fallbacks = await Promise.all(
-      exprTypes.map((exprType) =>
-        sampleExpression(exprType, currentTime, settings)
-          .then((samples) => [exprType, samples] as const)
-          .catch((innerError) => {
-            dbg(`visualisationSampler: fallback failed for ${exprType}: ${innerError}`);
-            return [exprType, undefined] as const;
-          }),
-      ),
-    );
-    for (const [exprType, samples] of fallbacks) {
-      if (samples) batchResults.set(exprType, samples);
-    }
-  }
-
-  const current = visStore.expressions;
-  const merged: Record<string, VisExpression> = {};
-  let changed = false;
-
-  for (const key of Object.keys(current)) {
-    const expr = current[key];
-    if (!expr) continue;
-
-    const samples = batchResults.get(key);
-    if (samples) {
-      const color = resolveColor(key, settings.circularOffset);
-      if (samples !== expr.samples || color !== expr.color) {
-        merged[key] = { ...expr, samples, color };
-        changed = true;
-      } else {
-        merged[key] = expr;
-      }
-    } else {
-      merged[key] = expr;
-    }
-  }
-
-  if (changed) {
-    updateExpressions(merged);
-  }
-}
-
 // ── Public expression API ────────────────────────────────────────────
 
-/**
- * Register (or update) an expression for visualisation.  Evaluates it in
- * WASM and populates initial samples.  After this returns, the runtime
- * cache is invalidated so the next tick will re-sample.
- */
 export async function registerVisualisation(
   exprType: string,
   expressionText: string,
@@ -341,39 +335,36 @@ export async function registerVisualisation(
   const trimmed = (expressionText || "").trim();
   if (!trimmed) {
     removeExpression(exprType);
-    invalidateSamplingCache();
+    destroyBuffers(exprType);
     setLastChangeKind("unregister", { exprType });
     return;
   }
 
   await evalInUseqWasm(trimmed);
 
-  const settings = visStore.settings;
-  const currentTime = visStore.currentTime;
-  const samples = await sampleExpression(exprType, currentTime, settings);
-  const color = resolveColor(exprType, settings.circularOffset);
+  ensurePastBuffer(exprType);
+  const fb = futureBuffers.get(exprType);
+  if (fb) fb.clear();
 
+  const color = resolveColor(exprType, visStore.settings.circularOffset);
   const expressions = { ...visStore.expressions };
   expressions[exprType] = {
     exprType,
     expressionText: trimmed,
-    samples,
+    samples: [],
     color,
     position,
   };
   updateExpressions(expressions);
-  invalidateSamplingCache();
   setLastChangeKind("register", { exprType });
 }
 
-/** Remove an expression from visualisation. */
 export function unregisterVisualisation(exprType: string): void {
   removeExpression(exprType);
-  invalidateSamplingCache();
+  destroyBuffers(exprType);
   setLastChangeKind("unregister", { exprType });
 }
 
-/** Toggle an expression on/off in the visualisation. */
 export async function toggleVisualisation(
   exprType: string,
   expressionText: string,
@@ -386,10 +377,6 @@ export async function toggleVisualisation(
   }
 }
 
-/**
- * Check if an expression is currently being visualised.  If `position`
- * is provided, also verifies the expression's position matches.
- */
 export function isExpressionVisualised(
   exprType: string,
   position?: { from: number; to: number },
@@ -400,7 +387,6 @@ export function isExpressionVisualised(
   return expr.position?.from === position.from && expr.position?.to === position.to;
 }
 
-/** Refresh a single expression's samples after its code changes. */
 export async function refreshVisualisedExpression(
   exprType: string,
   expressionText: string,
@@ -410,10 +396,13 @@ export async function refreshVisualisedExpression(
   if (!expr) return;
 
   const trimmed = (expressionText || "").trim();
-  if (expr.expressionText === trimmed && (!position || expr.position?.from === position.from)) return;
+  if (
+    expr.expressionText === trimmed &&
+    (!position || expr.position?.from === position.from)
+  )
+    return;
 
   let nextExpressionText = expr.expressionText;
-  let shouldResample = true;
   try {
     const result = await evalInUseqWasm(trimmed);
     if (isWasmErrorResult(result)) {
@@ -432,54 +421,35 @@ export async function refreshVisualisedExpression(
     } catch (restoreError) {
       dbg(
         `visualisationSampler: failed to restore last good expression for ${exprType}: ${restoreError}`,
-        );
-      shouldResample = false;
+      );
     }
   }
 
-  const settings = visStore.settings;
-  const currentTime = visStore.currentTime;
-  const samples = shouldResample
-    ? await sampleExpression(exprType, currentTime, settings)
-    : expr.samples;
-  const color = resolveColor(exprType, settings.circularOffset);
+  // Past buffer is preserved — future will re-project on next frame.
+  const fb = futureBuffers.get(exprType);
+  if (fb) fb.clear();
+  futureInvalidated = true;
 
+  const color = resolveColor(exprType, visStore.settings.circularOffset);
   const expressions = { ...visStore.expressions };
   expressions[exprType] = {
     exprType,
     expressionText: nextExpressionText,
-    samples,
+    samples: [],
     color,
     position: position || expr.position,
   };
   updateExpressions(expressions);
-  invalidateSamplingCache();
   setLastChangeKind("update");
 }
 
-/**
- * Notify that an expression was evaluated (code changed) and needs re-sampling.
- * Triggers a cache-invalidating rebuild.  Result is awaited internally; the
- * `setLastChangeKind('data')` publishes downstream.
- */
-export function notifyExpressionEvaluated(_exprType: string | null = null): void {
-  const expressions = visStore.expressions;
-  if (Object.keys(expressions).length === 0) return;
-
-  const settings = visStore.settings;
-  const currentTime = visStore.currentTime;
-  invalidateSamplingCache();
-
-  rebuildAllExpressions(settings, currentTime)
-    .then(() => setLastChangeKind("data"))
-    .catch((error) => {
-      dbg(
-        `visualisationSampler: unhandled error during rebuild: ${error}`,
-      );
-    });
+export function notifyExpressionEvaluated(
+  _exprType: string | null = null,
+): void {
+  invalidateFutureProjections();
+  setLastChangeKind("data");
 }
 
-/** Report a color for an expression (used by editor gutter). */
 export function reportExpressionColor(
   exprType: string,
   color: string | null,
@@ -528,34 +498,20 @@ function refreshAllColors(settings: VisSettings): void {
   if (changed) {
     updateExpressions(updated);
   }
-  invalidateSamplingCache();
 }
 
 if (typeof window !== "undefined") {
-  // Defer subscriptions to avoid TDZ errors during module init.
   setTimeout(() => {
     try {
-      const settings = loadAndApplySettings();
+      loadAndApplySettings();
 
       subscribeAppSettings(() => {
-        const newSettings = loadAndApplySettings();
-        const currentTime = visStore.currentTime;
-        invalidateSamplingCache();
-        rebuildAllExpressions(newSettings, currentTime)
-          .then(() => setLastChangeKind("settings"))
-          .catch((error) => {
-            dbg(
-              `visualisationSampler: failed to refresh after settings change: ${error}`,
-            );
-          });
+        loadAndApplySettings();
+        invalidateFutureProjections();
+        setLastChangeKind("settings");
       });
-
-      // Avoid "unused settings" lint noise; the variable documents that
-      // the initial load happened before we subscribed.
-      void settings;
     } catch {
-      // TDZ — appSettingsRepository not ready. Settings will be applied
-      // when the first time update arrives instead.
+      // TDZ — appSettingsRepository not ready.
     }
   }, 0);
 
