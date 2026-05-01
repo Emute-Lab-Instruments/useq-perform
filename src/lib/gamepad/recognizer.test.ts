@@ -11,7 +11,14 @@
 import { describe, expect, it } from "vitest";
 
 import { at, hold, tap } from "./gestures";
-import { recognize } from "./recognizer";
+import {
+  DEFAULT_TIMING,
+  INITIAL_STATE,
+  flush,
+  recognize,
+  step,
+  type RecognizerState,
+} from "./recognizer";
 import type { LogicalEvent } from "./types";
 
 // ===========================================================================
@@ -305,5 +312,111 @@ describe("recognize: hold (Cycle 3)", () => {
       { kind: "release", btn: "B", t: 400 },
     ];
     expect(recognize(events)).toEqual(recognize(events));
+  });
+});
+
+// ===========================================================================
+// step / flush — incremental API contract
+//
+// `step` and `flush` are the primitive API; `recognize` is a fold over them.
+// Production calls them per-tick from the polling loop; these tests pin
+// down the incremental contract independent of primitive-specific behaviour.
+// ===========================================================================
+
+describe("step / flush", () => {
+  it("INITIAL_STATE has no pending state", () => {
+    expect(INITIAL_STATE).toEqual({ pendingHolds: [] });
+  });
+
+  it("step on a press records a pending hold and emits a tap", () => {
+    const out = step(
+      INITIAL_STATE,
+      { kind: "press", btn: "A", t: 0 },
+      DEFAULT_TIMING,
+    );
+    expect(out.gestures).toEqual([at(tap("A"), 0)]);
+    expect(out.state.pendingHolds).toEqual([{ btn: "A", scheduledAt: 250 }]);
+  });
+
+  it("step does not mutate its input state", () => {
+    const before = INITIAL_STATE;
+    const beforePendingRef = before.pendingHolds;
+    step(before, { kind: "press", btn: "A", t: 0 }, DEFAULT_TIMING);
+    expect(before).toBe(INITIAL_STATE);
+    expect(before.pendingHolds).toBe(beforePendingRef);
+    expect(before.pendingHolds).toEqual([]);
+  });
+
+  it("step on an axis event leaves state unchanged", () => {
+    const after = step(
+      INITIAL_STATE,
+      { kind: "axis", name: "LeftStickX", x: 0.5, y: 0, t: 0 },
+      DEFAULT_TIMING,
+    );
+    expect(after.state).toEqual(INITIAL_STATE);
+    expect(after.gestures).toEqual([]);
+    expect(after.axes).toEqual([]);
+  });
+
+  it("step on a release with no matching press is a no-op (state unchanged)", () => {
+    const after = step(
+      INITIAL_STATE,
+      { kind: "release", btn: "A", t: 100 },
+      DEFAULT_TIMING,
+    );
+    expect(after.state).toEqual(INITIAL_STATE);
+    expect(after.gestures).toEqual([]);
+  });
+
+  it("flush emits a pending hold whose threshold has elapsed", () => {
+    const afterPress = step(
+      INITIAL_STATE,
+      { kind: "press", btn: "A", t: 0 },
+      DEFAULT_TIMING,
+    );
+    const flushed = flush(afterPress.state, 300);
+    expect(flushed.gestures).toEqual([at(hold("A"), 250)]);
+    expect(flushed.state.pendingHolds).toEqual([]);
+  });
+
+  it("flush at exactly the threshold does not emit (boundary)", () => {
+    const afterPress = step(
+      INITIAL_STATE,
+      { kind: "press", btn: "A", t: 0 },
+      DEFAULT_TIMING,
+    );
+    const flushed = flush(afterPress.state, 250);
+    expect(flushed.gestures).toEqual([]);
+    expect(flushed.state.pendingHolds).toEqual(afterPress.state.pendingHolds);
+  });
+
+  it("step is equivalent to recognize when folded over a timeline", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0 },
+      { kind: "press",   btn: "B", t: 50 },
+      { kind: "release", btn: "A", t: 600 },
+      { kind: "release", btn: "B", t: 700 },
+    ];
+
+    let state: RecognizerState = INITIAL_STATE;
+    const gestures = [];
+    for (const e of events) {
+      const out = step(state, e, DEFAULT_TIMING);
+      state = out.state;
+      gestures.push(...out.gestures);
+    }
+    const flushed = flush(state, events[events.length - 1].t);
+    gestures.push(...flushed.gestures);
+
+    expect(gestures).toEqual(recognize(events).gestures);
+  });
+
+  it("custom timing flows through step", () => {
+    const out = step(
+      INITIAL_STATE,
+      { kind: "press", btn: "A", t: 0 },
+      { holdMs: 100 },
+    );
+    expect(out.state.pendingHolds).toEqual([{ btn: "A", scheduledAt: 100 }]);
   });
 });
