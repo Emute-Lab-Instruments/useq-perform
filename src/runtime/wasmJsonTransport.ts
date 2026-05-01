@@ -54,7 +54,6 @@ import {
   buildHelloRequest,
   buildHeartbeatRequest,
   type IoConfig,
-  type JsonEvalExec,
   type JsonRequest,
   type JsonResponseBody,
 } from "./jsonProtocol.ts";
@@ -82,8 +81,6 @@ export interface JsonProtocolEngineSnapshot {
 export interface SendWasmEvalOptions {
   /** Pass to skip publishing the `codeEvaluated` channel. */
   silent?: boolean;
-  /** "immediate" maps to the firmware `@`-prefix bypass. WASM ignores. */
-  exec?: JsonEvalExec | null;
 }
 
 /**
@@ -180,8 +177,7 @@ export class JsonProtocolEngine {
     code: string,
     options: SendWasmEvalOptions = {}
   ): Promise<JsonResponseBody> {
-    const exec = options.exec === "immediate" ? "immediate" : undefined;
-    return this.sendRequest(buildEvalRequest(code, { exec }), {
+    return this.sendRequest(buildEvalRequest(code), {
       silent: !!options.silent,
     });
   }
