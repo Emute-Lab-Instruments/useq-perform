@@ -23,6 +23,7 @@ import { visStore } from "../../utils/visualisationStore.ts";
 import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 import { getActiveWasmRuntimePort } from "../../runtime/activeWasmRuntimePort.ts";
 import { dbg } from "../../lib/debug.ts";
+import { getProbeIntervalMultiplier } from "../../effects/adaptiveQuality.ts";
 import {
   buildProbeExpression,
   collectTemporalWrappers,
@@ -244,7 +245,11 @@ function getAccentColor(): string {
 }
 
 function getProbeRefreshIntervalMs(): number {
-  return _config.getRefreshIntervalMs();
+  // Lever 2 (adaptive quality, spec §1.7/§9.2): under sustained frame
+  // pressure, multiply the configured probe refresh interval (1× / 2× /
+  // 4×). The persisted setting is unchanged — the multiplier is applied
+  // at read time so the override evaporates when pressure releases.
+  return _config.getRefreshIntervalMs() * getProbeIntervalMultiplier();
 }
 
 interface FromListHighlight {

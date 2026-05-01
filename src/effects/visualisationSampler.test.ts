@@ -656,4 +656,117 @@ describe("visualisation sampling boundary", () => {
       expect(after!.pastBuffer.newestTime).toBe(newestBefore);
     });
   });
+
+  describe("adaptive quality lever 1: skip per-frame future edge push (spec: visualisation.md §1.7/§9.2)", () => {
+    it("at pressure level 0, the per-frame far-edge call IS issued when coverage is sufficient", async () => {
+      const adaptive = await import("./adaptiveQuality.ts");
+      adaptive._resetForTests();
+
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+      const mockBatch = vi.mocked(evalOutputsInTimeWindow);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      // First tick batch-refills the future buffer; subsequent ticks
+      // (with sufficient coverage) take the far-edge branch.
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+
+      mockBatch.mockClear();
+      runtime.notifyExternalTimeUpdate(5.05);
+      await runtime._drainForTests();
+
+      // The far-edge call is a single-sample window at the future edge.
+      // Find any call whose start === end (i.e. the edge push).
+      const edgeCall = mockBatch.mock.calls.find(
+        ([_outputs, start, end, count]) =>
+          start === end && count === 1 && start > 5.05,
+      );
+      expect(edgeCall).toBeDefined();
+    });
+
+    it("at pressure level >= 1, tickAndProject skips the far-edge push", async () => {
+      const adaptive = await import("./adaptiveQuality.ts");
+      adaptive._resetForTests();
+
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+      const mockBatch = vi.mocked(evalOutputsInTimeWindow);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      // Prime: do an initial tick so the future buffer is populated and
+      // subsequent ticks would otherwise take the far-edge branch.
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+
+      // Drive into pressure level 1 (mild).
+      for (let i = 0; i < adaptive.MILD_MISS_COUNT; i++) {
+        adaptive.recordTickElapsed(adaptive.MISS_THRESHOLD_MS + 10);
+      }
+      expect(adaptive.getPressureLevel()).toBeGreaterThanOrEqual(1);
+
+      mockBatch.mockClear();
+      runtime.notifyExternalTimeUpdate(5.05);
+      await runtime._drainForTests();
+
+      // The tick still fires (start === end at t=5.05), but no far-edge
+      // single-sample call should have been made (start > 5.05 with
+      // start === end).
+      const edgeCall = mockBatch.mock.calls.find(
+        ([_outputs, start, end, count]) =>
+          start === end && count === 1 && start > 5.05,
+      );
+      expect(edgeCall).toBeUndefined();
+
+      adaptive._resetForTests();
+    });
+
+    it("with adaptiveQuality disabled, edge call IS still issued even at high raw pressure", async () => {
+      const adaptive = await import("./adaptiveQuality.ts");
+      adaptive._resetForTests();
+
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+      const mockBatch = vi.mocked(evalOutputsInTimeWindow);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+
+      // Drive into severe pressure.
+      for (let i = 0; i < adaptive.SEVERE_MISS_COUNT; i++) {
+        adaptive.recordTickElapsed(adaptive.MISS_THRESHOLD_MS + 10);
+      }
+      expect(adaptive.getRawPressureLevel()).toBe(2);
+
+      // Disable adaptive quality — pressure level reported as 0.
+      adaptive.setAdaptiveQualityEnabled(false);
+      expect(adaptive.getPressureLevel()).toBe(0);
+      expect(adaptive.shouldSkipFutureEdgePush()).toBe(false);
+
+      mockBatch.mockClear();
+      runtime.notifyExternalTimeUpdate(5.05);
+      await runtime._drainForTests();
+
+      const edgeCall = mockBatch.mock.calls.find(
+        ([_outputs, start, end, count]) =>
+          start === end && count === 1 && start > 5.05,
+      );
+      expect(edgeCall).toBeDefined();
+
+      adaptive._resetForTests();
+    });
+  });
 });

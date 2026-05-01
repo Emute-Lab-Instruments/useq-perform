@@ -79,6 +79,15 @@ export interface VisualisationSettings {
   readabilityOverscan: number;
   /** Whether the readability blur overlay is enabled at all. */
   readabilityEnabled: boolean;
+  /**
+   * When `true`, the visualisation pipeline detects sustained frame
+   * pressure (rAF tick > 50ms for several of the last 8 frames) and
+   * progressively degrades quality (skip far-edge future push, slow
+   * probe refresh, halve buffer sample rate) until headroom returns.
+   * When `false`, pressure detection still runs but levers are inert.
+   * See docs/specs/visualisation.md §1.7/§9.2.
+   */
+  adaptiveQuality: boolean;
 }
 
 export interface RuntimeSettings {
@@ -241,6 +250,7 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   readabilityDebounceMs: 80,
   readabilityOverscan: 30,
   readabilityEnabled: true,
+  adaptiveQuality: true,
 };
 
 export const defaultDevModeConfiguration: AppDevModeState = {

@@ -45,6 +45,8 @@ export function normalizeVisualisationSettings(
     readabilityOverscan: coerceNumber(raw.readabilityOverscan, defaults.readabilityOverscan),
     readabilityEnabled:
       raw.readabilityEnabled == null ? defaults.readabilityEnabled : raw.readabilityEnabled !== false,
+    adaptiveQuality:
+      raw.adaptiveQuality == null ? defaults.adaptiveQuality : raw.adaptiveQuality !== false,
   };
 }
 
@@ -147,6 +149,10 @@ export function extractVisualisationPatch(
 
   if ("readabilityEnabled" in visualisation) {
     patch.readabilityEnabled = visualisation.readabilityEnabled !== false;
+  }
+
+  if ("adaptiveQuality" in visualisation) {
+    patch.adaptiveQuality = visualisation.adaptiveQuality !== false;
   }
 
   return patch;

@@ -95,6 +95,12 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
             onChange={(val) => updateVisField("circularOffset", val)}
           />
         </FormRow>
+        <FormRow label="Adaptive quality under load" level="advanced">
+          <Checkbox
+            checked={s().visualisation?.adaptiveQuality !== false}
+            onChange={(val) => updateVisField("adaptiveQuality", val)}
+          />
+        </FormRow>
       </SubGroup>
 
       <SubGroup label="Probes" level="advanced">

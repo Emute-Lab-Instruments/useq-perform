@@ -46,6 +46,7 @@ import {
   setPastBufferSampleRate,
   type OutputRenderData,
 } from "../../effects/visualisationSampler.ts";
+import { getSampleRateDivisor } from "../../effects/adaptiveQuality.ts";
 
 /**
  * All data required to paint one frame of the serial visualisation.
@@ -939,6 +940,33 @@ function parseColor(css: string): [number, number, number] {
   return out;
 }
 
+// ── Pixel-matched buffer rate (spec §2.2.1, with adaptive Lever 3) ─
+
+/**
+ * Compute the target past-buffer sample rate (Hz) for the current
+ * canvas geometry and adaptive divisor.
+ *
+ * Spec visualisation.md §2.2.1: pixel-matched capacity is
+ * `floor(canvasWidth / 2) / (windowDuration / 2)`.
+ *
+ * Lever 3 (§1.7/§9.2): the renderer divides the pixel-matched rate by
+ * the pressure-derived divisor (1 / 2 / 4) before pushing it to the
+ * sampler.  Returns `null` when the geometry would yield a non-positive
+ * rate (e.g. zero canvas width or non-positive window).
+ */
+export function computeAdaptivePastBufferRate(
+  canvasWidth: number,
+  windowDurationSeconds: number,
+  divisor: number,
+): number | null {
+  const halfWindowSeconds = (windowDurationSeconds || 1) / 2;
+  if (halfWindowSeconds <= 0 || canvasWidth <= 0) return null;
+  const baseRate = Math.floor(canvasWidth / 2) / halfWindowSeconds;
+  const safeDivisor = divisor > 0 ? divisor : 1;
+  const target = baseRate / safeDivisor;
+  return target > 0 ? target : null;
+}
+
 // ── Main draw entry ─────────────────────────────────────────────────
 
 /**
@@ -988,11 +1016,17 @@ export function drawSerialVisGL(input: VisRenderInput): void {
   // visualisation.md §2.2.1).  One sample per horizontal pixel in the
   // past half eliminates sub-pixel jitter.  The sampler early-returns
   // when the rate is unchanged, so this is cheap on every paint.
-  const halfWindowSeconds = (settings.windowDuration || 1) / 2;
-  if (halfWindowSeconds > 0 && w > 0) {
-    const targetRate = Math.floor(w / 2) / halfWindowSeconds;
-    if (targetRate > 0) setPastBufferSampleRate(targetRate);
-  }
+  //
+  // Lever 3 (adaptive quality, spec §1.7/§9.2): under sustained frame
+  // pressure, divide the pixel-matched rate by the adaptive divisor
+  // (1 / 2 / 4).  Halving the buffer sample rate halves the buffer size
+  // and per-paint GPU work, at the cost of visible coarseness.
+  const targetRate = computeAdaptivePastBufferRate(
+    w,
+    settings.windowDuration,
+    getSampleRateDivisor(),
+  );
+  if (targetRate !== null) setPastBufferSampleRate(targetRate);
 
   // Always paint the overlay (cheap; only re-rasterises axes + text).
   drawOverlay(canvas, hasExpressions);

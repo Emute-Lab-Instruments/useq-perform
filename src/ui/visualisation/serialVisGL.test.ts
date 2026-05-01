@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PastBuffer } from "../../lib/PastBuffer.ts";
 import {
   __serialVisGLInternals,
+  computeAdaptivePastBufferRate,
   drawSerialVisGL,
   drawSerialVisGLFromStores,
   type VisRenderInput,
@@ -449,5 +450,60 @@ describe("drawSerialVisGLFromStores (wired)", () => {
     expect(typeof drawSerialVisGLFromStores).toBe("function");
     expect(drawSerialVisGLFromStores.length).toBe(0);
     expect(() => drawSerialVisGLFromStores()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Adaptive quality lever 3: the renderer divides the pixel-matched past
+// buffer rate by the pressure-derived divisor (1 / 2 / 4) before pushing
+// it to the sampler.  Spec: docs/specs/visualisation.md §1.7/§9.2.
+// ---------------------------------------------------------------------------
+describe("computeAdaptivePastBufferRate (lever 3)", () => {
+  it("returns the pixel-matched rate at divisor=1 (no pressure)", () => {
+    // 800px wide canvas, 10s window, divisor=1 →
+    // floor(800/2) / (10/2) = 400 / 5 = 80 Hz
+    expect(computeAdaptivePastBufferRate(800, 10, 1)).toBe(80);
+  });
+
+  it("halves the rate at divisor=2 (mild pressure)", () => {
+    // Same geometry, divisor=2 → 80 / 2 = 40 Hz
+    expect(computeAdaptivePastBufferRate(800, 10, 2)).toBe(40);
+  });
+
+  it("quarters the rate at divisor=4 (severe pressure)", () => {
+    // Same geometry, divisor=4 → 80 / 4 = 20 Hz
+    expect(computeAdaptivePastBufferRate(800, 10, 4)).toBe(20);
+  });
+
+  it("returns null when canvas width is zero or negative", () => {
+    expect(computeAdaptivePastBufferRate(0, 10, 1)).toBeNull();
+    expect(computeAdaptivePastBufferRate(-100, 10, 1)).toBeNull();
+  });
+
+  it("falls back to a 1-second window when windowDuration is 0 (matches renderer's original semantics)", () => {
+    // The renderer originally used `(settings.windowDuration || 1) / 2`
+    // — preserve that behaviour.  800px / 1s window / divisor 1 → 800 Hz.
+    expect(computeAdaptivePastBufferRate(800, 0, 1)).toBe(800);
+  });
+
+  it("returns null when window duration is negative", () => {
+    expect(computeAdaptivePastBufferRate(800, -5, 1)).toBeNull();
+  });
+
+  it("treats non-positive divisor as 1 (defensive guard)", () => {
+    expect(computeAdaptivePastBufferRate(800, 10, 0)).toBe(80);
+    expect(computeAdaptivePastBufferRate(800, 10, -2)).toBe(80);
+  });
+
+  it("scales correctly with realistic divisor sequence (1, 2, 4)", () => {
+    // 1280×720 canvas, 10s window. Verify monotonic halving.
+    const r1 = computeAdaptivePastBufferRate(1280, 10, 1);
+    const r2 = computeAdaptivePastBufferRate(1280, 10, 2);
+    const r4 = computeAdaptivePastBufferRate(1280, 10, 4);
+    expect(r1).not.toBeNull();
+    expect(r2).not.toBeNull();
+    expect(r4).not.toBeNull();
+    expect(r2).toBe((r1 as number) / 2);
+    expect(r4).toBe((r1 as number) / 4);
   });
 });

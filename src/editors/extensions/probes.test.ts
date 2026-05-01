@@ -674,3 +674,119 @@ describe("probe batch sampler (ProbeConfig.evalExpressionAtTimes)", () => {
     expect(evalInUseqWasmSilently).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Adaptive quality lever 2: probe refresh interval is multiplied by the
+// pressure-derived multiplier (1× / 2× / 4×).  The persisted setting is
+// not mutated — the override is applied at read time.
+// Spec: docs/specs/visualisation.md §1.7/§9.2.
+// ---------------------------------------------------------------------------
+describe("probe refresh adaptive quality (lever 2)", () => {
+  it("multiplies the rAF tick gate interval by 2 at pressure level 1", async () => {
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      if (code === "barDur") return "1";
+      if (code.startsWith("[")) return numericVector(40, 0.5);
+      return "0.5";
+    });
+
+    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
+    const adaptive = await import("../../effects/adaptiveQuality.ts");
+    adaptive._resetForTests();
+    setVisStore("currentTime", 4);
+
+    const view = createView("bar", probeExtensions, { anchor: 0 });
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
+
+    // Initial frame: lastRun starts at 0, gate condition `now - 0 < N`
+    // is false for any reasonable `now`, so this fires.
+    await runNextFrame(1000);
+    const renderAfterFirst = view.state.field(probeField).renderById;
+    const probeId = view.state.field(probeField).probes[0].id;
+    expect(renderAfterFirst[probeId]?.kind).toBe("waveform");
+    const callsAfterFirst = evalInUseqWasmSilently.mock.calls.length;
+
+    // Drive into pressure level 1 — the multiplier becomes 2.
+    for (let i = 0; i < adaptive.MILD_MISS_COUNT; i++) {
+      adaptive.recordTickElapsed(adaptive.MISS_THRESHOLD_MS + 5);
+    }
+    expect(adaptive.getProbeIntervalMultiplier()).toBe(2);
+
+    // The base interval is DEFAULT_PROBE_REFRESH_INTERVAL_MS (33) but
+    // could be larger via clamping; doubled it's at most ~66ms.  Fire
+    // the next frame at lastRun + 50ms — under normal pressure that
+    // would tick (50 > 33), but under mild pressure the gate is
+    // 50 < 66 so it should NOT tick.
+    await runNextFrame(1050);
+    expect(evalInUseqWasmSilently.mock.calls.length).toBe(callsAfterFirst);
+
+    // Fire well past the doubled interval — should tick.
+    await runNextFrame(1100);
+    expect(
+      evalInUseqWasmSilently.mock.calls.length,
+    ).toBeGreaterThan(callsAfterFirst);
+
+    adaptive._resetForTests();
+    view.destroy();
+  });
+
+  it("multiplies the gate interval by 4 at pressure level 2 (severe)", async () => {
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      if (code === "barDur") return "1";
+      if (code.startsWith("[")) return numericVector(40, 0.5);
+      return "0.5";
+    });
+
+    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
+    const adaptive = await import("../../effects/adaptiveQuality.ts");
+    adaptive._resetForTests();
+    setVisStore("currentTime", 4);
+
+    const view = createView("bar", probeExtensions, { anchor: 0 });
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
+
+    await runNextFrame(1000);
+    const probeId = view.state.field(probeField).probes[0].id;
+    expect(view.state.field(probeField).renderById[probeId]?.kind).toBe(
+      "waveform",
+    );
+    const callsAfterFirst = evalInUseqWasmSilently.mock.calls.length;
+
+    // Severe pressure: multiplier = 4.
+    for (let i = 0; i < adaptive.SEVERE_MISS_COUNT; i++) {
+      adaptive.recordTickElapsed(adaptive.MISS_THRESHOLD_MS + 5);
+    }
+    expect(adaptive.getProbeIntervalMultiplier()).toBe(4);
+
+    // 4× the 33ms base interval = 132ms.  100ms after lastRun is below
+    // this — gate holds.
+    await runNextFrame(1100);
+    expect(evalInUseqWasmSilently.mock.calls.length).toBe(callsAfterFirst);
+
+    // 200ms after — gate releases.
+    await runNextFrame(1200);
+    expect(
+      evalInUseqWasmSilently.mock.calls.length,
+    ).toBeGreaterThan(callsAfterFirst);
+
+    adaptive._resetForTests();
+    view.destroy();
+  });
+
+  it("multiplier returns to 1 when adaptiveQuality is disabled", async () => {
+    const adaptive = await import("../../effects/adaptiveQuality.ts");
+    adaptive._resetForTests();
+
+    // Saturate: severe pressure.
+    for (let i = 0; i < adaptive.SEVERE_MISS_COUNT; i++) {
+      adaptive.recordTickElapsed(adaptive.MISS_THRESHOLD_MS + 5);
+    }
+    expect(adaptive.getProbeIntervalMultiplier()).toBe(4);
+
+    adaptive.setAdaptiveQualityEnabled(false);
+    expect(adaptive.getProbeIntervalMultiplier()).toBe(1);
+
+    adaptive._resetForTests();
+  });
+});

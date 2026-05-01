@@ -32,6 +32,7 @@ import {
 } from "./visualisationSampler.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 import { refreshOutputHealth } from "../utils/outputHealthStore.ts";
+import { recordTickElapsed } from "./adaptiveQuality.ts";
 
 /**
  * Render hook supplied by a UI adapter — `effects/` is forbidden from
@@ -173,6 +174,14 @@ function tick(): void {
 
   const now = performance.now();
   if (now - lastTickMs < TARGET_TICK_MS) return;
+  // Measure the elapsed time *between* committed ticks (i.e. the
+  // realised frame interval) and feed the pressure detector. We do this
+  // before updating `lastTickMs` so we have access to the previous
+  // committed timestamp. Skip the very first committed tick (when
+  // `lastTickMs` is 0 from startup).
+  if (lastTickMs > 0) {
+    recordTickElapsed(now - lastTickMs);
+  }
   lastTickMs = now;
 
   perf.begin("frame-tick");

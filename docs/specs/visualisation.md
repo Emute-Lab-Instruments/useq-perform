@@ -19,6 +19,8 @@
 
 1.7 **Render frequency** is animation-frame paced. The renderer no-ops when the panel is not visible. Rendering must remain smooth (≥ 30 FPS) at the documented channel target — see [MAIN.md §3.3](MAIN.md).
 
+1.7.1 **Adaptive quality under sustained frame pressure.** When `visualisation.adaptiveQuality` is enabled (default `true`), the rAF loop measures committed-tick elapsed times and derives a *pressure level* (0 = normal, 1 = mild, 2 = severe). Any tick `≥ 50ms` (i.e. ≤ 20fps) is a *miss*; 3+ misses in the last 8 ticks step up to mild, 6+ to severe. Step-down only happens after 16 consecutive normal ticks (hysteresis to avoid oscillation under bursty load). Three levers engage in increasing-cost-of-quality-loss order: (a) skip the per-frame future-buffer edge push (the future trace stops extending until pressure releases); (b) double (mild) or quadruple (severe) the effective probe refresh interval — the persisted `probeRefreshIntervalMs` is unchanged, the multiplier is applied at read time; (c) halve (mild) or quarter (severe) the pixel-matched past-buffer sample rate (§2.2.1) before pushing it to the sampler, reducing buffer size and per-paint GPU work proportionally. When `adaptiveQuality` is `false`, pressure detection still runs but consumers always see level 0.
+
 1.8 **Palette is theme-coupled.** Switching to a light theme switches the visualisation palette; a dark theme uses a dark palette. Custom palettes are not user-editable in v1. See [themes.md](themes.md).
 
 1.9 The visualisation panel must continue to render correctly across runtime transitions (see [runtime-modes.md §1.7](runtime-modes.md)). A hardware connect/disconnect must not blank the canvas or lose in-flight traces.
@@ -33,9 +35,9 @@ Past values are ground truth: what the signal engine actually produced as time a
 
 2.2 **Rolling buffer shape.** Each active output maintains a FIFO buffer of recorded samples. All outputs are sampled at the same times (one tick per frame). The buffer is time-aligned at constant sample rate, so index arithmetic suffices for time lookups — no (time, value) pairs needed.
 
-2.2.1 **Pixel-matched sample density.** The rolling buffer's sample rate is derived from the canvas pixel width: `bufferSampleRate = floor(canvasWidth / 2) / (windowDuration / 2)` — i.e., one sample per horizontal pixel in the past half. This eliminates sub-pixel jitter: each sample maps to exactly one pixel column, so waveform features never hop between columns as time advances. The buffer rate is recomputed on canvas resize.
+2.2.1 **Pixel-matched buffer capacity.** The rolling buffer's *capacity* is derived from canvas pixel width: `bufferSampleRate = floor(canvasWidth / 2) / (windowDuration / 2)` (recomputed on canvas resize, integer-snapped to avoid sub-pixel re-allocation). This is a **capacity** target, not a literal sample density: tick cadence is unchanged (§2.1 — one push per rAF frame, ~30 Hz), so the GPU's line rasteriser interpolates between actual sample points along the time axis. Pixel-matched capacity eliminates the sub-pixel **feature drift** the spec actually cares about: each pushed sample maps to a stable absolute-time column, so a peak/edge in the waveform doesn't hop between columns as time advances. *True* one-sample-per-column rendering would require either a higher tick rate (§9.6.A) or a multi-sample-per-tick batch (§9.6.C); see deferred section.
 
-2.2.2 The pixel-matched rate applies to the **past buffer only**. Future projection uses `visualisation.sampleCount / 2` (§3.1), which may be lower. The visual transition between past and future density at `t = now` is acceptable because the future half is already visually distinguished (lower alpha or dashed, §1.4).
+2.2.2 The pixel-matched capacity applies to the **past buffer only**. Future projection uses `visualisation.sampleCount / 2` (§3.1), which may be lower. The visual transition between past and future density at `t = now` is acceptable because the future half is already visually distinguished (lower alpha or dashed, §1.4).
 
 2.3 **History depth.** The buffer retains `visualisation.windowDuration / 2 + visualisation.historyHeadroom` seconds of history (default headroom: 5 seconds). `visualisation.maxHistorySeconds` (default 30) caps the total history regardless of headroom. Widening the vis window beyond the buffer simply shows a shorter past.
 
@@ -179,6 +181,7 @@ New settings introduced by this spec (all under the `visualisation` section):
 | `historyHeadroom` | number | 5 | Extra seconds of past samples retained beyond the visible window half |
 | `maxHistorySeconds` | number | 30 | Hard cap on total history depth per output (seconds) |
 | `inputEpsilon` | number | 0.01 | Absolute change threshold for external inputs to trigger future re-projection |
+| `adaptiveQuality` | boolean | `true` | Enable pressure-driven quality degradation (§1.7.1). When `false`, pressure detection still runs but levers are inert. |
 
 Existing settings with unchanged semantics: `windowDuration`, `sampleCount`, `lineWidth`, `futureDashed`, `futureLeadSeconds`.
 
@@ -186,10 +189,17 @@ Existing settings with unchanged semantics: `windowDuration`, `sampleCount`, `li
 
 ## Open / Deferred
 
-9.2 **Adaptive sample density.** Distant future samples matter less than near-future ones. A non-uniform sample distribution (denser near `t = now`, sparser at the edges) could reduce projection work for stateful outputs. Deferred until profiling shows the uniform approach is a bottleneck.
+9.2 **Non-uniform future sample distribution (deferred).** The general "adaptive quality" idea has *partially* shipped — see §1.7.1 for the implemented pressure-detection-and-three-levers system (skip future edge push, slow probe refresh, halve buffer rate). What remains deferred is specifically the orthogonal idea that *distant* future samples matter less than *near*-future ones, and so a non-uniform sample distribution (denser near `t = now`, sparser at the edges) could reduce projection work for stateful outputs without a uniform quality cut. This is more invasive (changes the projection batching shape) and is deferred until profiling shows the uniform projection density is a bottleneck even after §1.7.1's measures engage.
 
 9.3 **Hardware readback for past values.** In `both` mode, past values could come from hardware readback (actual voltages) rather than WASM ticks. This would require the serial protocol to stream output values at a sufficient rate. Deferred — WASM ticks are faithful enough for v1.
 
 9.4 **Probe past/future semantics.** Probes ([probes.md](probes.md)) currently batch-sample across a per-probe time window. Whether probes should adopt the same faithful-past / projected-future split as the main vis panel is an open question. The per-probe canvas is narrow; the benefit of recorded past for probes may not justify the added complexity.
 
 9.5 **Stateful future projection accuracy at coarse `dt`.** The current spec steps future projections at vis sample density. For nonlinear state updates (`(defstate x 0 (+ x (* (sin x) dt)))`), large `dt` causes Euler-method truncation error. A future refinement could detect nonlinear state bodies and use a finer intermediate step rate. Deferred — linear accumulation dominates musical use cases.
+
+9.6 **True pixel-matched sample density (paths to literal one-sample-per-column).** §2.2.1 currently makes buffer *capacity* pixel-matched but leaves tick cadence at ~30 Hz. The GPU rasterises between sample points; sub-pixel feature drift is eliminated, but the trace is still drawn from sparser data than the past-half's pixel column count. Two paths to closing this gap, in increasing order of correctness and cost:
+
+  - **9.6.A — Pixel-matched tick rate.** Drive the WASM tick at `bufferSampleRate` (typically 100–200 Hz at desktop resolutions) instead of rAF. Each tick pushes one sample; the past buffer has one sample per pixel column literally. Cost: 3–7× current per-second WASM work. Becomes affordable once §5.2 (`useq_tick_and_project`) lands, since it folds the per-tick round-trips from 3 to 1. Best long-term direction.
+  - **9.6.C — Multi-sample-per-tick batch (hybrid).** Keep tick at rAF but each tick batches `N = bufferSampleRate / rAFRate` samples (typically N=3–5) covering `[t-Δ, t]` and pushes them all to the past buffer. Density approaches pixel-matched without raising the tick rate. Cost: requires the WASM engine to do batched past sampling efficiently — closely tied to `useq_tick_and_project`'s batching shape (§7.2 already projects N future samples per call; the same machinery can serve a small recent-past window). A reasonable v2 once the combined ABI is in.
+
+  Until either lands, the spec's promise in §2.2.1 is "feature stability under time advance" rather than "literal one sample per column".

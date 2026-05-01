@@ -16,6 +16,10 @@
 
 import { dbg } from "../lib/debug.ts";
 import { PastBuffer } from "../lib/PastBuffer.ts";
+import {
+  shouldSkipFutureEdgePush,
+  setAdaptiveQualityEnabled,
+} from "./adaptiveQuality.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 import {
   getSerialVisPalette,
@@ -350,6 +354,12 @@ export async function tickAndProject(
     // Batch-refill when coverage is insufficient.
     await refillFutureBuffers(timeSeconds, settings);
   } else {
+    // Lever 1 (adaptive quality, spec §1.7/§9.2): under sustained frame
+    // pressure, skip the per-frame future edge push.  The future trace
+    // simply stops extending until pressure releases — when coverage
+    // runs out, the next frame's `needsExtend` branch above batch-refills.
+    if (shouldSkipFutureEdgePush()) return;
+
     // Push one future sample at the far edge (save/restore, no state corruption).
     let edgeValues: Map<string, VisSample[]>;
     try {
@@ -518,11 +528,20 @@ export function reportExpressionColor(
 
 function loadAndApplySettings(): VisSettings {
   let visual: Partial<VisSettings> | null = null;
+  let adaptive: unknown = undefined;
   try {
-    visual = getAppSettings().visualisation as Partial<VisSettings> | null;
+    const vis = getAppSettings().visualisation as
+      | (Partial<VisSettings> & { adaptiveQuality?: unknown })
+      | null;
+    visual = vis;
+    adaptive = vis?.adaptiveQuality;
   } catch {
     // appSettingsRepository may still be in TDZ during early init.
   }
+  // Wire the adaptive-quality toggle through to the detector.  When
+  // `false`, the detector still records ticks but consumers see
+  // pressure level 0 — see effects/adaptiveQuality.ts.
+  setAdaptiveQualityEnabled(adaptive === undefined ? true : adaptive !== false);
   const settings = clampSettings(visual);
   updateSettings(settings);
   return settings;
