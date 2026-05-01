@@ -5,6 +5,7 @@
 // communication.
 
 import { createChannel, type TypedChannel } from "../lib/typedChannel";
+import type { UseqDiagnostic } from "../runtime/wasmInterpreter";
 
 import type {
   RuntimeBootstrapFailure,
@@ -58,6 +59,11 @@ export interface CodeEvaluatedDetail {
 
 export type AnimateConnectDetail = undefined;
 export type DevicePluggedInDetail = undefined;
+
+/** Payload for standalone diagnostics frames (spec §5.9). */
+export interface StandaloneDiagnosticsDetail {
+  diagnostics: UseqDiagnostic[];
+}
 
 // ── Detail map (kept for type-level reference) ──────────────────
 
@@ -123,6 +129,9 @@ export const devicePluggedIn = createChannel<DevicePluggedInDetail>();
 
 /** App settings changed (published by runtimeService after any mutation). */
 export const settingsChanged = createChannel<AppSettings>();
+
+/** Standalone diagnostics frame received from firmware (spec §5.9). */
+export const standaloneDiagnostics = createChannel<StandaloneDiagnosticsDetail>();
 
 // ── Re-export the channel type for convenience ──────────────────
 
