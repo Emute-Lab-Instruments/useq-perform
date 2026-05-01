@@ -68,6 +68,27 @@ export function doubleTap(btn: ButtonName): DoubleTapGesture {
 }
 
 /**
+ * Construct a chord gesture from a runtime-determined array. Validates
+ * length ≥ 2 and distinctness at runtime. Used by the recognizer when
+ * the chord button set is computed from state. Authors writing literal
+ * chords should prefer `chord(...)` for compile-time length checking.
+ */
+export function chordFromArray(btns: readonly ButtonName[]): ChordGesture {
+  if (btns.length < 2) {
+    throw new RangeError(
+      `chord: requires ≥ 2 buttons, got ${btns.length}`,
+    );
+  }
+  if (new Set(btns).size !== btns.length) {
+    throw new RangeError(
+      `chord: buttons must be distinct, got [${btns.join(", ")}]`,
+    );
+  }
+  const sorted = [...btns].sort(compareButtons) as unknown as ChordGesture["btns"];
+  return Object.freeze({ kind: "chord", btns: sorted });
+}
+
+/**
  * Construct a chord gesture. Compile-time tuple constraint requires ≥ 2
  * buttons; runtime check enforces distinctness; the returned `btns` is
  * canonicalised by BUTTON_ORDER so `chord(['LB','A'])` and `chord(['A','LB'])`
@@ -76,13 +97,7 @@ export function doubleTap(btn: ButtonName): DoubleTapGesture {
 export function chord<
   const B extends readonly [ButtonName, ButtonName, ...ButtonName[]],
 >(btns: B): ChordGesture {
-  if (new Set(btns).size !== btns.length) {
-    throw new RangeError(
-      `chord: buttons must be distinct, got [${btns.join(", ")}]`,
-    );
-  }
-  const sorted = [...btns].sort(compareButtons) as unknown as ChordGesture["btns"];
-  return Object.freeze({ kind: "chord", btns: sorted });
+  return chordFromArray(btns);
 }
 
 export function flick(stick: StickName, dir: Direction): FlickGesture {

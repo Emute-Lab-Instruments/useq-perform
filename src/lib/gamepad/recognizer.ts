@@ -24,8 +24,9 @@
 // Cycle 3 — hold.
 // Cycle 3.5 — refactor to step/flush + batch wrapper.
 // Cycle 4 — held (auto-repeat).
+// Cycle 5 — chord.
 
-import { at, held, hold, tap } from "./gestures";
+import { at, chordFromArray, held, hold, tap } from "./gestures";
 import {
   assertNever,
   type AxisFrame,
@@ -54,12 +55,20 @@ export type Timing = {
   readonly heldInitialMs: number;
   /** Interval between subsequent `held` ticks. MUST be > 0. */
   readonly heldRepeatMs: number;
+  /**
+   * Maximum elapsed time (inclusive) between the earliest still-held
+   * press and a new press for the new press to form a chord with the
+   * earlier ones. Comparison is `<=` (a press at exactly grace counts
+   * as part of the chord).
+   */
+  readonly chordGraceMs: number;
 };
 
 export const DEFAULT_TIMING: Timing = Object.freeze({
   holdMs: 250,
   heldInitialMs: 300,
   heldRepeatMs: 60,
+  chordGraceMs: 30,
 });
 
 // ---------------------------------------------------------------------------
@@ -76,13 +85,17 @@ type PendingHold = {
  * One pending recurring `held` timer. After each emission the entry's
  * `nextAt` advances by `repeatMs` and `nextN` increments. `repeatMs` is
  * captured at press time so flush() doesn't need timing to advance.
- * Internal — not exported.
+ * `pressedAt` is captured for chord detection (lookback from a later
+ * press's t). Internal — not exported. Note: pendingHelds doubles as
+ * the canonical "currently held" set, since each press adds exactly one
+ * entry and release removes it.
  */
 type PendingHeld = {
   readonly btn: ButtonName;
   readonly nextAt: number;
   readonly nextN: number;
   readonly repeatMs: number;
+  readonly pressedAt: number;
 };
 
 /**
@@ -248,8 +261,24 @@ export function step(
   let next = caught.state;
 
   switch (event.kind) {
-    case "press":
+    case "press": {
       gestures.push(at(tap(event.btn), event.t));
+
+      // Chord detection: any currently-held button whose press time is
+      // within chordGraceMs (inclusive) of this press? If so, emit a
+      // chord including all such buttons + this one.
+      const recent = next.pendingHelds.filter(
+        h => event.t - h.pressedAt <= timing.chordGraceMs,
+      );
+      if (recent.length >= 1) {
+        gestures.push(
+          at(
+            chordFromArray([...recent.map(h => h.btn), event.btn]),
+            event.t,
+          ),
+        );
+      }
+
       next = {
         ...next,
         pendingHolds: [
@@ -263,10 +292,12 @@ export function step(
             nextAt: event.t + timing.heldInitialMs,
             nextN: 1,
             repeatMs: timing.heldRepeatMs,
+            pressedAt: event.t,
           },
         ],
       };
       break;
+    }
     case "release":
       next = {
         ...next,

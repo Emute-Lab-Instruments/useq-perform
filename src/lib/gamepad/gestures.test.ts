@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   at,
   chord,
+  chordFromArray,
   compareButtons,
   doubleTap,
   flick,
@@ -17,7 +18,7 @@ import {
   keyOf,
   tap,
 } from "./gestures";
-import { BUTTON_ORDER } from "./types";
+import { BUTTON_ORDER, type ButtonName } from "./types";
 
 // ===========================================================================
 // Smart-constructor goldens — output shape per primitive
@@ -97,6 +98,30 @@ describe("chord canonicalisation", () => {
     const c = chord(["RightStickPress", "A", "Up", "Start"]);
     // BUTTON_ORDER: A(0), Up(8), Start(12), RightStickPress(15)
     expect(c.btns).toEqual(["A", "Up", "Start", "RightStickPress"]);
+  });
+});
+
+// ===========================================================================
+// chordFromArray — runtime-array chord construction
+// ===========================================================================
+
+describe("chordFromArray", () => {
+  it("constructs the same gesture as chord(...) for valid inputs", () => {
+    const buttons: ButtonName[] = ["LB", "A"];
+    expect(chordFromArray(buttons)).toEqual(chord(["LB", "A"]));
+  });
+
+  it("rejects arrays of length < 2", () => {
+    expect(() => chordFromArray([])).toThrow(RangeError);
+    expect(() => chordFromArray(["A"])).toThrow(RangeError);
+  });
+
+  it("rejects duplicate buttons", () => {
+    expect(() => chordFromArray(["A", "A"])).toThrow(RangeError);
+  });
+
+  it("canonicalises by BUTTON_ORDER", () => {
+    expect(chordFromArray(["Y", "A", "LB"]).btns).toEqual(["A", "Y", "LB"]);
   });
 });
 

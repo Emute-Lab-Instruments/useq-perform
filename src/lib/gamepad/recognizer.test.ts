@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { at, held, hold, tap } from "./gestures";
+import { at, chord, held, hold, tap } from "./gestures";
 import {
   DEFAULT_TIMING,
   INITIAL_STATE,
@@ -91,19 +91,22 @@ describe("recognize: tap (Cycle 2)", () => {
   });
 
   it("preserves press order across distinct buttons", () => {
+    // Timestamps spread well beyond chordGraceMs (default 30) so chord
+    // detection doesn't fire — keeps this test scoped to tap ordering.
     const events: readonly LogicalEvent[] = [
-      { kind: "press", btn: "A", t: 0 },
-      { kind: "press", btn: "B", t: 1 },
-      { kind: "press", btn: "X", t: 2 },
+      { kind: "press", btn: "A", t: 0   },
+      { kind: "press", btn: "B", t: 100 },
+      { kind: "press", btn: "X", t: 200 },
     ];
     expect(recognize(events).gestures.map(g => g.gesture)).toEqual([
       tap("A"), tap("B"), tap("X"),
     ]);
   });
 
-  it("simultaneous-timestamp presses preserve input order", () => {
-    // Simultaneous polls (same t) MUST be ordered deterministically
-    // by their position in the input stream.
+  it("simultaneous-timestamp presses preserve input order (with their chord)", () => {
+    // Simultaneous polls (same t) MUST be ordered deterministically by
+    // position in the input stream. Same-t presses also form a chord —
+    // its btns are canonical regardless of input order.
     const events: readonly LogicalEvent[] = [
       { kind: "press", btn: "B", t: 100 },
       { kind: "press", btn: "A", t: 100 },
@@ -111,6 +114,7 @@ describe("recognize: tap (Cycle 2)", () => {
     expect(recognize(events).gestures).toEqual([
       at(tap("B"), 100),
       at(tap("A"), 100),
+      at(chord(["A", "B"]), 100),
     ]);
   });
 
@@ -513,6 +517,167 @@ describe("recognize: held (Cycle 4)", () => {
 });
 
 // ===========================================================================
+// Cycle 5 — chord
+//
+// Chord = ≥ 2 buttons pressed within `chordGraceMs` of each other (looking
+// back from the latest press). On each press, if any currently-held
+// button was pressed within the grace window, emit `chord(those + this)`
+// at the new press's t. Multiple chord emissions per session are
+// allowed (the chord set may grow as more buttons join).
+//
+// Default chordGraceMs is 30. Comparison is inclusive (`elapsed ≤ grace`).
+// Chord btns are canonicalised by BUTTON_ORDER (handled by `chordFromArray`).
+// ===========================================================================
+
+describe("recognize: chord (Cycle 5)", () => {
+  it("two same-t presses emit chord(A,B) at t", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0  },
+      { kind: "press",   btn: "B", t: 0  },
+      { kind: "release", btn: "A", t: 50 },
+      { kind: "release", btn: "B", t: 50 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("B"), 0),
+      at(chord(["A", "B"]), 0),
+    ]);
+  });
+
+  it("two presses within chordGraceMs emit chord at the later press's t", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0  },
+      { kind: "press",   btn: "B", t: 20 },
+      { kind: "release", btn: "A", t: 60 },
+      { kind: "release", btn: "B", t: 70 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("B"), 20),
+      at(chord(["A", "B"]), 20),
+    ]);
+  });
+
+  it("two presses at exactly the grace boundary emit chord (inclusive)", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0  },
+      { kind: "press",   btn: "B", t: 30 },  // = chordGraceMs default
+      { kind: "release", btn: "A", t: 60 },
+      { kind: "release", btn: "B", t: 70 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("B"), 30),
+      at(chord(["A", "B"]), 30),
+    ]);
+  });
+
+  it("two presses just past the grace boundary do NOT emit chord", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0  },
+      { kind: "press",   btn: "B", t: 31 },
+      { kind: "release", btn: "A", t: 60 },
+      { kind: "release", btn: "B", t: 70 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("B"), 31),
+    ]);
+  });
+
+  it("three same-t presses emit chord(A,B) then chord(A,B,C) (cumulative)", () => {
+    // Each press emits a chord with all currently-held + this button.
+    // Dispatcher resolves which chord-binding (if any) wins; eager-with-undo
+    // rolls back redundant fires.
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0  },
+      { kind: "press",   btn: "B", t: 0  },
+      { kind: "press",   btn: "X", t: 0  },
+      { kind: "release", btn: "A", t: 50 },
+      { kind: "release", btn: "B", t: 50 },
+      { kind: "release", btn: "X", t: 50 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("B"), 0),
+      at(chord(["A", "B"]), 0),
+      at(tap("X"), 0),
+      at(chord(["A", "B", "X"]), 0),
+    ]);
+  });
+
+  it("chord btns are canonicalised regardless of press order", () => {
+    // LB pressed before A; chord should still report btns canonically (A < LB).
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "LB", t: 0  },
+      { kind: "press",   btn: "A",  t: 10 },
+      { kind: "release", btn: "LB", t: 50 },
+      { kind: "release", btn: "A",  t: 60 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("LB"), 0),
+      at(tap("A"), 10),
+      at(chord(["A", "LB"]), 10),
+    ]);
+  });
+
+  it("chord t is the latest press's t (not the earliest)", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 100 },
+      { kind: "press",   btn: "B", t: 110 },
+      { kind: "release", btn: "A", t: 150 },
+      { kind: "release", btn: "B", t: 160 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 100),
+      at(tap("B"), 110),
+      at(chord(["A", "B"]), 110),
+    ]);
+  });
+
+  it("chordGraceMs is configurable via timing override", () => {
+    // grace=10. Press at 0, press at 15. 15 > 10 → no chord.
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0  },
+      { kind: "press",   btn: "B", t: 15 },
+      { kind: "release", btn: "A", t: 60 },
+      { kind: "release", btn: "B", t: 70 },
+    ];
+    expect(
+      recognize(events, { timing: { chordGraceMs: 10 } }).gestures,
+    ).toEqual([
+      at(tap("A"), 0),
+      at(tap("B"), 15),
+    ]);
+  });
+
+  it("a released button does not form a chord with a later press", () => {
+    // A pressed and released, then B pressed within what would be grace
+    // of A's press time. A is no longer held — no chord.
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0  },
+      { kind: "release", btn: "A", t: 5  },
+      { kind: "press",   btn: "B", t: 10 },
+      { kind: "release", btn: "B", t: 50 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("B"), 10),
+    ]);
+  });
+
+  it("is deterministic with chord detection", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0  },
+      { kind: "press",   btn: "B", t: 10 },
+      { kind: "release", btn: "A", t: 50 },
+      { kind: "release", btn: "B", t: 60 },
+    ];
+    expect(recognize(events)).toEqual(recognize(events));
+  });
+});
+
+// ===========================================================================
 // step / flush — incremental API contract
 //
 // `step` and `flush` are the primitive API; `recognize` is a fold over them.
@@ -522,7 +687,10 @@ describe("recognize: held (Cycle 4)", () => {
 
 describe("step / flush", () => {
   it("INITIAL_STATE has no pending state", () => {
-    expect(INITIAL_STATE).toEqual({ pendingHolds: [], pendingHelds: [] });
+    expect(INITIAL_STATE).toEqual({
+      pendingHolds: [],
+      pendingHelds: [],
+    });
   });
 
   it("step on a press records a pending hold and emits a tap", () => {
@@ -612,7 +780,7 @@ describe("step / flush", () => {
     const out = step(
       INITIAL_STATE,
       { kind: "press", btn: "A", t: 0 },
-      { holdMs: 100 },
+      { ...DEFAULT_TIMING, holdMs: 100 },
     );
     expect(out.state.pendingHolds).toEqual([{ btn: "A", scheduledAt: 100 }]);
   });
