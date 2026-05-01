@@ -27,6 +27,7 @@ import {
   protocolReady as protocolReadyChannel,
   jsonMeta as jsonMetaChannel,
   animateConnect as animateConnectChannel,
+  standaloneDiagnostics as standaloneDiagnosticsChannel,
 } from "../contracts/runtimeChannels";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 import { cleanCode, isPortWritable } from "./serial-utils.ts";
@@ -572,6 +573,39 @@ export function handleJsonMessage(rawMessage: string): void {
   // §4.2 / §5.5 — unsolicited `ready` frame: re-send hello immediately.
   if (parsed.type === "ready") {
     retryHelloOnReady();
+    return;
+  }
+
+  // §5.6 — unsolicited `log` envelope (replaces legacy TEXT/MSG_TO_EDITOR).
+  if (parsed.type === "log") {
+    const level = parsed.level as string | undefined;
+    const text = parsed.text as string | undefined;
+    if (text) {
+      if (level === "error") {
+        post(text, "error");
+      } else if (level === "warn") {
+        post(text, "warn");
+      } else if (level === "notice") {
+        // notice = prominent display (used by message-editor builtin)
+        post(`[notice] ${text}`, "warn");
+      } else {
+        // debug / info / unknown → plain console output
+        post(`uSEQ: ${text}`);
+      }
+    }
+    return;
+  }
+
+  // §5.9 — unsolicited standalone `diagnostics` frame.
+  if (parsed.type === "diagnostics") {
+    const diags = parsed.diagnostics;
+    if (Array.isArray(diags)) {
+      try {
+        standaloneDiagnosticsChannel.publish({ diagnostics: diags });
+      } catch (dispatchError) {
+        console.error("Failed to dispatch standalone diagnostics", dispatchError);
+      }
+    }
     return;
   }
 

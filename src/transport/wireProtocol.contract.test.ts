@@ -329,7 +329,7 @@ describe("wire protocol contract — editor side", () => {
 
   // §5.6 — Unsolicited {type:"log",level,text} envelopes are routed to console.
   // Replaces the legacy framed TEXT (0x20) and MSG_TO_EDITOR (0x64) types.
-  it.skip("T4 [§5.6] handles {type:\"log\",level,text} envelope", async () => {
+  it("T4 [§5.6] handles {type:\"log\",level,text} envelope", async () => {
     const transport = await loadTransport();
     const port = new SpecCompliantFakeDevice();
     await transport.connectToSerialPort(port as unknown as SerialPort);
@@ -346,7 +346,7 @@ describe("wire protocol contract — editor side", () => {
   // §5.9 — Standalone {type:"diagnostics",diagnostics:[...]} frames are dispatched.
   // The editor should route these to the diagnostics handler the same way
   // it routes diagnostics embedded in eval responses.
-  it.skip("T5 [§5.9] handles standalone diagnostics frames", async () => {
+  it("T5 [§5.9] handles standalone diagnostics frames", async () => {
     const transport = await loadTransport();
     const port = new SpecCompliantFakeDevice();
     await transport.connectToSerialPort(port as unknown as SerialPort);
@@ -380,7 +380,7 @@ describe("wire protocol contract — editor side", () => {
   // Currently the editor reads diagnostics ONLY from WASM exports
   // (src/runtime/wasmInterpreter.ts). For hardware mode it must also
   // parse them out of the JsonResponse and route them to inline annotations.
-  it.skip("T6 [§5.7] parses embedded diagnostics from eval responses", async () => {
+  it("T6 [§5.7] parses embedded diagnostics from eval responses", async () => {
     const transport = await loadTransport();
     const port = new SpecCompliantFakeDevice();
 
@@ -418,11 +418,14 @@ describe("wire protocol contract — editor side", () => {
     await transport.connectToSerialPort(port as unknown as SerialPort);
     await flush();
 
-    const result = (await transport.sendTouSEQ("(a1 nope)")) as {
+    // Note: with fake timers we must start the eval, advance the clock to let
+    // the device's setTimeout(0) fire the response, then await the result.
+    const resultPromise = transport.sendTouSEQ("(a1 nope)") as Promise<{
       success: boolean;
       diagnostics?: unknown[];
-    };
+    }>;
     await flush();
+    const result = await resultPromise;
 
     expect(result).toMatchObject({ success: false });
     expect(Array.isArray(result.diagnostics)).toBe(true);
