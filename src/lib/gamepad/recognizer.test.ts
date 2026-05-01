@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { at, hold, tap } from "./gestures";
+import { at, held, hold, tap } from "./gestures";
 import {
   DEFAULT_TIMING,
   INITIAL_STATE,
@@ -18,8 +18,16 @@ import {
   recognize,
   step,
   type RecognizerState,
+  type Timing,
 } from "./recognizer";
 import type { LogicalEvent } from "./types";
+
+// Suppress held emissions for tests scoped to other primitives.
+// `Number.MAX_SAFE_INTEGER` ensures the held-initial threshold is never
+// reached within any realistic test timeline.
+const NO_HELD: Partial<Timing> = {
+  heldInitialMs: Number.MAX_SAFE_INTEGER,
+};
 
 // ===========================================================================
 // Cycle 2 — tap
@@ -221,11 +229,13 @@ describe("recognize: hold (Cycle 3)", () => {
   });
 
   it("two held buttons emit holds at independent thresholds", () => {
+    // Releases stay within the held-initial boundary so this test stays
+    // scoped to hold behaviour. A held at 300 boundary, B held at 350.
     const events: readonly LogicalEvent[] = [
-      { kind: "press",   btn: "A", t: 0 },
-      { kind: "press",   btn: "B", t: 50 },
-      { kind: "release", btn: "A", t: 600 },
-      { kind: "release", btn: "B", t: 700 },
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "press",   btn: "B", t: 50  },
+      { kind: "release", btn: "A", t: 290 },
+      { kind: "release", btn: "B", t: 340 },
     ];
     expect(recognize(events).gestures).toEqual([
       at(tap("A"), 0),
@@ -236,11 +246,12 @@ describe("recognize: hold (Cycle 3)", () => {
   });
 
   it("releasing one button only cancels its own pending hold", () => {
+    // B's release stays under its held-initial boundary (50 + 300 = 350).
     const events: readonly LogicalEvent[] = [
-      { kind: "press",   btn: "A", t: 0 },
-      { kind: "press",   btn: "B", t: 50 },
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "press",   btn: "B", t: 50  },
       { kind: "release", btn: "A", t: 100 },  // A: well before threshold
-      { kind: "release", btn: "B", t: 600 },  // B: well past threshold
+      { kind: "release", btn: "B", t: 340 },  // B: past hold, before held
     ];
     expect(recognize(events).gestures).toEqual([
       at(tap("A"), 0),
@@ -279,24 +290,30 @@ describe("recognize: hold (Cycle 3)", () => {
   it("hold timestamp is scheduledAt, not the triggering event's t", () => {
     // Many tools naïvely tag the hold with whatever event surfaced it.
     // The spec requires the threshold time as the gesture's logical moment.
+    // Release stays under held-initial (100 + 300 = 400) so the assertion
+    // remains scoped to hold's timestamp choice.
     const events: readonly LogicalEvent[] = [
       { kind: "press",   btn: "A", t: 100 },
-      { kind: "release", btn: "A", t: 999 },
+      { kind: "release", btn: "A", t: 380 },
     ];
     expect(recognize(events).gestures).toEqual([
       at(tap("A"), 100),
-      at(hold("A"), 350), // 100 + 250, NOT 999
+      at(hold("A"), 350), // 100 + 250, NOT 380
     ]);
   });
 
   it("catch-up emits multiple due holds in scheduledAt order", () => {
+    // Both holds must fire from a single catch-up; releases need to be
+    // past the later hold's scheduledAt. Default heldInitialMs would also
+    // fire by then, so we suppress held to keep this test scoped to hold
+    // ordering during catch-up.
     const events: readonly LogicalEvent[] = [
       { kind: "press",   btn: "A", t: 0    },
       { kind: "press",   btn: "B", t: 100  },
       { kind: "release", btn: "A", t: 1000 },
       { kind: "release", btn: "B", t: 1100 },
     ];
-    expect(recognize(events).gestures).toEqual([
+    expect(recognize(events, { timing: NO_HELD }).gestures).toEqual([
       at(tap("A"), 0),
       at(tap("B"), 100),
       at(hold("A"), 250),
@@ -305,11 +322,191 @@ describe("recognize: hold (Cycle 3)", () => {
   });
 
   it("is deterministic with hold timers", () => {
+    // Releases stay under each button's held-initial boundary
+    // (A: 300, B: 350) to keep the assertion scoped to hold determinism.
     const events: readonly LogicalEvent[] = [
       { kind: "press",   btn: "A", t: 0   },
       { kind: "press",   btn: "B", t: 50  },
+      { kind: "release", btn: "A", t: 280 },
+      { kind: "release", btn: "B", t: 340 },
+    ];
+    expect(recognize(events)).toEqual(recognize(events));
+  });
+});
+
+// ===========================================================================
+// Cycle 4 — held (auto-repeat)
+//
+// `held` ticks fire while a button stays pressed past `heldInitialMs`,
+// then every `heldRepeatMs` thereafter. `n` counts from 1 at the first
+// tick. Held emits in addition to tap and (for buttons held past
+// holdMs) hold — the recognizer is binding-blind. Hold/held mutual
+// exclusion is enforced at bindings load, not here.
+//
+// Defaults: heldInitialMs=300, heldRepeatMs=60.
+// ===========================================================================
+
+describe("recognize: held (Cycle 4)", () => {
+  it("press held just past heldInitialMs emits one held tick at scheduledAt", () => {
+    // Press at 0; held(n=1) scheduled at 300. Release at 350 > 300, so
+    // the first tick fires; next tick (360) is after the release.
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
       { kind: "release", btn: "A", t: 350 },
-      { kind: "release", btn: "B", t: 400 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(hold("A"), 250),
+      at(held("A", 1), 300),
+    ]);
+  });
+
+  it("release at exactly heldInitialMs does NOT emit held (boundary)", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 300 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(hold("A"), 250),
+    ]);
+  });
+
+  it("emits successive held ticks at heldRepeatMs intervals", () => {
+    // Press at 0; held ticks at 300, 360, 420. Release at 421 catches
+    // the n=3 tick at 420 but not the next at 480.
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 421 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(hold("A"), 250),
+      at(held("A", 1), 300),
+      at(held("A", 2), 360),
+      at(held("A", 3), 420),
+    ]);
+  });
+
+  it("release at exactly the next-tick scheduledAt does NOT emit that tick (boundary)", () => {
+    // Press at 0; held ticks at 300, 360, 420. Release at 420 hits the
+    // boundary — tick n=3 not fired.
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 420 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(hold("A"), 250),
+      at(held("A", 1), 300),
+      at(held("A", 2), 360),
+    ]);
+  });
+
+  it("press without release emits held ticks up to evaluateUpTo", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press", btn: "A", t: 0 },
+    ];
+    expect(recognize(events, { evaluateUpTo: 400 }).gestures).toEqual([
+      at(tap("A"), 0),
+      at(hold("A"), 250),
+      at(held("A", 1), 300),
+      at(held("A", 2), 360),
+    ]);
+  });
+
+  it("evaluateUpTo at exactly heldInitialMs does NOT emit (boundary)", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press", btn: "A", t: 0 },
+    ];
+    expect(recognize(events, { evaluateUpTo: 300 }).gestures).toEqual([
+      at(tap("A"), 0),
+      at(hold("A"), 250),
+    ]);
+  });
+
+  it("custom held timing flows through", () => {
+    // heldInitialMs=100, heldRepeatMs=20. Press at 0, release at 180.
+    // Ticks at 100, 120, 140, 160. Release-at-180 boundary excludes 180.
+    // (Hold default of 250ms isn't reached.)
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 180 },
+    ];
+    expect(
+      recognize(events, {
+        timing: { heldInitialMs: 100, heldRepeatMs: 20 },
+      }).gestures,
+    ).toEqual([
+      at(tap("A"), 0),
+      at(held("A", 1), 100),
+      at(held("A", 2), 120),
+      at(held("A", 3), 140),
+      at(held("A", 4), 160),
+    ]);
+  });
+
+  it("release cancels held (no further ticks emitted)", () => {
+    // Press at 0, release at 200 (well before heldInitialMs).
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 200 },
+    ];
+    expect(recognize(events).gestures).toEqual([at(tap("A"), 0)]);
+  });
+
+  it("two buttons emit held ticks on independent schedules", () => {
+    // A pressed at 0 → held A schedule: 300, 360, 420.
+    // B pressed at 50 → held B schedule: 350, 410, 470.
+    // Release A at 425 catches A's n=1 (300), n=2 (360), n=3 (420).
+    // Release B at 475 catches B's n=1 (350), n=2 (410), n=3 (470).
+    // Holds also fire: hold A at 250, hold B at 300.
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "press",   btn: "B", t: 50  },
+      { kind: "release", btn: "A", t: 425 },
+      { kind: "release", btn: "B", t: 475 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(tap("B"), 50),
+      at(hold("A"), 250),
+      at(hold("B"), 300),
+      at(held("A", 1), 300),
+      at(held("B", 1), 350),
+      at(held("A", 2), 360),
+      at(held("B", 2), 410),
+      at(held("A", 3), 420),
+      at(held("B", 3), 470),
+    ]);
+  });
+
+  it("press → release → press resets the held counter", () => {
+    // First press: tap, hold, held(1) at 300, held(2) at 360. Release 380.
+    // Second press at 500: tap, hold(750), held(1) at 800, held(2) at 860.
+    // evaluateUpTo defaults to 870 (last event).
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 380 },
+      { kind: "press",   btn: "A", t: 500 },
+      { kind: "release", btn: "A", t: 870 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(tap("A"), 0),
+      at(hold("A"), 250),
+      at(held("A", 1), 300),
+      at(held("A", 2), 360),
+      at(tap("A"), 500),
+      at(hold("A"), 750),
+      at(held("A", 1), 800),
+      at(held("A", 2), 860),
+    ]);
+  });
+
+  it("is deterministic with held timers", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "press",   btn: "A", t: 0   },
+      { kind: "release", btn: "A", t: 500 },
     ];
     expect(recognize(events)).toEqual(recognize(events));
   });
@@ -325,7 +522,7 @@ describe("recognize: hold (Cycle 3)", () => {
 
 describe("step / flush", () => {
   it("INITIAL_STATE has no pending state", () => {
-    expect(INITIAL_STATE).toEqual({ pendingHolds: [] });
+    expect(INITIAL_STATE).toEqual({ pendingHolds: [], pendingHelds: [] });
   });
 
   it("step on a press records a pending hold and emits a tap", () => {
