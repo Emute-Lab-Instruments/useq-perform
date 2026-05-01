@@ -28,6 +28,7 @@
 import type {
   RuntimeDiagnostic,
   SampleSeriesMap,
+  TickAndProjectResult,
   WasmRuntimeCapabilities,
   WasmRuntimePort,
 } from "../contracts/runtimePorts";
@@ -41,6 +42,7 @@ import {
   evalInUseqWasmSilently,
   evalOutputAtTime,
   evalOutputsInTimeWindow,
+  tickAndProjectOutputs,
   updateUseqWasmTime,
   wasmRuntimePort as legacyWasmRuntimePort,
 } from "./wasmInterpreter.ts";
@@ -96,6 +98,7 @@ export const wasmRuntimePort: WasmRuntimePort = {
       enabled: inner.enabled,
       supportsEval: inner.supportsEval,
       supportsTimeWindow: inner.supportsTimeWindow,
+      supportsTickAndProject: inner.supportsTickAndProject,
     };
   },
 
@@ -161,6 +164,15 @@ export const wasmRuntimePort: WasmRuntimePort = {
     numSamples: number
   ): Promise<SampleSeriesMap> {
     return evalOutputsInTimeWindow(outputs, startTime, endTime, numSamples);
+  },
+
+  tickAndProject(
+    outputs: string[],
+    tickTime: number,
+    projectEnd: number,
+    numFutureSamples: number,
+  ): Promise<TickAndProjectResult | null> {
+    return tickAndProjectOutputs(outputs, tickTime, projectEnd, numFutureSamples);
   },
 
   async readLastDiagnostics(): Promise<RuntimeDiagnostic[]> {

@@ -163,6 +163,18 @@ export interface TimeSample {
 /** Map of channel name to sample series. */
 export type SampleSeriesMap = Map<string, TimeSample[]>;
 
+/**
+ * Result of the combined tick + future projection ABI call.
+ *
+ * `tickValues` carries the state-advancing tick output (one entry per
+ * requested output, NaN for inactive). `projectionSamples` carries the
+ * future samples produced under save/restore.
+ */
+export interface TickAndProjectResult {
+  tickValues: Map<string, number>;
+  projectionSamples: SampleSeriesMap;
+}
+
 /** Capability snapshot for the WASM port. */
 export interface WasmRuntimeCapabilities extends RuntimePortCapabilities {
   /** Whether the WASM runtime is enabled in user settings. */
@@ -171,6 +183,8 @@ export interface WasmRuntimeCapabilities extends RuntimePortCapabilities {
   readonly supportsEval: boolean;
   /** Whether time-window batch evaluation is available. */
   readonly supportsTimeWindow: boolean;
+  /** Whether the combined tick + project export is available. */
+  readonly supportsTickAndProject: boolean;
 }
 
 /**
@@ -228,6 +242,26 @@ export interface WasmRuntimePort extends SharedRuntimePort {
     endTime: number,
     numSamples: number
   ): Promise<SampleSeriesMap>;
+
+  /**
+   * Combined tick + future projection in a single boundary crossing.
+   *
+   * Phase 1 advances the WASM state to `tickTime` (same semantics as
+   * the legacy single-sample `evalOutputsInTimeWindow` tick). Phase 2
+   * projects all requested outputs at `numFutureSamples` evenly spaced
+   * times between `tickTime` and `projectEnd` under save/restore (live
+   * state is not corrupted).
+   *
+   * Resolves to `null` when the export isn't available — callers must
+   * fall back to the legacy 3-call path. See
+   * `docs/specs/visualisation.md` §5.2 / §7.2.
+   */
+  tickAndProject(
+    outputs: string[],
+    tickTime: number,
+    projectEnd: number,
+    numFutureSamples: number,
+  ): Promise<TickAndProjectResult | null>;
 
   /**
    * Read structured diagnostics from the most recent evaluation.

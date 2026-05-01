@@ -111,7 +111,7 @@ Not all outputs need their future re-projected every frame. The engine classifie
 2. **Invalidate or extend future**: If the future is marked stale (code eval, settings change), clear future buffers and batch-refill from `t = now` forward. Otherwise, if any future buffer's coverage is running out (newest time < visible window edge), batch-refill. Otherwise, push one sample at the far future edge per output.
 3. **Render**: If rendering is requested and the panel is visible, invoke the render hook.
 
-5.2 **Combined tick-and-project ABI call.** For performance, the tick and future-extension phases can be combined into a single WASM boundary crossing via `useq_tick_and_project` (§7.2). This function ticks at `t = now` (advancing state), then projects forward (with save/restore), returning both the tick values and the future samples. One JS↔WASM transition per frame instead of two. (Not yet implemented — current code uses separate `evalOutputAtTime` + `evalOutputsInTimeWindow` calls.)
+5.2 **Combined tick-and-project ABI call.** For performance, the tick and future-extension phases are combined into a single WASM boundary crossing via `useq_tick_and_project` (§7.2). This function ticks at `t = now` (advancing state), then projects forward (with save/restore), returning both the tick values and the future samples. One JS↔WASM transition per frame instead of two. The sampler probes the export at runtime — when present, the per-frame loop folds tick + edge-push (or tick + refill) into one call; when absent, the sampler degrades gracefully to the legacy 2-call path (`evalOutputsInTimeWindow` for the tick, separate call for the future edge or refill).
 
 5.3 **Sampling guards.** At most one tick-and-project cycle is in flight at a time. If a newer time arrives while a call is running, the latest pending time is sampled once the current run completes (single pending-time slot). A slow batch must never overwrite a fresher one — this invariant follows from strict serialization, not from post-hoc sequence-counter discard.
 
@@ -152,11 +152,12 @@ This section specifies new WASM ABI exports required by the faithful-past / proj
 
 7.1 **`useq_tick_all_outputs(time_seconds: number) → pointer`** — Evaluate all active outputs at the given time, **commit state** (advance `g_prev_tick_time`, update `prev_output_values`), and return all output values. Unlike `useq_eval_output` (which evaluates the full graph per call), this evaluates the graph exactly once. Returns a pointer to a `Float64Array` of `MAX_OUTPUTS` values (caller reads via `HEAPF64`). Invalid outputs contain `NaN`.
 
-7.2 **`useq_tick_and_project(tick_time: number, project_end: number, num_future_samples: number, buffer_ptr: number, buffer_length: number) → number`** — Combined tick + future projection in a single call:
-1. Tick the engine at `tick_time` (state-advancing, as §7.1).
-2. Project all active outputs from `tick_time` to `project_end` at `num_future_samples` evenly spaced times. For stateful outputs, this uses save/restore internally — live state is not corrupted.
-3. Write tick values (one per active output) followed by projection values (active_outputs × num_future_samples) into the caller-provided heap buffer at `buffer_ptr`.
-4. Return the number of active outputs, or `-1` on error.
+7.2 **`useq_tick_and_project(outputs_json: string, tick_time: number, project_end: number, num_future_samples: number, buffer_ptr: number, buffer_length: number) → number`** — Combined tick + future projection in a single call:
+1. Tick the engine at `tick_time` (state-advancing, as §7.1) and write the tick value for each requested output into `buffer_ptr[0..num_channels-1]` (NaN for inactive outputs).
+2. If `num_future_samples > 0`, project the same outputs from `tick_time` to `project_end` at `num_future_samples` evenly spaced times. For stateful outputs, this uses save/restore internally — live state is not corrupted.
+3. Projection values are laid out row-major after the tick row: row `c` (for the `c`-th requested output) starts at offset `num_channels + c * num_future_samples` and contains `num_future_samples` consecutive doubles. Inactive outputs are NaN-filled.
+4. Required buffer size is `num_channels + num_channels * num_future_samples` doubles.
+5. Returns the number of requested output channels (= number of names parsed from `outputs_json`), or `-1` on error (with `s_last_error` populated).
 
 7.3 **`useq_output_classifications() → pointer`** — Return a packed byte array (one byte per `MAX_OUTPUTS` slot):
 - `0` = inactive (no valid expression)

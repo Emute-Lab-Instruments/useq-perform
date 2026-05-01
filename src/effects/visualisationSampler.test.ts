@@ -37,12 +37,22 @@ const wasmInterpreterMocks = vi.hoisted(() => ({
 
 vi.mock("../runtime/wasmInterpreter.ts", () => wasmInterpreterMocks);
 
+// Mutable state for the active-port mock so individual tests can
+// flip between fallback (default) and combined (opt-in) shapes
+// without re-mocking the module (which fights vi.resetModules +
+// transitive imports).
+const portState = vi.hoisted(() => ({
+  supportsTickAndProject: false,
+  tickAndProject: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
   getActiveWasmRuntimePort: () => ({
     capabilities: () => ({
       enabled: true,
       supportsEval: true,
       supportsTimeWindow: true,
+      supportsTickAndProject: portState.supportsTickAndProject,
     }),
     ensureLoaded: vi.fn().mockResolvedValue(undefined),
     evalCode: wasmInterpreterMocks.evalInUseqWasm,
@@ -50,6 +60,13 @@ vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
     updateTime: wasmInterpreterMocks.updateUseqWasmTime,
     evalOutputAtTime: wasmInterpreterMocks.evalOutputAtTime,
     evalOutputsInTimeWindow: wasmInterpreterMocks.evalOutputsInTimeWindow,
+    // Default: combined export unavailable (state set to false above),
+    // forcing the legacy 2-call fallback path so existing tests assert
+    // on the canonical evalOutputsInTimeWindow spy.  Specific tests
+    // opt into the combined path by setting portState.* before
+    // exercising the sampler.
+    tickAndProject: (...args: unknown[]) =>
+      (portState.tickAndProject as (...a: unknown[]) => unknown)(...args),
     readActiveDiagnostics: vi.fn().mockResolvedValue([]),
     readLastDiagnostics: vi.fn().mockResolvedValue([]),
   }),
@@ -654,6 +671,151 @@ describe("visualisation sampling boundary", () => {
       expect(after).not.toBeNull();
       expect(after!.pastBuffer.length).toBe(lengthBefore);
       expect(after!.pastBuffer.newestTime).toBe(newestBefore);
+    });
+  });
+
+
+  describe("combined tick + project ABI path (spec: visualisation.md §5.2/§7.2)", () => {
+    afterEach(() => {
+      // Reset port-state flags so subsequent tests get the default
+      // (combined export unavailable) shape.
+      portState.supportsTickAndProject = false;
+      portState.tickAndProject = vi.fn().mockResolvedValue(null);
+    });
+
+    it("uses tickAndProject when the port reports supportsTickAndProject:true", async () => {
+      const tickAndProjectMock = vi.fn(async (
+        outputs: string[],
+        tickTime: number,
+        projectEnd: number,
+        numFutureSamples: number,
+      ) => {
+        const tickValues = new Map<string, number>();
+        for (const name of outputs) tickValues.set(name, 0.5);
+        const projectionSamples = new Map<string, Array<{ time: number; value: number }>>();
+        if (numFutureSamples > 0) {
+          const dt = numFutureSamples > 1 ? (projectEnd - tickTime) / (numFutureSamples - 1) : 0;
+          for (const name of outputs) {
+            const samples: Array<{ time: number; value: number }> = [];
+            for (let i = 0; i < numFutureSamples; i++) {
+              samples.push({ time: tickTime + dt * i, value: 0.7 });
+            }
+            projectionSamples.set(name, samples);
+          }
+        }
+        return { tickValues, projectionSamples };
+      });
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = tickAndProjectMock;
+
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+      const mockBatch = vi.mocked(evalOutputsInTimeWindow);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      mockBatch.mockClear();
+      tickAndProjectMock.mockClear();
+
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+
+      // The combined path: tickAndProject was called, the legacy
+      // single-sample tick was NOT.
+      expect(tickAndProjectMock).toHaveBeenCalled();
+      const tickCall = mockBatch.mock.calls.find(
+        ([_outputs, start, end, count]) => start === 5.0 && end === 5.0 && count === 1,
+      );
+      expect(tickCall).toBeUndefined();
+
+      // Past + future buffers should have data.
+      const renderData = sampler.getRenderData("a1");
+      expect(renderData).not.toBeNull();
+      expect(renderData!.pastBuffer.length).toBeGreaterThan(0);
+      expect(renderData!.futureBuffer).toBeDefined();
+      expect(renderData!.futureBuffer!.length).toBeGreaterThan(0);
+    });
+
+    it("falls back to the legacy 2-call path when tickAndProject returns null", async () => {
+      // Capability says yes but port returns null at call time
+      // (e.g. binding present but invocation fails) — the sampler
+      // must gracefully fall back.
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = vi.fn().mockResolvedValue(null);
+
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+      const mockBatch = vi.mocked(evalOutputsInTimeWindow);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      mockBatch.mockClear();
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+
+      // Legacy tick call should fire (start === end === 5.0, count 1).
+      const tickCall = mockBatch.mock.calls.find(
+        ([_outputs, start, end, count]) => start === 5.0 && end === 5.0 && count === 1,
+      );
+      expect(tickCall).toBeDefined();
+      expect(tickCall![0]).toEqual(["bar", "a1"]);
+
+      // Past buffer should be populated by the fallback path.
+      const renderData = sampler.getRenderData("a1");
+      expect(renderData).not.toBeNull();
+      expect(renderData!.pastBuffer.length).toBeGreaterThan(0);
+    });
+
+    it("populates both past and future buffers from a single combined call", async () => {
+      const tickAndProjectMock = vi.fn(async (
+        outputs: string[],
+        tickTime: number,
+        projectEnd: number,
+        numFutureSamples: number,
+      ) => {
+        const tickValues = new Map<string, number>();
+        for (const name of outputs) tickValues.set(name, 0.42);
+        const projectionSamples = new Map<string, Array<{ time: number; value: number }>>();
+        if (numFutureSamples > 0) {
+          const dt = numFutureSamples > 1 ? (projectEnd - tickTime) / (numFutureSamples - 1) : 0;
+          for (const name of outputs) {
+            const samples: Array<{ time: number; value: number }> = [];
+            for (let i = 0; i < numFutureSamples; i++) {
+              samples.push({ time: tickTime + dt * i, value: 0.84 });
+            }
+            projectionSamples.set(name, samples);
+          }
+        }
+        return { tickValues, projectionSamples };
+      });
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = tickAndProjectMock;
+
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+
+      const renderData = sampler.getRenderData("a1");
+      expect(renderData).not.toBeNull();
+
+      // Past: at least one sample at the tick time with value 0.42.
+      expect(renderData!.pastBuffer.length).toBeGreaterThan(0);
+      expect(renderData!.pastBuffer.newestTime).toBe(5.0);
+
+      // Future: refilled on first frame, contents come from projection
+      // samples (value 0.84).
+      expect(renderData!.futureBuffer).toBeDefined();
+      expect(renderData!.futureBuffer!.length).toBeGreaterThan(0);
     });
   });
 

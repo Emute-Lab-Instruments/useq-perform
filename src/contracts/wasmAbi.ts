@@ -130,6 +130,11 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     returnType: "number",
     argTypes: ["string", "number", "number", "number", "number", "number"],
   },
+  useq_tick_and_project: {
+    symbol: "useq_tick_and_project",
+    returnType: "number",
+    argTypes: ["string", "number", "number", "number", "number", "number"],
+  },
   useq_last_error: {
     symbol: "useq_last_error",
     returnType: "string",

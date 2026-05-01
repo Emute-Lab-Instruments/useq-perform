@@ -21,6 +21,14 @@ export interface TimeSample {
 /** Map of channel name to sample series */
 export type SampleSeriesMap = Map<string, TimeSample[]>;
 
+/** Result shape for the combined tick + project ABI (`useq_tick_and_project`). */
+export interface TickAndProjectResult {
+  /** Map of channel name → tick value at `tickTime`. NaN for inactive outputs. */
+  tickValues: Map<string, number>;
+  /** Map of channel name → projection samples between `tickTime` and `projectEnd`. */
+  projectionSamples: SampleSeriesMap;
+}
+
 /** Transport states the WASM interpreter understands */
 export type TransportState = 'playing' | 'paused' | 'stopped';
 
@@ -41,7 +49,14 @@ interface UseqRuntime {
   updateTime: (seconds: number) => void;
   evaluateOutputAtTime: (name: string, timeSeconds: number) => number;
   evaluateOutputsTimeWindow: (outputs: string[], startTime: number, endTime: number, numSamples: number) => SampleSeriesMap;
+  tickAndProjectOutputs: (
+    outputs: string[],
+    tickTime: number,
+    projectEnd: number,
+    numFutureSamples: number,
+  ) => TickAndProjectResult | null;
   supportsTimeWindow: boolean;
+  supportsTickAndProject: boolean;
   release: () => void;
 }
 
@@ -56,6 +71,7 @@ const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise: Promise<void> | null = null;
 let runtimePromise: Promise<UseqRuntime> | null = null;
 let lastKnownTimeWindowSupport = false;
+let lastKnownTickAndProjectSupport = false;
 function isUseqWasmEnabled(): boolean {
   try {
     return getAppSettings()?.wasm?.enabled ?? true;
@@ -179,7 +195,14 @@ interface BufferState {
 
 interface BatchEvaluator {
   evaluate: (outputs: string[], startTime: number, endTime: number, numSamples: number) => SampleSeriesMap;
+  tickAndProject: (
+    outputs: string[],
+    tickTime: number,
+    projectEnd: number,
+    numFutureSamples: number,
+  ) => TickAndProjectResult | null;
   supportsTimeWindow: () => boolean;
+  supportsTickAndProject: () => boolean;
   release: () => void;
 }
 
@@ -197,6 +220,12 @@ function createBatchEvaluator(
   let readLastError = typedEval
     ? bindOptionalCwrap(module, errorDesc)
     : null;
+
+  const tickProjectDesc = OPTIONAL_WASM_EXPORTS.useq_tick_and_project;
+  let tickAndProjectEval = bindOptionalCwrap(module, tickProjectDesc);
+  if (tickAndProjectEval && !readLastError) {
+    readLastError = bindOptionalCwrap(module, errorDesc);
+  }
 
   const bufferState: BufferState = {
     pointer: 0,
@@ -422,9 +451,107 @@ function createBatchEvaluator(
     }
   };
 
+  const tickAndProject = (
+    outputsArray: string[],
+    tickTime: number,
+    projectEnd: number,
+    numFutureSamples: number,
+  ): TickAndProjectResult | null => {
+    if (!tickAndProjectEval) return null;
+    const safeFuture = Number.isFinite(numFutureSamples)
+      ? Math.max(0, Math.floor(numFutureSamples))
+      : 0;
+    const safeOutputs = Array.isArray(outputsArray) ? Array.from(outputsArray) : [];
+    if (safeOutputs.length === 0) {
+      return {
+        tickValues: new Map(),
+        projectionSamples: new Map(),
+      };
+    }
+    const outputsJson = JSON.stringify(safeOutputs);
+    const totalEntries = safeOutputs.length + safeOutputs.length * safeFuture;
+    const { pointer, view } = ensureCapacity(totalEntries);
+    if (!view || view.length < totalEntries) {
+      throw new Error("uSEQ WASM buffer view is unavailable");
+    }
+
+    let status: number;
+    perf.begin("wasm-tick-and-project");
+    try {
+      status = tickAndProjectEval(
+        outputsJson,
+        Number(tickTime) || 0,
+        Number(projectEnd) || 0,
+        safeFuture,
+        pointer,
+        totalEntries,
+      ) as number;
+      perf.end("wasm-tick-and-project");
+    } catch (error) {
+      perf.end("wasm-tick-and-project");
+      if (isBrokenOptionalExportError(error)) {
+        tickAndProjectEval = null;
+        return null;
+      }
+      throw error;
+    }
+
+    if (status < 0) {
+      let message = "uSEQ WASM tick_and_project failed";
+      if (typeof readLastError === "function") {
+        try {
+          message = (readLastError() as string) || message;
+        } catch (error) {
+          if (isBrokenOptionalExportError(error)) {
+            readLastError = null;
+          }
+        }
+      }
+      throw new Error(message);
+    }
+
+    const validChannels = Math.min(safeOutputs.length, Math.max(status, 0));
+
+    const tickValues = new Map<string, number>();
+    for (let c = 0; c < safeOutputs.length; c++) {
+      const name = safeOutputs[c];
+      if (typeof name !== "string" || !name) continue;
+      const value = c < validChannels ? view[c] : Number.NaN;
+      tickValues.set(name, value);
+    }
+
+    const projectionSamples = new Map<string, TimeSample[]>();
+    if (safeFuture > 0) {
+      const projOffset = safeOutputs.length;
+      const dt =
+        safeFuture > 1
+          ? (Number(projectEnd) - Number(tickTime)) / (safeFuture - 1)
+          : 0;
+      for (let c = 0; c < safeOutputs.length; c++) {
+        const name = safeOutputs[c];
+        if (typeof name !== "string" || !name) continue;
+        const samples: TimeSample[] = new Array(safeFuture);
+        const rowStart = projOffset + c * safeFuture;
+        for (let s = 0; s < safeFuture; s++) {
+          const time = Number(tickTime) + dt * s;
+          const value =
+            c < validChannels && rowStart + s < view.length
+              ? view[rowStart + s]
+              : Number.NaN;
+          samples[s] = { time, value };
+        }
+        projectionSamples.set(name, samples);
+      }
+    }
+
+    return { tickValues, projectionSamples };
+  };
+
   return {
     evaluate,
+    tickAndProject,
     supportsTimeWindow: (): boolean => typedEval !== null || legacyEval !== null,
+    supportsTickAndProject: (): boolean => tickAndProjectEval !== null,
     release,
   };
 }
@@ -513,6 +640,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   useq_init();
   dbg("uSEQ WASM interpreter initialised");
   lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
+  lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
 
   return {
     module,
@@ -547,7 +675,23 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
         throw new Error(`uSEQ WASM batch evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
+    tickAndProjectOutputs: (
+      outputs: string[],
+      tickTime: number,
+      projectEnd: number,
+      numFutureSamples: number,
+    ): TickAndProjectResult | null => {
+      try {
+        const result = batchEvaluator.tickAndProject(outputs, tickTime, projectEnd, numFutureSamples);
+        lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
+        return result;
+      } catch (error) {
+        lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
+        throw new Error(`uSEQ WASM tick_and_project failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
     supportsTimeWindow: batchEvaluator.supportsTimeWindow(),
+    supportsTickAndProject: batchEvaluator.supportsTickAndProject(),
     release: (): void => {
       batchEvaluator.release();
     }
@@ -560,6 +704,7 @@ export function ensureUseqWasmLoaded(): Promise<UseqRuntime> {
       scriptLoadPromise = null;
       runtimePromise = null;
       lastKnownTimeWindowSupport = false;
+      lastKnownTickAndProjectSupport = false;
       console.error("Failed to load uSEQ WASM interpreter", error);
       throw error;
     });
@@ -645,6 +790,34 @@ export async function evalOutputsInTimeWindow(
 }
 
 /**
+ * Combined tick + future projection in a single WASM boundary crossing.
+ *
+ * Phase 1 (state-advancing tick at `tickTime`) is identical to a
+ * `evalOutputsInTimeWindow([...outputs], tickTime, tickTime, 1)` call,
+ * except that it doesn't allocate a JSON intermediate or a fresh sample
+ * map. Phase 2 (projection) runs with save/restore around it so live
+ * state isn't corrupted.
+ *
+ * Returns `null` when the optional `useq_tick_and_project` export isn't
+ * available — callers should fall back to the legacy 3-call path.
+ *
+ * See `docs/specs/visualisation.md` §5.2 / §7.2.
+ */
+export async function tickAndProjectOutputs(
+  outputs: string[],
+  tickTime: number,
+  projectEnd: number,
+  numFutureSamples: number,
+): Promise<TickAndProjectResult | null> {
+  if (!isUseqWasmEnabled()) {
+    return null;
+  }
+
+  const runtime = await ensureUseqWasmLoaded();
+  return runtime.tickAndProjectOutputs(outputs, tickTime, projectEnd, numFutureSamples);
+}
+
+/**
  * Capability report for a WasmRuntimePort instance.
  *
  * Allows callers to discover which operations are actually available before
@@ -657,6 +830,8 @@ export interface WasmCapabilities {
   readonly supportsEval: boolean;
   /** Whether time-window batch evaluation is available. */
   readonly supportsTimeWindow: boolean;
+  /** Whether the combined tick + project export is available. */
+  readonly supportsTickAndProject: boolean;
 }
 
 /**
@@ -683,6 +858,20 @@ export interface WasmRuntimePort {
     endTime: number,
     numSamples: number
   ): Promise<SampleSeriesMap>;
+
+  /**
+   * Combined tick + future projection in a single boundary crossing.
+   *
+   * Returns `null` when the export isn't available — callers must fall
+   * back to the legacy `evalOutputAtTime` + `evalOutputsInTimeWindow`
+   * path. See `docs/specs/visualisation.md` §5.2 / §7.2.
+   */
+  tickAndProject(
+    outputs: string[],
+    tickTime: number,
+    projectEnd: number,
+    numFutureSamples: number,
+  ): Promise<TickAndProjectResult | null>;
 }
 
 /** Concrete WasmRuntimePort backed by the embedded WASM interpreter. */
@@ -693,6 +882,7 @@ export const wasmRuntimePort: WasmRuntimePort = {
       enabled,
       supportsEval: enabled,
       supportsTimeWindow: enabled && lastKnownTimeWindowSupport,
+      supportsTickAndProject: enabled && lastKnownTickAndProjectSupport,
     };
   },
   eval: evalInUseqWasm,
@@ -700,6 +890,7 @@ export const wasmRuntimePort: WasmRuntimePort = {
   updateTime: updateUseqWasmTime,
   evalOutputAtTime,
   evalOutputsInTimeWindow,
+  tickAndProject: tickAndProjectOutputs,
 };
 
 // ---------------------------------------------------------------------------

@@ -55,6 +55,12 @@ const evalOutputsInTimeWindow = (
   endTime: number,
   numSamples: number,
 ) => wasmPort().evalOutputsInTimeWindow(outputs, startTime, endTime, numSamples);
+const wasmTickAndProject = (
+  outputs: string[],
+  tickTime: number,
+  projectEnd: number,
+  numFutureSamples: number,
+) => wasmPort().tickAndProject(outputs, tickTime, projectEnd, numFutureSamples);
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -280,99 +286,202 @@ async function refillFutureBuffers(
 // ── Tick & Project ──────────────────────────────────────────────────
 
 /**
+ * Apply a Map<name, number> tick result to bar + per-output past buffers.
+ *
+ * The combined `useq_tick_and_project` ABI returns one tick value per
+ * requested output; the legacy single-sample `evalOutputsInTimeWindow`
+ * call returns a Map<name, [{time,value}]>. This helper takes a uniform
+ * `name → number` view and updates the same downstream state (bar
+ * store + past buffers) that both code paths must produce.
+ */
+function applyTickValues(
+  outputs: string[],
+  timeSeconds: number,
+  tickValues: Map<string, number>,
+): void {
+  const barValue = tickValues.get("bar");
+  if (typeof barValue === "number" && Number.isFinite(barValue)) {
+    const wrapped = barValue % 1;
+    updateBar(wrapped < 0 ? wrapped + 1 : wrapped);
+  } else {
+    updateBar(0);
+  }
+  for (const name of outputs) {
+    const buf = ensurePastBuffer(name);
+    const value = tickValues.get(name);
+    if (typeof value === "number" && Number.isFinite(value)) {
+      buf.push(timeSeconds, value);
+    }
+  }
+}
+
+/**
  * Per-frame tick: advance WASM state to t=now, record past values,
  * and push one future sample at the far edge of the future window.
  *
  * Future buffers grow organically (one sample per frame) and are only
  * batch-refilled on invalidation events (code eval, control changes).
+ *
+ * When the active port supports the combined `useq_tick_and_project`
+ * export (spec visualisation.md §5.2 / §7.2), the per-frame tick + edge
+ * push folds into a single boundary crossing.  Otherwise the legacy
+ * 2-call path is used; behaviour is identical, only the round-trip
+ * count changes.
  */
 export async function tickAndProject(
   timeSeconds: number,
   settings: VisSettings,
 ): Promise<void> {
   const outputs = Object.keys(visStore.expressions);
+  // Bar is folded into the same batch as user outputs so we never
+  // need a separate round-trip just for it (must be sampled even when
+  // no user expressions are registered).
+  const requestedOutputs = ["bar", ...outputs];
 
-  // Phase 1: Tick past — advance state and record values.
-  // Bar is folded into the same batch (saves a per-frame round-trip).
-  // Bar must be sampled even when no other outputs are registered.
-  const tickRequest = ["bar", ...outputs];
+  // Phase 2 setup — used by both the combined and legacy paths.
+  const halfWindow = settings.windowDuration / 2;
+  const futureEdge = timeSeconds + halfWindow + (settings.futureLeadSeconds || 0);
 
-  let tickValues: Map<string, VisSample[]>;
+  // Determine which Phase 2 strategy applies.  This decides whether
+  // we ask the combined export for 1 sample (steady-state edge push)
+  // or futureSampleCount samples (refill).
+  let needsRefill = futureInvalidated;
+  if (!needsRefill) {
+    for (const name of outputs) {
+      const fb = futureBuffers.get(name);
+      if (!fb || fb.length < 2 || fb.newestTime < futureEdge - 0.5) {
+        needsRefill = true;
+        break;
+      }
+    }
+  }
+  // Lever 1 (adaptive quality, spec §1.7/§9.2): under sustained frame
+  // pressure, skip the per-frame future edge push when refill isn't
+  // already needed.  The future trace stops extending until pressure
+  // releases; when coverage runs out, the refill branch takes over.
+  const skipEdgePush = !needsRefill && shouldSkipFutureEdgePush();
+
+  // When `outputs` is empty we still need a tick for `bar`, but no
+  // projection work is possible — collapse to numFutureSamples=0.
+  const noUserOutputs = outputs.length === 0;
+
+  // ── Combined path ────────────────────────────────────────────────
+  // When the combined ABI is wired up, fold tick + edge-push (or
+  // tick + refill) into a single round-trip.
+  const portCaps = wasmPort().capabilities();
+  if (portCaps.supportsTickAndProject) {
+    let projectEnd: number;
+    let numFutureSamples: number;
+    if (noUserOutputs) {
+      projectEnd = timeSeconds;
+      numFutureSamples = 0;
+    } else if (needsRefill) {
+      projectEnd = futureEdge;
+      numFutureSamples = Math.max(
+        2,
+        Math.ceil((futureEdge - timeSeconds) * ASSUMED_FRAME_RATE),
+      );
+    } else if (skipEdgePush) {
+      projectEnd = timeSeconds;
+      numFutureSamples = 0;
+    } else {
+      projectEnd = futureEdge;
+      numFutureSamples = 1;
+    }
+
+    let combined;
+    try {
+      combined = await wasmTickAndProject(
+        requestedOutputs, timeSeconds, projectEnd, numFutureSamples,
+      );
+    } catch (error) {
+      dbg(`visualisationSampler: tickAndProject failed: ${error}`);
+      combined = null;
+    }
+
+    if (combined) {
+      applyTickValues(outputs, timeSeconds, combined.tickValues);
+
+      if (noUserOutputs) {
+        return;
+      }
+      if (needsRefill) {
+        futureInvalidated = false;
+        for (const name of outputs) {
+          const samples = combined.projectionSamples.get(name);
+          if (!samples) continue;
+          const buf = ensureFutureBuffer(name);
+          buf.clear();
+          for (let i = 0; i < samples.length; i++) {
+            if (Number.isFinite(samples[i].value)) {
+              buf.push(samples[i].time, samples[i].value);
+            }
+          }
+        }
+      } else if (!skipEdgePush) {
+        for (const name of outputs) {
+          const samples = combined.projectionSamples.get(name);
+          if (!samples || samples.length === 0) continue;
+          const last = samples[samples.length - 1];
+          if (Number.isFinite(last.value)) {
+            ensureFutureBuffer(name).push(last.time, last.value);
+          }
+        }
+      }
+      return;
+    }
+    // combined === null → fall through to the legacy 2-call path.
+  }
+
+  // ── Legacy 2-call path (combined export unavailable / failed) ────
+  let tickResult: Map<string, VisSample[]>;
   try {
-    tickValues = await evalOutputsInTimeWindow(
-      tickRequest, timeSeconds, timeSeconds, 1,
+    tickResult = await evalOutputsInTimeWindow(
+      requestedOutputs, timeSeconds, timeSeconds, 1,
     );
   } catch {
-    tickValues = new Map();
+    tickResult = new Map();
   }
 
-  // Update bar from the same batch.
-  const barSamples = tickValues.get("bar");
-  if (barSamples && barSamples.length > 0) {
-    const numeric = Number(barSamples[0].value);
-    if (Number.isFinite(numeric)) {
-      const wrapped = numeric % 1;
-      updateBar(wrapped < 0 ? wrapped + 1 : wrapped);
-    } else {
-      updateBar(0);
+  // Translate the legacy Map<name, VisSample[]> into the uniform
+  // Map<name, number> shape applyTickValues expects.
+  const tickValuesNumeric = new Map<string, number>();
+  for (const name of requestedOutputs) {
+    const samples = tickResult.get(name);
+    if (samples && samples.length > 0) {
+      tickValuesNumeric.set(name, Number(samples[0].value));
     }
-  } else {
-    updateBar(0);
   }
+  applyTickValues(outputs, timeSeconds, tickValuesNumeric);
 
   if (outputs.length === 0) return;
 
-  for (const name of outputs) {
-    const buf = ensurePastBuffer(name);
-    const samples = tickValues.get(name);
-    if (samples && samples.length > 0 && Number.isFinite(samples[0].value)) {
-      buf.push(timeSeconds, samples[0].value);
-    }
-  }
-
-  // Phase 2: Future — batch-refill on invalidation, else push one sample.
+  // Phase 2 (legacy)
   if (futureInvalidated) {
     futureInvalidated = false;
     await refillFutureBuffers(timeSeconds, settings);
     return;
   }
 
-  const halfWindow = settings.windowDuration / 2;
-  const futureEdge = timeSeconds + halfWindow + (settings.futureLeadSeconds || 0);
-
-  // Check if any future buffer needs extending (coverage running out).
-  let needsExtend = false;
-  for (const name of outputs) {
-    const fb = futureBuffers.get(name);
-    if (!fb || fb.length < 2 || fb.newestTime < futureEdge - 0.5) {
-      needsExtend = true;
-      break;
-    }
+  if (needsRefill) {
+    await refillFutureBuffers(timeSeconds, settings);
+    return;
   }
 
-  if (needsExtend) {
-    // Batch-refill when coverage is insufficient.
-    await refillFutureBuffers(timeSeconds, settings);
-  } else {
-    // Lever 1 (adaptive quality, spec §1.7/§9.2): under sustained frame
-    // pressure, skip the per-frame future edge push.  The future trace
-    // simply stops extending until pressure releases — when coverage
-    // runs out, the next frame's `needsExtend` branch above batch-refills.
-    if (shouldSkipFutureEdgePush()) return;
+  if (skipEdgePush) return;
 
-    // Push one future sample at the far edge (save/restore, no state corruption).
-    let edgeValues: Map<string, VisSample[]>;
-    try {
-      edgeValues = await evalOutputsInTimeWindow(
-        outputs, futureEdge, futureEdge, 1,
-      );
-    } catch {
-      return;
-    }
-    for (const [name, samples] of edgeValues) {
-      if (samples.length > 0 && Number.isFinite(samples[0].value)) {
-        ensureFutureBuffer(name).push(futureEdge, samples[0].value);
-      }
+  // Push one future sample at the far edge (save/restore, no state corruption).
+  let edgeValues: Map<string, VisSample[]>;
+  try {
+    edgeValues = await evalOutputsInTimeWindow(
+      outputs, futureEdge, futureEdge, 1,
+    );
+  } catch {
+    return;
+  }
+  for (const [name, samples] of edgeValues) {
+    if (samples.length > 0 && Number.isFinite(samples[0].value)) {
+      ensureFutureBuffer(name).push(futureEdge, samples[0].value);
     }
   }
 }

@@ -20,7 +20,11 @@
  */
 import type { TransportState } from "../../machines/transport.machine";
 import type { SharedTransportCommand } from "../../contracts/useqRuntimeContract";
-import type { RuntimeDiagnostic, TimeSample } from "../../contracts/runtimePorts";
+import type {
+  RuntimeDiagnostic,
+  TickAndProjectResult,
+  TimeSample,
+} from "../../contracts/runtimePorts";
 
 // ─── Request payloads ──────────────────────────────────────────────────────
 
@@ -64,6 +68,15 @@ export interface EvalOutputsInTimeWindowRequest {
   numSamples: number;
 }
 
+export interface TickAndProjectRequest {
+  type: "tickAndProject";
+  id: number;
+  outputs: string[];
+  tickTime: number;
+  projectEnd: number;
+  numFutureSamples: number;
+}
+
 export interface SyncTransportStateRequest {
   type: "syncTransportState";
   id: number;
@@ -92,6 +105,7 @@ export type WasmWorkerRequest =
   | UpdateTimeRequest
   | EvalOutputAtTimeRequest
   | EvalOutputsInTimeWindowRequest
+  | TickAndProjectRequest
   | SyncTransportStateRequest
   | SendTransportCommandRequest
   | ReadLastDiagnosticsRequest
@@ -108,6 +122,7 @@ export interface WorkerCapabilitySnapshot {
   enabled: boolean;
   supportsEval: boolean;
   supportsTimeWindow: boolean;
+  supportsTickAndProject: boolean;
 }
 
 export interface LoadResponse {
@@ -144,6 +159,17 @@ export interface EvalOutputsInTimeWindowResponse {
   supportsTimeWindow: boolean;
 }
 
+export interface TickAndProjectResponse {
+  type: "tickAndProject-result";
+  id: number;
+  /** `null` when the optional export isn't available — caller falls
+   *  back to the legacy 3-call path. */
+  result: TickAndProjectResult | null;
+  /** Worker-side capability after this call (may flip off on first
+   *  failed invocation of a stale binding). */
+  supportsTickAndProject: boolean;
+}
+
 export interface SyncTransportStateResponse {
   type: "syncTransportState-result";
   id: number;
@@ -178,6 +204,7 @@ export type WasmWorkerResponse =
   | UpdateTimeResponse
   | EvalOutputAtTimeResponse
   | EvalOutputsInTimeWindowResponse
+  | TickAndProjectResponse
   | SyncTransportStateResponse
   | SendTransportCommandResponse
   | ReadLastDiagnosticsResponse

@@ -30,6 +30,7 @@ import { dbg } from "../lib/debug.ts";
 import type {
   RuntimeDiagnostic,
   SampleSeriesMap,
+  TickAndProjectResult,
   WasmRuntimeCapabilities,
   WasmRuntimePort,
 } from "../contracts/runtimePorts";
@@ -73,6 +74,7 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
     enabled: true,
     supportsEval: false,
     supportsTimeWindow: false,
+    supportsTickAndProject: false,
   };
 
   function ensureWorker(): Worker {
@@ -191,6 +193,8 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
         enabled,
         supportsEval: enabled && lastKnownCapabilities.supportsEval,
         supportsTimeWindow: enabled && lastKnownCapabilities.supportsTimeWindow,
+        supportsTickAndProject:
+          enabled && lastKnownCapabilities.supportsTickAndProject,
       };
     },
 
@@ -267,6 +271,27 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
         supportsTimeWindow: response.supportsTimeWindow,
       };
       return response.samples;
+    },
+
+    async tickAndProject(
+      outputs: string[],
+      tickTime: number,
+      projectEnd: number,
+      numFutureSamples: number,
+    ): Promise<TickAndProjectResult | null> {
+      if (!isUseqWasmEnabled()) return null;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "tickAndProject-result" }>
+      >(
+        { type: "tickAndProject", outputs, tickTime, projectEnd, numFutureSamples },
+        "tickAndProject-result",
+      );
+      lastKnownCapabilities = {
+        ...lastKnownCapabilities,
+        supportsTickAndProject: response.supportsTickAndProject,
+      };
+      return response.result;
     },
 
     async sendTransportCommand(command: SharedTransportCommand): Promise<void> {

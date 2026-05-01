@@ -36,7 +36,11 @@ import {
   type CwrapDescriptor,
 } from "../../contracts/wasmAbi";
 import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract";
-import type { RuntimeDiagnostic, TimeSample } from "../../contracts/runtimePorts";
+import type {
+  RuntimeDiagnostic,
+  TickAndProjectResult,
+  TimeSample,
+} from "../../contracts/runtimePorts";
 import type {
   WasmWorkerRequest,
   WasmWorkerResponse,
@@ -72,7 +76,14 @@ interface InterpreterHandle {
     endTime: number,
     numSamples: number,
   ) => Map<string, TimeSample[]>;
+  tickAndProject: (
+    outputs: string[],
+    tickTime: number,
+    projectEnd: number,
+    numFutureSamples: number,
+  ) => TickAndProjectResult | null;
   supportsTimeWindow: () => boolean;
+  supportsTickAndProject: () => boolean;
 }
 
 let interpreter: InterpreterHandle | null = null;
@@ -182,6 +193,10 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     module,
     OPTIONAL_WASM_EXPORTS.useq_last_error,
   );
+  let tickAndProjectEval = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_tick_and_project,
+  );
 
   // Heap-resident scratch buffer for typed batch reads (grown on demand).
   let bufferPointer = 0;
@@ -282,6 +297,84 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     });
   };
 
+  const tickAndProject = (
+    outputs: string[],
+    tickTime: number,
+    projectEnd: number,
+    numFutureSamples: number,
+  ): TickAndProjectResult | null => {
+    if (!tickAndProjectEval) return null;
+    const safeFuture = Number.isFinite(numFutureSamples)
+      ? Math.max(0, Math.floor(numFutureSamples))
+      : 0;
+    if (outputs.length === 0) {
+      return { tickValues: new Map(), projectionSamples: new Map() };
+    }
+    const total = outputs.length + outputs.length * safeFuture;
+    ensureBuffer(total);
+    let status: number;
+    try {
+      status = tickAndProjectEval(
+        JSON.stringify(outputs),
+        Number(tickTime) || 0,
+        Number(projectEnd) || 0,
+        safeFuture,
+        bufferPointer,
+        total,
+      ) as number;
+    } catch {
+      tickAndProjectEval = null;
+      return null;
+    }
+    if (status < 0) {
+      let message = "uSEQ WASM tick_and_project failed";
+      if (typeof lastError === "function") {
+        try {
+          message = (lastError() as string) || message;
+        } catch {
+          lastError = null;
+        }
+      }
+      throw new Error(message);
+    }
+    const start = bufferPointer / Float64Array.BYTES_PER_ELEMENT;
+    const view = module.HEAPF64.subarray(start, start + total);
+    const valid = Math.min(outputs.length, Math.max(status, 0));
+
+    const tickValues = new Map<string, number>();
+    for (let c = 0; c < outputs.length; c++) {
+      const name = outputs[c];
+      if (typeof name !== "string" || !name) continue;
+      tickValues.set(name, c < valid ? view[c] : Number.NaN);
+    }
+
+    const projectionSamples = new Map<string, TimeSample[]>();
+    if (safeFuture > 0) {
+      const projOffset = outputs.length;
+      const dt =
+        safeFuture > 1
+          ? (Number(projectEnd) - Number(tickTime)) / (safeFuture - 1)
+          : 0;
+      for (let c = 0; c < outputs.length; c++) {
+        const name = outputs[c];
+        if (typeof name !== "string" || !name) continue;
+        const samples: TimeSample[] = new Array(safeFuture);
+        const rowStart = projOffset + c * safeFuture;
+        for (let s = 0; s < safeFuture; s++) {
+          const time = Number(tickTime) + dt * s;
+          const value =
+            c < valid && rowStart + s < view.length
+              ? view[rowStart + s]
+              : Number.NaN;
+          samples[s] = { time, value };
+        }
+        projectionSamples.set(name, samples);
+      }
+    }
+
+    return { tickValues, projectionSamples };
+  };
+
   return {
     module,
     evaluate: (code: string): string => useq_eval(code),
@@ -291,7 +384,9 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
       return Number.isNaN(v) ? Number.NaN : v;
     },
     evaluateOutputsTimeWindow,
+    tickAndProject,
     supportsTimeWindow: (): boolean => typedEval !== null || legacyEval !== null,
+    supportsTickAndProject: (): boolean => tickAndProjectEval !== null,
   };
 }
 
@@ -350,6 +445,8 @@ function snapshotCapabilities(): WorkerCapabilitySnapshot {
     supportsEval: wasmEnabled && interpreter !== null,
     supportsTimeWindow:
       wasmEnabled && interpreter !== null && interpreter.supportsTimeWindow(),
+    supportsTickAndProject:
+      wasmEnabled && interpreter !== null && interpreter.supportsTickAndProject(),
   };
 }
 
@@ -421,6 +518,30 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           id,
           samples,
           supportsTimeWindow: interpreter.supportsTimeWindow(),
+        });
+        return;
+      }
+      case "tickAndProject": {
+        if (!wasmEnabled || !interpreter) {
+          postResponse({
+            type: "tickAndProject-result",
+            id,
+            result: null,
+            supportsTickAndProject: false,
+          });
+          return;
+        }
+        const result = interpreter.tickAndProject(
+          request.outputs,
+          request.tickTime,
+          request.projectEnd,
+          request.numFutureSamples,
+        );
+        postResponse({
+          type: "tickAndProject-result",
+          id,
+          result,
+          supportsTickAndProject: interpreter.supportsTickAndProject(),
         });
         return;
       }
