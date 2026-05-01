@@ -25,15 +25,18 @@
 // Cycle 3.5 — refactor to step/flush + batch wrapper.
 // Cycle 4 — held (auto-repeat).
 // Cycle 5 — chord.
+// Cycle 6 — flick + AxisFrame (stick processing).
 
-import { at, chordFromArray, held, hold, tap } from "./gestures";
+import { at, chordFromArray, flick, held, hold, tap } from "./gestures";
 import {
   assertNever,
   type AxisFrame,
   type ButtonName,
+  type Direction,
   type GestureEvent,
   type LogicalEvent,
   type RecognitionOutput,
+  type StickName,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +65,17 @@ export type Timing = {
    * as part of the chord).
    */
   readonly chordGraceMs: number;
+  /**
+   * Magnitude below which a stick reading is reported as exactly (0, 0).
+   * Filters jitter; defines what "centred" means for re-arming flicks.
+   */
+  readonly stickDeadzone: number;
+  /**
+   * Minimum stick magnitude (inclusive ≥) that emits a flick gesture
+   * when the stick is armed. Re-arms only after the stick returns to
+   * the deadzone.
+   */
+  readonly flickThreshold: number;
 };
 
 export const DEFAULT_TIMING: Timing = Object.freeze({
@@ -69,6 +83,8 @@ export const DEFAULT_TIMING: Timing = Object.freeze({
   heldInitialMs: 300,
   heldRepeatMs: 60,
   chordGraceMs: 30,
+  stickDeadzone: 0.12,
+  flickThreshold: 0.7,
 });
 
 // ---------------------------------------------------------------------------
@@ -99,21 +115,45 @@ type PendingHeld = {
 };
 
 /**
+ * Per-stick state for axis processing. `armed` flips between true (a
+ * flick is allowed) and false (already flicked; waiting for re-arm by
+ * returning to the deadzone). `lastEmittedX/Y` are the post-deadzone
+ * values that produced the most recent AxisFrame (or the initial
+ * (0,0)) — used to detect changes worth a new frame.
+ */
+export type StickState = {
+  readonly armed: boolean;
+  readonly lastEmittedX: number;
+  readonly lastEmittedY: number;
+};
+
+const INITIAL_STICK_STATE: StickState = Object.freeze({
+  armed: true,
+  lastEmittedX: 0,
+  lastEmittedY: 0,
+});
+
+/**
  * Immutable recognizer state, threaded across `step` calls. Production
  * holds the latest value between polling ticks; tests usually start
  * from `INITIAL_STATE` per case.
  *
  * As later cycles add primitives, this type grows additional fields:
- * lastReleased (per-button for doubleTap), armedFlicks (per-stick), etc.
+ * lastReleased (per-button for doubleTap), etc.
  */
 export type RecognizerState = {
   readonly pendingHolds: readonly PendingHold[];
   readonly pendingHelds: readonly PendingHeld[];
+  readonly sticks: Readonly<Record<StickName, StickState>>;
 };
 
 export const INITIAL_STATE: RecognizerState = Object.freeze({
   pendingHolds: [],
   pendingHelds: [],
+  sticks: {
+    LeftStick:  INITIAL_STICK_STATE,
+    RightStick: INITIAL_STICK_STATE,
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -233,6 +273,36 @@ function removeFirstPendingHeld(
   return [...pending.slice(0, idx), ...pending.slice(idx + 1)];
 }
 
+/**
+ * Apply the magnitude-based deadzone: stick readings whose magnitude
+ * is strictly less than the deadzone are reported as exactly (0, 0).
+ */
+function applyDeadzone(
+  x: number,
+  y: number,
+  deadzone: number,
+): { x: number; y: number } {
+  const mag = Math.hypot(x, y);
+  if (mag < deadzone) return { x: 0, y: 0 };
+  return { x, y };
+}
+
+/**
+ * Determine the cardinal direction of a stick reading. Whichever of
+ * `|x|` and `|y|` is larger picks the axis; sign picks the direction.
+ * On exact equality (45° diagonals), prefer horizontal. Returns null
+ * when both components are zero (no direction).
+ *
+ * Convention: y > 0 is "down" (screen coordinates).
+ */
+function directionOf(x: number, y: number): Direction | null {
+  if (x === 0 && y === 0) return null;
+  const ax = Math.abs(x);
+  const ay = Math.abs(y);
+  if (ax >= ay) return x > 0 ? "right" : "left";
+  return y > 0 ? "down" : "up";
+}
+
 // ---------------------------------------------------------------------------
 // step — process one logical event
 // ---------------------------------------------------------------------------
@@ -305,10 +375,46 @@ export function step(
         pendingHelds: removeFirstPendingHeld(next.pendingHelds, event.btn),
       };
       break;
-    case "axis":
-      // Flick cycle will detect threshold crossings here; later cycles
-      // emit AxisFrames.
+    case "axis": {
+      const dz = applyDeadzone(event.x, event.y, timing.stickDeadzone);
+      const prev = next.sticks[event.stick];
+
+      // Emit AxisFrame on any post-deadzone change for this stick.
+      if (dz.x !== prev.lastEmittedX || dz.y !== prev.lastEmittedY) {
+        axes.push({
+          stick: event.stick,
+          x: dz.x,
+          y: dz.y,
+          t: event.t,
+        });
+      }
+
+      // Compute next armed state and possibly emit a flick.
+      const mag = Math.hypot(dz.x, dz.y);
+      let armed = prev.armed;
+      if (mag === 0) {
+        armed = true; // returning to deadzone re-arms
+      } else if (armed && mag >= timing.flickThreshold) {
+        const dir = directionOf(dz.x, dz.y);
+        if (dir !== null) {
+          gestures.push(at(flick(event.stick, dir), event.t));
+          armed = false;
+        }
+      }
+
+      next = {
+        ...next,
+        sticks: {
+          ...next.sticks,
+          [event.stick]: {
+            armed,
+            lastEmittedX: dz.x,
+            lastEmittedY: dz.y,
+          },
+        },
+      };
       break;
+    }
     default:
       assertNever(event, "step: unhandled LogicalEvent kind");
   }

@@ -26,12 +26,6 @@ export type ButtonName = typeof BUTTON_ORDER[number];
 export const STICK_NAMES = ["LeftStick", "RightStick"] as const;
 export type StickName = typeof STICK_NAMES[number];
 
-export const AXIS_NAMES = [
-  "LeftStickX", "LeftStickY",
-  "RightStickX", "RightStickY",
-] as const;
-export type AxisName = typeof AXIS_NAMES[number];
-
 export const DIRECTIONS = ["up", "down", "left", "right"] as const;
 export type Direction = typeof DIRECTIONS[number];
 
@@ -44,7 +38,7 @@ export type LogicalEvent =
   | { readonly kind: "release"; readonly btn: ButtonName; readonly t: number }
   | {
       readonly kind: "axis";
-      readonly name: AxisName;
+      readonly stick: StickName;
       readonly x: number;
       readonly y: number;
       readonly t: number;

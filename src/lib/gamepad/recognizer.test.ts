@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { at, chord, held, hold, tap } from "./gestures";
+import { at, chord, flick, held, hold, tap } from "./gestures";
 import {
   DEFAULT_TIMING,
   INITIAL_STATE,
@@ -146,7 +146,7 @@ describe("recognize: tap (Cycle 2)", () => {
 
   it("axis events do not produce taps (deferred to flick cycle)", () => {
     const events: readonly LogicalEvent[] = [
-      { kind: "axis", name: "LeftStickX", x: 0.5, y: 0, t: 50 },
+      { kind: "axis", stick: "LeftStick", x: 0.5, y: 0, t: 50 },
       { kind: "press", btn: "A", t: 100 },
     ];
     expect(recognize(events).gestures).toEqual([at(tap("A"), 100)]);
@@ -678,6 +678,186 @@ describe("recognize: chord (Cycle 5)", () => {
 });
 
 // ===========================================================================
+// Cycle 6 — flick + AxisFrame
+//
+// Stick processing: each axis event reports the full 2D stick state
+// `(x, y)` for one stick. The recognizer:
+//   - Applies the deadzone to the magnitude: |⟨x,y⟩| < deadzone → (0,0).
+//   - Emits an AxisFrame whenever the post-deadzone (x, y) for that
+//     stick has changed from the last frame for the same stick.
+//   - Emits a discrete `flick(stick, dir)` when the magnitude is
+//     ≥ flickThreshold AND the stick is currently armed. Disarms after
+//     emitting; re-arms when the stick returns to (0, 0).
+//
+// Direction: based on which component has the larger absolute value
+// (horizontal vs vertical). Ties (|x| = |y|) prefer horizontal.
+//
+// Defaults: stickDeadzone=0.12, flickThreshold=0.7.
+// ===========================================================================
+
+describe("recognize: flick + axis (Cycle 6)", () => {
+  it("strong upward stick deflection emits flick(LeftStick, up)", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0, y: -1, t: 10 },
+    ];
+    const out = recognize(events);
+    expect(out.gestures).toEqual([at(flick("LeftStick", "up"), 10)]);
+    expect(out.axes).toEqual([
+      { stick: "LeftStick", x: 0, y: -1, t: 10 },
+    ]);
+  });
+
+  it("flick maps cardinal directions correctly", () => {
+    const cases: Array<{ x: number; y: number; dir: "up" | "down" | "left" | "right" }> = [
+      { x:  0, y: -1, dir: "up"    },
+      { x:  0, y:  1, dir: "down"  },
+      { x:  1, y:  0, dir: "right" },
+      { x: -1, y:  0, dir: "left"  },
+    ];
+    for (const c of cases) {
+      const out = recognize([
+        { kind: "axis", stick: "LeftStick", x: c.x, y: c.y, t: 0 },
+      ]);
+      expect(out.gestures).toEqual([at(flick("LeftStick", c.dir), 0)]);
+    }
+  });
+
+  it("threshold boundary (= flickThreshold) emits flick (inclusive ≥)", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0, y: -0.7, t: 10 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(flick("LeftStick", "up"), 10),
+    ]);
+  });
+
+  it("below-threshold magnitude does NOT emit flick", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0, y: -0.5, t: 10 },
+    ];
+    expect(recognize(events).gestures).toEqual([]);
+    // Still emits an AxisFrame for the underlying value change.
+    expect(recognize(events).axes).toEqual([
+      { stick: "LeftStick", x: 0, y: -0.5, t: 10 },
+    ]);
+  });
+
+  it("flick fires only once until the stick returns to deadzone (re-arm)", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0, y: -1, t: 10 }, // flick
+      { kind: "axis", stick: "LeftStick", x: 0, y: -0.9, t: 20 }, // still held; no new flick
+      { kind: "axis", stick: "LeftStick", x: 0, y: -1, t: 30 },   // still held; no new flick
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(flick("LeftStick", "up"), 10),
+    ]);
+  });
+
+  it("returning to deadzone re-arms the flick", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0, y: -1, t: 10 },
+      { kind: "axis", stick: "LeftStick", x: 0, y: 0,  t: 20 }, // re-arm
+      { kind: "axis", stick: "LeftStick", x: 0, y: -1, t: 30 }, // flick again
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(flick("LeftStick", "up"), 10),
+      at(flick("LeftStick", "up"), 30),
+    ]);
+  });
+
+  it("magnitude inside the deadzone is reported as (0, 0) — no AxisFrame, no flick", () => {
+    // 0.05² + 0.05² = 0.005 → |⟨⟩| ≈ 0.07 < 0.12 deadzone.
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0.05, y: 0.05, t: 10 },
+    ];
+    const out = recognize(events);
+    expect(out.gestures).toEqual([]);
+    expect(out.axes).toEqual([]); // initial was (0,0); deadzoned still (0,0)
+  });
+
+  it("two events both inside the deadzone produce no AxisFrame", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0.05, y: 0,    t: 10 },
+      { kind: "axis", stick: "LeftStick", x: 0.10, y: 0.05, t: 20 },
+    ];
+    expect(recognize(events).axes).toEqual([]);
+  });
+
+  it("each AxisFrame corresponds to a real (post-deadzone) change", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0,    y: -0.5, t: 10 },
+      { kind: "axis", stick: "LeftStick", x: 0,    y: -0.5, t: 20 }, // no change → no frame
+      { kind: "axis", stick: "LeftStick", x: 0.5,  y: -0.5, t: 30 }, // change
+    ];
+    expect(recognize(events).axes).toEqual([
+      { stick: "LeftStick", x: 0,   y: -0.5, t: 10 },
+      { stick: "LeftStick", x: 0.5, y: -0.5, t: 30 },
+    ]);
+  });
+
+  it("returning to deadzone emits an AxisFrame at (0, 0)", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0, y: -1, t: 10 },
+      { kind: "axis", stick: "LeftStick", x: 0, y: 0,  t: 20 },
+    ];
+    expect(recognize(events).axes).toEqual([
+      { stick: "LeftStick", x: 0, y: -1, t: 10 },
+      { stick: "LeftStick", x: 0, y: 0,  t: 20 },
+    ]);
+  });
+
+  it("the two sticks are tracked independently", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick",  x: 0, y: -1, t: 10 },
+      { kind: "axis", stick: "RightStick", x: 1, y: 0,  t: 20 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(flick("LeftStick", "up"),    10),
+      at(flick("RightStick", "right"), 20),
+    ]);
+  });
+
+  it("equal-magnitude diagonal (45°) prefers horizontal direction", () => {
+    // (0.7, -0.7): |x|=|y|, magnitude ≈ 0.99 > threshold. Tiebreak: horizontal.
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0.7, y: -0.7, t: 10 },
+    ];
+    expect(recognize(events).gestures).toEqual([
+      at(flick("LeftStick", "right"), 10),
+    ]);
+  });
+
+  it("flickThreshold is configurable", () => {
+    // Lower threshold to 0.3; (0, -0.5) now crosses.
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0, y: -0.5, t: 10 },
+    ];
+    expect(
+      recognize(events, { timing: { flickThreshold: 0.3 } }).gestures,
+    ).toEqual([at(flick("LeftStick", "up"), 10)]);
+  });
+
+  it("stickDeadzone is configurable", () => {
+    // Raise deadzone to 0.6; (0, -0.5) now reads as (0, 0).
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0, y: -0.5, t: 10 },
+    ];
+    const out = recognize(events, { timing: { stickDeadzone: 0.6 } });
+    expect(out.axes).toEqual([]);
+    expect(out.gestures).toEqual([]);
+  });
+
+  it("is deterministic with stick processing", () => {
+    const events: readonly LogicalEvent[] = [
+      { kind: "axis", stick: "LeftStick", x: 0, y: -0.5, t: 10 },
+      { kind: "axis", stick: "LeftStick", x: 0, y: -1,   t: 20 },
+      { kind: "axis", stick: "LeftStick", x: 0, y: 0,    t: 30 },
+    ];
+    expect(recognize(events)).toEqual(recognize(events));
+  });
+});
+
+// ===========================================================================
 // step / flush — incremental API contract
 //
 // `step` and `flush` are the primitive API; `recognize` is a fold over them.
@@ -690,6 +870,10 @@ describe("step / flush", () => {
     expect(INITIAL_STATE).toEqual({
       pendingHolds: [],
       pendingHelds: [],
+      sticks: {
+        LeftStick:  { armed: true, lastEmittedX: 0, lastEmittedY: 0 },
+        RightStick: { armed: true, lastEmittedX: 0, lastEmittedY: 0 },
+      },
     });
   });
 
@@ -712,15 +896,22 @@ describe("step / flush", () => {
     expect(before.pendingHolds).toEqual([]);
   });
 
-  it("step on an axis event leaves state unchanged", () => {
+  it("step on an in-deadzone axis event leaves stick state at zero", () => {
+    // (0.05, 0) has magnitude < deadzone (0.12) — deadzoned to (0, 0).
+    // No AxisFrame (no change from initial 0,0). No flick.
     const after = step(
       INITIAL_STATE,
-      { kind: "axis", name: "LeftStickX", x: 0.5, y: 0, t: 0 },
+      { kind: "axis", stick: "LeftStick", x: 0.05, y: 0, t: 0 },
       DEFAULT_TIMING,
     );
-    expect(after.state).toEqual(INITIAL_STATE);
     expect(after.gestures).toEqual([]);
     expect(after.axes).toEqual([]);
+    // Sticks state initialised; both sticks still at zero, both armed.
+    expect(after.state.sticks.LeftStick).toEqual({
+      armed: true,
+      lastEmittedX: 0,
+      lastEmittedY: 0,
+    });
   });
 
   it("step on a release with no matching press is a no-op (state unchanged)", () => {

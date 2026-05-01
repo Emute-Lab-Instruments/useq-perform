@@ -54,13 +54,14 @@ type ButtonName =
   | 'LeftStickPress' | 'RightStickPress'
 
 type StickName = 'LeftStick' | 'RightStick'
-type AxisName  = 'LeftStickX' | 'LeftStickY' | 'RightStickX' | 'RightStickY'
 
 type LogicalEvent =
   | { kind: 'press';   btn: ButtonName; t: number }
   | { kind: 'release'; btn: ButtonName; t: number }
-  | { kind: 'axis';    name: AxisName;  x: number; y: number; t: number }
+  | { kind: 'axis';    stick: StickName; x: number; y: number; t: number }
 ```
+
+Stage 1 combines the two raw axes of each stick into a single 2D `axis` event. The recognizer never sees per-axis 1D values — `(x, y)` are the full stick state at the polled moment.
 
 3.1.1 `t` is a monotonic millisecond timestamp from a single clock source. In tests this is a synthetic counter; in production it is `performance.now()`.
 
