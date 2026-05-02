@@ -1,0 +1,485 @@
+;; ============================================================================
+;; VERIFICATION DOCUMENT — useq-perform
+;; ============================================================================
+;;
+;; This buffer is the single verification surface for the app. Load it in the
+;; main editor and step through each row using the verification harness toolbar
+;; (top-bar "Verify" button). Each row defines:
+;;
+;;   - A starting state (code + cursor position marked with |)
+;;   - An action to fire (by ActionId)
+;;   - An expected post-state (code + cursor position marked with |)
+;;   - Pass/fail status (persisted to localStorage via the persistence service)
+;;
+;; Cursor marker convention:
+;;   | = cursor position (zero-width)
+;;   |[...]| = selection (from left | to right |)
+;;
+;; How to run verification:
+;;   1. Open this file in the main editor (File > Open or drag-drop)
+;;   2. Click the "Verify" toolbar button (or gamepad: LB+Back)
+;;   3. The harness walks each row: it sets up the starting state,
+;;      waits for you to fire the action (keyboard/gamepad/Go button),
+;;      then compares the result against the expected post-state.
+;;   4. Mark pass/fail. Results persist across sessions.
+;;
+;; Row format:
+;;   ;; @verify <category> <action-id>
+;;   ;; @before <code-with-cursor>
+;;   ;; @after  <code-with-cursor>
+;;   ;; @status <pass|fail|skip|pending>
+;;   ;; @notes  <optional notes>
+;;
+;; ============================================================================
+
+;; ============================================================================
+;; CATEGORY: Navigation
+;; ============================================================================
+;; These checks verify cursor movement in structural and character modes.
+;; The Navigation group is the foundation — all other groups depend on the
+;; cursor being in the right place.
+
+;; @verify navigation nav.home
+;; @before (a1 (sin| 440))
+;; @after  |(a1 (sin 440))
+;; @status pending
+;; @notes  Cursor moves to start of line
+
+;; @verify navigation nav.end
+;; @before |(a1 (sin 440))
+;; @after  (a1 (sin 440))|
+;; @status pending
+;; @notes  Cursor moves to end of line
+
+;; @verify navigation nav.structuralUp
+;; @before (a1 (sin |440))
+;; @after  (a1 |(sin 440))
+;; @status pending
+;; @notes  Navigate out: from number to parent list
+
+;; @verify navigation nav.structuralDown
+;; @before (a1 |(sin 440))
+;; @after  (a1 (|sin 440))
+;; @status pending
+;; @notes  Navigate in: from list to first child
+
+;; @verify navigation nav.structuralLeft
+;; @before (a1 (sin |440))
+;; @after  (a1 (|sin 440))
+;; @status pending
+;; @notes  Navigate prev: from second sibling to first
+
+;; @verify navigation nav.structuralRight
+;; @before (a1 (|sin 440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Navigate next: from first sibling to second
+
+;; @verify navigation nav.enter
+;; @before |(a1 (sin 440))
+;; @after  (|a1 (sin 440))
+;; @status pending
+;; @notes  Drill into node
+
+;; @verify navigation nav.back
+;; @before (|a1 (sin 440))
+;; @after  |(a1 (sin 440))
+;; @status pending
+;; @notes  Drill out of node
+
+;; @verify navigation nav.toggleMode
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Toggles between structural and character navigation. Cursor stays.
+;; @gamepad Back
+
+;; ============================================================================
+;; CATEGORY: Core (Evaluation)
+;; ============================================================================
+;; Verifies that eval dispatches correctly in WASM and hardware modes.
+
+;; @verify core eval.now
+;; @before (a1 (sin| 440))
+;; @after  (a1 (sin| 440))
+;; @status pending
+;; @notes  Evaluates top-level form. Inline result appears. No cursor movement.
+;; @keyboard Mod-Enter
+;; @gamepad Start
+
+;; @verify core eval.quantised
+;; @before (a1 (sin| 440))
+;; @after  (a1 (sin| 440))
+;; @status pending
+;; @notes  Quantised eval: deferred to next transport beat.
+;; @keyboard Alt-Enter
+
+;; @verify core eval.soft
+;; @before (a1 (sin| 440))
+;; @after  (a1 (sin| 440))
+;; @status pending
+;; @notes  Soft eval: cross-fades to new value.
+;; @keyboard Mod-Shift-Enter
+
+;; ============================================================================
+;; CATEGORY: Structure (Structural Editing)
+;; ============================================================================
+;; Structural operations that modify the AST. Each is reversible.
+
+;; @verify structure edit.slurpFwd
+;; @before (a1| (sin 440))
+;; @after  (a1 (sin 440)|)
+;; @status pending
+;; @notes  Slurp forward: parent absorbs next sibling
+;; @keyboard Ctrl-]
+
+;; @verify structure edit.slurpBack
+;; @before ((sin 440) |a1)
+;; @after  (|(sin 440) a1)
+;; @status pending
+;; @notes  Slurp backward: parent absorbs previous sibling
+;; @keyboard Ctrl-[
+
+;; @verify structure edit.barfFwd
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin) |440)
+;; @status pending
+;; @notes  Barf forward: parent expels last child
+;; @keyboard Ctrl-'
+
+;; @verify structure edit.barfBack
+;; @before (a1 (|sin 440))
+;; @after  (a1 sin| (440))
+;; @status pending
+;; @notes  Barf backward: parent expels first child
+;; @keyboard Ctrl-;
+
+;; @verify structure edit.raise
+;; @before (a1 (sin |440))
+;; @after  (a1 |440)
+;; @status pending
+;; @notes  Raise: replace parent with focused node
+
+;; @verify structure edit.splice
+;; @before (a1 |(sin 440))
+;; @after  (a1 |sin 440)
+;; @status pending
+;; @notes  Splice: dissolve container, keep children
+
+;; @verify structure edit.wrapList
+;; @before (a1 |440)
+;; @after  (a1 (|440))
+;; @status pending
+;; @notes  Wrap node in parentheses
+
+;; @verify structure edit.wrapVector
+;; @before (a1 |440)
+;; @after  (a1 [|440])
+;; @status pending
+;; @notes  Wrap node in square brackets
+
+;; @verify structure edit.transposeFwd
+;; @before (a1 |sin 440)
+;; @after  (a1 440 |sin)
+;; @status pending
+;; @notes  Swap node with next sibling
+
+;; @verify structure edit.transposeBack
+;; @before (a1 440 |sin)
+;; @after  (a1 |sin 440)
+;; @status pending
+;; @notes  Swap node with previous sibling
+
+;; @verify structure edit.killToEndOfList
+;; @before (a1 |sin 440 220)
+;; @after  (a1 |)
+;; @status pending
+;; @notes  Kill everything from cursor to end of containing list
+;; @keyboard Ctrl-k
+
+;; @verify structure edit.delete
+;; @before (a1 |sin 440)
+;; @after  (a1 |440)
+;; @status pending
+;; @notes  Delete node at cursor
+;; @gamepad Y
+
+;; ============================================================================
+;; CATEGORY: Probe
+;; ============================================================================
+;; Probe management: toggling inline value inspection.
+
+;; @verify probe probe.toggle
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Toggle probe on expression. Visual indicator appears on the probed range.
+;; @keyboard Alt-p
+
+;; @verify probe probe.toggleRaw
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Toggle raw probe (waveform view)
+;; @keyboard Alt-Shift-p
+
+;; @verify probe probe.expand
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Expand probe temporal context
+;; @keyboard Alt-h
+
+;; @verify probe probe.contract
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Contract probe temporal context
+;; @keyboard Alt-s
+
+;; ============================================================================
+;; CATEGORY: Editor
+;; ============================================================================
+;; Basic editor operations: undo, redo, backspace handling.
+
+;; @verify editor edit.undo
+;; @before (a1 (sin 440))|
+;; @after  (a1 (sin|))
+;; @status pending
+;; @notes  Undo last edit. Result depends on edit history.
+;; @keyboard Mod-z
+
+;; @verify editor edit.redo
+;; @before (a1 (sin|))
+;; @after  (a1 (sin 440))|
+;; @status pending
+;; @notes  Redo undone edit.
+;; @keyboard Shift-Mod-z
+
+;; @verify editor edit.backspaceNormal
+;; @before (a1 (sin 440)|)
+;; @after  (a1 (sin 44|)
+;; @status pending
+;; @notes  Backspace bypassing bracket protection (when protection disabled)
+;; @keyboard Backspace (when !editor.bracketProtect)
+
+;; ============================================================================
+;; CATEGORY: UI
+;; ============================================================================
+;; Panel toggles, palette, documentation.
+
+;; @verify ui palette.open
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Opens the action palette overlay. Editor state unchanged.
+;; @keyboard Mod-Shift-p
+
+;; @verify ui panel.help
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Toggles the help panel. Editor state unchanged.
+;; @keyboard Alt-/
+
+;; @verify ui panel.vis
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Toggles the visualisation panel. Editor state unchanged.
+;; @keyboard Alt-g
+
+;; @verify ui doc.symbol
+;; @before (a1 (|sin 440))
+;; @after  (a1 (|sin 440))
+;; @status pending
+;; @notes  Shows documentation for symbol at cursor.
+;; @keyboard Alt-f
+
+;; ============================================================================
+;; CATEGORY: Menu
+;; ============================================================================
+;; Picker and radial menu interactions (primarily gamepad-driven).
+
+;; @verify menu menu.openBefore
+;; @before (a1 |440)
+;; @after  (a1 |440)
+;; @status pending
+;; @notes  Opens insert menu before cursor position
+;; @gamepad LB+A
+
+;; @verify menu menu.openAfter
+;; @before (a1 |440)
+;; @after  (a1 |440)
+;; @status pending
+;; @notes  Opens insert menu after cursor position
+;; @gamepad RB+A
+
+;; @verify menu menu.radial
+;; @before (a1 |440)
+;; @after  (a1 |440)
+;; @status pending
+;; @notes  Opens radial create menu
+;; @gamepad X
+
+;; ============================================================================
+;; CATEGORY: Gamepad (Analog)
+;; ============================================================================
+;; Analog stick operations — these require a connected gamepad.
+
+;; @verify gamepad nav.adjustNumber
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |441))
+;; @status pending
+;; @notes  Adjust number at cursor via stick deflection. Amount depends on axis.
+
+;; @verify gamepad control.bindStick
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pending
+;; @notes  Binds stick axis to continuous control of number at cursor. Analog only.
+
+;; ============================================================================
+;; CATEGORY: WASM Eval (Phase 0 verified)
+;; ============================================================================
+;; Checks from the Phase 0 gate that are already verified.
+
+;; @verify wasm-eval diagnostics-inline
+;; @before (a1 (foo| 440))
+;; @after  (a1 (foo| 440))
+;; @status pass
+;; @notes  Phase 0.1: eval undefined symbol → inline squiggle at `foo`. Verified in WASM and worker mode.
+
+;; @verify wasm-eval diagnostics-types-unified
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Phase 0.2: npm run typecheck clean. UseqDiagnostic canonical definition only.
+
+;; ============================================================================
+;; CATEGORY: Hardware Connection (Phase 0 verified)
+;; ============================================================================
+
+;; @verify hardware connection-robustness
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Phase 0.6/0.7: Unplug-replug cable. No locked reader, no spurious disconnect toasts.
+
+;; @verify hardware runtime-mode-label
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Phase 0.5: Toolbar shows distinct text label across all 4 runtime modes.
+
+;; ============================================================================
+;; CATEGORY: Settings Persistence (Phase 0 verified)
+;; ============================================================================
+
+;; @verify persistence editor-content
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Phase 0.4/0.8: Edit code → reload → code restored. Single persistence path.
+
+;; ============================================================================
+;; CATEGORY: Visualisation
+;; ============================================================================
+;; Placeholder — to be populated when visualisation WebGL pipeline is stable.
+
+;; @verify visualisation channel-rendering
+;; @before (a1 (sin 1))
+;; @after  (a1 (sin 1))
+;; @status pending
+;; @notes  At least one vis channel renders a waveform after eval.
+
+;; @verify visualisation multi-channel
+;; @before (a1 (sin 1))\n(a2 (tri 2))
+;; @after  (a1 (sin 1))\n(a2 (tri 2))
+;; @status pending
+;; @notes  Multiple channels render simultaneously without frame drops.
+
+;; ============================================================================
+;; CATEGORY: Structural Editing (Upcoming — Phase 2)
+;; ============================================================================
+;; Placeholder rows for the functional-core structural editing rewrite.
+;; These will be filled as operations migrate to pure (Tree, CursorSet) → (Tree, CursorSet).
+
+;; @verify structural-rewrite focus-primary-mode
+;; @before (a1 (sin 440))
+;; @after  TBD
+;; @status pending
+;; @notes  Structural cursor highlights the focused node, not character caret.
+
+;; @verify structural-rewrite holes-as-nodes
+;; @before (a1 ($ freq :number))
+;; @after  TBD
+;; @status pending
+;; @notes  Hole node renders as inline pill; blocks eval of containing form.
+
+;; @verify structural-rewrite multi-cursor
+;; @before TBD
+;; @after  TBD
+;; @status pending
+;; @notes  Multiple structural cursors on separate nodes.
+
+;; ============================================================================
+;; CATEGORY: Live-Edit (Upcoming — Phase 2/3)
+;; ============================================================================
+;; Placeholder rows for live-edit values, inline widgets, MIDI learn.
+
+;; @verify live-edit inline-widget
+;; @before (a1 (sin (live-edit 440 :min 220 :max 880)))
+;; @after  TBD
+;; @status pending
+;; @notes  live-edit form renders inline widget (slider/knob).
+
+;; @verify live-edit midi-learn
+;; @before TBD
+;; @after  TBD
+;; @status pending
+;; @notes  MIDI CC binds to live-edit slot via MIDI learn.
+
+;; ============================================================================
+;; CATEGORY: Hardware Buttons (Upcoming — Phase 3)
+;; ============================================================================
+;; Placeholder for hardware button integration tests.
+
+;; @verify hardware-buttons button-event
+;; @before N/A
+;; @after  N/A
+;; @status pending
+;; @notes  Hardware button press triggers bound action in the app.
+
+;; ============================================================================
+;; CATEGORY: Calibration (Upcoming — Phase 3)
+;; ============================================================================
+;; Placeholder for output calibration verification.
+
+;; @verify calibration output-range
+;; @before N/A
+;; @after  N/A
+;; @status pending
+;; @notes  Output voltage range matches calibration settings.
+
+;; ============================================================================
+;; END OF VERIFICATION DOCUMENT
+;; ============================================================================
+;;
+;; Harness implementation notes:
+;;
+;; The verification harness is a toolbar affordance (top-bar button) that:
+;;   1. Parses this buffer for ;; @verify ... blocks
+;;   2. For each row, sets up the editor with the @before state
+;;   3. Waits for the user to fire the action (keyboard, gamepad, or "Go" button)
+;;   4. Compares resulting state against @after
+;;   5. Records pass/fail to localStorage key: "useq:verification:<category>:<action>"
+;;
+;; The harness persists results via the persistence service (src/lib/persistence.ts)
+;; using a single compound key. History is append-only with timestamps.
+;;
+;; For actions without a gamepad binding, the harness shows a "Go" button that
+;; programmatically fires the action with the current cursor state.
+;;
+;; Future: rows can be auto-generated from the action registry (src/lib/keybindings/actions.ts)
+;; crossed with the binding tables (defaults.ts). Missing rows = missing coverage.
