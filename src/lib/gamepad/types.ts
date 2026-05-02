@@ -1,8 +1,8 @@
 // src/lib/gamepad/types.ts
 //
 // Type-only module. The shape of every value flowing through the gamepad
-// pipeline is defined here. No logic; no imports from anywhere else in
-// the project. See docs/specs/gamepad.md §3 for the normative ontology.
+// pipeline is defined here. See docs/specs/gamepad.md §3–§7 for the
+// normative ontology.
 
 // ---------------------------------------------------------------------------
 // Button / stick / axis names
@@ -104,6 +104,94 @@ export type RecognitionOutput = {
  * Authors never type these strings; they're an internal canonical form.
  */
 export type GestureKey = string & { readonly __brand: "GestureKey" };
+
+// ---------------------------------------------------------------------------
+// Stage 3 — Bindings, layers, resolution (spec §4–§5)
+// ---------------------------------------------------------------------------
+
+import type {
+  ActionId,
+  ReversibleActionId,
+} from "../keybindings/actions";
+
+export type { ActionId, ReversibleActionId };
+
+export type AxisChannelName = string & { readonly __brand: "AxisChannelName" };
+
+export type PopPolicy =
+  | "resolution"
+  | "miss-or-cancel"
+  | "timeout"
+  | "predicate";
+
+export type MissPolicy =
+  | "fall-through"
+  | "pop-and-fall-through"
+  | "pop-and-discard"
+  | "noop-flash";
+
+export type DualBinding = {
+  readonly tap?: ReversibleActionId;
+  readonly hold?: ActionId;
+  readonly held?: ActionId;
+};
+
+export type GestureBindings = Readonly<
+  Record<GestureKey, ActionId | DualBinding>
+>;
+
+export type LeaderBindings = Readonly<Record<GestureKey, LayerName>>;
+
+export type AxisBindings = Readonly<
+  Partial<Record<"left" | "right", AxisChannelName>>
+>;
+
+export type LayerName = string & { readonly __brand: "LayerName" };
+
+export type Layer = {
+  readonly name: LayerName;
+  readonly when?: (state: AppStateSnapshot) => boolean;
+  readonly gestures?: GestureBindings;
+  readonly axes?: AxisBindings;
+  readonly leaders?: LeaderBindings;
+  readonly popOn?: readonly PopPolicy[];
+  readonly onMiss?: MissPolicy;
+  readonly ttlMs?: number;
+  readonly cancelGesture?: Gesture;
+};
+
+export type TransientLayerEntry = {
+  readonly name: LayerName;
+  readonly pushedAt: number;
+  readonly expiresAt: number | null;
+};
+
+export type GamepadState = {
+  readonly heldButtons: ReadonlySet<ButtonName>;
+  readonly transientLayers: readonly TransientLayerEntry[];
+  readonly lastInputAt: number;
+  readonly stickPositions: Readonly<
+    Record<StickName, { x: number; y: number }>
+  >;
+};
+
+export type AppStateSnapshot = {
+  readonly gamepad: GamepadState;
+  readonly [key: string]: unknown;
+};
+
+export type Resolution =
+  | { readonly kind: "action"; readonly action: ActionId; readonly gesture: Gesture }
+  | { readonly kind: "dual"; readonly binding: DualBinding; readonly gesture: Gesture }
+  | { readonly kind: "leader"; readonly layerName: LayerName; readonly gesture: Gesture }
+  | { readonly kind: "axis"; readonly channel: AxisChannelName; readonly stick: StickName; readonly frame: AxisFrame }
+  | { readonly kind: "miss"; readonly gesture: Gesture; readonly policy: MissPolicy };
+
+export function isDualBinding(
+  value: ActionId | DualBinding,
+): value is DualBinding {
+  return typeof value === "object" && value !== null;
+}
 
 // ---------------------------------------------------------------------------
 // Exhaustiveness helper
