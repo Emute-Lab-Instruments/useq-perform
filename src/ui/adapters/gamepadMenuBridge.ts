@@ -278,10 +278,17 @@ export function bindGamepadMenuBridge(
 
   const unsubOpenRadialMenu = ch.openRadialMenu.subscribe(
     async ({ direction }) => {
-      if (getMode() === "picker" || getMode() === "loading-picker") {
+      if (getMode() === "picker" || getMode() === "loading-picker" || getMode() === "number-picker") {
         logger.debug?.(
           "[gamepadMenuBridge] Picker already open; ignoring create menu request"
         );
+        return;
+      }
+
+      // If cursor is on a number hole, open numpad instead of radial menu
+      const holeDetail = checkAndPublishHoleFocus(view, "navigation");
+      if (holeDetail && holeDetail.type === "number") {
+        openNumpadForHole(holeDetail);
         return;
       }
 
@@ -311,6 +318,35 @@ export function bindGamepadMenuBridge(
     }
   });
 
+  // -- Numpad helper (shared by holeFocused auto-chain and openRadialMenu) ---
+
+  function openNumpadForHole(detail: HoleFocusedDetail): void {
+    setMode("number-picker");
+    closeMenuFn = showNumberPickerMenu({
+      title: `Fill ⟨${detail.name}⟩`,
+      onSelect: (value: number) => {
+        if (!view) {
+          cancelAction();
+          return;
+        }
+        // Replace the hole source text with the entered number literal
+        const literal = formatNumberLiteral(value);
+        view.dispatch({
+          changes: { from: detail.from, to: detail.to, insert: literal },
+          selection: { anchor: detail.from + literal.length },
+          scrollIntoView: true,
+          userEvent: "replace.numpad",
+        });
+        pickerDirection = null;
+        closeMenuFn = null;
+        setMode("normal");
+        hideEditorCursor(view);
+        // Auto-chain: check for next hole after filling
+        checkAndPublishHoleFocus(view, "chain");
+      },
+    });
+  }
+
   // -- Hole focus subscriber (auto-chain re-open) ---------------------------
   //
   // When the cursor lands on a hole via chain (post-mutation), auto-open the
@@ -332,6 +368,12 @@ export function bindGamepadMenuBridge(
 
     // Don't open if a picker is already active
     if (getMode() === "picker" || getMode() === "loading-picker" || getMode() === "number-picker") {
+      return;
+    }
+
+    // :number holes get a dedicated numpad entry surface
+    if (detail.type === "number") {
+      openNumpadForHole(detail);
       return;
     }
 
@@ -364,6 +406,22 @@ export function bindGamepadMenuBridge(
       cancelAction();
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Number literal formatting
+// ---------------------------------------------------------------------------
+
+/**
+ * Format a numeric value as a clean literal string for insertion into source.
+ * Strips trailing zeros after the decimal point but preserves integer form.
+ */
+function formatNumberLiteral(value: number): string {
+  if (Number.isNaN(value)) return "0";
+  if (!Number.isFinite(value)) return value > 0 ? "999999" : "-999999";
+  // Use toPrecision to avoid floating-point noise, then parseFloat to strip trailing zeros
+  const str = String(parseFloat(value.toPrecision(10)));
+  return str;
 }
 
 // ---------------------------------------------------------------------------

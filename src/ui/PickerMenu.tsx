@@ -245,7 +245,7 @@ export function PickerMenu(props: PickerMenuProps) {
   );
 }
 
-// --- Number Picker ---
+// --- Number Picker (Numpad/T9 Entry) ---
 
 export type NumberPickerMenuProps = {
   onSelect: (value: number) => void;
@@ -257,27 +257,66 @@ export type NumberPickerMenuProps = {
   step?: number;
 };
 
+/**
+ * Numpad entry surface for filling number-type holes.
+ *
+ * Accepts digits (0-9), decimal point, and minus sign via keyboard or
+ * on-screen numpad buttons. Gamepad d-pad navigates the numpad grid;
+ * A confirms, B cancels.
+ */
 export function NumberPickerMenu(props: NumberPickerMenuProps) {
-  const title = () => props.title ?? "Pick a number";
-  const step = () => props.step ?? 1;
+  const title = () => props.title ?? "Enter number";
   const minVal = () => props.min ?? -Infinity;
   const maxVal = () => props.max ?? Infinity;
 
-  const clampedInit = () => {
-    const v = props.initialValue ?? 0;
+  // Buffer holds the text being typed (not a parsed number yet)
+  const [buffer, setBuffer] = createSignal(
+    props.initialValue != null ? String(props.initialValue) : ""
+  );
+
+  // Numpad button layout (phone-style T9 grid)
+  const numpadKeys = [
+    "7", "8", "9",
+    "4", "5", "6",
+    "1", "2", "3",
+    "-", "0", ".",
+  ];
+
+  // Gamepad grid navigation state
+  const [activeKey, setActiveKey] = createSignal(4); // Start on "5" (center)
+
+  const parsedValue = (): number => {
+    const v = parseFloat(buffer());
+    if (Number.isNaN(v)) return 0;
     return Math.max(minVal(), Math.min(maxVal(), v));
   };
 
-  const [value, setValue] = createSignal(clampedInit());
+  const appendChar = (ch: string) => {
+    const cur = buffer();
+    // Prevent multiple decimal points
+    if (ch === "." && cur.includes(".")) return;
+    // Minus only at start
+    if (ch === "-") {
+      if (cur.startsWith("-")) {
+        setBuffer(cur.slice(1));
+      } else {
+        setBuffer("-" + cur);
+      }
+      return;
+    }
+    setBuffer(cur + ch);
+  };
 
-  let inputRef: HTMLInputElement | undefined;
+  const backspace = () => {
+    setBuffer(buffer().slice(0, -1));
+  };
 
-  const updateValue = (v: number) => {
-    setValue(Math.max(minVal(), Math.min(maxVal(), v)));
+  const clearBuffer = () => {
+    setBuffer("");
   };
 
   const confirm = () => {
-    props.onSelect(value());
+    props.onSelect(parsedValue());
     props.onClose?.();
   };
 
@@ -285,43 +324,75 @@ export function NumberPickerMenu(props: NumberPickerMenuProps) {
     props.onClose?.();
   };
 
+  // Keyboard handler: digits, decimal, minus, backspace, enter, escape
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") close();
-    else if (e.key === "Enter") confirm();
-    else if (e.key === "ArrowLeft" || e.key === "ArrowDown")
-      updateValue(value() - step());
-    else if (e.key === "ArrowRight" || e.key === "ArrowUp")
-      updateValue(value() + step());
+    if (e.key === "Escape") return; // Handled by overlay manager
+    if (e.key === "Enter") {
+      e.preventDefault();
+      confirm();
+      return;
+    }
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      backspace();
+      return;
+    }
+    if (e.key === "Delete") {
+      e.preventDefault();
+      clearBuffer();
+      return;
+    }
+    // Accept digit, decimal, minus from keyboard
+    if (/^[0-9.\-]$/.test(e.key)) {
+      e.preventDefault();
+      appendChar(e.key);
+      return;
+    }
   };
 
-  const handleKeyDownNav = (e: KeyboardEvent) => {
-    if (e.key === "Escape") return; // Escape is handled by the overlay manager
-    handleKeyDown(e);
+  // Gamepad navigation across the numpad grid (3 columns x 4 rows)
+  const NUM_COLS = 3;
+  const NUM_ROWS = 4;
+
+  const handleGamepadNavigate = (detail: { direction?: string }) => {
+    const { direction } = detail;
+    let row = Math.floor(activeKey() / NUM_COLS);
+    let col = activeKey() % NUM_COLS;
+
+    if (direction === "up" && row > 0) row--;
+    else if (direction === "down" && row < NUM_ROWS - 1) row++;
+    else if (direction === "left" && col > 0) col--;
+    else if (direction === "right" && col < NUM_COLS - 1) col++;
+
+    setActiveKey(row * NUM_COLS + col);
+  };
+
+  const handleGamepadSelect = () => {
+    const key = numpadKeys[activeKey()];
+    if (key != null) appendChar(key);
   };
 
   let popOverlay: (() => void) | undefined;
   let unsubNavigate: (() => void) | undefined;
   let unsubSelect: (() => void) | undefined;
   let unsubCancel: (() => void) | undefined;
+  let unsubApply: (() => void) | undefined;
   onMount(() => {
-    window.addEventListener("keydown", handleKeyDownNav);
-    unsubNavigate = gamepadCh.pickerNavigate.subscribe(({ direction }) => {
-      if (direction === "left" || direction === "down")
-        updateValue(value() - step());
-      else if (direction === "right" || direction === "up")
-        updateValue(value() + step());
-    });
-    unsubSelect = gamepadCh.pickerSelect.subscribe(() => confirm());
+    window.addEventListener("keydown", handleKeyDown);
+    unsubNavigate = gamepadCh.pickerNavigate.subscribe(handleGamepadNavigate);
+    unsubSelect = gamepadCh.pickerSelect.subscribe(handleGamepadSelect);
     unsubCancel = gamepadCh.pickerCancel.subscribe(() => close());
+    // pickerApply (LB+A / RB+A / Start) confirms the entered number
+    unsubApply = gamepadCh.pickerApply.subscribe(() => confirm());
     popOverlay = pushOverlay("number-picker-menu", () => close());
-    inputRef?.focus();
   });
 
   onCleanup(() => {
-    window.removeEventListener("keydown", handleKeyDownNav);
+    window.removeEventListener("keydown", handleKeyDown);
     unsubNavigate?.();
     unsubSelect?.();
     unsubCancel?.();
+    unsubApply?.();
     popOverlay?.();
   });
 
@@ -340,38 +411,33 @@ export function NumberPickerMenu(props: NumberPickerMenuProps) {
         <Show when={title()}>
           <div class="picker-menu-title">{title()}</div>
         </Show>
-        <div class="number-picker-row">
-          <button
-            class="number-picker-btn"
-            onClick={() => updateValue(value() - step())}
-          >
-            −
-          </button>
-          <input
-            ref={inputRef}
-            class="number-picker-input"
-            type="number"
-            value={value()}
-            min={minVal()}
-            max={maxVal()}
-            step={step()}
-            onInput={(e) =>
-              updateValue(Number(e.currentTarget.value) || 0)
-            }
-          />
-          <button
-            class="number-picker-btn"
-            onClick={() => updateValue(value() + step())}
-          >
-            +
-          </button>
+        <div class="numpad-display">
+          <span class="numpad-display-value">
+            {buffer() || "0"}
+          </span>
         </div>
-        <div class="number-picker-actions">
-          <button class="picker-menu-action" onClick={confirm}>
+        <div class="numpad-grid">
+          <For each={numpadKeys}>
+            {(key, i) => (
+              <button
+                class={`numpad-key ${i() === activeKey() ? "active" : ""}`}
+                onClick={() => appendChar(key)}
+                onMouseEnter={() => setActiveKey(i())}
+              >
+                {key === "-" ? "+/-" : key}
+              </button>
+            )}
+          </For>
+        </div>
+        <div class="numpad-actions">
+          <button class="numpad-action-btn" onClick={backspace}>
+            Bksp
+          </button>
+          <button class="numpad-action-btn numpad-confirm" onClick={confirm}>
             OK
           </button>
-          <button class="picker-menu-action" onClick={close}>
-            Cancel
+          <button class="numpad-action-btn" onClick={close}>
+            Esc
           </button>
         </div>
       </div>

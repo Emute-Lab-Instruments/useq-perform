@@ -225,151 +225,107 @@ describe("PickerMenu", () => {
 });
 
 // ---------------------------------------------------------------------------
-// NumberPickerMenu
+// NumberPickerMenu (Numpad Entry)
 // ---------------------------------------------------------------------------
 describe("NumberPickerMenu", () => {
-  it("renders with clamped initial value", () => {
+  it("renders numpad grid with 12 keys", () => {
     const { container } = render(() => (
-      <NumberPickerMenu
-        initialValue={5}
-        min={0}
-        max={10}
-        onSelect={() => {}}
-      />
+      <NumberPickerMenu onSelect={() => {}} />
     ));
-    const input = container.querySelector(
-      ".number-picker-input"
-    ) as HTMLInputElement;
-    expect(input).toBeTruthy();
-    expect(Number(input.value)).toBe(5);
+    const keys = container.querySelectorAll(".numpad-key");
+    expect(keys.length).toBe(12);
   });
 
-  it("clamps initial value to max", () => {
+  it("renders display showing initial value when provided", () => {
     const { container } = render(() => (
-      <NumberPickerMenu
-        initialValue={20}
-        min={0}
-        max={10}
-        onSelect={() => {}}
-      />
+      <NumberPickerMenu initialValue={42} onSelect={() => {}} />
     ));
-    const input = container.querySelector(
-      ".number-picker-input"
-    ) as HTMLInputElement;
-    expect(Number(input.value)).toBe(10);
+    const display = container.querySelector(".numpad-display-value");
+    expect(display).toBeTruthy();
+    expect(display!.textContent).toBe("42");
   });
 
-  it("clamps initial value to min", () => {
+  it("renders display showing 0 when buffer is empty", () => {
     const { container } = render(() => (
-      <NumberPickerMenu
-        initialValue={-5}
-        min={0}
-        max={10}
-        onSelect={() => {}}
-      />
+      <NumberPickerMenu onSelect={() => {}} />
     ));
-    const input = container.querySelector(
-      ".number-picker-input"
-    ) as HTMLInputElement;
-    expect(Number(input.value)).toBe(0);
+    const display = container.querySelector(".numpad-display-value");
+    expect(display).toBeTruthy();
+    expect(display!.textContent).toBe("0");
   });
 
-  it("increments value when + button is clicked", () => {
+  it("appends digit when numpad key is clicked", () => {
     const { container } = render(() => (
-      <NumberPickerMenu
-        initialValue={3}
-        step={2}
-        min={0}
-        max={10}
-        onSelect={() => {}}
-      />
+      <NumberPickerMenu onSelect={() => {}} />
     ));
-    const buttons = container.querySelectorAll(".number-picker-btn");
-    // Second button is +
-    const plusBtn = buttons[1];
-    fireEvent.click(plusBtn);
-    const input = container.querySelector(
-      ".number-picker-input"
-    ) as HTMLInputElement;
-    expect(Number(input.value)).toBe(5);
+    // Click "5" key (index 4 in the grid: 7,8,9,4,5,...)
+    const keys = container.querySelectorAll(".numpad-key");
+    fireEvent.click(keys[4]); // "5"
+    const display = container.querySelector(".numpad-display-value");
+    expect(display!.textContent).toBe("5");
   });
 
-  it("decrements value when - button is clicked", () => {
+  it("appends multiple digits sequentially", () => {
     const { container } = render(() => (
-      <NumberPickerMenu
-        initialValue={5}
-        step={2}
-        min={0}
-        max={10}
-        onSelect={() => {}}
-      />
+      <NumberPickerMenu onSelect={() => {}} />
     ));
-    const buttons = container.querySelectorAll(".number-picker-btn");
-    // First button is -
-    const minusBtn = buttons[0];
-    fireEvent.click(minusBtn);
-    const input = container.querySelector(
-      ".number-picker-input"
-    ) as HTMLInputElement;
-    expect(Number(input.value)).toBe(3);
+    const keys = container.querySelectorAll(".numpad-key");
+    // Keys layout: 7,8,9,4,5,6,1,2,3,-,0,.
+    fireEvent.click(keys[6]); // "1"
+    fireEvent.click(keys[10]); // "0"
+    fireEvent.click(keys[10]); // "0"
+    const display = container.querySelector(".numpad-display-value");
+    expect(display!.textContent).toBe("100");
   });
 
-  it("clamps value within min/max on increment", () => {
+  it("appends decimal point", () => {
     const { container } = render(() => (
-      <NumberPickerMenu
-        initialValue={9}
-        step={5}
-        min={0}
-        max={10}
-        onSelect={() => {}}
-      />
+      <NumberPickerMenu onSelect={() => {}} />
     ));
-    const buttons = container.querySelectorAll(".number-picker-btn");
-    fireEvent.click(buttons[1]); // +
-    const input = container.querySelector(
-      ".number-picker-input"
-    ) as HTMLInputElement;
-    expect(Number(input.value)).toBe(10);
+    const keys = container.querySelectorAll(".numpad-key");
+    // Keys layout: 7,8,9,4,5,6,1,2,3,-,0,.
+    fireEvent.click(keys[6]); // "1"
+    fireEvent.click(keys[11]); // "."
+    fireEvent.click(keys[4]); // "5"
+    const display = container.querySelector(".numpad-display-value");
+    expect(display!.textContent).toBe("1.5");
   });
 
-  it("clamps value within min/max on decrement", () => {
+  it("toggles negative with +/- key", () => {
     const { container } = render(() => (
-      <NumberPickerMenu
-        initialValue={1}
-        step={5}
-        min={0}
-        max={10}
-        onSelect={() => {}}
-      />
+      <NumberPickerMenu onSelect={() => {}} />
     ));
-    const buttons = container.querySelectorAll(".number-picker-btn");
-    fireEvent.click(buttons[0]); // -
-    const input = container.querySelector(
-      ".number-picker-input"
-    ) as HTMLInputElement;
-    expect(Number(input.value)).toBe(0);
+    const keys = container.querySelectorAll(".numpad-key");
+    fireEvent.click(keys[4]); // "5"
+    fireEvent.click(keys[9]); // "+/-" (minus toggle)
+    const display = container.querySelector(".numpad-display-value");
+    expect(display!.textContent).toBe("-5");
   });
 
-  it("calls onSelect with current value when Enter is pressed", () => {
+  it("calls onSelect with parsed value when Enter is pressed", () => {
     const onSelect = vi.fn();
     render(() => (
-      <NumberPickerMenu
-        initialValue={7}
-        min={0}
-        max={10}
-        onSelect={onSelect}
-      />
+      <NumberPickerMenu initialValue={7} onSelect={onSelect} />
     ));
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     expect(onSelect).toHaveBeenCalledOnce();
     expect(onSelect).toHaveBeenCalledWith(7);
   });
 
+  it("calls onSelect with 0 when buffer is empty and Enter is pressed", () => {
+    const onSelect = vi.fn();
+    render(() => (
+      <NumberPickerMenu onSelect={onSelect} />
+    ));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenCalledWith(0);
+  });
+
   it("calls onClose when Escape is pressed", () => {
     const onClose = vi.fn();
     render(() => (
       <NumberPickerMenu
-        initialValue={0}
         onSelect={() => {}}
         onClose={onClose}
       />
@@ -383,7 +339,6 @@ describe("NumberPickerMenu", () => {
     const { container } = render(() => (
       <NumberPickerMenu
         title="Volume"
-        initialValue={0}
         onSelect={() => {}}
       />
     ));
@@ -394,11 +349,65 @@ describe("NumberPickerMenu", () => {
 
   it("shows default title when not provided", () => {
     const { container } = render(() => (
-      <NumberPickerMenu initialValue={0} onSelect={() => {}} />
+      <NumberPickerMenu onSelect={() => {}} />
     ));
     const title = container.querySelector(".picker-menu-title");
     expect(title).toBeTruthy();
-    expect(title!.textContent).toBe("Pick a number");
+    expect(title!.textContent).toBe("Enter number");
+  });
+
+  it("accepts keyboard digit input", () => {
+    const { container } = render(() => (
+      <NumberPickerMenu onSelect={() => {}} />
+    ));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "4" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));
+    const display = container.querySelector(".numpad-display-value");
+    expect(display!.textContent).toBe("42");
+  });
+
+  it("removes last char on Backspace", () => {
+    const { container } = render(() => (
+      <NumberPickerMenu initialValue={123} onSelect={() => {}} />
+    ));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
+    const display = container.querySelector(".numpad-display-value");
+    expect(display!.textContent).toBe("12");
+  });
+
+  it("clears buffer on Delete", () => {
+    const { container } = render(() => (
+      <NumberPickerMenu initialValue={99} onSelect={() => {}} />
+    ));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete" }));
+    const display = container.querySelector(".numpad-display-value");
+    expect(display!.textContent).toBe("0");
+  });
+
+  it("confirms via OK button click", () => {
+    const onSelect = vi.fn();
+    const { container } = render(() => (
+      <NumberPickerMenu initialValue={42} onSelect={onSelect} />
+    ));
+    const okBtn = container.querySelector(".numpad-confirm");
+    expect(okBtn).toBeTruthy();
+    fireEvent.click(okBtn!);
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenCalledWith(42);
+  });
+
+  it("clamps parsed value to min/max", () => {
+    const onSelect = vi.fn();
+    const { container } = render(() => (
+      <NumberPickerMenu min={0} max={100} onSelect={onSelect} />
+    ));
+    // Type "999" via keyboard
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "9" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "9" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "9" }));
+    // Confirm
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    expect(onSelect).toHaveBeenCalledWith(100);
   });
 });
 
@@ -474,9 +483,9 @@ describe("HierarchicalPickerMenu", () => {
     // veggieItems[0] = "Carrot", veggieItems[1] = "Num"
     fireEvent.click(veggieItems[1]);
 
-    // Now the NumberPickerMenu should be shown
-    const numberInput = container.querySelector(".number-picker-input");
-    expect(numberInput).toBeTruthy();
+    // Now the NumberPickerMenu (numpad) should be shown
+    const numpadGrid = container.querySelector(".numpad-grid");
+    expect(numpadGrid).toBeTruthy();
   });
 
   it("calls onClose when closing at category level", () => {
