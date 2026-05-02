@@ -19,14 +19,6 @@
 // the returned `state` between calls. Tests typically use `recognize`
 // for terse end-to-end goldens, but may drive `step` directly to assert
 // per-event invariants.
-//
-// Cycle 2 — tap.
-// Cycle 3 — hold.
-// Cycle 3.5 — refactor to step/flush + batch wrapper.
-// Cycle 4 — held (auto-repeat).
-// Cycle 5 — chord.
-// Cycle 6 — flick + AxisFrame (stick processing).
-// Cycle 7 — doubleTap.
 
 import {
   at,

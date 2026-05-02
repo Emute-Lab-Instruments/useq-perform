@@ -5,8 +5,7 @@
 // binding-blind — it emits every structurally-recognized gesture; the
 // dispatcher (Stage 3) decides what to actually fire.
 //
-// Each cycle of the TDD rebuild adds one primitive. This file grows
-// over time. See docs/specs/gamepad.md §3.2 and §5.
+// See docs/specs/gamepad.md §3.2 and §5.
 
 import { describe, expect, it } from "vitest";
 
@@ -30,14 +29,10 @@ const NO_HELD: Partial<Timing> = {
 };
 
 // ===========================================================================
-// Cycle 2 — tap
-//
-// Every `press` event emits a `tap` gesture at press time. Releases are
-// recorded (for future cycles' use) but emit nothing themselves. Axis
-// events are deferred to a later cycle.
+// tap
 // ===========================================================================
 
-describe("recognize: tap (Cycle 2)", () => {
+describe("recognize: tap", () => {
   it("a single press-release pair emits one tap at press time", () => {
     const events: readonly LogicalEvent[] = [
       { kind: "press",   btn: "A", t: 0 },
@@ -154,17 +149,10 @@ describe("recognize: tap (Cycle 2)", () => {
 });
 
 // ===========================================================================
-// Cycle 3 — hold
-//
-// `hold` is a one-shot fired exactly at `pressTime + T_hold` if and only if
-// the button is still pressed STRICTLY PAST that moment (release at exactly
-// T_hold does not count). Hold is emitted IN ADDITION to tap — the
-// recognizer is binding-blind; the dispatcher decides which to fire.
-//
-// Default T_hold is 250 ms, configurable via `timing.holdMs`.
+// hold
 // ===========================================================================
 
-describe("recognize: hold (Cycle 3)", () => {
+describe("recognize: hold", () => {
   it("press held past T_hold emits hold at pressTime + T_hold", () => {
     const events: readonly LogicalEvent[] = [
       { kind: "press",   btn: "A", t: 0 },
@@ -339,18 +327,10 @@ describe("recognize: hold (Cycle 3)", () => {
 });
 
 // ===========================================================================
-// Cycle 4 — held (auto-repeat)
-//
-// `held` ticks fire while a button stays pressed past `heldInitialMs`,
-// then every `heldRepeatMs` thereafter. `n` counts from 1 at the first
-// tick. Held emits in addition to tap and (for buttons held past
-// holdMs) hold — the recognizer is binding-blind. Hold/held mutual
-// exclusion is enforced at bindings load, not here.
-//
-// Defaults: heldInitialMs=300, heldRepeatMs=60.
+// held
 // ===========================================================================
 
-describe("recognize: held (Cycle 4)", () => {
+describe("recognize: held", () => {
   it("press held just past heldInitialMs emits one held tick at scheduledAt", () => {
     // Press at 0; held(n=1) scheduled at 300. Release at 350 > 300, so
     // the first tick fires; next tick (360) is after the release.
@@ -517,19 +497,10 @@ describe("recognize: held (Cycle 4)", () => {
 });
 
 // ===========================================================================
-// Cycle 5 — chord
-//
-// Chord = ≥ 2 buttons pressed within `chordGraceMs` of each other (looking
-// back from the latest press). On each press, if any currently-held
-// button was pressed within the grace window, emit `chord(those + this)`
-// at the new press's t. Multiple chord emissions per session are
-// allowed (the chord set may grow as more buttons join).
-//
-// Default chordGraceMs is 30. Comparison is inclusive (`elapsed ≤ grace`).
-// Chord btns are canonicalised by BUTTON_ORDER (handled by `chordFromArray`).
+// chord
 // ===========================================================================
 
-describe("recognize: chord (Cycle 5)", () => {
+describe("recognize: chord", () => {
   it("two same-t presses emit chord(A,B) at t", () => {
     const events: readonly LogicalEvent[] = [
       { kind: "press",   btn: "A", t: 0  },
@@ -678,24 +649,10 @@ describe("recognize: chord (Cycle 5)", () => {
 });
 
 // ===========================================================================
-// Cycle 6 — flick + AxisFrame
-//
-// Stick processing: each axis event reports the full 2D stick state
-// `(x, y)` for one stick. The recognizer:
-//   - Applies the deadzone to the magnitude: |⟨x,y⟩| < deadzone → (0,0).
-//   - Emits an AxisFrame whenever the post-deadzone (x, y) for that
-//     stick has changed from the last frame for the same stick.
-//   - Emits a discrete `flick(stick, dir)` when the magnitude is
-//     ≥ flickThreshold AND the stick is currently armed. Disarms after
-//     emitting; re-arms when the stick returns to (0, 0).
-//
-// Direction: based on which component has the larger absolute value
-// (horizontal vs vertical). Ties (|x| = |y|) prefer horizontal.
-//
-// Defaults: stickDeadzone=0.12, flickThreshold=0.7.
+// flick + axis
 // ===========================================================================
 
-describe("recognize: flick + axis (Cycle 6)", () => {
+describe("recognize: flick + axis", () => {
   it("strong upward stick deflection emits flick(LeftStick, up)", () => {
     const events: readonly LogicalEvent[] = [
       { kind: "axis", stick: "LeftStick", x: 0, y: -1, t: 10 },
@@ -858,22 +815,10 @@ describe("recognize: flick + axis (Cycle 6)", () => {
 });
 
 // ===========================================================================
-// Cycle 7 — doubleTap
-//
-// Two complete press-release cycles on the same button within
-// `doubleTapMs`, measured from first press to second press (matches
-// typical OS double-click semantics: time between successive button-
-// down events). Inclusive `<=`. Recognizer is binding-blind: it emits
-// `doubleTap(btn)` at the second press alongside the eager tap; the
-// dispatcher reasons about which to honour and rolls back redundant
-// taps via eager-with-undo.
-//
-// Default doubleTapMs = 300. (When tap is also bound on the same
-// button, the dispatcher — not the recognizer — defers tap commitment
-// per spec §5.2.3.)
+// doubleTap
 // ===========================================================================
 
-describe("recognize: doubleTap (Cycle 7)", () => {
+describe("recognize: doubleTap", () => {
   it("press-release-press within window emits doubleTap at the second press", () => {
     const events: readonly LogicalEvent[] = [
       { kind: "press",   btn: "A", t: 0   },
