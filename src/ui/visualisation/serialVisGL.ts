@@ -21,16 +21,10 @@
  * Design notes:
  *   - One rendering context per canvas; the canvas is locked to WebGL2 once
  *     `drawSerialVisGL()` runs.
- *   - Two rendering paths:
- *       thin (lineWidth ≤ 1) — GL LINE_STRIP, vertex shader maps
- *         (time, value) to clip space.  Fast but fixed 1px width.
- *       thick (lineWidth > 1) — CPU-extruded triangle strip with
- *         bevel joins.  Geometry is pre-computed in clip space so the
- *         vertex shader is a pass-through.
- *   - Both share the same fragment shader (past/future alpha split
- *     via uClipFutureStart).
- *   - Past/future fade is a fragment-shader uniform: `uCurrentTimeNorm`
- *     (the normalized X for current time) splits past from future.
+ *   - One rendering path: CPU-extruded triangle strip with bevel joins.
+ *     Geometry is pre-computed in clip space; the vertex shader is a
+ *     pass-through. `lineWidth` parameterises the extrusion half-width.
+ *   - Past/future alpha split via fragment-shader uniform `uClipFutureStart`.
  *   - Axis lines, value labels, and "no expressions" fallback text are
  *     kept on a 2D overlay canvas (created lazily and stacked under the
  *     GL canvas).  Drawing crisp text in WebGL is out of scope — and the
@@ -56,12 +50,11 @@ import {
   sampleFingerprint,
   fingerprintChanged,
   ensureScratch,
-  ensureThickScratch,
   getScratch,
+  ensureThickScratch,
   getThickScratch,
   THICK_FLOATS_PER_VERTEX,
-  THIN_VERTEX_SRC as VERTEX_SHADER_SRC,
-  THICK_VERTEX_SRC,
+  THICK_VERTEX_SRC as VERTEX_SHADER_SRC,
   FRAGMENT_SRC as FRAGMENT_SHADER_SRC,
   type VisSampleLike,
   type SampleFingerprint,
@@ -225,6 +218,12 @@ export function ensureGLCanvasGeometry(): void {
 
 let overlayCanvas: HTMLCanvasElement | null = null;
 
+// Dirty-tracking for overlay repaint — only redraw axes/labels when these change.
+let overlayDirtyW = 0;
+let overlayDirtyH = 0;
+let overlayDirtyHasExpr = false;
+let overlayDirtyAccent = "";
+
 function ensureOverlayCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
   if (overlayCanvas && overlayCanvas.isConnected) return overlayCanvas;
@@ -315,48 +314,52 @@ interface GLState {
   gl: WebGL2RenderingContext;
   program: WebGLProgram;
   vao: WebGLVertexArrayObject;
-  // Uniform locations (thin-line program)
   uColor: WebGLUniformLocation | null;
   uAlphaPast: WebGLUniformLocation | null;
   uAlphaFuture: WebGLUniformLocation | null;
   uCurrentTime: WebGLUniformLocation | null;
-  uWindowStart: WebGLUniformLocation | null;
-  uWindowEnd: WebGLUniformLocation | null;
-  uYTop: WebGLUniformLocation | null;
-  uYBottom: WebGLUniformLocation | null;
   uClipFutureStart: WebGLUniformLocation | null;
-  // Thick-line program (triangle-strip)
-  thickProgram: WebGLProgram;
-  thickVao: WebGLVertexArrayObject;
-  tuColor: WebGLUniformLocation | null;
-  tuAlphaPast: WebGLUniformLocation | null;
-  tuAlphaFuture: WebGLUniformLocation | null;
-  tuCurrentTime: WebGLUniformLocation | null;
-  tuClipFutureStart: WebGLUniformLocation | null;
-  // Per-expression VBO cache
   buffers: Map<string, ExprBuffer>;
-  thickBuffers: Map<string, ThickExprBuffer>;
 }
-
 
 interface ExprBuffer {
-  vbo: WebGLBuffer;
-  capacity: number;
-  length: number;
-  fingerprint: SampleFingerprint | null;
-}
-
-interface ThickExprBuffer {
-  vbo: WebGLBuffer;
-  capacity: number;
-  vertexCount: number;
+  pastVbo: WebGLBuffer;
+  pastCapacity: number;
+  pastVertexCount: number;
+  futureVbo: WebGLBuffer;
+  futureCapacity: number;
+  futureVertexCount: number;
   fingerprint: SampleFingerprint | null;
   lineWidth: number;
+  /** Cached render params to detect window/viewport changes (C3 fix). */
+  renderParams: RenderParamsFingerprint | null;
+}
+
+interface RenderParamsFingerprint {
+  windowStart: number;
+  windowEnd: number;
+  yTop: number;
+  yBottom: number;
+  viewportW: number;
+  viewportH: number;
+}
+
+function renderParamsChanged(
+  a: RenderParamsFingerprint | null,
+  b: RenderParamsFingerprint,
+): boolean {
+  return (
+    !a ||
+    a.windowStart !== b.windowStart ||
+    a.windowEnd !== b.windowEnd ||
+    a.yTop !== b.yTop ||
+    a.yBottom !== b.yBottom ||
+    a.viewportW !== b.viewportW ||
+    a.viewportH !== b.viewportH
+  );
 }
 
 let glState: GLState | null = null;
-
-const THICK_FRAGMENT_SRC = FRAGMENT_SHADER_SRC;
 
 function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
   if (glState && glState.gl.canvas === canvas && !glState.gl.isContextLost()) {
@@ -374,19 +377,12 @@ function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
   }
 
   const program = linkProgram(gl, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, [
-    [0, "aTimeValue"],
+    [0, "aPosition"],
+    [1, "aTime"],
   ]);
   if (!program) return null;
   const vao = gl.createVertexArray();
   if (!vao) return null;
-
-  const thickProgram = linkProgram(gl, THICK_VERTEX_SRC, THICK_FRAGMENT_SRC, [
-    [0, "aPosition"],
-    [1, "aTime"],
-  ]);
-  if (!thickProgram) return null;
-  const thickVao = gl.createVertexArray();
-  if (!thickVao) return null;
 
   glState = {
     gl,
@@ -396,20 +392,8 @@ function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
     uAlphaPast: gl.getUniformLocation(program, "uAlphaPast"),
     uAlphaFuture: gl.getUniformLocation(program, "uAlphaFuture"),
     uCurrentTime: gl.getUniformLocation(program, "uCurrentTime"),
-    uWindowStart: gl.getUniformLocation(program, "uWindowStart"),
-    uWindowEnd: gl.getUniformLocation(program, "uWindowEnd"),
-    uYTop: gl.getUniformLocation(program, "uYTop"),
-    uYBottom: gl.getUniformLocation(program, "uYBottom"),
     uClipFutureStart: gl.getUniformLocation(program, "uClipFutureStart"),
-    thickProgram,
-    thickVao,
-    tuColor: gl.getUniformLocation(thickProgram, "uColor"),
-    tuAlphaPast: gl.getUniformLocation(thickProgram, "uAlphaPast"),
-    tuAlphaFuture: gl.getUniformLocation(thickProgram, "uAlphaFuture"),
-    tuCurrentTime: gl.getUniformLocation(thickProgram, "uCurrentTime"),
-    tuClipFutureStart: gl.getUniformLocation(thickProgram, "uClipFutureStart"),
     buffers: new Map(),
-    thickBuffers: new Map(),
   };
   return glState;
 }
@@ -427,6 +411,9 @@ function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
  */
 const combinedScratch: VisSampleLike[] = [];
 
+/** Index in `combinedScratch` where past ends and future begins. */
+let combinedSplitIndex = 0;
+
 function ensureCombinedSlot(i: number): VisSampleLike {
   let slot = combinedScratch[i];
   if (!slot) {
@@ -436,12 +423,21 @@ function ensureCombinedSlot(i: number): VisSampleLike {
   return slot;
 }
 
+/**
+ * Build past + future samples for one output. Sets `combinedSplitIndex`
+ * to the boundary between past and future so the draw path can issue
+ * separate draw calls (spec §3.9 — no interpolation across now).
+ *
+ * The last past sample and first future sample may share the same
+ * value at t=now (the live tick serves as boundary anchor, §3.1.1).
+ */
 function buildCombinedSamples(
   key: string,
   getRenderData: (exprType: string) => OutputRenderData | null,
   currentTime: number,
 ): VisSampleLike[] {
   combinedScratch.length = 0;
+  combinedSplitIndex = 0;
   const data = getRenderData(key);
   if (!data) return combinedScratch;
   const past = data.pastBuffer;
@@ -452,10 +448,22 @@ function buildCombinedSamples(
     slot.time = past.timeAt(i);
     slot.value = past.valueAt(i);
   }
-  if (fb) {
+  combinedSplitIndex = w;
+  if (fb && fb.length > 0) {
+    const anchorPos = w;
+    let hasFuture = false;
     for (let i = 0; i < fb.length; i++) {
       const t = fb.timeAt(i);
       if (t <= currentTime) continue;
+      if (!hasFuture && combinedSplitIndex > 0) {
+        // Boundary anchor: repeat the most recent past sample at the start
+        // of the future segment so both segments visually meet at t=now
+        // without the GPU interpolating between them.
+        const anchor = ensureCombinedSlot(w++);
+        anchor.time = combinedScratch[combinedSplitIndex - 1].time;
+        anchor.value = combinedScratch[combinedSplitIndex - 1].value;
+        hasFuture = true;
+      }
       const slot = ensureCombinedSlot(w++);
       slot.time = t;
       slot.value = fb.valueAt(i);
@@ -465,67 +473,32 @@ function buildCombinedSamples(
   return combinedScratch;
 }
 
-
-function getOrCreateExprBuffer(state: GLState, key: string): ExprBuffer {
+function getOrCreateBuffer(state: GLState, key: string): ExprBuffer {
   let buf = state.buffers.get(key);
   if (buf) return buf;
-  const vbo = state.gl.createBuffer();
-  if (!vbo) {
-    throw new Error("[serialVisGL] failed to create VBO");
-  }
-  buf = { vbo, capacity: 0, length: 0, fingerprint: null };
+  const pastVbo = state.gl.createBuffer();
+  if (!pastVbo) throw new Error("[serialVisGL] failed to create past VBO");
+  const futureVbo = state.gl.createBuffer();
+  if (!futureVbo) throw new Error("[serialVisGL] failed to create future VBO");
+  buf = {
+    pastVbo, pastCapacity: 0, pastVertexCount: 0,
+    futureVbo, futureCapacity: 0, futureVertexCount: 0,
+    fingerprint: null, lineWidth: 0, renderParams: null,
+  };
   state.buffers.set(key, buf);
   return buf;
 }
 
-function uploadIfNeeded(
-  state: GLState,
-  buf: ExprBuffer,
-  samples: VisSampleLike[],
-  stepMode: boolean,
-): number {
-  const fp = sampleFingerprint(samples);
-  if (!fingerprintChanged(buf.fingerprint, fp) && buf.length > 0 && !stepMode) {
-    return buf.length;
-  }
-  const vertexCount = flattenSamples(samples, stepMode);
-  const gl = state.gl;
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf.vbo);
-  if (vertexCount > buf.capacity) {
-    const grown = Math.max(vertexCount, buf.capacity * 2 || 256);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      grown * 2 * Float32Array.BYTES_PER_ELEMENT,
-      gl.DYNAMIC_DRAW,
-    );
-    buf.capacity = grown;
-  }
-  const scratchBuf = getScratch();
-  gl.bufferSubData(
-    gl.ARRAY_BUFFER,
-    0,
-    scratchBuf.subarray(0, vertexCount * 2),
-    0,
-    vertexCount * 2,
-  );
-  buf.fingerprint = fp;
-  buf.length = vertexCount;
-  return vertexCount;
-}
-
-function getOrCreateThickBuffer(state: GLState, key: string): ThickExprBuffer {
-  let buf = state.thickBuffers.get(key);
-  if (buf) return buf;
-  const vbo = state.gl.createBuffer();
-  if (!vbo) throw new Error("[serialVisGL] failed to create thick VBO");
-  buf = { vbo, capacity: 0, vertexCount: 0, fingerprint: null, lineWidth: 0 };
-  state.thickBuffers.set(key, buf);
-  return buf;
-}
-
-function uploadThickGeometry(
-  state: GLState,
-  buf: ThickExprBuffer,
+/**
+ * Upload geometry for a single segment (past or future) to a VBO.
+ * Returns the vertex count written.  Uses the shared scratch buffers
+ * (flattenSamples → buildThickLineGeometry → thickScratch), so callers
+ * must not interleave calls from different threads.
+ */
+function uploadSegmentGeometry(
+  gl: WebGL2RenderingContext,
+  vbo: WebGLBuffer,
+  capacity: number,
   samples: VisSampleLike[],
   stepMode: boolean,
   lineWidth: number,
@@ -535,14 +508,11 @@ function uploadThickGeometry(
   yBottom: number,
   viewportW: number,
   viewportH: number,
-): number {
-  const fp = sampleFingerprint(samples);
-  if (!fingerprintChanged(buf.fingerprint, fp) && buf.vertexCount > 0 && buf.lineWidth === lineWidth && !stepMode) {
-    return buf.vertexCount;
-  }
+): { vertexCount: number; capacity: number } {
+  if (samples.length < 2) return { vertexCount: 0, capacity };
 
   const flatVertexCount = flattenSamples(samples, stepMode);
-  if (flatVertexCount < 2) return 0;
+  if (flatVertexCount < 2) return { vertexCount: 0, capacity };
 
   const halfWidth = Math.max(lineWidth, 1) / 2;
   const thickVertexCount = buildThickLineGeometry(
@@ -551,26 +521,100 @@ function uploadThickGeometry(
     yTop, yBottom,
     viewportW, viewportH,
   );
-  if (thickVertexCount < 3) return 0;
+  if (thickVertexCount < 3) return { vertexCount: 0, capacity };
 
-  const gl = state.gl;
   const floatCount = thickVertexCount * THICK_FLOATS_PER_VERTEX;
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf.vbo);
-  if (thickVertexCount > buf.capacity) {
-    const grown = Math.max(thickVertexCount, buf.capacity * 2 || 256);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  let newCapacity = capacity;
+  if (thickVertexCount > capacity) {
+    const grown = Math.max(thickVertexCount, capacity * 2 || 256);
     gl.bufferData(
       gl.ARRAY_BUFFER,
       grown * THICK_FLOATS_PER_VERTEX * Float32Array.BYTES_PER_ELEMENT,
       gl.DYNAMIC_DRAW,
     );
-    buf.capacity = grown;
+    newCapacity = grown;
+    if (import.meta.env.DEV) perf.count("vis-gl-thick-buffer-grown");
   }
   const thickBuf = getThickScratch();
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, thickBuf.subarray(0, floatCount), 0, floatCount);
+  return { vertexCount: thickVertexCount, capacity: newCapacity };
+}
+
+/**
+ * Build and upload separate past/future geometry for one expression.
+ *
+ * C2 fix: Instead of a single continuous triangle strip with
+ * fragment-shader clipping, we split at `combinedSplitIndex` and
+ * upload two independent VBOs.  This eliminates cross-boundary
+ * triangle interpolation (spec §3.9).
+ *
+ * C3 fix: The fingerprint cache now also tracks window/viewport
+ * parameters so geometry is rebuilt when the view changes even if
+ * sample data hasn't.
+ *
+ * m1 fix: stepMode is no longer excluded from the cache check —
+ * the valueHash in the fingerprint already captures value changes.
+ */
+function uploadGeometry(
+  state: GLState,
+  buf: ExprBuffer,
+  samples: VisSampleLike[],
+  splitIndex: number,
+  stepMode: boolean,
+  lineWidth: number,
+  windowStart: number,
+  windowEnd: number,
+  yTop: number,
+  yBottom: number,
+  viewportW: number,
+  viewportH: number,
+): void {
+  const fp = sampleFingerprint(samples);
+  const rp: RenderParamsFingerprint = {
+    windowStart, windowEnd, yTop, yBottom, viewportW, viewportH,
+  };
+  // m1 fix: removed `&& !stepMode` — valueHash handles step-mode changes
+  if (
+    !fingerprintChanged(buf.fingerprint, fp) &&
+    !renderParamsChanged(buf.renderParams, rp) &&
+    (buf.pastVertexCount > 0 || buf.futureVertexCount > 0) &&
+    buf.lineWidth === lineWidth
+  ) {
+    if (import.meta.env.DEV) perf.count("vis-gl-thick-upload-skipped");
+    return;
+  }
+
+  if (import.meta.env.DEV) perf.begin("vis-gl-thick-upload");
+
+  // Past segment: samples[0..splitIndex)
+  const pastSamples = samples.slice(0, splitIndex);
+  const pastResult = uploadSegmentGeometry(
+    state.gl, buf.pastVbo, buf.pastCapacity,
+    pastSamples, stepMode, lineWidth,
+    windowStart, windowEnd, yTop, yBottom, viewportW, viewportH,
+  );
+  buf.pastVertexCount = pastResult.vertexCount;
+  buf.pastCapacity = pastResult.capacity;
+
+  // Future segment: samples[splitIndex..end)
+  const futureSamples = samples.slice(splitIndex);
+  const futureResult = uploadSegmentGeometry(
+    state.gl, buf.futureVbo, buf.futureCapacity,
+    futureSamples, stepMode, lineWidth,
+    windowStart, windowEnd, yTop, yBottom, viewportW, viewportH,
+  );
+  buf.futureVertexCount = futureResult.vertexCount;
+  buf.futureCapacity = futureResult.capacity;
+
   buf.fingerprint = fp;
-  buf.vertexCount = thickVertexCount;
+  buf.renderParams = rp;
   buf.lineWidth = lineWidth;
-  return thickVertexCount;
+  if (import.meta.env.DEV) {
+    perf.count("vis-gl-thick-upload-applied");
+    perf.count("vis-gl-thick-vertices-uploaded", buf.pastVertexCount + buf.futureVertexCount);
+    perf.end("vis-gl-thick-upload");
+  }
 }
 
 
@@ -614,20 +658,31 @@ export function computeAdaptivePastBufferRate(
  * `activateGLCanvas()` / `ensureGLCanvasGeometry()` setup helpers.
  */
 export function drawSerialVisGL(input: VisRenderInput): void {
-  perf.begin("render-frame");
+  if (import.meta.env.DEV) perf.begin("vis-gl-render");
+  if (import.meta.env.DEV) perf.begin("vis-gl-setup");
   const canvas = getCanvas();
   if (!canvas) {
-    perf.end("render-frame");
+    if (import.meta.env.DEV) {
+      perf.end("vis-gl-setup");
+      perf.end("vis-gl-render");
+    }
     return;
   }
   if (!isVisPanelVisible()) {
-    perf.end("render-frame");
+    if (import.meta.env.DEV) {
+      perf.count("vis-gl-skipped-hidden");
+      perf.end("vis-gl-setup");
+      perf.end("vis-gl-render");
+    }
     return;
   }
 
   const state = ensureGLState(canvas);
   if (!state) {
-    perf.end("render-frame");
+    if (import.meta.env.DEV) {
+      perf.end("vis-gl-setup");
+      perf.end("vis-gl-render");
+    }
     return;
   }
 
@@ -638,13 +693,17 @@ export function drawSerialVisGL(input: VisRenderInput): void {
   gl.viewport(0, 0, w, h);
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   const { expressions, settings, currentTime, getRenderData } = input;
   const exprKeys = Object.keys(expressions);
   const hasExpressions = exprKeys.length > 0;
+  if (import.meta.env.DEV) {
+    perf.count("vis-gl-frames");
+    perf.count("vis-gl-expressions-total", exprKeys.length);
+  }
 
   // Push the pixel-matched sample rate to the sampler (spec
   // visualisation.md §2.2.1).  One sample per horizontal pixel in the
@@ -661,18 +720,37 @@ export function drawSerialVisGL(input: VisRenderInput): void {
     getSampleRateDivisor(),
   );
   if (targetRate !== null) setPastBufferSampleRate(targetRate);
+  if (import.meta.env.DEV) perf.end("vis-gl-setup");
 
-  // Always paint the overlay (cheap; only re-rasterises axes + text).
-  drawOverlay(canvas, hasExpressions);
+  // Repaint the overlay only when geometry, expression count, or accent changes.
+  if (import.meta.env.DEV) perf.begin("vis-gl-overlay");
+  const accent = hasExpressions ? getAccentColor() : "";
+  const ow = canvas.width;
+  const oh = canvas.height;
+  if (
+    ow !== overlayDirtyW ||
+    oh !== overlayDirtyH ||
+    hasExpressions !== overlayDirtyHasExpr ||
+    accent !== overlayDirtyAccent
+  ) {
+    drawOverlay(canvas, hasExpressions);
+    overlayDirtyW = ow;
+    overlayDirtyH = oh;
+    overlayDirtyHasExpr = hasExpressions;
+    overlayDirtyAccent = accent;
+    if (import.meta.env.DEV) perf.count("vis-gl-overlay-painted");
+  } else if (import.meta.env.DEV) {
+    perf.count("vis-gl-overlay-skipped");
+  }
+  if (import.meta.env.DEV) perf.end("vis-gl-overlay");
 
   if (!hasExpressions) {
-    perf.end("render-frame");
+    if (import.meta.env.DEV) perf.end("vis-gl-render");
     return;
   }
 
   const lineWidth = settings.lineWidth ?? 1.5;
-  const useThickLines = lineWidth > 1;
-  const futureLineAlpha = settings.futureDashed === false ? 0.85 : 0.6;
+  const futureLineAlpha = settings.futureLineAlpha ?? 0.6;
   const totalWindow = settings.windowDuration || 1;
   const halfWindow = totalWindow / 2;
   const windowStart = currentTime - halfWindow;
@@ -700,23 +778,16 @@ export function drawSerialVisGL(input: VisRenderInput): void {
     return { yTop: laneTop, yBottom: laneBottom };
   }
 
-  if (useThickLines) {
-    drawExpressionsThick(
-      state, gl, w, h, exprKeys, expressions, currentTime,
-      futureLineAlpha, lineWidth, windowStart, windowEnd,
-      analogYTop, analogYBottom, digitalLaneY,
-      getRenderData,
-    );
-  } else {
-    drawExpressionsThin(
-      state, gl, w, h, exprKeys, expressions, currentTime,
-      futureLineAlpha, windowStart, windowEnd,
-      analogYTop, analogYBottom, digitalLaneY,
-      getRenderData,
-    );
-  }
+  if (import.meta.env.DEV) perf.begin("vis-gl-draw-pass");
+  drawExpressions(
+    state, gl, w, h, exprKeys, expressions, currentTime,
+    futureLineAlpha, lineWidth, windowStart, windowEnd,
+    analogYTop, analogYBottom, digitalLaneY,
+    getRenderData,
+  );
+  if (import.meta.env.DEV) perf.end("vis-gl-draw-pass");
 
-  perf.end("render-frame");
+  if (import.meta.env.DEV) perf.end("vis-gl-render");
 }
 
 /**
@@ -733,69 +804,7 @@ export function drawSerialVisGLFromStores(): void {
   });
 }
 
-function drawExpressionsThin(
-  state: GLState,
-  gl: WebGL2RenderingContext,
-  w: number,
-  h: number,
-  exprKeys: string[],
-  expressions: Record<string, VisExpression>,
-  currentTime: number,
-  futureLineAlpha: number,
-  windowStart: number,
-  windowEnd: number,
-  analogYTop: number,
-  analogYBottom: number,
-  digitalLaneY: (exprType: string) => { yTop: number; yBottom: number } | null,
-  getRenderData: (exprType: string) => OutputRenderData | null,
-): void {
-  gl.useProgram(state.program);
-  gl.bindVertexArray(state.vao);
-
-  gl.uniform1f(state.uCurrentTime, currentTime);
-  gl.uniform1f(state.uWindowStart, windowStart);
-  gl.uniform1f(state.uWindowEnd, windowEnd);
-  const uViewportLoc = gl.getUniformLocation(state.program, "uViewport");
-  gl.uniform2f(uViewportLoc, w, h);
-
-  for (const key of exprKeys) {
-    const expression = expressions[key];
-    const samples = buildCombinedSamples(key, getRenderData, currentTime);
-    if (samples.length < 2) continue;
-
-    const exprType = expression.exprType;
-    const isDigital = (DIGITAL_CHANNELS as readonly string[]).includes(exprType);
-
-    const lane = isDigital ? digitalLaneY(exprType) : null;
-    const yTop = lane ? lane.yTop : analogYTop;
-    const yBottom = lane ? lane.yBottom : analogYBottom;
-
-    const buf = getOrCreateExprBuffer(state, key);
-    const vertexCount = uploadIfNeeded(state, buf, samples, isDigital);
-    if (vertexCount < 2) continue;
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf.vbo);
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-
-    const colorCss = expression.color || getAccentColor();
-    const [r, g, b] = parseColor(colorCss);
-    gl.uniform3f(state.uColor, r, g, b);
-    gl.uniform1f(state.uYTop, yTop);
-    gl.uniform1f(state.uYBottom, yBottom);
-    gl.uniform1f(state.uAlphaPast, 1.0);
-    gl.uniform1f(state.uAlphaFuture, Math.min(1, Math.max(0, futureLineAlpha)));
-
-    gl.uniform1f(state.uClipFutureStart, 0);
-    gl.drawArrays(gl.LINE_STRIP, 0, vertexCount);
-    gl.uniform1f(state.uClipFutureStart, 1);
-    gl.drawArrays(gl.LINE_STRIP, 0, vertexCount);
-  }
-
-  gl.bindVertexArray(null);
-}
-
-function drawExpressionsThick(
+function drawExpressions(
   state: GLState,
   gl: WebGL2RenderingContext,
   w: number,
@@ -812,16 +821,23 @@ function drawExpressionsThick(
   digitalLaneY: (exprType: string) => { yTop: number; yBottom: number } | null,
   getRenderData: (exprType: string) => OutputRenderData | null,
 ): void {
-  gl.useProgram(state.thickProgram);
-  gl.bindVertexArray(state.thickVao);
+  gl.useProgram(state.program);
+  gl.bindVertexArray(state.vao);
 
-  gl.uniform1f(state.tuCurrentTime, currentTime);
+  gl.uniform1f(state.uCurrentTime, currentTime);
 
   const stride = THICK_FLOATS_PER_VERTEX * Float32Array.BYTES_PER_ELEMENT;
 
+  // Track which keys are still active for m3 cleanup below.
+  const activeKeys = new Set<string>();
+
   for (const key of exprKeys) {
+    activeKeys.add(key);
     const expression = expressions[key];
+    if (import.meta.env.DEV) perf.begin("vis-gl-build-samples");
     const samples = buildCombinedSamples(key, getRenderData, currentTime);
+    const splitIndex = combinedSplitIndex;
+    if (import.meta.env.DEV) perf.end("vis-gl-build-samples");
     if (samples.length < 2) continue;
 
     const exprType = expression.exprType;
@@ -831,31 +847,64 @@ function drawExpressionsThick(
     const yTop = lane ? lane.yTop : analogYTop;
     const yBottom = lane ? lane.yBottom : analogYBottom;
 
-    const buf = getOrCreateThickBuffer(state, key);
-    const vertexCount = uploadThickGeometry(
-      state, buf, samples, isDigital, lineWidth,
+    const buf = getOrCreateBuffer(state, key);
+    uploadGeometry(
+      state, buf, samples, splitIndex, isDigital, lineWidth,
       windowStart, windowEnd, yTop, yBottom, w, h,
     );
-    if (vertexCount < 3) continue;
+    if (buf.pastVertexCount < 3 && buf.futureVertexCount < 3) continue;
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf.vbo);
-    // aPosition (location 0): vec2 at offset 0
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, stride, 0);
-    // aTime (location 1): float at offset 8
-    gl.enableVertexAttribArray(1);
-    gl.vertexAttribPointer(1, 1, gl.FLOAT, false, stride, 2 * Float32Array.BYTES_PER_ELEMENT);
+    if (import.meta.env.DEV) perf.begin("vis-gl-draw");
 
     const colorCss = expression.color || getAccentColor();
     const [r, g, b] = parseColor(colorCss);
-    gl.uniform3f(state.tuColor, r, g, b);
-    gl.uniform1f(state.tuAlphaPast, 1.0);
-    gl.uniform1f(state.tuAlphaFuture, Math.min(1, Math.max(0, futureLineAlpha)));
+    gl.uniform3f(state.uColor, r, g, b);
+    gl.uniform1f(state.uAlphaPast, 1.0);
+    gl.uniform1f(state.uAlphaFuture, Math.min(1, Math.max(0, futureLineAlpha)));
 
-    gl.uniform1f(state.tuClipFutureStart, 0);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
-    gl.uniform1f(state.tuClipFutureStart, 1);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
+    let drawCalls = 0;
+
+    // C2 fix: draw past and future as physically separate geometry —
+    // no cross-boundary triangle interpolation.
+
+    // Past segment (uClipFutureStart=0, contains only past vertices)
+    if (buf.pastVertexCount >= 3) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf.pastVbo);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, stride, 0);
+      gl.enableVertexAttribArray(1);
+      gl.vertexAttribPointer(1, 1, gl.FLOAT, false, stride, 2 * Float32Array.BYTES_PER_ELEMENT);
+      gl.uniform1f(state.uClipFutureStart, 0);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, buf.pastVertexCount);
+      drawCalls++;
+    }
+
+    // Future segment (uClipFutureStart=1, contains only future vertices)
+    if (buf.futureVertexCount >= 3) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf.futureVbo);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, stride, 0);
+      gl.enableVertexAttribArray(1);
+      gl.vertexAttribPointer(1, 1, gl.FLOAT, false, stride, 2 * Float32Array.BYTES_PER_ELEMENT);
+      gl.uniform1f(state.uClipFutureStart, 1);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, buf.futureVertexCount);
+      drawCalls++;
+    }
+
+    if (import.meta.env.DEV) {
+      perf.count("vis-gl-draw-calls", drawCalls);
+      perf.end("vis-gl-draw");
+    }
+  }
+
+  // m3 fix: delete VBOs for expressions that are no longer active.
+  for (const [key, buf] of state.buffers) {
+    if (!activeKeys.has(key)) {
+      gl.deleteBuffer(buf.pastVbo);
+      gl.deleteBuffer(buf.futureVbo);
+      state.buffers.delete(key);
+      if (import.meta.env.DEV) perf.count("vis-gl-buffer-deleted");
+    }
   }
 
   gl.bindVertexArray(null);
@@ -870,6 +919,10 @@ export function _resetGLStateForTests(): void {
   glState = null;
   glCanvas = null;
   overlayCanvas = null;
+  overlayDirtyW = 0;
+  overlayDirtyH = 0;
+  overlayDirtyHasExpr = false;
+  overlayDirtyAccent = "";
 }
 
 export const __serialVisGLInternals = {

@@ -2,19 +2,18 @@
  * Shared WebGL line-rendering pipeline.
  *
  * Provides reusable shader programs, geometry builders, and draw helpers
- * for rendering time-series waveforms via WebGL2.  Used by both the main
+ * for rendering time-series waveforms via WebGL2.  Used by the main
  * serial visualisation panel (`serialVisGL.ts`) and inline probe
  * oscilloscopes (`probes.ts`).
  *
- * Two rendering paths:
- *   - Thin (LINE_STRIP): vertex shader maps (time, value) to clip space.
- *     Fast but fixed 1px width.
- *   - Thick (TRIANGLE_STRIP): CPU-extruded triangle strip with bevel
- *     joins.  Geometry pre-computed in clip space; vertex shader is a
- *     pass-through.
+ * One rendering path: CPU-extruded TRIANGLE_STRIP with bevel joins.
+ * Geometry pre-computed in clip space; vertex shader is a pass-through.
+ * `lineWidth` parameterises the extrusion half-width.
  *
- * Both paths share a common fragment shader with past/future alpha split.
+ * The fragment shader handles past/future alpha split via `uClipFutureStart`.
  */
+
+import { perf } from "../../lib/perfTrace.ts";
 
 // ── Shader sources ─────────────────────────────────────────────────────
 
@@ -63,7 +62,7 @@ out float vIsFuture;
 
 void main() {
   vTime = aTime;
-  vIsFuture = step(uCurrentTime, aTime);
+  vIsFuture = aTime > uCurrentTime ? 1.0 : 0.0;
   gl_Position = vec4(aPosition, 0.0, 1.0);
 }
 `;
@@ -143,7 +142,11 @@ let colorParseCanvas: HTMLCanvasElement | null = null;
 
 export function parseColor(css: string): [number, number, number] {
   const cached = colorCache.get(css);
-  if (cached) return cached;
+  if (cached) {
+    if (import.meta.env.DEV) perf.count("vis-gl-color-cache-hit");
+    return cached;
+  }
+  if (import.meta.env.DEV) perf.count("vis-gl-color-cache-miss");
   // Fast path: hex literals.
   const hex = css.match(/^#([0-9a-f]{3,8})$/i);
   if (hex) {
@@ -199,19 +202,25 @@ export interface SampleFingerprint {
   len: number;
   firstTime: number;
   lastTime: number;
+  valueHash: number;
 }
 
 export function sampleFingerprint(samples: VisSampleLike[]): SampleFingerprint {
-  if (samples.length === 0) return { len: 0, firstTime: 0, lastTime: 0 };
+  if (samples.length === 0) return { len: 0, firstTime: 0, lastTime: 0, valueHash: 0 };
+  let hash = 0;
+  for (let i = 0; i < samples.length; i++) {
+    hash = (hash * 31 + (samples[i].value * 1e6) | 0) | 0;
+  }
   return {
     len: samples.length,
     firstTime: samples[0].time,
     lastTime: samples[samples.length - 1].time,
+    valueHash: hash,
   };
 }
 
 export function fingerprintChanged(a: SampleFingerprint | null, b: SampleFingerprint): boolean {
-  return !a || a.len !== b.len || a.firstTime !== b.firstTime || a.lastTime !== b.lastTime;
+  return !a || a.len !== b.len || a.firstTime !== b.firstTime || a.lastTime !== b.lastTime || a.valueHash !== b.valueHash;
 }
 
 /** Reusable scratch Float32Array for upload -- grows but never shrinks. */
@@ -275,6 +284,22 @@ export function getThickScratch(): Float32Array {
   return thickScratch;
 }
 
+// Pooled scratch arrays for buildThickLineGeometry — grow-only, never shrink.
+// Eliminates per-frame Float32Array allocations (~4 MB/s GC churn at 30 fps
+// with 4 active expressions).
+let geomCx = new Float32Array(1024);
+let geomCy = new Float32Array(1024);
+let geomTimes = new Float32Array(1024);
+
+function ensureGeomScratch(vertexCount: number): void {
+  if (geomCx.length >= vertexCount) return;
+  let next = geomCx.length;
+  while (next < vertexCount) next *= 2;
+  geomCx = new Float32Array(next);
+  geomCy = new Float32Array(next);
+  geomTimes = new Float32Array(next);
+}
+
 /**
  * Convert flattened (time, value) polyline data in `scratch` into a
  * triangle-strip stored in `thickScratch`.
@@ -303,9 +328,10 @@ export function buildThickLineGeometry(
   const windowSpan = Math.max(windowEnd - windowStart, 1e-6);
   const invViewportH = 1 / Math.max(viewportH, 1);
 
-  const cx = new Float32Array(vertexCount);
-  const cy = new Float32Array(vertexCount);
-  const times = new Float32Array(vertexCount);
+  ensureGeomScratch(vertexCount);
+  const cx = geomCx;
+  const cy = geomCy;
+  const times = geomTimes;
 
   for (let i = 0; i < vertexCount; i++) {
     const t = scratch[i * 2];
@@ -593,20 +619,27 @@ export function drawProbeWaveformGL(
   canvas: HTMLCanvasElement,
   input: ProbeRenderInput,
 ): void {
+  if (import.meta.env.DEV) perf.begin("probe-gl-paint");
   const { samples, color, lineWidth } = input;
   const w = canvas.width;
   const h = canvas.height;
 
-  if (w === 0 || h === 0) return;
+  if (w === 0 || h === 0) {
+    if (import.meta.env.DEV) perf.end("probe-gl-paint");
+    return;
+  }
 
   const state = getOrCreateProbeGLState(canvas);
-  if (!state) return;
+  if (!state) {
+    if (import.meta.env.DEV) perf.end("probe-gl-paint");
+    return;
+  }
 
   const gl = state.gl;
   gl.viewport(0, 0, w, h);
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
   // Background fill
   if (input.backgroundColor) {
@@ -619,7 +652,10 @@ export function drawProbeWaveformGL(
 
   // Filter to finite samples for range computation
   const finiteSamples = samples.filter(Number.isFinite);
-  if (finiteSamples.length < 2) return;
+  if (finiteSamples.length < 2) {
+    if (import.meta.env.DEV) perf.end("probe-gl-paint");
+    return;
+  }
 
   // Compute Y range: baseline [0, 1], expand if needed
   let min = 0;
@@ -634,6 +670,7 @@ export function drawProbeWaveformGL(
 
   // Build sample-like objects for the geometry builder.
   // Use synthetic time 0..1 (probes don't need past/future split).
+  if (import.meta.env.DEV) perf.begin("probe-gl-build");
   const sampleCount = samples.length;
   const visSamples: VisSampleLike[] = new Array(sampleCount);
   for (let i = 0; i < sampleCount; i++) {
@@ -646,6 +683,7 @@ export function drawProbeWaveformGL(
       value: normalizedVal,
     };
   }
+  if (import.meta.env.DEV) perf.end("probe-gl-build");
 
   // Padding: 5% top and bottom
   const padding = h * 0.05;
@@ -653,6 +691,8 @@ export function drawProbeWaveformGL(
   const yBottom = h - padding;
 
   // Upload thick-line geometry
+  if (import.meta.env.DEV) perf.begin("probe-gl-upload");
+  const fpBefore = state.buffer.fingerprint;
   const vertexCount = uploadThickLineData(
     gl,
     state.buffer,
@@ -663,10 +703,22 @@ export function drawProbeWaveformGL(
     yTop, yBottom,
     w, h,
   );
+  if (import.meta.env.DEV) {
+    perf.end("probe-gl-upload");
+    if (state.buffer.fingerprint === fpBefore && vertexCount > 0) {
+      perf.count("probe-gl-upload-skipped");
+    } else {
+      perf.count("probe-gl-upload-applied");
+    }
+  }
 
-  if (vertexCount < 3) return;
+  if (vertexCount < 3) {
+    if (import.meta.env.DEV) perf.end("probe-gl-paint");
+    return;
+  }
 
   // Draw
+  if (import.meta.env.DEV) perf.begin("probe-gl-draw");
   gl.useProgram(state.thickProgram);
   gl.bindVertexArray(state.thickVao);
 
@@ -687,6 +739,11 @@ export function drawProbeWaveformGL(
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
 
   gl.bindVertexArray(null);
+  if (import.meta.env.DEV) {
+    perf.count("probe-gl-draw-calls");
+    perf.end("probe-gl-draw");
+    perf.end("probe-gl-paint");
+  }
 }
 
 /**

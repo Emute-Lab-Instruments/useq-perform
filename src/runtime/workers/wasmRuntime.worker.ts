@@ -83,11 +83,14 @@ interface InterpreterHandle {
   tickAndProject: (
     outputs: string[],
     tickTime: number,
+    projectionMode: number,
     projectEnd: number,
     numFutureSamples: number,
+    projectionOrigin: number,
   ) => TickAndProjectResult | null;
   supportsTimeWindow: () => boolean;
   supportsTickAndProject: () => boolean;
+  release: () => void;
 }
 
 let interpreter: InterpreterHandle | null = null;
@@ -112,6 +115,22 @@ function bindOptionalCwrap(
   } catch {
     return null;
   }
+}
+
+/**
+ * Discriminate truly broken optional exports (e.g. the symbol isn't a real
+ * function) from transient errors (OOM, buffer race, interpreter hiccup).
+ *
+ * Mirrors `isBrokenOptionalExportError` in `wasmInterpreter.ts`.
+ */
+function isBrokenOptionalExportError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return (
+    error.name === "TypeError" &&
+    /func is not a function/i.test(error.message)
+  );
 }
 
 function clampSampleCount(value: number): number {
@@ -224,6 +243,14 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     bufferCapacity = length;
   };
 
+  const releaseBuffer = (): void => {
+    if (bufferPointer && module._free) {
+      module._free(bufferPointer);
+      bufferPointer = 0;
+      bufferCapacity = 0;
+    }
+  };
+
   // Diagnostic readers must be reachable via `globalThis.__useqWasmRuntime`
   // because `readLast/ActiveDiagnosticsLocal` (below) read from that handle
   // rather than holding a direct module reference.
@@ -283,8 +310,13 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
           return idx < view.length ? view[idx] : Number.NaN;
         });
       } catch (error) {
-        // Fall through to legacy path on any error.
-        typedEval = null;
+        // Only permanently disable when the export is truly broken (e.g.
+        // the symbol isn't a real function). Transient errors (OOM, buffer
+        // race) fall through to the legacy path without disabling the
+        // fast path for future calls.
+        if (isBrokenOptionalExportError(error)) {
+          typedEval = null;
+        }
         // intentionally swallow — `legacyEval` is tried next.
         void error;
       }
@@ -329,13 +361,16 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
   const tickAndProject = (
     outputs: string[],
     tickTime: number,
+    projectionMode: number,
     projectEnd: number,
     numFutureSamples: number,
+    projectionOrigin: number,
   ): TickAndProjectResult | null => {
     if (!tickAndProjectEval) return null;
-    const safeFuture = Number.isFinite(numFutureSamples)
-      ? Math.max(0, Math.floor(numFutureSamples))
-      : 0;
+    const safeMode = Math.max(0, Math.min(2, Math.floor(Number(projectionMode) || 0)));
+    const safeFuture = (safeMode === 0 || !Number.isFinite(numFutureSamples))
+      ? 0
+      : Math.max(0, Math.floor(numFutureSamples));
     if (outputs.length === 0) {
       return { tickValues: new Map(), projectionSamples: new Map() };
     }
@@ -346,13 +381,16 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
       status = tickAndProjectEval(
         JSON.stringify(outputs),
         Number(tickTime) || 0,
+        safeMode,
         Number(projectEnd) || 0,
         safeFuture,
         bufferPointer,
         total,
       ) as number;
-    } catch {
-      tickAndProjectEval = null;
+    } catch (error) {
+      if (isBrokenOptionalExportError(error)) {
+        tickAndProjectEval = null;
+      }
       return null;
     }
     if (status < 0) {
@@ -380,17 +418,16 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     const projectionSamples = new Map<string, TimeSample[]>();
     if (safeFuture > 0) {
       const projOffset = outputs.length;
-      const dt =
-        safeFuture > 1
-          ? (Number(projectEnd) - Number(tickTime)) / (safeFuture - 1)
-          : 0;
+      const safeOrigin = Number.isFinite(+projectionOrigin) ? +projectionOrigin : 0;
+      const safeEnd = Number.isFinite(+projectEnd) ? +projectEnd : 0;
+      const step = (safeEnd - safeOrigin) / safeFuture;
       for (let c = 0; c < outputs.length; c++) {
         const name = outputs[c];
         if (typeof name !== "string" || !name) continue;
         const samples: TimeSample[] = new Array(safeFuture);
         const rowStart = projOffset + c * safeFuture;
         for (let s = 0; s < safeFuture; s++) {
-          const time = Number(tickTime) + dt * s;
+          const time = safeOrigin + step * (s + 1);
           const value =
             c < valid && rowStart + s < view.length
               ? view[rowStart + s]
@@ -416,6 +453,7 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     tickAndProject,
     supportsTimeWindow: (): boolean => typedEval !== null || legacyEval !== null,
     supportsTickAndProject: (): boolean => tickAndProjectEval !== null,
+    release: releaseBuffer,
   };
 }
 
@@ -563,8 +601,10 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         const result = interpreter.tickAndProject(
           request.outputs,
           request.tickTime,
+          request.projectionMode ?? 0,
           request.projectEnd,
           request.numFutureSamples,
+          request.projectionOrigin ?? request.tickTime,
         );
         postResponse({
           type: "tickAndProject-result",
@@ -624,4 +664,12 @@ self.addEventListener("message", (event: MessageEvent<WasmWorkerRequest>) => {
     return;
   }
   void handleRequest(data);
+});
+
+// Release heap-allocated buffer when the worker is closing.
+self.addEventListener("close", () => {
+  if (interpreter) {
+    interpreter.release();
+    interpreter = null;
+  }
 });

@@ -47,6 +47,9 @@ export function normalizeVisualisationSettings(
       raw.readabilityEnabled == null ? defaults.readabilityEnabled : raw.readabilityEnabled !== false,
     adaptiveQuality:
       raw.adaptiveQuality == null ? defaults.adaptiveQuality : raw.adaptiveQuality !== false,
+    futureLineAlpha: coerceNumber(raw.futureLineAlpha, defaults.futureLineAlpha),
+    minFutureSampleRate: coerceNumber(raw.minFutureSampleRate, defaults.minFutureSampleRate),
+    extensionBatchSize: coerceNumber(raw.extensionBatchSize, defaults.extensionBatchSize),
   };
 }
 
@@ -153,6 +156,18 @@ export function extractVisualisationPatch(
 
   if ("adaptiveQuality" in visualisation) {
     patch.adaptiveQuality = visualisation.adaptiveQuality !== false;
+  }
+
+  if ("futureLineAlpha" in visualisation) {
+    patch.futureLineAlpha = coerceNumber(visualisation.futureLineAlpha, defaults.futureLineAlpha);
+  }
+
+  if ("minFutureSampleRate" in visualisation) {
+    patch.minFutureSampleRate = coerceNumber(visualisation.minFutureSampleRate, defaults.minFutureSampleRate);
+  }
+
+  if ("extensionBatchSize" in visualisation) {
+    patch.extensionBatchSize = coerceNumber(visualisation.extensionBatchSize, defaults.extensionBatchSize);
   }
 
   return patch;

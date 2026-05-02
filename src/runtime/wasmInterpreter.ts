@@ -11,6 +11,7 @@ import {
   type WasmAbiValidation,
   type CwrapDescriptor,
 } from "../contracts/wasmAbi";
+import type { ProjectionMode } from "../contracts/runtimePorts";
 
 /** Time-series sample point */
 export interface TimeSample {
@@ -63,8 +64,10 @@ interface UseqRuntime {
   tickAndProjectOutputs: (
     outputs: string[],
     tickTime: number,
+    projectionMode: ProjectionMode,
     projectEnd: number,
     numFutureSamples: number,
+    projectionOrigin: number,
   ) => TickAndProjectResult | null;
   supportsTimeWindow: boolean;
   supportsTickAndProject: boolean;
@@ -164,10 +167,10 @@ function buildSampleSeries(
   readValue: ReadValueFn,
   cache?: SampleSeriesCache,
 ): SampleSeriesMap {
-  perf.begin("build-sample-series");
+  if (import.meta.env.DEV) perf.begin("build-sample-series");
   const result: SampleSeriesMap = new Map();
   if (!Array.isArray(outputs) || outputs.length === 0 || sampleCount < 1) {
-    perf.end("build-sample-series");
+    if (import.meta.env.DEV) perf.end("build-sample-series");
     return result;
   }
 
@@ -193,7 +196,7 @@ function buildSampleSeries(
     result.set(channelName, samples);
   }
 
-  perf.end("build-sample-series");
+  if (import.meta.env.DEV) perf.end("build-sample-series");
   return result;
 }
 
@@ -209,8 +212,10 @@ interface BatchEvaluator {
   tickAndProject: (
     outputs: string[],
     tickTime: number,
+    projectionMode: ProjectionMode,
     projectEnd: number,
     numFutureSamples: number,
+    projectionOrigin: number,
   ) => TickAndProjectResult | null;
   supportsTimeWindow: () => boolean;
   supportsTickAndProject: () => boolean;
@@ -319,12 +324,12 @@ function createBatchEvaluator(
       throw new Error("uSEQ WASM buffer view is unavailable");
     }
     let status: number;
-    perf.begin("wasm-typed-batch");
+    if (import.meta.env.DEV) perf.begin("wasm-typed-batch");
     try {
       status = typedEval(outputsJson, start, end, sampleCount, pointer, totalEntries) as number;
-      perf.end("wasm-typed-batch");
+      if (import.meta.env.DEV) perf.end("wasm-typed-batch");
     } catch (error) {
-      perf.end("wasm-typed-batch");
+      if (import.meta.env.DEV) perf.end("wasm-typed-batch");
       if (isBrokenOptionalExportError(error)) {
         typedEval = null;
         readLastError = null;
@@ -465,13 +470,16 @@ function createBatchEvaluator(
   const tickAndProject = (
     outputsArray: string[],
     tickTime: number,
+    projectionMode: ProjectionMode,
     projectEnd: number,
     numFutureSamples: number,
+    projectionOrigin: number,
   ): TickAndProjectResult | null => {
     if (!tickAndProjectEval) return null;
-    const safeFuture = Number.isFinite(numFutureSamples)
-      ? Math.max(0, Math.floor(numFutureSamples))
-      : 0;
+    const safeMode = Math.max(0, Math.min(2, Math.floor(Number(projectionMode) || 0)));
+    const safeFuture = (safeMode === 0 || !Number.isFinite(numFutureSamples))
+      ? 0
+      : Math.max(0, Math.floor(numFutureSamples));
     const safeOutputs = Array.isArray(outputsArray) ? Array.from(outputsArray) : [];
     if (safeOutputs.length === 0) {
       return {
@@ -487,19 +495,20 @@ function createBatchEvaluator(
     }
 
     let status: number;
-    perf.begin("wasm-tick-and-project");
+    if (import.meta.env.DEV) perf.begin("wasm-tick-and-project");
     try {
       status = tickAndProjectEval(
         outputsJson,
         Number(tickTime) || 0,
+        safeMode,
         Number(projectEnd) || 0,
         safeFuture,
         pointer,
         totalEntries,
       ) as number;
-      perf.end("wasm-tick-and-project");
+      if (import.meta.env.DEV) perf.end("wasm-tick-and-project");
     } catch (error) {
-      perf.end("wasm-tick-and-project");
+      if (import.meta.env.DEV) perf.end("wasm-tick-and-project");
       if (isBrokenOptionalExportError(error)) {
         tickAndProjectEval = null;
         return null;
@@ -531,20 +540,23 @@ function createBatchEvaluator(
       tickValues.set(name, value);
     }
 
+    // Reconstruct timestamps: the WASM side produces samples at
+    // origin + step, origin + 2*step, ..., projectionEnd where
+    // step = (projectionEnd - origin) / N. The caller passes origin
+    // so we reconstruct the exact same timestamps here.
     const projectionSamples = new Map<string, TimeSample[]>();
     if (safeFuture > 0) {
       const projOffset = safeOutputs.length;
-      const dt =
-        safeFuture > 1
-          ? (Number(projectEnd) - Number(tickTime)) / (safeFuture - 1)
-          : 0;
+      const safeEnd = Number.isFinite(+projectEnd) ? +projectEnd : 0;
+      const safeOrigin = Number.isFinite(+projectionOrigin) ? +projectionOrigin : 0;
+      const step = (safeEnd - safeOrigin) / safeFuture;
       for (let c = 0; c < safeOutputs.length; c++) {
         const name = safeOutputs[c];
         if (typeof name !== "string" || !name) continue;
         const samples: TimeSample[] = new Array(safeFuture);
         const rowStart = projOffset + c * safeFuture;
         for (let s = 0; s < safeFuture; s++) {
-          const time = Number(tickTime) + dt * s;
+          const time = safeOrigin + step * (s + 1);
           const value =
             c < validChannels && rowStart + s < view.length
               ? view[rowStart + s]
@@ -699,11 +711,13 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     tickAndProjectOutputs: (
       outputs: string[],
       tickTime: number,
+      projectionMode: ProjectionMode,
       projectEnd: number,
       numFutureSamples: number,
+      projectionOrigin: number,
     ): TickAndProjectResult | null => {
       try {
-        const result = batchEvaluator.tickAndProject(outputs, tickTime, projectEnd, numFutureSamples);
+        const result = batchEvaluator.tickAndProject(outputs, tickTime, projectionMode, projectEnd, numFutureSamples, projectionOrigin);
         lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
         return result;
       } catch (error) {
@@ -827,15 +841,17 @@ export async function evalOutputsInTimeWindow(
 export async function tickAndProjectOutputs(
   outputs: string[],
   tickTime: number,
+  projectionMode: ProjectionMode,
   projectEnd: number,
   numFutureSamples: number,
+  projectionOrigin: number,
 ): Promise<TickAndProjectResult | null> {
   if (!isUseqWasmEnabled()) {
     return null;
   }
 
   const runtime = await ensureUseqWasmLoaded();
-  return runtime.tickAndProjectOutputs(outputs, tickTime, projectEnd, numFutureSamples);
+  return runtime.tickAndProjectOutputs(outputs, tickTime, projectionMode, projectEnd, numFutureSamples, projectionOrigin);
 }
 
 /**
@@ -890,8 +906,10 @@ export interface WasmRuntimePort {
   tickAndProject(
     outputs: string[],
     tickTime: number,
+    projectionMode: ProjectionMode,
     projectEnd: number,
     numFutureSamples: number,
+    projectionOrigin: number,
   ): Promise<TickAndProjectResult | null>;
 }
 
