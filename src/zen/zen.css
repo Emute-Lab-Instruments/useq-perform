@@ -175,6 +175,7 @@
   flex-direction: column;
   height: 100%;
   padding: 0;
+  position: relative;
 }
 
 /* Top bar */
@@ -212,7 +213,104 @@
   color: #666;
 }
 
-/* Hint */
+/* Instruction text */
+
+.zen-instruction {
+  padding: 12px 24px;
+  font-size: 13px;
+  color: #aaa;
+  background: rgba(20, 20, 28, 0.6);
+  border-bottom: 1px solid #1a1a20;
+  flex-shrink: 0;
+}
+
+/* Button sequence strip (Guided mode) */
+
+.zen-button-sequence {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 24px;
+  background: rgba(20, 20, 28, 0.8);
+  border-bottom: 1px solid #1a1a20;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.zen-seq-arrow {
+  color: #445;
+  font-size: 11px;
+  margin: 0 2px;
+}
+
+.zen-seq-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.zen-seq-pending {
+  background: #1a1a24;
+  color: #556;
+  border: 1px solid #2a2a35;
+}
+
+.zen-seq-active {
+  background: #1a2a40;
+  color: #88ccff;
+  border: 1px solid #2a3a55;
+}
+
+.zen-seq-completed {
+  background: #1a3a1a;
+  color: #66dd66;
+  border: 1px solid #2a5a2a;
+}
+
+/* Shake animation for wrong action */
+
+.zen-sequence-shake {
+  animation: zen-shake 0.3s ease-out;
+  background: rgba(60, 20, 20, 0.8) !important;
+}
+
+@keyframes zen-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+
+/* Hint strip (Hints mode) — deduplicated keybinding set */
+
+.zen-button-hints {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: rgba(20, 20, 28, 0.8);
+  border-bottom: 1px solid #1a1a20;
+  flex-wrap: wrap;
+}
+
+.zen-hint-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #1a2a40;
+  color: #88ccff;
+  border: 1px solid #2a3a55;
+}
+
+/* Progressive text hint */
 
 .zen-hint {
   padding: 8px 24px;
@@ -228,68 +326,44 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Button hints strip */
+/* ─── Two-column editors area ──────────────────────────── */
 
-.zen-button-hints {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 24px;
-  background: rgba(20, 20, 28, 0.8);
-  border-bottom: 1px solid #1a1a20;
-}
-
-.zen-hint-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  background: #1a2a40;
-  color: #88ccff;
-  border: 1px solid #2a3a55;
-}
-
-.zen-hint-badge + .zen-hint-badge::before {
-  content: "→";
-  position: relative;
-  left: -5px;
-  margin-right: -2px;
-  color: #445;
-  font-size: 10px;
-}
-
-/* Ghost overlay (target preview) */
-
-.zen-ghost {
-  position: absolute;
-  top: 100px;
-  left: 50%;
-  transform: translateX(-50%);
-  pointer-events: none;
-  z-index: 1;
-}
-
-.zen-ghost-code {
-  font-size: 18px;
-  color: rgba(130, 220, 130, 0.4);
-  margin: 0;
-  padding: 16px;
-  white-space: pre;
-  text-shadow: 0 0 8px rgba(100, 200, 100, 0.15);
-}
-
-/* Editor wrapper */
-
-.zen-editor-wrapper {
+.zen-editors-area {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48px;
+  gap: 16px;
+  padding: 24px;
+  min-height: 0;
+}
+
+.zen-editor-wrapper {
+  display: flex;
+  flex-direction: column;
   position: relative;
   transition: box-shadow 0.2s;
+}
+
+.zen-editor-active {
+  flex: 3;
+}
+
+.zen-editor-target {
+  flex: 1;
+  min-width: 200px;
+  max-width: 350px;
+}
+
+.zen-editor-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #555;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.zen-editor-target .zen-editor-label {
+  color: #4a8a4a;
 }
 
 .zen-editor-wrapper.zen-glow {
@@ -303,20 +377,30 @@
 }
 
 .zen-editor {
-  width: 100%;
-  max-width: 700px;
+  flex: 1;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid #2a2a30;
   background: #15191e;
+  min-height: 0;
 }
 
 .zen-editor .cm-editor {
   background: transparent;
+  height: 100%;
 }
 
 .zen-editor .cm-gutters {
   display: none;
+}
+
+.zen-editor-readonly {
+  opacity: 0.8;
+  border-color: #1a3a1a;
+}
+
+.zen-editor-readonly .cm-content {
+  cursor: default;
 }
 
 /* Completion overlay */
@@ -350,29 +434,31 @@
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* Target panel (beforeAfter mode) */
+/* ─── Floating guidance mode toggle ────────────────────── */
 
-.zen-target-panel {
-  padding: 16px 24px;
-  background: rgba(20, 20, 24, 0.9);
-  border-top: 1px solid #1a1a20;
-  flex-shrink: 0;
-}
-
-.zen-target-label {
-  font-size: 10px;
+.zen-mode-toggle {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid #333;
+  background: rgba(20, 20, 28, 0.9);
+  color: #888;
+  cursor: pointer;
+  z-index: 20;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #555;
-  margin-bottom: 8px;
-  display: block;
+  letter-spacing: 0.06em;
 }
 
-.zen-target-code {
-  font-size: 14px;
-  color: #6a9a6a;
-  margin: 0;
-  white-space: pre;
+.zen-mode-toggle:hover {
+  color: #ccc;
+  border-color: #555;
+  background: rgba(30, 30, 40, 0.95);
 }
 
 /* ─── Buttons ───────────────────────────────────────────── */

@@ -84,6 +84,18 @@ export function getHintSequence(actions: ActionId[]): ButtonHint[] {
   return actions.map(getButtonHint);
 }
 
+export function getDeduplicatedHints(actions: ActionId[]): { action: ActionId; hint: ButtonHint }[] {
+  const seen = new Set<string>();
+  const result: { action: ActionId; hint: ButtonHint }[] = [];
+  for (const action of actions) {
+    if (seen.has(action)) continue;
+    seen.add(action);
+    result.push({ action, hint: getButtonHint(action) });
+  }
+  result.sort((a, b) => a.action.localeCompare(b.action));
+  return result;
+}
+
 export function formatGamepadHint(hint: ButtonHint): string {
   if (hint.gamepad) return hint.gamepad;
   return "";

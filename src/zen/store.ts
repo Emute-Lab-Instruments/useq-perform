@@ -9,10 +9,17 @@ import {
   type CategoryId,
 } from "./exercises";
 import { loadProgress, saveProgress, type ZenProgress } from "./progress";
+import {
+  createSequenceState,
+  checkAction as checkSequenceAction,
+  resetSequence,
+  type SequenceState,
+} from "./sequenceTracker";
 import type { ActionId } from "../lib/keybindings/actions";
 
 export type ZenView = "grid" | "exercise";
 export type DetectedInput = "gamepad" | "keyboard";
+export type GuidanceMode = "guided" | "hints" | "bare";
 
 interface ZenState {
   view: ZenView;
@@ -22,8 +29,16 @@ interface ZenState {
   paradigm: string;
   wrongMoves: number;
   completed: boolean;
-  showHints: boolean;
+  guidanceMode: GuidanceMode;
+  sequenceState: SequenceState;
+  wrongActionFlash: boolean;
 }
+
+const initialProgress = loadProgress();
+const validModes: GuidanceMode[] = ["guided", "hints", "bare"];
+const restoredMode = validModes.includes(initialProgress.guidanceMode as GuidanceMode)
+  ? (initialProgress.guidanceMode as GuidanceMode)
+  : "guided";
 
 const [state, setState] = createStore<ZenState>({
   view: "grid",
@@ -33,10 +48,12 @@ const [state, setState] = createStore<ZenState>({
   paradigm: "modal-shift",
   wrongMoves: 0,
   completed: false,
-  showHints: true,
+  guidanceMode: restoredMode,
+  sequenceState: createSequenceState([]),
+  wrongActionFlash: false,
 });
 
-const [progress, setProgressStore] = createSignal<ZenProgress>(loadProgress());
+const [progress, setProgressStore] = createSignal<ZenProgress>(initialProgress);
 
 export { state };
 
@@ -46,12 +63,15 @@ export const activeExercise = createMemo<Exercise | null>(() => {
 });
 
 export function enterExercise(id: string) {
+  const ex = exercises.find((e) => e.id === id);
   setState({
     view: "exercise",
     activeExerciseId: id,
     actionLog: [],
     wrongMoves: 0,
     completed: false,
+    sequenceState: createSequenceState(ex?.actions ?? []),
+    wrongActionFlash: false,
   });
   const p = progress();
   saveProgress({ ...p, lastExercise: id });
@@ -154,11 +174,42 @@ export function resetProgress() {
     exercises: {},
     lastExercise: null,
     paradigm: null,
+    guidanceMode: null,
   };
   saveProgress(fresh);
   setProgressStore(fresh);
 }
 
-export function toggleHints() {
-  setState("showHints", !state.showHints);
+export function setGuidanceMode(mode: GuidanceMode) {
+  setState("guidanceMode", mode);
+  const p = progress();
+  saveProgress({ ...p, guidanceMode: mode });
+  setProgressStore({ ...p, guidanceMode: mode });
+}
+
+export function cycleGuidanceMode() {
+  const modes: GuidanceMode[] = ["guided", "hints", "bare"];
+  const idx = modes.indexOf(state.guidanceMode);
+  setGuidanceMode(modes[(idx + 1) % modes.length]);
+}
+
+export type ActionCheckResult = "correct" | "wrong" | "unchecked";
+
+export function checkGuidedAction(action: ActionId): ActionCheckResult {
+  if (state.guidanceMode !== "guided") return "unchecked";
+  if (state.sequenceState.isComplete) return "unchecked";
+
+  const result = checkSequenceAction(state.sequenceState, action);
+  if (result.kind === "correct") {
+    setState("sequenceState", result.sequenceState);
+    return "correct";
+  }
+
+  setState("wrongActionFlash", true);
+  setTimeout(() => setState("wrongActionFlash", false), 400);
+  return "wrong";
+}
+
+export function resetExerciseSequence() {
+  setState("sequenceState", resetSequence(state.sequenceState));
 }

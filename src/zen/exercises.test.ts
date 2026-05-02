@@ -108,4 +108,10 @@ describe("exercise content validity", () => {
       expect(validModes.has(ex.promptMode)).toBe(true);
     }
   });
+
+  it("all exercises have a non-empty actions array", () => {
+    for (const ex of exercises) {
+      expect(ex.actions.length, `${ex.id} has no actions`).toBeGreaterThan(0);
+    }
+  });
 });

@@ -1,4 +1,4 @@
-import { Component, Show, For, createSignal, createEffect, on } from "solid-js";
+import { Component, Show, For, createSignal, createEffect, on, createMemo } from "solid-js";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { history } from "@codemirror/commands";
@@ -9,22 +9,29 @@ import { baseKeymap } from "../editors/keymaps";
 import { editorBaseTheme, themes } from "../editors/themes";
 import { structureExtensions } from "../editors/extensions/structure";
 import { getAppSettings } from "../runtime/appSettingsRepository";
-import { bindGamepadNavigation } from "../editors/gamepadNavigation";
 import { validateExercise } from "./validation";
-import { getButtonHint, type ButtonHint } from "./hints";
+import { getButtonHint, getDeduplicatedHints, type ButtonHint } from "./hints";
 import {
   state,
   activeExercise,
   markCompleted,
   advanceToNext,
   returnToGrid,
-  toggleHints,
+  cycleGuidanceMode,
+  checkGuidedAction,
+  logAction,
 } from "./store";
 import { getExercisesByCategory, type Exercise } from "./exercises";
+import type { StepState } from "./sequenceTracker";
+import { bindZenGamepadNavigation, type ActionGate } from "./zenNavigation";
+import { createZenKeymapGuard } from "./zenKeymapGuard";
+import type { ActionId } from "../lib/keybindings/actions";
 
 const ZenExercise: Component = () => {
   let editorContainer: HTMLDivElement | undefined;
+  let targetContainer: HTMLDivElement | undefined;
   let editorView: EditorView | undefined;
+  let targetView: EditorView | undefined;
   let navHandle: { dispose(): void } | undefined;
   let completed = false;
   const [glowing, setGlowing] = createSignal(false);
@@ -39,29 +46,47 @@ const ZenExercise: Component = () => {
       editorView.destroy();
       editorView = undefined;
     }
+    if (targetView) {
+      targetView.destroy();
+      targetView = undefined;
+    }
     completed = false;
     setShowDone(false);
     setGlowing(false);
   }
 
+  const actionGate: ActionGate = (actionId: ActionId) => {
+    const result = checkGuidedAction(actionId);
+    if (result === "correct") {
+      logAction(actionId);
+      return "allow";
+    }
+    if (result === "wrong") {
+      return "block";
+    }
+    // "unchecked" (Hints/Bare mode) — allow freely
+    logAction(actionId);
+    return "allow";
+  };
+
   function setup() {
     const ex = activeExercise();
-    if (!ex || !editorContainer) return;
+    if (!ex || !editorContainer || !targetContainer) return;
 
     teardown();
 
-    // Guard: skip validation/action-tracking during initial editor setup
     let ready = false;
 
-    editorView = createZenEditor(editorContainer, ex, () => {
+    editorView = createZenEditor(editorContainer, ex, actionGate, () => {
       if (!ready || completed) return;
       completed = true;
       handleCompletion();
     });
 
-    navHandle = bindGamepadNavigation(editorView);
+    targetView = createTargetEditor(targetContainer, ex);
 
-    // Arm validation after initial setup settles (next microtask)
+    navHandle = bindZenGamepadNavigation(editorView, actionGate);
+
     queueMicrotask(() => { ready = true; });
 
     console.log(`[zen] Exercise loaded: "${ex.title}" (${ex.id})`);
@@ -99,16 +124,37 @@ const ZenExercise: Component = () => {
     return ex.hints[hintIdx];
   }
 
-  function currentButtonHints(): ButtonHint[] {
+  const guidedSequence = createMemo(() => {
     const ex = activeExercise();
-    if (!ex?.optimalActions?.length) return [];
-    return ex.optimalActions.map((a) => getButtonHint(a));
-  }
+    if (!ex?.actions?.length) return [];
+    return ex.actions.map((a, i) => ({
+      action: a,
+      hint: getButtonHint(a),
+      state: state.sequenceState.stepStates[i] ?? ("pending" as StepState),
+    }));
+  });
 
+  const hintsSet = createMemo(() => {
+    const ex = activeExercise();
+    if (!ex?.actions?.length) return [];
+    return getDeduplicatedHints(ex.actions);
+  });
 
+  const guidanceModeLabel = createMemo(() => {
+    switch (state.guidanceMode) {
+      case "guided": return "Guided";
+      case "hints": return "Hints";
+      case "bare": return "Bare";
+    }
+  });
+
+  const showInstruction = () => state.guidanceMode !== "bare";
+  const showSequence = () => state.guidanceMode === "guided";
+  const showHintsSet = () => state.guidanceMode === "hints";
 
   return (
     <div class="zen-exercise">
+      {/* Nav bar */}
       <div class="zen-topbar">
         <div class="zen-topbar-left">
           <button class="zen-btn zen-btn-ghost zen-btn-sm" onClick={returnToGrid}>
@@ -117,14 +163,6 @@ const ZenExercise: Component = () => {
           <span class="zen-topbar-title">{activeExercise()?.title}</span>
         </div>
         <div class="zen-topbar-right">
-          <button
-            class="zen-btn zen-btn-ghost zen-btn-sm"
-            classList={{ "zen-btn-active": !state.showHints }}
-            onClick={toggleHints}
-            title={state.showHints ? "Hide hints (hard mode)" : "Show hints"}
-          >
-            {state.showHints ? "hints on" : "hard mode"}
-          </button>
           <Show when={activeExercise()}>
             <span class="zen-topbar-counter">
               {exerciseIndex(activeExercise()!) + 1}/{exerciseCategoryTotal(activeExercise()!)}
@@ -133,18 +171,59 @@ const ZenExercise: Component = () => {
         </div>
       </div>
 
-      {/* Button hints strip */}
-      <Show when={state.showHints && currentButtonHints().length > 0}>
-        <div class="zen-button-hints">
-          <For each={currentButtonHints()}>
-            {(hint) => {
+      {/* Instruction section */}
+      <Show when={showInstruction() && activeExercise()?.hints?.[0]}>
+        <div class="zen-instruction">
+          {activeExercise()!.hints![0]}
+        </div>
+      </Show>
+
+      {/* Guided: ordered button sequence */}
+      <Show when={showSequence() && guidedSequence().length > 0}>
+        <div
+          class="zen-button-sequence"
+          classList={{ "zen-sequence-shake": state.wrongActionFlash }}
+        >
+          <For each={guidedSequence()}>
+            {(step, i) => {
               const label = () =>
                 state.detectedInput === "gamepad"
-                  ? hint.gamepad
-                  : hint.keyboard;
+                  ? step.hint.gamepad
+                  : step.hint.keyboard;
+              return (
+                <>
+                  <Show when={i() > 0}>
+                    <span class="zen-seq-arrow">&rarr;</span>
+                  </Show>
+                  <span
+                    class="zen-seq-badge"
+                    classList={{
+                      "zen-seq-completed": step.state === "completed",
+                      "zen-seq-active": step.state === "active",
+                      "zen-seq-pending": step.state === "pending",
+                    }}
+                  >
+                    {label() || step.action.split(".").pop()}
+                  </span>
+                </>
+              );
+            }}
+          </For>
+        </div>
+      </Show>
+
+      {/* Hints: deduplicated keybinding set */}
+      <Show when={showHintsSet() && hintsSet().length > 0}>
+        <div class="zen-button-hints">
+          <For each={hintsSet()}>
+            {(entry) => {
+              const label = () =>
+                state.detectedInput === "gamepad"
+                  ? entry.hint.gamepad
+                  : entry.hint.keyboard;
               return (
                 <span class="zen-hint-badge">
-                  {label() || "?"}
+                  {label() || entry.action.split(".").pop()}
                 </span>
               );
             }}
@@ -152,36 +231,40 @@ const ZenExercise: Component = () => {
         </div>
       </Show>
 
-      <Show when={currentHint()}>
+      {/* Progressive text hint (on wrong moves) */}
+      <Show when={showInstruction() && currentHint()}>
         <div class="zen-hint">{currentHint()}</div>
       </Show>
 
-      <Show when={activeExercise()?.promptMode === "ghost"}>
-        <div class="zen-ghost">
-          <pre class="zen-ghost-code">{activeExercise()?.targetCode}</pre>
+      {/* Main area: two-column editors */}
+      <div class="zen-editors-area">
+        <div
+          class="zen-editor-wrapper zen-editor-active"
+          classList={{ "zen-glow": glowing() }}
+        >
+          <Show when={showDone()}>
+            <div class="zen-done-overlay">
+              <span class="zen-done-check">&#10003;</span>
+            </div>
+          </Show>
+          <div class="zen-editor-label">Your code</div>
+          <div ref={editorContainer} class="zen-editor" />
         </div>
-      </Show>
 
-      <div
-        class="zen-editor-wrapper"
-        classList={{ "zen-glow": glowing() }}
-      >
-        {/* Completion overlay */}
-        <Show when={showDone()}>
-          <div class="zen-done-overlay">
-            <span class="zen-done-check">&#10003;</span>
-          </div>
-        </Show>
-
-        <div ref={editorContainer} class="zen-editor" />
+        <div class="zen-editor-wrapper zen-editor-target">
+          <div class="zen-editor-label">Target</div>
+          <div ref={targetContainer} class="zen-editor zen-editor-readonly" />
+        </div>
       </div>
 
-      <Show when={activeExercise()?.promptMode === "beforeAfter"}>
-        <div class="zen-target-panel">
-          <span class="zen-target-label">Target</span>
-          <pre class="zen-target-code">{activeExercise()?.targetCode}</pre>
-        </div>
-      </Show>
+      {/* Floating guidance mode toggle */}
+      <button
+        class="zen-mode-toggle"
+        onClick={cycleGuidanceMode}
+        title={`Mode: ${guidanceModeLabel()} (click to cycle)`}
+      >
+        {guidanceModeLabel()}
+      </button>
     </div>
   );
 };
@@ -189,6 +272,7 @@ const ZenExercise: Component = () => {
 function createZenEditor(
   container: HTMLDivElement,
   ex: Exercise,
+  gate: ActionGate,
   onComplete: () => void,
 ): EditorView {
   container.innerHTML = "";
@@ -204,9 +288,12 @@ function createZenEditor(
     }
   });
 
+  const keymapGuard = createZenKeymapGuard(gate);
+
   const editorState = EditorState.create({
     doc: ex.startCode,
     extensions: [
+      keymapGuard,
       baseKeymap,
       history(),
       bracketMatching(),
@@ -230,6 +317,40 @@ function createZenEditor(
 
   placeCursor(view, ex.startCode, ex.startCursorText);
   view.focus();
+
+  return view;
+}
+
+function createTargetEditor(
+  container: HTMLDivElement,
+  ex: Exercise,
+): EditorView {
+  container.innerHTML = "";
+
+  const settings = getAppSettings();
+  const theme = themes[settings.editor?.theme] ?? themes["oneDark"];
+
+  const editorState = EditorState.create({
+    doc: ex.targetCode,
+    extensions: [
+      editorBaseTheme,
+      theme,
+      EditorView.theme({
+        "&": { height: "100%", maxHeight: "300px" },
+        ".cm-content": {
+          fontSize: `${settings.editor?.fontSize || 18}px`,
+          padding: "16px",
+        },
+        ".cm-scroller": { overflow: "auto" },
+      }),
+      ...clojureExtensions,
+      EditorView.editable.of(false),
+    ],
+  });
+
+  const view = new EditorView({ state: editorState, parent: container });
+
+  placeCursor(view, ex.targetCode, ex.targetCursorText);
 
   return view;
 }

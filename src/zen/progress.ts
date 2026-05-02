@@ -12,6 +12,7 @@ export interface ZenProgress {
   exercises: Record<string, ExerciseProgress>;
   lastExercise: string | null;
   paradigm: string | null;
+  guidanceMode: string | null;
 }
 
 const DEFAULT_PROGRESS: ZenProgress = {
@@ -19,6 +20,7 @@ const DEFAULT_PROGRESS: ZenProgress = {
   exercises: {},
   lastExercise: null,
   paradigm: null,
+  guidanceMode: null,
 };
 
 export function loadProgress(): ZenProgress {

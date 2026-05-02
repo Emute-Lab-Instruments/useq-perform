@@ -26,7 +26,7 @@ export interface ExerciseInput {
   start: string;
   target: string;
   prompt: PromptMode;
-  actions?: ActionId[];
+  actions: ActionId[];
   hints?: string[];
 }
 
@@ -39,7 +39,7 @@ export interface Exercise {
   targetCode: string;
   targetCursorText: string;
   promptMode: PromptMode;
-  optimalActions?: ActionId[];
+  actions: ActionId[];
   hints?: string[];
 }
 
@@ -79,7 +79,7 @@ function exercise(id: string, input: ExerciseInput): Exercise {
     targetCode: target.code,
     targetCursorText: target.cursorText,
     promptMode: input.prompt,
-    optimalActions: input.actions,
+    actions: input.actions,
     hints: input.hints,
   };
 }
@@ -310,6 +310,7 @@ export const exercises: Exercise[] = [
     start: "(if true «42» 0)",
     target: "«42»",
     prompt: "ghost",
+    actions: ["edit.raise"],
     hints: ["Raise replaces the parent with the focused node"],
   }),
 
@@ -319,6 +320,7 @@ export const exercises: Exercise[] = [
     start: "(do (println x) «(+ 1 2)»)",
     target: "«(+ 1 2)»",
     prompt: "ghost",
+    actions: ["edit.raise"],
     hints: ["The whole expression replaces its parent"],
   }),
 
@@ -328,6 +330,7 @@ export const exercises: Exercise[] = [
     start: "(+ 1 «(* 2 3)» 4)",
     target: "(+ 1 «*» 2 3 4)",
     prompt: "ghost",
+    actions: ["edit.splice"],
     hints: [
       "Splice removes the container but keeps its children as siblings",
     ],
@@ -339,6 +342,7 @@ export const exercises: Exercise[] = [
     start: "(let [x 1] «(do (inc x) (dec x))»)",
     target: "(let [x 1] «(inc x)» (dec x))",
     prompt: "ghost",
+    actions: ["edit.splice"],
     hints: ["The do wrapper dissolves; its children become siblings in the let body"],
   }),
 
@@ -352,6 +356,7 @@ export const exercises: Exercise[] = [
     start: "(+ 1 «2» 3)",
     target: "(+ 1 «(2)» 3)",
     prompt: "ghost",
+    actions: ["edit.wrapList"],
     hints: ["Enclose the focused node in a new list"],
   }),
 
@@ -361,6 +366,7 @@ export const exercises: Exercise[] = [
     start: "(let «x» 1)",
     target: "(let «[x]» 1)",
     prompt: "ghost",
+    actions: ["edit.wrapVector"],
     hints: ["Enclose in a vector — square brackets"],
   }),
 
@@ -370,6 +376,7 @@ export const exercises: Exercise[] = [
     start: "(+ «1» 2)",
     target: "(+ «(inc 1)» 2)",
     prompt: "beforeAfter",
+    actions: ["edit.wrapList"],
     hints: [
       "Wrap in a list, then you'd type the function name",
       "For this exercise, just achieve the structural shape",
@@ -386,6 +393,7 @@ export const exercises: Exercise[] = [
     start: "(+ «1» 2 3)",
     target: "(+ 2 «1» 3)",
     prompt: "ghost",
+    actions: ["edit.transposeFwd"],
     hints: ["Swap the focused node with its next sibling"],
   }),
 
@@ -395,6 +403,7 @@ export const exercises: Exercise[] = [
     start: "(+ «1» 2 3)",
     target: "(+ 2 3 «1»)",
     prompt: "ghost",
+    actions: ["edit.transposeFwd", "edit.transposeFwd"],
     hints: ["Transpose twice to move past two siblings"],
   }),
 
@@ -404,6 +413,7 @@ export const exercises: Exercise[] = [
     start: "(+ 1 «2» 3)",
     target: "(+ «2» 1 3)",
     prompt: "ghost",
+    actions: ["edit.transposeBack"],
     hints: ["Swap with the previous sibling"],
   }),
 
@@ -413,6 +423,7 @@ export const exercises: Exercise[] = [
     start: "(assoc «m» k v)",
     target: "(assoc k v «m»)",
     prompt: "ghost",
+    actions: ["edit.transposeFwd", "edit.transposeFwd"],
     hints: ["Move the map argument to the end"],
   }),
 
@@ -502,6 +513,7 @@ export const exercises: Exercise[] = [
     start: "(+ «1» 2 3)",
     target: "(+ «(* 1 2)» 3)",
     prompt: "beforeAfter",
+    actions: ["edit.wrapList", "edit.slurpFwd"],
     hints: [
       "Wrap 1 in a list, then slurp 2 into it",
       "The * would be typed in insertion mode — just get the shape right",
@@ -514,6 +526,7 @@ export const exercises: Exercise[] = [
     start: "(+ 1 «(* 2 3)» 4)",
     target: "(+ 1 «*» 2 3 4)",
     prompt: "puzzle",
+    actions: ["edit.splice"],
     hints: [
       "The nested list should dissolve into its parent",
       "Splice removes the container while keeping its children",
@@ -526,6 +539,10 @@ export const exercises: Exercise[] = [
     start: "(do «x» (inc x))",
     target: "(do «(inc x x)»)",
     prompt: "puzzle",
+    actions: [
+      "nav.structuralRight",
+      "edit.slurpBack",
+    ],
     hints: [
       "First, the x needs to end up inside (inc x)",
       "Think: how do you move x into the next expression?",
