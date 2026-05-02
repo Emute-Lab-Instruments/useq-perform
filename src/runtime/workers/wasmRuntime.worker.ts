@@ -56,8 +56,12 @@ interface EmscriptenModule {
   HEAPF64: Float64Array;
 }
 
+interface EmscriptenModuleConfig {
+  locateFile?: (path: string, scriptDirectory: string) => string;
+}
+
 declare const self: DedicatedWorkerGlobalScope & {
-  createModule?: () => Promise<EmscriptenModule>;
+  createModule?: (config?: EmscriptenModuleConfig) => Promise<EmscriptenModule>;
   importScripts: (...urls: string[]) => void;
 };
 
@@ -149,7 +153,16 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
   if (typeof factory !== "function") {
     throw new Error("uSEQ WASM bundle did not expose createModule() inside worker");
   }
-  const module = await factory();
+  // The Emscripten bundle is built for ENVIRONMENT_IS_WEB and resolves
+  // sibling assets via `document.currentScript.src` — undefined in a worker
+  // scope, leaving `scriptDirectory` empty and the wasm fetch resolving
+  // against the worker bundle's URL (`/solid-dist/assets/`) instead of
+  // `/wasm/`. Override `locateFile` with the directory of the script we
+  // just imported so `useq.wasm` is fetched from the correct origin.
+  const wasmDirectory = new URL(".", scriptUrl).href;
+  const module = await factory({
+    locateFile: (path: string) => new URL(path, wasmDirectory).href,
+  });
 
   assertWasmAbi(module);
 
