@@ -1,47 +1,9 @@
 import type { EditorView } from "@codemirror/view";
-import type { EditorState } from "@codemirror/state";
-import type { SyntaxNode } from "@lezer/common";
 import type { ActionId } from "../lib/keybindings/actions";
 
-import {
-  navigateIn,
-  navigateOut,
-  navigateNext,
-  navigatePrev,
-  navigateRight,
-  navigateLeft,
-  navigateUp,
-  navigateDown,
-  findNodeAt,
-} from "../editors/extensions/structure/new-structure";
-import { getTrimmedRange, performNavigation } from "../editors/extensions/structure";
+import { findNodeAt, getTrimmedRange } from "../editors/extensions/lezerHelpers";
+import { dispatchAction } from "../editors/extensions/structure/adapter/dispatcher";
 import * as ch from "../contracts/gamepadChannels";
-
-type NavigationFn = (state: EditorState) => EditorState;
-const typedNavigateIn = navigateIn as NavigationFn;
-const typedNavigateOut = navigateOut as NavigationFn;
-const typedNavigateUp = navigateUp as NavigationFn;
-const typedNavigateDown = navigateDown as NavigationFn;
-const typedNavigateLeft = navigateLeft as NavigationFn;
-const typedNavigateRight = navigateRight as NavigationFn;
-const typedNavigateNext = navigateNext as NavigationFn;
-const typedNavigatePrev = navigatePrev as NavigationFn;
-
-const typedFindNodeAt = findNodeAt as (
-  state: EditorState,
-  from: number,
-  to?: number,
-) => SyntaxNode | null;
-
-const typedGetTrimmedRange = getTrimmedRange as (
-  node: SyntaxNode,
-  state: EditorState,
-) => { from: number; to: number } | null;
-
-const typedPerformNavigation = performNavigation as (
-  view: EditorView,
-  navFn: NavigationFn,
-) => boolean;
 
 export type ActionGate = (actionId: ActionId) => "allow" | "block";
 
@@ -49,17 +11,12 @@ export interface ZenNavigationHandle {
   dispose(): void;
 }
 
-function getCursorNode(view: EditorView): SyntaxNode | null {
-  if (!view) return null;
-  const selection = view.state.selection.main;
-  return typedFindNodeAt(view.state, selection.from, selection.to);
-}
-
 function deleteNodeAtCursor(view: EditorView): boolean {
   if (!view) return false;
-  const node = getCursorNode(view);
+  const selection = view.state.selection.main;
+  const node = findNodeAt(view.state, selection.from, selection.to);
   if (!node) return false;
-  const range = typedGetTrimmedRange(node, view.state);
+  const range = getTrimmedRange(node, view.state);
   if (!range) return false;
 
   const doc = view.state.doc;
@@ -105,6 +62,27 @@ const directionToActionId: Record<string, Record<string, ActionId>> = {
   },
 };
 
+// Direction → dispatcher action name, per navigation mode.
+// - spatial:   geometric movement (up/down/left/right by source position)
+// - structural: sibling-step (prev/next regardless of axis)
+const directionToDispatch: Record<
+  "spatial" | "structural",
+  Record<string, string>
+> = {
+  spatial: {
+    up: "nav.up",
+    down: "nav.down",
+    left: "nav.left",
+    right: "nav.right",
+  },
+  structural: {
+    up: "nav.prev",
+    down: "nav.next",
+    left: "nav.prev",
+    right: "nav.next",
+  },
+};
+
 export function bindZenGamepadNavigation(
   view: EditorView,
   gate: ActionGate,
@@ -124,23 +102,8 @@ export function bindZenGamepadNavigation(
     const actionId = directionToActionId[navigationMode]?.[direction];
     if (actionId && gate(actionId) === "block") return;
 
-    const navigationMap: Record<string, NavigationFn> =
-      navigationMode === "spatial"
-        ? {
-            up: typedNavigateUp,
-            down: typedNavigateDown,
-            left: typedNavigateLeft,
-            right: typedNavigateRight,
-          }
-        : {
-            up: typedNavigatePrev,
-            down: typedNavigateNext,
-            left: typedNavigatePrev,
-            right: typedNavigateNext,
-          };
-
-    const handler = navigationMap[direction];
-    if (handler && typedPerformNavigation(view, handler)) {
+    const dispatchName = directionToDispatch[navigationMode]?.[direction];
+    if (dispatchName && dispatchAction(view, dispatchName)) {
       hideEditorCursor(view);
     }
   });
@@ -148,7 +111,7 @@ export function bindZenGamepadNavigation(
   const unsubEnter = ch.enter.subscribe(() => {
     if (!view) return;
     if (gate("nav.enter") === "block") return;
-    if (typedPerformNavigation(view, typedNavigateIn)) {
+    if (dispatchAction(view, "nav.in")) {
       hideEditorCursor(view);
     }
   });
@@ -156,7 +119,7 @@ export function bindZenGamepadNavigation(
   const unsubBack = ch.back.subscribe(() => {
     if (!view) return;
     if (gate("nav.back") === "block") return;
-    if (typedPerformNavigation(view, typedNavigateOut)) {
+    if (dispatchAction(view, "nav.out")) {
       hideEditorCursor(view);
     }
   });
