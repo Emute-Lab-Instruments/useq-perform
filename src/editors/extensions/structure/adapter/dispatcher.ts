@@ -9,6 +9,8 @@
  *           nav.extendNext, nav.extendPrev, nav.shrink (§5.1.5, §5.1.6)
  *           nav.nextHole, nav.prevHole (§5.1.8)
  *           nav.right, nav.left (§5.1.9 — Euler-tour horizontal)
+ *           nav.up, nav.down (§5.1.10 — vertical spatial; lives in the
+ *             adapter because it needs source positions)
  *   Mutate: edit.slurpForward, edit.slurpBackward,
  *           edit.barfForward, edit.barfBackward,
  *           edit.raise, edit.splice,
@@ -16,12 +18,16 @@
  *           edit.encloseList/Vector/Map/Set
  *
  * Reserved for future spatial implementations (not yet wired):
- *   nav.up, nav.down (§5.1.10 — vertical line-based; needs source positions)
  *   nav.intoMeta (§5.1.7)
  *
  * Other names log a warning and no-op. The mutation factory is created lazily
  * the first time we see a mutating action, with an id generator local to the
  * adapter — the core treats ids as opaque, so any monotonic source is fine.
+ *
+ * Most ops are pure tree ops with type `(s: State) => OpResult` and are
+ * dispatched through `applyOp`. Spatial vertical nav (`nav.up`, `nav.down`)
+ * doesn't fit that shape — it needs an `EditorView` directly to read source
+ * positions — so it takes a parallel direct-dispatch path.
  */
 
 import type { EditorView } from "@codemirror/view";
@@ -34,6 +40,7 @@ import {
   type State,
 } from "../core/index.ts";
 import { applyOp } from "./applyOp.ts";
+import { navDown, navUp } from "./spatialNav.ts";
 
 let _mutators: Mutators | null = null;
 function getMutators(): Mutators {
@@ -84,6 +91,11 @@ function actionOp(name: string): Op | null {
 
 /** Run the named action against the editor. Returns true on dispatch. */
 export function dispatchAction(view: EditorView, name: string): boolean {
+  // Spatial vertical nav takes the view directly (it needs source positions
+  // that the pure core doesn't carry — see spatialNav.ts).
+  if (name === "nav.up") return navUp(view);
+  if (name === "nav.down") return navDown(view);
+
   const op = actionOp(name);
   if (op === null) {
     console.warn(`[structure] unknown action: ${name}`);
@@ -107,6 +119,8 @@ export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   "nav.prevHole",
   "nav.right",
   "nav.left",
+  "nav.up",
+  "nav.down",
   "edit.slurpForward",
   "edit.slurpBackward",
   "edit.barfForward",
