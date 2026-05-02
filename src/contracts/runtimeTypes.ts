@@ -20,6 +20,28 @@ export interface RuntimeSessionSnapshot extends RuntimeSessionInputs {
   transportMode: TransportMode;
 }
 
+// ── Interpreter diagnostic type ───────────────────────────────
+//
+// Canonical type for structured diagnostics from the ModuLisp interpreter
+// (errors, warnings, hints with source spans). Both the WASM and hardware
+// paths produce this shape; the hardware path will emit the same JSON once
+// the firmware ships it.
+
+export interface UseqDiagnostic {
+  start: number;
+  end: number;
+  severity: "error" | "warning" | "info" | "hint";
+  message: string;
+  suggestion?: string;
+  example?: string;
+}
+
+/**
+ * @deprecated Use {@link UseqDiagnostic} instead. This alias exists only for
+ * migration convenience and will be removed in a future release.
+ */
+export type RuntimeDiagnostic = UseqDiagnostic;
+
 // ── Diagnostics types ──────────────────────────────────────────
 
 export type RuntimeProtocolMode = "legacy" | "json";

@@ -6,7 +6,7 @@
 
 import type { CircularBuffer } from "../lib/CircularBuffer.ts";
 import type { IoConfig } from "../runtime/jsonProtocol.ts";
-import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
+import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
 
 // ── Wire constants ───────────────────────────────────────────────────
 

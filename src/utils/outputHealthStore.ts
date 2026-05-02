@@ -13,7 +13,7 @@
  */
 
 import { createStore } from "solid-js/store";
-import type { UseqDiagnostic } from "../runtime/wasmInterpreter";
+import type { UseqDiagnostic } from "../contracts/runtimeTypes";
 
 // ---------------------------------------------------------------------------
 // Types

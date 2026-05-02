@@ -3,7 +3,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { linter } from "@codemirror/lint";
 import { diagnosticField, pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
-import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
+import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
 
 function createView(doc: string): EditorView {
   return new EditorView({

@@ -46,7 +46,7 @@
 
 import type { TransportState } from "../machines/transport.machine";
 import type { SharedTransportCommand } from "./useqRuntimeContract";
-import type { RuntimeProtocolMode } from "./runtimeTypes";
+import type { RuntimeDiagnostic, RuntimeProtocolMode } from "./runtimeTypes";
 
 // ---------------------------------------------------------------------------
 // Shared transport surface — implemented by both ports
@@ -285,19 +285,8 @@ export interface WasmRuntimePort extends SharedRuntimePort {
 }
 
 // ---------------------------------------------------------------------------
-// Diagnostic types — shared by both ports as opaque JSON-style objects
+// Diagnostic types — re-exported from the canonical location
 // ---------------------------------------------------------------------------
 
-/**
- * Structured diagnostic from the interpreter (errors, warnings, hints).
- * Currently produced by the WASM path; the hardware path will follow once
- * the firmware ships the same JSON shape.
- */
-export interface RuntimeDiagnostic {
-  start: number;
-  end: number;
-  severity: "error" | "warning" | "info" | "hint";
-  message: string;
-  suggestion?: string;
-  example?: string;
-}
+export type { UseqDiagnostic } from "./runtimeTypes";
+export type { RuntimeDiagnostic };

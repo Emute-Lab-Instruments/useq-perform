@@ -12,7 +12,7 @@
 import { type Diagnostic, setDiagnostics } from "@codemirror/lint";
 import { StateEffect, StateField } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import type { UseqDiagnostic } from "../../runtime/wasmInterpreter";
+import type { UseqDiagnostic } from "../../contracts/runtimeTypes";
 
 /** Maximum number of diagnostics to display per evaluation. */
 const MAX_DIAGNOSTICS_PER_EVAL = 5;

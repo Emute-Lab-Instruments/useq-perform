@@ -5,13 +5,13 @@
 // communication.
 
 import { createChannel, type TypedChannel } from "../lib/typedChannel";
-import type { UseqDiagnostic } from "../runtime/wasmInterpreter";
 
 import type {
   RuntimeBootstrapFailure,
   RuntimeDiagnosticsSnapshot,
   RuntimeProtocolMode,
   RuntimeSessionSnapshot,
+  UseqDiagnostic,
 } from "./runtimeTypes";
 
 import type { AppSettings } from "../lib/appSettings";

@@ -915,17 +915,9 @@ export const wasmRuntimePort: WasmRuntimePort = {
 };
 
 // ---------------------------------------------------------------------------
-// Diagnostic type
+// Diagnostic type — re-exported from canonical location
 // ---------------------------------------------------------------------------
-// Reading diagnostics goes through the WasmRuntimePort
-// (`readLastDiagnostics` / `readActiveDiagnostics`) so it works in both
-// the in-process and worker ports. See `src/contracts/runtimePorts.ts`.
+// The canonical definition lives in `src/contracts/runtimeTypes.ts`.
+// Re-exported here for backward compatibility with existing consumers.
 
-export interface UseqDiagnostic {
-  start: number;
-  end: number;
-  severity: 'error' | 'warning' | 'info' | 'hint';
-  message: string;
-  suggestion?: string;
-  example?: string;
-}
+export type { UseqDiagnostic } from "../contracts/runtimeTypes";
