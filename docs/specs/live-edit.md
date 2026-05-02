@@ -158,33 +158,54 @@ If the user idles for ≥ `liveEdit.subModeIdleHintMs` (default 2000 ms) with no
 
 ## 4. Widget
 
-4.1 The inline widget is a CodeMirror replace decoration that hides the wrapper text and renders a control surface in its place. Width adapts to the surrounding line; height is the line height plus a small overflow allowance.
+4.1 The inline widget is a CodeMirror replace decoration that hides the wrapper text and renders a control surface in its place. **Idle height is exactly the line height** so knob-turns and focus changes do not reflow surrounding code. Width adapts to the surrounding line.
+
+When focused (structural cursor on the widget, mouse hovering, or gamepad targeting), the widget renders an **expanded view as an overlay popover anchored above the inline widget** (or below if there is no room above). The popover does not push lines down; the document layout is invariant under focus changes. Popover dismisses when focus leaves the widget.
 
 4.2 **Visual variants:**
-- **Numeric scalar** — horizontal slider with current value displayed; knob variant available via setting (§10.4).
-- **Boolean** — two-state pill toggle.
-- **Keyword (enum)** — segmented picker; cycles via left/right.
-- **Numeric vector element** — same as scalar, sized to match its position in the vector.
+- **Numeric scalar** — knob (default; line-height circular control with a center-to-edge indicator line; range swept ~270° from 7 o'clock to 5 o'clock; 12 o'clock = midpoint of `[:min, :max]`). On focus, the popover renders an enlarged knob (~96–128px) with the value readout. Slider variant available via setting (§10.4).
+- **Boolean** — two-state pill toggle: `[● on]` / `[off ●]`. Single-line, click to flip. No expand-on-focus (no extra detail to show).
+- **Keyword (enum)** — segmented picker: `[:up ●][:down ○][:hold ○]`, current option filled, others outlined. Click an option to select; arrows cycle. For enums with > 4 options, the segmented row scrolls horizontally inside the widget bounds; the popover variant on focus shows all options.
+- **Numeric vector element** — row of knobs at line height; brackets `[ ]` preserved. Each element behaves as an independent scalar live-edit, including its own focus popover.
+
+4.2.1 **Always-on value readout.** Every inline widget shows its current value (number, formatted to `:precision`; boolean as `on`/`off`; keyword as `:name`) immediately to the right of the control, separated by a space. The readout uses the editor's monospace font and inherits syntax-highlighting tone for the literal type. The readout is the user's at-a-glance source of truth for the live value during performance.
+
+4.2.2 **Name display is panel-only.** Inline widgets never render `:name`; the surrounding source code is the context. The panel (§5) is where `:name` is shown. This keeps inline widgets minimal and line-height-bounded.
+
+4.2.3 **Cursor halo.** When the structural cursor is on a live-edit widget, the widget renders inside the standard structural-mode cursor halo per [structural-editing.md §3.3](structural-editing.md). The halo composes with all other widget states (listening, modified-from-seed, etc.) — the halo is the cursor; the widget's own visual layer is the value/state.
 
 4.3 **Widget states.** The widget renders one of:
 - `uninitialised` — wrapper is in source but no slot exists on the runtime yet (e.g. immediately after page reload, before first eval). Widget is interactive but value writes go only to the persisted table; nothing is sent to the runtime until eval registers the slot. Visually distinguished by a small "⏳" glyph and faded handle. Auto-eval per §6.6 transitions this to `idle`.
 - `idle` — slot allocated, no recent change. Default operating state.
 - `editing` — the user is actively manipulating the widget (mouse drag, gamepad axis hold, etc.). Subtle highlight; cursor halo brightens.
+- `listening` — MIDI learn is armed for this widget (§5.8). Widget renders a pulsing accent halo (1 Hz) overlaid on whatever other halo it has. Inline mirrors the panel-card pulse so the user sees the listening state regardless of where their eye is. Cleared by binding completion or cancel.
 - `wasm-preview` — slot allocated on WASM only (after a soft eval in `both` mode); value writes land on WASM only. Hardware is not in sync. Badge: "WASM preview only — hardware not synced." Cleared on next normal eval (§6.5).
 - `error` — the wrapper failed compile validation (§8.1); widget shows the diagnostic glyph and the value is locked at the seed.
 - `runtime-disabled` — runtime mode is `none`, or compile failed on all active runtimes; widget renders read-only with a "no runtime" indicator. Mirror of [probes.md §1.6.3](probes.md).
 
-4.4 **Differs-from-seed indicator.** When the current value differs from `<seed>` (numeric: `|current - seed| > step/2`; boolean/enum: not equal), the widget shows a small tick mark at the seed position on the slider (or a "•" badge for non-slider variants) and the handle is rendered in a "modified" tone. Tapping the tick (or `liveEdit.resetToSeed` action) snaps back to seed. Standard DAW idiom.
+4.4 **Differs-from-seed indicator.** When the current value differs from `<seed>` (numeric: `|current - seed| > step/2`; boolean/enum: not equal), the widget shows a small tick mark at the seed position on the knob's sweep (or slider, or a "•" badge for non-knob variants) and the handle/indicator is rendered in a "modified" tone. Tapping the tick (or `liveEdit.resetToSeed` action) snaps back to seed. Standard DAW idiom.
 
 4.5 **Step and precision relation.**
 - Default: `:precision` is canonical (default `decimals(seed) + 1`); `:step` defaults to `10^-:precision`.
 - If both are set explicitly in the wrapper (or via the panel), both are honoured as written — the user is responsible for keeping them coherent.
-- Slider drag snaps to `:step`; displayed value renders at `:precision`. With defaults aligned, drag is glitch-free (each snap is one display unit).
+- Knob/slider drag snaps to `:step`; displayed value renders at `:precision`. With defaults aligned, drag is glitch-free (each snap is one display unit).
 
 4.6 **Manipulation methods.** All bindings produce identical state transitions:
-- Mouse / touch — drag the slider, click the toggle, click an enum option.
-- Keyboard arrows — left/right (or up/down) step by `:step` (picker-cycle for enums, toggle for booleans).
-- Gamepad — focus-follows-cursor (§5.2).
+
+4.6.1 **Mouse / touch.** For knobs:
+- Click + vertical drag — up = increase, down = decrease. Pro-audio standard.
+- Shift + drag — fine control: scale step by `1/10`.
+- Cmd/Ctrl + click — reset to seed (equivalent to `liveEdit.resetToSeed`).
+- Scroll wheel — step by `:step` per notch.
+- Right-click — context menu (rename, edit range, unmark, MIDI…).
+
+For sliders (when `liveEdit.scalarWidget = "slider"`): horizontal drag with the same modifiers.
+
+For toggles: click to flip. For pickers: click an option to select.
+
+4.6.2 **Keyboard arrows.** Left/right (or up/down) step by `:step` for scalars, picker-cycle for enums, toggle for booleans. Shift modifies for fine step.
+
+4.6.3 **Gamepad.** Focus-follows-cursor when the cursor is in the editor (§5.2). Right-stick X drives scalars; A toggles booleans; right-stick X cycles enum options.
 
 4.7 **No animation on widget value updates from the runtime.** The widget is the master; reading from the slot is for display sync only on first mount and on reload.
 
@@ -192,17 +213,45 @@ If the user idles for ≥ `liveEdit.subModeIdleHintMs` (default 2000 ms) with no
 
 ## 5. Panel, Gamepad, and MIDI
 
-5.1 **Live-Edit panel.** A dockable panel (alongside the visualisation panel and console — see [overlays.md](overlays.md) for docking rules; defer panel-specific layout to implementation) lists every live-edit currently in the document. Each row shows: `:name` (or fallback `unnamed-<id>`), current value, control (matched to the inline widget's variant but larger), and an axis-binding indicator.
+5.1 **Live-Edit panel.** A dockable panel listing every live-edit currently in the document, plus the affordances for binding MIDI to those slots. The panel is the heavy control surface; the inline widget is the in-source peek/manipulate affordance.
 
-5.2 **Focus-follows-cursor for gamepad.** Whichever live-edit the structural cursor is currently on (or the panel row currently focused) is the gamepad target. The configured axis (default: right stick X for sliders/scalars, A button for booleans, right stick X-as-cycler for enums; full mapping in [gamepad.md](gamepad.md)) drives that live-edit until the cursor moves to another live-edit (or off all live-edits, in which case the axis is idle).
+5.1.1 **Default dock position: right side, full editor height.** Symmetric with the visualisation panel and console docking patterns ([overlays.md](overlays.md)). The user can re-dock per the global panel-dock affordances. The setting `liveEdit.panelDock` (§10) records the user's preference.
+
+5.1.2 **Card-per-widget layout.** Each live-edit gets a card. Card content:
+- `:name` header (or `unnamed-<id>`), inline-editable on click.
+- A larger version of the widget (knob ~48–64px, slider, toggle, or picker) — same primitive as inline, sized for direct use without focus-expansion. The panel control is the always-prominent representation.
+- Current value below the control, formatted to `:precision`.
+- A row of action affordances: MIDI learn icon (`◉ LRN` or jack glyph; §5.8), overflow menu (`⋮`).
+- A drag handle (`⋮⋮` on hover) for reordering (§5.1.4).
+
+Cards stack vertically. The panel is single-column at all widths; cards do not flow into a grid.
+
+5.1.3 **Sort: document order by default.** The panel walks the document top-to-bottom and lists each live-edit wrapper in source order. This is the predictable default and the one that matches the user's mental model of "where in the code is this knob."
+
+5.1.4 **Drag-to-reorder override.** The user can drag any card to a new position. Dragging switches the panel to "custom order" mode; the custom order is persisted (§7) keyed by `:id`. New live-edits added to the document while in custom-order mode are appended to the bottom of the custom order. An action `liveEdit.resetPanelOrder` returns the panel to document-order mode (and forgets the custom order). Setting: `liveEdit.panelOrder` (`"document"` | `"custom"`); custom order itself stored under `liveEdit.panelCustomOrder` keyed by document.
+
+5.1.5 **Panel toggle.** A toolbar button and a keybinding (registered in [keybindings.md](keybindings.md) under the `liveEdit` action category, e.g. `liveEdit.togglePanel`) open/close the panel. The open/closed state persists.
+
+5.2 **Focus-follows-cursor for gamepad (editor side).** When the gamepad target is the editor: whichever live-edit the structural cursor is currently on is the gamepad target. The configured axis (default: right stick X for scalars/sliders/knobs, A button for booleans, right stick X-as-cycler for enums; full mapping in [gamepad.md](gamepad.md)) drives that live-edit until the cursor moves to another live-edit (or off all live-edits, in which case the axis is idle).
+
+5.2.1 **Gamepad panel mode.** A dedicated action `liveEdit.focusPanel` (default: `L1+R1` chord on gamepad; configurable keybinding) transfers gamepad focus from the editor to the panel. While the panel is the gamepad target:
+- `dpad up` / `dpad down` move the focused row up/down through the cards (in current panel order). The first/last row wraps.
+- `right stick X` (or A button, or X-as-cycler) drives the focused row's value, identical to the editor-side mapping.
+- `Back` (Select on Xbox-style controllers) returns gamepad focus to the editor; the structural cursor's prior position is restored.
+
+The transition is **modal**: at any moment exactly one of {editor, panel} owns gamepad focus. This avoids accidental knob bumps when the user thinks they are moving the cursor.
+
+5.2.2 **Cancel/confirm convention.** Panel-mode follows the app-wide convention from [gamepad.md §4.8](gamepad.md): `Back` is the panel-exit (cancel-style return); `Start` has no panel-mode binding by default (no commit needed — values stream live). Within row affordances (rename, edit range, MIDI learn), `Start` confirms inner sub-modes per their own specs.
 
 5.3 **Pin extension (deferred).** A `liveEdit.pinToAxis` action that freezes a live-edit to a specific axis until unpinned, freeing the cursor. Allows N hands-off knobs simultaneously. Out of v1; tracked in §11.
 
-5.4 **Panel actions.** Each row exposes:
+5.4 **Card actions.** Each card exposes (via the overflow menu and direct affordances):
 - `commit` — bake current value back into source (§6).
 - `resetToSeed` — restore to the wrapper's `:start` value.
-- `rename` — edit `:name`.
+- `rename` — edit `:name` (inline-editable header).
 - `editRange` — edit `:min`/`:max`/`:step`/`:precision` (and `:options` for enums).
+- `midiLearn` — enter listening for this card (§5.8).
+- `clearMidiBinding` — present when bound; clears the binding.
 - `unmark` — equivalent to `liveEdit.mark` toggling off (§3.3).
 
 5.5 **Panel-restricted environments.** Tutorial playgrounds opting into live-edits scope their panel to the playground instance only — no cross-playground bleed. Read-only secondary editors render no widgets and contribute no rows.
@@ -214,6 +263,54 @@ to live-edit slot ids, maps incoming values into the slot's range, and routes
 the resulting value through the same `set-live-inputs` path as mouse,
 keyboard, panel, and gamepad control. MIDI output, MIDI clock, sysex, OSC, and
 firmware-side MIDI are out of scope.
+
+5.7 **MIDI binding model.** A binding pairs a live-edit `:id` with a MIDI source descriptor:
+
+```ts
+type MidiSource =
+  | { kind: "cc";   channel: number /* 1..16 */ | "any"; controller: number /* 0..127 */ }
+  | { kind: "note"; channel: number | "any"; note: number /* 0..127 */; mode: "velocity" | "toggle" };
+```
+
+- **CC bindings** map incoming CC values `0..127` linearly into `[:min, :max]`. Booleans treat `>= 64` as `true`. Keyword (enum) bindings map the CC range across the option list (`floor(value / 128 * options.length)`, clamped).
+- **Note bindings, velocity mode** map velocity `0..127` like a CC. Note-off sets value to `:min` (or `false` for booleans).
+- **Note bindings, toggle mode** flip a boolean on each note-on; ignored for non-boolean live-edits.
+
+One slot ↔ at most one binding (v1). Many-to-one (one CC drives many slots) is **not** supported in v1; see §5.10 for conflict resolution and §11.9 for the deferred macro-link feature.
+
+5.8 **MIDI learn flow.**
+
+5.8.1 **Per-widget learn (primary path).** Each panel card has a learn icon (`◉ LRN` or jack glyph) in its action-affordance row. Clicking the icon arms that one card:
+- The card's border begins pulsing at 1 Hz in an accent colour (the `listening` widget state, §4.3).
+- A status banner appears at the top of the panel: `Listening for MIDI on `<name>`...   Esc ✗`.
+- If an inline widget for the same slot is visible in the editor, it mirrors the listening pulse (its halo pulses identically) so the user sees the state regardless of where their eye lands.
+- The next CC or note-on message received from any enumerated MIDI input device binds to this card per §5.7. Listening ends; the binding indicator (§5.9) appears.
+- If `Esc` is pressed (or the learn icon is clicked again) before a message arrives, listening is cancelled with no binding change.
+
+5.8.2 **Global "Learn All" (batch).** A toolbar button `◉ LEARN ALL` (next to the panel toggle) enters batch-learn mode:
+- Walks the panel cards top-to-bottom in current panel order.
+- Arms the first unbound card. (If all are bound, starts at the first card; the user can re-bind by stepping through.)
+- On each binding, advances to the next card automatically.
+- Status banner shows progress: `Listening for MIDI on `<name>` (3/8)...   N skip   Esc ✗`. Pressing `N` (or the gamepad north face) skips the current card without binding.
+- Exits when all cards are walked or `Esc` is pressed.
+
+5.8.3 **Inline widgets get no learn affordance.** Per §4.2.2 the inline surface stays minimal. The inline widget mirrors the listening pulse (§5.8.1) but cannot start a learn — that is the panel's job. The right-click context menu on an inline widget includes `MIDI Learn`, which delegates to the panel's per-widget flow.
+
+5.9 **Binding indicator.**
+
+5.9.1 **Panel card.** A bound card displays a compact label in the action-affordance row: `CC74` (any-channel default), `Ch2 CC74` (specific channel), `C3` (note), `Ch2 C3 vel` (note in velocity mode). Clicking the label opens a menu: `Re-learn`, `Set channel scope: any / specific`, `Convert note mode: velocity ↔ toggle` (note bindings only), `Clear binding`.
+
+5.9.2 **Inline widget.** A small filled dot (a single character glyph, accent-coloured) appears immediately after the always-on value readout (§4.2.1). The dot signals "this slot has a MIDI binding"; details are not shown inline. Hovering or focusing the inline widget reveals a tooltip with the binding label (`CC74 Ch2`).
+
+5.10 **Conflict resolution.** When the user binds a MIDI source that is already bound to a different live-edit:
+- The existing binding is **replaced** — cleared from the previous slot, applied to the new slot. One source, one slot.
+- A toast notification appears: ``CC74 moved from `<old-name>` to `<new-name>`. [Undo]``.
+- `Undo` reverts both bindings to their pre-bind state in a single action; the toast lasts ~6 seconds and the binding-conflict event is also pushed onto the editor's undo stack so `Ctrl-Z` works after the toast disappears.
+- If the replaced card was itself in `listening` state, that listening is cancelled.
+
+This matches the Ableton Live / Bitwig default and minimises performance friction. Many-to-one (one CC → many slots) is the deferred macro-link feature, §11.9.
+
+5.11 **Channel scope.** New bindings default to **specific channel** — the channel of the first received message is captured along with the CC/note number. The user can switch a binding to `Any channel` via the binding label menu (§5.9.1); `Any` matches messages on any channel for that CC/note number. Setting `liveEdit.midiChannelScopeDefault` allows flipping the default to `"any"` for users with single-controller setups.
 
 ---
 
@@ -254,11 +351,15 @@ If multiple cursors target multiple live-edits, commit applies pointwise per [st
 {
   values: Record<string /* :id */, number | boolean | string /* keyword name */>,
   orphans: Record<string /* :id */, { value: ...; orphanedAt: number /* ms epoch */ }>,
+  midiBindings: Record<string /* :id */, MidiSource /* §5.7 */>,
+  panelOrder: { mode: "document" | "custom"; custom?: Record<docKey, Array<idString>> },
+  panelDock: "right" | "bottom" | "left",
+  panelOpen: boolean,
   schemaVersion: 1,
 }
 ```
 
-Values are written debounced at 200 ms after the most recent widget change, plus an immediate flush on `commit` / `unmark` / page hide.
+Values are written debounced at 200 ms after the most recent widget change, plus an immediate flush on `commit` / `unmark` / page hide. MIDI bindings, panel order, and panel dock/open state are written immediately on change (these are user actions, not value streams).
 
 7.3 **Reconciliation triggers.** Reconciliation runs in three cases:
 - After every successful main-editor eval.
@@ -269,8 +370,10 @@ Each reconciliation walks the document's live-edit wrappers and computes the cur
 - IDs in both the doc and `values` — value restored, runtime told via `set-live-inputs`.
 - IDs in the doc but not in `values` — slot uses `<seed>`, runtime told via `set-live-inputs`.
 - IDs in `values` but not in the doc — moved to `orphans` with `orphanedAt = now`. Removed from `values`.
-- IDs in `orphans` whose `orphanedAt` is older than `liveEdit.orphanGcHours` (default 24h) — deleted entirely.
-- IDs in `orphans` that reappear in the doc (cut/paste recovery) — restored to `values`, removed from `orphans`.
+- IDs in `orphans` whose `orphanedAt` is older than `liveEdit.orphanGcHours` (default 24h) — deleted entirely. At deletion, the matching `midiBindings[id]` entry (if any) and the matching slot inside `panelOrder.custom[docKey]` (if any) are also dropped.
+- IDs in `orphans` that reappear in the doc (cut/paste recovery) — restored to `values`, removed from `orphans`. The matching `midiBindings[id]` entry is preserved across this round-trip; the `panelOrder.custom[docKey]` entry, if it survived, retains its position.
+
+`panelDock` and `panelOpen` are not keyed by `:id` — they are global panel preferences and are not subject to orphan cleanup.
 
 7.4 **`?nosave` honoured** ([url-params.md](url-params.md)): persistence is read-once at boot and writes are suppressed while the param is set.
 
@@ -328,7 +431,7 @@ Live-edit-related settings live under `liveEdit.*`:
 
 10.3 `liveEdit.idLength: number` — default `4`. Increased automatically (with a warning) if collision rate exceeds threshold within a single doc.
 
-10.4 `liveEdit.scalarWidget: "slider" | "knob"` — default `"slider"`. Per-widget override via `:widget` keyword in the wrapper (open question §11.4).
+10.4 `liveEdit.scalarWidget: "knob" | "slider"` — default `"knob"`. Knob is space-efficient (line-height idle) and expands as a popover above on focus per §4.1. Slider is a horizontal-track alternative for users who prefer it. Per-widget override via `:widget` keyword in the wrapper (open question §11.4).
 
 10.5 `liveEdit.orphanGcHours: number` — default `24`. Time-to-live for orphaned persisted values.
 
@@ -339,6 +442,18 @@ Live-edit-related settings live under `liveEdit.*`:
 10.8 `liveEdit.autoEvalOnIdle: boolean` — default `true`. Master switch for §6.6 auto-eval behaviour.
 
 10.9 `liveEdit.uiTickHz: number` — default `60`. UI tick rate for value batching/sending. Auto-throttled to 30 Hz when active-knob count exceeds threshold (§9.1).
+
+10.10 `liveEdit.panelDock: "right" | "bottom" | "left"` — default `"right"`. Default dock position for the live-edit panel (§5.1.1). Re-dockable via global panel-dock affordances.
+
+10.11 `liveEdit.panelOrder: "document" | "custom"` — default `"document"`. Whether the panel walks the document or uses a user-defined order (§5.1.3, §5.1.4). Switches to `"custom"` automatically on the first drag-reorder; reset via `liveEdit.resetPanelOrder`.
+
+10.12 `liveEdit.panelCustomOrder: Record<docKey, Array<idString>>` — the user's custom card order, keyed by document identity. Persisted with the rest of the live-edit table.
+
+10.13 `liveEdit.midiChannelScopeDefault: "specific" | "any"` — default `"specific"`. New bindings capture the channel of the first received message; flip to `"any"` to ignore channel by default (§5.11).
+
+10.14 `liveEdit.knobExpandPx: number` — default `112`. Pixel size of the focus-popover knob (§4.1, §4.2). Idle inline knob size is line-height regardless.
+
+10.15 `liveEdit.fineDragRatio: number` — default `0.1`. Step multiplier when Shift is held during knob/slider drag (§4.6.1). Lower = finer.
 
 ---
 
@@ -359,3 +474,7 @@ Live-edit-related settings live under `liveEdit.*`:
 11.7 **History / undo.** Knob movements are not added to the editor's undo stack today. Whether they should be (with debouncing/coalescing) is open. Source mutations from `mark`/`commit`/`unmark`/`editRange` *are* on the undo stack like any other text edit.
 
 11.8 **Inspector / Storybook story.** Widgets should be renderable in isolation per the props-based UI conventions in `CLAUDE.md` (`value`, `min`, `max`, `step`, `precision`, `state`, `onValueChange`, `onCommit` props). Wired adapter pulls from the live-edit store. Not yet specified beyond this note.
+
+11.9 **Macro-style MIDI links (one CC → many slots).** Today (§5.10) binding a CC that's already bound replaces the previous binding. A future macro-link feature would let one CC explicitly drive many slots simultaneously, with curve/scale per-slot — useful for "big knob controls everything" performance patches. Out of v1.
+
+11.10 **Vertical / wheel slider variants.** Beyond knob and horizontal slider, a `:vertical-slider` (channel-strip fader) or `:wheel` (mod-wheel-style infinite encoder) variant is plausible. Tracked under the per-widget visual override (§11.4) and not specified pending demand.
