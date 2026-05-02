@@ -33,7 +33,8 @@
     "src/utils/referenceStore.ts",
     "src/utils/snippetStore.ts",
     "vitest.shims.d.ts",
-    "src/types/web-serial.d.ts"
+    "src/types/web-serial.d.ts",
+    "src/types/clojure-mode.d.ts"
   ],
   "exclude": [
     "node_modules",

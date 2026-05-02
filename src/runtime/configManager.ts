@@ -17,21 +17,37 @@ import {
   settingsPatchFromConfiguration,
   validateConfiguration,
 } from '../lib/appSettings.ts';
+import type { AppConfigDocument } from '../lib/settings/schema.ts';
+
+interface ExportOptions {
+  includeCode?: boolean;
+  includeDevMode?: boolean;
+}
+
+interface ImportOptions {
+  merge?: boolean;
+}
+
+interface SaveResult {
+  success: boolean;
+  method: 'websocket' | 'filesystem-api' | 'download';
+  path?: string;
+  absolutePath?: string;
+  name?: string;
+  message?: string;
+  error?: string;
+}
 
 const CONFIG_WS_URL = 'ws://localhost:8081';
 const CONFIG_DEFAULT_PATH = 'src/runtime/default-config.json';
 
-let configWebSocket = null;
+let configWebSocket: WebSocket | null = null;
 let connectionAttempted = false;
 
 /**
  * Export current configuration to JSON
- * @param {Object} options - Export options
- * @param {boolean} options.includeCode - Include editor code in export
- * @param {boolean} options.includeDevMode - Include devMode settings
- * @returns {Object} Configuration object
  */
-export function exportConfiguration(options = {}) {
+export function exportConfiguration(options: ExportOptions = {}): AppConfigDocument {
   const includeCode = options.includeCode ?? false;
   const includeDevMode = options.includeDevMode ?? true;
 
@@ -61,12 +77,8 @@ export function exportConfiguration(options = {}) {
 
 /**
  * Import configuration and apply to active settings
- * @param {Object} config - Configuration to import
- * @param {Object} options - Import options
- * @param {boolean} options.merge - Merge with existing settings (vs replace)
- * @returns {Object} Applied configuration
  */
-export function importConfiguration(config, options = {}) {
+export function importConfiguration(config: unknown, options: ImportOptions = {}) {
   const merge = options.merge ?? true;
 
   dbg('configManager: Importing configuration', { merge });
@@ -161,11 +173,11 @@ export function isConfigServerAvailable() {
 
 /**
  * Save configuration via WebSocket to filesystem
- * @param {Object} config - Configuration to save
- * @param {string} relativePath - Path relative to project root
- * @returns {Promise<Object>} Result object
  */
-export async function saveConfigurationViaWebSocket(config, relativePath = CONFIG_DEFAULT_PATH) {
+export async function saveConfigurationViaWebSocket(
+  config: AppConfigDocument,
+  relativePath: string = CONFIG_DEFAULT_PATH,
+): Promise<SaveResult> {
   if (!isConfigServerAvailable()) {
     const ws = await connectToConfigServer();
     if (!ws) {
@@ -173,16 +185,16 @@ export async function saveConfigurationViaWebSocket(config, relativePath = CONFI
     }
   }
 
-  return new Promise((resolve) => {
+  return new Promise<SaveResult>((resolve) => {
     const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     dbg('configManager: Saving config via WebSocket to', relativePath);
 
-    const handler = (event) => {
+    const handler = (event: MessageEvent) => {
       try {
         const response = JSON.parse(event.data);
         if (response.requestId === requestId) {
-          configWebSocket.removeEventListener('message', handler);
+          configWebSocket?.removeEventListener('message', handler);
 
           if (response.type === 'save-config-success') {
             dbg('configManager: Config saved successfully via WebSocket');
@@ -207,6 +219,14 @@ export async function saveConfigurationViaWebSocket(config, relativePath = CONFI
     };
 
     const ws = configWebSocket;
+    if (!ws) {
+      resolve({
+        success: false,
+        method: 'websocket',
+        error: 'Config server connection lost',
+      });
+      return;
+    }
     ws.addEventListener('message', handler);
 
     ws.send(JSON.stringify({
@@ -230,18 +250,21 @@ export async function saveConfigurationViaWebSocket(config, relativePath = CONFI
 
 /**
  * Save configuration via File System Access API
- * @param {Object} config - Configuration to save
- * @returns {Promise<Object>} Result object
  */
-async function saveConfigurationViaFileSystemAPI(config) {
-  if (!window.showSaveFilePicker) {
+async function saveConfigurationViaFileSystemAPI(
+  config: AppConfigDocument,
+): Promise<SaveResult> {
+  const showSaveFilePicker = (window as unknown as {
+    showSaveFilePicker?: (options: unknown) => Promise<FileSystemFileHandle>;
+  }).showSaveFilePicker;
+  if (!showSaveFilePicker) {
     return { success: false, method: 'filesystem-api', error: 'API not supported' };
   }
 
   try {
     dbg('configManager: Opening file picker...');
 
-    const fileHandle = await window.showSaveFilePicker({
+    const fileHandle = await showSaveFilePicker({
       suggestedName: 'useq-config.json',
       types: [{
         description: 'uSEQ Configuration',
@@ -249,7 +272,12 @@ async function saveConfigurationViaFileSystemAPI(config) {
       }]
     });
 
-    const writable = await fileHandle.createWritable();
+    const writable = await (fileHandle as unknown as {
+      createWritable(): Promise<{
+        write(data: string): Promise<void>;
+        close(): Promise<void>;
+      }>;
+    }).createWritable();
     await writable.write(JSON.stringify(config, null, 2));
     await writable.close();
 
@@ -258,23 +286,23 @@ async function saveConfigurationViaFileSystemAPI(config) {
     return {
       success: true,
       method: 'filesystem-api',
-      name: fileHandle.name
+      name: fileHandle.name,
     };
   } catch (error) {
-    if (error.name === 'AbortError') {
+    const err = error as { name?: string; message?: string };
+    if (err?.name === 'AbortError') {
       dbg('configManager: File picker cancelled by user');
       return { success: false, method: 'filesystem-api', error: 'cancelled' };
     }
     dbg('configManager: File System API error:', error);
-    return { success: false, method: 'filesystem-api', error: error.message };
+    return { success: false, method: 'filesystem-api', error: err?.message ?? String(error) };
   }
 }
 
 /**
  * Download configuration as a file
- * @param {Object} config - Configuration to download
  */
-function downloadConfiguration(config) {
+function downloadConfiguration(config: AppConfigDocument): void {
   dbg('configManager: Downloading configuration file');
 
   const jsonString = JSON.stringify(config, null, 2);
@@ -296,10 +324,8 @@ function downloadConfiguration(config) {
 /**
  * Save configuration using hybrid strategy
  * Tries: WebSocket → File System API → Download
- * @param {Object} options - Export options
- * @returns {Promise<Object>} Result object with method and success status
  */
-export async function saveConfiguration(options = {}) {
+export async function saveConfiguration(options: ExportOptions = {}): Promise<SaveResult> {
   const config = exportConfiguration(options);
 
   dbg('configManager: Saving configuration with hybrid strategy');
@@ -331,10 +357,9 @@ export async function saveConfiguration(options = {}) {
 
 /**
  * Load configuration from file (user selects file)
- * @returns {Promise<Object>} Loaded configuration
  */
-export async function loadConfigurationFromFile() {
-  return new Promise((resolve, reject) => {
+export async function loadConfigurationFromFile(): Promise<AppConfigDocument> {
+  return new Promise<AppConfigDocument>((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
@@ -351,10 +376,11 @@ export async function loadConfigurationFromFile() {
     };
     window.addEventListener('focus', handleCancel);
 
-    input.onchange = async (e) => {
+    input.onchange = async (e: Event) => {
       window.removeEventListener('focus', handleCancel);
       try {
-        const file = e.target.files[0];
+        const target = e.target as HTMLInputElement | null;
+        const file = target?.files?.[0];
         if (!file) {
           reject(new Error('No file selected'));
           return;
@@ -384,18 +410,16 @@ export async function loadConfigurationFromFile() {
 
 /**
  * Get a preview of what would change if a config were applied
- * @param {Object} config - Configuration to preview
- * @returns {Object} Preview information
  */
-export function previewConfiguration(config) {
+export function previewConfiguration(config: Partial<AppConfigDocument>) {
   const diffs = getConfigurationDiff(
     { user: getAppSettings() },
-    config
+    config,
   );
 
   return {
     diffs,
     hasChanges: diffs.length > 0,
-    config
+    config,
   };
 }

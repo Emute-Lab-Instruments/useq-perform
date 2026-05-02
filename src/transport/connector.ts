@@ -111,14 +111,14 @@ function isAutoReconnectEnabled(): boolean {
 
 async function checkForSavedPort(): Promise<SerialPort | null | undefined> {
   dbg("Checking for saved port...");
-  const savedInfo = load(PERSISTENCE_KEYS.serialPortInfo);
+  const savedInfo = load<SerialPortInfo>(PERSISTENCE_KEYS.serialPortInfo);
 
   if (savedInfo) {
     const ports = await navigator.serial.getPorts();
     dbg("Ports", ports);
 
     return ports.find((port: SerialPort) => {
-      const info = port.getInfo() as any;
+      const info = port.getInfo();
       return (
         info.usbVendorId === savedInfo.usbVendorId &&
         info.usbProductId === savedInfo.usbProductId

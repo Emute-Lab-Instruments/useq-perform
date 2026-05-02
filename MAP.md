@@ -101,7 +101,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `visualisationStore.ts`, `consoleStore.ts`, `referenceStore.ts`, `snippetStore.ts`, `outputHealthStore.ts`.
   - `geometry.ts`, `network.ts`, `sanitize.ts`.
 - `src/machines/` — XState machines. Currently `transport.machine.ts` only.
-- `src/types/` — ambient declarations (`web-serial.d.ts`).
+- `src/types/` — ambient declarations (`web-serial.d.ts`, `clojure-mode.d.ts`).
 - `src/build/` — build-time tests (`single-bundler.test.ts`).
 
 ## Key files

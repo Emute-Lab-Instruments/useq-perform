@@ -1,37 +1,64 @@
 import { loadReferenceDataFromCandidates } from "./referenceDataLoader.ts";
 import { load, PERSISTENCE_KEYS } from "./persistence.ts";
 
-async function loadReferenceData() {
+interface ReferenceFunction {
+  name: string;
+  tags?: unknown[];
+}
+
+interface MenuItem {
+  label: string;
+  value: string;
+  insertText?: string;
+  special?: string;
+}
+
+interface MenuCategory {
+  label: string;
+  id: string;
+  items: MenuItem[];
+}
+
+interface FunctionBuckets {
+  Maths: MenuItem[];
+  Control: MenuItem[];
+  Lists: MenuItem[];
+  Utils: MenuItem[];
+}
+
+type BucketKey = keyof FunctionBuckets;
+
+async function loadReferenceData(): Promise<ReferenceFunction[]> {
   try {
-    return await loadReferenceDataFromCandidates();
+    return (await loadReferenceDataFromCandidates()) as ReferenceFunction[];
   } catch {
     // Fall back to empty array so the picker menu still renders.
     return [];
   }
 }
 
-function readStarredFunctions() {
+function readStarredFunctions(): Set<string> {
   const list = load<string[]>(PERSISTENCE_KEYS.referenceStarred, []);
-  return Array.isArray(list) ? new Set(list) : new Set();
+  return Array.isArray(list) ? new Set(list) : new Set<string>();
 }
 
-function makeInsertTextForName(name) {
+function makeInsertTextForName(name: string): string {
   // Simple template: surround with parentheses unless already a literal
   if (/^(Number)$/i.test(name)) return "0";
   if (/^[\+\-\*\/%=<>!]+$/.test(name)) return `(${name} )`;
   return `(${name} )`;
 }
 
-function bucketizeFunctions(data) {
-  const buckets = {
+function bucketizeFunctions(data: ReferenceFunction[]): FunctionBuckets {
+  const buckets: FunctionBuckets = {
     Maths: [],
     Control: [],
     Lists: [],
     Utils: []
   };
-  data.forEach(fn => {
-    const tags = (fn.tags || []).map(t => String(t).toLowerCase());
-    const entry = { label: fn.name, value: fn.name, insertText: makeInsertTextForName(fn.name) };
+  data.forEach((fn) => {
+    const tags = (fn.tags || []).map((t) => String(t).toLowerCase());
+    const entry: MenuItem = { label: fn.name, value: fn.name, insertText: makeInsertTextForName(fn.name) };
     if (tags.includes('maths')) {
       buckets.Maths.push(entry);
       return;
@@ -47,7 +74,7 @@ function bucketizeFunctions(data) {
     buckets.Utils.push(entry);
   });
   // Provide a deterministic, short list for menus
-  Object.keys(buckets).forEach(k => {
+  (Object.keys(buckets) as BucketKey[]).forEach((k) => {
     buckets[k] = buckets[k]
       .sort((a, b) => a.label.localeCompare(b.label))
       .slice(0, 12);
@@ -55,19 +82,19 @@ function bucketizeFunctions(data) {
   return buckets;
 }
 
-export async function buildHierarchicalMenuModel() {
+export async function buildHierarchicalMenuModel(): Promise<MenuCategory[]> {
   const data = await loadReferenceData();
   const buckets = bucketizeFunctions(data);
   const starred = readStarredFunctions();
 
-  const favorites = Array.from(starred)
-    .map(name => ({ label: name, value: name, insertText: makeInsertTextForName(name) }))
+  const favorites: MenuItem[] = Array.from(starred)
+    .map((name) => ({ label: name, value: name, insertText: makeInsertTextForName(name) }))
     .slice(0, 12);
 
   // Ensure we always offer a Number literal picker
-  const literals = [{ label: 'Number…', value: '__NUMBER__', special: 'number' }];
+  const literals: MenuItem[] = [{ label: 'Number…', value: '__NUMBER__', special: 'number' }];
 
-  const categories = [];
+  const categories: MenuCategory[] = [];
   if (favorites.length) categories.push({ label: 'Favorites', id: 'favorites', items: favorites });
   categories.push(
     { label: 'Literals', id: 'literals', items: literals },
@@ -78,7 +105,5 @@ export async function buildHierarchicalMenuModel() {
   );
 
   // Filter empty categories (except Literals)
-  const filtered = categories.filter(c => c.id === 'literals' || (Array.isArray(c.items) && c.items.length));
-  return filtered;
+  return categories.filter((c) => c.id === 'literals' || (Array.isArray(c.items) && c.items.length > 0));
 }
-

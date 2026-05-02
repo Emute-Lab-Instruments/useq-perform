@@ -225,7 +225,7 @@ export function RadialMenu(props: RadialMenuProps) {
                 x={pos().x}
                 y={pos().y}
                 fill={textColor()}
-                font-size={14}
+                font-size="14"
                 font-family="var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)"
                 text-anchor="middle"
                 dominant-baseline="middle"

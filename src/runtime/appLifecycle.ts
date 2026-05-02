@@ -7,10 +7,16 @@ import { initializeMockControls } from '../effects/mockControlInputs.ts';
 import { startLocalClock } from '../effects/localClock.ts';
 import { registerVisualisation } from '../effects/visualisationSampler.ts';
 import type { BootstrapPlan } from './bootstrap.ts';
+import type { EnvironmentState } from './startupContext.ts';
 import { announceRuntimeSession } from './runtimeService.ts';
 import { showVisualisationPanel } from '../ui/adapters/visualisationPanel';
 
-const DEFAULT_NO_MODULE_EXPRESSIONS = [
+interface NoModuleExpression {
+  exprType: string;
+  code: string;
+}
+
+const DEFAULT_NO_MODULE_EXPRESSIONS: NoModuleExpression[] = [
   { exprType: 'a1', code: '(a1 bar)' },
   { exprType: 'a2', code: '(a2 (slow 2 bar))' }
 ];
@@ -19,7 +25,7 @@ function ensureSerialVisPanelVisibleForNoModule() {
   showVisualisationPanel();
 }
 
-async function activateNoModuleExpression({ exprType, code }) {
+async function activateNoModuleExpression({ exprType, code }: NoModuleExpression) {
   try {
     await registerVisualisation(exprType, code);
   } catch (error) {
@@ -63,8 +69,13 @@ async function startBrowserLocalRuntime(options: {
   }
 }
 
-export function createApp(appUI, environmentState, bootstrapPlan: BootstrapPlan) {
-  const app = {
+export function createApp(
+  appUI: unknown,
+  environmentState: EnvironmentState,
+  bootstrapPlan: BootstrapPlan,
+) {
+  void appUI;
+  const app: { modals: Record<string, unknown>; start(): Promise<void>; stop(): Promise<void> } = {
     modals: {},
 
     async start() {

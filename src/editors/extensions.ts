@@ -5,7 +5,6 @@ import {
   foldGutter,
   bracketMatching,
 } from "@codemirror/language";
-// @ts-expect-error — @nextjournal/clojure-mode has no type declarations
 import { default_extensions as default_clojure_extensions } from "@nextjournal/clojure-mode";
 import { EditorView } from "@codemirror/view";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";

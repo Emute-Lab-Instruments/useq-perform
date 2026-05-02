@@ -71,8 +71,8 @@ export const GuideTab: Component = () => {
   }
 
   function showAll() {
-    setDismissed(new Set());
-    saveDismissed(new Set());
+    setDismissed(new Set<string>());
+    saveDismissed(new Set<string>());
   }
 
   // -- Section expand/collapse state --

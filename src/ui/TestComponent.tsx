@@ -87,7 +87,7 @@ export function TestComponent() {
         color: "#666", 
         "margin-top": "15px" 
       }}>
-        State: {state().value} | Count: {state().context.count}
+        State: {String(state().value)} | Count: {state().context.count}
       </div>
     </div>
   );

@@ -8,7 +8,6 @@
 import type { EditorView } from "@codemirror/view";
 import type { EditorState } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
-// @ts-expect-error - no type declarations available for clojure-mode
 import { top_level_string } from "@nextjournal/clojure-mode/extensions/eval-region";
 
 import { sendTouSEQ } from "../transport/json-protocol.ts";
@@ -112,7 +111,7 @@ function getToplevelCode(state: EditorState): {
   const range = getTopLevelFormRange(state);
   const slice = range
     ? state.doc.sliceString(range.from, range.to)
-    : (top_level_string(state) as string);
+    : (top_level_string(state) ?? "");
   const moduleSlice = range
     ? rewriteCodeSliceForModule(slice, range.from, range.to)
     : slice;
@@ -317,7 +316,7 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
 
 function evaluateSoft(ctx: EvalContext): boolean {
   const { view, state } = ctx;
-  const code = top_level_string(state) as string;
+  const code = top_level_string(state) ?? "";
 
   if (!code || !code.trim()) return false;
 

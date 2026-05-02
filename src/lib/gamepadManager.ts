@@ -84,7 +84,7 @@ export interface GamepadLogger {
   error: (...args: any[]) => void;
 }
 
-type GetGamepadsFn = () => (Gamepad | null)[] | GamepadList;
+type GetGamepadsFn = () => ArrayLike<Gamepad | null>;
 type AddListenerFn = (type: string, handler: EventListener) => void;
 type RemoveListenerFn = (type: string, handler: EventListener) => void;
 type NowFn = () => number;

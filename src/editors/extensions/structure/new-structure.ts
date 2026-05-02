@@ -8,7 +8,6 @@
 
 import { EditorState, EditorSelection, StateEffect, StateField } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
-// @ts-expect-error — @nextjournal/clojure-mode has no type declarations
 import { default_extensions } from '@nextjournal/clojure-mode';
 import type { SyntaxNode, Tree, TreeCursor } from '@lezer/common';
 
