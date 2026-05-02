@@ -34,6 +34,7 @@ import {
   type ProbeMode,
   type ProbeRange,
 } from "./probeHelpers.ts";
+import { drawProbeWaveformGL } from "../../ui/visualisation/webglLineRenderer.ts";
 
 // ---------------------------------------------------------------------------
 // ProbeConfig — dependency injection interface
@@ -353,64 +354,12 @@ function drawWaveform(
   render: ProbeRenderData,
   lineWidth: number,
 ): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  const { width, height } = canvas;
-  ctx.clearRect(0, 0, width, height);
-
-  ctx.fillStyle = "rgba(13, 18, 24, 0.94)";
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, height / 2);
-  ctx.lineTo(width, height / 2);
-  ctx.stroke();
-
-  const finiteSamples = render.samples.filter(Number.isFinite);
-  if (finiteSamples.length === 0) {
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.font = "10px monospace";
-    ctx.fillText("no numeric output", 8, height / 2 + 3);
-    return;
-  }
-
-  // Use [0, 1] as the baseline range so phasor-like signals render at
-  // their true scale.  Expand only when samples exceed that range.
-  let min = 0;
-  let max = 1;
-  for (const value of finiteSamples) {
-    if (value < min) min = value;
-    if (value > max) max = value;
-  }
-  if (Math.abs(max - min) < 1e-9) {
-    max = min + 1;
-  }
-
-  ctx.strokeStyle = getAccentColor();
-  ctx.lineWidth = lineWidth;
-  ctx.beginPath();
-
-  render.samples.forEach((value, index) => {
-    const x = render.samples.length > 1
-      ? (index / (render.samples.length - 1)) * width
-      : width;
-    const y = Number.isFinite(value)
-      ? height - ((value - min) / (max - min)) * height
-      : height / 2;
-
-    if (index === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
+  drawProbeWaveformGL(canvas, {
+    samples: render.samples,
+    color: getAccentColor(),
+    lineWidth,
+    backgroundColor: "rgba(13, 18, 24, 0.94)",
   });
-  ctx.stroke();
-
-  ctx.strokeStyle = "rgba(255,255,255,0.18)";
-  ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
 }
 
 interface ProbeDOMElements {

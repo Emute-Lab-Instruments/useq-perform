@@ -47,6 +47,25 @@ import {
   type OutputRenderData,
 } from "../../effects/visualisationSampler.ts";
 import { getSampleRateDivisor } from "../../effects/adaptiveQuality.ts";
+import {
+  compileShader,
+  linkProgram,
+  parseColor,
+  flattenSamples,
+  buildThickLineGeometry,
+  sampleFingerprint,
+  fingerprintChanged,
+  ensureScratch,
+  ensureThickScratch,
+  getScratch,
+  getThickScratch,
+  THICK_FLOATS_PER_VERTEX,
+  THIN_VERTEX_SRC as VERTEX_SHADER_SRC,
+  THICK_VERTEX_SRC,
+  FRAGMENT_SRC as FRAGMENT_SHADER_SRC,
+  type VisSampleLike,
+  type SampleFingerprint,
+} from "./webglLineRenderer.ts";
 
 /**
  * All data required to paint one frame of the serial visualisation.
@@ -319,24 +338,6 @@ interface GLState {
   thickBuffers: Map<string, ThickExprBuffer>;
 }
 
-interface SampleFingerprint {
-  len: number;
-  firstTime: number;
-  lastTime: number;
-}
-
-function sampleFingerprint(samples: VisSampleLike[]): SampleFingerprint {
-  if (samples.length === 0) return { len: 0, firstTime: 0, lastTime: 0 };
-  return {
-    len: samples.length,
-    firstTime: samples[0].time,
-    lastTime: samples[samples.length - 1].time,
-  };
-}
-
-function fingerprintChanged(a: SampleFingerprint | null, b: SampleFingerprint): boolean {
-  return !a || a.len !== b.len || a.firstTime !== b.firstTime || a.lastTime !== b.lastTime;
-}
 
 interface ExprBuffer {
   vbo: WebGLBuffer;
@@ -355,132 +356,7 @@ interface ThickExprBuffer {
 
 let glState: GLState | null = null;
 
-const VERTEX_SHADER_SRC = `#version 300 es
-precision mediump float;
-
-in vec2 aTimeValue;     // (time, value)
-
-uniform float uCurrentTime;
-uniform float uWindowStart;
-uniform float uWindowEnd;
-uniform float uYTop;        // pixel Y for value=1
-uniform float uYBottom;     // pixel Y for value=0
-uniform vec2  uViewport;    // (canvas.width, canvas.height)
-
-out float vTime;
-out float vIsFuture;
-
-void main() {
-  float t = aTimeValue.x;
-  float v = clamp(aTimeValue.y, 0.0, 1.0);
-
-  float windowSpan = max(uWindowEnd - uWindowStart, 1e-6);
-  float relX = (t - uWindowStart) / windowSpan;             // 0..1 across window
-  // Allow vertices slightly off-window; the segment may still extend
-  // visibly into the canvas.
-  float clipX = (relX * 2.0) - 1.0;                          // -1..1
-
-  float y = mix(uYBottom, uYTop, v);                         // pixel Y
-  // Convert pixel Y to clip space: pixel 0 = top => clipY = +1
-  float clipY = 1.0 - 2.0 * (y / max(uViewport.y, 1.0));
-
-  vTime = t;
-  vIsFuture = step(uCurrentTime, t);                          // 0 if past, 1 if future
-  gl_Position = vec4(clipX, clipY, 0.0, 1.0);
-}
-`;
-
-const FRAGMENT_SHADER_SRC = `#version 300 es
-precision mediump float;
-
-uniform vec3  uColor;
-uniform float uAlphaPast;
-uniform float uAlphaFuture;
-uniform float uClipFutureStart;  // 0 if rendering past, 1 if rendering future
-in float vTime;
-in float vIsFuture;
-out vec4 fragColor;
-
-void main() {
-  // When rendering the past pass, drop future fragments; vice versa.
-  if (uClipFutureStart > 0.5) {
-    if (vIsFuture < 0.5) discard;
-  } else {
-    if (vIsFuture > 0.5) discard;
-  }
-  float alpha = mix(uAlphaPast, uAlphaFuture, vIsFuture);
-  fragColor = vec4(uColor * alpha, alpha);
-}
-`;
-
-// ── Thick-line shaders (triangle-strip with bevel joins) ───────────
-//
-// Each polyline vertex becomes two triangle-strip vertices offset
-// perpendicular to the line direction by ±halfWidth.  The vertex
-// shader receives pre-computed clip-space positions (the extrusion is
-// done on CPU so we can compute proper miter/bevel geometry with
-// knowledge of the full polyline topology).
-
-const THICK_VERTEX_SRC = `#version 300 es
-precision mediump float;
-
-in vec2 aPosition;    // pre-computed clip-space XY
-in float aTime;       // original sample time (for past/future split)
-
-uniform float uCurrentTime;
-
-out float vTime;
-out float vIsFuture;
-
-void main() {
-  vTime = aTime;
-  vIsFuture = step(uCurrentTime, aTime);
-  gl_Position = vec4(aPosition, 0.0, 1.0);
-}
-`;
-
 const THICK_FRAGMENT_SRC = FRAGMENT_SHADER_SRC;
-
-function compileShader(gl: WebGL2RenderingContext, kind: number, src: string): WebGLShader | null {
-  const sh = gl.createShader(kind);
-  if (!sh) return null;
-  gl.shaderSource(sh, src);
-  gl.compileShader(sh);
-  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-     
-    console.warn("[serialVisGL] shader compile error:", gl.getShaderInfoLog(sh));
-    gl.deleteShader(sh);
-    return null;
-  }
-  return sh;
-}
-
-function linkProgram(
-  gl: WebGL2RenderingContext,
-  vsSrc: string,
-  fsSrc: string,
-  attribBindings: [number, string][],
-): WebGLProgram | null {
-  const vs = compileShader(gl, gl.VERTEX_SHADER, vsSrc);
-  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fsSrc);
-  if (!vs || !fs) return null;
-  const prog = gl.createProgram();
-  if (!prog) return null;
-  gl.attachShader(prog, vs);
-  gl.attachShader(prog, fs);
-  for (const [loc, name] of attribBindings) {
-    gl.bindAttribLocation(prog, loc, name);
-  }
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    console.warn("[serialVisGL] program link error:", gl.getProgramInfoLog(prog));
-    gl.deleteProgram(prog);
-    return null;
-  }
-  gl.deleteShader(vs);
-  gl.deleteShader(fs);
-  return prog;
-}
 
 function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
   if (glState && glState.gl.canvas === canvas && !glState.gl.isContextLost()) {
@@ -540,11 +416,6 @@ function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
 
 // ── Sample → vertex flattening ──────────────────────────────────────
 
-interface VisSampleLike {
-  time: number;
-  value: number;
-}
-
 /**
  * Module-level reusable scratch for `buildCombinedSamples`.
  *
@@ -594,45 +465,6 @@ function buildCombinedSamples(
   return combinedScratch;
 }
 
-/** Reusable scratch Float32Array for upload — grows but never shrinks. */
-let scratch = new Float32Array(2048);
-function ensureScratch(floatCount: number): void {
-  if (scratch.length >= floatCount) return;
-  let next = scratch.length;
-  while (next < floatCount) next *= 2;
-  scratch = new Float32Array(next);
-}
-
-/**
- * Flatten samples into the scratch Float32Array as `[t0, v0, t1, v1, ...]`.
- * In step mode, each pair (i, i+1) is split into two output points
- * (i, i+1.time/i.value) — same shape as `serialVis`'s step mode.
- * Returns the number of vertices written.
- */
-function flattenSamples(
-  samples: VisSampleLike[],
-  stepMode: boolean,
-): number {
-  if (samples.length === 0) return 0;
-  // Worst case for step mode: 2× the input count.
-  const maxFloats = samples.length * 2 * (stepMode ? 2 : 1);
-  ensureScratch(maxFloats);
-  let w = 0;
-  let prevValue = NaN;
-  for (let i = 0; i < samples.length; i++) {
-    const s = samples[i];
-    const t = s.time;
-    const v = s.value;
-    if (stepMode && i > 0 && prevValue !== v) {
-      scratch[w++] = t;
-      scratch[w++] = prevValue;
-    }
-    scratch[w++] = t;
-    scratch[w++] = v;
-    prevValue = v;
-  }
-  return w >>> 1; // vertex count
-}
 
 function getOrCreateExprBuffer(state: GLState, key: string): ExprBuffer {
   let buf = state.buffers.get(key);
@@ -668,163 +500,17 @@ function uploadIfNeeded(
     );
     buf.capacity = grown;
   }
+  const scratchBuf = getScratch();
   gl.bufferSubData(
     gl.ARRAY_BUFFER,
     0,
-    scratch.subarray(0, vertexCount * 2),
+    scratchBuf.subarray(0, vertexCount * 2),
     0,
     vertexCount * 2,
   );
   buf.fingerprint = fp;
   buf.length = vertexCount;
   return vertexCount;
-}
-
-// ── Thick-line geometry (triangle strip with bevel joins) ──────────
-//
-// Each segment of the polyline becomes a quad (4 vertices, drawn as
-// TRIANGLE_STRIP).  At joins we use a bevel (one extra triangle) to
-// avoid spikes at sharp angles.  The output is interleaved as:
-//   [clipX, clipY, time, clipX, clipY, time, ...]
-// Three floats per vertex (position.xy + time), laid out for a single
-// TRIANGLE_STRIP draw call.
-
-const THICK_FLOATS_PER_VERTEX = 3; // clipX, clipY, time
-
-let thickScratch = new Float32Array(4096);
-function ensureThickScratch(floatCount: number): void {
-  if (thickScratch.length >= floatCount) return;
-  let next = thickScratch.length;
-  while (next < floatCount) next *= 2;
-  thickScratch = new Float32Array(next);
-}
-
-/**
- * Convert flattened (time, value) polyline data in `scratch` into a
- * triangle-strip stored in `thickScratch`.
- *
- * The function performs the time→clip and value→pixel→clip transforms
- * itself (same math as the thin-line vertex shader) so the thick-line
- * vertex shader can be a trivial pass-through.
- *
- * Returns the number of vertices written into `thickScratch`.
- */
-function buildThickLineGeometry(
-  vertexCount: number,
-  halfWidth: number,
-  windowStart: number,
-  windowEnd: number,
-  yTop: number,
-  yBottom: number,
-  viewportW: number,
-  viewportH: number,
-): number {
-  if (vertexCount < 2) return 0;
-
-  // Each segment produces 2 strip vertices; bevel joins add up to 3
-  // degenerate-linking vertices.  Worst case ≈ 5 verts per input point.
-  const maxVerts = vertexCount * 5;
-  ensureThickScratch(maxVerts * THICK_FLOATS_PER_VERTEX);
-
-  const windowSpan = Math.max(windowEnd - windowStart, 1e-6);
-  const invViewportH = 1 / Math.max(viewportH, 1);
-
-  // Pre-compute clip-space positions for every input point.
-  // Reuse a local buffer to avoid per-frame allocation for moderate
-  // channel counts (the hot path).
-  const cx = new Float32Array(vertexCount);
-  const cy = new Float32Array(vertexCount);
-  const times = new Float32Array(vertexCount);
-
-  for (let i = 0; i < vertexCount; i++) {
-    const t = scratch[i * 2];
-    const v = Math.max(0, Math.min(1, scratch[i * 2 + 1]));
-    const relX = (t - windowStart) / windowSpan;
-    cx[i] = relX * 2 - 1;
-    const pixelY = yBottom + (yTop - yBottom) * v;
-    cy[i] = 1 - 2 * pixelY * invViewportH;
-    times[i] = t;
-  }
-
-  // Convert halfWidth from pixels to clip-space units along each axis.
-  const hwX = (halfWidth * 2) / Math.max(viewportW, 1);
-  const hwY = (halfWidth * 2) / Math.max(viewportH, 1);
-
-  let w = 0;
-
-  function emit(x: number, y: number, time: number): void {
-    thickScratch[w++] = x;
-    thickScratch[w++] = y;
-    thickScratch[w++] = time;
-  }
-
-  // For a segment from P[i] to P[i+1], compute the perpendicular
-  // normal in clip space (accounting for non-square aspect ratio).
-  function segmentNormal(i: number): [number, number] {
-    const dx = cx[i + 1] - cx[i];
-    const dy = cy[i + 1] - cy[i];
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 1e-10) return [0, hwY];
-    return [-dy / len, dx / len];
-  }
-
-  // First segment cap
-  {
-    const [nx, ny] = segmentNormal(0);
-    emit(cx[0] + nx * hwX, cy[0] + ny * hwY, times[0]);
-    emit(cx[0] - nx * hwX, cy[0] - ny * hwY, times[0]);
-  }
-
-  for (let i = 1; i < vertexCount - 1; i++) {
-    // Compute normals for segments (i-1,i) and (i,i+1), then average
-    // for a miter-like join.  If the miter ratio exceeds 2 we fall
-    // back to a bevel (two sets of offset vertices) to avoid spikes.
-    const [n0x, n0y] = segmentNormal(i - 1);
-    const [n1x, n1y] = segmentNormal(i);
-
-    let mx = (n0x + n1x) * 0.5;
-    let my = (n0y + n1y) * 0.5;
-    let mLen = Math.sqrt(mx * mx + my * my);
-
-    // Degenerate (collinear or near-zero) — just use the incoming normal.
-    if (mLen < 1e-10) {
-      mx = n0x;
-      my = n0y;
-      mLen = 1;
-    }
-
-    // Project miter against one of the segment normals to get the
-    // miter length factor.  Clamp to avoid spikes.
-    const dot = (n0x * mx + n0y * my) / mLen;
-    const miterFactor = dot > 0.5 ? 1 / dot : 2;
-
-    if (miterFactor > 2) {
-      // Bevel: close with incoming normal, start fresh with outgoing.
-      emit(cx[i] + n0x * hwX, cy[i] + n0y * hwY, times[i]);
-      emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
-      // Degenerate triangle to jump to new strip position.
-      emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
-      emit(cx[i] + n1x * hwX, cy[i] + n1y * hwY, times[i]);
-      emit(cx[i] + n1x * hwX, cy[i] + n1y * hwY, times[i]);
-      emit(cx[i] - n1x * hwX, cy[i] - n1y * hwY, times[i]);
-    } else {
-      const scale = miterFactor / Math.max(mLen, 1e-10);
-      const ox = mx * scale * hwX;
-      const oy = my * scale * hwY;
-      emit(cx[i] + ox, cy[i] + oy, times[i]);
-      emit(cx[i] - ox, cy[i] - oy, times[i]);
-    }
-  }
-
-  // Last segment cap
-  {
-    const last = vertexCount - 1;
-    const [nx, ny] = segmentNormal(last - 1);
-    emit(cx[last] + nx * hwX, cy[last] + ny * hwY, times[last]);
-    emit(cx[last] - nx * hwX, cy[last] - ny * hwY, times[last]);
-  }
-
-  return w / THICK_FLOATS_PER_VERTEX;
 }
 
 function getOrCreateThickBuffer(state: GLState, key: string): ThickExprBuffer {
@@ -879,66 +565,14 @@ function uploadThickGeometry(
     );
     buf.capacity = grown;
   }
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, thickScratch.subarray(0, floatCount), 0, floatCount);
+  const thickBuf = getThickScratch();
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, thickBuf.subarray(0, floatCount), 0, floatCount);
   buf.fingerprint = fp;
   buf.vertexCount = thickVertexCount;
   buf.lineWidth = lineWidth;
   return thickVertexCount;
 }
 
-// ── Color parsing ───────────────────────────────────────────────────
-//
-// CSS colour strings need to become vec3.  Cache results per literal.
-
-const colorCache = new Map<string, [number, number, number]>();
-let colorParseCanvas: HTMLCanvasElement | null = null;
-
-function parseColor(css: string): [number, number, number] {
-  const cached = colorCache.get(css);
-  if (cached) return cached;
-  // Fast path: hex literals.
-  const hex = css.match(/^#([0-9a-f]{3,8})$/i);
-  if (hex) {
-    const h = hex[1];
-    let r: number, g: number, b: number;
-    if (h.length === 3 || h.length === 4) {
-      r = parseInt(h[0] + h[0], 16);
-      g = parseInt(h[1] + h[1], 16);
-      b = parseInt(h[2] + h[2], 16);
-    } else {
-      r = parseInt(h.slice(0, 2), 16);
-      g = parseInt(h.slice(2, 4), 16);
-      b = parseInt(h.slice(4, 6), 16);
-    }
-    const out: [number, number, number] = [r / 255, g / 255, b / 255];
-    colorCache.set(css, out);
-    return out;
-  }
-  // Fallback: bounce off a 1×1 2D canvas to resolve named/rgb()/hsl().
-  if (typeof document === "undefined") {
-    const fallback: [number, number, number] = [1, 1, 1];
-    colorCache.set(css, fallback);
-    return fallback;
-  }
-  if (!colorParseCanvas) {
-    colorParseCanvas = document.createElement("canvas");
-    colorParseCanvas.width = 1;
-    colorParseCanvas.height = 1;
-  }
-  const ctx = colorParseCanvas.getContext("2d");
-  if (!ctx) {
-    const fallback: [number, number, number] = [1, 1, 1];
-    colorCache.set(css, fallback);
-    return fallback;
-  }
-  ctx.fillStyle = "#000";
-  ctx.fillStyle = css;
-  ctx.fillRect(0, 0, 1, 1);
-  const data = ctx.getImageData(0, 0, 1, 1).data;
-  const out: [number, number, number] = [data[0] / 255, data[1] / 255, data[2] / 255];
-  colorCache.set(css, out);
-  return out;
-}
 
 // ── Pixel-matched buffer rate (spec §2.2.1, with adaptive Lever 3) ─
 
@@ -1246,7 +880,7 @@ export const __serialVisGLInternals = {
   ensureScratch,
   sampleFingerprint,
   fingerprintChanged,
-  scratch: () => scratch,
-  thickScratch: () => thickScratch,
+  scratch: () => getScratch(),
+  thickScratch: () => getThickScratch(),
   THICK_FLOATS_PER_VERTEX,
 };

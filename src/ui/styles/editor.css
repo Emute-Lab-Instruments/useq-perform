@@ -151,6 +151,8 @@
 .cm-probe-widget-body canvas {
   display: block;
   border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  position: relative;
 }
 
 .cm-probe-widget-text {
