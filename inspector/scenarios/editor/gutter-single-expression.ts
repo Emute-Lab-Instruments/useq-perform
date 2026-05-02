@@ -5,8 +5,8 @@ export default defineScenario({
   name: 'Single expression assignment',
   type: 'contract',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
-    'src/editors/extensions/structure/eval-integration.ts',
+    'src/editors/extensions/expressionHighlights.ts',
+    'src/editors/extensions/expressionEval.ts',
   ],
   description:
     'A single analog output assignment. Verifies the gutter renders a colored vertical bar and play button for one expression.',

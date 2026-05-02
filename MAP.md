@@ -37,7 +37,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `gamepad/` — **three-stage gamepad pipeline** (spec: `docs/specs/gamepad.md`). `gamepadManager.ts` (hardware polling, snapshot normalisation, GamepadManager class), `types.ts` (full type vocabulary including Layer, Resolution, DualBinding), `gestures.ts` (smart constructors + keyOf), `recognizer.ts` (Stage 2: pure gesture recognition), `resolver.ts` (Stage 3: layer-stack resolution), `dispatcher.ts` (eager-with-undo action dispatch), `hardware.ts` (Stage 1: snapshot diffing to LogicalEvent[]), `index.ts` (full pipeline wiring). Paradigms: `paradigms/{picker,modal-shift,leader,hydra,chord-heavy}.ts`.
   - `manualControlState.ts` — manual control state tracking.
   - `pickerMenuModel.ts`, `referenceDataLoader.ts`, `helpContentPreloader.ts`.
-  - `CircularBuffer.ts`, `debug.ts`, `perfTrace.ts`, `themes.ts`, `versionUtils.ts`, `visualisationUtils.ts`, `useActorSignal.ts`.
+  - `CircularBuffer.ts`, `debug.ts`, `perfTrace.ts` (DEV-only profiling — `window.__useqPerf.{enable,report,reset}`, timings + counters; tree-shaken in prod via `import.meta.env.DEV` gates at every call site), `themes.ts`, `versionUtils.ts`, `visualisationUtils.ts`, `useActorSignal.ts`.
 - `src/contracts/` — shared types/constants and typed channel definitions. See [docs/REACTIVE_FLOW.md](docs/REACTIVE_FLOW.md) for channel inventory.
   - `runtimeChannels.ts`, `visualisationChannels.ts`, `gamepadChannels.ts` — channel registries.
   - `useqRuntimeContract.ts` — shared transport command set and capability split. See [docs/RUNTIME_CONTRACT.md](docs/RUNTIME_CONTRACT.md).
@@ -74,14 +74,16 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `localClock.ts` — rAF-driven internal clock when no hardware.
   - `editor.ts`, `editorEvaluation.ts` — editor-side eval orchestration (eslint exception: imports editors).
   - `visualisationSampler.ts` — WASM sampling with event-driven future projection. Past buffer (one sample/frame) + future buffer (batch-refilled on invalidation, extended one sample/frame).
-  - `mockControlInputs.ts`, `devmodeWebSocketServer.ts`, `perfBenchmark.ts`.
+  - `mockControlInputs.ts`, `devmodeWebSocketServer.ts`, `perfBenchmark.ts` (DEV-only — `window.__useqBench.run(channelCount)` exercises the vis pipeline at scale).
 - `src/editors/` — CodeMirror layer. Imports lib/contracts/effects/transport.
   - `extensions.ts` — extension barrel.
-  - `extensions/structure/` — AST, decorations, eval-integration, eval-state. `adapter/` sub-dir holds the structural-core CodeMirror binding (stateField, cursor halos, hole pill widgets, op dispatcher, tree-from-lezer, gamepad bridge). `core/` holds the pure functional tree/cursor logic.
+  - `extensions/structure/` — structural-editing core. `adapter/` sub-dir holds the CodeMirror binding (stateField, cursor halos, hole pill widgets, op dispatcher, tree-from-lezer, gamepad bridge). `core/` holds the pure functional tree/cursor logic + nav/mutate ops + hole helpers.
+  - `extensions/expressionHighlights.ts`, `expressionEval.ts`, `expressionEvalState.ts`, `expressionEvalDefaults.ts` — code-evaluation feedback (gutter pills, play-button DOM, last-evaluated tracking, Lezer-driven expression-bounds detection).
+  - `extensions/lezerHelpers.ts` — Lezer/AST helpers (`findNodeAt`, `getTrimmedRange`, `getContainerNodeAt`, `isStructuralToken`, `isContainerNode`, `isOperatorNode`) used by callers outside the structural-editing core.
   - `extensions/probes.ts`, `probeHelpers.ts` — inline probe widgets (DI-configured).
   - `extensions/inlineResults.ts` — inline eval result display (DI-configured).
   - `extensions/diagnostics.ts` — error/warning squiggles wired to WASM diagnostics.
-  - `extensions/evalHighlight.ts`, `extensions/visReadability.ts`, `extensions/structure.ts`.
+  - `extensions/evalHighlight.ts`, `extensions/visReadability.ts`.
   - `keymaps.ts`, `editorKeyboard.ts`, `gamepadNavigation.ts`, `themes.ts`.
 - `src/ui/` — Solid components. Leaf layer; can import from anywhere.
   - `MainToolbar.tsx`, `TransportToolbar.tsx` — top-level toolbars (props-based, with Wired wrappers in `adapters/`).

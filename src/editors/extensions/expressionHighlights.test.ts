@@ -6,7 +6,7 @@
 //    default true) that visually marks evaluable top-level forms. The gutter
 //    must remain in sync with the AST as the user types."
 //
-// Production source: src/editors/extensions/structure/decorations.ts
+// Production source: src/editors/extensions/expressionHighlights.ts
 //   The gutter is built from `gutterField`, which calls `buildMarkers(state)`
 //   on every doc change (`tr.docChanged`). Markers are positioned using
 //   `findExpressionRanges` (regex-driven for the `[ads][1-8]` pattern) and
@@ -17,14 +17,8 @@
 // IMPORTANT — observed quirk (NOT enforced by these tests):
 //   The Lezer parser used by clojure-mode is error-tolerant: an unclosed form
 //   `(a1` still produces a `List [0,3]` node. Consequently, `(a1` shows a
-//   gutter marker even though no closing paren has been typed yet. The task
-//   description (`useq-perform-2e4.15`) assumes the marker only appears once
-//   the form is closed — that assumption does not match production. The tests
+//   gutter marker even though no closing paren has been typed yet. The tests
 //   below pin the actual contract: the marker tracks what the AST sees.
-//
-// See ALIGNMENT.md / a follow-up issue if this divergence between
-// "AST-as-Lezer-error-recovers-it" and "AST-as-balanced-form" matters
-// downstream.
 
 import { afterEach, describe, expect, it } from "vitest";
 import { EditorState, type Extension } from "@codemirror/state";
@@ -36,8 +30,8 @@ import {
   createExpressionGutter,
   type GutterConfig,
   type ExpressionGutterMarker,
-} from "./decorations.ts";
-import { lastEvaluatedExpressionField } from "./eval-state.ts";
+} from "./expressionHighlights.ts";
+import { lastEvaluatedExpressionField } from "./expressionEvalState.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -292,8 +286,8 @@ describe("expression gutter: nested edits keep markers anchored to top-level for
 
   it("expanding a single-line top-level form across lines produces a marker per spanned line", () => {
     // Multi-line top-level forms get start/mid/end markers, one per line in
-    // the span (decorations.ts > createMarkersForRange). Verifies the AST
-    // line-range expansion drives the marker count.
+    // the span (expressionHighlights.ts > createMarkersForRange). Verifies
+    // the AST line-range expansion drives the marker count.
     const { view, gutterField } = createView("(a1 1)");
     expect(readMarkers(view, gutterField)).toHaveLength(1);
 

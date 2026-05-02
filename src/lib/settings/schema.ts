@@ -101,13 +101,10 @@ export interface WasmSettings {
 
 /**
  * Structural-editing settings. The functional-core / adapter implementation
- * is the default. `useNewCore=false` is a temporary escape hatch back to
- * the legacy `new-structure.ts` path, retained while the verification doc
- * (gii8.32) is still being green-walked. The flag will be removed once the
- * legacy file is retired.
+ * is the only structural-editing path; the legacy `new-structure.ts`
+ * implementation has been retired.
  */
 export interface StructureSettings {
-  useNewCore: boolean;
   /** Whether wrappers and holes are folded to inline pills by default. */
   foldAllWrappers: boolean;
 }
@@ -335,7 +332,6 @@ export const defaultUserSettings: AppSettings = {
     showTimestamp: false,
   },
   structure: {
-    useNewCore: true,
     foldAllWrappers: true,
   },
   keybindings: {

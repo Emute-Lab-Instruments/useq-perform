@@ -5,8 +5,8 @@ export default defineScenario({
   name: 'Deep nesting (5 levels)',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
-    'src/editors/extensions/structure/ast.ts',
+    'src/editors/extensions/structure/adapter/decorations.ts',
+    'src/editors/extensions/lezerHelpers.ts',
   ],
   description: 'Five levels of nesting with cursor at the innermost expression. Tests that both the current node polygon and parent dashed line render correctly at extreme depth.',
   editor: {

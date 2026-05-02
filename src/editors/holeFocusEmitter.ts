@@ -5,9 +5,14 @@
 //
 // Usage: call `checkAndPublishHoleFocus(view, source)` after any operation
 // that may move the cursor onto a hole (navigation, menu apply, fillHole).
+//
+// Reads the structural-editing core's state field (`structField`) to find
+// the hole at the primary cursor — no Lezer/regex re-parse.
 
 import type { EditorView } from "@codemirror/view";
-import { getHoleAtCursor } from "./extensions/structure/ast.ts";
+import { findById } from "./extensions/structure/core/index.ts";
+import type { HoleNode } from "./extensions/structure/core/index.ts";
+import { structField } from "./extensions/structure/adapter/stateField.ts";
 import { holeFocused } from "../contracts/editorChannels";
 import type { HoleFocusedDetail } from "../contracts/editorChannels";
 
@@ -24,14 +29,24 @@ export function checkAndPublishHoleFocus(
   view: EditorView,
   source: HoleFocusedDetail["source"],
 ): HoleFocusedDetail | null {
-  const hole = getHoleAtCursor(view.state);
-  if (!hole) return null;
+  const value = view.state.field(structField, false);
+  if (!value) return null;
+
+  const primary = value.state.cursors.primary;
+  if (primary.kind !== "node") return null;
+
+  const node = findById(value.state.tree.root, primary.target);
+  if (!node || node.kind !== "hole") return null;
+
+  const hole = node as HoleNode;
+  const range = value.idIndex.get(hole.id);
+  if (!range) return null;
 
   const detail: HoleFocusedDetail = {
     name: hole.name,
-    type: hole.type,
-    from: hole.from,
-    to: hole.to,
+    type: hole.holeType,
+    from: range.from,
+    to: range.to,
     source,
   };
 

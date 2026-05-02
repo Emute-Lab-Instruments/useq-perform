@@ -24,7 +24,7 @@ import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions
 import { rewriteCodeSliceForModule } from "../lib/manualControlState.ts";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 import { flashEvalHighlight } from "../editors/extensions/evalHighlight.ts";
-import { detectAndTrackExpressionEvaluation } from "../editors/extensions/structure.ts";
+import { detectAndTrackExpressionEvaluation } from "../editors/extensions/expressionEval.ts";
 import { markOutputRunning } from "../utils/outputHealthStore.ts";
 import { dispatchInlineResult } from "../editors/extensions/inlineResults.ts";
 import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";

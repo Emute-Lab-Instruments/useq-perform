@@ -5,8 +5,8 @@ export default defineScenario({
   name: 'No expression assignments',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
-    'src/editors/extensions/structure/eval-integration.ts',
+    'src/editors/extensions/expressionHighlights.ts',
+    'src/editors/extensions/expressionEval.ts',
   ],
   description:
     'Code with no output assignments (a1-a4, d1-d3, s1-s8). Verifies the expression gutter is empty when no patterns match.',

@@ -5,7 +5,7 @@ export default defineScenario({
   name: 'Staircase indentation',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
+    'src/editors/extensions/structure/adapter/decorations.ts',
   ],
   description: 'Multi-line code with varying indentation levels. The SVG polygon should form a staircase shape that hugs the text content of each line rather than spanning the full width.',
   editor: {

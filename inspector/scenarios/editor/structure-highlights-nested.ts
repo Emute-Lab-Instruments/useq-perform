@@ -5,8 +5,8 @@ export default defineScenario({
   name: 'Nested expressions',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure.ts',
-    'src/editors/extensions/structure/decorations.ts',
+    'src/editors/extensions.ts',
+    'src/editors/extensions/structure/adapter/decorations.ts',
   ],
   description: 'Cursor inside an inner form of a nested arithmetic expression. The inner (* 2 3) should be highlighted with the parent (+ ...) dashed line visible below.',
   grepTerms: ['nodeHighlightPlugin', 'NodeHighlightPluginClass', 'computeNodeLineBounds', 'buildPolygonPath', 'findNodeAt', 'getContainerNodeAt', '.cm-node-highlight'],

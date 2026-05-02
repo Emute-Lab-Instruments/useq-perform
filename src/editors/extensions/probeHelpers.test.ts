@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { EditorState } from "@codemirror/state";
+// @ts-expect-error — clojure-mode has no type declarations
+import { default_extensions } from "@nextjournal/clojure-mode";
 
-import { createStructuralEditor } from "./structure/new-structure.ts";
 import {
   buildProbeExpression,
   collectVisibleIndexedForms,
   computeFromListIndex,
   type ProbeRange,
 } from "./probeHelpers.ts";
+
+/** Local: build a minimal EditorState with clojure-mode extensions. */
+function createStructuralEditor(doc = ""): EditorState {
+  return EditorState.create({
+    doc,
+    extensions: [...default_extensions],
+  });
+}
 
 function rangeOf(source: string, snippet: string): ProbeRange {
   const from = source.indexOf(snippet);

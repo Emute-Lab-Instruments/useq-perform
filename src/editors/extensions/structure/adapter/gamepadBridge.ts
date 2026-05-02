@@ -2,19 +2,17 @@
  * Gamepad-intent → structural-dispatcher bridge.
  *
  * Subscribes to the gamepad channels in `src/contracts/gamepadChannels.ts`
- * and routes the relevant intents through the new-core dispatcher.
+ * and routes the relevant intents through the structural dispatcher.
  *
- * Active only when `structure.useNewCore === true` AND the controller is in
- * structural-navigation mode (toggled by the same `toggleNavMode` channel
- * used by `bindGamepadNavigation`). When inactive, this bridge does nothing
- * and the existing legacy structural path runs unchanged.
+ * Active only while the controller is in structural-navigation mode
+ * (toggled by the same `toggleNavMode` channel used by
+ * `bindGamepadNavigation`). The `isEnabled` predicate is retained so callers
+ * can gate the bridge for mode-specific bring-up (e.g. zen mode).
  *
- * Mutation gestures: round 2 doesn't bind any new gestures. To exercise the
- * mutation ops by gamepad, the user uses the legacy "open menu" radial
- * (X / LB+A / RB+A) — those don't go through us. For the smoke test, the
- * user can drive nav.next/etc. via dpad. Mutation ops are exposed through
- * the dispatcher and can be wired in round 3 (or driven from the browser
- * console for now via `(window as any).__structDispatch(view, "edit.slurpForward")`).
+ * Mutation gestures: this bridge currently only handles nav intents. To
+ * exercise mutation ops by gamepad, the user uses the radial menu
+ * (X / LB+A / RB+A) — those flow through `gamepadMenuBridge`. The dispatcher
+ * is also exposed on `(window as any).__structDispatch` for console use.
  */
 
 import type { EditorView } from "@codemirror/view";
@@ -27,15 +25,10 @@ export interface GamepadBridgeHandle {
 }
 
 /**
- * Wire gamepad intents to the new structural dispatcher. The bridge consults
- * `isEnabled()` on every event, so toggling the feature flag at runtime
- * takes effect without re-binding. Structural-vs-spatial mode is tracked
- * internally (mirrors the legacy `bindGamepadNavigation`) by subscribing to
- * the `toggleNavMode` channel.
- *
- * The legacy `bindGamepadNavigation` is also active and runs its own nav. To
- * avoid double-driving, see the gating in `bindGamepadNavigation` itself
- * which short-circuits structural-mode handling when the flag is on.
+ * Wire gamepad intents to the structural dispatcher. The bridge consults
+ * `isEnabled()` on every event, so callers can gate at runtime without
+ * re-binding. Structural-vs-spatial mode is tracked internally by
+ * subscribing to the `toggleNavMode` channel.
  */
 export function bindStructuralGamepadBridge(
   view: EditorView,

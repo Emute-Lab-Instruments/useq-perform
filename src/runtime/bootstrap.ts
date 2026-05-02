@@ -166,12 +166,9 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
   const gamepadPipeline = createGamepadPipeline({ editor });
   const navHandle = bindGamepadNavigation(editor);
   const menuHandle = bindGamepadMenuBridge({ view: editor });
-  // Round-2 structural-editing core. Bridge is always installed; it gates
-  // its own behaviour on the `structure.useNewCore` flag.
-  const structHandle = bindStructuralGamepadBridge(
-    editor,
-    () => getAppSettings().structure?.useNewCore === true,
-  );
+  // Structural-editing core. Bridge is always installed; it activates only
+  // while the gamepad is in structural-navigation mode.
+  const structHandle = bindStructuralGamepadBridge(editor, () => true);
   // Expose dispatcher on window for console-driven testing during round 2.
   if (typeof globalThis !== 'undefined') {
     void import('../editors/extensions/structure/adapter/dispatcher.ts')

@@ -29,7 +29,7 @@ vi.mock("../transport/json-protocol.ts", () => ({
   sendTouSEQ: mockSendTouSEQ,
 }));
 
-vi.mock("../editors/extensions/structure.ts", () => ({
+vi.mock("../editors/extensions/expressionEval.ts", () => ({
   detectAndTrackExpressionEvaluation: mockDetectAndTrack,
 }));
 

@@ -5,8 +5,8 @@ export default defineScenario({
   name: 'Bare atom (no wrapping parens)',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
-    'src/editors/extensions/structure/ast.ts',
+    'src/editors/extensions/structure/adapter/decorations.ts',
+    'src/editors/extensions/lezerHelpers.ts',
   ],
   description: 'Cursor on a bare symbol that is not wrapped in parentheses. Tests that the highlight handles non-list nodes at the top level.',
   editor: {

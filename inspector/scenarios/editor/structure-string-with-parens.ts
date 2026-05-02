@@ -5,8 +5,8 @@ export default defineScenario({
   name: 'String containing parentheses',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
-    'src/editors/extensions/structure/ast.ts',
+    'src/editors/extensions/structure/adapter/decorations.ts',
+    'src/editors/extensions/lezerHelpers.ts',
   ],
   description: 'Code with string literals that contain parentheses. Tests that the AST correctly treats string contents as atoms and the highlight does not break on unmatched parens inside strings.',
   editor: {

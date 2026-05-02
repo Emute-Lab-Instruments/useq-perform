@@ -1,5 +1,5 @@
 // Vitest unit tests for the "which top-level form to eval" logic in
-// eval-integration.ts. The logic decides which top-level form gets sent for
+// expressionEval.ts. The logic decides which top-level form gets sent for
 // evaluation based on the cursor position.
 //
 // Spec:
@@ -9,8 +9,8 @@
 //   - docs/specs/editor.md §1.10: structural editing operations act on the
 //     s-expression tree; the eval-target selection shares the same AST view.
 //
-// Production source: src/editors/extensions/structure/eval-integration.ts
-//   detectAndTrackExpressionEvaluation() lines 128-142, mirrored in
+// Production source: src/editors/extensions/expressionEval.ts
+//   detectAndTrackExpressionEvaluation() mirrors the logic in
 //   src/editors/extensions/evalHighlight.ts (getTopLevelRange) and
 //   src/effects/editorEvaluation.ts (getTopLevelFormRange).
 //
@@ -18,35 +18,47 @@
 // regression in either findNodeAt or the walk-to-Program-child loop is caught.
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { EditorSelection, type EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState, type EditorState as EditorStateType } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+// @ts-expect-error — clojure-mode has no type declarations
+import { default_extensions } from "@nextjournal/clojure-mode";
 
-import { createStructuralEditor, findNodeAt } from "./new-structure.ts";
+import { findNodeAt } from "./lezerHelpers.ts";
 import {
   handleClearExpression,
   handlePlayExpression,
   setEvalIntegrationConfig,
   type EvalIntegrationConfig,
-} from "./eval-integration.ts";
+} from "./expressionEval.ts";
 
-vi.mock("../../../effects/visualisationSampler.ts", () => ({
+vi.mock("../../effects/visualisationSampler.ts", () => ({
   isExpressionVisualised: () => false,
   toggleVisualisation: vi.fn(async () => {}),
   refreshVisualisedExpression: vi.fn(async () => {}),
   notifyExpressionEvaluated: vi.fn(),
 }));
-vi.mock("../../../ui/adapters/visualisationPanel", () => ({
+vi.mock("../../ui/adapters/visualisationPanel", () => ({
   showVisualisationPanel: vi.fn(),
 }));
-vi.mock("../../../runtime/appSettingsRepository.ts", () => ({
+vi.mock("../../runtime/appSettingsRepository.ts", () => ({
   getAppSettings: () => ({ ui: {} }),
 }));
+
+// Local helper: build a minimal EditorState with clojure-mode extensions.
+// Mirrors the legacy `createStructuralEditor` without depending on the
+// retired structural-editing module.
+function makeState(doc: string): EditorStateType {
+  return EditorState.create({
+    doc,
+    extensions: [...default_extensions],
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Algorithm under test
 //
-// This mirrors lines 128-142 of eval-integration.ts. Keep in lockstep with
-// production: if the production algorithm changes, update both.
+// This mirrors the eval-target selection in expressionEval.ts. Keep in lockstep
+// with production: if the production algorithm changes, update both.
 // ---------------------------------------------------------------------------
 
 interface EvalRange {
@@ -70,7 +82,7 @@ interface EvalRange {
  * fallback whole-doc range.
  */
 function getTopLevelEvalRange(
-  state: EditorState,
+  state: EditorStateType,
   cursor: number,
 ): EvalRange | null {
   let evalFrom = 0;
@@ -93,7 +105,7 @@ function getTopLevelEvalRange(
 
 /** Run the algorithm against a doc with a cursor at `pos`. */
 function rangeAt(doc: string, pos: number): EvalRange | null {
-  const state = createStructuralEditor(doc).update({
+  const state = makeState(doc).update({
     selection: EditorSelection.cursor(pos),
   }).state;
   return getTopLevelEvalRange(state, pos);
@@ -103,7 +115,7 @@ function rangeAt(doc: string, pos: number): EvalRange | null {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("eval-integration: cursor inside a single top-level form", () => {
+describe("expressionEval: cursor inside a single top-level form", () => {
   it("cursor on the head symbol resolves to the enclosing form", () => {
     const doc = "(a1 440)";
     // cursor on '1' (index 2)
@@ -138,7 +150,7 @@ describe("eval-integration: cursor inside a single top-level form", () => {
   });
 });
 
-describe("eval-integration: cursor inside a string literal", () => {
+describe("expressionEval: cursor inside a string literal", () => {
   it("cursor inside a string literal still finds the enclosing top-level form", () => {
     const doc = '(a1 "hello world")';
     // 'h' of "hello" is at index 5
@@ -164,7 +176,7 @@ describe("eval-integration: cursor inside a string literal", () => {
   });
 });
 
-describe("eval-integration: cursor in whitespace between top-level forms", () => {
+describe("expressionEval: cursor in whitespace between top-level forms", () => {
   // Spec rule (code-evaluation.md §1.1): eval submits "the top-level form" —
   // the algorithm uses findNodeAt to choose. findNodeAt() resolves the nearest
   // adjacent top-level form when cursor is in whitespace; we lock in the
@@ -214,7 +226,7 @@ describe("eval-integration: cursor in whitespace between top-level forms", () =>
   });
 });
 
-describe("eval-integration: cursor at form boundary", () => {
+describe("expressionEval: cursor at form boundary", () => {
   it("cursor immediately after the closing paren of the first form picks one of the adjacent forms", () => {
     const first = "(a1 1)";
     const second = "(a2 2)";
@@ -244,7 +256,7 @@ describe("eval-integration: cursor at form boundary", () => {
   });
 });
 
-describe("eval-integration: buffer edges", () => {
+describe("expressionEval: buffer edges", () => {
   it("cursor at start of buffer (position 0) resolves to the first form", () => {
     const doc = "(a1 1)\n(a2 2)";
     const range = rangeAt(doc, 0);
@@ -259,7 +271,7 @@ describe("eval-integration: buffer edges", () => {
 
   it("empty buffer returns null (no eval target)", () => {
     const doc = "";
-    const state = createStructuralEditor(doc).update({
+    const state = makeState(doc).update({
       selection: EditorSelection.cursor(0),
     }).state;
     const range = getTopLevelEvalRange(state, 0);
@@ -270,9 +282,9 @@ describe("eval-integration: buffer edges", () => {
     // findNodeAt may return null for whitespace-only input; production then
     // falls back to evalFrom=0, evalTo=doc.length, which is non-empty so the
     // function returns that range. Either outcome is acceptable: the caller
-    // bails if the range is empty (lines 144 in eval-integration.ts).
+    // bails if the range is empty.
     const doc = "   \n  ";
-    const state = createStructuralEditor(doc).update({
+    const state = makeState(doc).update({
       selection: EditorSelection.cursor(2),
     }).state;
     const range = getTopLevelEvalRange(state, 2);
@@ -291,7 +303,7 @@ describe("eval-integration: buffer edges", () => {
 
 function makeView(doc: string): EditorView {
   return new EditorView({
-    state: createStructuralEditor(doc),
+    state: makeState(doc),
   });
 }
 
@@ -305,7 +317,7 @@ function makeMockConfig(): EvalIntegrationConfig & {
   };
 }
 
-describe("eval-integration: DI seam routes through EvalIntegrationConfig", () => {
+describe("expressionEval: DI seam routes through EvalIntegrationConfig", () => {
   beforeEach(() => {
     setEvalIntegrationConfig({
       sendCode: () => {},
@@ -368,7 +380,7 @@ describe("eval-integration: DI seam routes through EvalIntegrationConfig", () =>
   });
 });
 
-describe("eval-integration: nested expressions resolve to the top-level form, not the inner expression", () => {
+describe("expressionEval: nested expressions resolve to the top-level form, not the inner expression", () => {
   it("cursor inside a nested form returns the OUTER top-level form's range", () => {
     const doc = "(a1 (+ 1 2))";
     // cursor on '+' (index 5)

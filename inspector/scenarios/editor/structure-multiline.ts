@@ -5,7 +5,7 @@ export default defineScenario({
   name: 'Multi-line expression',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
+    'src/editors/extensions/structure/adapter/decorations.ts',
   ],
   description: 'A single expression spanning multiple lines with indentation. Tests that the SVG polygon correctly follows the staircase shape of indented code.',
   editor: {

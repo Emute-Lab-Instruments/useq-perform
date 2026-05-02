@@ -5,8 +5,8 @@ export default defineScenario({
   name: 'Dense expression assignments',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
-    'src/editors/extensions/structure/eval-integration.ts',
+    'src/editors/extensions/expressionHighlights.ts',
+    'src/editors/extensions/expressionEval.ts',
   ],
   description:
     'Seven consecutive single-line assignments (a1-a4, d1-d3). Tests visual density when many gutter bars are stacked with no gaps.',

@@ -5,8 +5,8 @@ export default defineScenario({
   name: 'Cursor at document end',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
-    'src/editors/extensions/structure/ast.ts',
+    'src/editors/extensions/structure/adapter/decorations.ts',
+    'src/editors/extensions/lezerHelpers.ts',
   ],
   description: 'Cursor positioned after the last closing paren. Tests that no highlight crashes or renders incorrectly when cursor is outside all forms.',
   editor: {

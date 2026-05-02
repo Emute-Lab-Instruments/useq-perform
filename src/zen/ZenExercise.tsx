@@ -7,7 +7,6 @@ import { bracketMatching } from "@codemirror/language";
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 import { baseKeymap } from "../editors/keymaps";
 import { editorBaseTheme, themes } from "../editors/themes";
-import { structureExtensions } from "../editors/extensions/structure";
 import { getAppSettings } from "../runtime/appSettingsRepository";
 import { validateExercise } from "./validation";
 import { getButtonHint, getDeduplicatedHints, type ButtonHint } from "./hints";
@@ -308,7 +307,6 @@ function createZenEditor(
         ".cm-scroller": { overflow: "auto" },
       }),
       ...clojureExtensions,
-      ...structureExtensions,
       validationListener,
     ],
   });

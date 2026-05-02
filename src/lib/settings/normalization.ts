@@ -146,10 +146,6 @@ export function normalizeUserSettings(value: unknown): AppSettings {
     structure: {
       ...defaults.structure,
       ...structure,
-      useNewCore:
-        structure.useNewCore == null
-          ? defaults.structure.useNewCore
-          : structure.useNewCore === true,
       foldAllWrappers:
         structure.foldAllWrappers == null
           ? defaults.structure.foldAllWrappers

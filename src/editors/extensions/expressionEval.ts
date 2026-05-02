@@ -3,7 +3,8 @@
 // coordinating with the visualisation subsystem.
 //
 // Pure state definitions (matchPattern, annotations, StateField, pure helpers)
-// live in eval-state.ts to avoid pulling runtime deps into the Inspector iframe.
+// live in expressionEvalState.ts to avoid pulling runtime deps into the
+// Inspector iframe.
 
 import type { EditorView } from "@codemirror/view";
 
@@ -12,12 +13,12 @@ import {
   toggleVisualisation,
   refreshVisualisedExpression,
   notifyExpressionEvaluated,
-} from "../../../effects/visualisationSampler.ts";
-import { showVisualisationPanel } from "../../../ui/adapters/visualisationPanel";
-import { dbg } from "../../../lib/debug.ts";
-import { getAppSettings } from "../../../runtime/appSettingsRepository.ts";
+} from "../../effects/visualisationSampler.ts";
+import { showVisualisationPanel } from "../../ui/adapters/visualisationPanel";
+import { dbg } from "../../lib/debug.ts";
+import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 
-import { findNodeAt } from "../lezerHelpers.ts";
+import { findNodeAt } from "./lezerHelpers.ts";
 
 // ---------------------------------------------------------------------------
 // EvalIntegrationConfig — dependency injection interface
@@ -36,7 +37,7 @@ export interface EvalIntegrationConfig {
 
 // Module-level config instance — set via `setEvalIntegrationConfig()` or
 // lazily initialised with `createDefaultEvalIntegrationConfig()` from the
-// wiring module (eval-integration-defaults.ts).
+// wiring module (expressionEvalDefaults.ts).
 let _config: EvalIntegrationConfig | null = null;
 
 /** Override the eval-integration config (e.g. for tests or Inspector). */
@@ -55,8 +56,7 @@ function getConfig(): EvalIntegrationConfig {
   return _config;
 }
 
-// Re-export everything from eval-state.ts for backward compatibility.
-// Existing code that imports from eval-integration.ts continues to work.
+// Re-export everything from expressionEvalState.ts for backward compatibility.
 export {
   matchPattern,
   expressionEvaluatedAnnotation,
@@ -65,13 +65,13 @@ export {
   findExpressionAtPosition,
   isRangeActive,
   findExpressionRanges,
-} from "./eval-state.ts";
+} from "./expressionEvalState.ts";
 
 import {
   matchPattern,
   expressionEvaluatedAnnotation,
   findExpressionBounds,
-} from "./eval-state.ts";
+} from "./expressionEvalState.ts";
 
 // ---------------------------------------------------------------------------
 // Side-effectful helpers

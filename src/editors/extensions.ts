@@ -15,14 +15,18 @@ import { lineNumbers, drawSelection } from "@codemirror/view";
 import { history } from '@codemirror/commands';
 import { baseKeymap, mainEditorKeymap } from "./keymaps.ts";
 import { themeCompartment, fontSizeCompartment } from "../lib/editorCompartments.ts";
+import { lastEvaluatedExpressionField } from "./extensions/expressionEvalState.ts";
+import { setEvalIntegrationConfig } from "./extensions/expressionEval.ts";
+import { createDefaultEvalIntegrationConfig } from "./extensions/expressionEvalDefaults.ts";
 import {
-  navigationMetaField,
-  nodeHighlightPlugin,
-  lastEvaluatedExpressionField,
   createExpressionGutter,
   createDefaultGutterConfig,
-} from "./extensions/structure.ts";
+} from "./extensions/expressionHighlights.ts";
 import { structuralCoreExtensions } from "./extensions/structure/adapter/extension.ts";
+
+// Wire the default eval-integration config on module load (production wiring).
+// Tests/Inspector can override via `setEvalIntegrationConfig()`.
+setEvalIntegrationConfig(createDefaultEvalIntegrationConfig());
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
 import { probeExtensions } from "./extensions/probes.ts";
@@ -126,19 +130,9 @@ export const guideEditorExtensions = [
 // S-Expression tracking extensions
 
 
-// Structural editing layers. The cursor-halo decoration comes from one of
-// two sources, gated on `settings.structure.useNewCore`:
-//   - false (legacy): legacy `nodeHighlightPlugin` (SVG halos + indent guides)
-//   - true (new core): adapter's `structuralCoreExtensions()` (state field +
-//     halos + hole-pill widget)
-// Mounting both at once double-paints the cursor; pick one. The eval gutter
-// (`lastEvaluatedExpressionField` + `createExpressionGutter`) is independent
-// of the structural rewrite and stays mounted in both modes.
-const useNewCore = _initSettings.structure?.useNewCore === true;
-
-const structuralLayer = useNewCore
-  ? structuralCoreExtensions()
-  : [navigationMetaField, nodeHighlightPlugin];
+// Structural editing layer: state field + cursor halos + hole-pill widget.
+// The eval gutter (`lastEvaluatedExpressionField` + `createExpressionGutter`)
+// is independent of structural editing and lives in `expressionHighlights.ts`.
 
 // Base extensions combine core functionality
 export const baseExtensions = [
@@ -146,7 +140,7 @@ export const baseExtensions = [
   ...functionalExtensions,
   ...themeExtensions,
   ...default_clojure_extensions,
-  ...structuralLayer,
+  ...structuralCoreExtensions(),
   lastEvaluatedExpressionField,
   ...createExpressionGutter(createDefaultGutterConfig()),
   ...probeExtensions,

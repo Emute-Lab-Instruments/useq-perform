@@ -5,8 +5,8 @@ export default defineScenario({
   name: 'All channel types visible',
   type: 'contract',
   sourceFiles: [
-    'src/editors/extensions/structure/decorations.ts',
-    'src/editors/extensions/structure/eval-integration.ts',
+    'src/editors/extensions/expressionHighlights.ts',
+    'src/editors/extensions/expressionEval.ts',
   ],
   description:
     'Analog, digital, and serial output assignments on separate lines. Verifies each channel type gets a distinct colored gutter bar.',
