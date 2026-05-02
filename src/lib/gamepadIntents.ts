@@ -4,6 +4,12 @@
 // high-level intents via typed channels. Has ZERO knowledge of menus,
 // editors, themes, or settings — it only knows about buttons/axes and
 // the intent vocabulary.
+//
+/**
+ * @deprecated This module is superseded by `createGamepadPipeline` (three-stage
+ * pipeline architecture). It remains for backward compatibility during the
+ * transition and will be removed in Phase 1.5.
+ */
 
 import {
   createGamepadManager,
