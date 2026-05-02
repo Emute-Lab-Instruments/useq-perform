@@ -66,7 +66,6 @@ describe("PERSISTENCE_KEYS", () => {
     expect(PERSISTENCE_KEYS.settings).toBe("uSEQ-Perform-User-Settings");
     expect(PERSISTENCE_KEYS.editorCode).toBe("uSEQ-Perform-User-Code");
     expect(PERSISTENCE_KEYS.serialPortInfo).toBe("uSEQ-Serial-Port-Info");
-    expect(PERSISTENCE_KEYS.editorContent).toBe("editorContent");
     expect(PERSISTENCE_KEYS.editorProbes).toBe("uSEQ-Perform-Editor-Probes");
     expect(PERSISTENCE_KEYS.referenceStarred).toBe("moduLispReference:starredFunctions");
     expect(PERSISTENCE_KEYS.referenceExpanded).toBe("moduLispReference:expandedFunctions");

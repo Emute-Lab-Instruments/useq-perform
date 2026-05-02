@@ -28,7 +28,6 @@ export const PERSISTENCE_KEYS = {
   serialPortInfo: "uSEQ-Serial-Port-Info",
 
   // Editor autosave
-  editorContent: "editorContent",
   editorProbes: "uSEQ-Perform-Editor-Probes",
 
   // Reference panel
@@ -120,7 +119,7 @@ export function load<T>(key: string, fallback?: T): T | null {
  * Load a raw (non-JSON) string value from localStorage.
  *
  * Use this for keys that store plain strings (not JSON-encoded), such as
- * `editorContent` or `editorCode`.
+ * `editorCode`.
  */
 export function loadRaw(key: string, fallback: string): string;
 export function loadRaw(key: string): string | null;
