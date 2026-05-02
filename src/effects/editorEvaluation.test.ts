@@ -4,6 +4,7 @@ import { EditorView } from "@codemirror/view";
 import { linter } from "@codemirror/lint";
 import { diagnosticField, pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
+import { findHolePositions } from "../lib/holeDetection.ts";
 
 function createView(doc: string): EditorView {
   return new EditorView({
@@ -137,5 +138,54 @@ describe("diagnostic offset mapping", () => {
     expect(remaining[0]?.message).toBe("form2 error");
 
     view.destroy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-form eval gate: hole detection
+// ---------------------------------------------------------------------------
+
+describe("findHolePositions", () => {
+  it("returns empty array for code without holes", () => {
+    expect(findHolePositions("(a1 (sin (* 440 t)))")).toEqual([]);
+  });
+
+  it("detects a single hole", () => {
+    const code = "(a1 ($ freq :number))";
+    const positions = findHolePositions(code);
+    expect(positions).toEqual([4]);
+  });
+
+  it("detects multiple holes", () => {
+    const code = "(a1 (+ ($ freq :number) ($ amp :number)))";
+    const positions = findHolePositions(code);
+    expect(positions).toHaveLength(2);
+    expect(positions[0]).toBe(7);
+    expect(positions[1]).toBe(24);
+  });
+
+  it("does not false-positive on $ inside a symbol name", () => {
+    // (price$) is not a hole — requires `($ ` with the space
+    expect(findHolePositions("(a1 price$)")).toEqual([]);
+  });
+
+  it("does not false-positive on ($ without whitespace", () => {
+    // ($foo) is not a hole — the pattern requires whitespace after ($
+    expect(findHolePositions("($foo)")).toEqual([]);
+  });
+
+  it("detects holes with various whitespace", () => {
+    const withTab = "(a1 ($\tfreq :number))";
+    expect(findHolePositions(withTab)).toHaveLength(1);
+
+    const withNewline = "(a1 ($\nfreq :number))";
+    expect(findHolePositions(withNewline)).toHaveLength(1);
+  });
+
+  it("detects nested holes", () => {
+    const code = "(a1 (map (fn [x] ($ body :expr)) [1 2 3]))";
+    const positions = findHolePositions(code);
+    expect(positions).toHaveLength(1);
+    expect(positions[0]).toBe(17);
   });
 });

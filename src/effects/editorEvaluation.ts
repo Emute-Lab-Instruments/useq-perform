@@ -27,6 +27,8 @@ import { flashEvalHighlight } from "../editors/extensions/evalHighlight.ts";
 import { detectAndTrackExpressionEvaluation } from "../editors/extensions/structure.ts";
 import { markOutputRunning } from "../utils/outputHealthStore.ts";
 import { dispatchInlineResult } from "../editors/extensions/inlineResults.ts";
+import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
+import { findHolePositions, findHoleEnd } from "../lib/holeDetection.ts";
 
 // ---------------------------------------------------------------------------
 // Output assignment detection
@@ -226,6 +228,14 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
       // Try selection first
       const sel = getSelectionRange(state);
       if (sel) {
+        // Per-form eval gate: block selections containing holes
+        const holePositions = findHolePositions(sel.text);
+        if (holePositions.length > 0) {
+          gateFormWithHoles(view, sel.text, sel.from, { from: sel.from, to: sel.to });
+          flashEvalHighlight(view, sel.from, sel.to);
+          return true;
+        }
+
         const rewritten = rewriteCodeSliceForModule(sel.text, sel.from, sel.to);
         const code = "@" + rewritten;
         if (!code.trim()) return false;
@@ -265,6 +275,40 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Hole detection (per-form eval gate)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check a form for holes and emit diagnostics if any are found.
+ * Returns true if holes were found (eval should be skipped).
+ */
+function gateFormWithHoles(
+  view: EditorView,
+  formCode: string,
+  docOffset: number,
+  range: { from: number; to: number },
+): boolean {
+  const holePositions = findHolePositions(formCode);
+  if (holePositions.length === 0) return false;
+
+  // Build diagnostics for each hole position
+  const diagnostics: UseqDiagnostic[] = holePositions.map((pos) => {
+    const end = findHoleEnd(formCode, pos);
+    return {
+      start: pos,
+      end: end,
+      severity: "warning" as const,
+      message: "fill this hole first",
+    };
+  });
+
+  // Push diagnostics to the editor at the correct document offsets
+  pushDiagnostics(view, diagnostics, docOffset, range.from, range.to);
+
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Internal strategy implementations
 // ---------------------------------------------------------------------------
 
@@ -281,6 +325,22 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
   const hasView = view && typeof view.dispatch === "function";
   if (hasView) {
     detectAndTrackExpressionEvaluation(view);
+  }
+
+  // --- Per-form eval gate: block forms containing holes ---
+  if (hasView && range) {
+    const gated = gateFormWithHoles(view, rawCode, range.from, range);
+    if (gated) {
+      // Flash highlight to give feedback that eval was attempted
+      const sel = state.selection.main;
+      if (!sel.empty) {
+        flashEvalHighlight(view, sel.from, sel.to);
+      } else {
+        flashEvalHighlight(view, undefined, undefined);
+      }
+      // Do NOT send to WASM or module — fall back to LKG
+      return true;
+    }
   }
 
   if (hasView) {
@@ -320,9 +380,22 @@ function evaluateSoft(ctx: EvalContext): boolean {
 
   if (!code || !code.trim()) return false;
 
+  // Per-form eval gate: block forms containing holes even for soft eval
+  const hasView = view && typeof view.dispatch === "function";
+  if (hasView) {
+    const holePositions = findHolePositions(code);
+    if (holePositions.length > 0) {
+      // For soft eval, get the range for proper diagnostic positioning
+      const range = getTopLevelFormRange(state);
+      if (range) {
+        gateFormWithHoles(view, code, range.from, range);
+      }
+      return true;
+    }
+  }
+
   const isImmediate = code.startsWith("@");
 
-  const hasView = view && typeof view.dispatch === "function";
   if (hasView) {
     detectAndTrackExpressionEvaluation(view);
     flashEvalHighlight(view, undefined, undefined, { isPreview: true });
