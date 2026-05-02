@@ -23,10 +23,8 @@ import {
 
 import {
   findNodeAt,
-} from "../../editors/extensions/structure/new-structure.ts";
-import {
   getTrimmedRange,
-} from "../../editors/extensions/structure.ts";
+} from "../../editors/extensions/lezerHelpers.ts";
 import { checkAndPublishHoleFocus } from "../../editors/holeFocusEmitter.ts";
 
 import type { PickerEntry } from "../DoubleRadialPicker.tsx";

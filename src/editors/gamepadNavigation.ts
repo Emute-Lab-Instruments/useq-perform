@@ -3,23 +3,17 @@
 // Subscribes to gamepad intent channels and drives CodeMirror structural
 // navigation + editor actions. Has no knowledge of the gamepad polling
 // system — it only reacts to published intents.
+//
+// Structural navigation (nav.in/out/next/prev in structural mode) is handled
+// by `bindStructuralGamepadBridge` in the structure adapter. This module
+// covers spatial-mode navigation, eval, delete, manual control, etc.
 
 import type { EditorView } from "@codemirror/view";
 import type { EditorState } from "@codemirror/state";
 import type { SyntaxNode } from "@lezer/common";
 
-import {
-  navigateIn,
-  navigateNext,
-  navigateOut,
-  navigatePrev,
-  navigateRight,
-  navigateLeft,
-  navigateUp,
-  navigateDown,
-  findNodeAt,
-} from "./extensions/structure/new-structure.ts";
-import { getTrimmedRange, performNavigation } from "./extensions/structure.ts";
+import { findNodeAt, getTrimmedRange } from "./extensions/lezerHelpers.ts";
+import { dispatchAction } from "./extensions/structure/adapter/dispatcher.ts";
 import { evaluate } from "../effects/editorEvaluation.ts";
 import { sendSerialInputStreamValue } from "../transport/json-protocol.ts";
 import {
@@ -32,34 +26,10 @@ import {
 import { checkAndPublishHoleFocus } from "./holeFocusEmitter.ts";
 
 import * as ch from "../contracts/gamepadChannels";
-import { getAppSettings } from "../runtime/appSettingsRepository.ts";
-
-/**
- * When the new structural-editing core is enabled (round 2 flag), structural
- * navigation is driven by `bindStructuralGamepadBridge` instead. The legacy
- * structural path here short-circuits to prevent double-driving.
- */
-function isNewStructCoreActive(): boolean {
-  try {
-    return getAppSettings().structure?.useNewCore === true;
-  } catch {
-    return false;
-  }
-}
 
 // ---------------------------------------------------------------------------
-// Typed navigation fn casts (upstream modules are @ts-nocheck)
+// Typed helper casts (upstream modules are @ts-nocheck)
 // ---------------------------------------------------------------------------
-
-type NavigationFn = (state: EditorState) => EditorState;
-const typedNavigateIn = navigateIn as NavigationFn;
-const typedNavigateOut = navigateOut as NavigationFn;
-const typedNavigateUp = navigateUp as NavigationFn;
-const typedNavigateDown = navigateDown as NavigationFn;
-const typedNavigateLeft = navigateLeft as NavigationFn;
-const typedNavigateRight = navigateRight as NavigationFn;
-const typedNavigateNext = navigateNext as NavigationFn;
-const typedNavigatePrev = navigatePrev as NavigationFn;
 
 const typedFindNodeAt = findNodeAt as (
   state: EditorState,
@@ -71,11 +41,6 @@ const typedGetTrimmedRange = getTrimmedRange as (
   node: SyntaxNode,
   state: EditorState
 ) => { from: number; to: number } | null;
-
-const typedPerformNavigation = performNavigation as (
-  view: EditorView,
-  navFn: NavigationFn
-) => boolean;
 
 const typedEvaluate = evaluate as (
   view: EditorView,
@@ -266,47 +231,23 @@ export function bindGamepadNavigation(
   }
 
   // -- Navigation -----------------------------------------------------------
+  //
+  // Structural-mode nav (next/prev/in/out) is routed through
+  // `bindStructuralGamepadBridge` in the structure adapter. We only handle
+  // spatial mode here, plus the toggleNavMode tracker so we know which mode
+  // is active.
 
   const unsubNavigate = ch.navigate.subscribe(({ direction }) => {
     if (!view) return;
-    // When the new structural core is active and we're in structural mode,
-    // hand off to the new bridge (it subscribes to the same channel).
-    if (navigationMode === "structural" && isNewStructCoreActive()) return;
-    const navigationMap: Record<string, NavigationFn> =
-      navigationMode === "spatial"
-        ? {
-            up: typedNavigateUp,
-            down: typedNavigateDown,
-            left: typedNavigateLeft,
-            right: typedNavigateRight,
-          }
-        : {
-            up: typedNavigatePrev,
-            down: typedNavigateNext,
-            left: typedNavigatePrev,
-            right: typedNavigateNext,
-          };
-
-    const handler = navigationMap[direction];
-    if (handler && typedPerformNavigation(view, handler)) {
-      hideEditorCursor(view);
-      checkAndPublishHoleFocus(view, "navigation");
-    }
-  });
-
-  const unsubEnter = ch.enter.subscribe(() => {
-    if (!view) return;
-    if (navigationMode === "structural" && isNewStructCoreActive()) return;
-    if (typedPerformNavigation(view, typedNavigateIn)) {
-      hideEditorCursor(view);
-      checkAndPublishHoleFocus(view, "navigation");
-    }
-  });
-
-  const unsubBack = ch.back.subscribe(() => {
-    if (!view) return;
-    if (navigationMode === "structural" && isNewStructCoreActive()) return;
-    if (typedPerformNavigation(view, typedNavigateOut)) {
+    if (navigationMode !== "spatial") return;
+    const actionMap: Record<string, string> = {
+      up: "nav.up",
+      down: "nav.down",
+      left: "nav.left",
+      right: "nav.right",
+    };
+    const action = actionMap[direction];
+    if (action && dispatchAction(view, action)) {
       hideEditorCursor(view);
       checkAndPublishHoleFocus(view, "navigation");
     }
@@ -442,8 +383,6 @@ export function bindGamepadNavigation(
   return {
     dispose() {
       unsubNavigate();
-      unsubEnter();
-      unsubBack();
       unsubToggleNavMode();
       unsubEval();
       unsubDeleteNode();
