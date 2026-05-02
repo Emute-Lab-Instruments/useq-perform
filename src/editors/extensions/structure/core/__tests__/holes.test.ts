@@ -22,6 +22,7 @@ import {
   makeHole,
 } from "../holes.ts";
 import { makeMutators } from "../mutate.ts";
+import { nav } from "../nav.ts";
 import { findById } from "../traversal.ts";
 import type { AddressableNode, IdGen } from "../types.ts";
 
@@ -154,5 +155,59 @@ describe("holes are atomic for structural ops (§2.9.2)", () => {
     const r = m.atomSlurpForward(stateOn(root, h.id));
     // Promoted to vector by default: [⟨freq:number⟩ b]
     expect(pp(r.state.tree.root)).toBe("[⟨freq:number⟩ b]");
+  });
+
+  it("slurpForward rejects on a hole (on-leaf)", () => {
+    __resetIdCounterForTests();
+    const ids = defaultIdGen();
+    const m = makeMutators({ ids });
+    const h = hole("x", "expr", ids);
+    const root = doc(ids, list(ids, h, sym("a", ids)));
+    const r = m.slurpForward(stateOn(root, h.id));
+    expect(r.noOps[0]?.reason).toBe("on-leaf");
+  });
+
+  it("barfForward rejects on a hole (on-leaf)", () => {
+    __resetIdCounterForTests();
+    const ids = defaultIdGen();
+    const m = makeMutators({ ids });
+    const h = hole("x", "expr", ids);
+    const root = doc(ids, list(ids, h, sym("a", ids)));
+    const r = m.barfForward(stateOn(root, h.id));
+    expect(r.noOps[0]?.reason).toBe("on-leaf");
+  });
+
+  it("raise on a hole replaces its parent (hole as whole unit)", () => {
+    __resetIdCounterForTests();
+    const ids = defaultIdGen();
+    const m = makeMutators({ ids });
+    const h = hole("freq", "number", ids);
+    const outer = list(ids, list(ids, sym("a", ids), h));
+    const root = doc(ids, outer);
+    const r = m.raise(stateOn(root, h.id));
+    // The inner list is replaced by the hole; outer list now contains just the hole.
+    expect(pp(r.state.tree.root)).toBe("(⟨freq:number⟩)");
+  });
+
+  it("enclose wraps a hole in a compound (hole stays intact)", () => {
+    __resetIdCounterForTests();
+    const ids = defaultIdGen();
+    const m = makeMutators({ ids });
+    const h = hole("body", "expr", ids);
+    const root = doc(ids, list(ids, sym("a", ids), h));
+    const r = m.enclose.vector(stateOn(root, h.id));
+    // The hole is now wrapped: (a [⟨body:expr⟩])
+    expect(pp(r.state.tree.root)).toBe("(a [⟨body:expr⟩])");
+  });
+});
+
+describe("holes are not addressable by navigation (§2.9.2)", () => {
+  it("nav.down on a hole returns on-leaf", () => {
+    __resetIdCounterForTests();
+    const ids = defaultIdGen();
+    const h = hole("freq", "number", ids);
+    const root = doc(ids, h);
+    const r = nav.down(stateOn(root, h.id));
+    expect(r.noOps[0]?.reason).toBe("on-leaf");
   });
 });
