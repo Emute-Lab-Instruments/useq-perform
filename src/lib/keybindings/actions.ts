@@ -21,6 +21,7 @@ export type ActionCategory =
 export interface ActionDef {
   description: string;
   category: ActionCategory;
+  reversible: boolean;
   icon?: string;
   repeatable?: boolean;
   requiresEditor?: boolean;
@@ -37,18 +38,21 @@ export const actions = {
   "eval.now": {
     description: "Evaluate top-level expression",
     category: "core",
+    reversible: false,
     icon: "play",
     requiresEditor: true,
   },
   "eval.quantised": {
     description: "Evaluate expression (quantised)",
     category: "core",
+    reversible: false,
     icon: "timer",
     requiresEditor: true,
   },
   "eval.soft": {
     description: "Evaluate expression (soft)",
     category: "core",
+    reversible: false,
     icon: "zap",
     requiresEditor: true,
   },
@@ -58,16 +62,19 @@ export const actions = {
   "palette.open": {
     description: "Open action palette",
     category: "ui",
+    reversible: false,
     icon: "command",
   },
   "panel.help": {
     description: "Toggle help panel",
     category: "ui",
+    reversible: false,
     icon: "help-circle",
   },
   "panel.vis": {
     description: "Toggle visualisation panel",
     category: "ui",
+    reversible: false,
     icon: "activity",
   },
 
@@ -76,12 +83,14 @@ export const actions = {
   "doc.symbol": {
     description: "Show documentation for symbol at cursor",
     category: "editor",
+    reversible: false,
     icon: "book-open",
     requiresEditor: true,
   },
   "edit.undo": {
     description: "Undo",
     category: "editor",
+    reversible: false,
     icon: "undo-2",
     repeatable: true,
     requiresEditor: true,
@@ -89,6 +98,7 @@ export const actions = {
   "edit.redo": {
     description: "Redo",
     category: "editor",
+    reversible: true,
     icon: "redo-2",
     repeatable: true,
     requiresEditor: true,
@@ -96,11 +106,13 @@ export const actions = {
   "edit.killToEndOfList": {
     description: "Kill to end of list",
     category: "editor",
+    reversible: true,
     requiresEditor: true,
   },
   "edit.backspaceNormal": {
     description: "Backspace (bypass bracket protection)",
     category: "editor",
+    reversible: true,
     repeatable: true,
     requiresEditor: true,
   },
@@ -108,6 +120,7 @@ export const actions = {
   "edit.delete": {
     description: "Delete node at cursor",
     category: "editor",
+    reversible: true,
     requiresEditor: true,
   },
 
@@ -116,23 +129,63 @@ export const actions = {
   "edit.slurpFwd": {
     description: "Slurp forward",
     category: "structure",
+    reversible: true,
     icon: "chevron-right",
     requiresEditor: true,
   },
   "edit.slurpBack": {
     description: "Slurp backward",
     category: "structure",
+    reversible: true,
     icon: "chevron-left",
     requiresEditor: true,
   },
   "edit.barfFwd": {
     description: "Barf forward",
     category: "structure",
+    reversible: true,
     requiresEditor: true,
   },
   "edit.barfBack": {
     description: "Barf backward",
     category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.raise": {
+    description: "Raise node (replace parent with focused node)",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.splice": {
+    description: "Splice (dissolve container, keep children)",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.wrapList": {
+    description: "Wrap in list (parentheses)",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.wrapVector": {
+    description: "Wrap in vector (square brackets)",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.transposeFwd": {
+    description: "Transpose forward (swap with next sibling)",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.transposeBack": {
+    description: "Transpose backward (swap with previous sibling)",
+    category: "structure",
+    reversible: true,
     requiresEditor: true,
   },
 
@@ -141,24 +194,28 @@ export const actions = {
   "probe.toggle": {
     description: "Toggle probe on expression",
     category: "probe",
+    reversible: false,
     icon: "eye",
     requiresEditor: true,
   },
   "probe.toggleRaw": {
     description: "Toggle raw probe on expression",
     category: "probe",
+    reversible: false,
     icon: "eye-off",
     requiresEditor: true,
   },
   "probe.expand": {
     description: "Expand probe context",
     category: "probe",
+    reversible: false,
     icon: "maximize-2",
     requiresEditor: true,
   },
   "probe.contract": {
     description: "Contract probe context",
     category: "probe",
+    reversible: false,
     icon: "minimize-2",
     requiresEditor: true,
   },
@@ -168,35 +225,54 @@ export const actions = {
   "nav.home": {
     description: "Move cursor to start of line",
     category: "navigation",
+    reversible: false,
     requiresEditor: true,
   },
   "nav.end": {
     description: "Move cursor to end of line",
     category: "navigation",
+    reversible: false,
     requiresEditor: true,
   },
   "nav.toggleMode": {
     description: "Toggle navigation mode",
     category: "navigation",
+    reversible: false,
   },
   "nav.structuralUp": {
     description: "Navigate out (structural)",
     category: "navigation",
+    reversible: false,
     requiresEditor: true,
   },
   "nav.structuralDown": {
     description: "Navigate in (structural)",
     category: "navigation",
+    reversible: false,
     requiresEditor: true,
   },
   "nav.structuralLeft": {
     description: "Navigate prev (structural)",
     category: "navigation",
+    reversible: false,
     requiresEditor: true,
   },
   "nav.structuralRight": {
     description: "Navigate next (structural)",
     category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.enter": {
+    description: "Navigate into node (drill in)",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.back": {
+    description: "Navigate out of node (drill out)",
+    category: "navigation",
+    reversible: false,
     requiresEditor: true,
   },
 
@@ -205,17 +281,30 @@ export const actions = {
   "nav.adjustNumber": {
     description: "Adjust number at cursor",
     category: "gamepad",
+    reversible: true,
     requiresEditor: true,
   },
   "control.bindStick": {
     description: "Bind stick to number",
     category: "gamepad",
+    reversible: false,
     analogOnly: true,
   },
   "control.stickAxis": {
     description: "Continuous stick input",
     category: "gamepad",
+    reversible: false,
     analogOnly: true,
+  },
+  "control.toggleManualLeft": {
+    description: "Toggle manual control for left stick",
+    category: "gamepad",
+    reversible: false,
+  },
+  "control.toggleManualRight": {
+    description: "Toggle manual control for right stick",
+    category: "gamepad",
+    reversible: false,
   },
 
   // -- Menu -----------------------------------------------------------------
@@ -223,14 +312,17 @@ export const actions = {
   "menu.openBefore": {
     description: "Open menu before cursor",
     category: "menu",
+    reversible: false,
   },
   "menu.openAfter": {
     description: "Open menu after cursor",
     category: "menu",
+    reversible: false,
   },
   "menu.radial": {
     description: "Open radial create menu",
     category: "menu",
+    reversible: false,
   },
 
   // -- Picker ---------------------------------------------------------------
@@ -238,30 +330,36 @@ export const actions = {
   "picker.up": {
     description: "Picker: move up",
     category: "menu",
+    reversible: false,
     repeatable: true,
   },
   "picker.down": {
     description: "Picker: move down",
     category: "menu",
+    reversible: false,
     repeatable: true,
   },
   "picker.left": {
     description: "Picker: move left",
     category: "menu",
+    reversible: false,
     repeatable: true,
   },
   "picker.right": {
     description: "Picker: move right",
     category: "menu",
+    reversible: false,
     repeatable: true,
   },
   "picker.select": {
     description: "Picker: select item",
     category: "menu",
+    reversible: false,
   },
   "picker.cancel": {
     description: "Picker: dismiss",
     category: "menu",
+    reversible: false,
   },
 } as const satisfies Record<string, ActionDef>;
 
@@ -271,6 +369,18 @@ export const actions = {
 
 export type ActionId = keyof typeof actions;
 
+export type ReversibleActionId = {
+  [K in ActionId]: (typeof actions)[K]["reversible"] extends true ? K : never;
+}[ActionId];
+
+export type NonReversibleActionId = {
+  [K in ActionId]: (typeof actions)[K]["reversible"] extends true ? never : K;
+}[ActionId];
+
 export function getAction(id: ActionId): ActionDef {
   return actions[id];
+}
+
+export function isReversible(id: ActionId): id is ReversibleActionId {
+  return actions[id].reversible;
 }
