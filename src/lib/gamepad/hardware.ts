@@ -9,8 +9,8 @@
 //
 // See docs/specs/gamepad.md §2.1, §3.1.
 
-import type { GamepadSnapshot } from "../gamepadManager";
-import { BUTTON_MAP } from "../gamepadManager";
+import type { GamepadSnapshot } from "./gamepadManager";
+import { BUTTON_MAP } from "./gamepadManager";
 import type { ButtonName, LogicalEvent, StickName } from "./types";
 
 // ---------------------------------------------------------------------------

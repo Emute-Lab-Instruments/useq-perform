@@ -1,8 +1,7 @@
 // src/lib/gamepad/paradigms/modal-shift.ts
 //
 // Modal-shift paradigm: LB and RB (held) act as modifier keys.
-// The base layer matches the legacy gamepadIntents.ts button mapping
-// for a smooth cutover. See spec §6.1.
+// See spec §6.1.
 
 import { chord, keyOf, held, tap } from "../gestures";
 import type {
@@ -15,7 +14,7 @@ import type {
 const ln = (n: string) => n as LayerName;
 const ch = (n: string) => n as AxisChannelName;
 
-// Base layer matches old gamepadIntents.ts:
+// Base layer:
 //   D-pad = navigate, A = enter/drill-in, B = back/drill-out,
 //   Start = eval, Y = delete, X = radial menu,
 //   LB = adjust(-1), RB = adjust(+1),

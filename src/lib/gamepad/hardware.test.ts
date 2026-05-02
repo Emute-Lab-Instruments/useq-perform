@@ -5,7 +5,7 @@
 // LogicalEvent[] output.
 
 import { describe, expect, it } from "vitest";
-import type { GamepadSnapshot } from "../gamepadManager";
+import type { GamepadSnapshot } from "./gamepadManager";
 import { diffSnapshots } from "./hardware";
 
 // ---------------------------------------------------------------------------

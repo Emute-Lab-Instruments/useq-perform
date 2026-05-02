@@ -1,7 +1,7 @@
 // src/lib/gamepad/index.ts
 //
 // Full gamepad pipeline wiring. Connects all three stages + dispatcher
-// into a running system. Drop-in replacement for gamepadIntents.ts.
+// into a running system. Canonical gamepad entry point.
 //
 // Usage in bootstrap.ts:
 //   const gamepad = createGamepadPipeline({ editor });
@@ -15,7 +15,7 @@ import {
   cloneSnapshot,
   type GamepadManager,
   type GamepadSnapshot,
-} from "../gamepadManager";
+} from "./gamepadManager";
 import { getHandler, type ActionHandler } from "../keybindings/handlers";
 import type { ActionId } from "../keybindings/actions";
 import * as ch from "../../contracts/gamepadChannels";
