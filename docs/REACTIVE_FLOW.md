@@ -99,10 +99,10 @@ All inter-module communication uses typed pub/sub channels from `src/lib/typedCh
 
 | Channel | Publisher | Subscriber |
 |---------|----------|------------|
-| `navigate`, `enter`, `back`, `evalNow`, `deleteNode`, `adjustNumber`, `toggleManualControl`, `stickAxis` | `gamepadIntents` | `gamepadNavigation` |
-| `openMenu`, `openRadialMenu` | `gamepadIntents` | `gamepadMenuBridge` |
-| `pickerNavigate`, `pickerSelect`, `pickerCancel`, `pickerApply` | `gamepadIntents` | `PickerMenu`, `DoubleRadialPicker` |
-| `controllerMode` | `gamepadMenuBridge` | `gamepadIntents` |
+| `navigate`, `enter`, `back`, `evalNow`, `deleteNode`, `adjustNumber`, `toggleManualControl`, `stickAxis` | `gamepad/` pipeline | `gamepadNavigation` |
+| `openMenu`, `openRadialMenu` | `gamepad/` pipeline | `gamepadMenuBridge` |
+| `pickerNavigate`, `pickerSelect`, `pickerCancel`, `pickerApply` | `gamepad/` pipeline | `PickerMenu`, `DoubleRadialPicker` |
+| `controllerMode` | `gamepadMenuBridge` | `gamepad/` pipeline |
 
 ### Help Channels (`src/ui/help/helpChannels.ts`)
 
@@ -174,11 +174,11 @@ Play/Pause/Stop button
   -> localClock drives visStore.currentTime
 ```
 
-### Gamepad: Hardware -> Intents -> Editor/Menus
+### Gamepad: Hardware -> Pipeline -> Editor/Menus
 
 ```
-Gamepad (polled by gamepadManager)
-  -> gamepadIntents.ts (button/stick -> typed intent)
+Gamepad (polled by gamepad/gamepadManager)
+  -> gamepad/ pipeline (hardware -> recognizer -> resolver -> dispatcher)
   -> normal mode:  gamepadNavigation.ts (cursor, eval, delete)
   -> picker mode:  PickerMenu/DoubleRadialPicker (menu navigation)
   -> menu open:    gamepadMenuBridge (opens picker/radial, publishes controllerMode)

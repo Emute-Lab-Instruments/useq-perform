@@ -34,8 +34,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `typedChannel.ts` — pub/sub primitive used by everything in `contracts/`.
   - `persistence.ts` — central localStorage service (typed keys, nosave, error recovery).
   - `appSettings.ts` — thin re-export shim over `settings/` modules.
-  - `gamepadManager.ts`, `gamepadIntents.ts` — legacy gamepad polling + intent channel bridge.
-  - `gamepad/` — **new three-stage gamepad pipeline** (spec: `docs/specs/gamepad.md`). `types.ts` (full type vocabulary including Layer, Resolution, DualBinding), `gestures.ts` (smart constructors + keyOf), `recognizer.ts` (Stage 2: pure gesture recognition), `resolver.ts` (Stage 3: layer-stack resolution), `dispatcher.ts` (eager-with-undo action dispatch), `hardware.ts` (Stage 1: snapshot diffing to LogicalEvent[]), `index.ts` (full pipeline wiring, drop-in replacement for `gamepadIntents.ts`). Paradigms: `paradigms/{picker,modal-shift,leader,hydra,chord-heavy}.ts`.
+  - `gamepad/` — **three-stage gamepad pipeline** (spec: `docs/specs/gamepad.md`). `gamepadManager.ts` (hardware polling, snapshot normalisation, GamepadManager class), `types.ts` (full type vocabulary including Layer, Resolution, DualBinding), `gestures.ts` (smart constructors + keyOf), `recognizer.ts` (Stage 2: pure gesture recognition), `resolver.ts` (Stage 3: layer-stack resolution), `dispatcher.ts` (eager-with-undo action dispatch), `hardware.ts` (Stage 1: snapshot diffing to LogicalEvent[]), `index.ts` (full pipeline wiring). Paradigms: `paradigms/{picker,modal-shift,leader,hydra,chord-heavy}.ts`.
   - `manualControlState.ts` — manual control state tracking.
   - `pickerMenuModel.ts`, `referenceDataLoader.ts`, `helpContentPreloader.ts`.
   - `CircularBuffer.ts`, `debug.ts`, `perfTrace.ts`, `themes.ts`, `versionUtils.ts`, `visualisationUtils.ts`, `useActorSignal.ts`.

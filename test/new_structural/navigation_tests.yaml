@@ -1,886 +1,1050 @@
 # Structural Code Editor Navigation Test Cases for Clojure
+#
+# FORMAT:
+#   code: source text with «» marking the initially selected node
+#   actions: navigation action or list of actions
+#   expected: text of the node expected to be selected after actions
+#
+# NAVIGATION AXES (per structural-editing.md §5.1):
+#   next/prev             — sibling at same level (stops at boundary)     §5.1.3
+#   right/left            — horizontal spatial (Euler-tour traversal)     §5.1.9
+#   in/out                — structural level change (enter/exit compound) §5.1.2/§5.1.1
+#   up/down               — vertical spatial (line-based)                 §5.1.10
+#   first/last            — jump to first/last sibling                   §5.1.4
+#   extendNext/extendPrev — grow range cursor outward                    §5.1.5
+#   shrink                — release outermost end of range cursor        §5.1.6
+#   intoMeta              — descend into Meta payload                    §5.1.7
+#   nextHole/prevHole     — jump to next/previous hole                   §5.1.8
 
-# NAVIGATION SEMANTICS:
-# - next/previous: Move between siblings at the SAME LEVEL only (stops at boundaries)
-# - right/left: Spatial/hybrid navigation (enters/exits expressions automatically)
-# - in/out: Explicit level changes
-# - up/down: Vertical navigation maintaining level
+# ── §1. Basic symbol navigation (next/prev) ─────────────────────────────────
 
-# Basic symbol navigation - NEXT/PREVIOUS (same level)
 - name: "next symbol - simple"
-  code: "hello world"
-  selection: "hello"
+  code: "«hello» world"
   actions: next
-  new_selection: "world"
+  expected: "world"
 
 - name: "previous symbol - simple"
-  code: "hello world"
-  selection: "world"
-  actions: previous
-  new_selection: "hello"
+  code: "hello «world»"
+  actions: prev
+  expected: "hello"
 
 - name: "next symbol - multiple symbols"
-  code: "foo bar baz"
-  selection: "bar"
+  code: "foo «bar» baz"
   actions: next
-  new_selection: "baz"
+  expected: "baz"
 
 - name: "previous symbol - multiple symbols"
-  code: "foo bar baz"
-  selection: "bar"
-  actions: previous
-  new_selection: "foo"
+  code: "«foo» bar baz"
+  actions: prev
+  expected: "foo"
 
 - name: "next stops at level boundary"
-  code: "(+ 1 (* 2 3))"
-  selection: "(* 2 3)"
+  code: "(+ 1 «(* 2 3)»)"
   actions: next
-  new_selection: "(* 2 3)"
+  expected: "(* 2 3)"
 
 - name: "next within list - stays at same level"
-  code: "(+ 1 (* 2 3))"
-  selection: "+"
+  code: "(«+» 1 (* 2 3))"
   actions: [next, next, next]
-  new_selection: "(* 2 3)"
+  expected: "(* 2 3)"
 
 - name: "previous stops at level boundary"
-  code: "(+ 1 (* 2 3))"
-  selection: "+"
-  actions: previous
-  new_selection: "+"
+  code: "(«+» 1 (* 2 3))"
+  actions: prev
+  expected: "+"
 
-# Basic symbol navigation - RIGHT/LEFT (spatial)
-- name: "right moves spatially through nested structure"
-  code: "(+ 1 (* 2 3)) hello"
-  selection: "+"
-  actions: [right, right, right, right, right, right, right, right]
-  new_selection: "hello"
+# ── §2. Entering and exiting compounds (in/out) ─────────────────────────────
+
+- name: "enter list with in"
+  code: "«(hello world)»"
+  actions: in
+  expected: "hello"
+
+- name: "exit list with out"
+  code: "(«hello» world)"
+  actions: out
+  expected: "(hello world)"
+
+- name: "out at outermost level reaches document root"
+  code: "«(foo)»"
+  actions: out
+  expected: "(foo)"
+
+- name: "in on leaf is no-op"
+  code: "(«hello» world)"
+  actions: in
+  expected: "hello"
+
+- name: "in on empty compound is no-op"
+  code: "«()»"
+  actions: in
+  expected: "()"
+
+- name: "deep in/out round-trip"
+  code: "«(a (b (c d)))»"
+  actions: [in, next, in, in]
+  expected: "c"
+
+- name: "out from deep nesting"
+  code: "(a (b («c» d)))"
+  actions: [out, out]
+  expected: "(a (b (c d)))"
+
+# ── §3. Horizontal spatial navigation (right/left) ─────────────────────────
+#
+# right/left traverse the tree in depth-first Euler-tour order.
+# Compounds are visited twice: pre-order (before children) and post-order (after).
+# When arriving via non-spatial ops, compounds start in pre-order.
 
 - name: "right enters nested expression"
-  code: "(+ 1 (* 2 3))"
-  selection: "(* 2 3)"
+  code: "(+ 1 «(* 2 3)»)"
   actions: right
-  new_selection: "*"
+  expected: "*"
+
+- name: "right through siblings inside list"
+  code: "(+ «1» (* 2 3))"
+  actions: right
+  expected: "(* 2 3)"
 
 - name: "right exits at end of nested expression"
-  code: "(+ 1 (* 2 3))"
-  selection: "3"
+  code: "(+ 1 (* 2 «3»))"
   actions: right
-  new_selection: "(* 2 3)"
-
-- name: "right continues to parent expression"
-  code: "(+ 1 (* 2 3))"
-  selection: "(* 2 3)"
-  actions: [right, right, right, right, right]
-  new_selection: "(+ 1 (* 2 3))"
-
-- name: "left moves spatially backward"
-  code: "(+ 1 (* 2 3)) hello"
-  selection: "hello"
-  actions: [left, left, left, left, left, left, left, left]
-  new_selection: "+"
-
-- name: "left exits then moves to previous"
-  code: "(+ 1 (* 2 3))"
-  selection: "*"
-  actions: left
-  new_selection: "(* 2 3)"
-
-# Entering and exiting lists explicitly
-- name: "enter list with 'in'"
-  code: "(hello world)"
-  selection: "(hello world)"
-  selection_cursor: start
-  actions: in
-  new_selection: "hello"
-
-- name: "exit list with 'out'"
-  code: "(hello world)"
-  selection: "hello"
-  actions: out
-  new_selection: "(hello world)"
-
-- name: "right enters list from outside"
-  code: "(hello world)"
-  selection: "(hello world)"
-  selection_cursor: start
-  actions: right
-  new_selection: "hello"
-
-- name: "left exits list at first element"
-  code: "(hello world)"
-  selection: "hello"
-  actions: left
-  new_selection: "(hello world)"
-
-# Vertical navigation
-- name: "down to next line"
-  code: "foo\nbar"
-  selection: "foo"
-  actions: down
-  new_selection: "bar"
-
-- name: "up to previous line"
-  code: "foo\nbar"
-  selection: "bar"
-  actions: up
-  new_selection: "foo"
-
-- name: "down maintains level - lists"
-  code: "(foo)\n(bar)"
-  selection: "(foo)"
-  actions: down
-  new_selection: "(bar)"
-
-- name: "down maintains level - symbols"
-  code: "(foo)\n(bar)"
-  selection: "foo"
-  actions: down
-  new_selection: "bar"
-
-- name: "up maintains level - lists"
-  code: "(foo)\n(bar)"
-  selection: "(bar)"
-  actions: up
-  new_selection: "(foo)"
-
-- name: "up maintains level - symbols"
-  code: "(foo)\n(bar)"
-  selection: "bar"
-  actions: up
-  new_selection: "foo"
-
-# Nested list navigation - comparing NEXT vs RIGHT
-- name: "next within nested list - stops at boundary"
-  code: "(+ 1 (* 2 3))"
-  selection: "+"
-  actions: [next, next]
-  new_selection: "(* 2 3)"
-
-- name: "next does not enter nested list"
-  code: "(+ 1 (* 2 3))"
-  selection: "(* 2 3)"
-  actions: next
-  new_selection: "(* 2 3)"
-
-- name: "right spatially enters nested list"
-  code: "(+ 1 (* 2 3))"
-  selection: "(* 2 3)"
-  actions: right
-  new_selection: "*"
-
-- name: "right continues through nested list"
-  code: "(+ 1 (* 2 3))"
-  selection: "*"
-  actions: [right, right]
-  new_selection: "3"
-
-- name: "right exits nested list automatically"
-  code: "(+ 1 (* 2 3))"
-  selection: "3"
-  actions: right
-  new_selection: "(* 2 3)"
+  expected: "(* 2 3)"
 
 - name: "right exits to parent level"
-  code: "(+ 1 (* 2 3))"
-  selection: "(* 2 3)"
+  code: "(+ 1 «(* 2 3)»)"
   actions: [right, right, right, right, right]
-  new_selection: "(+ 1 (* 2 3))"
+  expected: "(+ 1 (* 2 3))"
 
-- name: "in explicitly enters nested list"
-  code: "(+ 1 (* 2 3))"
-  selection: "(+ 1 (* 2 3))"
-  actions: in
-  new_selection: "+"
+- name: "right moves spatially through nested structure"
+  code: "«+» 1 (* 2 3)) hello"
+  actions: [right, right, right, right, right, right, right, right]
+  expected: "hello"
 
-- name: "out explicitly exits nested list"
-  code: "(+ 1 (* 2 3))"
-  selection: "*"
-  actions: out
-  new_selection: "(* 2 3)"
-
-- name: "out exits multiple levels explicitly"
-  code: "(+ 1 (* 2 3))"
-  selection: "*"
-  actions: [out, out]
-  new_selection: "(+ 1 (* 2 3))"
-
-- name: "left spatially exits and continues"
-  code: "(+ 1 (* 2 3))"
-  selection: "*"
+- name: "left exits then moves to previous"
+  code: "(+ 1 (* «*» 2 3))"
   actions: left
-  new_selection: "(* 2 3)"
+  expected: "(* 2 3)"
 
 - name: "left moves to previous at same level"
-  code: "(+ 1 (* 2 3))"
-  selection: "(* 2 3)"
-  cursor_char: "("
+  code: "(+ 1 «(* 2 3)»)"
   actions: left
-  new_selection: "1"
+  expected: "1"
+
+- name: "left moves spatially backward"
+  code: "(+ 1 (* 2 3)) «hello»"
+  actions: [left, left, left, left, left, left, left, left]
+  expected: "+"
+
+- name: "right enters list from outside"
+  code: "«(hello world)»"
+  actions: right
+  expected: "hello"
+
+- name: "left exits list at first element"
+  code: "(«hello» world)"
+  actions: left
+  expected: "(hello world)"
+
+# ── §4. Vertical spatial navigation (up/down) ───────────────────────────────
+
+- name: "down to next line"
+  code: "«foo»\nbar"
+  actions: down
+  expected: "bar"
+
+- name: "up to previous line"
+  code: "foo\n«bar»"
+  actions: up
+  expected: "foo"
+
+- name: "down maintains level - lists"
+  code: "«(foo)»\n(bar)"
+  actions: down
+  expected: "(bar)"
+
+- name: "down maintains level - symbols"
+  code: "(«foo»)\n(bar)"
+  actions: down
+  expected: "bar"
+
+- name: "up maintains level - lists"
+  code: "(foo)\n«(bar)»"
+  actions: up
+  expected: "(foo)"
+
+- name: "up maintains level - symbols"
+  code: "(foo)\n(«bar»)"
+  actions: up
+  expected: "foo"
+
+- name: "down at last line stays"
+  code: "foo\n«bar»"
+  actions: down
+  expected: "bar"
+
+- name: "up at first line stays"
+  code: "«foo»\nbar"
+  actions: up
+  expected: "foo"
+
+- name: "down between multi-line top-level forms"
+  code: "«(foo)»\n\n(bar)\n\n(baz)"
+  actions: [down, down]
+  expected: "(baz)"
+
+- name: "skip over comment with down"
+  code: "«foo» ; comment\nbar"
+  actions: down
+  expected: "bar"
+
+# ── §5. Nested list navigation — next vs right ──────────────────────────────
+
+- name: "next within nested list - stops at boundary"
+  code: "(«+» 1 (* 2 3))"
+  actions: [next, next]
+  expected: "(* 2 3)"
+
+- name: "next does not enter nested list"
+  code: "(+ 1 «(* 2 3)»)"
+  actions: next
+  expected: "(* 2 3)"
+
+- name: "right spatially enters nested list"
+  code: "(+ 1 «(* 2 3)»)"
+  actions: right
+  expected: "*"
+
+- name: "right continues through nested list"
+  code: "(+ 1 (* «*» 2 3))"
+  actions: [right, right]
+  expected: "3"
+
+- name: "right exits nested list automatically"
+  code: "(+ 1 (* 2 «3»))"
+  actions: right
+  expected: "(* 2 3)"
+
+- name: "in explicitly enters nested list"
+  code: "«(+ 1 (* 2 3))»"
+  actions: in
+  expected: "+"
+
+- name: "out explicitly exits nested list"
+  code: "(+ 1 (* «*» 2 3))"
+  actions: out
+  expected: "(* 2 3)"
+
+- name: "out exits multiple levels explicitly"
+  code: "(+ 1 (* «*» 2 3))"
+  actions: [out, out]
+  expected: "(+ 1 (* 2 3))"
 
 - name: "previous stays at level, does not exit"
-  code: "(+ 1 (* 2 3))"
-  selection: "*"
-  actions: previous
-  new_selection: "*"
+  code: "(+ 1 (* «*» 2 3))"
+  actions: prev
+  expected: "*"
 
-# Vector navigation - NEXT vs RIGHT
+# ── §6. Vector navigation ───────────────────────────────────────────────────
+
 - name: "enter vector with in"
-  code: "[1 2 3]"
-  selection: "[1 2 3]"
-  selection_cursor: start
+  code: "«[1 2 3]»"
   actions: in
-  new_selection: "1"
+  expected: "1"
 
 - name: "enter vector with right"
-  code: "[1 2 3]"
-  selection: "[1 2 3]"
-  selection_cursor: start
+  code: "«[1 2 3]»"
   actions: right
-  new_selection: "1"
+  expected: "1"
 
 - name: "next within vector"
-  code: "[1 2 3]"
-  selection: "1"
+  code: "[«1» 2 3]"
   actions: [next, next]
-  new_selection: "3"
+  expected: "3"
 
 - name: "next stops at end of vector"
-  code: "[1 2 3]"
-  selection: "3"
+  code: "[1 2 «3»]"
   actions: next
-  new_selection: "3"
+  expected: "3"
 
 - name: "right exits vector at end"
-  code: "[1 2 3]"
-  selection: "3"
+  code: "[1 2 «3»]"
   actions: right
-  new_selection: "[1 2 3]"
+  expected: "[1 2 3]"
 
 - name: "exit vector with out"
-  code: "[1 2 3]"
-  selection: "2"
+  code: "[1 «2» 3]"
   actions: out
-  new_selection: "[1 2 3]"
+  expected: "[1 2 3]"
 
 - name: "left exits vector at start"
-  code: "[1 2 3]"
-  selection: "1"
+  code: "[«1» 2 3]"
   actions: left
-  new_selection: "[1 2 3]"
+  expected: "[1 2 3]"
 
 - name: "previous stops at start of vector"
-  code: "[1 2 3]"
-  selection: "1"
-  actions: previous
-  new_selection: "1"
+  code: "[«1» 2 3]"
+  actions: prev
+  expected: "1"
 
-# Nested vectors - NEXT vs RIGHT
+# ── §7. Nested vectors ──────────────────────────────────────────────────────
+
 - name: "next within nested vectors stays at level"
-  code: "[1 [2 3] 4]"
-  selection: "1"
+  code: "[«1» [2 3] 4]"
   actions: [next, next]
-  new_selection: "4"
+  expected: "4"
 
 - name: "next treats nested vector as unit"
-  code: "[1 [2 3] 4]"
-  selection: "[2 3]"
+  code: "[1 «[2 3]» 4]"
   actions: next
-  new_selection: "4"
+  expected: "4"
 
 - name: "right enters nested vector"
-  code: "[1 [2 3] 4]"
-  selection: "[2 3]"
+  code: "[1 «[2 3]» 4]"
   actions: right
-  new_selection: "2"
+  expected: "2"
 
 - name: "right exits nested vector and continues"
-  code: "[1 [2 3] 4]"
-  selection: "3"
+  code: "[1 [2 «3»] 4]"
   actions: right
-  new_selection: "[2 3]"
+  expected: "[2 3]"
 
 - name: "right continues after nested vector exit"
-  code: "[1 [2 3] 4]"
-  selection: "[2 3]"
+  code: "[1 «[2 3]» 4]"
   actions: [right, right, right, right]
-  new_selection: "4"
+  expected: "4"
 
-# Map navigation - NEXT vs RIGHT
+# ── §8. Map navigation ──────────────────────────────────────────────────────
+
 - name: "enter map with in"
-  code: "{:a 1 :b 2}"
-  selection: "{:a 1 :b 2}"
-  selection_cursor: start
+  code: "«{:a 1 :b 2}»"
   actions: in
-  new_selection: ":a"
+  expected: ":a"
 
 - name: "enter map with right"
-  code: "{:a 1 :b 2}"
-  selection: "{:a 1 :b 2}"
-  selection_cursor: start
+  code: "«{:a 1 :b 2}»"
   actions: right
-  new_selection: ":a"
+  expected: ":a"
 
 - name: "next navigates map key to value"
-  code: "{:a 1 :b 2}"
-  selection: ":a"
+  code: "{«:a» 1 :b 2}"
   actions: next
-  new_selection: "1"
+  expected: "1"
 
 - name: "next navigates map value to next key"
-  code: "{:a 1 :b 2}"
-  selection: "1"
+  code: "{:a «1» :b 2}"
   actions: next
-  new_selection: ":b"
+  expected: ":b"
 
 - name: "next stops at last value"
-  code: "{:a 1 :b 2}"
-  selection: "2"
+  code: "{:a 1 :b «2»}"
   actions: next
-  new_selection: "2"
+  expected: "2"
 
 - name: "right exits map at end"
-  code: "{:a 1 :b 2}"
-  selection: "2"
+  code: "{:a 1 :b «2»}"
   actions: right
-  new_selection: "{:a 1 :b 2}"
+  expected: "{:a 1 :b 2}"
 
 - name: "previous navigates backward in map"
-  code: "{:a 1 :b 2}"
-  selection: ":b"
-  actions: previous
-  new_selection: "1"
+  code: "{:a 1 «:b» 2}"
+  actions: prev
+  expected: "1"
 
 - name: "previous stops at first key"
-  code: "{:a 1 :b 2}"
-  selection: ":a"
-  actions: previous
-  new_selection: ":a"
+  code: "{«:a» 1 :b 2}"
+  actions: prev
+  expected: ":a"
 
 - name: "left exits map at start"
-  code: "{:a 1 :b 2}"
-  selection: ":a"
+  code: "{«:a» 1 :b 2}"
   actions: left
-  new_selection: "{:a 1 :b 2}"
+  expected: "{:a 1 :b 2}"
 
-# Nested maps - NEXT vs RIGHT
+# ── §9. Nested maps ─────────────────────────────────────────────────────────
+
 - name: "next within nested map stays at level"
-  code: "{:a {:b 1} :c 2}"
-  selection: ":a"
+  code: "{«:a» {:b 1} :c 2}"
   actions: [next, next]
-  new_selection: ":c"
+  expected: ":c"
 
 - name: "next treats nested map as unit"
-  code: "{:a {:b 1} :c 2}"
-  selection: "{:b 1}"
+  code: "{:a «{:b 1}» :c 2}"
   actions: next
-  new_selection: ":c"
+  expected: ":c"
 
 - name: "right enters nested map"
-  code: "{:a {:b 1} :c 2}"
-  selection: "{:b 1}"
+  code: "{:a «{:b 1}» :c 2}"
   actions: right
-  new_selection: ":b"
+  expected: ":b"
 
 - name: "right exits nested map and continues"
-  code: "{:a {:b 1} :c 2}"
-  selection: "1"
+  code: "{:a {:b «1»} :c 2}"
   actions: right
-  new_selection: "{:b 1}"
+  expected: "{:b 1}"
 
 - name: "right continues after nested map"
-  code: "{:a {:b 1} :c 2}"
-  selection: "{:b 1}"
-  cursor_char: "{"
+  code: "{:a «{:b 1}» :c 2}"
   actions: [right, right, right, right]
-  new_selection: ":c"
+  expected: ":c"
 
-# Set navigation
+# ── §10. Set navigation ─────────────────────────────────────────────────────
+
 - name: "enter set"
-  code: "#{1 2 3}"
-  selection: "#{1 2 3}"
-  selection_cursor: start
+  code: "«#{1 2 3}»"
   actions: in
-  new_selection: "1"
+  expected: "1"
 
 - name: "navigate within set with next"
-  code: "#{1 2 3}"
-  selection: "1"
+  code: "#{«1» 2 3}"
   actions: next
-  new_selection: "2"
+  expected: "2"
 
 - name: "navigate within set with right"
-  code: "#{1 2 3}"
-  selection: "1"
+  code: "#{«1» 2 3}"
   actions: right
-  new_selection: "2"
+  expected: "2"
 
 - name: "right exits set at end"
-  code: "#{1 2 3}"
-  selection: "3"
+  code: "#{1 2 «3»}"
   actions: right
-  new_selection: "#{1 2 3}"
+  expected: "#{1 2 3}"
 
-# Complex nested structures - demonstrating NEXT vs RIGHT
+# ── §11. Complex nested structures ──────────────────────────────────────────
+
 - name: "deeply nested - next stays at each level"
-  code: "(a (b (c d)))"
-  selection: "(a (b (c d)))"
+  code: "«(a (b (c d)))»"
   actions: [in, next]
-  new_selection: "(b (c d))"
+  expected: "(b (c d))"
 
 - name: "deeply nested - next stops at boundary"
-  code: "(a (b (c d)))"
-  selection: "(b (c d))"
+  code: "(a «(b (c d))»)"
   actions: next
-  new_selection: "(b (c d))"
-
-- name: "deeply nested - right continues spatially"
-  code: "(a (b (c d)))"
-  selection: "(b (c d))"
-  cursor_char: "("
-  actions: [right, right, right, right, right, right]
-  new_selection: "(b (c d))"
+  expected: "(b (c d))"
 
 - name: "deeply nested - right traverses full depth"
-  code: "(a (b (c d)))"
-  selection: "a"
+  code: "(«a» (b (c d)))"
   actions: [right, right, right, right, right, right, right, right]
-  new_selection: "(a (b (c d)))"
+  expected: "(a (b (c d)))"
 
 - name: "deeply nested - in goes one level only"
-  code: "(a (b (c d)))"
-  selection: "(b (c d))"
+  code: "(a «(b (c d))»)"
   actions: in
-  new_selection: "b"
+  expected: "b"
 
 - name: "mixed structures - next respects boundaries"
-  code: "(foo [1 2] {:a 3})"
-  selection: "[1 2]"
+  code: "(foo «[1 2]» {:a 3})"
   actions: next
-  new_selection: "{:a 3}"
+  expected: "{:a 3}"
 
 - name: "mixed structures - right enters all"
-  code: "(foo [1 2] {:a 3})"
-  selection: "[1 2]"
+  code: "(foo «[1 2]» {:a 3})"
   actions: [right, right, right, right]
-  new_selection: "{:a 3}"
+  expected: "{:a 3}"
 
 - name: "mixed structures - right full traversal"
-  code: "(foo [1 2] {:a 3})"
-  selection: "foo"
+  code: "(«foo» [1 2] {:a 3})"
   actions: [right, right, right, right, right, right, right, right, right]
-  new_selection: "(foo [1 2] {:a 3})"
+  expected: "(foo [1 2] {:a 3})"
 
-# Complete spatial traversal examples
+# ── §12. Full spatial traversal ──────────────────────────────────────────────
+
 - name: "right full spatial traversal from start"
-  code: "((a b) (c d))"
-  selection: "((a b) (c d))"
+  code: "«((a b) (c d))»"
   actions: [right, right, right, right, right, right, right, right, right]
-  new_selection: "((a b) (c d))"
+  expected: "((a b) (c d))"
 
 - name: "left full spatial traversal from end"
-  code: "((a b) (c d)) e"
-  selection: "e"
+  code: "((a b) (c d)) «e»"
   actions: [left, left, left, left, left, left, left, left]
-  new_selection: "a"
+  expected: "a"
 
 - name: "spatial traversal with multiple nesting"
-  code: "(+ (* 2 3) (- 5 1))"
-  selection: "+"
+  code: "(«+» (* 2 3) (- 5 1))"
   actions: [right, right, right, right, right, right, right, right, right, right, right]
-  new_selection: "(+ (* 2 3) (- 5 1))"
+  expected: "(+ (* 2 3) (- 5 1))"
 
-# Edge cases - boundary behavior
-- name: "next at end of list stays"
-  code: "(a b c)"
-  selection: "c"
-  actions: next
-  new_selection: "c"
-
-- name: "previous at start of list stays"
-  code: "(a b c)"
-  selection: "a"
-  actions: previous
-  new_selection: "a"
-
-- name: "right at end moves to parent"
-  code: "(a b c)"
-  selection: "c"
-  actions: right
-  new_selection: "(a b c)"
-
-- name: "left at start moves to parent"
-  code: "(a b c)"
-  selection: "a"
-  actions: left
-  new_selection: "(a b c)"
-
-- name: "right at top level with next expression"
-  code: "(a b) (c d)"
-  selection: "(a b)"
+- name: "complex mixed structure - right enters deeply"
+  code: "(foo «[1 {:a 2}]» (bar baz))"
   actions: [right, right, right, right]
-  new_selection: "(c d)"
+  expected: "2"
 
-- name: "next at top level between expressions"
-  code: "(a b) (c d)"
-  selection: "(a b)"
-  actions: next
-  new_selection: "(c d)"
+# ── §13. String literals ────────────────────────────────────────────────────
 
-# String literals
 - name: "treat string as atomic with next - stops at boundary"
-  code: '(println "hello world")'
-  selection: '"hello world"'
+  code: '(println «"hello world"»)'
   actions: next
-  new_selection: '"hello world"'
+  expected: '"hello world"'
 
 - name: "navigate to string with next"
-  code: '(println "hello world")'
-  selection: "println"
+  code: '(«println» "hello world")'
   actions: next
-  new_selection: '"hello world"'
+  expected: '"hello world"'
 
 - name: "right from string exits to parent expression"
-  code: '(println "hello world")'
-  selection: '"hello world"'
+  code: '(println «"hello world"»)'
   actions: right
-  new_selection: '(println "hello world")'
+  expected: '(println "hello world")'
 
-# Keyword navigation
+# ── §14. Keyword navigation ─────────────────────────────────────────────────
+
 - name: "navigate keywords with next"
-  code: "(:name :age :email)"
-  selection: ":name"
+  code: "(«:name» :age :email)"
   actions: [next, next]
-  new_selection: ":email"
+  expected: ":email"
 
 - name: "navigate keywords with right"
-  code: "(:name :age :email)"
-  selection: ":name"
+  code: "(«:name» :age :email)"
   actions: [right, right]
-  new_selection: ":email"
+  expected: ":email"
 
 - name: "right exits at end of keywords"
-  code: "(:name :age :email)"
-  selection: ":email"
+  code: "(:name :age «:email»)"
   actions: right
-  new_selection: "(:name :age :email)"
+  expected: "(:name :age :email)"
 
-# Function definitions - NEXT vs RIGHT
+# ── §15. Function definitions ───────────────────────────────────────────────
+
 - name: "navigate defn with next"
-  code: "(defn foo [x] (+ x 1))"
-  selection: "(defn foo [x] (+ x 1))"
+  code: "«(defn foo [x] (+ x 1))»"
   actions: [in, next, next, next]
-  new_selection: "(+ x 1)"
+  expected: "(+ x 1)"
 
 - name: "navigate defn with right"
-  code: "(defn foo [x] (+ x 1))"
-  selection: "(defn foo [x] (+ x 1))"
+  code: "«(defn foo [x] (+ x 1))»"
   actions: [right, right, right, right]
-  new_selection: "x"
+  expected: "x"
 
 - name: "next treats arg vector as unit"
-  code: "(defn foo [x y] (+ x y))"
-  selection: "foo"
+  code: "(defn «foo» [x y] (+ x y))"
   actions: next
-  new_selection: "[x y]"
+  expected: "[x y]"
 
 - name: "right enters arg vector"
-  code: "(defn foo [x y] (+ x y))"
-  selection: "[x y]"
+  code: "(defn foo «[x y]» (+ x y))"
   actions: right
-  new_selection: "x"
+  expected: "x"
 
 - name: "navigate into function body with next"
-  code: "(defn foo [x] (+ x (* 2 3)))"
-  selection: "[x]"
+  code: "(defn foo «[x]» (+ x (* 2 3)))"
   actions: next
-  new_selection: "(+ x (* 2 3))"
+  expected: "(+ x (* 2 3))"
 
 - name: "navigate to nested expr in body - next stops"
-  code: "(defn foo [x] (+ x (* 2 3)))"
-  selection: "(+ x (* 2 3))"
+  code: "(defn foo [x] «(+ x (* 2 3))»)"
   actions: [in, next, next]
-  new_selection: "(* 2 3)"
+  expected: "(* 2 3)"
 
 - name: "navigate to nested expr in body - right continues"
-  code: "(defn foo [x] (+ x (* 2 3)))"
-  selection: "(+ x (* 2 3))"
+  code: "(defn foo [x] «(+ x (* 2 3))»)"
   actions: [right, right, right]
-  new_selection: "(* 2 3)"
+  expected: "(* 2 3)"
 
-# Let bindings - NEXT vs RIGHT
+# ── §16. Let bindings ───────────────────────────────────────────────────────
+
 - name: "navigate to let binding vector with next"
-  code: "(let [x 1 y 2] (+ x y))"
-  selection: "(let [x 1 y 2] (+ x y))"
+  code: "«(let [x 1 y 2] (+ x y))»"
   actions: [in, next]
-  new_selection: "[x 1 y 2]"
+  expected: "[x 1 y 2]"
 
 - name: "navigate to let binding vector with right"
-  code: "(let [x 1 y 2] (+ x y))"
-  selection: "(let [x 1 y 2] (+ x y))"
+  code: "«(let [x 1 y 2] (+ x y))»"
   actions: [right, right]
-  new_selection: "[x 1 y 2]"
+  expected: "[x 1 y 2]"
 
 - name: "navigate within let bindings with next"
-  code: "(let [x 1 y 2] (+ x y))"
-  selection: "[x 1 y 2]"
+  code: "(let «[x 1 y 2]» (+ x y))"
   actions: [in, next, next, next]
-  new_selection: "2"
+  expected: "2"
 
 - name: "next within bindings stops at end"
-  code: "(let [x 1 y 2] (+ x y))"
-  selection: "2"
+  code: "(let [x 1 y «2»] (+ x y))"
   actions: next
-  new_selection: "2"
+  expected: "2"
 
 - name: "right exits bindings to body"
-  code: "(let [x 1 y 2] (+ x y))"
-  selection: "2"
+  code: "(let [x 1 y «2»] (+ x y))"
   actions: right
-  new_selection: "[x 1 y 2]"
+  expected: "[x 1 y 2]"
 
 - name: "navigate to let body with next"
-  code: "(let [x 1 y 2] (+ x y))"
-  selection: "[x 1 y 2]"
+  code: "(let «[x 1 y 2]» (+ x y))"
   actions: next
-  new_selection: "(+ x y)"
+  expected: "(+ x y)"
 
 - name: "navigate to let body with right"
-  code: "(let [x 1 y 2] (+ x y))"
-  selection: "[x 1 y 2]"
-  cursor_char: "["
+  code: "(let «[x 1 y 2]» (+ x y))"
   actions: [right, right, right, right, right, right]
-  new_selection: "(+ x y)"
+  expected: "(+ x y)"
 
-# Function calls with multiple arguments
+# ── §17. Function calls with multiple arguments ─────────────────────────────
+
 - name: "navigate function with many args - next"
-  code: "(foo a b c d e)"
-  selection: "(foo a b c d e)"
+  code: "«(foo a b c d e)»"
   actions: [in, next, next, next]
-  new_selection: "c"
+  expected: "c"
 
 - name: "navigate function with many args - right"
-  code: "(foo a b c d e)"
-  selection: "(foo a b c d e)"
+  code: "«(foo a b c d e)»"
   actions: [right, right, right, right]
-  new_selection: "c"
+  expected: "c"
 
 - name: "right exits at end of args"
-  code: "(foo a b c d e)"
-  selection: "e"
+  code: "(foo a b c d «e»)"
   actions: right
-  new_selection: "(foo a b c d e)"
+  expected: "(foo a b c d e)"
 
-# Anonymous functions
+# ── §18. Anonymous functions ────────────────────────────────────────────────
+
 - name: "navigate to anonymous function with next"
-  code: "(map #(* % 2) [1 2 3])"
-  selection: "(map #(* % 2) [1 2 3])"
+  code: "«(map #(* % 2) [1 2 3])»"
   actions: [in, next]
-  new_selection: "#(* % 2)"
+  expected: "#(* % 2)"
 
 - name: "navigate to anonymous function with right"
-  code: "(map #(* % 2) [1 2 3])"
-  selection: "(map #(* % 2) [1 2 3])"
+  code: "«(map #(* % 2) [1 2 3])»"
   actions: [right, right]
-  new_selection: "#(* % 2)"
+  expected: "#(* % 2)"
 
 - name: "treat anonymous function as atomic with next"
-  code: "(map #(* % 2) [1 2 3])"
-  selection: "#(* % 2)"
+  code: "(map «#(* % 2)» [1 2 3])"
   actions: next
-  new_selection: "[1 2 3]"
+  expected: "[1 2 3]"
 
 - name: "right from anonymous function to vector"
-  code: "(map #(* % 2) [1 2 3])"
-  selection: "#(* % 2)"
+  code: "(map «#(* % 2)» [1 2 3])"
   actions: right
-  new_selection: "[1 2 3]"
+  expected: "[1 2 3]"
 
-# Threading macros - NEXT vs RIGHT
+# ── §19. Threading macros ───────────────────────────────────────────────────
+
 - name: "navigate thread-first with next"
-  code: "(-> x (foo) (bar))"
-  selection: "(-> x (foo) (bar))"
+  code: "«(-> x (foo) (bar))»"
   actions: [in, next, next, next]
-  new_selection: "(bar)"
+  expected: "(bar)"
 
 - name: "navigate thread-first with right"
-  code: "(-> x (foo) (bar))"
-  selection: "(-> x (foo) (bar))"
+  code: "«(-> x (foo) (bar))»"
   actions: [right, right, right, right, right]
-  new_selection: "(foo)"
+  expected: "(foo)"
 
 - name: "next treats threaded forms as units"
-  code: "(-> x (foo 1) (bar 2))"
-  selection: "(foo 1)"
+  code: "(-> x «(foo 1)» (bar 2))"
   actions: next
-  new_selection: "(bar 2)"
+  expected: "(bar 2)"
 
 - name: "right enters threaded forms"
-  code: "(-> x (foo 1) (bar 2))"
-  selection: "(foo 1)"
+  code: "(-> x «(foo 1)» (bar 2))"
   actions: right
-  new_selection: "foo"
+  expected: "foo"
 
 - name: "navigate thread-last with next"
-  code: "(->> data (map inc) (filter even?))"
-  selection: "data"
+  code: "(->> «data» (map inc) (filter even?))"
   actions: [next, next]
-  new_selection: "(filter even?)"
+  expected: "(filter even?)"
 
 - name: "right spatial through thread-last"
-  code: "(->> data (map inc) (filter even?))"
-  selection: "data"
+  code: "(->> «data» (map inc) (filter even?))"
   actions: [right, right, right, right, right]
-  new_selection: "(filter even?)"
+  expected: "(filter even?)"
 
-# Conditional forms
+# ── §20. Conditional forms ──────────────────────────────────────────────────
+
 - name: "navigate if with next"
-  code: "(if test then else)"
-  selection: "if"
+  code: "(if «test» then else)"
   actions: [next, next, next]
-  new_selection: "else"
+  expected: "else"
 
 - name: "navigate if with right"
-  code: "(if test then else)"
-  selection: "if"
+  code: "(if «test» then else)"
   actions: [right, right, right]
-  new_selection: "else"
+  expected: "else"
 
 - name: "navigate cond with next"
-  code: "(cond (> x 0) :pos (< x 0) :neg)"
-  selection: "(> x 0)"
+  code: "(cond «(> x 0)» :pos (< x 0) :neg)"
   actions: [next, next, next]
-  new_selection: ":neg"
+  expected: ":neg"
 
 - name: "navigate cond with right - enters first condition"
-  code: "(cond (> x 0) :pos (< x 0) :neg)"
-  selection: "(> x 0)"
+  code: "(cond «(> x 0)» :pos (< x 0) :neg)"
   actions: [right, right, right, right, right, right]
-  new_selection: "(< x 0)"
+  expected: "(< x 0)"
 
-# Quoted forms
+# ── §21. Quoted forms ───────────────────────────────────────────────────────
+
 - name: "treat quoted list as atomic with next"
-  code: "(def x '(a b c))"
-  selection: "'(a b c)"
+  code: "(def x «'(a b c)»)"
   actions: next
-  new_selection: "'(a b c)"
+  expected: "'(a b c)"
 
 - name: "right from quoted list exits to parent"
-  code: "(def x '(a b c))"
-  selection: "'(a b c)"
+  code: "(def x «'(a b c)»)"
   actions: right
-  new_selection: "(def x '(a b c))"
+  expected: "(def x '(a b c))"
 
-# Destructuring
+# ── §22. Destructuring ──────────────────────────────────────────────────────
+
 - name: "navigate destructuring in let"
-  code: "(let [{:keys [a b]} m] (+ a b))"
-  selection: "let"
-  actions: [next]
-  new_selection: "[{:keys [a b]} m]"
+  code: "(let «{:keys [a b]}» m (+ a b))"
+  actions: next
+  expected: "[{:keys [a b]} m]"
 
 - name: "navigate into destructuring map"
   code: "(let [{:keys [a b]} m] (+ a b))"
-  selection: "[{:keys [a b]} m]"
-  actions: [right, right]
-  new_selection: ":keys"
+  actions: [in, next, right, right]
+  expected: ":keys"
 
-# Multi-arity functions
+- name: "navigate into destructuring vector"
+  code: "(let [{:keys «[a b]»} m] (+ a b))"
+  actions: right
+  expected: "a"
+
+# ── §23. Multi-arity functions ──────────────────────────────────────────────
+
 - name: "navigate multi-arity function"
-  code: "(defn foo ([x] x) ([x y] (+ x y)))"
-  selection: "defn"
+  code: "(defn «foo» ([x] x) ([x y] (+ x y)))"
   actions: [next, next, next]
-  new_selection: "([x y] (+ x y))"
+  expected: "([x y] (+ x y))"
 
 - name: "next treats arity clauses as units"
-  code: "(defn foo ([x] x) ([x y] (+ x y)))"
-  selection: "([x] x)"
+  code: "(defn foo «([x] x)» ([x y] (+ x y)))"
   actions: next
-  new_selection: "([x y] (+ x y))"
+  expected: "([x y] (+ x y))"
 
 - name: "right enters arity clause"
-  code: "(defn foo ([x] x) ([x y] (+ x y)))"
-  selection: "([x] x)"
+  code: "(defn foo «([x] x)» ([x y] (+ x y)))"
   actions: right
-  new_selection: "[x]"
+  expected: "[x]"
 
-# Edge cases and boundaries
-- name: "down at last line stays"
-  code: "foo\nbar"
-  selection: "bar"
-  actions: down
-  new_selection: "bar"
+# ── §24. Edge cases and boundaries ──────────────────────────────────────────
 
-- name: "up at first line stays"
-  code: "foo\nbar"
-  selection: "foo"
-  actions: up
-  new_selection: "foo"
+- name: "next at end of list stays"
+  code: "(a b «c»)"
+  actions: next
+  expected: "c"
 
-- name: "right at outermost level stays"
-  code: "(foo)"
-  selection: "(foo)"
+- name: "previous at start of list stays"
+  code: "(«a» b c)"
+  actions: prev
+  expected: "a"
+
+- name: "right at end moves to parent"
+  code: "(a b «c»)"
   actions: right
-  new_selection: "foo"
+  expected: "(a b c)"
 
-- name: "left at outermost level stays"
-  code: "(foo)"
-  selection: "(foo)"
+- name: "left at start moves to parent"
+  code: "(«a» b c)"
   actions: left
-  new_selection: "foo"
+  expected: "(a b c)"
+
+- name: "right at top level with next expression"
+  code: "«(a b)» (c d)"
+  actions: [right, right, right, right]
+  expected: "(c d)"
+
+- name: "next at top level between expressions"
+  code: "«(a b)» (c d)"
+  actions: next
+  expected: "(c d)"
+
+- name: "right at outermost level enters"
+  code: "«(foo)»"
+  actions: right
+  expected: "foo"
+
+- name: "left at outermost level enters"
+  code: "«(foo)»"
+  actions: left
+  expected: "foo"
 
 - name: "out at outermost level stays"
-  code: "(foo)"
-  selection: "(foo)"
+  code: "«(foo)»"
   actions: out
-  new_selection: "(foo)"
-
-# Comments and whitespace
-- name: "skip over comment with down"
-  code: "foo ; comment\nbar"
-  selection: "foo"
-  actions: down
-  new_selection: "bar"
+  expected: "(foo)"
 
 - name: "skip whitespace with next"
-  code: "(a    b)"
-  selection: "a"
+  code: "(«a»    b)"
   actions: next
-  new_selection: "b"
+  expected: "b"
 
-# Top-level navigation
+# ── §25. Top-level navigation ───────────────────────────────────────────────
+
 - name: "navigate between top-level forms with next"
-  code: "(foo) (bar) (baz)"
-  selection: "(foo)"
+  code: "«(foo)» (bar) (baz)"
   actions: [next, next]
-  new_selection: "(baz)"
+  expected: "(baz)"
 
 - name: "navigate between top-level forms with right"
-  code: "(foo) (bar) (baz)"
-  selection: "(foo)"
+  code: "«(foo)» (bar) (baz)"
   actions: [right, right, right, right, right]
-  new_selection: "(bar)"
+  expected: "(bar)"
 
-- name: "down between multi-line top-level forms"
-  code: "(foo)\n\n(bar)\n\n(baz)"
-  selection: "(foo)"
-  actions: [down, down]
-  new_selection: "(baz)"
+# ── §26. Complex mixed structures ───────────────────────────────────────────
 
-# Mixed structures final examples
 - name: "complex mixed structure - next stays level"
-  code: "(foo [1 {:a 2}] (bar baz))"
-  selection: "[1 {:a 2}]"
+  code: "(foo «[1 {:a 2}]» (bar baz))"
   actions: next
-  new_selection: "(bar baz)"
-
-- name: "complex mixed structure - right enters deeply"
-  code: "(foo [1 {:a 2}] (bar baz))"
-  selection: "[1 {:a 2}]"
-  actions: [right, right, right, right]
-  new_selection: "2"
+  expected: "(bar baz)"
 
 - name: "full spatial left-to-right traversal"
-  code: "((a) (b c) (d (e f)))"
-  selection: "((a) (b c) (d (e f)))"
+  code: "«((a) (b c) (d (e f)))»"
   actions: [right, right, right, right, right, right, right, right, right, right, right, right, right, right, right]
-  new_selection: "((a) (b c) (d (e f)))"
+  expected: "((a) (b c) (d (e f)))"
+
+# ── §27. first / last sibling ───────────────────────────────────────────────
+
+- name: "first from middle sibling"
+  code: "(a «b» c d)"
+  actions: first
+  expected: "a"
+
+- name: "last from middle sibling"
+  code: "(a «b» c d)"
+  actions: last
+  expected: "d"
+
+- name: "first already at first"
+  code: "(«a» b c)"
+  actions: first
+  expected: "a"
+
+- name: "last already at last"
+  code: "(a b «c»)"
+  actions: last
+  expected: "c"
+
+- name: "first inside nested compound"
+  code: "[x «y» z]"
+  actions: first
+  expected: "x"
+
+- name: "last inside nested compound"
+  code: "[x «y» z]"
+  actions: last
+  expected: "z"
+
+- name: "first in map"
+  code: "{«:b» 2 :a 1}"
+  actions: first
+  expected: ":a"
+
+- name: "last in map"
+  code: "{:a 1 «:b» 2}"
+  actions: last
+  expected: "2"
+
+# ── §28. Range cursors: extendNext / extendPrev / shrink ────────────────────
+
+- name: "extendNext creates range from node"
+  code: "(«a» b c)"
+  actions: extendNext
+  expected: "a"  # range [a, b]; primary focus stays on anchor
+
+- name: "extendPrev creates range from node"
+  code: "(a «b» c)"
+  actions: extendPrev
+  expected: "b"  # range [a, b]; primary focus stays on anchor
+
+- name: "extendNext twice extends range to three"
+  code: "(«a» b c d)"
+  actions: [extendNext, extendNext]
+  expected: "a"  # range [a, b, c]
+
+- name: "extendNext at last sibling is no-op"
+  code: "(a b «c»)"
+  actions: extendNext
+  expected: "c"
+
+- name: "extendPrev at first sibling is no-op"
+  code: "(«a» b c)"
+  actions: extendPrev
+  expected: "a"
+
+- name: "shrink reduces range by one"
+  code: "(a «b» c)"
+  actions: [extendNext, shrink]
+  expected: "b"  # range collapsed back to single node
+
+- name: "shrink on node cursor is no-op"
+  code: "(«a» b c)"
+  actions: shrink
+  expected: "a"
+
+- name: "extendNext then shrink round-trip"
+  code: "(«a» b c)"
+  actions: [extendNext, extendNext, shrink]
+  expected: "a"  # range [a, b] after shrinking from [a, b, c]
+
+- name: "extendPrev then shrink round-trip"
+  code: "(a b «c»)"
+  actions: [extendPrev, shrink]
+  expected: "c"  # collapsed back to single node
+
+# ── §29. Hole navigation basics ─────────────────────────────────────────────
+#
+# Holes are written as ($ name :type) in source.
+# They are atomic leaves — next/prev treat them as single units.
+
+- name: "navigate to hole with next"
+  code: "(osc «freq» ($ amp :number))"
+  actions: next
+  expected: "($ amp :number)"
+
+- name: "navigate from hole with next"
+  code: "(osc freq «($ amp :number)»)"
+  actions: next
+  expected: "($ amp :number)"
+
+- name: "navigate from hole with prev"
+  code: "(osc freq «($ amp :number)»)"
+  actions: prev
+  expected: "freq"
+
+- name: "right from hole exits to parent"
+  code: "(osc «($ amp :number)»)"
+  actions: right
+  expected: "(osc ($ amp :number))"
+
+- name: "left from hole exits to parent"
+  code: "(osc «($ freq :number)» amp)"
+  actions: left
+  expected: "(osc ($ freq :number) amp)"
+
+- name: "hole is atomic - in is no-op"
+  code: "(osc «($ freq :number)»)"
+  actions: in
+  expected: "($ freq :number)"
+
+- name: "multiple holes - next steps between siblings"
+  code: "(slow «($ rate :number)» ($ body :expr))"
+  actions: next
+  expected: "($ body :expr)"
+
+# ── §30. nextHole / prevHole ────────────────────────────────────────────────
+
+- name: "nextHole from before first hole"
+  code: "(osc «freq» ($ amp :number))"
+  actions: nextHole
+  expected: "($ amp :number)"
+
+- name: "nextHole from on a hole goes to next"
+  code: "(osc ($ freq :number) «amp» ($ body :expr))"
+  actions: nextHole
+  expected: "($ body :expr)"
+
+- name: "nextHole at last hole is no-op"
+  code: "(osc ($ freq :number) «($ amp :number)»)"
+  actions: nextHole
+  expected: "($ amp :number)"
+
+- name: "prevHole from after hole"
+  code: "(osc ($ freq :number) «amp»)"
+  actions: prevHole
+  expected: "($ freq :number)"
+
+- name: "prevHole from on a hole goes to previous"
+  code: "(osc «($ amp :number)» ($ body :expr))"
+  actions: prevHole
+  expected: "($ amp :number)"
+
+- name: "prevHole at first hole is no-op"
+  code: "(osc «($ freq :number)» amp)"
+  actions: prevHole
+  expected: "($ freq :number)"
+
+- name: "nextHole crosses top-level forms"
+  code: "(osc «foo»)\n(synth ($ freq :number))"
+  actions: nextHole
+  expected: "($ freq :number)"
+
+- name: "prevHole crosses top-level forms"
+  code: "(osc ($ freq :number))\n(synth «bar»)"
+  actions: prevHole
+  expected: "($ freq :number)"
+
+- name: "nextHole with no holes is no-op"
+  code: "(osc «freq» amp)"
+  actions: nextHole
+  expected: "freq"
+
+- name: "nextHole skips into nested structure"
+  code: "(defn foo [x] (+ x «(* 2 ($ rate :number))»))"
+  actions: nextHole
+  expected: "($ rate :number)"
+
+# ── §31. intoMeta navigation ────────────────────────────────────────────────
+#
+# Metas are attached to host nodes. intoMeta descends into the payload
+# of the outermost Meta. Sigils (' ` ~ ~@ @) and #_ have no payload → no-op.
+
+- name: "intoMeta on metadata prefix enters payload"
+  code: "(^{:a 1} «foo» bar)"
+  actions: intoMeta
+  expected: "{:a 1}"
+
+- name: "out from Meta payload returns to host"
+  code: "(^«{:a 1}» foo bar)"
+  actions: out
+  expected: "foo"
+
+- name: "intoMeta on quote is no-op - no payload"
+  code: "(def x '«foo»)"
+  actions: intoMeta
+  expected: "foo"
+
+- name: "intoMeta on syntax-quote is no-op"
+  code: "(def x `«foo»)"
+  actions: intoMeta
+  expected: "foo"
+
+- name: "intoMeta on ignore is no-op"
+  code: "(def x #_«foo» bar)"
+  actions: intoMeta
+  expected: "foo"
+
+- name: "intoMeta on node with no Metas is no-op"
+  code: "(«foo» bar)"
+  actions: intoMeta
+  expected: "foo"
+
+- name: "intoMeta enters outermost of stacked Metas"
+  code: "(debug '^«foo»)"
+  actions: intoMeta
+  expected: "foo"
+
+- name: "intoMeta round-trip through metadata"
+  code: "(^{:a 1} «foo» bar)"
+  actions: [intoMeta, out]
+  expected: "foo"
+
+# ── §32. Error-node degradation ─────────────────────────────────────────────
+#
+# Navigation onto or past error nodes is allowed. Mutations inside error
+# regions are rejected (mutation tests cover this). Navigation should degrade
+# gracefully — skip to the next stable parse boundary.
+
+- name: "navigate to broken region with next"
+  code: "(foo bar (baz"
+  actions: [in, next, next]
+  expected: "(baz"
+
+- name: "navigate out of broken region with out"
+  code: "(foo bar («baz»"
+  actions: out
+  expected: "(foo bar (baz"
+
+- name: "right through broken region"
+  code: "(«foo» bar (baz"
+  actions: [right, right, right]
+  expected: "(baz"
+
+- name: "stable sibling unaffected by error"
+  code: "(«foo» bar (baz"
+  actions: next
+  expected: "bar"
+
+- name: "next skips past error to stable sibling"
+  code: "(foo «bar» (baz"
+  actions: next
+  expected: "(baz"

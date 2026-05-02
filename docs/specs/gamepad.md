@@ -183,11 +183,11 @@ const structuralLayer: Layer = {
   name: 'structural',
   when: state => state.editor.mode === 'structural',
   gestures: {
-    [keyOf(tap('Up'))]:               'nav.up',
-    [keyOf(held('Up'))]:              'nav.up',
+    [keyOf(tap('Up'))]:               'nav.out',
+    [keyOf(held('Up'))]:              'nav.out',
     [keyOf(tap('A'))]:                { tap: 'mode.insert', hold: 'edit.raise' },
     [keyOf(chord(['LB', 'A']))]:      'menu.openBefore',
-    [keyOf(flick('LeftStick','up'))]: 'nav.up',
+    [keyOf(flick('LeftStick','up'))]: 'nav.out',
   },
   axes: { right: 'manual-control' },
   leaders: { [keyOf(tap('Y'))]: 'after-Y' },
@@ -390,9 +390,9 @@ const baseLayer: Layer = {
   name: 'modal-base',
   when: () => true,
   gestures: {
-    [keyOf(tap('Up'))]:    'nav.up',
-    [keyOf(held('Up'))]:   'nav.up',
-    [keyOf(tap('Down'))]:  'nav.down',
+    [keyOf(tap('Up'))]:    'nav.out',
+    [keyOf(held('Up'))]:   'nav.out',
+    [keyOf(tap('Down'))]:  'nav.in',
     [keyOf(tap('A'))]:     'edit.fillHole',          // gamepad-only stays in structural mode
     [keyOf(tap('Start'))]: 'eval.now',
     // Note: mode.insert is intentionally NOT bound in any default gamepad paradigm
@@ -483,8 +483,8 @@ const chordLayer: Layer = {
     [keyOf(chord(['LT', 'A']))]:     'edit.raise',
     [keyOf(chord(['LT', 'RT']))]:    'edit.splice',
     [keyOf(chord(['RB', 'Start']))]: 'mode.toggle',
-    [keyOf(tap('Up'))]:              'nav.up',
-    [keyOf(tap('Down'))]:            'nav.down',
+    [keyOf(tap('Up'))]:              'nav.out',
+    [keyOf(tap('Down'))]:            'nav.in',
     // ...
   },
 }

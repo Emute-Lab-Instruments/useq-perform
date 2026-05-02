@@ -326,7 +326,7 @@ Each verb is an action over `(Tree, CursorSet, MenuItem) → (Tree, CursorSet)`.
 - `hand: 'left'` (LB held): inserts as the immediately-prior sibling (sibling-before).
 - `hand: 'right'` (RB held): inserts as the immediately-next sibling (sibling-after).
 - `hand: 'both'` (both held): no-op flash (reserved).
-- **Document-root special case.** When the apply target is the document root (typically: empty document, or cursor escaped to root via `nav.up`), Insert appends the picked item as the **last top-level child**, regardless of handedness. This is the canonical first-interaction path for an empty-document gamepad session. `Wrap`, `wrapWith`, and `Call` against the document root remain no-op-flash (no enclosing form exists to operate on); see §5.1.2 for `Replace` at root.
+- **Document-root special case.** When the apply target is the document root (typically: empty document, or cursor escaped to root via `nav.out`), Insert appends the picked item as the **last top-level child**, regardless of handedness. This is the canonical first-interaction path for an empty-document gamepad session. `Wrap`, `wrapWith`, and `Call` against the document root remain no-op-flash (no enclosing form exists to operate on); see §5.1.2 for `Replace` at root.
 - Cursor moves to the inserted node, or to its first hole if any (§5.4).
 - For function items: the inserted form is `(head ($ hole-1 :type) ($ hole-2 :type) …)`, where hole names and types come from `signature` (§8 hole convention).
 - For symbol items: the inserted node is the bare symbol.

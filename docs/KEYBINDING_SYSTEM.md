@@ -13,7 +13,7 @@ The current system has three disconnected layers:
 
 1. **Runtime keymaps** (`keymaps.ts`) — hardcoded CodeMirror `{key, run}` arrays
 2. **Display tab** (`KeybindingsTab.tsx`) — a manually duplicated binding list that is already stale (e.g. `Alt-h` is labelled "Toggle Help Panel" in the tab but actually fires `expandCurrentProbeContext` at runtime)
-3. **Gamepad combos** (`gamepadIntents.ts`) — a completely separate combo registry with its own action vocabulary
+3. **Gamepad combos** (`src/lib/gamepad/`) — three-stage pipeline with paradigm-defined layer bindings sharing the unified action vocabulary
 
 No bindings are user-customisable. The `keymaps` field in the settings schema is a dead placeholder. OS awareness is limited to swapping modifier display names (Ctrl↔Cmd, Alt↔Option). Keyboard layout differences are ignored entirely.
 
