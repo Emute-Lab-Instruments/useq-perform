@@ -100,6 +100,15 @@ export interface WasmSettings {
 }
 
 /**
+ * Structural-editing settings. Round-2 introduces a new functional-core
+ * driven structural editor; the legacy path stays the default. Flip
+ * `useNewCore` to true to exercise the new adapter.
+ */
+export interface StructureSettings {
+  useNewCore: boolean;
+}
+
+/**
  * How evaluation results are displayed in the editor.
  *
  * - `"console"`          — results go to the console panel only (legacy default)
@@ -172,13 +181,14 @@ export interface AppSettings {
   wasm: WasmSettings;
   console: ConsoleSettings;
   evalResults: EvalResultsSettings;
+  structure: StructureSettings;
   keybindings?: KeybindingsSettings;
   keymaps?: Record<string, string>;
   [key: string]: unknown;
 }
 
 export type AppSettingsPatch = Partial<
-  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "keybindings">
+  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "structure" | "keybindings">
 > & {
   editor?: Partial<EditorSettings>;
   storage?: Partial<StorageSettings>;
@@ -188,6 +198,7 @@ export type AppSettingsPatch = Partial<
   wasm?: Partial<WasmSettings>;
   console?: Partial<ConsoleSettings>;
   evalResults?: Partial<EvalResultsSettings>;
+  structure?: Partial<StructureSettings>;
   keybindings?: Partial<KeybindingsSettings>;
   keymaps?: Record<string, string>;
 };
@@ -319,6 +330,9 @@ export const defaultUserSettings: AppSettings = {
     maxChars: 200,
     showTimestamp: false,
   },
+  structure: {
+    useNewCore: false,
+  },
   keybindings: {
     profile: "default",
     layout: "qwerty-us",
@@ -339,6 +353,7 @@ export function createDefaultUserSettings(): AppSettings {
     wasm: { ...defaultUserSettings.wasm },
     console: { ...defaultUserSettings.console },
     evalResults: { ...defaultUserSettings.evalResults },
+    structure: { ...defaultUserSettings.structure },
     keybindings: defaultUserSettings.keybindings
       ? { ...defaultUserSettings.keybindings }
       : undefined,

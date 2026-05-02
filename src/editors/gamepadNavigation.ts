@@ -31,6 +31,20 @@ import {
 } from "../lib/manualControlState.ts";
 
 import * as ch from "../contracts/gamepadChannels";
+import { getAppSettings } from "../runtime/appSettingsRepository.ts";
+
+/**
+ * When the new structural-editing core is enabled (round 2 flag), structural
+ * navigation is driven by `bindStructuralGamepadBridge` instead. The legacy
+ * structural path here short-circuits to prevent double-driving.
+ */
+function isNewStructCoreActive(): boolean {
+  try {
+    return getAppSettings().structure?.useNewCore === true;
+  } catch {
+    return false;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Typed navigation fn casts (upstream modules are @ts-nocheck)
@@ -254,6 +268,9 @@ export function bindGamepadNavigation(
 
   const unsubNavigate = ch.navigate.subscribe(({ direction }) => {
     if (!view) return;
+    // When the new structural core is active and we're in structural mode,
+    // hand off to the new bridge (it subscribes to the same channel).
+    if (navigationMode === "structural" && isNewStructCoreActive()) return;
     const navigationMap: Record<string, NavigationFn> =
       navigationMode === "spatial"
         ? {
@@ -277,6 +294,7 @@ export function bindGamepadNavigation(
 
   const unsubEnter = ch.enter.subscribe(() => {
     if (!view) return;
+    if (navigationMode === "structural" && isNewStructCoreActive()) return;
     if (typedPerformNavigation(view, typedNavigateIn)) {
       hideEditorCursor(view);
     }
@@ -284,6 +302,7 @@ export function bindGamepadNavigation(
 
   const unsubBack = ch.back.subscribe(() => {
     if (!view) return;
+    if (navigationMode === "structural" && isNewStructCoreActive()) return;
     if (typedPerformNavigation(view, typedNavigateOut)) {
       hideEditorCursor(view);
     }

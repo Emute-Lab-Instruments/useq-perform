@@ -61,6 +61,7 @@ export function normalizeUserSettings(value: unknown): AppSettings {
   const ui = isRecord(raw.ui) ? raw.ui : {};
   const runtime = isRecord(raw.runtime) ? raw.runtime : {};
   const wasm = isRecord(raw.wasm) ? raw.wasm : {};
+  const structure = isRecord(raw.structure) ? raw.structure : {};
   const keybindings = isRecord(raw.keybindings) ? raw.keybindings : undefined;
   const keymaps = isRecord(raw.keymaps) ? raw.keymaps : undefined;
 
@@ -142,6 +143,14 @@ export function normalizeUserSettings(value: unknown): AppSettings {
       ...wasm,
       enabled: wasm.enabled == null ? defaults.wasm.enabled : wasm.enabled !== false,
     },
+    structure: {
+      ...defaults.structure,
+      ...structure,
+      useNewCore:
+        structure.useNewCore == null
+          ? defaults.structure.useNewCore
+          : structure.useNewCore === true,
+    },
     keybindings: keybindings
       ? normalizeKeybindingsSettings(keybindings, defaults.keybindings)
       : defaults.keybindings,
@@ -186,6 +195,9 @@ export function mergeUserSettings(
     wasm: isRecord(patch.wasm)
       ? { ...normalizedBase.wasm, ...patch.wasm }
       : normalizedBase.wasm,
+    structure: isRecord(patch.structure)
+      ? { ...normalizedBase.structure, ...patch.structure }
+      : normalizedBase.structure,
     keybindings: isRecord(patch.keybindings)
       ? { ...(normalizedBase.keybindings || {}), ...patch.keybindings }
       : normalizedBase.keybindings,

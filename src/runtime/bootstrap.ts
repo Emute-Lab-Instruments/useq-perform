@@ -18,6 +18,7 @@ import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepo
 import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
 import { createGamepadPipeline } from '../lib/gamepad/index.ts';
 import { bindGamepadNavigation } from '../editors/gamepadNavigation.ts';
+import { bindStructuralGamepadBridge } from '../editors/extensions/structure/adapter/extension.ts';
 import { bindGamepadMenuBridge } from '../ui/adapters/gamepadMenuBridge.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
 import { mountModal } from '../ui/adapters/modal.tsx';
@@ -165,6 +166,23 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
   const gamepadPipeline = createGamepadPipeline({ editor });
   const navHandle = bindGamepadNavigation(editor);
   const menuHandle = bindGamepadMenuBridge({ view: editor });
+  // Round-2 structural-editing core. Bridge is always installed; it gates
+  // its own behaviour on the `structure.useNewCore` flag.
+  const structHandle = bindStructuralGamepadBridge(
+    editor,
+    () => getAppSettings().structure?.useNewCore === true,
+  );
+  // Expose dispatcher on window for console-driven testing during round 2.
+  if (typeof globalThis !== 'undefined') {
+    void import('../editors/extensions/structure/adapter/dispatcher.ts')
+      .then((mod) => {
+        (globalThis as unknown as Record<string, unknown>).__structDispatch =
+          (action: string) => mod.dispatchAction(editor, action);
+      })
+      .catch(() => {
+        // Best-effort exposure; failure is non-fatal for app boot.
+      });
+  }
   gamepadPipeline.start();
 
   return {

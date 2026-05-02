@@ -16,6 +16,7 @@ import { history } from '@codemirror/commands';
 import { baseKeymap, mainEditorKeymap } from "./keymaps.ts";
 import { themeCompartment, fontSizeCompartment } from "../lib/editorCompartments.ts";
 import {structureExtensions} from "./extensions/structure.ts";
+import { structuralCoreExtensions } from "./extensions/structure/adapter/extension.ts";
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
 import { probeExtensions } from "./extensions/probes.ts";
@@ -119,6 +120,15 @@ export const guideEditorExtensions = [
 // S-Expression tracking extensions
 
 
+// New structural core (round 2). Mounted regardless of the feature flag —
+// the state field is cheap and the cursor halos only paint when the user
+// has actually moved the cursor with the new dispatcher (initial cursor sits
+// on the document root and is intentionally skipped by the decoration).
+// The gamepad bridge is what's gated on `settings.structure.useNewCore`.
+const newStructuralCore = _initSettings.structure?.useNewCore === true
+  ? structuralCoreExtensions()
+  : [];
+
 // Base extensions combine core functionality
 export const baseExtensions = [
   baseKeymap,
@@ -126,6 +136,7 @@ export const baseExtensions = [
   ...themeExtensions,
   ...default_clojure_extensions,
   ...structureExtensions,
+  ...newStructuralCore,
   ...probeExtensions,
   evalHighlightField,
   inlineResultsField,
