@@ -2,17 +2,26 @@
  * Action dispatcher for the structural-editing core.
  *
  * `dispatchAction(view, name)` runs a named structural op against the editor.
- * Round-2 supported actions:
+ * Currently supported actions (names follow structural-editing.md exactly):
  *
- *   Nav:    nav.up, nav.down, nav.next, nav.prev, nav.first, nav.last
+ *   Nav:    nav.out, nav.in (§5.1.1, §5.1.2)
+ *           nav.next, nav.prev, nav.first, nav.last (§5.1.3, §5.1.4)
+ *           nav.extendNext, nav.extendPrev, nav.shrink (§5.1.5, §5.1.6)
+ *           nav.nextHole, nav.prevHole (§5.1.8)
  *   Mutate: edit.slurpForward, edit.slurpBackward,
  *           edit.barfForward, edit.barfBackward,
- *           edit.raise, edit.transposeNext
+ *           edit.raise, edit.splice,
+ *           edit.transposeNext, edit.transposePrev,
+ *           edit.encloseList/Vector/Map/Set
+ *
+ * Reserved for future spatial implementations (not yet wired):
+ *   nav.up, nav.down (§5.1.10 — vertical line-based; needs source positions)
+ *   nav.left, nav.right (§5.1.9 — Euler-tour horizontal)
+ *   nav.intoMeta (§5.1.7)
  *
  * Other names log a warning and no-op. The mutation factory is created lazily
  * the first time we see a mutating action, with an id generator local to the
- * adapter — round 1's core treats ids as opaque, so any monotonic source is
- * fine.
+ * adapter — the core treats ids as opaque, so any monotonic source is fine.
  */
 
 import type { EditorView } from "@codemirror/view";
@@ -41,8 +50,8 @@ type Op = (s: State) => import("../core/index.ts").OpResult;
 
 function actionOp(name: string): Op | null {
   switch (name) {
-    case "nav.up":        return nav.up;
-    case "nav.down":      return nav.down;
+    case "nav.out":       return nav.out;
+    case "nav.in":        return nav.in;
     case "nav.next":      return nav.next;
     case "nav.prev":      return nav.prev;
     case "nav.first":     return nav.first;
@@ -83,8 +92,8 @@ export function dispatchAction(view: EditorView, name: string): boolean {
 
 /** Names the dispatcher knows about. Useful for the gamepad bridge. */
 export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
-  "nav.up",
-  "nav.down",
+  "nav.out",
+  "nav.in",
   "nav.next",
   "nav.prev",
   "nav.first",

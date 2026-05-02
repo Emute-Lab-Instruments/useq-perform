@@ -47,7 +47,7 @@ export const setStructState = StateEffect.define<{
 
 function initialFromDoc(es: EditorState): StructFieldValue {
   const { tree, idIndex } = treeFromLezer(es);
-  // Default cursor: the document root. The user's first nav.down/next will
+  // Default cursor: the document root. The user's first nav.in/next will
   // dive into a top-level form. This is intentional — round 2 punts on
   // mapping the CodeMirror selection to a structural cursor at boot.
   const cs = singleCursor(nodeCursor(tree.root.id));

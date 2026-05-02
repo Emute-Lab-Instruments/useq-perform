@@ -6,6 +6,14 @@
  * `noOps` entry is emitted with a `NoOpReason`. The state object's tree is
  * always identical (===) to the input on every nav op.
  *
+ * Naming follows the spec exactly:
+ *   - `nav.out` (§5.1.1) — to parent
+ *   - `nav.in`  (§5.1.2) — to first child
+ *   - `nav.up` / `nav.down`   (§5.1.10) — vertical spatial (line-based; lives
+ *     in the adapter, not here, since it needs source positions)
+ *   - `nav.left` / `nav.right` (§5.1.9)  — horizontal Euler-tour spatial
+ *     (pure; will live here once implemented)
+ *
  * §5.1.7 (`nav.intoMeta`) is intentionally unimplemented — out of scope for
  * the probe per the task brief.
  */
@@ -55,7 +63,7 @@ function applyPointwise(state: State, op: CursorOp): OpResult {
 
 // ─── Single-cursor primitives ──────────────────────────────────────────────
 
-function navUpOne(c: Cursor, tree: Tree): ReturnType<CursorOp> {
+function navOutOne(c: Cursor, tree: Tree): ReturnType<CursorOp> {
   const targetId = focusedId(c);
   const parent = parentOf(tree.root, targetId);
   if (parent === null) {
@@ -64,13 +72,13 @@ function navUpOne(c: Cursor, tree: Tree): ReturnType<CursorOp> {
     return { reason: "at-document-root" };
   }
   if (parent.kind === "document") {
-    // We're at a top-level form; moving up reaches the document root.
+    // We're at a top-level form; nav.out reaches the document root.
     return { cursor: nodeCursor(parent.id) };
   }
   return { cursor: nodeCursor(parent.id) };
 }
 
-function navDownOne(c: Cursor, tree: Tree): ReturnType<CursorOp> {
+function navInOne(c: Cursor, tree: Tree): ReturnType<CursorOp> {
   const target = focusedNode(c, tree);
   if (target === null) return { reason: "at-document-root" };
   const kids = childrenOf(target);
@@ -248,8 +256,10 @@ function navHoleStep(
 // ─── Public ops ────────────────────────────────────────────────────────────
 
 export const nav = {
-  up: (s: State): OpResult => applyPointwise(s, navUpOne),
-  down: (s: State): OpResult => applyPointwise(s, navDownOne),
+  /** §5.1.1 — to parent. */
+  out: (s: State): OpResult => applyPointwise(s, navOutOne),
+  /** §5.1.2 — to first child. */
+  in: (s: State): OpResult => applyPointwise(s, navInOne),
   next: (s: State): OpResult =>
     applyPointwise(s, (c, t) => siblingShift(c, t, 1)),
   prev: (s: State): OpResult =>

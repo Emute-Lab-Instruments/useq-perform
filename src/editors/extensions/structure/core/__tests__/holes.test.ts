@@ -202,12 +202,12 @@ describe("holes are atomic for structural ops (§2.9.2)", () => {
 });
 
 describe("holes are not addressable by navigation (§2.9.2)", () => {
-  it("nav.down on a hole returns on-leaf", () => {
+  it("nav.in on a hole returns on-leaf", () => {
     __resetIdCounterForTests();
     const ids = defaultIdGen();
     const h = hole("freq", "number", ids);
     const root = doc(ids, h);
-    const r = nav.down(stateOn(root, h.id));
+    const r = nav.in(stateOn(root, h.id));
     expect(r.noOps[0]?.reason).toBe("on-leaf");
   });
 });

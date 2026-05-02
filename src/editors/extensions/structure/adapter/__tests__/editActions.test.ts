@@ -28,15 +28,15 @@ function createView(doc: string): EditorView {
   });
 }
 
-/** Navigate to the first top-level form (nav.down from document root). */
+/** Navigate to the first top-level form (nav.in from document root). */
 function navToFirstForm(view: EditorView): void {
-  dispatchAction(view, "nav.down");
+  dispatchAction(view, "nav.in");
 }
 
-/** Navigate into a compound (nav.down twice from doc root). */
+/** Navigate into a compound (nav.in twice from doc root). */
 function navIntoFirstForm(view: EditorView): void {
-  dispatchAction(view, "nav.down");
-  dispatchAction(view, "nav.down");
+  dispatchAction(view, "nav.in");
+  dispatchAction(view, "nav.in");
 }
 
 describe("edit.* actions wired through functional core", () => {
@@ -95,9 +95,9 @@ describe("edit.* actions wired through functional core", () => {
     it("edit.raise replaces the parent with the focused node", () => {
       const view = createView("(a (b c))");
       navToFirstForm(view); // cursor on (a (b c))
-      dispatchAction(view, "nav.down"); // cursor on "a"
+      dispatchAction(view, "nav.in"); // cursor on "a"
       dispatchAction(view, "nav.next"); // cursor on (b c)
-      dispatchAction(view, "nav.down"); // cursor on "b"
+      dispatchAction(view, "nav.in"); // cursor on "b"
       const ok = dispatchAction(view, "edit.raise");
       expect(ok).toBe(true);
       // (b c) replaced by b, so document becomes (a b)
@@ -112,7 +112,7 @@ describe("edit.* actions wired through functional core", () => {
     it("edit.splice dissolves the focused compound, keeping children", () => {
       const view = createView("(a (b c))");
       navToFirstForm(view); // cursor on (a (b c))
-      dispatchAction(view, "nav.down"); // cursor on "a"
+      dispatchAction(view, "nav.in"); // cursor on "a"
       dispatchAction(view, "nav.next"); // cursor on (b c)
       const ok = dispatchAction(view, "edit.splice");
       expect(ok).toBe(true);

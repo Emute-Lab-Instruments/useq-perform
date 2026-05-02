@@ -42,7 +42,7 @@ describe("structural-editing adapter (round 2 smoke)", () => {
     view.destroy();
   });
 
-  it("nav.down moves the cursor into the first top-level form", () => {
+  it("nav.in moves the cursor into the first top-level form", () => {
     const view = createView("(a 1 2)");
     const before = view.state.field(structField);
     expect(before.state.cursors.primary.kind).toBe("node");
@@ -50,7 +50,7 @@ describe("structural-editing adapter (round 2 smoke)", () => {
       before.state.tree.root.id,
     );
 
-    const ok = dispatchAction(view, "nav.down");
+    const ok = dispatchAction(view, "nav.in");
     expect(ok).toBe(true);
     const after = view.state.field(structField);
     // Now sitting on the (a 1 2) list.
@@ -62,8 +62,8 @@ describe("structural-editing adapter (round 2 smoke)", () => {
 
   it("nav.next advances cursor across siblings", () => {
     const view = createView("(a 1 2)");
-    dispatchAction(view, "nav.down"); // into list
-    dispatchAction(view, "nav.down"); // onto symbol "a"
+    dispatchAction(view, "nav.in"); // into list
+    dispatchAction(view, "nav.in"); // onto symbol "a"
     const after1 = view.state.field(structField);
     const list = after1.state.tree.root.children[0]!;
     expect(list.kind).toBe("list");
@@ -85,7 +85,7 @@ describe("structural-editing adapter (round 2 smoke)", () => {
   it("edit.slurpForward mutates the doc text", () => {
     const view = createView("(a) b");
     // Place cursor on (a)
-    dispatchAction(view, "nav.down"); // into doc → first child is list (a)
+    dispatchAction(view, "nav.in"); // into doc → first child is list (a)
     const before = view.state.field(structField);
     expect(before.state.tree.root.children.length).toBe(2);
 

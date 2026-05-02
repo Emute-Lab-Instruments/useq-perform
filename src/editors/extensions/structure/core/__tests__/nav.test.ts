@@ -24,56 +24,56 @@ describe("nav", () => {
     ids = defaultIdGen();
   });
 
-  // ─── nav.up / nav.down ──────────────────────────────────────────────────
+  // ─── nav.out / nav.in ──────────────────────────────────────────────────
 
-  it("nav.up moves cursor to parent compound", () => {
+  it("nav.out moves cursor to parent compound", () => {
     // (foo bar)  cursor on bar -> cursor on the list
     const foo = sym("foo", ids);
     const bar = sym("bar", ids);
     const lst = list(ids, foo, bar);
     const root = doc(ids, lst);
-    const r = nav.up(stateOn(root, bar.id));
+    const r = nav.out(stateOn(root, bar.id));
     expect(r.state.cursors.primary).toEqual(nodeCursor(lst.id));
     expect(r.noOps).toEqual([]);
     // Tree unchanged.
     expect(r.state.tree.root).toBe(root);
   });
 
-  it("nav.up at top-level form moves to document root", () => {
+  it("nav.out at top-level form moves to document root", () => {
     const a = sym("a", ids);
     const root = doc(ids, a);
-    const r = nav.up(stateOn(root, a.id));
+    const r = nav.out(stateOn(root, a.id));
     expect(r.state.cursors.primary).toEqual(nodeCursor(root.id));
   });
 
-  it("nav.up at document root is a no-op flash", () => {
+  it("nav.out at document root is a no-op flash", () => {
     const a = sym("a", ids);
     const root = doc(ids, a);
-    const r = nav.up(stateOn(root, root.id));
+    const r = nav.out(stateOn(root, root.id));
     expect(r.noOps).toEqual([{ cursor: nodeCursor(root.id), reason: "at-document-root" }]);
     expect(r.state.cursors.primary).toEqual(nodeCursor(root.id));
   });
 
-  it("nav.down on a compound goes to first child", () => {
+  it("nav.in on a compound goes to first child", () => {
     const a = sym("a", ids);
     const b = sym("b", ids);
     const lst = list(ids, a, b);
     const root = doc(ids, lst);
-    const r = nav.down(stateOn(root, lst.id));
+    const r = nav.in(stateOn(root, lst.id));
     expect(r.state.cursors.primary).toEqual(nodeCursor(a.id));
   });
 
-  it("nav.down on a leaf is a no-op (on-leaf)", () => {
+  it("nav.in on a leaf is a no-op (on-leaf)", () => {
     const a = sym("a", ids);
     const root = doc(ids, a);
-    const r = nav.down(stateOn(root, a.id));
+    const r = nav.in(stateOn(root, a.id));
     expect(r.noOps[0]?.reason).toBe("on-leaf");
   });
 
-  it("nav.down on an empty compound is a no-op (empty-compound)", () => {
+  it("nav.in on an empty compound is a no-op (empty-compound)", () => {
     const empty = list(ids);
     const root = doc(ids, empty);
-    const r = nav.down(stateOn(root, empty.id));
+    const r = nav.in(stateOn(root, empty.id));
     expect(r.noOps[0]?.reason).toBe("empty-compound");
   });
 

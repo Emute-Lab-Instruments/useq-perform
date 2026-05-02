@@ -66,12 +66,12 @@ export function bindStructuralGamepadBridge(
 
   const unsubEnter = ch.enter.subscribe(() => {
     if (!guard()) return;
-    dispatchAction(view, "nav.down");
+    dispatchAction(view, "nav.in");
   });
 
   const unsubBack = ch.back.subscribe(() => {
     if (!guard()) return;
-    dispatchAction(view, "nav.up");
+    dispatchAction(view, "nav.out");
   });
 
   return {
