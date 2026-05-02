@@ -106,6 +106,8 @@ export interface WasmSettings {
  */
 export interface StructureSettings {
   useNewCore: boolean;
+  /** Whether wrappers and holes are folded to inline pills by default. */
+  foldAllWrappers: boolean;
 }
 
 /**
@@ -332,6 +334,7 @@ export const defaultUserSettings: AppSettings = {
   },
   structure: {
     useNewCore: false,
+    foldAllWrappers: true,
   },
   keybindings: {
     profile: "default",

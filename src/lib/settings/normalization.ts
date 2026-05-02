@@ -150,6 +150,10 @@ export function normalizeUserSettings(value: unknown): AppSettings {
         structure.useNewCore == null
           ? defaults.structure.useNewCore
           : structure.useNewCore === true,
+      foldAllWrappers:
+        structure.foldAllWrappers == null
+          ? defaults.structure.foldAllWrappers
+          : structure.foldAllWrappers !== false,
     },
     keybindings: keybindings
       ? normalizeKeybindingsSettings(keybindings, defaults.keybindings)

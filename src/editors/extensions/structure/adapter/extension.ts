@@ -18,10 +18,17 @@ import {
   structuralCursorDecorations,
   structuralCursorTheme,
 } from "./decorations.ts";
+import { holePillDecorations, holePillTheme } from "./holeWidget.ts";
 import { structField } from "./stateField.ts";
 
 export function structuralCoreExtensions(): Extension[] {
-  return [structField, structuralCursorDecorations, structuralCursorTheme];
+  return [
+    structField,
+    structuralCursorDecorations,
+    structuralCursorTheme,
+    holePillDecorations,
+    holePillTheme,
+  ];
 }
 
 export { dispatchAction } from "./dispatcher.ts";
