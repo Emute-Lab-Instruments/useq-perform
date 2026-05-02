@@ -40,6 +40,8 @@ import {
   contractCurrentProbeContext,
 } from "../../editors/extensions/probes.ts";
 import {
+  cursorLineEnd,
+  cursorLineStart,
   deleteCharBackward,
   undo,
   redo,
@@ -94,6 +96,10 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "edit.undo": undo,
   "edit.redo": redo,
   "edit.backspaceNormal": deleteCharBackward,
+
+  // -- Navigation (cursor movement) ------------------------------------------
+  "nav.home": cursorLineStart,
+  "nav.end": cursorLineEnd,
 
   // -- Structure (functional-core via adapter dispatcher) --------------------
   "edit.slurpFwd": structHandler("edit.slurpForward"),
