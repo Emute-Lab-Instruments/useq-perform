@@ -18,10 +18,10 @@ export interface MainToolbarProps {
 }
 
 const CONNECTION_LABELS: Record<ConnectionState, string> = {
-  none: 'Disconnected',
-  wasm: 'Browser-local',
+  none: 'Offline',
+  wasm: 'WASM',
   hardware: 'Hardware',
-  both: 'Hardware + WASM',
+  both: 'HW+WASM',
 };
 
 const CONNECTION_CLASSES: Record<ConnectionState, string> = {
@@ -71,6 +71,12 @@ export function MainToolbar(props: MainToolbarProps) {
         >
           <Cable />
         </button>
+        <span
+          class={`runtime-mode-label ${CONNECTION_CLASSES[props.connectionState]}`}
+          aria-live="polite"
+        >
+          {runtimeStatus()}
+        </span>
         <button
           class="toolbar-button"
           title="Graph"

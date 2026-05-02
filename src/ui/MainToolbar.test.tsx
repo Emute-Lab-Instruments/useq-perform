@@ -32,7 +32,7 @@ describe("MainToolbar", () => {
   it("renders all toolbar buttons", () => {
     const { container } = render(() => <MainToolbar {...defaultProps({ connectionState: "wasm" })} />);
 
-    expect(container.querySelector(`[title="Connect (Browser-local)"]`)).toBeTruthy();
+    expect(container.querySelector(`[title="Connect (WASM)"]`)).toBeTruthy();
     expect(container.querySelector(`[title="Graph"]`)).toBeTruthy();
     expect(container.querySelector(`[title="Load Code"]`)).toBeTruthy();
     expect(container.querySelector(`[title="Save Code"]`)).toBeTruthy();
@@ -45,7 +45,7 @@ describe("MainToolbar", () => {
   it("renders connect button with transport-wasm class for wasm connection", () => {
     const { container } = render(() => <MainToolbar {...defaultProps({ connectionState: "wasm" })} />);
 
-    const connectBtn = container.querySelector(`[title="Connect (Browser-local)"]`);
+    const connectBtn = container.querySelector(`[title="Connect (WASM)"]`);
     expect(connectBtn?.classList.contains("transport-wasm")).toBe(true);
   });
 
@@ -59,7 +59,7 @@ describe("MainToolbar", () => {
   it("renders connect button with transport-none class when disconnected", () => {
     const { container } = render(() => <MainToolbar {...defaultProps({ connectionState: "none" })} />);
 
-    const connectBtn = container.querySelector(`[title="Connect (Disconnected)"]`);
+    const connectBtn = container.querySelector(`[title="Connect (Offline)"]`);
     expect(connectBtn?.classList.contains("transport-none")).toBe(true);
   });
 
@@ -74,9 +74,27 @@ describe("MainToolbar", () => {
     const onConnect = vi.fn();
     const { container } = render(() => <MainToolbar {...defaultProps({ onConnect })} />);
 
-    const connectBtn = container.querySelector(`[title="Connect (Disconnected)"]`) as HTMLButtonElement;
+    const connectBtn = container.querySelector(`[title="Connect (Offline)"]`) as HTMLButtonElement;
     connectBtn.click();
     expect(onConnect).toHaveBeenCalledOnce();
+  });
+
+  it("renders visible runtime-mode label with correct text for each state", () => {
+    const states: Array<{ state: MainToolbarProps["connectionState"]; label: string; cssClass: string }> = [
+      { state: "none", label: "Offline", cssClass: "transport-none" },
+      { state: "wasm", label: "WASM", cssClass: "transport-wasm" },
+      { state: "hardware", label: "Hardware", cssClass: "transport-hardware" },
+      { state: "both", label: "HW+WASM", cssClass: "transport-both" },
+    ];
+
+    for (const { state, label, cssClass } of states) {
+      const { container } = render(() => <MainToolbar {...defaultProps({ connectionState: state })} />);
+      const labelEl = container.querySelector(".runtime-mode-label");
+      expect(labelEl).toBeTruthy();
+      expect(labelEl?.textContent).toBe(label);
+      expect(labelEl?.classList.contains(cssClass)).toBe(true);
+      cleanup();
+    }
   });
 
   it("calls onToggleGraph when graph button is clicked", () => {
