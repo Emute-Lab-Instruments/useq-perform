@@ -7,8 +7,6 @@
 
 import type { EditorView } from "@codemirror/view";
 
-import { sendTouSEQ } from "../../../transport/json-protocol.ts";
-import { isConnectedToModule } from "../../../transport/connector.ts";
 import {
   isExpressionVisualised,
   toggleVisualisation,
@@ -20,6 +18,42 @@ import { dbg } from "../../../lib/debug.ts";
 import { getAppSettings } from "../../../runtime/appSettingsRepository.ts";
 
 import { findNodeAt } from "./new-structure.ts";
+
+// ---------------------------------------------------------------------------
+// EvalIntegrationConfig — dependency injection interface
+// ---------------------------------------------------------------------------
+
+/**
+ * Configuration for the eval-integration system.
+ * Each field is a specific capability — no app-wide singletons imported directly.
+ */
+export interface EvalIntegrationConfig {
+  /** Send code to the uSEQ module. Returns a promise that resolves when sent. */
+  sendCode: (code: string) => Promise<any>;
+  /** Check whether the module is currently connected. */
+  isConnected: () => boolean;
+}
+
+// Module-level config instance — set via `setEvalIntegrationConfig()` or
+// lazily initialised with `createDefaultEvalIntegrationConfig()` from the
+// wiring module (eval-integration-defaults.ts).
+let _config: EvalIntegrationConfig | null = null;
+
+/** Override the eval-integration config (e.g. for tests or Inspector). */
+export function setEvalIntegrationConfig(config: EvalIntegrationConfig): void {
+  _config = config;
+}
+
+/** Get the active config. Throws if not yet initialised. */
+function getConfig(): EvalIntegrationConfig {
+  if (!_config) {
+    throw new Error(
+      "EvalIntegrationConfig not initialised. " +
+        "Call setEvalIntegrationConfig(createDefaultEvalIntegrationConfig()) during bootstrap.",
+    );
+  }
+  return _config;
+}
 
 // Re-export everything from eval-state.ts for backward compatibility.
 // Existing code that imports from eval-integration.ts continues to work.
@@ -211,12 +245,13 @@ export function detectAndTrackExpressionEvaluation(view: EditorView): void {
 
 /** Send a neutral value for the given expression type and clear its active state. */
 export function handleClearExpression(view: EditorView, exprType: string): void {
-  if (!isConnectedToModule || !isConnectedToModule()) return;
+  const config = getConfig();
+  if (!config.isConnected()) return;
 
   const type = exprType[0];
   const code = type === "a" ? `(${exprType} 0.5)` : `(${exprType} 0)`;
   try {
-    sendTouSEQ(code);
+    config.sendCode(code);
   } catch (_e) {
     // ignore
   }
@@ -234,12 +269,13 @@ export function handlePlayExpression(view: EditorView, exprType: string): void {
   if (!definition) return;
 
   const expressionText = definition.expressionText.trim();
-  const connected = isConnectedToModule && isConnectedToModule();
+  const config = getConfig();
+  const connected = config.isConnected();
 
   if (connected) {
     try {
       dbg(`Play: sending ${exprType}`);
-      sendTouSEQ(expressionText);
+      config.sendCode(expressionText);
     } catch (e) {
       dbg(`Play: failed to send ${exprType}: ${e}`);
     }
