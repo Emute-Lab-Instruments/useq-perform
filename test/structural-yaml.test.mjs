@@ -55,49 +55,18 @@ const KNOWN_FAILURES = new Set([
   'intoMeta enters outermost of stacked Metas',
   'intoMeta round-trip through metadata',
 
-  // ── (a-tree) tree-construction gaps ────────────────────────────────────
-  // Multi-form documents and nested sibling traversal: the cursor seeding
-  // or path resolution drops a level. May resolve when nav.left/right land.
-  'next within list - stays at same level',
-  'deep in/out round-trip',
-  'out from deep nesting',
-  'exit list with out',
-  'out explicitly exits nested list',
-  'out exits multiple levels explicitly',
-  'deeply nested - next stays at each level',
-  'next within nested list - stops at boundary',
-  'navigate to string with next',
-  'navigate defn with next',
-  'navigate defn with right',
-  'next treats arg vector as unit',
-  'navigate to nested expr in body - next stops',
-  'navigate to nested expr in body - right continues',
-  'navigate to let binding vector with next',
-  'navigate to let binding vector with right',
-  'navigate function with many args - next',
-  'navigate function with many args - right',
-  'navigate to anonymous function with next',
-  'navigate to anonymous function with right',
-  'navigate thread-first with next',
-  'navigate thread-first with right',
-  'right spatial through thread-last',
-  'navigate if with right',
-  'navigate destructuring in let',
-  'navigate multi-arity function',
-  'skip whitespace with next',
-  'first in map',
-  'hole is atomic - in is no-op',
-  'nextHole from before first hole',
-  'nextHole from on a hole goes to next',
-  'prevHole from after hole',
-  'nextHole crosses top-level forms',
-  'prevHole crosses top-level forms',
-  'nextHole skips into nested structure',
-  'navigate out of broken region with out',
-  'right through broken region',
-  'stable sibling unaffected by error',
-  'extendPrev creates range from node',
-  'extendPrev then shrink round-trip',
+  // ── (a-tree) tree-construction / nav-rule gaps ─────────────────────────
+  // Failing rows in this group are real bugs in the new core, not legacy
+  // gaps. Each line is a candidate for a fix under useq-perform-gii8.32.
+  'deep in/out round-trip',                  // [in, next, in, in] from doc — nesting traversal off-by-one
+  'out from deep nesting',                   // [out, out] should reach grandparent — nav.out chain
+  'out explicitly exits nested list',        // out from inner head → inner list (precondition?)
+  'out exits multiple levels explicitly',    // [out, out] from inner head → outer list
+  'navigate if with right',                  // (if «test» then else) [right×3] expected else
+  'navigate destructuring in let',           // [in, next, right, right] expected :keys
+  'first in map',                            // {«:b» 2 :a 1} first → :a (wrong sibling order? map ordering)
+  'navigate out of broken region with out',  // unparseable region — error-node degradation §7.1
+  'right through broken region',             // unparseable region — see above
 
   // ── (b) needs new core mutator ─────────────────────────────────────────
   // delete: no remove-from-parent op in core/mutate.ts
