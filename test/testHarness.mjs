@@ -1,95 +1,161 @@
 /**
- * Test Harness for Structural Editing Extensions
- * 
- * This module loads YAML test files and runs them against the structural editing functions
+ * Test Harness for the new Structural Editing core (Phase 2.12).
+ *
+ * Drives the YAML acceptance suite through the new dispatcher in
+ * `src/editors/extensions/structure/adapter/dispatcher.ts`. All actions are
+ * routed through `dispatchAction(view, "nav.*"/"edit.*")` against a real
+ * headless `EditorView` (jsdom is wired in `test/setup.mjs`).
+ *
+ * Supports two YAML formats:
+ *
+ * Legacy (editing_tests.yaml):
+ *   code, selection, new_selection, new_code, actions, steps, selection_cursor, cursor_char
+ *
+ * Guillemet (navigation_tests.yaml):
+ *   code with «» marking initial selection, expected, actions
+ *
+ * Public API kept compatible with `test/structural-yaml.test.mjs`:
+ *   runTestCase, loadTestFile, runTestFile, runAllTests
+ *
+ * Many YAML actions don't have a 1:1 dispatcher equivalent yet (cut/paste/
+ * type/insert/move/duplicate/delete are legacy-only — the new core uses
+ * radial-menu pickers and structural mutators instead). Those tests will fail;
+ * the failure list is categorised in `structural-yaml.test.mjs` KNOWN_FAILURES.
  */
 
 import fs from 'fs';
 import yaml from 'js-yaml';
-import { EditorSelection } from '@codemirror/state';
-import {
-  createStructuralEditor,
-  selectByText,
-  findNodeAt,
-  navigateNext,
-  navigatePrev,
-  navigateIn,
-  navigateOut,
-  navigateLeft,
-  navigateRight,
-  navigateUp,
-  navigateDown,
-  deleteExpression,
-  cutExpression,
-  pasteExpression,
-  pasteExpressionBefore,
-  slurpRight,
-  slurpLeft,
-  barfRight,
-  barfLeft,
-  moveNext,
-  movePrevious,
-  moveRight,
-  moveLeft,
-  moveUp,
-  moveDown,
-  typeText,
-  insertSymbol,
-  insertSymbolBefore,
-  insertFunctionCall,
-  insertFunctionCallBefore,
-  wrapInFunction,
-  duplicateExpression,
-  clearClipboard,
-  navigateRightChar
-} from '../src/editors/extensions/structure/new-structure.ts';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+// @ts-expect-error — clojure-mode has no type declarations
+import { default_extensions } from '@nextjournal/clojure-mode';
 
-/**
- * Action function mapping
- */
-const actionMap = {
-  // Navigation
-  'next': navigateNext,
-  'previous': navigatePrev,
-  'in': navigateIn,
-  'out': navigateOut,
-  'left': navigateLeft,
-  'right': navigateRight,
-  'up': navigateUp,
-  'down': navigateDown,
-  'right_char': navigateRightChar,
-  
-  // Editing
-  'delete': deleteExpression,
-  'cut': cutExpression,
-  'paste': pasteExpression,
-  'paste_before': pasteExpressionBefore,
-  'duplicate': duplicateExpression,
-  
-  // Slurp/Barf
-  'slurp_right': slurpRight,
-  'slurp_left': slurpLeft,
-  'barf_right': barfRight,
-  'barf_left': barfLeft,
-  
-  // Move operations
-  'move_next': moveNext,
-  'move_previous': movePrevious,
-  'move_right': moveRight,
-  'move_left': moveLeft,
-  'move_up': moveUp,
-  'move_down': moveDown
+// We deliberately do NOT import the bundled `structuralCoreExtensions()` here.
+// That bundle pulls in `holeWidget.ts` → `appSettingsRepository.ts` →
+// `perfTrace.ts`, which references `import.meta.env.DEV` (a Vite construct)
+// and crashes outside Vite's loader. The harness only needs the state field
+// for cursor reads; visual decorations don't affect dispatcher behaviour.
+import { dispatchAction } from '../src/editors/extensions/structure/adapter/dispatcher.ts';
+import { structField, setStructState } from '../src/editors/extensions/structure/adapter/stateField.ts';
+import { pathsFromCursorSet } from '../src/editors/extensions/structure/adapter/cursorPath.ts';
+
+// ── Action mapping ──────────────────────────────────────────────────────────
+//
+// Every entry maps a YAML action name to a dispatcher action string. Actions
+// the new core does not (yet) implement are recorded as "legacy" — they are
+// intentional gaps and the corresponding tests will fail until either:
+//   (a) a new dispatcher action lands (e.g. nav.left/right are in flight),
+//   (b) the new core grows the corresponding mutator, or
+//   (c) the legacy DSL is dropped from the YAML (cut/paste/type/insert have
+//       no equivalent in the radial-menu UX).
+
+/** Actions with a working 1:1 dispatcher equivalent. */
+const ACTION_MAP = {
+  // sibling navigation (§5.1.3, §5.1.4)
+  'next': 'nav.next',
+  'previous': 'nav.prev',
+  'prev': 'nav.prev',
+  'first': 'nav.first',
+  'last': 'nav.last',
+
+  // structural level (§5.1.1, §5.1.2) — names follow spec's in/out
+  'in': 'nav.in',
+  'out': 'nav.out',
+
+  // horizontal spatial (§5.1.9) — Euler-tour, may be in flight in another
+  // subagent. If the dispatcher doesn't know these yet, dispatchAction()
+  // returns false and the test fails with no state change.
+  'right': 'nav.right',
+  'left': 'nav.left',
+
+  // vertical spatial (§5.1.10) — pending implementation. Same treatment.
+  'up': 'nav.up',
+  'down': 'nav.down',
+
+  // range cursor (§5.1.5, §5.1.6)
+  'extendNext': 'nav.extendNext',
+  'extendPrev': 'nav.extendPrev',
+  'shrink': 'nav.shrink',
+
+  // hole stepping (§5.1.8)
+  'nextHole': 'nav.nextHole',
+  'prevHole': 'nav.prevHole',
+  'previousHole': 'nav.prevHole',
+
+  // mutators
+  'slurp_right': 'edit.slurpForward',
+  'slurp_left': 'edit.slurpBackward',
+  'barf_right': 'edit.barfForward',
+  'barf_left': 'edit.barfBackward',
 };
 
 /**
- * Get the currently selected text from state
- * @param {EditorState} state - Editor state
- * @returns {string} - Selected text
+ * Actions with no dispatcher equivalent. Tests using these will fail; the
+ * KNOWN_FAILURES list in structural-yaml.test.mjs explains why each fails.
+ *
+ * Categorisation:
+ *   (a) needs a new dispatcher action (e.g. nav.intoMeta — exists in spec
+ *       §5.1.7 but dispatcher doesn't expose it yet)
+ *   (b) needs a new core mutator (e.g. delete/cut/paste/duplicate — would
+ *       require a clipboard concept and a `remove` op in core/mutate.ts)
+ *   (c) legacy DSL doesn't map to the new model (insert+symbol+apply* — the
+ *       new UX uses radial-menu pickers; type:"x" — there is no character-
+ *       level typing in structural mode; right_char — explicit caret-level
+ *       motion isn't part of the structural vocabulary)
  */
-function getSelectedText(state) {
-  const selection = state.selection.main;
-  return state.sliceDoc(selection.from, selection.to);
+const LEGACY_ACTIONS = new Set([
+  'delete',
+  'cut',
+  'paste',
+  'paste_before',
+  'duplicate',
+  'move_next',
+  'move_previous',
+  'move_right',
+  'move_left',
+  'move_up',
+  'move_down',
+  'right_char',
+  'intoMeta',
+]);
+
+// Tokens that show up inside compound `actions:` arrays as part of an
+// `insert <category> <symbol> <applyType>` legacy construct. We swallow them
+// without warning so the harness output stays useful.
+const LEGACY_COMPOUND_TOKENS = new Set([
+  'insert',
+  'maths',
+  'apply',
+  'apply_pre',
+  'apply_call',
+  'apply_call_pre',
+  'apply_wrap',
+  'type',
+  'let',
+  'navigate_to_hole',
+  'navigate_to_binding',
+  'navigate_to_usage',
+]);
+
+// ── Guillemet («») parsing ──────────────────────────────────────────────────
+
+const GUIIL_OPEN = '«';
+const GUIIL_CLOSE = '»';
+
+function parseGuillemets(raw) {
+  if (typeof raw !== 'string') return null;
+  const openIdx = raw.indexOf(GUIIL_OPEN);
+  if (openIdx === -1) return null;
+  const closeIdx = raw.indexOf(GUIIL_CLOSE, openIdx);
+  if (closeIdx === -1) return null;
+  return {
+    code: raw.slice(0, openIdx) + raw.slice(openIdx + 1, closeIdx) + raw.slice(closeIdx + 1),
+    selectionText: raw.slice(openIdx + 1, closeIdx),
+    selectionStart: openIdx,
+  };
 }
+
+// ── Legacy helpers (kept for editing_tests.yaml) ────────────────────────────
 
 function parseCaretString(value) {
   if (typeof value !== 'string') {
@@ -144,270 +210,309 @@ function findNthOccurrence(haystack, needle, occurrence) {
   return -1;
 }
 
-function getSelectionStart(state) {
-  const { from, to } = state.selection.main;
-  return Math.min(from, to);
+// ── EditorView setup ────────────────────────────────────────────────────────
+
+/**
+ * Build a fresh headless EditorView with the new structural-core extensions
+ * mounted on top of clojure-mode. jsdom is provided by test/setup.mjs.
+ */
+function createView(doc) {
+  return new EditorView({
+    parent: document.body,
+    state: EditorState.create({
+      doc,
+      // Only the state field is required — decorations are visual-only.
+      extensions: [...default_extensions, structField],
+    }),
+  });
+}
+
+// ── Selection seeding & extraction ──────────────────────────────────────────
+
+/**
+ * Find the addressable core node whose source range exactly matches [from, to].
+ *
+ * The document root ALSO has a range (0..docLength), so when the desired
+ * region is the entire doc, it can collide with a top-level form's range.
+ * We prefer non-document nodes when ranges tie (a guillemet selection on
+ * the only top-level form should land on the form, not the doc root).
+ *
+ * The tree-walk is the authoritative iteration order — we descend depth-first
+ * and return the smallest exact match, skipping the document root.
+ */
+function findNodeIdByRange(value, from, to) {
+  const tree = value.state.tree;
+  let bestId = null;
+  let bestSize = Infinity;
+
+  const visit = (node) => {
+    const range = value.idIndex.get(node.id);
+    if (range && node.kind !== 'document' && range.from === from && range.to === to) {
+      const size = range.to - range.from;
+      if (size < bestSize) {
+        bestSize = size;
+        bestId = node.id;
+      }
+    }
+    if (
+      node.kind === 'document' || node.kind === 'list' ||
+      node.kind === 'vector' || node.kind === 'map' || node.kind === 'set'
+    ) {
+      for (const child of node.children) visit(child);
+    }
+  };
+  visit(tree.root);
+
+  // Last-resort fallback: the document range itself (e.g. empty doc).
+  if (bestId === null) {
+    const rootRange = value.idIndex.get(tree.root.id);
+    if (rootRange && rootRange.from === from && rootRange.to === to) {
+      bestId = tree.root.id;
+    }
+  }
+  return bestId;
 }
 
 /**
- * Apply an action to the editor state
- * @param {EditorState} state - Current editor state
- * @param {string|Array} action - Action to apply (can be string or array for sequences)
- * @returns {EditorState} - New editor state
+ * Find the smallest non-document core node whose source range encloses
+ * [from, to]. Fallback when no exact match exists (e.g. selecting whitespace-
+ * padded text). Prefers the deepest enclosing node.
  */
-function applyAction(state, action) {
+function findEnclosingNodeId(value, from, to) {
+  const tree = value.state.tree;
+  let bestId = null;
+  let bestSize = Infinity;
+
+  const visit = (node) => {
+    const range = value.idIndex.get(node.id);
+    if (range && node.kind !== 'document' && range.from <= from && range.to >= to) {
+      const size = range.to - range.from;
+      if (size < bestSize) {
+        bestSize = size;
+        bestId = node.id;
+      }
+    }
+    if (
+      node.kind === 'document' || node.kind === 'list' ||
+      node.kind === 'vector' || node.kind === 'map' || node.kind === 'set'
+    ) {
+      for (const child of node.children) visit(child);
+    }
+  };
+  visit(tree.root);
+  return bestId;
+}
+
+/**
+ * Place the structural cursor on the node whose source range matches the
+ * given [from, to]. Falls back to enclosing node, then to the document root.
+ */
+function seedCursorAtRange(view, from, to) {
+  const value = view.state.field(structField);
+  let nodeId = findNodeIdByRange(value, from, to);
+  if (nodeId === null) {
+    nodeId = findEnclosingNodeId(value, from, to);
+  }
+  if (nodeId === null) {
+    nodeId = value.state.tree.root.id;
+  }
+  const newCursors = { primary: { kind: 'node', target: nodeId }, secondaries: [] };
+  const newState = { tree: value.state.tree, cursors: newCursors };
+  view.dispatch({
+    effects: setStructState.of({
+      state: newState,
+      idIndex: value.idIndex,
+      cursorPaths: pathsFromCursorSet(newCursors, newState.tree),
+    }),
+  });
+}
+
+/**
+ * Extract the textual content of the primary cursor's "focused" end.
+ *
+ * For a node cursor: the node's source range.
+ *
+ * For a range cursor: the anchor end's range. The YAML tests treat range
+ * cursors as still "focused" on their anchor (e.g. `extendNext` from `«a»`
+ * extends to `[a, b]` but `expected: "a"` because the focus stays on `a`).
+ * This matches the core's `focusedId` helper used by navigation ops.
+ */
+function getSelectedText(view) {
+  const value = view.state.field(structField);
+  const cursor = value.state.cursors.primary;
+  const docText = view.state.doc.toString();
+  if (cursor.kind === 'node') {
+    const range = value.idIndex.get(cursor.target);
+    if (!range) return '';
+    return docText.slice(range.from, range.to);
+  }
+  // Range cursor: read the anchor end's range, mirroring core/nav.ts
+  // `focusedId(c)` semantics.
+  const focusedId = cursor.anchor === 'start' ? cursor.start : cursor.end;
+  const range = value.idIndex.get(focusedId);
+  if (!range) return '';
+  return docText.slice(range.from, range.to);
+}
+
+/** Doc offset of the start of the primary cursor's focused end. */
+function getSelectionStart(view) {
+  const value = view.state.field(structField);
+  const cursor = value.state.cursors.primary;
+  const focusedId = cursor.kind === 'node'
+    ? cursor.target
+    : (cursor.anchor === 'start' ? cursor.start : cursor.end);
+  const range = value.idIndex.get(focusedId);
+  return range ? range.from : 0;
+}
+
+// ── Action application ──────────────────────────────────────────────────────
+
+/**
+ * Apply a single YAML action to the view. Returns nothing — the view mutates
+ * in place via dispatcher → applyOp → CodeMirror transactions.
+ *
+ * Compound actions (arrays) are flattened into a sequence of dispatches.
+ * Legacy compound constructs `[insert, <cat>, <sym>, <applyType>]` and
+ * `[type, <text>]` are skipped silently — see LEGACY_COMPOUND_TOKENS above.
+ */
+function applyAction(view, action) {
   if (Array.isArray(action)) {
-    // Handle action sequences by processing each action individually
-    let currentState = state;
-    
     for (let i = 0; i < action.length; i++) {
-      const currentAction = action[i];
-      
-      // Check for insert operation pattern: [insert, category, symbol, apply_type]
-      if (currentAction === 'insert' && i + 3 < action.length) {
-        const category = action[i + 1]; // e.g., 'maths'
-        const symbol = action[i + 2];   // e.g., '+'
-        const applyType = action[i + 3]; // e.g., 'apply', 'apply_call', etc.
-        
-        currentState = handleInsertOperation(currentState, category, symbol, applyType);
-        i += 3; // Skip the next 3 elements as they were part of the insert
+      const cur = action[i];
+
+      // Legacy `insert <category> <symbol> <applyType>`: skip 3 tokens.
+      if (cur === 'insert' && i + 3 < action.length) {
+        i += 3;
         continue;
       }
-      
-      // Check for type action pattern: type followed by text
-      if (currentAction === 'type' && i + 1 < action.length) {
-        const text = action[i + 1];
-        currentState = typeText(currentState, text);
-        i += 1; // Skip the next element as it was the text to type
+      // Legacy `type "..."`: skip 1 token.
+      if (cur === 'type' && i + 1 < action.length) {
+        i += 1;
         continue;
       }
-      
-      // Handle regular actions
-      currentState = applyAction(currentState, currentAction);
+
+      applyAction(view, cur);
     }
-    
-    return currentState;
+    return;
   }
-  
-  if (typeof action === 'string') {
-    // Handle special actions that might have parameters
-    if (action.startsWith('type:')) {
-      const text = action.substring(5);
-      return typeText(state, text);
-    }
-    
-    // Look up action in action map
-    const actionFunc = actionMap[action];
-    if (actionFunc) {
-      return actionFunc(state);
-    } else {
-      // Don't warn about insert-related actions or common symbols
-      if (!['insert', 'maths', 'apply', 'apply_pre', 'apply_call', 'apply_call_pre', 'apply_wrap', 'type', 
-            'let', 'navigate_to_hole', 'navigate_to_binding', 'navigate_to_usage'].includes(action) &&
-          !action.match(/^[+\-*/=<>!&|0-9xy\[\]_()]+$/)) {
-        console.warn(`Unknown action: ${action}`);
-      }
-      return state;
-    }
+
+  if (typeof action !== 'string') return;
+
+  // Skip the prefixed type form `type:"..."` (legacy).
+  if (action.startsWith('type:')) return;
+
+  // Mapped action — translate and dispatch.
+  const dispatcherAction = ACTION_MAP[action];
+  if (dispatcherAction) {
+    dispatchAction(view, dispatcherAction);
+    return;
   }
-  
-  console.warn(`Invalid action format: ${action}`);
-  return state;
+
+  // Known legacy actions: silently skip; tests using them are expected to
+  // appear in KNOWN_FAILURES (or to be marked unimplemented).
+  if (LEGACY_ACTIONS.has(action) || LEGACY_COMPOUND_TOKENS.has(action)) {
+    return;
+  }
+
+  // Unrecognised pattern (literal symbol arguments to `insert`, e.g. "+")
+  // — treat as data, not as an op. Match the legacy harness's tolerance.
+  if (action.match(/^[+\-*/=<>!&|0-9xy[\]_()]+$/)) {
+    return;
+  }
+
+  // Anything else is genuinely unknown.
+  console.warn(`[testHarness] unknown YAML action: ${action}`);
 }
 
-/**
- * Handle insert operations with category, symbol, and apply type
- * @param {EditorState} state - Current editor state
- * @param {string} category - Category (e.g., 'maths')
- * @param {string} symbol - Symbol to insert (e.g., '+')
- * @param {string} applyType - How to apply (e.g., 'apply', 'apply_call')
- * @returns {EditorState} - New editor state
- */
-function handleInsertOperation(state, category, symbol, applyType) {
-  switch (applyType) {
-    case 'apply':
-      return insertSymbol(state, symbol);
-    case 'apply_pre':
-      return insertSymbolBefore(state, symbol);
-    case 'apply_call':
-      return insertFunctionCall(state, symbol);
-    case 'apply_call_pre':
-      return insertFunctionCallBefore(state, symbol);
-    case 'apply_wrap':
-      return wrapInFunction(state, symbol);
-    default:
-      console.warn(`Unknown insert apply type: ${applyType}`);
-      return state;
-  }
-}
+// ── Test runner ─────────────────────────────────────────────────────────────
 
-/**
- * Run a single test case
- * @param {Object} testCase - Test case object from YAML
- * @returns {Object} - Test result
- */
 function runTestCase(testCase) {
+  let view = null;
   try {
-    // Clear clipboard at start of each test to avoid cross-test contamination
-    clearClipboard();
-    
-    // Create editor with initial code (strip caret markers if present)
-    const codeSpec = parseCaretString(testCase.code || '');
-    let state = createStructuralEditor(codeSpec.text);
-    const initialCode = state.doc.toString();
-    if (codeSpec.caretOffset != null) {
-      state = state.update({
-        selection: EditorSelection.single(codeSpec.caretOffset)
-      }).state;
-    }
+    // Detect format
+    const guil = parseGuillemets(testCase.code);
+    const isGuillemetFormat = guil !== null;
 
-    // Set initial selection if specified
-    const selectionSpec = normalizeSelectionSpec(testCase.selection);
-    if (selectionSpec) {
-      // Handle selection_cursor if specified (default is 'end', can be 'start')
-      const selectionOptions = {};
-      if (testCase.selection_cursor === 'start') {
-        selectionOptions.reverse = true;
-      } else if (testCase.cursor_char) {
-        // Infer direction from cursor_char
-        // If it's an opening delimiter, we likely want the cursor at the start
-        if (['(', '[', '{', '#', '"'].includes(testCase.cursor_char)) {
-          selectionOptions.reverse = true;
+    const rawCode = isGuillemetFormat
+      ? guil.code
+      : (parseCaretString(testCase.code || '')).text;
+    view = createView(rawCode);
+    const initialCode = view.state.doc.toString();
+
+    // ── Set initial selection ──────────────────────────────────────────
+    if (isGuillemetFormat) {
+      const selStart = guil.selectionStart;
+      const selText = guil.selectionText;
+      if (selText.length > 0) {
+        seedCursorAtRange(view, selStart, selStart + selText.length);
+        const actual = getSelectedText(view);
+        if (actual !== selText) {
+          return {
+            passed: false,
+            name: testCase.name,
+            error: `Guillemet selection failed: expected "${selText}", got "${actual}"`,
+            expected: selText,
+            actual,
+          };
         }
       }
-      
-      const selectionStart = findNthOccurrence(initialCode, selectionSpec.text, selectionSpec.occurrence);
-      if (selectionStart === -1) {
-        return {
-          passed: false,
-          name: testCase.name,
-          error: `Could not find occurrence ${selectionSpec.occurrence} of "${selectionSpec.text}" in initial code`,
-          expected: selectionSpec.text,
-          actual: initialCode
-        };
-      }
+    } else {
+      // Legacy: separate selection field.
+      const selectionSpec = normalizeSelectionSpec(testCase.selection);
+      if (selectionSpec) {
+        const selectionStart = findNthOccurrence(initialCode, selectionSpec.text, selectionSpec.occurrence);
+        if (selectionStart === -1) {
+          return {
+            passed: false,
+            name: testCase.name,
+            error: `Could not find occurrence ${selectionSpec.occurrence} of "${selectionSpec.text}" in initial code`,
+            expected: selectionSpec.text,
+            actual: initialCode,
+          };
+        }
+        seedCursorAtRange(view, selectionStart, selectionStart + selectionSpec.text.length);
 
-      selectionOptions.occurrence = selectionSpec.occurrence;
-      state = selectByText(state, selectionSpec.text, selectionOptions);
-      
-      // Verify we selected the right thing
-      const selectedText = getSelectedText(state);
-      if (selectedText !== selectionSpec.text) {
-        return {
-          passed: false,
-          name: testCase.name,
-          error: `Failed to select "${selectionSpec.text}". Got "${selectedText}" instead.`,
-          expected: selectionSpec.text,
-          actual: selectedText
-        };
-      }
-
-      // Verify that the selection corresponds to a structural node
-      const node = findNodeAt(state, state.selection.main.from, state.selection.main.to);
-      if (!node && selectionSpec.text) {
-        return {
-          passed: false,
-          name: testCase.name,
-          error: `Selection does not correspond to a structural node`,
-          expected: selectionSpec.text,
-          actual: "No node found"
-        };
-      }
-
-      const actualSelectionStart = getSelectionStart(state);
-      if (actualSelectionStart !== selectionStart) {
-        return {
-          passed: false,
-          name: testCase.name,
-          error: `Selection occurrence mismatch for "${selectionSpec.text}"`,
-          expected: selectionStart,
-          actual: actualSelectionStart
-        };
-      }
-
-      // Verify cursor position based on cursor_char if provided
-      if (testCase.cursor_char) {
-        const head = state.selection.main.head;
-        const anchor = state.selection.main.anchor;
-        const isReversed = head < anchor;
-        
-        // Check if we are at the expected end based on cursor_char
-        // This is a basic check to ensure we started where we intended
-        const expectedStart = ['(', '[', '{', '#', '"'].includes(testCase.cursor_char);
-        
-        if (expectedStart && !isReversed) {
-           // We expected to be at start but are at end?
-           // Note: selectByText might not set reverse unless we tell it to, which we did above.
-           // But let's verify the char at cursor matches.
-           const charAfter = state.sliceDoc(head, head + 1);
-           if (charAfter !== testCase.cursor_char && !testCase.cursor_char.startsWith(charAfter)) {
-             // Relaxed check for multi-char like #
-           }
+        const selectedText = getSelectedText(view);
+        if (selectedText !== selectionSpec.text) {
+          return {
+            passed: false,
+            name: testCase.name,
+            error: `Failed to select "${selectionSpec.text}". Got "${selectedText}" instead.`,
+            expected: selectionSpec.text,
+            actual: selectedText,
+          };
         }
       }
     }
-    
-    // Apply actions
+
+    // ── Apply actions ──────────────────────────────────────────────────
     if (testCase.steps) {
       for (let i = 0; i < testCase.steps.length; i++) {
         const step = testCase.steps[i];
-        state = applyAction(state, step.action);
-        
-        // Check step selection
+        applyAction(view, step.action);
+
         const stepSelectionSpec = parseStepSelection(step.new_selection);
         if (stepSelectionSpec) {
-          const currentSelection = getSelectedText(state);
-          const expectedSelection = stepSelectionSpec.text ?? "";
-          
+          const currentSelection = getSelectedText(view);
+          const expectedSelection = stepSelectionSpec.text ?? '';
           if (currentSelection !== expectedSelection) {
-             return {
-               passed: false,
-               name: `${testCase.name} (step ${i+1})`,
-               error: `Selection mismatch after action '${step.action}'`,
-               expected: expectedSelection,
-               actual: currentSelection
-             };
+            return {
+              passed: false,
+              name: `${testCase.name} (step ${i + 1})`,
+              error: `Selection mismatch after action '${step.action}'`,
+              expected: expectedSelection,
+              actual: currentSelection,
+            };
           }
-          if (stepSelectionSpec.caretOffset != null) {
-            const selectionStart = getSelectionStart(state);
-            const expectedHead = selectionStart + stepSelectionSpec.caretOffset;
-            if (state.selection.main.head !== expectedHead) {
-              return {
-                passed: false,
-                name: `${testCase.name} (step ${i+1})`,
-                error: `Cursor position mismatch after action '${step.action}'`,
-                expected: expectedHead,
-                actual: state.selection.main.head
-              };
-            }
-          }
-        }
-        
-        // Check cursor char if provided
-        if (step.cursor_char) {
-           const head = state.selection.main.head;
-           const charAfter = state.sliceDoc(head, head + 1);
-           const charBefore = head > 0 ? state.sliceDoc(head - 1, head) : '';
-           if (charAfter !== step.cursor_char && charBefore !== step.cursor_char) {
-             return {
-               passed: false,
-               name: `${testCase.name} (step ${i+1})`,
-               error: `Cursor char mismatch after action '${step.action}'`,
-               expected: step.cursor_char,
-               actual: charAfter
-             };
-           }
         }
       }
     } else if (testCase.actions) {
-      state = applyAction(state, testCase.actions);
+      applyAction(view, testCase.actions);
     }
-    
-    // Check final code state
-    const finalCode = state.doc.toString();
+
+    // ── Check final code (legacy only) ─────────────────────────────────
+    const finalCode = view.state.doc.toString();
     const expectedCode = testCase.new_code;
-    
-    // Only check code if new_code is specified
     if (expectedCode !== undefined && finalCode !== expectedCode) {
       return {
         passed: false,
@@ -416,80 +521,78 @@ function runTestCase(testCase) {
         expected: expectedCode,
         actual: finalCode,
         initialCode: testCase.code,
-        actions: testCase.actions
+        actions: testCase.actions,
       };
     }
-    
-    // Check final selection if specified
-    const finalSelectionSpec = normalizeSelectionSpec(testCase.new_selection);
-    if (finalSelectionSpec) {
-      const finalSelection = getSelectedText(state);
-      if (finalSelection !== finalSelectionSpec.text) {
+
+    // ── Check final selection ──────────────────────────────────────────
+    const expectedText = isGuillemetFormat ? testCase.expected : null;
+    const legacySpec = isGuillemetFormat ? null : normalizeSelectionSpec(testCase.new_selection);
+
+    if (expectedText !== undefined && expectedText !== null) {
+      const finalSelection = getSelectedText(view);
+      if (finalSelection !== expectedText) {
         return {
           passed: false,
           name: testCase.name,
           error: `Selection mismatch after actions`,
-          expected: finalSelectionSpec.text,
+          expected: expectedText,
           actual: finalSelection,
-          finalCode: finalCode
+          finalCode,
+        };
+      }
+    } else if (legacySpec) {
+      const finalSelection = getSelectedText(view);
+      if (finalSelection !== legacySpec.text) {
+        return {
+          passed: false,
+          name: testCase.name,
+          error: `Selection mismatch after actions`,
+          expected: legacySpec.text,
+          actual: finalSelection,
+          finalCode,
         };
       }
 
-      const expectedFinalStart = findNthOccurrence(finalCode, finalSelectionSpec.text, finalSelectionSpec.occurrence);
+      const expectedFinalStart = findNthOccurrence(finalCode, legacySpec.text, legacySpec.occurrence);
       if (expectedFinalStart === -1) {
         return {
           passed: false,
           name: testCase.name,
-          error: `Could not find occurrence ${finalSelectionSpec.occurrence} of "${finalSelectionSpec.text}" in final code`,
-          expected: finalSelectionSpec.text,
-          actual: finalCode
+          error: `Could not find occurrence ${legacySpec.occurrence} of "${legacySpec.text}" in final code`,
+          expected: legacySpec.text,
+          actual: finalCode,
         };
       }
 
-      const actualFinalStart = getSelectionStart(state);
+      const actualFinalStart = getSelectionStart(view);
       if (actualFinalStart !== expectedFinalStart) {
         return {
           passed: false,
           name: testCase.name,
-          error: `Final selection occurrence mismatch for "${finalSelectionSpec.text}"`,
+          error: `Final selection occurrence mismatch for "${legacySpec.text}"`,
           expected: expectedFinalStart,
-          actual: actualFinalStart
+          actual: actualFinalStart,
         };
       }
-      if (finalSelectionSpec.caretOffset != null) {
-        const expectedHead = actualFinalStart + finalSelectionSpec.caretOffset;
-        if (state.selection.main.head !== expectedHead) {
-          return {
-            passed: false,
-            name: testCase.name,
-            error: `Final cursor position mismatch for "${finalSelectionSpec.text}"`,
-            expected: expectedHead,
-            actual: state.selection.main.head
-          };
-        }
-      }
     }
-    
-    return {
-      passed: true,
-      name: testCase.name
-    };
-    
+
+    return { passed: true, name: testCase.name };
   } catch (error) {
     return {
       passed: false,
       name: testCase.name,
       error: `Exception: ${error.message}`,
-      stack: error.stack
+      stack: error.stack,
     };
+  } finally {
+    if (view) {
+      try { view.destroy(); } catch { /* ignore */ }
+    }
   }
 }
 
-/**
- * Load and parse a YAML test file
- * @param {string} filePath - Path to YAML file
- * @returns {Array} - Array of test cases
- */
+/** Load and parse a YAML test file. */
 function loadTestFile(filePath) {
   try {
     const fileContent = fs.readFileSync(filePath, 'utf8');
@@ -501,32 +604,28 @@ function loadTestFile(filePath) {
   }
 }
 
-/**
- * Run all tests from a file
- * @param {string} filePath - Path to test file
- * @returns {Object} - Test results summary
- */
+/** Run all tests from a file. */
 function runTestFile(filePath) {
   console.log(`\n=== Running tests from ${filePath} ===`);
-  
+
   const testCases = loadTestFile(filePath);
   if (testCases.length === 0) {
     console.log('No test cases found');
     return { passed: 0, failed: 0, total: 0 };
   }
-  
+
   let passed = 0;
   let failed = 0;
   const failures = [];
-  
+
   for (const testCase of testCases) {
     if (!testCase.name) {
       console.log('Skipping test case without name');
       continue;
     }
-    
+
     const result = runTestCase(testCase);
-    
+
     if (result.passed) {
       console.log(`✓ ${result.name}`);
       passed++;
@@ -544,30 +643,28 @@ function runTestFile(filePath) {
       failed++;
     }
   }
-  
+
   const total = passed + failed;
   console.log(`\nResults: ${passed}/${total} passed, ${failed} failed`);
-  
+
   return { passed, failed, total, failures };
 }
 
-/**
- * Main test runner
- */
+/** Main test runner. */
 function runAllTests() {
-  console.log('Structural Editing Extensions Test Harness');
-  console.log('==========================================');
-  
+  console.log('Structural Editing Extensions Test Harness (new core)');
+  console.log('======================================================');
+
   const testFiles = [
     './test/new_structural/navigation_tests.yaml',
-    './test/new_structural/editing_tests.yaml'
+    './test/new_structural/editing_tests.yaml',
   ];
-  
+
   let totalPassed = 0;
   let totalFailed = 0;
   let totalTests = 0;
   const allFailures = [];
-  
+
   for (const testFile of testFiles) {
     const results = runTestFile(testFile);
     totalPassed += results.passed;
@@ -575,29 +672,29 @@ function runAllTests() {
     totalTests += results.total;
     allFailures.push(...(results.failures || []));
   }
-  
-  console.log('\n==========================================');
+
+  console.log('\n======================================================');
   console.log('FINAL RESULTS');
-  console.log('==========================================');
+  console.log('======================================================');
   console.log(`Total tests: ${totalTests}`);
   console.log(`Passed: ${totalPassed}`);
   console.log(`Failed: ${totalFailed}`);
   console.log(`Success rate: ${totalTests > 0 ? Math.round((totalPassed / totalTests) * 100) : 0}%`);
-  
+
   if (allFailures.length > 0) {
     console.log('\n=== FAILURE SUMMARY ===');
     for (const failure of allFailures) {
       console.log(`- ${failure.name}: ${failure.error}`);
     }
   }
-  
+
   return totalFailed === 0;
 }
 
-// Run tests if this module is executed directly
+// Run tests if this module is executed directly.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const success = runAllTests();
   process.exit(success ? 0 : 1);
 }
 
-export { runAllTests, runTestFile, runTestCase };
+export { runAllTests, runTestFile, runTestCase, loadTestFile };
