@@ -43,6 +43,7 @@ import {
 let serialport: SerialPort | null = null;
 let connectedToModule = false;
 let flag_triggeringBootloader = false;
+let connectionInProgress = false;
 
 // ── Connection state ────────────────────────────────────────────────
 
@@ -198,21 +199,27 @@ export function askForPortAndConnect(): void {
 
 // ── Connect / disconnect ────────────────────────────────────────────
 
-export function connectToSerialPort(port: SerialPort): Promise<boolean> {
-  return port
-    .open({ baudRate: 115200 })
-    .then(async () => {
-      await setupConnectedPort(port);
-      return true;
-    })
-    .catch((err: Error) => {
-      console.log("Error connecting to serial:", err);
-      post(
-        'Connection failed. See <a href="https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting">troubleshooting guide</a>',
-        "error"
-      );
-      return false;
-    });
+export async function connectToSerialPort(port: SerialPort): Promise<boolean> {
+  if (connectionInProgress) {
+    dbg("connectToSerialPort: connection already in progress, skipping");
+    return false;
+  }
+
+  connectionInProgress = true;
+  try {
+    await port.open({ baudRate: 115200 });
+    await setupConnectedPort(port);
+    return true;
+  } catch (err: unknown) {
+    console.log("Error connecting to serial:", err);
+    post(
+      'Connection failed. See <a href="https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting">troubleshooting guide</a>',
+      "error"
+    );
+    return false;
+  } finally {
+    connectionInProgress = false;
+  }
 }
 
 async function setupConnectedPort(port: SerialPort): Promise<void> {
@@ -291,7 +298,13 @@ export function checkForWebserialSupport(): boolean {
     }
   });
 
-  navigator.serial.addEventListener("disconnect", (_e: Event) => {
+  navigator.serial.addEventListener("disconnect", (e: Event) => {
+    const disconnectedPort = (e as any).port as SerialPort | undefined;
+    // Only react if the disconnected port is the one we're tracking
+    if (disconnectedPort && disconnectedPort !== getSerialPort()) {
+      dbg("Ignoring disconnect event for unrelated port");
+      return;
+    }
     setConnectedToModule(false);
     if (!flag_triggeringBootloader) {
       post("uSEQ disconnected");
