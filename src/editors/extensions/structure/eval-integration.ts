@@ -17,7 +17,7 @@ import { showVisualisationPanel } from "../../../ui/adapters/visualisationPanel"
 import { dbg } from "../../../lib/debug.ts";
 import { getAppSettings } from "../../../runtime/appSettingsRepository.ts";
 
-import { findNodeAt } from "./new-structure.ts";
+import { findNodeAt } from "../lezerHelpers.ts";
 
 // ---------------------------------------------------------------------------
 // EvalIntegrationConfig — dependency injection interface

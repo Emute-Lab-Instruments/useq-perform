@@ -44,7 +44,7 @@ export const evalHighlightField = StateField.define({
 });
 
 // Helper to dispatch highlight effect and clear it after 1s
-import { findNodeAt } from "./structure/new-structure.ts";
+import { findNodeAt } from "./lezerHelpers.ts";
 
 
 // Helper to find the range of the top-level s-expression as used by evalNow

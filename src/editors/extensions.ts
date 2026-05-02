@@ -15,7 +15,13 @@ import { lineNumbers, drawSelection } from "@codemirror/view";
 import { history } from '@codemirror/commands';
 import { baseKeymap, mainEditorKeymap } from "./keymaps.ts";
 import { themeCompartment, fontSizeCompartment } from "../lib/editorCompartments.ts";
-import {structureExtensions} from "./extensions/structure.ts";
+import {
+  navigationMetaField,
+  nodeHighlightPlugin,
+  lastEvaluatedExpressionField,
+  createExpressionGutter,
+  createDefaultGutterConfig,
+} from "./extensions/structure.ts";
 import { structuralCoreExtensions } from "./extensions/structure/adapter/extension.ts";
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
@@ -120,14 +126,19 @@ export const guideEditorExtensions = [
 // S-Expression tracking extensions
 
 
-// New structural core (round 2). Mounted regardless of the feature flag —
-// the state field is cheap and the cursor halos only paint when the user
-// has actually moved the cursor with the new dispatcher (initial cursor sits
-// on the document root and is intentionally skipped by the decoration).
-// The gamepad bridge is what's gated on `settings.structure.useNewCore`.
-const newStructuralCore = _initSettings.structure?.useNewCore === true
+// Structural editing layers. The cursor-halo decoration comes from one of
+// two sources, gated on `settings.structure.useNewCore`:
+//   - false (legacy): legacy `nodeHighlightPlugin` (SVG halos + indent guides)
+//   - true (new core): adapter's `structuralCoreExtensions()` (state field +
+//     halos + hole-pill widget)
+// Mounting both at once double-paints the cursor; pick one. The eval gutter
+// (`lastEvaluatedExpressionField` + `createExpressionGutter`) is independent
+// of the structural rewrite and stays mounted in both modes.
+const useNewCore = _initSettings.structure?.useNewCore === true;
+
+const structuralLayer = useNewCore
   ? structuralCoreExtensions()
-  : [];
+  : [navigationMetaField, nodeHighlightPlugin];
 
 // Base extensions combine core functionality
 export const baseExtensions = [
@@ -135,8 +146,9 @@ export const baseExtensions = [
   ...functionalExtensions,
   ...themeExtensions,
   ...default_clojure_extensions,
-  ...structureExtensions,
-  ...newStructuralCore,
+  ...structuralLayer,
+  lastEvaluatedExpressionField,
+  ...createExpressionGutter(createDefaultGutterConfig()),
   ...probeExtensions,
   evalHighlightField,
   inlineResultsField,

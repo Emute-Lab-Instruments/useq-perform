@@ -2,8 +2,7 @@ import { syntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
 import type { SyntaxNode } from "@lezer/common";
 
-import { findNodeAt } from "./structure/new-structure.ts";
-import { getTrimmedRange } from "./structure/ast.ts";
+import { findNodeAt, getTrimmedRange } from "./lezerHelpers.ts";
 
 export type ProbeMode = "raw" | "contextual";
 
