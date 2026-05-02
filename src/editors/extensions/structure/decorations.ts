@@ -932,11 +932,22 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
       }
 
       private onExternalChange() {
+        if (!this.view.dom?.isConnected) {
+          console.warn(
+            "[structure/decorations] onExternalChange: editor view is disconnected, skipping dispatch",
+          );
+          return;
+        }
         try {
           this.view.dispatch({
             annotations: settingsChangedAnnotation.of(true),
           });
-        } catch (_e) {}
+        } catch (e) {
+          console.warn(
+            "[structure/decorations] onExternalChange: dispatch failed on editor view",
+            e,
+          );
+        }
       }
     },
   );
