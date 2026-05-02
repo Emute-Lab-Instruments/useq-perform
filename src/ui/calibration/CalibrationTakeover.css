@@ -1,0 +1,524 @@
+/* Calibration takeover overlay — full-screen, dominant focal column.
+ * Spec: docs/specs/calibration.md §3, §4, §5, §6.
+ * All classes are prefixed with .cal- to avoid collisions with the
+ * normal modal/panel CSS. */
+
+/* ── Backdrop & root overlay ───────────────────────────────────────── */
+
+.cal-takeover-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2000; /* sits above modal stack (1001) */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(10, 12, 16, 0.92);
+  color: #f0f0f0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+    Cantarell, sans-serif;
+}
+
+.cal-takeover-root *,
+.cal-takeover-root *::before,
+.cal-takeover-root *::after {
+  box-sizing: border-box;
+}
+
+.cal-stub-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1999;
+  background: linear-gradient(180deg, #1c1f29 0%, #0e1014 100%);
+  opacity: 0.3;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  font-family: monospace;
+  color: #b0b0c0;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre;
+}
+
+/* ── Focal column ──────────────────────────────────────────────────── */
+
+.cal-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  max-width: 560px;
+  width: 100%;
+  text-align: center;
+}
+
+.cal-output-id {
+  font-size: 80px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  margin: 0;
+  color: #ffffff;
+}
+
+.cal-target-volts {
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
+    Menlo, monospace;
+  font-size: 64px;
+  font-weight: 500;
+  line-height: 1;
+  margin: 0;
+  color: #f0f0f0;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.cal-target-volts.cal-flash-saved {
+  color: #5fd17a;
+  transition: color 200ms ease-out;
+}
+
+.cal-saved-check {
+  color: #5fd17a;
+  font-size: 0.7em;
+  animation: cal-fade-in 200ms ease-out;
+}
+
+@keyframes cal-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.cal-divider {
+  width: 240px;
+  height: 1px;
+  background: rgba(240, 240, 240, 0.18);
+  margin: 0;
+  border: none;
+}
+
+.cal-offset-cents {
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
+    Menlo, monospace;
+  font-size: 22px;
+  font-weight: 400;
+  margin: 0;
+  color: #c4c4d0;
+  min-height: 1.2em;
+}
+
+.cal-offset-cents.cal-detent {
+  color: #82c8ff;
+}
+
+/* ── Slider ────────────────────────────────────────────────────────── */
+
+.cal-slider {
+  width: 360px;
+  height: 56px;
+  position: relative;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: ew-resize;
+}
+
+.cal-slider:focus-visible {
+  outline: 2px solid #7aa2f7;
+  outline-offset: 6px;
+  border-radius: 6px;
+}
+
+.cal-slider-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 6px;
+  background: rgba(240, 240, 240, 0.12);
+  border-radius: 3px;
+}
+
+.cal-slider-detent {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(122, 162, 247, 0.18);
+  border: 1px solid rgba(122, 162, 247, 0.4);
+  pointer-events: none;
+}
+
+.cal-slider-centre-tick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 16px;
+  background: rgba(240, 240, 240, 0.45);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.cal-slider-handle {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 32px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: transform 80ms ease-out, background 120ms ease-out;
+}
+
+.cal-slider-handle.cal-detent {
+  background: #82c8ff;
+}
+
+.cal-slider-range-label {
+  position: absolute;
+  right: -64px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #80808f;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* ── Progress ribbon ───────────────────────────────────────────────── */
+
+.cal-progress {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+  color: #b0b0c0;
+}
+
+.cal-progress-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+.cal-progress-dots {
+  display: flex;
+  gap: 10px;
+}
+
+.cal-progress-dot {
+  font-size: 18px;
+  line-height: 1;
+  color: rgba(240, 240, 240, 0.25);
+}
+
+.cal-progress-dot.cal-saved {
+  color: #5fd17a;
+}
+
+.cal-progress-dot.cal-skipped {
+  color: #d1a85f;
+}
+
+.cal-progress-dot.cal-current {
+  color: #f0f0f0;
+}
+
+/* ── Action buttons ────────────────────────────────────────────────── */
+
+.cal-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  width: 100%;
+}
+
+.cal-btn {
+  background: transparent;
+  border: 1px solid rgba(240, 240, 240, 0.25);
+  color: #f0f0f0;
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  min-width: 200px;
+  transition: background 120ms ease-out, border-color 120ms ease-out;
+  font-family: inherit;
+}
+
+.cal-btn:hover {
+  background: rgba(240, 240, 240, 0.06);
+  border-color: rgba(240, 240, 240, 0.45);
+}
+
+.cal-btn:focus-visible {
+  outline: 2px solid #7aa2f7;
+  outline-offset: 2px;
+}
+
+.cal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cal-btn.cal-btn-primary {
+  background: #7aa2f7;
+  border-color: #7aa2f7;
+  color: #0e1014;
+  font-weight: 600;
+}
+
+.cal-btn.cal-btn-primary:hover {
+  background: #92b3ff;
+  border-color: #92b3ff;
+}
+
+.cal-btn.cal-btn-danger {
+  border-color: rgba(240, 100, 100, 0.5);
+  color: #f0a0a0;
+}
+
+.cal-btn.cal-btn-danger:hover {
+  background: rgba(240, 100, 100, 0.1);
+}
+
+.cal-btn-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ── Helper text ───────────────────────────────────────────────────── */
+
+.cal-helper {
+  margin-top: 12px;
+  font-size: 14px;
+  color: #80808f;
+  line-height: 1.6;
+  max-width: 420px;
+  text-align: center;
+}
+
+/* ── Error inline (mid-takeover) ───────────────────────────────────── */
+
+.cal-error-block {
+  margin-top: 12px;
+  padding: 14px 18px;
+  border-left: 3px solid #d16a6a;
+  background: rgba(209, 106, 106, 0.08);
+  border-radius: 4px;
+  text-align: left;
+  max-width: 420px;
+  width: 100%;
+}
+
+.cal-error-title {
+  margin: 0 0 6px 0;
+  color: #f0a0a0;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.cal-error-message {
+  margin: 0 0 12px 0;
+  color: #d8b8b8;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Abort confirm ─────────────────────────────────────────────────── */
+
+.cal-abort-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px;
+  border-radius: 8px;
+  background: rgba(240, 240, 240, 0.04);
+  border: 1px solid rgba(240, 240, 240, 0.12);
+  max-width: 420px;
+}
+
+.cal-abort-prompt {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  text-align: center;
+  color: #f0f0f0;
+}
+
+.cal-abort-detail {
+  font-size: 13px;
+  color: #b0b0c0;
+  margin: 0;
+  text-align: center;
+}
+
+/* ── Complete banner ───────────────────────────────────────────────── */
+
+.cal-complete-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 28px;
+  border: 1px solid rgba(95, 209, 122, 0.4);
+  background: rgba(95, 209, 122, 0.08);
+  border-radius: 10px;
+  max-width: 480px;
+  width: 100%;
+}
+
+.cal-complete-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #5fd17a;
+  margin: 0;
+}
+
+.cal-complete-detail {
+  font-size: 15px;
+  color: #f0f0f0;
+  margin: 0;
+}
+
+.cal-complete-prompt {
+  font-size: 14px;
+  color: #b0b0c0;
+  margin: 8px 0 0 0;
+}
+
+/* ── Disconnect transient banner (§6.4) ────────────────────────────── */
+
+.cal-disconnect-banner {
+  position: fixed;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2100;
+  padding: 14px 22px;
+  border-radius: 8px;
+  background: rgba(40, 40, 50, 0.96);
+  border: 1px solid rgba(240, 200, 100, 0.5);
+  color: #f0f0f0;
+  font-size: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  max-width: 480px;
+}
+
+/* ── Picker (§2.2) ─────────────────────────────────────────────────── */
+
+.cal-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 460px;
+  max-width: 560px;
+}
+
+.cal-picker-blurb {
+  font-size: 14px;
+  line-height: 1.55;
+  color: #b0b0c0;
+  margin: 0;
+}
+
+.cal-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.cal-picker-row {
+  display: grid;
+  grid-template-columns: 24px 60px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: rgba(240, 240, 240, 0.04);
+  border: 1px solid rgba(240, 240, 240, 0.12);
+  border-radius: 6px;
+}
+
+.cal-picker-row-glyph {
+  font-size: 18px;
+  text-align: center;
+  color: rgba(240, 240, 240, 0.45);
+}
+
+.cal-picker-row-glyph.cal-saved {
+  color: #5fd17a;
+}
+
+.cal-picker-row-glyph.cal-partial {
+  color: #d1a85f;
+}
+
+.cal-picker-row-id {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 600;
+  color: #f0f0f0;
+}
+
+.cal-picker-row-status {
+  font-size: 13px;
+  color: #b0b0c0;
+}
+
+.cal-picker-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cal-picker-row-btn {
+  background: transparent;
+  border: 1px solid rgba(122, 162, 247, 0.5);
+  color: #7aa2f7;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cal-picker-row-btn:hover {
+  background: rgba(122, 162, 247, 0.1);
+}
+
+.cal-picker-error {
+  margin: 0;
+  padding: 10px 14px;
+  background: rgba(209, 106, 106, 0.1);
+  border-left: 3px solid #d16a6a;
+  border-radius: 4px;
+  color: #f0a0a0;
+  font-size: 13px;
+}
+
+.cal-picker-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
