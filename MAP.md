@@ -77,7 +77,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `mockControlInputs.ts`, `devmodeWebSocketServer.ts`, `perfBenchmark.ts`.
 - `src/editors/` — CodeMirror layer. Imports lib/contracts/effects/transport.
   - `extensions.ts` — extension barrel.
-  - `extensions/structure/` — AST, decorations, eval-integration, eval-state.
+  - `extensions/structure/` — AST, decorations, eval-integration, eval-state. `adapter/` sub-dir holds the structural-core CodeMirror binding (stateField, cursor halos, hole pill widgets, op dispatcher, tree-from-lezer, gamepad bridge). `core/` holds the pure functional tree/cursor logic.
   - `extensions/probes.ts`, `probeHelpers.ts` — inline probe widgets (DI-configured).
   - `extensions/inlineResults.ts` — inline eval result display (DI-configured).
   - `extensions/diagnostics.ts` — error/warning squiggles wired to WASM diagnostics.
