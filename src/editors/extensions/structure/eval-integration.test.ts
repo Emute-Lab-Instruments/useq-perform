@@ -17,10 +17,30 @@
 // We exercise the same algorithm against the production findNodeAt() so a
 // regression in either findNodeAt or the walk-to-Program-child loop is caught.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { EditorSelection, type EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
 import { createStructuralEditor, findNodeAt } from "./new-structure.ts";
+import {
+  handleClearExpression,
+  handlePlayExpression,
+  setEvalIntegrationConfig,
+  type EvalIntegrationConfig,
+} from "./eval-integration.ts";
+
+vi.mock("../../../effects/visualisationSampler.ts", () => ({
+  isExpressionVisualised: () => false,
+  toggleVisualisation: vi.fn(async () => {}),
+  refreshVisualisedExpression: vi.fn(async () => {}),
+  notifyExpressionEvaluated: vi.fn(),
+}));
+vi.mock("../../../ui/adapters/visualisationPanel", () => ({
+  showVisualisationPanel: vi.fn(),
+}));
+vi.mock("../../../runtime/appSettingsRepository.ts", () => ({
+  getAppSettings: () => ({ ui: {} }),
+}));
 
 // ---------------------------------------------------------------------------
 // Algorithm under test
@@ -260,6 +280,91 @@ describe("eval-integration: buffer edges", () => {
       // Whole-document fallback.
       expect(range).toEqual({ from: 0, to: doc.length });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DI seam — handlers must route through EvalIntegrationConfig, not the
+// transport singletons directly. This is what lets the Inspector and unit
+// tests load the editor layer without dragging the transport surface in.
+// ---------------------------------------------------------------------------
+
+function makeView(doc: string): EditorView {
+  return new EditorView({
+    state: createStructuralEditor(doc),
+  });
+}
+
+function makeMockConfig(): EvalIntegrationConfig & {
+  sendCode: ReturnType<typeof vi.fn>;
+  isConnected: ReturnType<typeof vi.fn>;
+} {
+  return {
+    sendCode: vi.fn(),
+    isConnected: vi.fn(() => true),
+  };
+}
+
+describe("eval-integration: DI seam routes through EvalIntegrationConfig", () => {
+  beforeEach(() => {
+    setEvalIntegrationConfig({
+      sendCode: () => {},
+      isConnected: () => false,
+    });
+  });
+
+  it("handlePlayExpression sends through config.sendCode when connected", () => {
+    const config = makeMockConfig();
+    setEvalIntegrationConfig(config);
+
+    const view = makeView("(a1 0.5)");
+    handlePlayExpression(view, "a1");
+
+    expect(config.isConnected).toHaveBeenCalled();
+    expect(config.sendCode).toHaveBeenCalledTimes(1);
+    expect(config.sendCode.mock.calls[0][0]).toContain("a1");
+  });
+
+  it("handlePlayExpression skips sendCode when disconnected", () => {
+    const config = makeMockConfig();
+    config.isConnected.mockReturnValue(false);
+    setEvalIntegrationConfig(config);
+
+    const view = makeView("(a1 0.5)");
+    handlePlayExpression(view, "a1");
+
+    expect(config.sendCode).not.toHaveBeenCalled();
+  });
+
+  it("handleClearExpression sends a neutral analog value when connected", () => {
+    const config = makeMockConfig();
+    setEvalIntegrationConfig(config);
+
+    const view = makeView("(a1 0.5)");
+    handleClearExpression(view, "a1");
+
+    expect(config.sendCode).toHaveBeenCalledWith("(a1 0.5)");
+  });
+
+  it("handleClearExpression sends 0 for digital-style expressions", () => {
+    const config = makeMockConfig();
+    setEvalIntegrationConfig(config);
+
+    const view = makeView("(d1 1)");
+    handleClearExpression(view, "d1");
+
+    expect(config.sendCode).toHaveBeenCalledWith("(d1 0)");
+  });
+
+  it("handleClearExpression is a no-op when disconnected", () => {
+    const config = makeMockConfig();
+    config.isConnected.mockReturnValue(false);
+    setEvalIntegrationConfig(config);
+
+    const view = makeView("(a1 0.5)");
+    handleClearExpression(view, "a1");
+
+    expect(config.sendCode).not.toHaveBeenCalled();
   });
 });
 
