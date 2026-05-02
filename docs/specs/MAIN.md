@@ -89,6 +89,7 @@ App-wide degradation contracts. Cited from feature sub-specs.
 - Loading committed config, persisted settings, and retained URL bootstrap overrides.
 - Browser MIDI input via Web MIDI API for routing CC/notes into `live-edit` slots (MIDI learn). MIDI output and firmware-side MIDI remain out of scope.
 - `live-edit` values: `(live-edit …)` wrapper form, inline widgets, dockable panel, persistence (see [live-edit.md](live-edit.md)).
+- Hardware bindings: `(on-press …)` / `(on-release …)` / `(on-button …)` / `(on-toggle …)` wrapper forms binding ModuLisp expressions to hardware switch/encoder events, inline chip widgets, test-fire UX (see [hardware-bindings.md](hardware-bindings.md)).
 
 4.3 The stable URL/storage promises in [url-params.md §1.2](url-params.md) and [persistence.md §1.2/§1.3](persistence.md) are part of the stable core.
 
@@ -147,6 +148,10 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 6.17 [probes.md](probes.md) — inline probe widgets and the from-list highlight feature (orthogonal to probe activity).
 
 6.18 [structural-editing.md](structural-editing.md) — focus-primary ontology, Metas layer (annotations on nodes), holes as first-class node kind, algebra of navigation/mutation operations, structural vs insertion modes, multi-cursor.
+
+6.19 [live-edit.md](live-edit.md) — `(live-edit …)` wrapper form, inline knob/slider/toggle/picker widgets, dockable panel with cards, gamepad and MIDI learn flow, persistence and orphan cleanup.
+
+6.20 [hardware-bindings.md](hardware-bindings.md) — `(on-press …)`/`(on-release …)`/`(on-button …)`/`(on-toggle …)` wrapper forms, inline chip widgets, edge detection and queue semantics, test-fire UX.
 
 ---
 
