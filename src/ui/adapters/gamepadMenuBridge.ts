@@ -11,6 +11,8 @@ import type { SyntaxNode } from "@lezer/common";
 
 import * as ch from "../../contracts/gamepadChannels";
 import type { ControllerMode } from "../../contracts/gamepadChannels";
+import { holeFocused } from "../../contracts/editorChannels";
+import type { HoleFocusedDetail, HoleType } from "../../contracts/editorChannels";
 
 import { open as openDoubleRadialMenu } from "./double-radial-menu.tsx";
 import { buildHierarchicalMenuModel } from "../../lib/pickerMenuModel.ts";
@@ -25,6 +27,7 @@ import {
 import {
   getTrimmedRange,
 } from "../../editors/extensions/structure.ts";
+import { checkAndPublishHoleFocus } from "../../editors/holeFocusEmitter.ts";
 
 import type { PickerEntry } from "../DoubleRadialPicker.tsx";
 import type {
@@ -240,6 +243,11 @@ export function bindGamepadMenuBridge(
     closeMenuFn = null;
     setMode("normal");
     hideEditorCursor(view);
+
+    // Auto-chain: after applying a menu selection, check if the cursor now
+    // sits on a hole. If so, publish holeFocused with source "chain" so the
+    // subscriber can re-open the menu scoped to the hole type.
+    checkAndPublishHoleFocus(view, "chain");
   }
 
   // -- Open menu subscribers ------------------------------------------------
@@ -303,12 +311,128 @@ export function bindGamepadMenuBridge(
     }
   });
 
+  // -- Hole focus subscriber (auto-chain re-open) ---------------------------
+  //
+  // When the cursor lands on a hole via chain (post-mutation), auto-open the
+  // menu scoped to the hole's :type. Manual navigation does NOT auto-open —
+  // the user must tap Y explicitly.
+  //
+  // Type mapping (per radial-menu.md §8.2.1):
+  //   :number  → number picker (numpad)
+  //   :symbol  → symbols tab
+  //   :keyword → literals tab, keywords category
+  //   :expr    → skip auto-open (user taps Y)
+
+  const unsubHoleFocused = holeFocused.subscribe(async (detail: HoleFocusedDetail) => {
+    // Only auto-open for chain-originated events
+    if (detail.source !== "chain") return;
+
+    // Skip auto-open for :expr and unknown types — user taps Y manually
+    if (detail.type === "expr") return;
+
+    // Don't open if a picker is already active
+    if (getMode() === "picker" || getMode() === "loading-picker" || getMode() === "number-picker") {
+      return;
+    }
+
+    setMode("loading-picker");
+    const categories = await typedBuildHierarchicalMenuModel();
+
+    if (getMode() !== "loading-picker") return;
+
+    // Scope the menu based on hole type
+    const scopedCategories = scopeCategoriesToHoleType(categories, detail.type);
+
+    closeMenuFn = openDoubleRadialMenu({
+      categories: scopedCategories as unknown as import("../DoubleRadialPicker.tsx").PickerCategory[],
+      title: `Fill ⟨${detail.name}⟩`,
+      onSelect: (entry: PickerEntry) =>
+        handleCreateSelection(entry, "replace"),
+      onCancel: () => cancelAction(),
+    });
+
+    pickerDirection = "replace";
+    setMode("picker");
+  });
+
   return {
     dispose(): void {
       unsubOpenMenu();
       unsubOpenRadialMenu();
       unsubPickerCancel();
+      unsubHoleFocused();
       cancelAction();
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Hole-type scoping
+// ---------------------------------------------------------------------------
+
+/**
+ * Filter/reorder the hierarchical menu categories based on hole type.
+ * Returns a narrowed view of the manifest appropriate for the given hole type.
+ */
+function scopeCategoriesToHoleType(
+  categories: HierarchicalCategory[],
+  holeType: HoleType,
+): HierarchicalCategory[] {
+  switch (holeType) {
+    case "number": {
+      // Show numbers/literals categories first; filter to numeric items
+      const numericCategories = categories.filter(
+        (c) =>
+          c.id?.toLowerCase().includes("literal") ||
+          c.id?.toLowerCase().includes("number") ||
+          c.label?.toLowerCase().includes("literal") ||
+          c.label?.toLowerCase().includes("number")
+      );
+      // If we found specific categories, use them; otherwise show all
+      return numericCategories.length > 0 ? numericCategories : categories;
+    }
+
+    case "symbol": {
+      // Show symbols/functions categories
+      const symbolCategories = categories.filter(
+        (c) =>
+          c.id?.toLowerCase().includes("symbol") ||
+          c.id?.toLowerCase().includes("function") ||
+          c.label?.toLowerCase().includes("symbol") ||
+          c.label?.toLowerCase().includes("function")
+      );
+      return symbolCategories.length > 0 ? symbolCategories : categories;
+    }
+
+    case "keyword": {
+      // Show literals tab, keywords category
+      const keywordCategories = categories.filter(
+        (c) =>
+          c.id?.toLowerCase().includes("keyword") ||
+          c.id?.toLowerCase().includes("literal") ||
+          c.label?.toLowerCase().includes("keyword") ||
+          c.label?.toLowerCase().includes("literal")
+      );
+      return keywordCategories.length > 0 ? keywordCategories : categories;
+    }
+
+    case "string": {
+      // Show string/text entry categories
+      const stringCategories = categories.filter(
+        (c) =>
+          c.id?.toLowerCase().includes("string") ||
+          c.id?.toLowerCase().includes("text") ||
+          c.id?.toLowerCase().includes("literal") ||
+          c.label?.toLowerCase().includes("string") ||
+          c.label?.toLowerCase().includes("text") ||
+          c.label?.toLowerCase().includes("literal")
+      );
+      return stringCategories.length > 0 ? stringCategories : categories;
+    }
+
+    case "expr":
+    default:
+      // Show everything — user picks any tab
+      return categories;
+  }
 }

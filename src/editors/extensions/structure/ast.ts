@@ -3,6 +3,7 @@
 
 import type { EditorView } from "@codemirror/view";
 import type { EditorState } from "@codemirror/state";
+import type { SyntaxNode } from "@lezer/common";
 import { syntaxTree } from "@codemirror/language";
 import {
   findNodeAt,
@@ -19,6 +20,7 @@ import {
   isContainerNode as isContainerNodeInternal,
   isStructuralToken as isStructuralTokenInternal,
 } from "./new-structure.ts";
+import type { HoleType } from "../../../contracts/editorChannels";
 
 // Re-export navigation functions
 export {
@@ -105,6 +107,115 @@ export function getContainerNodeAt(state: EditorState, pos: number): any {
     node = node.parent;
   }
   return node && isContainerNode(node) ? node : null;
+}
+
+// ── Hole detection ─────────────────────────────────────────────
+//
+// A hole is a list matching the shape `($ <symbol> <:keyword>)` per
+// structural-editing.md §2.9.1.  We detect it by examining the Lezer parse
+// tree: a 3-element List whose first child text is "$", second is a Symbol,
+// and third is a Keyword.
+
+/** Valid hole types per the structural ontology. */
+const VALID_HOLE_TYPES: ReadonlySet<string> = new Set([
+  "number", "symbol", "keyword", "string", "expr",
+]);
+
+/** Parsed representation of a hole node. */
+export interface ParsedHole {
+  name: string;
+  type: HoleType;
+  from: number;
+  to: number;
+}
+
+/**
+ * Check whether a syntax node represents a hole `($ name :type)`.
+ * Returns the parsed hole info if so, null otherwise.
+ */
+export function parseHoleNode(
+  node: SyntaxNode | null | undefined,
+  state: EditorState,
+): ParsedHole | null {
+  if (!node) return null;
+
+  // Holes are Lists in the Lezer parse tree
+  if (node.type.name !== "List") return null;
+
+  // Gather non-structural children
+  const children: SyntaxNode[] = [];
+  const cursor = node.cursor();
+  if (!cursor.firstChild()) return null;
+  do {
+    if (!isStructuralTokenInternal(cursor.node)) {
+      children.push(cursor.node);
+    }
+  } while (cursor.nextSibling());
+
+  // Must have exactly 3 logical children: $, name, :type
+  if (children.length !== 3) return null;
+
+  const [head, nameNode, typeNode] = children;
+
+  // Head must be the literal symbol "$"
+  const headText = state.sliceDoc(head.from, head.to);
+  if (headText !== "$") return null;
+
+  // Second must be a Symbol (the hole name)
+  if (nameNode.type.name !== "Symbol") return null;
+  const name = state.sliceDoc(nameNode.from, nameNode.to);
+
+  // Third must be a Keyword (the hole type)
+  if (typeNode.type.name !== "Keyword") return null;
+  const typeText = state.sliceDoc(typeNode.from, typeNode.to);
+
+  // Keywords start with ":" — strip it
+  const typeName = typeText.startsWith(":") ? typeText.slice(1) : typeText;
+  if (!VALID_HOLE_TYPES.has(typeName)) return null;
+
+  return {
+    name,
+    type: typeName as HoleType,
+    from: node.from,
+    to: node.to,
+  };
+}
+
+/**
+ * Convenience: check if the cursor's current node is a hole.
+ * Resolves the node at the selection and attempts to parse it as a hole.
+ * Walks up through ancestors in case the cursor is on a child of the hole list.
+ */
+export function getHoleAtCursor(state: EditorState): ParsedHole | null {
+  const sel = state.selection.main;
+
+  // Try resolving via findNodeAt (structural navigation's resolver)
+  const node = findNodeAt(state, sel.from, sel.to) as SyntaxNode | null;
+  if (node) {
+    // Direct hit: the selected node IS the hole list
+    const direct = parseHoleNode(node, state);
+    if (direct) return direct;
+
+    // Walk up ancestors — cursor may be on a child of the hole
+    let ancestor: SyntaxNode | null = node.parent;
+    while (ancestor && ancestor.type.name !== "Program") {
+      const hole = parseHoleNode(ancestor, state);
+      if (hole) return hole;
+      ancestor = ancestor.parent;
+    }
+  }
+
+  // Fallback: resolve directly from the syntax tree at the cursor position.
+  // findNodeAt may return null in edge cases where the cursor is between nodes.
+  const tree = syntaxTree(state);
+  let resolved: SyntaxNode | null = tree.resolveInner(sel.from, 1);
+  while (resolved && resolved.type.name !== "Program") {
+    const hole = parseHoleNode(resolved, state);
+    if (hole) return hole;
+    resolved = resolved.parent;
+  }
+
+  return null;
 }
 
 /**

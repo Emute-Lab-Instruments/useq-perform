@@ -29,6 +29,7 @@ import {
   slotForStick,
   type ManualControlBinding,
 } from "../lib/manualControlState.ts";
+import { checkAndPublishHoleFocus } from "./holeFocusEmitter.ts";
 
 import * as ch from "../contracts/gamepadChannels";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
@@ -289,6 +290,7 @@ export function bindGamepadNavigation(
     const handler = navigationMap[direction];
     if (handler && typedPerformNavigation(view, handler)) {
       hideEditorCursor(view);
+      checkAndPublishHoleFocus(view, "navigation");
     }
   });
 
@@ -297,6 +299,7 @@ export function bindGamepadNavigation(
     if (navigationMode === "structural" && isNewStructCoreActive()) return;
     if (typedPerformNavigation(view, typedNavigateIn)) {
       hideEditorCursor(view);
+      checkAndPublishHoleFocus(view, "navigation");
     }
   });
 
@@ -305,6 +308,7 @@ export function bindGamepadNavigation(
     if (navigationMode === "structural" && isNewStructCoreActive()) return;
     if (typedPerformNavigation(view, typedNavigateOut)) {
       hideEditorCursor(view);
+      checkAndPublishHoleFocus(view, "navigation");
     }
   });
 

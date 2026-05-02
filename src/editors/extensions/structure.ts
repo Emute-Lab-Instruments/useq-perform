@@ -39,7 +39,10 @@ export {
   getTrimmedRange,
   getContainerNodeAt,
   performNavigation,
+  parseHoleNode,
+  getHoleAtCursor,
 } from "./structure/ast.ts";
+export type { ParsedHole } from "./structure/ast.ts";
 
 // --- Eval integration ---
 export {
