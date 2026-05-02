@@ -32,6 +32,17 @@ export interface TickAndProjectResult {
 /** Transport states the WASM interpreter understands */
 export type TransportState = 'playing' | 'paused' | 'stopped';
 
+/**
+ * Shape of the `globalThis.__useqWasmRuntime` handle exposed to diagnostic
+ * readers. Set by the WASM init paths (main-thread and worker) so the
+ * `readLast/ActiveDiagnostics` helpers can pull structured diagnostics
+ * without holding a direct module reference.
+ */
+export interface UseqWasmRuntimeGlobal {
+  useq_last_diagnostics?: () => string;
+  useq_active_diagnostics?: () => string;
+}
+
 // Emscripten module interface (minimal typing for what we use)
 interface EmscriptenModule {
   cwrap(symbol: string, returnType: string | null, argTypes: string[]): (...args: any[]) => any;
@@ -636,6 +647,16 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     return Number.isNaN(value) ? NaN : value;
   };
   const batchEvaluator = createBatchEvaluator(module, evaluateOutputAtTime);
+
+  // Bind diagnostic readers and stash them on the global so the editor
+  // (`readLastDiagnostics` / `readActiveDiagnostics` in wasmRuntimePort.ts)
+  // can pull structured diagnostics for inline editor squiggles.
+  const lastDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_last_diagnostics) as (() => string) | null;
+  const activeDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_active_diagnostics) as (() => string) | null;
+  (globalThis as { __useqWasmRuntime?: UseqWasmRuntimeGlobal }).__useqWasmRuntime = {
+    useq_last_diagnostics: lastDiagsFn ?? undefined,
+    useq_active_diagnostics: activeDiagsFn ?? undefined,
+  };
 
   useq_init();
   dbg("uSEQ WASM interpreter initialised");

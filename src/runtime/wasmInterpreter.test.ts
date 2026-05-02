@@ -444,6 +444,47 @@ describe("useqWasmInterpreter", () => {
     expect(wasmRuntimePort.capabilities().supportsTimeWindow).toBe(false);
   });
 
+  it("publishes diagnostic readers on globalThis.__useqWasmRuntime after init", async () => {
+    const lastDiagnostics = vi.fn(() =>
+      JSON.stringify([
+        {
+          severity: "error",
+          message: "boom",
+          range: { start: 0, end: 1 },
+        },
+      ]),
+    );
+    const activeDiagnostics = vi.fn(() => JSON.stringify([]));
+    const module = createBaseModule({
+      overrides: {
+        useq_last_diagnostics: lastDiagnostics,
+        useq_active_diagnostics: activeDiagnostics,
+      },
+    });
+
+    installLoadedScriptTag();
+    window.createModule = vi.fn(async () => module as never);
+
+    const globalsBefore = globalThis as { __useqWasmRuntime?: unknown };
+    delete globalsBefore.__useqWasmRuntime;
+
+    const { ensureUseqWasmLoaded } = await import("./wasmInterpreter.ts");
+    await ensureUseqWasmLoaded();
+
+    const handle = (globalThis as {
+      __useqWasmRuntime?: {
+        useq_last_diagnostics?: () => string;
+        useq_active_diagnostics?: () => string;
+      };
+    }).__useqWasmRuntime;
+
+    expect(handle).toBeDefined();
+    expect(typeof handle?.useq_last_diagnostics).toBe("function");
+    expect(typeof handle?.useq_active_diagnostics).toBe("function");
+    expect(handle?.useq_last_diagnostics?.()).toContain('"boom"');
+    expect(handle?.useq_active_diagnostics?.()).toBe("[]");
+  });
+
   it("fails fast when the pinned required wasm exports are missing", async () => {
     const module = createBaseModule({
       missingSymbols: ["useq_update_time"],

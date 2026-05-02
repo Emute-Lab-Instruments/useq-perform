@@ -224,6 +224,22 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     bufferCapacity = length;
   };
 
+  // Diagnostic readers must be reachable via `globalThis.__useqWasmRuntime`
+  // because `readLast/ActiveDiagnosticsLocal` (below) read from that handle
+  // rather than holding a direct module reference.
+  const lastDiagsFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_last_diagnostics,
+  ) as (() => string) | null;
+  const activeDiagsFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_active_diagnostics,
+  ) as (() => string) | null;
+  (globalThis as { __useqWasmRuntime?: UseqRuntimeGlobal }).__useqWasmRuntime = {
+    useq_last_diagnostics: lastDiagsFn ?? undefined,
+    useq_active_diagnostics: activeDiagsFn ?? undefined,
+  };
+
   useq_init();
 
   const evaluateOutputsTimeWindow = (
