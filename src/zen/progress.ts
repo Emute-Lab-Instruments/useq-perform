@@ -1,4 +1,4 @@
-const STORAGE_KEY = "useq:zen:progress";
+import { load, save, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 
 export interface ExerciseProgress {
   completed: boolean;
@@ -24,21 +24,11 @@ const DEFAULT_PROGRESS: ZenProgress = {
 };
 
 export function loadProgress(): ZenProgress {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_PROGRESS };
-    const parsed = JSON.parse(raw);
-    if (parsed?.version === 1) return parsed;
-    return { ...DEFAULT_PROGRESS };
-  } catch {
-    return { ...DEFAULT_PROGRESS };
-  }
+  const parsed = load<ZenProgress>(PERSISTENCE_KEYS.zenProgress, null);
+  if (parsed?.version === 1) return parsed;
+  return { ...DEFAULT_PROGRESS };
 }
 
 export function saveProgress(p: ZenProgress): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
-  } catch {
-    // localStorage full or unavailable — silently drop
-  }
+  save(PERSISTENCE_KEYS.zenProgress, p);
 }

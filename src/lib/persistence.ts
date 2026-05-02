@@ -47,6 +47,9 @@ export const PERSISTENCE_KEYS = {
   // DevMode
   devModeState: "uSEQ-Perform-DevMode-State",
 
+  // Zen mode
+  zenProgress: "useq:zen:progress",
+
   // Legacy migration keys (will be removed after migration)
   legacyEditorConfig: "editorConfig",
   legacySettings: "useqConfig",
