@@ -495,17 +495,20 @@ Keyword literals in source begin with a leading `:` (`:up`, `:down`). The manife
 
 8.2.1 After a verb commits and the cursor lands on a hole, the menu re-opens automatically with a narrowed scope based on the hole's `:type`:
 
-| Hole `:type` | Re-open scope |
-|---|---|
-| `:number` | `leftTabIdx = literals`, hover pre-selected to `numbers` category |
-| `:keyword` | `leftTabIdx = literals`, hover pre-selected to `keywords` category |
-| `:symbol` | `leftTabIdx = symbols` |
-| `:expr` | `leftTabIdx = 0` (Functions); user picks any tab |
-| (none / unknown) | `leftTabIdx = 0`; user picks any tab |
+| Hole `:type` | Re-open scope | Auto-open in chain? |
+|---|---|---|
+| `:number` | `leftTabIdx = literals`, enters numpad sub-mode directly (§15.1.2) | yes (instant) |
+| `:string` | enters T9 sub-mode directly (§15.1.2) | yes (instant) |
+| `:keyword` | `leftTabIdx = literals`, hover pre-selected to `keywords` category | yes (instant) |
+| `:symbol` | `leftTabIdx = symbols` | yes (instant) |
+| `:expr` | `leftTabIdx = 0` (Functions); user picks any tab | **no — chain pauses** |
+| (none / unknown) | `leftTabIdx = 0`; user picks any tab | **no — chain pauses** |
 
 The pre-selected hover is set into `leftHover` so the user just engages the right stick to start picking. To override the pre-selection they can release the left stick and re-engage on a different category.
 
-8.2.2 The chain continues until either no more holes remain on the inserted form or the user cancels (Back). On cancel, **remaining holes stay in the document**. The user can fill them later by navigating to a hole and pressing `tap(Y)` to re-summon the menu — a hole as the apply target re-opens the menu with the same narrowed scope.
+The two no-auto-open rows above realise the carve-out specified in [structural-editing.md §2.9.9](structural-editing.md): for holes with no narrowing scope, opening a wide menu without user intent costs more than it saves. The chain pauses on those holes; the cursor sits on the pill (with halo); the user taps `Y` to summon the menu when ready, and chain resumes on the *next* hole the commit lands the cursor on.
+
+8.2.2 The chain continues until either no more holes remain on the inserted form or the user cancels (Back). On cancel, **remaining holes stay in the document**. The user can fill them later by navigating to a hole and pressing `tap(Y)` to re-summon the menu — a hole as the apply target re-opens the menu with the same narrowed scope. Manual navigation onto a hole (via `nav.nextHole` / `nav.prevHole` / arrow nav) **never** auto-opens the menu, even for typed holes; the user always taps `Y` to summon it. See [structural-editing.md §2.9.9](structural-editing.md).
 
 8.2.3 Each chain step is a separate, undoable mutation on the document. The user can `editor.undo` to step back through the chain.
 

@@ -297,6 +297,21 @@ type MissPolicy =
 
 4.7.4 The cancel gesture for `'miss-or-cancel'` is by default `tap('B')`, configurable per layer via `cancelGesture: Gesture` (omitted from §4.2 for brevity; see types module).
 
+### 4.8 App-wide confirm/cancel convention
+
+4.8.1 Anywhere a user-facing flow has a discrete *confirm* and *cancel* (modal dialogs, sub-modes, free-form entry buffers, multi-step pickers, takeover flows), the gamepad bindings follow a single, fixed convention:
+
+- **Confirm** → `tap('Start')`
+- **Cancel** → `tap('Back')` (the Select/View button on Xbox-style controllers; Share on PlayStation-style)
+
+4.8.2 This convention overrides ad-hoc per-feature choices. Existing specs that bind these actions explicitly (e.g. [radial-menu.md §14.3 / §14.4](radial-menu.md), [live-edit.md §3.7.8](live-edit.md)) align with it. New specs SHOULD reference §4.8 rather than re-stating the bindings, so the convention has one normative home.
+
+4.8.3 **Keyboard counterparts.** `Enter` is the keyboard confirm; `Esc` is the keyboard cancel. These are application-wide and do not require per-feature rebinding.
+
+4.8.4 **Why these buttons.** `Start` and `Back` sit on the gamepad's centre cluster, away from face buttons and triggers used for in-flow actions (A/B/X/Y for verbs, sticks for navigation). Reserving them for confirm/cancel means a user can always exit or commit without disturbing the verb layer they're currently using, and their motor pattern transfers across every flow in the app.
+
+4.8.5 **Out of scope.** Continuous actions (slurp, barf, nav.next, manual-control) have no confirm/cancel — they are eager-with-undo (§5). The convention applies only to flows that *gate* mutation behind explicit user assent.
+
 ---
 
 ## 5. Eager-with-undo dispatch

@@ -113,12 +113,42 @@ Inference is best-effort; the user always has the final say via the keyword args
 3.7.3 Within the sub-mode:
 - `nav.next` / `nav.prev` move between markable elements.
 - `liveEdit.mark` (the same action) toggles the focused element's preview marker.
-- `Enter` (or `liveEdit.confirm`, configurable) commits: each ●-marked element is wrapped per §3.2; ○-marked elements are left untouched. One eval fires for the parent form.
-- `Esc` (or `liveEdit.cancel`) aborts: the document is unchanged.
+- `liveEdit.confirm` (Start on gamepad; Enter on keyboard) commits: each ●-marked element is wrapped per §3.2; ○-marked elements are left untouched. One eval fires for the parent form. See §3.7.8 for the binding rationale.
+- `liveEdit.cancel` (Back on gamepad; Esc on keyboard) aborts: the document is unchanged. See §3.7.8.
 
 3.7.4 If the vector is empty or contains no markable elements, the action is a no-op flash without entering the sub-mode.
 
 3.7.5 Unmarking a vector containing live-edits: pressing `liveEdit.mark` on a vector that has *any* live-edit children enters the same sub-mode with all live-edited elements pre-selected (●); deselecting and confirming unwraps those elements. This is the round-trip for "remove some/all live-edits from this vector."
+
+3.7.6 **Marker rendering (MVP).** Preview markers do **not** use a separate ●/○ glyph in the rendered editor. Instead, each markable literal is decorated in place:
+
+- **● (selected)** → solid underline beneath the literal.
+- **○ (deselected)** → dotted underline beneath the literal.
+- **non-markable** → no decoration (per §3.7.2).
+
+Example, mid sub-mode (third element deselected):
+
+```
+[ 1    2    3 ]
+  ━━   ━━   ┄┄
+  on   on   off
+```
+
+Rationale: keeps line layout stable (no glyph insertion shifts columns), avoids visual clutter in long vectors, and reads at a glance as "which of these are on." The decoration is a CodeMirror line decoration scoped to each literal's range.
+
+3.7.7 **Focus indication.** The focused element renders with the standard structural-mode cursor halo around the literal itself ([structural-editing.md §3.3](structural-editing.md)). The marker underline (§3.7.6) remains visible underneath the halo. Net visual: halo = "this is the cursor"; underline = "this is the mark state." The two cues compose without conflict.
+
+```
+[ 1   ⌜2⌟   3 ]
+  ━━  ━━   ━━     (all on; cursor on element 2)
+```
+
+3.7.8 **Confirm/cancel affordance.** No persistent on-screen affordance during active interaction — the marker decorations and focus halo are the mode signal, and the sub-mode is entered deliberately, not stumbled into. Bindings follow the **app-wide convention** ([gamepad.md §4.8](gamepad.md)):
+
+- **Confirm**: `Start` (gamepad) / `Enter` (keyboard).
+- **Cancel**: `Back` (gamepad; Select on Xbox-style controllers) / `Esc` (keyboard).
+
+If the user idles for ≥ `liveEdit.subModeIdleHintMs` (default 2000 ms) with no input, a discrete one-line hint fades in at the bottom of the editor: `Start ✓  ·  Back ✗  ·  A toggle  ·  ←/→ navigate`. The hint disappears on the next input. The hint is informational; the convention is the source of truth.
 
 3.8 **Multi-cursor marking.** With multiple cursors, `liveEdit.mark` applies pointwise per [structural-editing.md §3.5](structural-editing.md). Each cursor's literal is wrapped with a fresh `:id`. One eval fires after all wraps are written.
 

@@ -56,9 +56,39 @@
 
 2.9.4 **Auto-chain integration.** When the cursor lands on a hole post-mutation, the editor publishes a `holeFocused` event on the contracts channel registry. The radial menu subscribes and re-opens scoped to the hole's `:type` (see [radial-menu.md §8.2](radial-menu.md)). Other consumers (keyboard hint UI, tutorial overlays) may subscribe.
 
-2.9.5 **Rendering.** Holes are foldable, default folded, rendered as inline placeholder pills (e.g. `⟨freq⟩`). The fold setting follows `structure.foldAllWrappers`. Cursor halos render around the pill, not around the underlying source. When unfolded (e.g. `mode.insert` for hand-editing the type), the source `($ freq :number)` becomes visible until structural mode resumes.
+2.9.5 **Rendering.** Holes are foldable, default folded, rendered as inline placeholder pills. The fold setting follows `structure.foldAllWrappers`. Cursor halos render around the pill, not around the underlying source. When unfolded (e.g. `mode.insert` for hand-editing the type), the source `($ freq :number)` becomes visible until structural mode resumes. The folded pill format is specified in §2.9.7.
 
 2.9.6 **Holes vs Metas.** Holes are **not** wrapper-Metas. Live-edit, ignore, debug, and other wrapper-Metas (§6) decorate a *host node* — the wrapper is ornamentation; the host is what structural ops act on. A hole has no host: the wrapper *is* the entire form. Holes therefore live in the core kind union (§2.2), not the Metas stack.
+
+2.9.7 **Hole pill format (MVP).** The folded pill renders as `[<type-tag>·<name>]` in a single inline element with a subtle background. The type tag is a 3-character abbreviation:
+
+| `:type` | tag |
+|---|---|
+| `:number` | `num` |
+| `:symbol` | `sym` |
+| `:keyword` | `kwd` |
+| `:string` | `str` |
+| `:expr` | `exp` |
+
+Examples (in source view above, in folded pill view below):
+
+```
+(osc ($ freq :number))      →   (osc [num·freq])
+(slow ($ rate :number)
+      ($ body :expr))       →   (slow [num·rate] [exp·body])
+```
+
+Type information is encoded inline in the glyph form rather than via colour, so the cue survives across themes and accessibility settings. The pill is selectable as a single unit and is itself the structural target of cursors and mutations (§2.9.2).
+
+2.9.8 **Hole hint UI = pill glow only.** When a cursor is on a hole, the only visual is the standard cursor halo applied to the pill (§3.3 cursor halos; renders around the pill per §2.9.5). No tooltip, no status-bar line, no inline expansion — the pill format already encodes the type, and the auto-open / manual-open behaviour (§2.9.9) carries the affordance for filling. Quiet by design.
+
+2.9.9 **Auto-open behaviour after `holeFocused`.** The radial menu opens scoped to the hole's `:type` ([radial-menu.md §8.2](radial-menu.md)). *When* it opens depends on how the cursor reached the hole:
+
+- **Auto-chain (post-mutation cursor landing on a hole as the result of a verb commit)** — the menu opens **instantly** for typed holes (`:number`, `:symbol`, `:keyword`, `:string`). For `:number` the menu enters the numpad sub-mode directly (per [radial-menu.md §15.1.2](radial-menu.md)); for `:string` it enters T9; for `:symbol` and `:keyword` it opens the picking phase scoped per [radial-menu.md §8.2.1](radial-menu.md).
+- **Auto-chain landing on an `:expr` hole or an unknown / untyped hole** — the menu **does not** auto-open. The chain pauses; the cursor sits on the hole pill (with halo); the user taps `Y` to summon the menu when ready. Rationale: the menu has nothing to narrow to (the §8.2.1 table maps `:expr` and `(none / unknown)` to `leftTabIdx = 0`), so opening a wide menu interrupts thought without adding value.
+- **Manual navigation (the cursor reaches the hole via `nav.nextHole` / `nav.prevHole` / arrow navigation)** — the menu **does not** auto-open regardless of `:type`. The user taps `Y` to summon it. Rationale: the user is browsing or orienting; they choose when to commit. Once summoned, the menu opens scoped per §8.2.1 exactly as in the chain case.
+
+The two carve-outs above mean the chain stops at `:expr` holes by design; the user fills them deliberately, and the chain resumes (instant auto-open) on the *next* hole the verb's commit lands the cursor on. This setting is fixed in MVP; if churn shows users want different behaviour, gate behind a setting `structure.holeAutoOpen ∈ { 'chain-typed-only' (default), 'chain-all', 'never' }`.
 
 2.10 **Tree construction.** The Lezer tree is folded into the internal tree at parse time. Three pattern recognitions run in order:
 1. `($ <symbol> <:keyword>)` (a 3-element list with the literal head symbol `$`, a symbol second, and a keyword third) → `hole{name, type}` leaf.
