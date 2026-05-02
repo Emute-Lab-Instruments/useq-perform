@@ -100,9 +100,11 @@ export interface WasmSettings {
 }
 
 /**
- * Structural-editing settings. Round-2 introduces a new functional-core
- * driven structural editor; the legacy path stays the default. Flip
- * `useNewCore` to true to exercise the new adapter.
+ * Structural-editing settings. The functional-core / adapter implementation
+ * is the default. `useNewCore=false` is a temporary escape hatch back to
+ * the legacy `new-structure.ts` path, retained while the verification doc
+ * (gii8.32) is still being green-walked. The flag will be removed once the
+ * legacy file is retired.
  */
 export interface StructureSettings {
   useNewCore: boolean;
@@ -333,7 +335,7 @@ export const defaultUserSettings: AppSettings = {
     showTimestamp: false,
   },
   structure: {
-    useNewCore: false,
+    useNewCore: true,
     foldAllWrappers: true,
   },
   keybindings: {
