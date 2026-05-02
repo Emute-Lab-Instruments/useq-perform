@@ -66,7 +66,9 @@ export function applyOp(
 
   // Cursor-only update: tree identity unchanged.
   if (after.tree === before.tree) {
-    if (after.cursors === before.cursors) return false;
+    if (after.cursors === before.cursors || cursorsEqual(before.cursors, after.cursors)) {
+      return false;
+    }
     view.dispatch({
       effects: setStructState.of({
         state: after,
@@ -200,6 +202,32 @@ function redoCursorsFromPaths(
     return { primary: { kind: "node" as const, target: tree.root.id }, secondaries: [] };
   }
   return { primary: out[0], secondaries: out.slice(1) };
+}
+
+/**
+ * Shallow semantic equality for CursorSets. Avoids dispatching a spurious
+ * "cursor update" when the core returned a new object with the same content
+ * (e.g. on a no-op mutation where the lift rebuilds the set from survivors).
+ */
+function cursorsEqual(
+  a: import("../core/index.ts").CursorSet,
+  b: import("../core/index.ts").CursorSet,
+): boolean {
+  if (!cursorEqual(a.primary, b.primary)) return false;
+  if (a.secondaries.length !== b.secondaries.length) return false;
+  for (let i = 0; i < a.secondaries.length; i++) {
+    if (!cursorEqual(a.secondaries[i], b.secondaries[i])) return false;
+  }
+  return true;
+}
+
+function cursorEqual(a: Cursor, b: Cursor): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "node" && b.kind === "node") return a.target === b.target;
+  if (a.kind === "range" && b.kind === "range") {
+    return a.parent === b.parent && a.start === b.start && a.end === b.end && a.anchor === b.anchor;
+  }
+  return false;
 }
 
 /**

@@ -45,14 +45,12 @@ import {
   redo,
 } from "@codemirror/commands";
 import { openPalette } from "../../ui/keybindings/ActionPalette.tsx";
+import { dispatchAction } from "../../editors/extensions/structure/adapter/dispatcher.ts";
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
 
 // ---------------------------------------------------------------------------
-// Clojure-mode handler extraction
-//
-// The clojure-mode `complete_keymap` is an array of {key, run, ...} objects.
-// We extract `run` functions by their original key strings — the same ones
-// that keymaps.ts remaps to bracket keys.
+// Clojure-mode handler extraction (legacy — retained only for killToEndOfList
+// which has no functional-core equivalent yet)
 // ---------------------------------------------------------------------------
 
 function findClojureHandler(key: string): EditorHandler | undefined {
@@ -62,16 +60,19 @@ function findClojureHandler(key: string): EditorHandler | undefined {
   return binding?.run as EditorHandler | undefined;
 }
 
-// Original clojure-mode keys → our remapped keys:
-//   Ctrl-ArrowRight    → Ctrl-]  (slurp forward)
-//   Ctrl-ArrowLeft     → Ctrl-[  (slurp backward)
-//   Ctrl-Alt-ArrowRight → Ctrl-' (barf forward)
-//   Ctrl-Alt-ArrowLeft  → Ctrl-; (barf backward)
-const slurpForward = findClojureHandler("Ctrl-ArrowRight");
-const slurpBackward = findClojureHandler("Ctrl-ArrowLeft");
-const barfForward = findClojureHandler("Ctrl-Alt-ArrowRight");
-const barfBackward = findClojureHandler("Ctrl-Alt-ArrowLeft");
 const killToEndOfList = findClojureHandler("Ctrl-k");
+
+// ---------------------------------------------------------------------------
+// Structural-editing handlers via the functional core adapter.
+//
+// Each edit.* action that the core supports is dispatched through the adapter's
+// `dispatchAction`, which: reads the core State from the editor, runs the pure
+// op, and applies the resulting tree change back as a CodeMirror transaction.
+// ---------------------------------------------------------------------------
+
+function structHandler(dispatchName: string): EditorHandler {
+  return (view) => dispatchAction(view, dispatchName);
+}
 
 // ---------------------------------------------------------------------------
 // Handler registry
@@ -94,11 +95,19 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "edit.redo": redo,
   "edit.backspaceNormal": deleteCharBackward,
 
-  // -- Structure (clojure-mode remapped handlers) ---------------------------
-  ...(slurpForward && { "edit.slurpFwd": slurpForward }),
-  ...(slurpBackward && { "edit.slurpBack": slurpBackward }),
-  ...(barfForward && { "edit.barfFwd": barfForward }),
-  ...(barfBackward && { "edit.barfBack": barfBackward }),
+  // -- Structure (functional-core via adapter dispatcher) --------------------
+  "edit.slurpFwd": structHandler("edit.slurpForward"),
+  "edit.slurpBack": structHandler("edit.slurpBackward"),
+  "edit.barfFwd": structHandler("edit.barfForward"),
+  "edit.barfBack": structHandler("edit.barfBackward"),
+  "edit.raise": structHandler("edit.raise"),
+  "edit.splice": structHandler("edit.splice"),
+  "edit.wrapList": structHandler("edit.encloseList"),
+  "edit.wrapVector": structHandler("edit.encloseVector"),
+  "edit.transposeFwd": structHandler("edit.transposeNext"),
+  "edit.transposeBack": structHandler("edit.transposePrev"),
+
+  // -- Structure (legacy — no core equivalent yet) --------------------------
   ...(killToEndOfList && { "edit.killToEndOfList": killToEndOfList }),
 
   // -- Probe ----------------------------------------------------------------

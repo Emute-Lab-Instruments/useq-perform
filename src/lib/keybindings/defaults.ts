@@ -86,6 +86,14 @@ export const defaultKeyBindings: KeyBinding[] = [
   { action: "picker.select", key: "Enter", when: "picker.open" },
   { action: "picker.cancel", key: "Escape", when: "picker.open" },
 
+  // -- Extended structural editing -------------------------------------------
+  { action: "edit.raise", key: "Alt-r" },
+  { action: "edit.splice", key: "Alt-Shift-s" },
+  { action: "edit.wrapList", key: "Alt-(" },
+  { action: "edit.wrapVector", key: "Alt-[" },
+  { action: "edit.transposeFwd", key: "Alt-ArrowDown" },
+  { action: "edit.transposeBack", key: "Alt-ArrowUp" },
+
   // -- Chord alternatives: structural editing (Alt-e namespace) ------------
   // These are alternatives to the direct Ctrl-bracket bindings above.
   // CodeMirror handles multi-stroke (space-separated) keys natively.
@@ -93,6 +101,12 @@ export const defaultKeyBindings: KeyBinding[] = [
   { action: "edit.slurpBack", key: "Alt-e [" },
   { action: "edit.barfFwd", key: "Alt-e '" },
   { action: "edit.barfBack", key: "Alt-e ;" },
+  { action: "edit.raise", key: "Alt-e r" },
+  { action: "edit.splice", key: "Alt-e s" },
+  { action: "edit.wrapList", key: "Alt-e w" },
+  { action: "edit.wrapVector", key: "Alt-e v" },
+  { action: "edit.transposeFwd", key: "Alt-e j" },
+  { action: "edit.transposeBack", key: "Alt-e k" },
 
   // -- Chord alternatives: probe management (Alt-o namespace) -------------
   // "o" for "observe" — avoids conflict with direct Alt-p binding.

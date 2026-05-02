@@ -26,6 +26,9 @@ vi.mock("../../editors/extensions/probes.ts", () => ({
   expandCurrentProbeContext: vi.fn(() => true),
   contractCurrentProbeContext: vi.fn(() => true),
 }));
+vi.mock("../../editors/extensions/structure/adapter/dispatcher.ts", () => ({
+  dispatchAction: vi.fn(() => true),
+}));
 
 // Import handlers after mocks are registered
 import { handlers } from "./handlers.ts";
@@ -211,13 +214,24 @@ describe("Default keyboard binding key snapshot", () => {
     const sortedKeys = defaultKeyBindings.map((b) => b.key).sort();
     expect(sortedKeys).toMatchInlineSnapshot(`
       [
+        "Alt-(",
         "Alt-/",
+        "Alt-ArrowDown",
+        "Alt-ArrowUp",
         "Alt-Enter",
         "Alt-Shift-p",
+        "Alt-Shift-s",
+        "Alt-[",
         "Alt-e '",
         "Alt-e ;",
         "Alt-e [",
         "Alt-e ]",
+        "Alt-e j",
+        "Alt-e k",
+        "Alt-e r",
+        "Alt-e s",
+        "Alt-e v",
+        "Alt-e w",
         "Alt-f",
         "Alt-g",
         "Alt-h",
@@ -226,6 +240,7 @@ describe("Default keyboard binding key snapshot", () => {
         "Alt-o r",
         "Alt-o s",
         "Alt-p",
+        "Alt-r",
         "Alt-s",
         "ArrowDown",
         "ArrowLeft",
