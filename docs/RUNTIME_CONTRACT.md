@@ -2,7 +2,7 @@
 
 This document is the editor-facing contract for the firmware and WASM runtimes that `useq-perform` consumes.
 
-For the higher-level product boundary and compatibility cuts, read `docs/STABLE_CORE.md` first. This file is narrower: it defines what the editor may assume about hardware and WASM runtimes.
+For the higher-level product boundary and compatibility cuts, read `docs/specs/MAIN.md` §4 first. This file is narrower: it defines what the editor may assume about hardware and WASM runtimes.
 
 ## Canonical `src-useq` Source Of Truth
 

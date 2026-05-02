@@ -22,8 +22,8 @@ All six original streams landed across two waves of parallel agents:
 - **C — Hardware-mode test coverage** (`useq-perform-ln3`). 22 new
   lifecycle tests; paths 1–6 covered.
 - **D — Settings reorg + doc sweep + serial-wait fix**
-  (`useq-perform-9gu`, `-3yw`, `-vig`). devmode split, REPO_MAP/STABLE_CORE
-  pruned, observed-readiness probe replaces 3500ms wait.
+  (`useq-perform-9gu`, `-3yw`, `-vig`). devmode split, map/stable-core
+  docs pruned, observed-readiness probe replaces 3500ms wait.
 - **F — WASM-mode protocol parity** (`useq-perform-6cf` typed runtime
   ports, `useq-perform-pcx` JSON parity). Hardware and WASM share the same
   port abstraction and the same `hello` / `stream-config` / `eval` /
@@ -55,75 +55,68 @@ desktop apps, and broad browser support are explicitly *not* the mission.
 Ranked by mission impact. Each entry: **what / why-it-blocks-the-mission /
 cost (S–L) / date**.
 
-### 1. Submodule pin lags 70 commits behind the firmware/WASM trunk — *pre-ship only* *(2026-04-29)*
+### 1. src-useq branch/pin must be ship-clean before public build *(2026-05-02)*
 
-> **Status: not in active push.** Local dev runs against the checked-out
-> submodule (the new code), so day-to-day work is unaffected. This entry
-> stays in ALIGNMENT.md as a flag for "before shipping a release, deal with
-> this." It re-enters the active push the moment a v1.2.0 ship is on the
-> table.
+> **Status: in Superbooth Phase 6.** Local development now has the
+> `src-useq/` gitlink and checked-out submodule on the same bytecode-VM branch.
+> The 2026-05-02 hygiene pass landed the local spec edits as submodule commit
+> `1fc5350` on `feature/bytecode-vm-core`.
 
-**What.** `npm run src-useq:status` reports `pinnedCommit cfa7fb1`,
-`checkedOutCommit 15c8424`, branch `feature/bytecode-vm-core`, dirty.
-Between those two commits sit the bytecode VM (tree-walker deleted), the
-"signal engine" reactive-graph rewrite, the full structured-diagnostics
-pipeline, an X-macro symbol table, native for-loop compilation, and ~50 e2e
-firmware tests with 162k+ assertions.
+**What.** The old "pin trails trunk" diagnosis is no longer the exact state
+of this checkout. The remaining ship work is to make the submodule state
+public-branch/merge-clean, rebuild/copy WASM artifacts if needed, and smoke
+the public build against the pinned artifact. Pre-existing `src-useq`
+SIGSEGV/SIGABRT tests remain tracked in `useq-perform-jut`.
 
-**Why it blocks the mission *at ship time*.** A shipped build runs the
-*pinned* WASM, not the checked-out one — so any release without advancing
-the pin would put the tree-walker (not the bytecode VM) into users' hands.
-The 10–20 channel goal rests on the bytecode VM landing for users.
+**Why it blocks the mission *at ship time*.** A shipped build runs the pinned
+WASM artifact and gitlink, not whatever happens to be checked out locally.
+Phase 6 must prove the pin, copied artifact, firmware branch, and smoke-tested
+runtime all describe the same bytecode-VM world.
 
-**Cost.** M (decide branch strategy in `src-useq`, fix or quarantine the
-SIGSEGV tests blocking the merge — `bd useq-perform-jut` — advance the pin,
-rebuild WASM, smoke-test). Tracked in `bd useq-perform-xbe`.
+**Cost.** M (merge/release `src-useq`, fix or quarantine the SIGSEGV tests —
+`bd useq-perform-jut` — rebuild WASM if the artifact changes, smoke-test).
+Tracked in `bd useq-perform-gii8.62` / `bd useq-perform-xbe`.
 
-### 2. WASM eval on the main thread is now opt-out, not opt-in *(2026-04-29)*
+### 2. Worker-backed WASM is default, but needs Superbooth verification *(2026-05-02)*
 
-**What.** A worker-backed `WasmRuntimePort` landed via `useq-perform-nri`
-(commit `1a0871e`) behind the `?wasmInWorker=true` URL flag. With the flag
-set, sampling, eval, and transport commands all go through postMessage to
-`src/runtime/workers/wasmRuntime.worker.ts` — the main thread is freed.
-Probe batching from `useq-perform-d5r` (40× WASM-call reduction) makes the
-worker move much cheaper than it would have been per-sample.
+**What.** A worker-backed `WasmRuntimePort` is now selected by default in
+`bootstrap.ts` when Web Workers are available. Sampling, eval, diagnostics,
+and transport commands go through postMessage to
+`src/runtime/workers/wasmRuntime.worker.ts`; the in-process port remains the
+fallback.
 
-**What's still missing for "default on":**
-1. The probe sampler (`ProbeConfig.evalExpressionAtTimes`) still calls the
-   in-process WASM directly (`useq-perform-sw0`); with the flag on it
-   silently bypasses the worker.
+**What still needs proof before we trust it on stage:**
+1. The probe sampler (`ProbeConfig.evalExpressionAtTimes`) must call the
+   active runtime port rather than bypassing the worker via direct
+   in-process calls.
 2. Diagnostics readback (`useq_last_diagnostics` /
-   `useq_active_diagnostics`) isn't piped across the worker boundary
-   (`useq-perform-cf4`); editor squiggles silently degrade with the flag on.
+   `useq_active_diagnostics`) must work through the worker boundary after
+   `__useqWasmRuntime` is initialised in both contexts.
 3. `evalOutputsInTimeWindow` returns `Map<string, TimeSample[]>` via
-   structured-clone postMessage — at 15+ channels this may dominate
-   (`useq-perform-oxk`); transferable `Float64Array` companion path is the
-   fallback if profiling shows it.
+   structured-clone postMessage; profile at 15+ channels and add a
+   transferable `Float64Array` path if postMessage dominates.
 
-Until those three close, `wasmInWorker` is dev-only and the channel-count
-goal is bounded by what the in-process path can handle.
+Tracked by `useq-perform-gii8.17`; older shorthand beads `sw0`/`cf4`/`oxk`
+no longer exist in the database and should be re-filed as concrete children
+when that issue starts.
 
-**Cost.** S each for the three follow-up beads above.
+**Cost.** S each for the three follow-up workstreams above.
 
-### 3. Visualisation rendering is 2D Canvas; render-frame becomes the second bottleneck at scale *(2026-04-29)*
+### 3. Visualisation must finish the WebGL-only cutover *(2026-05-02)*
 
-**What.** `src/ui/visualisation/serialVis.ts` is a 542-line 2D-canvas path
-tracer. At 15 channels the baseline shows `render-frame` averaging 2.3ms /
-max 5.7ms and growing roughly linearly. There is no GPU path, no shader,
-no instanced draws. Inline probes have their own per-probe canvas painters.
+**What.** The Superbooth epic makes WebGL the only supported visualisation
+renderer. `src/ui/visualisation/serialVisGL.ts` is the path to keep;
+`serialVis.ts` and per-probe 2D canvas painters are legacy surfaces to remove
+or replace during Phase 4.
 
 **Why it blocks the mission.** Even with a perfect VM and an off-thread
 sampler, a CPU path tracer caps perceived smoothness around the same channel
 count. A WebGL renderer is independent work that can land in parallel and
 both halve render cost and free CPU for sampling.
 
-**Status.** `bd useq-perform-cqw` (Stream B) landed an experimental WebGL2
-painter (`src/ui/visualisation/serialVisGL.ts`) registered as an alternative
-`VisualisationRenderHook`, gated behind a devmode setting (`visualisation.renderer`).
-Default remains `"canvas"` until parity (visual fidelity, line-width on browsers
-that ignore WebGL `lineWidth>1`, performance vs the current 2D path at 15+
-channels) is validated. Inline probes still use per-probe 2D canvases — separate
-follow-up work.
+**Status.** `bd useq-perform-cqw` landed the WebGL2 painter. Phase 4 of
+`useq-perform-gii8` owns the remaining work: stutter fix, probe WebGL, removal
+of canvas fallback, and WebGL-only verification.
 
 **Cost.** M-L (single shader path for analog lanes, separate digital-lane
 path; the data already arrives as `Float64Array` so most plumbing is done).
@@ -200,14 +193,14 @@ Decisions still to make.
 
 Known-not-to-be-fixed; recorded so future sessions don't re-relitigate.
 
-- **MIDI, camera, virtual gamepad, desktop/Electron** — explicitly cut
-  from the stable core (`STABLE_CORE.md` §"Out of scope"). Don't bring
-  back without a mission case.
+- **Camera, virtual gamepad, desktop/Electron, MIDI output, firmware-side
+  MIDI** — explicitly cut from the stable core (`docs/specs/MAIN.md` §4.5).
+  Browser MIDI input is now in scope for live-edit MIDI learn.
 - **Single-user concerns** — no auth, no multitenancy, no telemetry, no
   scale story. Accepted.
 - **Legacy text serial protocol** — kept as a bridge for pre-1.2.0
   firmware while the JSON path is the target. Tracked in
-  `STABLE_CORE.md` §Compatibility Cuts.
+  `docs/specs/MAIN.md` §4.4 (compatibility cuts).
 - **`?noModuleMode=true`, `?devmode=true`, mock controls/time, Storybook
   remnants** — internal tooling, can change shape without notice.
 - **Pre-existing `src-useq` test SIGSEGVs** (`useq-perform-jut`) — known,

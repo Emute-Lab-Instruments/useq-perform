@@ -10,4 +10,6 @@
 
 1.4 **Browser support floor**: a modern ES2020 browser that can run the bundle and the WASM module. Hardware mode additionally requires Web Serial (Chromium-family). When Web Serial is unavailable, the app stays usable in browser-local WASM mode rather than failing, but clearly alerts the user with a dismissable toast.
 
+1.4.1 **Automated coverage is Chromium-first.** Browser-local mode is exercised in CI against Chromium; other Chromium-family browsers and non-Chromium browsers are best-effort. Visual or behavioural regressions specific to non-Chromium browsers are bugs but not release blockers.
+
 1.5 **Eager WASM preload.** WASM loading begins early in bootstrap so the first eval does not pay the full cold-start. Failure to preload does not block UI mount; the first eval will await load if necessary.

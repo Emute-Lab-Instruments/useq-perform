@@ -2,7 +2,7 @@
 
 > Spec: editor-side machinery for marking literal values in source as live-controllable knobs/toggles/pickers, manipulating them via inline widgets and a dockable panel (with gamepad), persisting their current values across reloads, and committing the final value back into the source. Counterpart to [MAIN.md](MAIN.md).
 > See also [code-evaluation.md](code-evaluation.md) (eval lifecycle, soft eval), [editor.md](editor.md) (main-editor surface), [structural-editing.md](structural-editing.md) (Metas, structural ops), [probes.md](probes.md) (precedent for inline widgets registered against a store), [keybindings.md](keybindings.md) (action registry), [gamepad.md](gamepad.md) (input bindings).
-> Runtime/compiler counterpart: [../../src-useq/docs/specs/live-edit.md](../../src-useq/docs/specs/live-edit.md). Wire protocol: [../PROTOCOL.md](../PROTOCOL.md) (TBD: `set-live-inputs` message).
+> Runtime/compiler counterpart: [../../src-useq/docs/specs/live-edit.md](../../src-useq/docs/specs/live-edit.md). Wire protocol: [../PROTOCOL.md](../PROTOCOL.md) (`set-live-inputs` / `INPUT_SET` message family).
 
 ---
 
@@ -160,7 +160,7 @@ Inference is best-effort; the user always has the final say via the keyword args
 
 ---
 
-## 5. Panel and Gamepad
+## 5. Panel, Gamepad, and MIDI
 
 5.1 **Live-Edit panel.** A dockable panel (alongside the visualisation panel and console — see [overlays.md](overlays.md) for docking rules; defer panel-specific layout to implementation) lists every live-edit currently in the document. Each row shows: `:name` (or fallback `unnamed-<id>`), current value, control (matched to the inline widget's variant but larger), and an axis-binding indicator.
 
@@ -176,6 +176,14 @@ Inference is best-effort; the user always has the final say via the keyword args
 - `unmark` — equivalent to `liveEdit.mark` toggling off (§3.3).
 
 5.5 **Panel-restricted environments.** Tutorial playgrounds opting into live-edits scope their panel to the playground instance only — no cross-playground bleed. Read-only secondary editors render no widgets and contribute no rows.
+
+5.6 **Browser MIDI input.** MIDI learn is in scope for v1 as a browser-side,
+input-only control path into live-edit slots ([MAIN.md §4.2](MAIN.md)). The
+editor enumerates Web MIDI input devices, lets the user bind CC/note messages
+to live-edit slot ids, maps incoming values into the slot's range, and routes
+the resulting value through the same `set-live-inputs` path as mouse,
+keyboard, panel, and gamepad control. MIDI output, MIDI clock, sysex, OSC, and
+firmware-side MIDI are out of scope.
 
 ---
 
@@ -316,7 +324,7 @@ Live-edit-related settings live under `liveEdit.*`:
 
 11.5 **Curve mappings.** Linear is the default. Exponential / log / dB-curve mappings are common in audio control and would need either a `:curve` keyword in the wrapper or per-widget setting.
 
-11.6 **MIDI / OSC binding.** Out of scope for v1 ([MAIN.md §4.5](MAIN.md) — MIDI is excluded from compatibility surface). If MIDI returns as a workflow, live-edits are the natural binding target.
+11.6 **OSC / MIDI output.** OSC, MIDI output, MIDI clock, sysex, and firmware-side MIDI are out of scope for v1 ([MAIN.md §4.5](MAIN.md)). Browser MIDI input for live-edit MIDI learn is in scope (§5.6).
 
 11.7 **History / undo.** Knob movements are not added to the editor's undo stack today. Whether they should be (with debouncing/coalescing) is open. Source mutations from `mark`/`commit`/`unmark`/`editRange` *are* on the undo stack like any other text edit.
 

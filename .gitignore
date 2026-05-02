@@ -25,6 +25,7 @@ storybook-static
 .github
 .beads
 .claude/
+.factory/
 AGENTS.md
 CLAUDE.md
 

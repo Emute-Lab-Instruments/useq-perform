@@ -13,6 +13,7 @@
 
 1.5 **`both`** — hardware connected *and* WASM enabled. Hardware is authoritative for outputs; WASM complements with local sampling and visualisation. Must be visually distinct in the connection indicator from any single-runtime mode.
 &nbsp;&nbsp;&nbsp;&nbsp;1.5.1 By default in `both`, WASM acts as a "visualisation shadow" for the hardware (see [MAIN.md §1.3.1](MAIN.md)): hardware drives outputs, WASM drives visual feedback.
+&nbsp;&nbsp;&nbsp;&nbsp;1.5.2 **WASM must not bog down the hardware runtime.** WASM sampling, visualisation, and probe evaluation in `both` mode are best-effort: they may degrade their own quality (drop frames, reduce sample rate, skip channels) but must never steal cycles from the serial transport reader/writer or block on hardware I/O. Hardware-driven outputs are the contract; everything WASM does is local enrichment.
 
 1.6 **Mode determination is observable, not inferred from `connectedToModule`.** Any UI indicator showing "connected" must distinguish hardware from WASM-only — never collapse them.
 
@@ -22,8 +23,10 @@
 
 1.9 Settings provide **`runtime.autoReconnect`** (default true): when true, on app load the app attempts to reconnect to a previously saved Web Serial port (matched by `usbVendorId`/`usbProductId`).
 
-1.10 Settings provide **`wasm.enabled`** (default true). When false: hardware is the only runtime; if hardware is also absent, mode is `none`.
+1.10 Settings provide **`wasm.enabled`** (default true). When false: hardware is the only runtime; if hardware is also absent, mode is `none`. In `none` mode the editor still accepts input, but eval is rejected with a user-visible warning ("no runtime available — connect hardware or enable browser-local WASM"). The app must not silently drop evals.
 
 1.11 The **shared transport command set** that fans out to both runtimes is exactly: `(useq-play)`, `(useq-pause)`, `(useq-stop)`, `(useq-rewind)`, `(useq-clear)`, `(useq-get-transport-state)`. Anything else is hardware-only or WASM-only and must not be silently sent to the wrong runtime.
+
+1.13 **`connectedToModule` is a misnomer; do not treat it as "hardware is attached".** The legacy boolean `connectedToModule` in the transport layer means "JSON handshake completed against *some* serial port" — not "real uSEQ hardware is plugged in". Consumers deciding whether the hardware-mode capability set applies must use the runtime-mode signal (this spec), not `connectedToModule`. The variable persists only as a transport-internal flag and may be renamed without notice.
 
 1.12 **WASM eval runs in a Web Worker.** The default `WasmRuntimePort` is the worker-backed port — eval, batch sampling, time advance, probe evaluation, and diagnostics readback all cross the worker boundary via `postMessage`. The in-process port remains as a fallback when `Worker` is unavailable and as the implementation tests mock against. Renderer (WebGL) and editor still run on the main thread.

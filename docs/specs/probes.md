@@ -5,7 +5,7 @@
 
 ## 1. Probes
 
-1.1 A **probe** is an inline, time-following sample widget attached to a user-marked subexpression in the main editor. It displays the value of the marked expression sampled at (and around) the current transport time, on a per-probe canvas adjacent to the marked range.
+1.1 A **probe** is an inline, time-following sample widget attached to a user-marked subexpression in the main editor. It displays the value of the marked expression sampled at (and around) the current transport time, on a per-probe WebGL-backed rendering surface adjacent to the marked range.
 
 1.2 Probes are a main-editor feature. Tutorial playgrounds may include them where pedagogically useful. Read-only secondary editors (code examples, snippet previews, theme demos) do not surface probes. Secondary editors **must not** register probes against the global visualisation store ([editor.md §1.14](editor.md)).
 
@@ -45,13 +45,13 @@
 
 ### 1.7 Probe rendering
 
-1.7.1 Each probe renders on its own canvas adjacent to the marked range. Default canvas size is `DEFAULT_PROBE_CANVAS_WIDTH × DEFAULT_PROBE_CANVAS_HEIGHT`; per-probe size is adjustable at runtime.
+1.7.1 Each probe renders on a WebGL-backed surface adjacent to the marked range. Default surface size is `DEFAULT_PROBE_CANVAS_WIDTH × DEFAULT_PROBE_CANVAS_HEIGHT`; per-probe size is adjustable at runtime.
 
 1.7.2 Each probe has its own window duration (`windowDurationMs`). On creation it inherits from the global default (`visualisation.probeDefaultWindowDurationMs`, fallback to `DEFAULT_PROBE_WINDOW_DURATION_MS`). Once the user adjusts the per-probe window, that probe is **sticky**: it does not follow subsequent changes to the global default. Newly-created probes after a global change pick up the new default. The global default is independent of the vis-panel `visualisation.windowDuration` ([visualisation.md §1.3](visualisation.md)) — the panel and the probes are different surfaces with different time-scope intents.
 
 1.7.3 The rendered trace is centred on the current transport time: past samples on the left, future samples on the right (predicted by sampling at `t > now`), matching the global vis panel convention ([visualisation.md §1.2](visualisation.md)).
 
-1.7.4 Probe rendering must remain smooth across runtime transitions. A hardware connect/disconnect must not blank probe canvases or lose in-flight traces.
+1.7.4 Probe rendering must remain smooth across runtime transitions. A hardware connect/disconnect must not blank probe surfaces or lose in-flight traces.
 
 ### 1.8 Probe persistence
 
@@ -63,7 +63,7 @@
 - `mode` — `"raw"` or `"contextual"`.
 - `depth` / `maxDepth` — non-negative integers, `depth ≤ maxDepth`.
 - `cachedCode` — the last-built expression text, used as fallback when re-resolution fails.
-- `canvasWidth` / `canvasHeight` — per-probe rendering surface.
+- `canvasWidth` / `canvasHeight` — per-probe rendering-surface size.
 - `windowDurationMs` — per-probe window duration.
 
 1.8.3 **Restore semantics.** On load, each probe is re-anchored at its saved `from`/`to` offsets and the expression is rebuilt against current document text.

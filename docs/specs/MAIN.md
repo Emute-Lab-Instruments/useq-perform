@@ -75,7 +75,7 @@ App-wide degradation contracts. Cited from feature sub-specs.
 
 ## 4. Stable Compatibility Surface
 
-4.1 The **stable core** is committed product surface (per `../STABLE_CORE.md`). Breaking changes require explicit decision and migration path.
+4.1 The **stable core** is committed product surface. This section is the source of truth; breaking changes to anything listed here require explicit decision and migration path.
 
 4.2 The stable core comprises:
 - Open the app, edit code, evaluate from the main editor.
@@ -87,12 +87,14 @@ App-wide degradation contracts. Cited from feature sub-specs.
 - Visualisation in both WASM-driven and hardware-streamed modes.
 - Internal time (rAF-driven `performance.now`) as the WASM clock when no hardware is present.
 - Loading committed config, persisted settings, and retained URL bootstrap overrides.
+- Browser MIDI input via Web MIDI API for routing CC/notes into `live-edit` slots (MIDI learn). MIDI output and firmware-side MIDI remain out of scope.
+- `live-edit` values: `(live-edit …)` wrapper form, inline widgets, dockable panel, persistence (see [live-edit.md](live-edit.md)).
 
 4.3 The stable URL/storage promises in [url-params.md §1.2](url-params.md) and [persistence.md §1.2/§1.3](persistence.md) are part of the stable core.
 
-4.4 **Compatibility cuts** (kept only as bridges, may shrink without replacement): legacy text serial protocol (pre-1.2.0 firmware), `?noModuleMode=true`, `?devmode=true` UI surface, mock controls, Storybook/test harnesses, live-serial visualisation as observation-only (no time-seeking).
+4.4 **Compatibility cuts** (kept only as bridges, may shrink without replacement): legacy text serial protocol (pre-1.2.0 firmware); `?noModuleMode=true` (dev/debug escape hatch only — not a release-facing compatibility promise; may move or disappear); `?devmode=true` UI surface (panel/UI is internal tooling, not stable public surface); mock controls; Storybook/test harnesses; live-serial visualisation as observation-only (no time-seeking).
 
-4.5 **Out of scope** (not compatibility targets, never returning without a mission case): camera workflows, MIDI, desktop/Electron, virtual gamepad, ambiguous hybrid runtime states, multi-user/multi-tenant, telemetry.
+4.5 **Out of scope** (not compatibility targets, never returning without a mission case): camera workflows, desktop/Electron, virtual gamepad, MIDI output and firmware-side MIDI, ambiguous hybrid runtime states, multi-user/multi-tenant, telemetry.
 
 ---
 
@@ -126,7 +128,7 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.8 [transport.md](transport.md) — state machine, clock policy, indicator.
 
-6.9 [visualisation.md](visualisation.md) — canvas, time axis, lanes, faithful past / projected future, output classification, sampling loop, WASM ABI additions, palette coupling.
+6.9 [visualisation.md](visualisation.md) — WebGL rendering surface, time axis, lanes, faithful past / projected future, output classification, sampling loop, WASM ABI additions, palette coupling.
 
 6.10 [console.md](console.md) — message types, line limit, animation, auto-scroll, markdown.
 
@@ -154,22 +156,20 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 7.2 `../../ALIGNMENT.md` — opinionated, dated diagnosis of the gap between the codebase and its mission.
 
-7.3 `../STABLE_CORE.md` — product surface and compatibility cuts.
+7.3 `../RUNTIME_CONTRACT.md` — editor↔hardware/WASM capability split, WASM ABI floor.
 
-7.4 `../RUNTIME_CONTRACT.md` — editor↔hardware/WASM capability split, WASM ABI floor.
+7.4 `../PROTOCOL.md` — serial framing, JSON message shapes (handshake, eval, ping, stream-config).
 
-7.5 `../PROTOCOL.md` — serial framing, JSON message shapes (handshake, eval, ping, stream-config).
+7.5 `../REACTIVE_FLOW.md` — stores, channels, signals, data flow paths (inventory).
 
-7.6 `../REACTIVE_FLOW.md` — stores, channels, signals, data flow paths (inventory).
+7.6 `../KEYBINDING_SYSTEM.md` — full keybinding system architecture (draft; covers contexts, chords, layouts, profiles in depth).
 
-7.7 `../KEYBINDING_SYSTEM.md` — full keybinding system architecture (draft; covers contexts, chords, layouts, profiles in depth).
+7.7 `../GLOSSARY.md` — terminology source of truth. Consult before introducing new terms.
 
-7.8 `../GLOSSARY.md` — terminology source of truth. Consult before introducing new terms.
+7.8 `../INSPECTOR_SPEC.md`, `../USER_GUIDE_SPEC.md` — sub-surface specs.
 
-7.9 `../INSPECTOR_SPEC.md`, `../USER_GUIDE_SPEC.md` — sub-surface specs.
+7.9 `../../src-useq/docs/SEMANTICS.md` — language semantics (what programs *mean*). Counterpart to this doc.
 
-7.10 `../../src-useq/docs/SEMANTICS.md` — language semantics (what programs *mean*). Counterpart to this doc.
+7.10 `../../src-useq/docs/specs/diagnostics.md` — diagnostic system contract (severity, category, source span, ABI surface). See also `../../src-useq/docs/specs/failure-model.md` for failure semantics (LKG, health states, REPL-vs-output channels).
 
-7.11 `../../src-useq/docs/specs/diagnostics.md` — diagnostic system contract (severity, category, source span, ABI surface). See also `../../src-useq/docs/specs/failure-model.md` for failure semantics (LKG, health states, REPL-vs-output channels).
-
-7.12 If this spec disagrees with any of the above on a point of *app behaviour*, **this spec wins** by intent — bring implementation and other docs into line and file the bug. If it disagrees with the actually-deployed app, that is a bug — file it.
+7.11 If this spec disagrees with any of the above on a point of *app behaviour*, **this spec wins** by intent — bring implementation and other docs into line and file the bug. If it disagrees with the actually-deployed app, that is a bug — file it.

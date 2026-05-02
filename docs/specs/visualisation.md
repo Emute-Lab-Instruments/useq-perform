@@ -5,9 +5,9 @@
 
 ## 1. Panel and Rendering
 
-1.1 The visualisation panel renders **time-series traces** for active outputs and probed expressions on a single canvas surface.
+1.1 The visualisation panel renders **time-series traces** for active outputs and probed expressions on a single WebGL-backed surface. The Superbooth 2026 target is WebGL-only; the legacy 2D canvas renderer is not part of the stable renderer surface.
 
-1.2 The time axis is **centred on now**: the canvas centre column corresponds to the current transport time; the left half shows **recorded past values**; the right half shows **projected future values**.
+1.2 The time axis is **centred on now**: the surface centre column corresponds to the current transport time; the left half shows **recorded past values**; the right half shows **projected future values**.
 
 1.3 The window duration is `visualisation.windowDuration` seconds (default 10). Sample density is `visualisation.sampleCount` per window (default 100). Line width is `visualisation.lineWidth` (default 1.5; clamped 0.5–5).
 
@@ -23,7 +23,7 @@
 
 1.8 **Palette is theme-coupled.** Switching to a light theme switches the visualisation palette; a dark theme uses a dark palette. Custom palettes are not user-editable in v1. See [themes.md](themes.md).
 
-1.9 The visualisation panel must continue to render correctly across runtime transitions (see [runtime-modes.md §1.7](runtime-modes.md)). A hardware connect/disconnect must not blank the canvas or lose in-flight traces.
+1.9 The visualisation panel must continue to render correctly across runtime transitions (see [runtime-modes.md §1.7](runtime-modes.md)). A hardware connect/disconnect must not blank the rendering surface or lose in-flight traces.
 
 ---
 
@@ -35,7 +35,7 @@ Past values are ground truth: what the signal engine actually produced as time a
 
 2.2 **Rolling buffer shape.** Each active output maintains a FIFO buffer of recorded samples. All outputs are sampled at the same times (one tick per frame). The buffer is time-aligned at constant sample rate, so index arithmetic suffices for time lookups — no (time, value) pairs needed.
 
-2.2.1 **Pixel-matched buffer capacity.** The rolling buffer's *capacity* is derived from canvas pixel width: `bufferSampleRate = floor(canvasWidth / 2) / (windowDuration / 2)` (recomputed on canvas resize, integer-snapped to avoid sub-pixel re-allocation). This is a **capacity** target, not a literal sample density: tick cadence is unchanged (§2.1 — one push per rAF frame, ~30 Hz), so the GPU's line rasteriser interpolates between actual sample points along the time axis. Pixel-matched capacity eliminates the sub-pixel **feature drift** the spec actually cares about: each pushed sample maps to a stable absolute-time column, so a peak/edge in the waveform doesn't hop between columns as time advances. *True* one-sample-per-column rendering would require either a higher tick rate (§9.6.A) or a multi-sample-per-tick batch (§9.6.C); see deferred section.
+2.2.1 **Pixel-matched buffer capacity.** The rolling buffer's *capacity* is derived from rendering-surface pixel width: `bufferSampleRate = floor(canvasWidth / 2) / (windowDuration / 2)` (recomputed on surface resize, integer-snapped to avoid sub-pixel re-allocation). This is a **capacity** target, not a literal sample density: tick cadence is unchanged (§2.1 — one push per rAF frame, ~30 Hz), so the GPU's line rasteriser interpolates between actual sample points along the time axis. Pixel-matched capacity eliminates the sub-pixel **feature drift** the spec actually cares about: each pushed sample maps to a stable absolute-time column, so a peak/edge in the waveform doesn't hop between columns as time advances. *True* one-sample-per-column rendering would require either a higher tick rate (§9.6.A) or a multi-sample-per-tick batch (§9.6.C); see deferred section.
 
 2.2.2 The pixel-matched capacity applies to the **past buffer only**. Future projection uses `visualisation.sampleCount / 2` (§3.1), which may be lower. The visual transition between past and future density at `t = now` is acceptable because the future half is already visually distinguished (lower alpha or dashed, §1.4).
 
@@ -194,7 +194,7 @@ Existing settings with unchanged semantics: `windowDuration`, `sampleCount`, `li
 
 9.3 **Hardware readback for past values.** In `both` mode, past values could come from hardware readback (actual voltages) rather than WASM ticks. This would require the serial protocol to stream output values at a sufficient rate. Deferred — WASM ticks are faithful enough for v1.
 
-9.4 **Probe past/future semantics.** Probes ([probes.md](probes.md)) currently batch-sample across a per-probe time window. Whether probes should adopt the same faithful-past / projected-future split as the main vis panel is an open question. The per-probe canvas is narrow; the benefit of recorded past for probes may not justify the added complexity.
+9.4 **Probe past/future semantics.** Probes ([probes.md](probes.md)) currently batch-sample across a per-probe time window. Whether probes should adopt the same faithful-past / projected-future split as the main vis panel is an open question. The per-probe surface is narrow; the benefit of recorded past for probes may not justify the added complexity.
 
 9.5 **Stateful future projection accuracy at coarse `dt`.** The current spec steps future projections at vis sample density. For nonlinear state updates (`(defstate x 0 (+ x (* (sin x) dt)))`), large `dt` causes Euler-method truncation error. A future refinement could detect nonlinear state bodies and use a finer intermediate step rate. Deferred — linear accumulation dominates musical use cases.
 

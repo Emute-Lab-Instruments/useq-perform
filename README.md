@@ -38,7 +38,7 @@ The application uses a single-bundle Vite build. The bundle starts at `src/main.
 
 Read `MAP.md` first for a terse codebase index, and `ALIGNMENT.md` for the dated diagnosis of where the codebase currently falls short of its mission.
 
-Product scope and compatibility cuts live in `docs/STABLE_CORE.md`. Read that before treating old panels, dormant runtime modes, or stale docs as supported product surface.
+Product scope, stable core, compatibility cuts, and out-of-scope items live in `docs/specs/MAIN.md` §4. Read that before treating old panels, dormant runtime modes, or stale docs as supported product surface.
 
 Editor-facing firmware and WASM capability rules live in `docs/RUNTIME_CONTRACT.md`. Read that before auditing `src-useq` behavior or promoting standalone firmware work into the submodule.
 

@@ -24,4 +24,4 @@
 
 ## Open / Deferred
 
-2.1 **`schedule`/`unschedule` editor surface.** Whether quantised eval becomes a thin wrapper over a `schedule`-style runtime callback, or stays an editor-side hold, is undecided. Currently editor-side.
+(none currently — quantised eval is now runtime-side and gated by the global quant phasor; see [code-evaluation.md §1.1](code-evaluation.md) and [`wire-protocol.md` §5.7](../../src-useq/docs/specs/wire-protocol.md).)

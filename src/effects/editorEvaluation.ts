@@ -16,7 +16,7 @@ import { post } from "../utils/consoleStore.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 
 // Editor eval and diagnostics readback both route through the active
-// WASM runtime port so the `?wasmInWorker=true` opt-in actually moves
+// WASM runtime port so the worker-backed default actually moves
 // user-driven evals off the main thread AND keeps inline error
 // squiggles working from the worker-side diagnostics.
 const evalInUseqWasm = (code: string): Promise<string | null> =>

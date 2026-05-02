@@ -63,8 +63,8 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `wasmRuntimePort.ts` — adapter over `wasmInterpreter.ts` implementing the `WasmRuntimePort` contract. Surface is structured-cloneable / async / one-shot so it can become a worker postMessage boundary without re-shaping callers. Protocol-shaped operations (eval, transport commands) flow through `wasmJsonTransport.ts`; sampling-shaped operations stay direct.
   - `wasmJsonTransport.ts` — in-memory virtual transport that lets the WASM port speak the same `hello` / `stream-config` / `eval` / `ping` JSON protocol as hardware. Mirrors `transport/json-protocol.ts` at the message-shape level (no byte framing).
   - `wasmJsonHandlers.ts` — pure WASM-side request handlers for the JSON protocol. Dispatches `hello` / `ping` / `stream-config` / `eval` against an injected `WasmJsonBackend`.
-  - `wasmRuntimeWorkerPort.ts` — alternative `WasmRuntimePort` that proxies every method to a dedicated Web Worker hosting the WASM interpreter. Opt-in via `?wasmInWorker=true`; default off. Diagnostics readback is not piped across the boundary in this iteration.
-  - `activeWasmRuntimePort.ts` — read-through accessor returning the active `WasmRuntimePort` (in-process default, worker-backed when the opt-in flag is set). Bootstrap is the only writer.
+  - `wasmRuntimeWorkerPort.ts` — default `WasmRuntimePort` in browsers with Web Worker support; proxies every method to a dedicated classic Worker hosting the WASM interpreter. The in-process port is the fallback when Workers are unavailable or fail to construct. Diagnostics readback is piped through worker request/response messages.
+  - `activeWasmRuntimePort.ts` — read-through accessor returning the active `WasmRuntimePort` (worker-backed by default, in-process fallback). Bootstrap is the only writer.
   - `workers/wasmRuntime.worker.ts` + `workers/wasmRuntimeWorkerProtocol.ts` — classic Web Worker hosting the WASM interpreter and the discriminated-union request/response protocol it speaks.
   - `runtimeDiagnostics.ts` — startup/environment diagnostics surface.
   - `startupContext.ts` — URL flag parsing and bootstrap context (incorporates the former `urlParams.ts`).
@@ -94,7 +94,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `keybindings/` — `KeybindingsPanel.tsx`, `KeyboardVisualiser.tsx`, `ActionPalette.tsx`, `ModifierHints.tsx`.
   - `console/` — `ConsolePanel.tsx` REPL/log panel + CSS.
   - `panel-chrome/` — drawer/pane/tile chrome primitives + CSS.
-  - `visualisation/` — `serialVis.ts` (canvas 2D painter, default) and `serialVisGL.ts` (WebGL2 painter, devmode-gated). Both register as `VisualisationRenderHook` via `adapters/visualisationPanel.ts`. Sampling/state live in `effects/visualisationSampler.ts` and `utils/visualisationStore.ts`.
+  - `visualisation/` — `serialVisGL.ts` is the target WebGL2 renderer for the Superbooth push; `serialVis.ts` is legacy canvas code to remove during Phase 4's WebGL-only verification. Render hooks register via `adapters/visualisationPanel.ts`. Sampling/state live in `effects/visualisationSampler.ts` and `utils/visualisationStore.ts`.
   - `styles/` — all app CSS (entry: `index.css`).
 - `src/utils/` — SolidJS reactive stores and small helpers.
   - `settingsStore.ts` — reactive mirror of `appSettingsRepository`.
@@ -132,8 +132,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 ## Linked docs index
 
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — terminology, single source of truth for naming.
-- [docs/specs/MAIN.md](docs/specs/MAIN.md) — normative app-behaviour spec (split into per-feature sub-specs under `docs/specs/`); source of truth for tests and correctness.
-- [docs/STABLE_CORE.md](docs/STABLE_CORE.md) — product boundary, stable workflows, compatibility cuts.
+- [docs/specs/MAIN.md](docs/specs/MAIN.md) — normative app-behaviour spec (split into per-feature sub-specs under `docs/specs/`); source of truth for tests and correctness. §4 covers product boundary, stable core, compatibility cuts, and out-of-scope items.
 - [docs/RUNTIME_CONTRACT.md](docs/RUNTIME_CONTRACT.md) — editor↔hardware/WASM capability split, WASM ABI floor, promotion workflow.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — serial framing, JSON message shapes.
 - [docs/REACTIVE_FLOW.md](docs/REACTIVE_FLOW.md) — stores, channels, signals, data flow paths.

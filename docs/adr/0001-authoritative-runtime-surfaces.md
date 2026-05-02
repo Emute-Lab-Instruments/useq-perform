@@ -11,7 +11,7 @@ The repository still contains a mix of current runtime owners, retained legacy a
 
 The canonical surfaces for ongoing work are:
 
-- Product boundary: `docs/STABLE_CORE.md`
+- Product boundary: `docs/specs/MAIN.md` §4
 - Editor-facing runtime contract: `docs/RUNTIME_CONTRACT.md`
 - Serial protocol details: `docs/PROTOCOL.md`
 - Production startup path: `src/main.ts`, `src/runtime/bootstrap.ts`

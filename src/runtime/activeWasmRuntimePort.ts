@@ -25,7 +25,7 @@ let activePort: WasmRuntimePort = inProcessPort;
 
 /**
  * Replace the active WASM runtime port. Called once during bootstrap
- * when the opt-in flag selects the worker-backed port. Idempotent.
+ * when the worker-backed port is available. Idempotent.
  */
 export function setActiveWasmRuntimePort(port: WasmRuntimePort): void {
   activePort = port;
