@@ -12,7 +12,12 @@
  *   - `nav.up` / `nav.down`   (§5.1.10) — vertical spatial (line-based; lives
  *     in the adapter, not here, since it needs source positions)
  *   - `nav.left` / `nav.right` (§5.1.9)  — horizontal Euler-tour spatial
- *     (pure; will live here once implemented)
+ *     (pure; implemented here). Each compound is visited twice — once
+ *     before its children (pre-order) and once after (post-order). The
+ *     traversal phase is carried on the cursor as `NodeCursor.phase`. All
+ *     non-spatial nav ops emit cursors without `phase`, which the spatial
+ *     ops interpret as pre-order — that gives the spec's "phase resets
+ *     when arriving via a non-spatial op" behaviour for free.
  *
  * §5.1.7 (`nav.intoMeta`) is intentionally unimplemented — out of scope for
  * the probe per the task brief.
@@ -222,6 +227,132 @@ function navShrink(c: Cursor, tree: Tree): ReturnType<CursorOp> {
   };
 }
 
+// ─── Spatial Euler-tour navigation (§5.1.9) ────────────────────────────────
+//
+// The Euler tour visits each compound twice (pre/post) and each leaf once.
+// `nav.right` advances the tour; `nav.left` retreats it. The cursor's
+// per-compound phase travels on `NodeCursor.phase` (undefined ≡ "pre").
+//
+// Range cursors don't carry a phase. We treat them like a node cursor on the
+// anchor end (pre-order) — same convention as `siblingShift`.
+
+function isCompoundOrDocKind(k: import("./types.ts").NodeKind): boolean {
+  return (
+    k === "list" ||
+    k === "vector" ||
+    k === "map" ||
+    k === "set" ||
+    k === "document"
+  );
+}
+
+function navRightOne(c: Cursor, tree: Tree): ReturnType<CursorOp> {
+  const focusId = focusedId(c);
+  const node = findById(tree.root, focusId);
+  if (node === null) return { reason: "at-document-root" };
+
+  const phase: "pre" | "post" =
+    c.kind === "node" && c.phase === "post" ? "post" : "pre";
+
+  // Case A: compound (or document) in pre-order → first child (enter).
+  if (isCompoundOrDocKind(node.kind) && phase === "pre") {
+    const kids = childrenOf(node);
+    if (kids.length === 0) {
+      // Empty compound: pre-order visit is immediately followed by post-order
+      // visit on the same node. Keep the post-phase exit logic uniform with
+      // "last child → parent in post-order" by re-emitting the same compound
+      // in post-order and recursing once.
+      // For the document root with no children, that becomes the
+      // traversal-complete no-op below.
+      if (node.kind === "document") {
+        return { reason: "at-document-root" };
+      }
+      // Treat as if we just exited the compound's children.
+      return { cursor: nodeCursor(node.id, "post") };
+    }
+    return { cursor: nodeCursor(kids[0].id) };
+  }
+
+  // Case B: leaf, OR compound in post-order. Either way, we're "done" with
+  // this subtree and need to step sideways or upward.
+  // Document root in post-order = traversal complete.
+  if (node.kind === "document") {
+    return { reason: "at-document-root" };
+  }
+
+  const parent = parentOf(tree.root, focusId);
+  if (parent === null) {
+    // Shouldn't happen — non-document nodes always have a parent — but guard.
+    return { reason: "at-document-root" };
+  }
+  const kids = parent.children;
+  const idx = kids.findIndex((k) => k.id === focusId);
+  if (idx + 1 < kids.length) {
+    // Has a next sibling → step into it in pre-order.
+    return { cursor: nodeCursor(kids[idx + 1].id) };
+  }
+  // Last child → parent in post-order. (For the document root, the cursor
+  // lands on it — we'll detect "traversal complete" on the next nav.right
+  // via the document-root branch above.)
+  return { cursor: nodeCursor(parent.id, "post") };
+}
+
+function navLeftOne(c: Cursor, tree: Tree): ReturnType<CursorOp> {
+  // Mirror of navRightOne. The two phases swap roles:
+  //   - Compound in post-order → last child (enter from the right).
+  //   - Leaf / compound in pre-order → previous sibling (in post-order if
+  //     compound), or parent in pre-order if first child.
+  const focusId = focusedId(c);
+  const node = findById(tree.root, focusId);
+  if (node === null) return { reason: "at-document-root" };
+
+  const phase: "pre" | "post" =
+    c.kind === "node" && c.phase === "post" ? "post" : "pre";
+
+  // Case A: compound (or document) in post-order → last child (enter).
+  if (isCompoundOrDocKind(node.kind) && phase === "post") {
+    const kids = childrenOf(node);
+    if (kids.length === 0) {
+      // Empty compound, post→pre (no children to descend into).
+      if (node.kind === "document") {
+        return { reason: "at-document-root" };
+      }
+      return { cursor: nodeCursor(node.id) }; // pre-order
+    }
+    const last = kids[kids.length - 1];
+    // Entering a compound child from the right means we visit it in post-order
+    // first; leaves are visited just once.
+    if (isCompoundOrDocKind(last.kind)) {
+      return { cursor: nodeCursor(last.id, "post") };
+    }
+    return { cursor: nodeCursor(last.id) };
+  }
+
+  // Case B: pre-order on a compound, or any leaf. Step sideways/upward.
+  // Document root in pre-order = traversal complete (start of document).
+  if (node.kind === "document") {
+    return { reason: "at-document-root" };
+  }
+
+  const parent = parentOf(tree.root, focusId);
+  if (parent === null) {
+    return { reason: "at-document-root" };
+  }
+  const kids = parent.children;
+  const idx = kids.findIndex((k) => k.id === focusId);
+  if (idx > 0) {
+    // Previous sibling: if it's a compound, enter from the right (post-order);
+    // if it's a leaf, just land on it.
+    const prev = kids[idx - 1];
+    if (isCompoundOrDocKind(prev.kind)) {
+      return { cursor: nodeCursor(prev.id, "post") };
+    }
+    return { cursor: nodeCursor(prev.id) };
+  }
+  // First child → parent in pre-order.
+  return { cursor: nodeCursor(parent.id) };
+}
+
 function navHoleStep(
   c: Cursor,
   tree: Tree,
@@ -275,6 +406,10 @@ export const nav = {
     applyPointwise(s, (c, t) => navHoleStep(c, t, "next")),
   prevHole: (s: State): OpResult =>
     applyPointwise(s, (c, t) => navHoleStep(c, t, "prev")),
+  /** §5.1.9 — horizontal Euler-tour traversal (forward). */
+  right: (s: State): OpResult => applyPointwise(s, navRightOne),
+  /** §5.1.9 — horizontal Euler-tour traversal (backward). */
+  left: (s: State): OpResult => applyPointwise(s, navLeftOne),
 };
 
 // ─── Helpers (also used by mutate.ts) ──────────────────────────────────────

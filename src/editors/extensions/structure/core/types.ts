@@ -126,10 +126,25 @@ export type Node = AddressableNode | DocumentNode;
 
 // ─── Cursors (§3) ──────────────────────────────────────────────────────────
 
-/** A stable handle on a single node. */
+/**
+ * A stable handle on a single node.
+ *
+ * `phase` is a transient annotation used exclusively by spatial Euler-tour
+ * navigation (`nav.right` / `nav.left`, §5.1.9). It records whether the cursor
+ * arrived at a compound *before* its children (pre-order) or *after* them
+ * (post-order). Every other operation — including all tree-level navigation
+ * (`nav.next`, `nav.in`, `nav.out`, `nav.first`, `nav.last`, `nav.extend*`,
+ * `nav.shrink`, `nav.*Hole`) and all mutations — must emit cursors with no
+ * phase set, since arrival via a non-spatial op resets the phase to pre-order
+ * (the default).
+ *
+ * Treat `undefined` and `"pre"` as equivalent. Tests use `nodeCursor(id)`
+ * (no phase) and pre-order spatial states should compare equal to it.
+ */
 export interface NodeCursor {
   readonly kind: "node";
   readonly target: NodeId;
+  readonly phase?: "pre" | "post";
 }
 
 /**
@@ -211,8 +226,17 @@ export interface OpResult {
 
 // ─── Tiny constructors ─────────────────────────────────────────────────────
 
-export function nodeCursor(id: NodeId): NodeCursor {
-  return { kind: "node", target: id };
+export function nodeCursor(
+  id: NodeId,
+  phase?: "pre" | "post",
+): NodeCursor {
+  // Omit `phase` from the object entirely when it's the default (pre/undef).
+  // This keeps the pointwise `toEqual(nodeCursor(id))` checks in tests
+  // working: callers that don't care about phase get a bare cursor.
+  if (phase === undefined || phase === "pre") {
+    return { kind: "node", target: id };
+  }
+  return { kind: "node", target: id, phase };
 }
 
 export function rangeCursor(

@@ -8,6 +8,7 @@
  *           nav.next, nav.prev, nav.first, nav.last (§5.1.3, §5.1.4)
  *           nav.extendNext, nav.extendPrev, nav.shrink (§5.1.5, §5.1.6)
  *           nav.nextHole, nav.prevHole (§5.1.8)
+ *           nav.right, nav.left (§5.1.9 — Euler-tour horizontal)
  *   Mutate: edit.slurpForward, edit.slurpBackward,
  *           edit.barfForward, edit.barfBackward,
  *           edit.raise, edit.splice,
@@ -16,7 +17,6 @@
  *
  * Reserved for future spatial implementations (not yet wired):
  *   nav.up, nav.down (§5.1.10 — vertical line-based; needs source positions)
- *   nav.left, nav.right (§5.1.9 — Euler-tour horizontal)
  *   nav.intoMeta (§5.1.7)
  *
  * Other names log a warning and no-op. The mutation factory is created lazily
@@ -61,6 +61,8 @@ function actionOp(name: string): Op | null {
     case "nav.shrink":    return nav.shrink;
     case "nav.nextHole":  return nav.nextHole;
     case "nav.prevHole":  return nav.prevHole;
+    case "nav.right":     return nav.right;
+    case "nav.left":      return nav.left;
 
     case "edit.slurpForward":  return (s) => getMutators().slurpForward(s);
     case "edit.slurpBackward": return (s) => getMutators().slurpBackward(s);
@@ -103,6 +105,8 @@ export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   "nav.shrink",
   "nav.nextHole",
   "nav.prevHole",
+  "nav.right",
+  "nav.left",
   "edit.slurpForward",
   "edit.slurpBackward",
   "edit.barfForward",
