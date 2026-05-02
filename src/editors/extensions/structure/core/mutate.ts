@@ -11,10 +11,9 @@
  * interleave with sibling cursors. In practice, every mutation in this file
  * rejects the document root early (§2.4 / §5.3.2), so this concern is moot.
  *
- * Range-mutation variants (§5.2.10) are not implemented in this probe per
- * the task brief; the cursor type stays coherent because each pointwise op
- * either accepts a range explicitly (enclose, raise) or rejects with a
- * NoOpReason for ranges that aren't yet specified.
+ * Range-mutation variants (§5.2.10) are implemented: slurp, barf, raise,
+ * transpose, enclose, and delete all support range cursors. Splice on a range
+ * is undefined per §9.2 and fillHole rejects ranges (holes are single nodes).
  */
 
 import { findHolesInOrder, isHole } from "./holes.ts";
@@ -41,10 +40,11 @@ import type {
   Node,
   NodeId,
   OpResult,
+  RangeCursor,
   State,
   Tree,
 } from "./types.ts";
-import { cursorList, makeTree, nodeCursor } from "./types.ts";
+import { cursorList, makeTree, nodeCursor, rangeCursor } from "./types.ts";
 
 // ─── Pointwise lift with cursor remap ──────────────────────────────────────
 
@@ -182,8 +182,238 @@ function targetCompound(
   return { node: n };
 }
 
+// ─── Range-cursor helpers ─────────────────────────────────────────────────
+
+/**
+ * Resolve range cursor endpoints to their indices and parent compound.
+ * Returns null with a reason if the range is invalid in context.
+ */
+function resolveRange(
+  c: RangeCursor,
+  tree: Tree,
+): { parent: Compound | DocumentNode; startIdx: number; endIdx: number; reason?: undefined }
+  | { reason: NoOpReason } {
+  const parent = findById(tree.root, c.parent);
+  if (parent === null) return { reason: "at-document-root" };
+  if (parent.kind !== "list" && parent.kind !== "vector" &&
+      parent.kind !== "map" && parent.kind !== "set" &&
+      parent.kind !== "document") {
+    return { reason: "at-document-root" };
+  }
+  const kids = parent.children;
+  const startIdx = kids.findIndex((k) => k.id === c.start);
+  const endIdx = kids.findIndex((k) => k.id === c.end);
+  if (startIdx < 0 || endIdx < 0 || startIdx > endIdx) {
+    return { reason: "at-document-root" };
+  }
+  return { parent, startIdx, endIdx };
+}
+
+/**
+ * §5.2.10 raise on a range: the parent is replaced by the range's nodes as
+ * siblings (the parent's other children are removed). Cursor collapses to the
+ * first node in the raised run.
+ */
+function raiseRange(c: RangeCursor, s: State): Single {
+  const resolved = resolveRange(c, s.tree);
+  if (resolved.reason) return { reason: resolved.reason };
+  const { parent, startIdx, endIdx } = resolved;
+  if (parent.kind === "document") {
+    return { reason: "single-top-level" };
+  }
+  // The grandparent replaces parent with the range's nodes.
+  const grandparent = parentOf(s.tree.root, parent.id);
+  if (grandparent === null) return { reason: "at-document-root" };
+  const run = parent.children.slice(startIdx, endIdx + 1);
+  const gpIdx = grandparent.children.findIndex((k) => k.id === parent.id);
+  const newGpKids = [
+    ...grandparent.children.slice(0, gpIdx),
+    ...run,
+    ...grandparent.children.slice(gpIdx + 1),
+  ];
+  const newRoot = replaceChildren(s.tree.root, grandparent.id, newGpKids);
+  return {
+    state: stateOf(newRoot, s.cursors),
+    cursor: nodeCursor(run[0].id),
+  };
+}
+
+/**
+ * §5.2.10 slurp on a range: adjust the outer end. The range is the "unit"
+ * acting like a compound — the sibling just outside gets pulled in to extend
+ * the range. The tree is unchanged; only the cursor extends.
+ */
+function slurpRange(
+  direction: "fwd" | "bwd",
+  c: RangeCursor,
+  s: State,
+): Single {
+  const resolved = resolveRange(c, s.tree);
+  if (resolved.reason) return { reason: resolved.reason };
+  const { parent, startIdx, endIdx } = resolved;
+  const kids = parent.children;
+  if (direction === "fwd") {
+    if (endIdx + 1 >= kids.length) return { reason: "no-next-sibling" };
+    return {
+      state: { tree: s.tree, cursors: s.cursors },
+      cursor: rangeCursor(c.parent, c.start, kids[endIdx + 1].id, c.anchor),
+    };
+  } else {
+    if (startIdx - 1 < 0) return { reason: "no-prev-sibling" };
+    return {
+      state: { tree: s.tree, cursors: s.cursors },
+      cursor: rangeCursor(c.parent, kids[startIdx - 1].id, c.end, c.anchor),
+    };
+  }
+}
+
+/**
+ * §5.2.10 barf on a range: release one end of the range as an outside sibling.
+ * The range shrinks by one. If shrinking would make the range a single node,
+ * it collapses to a node cursor.
+ */
+function barfRange(
+  direction: "fwd" | "bwd",
+  c: RangeCursor,
+  s: State,
+): Single {
+  const resolved = resolveRange(c, s.tree);
+  if (resolved.reason) return { reason: resolved.reason };
+  const { parent, startIdx, endIdx } = resolved;
+  const kids = parent.children;
+  const rangeLen = endIdx - startIdx + 1;
+  if (rangeLen < 2) return { reason: "fewer-than-two-children" };
+  if (direction === "fwd") {
+    // Release the end (rightmost) as an outside sibling — range shrinks from
+    // the right. Since we're "barfing" in range terms, the released node stays
+    // in place (already a sibling) — just the cursor contracts.
+    const newEnd = kids[endIdx - 1].id;
+    if (newEnd === c.start) {
+      return { state: { tree: s.tree, cursors: s.cursors }, cursor: nodeCursor(c.start) };
+    }
+    return {
+      state: { tree: s.tree, cursors: s.cursors },
+      cursor: rangeCursor(c.parent, c.start, newEnd, c.anchor),
+    };
+  } else {
+    const newStart = kids[startIdx + 1].id;
+    if (newStart === c.end) {
+      return { state: { tree: s.tree, cursors: s.cursors }, cursor: nodeCursor(c.end) };
+    }
+    return {
+      state: { tree: s.tree, cursors: s.cursors },
+      cursor: rangeCursor(c.parent, newStart, c.end, c.anchor),
+    };
+  }
+}
+
+/**
+ * §5.2.10 transpose on a range: swap the entire range run with the adjacent
+ * single sibling in the requested direction. Cursor follows the range.
+ */
+function transposeRange(
+  direction: "next" | "prev",
+  c: RangeCursor,
+  s: State,
+): Single {
+  const resolved = resolveRange(c, s.tree);
+  if (resolved.reason) return { reason: resolved.reason };
+  const { parent, startIdx, endIdx } = resolved;
+  const kids = parent.children.slice() as Node[];
+  if (direction === "next") {
+    if (endIdx + 1 >= kids.length) return { reason: "no-next-sibling" };
+    // Move the sibling at endIdx+1 to before startIdx.
+    const sibling = kids[endIdx + 1];
+    const newKids = [
+      ...kids.slice(0, startIdx),
+      sibling,
+      ...kids.slice(startIdx, endIdx + 1),
+      ...kids.slice(endIdx + 2),
+    ];
+    const newRoot = replaceChildren(s.tree.root, parent.id, newKids);
+    // Range shifted right by 1: new indices are startIdx+1..endIdx+1.
+    const newStart = newKids[startIdx + 1].id;
+    const newEnd = newKids[endIdx + 1].id;
+    return {
+      state: stateOf(newRoot, s.cursors),
+      cursor: rangeCursor(c.parent, newStart, newEnd, c.anchor),
+    };
+  } else {
+    if (startIdx - 1 < 0) return { reason: "no-prev-sibling" };
+    // Move the sibling at startIdx-1 to after endIdx.
+    const sibling = kids[startIdx - 1];
+    const newKids = [
+      ...kids.slice(0, startIdx - 1),
+      ...kids.slice(startIdx, endIdx + 1),
+      sibling,
+      ...kids.slice(endIdx + 1),
+    ];
+    const newRoot = replaceChildren(s.tree.root, parent.id, newKids);
+    // Range shifted left by 1: new indices are startIdx-1..endIdx-1.
+    const newStart = newKids[startIdx - 1].id;
+    const newEnd = newKids[endIdx - 1].id;
+    return {
+      state: stateOf(newRoot, s.cursors),
+      cursor: rangeCursor(c.parent, newStart, newEnd, c.anchor),
+    };
+  }
+}
+
+/**
+ * Delete: removes the focused node (or range run) from the parent. Cursor
+ * relocates to the next sibling if one exists, else the previous sibling, else
+ * the parent.
+ */
+function deleteNode(c: Cursor, s: State): Single {
+  if (c.kind === "range") {
+    return deleteRange(c, s);
+  }
+  const N = findById(s.tree.root, c.target);
+  if (N === null || N.kind === "document") return { reason: "at-document-root" };
+  const parent = parentOf(s.tree.root, N.id);
+  if (parent === null) return { reason: "at-document-root" };
+  const idx = indexOfChild(s.tree.root, N.id);
+  const newKids = parent.children.filter((k) => k.id !== N.id);
+  const newRoot = replaceChildren(s.tree.root, parent.id, newKids);
+  // Relocate cursor: next sibling, then prev sibling, then parent.
+  let cursorTarget: NodeId;
+  if (newKids.length === 0) {
+    cursorTarget = parent.id;
+  } else if (idx < newKids.length) {
+    cursorTarget = newKids[idx].id;
+  } else {
+    cursorTarget = newKids[newKids.length - 1].id;
+  }
+  return { state: stateOf(newRoot, s.cursors), cursor: nodeCursor(cursorTarget) };
+}
+
+function deleteRange(c: import("./types.ts").RangeCursor, s: State): Single {
+  const resolved = resolveRange(c, s.tree);
+  if (resolved.reason) return { reason: resolved.reason };
+  const { parent, startIdx, endIdx } = resolved;
+  const newKids = [
+    ...parent.children.slice(0, startIdx),
+    ...parent.children.slice(endIdx + 1),
+  ];
+  const newRoot = replaceChildren(s.tree.root, parent.id, newKids);
+  // Relocate: next sibling after removed range, else prev, else parent.
+  let cursorTarget: NodeId;
+  if (newKids.length === 0) {
+    cursorTarget = parent.id;
+  } else if (startIdx < newKids.length) {
+    cursorTarget = newKids[startIdx].id;
+  } else {
+    cursorTarget = newKids[newKids.length - 1].id;
+  }
+  return { state: stateOf(newRoot, s.cursors), cursor: nodeCursor(cursorTarget) };
+}
+
+// ─── Point-cursor mutation helpers (pre-existing) ─────────────────────────
+
 function slurp(direction: "fwd" | "bwd"): SingleMutate {
   return (c, s) => {
+    // §5.2.10: range slurp extends the range outward.
+    if (c.kind === "range") return slurpRange(direction, c, s);
     const tc = targetCompound(c, s.tree);
     if (tc.reason) return { reason: tc.reason };
     const L = tc.node;
@@ -220,6 +450,8 @@ function slurp(direction: "fwd" | "bwd"): SingleMutate {
 
 function barf(direction: "fwd" | "bwd"): SingleMutate {
   return (c, s) => {
+    // §5.2.10: range barf contracts the range.
+    if (c.kind === "range") return barfRange(direction, c, s);
     const tc = targetCompound(c, s.tree);
     if (tc.reason) return { reason: tc.reason };
     const L = tc.node;
@@ -257,7 +489,11 @@ function barf(direction: "fwd" | "bwd"): SingleMutate {
 const raise: SingleMutate = (c, s) => {
   // §5.2.5: cursor on N whose parent is not the document root. N replaces
   // its parent (the parent and other siblings are removed).
-  if (c.kind === "range") return { reason: "on-leaf" }; // not implemented for ranges
+  // §5.2.10 range variant: the parent is replaced by the range's nodes as
+  // siblings (the parent's other children are removed).
+  if (c.kind === "range") {
+    return raiseRange(c, s);
+  }
   const N = findById(s.tree.root, c.target);
   if (N === null || N.kind === "document") return { reason: "at-document-root" };
   const parent = parentOf(s.tree.root, N.id);
@@ -343,7 +579,8 @@ function enclose(kind: CompoundKind, ids: IdGen): SingleMutate {
 
 function transpose(direction: "next" | "prev"): SingleMutate {
   return (c, s) => {
-    if (c.kind === "range") return { reason: "on-leaf" };
+    // §5.2.10: range transpose swaps the range with an adjacent sibling.
+    if (c.kind === "range") return transposeRange(direction, c, s);
     const N = findById(s.tree.root, c.target);
     if (N === null || N.kind === "document") return { reason: "at-document-root" };
     const parent = parentOf(s.tree.root, N.id);
@@ -441,6 +678,8 @@ export interface Mutators {
   fillHole(s: State, factory: (ids: IdGen) => AddressableNode): MutateResult;
   atomSlurpForward(s: State): MutateResult;
   atomSlurpBackward(s: State): MutateResult;
+  /** Delete the focused node or range run. Cursor relocates per §3.6. */
+  delete(s: State): MutateResult;
 }
 
 export function makeMutators(cfg: MutateConfig): Mutators {
@@ -463,6 +702,7 @@ export function makeMutators(cfg: MutateConfig): Mutators {
       applyMutationPointwise(s, fillHoleOp(factory, cfg.ids)),
     atomSlurpForward: (s) => applyMutationPointwise(s, atomSlurp("fwd", cfg)),
     atomSlurpBackward: (s) => applyMutationPointwise(s, atomSlurp("bwd", cfg)),
+    delete: (s) => applyMutationPointwise(s, deleteNode),
   };
 }
 
