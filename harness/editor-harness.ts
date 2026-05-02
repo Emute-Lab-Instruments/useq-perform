@@ -107,7 +107,7 @@ export async function createScenarioEditor(
 
   if (setup.evaluatedExpressions?.length) {
     const { expressionEvaluatedAnnotation } = await import(
-      '@src/editors/extensions/structure/eval-state'
+      '@src/editors/extensions/expressionEvalState'
     );
     for (const expr of setup.evaluatedExpressions) {
       view.dispatch({
@@ -128,6 +128,25 @@ export async function createScenarioEditor(
     }
     // Restore cursor to start after seeding probes
     view.dispatch({ selection: { anchor: setup.cursorPosition ?? 0 } });
+  }
+
+  if (setup.liveEditSlots?.length) {
+    const { setLiveEditSlots } = await import('@src/editors/extensions/liveEdit/widgets');
+    setLiveEditSlots(view, setup.liveEditSlots);
+  }
+
+  if (setup.vectorMarkSession) {
+    const { setVectorMarkSession } = await import(
+      '@src/editors/extensions/liveEdit/vectorMarking'
+    );
+    setVectorMarkSession(view, setup.vectorMarkSession);
+  }
+
+  if (setup.bindingChips?.length) {
+    const { setBindingChips } = await import(
+      '@src/editors/extensions/hardwareBinding/chipWidget'
+    );
+    setBindingChips(view, setup.bindingChips);
   }
 
   return {

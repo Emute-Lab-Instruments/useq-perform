@@ -1,5 +1,8 @@
 // Shared types for scenario harness — used by both Storybook stories and Inspector
 
+import type { LiveEditSlot, VectorMarkSession } from '@src/contracts/liveEdit';
+import type { BindingChip } from '@src/contracts/hardware';
+
 // ---------------------------------------------------------------------------
 // Seed data types — state pushed into the editor after creation
 // ---------------------------------------------------------------------------
@@ -62,6 +65,12 @@ export interface EditorSetup {
   evaluatedExpressions?: ScenarioEvaluatedExpression[];
   /** Probes to attach to expression ranges */
   probes?: ScenarioProbe[];
+  /** Live-edit slots to render as inline widgets (gii8.39). */
+  liveEditSlots?: LiveEditSlot[];
+  /** Vector-mark sub-mode session to render as underlines (gii8.38). */
+  vectorMarkSession?: VectorMarkSession;
+  /** Hardware-binding chips to render inline for each wrapper (gii8.56). */
+  bindingChips?: BindingChip[];
 
   // Editor config
   theme?: string;

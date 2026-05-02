@@ -9,9 +9,12 @@ import type { Extension } from '@codemirror/state';
 
 export const extensionRegistry: Record<string, () => Promise<Extension | Extension[]>> = {
   'structure-highlight': async () => {
-    const { navigationMetaField } = await import('@src/editors/extensions/structure/ast');
-    const { nodeHighlightPlugin } = await import('@src/editors/extensions/structure/decorations');
-    return [navigationMetaField, nodeHighlightPlugin];
+    // TODO: Phase 2.12 retired the legacy structure module; `navigationMetaField`
+    // and `nodeHighlightPlugin` no longer exist. Existing
+    // structure-highlights.stories.tsx will need to be repointed at the new
+    // structure adapter (`src/editors/extensions/structure/adapter/`) or
+    // retired. Returning [] keeps the storybook build green.
+    return [];
   },
   'eval-highlight': async () => {
     const { evalHighlightField } = await import('@src/editors/extensions/evalHighlight');
@@ -27,7 +30,7 @@ export const extensionRegistry: Record<string, () => Promise<Extension | Extensi
       matchPattern,
       findExpressionBounds,
       isRangeActive,
-    } = await import('@src/editors/extensions/structure/eval-state');
+    } = await import('@src/editors/extensions/expressionEvalState');
     const { StateField, RangeSetBuilder } = await import('@codemirror/state');
     const { GutterMarker, gutter: cmGutter } = await import('@codemirror/view');
 
@@ -128,5 +131,17 @@ export const extensionRegistry: Record<string, () => Promise<Extension | Extensi
       getShowTimestamp: () => false,
       getAutoDismissMs: () => 0,
     });
+  },
+  'live-edit-widgets': async () => {
+    const m = await import('@src/editors/extensions/liveEdit/widgets');
+    return m.createLiveEditWidgetsExtension();
+  },
+  'vector-marking': async () => {
+    const m = await import('@src/editors/extensions/liveEdit/vectorMarking');
+    return m.createVectorMarkingExtension();
+  },
+  'hardware-bindings': async () => {
+    const m = await import('@src/editors/extensions/hardwareBinding/chipWidget');
+    return m.createHardwareBindingExtension();
   },
 };

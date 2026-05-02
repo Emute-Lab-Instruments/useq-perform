@@ -44,6 +44,9 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `wasmAbi.ts` — required + runtime-probed WASM exports, `assertWasmAbi()` validator.
   - `runtimePorts.ts` — typed `WebSerialHostPort` / `WasmRuntimePort` interfaces over the shared transport surface. The runtime layer talks to ports, not transport modules directly. `WasmRuntimePort` is shaped to be the postMessage boundary for the upcoming worker move.
   - `runtimeEvents.ts`, `runtimeTypes.ts`, `visualisationEvents.ts`.
+  - `liveEdit.ts` — live-edit slot/widget/vector-mark types ([docs/specs/live-edit.md](docs/specs/live-edit.md)).
+  - `midi.ts` — Web MIDI input types: device descriptor, parsed messages, learn state, source/binding model ([docs/specs/live-edit.md §5.6+](docs/specs/live-edit.md)).
+  - `hardware.ts` — hardware binding chip + CV calibration session types ([docs/specs/hardware-bindings.md](docs/specs/hardware-bindings.md), [docs/specs/calibration.md](docs/specs/calibration.md)).
 - `src/transport/` — Web Serial lifecycle and protocol. No UI/editor imports.
   - `connector.ts` — port open/close/reconnect, Web Serial events.
   - `json-protocol.ts` — firmware ≥ 1.2.0 JSON driver (handshake, heartbeat, eval). See [docs/PROTOCOL.md](docs/PROTOCOL.md).
@@ -84,13 +87,17 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `extensions/inlineResults.ts` — inline eval result display (DI-configured).
   - `extensions/diagnostics.ts` — error/warning squiggles wired to WASM diagnostics.
   - `extensions/evalHighlight.ts`, `extensions/visReadability.ts`.
+  - `extensions/liveEdit/` — inline widgets (`widgets.ts`: knob/slider/toggle/picker per spec §4) and vector-mark sub-mode decorations (`vectorMarking.ts`: solid/dotted underlines per spec §3.7). Storybook-first scaffolding; runtime/persistence wiring is in follow-up beads.
+  - `extensions/hardwareBinding/chipWidget.ts` — inline chips for `(on-press|on-release|on-button|on-toggle :sw1 …)` wrappers, with status dot, lifecycle indicator, fired-pulse and error states ([docs/specs/hardware-bindings.md §3](docs/specs/hardware-bindings.md)).
   - `keymaps.ts`, `editorKeyboard.ts`, `gamepadNavigation.ts`, `themes.ts`.
 - `src/ui/` — Solid components. Leaf layer; can import from anywhere.
   - `MainToolbar.tsx`, `TransportToolbar.tsx` — top-level toolbars (props-based, with Wired wrappers in `adapters/`).
   - `Modal.tsx`, `ProgressBar.tsx`, `Tabs.tsx`, `OnboardingBanner.tsx`, `SerialVis.tsx`, `VisLegend.tsx`, `InternalVis.tsx`.
   - `RadialMenu.tsx`, `DoubleRadialPicker.tsx`, `PickerMenu.tsx`, `HierarchicalPickerMenu.tsx`, `overlayManager.ts`.
   - `adapters/` — imperative mount bridges via `createSolidAdapter()` (toolbars, panels, modal, picker-menu, double-radial-menu, snippets, settings, visualisation, palette, modifier-hints, gamepad-menu-bridge, visualisation-panel).
-  - `settings/` — settings panel + per-section components (General/Editor/Theme/Visualisation/Storage/Personal/Console/UI/EvalResults/Advanced/ConfigurationManagement). Built on `FormControls.tsx`. `devmodeContext.ts` gates `level="advanced"` rows/sections behind `?devmode=true`.
+  - `settings/` — settings panel + per-section components (General/Editor/Theme/Visualisation/Storage/Personal/Console/UI/EvalResults/Advanced/ConfigurationManagement/Midi). Built on `FormControls.tsx`. `devmodeContext.ts` gates `level="advanced"` rows/sections behind `?devmode=true`. `MidiSettings.tsx` covers Web MIDI input enumeration + permission flow ([docs/specs/live-edit.md §5.6](docs/specs/live-edit.md)).
+  - `liveEdit/` — dockable live-edit panel (`LiveEditPanel.tsx`, `LiveEditCard.tsx`) + MIDI learn UX pieces (`MidiLearnAffordance.tsx`, `MidiLearnBanner.tsx`, `MidiLearnConflict.tsx`). Pure prop-driven; the runtime-binding flow (gii8.43 follow-up) wires actual MIDI event subscriptions.
+  - `calibration/` — full-screen CV 1V/oct calibration takeover (`CalibrationTakeover.tsx`, `CalibrationPicker.tsx`, `CalibrationSlider.tsx`, `CalibrationProgress.tsx`, `CalibrationCompleteBanner.tsx`) per [docs/specs/calibration.md](docs/specs/calibration.md). UI shell only; the wire-protocol-driven session state machine is gii8.60.
   - `help/` — help panel, ModuLisp reference tab, code snippets, keybindings tab, snippet modal, `helpChannels.ts`. Sub-dirs: `guide/` (chapter-based user guide, live probes, playground), `lessons/` (`MiniVis.tsx`).
   - `keybindings/` — `KeybindingsPanel.tsx`, `KeyboardVisualiser.tsx`, `ActionPalette.tsx`, `ModifierHints.tsx`.
   - `console/` — `ConsolePanel.tsx` REPL/log panel + CSS.
