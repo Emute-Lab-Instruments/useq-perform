@@ -1,0 +1,243 @@
+/* src/ui/liveEdit/MidiLearn.css
+ *
+ * Styles for MIDI learn UX: per-widget learn icon, status banner, and
+ * conflict modal. All classes use the `.midi-learn-` prefix.
+ *
+ * Spec: docs/specs/live-edit.md §5.8 (learn flow), §5.9 (binding indicator),
+ *       §5.10 (conflict resolution).
+ */
+
+/* ── Learn affordance (per-card icon) ────────────────────────────────────── */
+
+.midi-learn-affordance {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.midi-learn-affordance__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  font-family: inherit;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid var(--panel-border, #444);
+  border-radius: 4px;
+  color: var(--text-muted, #808098);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  position: relative;
+}
+
+.midi-learn-affordance__button:hover {
+  color: var(--text-color, #f0f0f0);
+  border-color: var(--accent-color, #7aa2f7);
+}
+
+.midi-learn-affordance__button:focus-visible {
+  outline: 2px solid var(--accent-color, #7aa2f7);
+  outline-offset: 1px;
+}
+
+/* Idle = dim */
+.midi-learn-affordance__button--idle {
+  opacity: 0.7;
+}
+
+/* Bound = full strength + accent border */
+.midi-learn-affordance__button--bound {
+  color: var(--accent-color, #7aa2f7);
+  border-color: var(--accent-color, #7aa2f7);
+  opacity: 1;
+}
+
+/* Listening = pulsing accent halo at 1Hz (§5.8.1) */
+.midi-learn-affordance__button--listening {
+  color: var(--accent-color, #7aa2f7);
+  border-color: var(--accent-color, #7aa2f7);
+  animation: midi-learn-pulse 1s ease-in-out infinite;
+}
+
+@keyframes midi-learn-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(122, 162, 247, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(122, 162, 247, 0);
+  }
+}
+
+.midi-learn-affordance__icon {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0;
+}
+
+.midi-learn-affordance__label {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.midi-learn-affordance__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #808098);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.midi-learn-affordance__clear:hover {
+  color: var(--text-color, #f0f0f0);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Learn banner (top-of-panel status) ──────────────────────────────────── */
+
+.midi-learn-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(122, 162, 247, 0.12);
+  border: 1px solid var(--accent-color, #7aa2f7);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--text-color, #f0f0f0);
+  animation: midi-learn-banner-pulse 1s ease-in-out infinite;
+}
+
+@keyframes midi-learn-banner-pulse {
+  0%,
+  100% {
+    background: rgba(122, 162, 247, 0.12);
+  }
+  50% {
+    background: rgba(122, 162, 247, 0.22);
+  }
+}
+
+.midi-learn-banner__message {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.midi-learn-banner__slot {
+  font-weight: 600;
+  color: var(--accent-color, #7aa2f7);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.midi-learn-banner__progress {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text-muted, #808098);
+  font-size: 0.75rem;
+}
+
+.midi-learn-banner__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.midi-learn-banner__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid var(--panel-border, #444);
+  border-radius: 3px;
+  color: var(--text-muted, #808098);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.midi-learn-banner__action:hover {
+  color: var(--text-color, #f0f0f0);
+  border-color: var(--accent-color, #7aa2f7);
+}
+
+.midi-learn-banner__key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border, #444);
+  border-radius: 2px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.7rem;
+}
+
+/* ── Conflict modal body ─────────────────────────────────────────────────── */
+
+.midi-learn-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.midi-learn-conflict__source {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--accent-color, #7aa2f7);
+  font-weight: 600;
+}
+
+.midi-learn-conflict__slot-name {
+  font-weight: 600;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.midi-learn-conflict__detail {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.midi-learn-conflict__detail-label {
+  color: var(--text-muted, #808098);
+}
+
+.midi-learn-conflict__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  justify-content: flex-end;
+}
+
+.midi-learn-conflict__hint {
+  color: var(--text-muted, #808098);
+  font-size: 0.8rem;
+  margin: 0;
+}

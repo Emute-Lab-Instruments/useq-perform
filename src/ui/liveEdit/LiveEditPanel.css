@@ -1,0 +1,479 @@
+/* Live-edit dockable panel — spec: docs/specs/live-edit.md §5.1
+ *
+ * Class prefix: `.le-panel-*` to avoid clashes with other UI components.
+ * All values reference the global theme tokens used elsewhere
+ * (var(--panel-bg), var(--accent-color), var(--code-font), …) so the
+ * panel inherits the user's theme without bespoke palette work.
+ */
+
+.le-panel-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: var(--panel-bg, #1e1e1e);
+  border-left: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary, #e8e8e8);
+  font-family: var(--code-font, "IBM Plex Mono", monospace);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.le-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  min-height: 36px;
+  background-color: var(--toolbar-bg, rgba(0, 0, 0, 0.2));
+  border-bottom: 1px solid var(--panel-border, rgba(255, 255, 255, 0.08));
+}
+
+.le-panel-title {
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  margin: 0;
+}
+
+.le-panel-header-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.le-panel-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--item-border-radius, 4px);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 0.78em;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.le-panel-icon-button:hover {
+  background-color: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary);
+}
+
+.le-panel-icon-button:focus-visible {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.le-panel-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background-color: var(--accent-color, #ffaa44);
+  color: var(--panel-bg, #1e1e1e);
+  font-size: 0.85em;
+  border-bottom: 1px solid var(--panel-border, rgba(0, 0, 0, 0.1));
+  animation: le-panel-pulse 1s ease-in-out infinite;
+}
+
+@keyframes le-panel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.le-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+.le-panel-empty-hint {
+  margin-top: 8px;
+  opacity: 0.7;
+  font-size: 0.92em;
+}
+
+.le-panel-card-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  gap: 8px;
+}
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+
+.le-panel-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 10px 22px; /* leave room for the drag handle on the left */
+  background-color: var(--panel-section-bg, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--panel-border-radius, 6px);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.le-panel-card:hover {
+  border-color: var(--panel-border-strong, rgba(255, 255, 255, 0.18));
+}
+
+.le-panel-card.is-focused {
+  border-color: var(--accent-color, #ffaa44);
+  box-shadow: 0 0 0 1px var(--accent-color, #ffaa44);
+}
+
+.le-panel-card.is-listening {
+  border-color: var(--accent-color, #ffaa44);
+  animation: le-panel-pulse 1s ease-in-out infinite;
+}
+
+.le-panel-card.is-error {
+  border-color: var(--error-color, #ff5555);
+}
+
+.le-panel-card.is-wasm-preview {
+  border-style: dashed;
+}
+
+.le-panel-card-drag-handle {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.3));
+  cursor: grab;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  padding: 4px 2px;
+}
+
+.le-panel-card:hover .le-panel-card-drag-handle,
+.le-panel-card.is-focused .le-panel-card-drag-handle {
+  opacity: 0.6;
+}
+
+.le-panel-card-drag-handle:hover {
+  opacity: 1 !important;
+  color: var(--text-primary);
+}
+
+.le-panel-card-drag-handle:active {
+  cursor: grabbing;
+}
+
+.le-panel-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.le-panel-card-name {
+  flex: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--item-border-radius, 3px);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.95em;
+  font-weight: 500;
+  padding: 2px 4px;
+  margin: 0;
+  outline: none;
+  min-width: 0;
+}
+
+.le-panel-card-name:hover {
+  border-color: var(--panel-border, rgba(255, 255, 255, 0.1));
+}
+
+.le-panel-card-name:focus {
+  border-color: var(--accent-color);
+  background-color: var(--panel-control-bg, rgba(0, 0, 0, 0.2));
+}
+
+.le-panel-card-name.is-unnamed {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  font-style: italic;
+}
+
+.le-panel-card-id-tag {
+  font-size: 0.7em;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.4));
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.le-panel-card-state-badge {
+  font-size: 0.7em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background-color: var(--panel-control-bg, rgba(255, 255, 255, 0.06));
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.le-panel-card-state-badge.is-error {
+  background-color: var(--error-color, #ff5555);
+  color: #fff;
+}
+
+.le-panel-card-state-badge.is-listening {
+  background-color: var(--accent-color, #ffaa44);
+  color: var(--panel-bg, #1e1e1e);
+}
+
+.le-panel-card-state-badge.is-wasm-preview {
+  background-color: var(--warn-color, #ffcc66);
+  color: var(--panel-bg, #1e1e1e);
+}
+
+/* ── Body: control + readout ─────────────────────────────────────────────── */
+
+.le-panel-card-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.le-panel-card-control {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.le-panel-card-readout {
+  flex: 1;
+  font-family: var(--code-font, monospace);
+  font-size: 1.1em;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.le-panel-card-readout.is-modified {
+  color: var(--accent-color, #ffaa44);
+}
+
+.le-panel-card-readout-aux {
+  display: block;
+  font-size: 0.75em;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  margin-top: 2px;
+}
+
+/* ── Knob ────────────────────────────────────────────────────────────────── */
+
+.le-panel-knob {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+
+.le-panel-knob-track {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center,
+      var(--panel-control-bg, rgba(255, 255, 255, 0.06)) 60%,
+      var(--panel-section-bg, rgba(255, 255, 255, 0.02)) 100%);
+  border: 1px solid var(--panel-border-strong, rgba(255, 255, 255, 0.18));
+  box-sizing: border-box;
+}
+
+.le-panel-knob-indicator {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 45%;
+  background-color: var(--accent-color, #ffaa44);
+  transform-origin: 50% 100%;
+  /* rotated inline by component */
+  border-radius: 1px;
+}
+
+.le-panel-knob-seed-tick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 8px;
+  background-color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+  transform-origin: 50% calc(50% + 28px - 4px);
+  pointer-events: none;
+}
+
+/* ── Toggle pill ─────────────────────────────────────────────────────────── */
+
+.le-panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--panel-control-bg, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--panel-border-strong, rgba(255, 255, 255, 0.18));
+  border-radius: 999px;
+  padding: 2px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85em;
+  user-select: none;
+  height: 32px;
+  min-width: 80px;
+}
+
+.le-panel-toggle-segment {
+  flex: 1;
+  text-align: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.le-panel-toggle-segment.is-active {
+  background-color: var(--accent-color, #ffaa44);
+  color: var(--panel-bg, #1e1e1e);
+  font-weight: 600;
+}
+
+/* ── Picker (enum) ───────────────────────────────────────────────────────── */
+
+.le-panel-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0;
+}
+
+.le-panel-picker-option {
+  background-color: var(--panel-control-bg, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--panel-border-strong, rgba(255, 255, 255, 0.18));
+  border-radius: var(--item-border-radius, 4px);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.85em;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.le-panel-picker-option:hover {
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+.le-panel-picker-option.is-active {
+  background-color: var(--accent-color);
+  color: var(--panel-bg, #1e1e1e);
+  border-color: var(--accent-color);
+  font-weight: 600;
+}
+
+/* ── Footer affordance row ───────────────────────────────────────────────── */
+
+.le-panel-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.le-panel-card-affordance {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--item-border-radius, 4px);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.78em;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.le-panel-card-affordance:hover {
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+.le-panel-card-affordance.is-listening {
+  background-color: var(--accent-color);
+  color: var(--panel-bg, #1e1e1e);
+  border-color: var(--accent-color);
+  animation: le-panel-pulse 1s ease-in-out infinite;
+}
+
+.le-panel-card-affordance.is-bound {
+  border-color: var(--accent-color, #ffaa44);
+  color: var(--accent-color, #ffaa44);
+}
+
+.le-panel-card-overflow {
+  margin-left: auto;
+}
+
+/* ── Overflow menu (lightweight popup) ───────────────────────────────────── */
+
+.le-panel-card-menu {
+  position: absolute;
+  right: 8px;
+  top: calc(100% - 4px);
+  min-width: 180px;
+  background-color: var(--panel-bg, #1e1e1e);
+  border: 1px solid var(--panel-border-strong, rgba(255, 255, 255, 0.2));
+  border-radius: var(--panel-border-radius, 6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.le-panel-card-menu-item {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85em;
+  text-align: left;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.le-panel-card-menu-item:hover {
+  background-color: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.06));
+}
+
+.le-panel-card-menu-item.is-destructive {
+  color: var(--error-color, #ff7777);
+}
+
+.le-panel-card-menu-separator {
+  border: none;
+  border-top: 1px solid var(--panel-border, rgba(255, 255, 255, 0.08));
+  margin: 4px 0;
+}
