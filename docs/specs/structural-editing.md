@@ -148,7 +148,7 @@ The net rule: a gamepad-only user never lands in insertion mode by accident. Ren
 
 4.4 **Mode round-trip preserves cursor state.** Going structural → insertion → structural restores the cursor set as it was when insertion was entered, *unless* the entering text edit changed the tree such that some targets no longer exist (in which case §3.6 applies). The text caret position when entering insertion is derived from the primary cursor's target (typically just inside the opening bracket of a compound, or at the end of a leaf).
 
-4.5 The current mode is rendered in the UI via a status indicator and the cursor style. Structural mode provides both tree-level navigation (`nav.in`/`nav.out`/`nav.next`/`nav.prev`) and spatial navigation (`nav.right`/`nav.left`/`nav.up`/`nav.down`). Gamepad paradigms bind their controls to these operations per [gamepad.md](gamepad.md); in insertion mode, D-pad and stick drive the character caret instead.
+4.5 The current mode is rendered in the UI via a status indicator and the cursor style. **Spatial navigation is the primary structural navigation mode** — the editor treats the buffer as a 2D grid and arrow/D-pad inputs (`nav.up`/`nav.down`/`nav.left`/`nav.right`) move through it, focusing the most appropriate and logical node at each step. Tree-level navigation (`nav.in`/`nav.out`/`nav.next`/`nav.prev`) is available as a secondary, explicit layer for users who need precise tree-walking. Gamepad paradigms bind their controls to these operations per [gamepad.md](gamepad.md); in insertion mode, D-pad and stick drive the character caret instead.
 
 ---
 
@@ -160,23 +160,11 @@ Operations have type `(Tree, CursorSet) → (Tree, CursorSet)`. Each operation s
 
 Tree unchanged; cursor set updated. All navigation operations apply pointwise to every cursor in the set.
 
-5.1.1 `nav.out` — cursor moves to its target's parent. No-op flash at the document root.
+#### 5.1-A Spatial navigation (primary)
 
-5.1.2 `nav.in` — cursor moves to its target's first child. No-op flash on leaves and on empty compounds.
+Spatial navigation is the default way to move through code. The editor treats the buffer as a 2D grid — arrow keys and D-pad move through it, focusing the most appropriate and logical node at each step. This is how most users navigate most of the time; tree-level operations (§5.1-B) are the secondary, explicit layer.
 
-5.1.3 `nav.next` / `nav.prev` — move to the next / previous sibling under the same parent. No-op flash at the last / first sibling.
-
-5.1.4 `nav.first` / `nav.last` — move to the first / last sibling under the same parent.
-
-5.1.5 `nav.extendNext` / `nav.extendPrev` — converts a node cursor to a range cursor by absorbing the next / previous sibling, or extends an existing range cursor outward. No-op flash if no further sibling exists.
-
-5.1.6 `nav.shrink` — releases the most-recently-added end of a range cursor; collapses to a node cursor when length reaches 1.
-
-5.1.7 `nav.intoMeta` — descends from the host node into the payload of its outermost Meta (§6.7). Reverse is `nav.out`. No-op flash if the outermost Meta has no payload.
-
-5.1.8 `nav.nextHole` / `nav.prevHole` — advance the cursor to the next / previous `hole` leaf in document order (across all top-level forms). No-op flash if no hole exists. Used by the radial menu's auto-chain (when stepping between holes within an inserted form) and by the keyboard `Tab` / `Shift-Tab` actions for hole-jumping.
-
-5.1.9 **`nav.right` / `nav.left` — horizontal spatial navigation.** The cursor advances (`right`) or retreats (`left`) through a depth-first, left-to-right Euler-tour traversal of the tree. In this traversal, each compound node is visited twice — once before its children (**pre-order**) and once after (**post-order**) — while leaves are visited once. The rules for `right` are:
+5.1.1 **`nav.right` / `nav.left` — horizontal spatial navigation.** The cursor advances (`right`) or retreats (`left`) through a depth-first, left-to-right Euler-tour traversal of the tree. In this traversal, each compound node is visited twice — once before its children (**pre-order**) and once after (**post-order**) — while leaves are visited once. The rules for `right` are:
 
 - On a compound in pre-order state → move to first child (enter).
 - On a non-last child (leaf or compound) → move to next sibling.
@@ -187,13 +175,33 @@ Tree unchanged; cursor set updated. All navigation operations apply pointwise to
 
 The cursor tracks its traversal phase (pre-order / post-order) per compound. When the cursor arrives at a compound via a non-spatial operation (`nav.next`, `nav.in`, `nav.out`, `nav.first`, `nav.last`, etc.), the phase resets to pre-order. When the cursor arrives via `nav.right` from the compound's last child (or via `nav.left` from the compound's first child), the phase is post-order.
 
-5.1.10 **`nav.up` / `nav.down` — vertical spatial navigation.** The cursor moves to the structurally nearest node on the previous / next source line. Resolution rules:
+5.1.2 **`nav.up` / `nav.down` — vertical spatial navigation.** The cursor moves to the structurally nearest node on the previous / next source line. Resolution rules:
 
 - Identify the start line and column of the current focused node's source span.
 - Find the nearest non-empty source line above (`up`) or below (`down`).
 - On the target line, prefer the node whose source span overlaps the current node's column and is at the greatest nesting depth (innermost match).
 - If no node on the target line overlaps the column, select the first node on that line at the shallowest nesting depth.
 - No-op flash if there is no source line above/below (at first/last line of document).
+
+#### 5.1-B Tree-level navigation (secondary)
+
+Explicit tree-walking for when the user needs to navigate the logical structure rather than the visual layout. These operations are available alongside spatial navigation but are not the default directional bindings.
+
+5.1.3 `nav.out` — cursor moves to its target's parent. No-op flash at the document root.
+
+5.1.4 `nav.in` — cursor moves to its target's first child. No-op flash on leaves and on empty compounds.
+
+5.1.5 `nav.next` / `nav.prev` — move to the next / previous sibling under the same parent. No-op flash at the last / first sibling.
+
+5.1.6 `nav.first` / `nav.last` — move to the first / last sibling under the same parent.
+
+5.1.7 `nav.extendNext` / `nav.extendPrev` — converts a node cursor to a range cursor by absorbing the next / previous sibling, or extends an existing range cursor outward. No-op flash if no further sibling exists.
+
+5.1.8 `nav.shrink` — releases the most-recently-added end of a range cursor; collapses to a node cursor when length reaches 1.
+
+5.1.9 `nav.intoMeta` — descends from the host node into the payload of its outermost Meta (§6.7). Reverse is `nav.out`. No-op flash if the outermost Meta has no payload.
+
+5.1.10 `nav.nextHole` / `nav.prevHole` — advance the cursor to the next / previous `hole` leaf in document order (across all top-level forms). No-op flash if no hole exists. Used by the radial menu's auto-chain (when stepping between holes within an inserted form) and by the keyboard `Tab` / `Shift-Tab` actions for hole-jumping.
 
 ### 5.2 Mutation
 
@@ -294,7 +302,7 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 
 8.2 Both input devices reach the same algebra. A gamepad button bound to `edit.slurpForward` and a keyboard chord bound to the same action produce identical state transitions.
 
-8.3 The gamepad paradigms in [gamepad.md](gamepad.md) bind their D-pad and stick gestures to the operations defined in §5.1. In structural mode, directional inputs map to `nav.out`/`nav.in` (tree-level parent/child), `nav.right`/`nav.left` (horizontal spatial), or `nav.up`/`nav.down` (vertical spatial) per paradigm. In insertion mode, directional inputs drive the character caret. The mode boundary (§4) determines which behaviour is active.
+8.3 The gamepad paradigms in [gamepad.md](gamepad.md) bind their D-pad and stick gestures to the operations defined in §5.1. In structural mode, the primary directional inputs (D-pad, left stick) drive spatial navigation (`nav.up`/`nav.down`/`nav.left`/`nav.right`); tree-level operations (`nav.out`/`nav.in`/`nav.next`/`nav.prev`) are available on secondary inputs or modifier chords. In insertion mode, directional inputs drive the character caret. The mode boundary (§4) determines which behaviour is active.
 
 ---
 

@@ -1,7 +1,6 @@
 # Keybindings
 
 > Spec: action registry, profiles/layouts, OS mapping, contexts, chords. Counterpart to [MAIN.md](MAIN.md).
-> See also `../KEYBINDING_SYSTEM.md` for the full architecture (draft).
 
 1.1 **Action registry is the single source of truth.** Every bindable operation is named by an `ActionId` string. CodeMirror handlers, the help tab, the keyboard visualiser, the action palette, and gamepad bindings all reference the same `ActionId` strings.
 
@@ -31,8 +30,33 @@
 
 1.14 **Backwards passthrough.** Bindings from third-party keymaps (`@nextjournal/clojure-mode`) that are not explicitly wrapped in the registry are passed through unmodified, with a startup warning logged for unrecognised actions.
 
-## Open / Deferred
+## 2. Implementation Map
 
-2.1 **Layout auto-detection.** The Keyboard API is Chromium-only. The reliability bar for auto-detection on Firefox/Safari versus manual selection is undecided.
+The action registry feeds every binding consumer:
 
-2.2 **Picker navigation rebindability.** Arrow keys for picker navigation are currently fixed. Whether to register them as rebindable actions (scoped to `when: "picker.open"`) is undecided.
+| Surface | Source of truth |
+|---|---|
+| CodeMirror keymaps | Resolved keyboard bindings from the action registry |
+| Help keybinding reference | Action registry + active resolved bindings |
+| Keyboard visualiser | Action registry + layout metadata + active resolved bindings |
+| Action palette | Action registry, excluding `analogOnly` actions |
+| Gamepad dispatch | Same `ActionId` vocabulary, resolved through gamepad layers |
+
+Core implementation modules:
+
+| Module | Path | Responsibility |
+|---|---|---|
+| Action registry | `src/lib/keybindings/actions.ts` | Canonical list of bindable actions with metadata |
+| Default bindings | `src/lib/keybindings/defaults.ts` | Default key-to-action maps per profile |
+| Handler registry | `src/lib/keybindings/handlers.ts` | Action-to-implementation mapping |
+| Binding resolver | `src/lib/keybindings/resolver.ts` | Merge defaults and overrides, detect conflicts, evaluate contexts |
+| OS reservations | `src/lib/keybindings/osReserved.ts` | Per-OS and browser-reserved key database |
+| Keyboard layouts | `src/lib/keybindings/layouts/` | Physical-layout metadata for visual labels |
+| Keyboard visualiser | `src/ui/keybindings/KeyboardVisualiser.tsx` | Interactive keyboard rendering component |
+| Keybindings panel | `src/ui/keybindings/KeybindingsPanel.tsx` | Settings UI for rebinding and profile management |
+
+## 3. Open / Deferred
+
+3.1 **Layout auto-detection.** The Keyboard API is Chromium-only. The reliability bar for auto-detection on Firefox/Safari versus manual selection is undecided.
+
+3.2 **Picker navigation rebindability.** Arrow keys for picker navigation are currently fixed. Whether to register them as rebindable actions (scoped to `when: "picker.open"`) is undecided.

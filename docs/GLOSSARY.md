@@ -180,7 +180,7 @@ Playback state of the sequencer: playing, paused, or stopped.
 The wire format for communication. Two modes exist.
 
 - **Identifiers**: `ProtocolMode` (`"legacy"` | `"json"`), `PROTOCOL_READY_EVENT`
-- **Files**: `src/transport/types.ts`, `docs/PROTOCOL.md`
+- **Files**: `src/transport/types.ts`, `src-useq/docs/specs/wire-protocol.md`
 - **See also**: JSON Mode, Legacy Mode
 
 ### JSON Mode
@@ -205,7 +205,7 @@ The initial JSON protocol exchange. Editor sends `hello`, firmware responds with
 version and I/O config. Initiates JSON mode if firmware supports it.
 
 - **Identifiers**: `hello` (request type)
-- **Files**: `docs/PROTOCOL.md`
+- **Files**: `src-useq/docs/specs/wire-protocol.md`
 - **See also**: IoConfig
 
 ### Heartbeat
@@ -221,7 +221,7 @@ A code evaluation request sent over the protocol.
 
 - **Identifiers**: `type: "eval"`, `exec: "immediate"` (optional flag)
 - **Event**: `CODE_EVALUATED_EVENT` / `useq-code-evaluated`
-- **Files**: `docs/PROTOCOL.md`, `src/contracts/runtimeEvents.ts`
+- **Files**: `src-useq/docs/specs/wire-protocol.md`, `src/contracts/runtimeEvents.ts`
 
 ### Stream
 
@@ -1486,7 +1486,7 @@ from the same source. User-customisable with conflict detection.
 - **Key UI bindings**: Alt-/ → `panel.help`, Alt-g → `panel.vis`, Alt-f → `doc.symbol`
 - **Probe bindings**: Alt-p → `probe.toggle`, Alt-h → `probe.expand`, Alt-s → `probe.contract`
 - **Chord namespaces**: Alt-e (structural editing), Alt-o (probes)
-- **Spec**: `docs/KEYBINDING_SYSTEM.md`
+- **Spec**: `docs/specs/keybindings.md`
 
 ### Theme
 

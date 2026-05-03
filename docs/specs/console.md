@@ -14,7 +14,7 @@
 
 1.6 **Auto-scroll.** When the user is within ~30 px of the bottom, new entries auto-scroll. When the user has scrolled away, an unread indicator appears and auto-scroll is suspended until the user scrolls back to the bottom or invokes a "scroll to latest" affordance.
 
-1.7 The console is the canonical surface for **TEXT/MSG_TO_EDITOR serial output**, **eval result echoes**, **runtime warnings**, and **bootstrap notices**. Errors that have a corresponding inline diagnostic must still appear in the console as a message.
+1.7 The console is the canonical surface for serial `{type:"log",...}` messages, **eval result echoes**, **runtime warnings**, and **bootstrap notices**. Errors that have a corresponding inline diagnostic must still appear in the console as a message.
 
 1.8 A **clear** action wipes the message buffer. There is no per-type filter UI in v1.
 

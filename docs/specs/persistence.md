@@ -15,13 +15,14 @@
 - `codeSnippets:snippets`, `:starred`, `:nextId`
 - `editorContent` (autosave target)
 - `uSEQ-Perform-Editor-Probes` (probe state)
+- `uSEQ-Perform-Editor-LiveEdits` (live-edit values, orphan state, MIDI bindings, panel state)
 - `uSEQ-Perform-DevMode-State` (devmode toggle)
 
 1.4 **JSON parse errors must never crash.** A corrupt persisted value is logged as a warning and replaced by the schema default; the user keeps a working app and loses only that one piece of state.
 
 1.5 The on-disk shape of persisted JSON values may evolve. Migration must be lossless for fields that survive and silent-default for fields that disappear.
 
-1.6 **Schema versioning is implicit, not stamped.** Normalisation reads the persisted JSON and fills in missing fields from defaults; unknown fields are dropped. There is no version key.
+1.6 **Schema versioning is implicit by default.** Normalisation reads the persisted JSON and fills in missing fields from defaults; unknown fields are dropped. Most persisted shapes do not carry a version key. Feature-local persisted records may include an explicit `schemaVersion` only when they need non-trivial migration that cannot be represented by total normalisation alone; [live-edit.md §7](live-edit.md) is the current example.
 
 1.7 `?nosave` is a **session-scoped write gate**: every write through the persistence service becomes a silent no-op, but reads still return pre-existing persisted state. The app starts with whatever was previously saved but never writes back. Modules that use other persistence channels (e.g. IndexedDB, cookies) must respect the same flag.
 

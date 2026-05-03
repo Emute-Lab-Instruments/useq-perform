@@ -2,7 +2,7 @@
 
 This document is the editor-facing contract for the firmware and WASM runtimes that `useq-perform` consumes.
 
-For the higher-level product boundary and compatibility cuts, read `docs/specs/MAIN.md` §4 first. This file is narrower: it defines what the editor may assume about hardware and WASM runtimes.
+For the higher-level product boundary and compatibility cuts, read [MAIN.md](MAIN.md) §4 first. This file is narrower: it defines what the editor may assume about hardware and WASM runtimes.
 
 ## Canonical `src-useq` Source Of Truth
 
@@ -71,13 +71,28 @@ These helpers are defined in `wasm_wrapper.cpp` and the current build script exp
 |--------|-------------|------------|---------|
 | `useq_eval_outputs_time_window` | `"string"` | `["string", "number", "number", "number"]` | Batch evaluate (JSON bridge) |
 | `useq_eval_outputs_time_window_into` | `"number"` | `["string", "number", "number", "number", "number", "number"]` | Batch evaluate (typed buffer) |
+| `useq_tick_and_project` | `"number"` | evolving; see [visualisation.md §7.2](visualisation.md) | Combined live tick + visualisation projection-fork operation |
 | `useq_last_error` | `"string"` | `[]` | Read last error message |
+| `useq_last_diagnostics` | `"string"` | `[]` | Read diagnostics from the most recent eval |
+| `useq_active_diagnostics` | `"string"` | `[]` | Read currently active per-output diagnostics |
 
 Current expectation:
 
-- `src-useq/scripts/build_wasm.sh` exports the batch helpers and `useq_last_error`
+- `src-useq/scripts/build_wasm.sh` exports the batch helpers, `useq_last_error`, and the diagnostics helpers above
 - `src-useq/wasm/useq.js` and `public/wasm/useq.js` should expose raw `_useq_*` bindings for them
 - The editor probes anyway so a stale bundle degrades to per-sample evaluation instead of throwing repeatedly
+
+The diagnostic payload shapes and clearing policy live in
+`../../src-useq/docs/specs/diagnostics.md`; this document and
+`../../src/contracts/wasmAbi.ts` own which editor-facing WASM exports are expected.
+
+The experimental `useq_tick_and_project` export is intentionally specified by
+the visualisation specs rather than frozen here while the projection-fork
+contract is landing. The required semantic shape is: tick live state at
+`tick_time`, then either reset-fill or extend a WASM-owned projection fork
+without mutating live state. See
+[visualisation.md](visualisation.md) and
+`../../src-useq/docs/specs/visualisation-projection.md`.
 
 ### ABI validation
 
@@ -89,8 +104,8 @@ WASM must continue to implement the shared transport builtins above. The editor 
 
 The canonical editor constants live in:
 
-- `src/contracts/useqRuntimeContract.ts` — shared transport commands and capability split
-- `src/contracts/wasmAbi.ts` — WASM export signatures and ABI validation
+- `../../src/contracts/useqRuntimeContract.ts` — shared transport commands and capability split
+- `../../src/contracts/wasmAbi.ts` — WASM export signatures and ABI validation
 
 Both `src/effects/transportOrchestrator.ts` and `src/runtime/wasmInterpreter.ts` import from these files instead of maintaining separate command lists or hard-coded symbol strings.
 

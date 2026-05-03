@@ -74,7 +74,7 @@
 
 ## 2. From-List Highlights
 
-2.1 **Recognised operators (v1).** The set of indexed-list operators is currently: `from-list`, `from-flat-list`, `seq`. These are recognised syntactically — by the head symbol of the form, not by runtime introspection. The set is hardcoded in `probeHelpers.ts`; this spec is the canonical list. Adding a new indexed-list operator requires a coordinated update to both this section and the implementation. The language semantics doc ([../../src-useq/docs/SEMANTICS.md](../../src-useq/docs/SEMANTICS.md)) cites this section as a downstream consumer.
+2.1 **Recognised operators (v1).** The set of indexed-list operators is currently: `from-list`, `from-flat-list`, `seq`. These are recognised syntactically — by the head symbol of the form, not by runtime introspection. The set is hardcoded in `probeHelpers.ts`; this spec is the canonical list. Adding a new indexed-list operator requires a coordinated update to both this section and the implementation. The language semantics spec ([../../src-useq/docs/specs/MAIN.md](../../src-useq/docs/specs/MAIN.md)) cites this section as a downstream consumer.
 
 &nbsp;&nbsp;&nbsp;&nbsp;2.1.1 **Future direction: runtime detection.** The hardcoded operator set is a v1 simplification. The goal is to detect any phasor-indexed list access at runtime, regardless of operator name — including user-defined wrapper functions that use `seq` internally on a list visible in source code. The mechanism (builtin self-registration, WASM-side tracing, or AST analysis) is undecided. When implemented, §2.1 narrows to the fallback for cases runtime detection cannot reach.
 

@@ -2,7 +2,7 @@
 
 > Spec: settings schema, mutation surface, panel layout. Counterpart to [MAIN.md](MAIN.md).
 
-1.1 Settings are a **typed, normalised, persistent record**. The schema has these top-level sections: `editor`, `storage`, `ui`, `visualisation`, `runtime`, `wasm`, `console`, `evalResults`, `keybindings`. The `name` field is a free-form session label.
+1.1 Settings are a **typed, normalised, persistent record**. The schema has these top-level sections: `editor`, `storage`, `ui`, `visualisation`, `runtime`, `wasm`, `console`, `evalResults`, `keybindings`, `liveEdit`, `hardware`, and `calibration`. The `name` field is a free-form session label.
 
 1.2 **The sole mutation surface is `runtimeService.updateSettings(patch)`.** UI components must not write to localStorage, the canonical repository, or the reactive store directly. Reads are reactive (via `settingsStore`); writes are imperative (via runtime service).
 

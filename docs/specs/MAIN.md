@@ -6,8 +6,8 @@
 > CodeMirror 6 frontend is one implementation candidate; this document
 > defines what the app *means* and what tests must verify.
 >
-> Counterpart to `../../src-useq/docs/SEMANTICS.md` (language semantics) and
-> `../RUNTIME_CONTRACT.md` (runtime/firmware contract). Where this doc and
+> Counterpart to `../../src-useq/docs/specs/MAIN.md` (language semantics) and
+> [runtime-contract.md](runtime-contract.md) (runtime/firmware contract). Where this doc and
 > those disagree on a point of app behaviour, this doc wins by intent —
 > bring implementation into line and file the bug.
 >
@@ -94,9 +94,9 @@ App-wide degradation contracts. Cited from feature sub-specs.
 
 4.3 The stable URL/storage promises in [url-params.md §1.2](url-params.md) and [persistence.md §1.2/§1.3](persistence.md) are part of the stable core.
 
-4.4 **Compatibility cuts** (kept only as bridges, may shrink without replacement): legacy text serial protocol (pre-1.2.0 firmware); `?noModuleMode=true` (dev/debug escape hatch only — not a release-facing compatibility promise; may move or disappear); `?devmode=true` UI surface (panel/UI is internal tooling, not stable public surface); mock controls; Storybook/test harnesses; live-serial visualisation as observation-only (no time-seeking).
+4.4 **Compatibility cuts** (kept only as bridges, may shrink without replacement): `?noModuleMode=true` (dev/debug escape hatch only — not a release-facing compatibility promise; may move or disappear); `?devmode=true` UI surface (panel/UI is internal tooling, not stable public surface); mock controls; Storybook/test harnesses; live-serial visualisation as observation-only (no time-seeking).
 
-4.5 **Out of scope** (not compatibility targets, never returning without a mission case): camera workflows, desktop/Electron, virtual gamepad, MIDI output and firmware-side MIDI, ambiguous hybrid runtime states, multi-user/multi-tenant, telemetry.
+4.5 **Out of scope** (not compatibility targets, never returning without a mission case): pre-1.2.0 firmware text-serial protocol, camera workflows, desktop/Electron, virtual gamepad, MIDI output and firmware-side MIDI, ambiguous hybrid runtime states, multi-user/multi-tenant, telemetry.
 
 ---
 
@@ -106,7 +106,7 @@ Items that span multiple sub-specs. Feature-specific open questions live in the 
 
 5.1 **Behavioural runtime parity.** Whether `(useq-play)` etc. should be contract-tested end-to-end against both runtimes (property tests over both ports) or whether matching the wire protocol is sufficient. Wire parity exists; behavioural parity is open.
 
-5.2 **Hardware-initiated push messages.** The current protocol only allows hardware to push structured state via the `meta` field inside eval responses. Hardware should be able to push messages at its own initiative (e.g. transport state changes, diagnostic alerts) outside of eval request/response cycles. Proposed: unsolicited JSON frames (0x1F + 0x65 + JSON) with no `requestId` are treated as push notifications from firmware.
+5.2 **Hardware-initiated push messages.** The current protocol only allows hardware to push structured state via the `meta` field inside eval responses. Hardware should be able to push messages at its own initiative (e.g. transport state changes, diagnostic alerts) outside of eval request/response cycles. Proposed: unsolicited bare JSON messages (`{...}\n`, no `requestId`) are treated as push notifications from firmware, matching `../../src-useq/docs/specs/wire-protocol.md`.
 
 ---
 
@@ -136,6 +136,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.11 [help.md](help.md) — help tabs (guide/reference/snippets) and onboarding banner.
 
+6.11.1 [user-guide.md](user-guide.md) — detailed guide structure, content principles, and interactive playground expectations.
+
 6.12 [overlays.md](overlays.md) — modals, pickers, radial menus, overlay stack.
 
 6.13 [keybindings.md](keybindings.md) — action registry, profiles/layouts, OS mapping, contexts, chords, palette, modifier hints.
@@ -156,6 +158,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.21 [calibration.md](calibration.md) — CV 1V/oct calibration full-screen takeover flow, per-output picker, ±50¢ slider with carry-forward offset, save/abort/error semantics.
 
+6.22 [inspector.md](inspector.md) — same-repo visual review tool for isolated app scenarios and local approval workflow.
+
 ---
 
 ## 7. Cross-References
@@ -164,20 +168,22 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 7.2 `../../ALIGNMENT.md` — opinionated, dated diagnosis of the gap between the codebase and its mission.
 
-7.3 `../RUNTIME_CONTRACT.md` — editor↔hardware/WASM capability split, WASM ABI floor.
+7.3 [runtime-contract.md](runtime-contract.md) — editor↔hardware/WASM capability split, WASM ABI floor.
 
-7.4 `../PROTOCOL.md` — serial framing, JSON message shapes (handshake, eval, ping, stream-config).
+7.4 `../../src-useq/docs/specs/wire-protocol.md` — serial framing, JSON message shapes (handshake, eval, ping, stream-config).
 
-7.5 `../REACTIVE_FLOW.md` — stores, channels, signals, data flow paths (inventory).
+7.5 [reactive-flow.md](reactive-flow.md) — stores, channels, signals, data flow paths (inventory).
 
-7.6 `../KEYBINDING_SYSTEM.md` — full keybinding system architecture (draft; covers contexts, chords, layouts, profiles in depth).
+7.6 [keybindings.md](keybindings.md) — full keybinding system architecture.
 
 7.7 `../GLOSSARY.md` — terminology source of truth. Consult before introducing new terms.
 
-7.8 `../INSPECTOR_SPEC.md`, `../USER_GUIDE_SPEC.md` — sub-surface specs.
+7.8 [inspector.md](inspector.md), [user-guide.md](user-guide.md) — sub-surface specs.
 
-7.9 `../../src-useq/docs/SEMANTICS.md` — language semantics (what programs *mean*). Counterpart to this doc.
+7.9 `../../src-useq/docs/specs/MAIN.md` — language semantics (what programs *mean*). Counterpart to this doc.
 
 7.10 `../../src-useq/docs/specs/diagnostics.md` — diagnostic system contract (severity, category, source span, ABI surface). See also `../../src-useq/docs/specs/failure-model.md` for failure semantics (LKG, health states, REPL-vs-output channels).
+
+7.10.1 `../../src-useq/docs/specs/visualisation-projection.md` — WASM-side projection-fork and future-frontier contract used by [visualisation.md](visualisation.md).
 
 7.11 If this spec disagrees with any of the above on a point of *app behaviour*, **this spec wins** by intent — bring implementation and other docs into line and file the bug. If it disagrees with the actually-deployed app, that is a bug — file it.

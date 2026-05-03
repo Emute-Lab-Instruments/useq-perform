@@ -1,7 +1,7 @@
 # Runtime Modes
 
 > Spec: hardware-vs-WASM runtime mode semantics. Counterpart to [MAIN.md](MAIN.md).
-> See `../RUNTIME_CONTRACT.md` for the editor↔runtime capability split.
+> See [runtime-contract.md](runtime-contract.md) for the editor↔runtime capability split.
 
 1.1 The app has exactly **four runtime modes** at any moment: `none`, `wasm`, `hardware`, `both`.
 
@@ -27,6 +27,6 @@
 
 1.11 The **shared transport command set** that fans out to both runtimes is exactly: `(useq-play)`, `(useq-pause)`, `(useq-stop)`, `(useq-rewind)`, `(useq-clear)`, `(useq-get-transport-state)`. Anything else is hardware-only or WASM-only and must not be silently sent to the wrong runtime.
 
-1.13 **`connectedToModule` is a misnomer; do not treat it as "hardware is attached".** The legacy boolean `connectedToModule` in the transport layer means "JSON handshake completed against *some* serial port" — not "real uSEQ hardware is plugged in". Consumers deciding whether the hardware-mode capability set applies must use the runtime-mode signal (this spec), not `connectedToModule`. The variable persists only as a transport-internal flag and may be renamed without notice.
-
 1.12 **WASM eval runs in a Web Worker.** The default `WasmRuntimePort` is the worker-backed port — eval, batch sampling, time advance, probe evaluation, and diagnostics readback all cross the worker boundary via `postMessage`. The in-process port remains as a fallback when `Worker` is unavailable and as the implementation tests mock against. Renderer (WebGL) and editor still run on the main thread.
+
+1.13 **`connectedToModule` is a misnomer; do not treat it as "hardware is attached".** The legacy boolean `connectedToModule` in the transport layer means "JSON handshake completed against *some* serial port" — not "real uSEQ hardware is plugged in". Consumers deciding whether the hardware-mode capability set applies must use the runtime-mode signal (this spec), not `connectedToModule`. The variable persists only as a transport-internal flag and may be renamed without notice.

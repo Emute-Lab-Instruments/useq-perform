@@ -12,7 +12,7 @@ Forms whose subtree contains any `hole` leaf (per [structural-editing.md §2.9](
 
 1.2 Each eval **fans out** to the active runtime(s). By default, all code the user explicitly sends is evaluated on both hardware and WASM (when both are active). WASM may additionally receive implicit code at the editor's discretion (e.g. probe sampling, from-list highlight evaluation). Hardware may receive code that WASM does not (e.g. hardware-specific diagnostics). In `both` mode, hardware is authoritative for output health; WASM diagnostics are shown but do not override hardware state.
 
-1.3 **An eval that produces a runtime error must not stop the music** (see [MAIN.md §2.1](MAIN.md)). The previously active output programs continue to run (subject to LKG fallback per language semantics §14 in `../../src-useq/docs/SEMANTICS.md`).
+1.3 **An eval that produces a runtime error must not stop the music** (see [MAIN.md §2.1](MAIN.md)). The previously active output programs continue to run (subject to LKG fallback per `../../src-useq/docs/specs/failure-model.md`).
 
 1.4 **Inline result display.** After a successful eval, a small ephemeral widget shows the truncated result text adjacent to the evaluated range. Display mode and lifetime are controlled by `evalResults.mode` (default `inline-ephemeral`) and `evalResults.autoDismissMs` (default 3000).
 

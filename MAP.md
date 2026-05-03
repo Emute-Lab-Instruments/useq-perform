@@ -29,7 +29,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 
 - `src/lib/` — foundation. No imports from runtime/effects/ui/editors/transport.
   - `settings/` — schema, normalization, persistence (split out of the old `appSettings.ts`).
-  - `keybindings/` — action registry (with `reversible` flag, derives `ReversibleActionId`/`NonReversibleActionId`), resolver, layouts, profiles, sticky modifiers, OS-reserved key list. See [docs/KEYBINDING_SYSTEM.md](docs/KEYBINDING_SYSTEM.md).
+  - `keybindings/` — action registry (with `reversible` flag, derives `ReversibleActionId`/`NonReversibleActionId`), resolver, layouts, profiles, sticky modifiers, OS-reserved key list. See [docs/specs/keybindings.md](docs/specs/keybindings.md).
   - `editorStore.ts`, `editorDefaults.ts`, `editorCompartments.ts` — CodeMirror facade and config.
   - `typedChannel.ts` — pub/sub primitive used by everything in `contracts/`.
   - `persistence.ts` — central localStorage service (typed keys, nosave, error recovery).
@@ -38,9 +38,9 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `manualControlState.ts` — manual control state tracking.
   - `pickerMenuModel.ts`, `referenceDataLoader.ts`, `helpContentPreloader.ts`.
   - `CircularBuffer.ts`, `debug.ts`, `perfTrace.ts` (DEV-only profiling — `window.__useqPerf.{enable,report,reset}`, timings + counters; tree-shaken in prod via `import.meta.env.DEV` gates at every call site), `themes.ts`, `versionUtils.ts`, `visualisationUtils.ts`, `useActorSignal.ts`.
-- `src/contracts/` — shared types/constants and typed channel definitions. See [docs/REACTIVE_FLOW.md](docs/REACTIVE_FLOW.md) for channel inventory.
+- `src/contracts/` — shared types/constants and typed channel definitions. See [docs/specs/reactive-flow.md](docs/specs/reactive-flow.md) for channel inventory.
   - `runtimeChannels.ts`, `visualisationChannels.ts`, `gamepadChannels.ts` — channel registries.
-  - `useqRuntimeContract.ts` — shared transport command set and capability split. See [docs/RUNTIME_CONTRACT.md](docs/RUNTIME_CONTRACT.md).
+  - `useqRuntimeContract.ts` — shared transport command set and capability split. See [docs/specs/runtime-contract.md](docs/specs/runtime-contract.md).
   - `wasmAbi.ts` — required + runtime-probed WASM exports, `assertWasmAbi()` validator.
   - `runtimePorts.ts` — typed `WebSerialHostPort` / `WasmRuntimePort` interfaces over the shared transport surface. The runtime layer talks to ports, not transport modules directly. `WasmRuntimePort` is shaped to be the postMessage boundary for the upcoming worker move.
   - `runtimeEvents.ts`, `runtimeTypes.ts`, `visualisationEvents.ts`.
@@ -49,7 +49,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `hardware.ts` — hardware binding chip + CV calibration session types ([docs/specs/hardware-bindings.md](docs/specs/hardware-bindings.md), [docs/specs/calibration.md](docs/specs/calibration.md)).
 - `src/transport/` — Web Serial lifecycle and protocol. No UI/editor imports.
   - `connector.ts` — port open/close/reconnect, Web Serial events.
-  - `json-protocol.ts` — firmware ≥ 1.2.0 JSON driver (handshake, heartbeat, eval). See [docs/PROTOCOL.md](docs/PROTOCOL.md).
+  - `json-protocol.ts` — firmware ≥ 1.2.0 JSON driver (handshake, heartbeat, eval). See [src-useq/docs/specs/wire-protocol.md](src-useq/docs/specs/wire-protocol.md).
   - `stream-parser.ts` — byte-level parser, routes STREAM/JSON/TEXT, owns 9 `CircularBuffer`s.
   - `webSerialHostPort.ts` — adapter over `connector.ts` + `json-protocol.ts` implementing the `WebSerialHostPort` contract from `src/contracts/runtimePorts.ts`.
   - `serial-utils.ts`, `upgradeCheck.ts`, `types.ts`, `index.ts`.
@@ -141,12 +141,12 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — terminology, single source of truth for naming.
 - [docs/specs/MAIN.md](docs/specs/MAIN.md) — normative app-behaviour spec (split into per-feature sub-specs under `docs/specs/`); source of truth for tests and correctness. §4 covers product boundary, stable core, compatibility cuts, and out-of-scope items.
-- [docs/RUNTIME_CONTRACT.md](docs/RUNTIME_CONTRACT.md) — editor↔hardware/WASM capability split, WASM ABI floor, promotion workflow.
-- [docs/PROTOCOL.md](docs/PROTOCOL.md) — serial framing, JSON message shapes.
-- [docs/REACTIVE_FLOW.md](docs/REACTIVE_FLOW.md) — stores, channels, signals, data flow paths.
-- [docs/KEYBINDING_SYSTEM.md](docs/KEYBINDING_SYSTEM.md) — unified keybinding architecture.
-- [docs/INSPECTOR_SPEC.md](docs/INSPECTOR_SPEC.md) — Inspector design.
-- [docs/USER_GUIDE_SPEC.md](docs/USER_GUIDE_SPEC.md) — in-app user guide design.
+- [docs/specs/runtime-contract.md](docs/specs/runtime-contract.md) — editor↔hardware/WASM capability split, WASM ABI floor, promotion workflow.
+- [src-useq/docs/specs/wire-protocol.md](src-useq/docs/specs/wire-protocol.md) — serial framing, JSON message shapes.
+- [docs/specs/reactive-flow.md](docs/specs/reactive-flow.md) — stores, channels, signals, data flow paths.
+- [docs/specs/keybindings.md](docs/specs/keybindings.md) — unified keybinding architecture.
+- [docs/specs/inspector.md](docs/specs/inspector.md) — Inspector design.
+- [docs/specs/user-guide.md](docs/specs/user-guide.md) — in-app user guide design.
 - [docs/BEADS_BACKEND.md](docs/BEADS_BACKEND.md) — bd / Dolt backend setup.
 - [docs/adr/](docs/adr/) — architectural decisions (`0001` runtime surfaces, `0002` config-manager scope, `0003` archive boundaries).
 - [src-useq/docs/specs/diagnostics.md](src-useq/docs/specs/diagnostics.md) — diagnostic data shapes and ABI; see [src-useq/docs/specs/failure-model.md](src-useq/docs/specs/failure-model.md) for failure semantics.

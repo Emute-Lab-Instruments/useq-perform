@@ -12,8 +12,8 @@ The repository still contains a mix of current runtime owners, retained legacy a
 The canonical surfaces for ongoing work are:
 
 - Product boundary: `docs/specs/MAIN.md` §4
-- Editor-facing runtime contract: `docs/RUNTIME_CONTRACT.md`
-- Serial protocol details: `docs/PROTOCOL.md`
+- Editor-facing runtime contract: `docs/specs/runtime-contract.md`
+- Serial protocol details: `src-useq/docs/specs/wire-protocol.md`
 - Production startup path: `src/main.ts`, `src/runtime/bootstrap.ts`
 - Startup and runtime ownership: `src/runtime/bootstrap.ts` (also covers startup-mode selection, formerly `bootstrapPlan.ts`), `src/runtime/runtimeService.ts` plus the split services (`runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts`), `src/runtime/runtimeSession.ts`, `src/runtime/runtimeDiagnostics.ts`
 - Runtime contract definitions: `src/runtime/jsonProtocol.ts` (in-runtime helpers), `src/transport/json-protocol.ts` (wire driver), `src/contracts/useqRuntimeContract.ts`, `src/contracts/runtimeChannels.ts`, `src/contracts/runtimeTypes.ts`

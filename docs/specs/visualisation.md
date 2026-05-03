@@ -1,7 +1,7 @@
 # Visualisation
 
 > Spec: visualisation panel, sampling, past/future semantics, output classification, palette. Counterpart to [MAIN.md](MAIN.md).
-> See also [../../src-useq/docs/specs/state.md](../../src-useq/docs/specs/state.md) (state semantics, phase coherence) and [../../src-useq/docs/specs/signal-model.md](../../src-useq/docs/specs/signal-model.md) (implicit lifting, pure-by-default model).
+> See also [../../src-useq/docs/specs/state.md](../../src-useq/docs/specs/state.md) (state semantics, phase coherence), [../../src-useq/docs/specs/signal-model.md](../../src-useq/docs/specs/signal-model.md) (implicit lifting, pure-by-default model), and [../../src-useq/docs/specs/visualisation-projection.md](../../src-useq/docs/specs/visualisation-projection.md) (WASM projection-fork ABI and engine invariants).
 
 ## 1. Panel and Rendering
 
@@ -19,7 +19,7 @@
 
 1.7 **Render frequency** is animation-frame paced. The renderer no-ops when the panel is not visible. Rendering must remain smooth (≥ 30 FPS) at the documented channel target — see [MAIN.md §3.3](MAIN.md).
 
-1.7.1 **Adaptive quality under sustained frame pressure.** When `visualisation.adaptiveQuality` is enabled (default `true`), the rAF loop measures committed-tick elapsed times and derives a *pressure level* (0 = normal, 1 = mild, 2 = severe). Any tick `≥ 50ms` (i.e. ≤ 20fps) is a *miss*; 3+ misses in the last 8 ticks step up to mild, 6+ to severe. Step-down only happens after 16 consecutive normal ticks (hysteresis to avoid oscillation under bursty load). Three levers engage in increasing-cost-of-quality-loss order: (a) skip the per-frame future-buffer edge push (the future trace stops extending until pressure releases); (b) double (mild) or quadruple (severe) the effective probe refresh interval — the persisted `probeRefreshIntervalMs` is unchanged, the multiplier is applied at read time; (c) halve (mild) or quarter (severe) the pixel-matched past-buffer sample rate (§2.2.1) before pushing it to the sampler, reducing buffer size and per-paint GPU work proportionally. When `adaptiveQuality` is `false`, pressure detection still runs but consumers always see level 0.
+1.7.1 **Adaptive quality under sustained frame pressure.** When `visualisation.adaptiveQuality` is enabled (default `true`), the rAF loop measures committed-tick elapsed times and derives a *pressure level* (0 = normal, 1 = mild, 2 = severe). Any tick `≥ 50ms` (i.e. ≤ 20fps) is a *miss*; 3+ misses in the last 8 ticks step up to mild, 6+ to severe. Step-down only happens after 16 consecutive normal ticks (hysteresis to avoid oscillation under bursty load). Three levers engage in increasing-cost-of-quality-loss order: (a) defer non-urgent future-frontier extension while coverage remains sufficient (the future trace stops extending until pressure releases or coverage guard bands require it); (b) double (mild) or quadruple (severe) the effective probe refresh interval — the persisted `probeRefreshIntervalMs` is unchanged, the multiplier is applied at read time; (c) halve (mild) or quarter (severe) the pixel-matched past-buffer sample rate (§2.2.1) before pushing it to the sampler, reducing buffer size and per-paint GPU work proportionally. When `adaptiveQuality` is `false`, pressure detection still runs but consumers always see level 0.
 
 1.8 **Palette is theme-coupled.** Switching to a light theme switches the visualisation palette; a dark theme uses a dark palette. Custom palettes are not user-editable in v1. See [themes.md](themes.md).
 
@@ -37,7 +37,7 @@ Past values are ground truth: what the signal engine actually produced as time a
 
 2.2.1 **Pixel-matched buffer capacity.** The rolling buffer's *capacity* is derived from rendering-surface pixel width: `bufferSampleRate = floor(canvasWidth / 2) / (windowDuration / 2)` (recomputed on surface resize, integer-snapped to avoid sub-pixel re-allocation). This is a **capacity** target, not a literal sample density: tick cadence is unchanged (§2.1 — one push per rAF frame, ~30 Hz), so the GPU's line rasteriser interpolates between actual sample points along the time axis. Pixel-matched capacity eliminates the sub-pixel **feature drift** the spec actually cares about: each pushed sample maps to a stable absolute-time column, so a peak/edge in the waveform doesn't hop between columns as time advances. *True* one-sample-per-column rendering would require either a higher tick rate (§9.6.A) or a multi-sample-per-tick batch (§9.6.C); see deferred section.
 
-2.2.2 The pixel-matched capacity applies to the **past buffer only**. Future projection uses `visualisation.sampleCount / 2` (§3.1), which may be lower. The visual transition between past and future density at `t = now` is acceptable because the future half is already visually distinguished (lower alpha or dashed, §1.4).
+2.2.2 The pixel-matched capacity applies to the **past buffer only**. Future projection uses its own projection-batch density (§3.1.1), which may be lower. The visual transition between past and future density at `t = now` is acceptable because the future half is already visually distinguished (lower alpha or dashed, §1.4).
 
 2.3 **History depth.** The buffer retains `visualisation.windowDuration / 2 + visualisation.historyHeadroom` seconds of history (default headroom: 5 seconds). `visualisation.maxHistorySeconds` (default 30) caps the total history regardless of headroom. Widening the vis window beyond the buffer simply shows a shorter past.
 
@@ -51,55 +51,70 @@ Past values are ground truth: what the signal engine actually produced as time a
 
 ---
 
-## 3. Future Values — Projected from Now
+## 3. Future Values — Projection Fork And Frontier
 
 Future values are projections: what the signal engine would produce if conditions held steady from this moment forward.
 
-3.1 **Projection model — event-driven, not per-frame.** The future half is stored in a **per-output rolling buffer** (same `PastBuffer` type as the past half). Future buffers are populated in two ways:
+3.1 **Projection model — clone once, extend the frontier.** The future half is stored in a **per-output rolling buffer** (same `PastBuffer` type as the past half), but the state used to produce it is not the live runtime state. For performance on constrained devices, the WASM runtime owns a persistent **projection fork** rather than recomputing the whole future window every frame:
 
-- **Batch refill** (on invalidation): batch-evaluate from `t = now` to `t = now + windowDuration/2 + futureLeadSeconds` at ~30 Hz sample density via `evalOutputsInTimeWindow` (save/restore). This populates the full visible future in one call.
-- **Per-frame extension**: each frame, one sample is evaluated at the far edge of the future window (`t = now + windowDuration/2 + futureLeadSeconds`) via save/restore and pushed to the future buffer. This extends coverage as time advances, without recomputing the existing data.
+- `projectionStartTime` — the live time at which the fork was created.
+- `projectionFrontierTime` — the newest projected sample time.
+- `projectionState` — a clone of the engine state advanced up to `projectionFrontierTime`.
+- frozen external inputs / live-edit values captured at fork creation.
 
-Future buffers are **stable between invalidation events** — the same data is drawn frame after frame, eliminating the jitter that per-frame recomputation caused.
+Future buffers are populated in two ways:
 
-3.2 **State-advancing eval vs read-only projection.** The per-frame tick (§2.1) advances the WASM engine's live state. The future projection does **not** advance live state — it uses the existing save/restore mechanism in `execute_batch_sequential` (snapshot state before projection, restore after). The projection forks from the live state at `t = now`.
+- **Reset + fill** (on invalidation): after the live tick at `t = now`, clone live state, clear future buffers, and sequentially project from just after `now` to `now + windowDuration/2 + futureLeadSeconds`. This populates the visible future and records the new frontier.
+- **Frontier extension** (steady state): append a small batch beginning just after the current frontier and ending beyond the visible future edge. This advances the projection fork itself, not the live state. The batch size is small but greater than one sample (default target: 4 samples; implementations may tune 2-8 based on cost).
+
+Future buffers are **stable between invalidation events**. The already-projected near future is not recomputed every frame; only the far frontier advances. This eliminates the jitter caused by full-window per-frame recomputation while avoiding the incorrect "single future sample at now" shape.
+
+3.1.1 **Boundary ownership.** The live tick owns the exact `t = now` value. Projection starts strictly after `now`; it must not advance state a second time at the same timestamp. The renderer may use the live tick value as a boundary anchor when drawing the future segment, but that anchor is not a separately stepped projection sample.
+
+3.1.2 **Future sample density.** Reset-fill uses `max(visualisation.sampleCount / windowDuration, visualisation.minFutureSampleRate)` as the projection density, with `minFutureSampleRate` defaulting to 30 Hz unless profiling proves that lower is required. Frontier extension uses the same density when choosing its next batch times. Adaptive quality may temporarily defer non-urgent extension work, but it must not change the absolute timestamps already stored in the future buffer.
+
+3.2 **State-advancing eval vs projection fork.** The per-frame tick (§2.1) advances the WASM engine's live state. Future projection never mutates live state. On reset, the fork starts from a snapshot of live state at `t = now`. On extension, the fork advances from its own `projectionFrontierTime` to the new frontier. Rewinding/replaying from `now` to the frontier every frame is explicitly not the steady-state model; rewind happens only on invalidation.
 
 3.3 **External input assumption.** Expressions that reference external inputs (`ain1`, `ain2`, `swm`, `swt`, `rot`, etc.) are projected assuming those inputs hold their **current values** for the entire future window. The projection does not attempt to predict input changes.
 
-3.4 **Stateful future stepping.** For batch refills, expressions with declared state (`defstate`, `integrate`, UGens) are stepped sequentially at vis sample density, with `dt` computed from the inter-sample time step. This is exact for linear state updates (e.g. `(+ phase (* freq dt))`) and an acceptable approximation for nonlinear updates. Per-frame extension evaluates a single point at the far edge — this is a one-step jump from the current time, which is an approximation for stateful signals. See [../../src-useq/docs/specs/state.md §2–6](../../src-useq/docs/specs/state.md) for state semantics.
+3.4 **Stateful future stepping.** Expressions with declared state (`defstate`, `integrate`, UGens) are stepped sequentially inside the projection fork. `dt` is computed between adjacent projection sample times; the first projection step after reset uses `dt = firstProjectionTime - now` from the post-live-tick snapshot. Reset + fill and steady-state extension use the same stepping contract; there is no special one-sample jump from live `now` to the far edge. This is exact for linear state updates (e.g. `(+ phase (* freq dt))`) and an acceptable approximation for nonlinear updates. See [../../src-useq/docs/specs/state.md §2–6](../../src-useq/docs/specs/state.md) for state semantics.
 
-3.5 **On expression change.** When the user evaluates a new expression for an output, the future buffer is **cleared and batch-refilled** under the new expression. The projection forks from the engine's current live state — matching the firmware's state-identity-by-symbol-name semantics (state.md §4.2). The old past buffer is untouched (§2.4).
+3.5 **On expression change.** When the user evaluates a new expression for an output, the future buffer is **cleared and reset-filled** under the new expression. The projection fork starts from the engine's current live state — matching the firmware's state-identity-by-symbol-name semantics (state.md §4.2). The old past buffer is untouched (§2.4).
 
 3.6 **`futureLeadSeconds`.** The future projection extends beyond the visible window by `visualisation.futureLeadSeconds` (default 1, max 8) to provide lookahead for probes and smooth scrolling.
 
-3.7 **Invalidation triggers.** A future buffer is cleared and batch-refilled when:
+3.7 **Invalidation triggers.** A future buffer is cleared and reset-filled when:
 - The output's expression is re-evaluated (code eval).
 - Settings that affect projection (window duration, sample count, future lead) change.
 - (Planned) A referenced external input or live-edit value changes — requires per-output dependency tracking via `useq_output_dependencies` (§7.4). Currently uses conservative invalidation (all outputs cleared on any eval).
+
+3.8 **Future frontier coverage.** The renderer needs future coverage through `now + windowDuration/2 + futureLeadSeconds`. The sampler asks the WASM runtime to extend the projection fork whenever `projectionFrontierTime` is behind that target plus a small guard band. The guard band should be expressed in seconds or samples, not in wall-clock frames, so variable rAF cadence does not create sawtooth coverage. Extension sample times are deterministic: for old frontier `F`, requested end `E`, and count `N`, samples are at `F + step`, `F + 2*step`, ..., `E`, where `step = (E - F) / N`.
+
+3.9 **No interpolation across the past/future boundary.** Past and future are separate semantic streams. The renderer must not build one continuous polyline that lets the GPU interpolate from the newest past sample to the oldest future sample. It draws past and future as separate ranges/batches that meet at `t = now` only if both streams actually contain a sample there.
 
 ---
 
 ## 4. Output Classification and Projection Scheduling
 
-Not all outputs need their future re-projected every frame. The engine classifies each output and schedules projection work accordingly.
+Not all outputs need the same future-projection work. The engine classifies each output and schedules reset/extension work accordingly.
 
-4.1 **Three output classes.** Each active output is classified based on its dependency graph:
+4.1 **Three output classes.** Each active output is classified based on its dependency graph. Classification controls when the projection fork is reset and how conservative the sampler must be about stale future data; it does not require full-window recomputation every frame.
 
-| Class | Condition | Future re-projected when |
+| Class | Condition | Future work |
 |---|---|---|
-| **Pure** | Expression is a closed-form function of `t` only (no state, no external inputs, no cells referencing inputs) | Expression changes |
-| **Input-dependent** | Expression references external inputs (`ain1`, `ain2`, `swm`, `swt`, `rot`, etc.) but has no declared state | Expression changes, **or** a referenced input changes by more than `visualisation.inputEpsilon` (default 0.01) |
-| **Stateful** | Expression uses `defstate`, `integrate`, UGens, or `rate-as` with state-bearing children | Every frame (state at `t = now` evolves each tick) |
+| **Pure** | Expression is a closed-form function of `t` only (no state, no external inputs, no cells referencing inputs) | Reset on expression change; frontier extension may be stateless. |
+| **Input-dependent** | Expression references external inputs (`ain1`, `ain2`, `swm`, `swt`, `rot`, etc.) but has no declared state | Reset on expression change, or when a referenced input changes by more than `visualisation.inputEpsilon` (default 0.01). |
+| **Stateful** | Expression uses `defstate`, `integrate`, UGens, or `rate-as` with state-bearing children | Reset on expression/classification changes; otherwise extend the projection fork from its frontier while visible. Do not rewind to `now` every frame. |
 
 4.2 **Classification source.** Output classification is determined by the WASM engine via a new ABI export `useq_output_classifications` (§7.3). The engine already knows the dependency graph from compilation — this export surfaces it.
 
-4.3 **Per-output dependency metadata.** A new ABI export `useq_output_dependencies` (§7.4) returns, for each output, which external input channels it references. This enables per-output invalidation: when `ain1` changes significantly, only outputs that reference `ain1` have their future re-projected.
+4.3 **Per-output dependency metadata.** A new ABI export `useq_output_dependencies` (§7.4) returns, for each output, which external input channels it references. This enables per-output invalidation: when `ain1` changes significantly, only outputs that reference `ain1` have their future projection reset.
 
-4.4 **Input-change detection.** External input values are tracked frame-to-frame. When any input's absolute change exceeds `visualisation.inputEpsilon`, the sampler identifies which outputs depend on that input (via §4.3) and marks their future projections stale. Stale projections are recomputed in the next frame's projection pass.
+4.4 **Input-change detection.** External input values are tracked frame-to-frame. When any input's absolute change exceeds `visualisation.inputEpsilon`, the sampler identifies which outputs depend on that input (via §4.3) and marks their future projections stale. Stale projections are reset-filled in the next projection pass.
 
 4.5 **Classification is recomputed on expression change.** When an output's expression is re-evaluated, its classification may change (e.g. a pure expression replaced by a stateful one). The engine re-queries classification after each eval.
 
-4.6 **Invisible outputs.** Outputs that are not visible in the vis panel (collapsed, scrolled off, or the panel is hidden) are excluded from both ticking and future projection. Their rolling buffers still accumulate if the panel is merely scrolled (the output exists but isn't rendered), but projection work is skipped.
+4.6 **Invisible outputs.** Outputs that are not visible in the vis panel (collapsed, scrolled off, or the panel is hidden) are excluded from returned render data, but not necessarily from engine stepping. The projection fork must step every runtime-active output needed to keep `prev_output_values`, declared state, and dependency closures correct. As an initial conservative rule, the WASM runtime steps all active outputs and returns only requested visible channels; dependency-closure stepping is a later optimisation.
 
 ---
 
@@ -107,17 +122,17 @@ Not all outputs need their future re-projected every frame. The engine classifie
 
 5.1 **The per-frame loop has three phases**, executed in order:
 
-1. **Tick past**: Advance the WASM engine to `t = now`. This evaluates all active outputs, commits state, records output values into their past rolling buffers.
-2. **Invalidate or extend future**: If the future is marked stale (code eval, settings change), clear future buffers and batch-refill from `t = now` forward. Otherwise, if any future buffer's coverage is running out (newest time < visible window edge), batch-refill. Otherwise, push one sample at the far future edge per output.
+1. **Tick past**: Advance the WASM engine to `t = now`. This evaluates all active outputs, commits live state, records output values into their past rolling buffers.
+2. **Reset or extend future**: If the projection is stale (code eval, settings/input change), clear future buffers, reset the projection fork from live state at `now`, and fill the visible future. Otherwise, if the projection frontier is behind the required coverage, extend the fork by a small future batch at the frontier.
 3. **Render**: If rendering is requested and the panel is visible, invoke the render hook.
 
-5.2 **Combined tick-and-project ABI call.** For performance, the tick and future-extension phases are combined into a single WASM boundary crossing via `useq_tick_and_project` (§7.2). This function ticks at `t = now` (advancing state), then projects forward (with save/restore), returning both the tick values and the future samples. One JS↔WASM transition per frame instead of two. The sampler probes the export at runtime — when present, the per-frame loop folds tick + edge-push (or tick + refill) into one call; when absent, the sampler degrades gracefully to the legacy 2-call path (`evalOutputsInTimeWindow` for the tick, separate call for the future edge or refill).
+5.2 **Combined tick-and-project ABI call.** For performance, the tick and projection phases are combined into a single WASM boundary crossing via `useq_tick_and_project` (§7.2). This function ticks live state at `t = now`, clones or extends the persistent projection fork, and returns both the live tick values and the future samples that should be appended or replace the future buffers. One JS↔WASM transition per frame instead of separate tick/refill/edge calls. The sampler probes the export at runtime — when present, the per-frame loop uses it; when absent, the sampler degrades to a slower compatibility path.
 
 5.3 **Sampling guards.** At most one tick-and-project cycle is in flight at a time. If a newer time arrives while a call is running, the latest pending time is sampled once the current run completes (single pending-time slot). A slow batch must never overwrite a fresher one — this invariant follows from strict serialization, not from post-hoc sequence-counter discard.
 
-5.4 **Render data assembly.** The renderer receives two data sources per output: past samples from the past rolling buffer and future samples from the future rolling buffer. Both are `PastBuffer` instances. The renderer stitches them at `t = now` — past segment draws from the past buffer (full alpha), future segment draws from the future buffer (reduced alpha). The boundary is exact, no blending or interpolation.
+5.4 **Render data assembly.** The renderer receives two data sources per output: past samples from the past rolling buffer and future samples from the future rolling buffer. Both are `PastBuffer` instances. The renderer draws them as separate segments split at `t = now` — past segment from the past buffer (full alpha), future segment from the future buffer (reduced alpha). The boundary is exact, no blending or interpolation.
 
-5.5 **Shift, don't rebuild.** As time advances, both buffers grow by one sample per frame. The render path reads from the rolling buffers directly — no per-frame allocation on the hot path ([MAIN.md §3.5](MAIN.md)).
+5.5 **Shift, don't rebuild.** As time advances, the past buffer grows by one sample per committed tick and the future buffer grows by small frontier-extension batches. The render path reads from the rolling buffers directly — no per-frame allocation on the hot path ([MAIN.md §3.5](MAIN.md)).
 
 5.6 **Smooth-scrolling guarantee.** Past samples are at fixed absolute times in the rolling buffer. The `time → X` mapping shifts by `deltaTime` each frame, but this shift is continuous — there is no sample-grid recomputation. Combined with pixel-matched sample density (§2.2.1), each waveform feature moves smoothly leftward at exactly the rate time advances, producing analog-oscilloscope-like scrolling. Frame-to-frame `deltaTime` variance (rAF jitter) affects only the scroll *speed*, not the waveform *shape*.
 
@@ -127,9 +142,9 @@ Not all outputs need their future re-projected every frame. The engine classifie
 
 6.1 **Expression change.** When the user evaluates a new expression for output `X`:
 1. Past buffer for `X` is **preserved** (shows old expression's values).
-2. Future projection for `X` is **invalidated** and resampled under the new expression.
+2. Future projection for `X` is **invalidated** and reset-filled under the new expression.
 3. Output classification for `X` is re-queried.
-4. Other outputs are unaffected.
+4. Other outputs' past buffers and live output state are unaffected by the editor-side visualisation reset. Their future buffers may be reset conservatively until dependency metadata proves they are independent.
 
 6.2 **Expression change with state.** If the new expression uses declared state (`defstate`, `integrate`, UGens), the future projection forks from the engine's current live state at `t = now`. State identity is by symbol name — a `defstate phase` keeps its accumulated value even if the update body changes (state.md §4.2, §4.4). This matches the firmware's recompilation semantics and means the future projection accurately represents what will happen.
 
@@ -144,6 +159,8 @@ Not all outputs need their future re-projected every frame. The engine classifie
 2. Samples from `s` onward are omitted (the trace ends).
 3. The past buffer is unaffected.
 
+6.5 **Atomic frontier extension.** Steady-state frontier extension is atomic. If extension fails, the projection fork rolls back to its previous frontier and the editor appends no samples. Reset-fill may return a valid prefix only if the engine can also leave the fork at the last valid sample; otherwise the editor keeps the last successful future projection and marks it stale.
+
 ---
 
 ## 7. WASM ABI Additions
@@ -152,12 +169,18 @@ This section specifies new WASM ABI exports required by the faithful-past / proj
 
 7.1 **`useq_tick_all_outputs(time_seconds: number) → pointer`** — Evaluate all active outputs at the given time, **commit state** (advance `g_prev_tick_time`, update `prev_output_values`), and return all output values. Unlike `useq_eval_output` (which evaluates the full graph per call), this evaluates the graph exactly once. Returns a pointer to a `Float64Array` of `MAX_OUTPUTS` values (caller reads via `HEAPF64`). Invalid outputs contain `NaN`.
 
-7.2 **`useq_tick_and_project(outputs_json: string, tick_time: number, project_end: number, num_future_samples: number, buffer_ptr: number, buffer_length: number) → number`** — Combined tick + future projection in a single call:
-1. Tick the engine at `tick_time` (state-advancing, as §7.1) and write the tick value for each requested output into `buffer_ptr[0..num_channels-1]` (NaN for inactive outputs).
-2. If `num_future_samples > 0`, project the same outputs from `tick_time` to `project_end` at `num_future_samples` evenly spaced times. For stateful outputs, this uses save/restore internally — live state is not corrupted.
-3. Projection values are laid out row-major after the tick row: row `c` (for the `c`-th requested output) starts at offset `num_channels + c * num_future_samples` and contains `num_future_samples` consecutive doubles. Inactive outputs are NaN-filled.
-4. Required buffer size is `num_channels + num_channels * num_future_samples` doubles.
-5. Returns the number of requested output channels (= number of names parsed from `outputs_json`), or `-1` on error (with `s_last_error` populated).
+7.2 **`useq_tick_and_project(outputs_json: string, tick_time: number, projection_mode: number, projection_end: number, projection_sample_count: number, buffer_ptr: number, buffer_length: number) → number`** — Combined live tick + projection-fork operation in a single call:
+1. Tick the live engine at `tick_time` (state-advancing, as §7.1) and write the tick value for each requested output into `buffer_ptr[0..num_channels-1]` (NaN for inactive outputs).
+2. If `projection_mode == 0`, no future projection is performed.
+3. If `projection_mode == 1` (`reset-fill`), discard any existing projection fork, clone live state after the `tick_time` live tick, project from just after `tick_time` to `projection_end` at `projection_sample_count` deterministic sample times, and set `projectionFrontierTime = projection_end`.
+4. If `projection_mode == 2` (`extend-frontier`), advance the existing projection fork from its current frontier toward `projection_end`, producing `projection_sample_count` new samples after the previous frontier. For old frontier `F`, samples are at `F + step`, `F + 2*step`, ..., `projection_end`, where `step = (projection_end - F) / projection_sample_count`. The first returned extension sample must be strictly greater than the previous frontier time; it must not be `tick_time`.
+5. Projection values are laid out row-major after the tick row: row `c` (for the `c`-th requested output) starts at offset `num_channels + c * projection_sample_count` and contains `projection_sample_count` consecutive doubles. Inactive outputs are NaN-filled.
+6. Required buffer size is `num_channels + num_channels * projection_sample_count` doubles.
+7. Returns the number of requested output channels (= number of names parsed from `outputs_json`), or `-1` on error (with `s_last_error` populated).
+
+7.2.1 **Projection metadata.** The editor must be able to read `projectionFrontierTime` and whether the returned projection samples are replacement data (`reset-fill`) or append data (`extend-frontier`). This may be returned by a companion metadata export, encoded in an out-parameter struct, or represented by separate ABI functions if that is simpler for Emscripten. The semantics are normative; the concrete C ABI shape may change before shipping.
+
+7.2.2 **Compatibility note.** The older experimental `useq_tick_and_project(outputs_json, tick_time, project_end, num_future_samples, ...)` shape is insufficient for frontier extension because `num_future_samples == 1` collapses to `tick_time` in existing batch helpers. Conforming implementations must either use the projection-mode ABI above or otherwise guarantee that steady-state extension samples are generated at the projection frontier, not at `t = now`.
 
 7.3 **`useq_output_classifications() → pointer`** — Return a packed byte array (one byte per `MAX_OUTPUTS` slot):
 - `0` = inactive (no valid expression)
@@ -183,6 +206,7 @@ New settings introduced by this spec (all under the `visualisation` section):
 | `maxHistorySeconds` | number | 30 | Hard cap on total history depth per output (seconds) |
 | `inputEpsilon` | number | 0.01 | Absolute change threshold for external inputs to trigger future re-projection |
 | `adaptiveQuality` | boolean | `true` | Enable pressure-driven quality degradation (§1.7.1). When `false`, pressure detection still runs but levers are inert. |
+| `minFutureSampleRate` | number | 30 | Minimum projection density in Hz for future reset-fill and extension batches. |
 
 Existing settings with unchanged semantics: `windowDuration`, `sampleCount`, `lineWidth`, `futureDashed`, `futureLeadSeconds`.
 
@@ -190,7 +214,7 @@ Existing settings with unchanged semantics: `windowDuration`, `sampleCount`, `li
 
 ## Open / Deferred
 
-9.2 **Non-uniform future sample distribution (deferred).** The general "adaptive quality" idea has *partially* shipped — see §1.7.1 for the implemented pressure-detection-and-three-levers system (skip future edge push, slow probe refresh, halve buffer rate). What remains deferred is specifically the orthogonal idea that *distant* future samples matter less than *near*-future ones, and so a non-uniform sample distribution (denser near `t = now`, sparser at the edges) could reduce projection work for stateful outputs without a uniform quality cut. This is more invasive (changes the projection batching shape) and is deferred until profiling shows the uniform projection density is a bottleneck even after §1.7.1's measures engage.
+9.2 **Non-uniform future sample distribution (deferred).** The general "adaptive quality" idea has *partially* shipped — see §1.7.1 for the pressure-detection-and-three-levers system (defer non-urgent future-frontier extension, slow probe refresh, halve buffer rate). What remains deferred is specifically the orthogonal idea that *distant* future samples matter less than *near*-future ones, and so a non-uniform sample distribution (denser near `t = now`, sparser at the edges) could reduce projection work for stateful outputs without a uniform quality cut. This is more invasive (changes the projection batching shape) and is deferred until profiling shows the uniform projection density is a bottleneck even after §1.7.1's measures engage.
 
 9.3 **Hardware readback for past values.** In `both` mode, past values could come from hardware readback (actual voltages) rather than WASM ticks. This would require the serial protocol to stream output values at a sufficient rate. Deferred — WASM ticks are faithful enough for v1.
 

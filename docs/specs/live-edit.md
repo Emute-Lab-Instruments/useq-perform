@@ -2,7 +2,7 @@
 
 > Spec: editor-side machinery for marking literal values in source as live-controllable knobs/toggles/pickers, manipulating them via inline widgets and a dockable panel (with gamepad), persisting their current values across reloads, and committing the final value back into the source. Counterpart to [MAIN.md](MAIN.md).
 > See also [code-evaluation.md](code-evaluation.md) (eval lifecycle, soft eval), [editor.md](editor.md) (main-editor surface), [structural-editing.md](structural-editing.md) (Metas, structural ops), [probes.md](probes.md) (precedent for inline widgets registered against a store), [keybindings.md](keybindings.md) (action registry), [gamepad.md](gamepad.md) (input bindings).
-> Runtime/compiler counterpart: [../../src-useq/docs/specs/live-edit.md](../../src-useq/docs/specs/live-edit.md). Wire protocol: [../PROTOCOL.md](../PROTOCOL.md) (`set-live-inputs` / `INPUT_SET` message family).
+> Runtime/compiler counterpart: [../../src-useq/docs/specs/live-edit.md](../../src-useq/docs/specs/live-edit.md). Wire protocol: [../../src-useq/docs/specs/wire-protocol.md](../../src-useq/docs/specs/wire-protocol.md) (`set-live-inputs` / `INPUT_SET` message family).
 
 ---
 
@@ -80,18 +80,18 @@ The **source is the canonical declaration**; the **slot is the canonical current
 1. Replace `(live-edit X :id <id> …)` with `X`.
 2. Trigger an immediate eval. The compiler frees the slot; the widget vanishes; persisted value enters orphan state (§7.3).
 
-3.4 **Range inference.** At mark-time, `:min`/`:max` are inferred from the seed and its lexical context:
+3.4 **Range inference.** At mark-time, `:min`/`:max` are inferred from the seed and its lexical context. **Parent-head rules are checked first** — if the parent form has a recognised head, its context-specific range wins over the generic value-based rules. This is intentional: `(osc 0.5)` should get a frequency range, not the unit range, because 0.5 Hz is a valid control-rate oscillator frequency (uSEQ is control-rate only; there is no audio-rate processing in this language).
 
-| Seed                                        | Default `:min` | Default `:max`  |
-| ------------------------------------------- | -------------- | --------------- |
-| `0 ≤ X ≤ 1`                                 | `0`            | `1`             |
-| `-1 ≤ X < 0`                                | `-1`           | `0`             |
-| Integer X, parent `slow`/`fast`             | `1`            | `max(16, 2X)`   |
-| Number X, parent `osc`/`phasor` head        | `20`           | `max(2000, 2X)` |
-| Other numeric X > 0                         | `0`            | `2X`            |
-| Other numeric X < 0                         | `2X`           | `0`             |
-| Other numeric X == 0                        | `0`            | `1`             |
-| Boolean / keyword                           | n/a            | n/a             |
+| Priority | Seed                                        | Default `:min` | Default `:max`  |
+| -------- | ------------------------------------------- | -------------- | --------------- |
+| 1        | Integer X, parent `slow`/`fast`             | `1`            | `max(16, 2X)`   |
+| 2        | Number X, parent `osc`/`phasor` head        | `20`           | `max(2000, 2X)` |
+| 3        | `0 ≤ X ≤ 1`                                 | `0`            | `1`             |
+| 4        | `-1 ≤ X < 0`                                | `-1`           | `0`             |
+| 5        | Other numeric X > 0                         | `0`            | `2X`            |
+| 6        | Other numeric X < 0                         | `2X`           | `0`             |
+| 7        | Other numeric X == 0                        | `0`            | `1`             |
+| —        | Boolean / keyword                           | n/a            | n/a             |
 
 Inference is best-effort; the user always has the final say via the keyword args. Future: extensible inference table driven by parent-form recognition (open question §11.2).
 
@@ -152,7 +152,7 @@ If the user idles for ≥ `liveEdit.subModeIdleHintMs` (default 2000 ms) with no
 
 3.8 **Multi-cursor marking.** With multiple cursors, `liveEdit.mark` applies pointwise per [structural-editing.md §3.5](structural-editing.md). Each cursor's literal is wrapped with a fresh `:id`. One eval fires after all wraps are written.
 
-3.9 **Copy-paste duplicate handling.** When the editor detects a paste (or any text mutation) that introduces a `live-edit` wrapper whose `:id` is already present elsewhere in the document, the editor rewrites the pasted wrapper(s) to fresh `:id`s in the same paste transaction. The persisted value of the original is **not** inherited — different id, different slot, both initialise to `<seed>` (or the persisted value matching the new id, if any). One eval fires after the paste.
+3.9 **Copy-paste duplicate handling.** A `:id` identifies exactly one live-edit slot in v1. When the editor detects a paste (or any text mutation) that introduces a `live-edit` wrapper whose `:id` is already present elsewhere in the document, the editor rewrites the pasted wrapper(s) to fresh `:id`s in the same paste transaction. The persisted value of the original is **not** inherited — different id, different slot, both initialise to `<seed>` (or the persisted value matching the new id, if any). One eval fires after the paste. Hand-written duplicate ids are compile-time errors.
 
 ---
 
@@ -411,7 +411,7 @@ Each reconciliation walks the document's live-edit wrappers and computes the cur
 9.1 **Wire bandwidth ceiling (hardware).** Web Serial at 115200 baud is ~14 KB/s sustained. A `set-live-inputs` JSON frame for 10 ids is ~150 bytes; at 60 Hz that's ~9 KB/s. At 20 ids and 60 Hz it's ~18 KB/s — over budget. Mitigations applied in order:
 - Send only changed values (no polling). The editor maintains a last-sent table and diff-encodes per UI tick.
 - When N (active live-edits being manipulated this tick) > 10, throttle UI tick rate to 30 Hz.
-- Wire-protocol binary frame (deferred — see [../PROTOCOL.md](../PROTOCOL.md)) is the next mitigation if the JSON ceiling proves real.
+- Wire-protocol binary frame (deferred — see [../../src-useq/docs/specs/wire-protocol.md](../../src-useq/docs/specs/wire-protocol.md)) is the next mitigation if the JSON ceiling proves real.
 
 9.2 **WASM call cost.** Single batched `useq_set_live_inputs(json_string)` call per UI tick, regardless of N. Boundary crossings are O(1) per tick. JSON parse on the WASM side is negligible at typical N.
 

@@ -12,12 +12,17 @@ Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WAS
 
 ## Tests and Typecheck
 
-- `npm run test:mocha` - legacy/browser integration tests in `test/**/*.mjs`.
-- `npm run test:unit` - Vitest unit tests (`unit` project).
+- `npm run test:mocha` - JavaScript integration tests in `test/**/*.mjs`, including the structural YAML runner.
+- `npm run test:unit` - Vitest unit/component/contract-style tests (`unit` project).
 - `npm run test:all` - runs Mocha + Vitest unit tests.
 - `npm test` - alias for `npm run test:all`.
 - `npm run typecheck` - TypeScript check for the modern typed boundary (`src/lib`, `src/machines`, selected `src/utils`, and selected `src/ui` TSX components).
 - `npm run src-useq:status` - print the authoritative `src-useq` submodule repo/branch/commit metadata the editor currently depends on.
+
+Testing styles:
+
+- JS/TS tests (`*.test.ts`, `*.test.tsx`, `test/**/*.mjs`) are best for module behaviour, contracts, component rendering, async effects, runtime/transport boundaries, and focused executable assertions.
+- YAML tests (`test/new_structural/*.yaml`) are best for data-driven editor command scenarios: command sequences, cursor/focus movement, source edits, and bug-capture cases that should be easy for agents to extend.
 
 ## Source Layout
 
@@ -40,7 +45,7 @@ Read `MAP.md` first for a terse codebase index, and `ALIGNMENT.md` for the dated
 
 Product scope, stable core, compatibility cuts, and out-of-scope items live in `docs/specs/MAIN.md` §4. Read that before treating old panels, dormant runtime modes, or stale docs as supported product surface.
 
-Editor-facing firmware and WASM capability rules live in `docs/RUNTIME_CONTRACT.md`. Read that before auditing `src-useq` behavior or promoting standalone firmware work into the submodule.
+Editor-facing firmware and WASM capability rules live in `docs/specs/runtime-contract.md`. Read that before auditing `src-useq` behavior or promoting standalone firmware work into the submodule.
 
 ## Beads Backend
 

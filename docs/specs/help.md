@@ -6,7 +6,7 @@
 
 1.1 The help panel has **four tabs**: Guide, Reference, Code Snippets, Keybindings.
 
-1.2 **Guide** is a chaptered user guide covering language, algebra, modulation, rhythm, and editor. Chapters are static markdown content with embedded live probes and small playgrounds.
+1.2 **Guide** is a chaptered user guide covering language, algebra, modulation, rhythm, and editor. Chapters are static markdown content with embedded live probes and small playgrounds. Detailed guide structure lives in [user-guide.md](user-guide.md).
 
 1.3 **Reference** is the ModuLisp function reference, filterable by name and tag; tracks starred and expanded items per user. Starred items sort first.
 
