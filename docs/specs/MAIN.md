@@ -16,6 +16,19 @@
 > open questions, and an index of feature-specific sub-specs (§6). Each
 > sub-spec is self-contained and numbered from 1.1.
 
+### Source files (architectural roots)
+
+- `src/main.ts` — application entry point
+- `src/runtime/bootstrap.ts` — startup order, eager preload, browser support, recovery
+- `src/runtime/startupContext.ts` — URL params, startup flags
+- `src/runtime/runtimeService.ts` — sole settings mutation surface
+- `src/runtime/runtimeSessionService.ts` — runtime session lifecycle (connect/disconnect/swap)
+- `src/runtime/wasmInterpreter.ts` — WASM interpreter bridge (eval, diagnostics, sampling)
+- `src/lib/typedChannel.ts` — typed pub/sub channel primitive
+- `src/contracts/` — channel registries and capability contracts
+- `src/lib/persistence.ts` — localStorage persistence service
+- `src/effects/editorEvaluation.ts` — eval dispatch, diagnostics push, inline results
+
 ---
 
 ## 1. Frame
@@ -35,17 +48,17 @@
 
 App-wide degradation contracts. Cited from feature sub-specs.
 
-2.1 **An eval that fails to compile or evaluate must not stop the app.** The previously active outputs continue running on hardware (per language LKG semantics); on WASM, the prior compiled program continues. The user sees an inline diagnostic and a console message.
+2.1 **An eval that fails to compile or evaluate must not stop the app** (see `src/effects/editorEvaluation.ts`, `src/runtime/wasmInterpreter.ts`). The previously active outputs continue running on hardware (per language LKG semantics); on WASM, the prior compiled program continues. The user sees an inline diagnostic and a console message.
 
 2.2 **A runtime disconnect must not lose editor state.** Editor content, console history, settings, and visualisation traces survive a hardware disconnect or a WASM crash.
 
 2.3 **A WASM ABI mismatch is a fatal startup error** with a clear, actionable message. The app surfaces a diagnostic explaining which export is missing or has the wrong signature.
 
-2.4 **Bootstrap failures** publish a structured diagnostic and render a recovery surface; the user is never left with a blank page.
+2.4 **Bootstrap failures** publish a structured diagnostic and render a recovery surface (see `src/runtime/bootstrap.ts`); the user is never left with a blank page.
 
-2.5 **Persistence failures** (corrupt JSON, quota exceeded, `localStorage` unavailable) degrade silently to defaults with a console warning. The app remains usable.
+2.5 **Persistence failures** (corrupt JSON, quota exceeded, `localStorage` unavailable) degrade silently to defaults with a console warning (see `src/lib/persistence.ts`). The app remains usable.
 
-2.6 **Network-bound bootstrap features** (`?config=<url>`, `?gist=`, `?txt=`) that fail to fetch produce a clear console error and fall back to local persisted state.
+2.6 **Network-bound bootstrap features** (`?config=<url>`, `?gist=`, `?txt=`) that fail to fetch produce a clear console error and fall back to local persisted state (see `src/runtime/startupContext.ts`, `src/runtime/bootstrap.ts`).
 
 2.7 **Diagnostic format.** Every diagnostic carries severity (`info`/`warning`/`error`), a category, a source span (when applicable), a human-readable message in plain language, and an optional suggestion with a working example. No jargon ("arity mismatch") in user-facing strings.
 
@@ -142,6 +155,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.13 [keybindings.md](keybindings.md) — action registry, profiles/layouts, OS mapping, contexts, chords, palette, modifier hints.
 
+6.13.1 [input-dispatch.md](input-dispatch.md) — command router as the single chokepoint for all editor-directed user intents; policy enforcement architecture; keyboard translator constraints.
+
 6.14 [gamepad.md](gamepad.md) — three-stage pipeline (logical input → gestures + axis → bindings), gesture primitives (tap/hold/held/doubleTap/chord/flick), layered bindings (predicate + transient), eager-with-undo dual-bindings, paradigms (modal-shift / leader / hydra / chord-heavy).
 
 6.15 [themes.md](themes.md) — catalogue, atomic application across editor/chrome/vis, custom themes.
@@ -159,6 +174,12 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 6.21 [calibration.md](calibration.md) — CV 1V/oct calibration full-screen takeover flow, per-output picker, ±50¢ slider with carry-forward offset, save/abort/error semantics.
 
 6.22 [inspector.md](inspector.md) — same-repo visual review tool for isolated app scenarios and local approval workflow.
+
+6.23 [radial-menu.md](radial-menu.md) — centre-screen double-ring gamepad-driven command surface for picking and applying nouns into the document.
+
+6.24 [zen-mode.md](zen-mode.md) — distraction-free practice environment for structural editing with gamepad or keyboard.
+
+6.25 [state-sync.md](state-sync.md) — WASM↔hardware drift detection and recalibration in `both` mode.
 
 ---
 
@@ -186,4 +207,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 7.10.1 `../../src-useq/docs/specs/visualisation-projection.md` — WASM-side projection-fork and future-frontier contract used by [visualisation.md](visualisation.md).
 
-7.11 If this spec disagrees with any of the above on a point of *app behaviour*, **this spec wins** by intent — bring implementation and other docs into line and file the bug. If it disagrees with the actually-deployed app, that is a bug — file it.
+7.11 [gamepad-handoff.md](gamepad-handoff.md) — gamepad pipeline rebuild status and handoff notes (working document, not normative).
+
+7.12 [gamepad-browser-test.md](gamepad-browser-test.md) — manual browser test plan for the three-stage gamepad pipeline.
+
+7.13 If this spec disagrees with any of the above on a point of *app behaviour*, **this spec wins** by intent — bring implementation and other docs into line and file the bug. If it disagrees with the actually-deployed app, that is a bug — file it.

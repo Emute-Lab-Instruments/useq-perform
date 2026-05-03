@@ -4,6 +4,24 @@
 >
 > Read this doc end-to-end before touching gamepad code. Then read [gamepad.md](gamepad.md) (normative spec) and skim [structural-editing.md](structural-editing.md) (the algebra the gamepad invokes through `ActionId`).
 
+### Source files
+
+- `src/lib/gamepad/types.ts` — LogicalEvent, Gesture, AxisFrame, Layer, Resolution, DualBinding, GamepadState, AppStateSnapshot
+- `src/lib/gamepad/gestures.ts` — smart constructors + `keyOf` + `chordFromArray`
+- `src/lib/gamepad/recognizer.ts` — Stage 2: `step`, `flush`, `recognize`
+- `src/lib/gamepad/resolver.ts` — Stage 3: `activeStack`, `resolveGesture`, `resolveAxis`, `lintBindings`
+- `src/lib/gamepad/dispatcher.ts` — `createDispatcher`, eager-with-undo, action firing
+- `src/lib/gamepad/hardware.ts` — Stage 1: `diffSnapshots` (snapshot diffing to LogicalEvent[])
+- `src/lib/gamepad/index.ts` — full pipeline wiring: `createGamepadPipeline()`, re-exports
+- `src/lib/gamepad/paradigms/` — `modal-shift.ts`, `leader.ts`, `hydra.ts`, `chord-heavy.ts`, `picker.ts`
+- `src/lib/keybindings/actions.ts` — `ActionDef.reversible`, `ReversibleActionId`, `NonReversibleActionId`, `isReversible()`
+- `src/lib/gamepad/gamepadManager.ts` — low-level Gamepad API polling (legacy, to be replaced)
+- `src/contracts/gamepadChannels.ts` — axis channel registry and typed gamepad channels
+- `src/editors/gamepadNavigation.ts` — gamepad-to-editor navigation bridge
+- `src/editors/extensions/structure/adapter/gamepadBridge.ts` — gamepad-to-structural-editing bridge
+- `src/ui/adapters/gamepadMenuBridge.ts` — picker bridge (migrates to action-based dispatch)
+- Tests: `src/lib/gamepad/{gestures,recognizer,resolver,dispatcher,hardware}.test.ts`, `src/lib/gamepad/paradigms/paradigms.test.ts`
+
 ---
 
 ## 1. Where we are

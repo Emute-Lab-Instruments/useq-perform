@@ -5,6 +5,35 @@
 >
 > This spec defines what structural operations *mean*. Concrete keyboard chords and gamepad buttons live in the input specs; both reach the same operations defined here.
 
+### Source files
+
+**Core (pure functional tree + operations):**
+- `src/editors/extensions/structure/core/index.ts` — core barrel export (tree types, cursor types, operations)
+- `src/editors/extensions/structure/core/types.ts` — node kinds, cursor, Meta, tree types
+- `src/editors/extensions/structure/core/nav.ts` — navigation operations (`nav.*`)
+- `src/editors/extensions/structure/core/mutate.ts` — mutation operations (`edit.*`)
+- `src/editors/extensions/structure/core/holes.ts` — hole node recognition and construction
+- `src/editors/extensions/structure/core/traversal.ts` — tree traversal utilities
+
+**Adapter (CodeMirror integration):**
+- `src/editors/extensions/structure/adapter/extension.ts` — CodeMirror extension entry point
+- `src/editors/extensions/structure/adapter/stateField.ts` — structural-mode state field
+- `src/editors/extensions/structure/adapter/treeFromLezer.ts` — Lezer-to-internal-tree conversion (tree construction, §2.10)
+- `src/editors/extensions/structure/adapter/dispatcher.ts` — operation dispatch bridge
+- `src/editors/extensions/structure/adapter/applyOp.ts` — apply pure ops to CodeMirror state
+- `src/editors/extensions/structure/adapter/nodeOverlays.ts` — cursor halo decorations
+- `src/editors/extensions/structure/adapter/holeWidget.ts` — hole pill widget rendering
+- `src/editors/extensions/structure/adapter/spatialNav.ts` — spatial navigation resolution (§5.1-A)
+- `src/editors/extensions/structure/adapter/cursorFromSelection.ts` — text-caret-to-structural-cursor snapping
+- `src/editors/extensions/structure/adapter/cursorPath.ts` — cursor path utilities
+- `src/editors/extensions/structure/adapter/gamepadBridge.ts` — gamepad-to-structural-op bridge
+- `src/editors/extensions/structure/adapter/printTree.ts` — debug tree printer
+
+**Related:**
+- `src/editors/holeFocusEmitter.ts` — `holeFocused` channel event publisher (§2.9.4)
+- `src/editors/gamepadNavigation.ts` — gamepad navigation wiring
+- `src/lib/keybindings/actions.ts` — action registry (`structure.*`, `navigation.*` categories)
+
 ---
 
 ## 1. Frame
@@ -17,15 +46,15 @@
 
 1.4 Applies to the main editor by default. Tutorial playgrounds and other secondary editors (per [editor.md](editor.md) §1.13) may opt in.
 
-1.5 The implementation should be re-built on a clean functional core: pure operations of type `(Tree, CursorSet) → (Tree, CursorSet)` with no side effects, fully unit-testable. CodeMirror integration is a thin adapter layer on top.
+1.5 The implementation should be re-built on a clean functional core: pure operations of type `(Tree, CursorSet) → (Tree, CursorSet)` with no side effects, fully unit-testable. CodeMirror integration is a thin adapter layer on top. (See `src/editors/extensions/structure/core/` for the pure core, `src/editors/extensions/structure/adapter/` for the CodeMirror layer)
 
 ---
 
 ## 2. Ontology
 
-2.1 The document parses to a **tree** via Lezer (`@nextjournal/clojure-mode`). Lezer is an error-recovering incremental parser: a tree always exists, even mid-typing, with `⚠` error nodes inserted where input cannot be reconciled.
+2.1 The document parses to a **tree** via Lezer (`@nextjournal/clojure-mode`). Lezer is an error-recovering incremental parser: a tree always exists, even mid-typing, with `⚠` error nodes inserted where input cannot be reconciled. (See `src/editors/extensions/structure/adapter/treeFromLezer.ts`)
 
-2.2 Every node has two layers:
+2.2 Every node has two layers: (See `src/editors/extensions/structure/core/types.ts`)
 - **Core** — the structural identity. One of: `symbol`, `number`, `keyword`, `string`, `list`, `vector`, `map`, `set`, `hole`, or the special `document` root.
 - **Metas** — an ordered stack of `(kind, payload)` pairs decorating the core (§6). Metas are transparent to structural operations; they ride along with their host node.
 
@@ -44,7 +73,7 @@
 
 2.8 **Cursor identity is a stable tree-node handle**, not a character offset. The editor performs no character-offset arithmetic in structural mode; node start/end positions are queried from Lezer only when composing the underlying text edit for a mutation. This means cursors survive any text-edit that doesn't destroy their target node, regardless of how many characters shifted.
 
-2.9 **Holes.** A **hole** is a structural placeholder for content the user has not yet filled. Core fields:
+2.9 **Holes.** A **hole** is a structural placeholder for content the user has not yet filled. Core fields: (See `src/editors/extensions/structure/core/holes.ts`, `src/editors/extensions/structure/adapter/holeWidget.ts`)
 - `name: string` — display label (e.g. `"freq"`).
 - `type: HoleType` — one of `'number' | 'symbol' | 'keyword' | 'expr' | 'string'`.
 
@@ -54,7 +83,7 @@
 
 2.9.3 **Eval block.** A top-level form whose subtree contains any `hole` leaf MUST NOT be sent to the runtime. The eval pipeline emits an inline diagnostic at each unfilled hole position ("fill this hole first") and falls back to LKG per [MAIN.md §2.1](MAIN.md). Sibling top-level forms without holes evaluate normally — the gate is per-form, not per-document. See [code-evaluation.md §1.1](code-evaluation.md).
 
-2.9.4 **Auto-chain integration.** When the cursor lands on a hole post-mutation, the editor publishes a `holeFocused` event on the contracts channel registry. The radial menu subscribes and re-opens scoped to the hole's `:type` (see [radial-menu.md §8.2](radial-menu.md)). Other consumers (keyboard hint UI, tutorial overlays) may subscribe.
+2.9.4 **Auto-chain integration.** When the cursor lands on a hole post-mutation, the editor publishes a `holeFocused` event on the contracts channel registry. (See `src/editors/holeFocusEmitter.ts`) The radial menu subscribes and re-opens scoped to the hole's `:type` (see [radial-menu.md §8.2](radial-menu.md)). Other consumers (keyboard hint UI, tutorial overlays) may subscribe.
 
 2.9.5 **Rendering.** Holes are foldable, default folded, rendered as inline placeholder pills. The fold setting follows `structure.foldAllWrappers`. Cursor halos render around the pill, not around the underlying source. When unfolded (e.g. `mode.insert` for hand-editing the type), the source `($ freq :number)` becomes visible until structural mode resumes. The folded pill format is specified in §2.9.7.
 
@@ -90,7 +119,7 @@ Type information is encoded inline in the glyph form rather than via colour, so 
 
 The two carve-outs above mean the chain stops at `:expr` holes by design; the user fills them deliberately, and the chain resumes (instant auto-open) on the *next* hole the verb's commit lands the cursor on. This setting is fixed in MVP; if churn shows users want different behaviour, gate behind a setting `structure.holeAutoOpen ∈ { 'chain-typed-only' (default), 'chain-all', 'never' }`.
 
-2.10 **Tree construction.** The Lezer tree is folded into the internal tree at parse time. Three pattern recognitions run in order:
+2.10 **Tree construction.** The Lezer tree is folded into the internal tree at parse time. Three pattern recognitions run in order: (See `src/editors/extensions/structure/adapter/treeFromLezer.ts`)
 1. `($ <symbol> <:keyword>)` (a 3-element list with the literal head symbol `$`, a symbol second, and a keyword third) → `hole{name, type}` leaf.
 2. `(<wrapper-name> ...)` whose head matches a registered wrapper (§6.2) → host node + wrapper-Meta.
 3. Anything else → straight conversion to its core kind.
@@ -107,7 +136,7 @@ Recognition is structural, not textual: a list whose head is the literal symbol 
 
 3.2 The editor maintains a non-empty **cursor set**. Exactly one cursor in the set is the **primary**; the rest are **secondary**. Operations needing a single target (e.g. "scroll focused node into view") use the primary; mutating operations apply pointwise to every cursor in the set.
 
-3.3 Cursors render as visual halos on their target node(s). No character caret, no underline, no glyph-level decoration. The CodeMirror text caret is **hidden** while in structural mode.
+3.3 Cursors render as visual halos on their target node(s). No character caret, no underline, no glyph-level decoration. The CodeMirror text caret is **hidden** while in structural mode. (See `src/editors/extensions/structure/adapter/nodeOverlays.ts`)
 
 3.4 In v1 the default state is a single-cursor set. Multi-cursor support is part of the algebra — operations are defined to handle a set — but the UI gestures for building cursor sets are minimal in v1 (§9.1).
 
@@ -129,7 +158,7 @@ Recognition is structural, not textual: a list whose head is the literal symbol 
 - **Structural** (default) — cursors act on the tree; the text caret is hidden; navigation walks nodes; mutations rewrite the tree.
 - **Insertion** — the text caret is visible; standard text editing applies; structural cursors are paused and not rendered.
 
-4.2 **Entering insertion mode** is triggered by:
+4.2 **Entering insertion mode** is triggered by: (See `src/editors/extensions/structure/adapter/stateField.ts`)
 - The explicit action `mode.insert`.
 - Any operation that requires user-typed text to complete (e.g. `enclose.list` opens an empty `()` and places the caret at the operator position — see §5.2.7).
 - Pressing a printable key while focused on a leaf whose contents the user could plausibly want to edit (typing into a focused symbol begins to rename it). This auto-entry is a setting (`structure.autoEnterInsertion`, default true).
@@ -156,11 +185,11 @@ The net rule: a gamepad-only user never lands in insertion mode by accident. Ren
 
 Operations have type `(Tree, CursorSet) → (Tree, CursorSet)`. Each operation states preconditions, post-conditions on the cursor set, and the no-op behaviour when preconditions fail.
 
-### 5.1 Navigation
+### 5.1 Navigation (see `src/editors/extensions/structure/core/nav.ts`)
 
 Tree unchanged; cursor set updated. All navigation operations apply pointwise to every cursor in the set.
 
-#### 5.1-A Spatial navigation (primary)
+#### 5.1-A Spatial navigation (primary) (see `src/editors/extensions/structure/adapter/spatialNav.ts`)
 
 Spatial navigation is the default way to move through code. The editor treats the buffer as a 2D grid — arrow keys and D-pad move through it, focusing the most appropriate and logical node at each step. This is how most users navigate most of the time; tree-level operations (§5.1-B) are the secondary, explicit layer.
 
@@ -203,7 +232,7 @@ Explicit tree-walking for when the user needs to navigate the logical structure 
 
 5.1.10 `nav.nextHole` / `nav.prevHole` — advance the cursor to the next / previous `hole` leaf in document order (across all top-level forms). No-op flash if no hole exists. Used by the radial menu's auto-chain (when stepping between holes within an inserted form) and by the keyboard `Tab` / `Shift-Tab` actions for hole-jumping.
 
-### 5.2 Mutation
+### 5.2 Mutation (see `src/editors/extensions/structure/core/mutate.ts`)
 
 All mutations apply pointwise across the cursor set per §3.5. The descriptions below are written for a single cursor; multi-cursor behaviour is the pointwise lift.
 
@@ -298,11 +327,11 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 
 ## 8. Inputs (informative)
 
-8.1 This spec defines operations, not bindings. Concrete keyboard chords live in [keybindings.md](keybindings.md) under the `structure` and `navigation` action categories. Concrete gamepad bindings live in [gamepad.md](gamepad.md).
+8.1 This spec defines operations, not bindings. Concrete keyboard chords live in [keybindings.md](keybindings.md) under the `structure` and `navigation` action categories. Concrete gamepad bindings live in [gamepad.md](gamepad.md). (See `src/lib/keybindings/actions.ts`, `src/lib/keybindings/defaults.ts`)
 
 8.2 Both input devices reach the same algebra. A gamepad button bound to `edit.slurpForward` and a keyboard chord bound to the same action produce identical state transitions.
 
-8.3 The gamepad paradigms in [gamepad.md](gamepad.md) bind their D-pad and stick gestures to the operations defined in §5.1. In structural mode, the primary directional inputs (D-pad, left stick) drive spatial navigation (`nav.up`/`nav.down`/`nav.left`/`nav.right`); tree-level operations (`nav.out`/`nav.in`/`nav.next`/`nav.prev`) are available on secondary inputs or modifier chords. In insertion mode, directional inputs drive the character caret. The mode boundary (§4) determines which behaviour is active.
+8.3 The gamepad paradigms in [gamepad.md](gamepad.md) bind their D-pad and stick gestures to the operations defined in §5.1. (See `src/editors/extensions/structure/adapter/gamepadBridge.ts`, `src/editors/gamepadNavigation.ts`) In structural mode, the primary directional inputs (D-pad, left stick) drive spatial navigation (`nav.up`/`nav.down`/`nav.left`/`nav.right`); tree-level operations (`nav.out`/`nav.in`/`nav.next`/`nav.prev`) are available on secondary inputs or modifier chords. In insertion mode, directional inputs drive the character caret. The mode boundary (§4) determines which behaviour is active.
 
 ---
 

@@ -2,7 +2,17 @@
 
 > Spec: editor-side machinery for the CV-output 1V/oct calibration flow — a full-screen takeover that walks the user through tuning each analog output against an external tuner, with per-octave save and flash persistence. Counterpart to [MAIN.md](MAIN.md).
 > See also [overlays.md](overlays.md) (modal stack, focus rules), [transport.md](transport.md) (the takeover supersedes normal transport ownership of outputs), [code-evaluation.md](code-evaluation.md) (the takeover suspends eval-driven output behaviour).
-> Wire-protocol counterpart: see the `calibrate-*` message family in [../../src-useq/docs/specs/wire-protocol.md](../../src-useq/docs/specs/wire-protocol.md) (added by Phase 5.4).
+> Wire-protocol counterpart: see the `calibrate-*` message family in [../../src-useq/docs/specs/wire-protocol.md](../../src-useq/docs/specs/wire-protocol.md) §5.11–§5.16.
+
+### Source files
+
+- `src/effects/calibrationSequencer.ts` — calibration state machine, wire-protocol command dispatch, per-step logic
+- `src/ui/calibration/CalibrationTakeover.tsx` — full-screen takeover overlay (layout, slider, progress ribbon, action buttons)
+- `src/ui/calibration/CalibrationPicker.tsx` — pre-flight output picker modal (output list, status, pick affordance)
+- `src/ui/calibration/CalibrationProgress.tsx` — progress ribbon (step dots, save/skip/pending states)
+- `src/ui/calibration/CalibrationSlider.tsx` — continuous cents-offset slider (snap-to-zero, keyboard/mouse/gamepad drivers)
+- `src/ui/calibration/CalibrationCompleteBanner.tsx` — completion banner ("Saved to flash", chain-to-next-output)
+- `src/ui/adapters/calibration.tsx` — imperative mount/show API for calibration components
 
 ---
 
@@ -27,7 +37,7 @@
 - **Toolbar action** `calibration.begin` (registered in [keybindings.md](keybindings.md)) — opens the picker.
 - **URL param** `?calibrate=1` — opens the picker on next boot once a hardware connection is established. Useful for handing the module to a tech.
 
-2.2 **Pre-flight picker.** A modal lists every analog output the connected variant exposes (typically `a1`–`a4`). Each row shows the output id, its current calibration status (`uncalibrated` / `calibrated <date>` / `partial`), and a pick affordance. A short helper paragraph reminds the user:
+2.2 **Pre-flight picker** (see `src/ui/calibration/CalibrationPicker.tsx`). A modal lists every analog output the connected variant exposes (typically `a1`–`a4`). Each row shows the output id, its current calibration status (`uncalibrated` / `calibrated <date>` / `partial`), and a pick affordance. A short helper paragraph reminds the user:
 
 ```
 Calibrate CV Outputs
@@ -59,7 +69,7 @@ The firmware is responsible for freezing all other outputs at their current LKG 
 
 ## 3. Takeover Overlay
 
-3.1 **Full-screen overlay.** Calibration occupies the entire viewport. The editor, panels, console, and toolbar fade to ~30% opacity and become non-interactive (CSS `pointer-events: none`; no keyboard shortcuts route to the editor). The overlay sits at the top of the [overlay stack](overlays.md) and absorbs all input until dismissed.
+3.1 **Full-screen overlay** (see `src/ui/calibration/CalibrationTakeover.tsx`). Calibration occupies the entire viewport. The editor, panels, console, and toolbar fade to ~30% opacity and become non-interactive (CSS `pointer-events: none`; no keyboard shortcuts route to the editor). The overlay sits at the top of the [overlay stack](overlays.md) and absorbs all input until dismissed.
 
 3.2 **Layout.** Single focal column, generous negative space, large readable type. Reading top to bottom:
 
@@ -98,7 +108,7 @@ The firmware is responsible for freezing all other outputs at their current LKG 
 
 ## 4. Adjust Surface
 
-4.1 **Continuous slider in cents** is the primary adjust mechanism.
+4.1 **Continuous slider in cents** is the primary adjust mechanism (see `src/ui/calibration/CalibrationSlider.tsx`).
 
 - Slider extent: **±50 cents** around the target. (50 cents = quarter-tone; outside this range the user almost certainly has a hardware issue, not a calibration issue.)
 - Slider centre = 0 cents = the firmware's last-applied offset for this point. Each drag emits a `calibrate-adjust { delta: <cents-since-last-emit>, unit: "cents" }` to the firmware; the firmware applies the delta and the editor's local offset readout reflects the new total.
@@ -121,7 +131,7 @@ The firmware is responsible for freezing all other outputs at their current LKG 
 
 ## 5. Save, Advance, and Complete
 
-5.1 **Save & next** (Enter / Start / clicking the primary button):
+5.1 **Save & next** (Enter / Start / clicking the primary button) (see `src/effects/calibrationSequencer.ts`):
 1. Sends `calibrate-save-point { octave: <0..4> }` to the firmware.
 2. The current step's value display flashes green with a `✓` for ~400 ms (§5.2).
 3. The progress ribbon's current dot fills (`○ → ●`).
@@ -139,7 +149,7 @@ If the firmware rejects the save (§7), the flow stays on the current step and s
 
 Skip is for the case where a particular octave is, say, outside the user's tuner range or the user trusts the existing calibration for that point.
 
-5.4 **Last-octave completion.** After saving the 5th (4V) point:
+5.4 **Last-octave completion** (see `src/ui/calibration/CalibrationCompleteBanner.tsx`). After saving the 5th (4V) point:
 1. Final `calibrate-end { commit: true }` sent.
 2. A bottom-banner success state replaces the action buttons:
 

@@ -3,9 +3,25 @@
 > Spec: visualisation panel, sampling, past/future semantics, output classification, palette. Counterpart to [MAIN.md](MAIN.md).
 > See also [../../src-useq/docs/specs/state.md](../../src-useq/docs/specs/state.md) (state semantics, phase coherence), [../../src-useq/docs/specs/signal-model.md](../../src-useq/docs/specs/signal-model.md) (implicit lifting, pure-by-default model), and [../../src-useq/docs/specs/visualisation-projection.md](../../src-useq/docs/specs/visualisation-projection.md) (WASM projection-fork ABI and engine invariants).
 
+### Source files
+
+- `src/effects/visualisationRuntime.ts` — rAF loop, past/future buffer management, projection fork lifecycle
+- `src/effects/visualisationSampler.ts` — per-frame sampling loop, tick-and-project dispatch, render-data assembly
+- `src/effects/adaptiveQuality.ts` — pressure detection, adaptive quality levers (§1.7.1)
+- `src/ui/visualisation/serialVisGL.ts` — WebGL rendering surface, lane layout, past/future segment drawing
+- `src/ui/visualisation/webglLineRenderer.ts` — low-level WebGL line rasteriser
+- `src/ui/SerialVis.tsx` — vis panel Solid component (mount, resize, empty state)
+- `src/ui/VisLegend.tsx` — vis legend UI component
+- `src/utils/visualisationStore.ts` — reactive store (PastBuffer, rolling buffers, settings-derived state)
+- `src/contracts/visualisationChannels.ts` — typed pub/sub channels for vis events
+- `src/contracts/visualisationEvents.ts` — vis event type definitions
+- `src/ui/adapters/visualisationPanel.ts` — imperative adapter for vis panel mounting
+- `src/ui/adapters/visualisation.tsx` — Solid adapter wiring for vis components
+- `src/contracts/wasmAbi.ts` — WASM ABI export declarations (§7)
+
 ## 1. Panel and Rendering
 
-1.1 The visualisation panel renders **time-series traces** for active outputs and probed expressions on a single WebGL-backed surface. The Superbooth 2026 target is WebGL-only; the legacy 2D canvas renderer is not part of the stable renderer surface.
+1.1 The visualisation panel renders **time-series traces** for active outputs and probed expressions on a single WebGL-backed surface. The Superbooth 2026 target is WebGL-only; the legacy 2D canvas renderer is not part of the stable renderer surface. (see `src/ui/visualisation/serialVisGL.ts`, `src/ui/visualisation/webglLineRenderer.ts`)
 
 1.2 The time axis is **centred on now**: the surface centre column corresponds to the current transport time; the left half shows **recorded past values**; the right half shows **projected future values**.
 
@@ -15,11 +31,11 @@
 
 1.5 **Lane layout.** Digital outputs are rendered as step-mode binary traces in stacked lanes. Analogue outputs are rendered as continuous traces in stacked lanes. Lane height is derived from drawable area divided by lane count. The channel set is dynamic — determined by the hello handshake for hardware (the main uSEQ module has 3 analogue + 3 digital; expanders add more) and by the output recognition pattern (a1–a8, d1–d8, s1–s8) for WASM.
 
-1.6 **Empty state.** When no expressions are assigned and no probes exist, the panel shows a placeholder ("No expressions selected") and consumes near-zero CPU.
+1.6 **Empty state.** When no expressions are assigned and no probes exist, the panel shows a placeholder ("No expressions selected") and consumes near-zero CPU. (see `src/ui/SerialVis.tsx`)
 
 1.7 **Render frequency** is animation-frame paced. The renderer no-ops when the panel is not visible. Rendering must remain smooth (≥ 30 FPS) at the documented channel target — see [MAIN.md §3.3](MAIN.md).
 
-1.7.1 **Adaptive quality under sustained frame pressure.** When `visualisation.adaptiveQuality` is enabled (default `true`), the rAF loop measures committed-tick elapsed times and derives a *pressure level* (0 = normal, 1 = mild, 2 = severe). Any tick `≥ 50ms` (i.e. ≤ 20fps) is a *miss*; 3+ misses in the last 8 ticks step up to mild, 6+ to severe. Step-down only happens after 16 consecutive normal ticks (hysteresis to avoid oscillation under bursty load). Three levers engage in increasing-cost-of-quality-loss order: (a) defer non-urgent future-frontier extension while coverage remains sufficient (the future trace stops extending until pressure releases or coverage guard bands require it); (b) double (mild) or quadruple (severe) the effective probe refresh interval — the persisted `probeRefreshIntervalMs` is unchanged, the multiplier is applied at read time; (c) halve (mild) or quarter (severe) the pixel-matched past-buffer sample rate (§2.2.1) before pushing it to the sampler, reducing buffer size and per-paint GPU work proportionally. When `adaptiveQuality` is `false`, pressure detection still runs but consumers always see level 0.
+1.7.1 **Adaptive quality under sustained frame pressure.** (see `src/effects/adaptiveQuality.ts`) When `visualisation.adaptiveQuality` is enabled (default `true`), the rAF loop measures committed-tick elapsed times and derives a *pressure level* (0 = normal, 1 = mild, 2 = severe). Any tick `≥ 50ms` (i.e. ≤ 20fps) is a *miss*; 3+ misses in the last 8 ticks step up to mild, 6+ to severe. Step-down only happens after 16 consecutive normal ticks (hysteresis to avoid oscillation under bursty load). Three levers engage in increasing-cost-of-quality-loss order: (a) defer non-urgent future-frontier extension while coverage remains sufficient (the future trace stops extending until pressure releases or coverage guard bands require it); (b) double (mild) or quadruple (severe) the effective probe refresh interval — the persisted `probeRefreshIntervalMs` is unchanged, the multiplier is applied at read time; (c) halve (mild) or quarter (severe) the pixel-matched past-buffer sample rate (§2.2.1) before pushing it to the sampler, reducing buffer size and per-paint GPU work proportionally. When `adaptiveQuality` is `false`, pressure detection still runs but consumers always see level 0.
 
 1.8 **Palette is theme-coupled.** Switching to a light theme switches the visualisation palette; a dark theme uses a dark palette. Custom palettes are not user-editable in v1. See [themes.md](themes.md).
 
@@ -31,11 +47,11 @@
 
 Past values are ground truth: what the signal engine actually produced as time advanced.
 
-2.1 **Recording model.** Each animation frame, the WASM engine is **ticked to `t = now`**: a state-advancing evaluation that computes all active output values at the current time, commits state, and records the results into a **per-output rolling buffer**. This tick is the authoritative source of past values.
+2.1 **Recording model.** The browser-local WASM engine is ticked on a monotonic sampling timeline, not limited to one tick per animation frame. The target live tick rate is `pixelMatchedPastRate × visualisation.temporalSampleRateMultiplier`, where the multiplier is clamped to `0.05..1.0`. A multiplier of `1.0` means every horizontal visual sample column can receive its own state-advancing temporal sample. Each committed tick computes all active output values, commits state, and records the results into a **per-output rolling buffer**. This tick stream is the authoritative source of past values.
 
-2.2 **Rolling buffer shape.** Each active output maintains a FIFO buffer of recorded samples. All outputs are sampled at the same times (one tick per frame). The buffer is time-aligned at constant sample rate, so index arithmetic suffices for time lookups — no (time, value) pairs needed.
+2.2 **Rolling buffer shape.** (see `src/utils/visualisationStore.ts`) Each active output maintains a FIFO buffer of recorded samples. All outputs are sampled at the same committed tick times. The buffer is time-aligned at constant sample rate, so index arithmetic suffices for time lookups — no (time, value) pairs needed.
 
-2.2.1 **Pixel-matched buffer capacity.** The rolling buffer's *capacity* is derived from rendering-surface pixel width: `bufferSampleRate = floor(canvasWidth / 2) / (windowDuration / 2)` (recomputed on surface resize, integer-snapped to avoid sub-pixel re-allocation). This is a **capacity** target, not a literal sample density: tick cadence is unchanged (§2.1 — one push per rAF frame, ~30 Hz), so the GPU's line rasteriser interpolates between actual sample points along the time axis. Pixel-matched capacity eliminates the sub-pixel **feature drift** the spec actually cares about: each pushed sample maps to a stable absolute-time column, so a peak/edge in the waveform doesn't hop between columns as time advances. *True* one-sample-per-column rendering would require either a higher tick rate (§9.6.A) or a multi-sample-per-tick batch (§9.6.C); see deferred section.
+2.2.1 **Pixel-matched buffer capacity and tick density.** The rolling buffer's capacity is derived from rendering-surface pixel width: `bufferSampleRate = floor(canvasWidth / 2) / (windowDuration / 2)` when future projection is visible, and `bufferSampleRate = canvasWidth / windowDuration` when the past occupies the full surface. The renderer recomputes this on surface resize and integer-snaps it to avoid sub-pixel re-allocation. The live WASM tick target is configurable up to this same rate (§2.1), so `temporalSampleRateMultiplier = 1.0` gives literal one-sample-per-column past recording for the effective visual rate. Lower multipliers intentionally trade temporal fidelity for CPU headroom.
 
 2.2.2 The pixel-matched capacity applies to the **past buffer only**. Future projection uses its own projection-batch density (§3.1.1), which may be lower. The visual transition between past and future density at `t = now` is acceptable because the future half is already visually distinguished (lower alpha or dashed, §1.4).
 
@@ -55,7 +71,7 @@ Past values are ground truth: what the signal engine actually produced as time a
 
 Future values are projections: what the signal engine would produce if conditions held steady from this moment forward.
 
-3.1 **Projection model — clone once, extend the frontier.** The future half is stored in a **per-output rolling buffer** (same `PastBuffer` type as the past half), but the state used to produce it is not the live runtime state. For performance on constrained devices, the WASM runtime owns a persistent **projection fork** rather than recomputing the whole future window every frame:
+3.1 **Projection model — clone once, extend the frontier.** (see `src/effects/visualisationRuntime.ts`, `src/effects/visualisationSampler.ts`) The future half is stored in a **per-output rolling buffer** (same `PastBuffer` type as the past half), but the state used to produce it is not the live runtime state. For performance on constrained devices, the WASM runtime owns a persistent **projection fork** rather than recomputing the whole future window every frame:
 
 - `projectionStartTime` — the live time at which the fork was created.
 - `projectionFrontierTime` — the newest projected sample time.
@@ -120,17 +136,17 @@ Not all outputs need the same future-projection work. The engine classifies each
 
 ## 5. Per-Frame Sampling Loop
 
-5.1 **The per-frame loop has three phases**, executed in order:
+5.1 **The per-frame loop has three phases**, executed in order: (see `src/effects/visualisationSampler.ts`)
 
-1. **Tick past**: Advance the WASM engine to `t = now`. This evaluates all active outputs, commits live state, records output values into their past rolling buffers.
+1. **Tick past**: Advance the WASM engine through any live sampling timestamps required to catch up to `now`. Intermediate ticks commit live state and record past values. The latest tick in the frame also owns future projection work.
 2. **Reset or extend future**: If the projection is stale (code eval, settings/input change), clear future buffers, reset the projection fork from live state at `now`, and fill the visible future. Otherwise, if the projection frontier is behind the required coverage, extend the fork by a small future batch at the frontier.
 3. **Render**: If rendering is requested and the panel is visible, invoke the render hook.
 
-5.2 **Combined tick-and-project ABI call.** For performance, the tick and projection phases are combined into a single WASM boundary crossing via `useq_tick_and_project` (§7.2). This function ticks live state at `t = now`, clones or extends the persistent projection fork, and returns both the live tick values and the future samples that should be appended or replace the future buffers. One JS↔WASM transition per frame instead of separate tick/refill/edge calls. The sampler probes the export at runtime — when present, the per-frame loop uses it; when absent, the sampler degrades to a slower compatibility path.
+5.2 **Combined tick-and-project ABI call.** (see `src/effects/visualisationSampler.ts`, `src/contracts/wasmAbi.ts`) For performance, the tick and projection phases are combined into a single WASM boundary crossing via `useq_tick_and_project` (§7.2). This function ticks live state at `t = now`, clones or extends the persistent projection fork, and returns both the live tick values and the future samples that should be appended or replace the future buffers. One JS↔WASM transition per frame instead of separate tick/refill/edge calls. The sampler probes the export at runtime — when present, the per-frame loop uses it; when absent, the sampler degrades to a slower compatibility path.
 
-5.3 **Sampling guards.** At most one tick-and-project cycle is in flight at a time. If a newer time arrives while a call is running, the latest pending time is sampled once the current run completes (single pending-time slot). A slow batch must never overwrite a fresher one — this invariant follows from strict serialization, not from post-hoc sequence-counter discard.
+5.3 **Sampling guards.** At most one tick-and-project cycle is in flight at a time. Browser-local mode may queue multiple monotonic catch-up sample times while a call is running; external hardware time updates coalesce to the newest time. A slow batch must never overwrite a fresher one — this invariant follows from strict serialization, not from post-hoc sequence-counter discard.
 
-5.4 **Render data assembly.** The renderer receives two data sources per output: past samples from the past rolling buffer and future samples from the future rolling buffer. Both are `PastBuffer` instances. The renderer draws them as separate segments split at `t = now` — past segment from the past buffer (full alpha), future segment from the future buffer (reduced alpha). The boundary is exact, no blending or interpolation.
+5.4 **Render data assembly.** (see `src/ui/visualisation/serialVisGL.ts`) The renderer receives two data sources per output: past samples from the past rolling buffer and future samples from the future rolling buffer. Both are `PastBuffer` instances. The renderer draws them as separate segments split at `t = now` — past segment from the past buffer (full alpha), future segment from the future buffer (reduced alpha). The boundary is exact, no blending or interpolation.
 
 5.5 **Shift, don't rebuild.** As time advances, the past buffer grows by one sample per committed tick and the future buffer grows by small frontier-extension batches. The render path reads from the rolling buffers directly — no per-frame allocation on the hot path ([MAIN.md §3.5](MAIN.md)).
 
@@ -165,7 +181,7 @@ Not all outputs need the same future-projection work. The engine classifies each
 
 ## 7. WASM ABI Additions
 
-This section specifies new WASM ABI exports required by the faithful-past / projected-future architecture. These extend the existing ABI surface in [../../src/contracts/wasmAbi.ts](../../src/contracts/wasmAbi.ts).
+This section specifies new WASM ABI exports required by the faithful-past / projected-future architecture. These extend the existing ABI surface in [../../src/contracts/wasmAbi.ts](../../src/contracts/wasmAbi.ts). (see `src/contracts/wasmAbi.ts`)
 
 7.1 **`useq_tick_all_outputs(time_seconds: number) → pointer`** — Evaluate all active outputs at the given time, **commit state** (advance `g_prev_tick_time`, update `prev_output_values`), and return all output values. Unlike `useq_eval_output` (which evaluates the full graph per call), this evaluates the graph exactly once. Returns a pointer to a `Float64Array` of `MAX_OUTPUTS` values (caller reads via `HEAPF64`). Invalid outputs contain `NaN`.
 
@@ -207,6 +223,7 @@ New settings introduced by this spec (all under the `visualisation` section):
 | `inputEpsilon` | number | 0.01 | Absolute change threshold for external inputs to trigger future re-projection |
 | `adaptiveQuality` | boolean | `true` | Enable pressure-driven quality degradation (§1.7.1). When `false`, pressure detection still runs but levers are inert. |
 | `minFutureSampleRate` | number | 30 | Minimum projection density in Hz for future reset-fill and extension batches. |
+| `temporalSampleRateMultiplier` | number | 1.0 | Live WASM tick density as a fraction of the effective pixel-matched past-buffer sample rate. Clamped to 0.05–1.0. |
 
 Existing settings with unchanged semantics: `windowDuration`, `sampleCount`, `lineWidth`, `futureDashed`, `futureLeadSeconds`.
 
@@ -222,9 +239,4 @@ Existing settings with unchanged semantics: `windowDuration`, `sampleCount`, `li
 
 9.5 **Stateful future projection accuracy at coarse `dt`.** The current spec steps future projections at vis sample density. For nonlinear state updates (`(defstate x 0 (+ x (* (sin x) dt)))`), large `dt` causes Euler-method truncation error. A future refinement could detect nonlinear state bodies and use a finer intermediate step rate. Deferred — linear accumulation dominates musical use cases.
 
-9.6 **True pixel-matched sample density (paths to literal one-sample-per-column).** §2.2.1 currently makes buffer *capacity* pixel-matched but leaves tick cadence at ~30 Hz. The GPU rasterises between sample points; sub-pixel feature drift is eliminated, but the trace is still drawn from sparser data than the past-half's pixel column count. Two paths to closing this gap, in increasing order of correctness and cost:
-
-  - **9.6.A — Pixel-matched tick rate.** Drive the WASM tick at `bufferSampleRate` (typically 100–200 Hz at desktop resolutions) instead of rAF. Each tick pushes one sample; the past buffer has one sample per pixel column literally. Cost: 3–7× current per-second WASM work. Becomes affordable once §5.2 (`useq_tick_and_project`) lands, since it folds the per-tick round-trips from 3 to 1. Best long-term direction.
-  - **9.6.C — Multi-sample-per-tick batch (hybrid).** Keep tick at rAF but each tick batches `N = bufferSampleRate / rAFRate` samples (typically N=3–5) covering `[t-Δ, t]` and pushes them all to the past buffer. Density approaches pixel-matched without raising the tick rate. Cost: requires the WASM engine to do batched past sampling efficiently — closely tied to `useq_tick_and_project`'s batching shape (§7.2 already projects N future samples per call; the same machinery can serve a small recent-past window). A reasonable v2 once the combined ABI is in.
-
-  Until either lands, the spec's promise in §2.2.1 is "feature stability under time advance" rather than "literal one sample per column".
+9.6 **True pixel-matched sample density.** Shipped for browser-local WASM past recording via §2.1/§2.2.1 when `temporalSampleRateMultiplier = 1.0`. Remaining optimisation work is batching multiple past samples into one WASM boundary crossing if profiling shows high per-sample overhead on constrained devices.

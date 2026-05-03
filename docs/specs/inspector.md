@@ -1,5 +1,21 @@
 # Inspector — Dev Review Tool
 
+### Source files
+
+- `inspector/main.tsx` — inspector app bootstrap
+- `inspector/vite.config.ts` — separate Vite config for inspector
+- `inspector/framework/scenario.ts` — `defineScenario()` types and helpers
+- `inspector/framework/registry.ts` — auto-discovery and indexing of scenarios via `import.meta.glob`
+- `inspector/framework/context.ts` — context bundle assembly + clipboard copy
+- `inspector/framework/approvals.ts` — read/write local `.approvals.json`
+- `inspector/app/Inspector.tsx` — root layout: nav tree + scenario viewport
+- `inspector/app/NavTree.tsx` — keyboard-navigable category tree
+- `inspector/app/ScenarioViewer.tsx` — lazy-loads and renders one live scenario
+- `inspector/scenarios/` — scenario definitions organised by category (`editor/`, `settings/`, `visualisation/`, etc.)
+- `inspector/CLAUDE.md` — inspector-specific agent instructions
+
+---
+
 ## Problem
 
 uSEQ Perform development involves multiple parallel AI agent sessions working on different aspects of the app simultaneously (UI, editor extensions, functionality). The current workflow has two critical pain points:
@@ -18,7 +34,7 @@ Storybook exists in the repo but is broken and doesn't address the core need: it
 
 ### Scenarios
 
-A **scenario** is an explicit TypeScript module that configures an embedded app slice to demonstrate a specific visual aspect in a specific state. Scenarios use real CodeMirror instances and WASM interpreters where needed — no mocking of rendering.
+A **scenario** is an explicit TypeScript module that configures an embedded app slice to demonstrate a specific visual aspect in a specific state (see `inspector/framework/scenario.ts`). Scenarios use real CodeMirror instances and WASM interpreters where needed — no mocking of rendering.
 
 Each scenario declares:
 - **Category** — where it appears in the nav tree
@@ -124,7 +140,7 @@ Categories and their contents are derived from scenario file metadata — the tr
 
 ### Approval Tracking
 
-A `.gitignore`'d JSON file (`inspector/.approvals.json`) maps scenario IDs to approval status. This keeps approval state local and out of the repo:
+A `.gitignore`'d JSON file (`inspector/.approvals.json`) maps scenario IDs to approval status (see `inspector/framework/approvals.ts`). This keeps approval state local and out of the repo:
 
 ```json
 {
@@ -147,7 +163,7 @@ Status is manually toggled — press Enter or click a button to approve. No auto
 
 ### Context Copying
 
-Each scenario has a "Copy Context" button that assembles a medium-depth context bundle to the clipboard:
+Each scenario has a "Copy Context" button (see `inspector/framework/context.ts`) that assembles a medium-depth context bundle to the clipboard:
 
 ```markdown
 ## Scenario: Nested expression highlighting
@@ -242,7 +258,7 @@ Only one scenario is live at a time (lazy loading). Selecting a new scenario in 
 
 ### Scenario Discovery
 
-Scenarios are auto-discovered via Vite's `import.meta.glob`:
+Scenarios are auto-discovered via Vite's `import.meta.glob` (see `inspector/framework/registry.ts`):
 
 ```typescript
 const scenarios = import.meta.glob('./scenarios/**/*.ts', { eager: false });

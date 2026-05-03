@@ -2,23 +2,38 @@
 
 > Spec: in-app education and orientation surfaces. Counterpart to [MAIN.md](MAIN.md).
 
+### Source files
+
+- `src/ui/help/HelpPanel.tsx` — top-level help panel with tab switching
+- `src/ui/help/ModuLispReferenceTab.tsx` — function reference tab (filterable, starred, expandable)
+- `src/ui/help/CodeSnippetsTab.tsx` — code snippets tab (user-savable fragments)
+- `src/ui/help/KeybindingsTab.tsx` — keybindings guide tab (auto-generated from action registry)
+- `src/ui/help/ReferencePanel.tsx` — reference panel wrapper
+- `src/ui/help/helpChannels.ts` — help-panel-local typed channels (search, tab switching)
+- `src/ui/help/guide/` — guide system: `GuideTab.tsx`, `GuideSection.tsx`, `Playground.tsx`, `LiveProbe.tsx`, `guideData.ts`, `guideTypes.ts`, `contentBlocks.tsx`, `chapters/`
+- `src/lib/helpContentPreloader.ts` — eager preload of help content
+- `src/utils/referenceStore.ts` — reference data store (star/expand/version state)
+- `src/utils/snippetStore.ts` — snippet data store (user + starter snippets)
+
+---
+
 ## 1. Help Panel
 
-1.1 The help panel has **four tabs**: Guide, Reference, Code Snippets, Keybindings.
+1.1 The help panel has **four tabs**: Guide, Reference, Code Snippets, Keybindings (see `src/ui/help/HelpPanel.tsx`).
 
-1.2 **Guide** is a chaptered user guide covering language, algebra, modulation, rhythm, and editor. Chapters are static markdown content with embedded live probes and small playgrounds. Detailed guide structure lives in [user-guide.md](user-guide.md).
+1.2 **Guide** is a chaptered user guide covering language, algebra, modulation, rhythm, and editor (see `src/ui/help/guide/GuideTab.tsx`, `src/ui/help/guide/chapters/`). Chapters are static markdown content with embedded live probes and small playgrounds. Detailed guide structure lives in [user-guide.md](user-guide.md).
 
-1.3 **Reference** is the ModuLisp function reference, filterable by name and tag; tracks starred and expanded items per user. Starred items sort first.
+1.3 **Reference** is the ModuLisp function reference, filterable by name and tag; tracks starred and expanded items per user (see `src/ui/help/ModuLispReferenceTab.tsx`, `src/utils/referenceStore.ts`). Starred items sort first.
 
-1.4 **Code Snippets** lists user-savable code fragments. The first load seeds a starter set (rhythm, modulation, melodic, interactive) with `createdAt = 0`; user-created snippets sort newer-first above the starters. Starred items sort first overall.
+1.4 **Code Snippets** lists user-savable code fragments (see `src/ui/help/CodeSnippetsTab.tsx`, `src/utils/snippetStore.ts`). The first load seeds a starter set (rhythm, modulation, melodic, interactive) with `createdAt = 0`; user-created snippets sort newer-first above the starters. Starred items sort first overall.
 
 1.5 Each snippet has `id`, `title`, `code`, `tags`, `createdAt`. Operations: add, update (title/code/tags), delete (also removes from starred), toggle star.
 
 1.6 **Reference target version.** Reference content is tagged by uSEQ language version; the user may switch the target version via a control. The chosen version persists.
 
-1.7 **Keybindings** is a read-only guide showing current keybinding assignments, organised by category. It is a reference/learning surface, not a configuration UI — rebinding is done in the Settings panel's Keybindings tab. The keybindings guide is auto-generated from the action registry and always reflects the current bindings.
+1.7 **Keybindings** is a read-only guide showing current keybinding assignments, organised by category (see `src/ui/help/KeybindingsTab.tsx`). It is a reference/learning surface, not a configuration UI — rebinding is done in the Settings panel's Keybindings tab. The keybindings guide is auto-generated from the action registry and always reflects the current bindings.
 
-1.8 **Search.** Snippets and reference both expose a single search box that filters by title/code/tags and by name/description/tags respectively. Search is case-insensitive substring; ranking promotes title matches over body matches.
+1.8 **Search.** Snippets and reference both expose a single search box that filters by title/code/tags and by name/description/tags respectively (routed via `src/ui/help/helpChannels.ts`). Search is case-insensitive substring; ranking promotes title matches over body matches.
 
 ## 2. Onboarding
 

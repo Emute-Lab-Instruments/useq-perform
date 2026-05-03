@@ -4,11 +4,26 @@
 > Doubles as an in-editor playground for testing structural editing controls and behaviours.
 > See also [structural-editing.md](structural-editing.md) (the algebra), [gamepad.md](gamepad.md) (input pipeline), [editor.md](editor.md) (editor modes).
 
+### Source files
+
+- `src/zen/index.tsx` — route component, mounts zen mode at `#/zen`
+- `src/zen/ZenMode.tsx` — top-level zen mode component (paradigm dropdown, input detection)
+- `src/zen/ZenGrid.tsx` — grid home screen (category rows, exercise cards, Continue button)
+- `src/zen/ZenExercise.tsx` — exercise runner (editor + prompt + validation + hints)
+- `src/zen/exercises.ts` — exercise definitions (plain typed data with `<<>>` cursor DSL)
+- `src/zen/validation.ts` — AST comparison and cursor matching
+- `src/zen/store.ts` — `zenStore` (current view, active exercise, action log, input device, paradigm)
+- `src/zen/progress.ts` — localStorage persistence for exercise progress
+- `src/zen/hints.ts` — hint derivation and reverse binding lookup
+- `src/zen/sequenceTracker.ts` — action sequence tracking for optimal-path detection
+- `src/zen/zenKeymapGuard.ts` — keymap predicate layer for exercise-specific input interception
+- `src/zen/zenNavigation.ts` — grid and exercise keyboard/gamepad navigation
+
 ---
 
 ## 1. Frame
 
-1.1 Zen mode is a **full-screen takeover** that replaces the normal app chrome (toolbar, visualisation, help panel) with a minimal exercise environment: one editor, one prompt bar, one progress grid.
+1.1 Zen mode is a **full-screen takeover** that replaces the normal app chrome (toolbar, visualisation, help panel) with a minimal exercise environment: one editor, one prompt bar, one progress grid (see `src/zen/ZenMode.tsx`).
 
 1.2 Its purpose is twofold: (a) teach the user structural editing operations through repetition and progressive challenge, and (b) serve as a **test harness** for the developer to exercise the full gamepad pipeline against known inputs and expected outputs.
 
@@ -16,7 +31,7 @@
 
 1.4 Zen mode operates on a **temporary paradigm** — the user can select any gamepad binding paradigm from a dropdown without affecting their persisted settings. The selected paradigm determines button hints shown in exercises.
 
-1.5 Zen mode is a **separate route** (`#/zen`, with optional exercise params `#/zen/<category>/<index>`). Bookmarkable, deep-linkable, useful for automated testing.
+1.5 Zen mode is a **separate route** (`#/zen`, with optional exercise params `#/zen/<category>/<index>`). Bookmarkable, deep-linkable, useful for automated testing (see `src/zen/index.tsx`).
 
 1.6 No audio. No haptics. Purely visual feedback.
 
@@ -43,7 +58,7 @@
 
 ## 3. Structure: the grid
 
-3.1 The **grid home screen** is the primary view of zen mode. It is always the first thing shown on entry (unless a deep-link targets a specific exercise).
+3.1 The **grid home screen** is the primary view of zen mode (see `src/zen/ZenGrid.tsx`). It is always the first thing shown on entry (unless a deep-link targets a specific exercise).
 
 3.2 The grid is organised as **rows** (categories) and **columns** (exercises within a category). Each row can have any number of exercises; rows scroll horizontally to fit the available width.
 
@@ -75,7 +90,7 @@
 
 ### 4.1 Authoring format
 
-Exercises are authored using a TypeScript DSL with inline cursor markers. The `«»` pair marks the structural cursor position in both start and target code:
+Exercises are authored using a TypeScript DSL with inline cursor markers (see `src/zen/exercises.ts`). The `<<>>` pair marks the structural cursor position in both start and target code:
 
 ```ts
 exercise('slurp-fwd-1', {
@@ -165,9 +180,9 @@ type CursorSpec =
 
 5.2 **During exercise**: User performs structural editing operations. The editor is fully functional within the structural editing algebra — all operations work, undo works freely.
 
-5.3 **Validation**: After every action, the system compares the current AST against `targetAst` (and `targetCursor` if specified). If match → exercise complete.
+5.3 **Validation**: After every action, the system compares the current AST against `targetAst` (and `targetCursor` if specified) (see `src/zen/validation.ts`). If match -> exercise complete.
 
-5.4 **Gentle nudge**: After 3 wrong moves (moves that don't bring the AST closer to the target), show the first hint from the exercise's `hints[]` array. After 5 wrong moves, show the next hint. After 8 wrong moves, show the exact action needed (derived from `optimalActions`). Hints appear as a dim line below the top bar, not as a modal.
+5.4 **Gentle nudge** (see `src/zen/hints.ts`): After 3 wrong moves (moves that don't bring the AST closer to the target), show the first hint from the exercise's `hints[]` array. After 5 wrong moves, show the next hint. After 8 wrong moves, show the exact action needed (derived from `optimalActions`). Hints appear as a dim line below the top bar, not as a modal.
 
 5.5 **Completion**: Brief green glow on the editor border (200ms fade-in, 300ms hold, 200ms fade-out). After ~500ms total, auto-advance to the next exercise in the same category via card-slide animation. If the category is complete, return to the grid with the completed row visually updated.
 
@@ -218,7 +233,7 @@ type CursorSpec =
 
 ## 8. Progress persistence
 
-8.1 Progress is stored in **localStorage** under a single key (`useq:zen:progress`).
+8.1 Progress is stored in **localStorage** under a single key (`useq:zen:progress`) (see `src/zen/progress.ts`).
 
 8.2 Schema:
 
@@ -262,11 +277,11 @@ interface ExerciseProgress {
 
 10.2 It creates its own **secondary editor** (per [editor.md](editor.md) §1.13) with structural editing extensions enabled. The editor is isolated — no effect modules, no transport, no visualisation.
 
-10.3 The **gamepad pipeline** is shared with the main app (same recognizer, same paradigm layers). Zen mode adds its own predicate-driven layer that can intercept gestures for exercise-specific behaviour (e.g. disabling eval during pure-nav exercises).
+10.3 The **gamepad pipeline** is shared with the main app (same recognizer, same paradigm layers). Zen mode adds its own predicate-driven layer that can intercept gestures for exercise-specific behaviour (see `src/zen/zenKeymapGuard.ts`) (e.g. disabling eval during pure-nav exercises).
 
 10.4 **Exercise definitions** live in a data file (`src/zen/exercises.ts` or similar). They are plain typed objects — importable in both the UI and test suites.
 
-10.5 **State management**: A small SolidJS store (`zenStore`) holds:
+10.5 **State management**: A small SolidJS store (`zenStore`) holds (see `src/zen/store.ts`):
 - Current view: `'grid' | 'exercise'`
 - Active exercise ID
 - Action log (for the current exercise)

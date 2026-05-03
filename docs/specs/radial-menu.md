@@ -6,6 +6,28 @@
 >
 > This spec defines what the menu *means*. Concrete hardware-button assignments are inherited from [gamepad.md](gamepad.md)'s gesture vocabulary. Concrete item content is pulled from a bundled JSON manifest (§7).
 
+### Source files (current / legacy)
+
+- `src/ui/RadialMenu.tsx` — SVG radial menu renderer
+- `src/ui/DoubleRadialPicker.tsx` — double-ring radial picker component
+- `src/ui/adapters/double-radial-menu.tsx` — `mountDoubleRadialMenu()` imperative adapter
+- `src/ui/adapters/gamepadMenuBridge.ts` — gamepad-to-menu bridge (picker integration)
+- `src/lib/gamepad/paradigms/picker.ts` — picker layer (legacy; replaced by radial layer per §11.3)
+- `src/contracts/gamepadChannels.ts` — axis channels consumed by the menu
+- `src/lib/keybindings/actions.ts` — `menu.*` action IDs (§11.4)
+
+### Source files (planned per §11.1 — not yet implemented)
+
+- `src/lib/menu/types.ts` — MenuTab, MenuItem, Verb, MenuState, HoleSpec
+- `src/lib/menu/manifest.ts` / `manifest.json` — manifest loading, lint, cache
+- `src/lib/menu/state.ts` — pure state machine reducer
+- `src/lib/menu/verbs.ts` — verb implementations
+- `src/lib/menu/chain.ts` — auto-chain runner
+- `src/lib/menu/dispatcher.ts` — menu dispatcher (impure)
+- `src/lib/menu/store.ts` — Solid reactive store (menuStore)
+- `src/ui/menu/RadialMenu.tsx` — new SVG renderer (props-based)
+- `src/ui/adapters/radialMenu.ts` — new imperative adapter
+
 ---
 
 ## 1. Frame
@@ -190,7 +212,7 @@ The manifest is loaded once at app boot, parsed, validated, and cached. There is
 
 ### 3.1 Opening
 
-3.1.1 The menu opens on `tap(Y)`, bound at the **structural** layer. Insertion mode is keyboard-only by intent ([structural-editing.md §4.2.1](structural-editing.md)); a gamepad-only user is never in insertion mode and the menu is always reachable. (For mixed input: if the user is in insertion mode via the keyboard, `tap(Y)` on the gamepad first exits to structural, then opens the menu — a single chord, no extra step required.) The leader-binding pushes the **`radial-menu` transient layer** onto the gamepad layer stack and sets `menuStore.open = true`.
+3.1.1 The menu opens on `tap(Y)`, bound at the **structural** layer. (see `src/lib/gamepad/paradigms/picker.ts` for current picker layer) Insertion mode is keyboard-only by intent ([structural-editing.md §4.2.1](structural-editing.md)); a gamepad-only user is never in insertion mode and the menu is always reachable. (For mixed input: if the user is in insertion mode via the keyboard, `tap(Y)` on the gamepad first exits to structural, then opens the menu — a single chord, no extra step required.) The leader-binding pushes the **`radial-menu` transient layer** onto the gamepad layer stack and sets `menuStore.open = true`.
 
 3.1.2 Initial `MenuState` is `{ phase: 'open', leftTabIdx: 0, rightTabIdx: 0, leftHover: null, rightHover: null, shoulderHeld: 'none', frozen: null }`. The first tab in the manifest is the default left tab.
 
@@ -200,7 +222,7 @@ The manifest is loaded once at app boot, parsed, validated, and cached. There is
 
 ### 3.2 Surface
 
-3.2.1 The menu is rendered as a centred SVG, ~480 px square (configurable via `menu.size` setting), with the editor behind it dimmed to ~30 % opacity. The dim layer is visually distinct from the picker dim today.
+3.2.1 The menu is rendered as a centred SVG, ~480 px square (see `src/ui/RadialMenu.tsx`, `src/ui/DoubleRadialPicker.tsx`) (configurable via `menu.size` setting), with the editor behind it dimmed to ~30 % opacity. The dim layer is visually distinct from the picker dim today.
 
 3.2.2 The two rings are concentric circles centred on the menu's centre. The left ring is on the **left half** of the SVG; the right ring on the **right half**. Each ring is a half-circle subdivided into segments matching the active tab's category/item count.
 
@@ -256,7 +278,7 @@ The menu closes on:
 - The user leaving the gamepad's connected state (gamepad disconnect → close + cancel).
 - An out-of-band close gesture from elsewhere (e.g. keyboard `Esc`) — possible but rare, since the menu is gamepad-only by design.
 
-On close, the radial-menu transient layer is popped, `menuStore.open = false`, and the structural cursor returns to its position post-mutation (or the original target on cancel).
+On close, the radial-menu transient layer is popped, `menuStore.open = false`, and the structural cursor returns to its position post-mutation (or the original target on cancel). (see `src/ui/adapters/gamepadMenuBridge.ts` for current close handling)
 
 ---
 
@@ -617,7 +639,7 @@ src/ui/adapters/
 
 Files dropped from the original outline (now deferred): `alphabet.ts`, `drill.ts`, `AlphabetRing.tsx`, `DrillRing.tsx`.
 
-### 11.2 The dispatcher
+### 11.2 The dispatcher (planned: `src/lib/menu/dispatcher.ts`)
 
 The dispatcher (`src/lib/menu/dispatcher.ts`) is the single impure component. It:
 - Subscribes to the gamepad's `radial-menu` transient layer's actions and axis channels.
@@ -626,7 +648,7 @@ The dispatcher (`src/lib/menu/dispatcher.ts`) is the single impure component. It
 - On verb commit, calls `verbs.apply(tree, cursorSet, item, verb)` and dispatches the resulting document mutation through the editor's transaction API.
 - Handles auto-chain by inspecting the cursor post-mutation and, if a hole is found, re-opens the menu via the same path as `tap(Y)` would.
 
-### 11.3 Picker layer (gamepad.md §6.5) replacement
+### 11.3 Picker layer (gamepad.md §6.5) replacement (current: `src/lib/gamepad/paradigms/picker.ts`)
 
 The new radial layer in the gamepad pipeline replaces the existing picker layer. Bindings are registered as a transient layer in the gamepad paradigm files (or as a permanent layer with `when: state => menuStore.open`).
 
@@ -656,7 +678,7 @@ const radialLayer: Layer = {
 
 The dispatcher consults the current `MenuState.shoulderHeld` (computed from raw shoulder press/release events on every poll) to determine sub-phase. The verb actions read `MenuState.frozen.shoulderHeld` (the latched handedness) when computing the verb's `hand` argument. Tab-cycle actions are no-ops when the current sub-phase is not `cyclingLeftTabs` or `cyclingRightTabs` (so a stray LB tap inside `picking` or `frozen` is silently dropped).
 
-### 11.4 The action registry
+### 11.4 The action registry (see `src/lib/keybindings/actions.ts`)
 
 New `ActionId`s registered:
 

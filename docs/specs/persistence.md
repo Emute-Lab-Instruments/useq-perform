@@ -2,7 +2,11 @@
 
 > Spec: localStorage keys and the persistence service. Counterpart to [MAIN.md](MAIN.md).
 
-1.1 All localStorage access goes through a **central persistence service** with typed keys, JSON error recovery, and `?nosave` bypass. Direct `localStorage.getItem`/`setItem` from feature code is forbidden by convention.
+### Source files
+
+- `src/lib/persistence.ts` — central persistence service (typed keys, JSON error recovery, `?nosave` bypass)
+
+1.1 All localStorage access goes through a **central persistence service** with typed keys, JSON error recovery, and `?nosave` bypass. Direct `localStorage.getItem`/`setItem` from feature code is forbidden by convention. (see `src/lib/persistence.ts`)
 
 1.2 The **hard-compatibility persistence keys** (must not break casually) are:
 - `uSEQ-Perform-User-Settings` (full settings JSON)
@@ -24,6 +28,6 @@
 
 1.6 **Schema versioning is implicit by default.** Normalisation reads the persisted JSON and fills in missing fields from defaults; unknown fields are dropped. Most persisted shapes do not carry a version key. Feature-local persisted records may include an explicit `schemaVersion` only when they need non-trivial migration that cannot be represented by total normalisation alone; [live-edit.md §7](live-edit.md) is the current example.
 
-1.7 `?nosave` is a **session-scoped write gate**: every write through the persistence service becomes a silent no-op, but reads still return pre-existing persisted state. The app starts with whatever was previously saved but never writes back. Modules that use other persistence channels (e.g. IndexedDB, cookies) must respect the same flag.
+1.7 `?nosave` is a **session-scoped write gate**: every write through the persistence service becomes a silent no-op, but reads still return pre-existing persisted state. (see `src/lib/persistence.ts`) The app starts with whatever was previously saved but never writes back. Modules that use other persistence channels (e.g. IndexedDB, cookies) must respect the same flag.
 
 1.8 **Downgrade is unsupported.** Only forward migration (older persisted data → newer app version) is a supported path. An older app version encountering unknown fields from a newer version may drop them; this is acceptable.

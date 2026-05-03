@@ -28,8 +28,8 @@ Terminology source of truth: [docs/GLOSSARY.md](docs/GLOSSARY.md). Read [CLAUDE.
 Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 
 - `src/lib/` — foundation. No imports from runtime/effects/ui/editors/transport.
-  - `settings/` — schema, normalization, persistence (split out of the old `appSettings.ts`).
-  - `keybindings/` — action registry (with `reversible` flag, derives `ReversibleActionId`/`NonReversibleActionId`), resolver, layouts, profiles, sticky modifiers, OS-reserved key list. See [docs/specs/keybindings.md](docs/specs/keybindings.md).
+  - `settings/` — schema, normalization, persistence (split out of the old `appSettings.ts`). Normalization is further split: `normalizationHelpers.ts`, `normalizeEvalResults.ts`, `normalizeKeybindings.ts`, `normalizeVisualisation.ts`. Includes `HardwareSettings` (bindingsEnabled, bindingFoldDefault, bindingQueueDepth, holdTickHz) per [docs/specs/hardware-bindings.md §6](docs/specs/hardware-bindings.md).
+  - `keybindings/` — action registry (with `reversible` flag, derives `ReversibleActionId`/`NonReversibleActionId`), `defaults.ts` (default binding data), `handlers.ts` (action → implementation dispatch), resolver, `layouts/` (qwerty-us/uk, dvorak, colemak, azerty-fr, qwertz-de), `profiles/` (including `simplified.ts`), sticky modifiers, OS-reserved key list. See [docs/specs/keybindings.md](docs/specs/keybindings.md).
   - `editorStore.ts`, `editorDefaults.ts`, `editorCompartments.ts` — CodeMirror facade and config.
   - `typedChannel.ts` — pub/sub primitive used by everything in `contracts/`.
   - `persistence.ts` — central localStorage service (typed keys, nosave, error recovery).
@@ -39,7 +39,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `pickerMenuModel.ts`, `referenceDataLoader.ts`, `helpContentPreloader.ts`.
   - `CircularBuffer.ts`, `debug.ts`, `perfTrace.ts` (DEV-only profiling — `window.__useqPerf.{enable,report,reset}`, timings + counters; tree-shaken in prod via `import.meta.env.DEV` gates at every call site), `themes.ts`, `versionUtils.ts`, `visualisationUtils.ts`, `useActorSignal.ts`.
 - `src/contracts/` — shared types/constants and typed channel definitions. See [docs/specs/reactive-flow.md](docs/specs/reactive-flow.md) for channel inventory.
-  - `runtimeChannels.ts`, `visualisationChannels.ts`, `gamepadChannels.ts` — channel registries.
+  - `runtimeChannels.ts`, `visualisationChannels.ts`, `gamepadChannels.ts`, `hardwareChannels.ts`, `editorChannels.ts` — channel registries. `hardwareChannels.ts` carries discrete hardware input events (button presses, toggle flips, gate edges). `editorChannels.ts` carries structural navigation/mutation events consumed by radial menu and keyboard hints.
   - `useqRuntimeContract.ts` — shared transport command set and capability split. See [docs/specs/runtime-contract.md](docs/specs/runtime-contract.md).
   - `wasmAbi.ts` — required + runtime-probed WASM exports, `assertWasmAbi()` validator.
   - `runtimePorts.ts` — typed `WebSerialHostPort` / `WasmRuntimePort` interfaces over the shared transport surface. The runtime layer talks to ports, not transport modules directly. `WasmRuntimePort` is shaped to be the postMessage boundary for the upcoming worker move.
@@ -77,24 +77,33 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `localClock.ts` — rAF-driven internal clock when no hardware.
   - `editor.ts`, `editorEvaluation.ts` — editor-side eval orchestration (eslint exception: imports editors).
   - `visualisationSampler.ts` — WASM sampling with event-driven future projection. Past buffer (one sample/frame) + future buffer (batch-refilled on invalidation, extended one sample/frame).
-  - `mockControlInputs.ts`, `devmodeWebSocketServer.ts`, `perfBenchmark.ts` (DEV-only — `window.__useqBench.run(channelCount)` exercises the vis pipeline at scale).
+  - `hardwareBindingDispatcher.ts` — dispatches bound expressions on hardware button events. Subscribes to `hwInput` channel, scans editor doc for `(on-press|on-release|on-button|on-toggle)` forms, evals via WASM + hardware with per-binding FIFO queue and hold-tick coalescing ([docs/specs/hardware-bindings.md §4](docs/specs/hardware-bindings.md)). Editor-layer chip sync is injected via `DispatcherConfig` to respect import boundaries.
+  - `liveEditStore.ts` — reactive live-edit slot store (current values, widget states, reconciliation).
+  - `liveEditPersistence.ts` — live-edit persistence layer (debounced localStorage writes, orphan GC, reconciliation triggers per spec §7).
+  - `midiInput.ts` — Web MIDI input enumeration and raw message parsing ([docs/specs/live-edit.md §5.6](docs/specs/live-edit.md)).
+  - `midiLearnController.ts` — MIDI learn state machine (per-widget and batch-learn flows per spec §5.8).
+  - `midiRouter.ts` — routes parsed MIDI CC/note messages to bound live-edit slots per spec §5.7.
+  - `calibrationSequencer.ts` — CV 1V/oct calibration session state machine (wire-protocol-driven; manages begin/adjust/save-point/end lifecycle per [docs/specs/calibration.md](docs/specs/calibration.md)).
+  - `driftDetector.ts` — per-output EMA drift scoring comparing hardware stream values against WASM tick values. Publishes `driftDetected` channel when aggregate exceeds threshold ([docs/specs/state-sync.md](docs/specs/state-sync.md)).
+  - `stateSyncOrchestrator.ts` — subscribes to `driftDetected`, requests hardware state snapshot, applies to WASM. Manages cooldown, in-flight state, console feedback ([docs/specs/state-sync.md](docs/specs/state-sync.md)).
+  - `mockControlInputs.ts`, `perfBenchmark.ts` (DEV-only — `window.__useqBench.run(channelCount)` exercises the vis pipeline at scale).
 - `src/editors/` — CodeMirror layer. Imports lib/contracts/effects/transport.
   - `extensions.ts` — extension barrel.
-  - `extensions/structure/` — structural-editing core. `adapter/` sub-dir holds the CodeMirror binding (stateField, cursor halos, hole pill widgets, op dispatcher, tree-from-lezer, gamepad bridge). `core/` holds the pure functional tree/cursor logic + nav/mutate ops + hole helpers.
+  - `extensions/structure/` — structural-editing core. `core/` holds the pure functional tree/cursor logic + nav/mutate ops + hole helpers + traversal + type vocabulary. `adapter/` holds the CodeMirror binding: `stateField.ts`, `nodeOverlays.ts` (SVG overlay for cursor halos, indent guides, node polygons), `holeWidget.ts` (hole pill widgets), `dispatcher.ts` (op dispatch), `treeFromLezer.ts`, `gamepadBridge.ts`, `spatialNav.ts` (vertical spatial nav using source positions), `applyOp.ts` (structural op application), `cursorFromSelection.ts`, `cursorPath.ts`, `extension.ts`, `printTree.ts`. Both layers have `__tests__/` dirs.
   - `extensions/expressionHighlights.ts`, `expressionEval.ts`, `expressionEvalState.ts`, `expressionEvalDefaults.ts` — code-evaluation feedback (gutter pills, play-button DOM, last-evaluated tracking, Lezer-driven expression-bounds detection).
   - `extensions/lezerHelpers.ts` — Lezer/AST helpers (`findNodeAt`, `getTrimmedRange`, `getContainerNodeAt`, `isStructuralToken`, `isContainerNode`, `isOperatorNode`) used by callers outside the structural-editing core.
   - `extensions/probes.ts`, `probeHelpers.ts` — inline probe widgets (DI-configured).
   - `extensions/inlineResults.ts` — inline eval result display (DI-configured).
   - `extensions/diagnostics.ts` — error/warning squiggles wired to WASM diagnostics.
   - `extensions/evalHighlight.ts`, `extensions/visReadability.ts`.
-  - `extensions/liveEdit/` — inline widgets (`widgets.ts`: knob/slider/toggle/picker per spec §4) and vector-mark sub-mode decorations (`vectorMarking.ts`: solid/dotted underlines per spec §3.7). Storybook-first scaffolding; runtime/persistence wiring is in follow-up beads.
+  - `extensions/liveEdit/` — live-edit editor layer. `widgets.ts` (inline knob/slider/toggle/picker per spec §4), `vectorMarking.ts` (solid/dotted underlines for vector-mark sub-mode per spec §3.7), `markAction.ts` (mark/unmark action per spec §3), `rangeInference.ts` (`:min`/`:max` auto-inference per spec §3.4), `vectorMarkController.ts` (vector-mark sub-mode state machine per spec §3.7), `widgetStoreBridge.ts` (connects live-edit store to CodeMirror widgets). Tests in `__tests__/`.
   - `extensions/hardwareBinding/chipWidget.ts` — inline chips for `(on-press|on-release|on-button|on-toggle :sw1 …)` wrappers, with status dot, lifecycle indicator, fired-pulse and error states ([docs/specs/hardware-bindings.md §3](docs/specs/hardware-bindings.md)).
   - `keymaps.ts`, `editorKeyboard.ts`, `gamepadNavigation.ts`, `themes.ts`.
 - `src/ui/` — Solid components. Leaf layer; can import from anywhere.
   - `MainToolbar.tsx`, `TransportToolbar.tsx` — top-level toolbars (props-based, with Wired wrappers in `adapters/`).
   - `Modal.tsx`, `ProgressBar.tsx`, `Tabs.tsx`, `OnboardingBanner.tsx`, `SerialVis.tsx`, `VisLegend.tsx`, `InternalVis.tsx`.
   - `RadialMenu.tsx`, `DoubleRadialPicker.tsx`, `PickerMenu.tsx`, `HierarchicalPickerMenu.tsx`, `overlayManager.ts`.
-  - `adapters/` — imperative mount bridges via `createSolidAdapter()` (toolbars, panels, modal, picker-menu, double-radial-menu, snippets, settings, visualisation, palette, modifier-hints, gamepad-menu-bridge, visualisation-panel).
+  - `adapters/` — imperative mount bridges via `createSolidAdapter()` (toolbars, panels, modal, picker-menu, double-radial-menu, snippets, settings, visualisation, palette, modifier-hints, gamepad-menu-bridge, visualisation-panel, `liveEditPanel.tsx` for the dockable live-edit panel, `calibration.tsx` for the full-screen calibration takeover).
   - `settings/` — settings panel + per-section components (General/Editor/Theme/Visualisation/Storage/Personal/Console/UI/EvalResults/Advanced/ConfigurationManagement/Midi). Built on `FormControls.tsx`. `devmodeContext.ts` gates `level="advanced"` rows/sections behind `?devmode=true`. `MidiSettings.tsx` covers Web MIDI input enumeration + permission flow ([docs/specs/live-edit.md §5.6](docs/specs/live-edit.md)).
   - `liveEdit/` — dockable live-edit panel (`LiveEditPanel.tsx`, `LiveEditCard.tsx`) + MIDI learn UX pieces (`MidiLearnAffordance.tsx`, `MidiLearnBanner.tsx`, `MidiLearnConflict.tsx`). Pure prop-driven; the runtime-binding flow (gii8.43 follow-up) wires actual MIDI event subscriptions.
   - `calibration/` — full-screen CV 1V/oct calibration takeover (`CalibrationTakeover.tsx`, `CalibrationPicker.tsx`, `CalibrationSlider.tsx`, `CalibrationProgress.tsx`, `CalibrationCompleteBanner.tsx`) per [docs/specs/calibration.md](docs/specs/calibration.md). UI shell only; the wire-protocol-driven session state machine is gii8.60.
@@ -102,13 +111,26 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `keybindings/` — `KeybindingsPanel.tsx`, `KeyboardVisualiser.tsx`, `ActionPalette.tsx`, `ModifierHints.tsx`.
   - `console/` — `ConsolePanel.tsx` REPL/log panel + CSS.
   - `panel-chrome/` — drawer/pane/tile chrome primitives + CSS.
-  - `visualisation/` — `serialVisGL.ts` is the target WebGL2 renderer for the Superbooth push; `serialVis.ts` is legacy canvas code to remove during Phase 4's WebGL-only verification. Render hooks register via `adapters/visualisationPanel.ts`. Sampling/state live in `effects/visualisationSampler.ts` and `utils/visualisationStore.ts`.
+  - `visualisation/` — `serialVisGL.ts` (WebGL2 renderer), `webglLineRenderer.ts` (low-level WebGL line drawing). Render hooks register via `adapters/visualisationPanel.ts`. Sampling/state live in `effects/visualisationSampler.ts` and `utils/visualisationStore.ts`.
   - `styles/` — all app CSS (entry: `index.css`).
+- `src/zen/` — Zen Mode: distraction-free structural-editing practice environment. See [docs/specs/zen-mode.md](docs/specs/zen-mode.md).
+  - `index.tsx` — entry point (`isZenRoute()`, `mountZenMode()`); route: `/zen/#/{exerciseId}`.
+  - `ZenMode.tsx` — full-screen exercise container with grid/exercise view state machine.
+  - `ZenGrid.tsx` — exercise selection grid.
+  - `ZenExercise.tsx` — single exercise rendering + real-time validation.
+  - `exercises.ts` — exercise definitions and category management.
+  - `store.ts` — state store (current exercise, view mode, detected input, progress).
+  - `progress.ts` — score/progress tracking.
+  - `hints.ts` — hint generation for exercises.
+  - `validation.ts` — exercise validation logic.
+  - `sequenceTracker.ts` — input sequence tracking.
+  - `zenKeymapGuard.ts` — prevents accidental keybindings during Zen Mode.
+  - `zenNavigation.ts` — navigation/routing helpers.
 - `src/utils/` — SolidJS reactive stores and small helpers.
   - `settingsStore.ts` — reactive mirror of `appSettingsRepository`.
   - `visualisationStore.ts`, `consoleStore.ts`, `referenceStore.ts`, `snippetStore.ts`, `outputHealthStore.ts`.
-  - `geometry.ts`, `network.ts`, `sanitize.ts`.
-- `src/machines/` — XState machines. Currently `transport.machine.ts` only.
+  - `geometry.ts`, `sanitize.ts`.
+- `src/machines/` — XState machines. `transport.machine.ts` (transport state) + `test.machine.ts` (test/example machine).
 - `src/types/` — ambient declarations (`web-serial.d.ts`, `clojure-mode.d.ts`).
 - `src/build/` — build-time tests (`single-bundler.test.ts`).
 
@@ -147,6 +169,14 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - [docs/specs/keybindings.md](docs/specs/keybindings.md) — unified keybinding architecture.
 - [docs/specs/inspector.md](docs/specs/inspector.md) — Inspector design.
 - [docs/specs/user-guide.md](docs/specs/user-guide.md) — in-app user guide design.
+- [docs/specs/live-edit.md](docs/specs/live-edit.md) — live-edit wrapper forms, inline widgets, panel, MIDI learn, persistence.
+- [docs/specs/hardware-bindings.md](docs/specs/hardware-bindings.md) — hardware button/toggle binding wrapper forms, inline chip widgets, test-fire UX.
+- [docs/specs/calibration.md](docs/specs/calibration.md) — CV 1V/oct calibration full-screen takeover flow.
+- [docs/specs/structural-editing.md](docs/specs/structural-editing.md) — focus-primary ontology, Metas, holes, nav/mutate algebra.
+- [docs/specs/input-dispatch.md](docs/specs/input-dispatch.md) — command router as single chokepoint for editor-directed intents.
+- [docs/specs/radial-menu.md](docs/specs/radial-menu.md) — gamepad-driven double-ring command surface.
+- [docs/specs/zen-mode.md](docs/specs/zen-mode.md) — distraction-free structural editing practice environment.
+- [docs/specs/gamepad-handoff.md](docs/specs/gamepad-handoff.md) — gamepad pipeline rebuild status (working document).
 - [docs/BEADS_BACKEND.md](docs/BEADS_BACKEND.md) — bd / Dolt backend setup.
 - [docs/adr/](docs/adr/) — architectural decisions (`0001` runtime surfaces, `0002` config-manager scope, `0003` archive boundaries).
 - [src-useq/docs/specs/diagnostics.md](src-useq/docs/specs/diagnostics.md) — diagnostic data shapes and ABI; see [src-useq/docs/specs/failure-model.md](src-useq/docs/specs/failure-model.md) for failure semantics.

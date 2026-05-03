@@ -3,9 +3,16 @@
 > Spec: probe widgets and the syntactic from-list highlight that rides on top of them. Counterpart to [MAIN.md](MAIN.md).
 > See also [code-evaluation.md](code-evaluation.md) (eval lifecycle) and [editor.md](editor.md) (main-editor surface).
 
+### Source files
+
+- `src/editors/extensions/probes.ts` — probe CodeMirror extension, state field, widget, sampling dispatch, persistence
+- `src/editors/extensions/probeHelpers.ts` — `buildProbeExpression()`, recognised-operator set, wrapper-depth logic
+- `src/editors/extensions/inlineResults.ts` — inline result rendering surface for probe values
+- `src/editors/extensions/expressionEval.ts` — expression evaluation helpers used by probe sampling
+
 ## 1. Probes
 
-1.1 A **probe** is an inline, time-following sample widget attached to a user-marked subexpression in the main editor. It displays the value of the marked expression sampled at (and around) the current transport time, on a per-probe WebGL-backed rendering surface adjacent to the marked range.
+1.1 A **probe** is an inline, time-following sample widget attached to a user-marked subexpression in the main editor. (see `src/editors/extensions/probes.ts`) It displays the value of the marked expression sampled at (and around) the current transport time, on a per-probe WebGL-backed rendering surface adjacent to the marked range.
 
 1.2 Probes are a main-editor feature. Tutorial playgrounds may include them where pedagogically useful. Read-only secondary editors (code examples, snippet previews, theme demos) do not surface probes. Secondary editors **must not** register probes against the global visualisation store ([editor.md §1.14](editor.md)).
 
@@ -17,7 +24,7 @@
 
 1.4.2 **`raw`** samples the bare expression text at the marked range. No surrounding temporal wrappers are applied. `depth` is fixed at 0.
 
-1.4.3 **`contextual`** samples the expression with surrounding temporal wrappers (`slow`, `fast`, `offset`, `shift`) applied up to `depth` levels of `maxDepth`. `maxDepth` is the count of recognised wrappers enclosing the marked range, computed from the AST. `depth` is user-adjustable (left/right carets in the probe widget) within `[0, maxDepth]`. `depth = 0` in contextual mode is observationally equivalent to `raw`.
+1.4.3 **`contextual`** samples the expression with surrounding temporal wrappers (`slow`, `fast`, `offset`, `shift`) applied up to `depth` levels of `maxDepth`. `maxDepth` is the count of recognised wrappers enclosing the marked range, computed from the AST. `depth` is user-adjustable (left/right carets in the probe widget) within `[0, maxDepth]`. `depth = 0` in contextual mode is observationally equivalent to `raw`. (see `src/editors/extensions/probeHelpers.ts` for wrapper-depth computation)
 
 1.4.4 The probe widget displays `"raw"` or `"<depth>/<maxDepth>"` as the depth label. The right caret is disabled when `depth === maxDepth`; the left caret is disabled when `depth === 0`.
 
@@ -35,7 +42,7 @@
 
 ### 1.6 Probe sampling
 
-1.6.1 Probes are batch-sampled at `visualisation.probeRefreshIntervalMs` (default 33 ms). All active probes are gathered and dispatched together; one batch is in flight at a time per editor.
+1.6.1 Probes are batch-sampled at `visualisation.probeRefreshIntervalMs` (default 33 ms). All active probes are gathered and dispatched together; one batch is in flight at a time per editor. (see `src/editors/extensions/probes.ts` for batch dispatch)
 
 1.6.2 **Perf budget** ([MAIN.md §3.4](MAIN.md)): one WASM call per probe per tick after batching. Probes scale linearly, not multiplicatively, with sample-per-tick count.
 
@@ -45,7 +52,7 @@
 
 ### 1.7 Probe rendering
 
-1.7.1 Each probe renders on a WebGL-backed surface adjacent to the marked range. Default surface size is `DEFAULT_PROBE_CANVAS_WIDTH × DEFAULT_PROBE_CANVAS_HEIGHT`; per-probe size is adjustable at runtime.
+1.7.1 Each probe renders on a WebGL-backed surface adjacent to the marked range. (see `src/editors/extensions/inlineResults.ts`) Default surface size is `DEFAULT_PROBE_CANVAS_WIDTH × DEFAULT_PROBE_CANVAS_HEIGHT`; per-probe size is adjustable at runtime.
 
 1.7.2 Each probe has its own window duration (`windowDurationMs`). On creation it inherits from the global default (`visualisation.probeDefaultWindowDurationMs`, fallback to `DEFAULT_PROBE_WINDOW_DURATION_MS`). Once the user adjusts the per-probe window, that probe is **sticky**: it does not follow subsequent changes to the global default. Newly-created probes after a global change pick up the new default. The global default is independent of the vis-panel `visualisation.windowDuration` ([visualisation.md §1.3](visualisation.md)) — the panel and the probes are different surfaces with different time-scope intents.
 
@@ -74,7 +81,7 @@
 
 ## 2. From-List Highlights
 
-2.1 **Recognised operators (v1).** The set of indexed-list operators is currently: `from-list`, `from-flat-list`, `seq`. These are recognised syntactically — by the head symbol of the form, not by runtime introspection. The set is hardcoded in `probeHelpers.ts`; this spec is the canonical list. Adding a new indexed-list operator requires a coordinated update to both this section and the implementation. The language semantics spec ([../../src-useq/docs/specs/MAIN.md](../../src-useq/docs/specs/MAIN.md)) cites this section as a downstream consumer.
+2.1 **Recognised operators (v1).** The set of indexed-list operators is currently: `from-list`, `from-flat-list`, `seq`. These are recognised syntactically — by the head symbol of the form, not by runtime introspection. The set is hardcoded in `probeHelpers.ts` (see `src/editors/extensions/probeHelpers.ts`); this spec is the canonical list. Adding a new indexed-list operator requires a coordinated update to both this section and the implementation. The language semantics spec ([../../src-useq/docs/specs/MAIN.md](../../src-useq/docs/specs/MAIN.md)) cites this section as a downstream consumer.
 
 &nbsp;&nbsp;&nbsp;&nbsp;2.1.1 **Future direction: runtime detection.** The hardcoded operator set is a v1 simplification. The goal is to detect any phasor-indexed list access at runtime, regardless of operator name — including user-defined wrapper functions that use `seq` internally on a list visible in source code. The mechanism (builtin self-registration, WASM-side tracing, or AST analysis) is undecided. When implemented, §2.1 narrows to the fallback for cases runtime detection cannot reach.
 

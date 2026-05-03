@@ -4,6 +4,27 @@
 > See also [code-evaluation.md](code-evaluation.md) (eval lifecycle, soft eval), [editor.md](editor.md) (main-editor surface), [structural-editing.md](structural-editing.md) (Metas, structural ops), [probes.md](probes.md) (precedent for inline widgets registered against a store), [keybindings.md](keybindings.md) (action registry), [gamepad.md](gamepad.md) (input bindings).
 > Runtime/compiler counterpart: [../../src-useq/docs/specs/live-edit.md](../../src-useq/docs/specs/live-edit.md). Wire protocol: [../../src-useq/docs/specs/wire-protocol.md](../../src-useq/docs/specs/wire-protocol.md) (`set-live-inputs` / `INPUT_SET` message family).
 
+### Source files
+
+**Editor extensions:**
+- `src/editors/extensions/liveEdit/widgets.ts` — inline CodeMirror widget rendering (knob, toggle, picker, vector row)
+- `src/editors/extensions/liveEdit/markAction.ts` — `liveEdit.mark`/unmark action, wrapper insertion/removal
+- `src/editors/extensions/liveEdit/rangeInference.ts` — `:min`/`:max` range inference from seed and lexical context (§3.4)
+- `src/editors/extensions/liveEdit/vectorMarkController.ts` — vector-mark sub-mode controller (§3.7)
+- `src/editors/extensions/liveEdit/vectorMarking.ts` — vector-mark decorations and preview markers
+- `src/editors/extensions/liveEdit/widgetStoreBridge.ts` — bridge between CodeMirror widgets and the live-edit store
+
+**Effects and state:**
+- `src/effects/liveEditStore.ts` — reactive store for live-edit slots, value streaming, reconciliation
+- `src/effects/liveEditPersistence.ts` — persistence layer (localStorage, orphan GC, MIDI binding persistence)
+- `src/effects/midiInput.ts` — Web MIDI input device enumeration and message routing
+- `src/effects/midiLearnController.ts` — MIDI learn flow (per-widget and batch learn)
+- `src/effects/midiRouter.ts` — MIDI message-to-slot value routing
+
+**Contracts:**
+- `src/contracts/liveEdit.ts` — typed channels, slot types, `MidiSource` type, binding model
+- `src/contracts/midi.ts` — MIDI message types and channel contracts
+
 ---
 
 ## 1. Frame
@@ -25,7 +46,7 @@ The **source is the canonical declaration**; the **slot is the canonical current
 
 ## 2. Source Surface
 
-2.1 **Wrapper form.** A live-edit appears in source as a wrapper call:
+2.1 **Wrapper form.** A live-edit appears in source as a wrapper call: (See `src/editors/extensions/liveEdit/markAction.ts` for wrapper construction)
 
 ```lisp
 (live-edit <seed> :id <string> :min <num> :max <num>
@@ -69,7 +90,7 @@ The **source is the canonical declaration**; the **slot is the canonical current
 - **Cursor on an existing `live-edit` wrapper (in either mode)**: unmark per §3.3.
 - **Anywhere else**: no-op flash with a console toast ("live-edit not valid here: <reason>").
 
-3.2 **Marking** wraps the literal:
+3.2 **Marking** wraps the literal: (See `src/editors/extensions/liveEdit/markAction.ts`)
 1. Generate a fresh `:id` (default 4-char URL-safe random, retry on collision within the document, and against persisted-but-orphaned ids per §7.3).
 2. Infer `:min`/`:max` per §3.4. Infer `:precision` per §2.1.
 3. Replace the literal `X` with `(live-edit X :id <id> :min <m> :max <M>)`.
@@ -80,7 +101,7 @@ The **source is the canonical declaration**; the **slot is the canonical current
 1. Replace `(live-edit X :id <id> …)` with `X`.
 2. Trigger an immediate eval. The compiler frees the slot; the widget vanishes; persisted value enters orphan state (§7.3).
 
-3.4 **Range inference.** At mark-time, `:min`/`:max` are inferred from the seed and its lexical context. **Parent-head rules are checked first** — if the parent form has a recognised head, its context-specific range wins over the generic value-based rules. This is intentional: `(osc 0.5)` should get a frequency range, not the unit range, because 0.5 Hz is a valid control-rate oscillator frequency (uSEQ is control-rate only; there is no audio-rate processing in this language).
+3.4 **Range inference.** At mark-time, `:min`/`:max` are inferred from the seed and its lexical context. (See `src/editors/extensions/liveEdit/rangeInference.ts`) **Parent-head rules are checked first** — if the parent form has a recognised head, its context-specific range wins over the generic value-based rules. This is intentional: `(osc 0.5)` should get a frequency range, not the unit range, because 0.5 Hz is a valid control-rate oscillator frequency (uSEQ is control-rate only; there is no audio-rate processing in this language).
 
 | Priority | Seed                                        | Default `:min` | Default `:max`  |
 | -------- | ------------------------------------------- | -------------- | --------------- |
@@ -104,7 +125,7 @@ Inference is best-effort; the user always has the final say via the keyword args
 
 3.6 **Top-level binders are allowed.** `(define x 5)`, `let` bindings, `defstate :update` body, lambda/`defn` bodies — the literal flows into a name that may be read in signal context. Marking lifts the bound name to an input load (see [../../src-useq/docs/specs/live-edit.md §3.10](../../src-useq/docs/specs/live-edit.md) for the compiler-side rule). For a literal inside a `defn` body, all callers of the function share the slot; this is intended (one knob, many call sites) but worth noting because it differs from "one knob per call site".
 
-3.7 **Vector marking sub-mode.** When `liveEdit.mark` is pressed on a vector compound:
+3.7 **Vector marking sub-mode.** When `liveEdit.mark` is pressed on a vector compound: (See `src/editors/extensions/liveEdit/vectorMarkController.ts`, `src/editors/extensions/liveEdit/vectorMarking.ts`)
 
 3.7.1 Editor enters a transient `vector-mark` sub-mode. Each leaf-literal element of the vector receives a "preview marker" — selected (●) or deselected (○) per the setting `liveEdit.vectorMarkDefault: "all" | "none"` (default `"all"`).
 
@@ -158,7 +179,7 @@ If the user idles for ≥ `liveEdit.subModeIdleHintMs` (default 2000 ms) with no
 
 ## 4. Widget
 
-4.1 The inline widget is a CodeMirror replace decoration that hides the wrapper text and renders a control surface in its place. **Idle height is exactly the line height** so knob-turns and focus changes do not reflow surrounding code. Width adapts to the surrounding line.
+4.1 The inline widget is a CodeMirror replace decoration that hides the wrapper text and renders a control surface in its place. (See `src/editors/extensions/liveEdit/widgets.ts`) **Idle height is exactly the line height** so knob-turns and focus changes do not reflow surrounding code. Width adapts to the surrounding line.
 
 When focused (structural cursor on the widget, mouse hovering, or gamepad targeting), the widget renders an **expanded view as an overlay popover anchored above the inline widget** (or below if there is no room above). The popover does not push lines down; the document layout is invariant under focus changes. Popover dismisses when focus leaves the widget.
 
@@ -256,7 +277,7 @@ The transition is **modal**: at any moment exactly one of {editor, panel} owns g
 
 5.5 **Panel-restricted environments.** Tutorial playgrounds opting into live-edits scope their panel to the playground instance only — no cross-playground bleed. Read-only secondary editors render no widgets and contribute no rows.
 
-5.6 **Browser MIDI input.** MIDI learn is in scope for v1 as a browser-side,
+5.6 **Browser MIDI input.** (See `src/effects/midiInput.ts`, `src/contracts/midi.ts`) MIDI learn is in scope for v1 as a browser-side,
 input-only control path into live-edit slots ([MAIN.md §4.2](MAIN.md)). The
 editor enumerates Web MIDI input devices, lets the user bind CC/note messages
 to live-edit slot ids, maps incoming values into the slot's range, and routes
@@ -264,7 +285,7 @@ the resulting value through the same `set-live-inputs` path as mouse,
 keyboard, panel, and gamepad control. MIDI output, MIDI clock, sysex, OSC, and
 firmware-side MIDI are out of scope.
 
-5.7 **MIDI binding model.** A binding pairs a live-edit `:id` with a MIDI source descriptor:
+5.7 **MIDI binding model.** A binding pairs a live-edit `:id` with a MIDI source descriptor: (See `src/contracts/liveEdit.ts`, `src/effects/midiRouter.ts`)
 
 ```ts
 type MidiSource =
@@ -278,7 +299,7 @@ type MidiSource =
 
 One slot ↔ at most one binding (v1). Many-to-one (one CC drives many slots) is **not** supported in v1; see §5.10 for conflict resolution and §11.9 for the deferred macro-link feature.
 
-5.8 **MIDI learn flow.**
+5.8 **MIDI learn flow.** (See `src/effects/midiLearnController.ts`)
 
 5.8.1 **Per-widget learn (primary path).** Each panel card has a learn icon (`◉ LRN` or jack glyph) in its action-affordance row. Clicking the icon arms that one card:
 - The card's border begins pulsing at 1 Hz in an accent colour (the `listening` widget state, §4.3).
@@ -314,7 +335,7 @@ This matches the Ableton Live / Bitwig default and minimises performance frictio
 
 ---
 
-## 6. Commit and Lifecycle Actions
+## 6. Commit and Lifecycle Actions (see `src/effects/liveEditStore.ts`, `src/editors/extensions/liveEdit/widgetStoreBridge.ts`)
 
 6.1 **`liveEdit.commit`** (single-action bake-in):
 1. Snapshot the current value from the slot.
@@ -341,7 +362,7 @@ If multiple cursors target multiple live-edits, commit applies pointwise per [st
 
 ---
 
-## 7. Persistence
+## 7. Persistence (see `src/effects/liveEditPersistence.ts`, `src/lib/persistence.ts`)
 
 7.1 **Storage key.** `uSEQ-Perform-Editor-LiveEdits` (per [persistence.md](persistence.md)).
 

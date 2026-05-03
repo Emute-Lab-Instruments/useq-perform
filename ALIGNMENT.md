@@ -5,33 +5,31 @@ future. Counterpart to `MAP.md` ("what is"); this file is "how good is what is,
 vs. what we need". Pruned ruthlessly. If an entry crystallises into "fix now",
 promote it to a bead and delete it from here.
 
-Last full pass: **2026-04-29**.
+Last full pass: **2026-05-03**.
 
 ---
 
-## Active push (Press Fire) — *complete, 2026-04-29*
+## Active push (Superbooth 2026) — *near-complete, 2026-05-03*
 
-All six original streams landed across two waves of parallel agents:
+Epic `useq-perform-gii8`: 59 of 67 issues closed across 7 phases.
 
-- **A1 — Visualisation consolidation** (`useq-perform-7hs`). Single
-  `visualisationRuntime` owner; one rAF loop; one coalescing slot.
-- **A2 — Off-main-thread WASM** (`useq-perform-d5r` probe batching,
-  `useq-perform-nri` worker move). 40× call reduction + opt-in worker.
-- **B — WebGL renderer** (`useq-perform-cqw`). Alternative
-  `VisualisationRenderHook`; devmode-gated.
-- **C — Hardware-mode test coverage** (`useq-perform-ln3`). 22 new
-  lifecycle tests; paths 1–6 covered.
-- **D — Settings reorg + doc sweep + serial-wait fix**
-  (`useq-perform-9gu`, `-3yw`, `-vig`). devmode split, map/stable-core
-  docs pruned, observed-readiness probe replaces 3500ms wait.
-- **F — WASM-mode protocol parity** (`useq-perform-6cf` typed runtime
-  ports, `useq-perform-pcx` JSON parity). Hardware and WASM share the same
-  port abstraction and the same `hello` / `stream-config` / `eval` /
-  `ping` shapes via `runtime/wasmJsonTransport.ts`.
+**Landed:**
+- **Phase 0** — Preflight: WASM diagnostics, persistence, DI, connection mutex, doc sweep.
+- **Phase 1** — Foundation: vis investigation, firmware capability discovery, gamepad pipeline cutover, worker-default.
+- **Phase 2** — Structural editing rewrite: pure functional core (Tree, CursorSet), adapter layer, holes, eval gates, numpad entry, gamepad/zen dispatch.
+- **Phase 3** — Live-edit + MIDI: inline widgets (knob/slider/toggle/picker), dockable panel, marking flow, vector marking, MIDI learn, CC routing.
+- **Phase 5** — Hardware: button/toggle bindings, inline chip widgets, CV calibration takeover.
+- **gii8.67** — Vis projection-fork pipeline: 14 bug fixes from audit.
 
-Outside the active push, the User Guide content beads (`useq-perform-2i1`,
-`-6ej`, `protocol-gr4`) continue per `docs/USER_GUIDE_SPEC.md` as their
-own independent track.
+**Remaining (8 issues):**
+- `gii8.32` — Verification doc backfill (mostly done, 69/70 rows pass).
+- `gii8.47` — Vis stutter (Phase 4.1). Original stutter fixed; 9 vis pipeline commits since. Needs re-verification.
+- `gii8.50` — Probe oscilloscope UX pass (keybinding, dismissal, multi-probe).
+- `gii8.52` — Phase 4 verification gate.
+- `gii8.63` — Public-build cold-cache smoke pass. Build/typecheck/lint all clean.
+- `gii8.64` — Doc refresh (MAP.md and MAIN.md updated).
+- `gii8.65` — Demo runbook (needs user input).
+- `gii8.66` — Phase 6 verification gate.
 
 ---
 
@@ -102,24 +100,17 @@ when that issue starts.
 
 **Cost.** S each for the three follow-up workstreams above.
 
-### 3. Visualisation must finish the WebGL-only cutover *(2026-05-02)*
+### 3. Visualisation WebGL-only cutover — mostly done *(2026-05-03)*
 
-**What.** The Superbooth epic makes WebGL the only supported visualisation
-renderer. `src/ui/visualisation/serialVisGL.ts` is the path to keep;
-`serialVis.ts` and per-probe 2D canvas painters are legacy surfaces to remove
-or replace during Phase 4.
+**What.** WebGL is now the primary vis renderer. `serialVisGL.ts` is the
+production path with projection-fork pipeline, adaptive quality, and
+pixel-matched sampling. Probe oscilloscope also renders via WebGL (gii8.49).
 
-**Why it blocks the mission.** Even with a perfect VM and an off-thread
-sampler, a CPU path tracer caps perceived smoothness around the same channel
-count. A WebGL renderer is independent work that can land in parallel and
-both halve render cost and free CPU for sampling.
+**Status.** Core pipeline landed. Remaining: stutter re-verification (gii8.47),
+probe UX pass (gii8.50), and Phase 4 gate (gii8.52). Canvas-2D fallback
+removal may still need a final sweep.
 
-**Status.** `bd useq-perform-cqw` landed the WebGL2 painter. Phase 4 of
-`useq-perform-gii8` owns the remaining work: stutter fix, probe WebGL, removal
-of canvas fallback, and WebGL-only verification.
-
-**Cost.** M-L (single shader path for analog lanes, separate digital-lane
-path; the data already arrives as `Float64Array` so most plumbing is done).
+**Cost.** S (mostly verification + UX polish).
 
 ### 4. Hardware-path test coverage gaps remain around timing + WASM parity *(2026-04-29)*
 

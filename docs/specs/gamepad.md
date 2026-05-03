@@ -5,6 +5,22 @@
 >
 > This spec defines what gamepad input *means*. Concrete button-to-action assignments live in **bindings** (§4) and ship as **paradigms** (§6) the user can swap, edit, or replace.
 
+### Source files
+
+- `src/lib/gamepad/types.ts` — type definitions (LogicalEvent, Gesture, AxisFrame, Layer, Resolution, DualBinding, GamepadState, AppStateSnapshot)
+- `src/lib/gamepad/gestures.ts` — smart constructors (`tap`, `hold`, `chord`, `flick`, ...) and `keyOf` canonicalisation
+- `src/lib/gamepad/recognizer.ts` — Stage 2: `step`, `flush`, `recognize` (LogicalEvent[] to Gesture[] + AxisFrame[])
+- `src/lib/gamepad/resolver.ts` — Stage 3: `activeStack`, `resolveGesture`, `resolveAxis`, `lintBindings`
+- `src/lib/gamepad/dispatcher.ts` — eager-with-undo dispatch, action firing, layer push/pop, store mutation
+- `src/lib/gamepad/hardware.ts` — Stage 1: snapshot diffing (`diffSnapshots`) to LogicalEvent[]
+- `src/lib/gamepad/index.ts` — full pipeline wiring: `createGamepadPipeline()`, re-exports
+- `src/lib/gamepad/paradigms/` — paradigm files: `modal-shift.ts`, `leader.ts`, `hydra.ts`, `chord-heavy.ts`, `picker.ts`
+- `src/lib/gamepad/gamepadManager.ts` — low-level Gamepad API polling
+- `src/contracts/gamepadChannels.ts` — axis channel registry and typed gamepad channels
+- `src/lib/keybindings/actions.ts` — `ActionDef.reversible`, `ReversibleActionId`, `NonReversibleActionId`
+- `src/editors/gamepadNavigation.ts` — gamepad-to-editor navigation bridge
+- `src/editors/extensions/structure/adapter/gamepadBridge.ts` — gamepad-to-structural-editing bridge
+
 ---
 
 ## 1. Frame
@@ -23,7 +39,7 @@
 
 1.4 Type safety is the priority. Every gesture, every binding entry, every action ID is statically typed. Impossible bindings (e.g. binding a non-reversible action as a `tap` when there is also a `hold` on the same button — see §5) are rejected at compile time. String keys exist only as derived canonical lookup keys (§4.4); the source of truth is always the discriminated union.
 
-1.5 Gamepad disconnect MUST NOT crash the app. The poller silently no-ops while no gamepad is connected; reconnect is detected automatically (existing `gamepadManager.ts` behaviour, preserved).
+1.5 Gamepad disconnect MUST NOT crash the app. The poller silently no-ops while no gamepad is connected; reconnect is detected automatically (existing `gamepadManager.ts` behaviour, preserved). (see `src/lib/gamepad/gamepadManager.ts`)
 
 1.6 Polling cadence: ~50 ms for snapshot reads from the Gamepad API. Gestures and axis frames are emitted at this cadence; downstream consumers MAY throttle their own work.
 
@@ -31,19 +47,19 @@
 
 ## 2. Roles of the three stages
 
-2.1 **Stage 1 — Logical input.** Reads `Gamepad` API state at the polling cadence; emits a normalised, monotonically-timestamped `LogicalEvent[]` stream. Applies deadzone and button-press thresholds. No knowledge of bindings, layers, or app state.
+2.1 **Stage 1 — Logical input.** Reads `Gamepad` API state at the polling cadence; emits a normalised, monotonically-timestamped `LogicalEvent[]` stream. Applies deadzone and button-press thresholds. No knowledge of bindings, layers, or app state. (see `src/lib/gamepad/hardware.ts`)
 
-2.2 **Stage 2 — Recognition.** Consumes `LogicalEvent[]` and emits two parallel streams: a discrete `Gesture[]` (taps, holds, helds, double-taps, chords, flicks) and a continuous `AxisFrame[]` (live stick positions). Recognition is a pure state machine: `(RecognizerState, LogicalEvent) → (RecognizerState, Gesture[], AxisFrame[])`. The state contains only timer cursors and pressed-button bookkeeping; no app state.
+2.2 **Stage 2 — Recognition.** Consumes `LogicalEvent[]` and emits two parallel streams: a discrete `Gesture[]` (taps, holds, helds, double-taps, chords, flicks) and a continuous `AxisFrame[]` (live stick positions). Recognition is a pure state machine: `(RecognizerState, LogicalEvent) → (RecognizerState, Gesture[], AxisFrame[])`. The state contains only timer cursors and pressed-button bookkeeping; no app state. (see `src/lib/gamepad/recognizer.ts`)
 
-2.3 **Stage 3 — Resolution.** Maps each `Gesture` (or `AxisFrame`) against the **layer stack** to produce an `ActionId` (or an axis-channel publication, or a transient-layer push). Layers are evaluated top-down; the first matching layer wins. Resolution is a pure function over `(Gesture, AppState, Layer[]) → Resolution`.
+2.3 **Stage 3 — Resolution.** Maps each `Gesture` (or `AxisFrame`) against the **layer stack** to produce an `ActionId` (or an axis-channel publication, or a transient-layer push). Layers are evaluated top-down; the first matching layer wins. Resolution is a pure function over `(Gesture, AppState, Layer[]) → Resolution`. (see `src/lib/gamepad/resolver.ts`)
 
-2.4 The **dispatcher** (separate from resolution) actually fires actions, manages the eager-with-undo timing for dual-bound buttons, and mutates the gamepad state store. It is the only impure component.
+2.4 The **dispatcher** (separate from resolution) actually fires actions, manages the eager-with-undo timing for dual-bound buttons, and mutates the gamepad state store. It is the only impure component. (see `src/lib/gamepad/dispatcher.ts`)
 
 ---
 
 ## 3. Ontology
 
-### 3.1 LogicalEvent
+### 3.1 LogicalEvent (see `src/lib/gamepad/types.ts`)
 
 ```ts
 type ButtonName =
@@ -69,7 +85,7 @@ Stage 1 combines the two raw axes of each stick into a single 2D `axis` event. T
 
 3.1.3 Axis events fire at every poll where either the deadzone-filtered `x` or `y` value differs from the previous poll. A return to centre emits an axis event with `(0, 0)`.
 
-### 3.2 Gesture
+### 3.2 Gesture (see `src/lib/gamepad/types.ts`, `src/lib/gamepad/gestures.ts`)
 
 ```ts
 type Direction = 'up' | 'down' | 'left' | 'right'
@@ -99,7 +115,7 @@ type Gesture =
 
 3.2.8 Sequences / leaders are **not** a gesture variant. They are implemented as transient layer activations (§4.5). This keeps the gesture vocabulary closed and small.
 
-### 3.3 AxisFrame
+### 3.3 AxisFrame (see `src/lib/gamepad/types.ts`)
 
 ```ts
 type AxisFrame = {
@@ -120,7 +136,7 @@ type AxisFrame = {
 
 ## 4. Bindings and layers
 
-### 4.1 The layer stack
+### 4.1 The layer stack (see `src/lib/gamepad/resolver.ts` — `activeStack`)
 
 4.1.1 At every moment the system has an ordered **layer stack**. To resolve a gesture, the system walks the stack from top to bottom; the first layer that binds the gesture wins. If no layer binds it, the gesture is silently dropped (or, for transient layers, the layer's `onMiss` policy fires — §4.7).
 
@@ -139,7 +155,7 @@ function activeStack(state: AppState, layers: Layer[]): Layer[] {
 
 Transient layers always sit above predicate-driven layers; within each group the order is the declaration order.
 
-### 4.2 Layer
+### 4.2 Layer (see `src/lib/gamepad/types.ts`)
 
 ```ts
 type LayerName = string  // branded; nominal type via declarations
@@ -162,7 +178,7 @@ type Layer = {
 
 4.2.3 Layer names are unique. Pushing a transient layer whose name is already on the stack is a no-op (the existing instance keeps its TTL).
 
-### 4.3 Gesture bindings
+### 4.3 Gesture bindings (see `src/lib/gamepad/types.ts`, `src/lib/gamepad/gestures.ts`)
 
 ```ts
 type GestureKey = string  // branded; produced by keyOf(gesture)
@@ -196,9 +212,9 @@ const structuralLayer: Layer = {
 
 4.3.2 The value of a binding is either an `ActionId` (single-action binding, fires on whichever recognition rule matched) or a `DualBinding` record (separate actions for `tap` / `hold` / `held` on the same button — see §5). When the recognizer emits e.g. `hold('A')` and the matched binding is a `DualBinding`, the system uses `binding.hold`. When the binding is a plain `ActionId`, the system fires that action regardless of which recognition variant produced the gesture.
 
-4.3.3 The `keyOf` function and `tap` / `hold` / etc. constructors live in `src/lib/gamepad/gestures.ts`. They produce typed `Gesture` values whose canonical key form is stable across runs.
+4.3.3 The `keyOf` function and `tap` / `hold` / etc. constructors live in `src/lib/gamepad/gestures.ts`. They produce typed `Gesture` values whose canonical key form is stable across runs. (see `src/lib/gamepad/gestures.ts`)
 
-### 4.4 GestureKey canonicalisation
+### 4.4 GestureKey canonicalisation (see `src/lib/gamepad/gestures.ts` — `keyOf`)
 
 4.4.1 `keyOf` produces a deterministic string from any `Gesture`:
 
@@ -260,11 +276,11 @@ type AxisBindings = Readonly<Partial<Record<'left' | 'right', AxisChannelName>>>
 
 4.6.2 At every poll, for each stick, the system looks up the topmost active layer that binds that stick and publishes the `AxisFrame` to that channel. Layers below are not consulted for the same stick. If no active layer binds the stick, the frame is dropped.
 
-4.6.3 Axis channels are typed `TypedChannel<AxisFrame>` instances registered in `src/contracts/gamepadChannels.ts`. Subsystems (manual-control, radial picker, scrub) subscribe by channel name. Adding a new channel requires extending the `AxisChannelName` literal union and registering a channel instance — both centralised, both type-checked.
+4.6.3 Axis channels are typed `TypedChannel<AxisFrame>` instances registered in `src/contracts/gamepadChannels.ts`. Subsystems (manual-control, radial picker, scrub) subscribe by channel name. Adding a new channel requires extending the `AxisChannelName` literal union and registering a channel instance — both centralised, both type-checked. (see `src/contracts/gamepadChannels.ts`)
 
 4.6.4 Axis bindings have **no** `tap`/`hold` / eager-with-undo concerns. They are continuous and fire-and-forget.
 
-### 4.7 Pop policies and miss handling
+### 4.7 Pop policies and miss handling (see `src/lib/gamepad/types.ts`, `src/lib/gamepad/resolver.ts`)
 
 4.7.1 `PopPolicy` is the discriminator on **why** a transient layer ends. Multiple policies can apply to one layer; any one of them firing pops the layer.
 
@@ -316,7 +332,7 @@ type MissPolicy =
 
 ## 5. Eager-with-undo dispatch
 
-### 5.1 Reversibility
+### 5.1 Reversibility (see `src/lib/keybindings/actions.ts`)
 
 5.1.1 Every action has a **reversibility** classification:
 
@@ -347,9 +363,9 @@ type ActionId             = ReversibleActionId | NonReversibleActionId
 
 5.1.2 An action is **reversible** if and only if invoking it pushes exactly one entry onto the editor's undo stack, such that calling `editor.undo()` returns the document and cursor set to the pre-invocation state. The `reversibleActions` list is the type-level source of truth.
 
-5.1.3 The action registry (`src/lib/keybindings/actions.ts`) carries this classification per entry. The literal-union types are derived from the registry; adding an action requires updating the registry and recompiling.
+5.1.3 The action registry carries this classification per entry. The literal-union types are derived from the registry; adding an action requires updating the registry and recompiling. (see `src/lib/keybindings/actions.ts`)
 
-### 5.2 Tap commitment timing
+### 5.2 Tap commitment timing (see `src/lib/gamepad/dispatcher.ts`)
 
 5.2.1 When `tap` on a button has **no** `hold` and **no** `doubleTap` peer in the matched layer, tap commits **eagerly on press**. Zero perceived latency for the common case.
 
@@ -365,7 +381,7 @@ type ActionId             = ReversibleActionId | NonReversibleActionId
 
 5.2.5 `held` (auto-repeat) and `hold` are mutually exclusive per button (§3.2.3). When `tap` has a `held` peer, the recognizer fires `tap` eagerly on press, then begins emitting `held` ticks after the initial repeat delay. The tap action is **not** rolled back when `held` fires — they are intended to dispatch *the same* underlying user intent (e.g. `nav.next` on both tap and held, where the held repeats are simply more of the same action). If the dual binding has a different action for `held` than for `tap`, the user must accept that both actions fire.
 
-### 5.3 Action dispatch
+### 5.3 Action dispatch (see `src/lib/gamepad/dispatcher.ts`)
 
 5.3.1 The dispatcher is the single component allowed to mutate state. It receives `Resolution` records from Stage 3 and:
 - Dispatches actions through the existing action runner (which routes to the runtime, editor, etc.).
@@ -379,9 +395,9 @@ type ActionId             = ReversibleActionId | NonReversibleActionId
 
 ## 6. Paradigms (informative)
 
-This section sketches four ready-made binding setups. They are *examples* — the user is expected to fork, mix, and mutate them. Each is a separate file under `src/lib/gamepad/paradigms/` and exports a `Layer[]`.
+This section sketches four ready-made binding setups. They are *examples* — the user is expected to fork, mix, and mutate them. Each is a separate file under `src/lib/gamepad/paradigms/` and exports a `Layer[]`. (see `src/lib/gamepad/paradigms/`)
 
-### 6.1 Modal-shift
+### 6.1 Modal-shift (see `src/lib/gamepad/paradigms/modal-shift.ts`)
 
 > `LB` and `RB` (held) act as keyboard-style modifier keys. The default layer covers ~14 buttons; each shift doubles the vocabulary. Tap-only on most buttons; one or two `tap+hold` pairs for power moves.
 
@@ -417,7 +433,7 @@ const lbShifted: Layer = {
 
 Layer order in the stack: `modal-lb` (or `modal-rb`, `modal-lb-rb`) above `modal-base`. The `LB`-button itself binds nothing on `modal-base` — its sole role is to shift the layer.
 
-### 6.2 Leader (vim)
+### 6.2 Leader (vim) (see `src/lib/gamepad/paradigms/leader.ts`)
 
 > A small set of "leader" buttons (here `tap('Y')`) opens a transient layer whose first match fires and pops. Maximises vocabulary on a small button surface; adds latency for leader-prefixed actions.
 
@@ -446,7 +462,7 @@ const afterY: Layer = {
 
 Recursive nesting (a leader inside `after-Y` opening a deeper layer) is supported by giving `after-Y` its own `leaders:` section.
 
-### 6.3 Hydra (Emacs)
+### 6.3 Hydra (Emacs) (see `src/lib/gamepad/paradigms/hydra.ts`)
 
 > A leader opens a "sticky" layer: bound gestures keep firing, the layer survives, and only an unbound gesture (or explicit cancel / timeout) pops it. Designed for repeated operations in close succession (e.g. nudging a value, slurping repeatedly).
 
@@ -468,7 +484,7 @@ const hydraSlurp: Layer = {
 
 Triggered from a base layer with `leaders: { [keyOf(tap('LeftStickPress'))]: 'hydra-slurp' }`. The user can hammer `Right` repeatedly without re-pressing the leader.
 
-### 6.4 Chord-heavy
+### 6.4 Chord-heavy (see `src/lib/gamepad/paradigms/chord-heavy.ts`)
 
 > Most operations are 2-button chords. No layer-shifting, no leaders, no `held`-vs-`hold` ambiguity. Steep learning curve; fast once internalised; entirely flat resolution.
 
@@ -490,7 +506,7 @@ const chordLayer: Layer = {
 }
 ```
 
-### 6.5 Picker layer (always present)
+### 6.5 Picker layer (always present) (see `src/lib/gamepad/paradigms/picker.ts`)
 
 > Ships orthogonal to whichever of 6.1–6.4 the user picks. Activates declaratively whenever a menu or radial picker is open; binds gestures to `picker.*` actions. Same actions are bindable on the keyboard.
 
@@ -521,7 +537,7 @@ The picker layer sits at the top of the predicate-driven stack when active, mask
 
 ## 7. State
 
-### 7.1 The gamepad state store
+### 7.1 The gamepad state store (see `src/lib/gamepad/types.ts` — `GamepadState`)
 
 ```ts
 // src/lib/gamepad/store.ts

@@ -4,6 +4,18 @@
 > Run `npm run dev` and open the app. Connect a gamepad (Xbox/PS layout).
 > Test each section below. If the gamepad isn't available, many actions have keyboard equivalents noted.
 
+### Source files
+
+- `src/lib/gamepad/index.ts` — `createGamepadPipeline()` (the pipeline under test)
+- `src/lib/gamepad/hardware.ts` — Stage 1 hardware polling adapter
+- `src/lib/gamepad/gamepadManager.ts` — low-level Gamepad API polling
+- `src/lib/gamepad/paradigms/modal-shift.ts` — default paradigm tested here
+- `src/lib/gamepad/paradigms/picker.ts` — picker layer active during menu tests
+- `src/contracts/gamepadChannels.ts` — typed channels (subscribe in console for debugging)
+- `src/editors/gamepadNavigation.ts` — editor navigation from gamepad intents
+- `src/editors/extensions/structure/adapter/gamepadBridge.ts` — structural editing bridge
+- `src/ui/adapters/gamepadMenuBridge.ts` — picker/menu bridge
+
 ---
 
 ## Prerequisites
@@ -20,7 +32,7 @@
 
 ---
 
-## 1. Basic navigation (D-pad)
+## 1. Basic navigation (D-pad) (see `src/editors/gamepadNavigation.ts`)
 
 | Action | Gamepad | Expected |
 |--------|---------|----------|
@@ -65,7 +77,7 @@
 
 **Test**: Place cursor on a number like `3` inside the list, press Y. The number should be deleted.
 
-## 6. Menu system
+## 6. Menu system (see `src/ui/adapters/gamepadMenuBridge.ts`, `src/lib/gamepad/paradigms/picker.ts`)
 
 | Action | Gamepad | Expected |
 |--------|---------|----------|
@@ -94,7 +106,7 @@
 
 **Test**: Press left stick in, then move it — check if number at cursor changes (if manual control is active).
 
-## 8. LB-shifted layer (structural editing)
+## 8. LB-shifted layer (structural editing) (see `src/lib/gamepad/paradigms/modal-shift.ts`, `src/editors/extensions/structure/adapter/gamepadBridge.ts`)
 
 Hold LB, then press:
 
@@ -122,7 +134,7 @@ Hold RB, then press:
 | RB + Start | Soft eval | Evaluates in soft mode |
 | RB + Back | Redo | Redo last undo |
 
-## 10. Regression checks
+## 10. Regression checks (see `src/lib/gamepad/gamepadManager.ts` for disconnect handling)
 
 | Check | Expected |
 |-------|----------|
@@ -133,7 +145,7 @@ Hold RB, then press:
 
 ---
 
-## Console debugging
+## Console debugging (see `src/contracts/gamepadChannels.ts`)
 
 Open browser devtools console. The pipeline publishes to typed channels — you can verify by subscribing:
 

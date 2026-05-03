@@ -4,6 +4,13 @@
 > See also [live-edit.md](live-edit.md) (precedent for in-source wrapper forms with inline widgets), [structural-editing.md](structural-editing.md) (Metas, structural ops), [code-evaluation.md](code-evaluation.md) (eval lifecycle), [keybindings.md](keybindings.md) (action registry).
 > Firmware counterpart: [../../src-useq/docs/specs/inputs.md](../../src-useq/docs/specs/inputs.md) (hardware input surface — `swm`/`swt`/`swr`/`rot`).
 
+### Source files
+
+- `src/editors/extensions/hardwareBinding/chipWidget.ts` — inline chip widget (CodeMirror decoration: glyph, label, status dot, test-fire, lifecycle indicator)
+- `src/effects/hardwareBindingDispatcher.ts` — runtime dispatcher (edge detection, eval queue, hold-phase coalescing, test-fire bridge)
+- `src/contracts/hardwareChannels.ts` — typed channels for hardware binding events
+- `src/contracts/hardware.ts` — hardware binding types, input-id definitions, variant validation
+
 ---
 
 ## 1. Frame
@@ -95,7 +102,7 @@ A second wrapper for the same `(event, input)` pair is a compile-time error ("`:
 
 ## 3. Inline Visual Surface
 
-3.1 **Folded chip.** A bound form renders inline as a compact chip with three elements:
+3.1 **Folded chip** (see `src/editors/extensions/hardwareBinding/chipWidget.ts`). A bound form renders inline as a compact chip with three elements:
 
 - **Button glyph** (`▇` or a small icon picked per input kind: button, toggle, encoder, gate). Identifies the input *kind* visually.
 - **Input id** (`:sw1`, `:swr`). The label.
@@ -126,14 +133,14 @@ The chip is line-height tall (no popover-on-focus expansion — unlike live-edit
 
 ## 4. Runtime Semantics
 
-4.1 **Eval dispatch.** When an event fires (real hardware press, or test-fire — §5), the editor:
+4.1 **Eval dispatch** (see `src/effects/hardwareBindingDispatcher.ts`). When an event fires (real hardware press, or test-fire -- §5), the editor:
 1. Looks up the binding for `(event, input-id)` in the compiled program's binding table.
 2. Submits the bound expression to the runtime as a top-level eval (immediate strategy; see [code-evaluation.md](code-evaluation.md)).
 3. Treats the result as discarded and any diagnostic as a per-binding error (§3.6).
 
-4.2 **Edge detection.** The editor maintains the previous state of each bound input from the existing visualisation/sample stream (or a dedicated state stream if vis is off). Edges are detected client-side; `on-press`/`on-release`/`on-toggle` fire on the editor's UI tick that observes the transition. The exact wire path is an implementation detail; a future firmware-side push of edge events ([MAIN.md §5.2](MAIN.md)) is a possible optimisation but not required by this spec.
+4.2 **Edge detection** (see `src/effects/hardwareBindingDispatcher.ts`). The editor maintains the previous state of each bound input from the existing visualisation/sample stream (or a dedicated state stream if vis is off). Edges are detected client-side; `on-press`/`on-release`/`on-toggle` fire on the editor's UI tick that observes the transition. The exact wire path is an implementation detail; a future firmware-side push of edge events ([MAIN.md §5.2](MAIN.md)) is a possible optimisation but not required by this spec.
 
-4.3 **Re-trigger queue.** Each binding has an independent FIFO eval queue:
+4.3 **Re-trigger queue** (see `src/effects/hardwareBindingDispatcher.ts`). Each binding has an independent FIFO eval queue:
 - Default depth: `4` (setting `hardware.bindingQueueDepth`, §6.3).
 - A press with no eval in flight starts evaluating immediately.
 - A press while an eval is in flight is queued.

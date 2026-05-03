@@ -4,7 +4,20 @@ Design specification for the unified uSEQ Perform user guide. This replaces the 
 
 ## Status
 
-**Draft specification** — not yet implemented. This document describes the target architecture, content structure, interaction design, and implementation plan.
+**Draft specification** — partially implemented. This document describes the target architecture, content structure, interaction design, and implementation plan.
+
+### Source files (current implementation)
+
+- `src/ui/help/guide/GuideTab.tsx` — guide tab container (chapter navigation, domain grouping)
+- `src/ui/help/guide/GuideSection.tsx` — collapsible guide section component
+- `src/ui/help/guide/Playground.tsx` — interactive playground (editor + probe, draggable)
+- `src/ui/help/guide/LiveProbe.tsx` — live WASM-evaluated probe for playgrounds
+- `src/ui/help/guide/guideData.ts` — guide content data assembly
+- `src/ui/help/guide/guideTypes.ts` — guide data model types (Chapter, Section, ContentBlock, Playground, etc.)
+- `src/ui/help/guide/contentBlocks.tsx` — content block renderers (prose, playground, deep-dive, try-it)
+- `src/ui/help/guide/chapters/` — chapter content files: `ch1-language.ts`, `ch2-algebra.ts`, `ch3-modulation.ts`, `ch4-rhythm.ts`, `ch5-editor.ts`
+- `src/lib/helpContentPreloader.ts` — eager preload of guide content
+- `src/runtime/wasmInterpreter.ts` — `evalOutputAtTime()` used by live probes
 
 ---
 
@@ -330,7 +343,7 @@ This is the conceptual heart of the guide. Each section follows the pattern: ana
 
 ### Playground Component
 
-Each code example is rendered as a **playground** — a self-contained interactive unit:
+Each code example is rendered as a **playground** (see `src/ui/help/guide/Playground.tsx`) — a self-contained interactive unit:
 
 ```
 ┌─ annotation ──────────────────────────── ⠿ drag ─┐
@@ -348,7 +361,7 @@ Each code example is rendered as a **playground** — a self-contained interacti
 
 ### Live Probe Architecture
 
-Each playground maintains a small evaluation loop:
+Each playground maintains a small evaluation loop (see `src/ui/help/guide/LiveProbe.tsx`, `src/runtime/wasmInterpreter.ts`):
 
 1. Editor content changes → debounce 300ms
 2. Extract output expressions from code (parse for `(a1 ...)`, `(d1 ...)` etc.)
@@ -422,6 +435,8 @@ Playgrounds (CodeMirror editors + MiniVis canvases) are **only mounted when scro
 
 ### Data Model
 
+Types defined in `src/ui/help/guide/guideTypes.ts`:
+
 ```typescript
 type GuideDomain = "language" | "editor";
 
@@ -465,6 +480,8 @@ interface VisSignal {
 ```
 
 ### Component Hierarchy
+
+Component tree rooted in `src/ui/help/guide/GuideTab.tsx`:
 
 ```
 GuideTab                    (replaces LessonsTab + UserGuideTab)

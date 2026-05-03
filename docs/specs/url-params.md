@@ -2,7 +2,15 @@
 
 > Spec: bootstrap URL parameters and their precedence. Counterpart to [MAIN.md](MAIN.md).
 
-1.1 URL parameters are the **highest-precedence configuration source**, above persisted settings and product defaults.
+### Source files
+
+- `src/runtime/startupContext.ts` — reads and parses URL params into `startupFlags`/`startupFlags.params`
+- `src/lib/persistence.ts` — `?nosave` integration (silent no-op writes)
+- `src/runtime/bootstrap.ts` — applies URL-param overrides during bootstrap
+
+---
+
+1.1 URL parameters are the **highest-precedence configuration source**, above persisted settings and product defaults (see `src/runtime/startupContext.ts`).
 
 1.2 The bootstrap-contract URL params are:
 - `?config=<url>` — fetch and apply a config JSON before normal startup;
@@ -17,6 +25,6 @@
 
 1.4 An unknown URL param is **stored in `startupFlags.params` but is not an error**. Future params may be added; old bundles must not crash on encountering them.
 
-1.5 `?nosave` makes every persistence write a silent no-op, including auto-save and the dismiss flag for the onboarding banner. Reads still succeed against any pre-existing localStorage state (see [persistence.md §1.7](persistence.md)).
+1.5 `?nosave` makes every persistence write a silent no-op, including auto-save and the dismiss flag for the onboarding banner (see `src/lib/persistence.ts`). Reads still succeed against any pre-existing localStorage state (see [persistence.md §1.7](persistence.md)).
 
 1.6 Removal/rename of any param in §1.2 is a compatibility break and must be treated as a major version concern.

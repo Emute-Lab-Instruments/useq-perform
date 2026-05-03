@@ -29,15 +29,35 @@ Build outputs:
 
 ## Testing
 
-Three test suites are maintained:
+The app uses two test styles: JS/TS tests and YAML command-scenario tests.
+Both are first-class tests; there is no legacy/non-legacy split.
 
-- `npm run test:mocha` - Mocha/Chai tests in `test/**/*.mjs`
-- `npm run test:unit` - Vitest unit project
+- `npm run test:mocha` - Mocha/Chai JavaScript integration tests in `test/**/*.mjs`, including the structural YAML runner.
+- `npm run test:unit` - Vitest unit/component tests.
 - `npm run test:contracts` - Vitest contract tests (runtime, UI, transport)
 - `npm run test:all` / `npm test` - all suites
 - `npm run typecheck` - TypeScript type checking
 
 Storybook stories are also exercised through the Vitest Storybook project in Vite config.
+
+JS/TS tests (`*.test.ts`, `*.test.tsx`, `test/**/*.mjs`) are best for module
+behaviour, contracts, component rendering, async effects, runtime/transport
+boundaries, and focused executable assertions.
+
+### Structural YAML Regression Tests
+
+The files under `test/new_structural/*.yaml` are a living bug-capture and
+semantic-refinement suite. They are best for data-driven editor command
+scenarios: command sequences, cursor/focus movement, source edits, and
+bug-capture cases that should be easy for agents to extend. When a user reports
+or discovers an editor command bug, prefer adding the smallest YAML case that
+demonstrates the desired behaviour before or alongside the fix.
+
+Failing YAML rows are not automatically stale expectations. They may mean the
+implementation is wrong, the intended semantics have just been refined, or the
+spec needs to be updated. Treat each failure as evidence to triage against
+`docs/specs/structural-editing.md`, `docs/specs/editor.md`, and the current
+command-router behaviour before changing or retiring the row.
 
 ## CI
 

@@ -4,6 +4,22 @@ This document is the editor-facing contract for the firmware and WASM runtimes t
 
 For the higher-level product boundary and compatibility cuts, read [MAIN.md](MAIN.md) §4 first. This file is narrower: it defines what the editor may assume about hardware and WASM runtimes.
 
+## Source files
+
+- `src/contracts/useqRuntimeContract.ts` — shared transport commands, capability split constants, `assertEditorRuntimeContract()`
+- `src/contracts/wasmAbi.ts` — WASM export signatures, `assertWasmAbi()`, `assertWasmAbiContract()`
+- `src/contracts/runtimePorts.ts` — `RuntimePort` interface (hardware and WASM port shapes)
+- `src/contracts/runtimeChannels.ts` — typed channels for runtime events
+- `src/contracts/runtimeTypes.ts` — `RuntimeConnectionMode`, `TransportMode`, session types
+- `src/runtime/wasmInterpreter.ts` — WASM instantiation, `createModule()`, ABI validation call site
+- `src/runtime/wasmRuntimePort.ts` — in-process WASM port implementing `RuntimePort`
+- `src/runtime/runtimeTransportService.ts` — fan-out of shared commands to both runtimes
+- `src/effects/transportOrchestrator.ts` — transport command dispatch
+- `src/contracts/wasmAbi.test.ts` — ABI contract tests
+- `src/contracts/useqRuntimeContract.test.ts` — capability split tests
+- `src/contracts/runtimeEvents.test.ts` — runtime event contract tests
+- `src/runtime/wasmInterpreter.test.ts` — WASM bundle integration tests
+
 ## Canonical `src-useq` Source Of Truth
 
 The authoritative firmware behavior for this repo is the `src-useq/` submodule checked into this repository, not any standalone local clone.
@@ -17,6 +33,8 @@ npm run src-useq:status
 That command reports the pinned gitlink commit, the checked-out submodule commit, the branch, and whether the submodule is dirty.
 
 ## Runtime Capability Split
+
+(see `src/contracts/useqRuntimeContract.ts`, `src/contracts/runtimePorts.ts`)
 
 The editor talks to two runtime shapes:
 
@@ -47,6 +65,8 @@ WASM-only capabilities:
 - Batched output sampling via `useq_eval_outputs_time_window` / `useq_eval_outputs_time_window_into`
 
 ## WASM ABI Contract
+
+(see `src/contracts/wasmAbi.ts`)
 
 The canonical WASM ABI definition lives in `src/contracts/wasmAbi.ts`. This is the single source of truth for which symbols the editor expects from the Emscripten-generated WASM bundle.
 
@@ -96,7 +116,7 @@ without mutating live state. See
 
 ### ABI validation
 
-`assertWasmAbi()` from `src/contracts/wasmAbi.ts` is called immediately after `createModule()` resolves and BEFORE `useq_init()`. It throws a descriptive error if any required export is missing, catching ABI drift at instantiation time rather than at first use.
+`assertWasmAbi()` from `src/contracts/wasmAbi.ts` is called immediately after `createModule()` resolves and BEFORE `useq_init()`. It throws a descriptive error if any required export is missing, catching ABI drift at instantiation time rather than at first use. (see `src/contracts/wasmAbi.ts` for assertion, `src/runtime/wasmInterpreter.ts` for call site)
 
 ## Contract Decision
 
@@ -111,15 +131,17 @@ Both `src/effects/transportOrchestrator.ts` and `src/runtime/wasmInterpreter.ts`
 
 ## Drift Prevention
 
+(see `src/contracts/wasmAbi.test.ts`, `src/contracts/useqRuntimeContract.test.ts`, `src/contracts/runtimeEvents.test.ts`, `src/runtime/wasmInterpreter.test.ts`)
+
 The following checks are the minimum guardrail against contract drift:
 
 - `src/contracts/wasmAbi.test.ts` verifies the ABI contract constants match the build script export list, tests ABI validation against mock modules, and ensures required/runtime-probed export sets are disjoint.
 - `src/runtime/wasmInterpreter.test.ts` instantiates the generated `public/wasm/useq.js` bundle and verifies the batch helper raw exports are actually present.
 - `src/contracts/useqRuntimeContract.test.ts` verifies the shared command set and the hardware-only/WASM-only split.
 - `src-useq/test/hardware/test_json_protocol.cpp` verifies the `hello` I/O contract, `stream-config` output enablement/rate parsing, and that `hello`, `ping`, and `stream-config` parse without `code` while malformed eval requests still fail.
-- `assertWasmAbi()` throws at WASM instantiation time if the bundle does not export required symbols.
-- `assertWasmAbiContract()` throws at module load time if the ABI contract constants are internally inconsistent.
-- `assertEditorRuntimeContract()` throws during module load if the editor’s transport state mapping stops matching the shared command set.
+- `assertWasmAbi()` throws at WASM instantiation time if the bundle does not export required symbols. (see `src/contracts/wasmAbi.ts`)
+- `assertWasmAbiContract()` throws at module load time if the ABI contract constants are internally inconsistent. (see `src/contracts/wasmAbi.ts`)
+- `assertEditorRuntimeContract()` throws during module load if the editor’s transport state mapping stops matching the shared command set. (see `src/contracts/useqRuntimeContract.ts`)
 
 ## Promotion Workflow
 

@@ -2,15 +2,34 @@
 
 > Spec: typed-channel invariants, mutation surfaces, import boundaries, and channel/store inventory. Counterpart to [MAIN.md](MAIN.md).
 
-1.1 Inter-module communication uses **typed pub/sub channels** from a single primitive. CustomEvents and globals are forbidden for runtime/visualisation/gamepad/help signals.
+### Source files
+
+- `src/lib/typedChannel.ts` — typed pub/sub channel primitive (the single communication building block)
+- `src/contracts/runtimeChannels.ts` — runtime channel registry (settingsChanged, connectionChanged, codeEvaluated, etc.)
+- `src/contracts/visualisationChannels.ts` — visualisation channel registry
+- `src/contracts/gamepadChannels.ts` — gamepad channel registry
+- `src/ui/help/helpChannels.ts` — help-panel-local channels
+- `src/utils/settingsStore.ts` — reactive settings store (mirror of appSettingsRepository)
+- `src/utils/visualisationStore.ts` — reactive visualisation state store
+- `src/utils/consoleStore.ts` — reactive console message store
+- `src/utils/referenceStore.ts` — reactive function-reference store
+- `src/utils/snippetStore.ts` — reactive snippet store
+- `src/runtime/appSettingsRepository.ts` — canonical non-reactive settings holder
+- `src/runtime/runtimeSessionStore.ts` — non-reactive connection/session state
+- `src/runtime/runtimeService.ts` — sole settings mutation surface (fans out to repository + channel)
+- `src/lib/persistence.ts` — localStorage persistence service
+
+---
+
+1.1 Inter-module communication uses **typed pub/sub channels** from a single primitive (see `src/lib/typedChannel.ts`). CustomEvents and globals are forbidden for runtime/visualisation/gamepad/help signals.
 
 1.2 The **canonical reactive stores** are: `settingsStore`, `visStore`, `consoleStore`, `referenceStore`, `snippetStore`. UI reads from stores; mutations go through named functions or the runtime service.
 
 1.3 **Settings is the only mutation surface that fans out to multiple stores.** All other stores are mutated by their owning subsystem only.
 
-1.4 **Two non-reactive state holders** are deliberate exceptions: `appSettingsRepository` (canonical settings; reactive store mirrors it) and `runtimeSessionStore` (connection/session state; UI subscribes via `runtimeService`). Plus 9 imperative `CircularBuffer`s in the stream parser. Adding more non-reactive state requires explicit justification.
+1.4 **Two non-reactive state holders** are deliberate exceptions: `appSettingsRepository` (see `src/runtime/appSettingsRepository.ts`; canonical settings; reactive store mirrors it) and `runtimeSessionStore` (see `src/runtime/runtimeSessionStore.ts`; connection/session state; UI subscribes via `runtimeService`). Plus 9 imperative `CircularBuffer`s in the stream parser. Adding more non-reactive state requires explicit justification.
 
-1.5 **Channel registries** live in `src/contracts/`. Adding a channel requires registering it in this spec's inventory.
+1.5 **Channel registries** live in `src/contracts/` (see `src/contracts/runtimeChannels.ts`, `src/contracts/visualisationChannels.ts`, `src/contracts/gamepadChannels.ts`). Adding a channel requires registering it in this spec's inventory.
 
 1.6 **No back-edges from leaves to foundation.** Import boundaries enforce: `lib/` and `contracts/` must not import from runtime/effects/transport/editors/ui. Lint enforces; exceptions are explicit and documented.
 
@@ -26,7 +45,7 @@
 
 ## 3. Channel Inventory
 
-Runtime channels live in `src/contracts/runtimeChannels.ts`:
+Runtime channels (see `src/contracts/runtimeChannels.ts`):
 
 | Channel | Payload | Publisher(s) | Subscriber(s) |
 |---|---|---|---|
@@ -38,7 +57,7 @@ Runtime channels live in `src/contracts/runtimeChannels.ts`:
 | `runtimeDiagnostics` | diagnostic snapshot | `runtimeDiagnostics` | Diagnostics UI |
 | `bootstrapFailure` | failure detail | `runtimeDiagnostics` | Recovery UI |
 
-Visualisation channels live in `src/contracts/visualisationChannels.ts`:
+Visualisation channels (see `src/contracts/visualisationChannels.ts`):
 
 | Channel | Payload | Publisher(s) | Subscriber(s) |
 |---|---|---|---|
@@ -46,9 +65,9 @@ Visualisation channels live in `src/contracts/visualisationChannels.ts`:
 | `serialVisPaletteChangedChannel` | palette detail | Theme/visualisation utilities | Visualisation sampler |
 | `serialVisAutoOpenChannel` | `undefined` | Visualisation panel adapter | Visualisation panel |
 
-Gamepad channels live in `src/contracts/gamepadChannels.ts` and carry only typed gamepad pipeline events into editor/menu adapters. New gamepad-visible operations should prefer the action registry and resolver path before adding bespoke channels.
+Gamepad channels (see `src/contracts/gamepadChannels.ts`) carry only typed gamepad pipeline events into editor/menu adapters. New gamepad-visible operations should prefer the action registry and resolver path before adding bespoke channels.
 
-Help channels live in `src/ui/help/helpChannels.ts` and are limited to help-panel-local routing such as reference search and tab switching.
+Help channels (see `src/ui/help/helpChannels.ts`) are limited to help-panel-local routing such as reference search and tab switching.
 
 ## 4. Data Flow Paths
 
