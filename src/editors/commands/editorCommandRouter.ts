@@ -171,16 +171,16 @@ function pressEditorKey(
 
   if (
     !command.allowBracketUnbalancing &&
-    wouldPlainBackspaceDeleteProtectedCloser(view, key)
+    wouldPlainBackspaceDeleteProtectedBracket(view, key)
   ) {
     return structuralBackspace(view);
   }
 
   if (
     !command.allowBracketUnbalancing &&
-    wouldPlainDeleteRemoveProtectedCloser(view, key)
+    wouldPlainDeleteRemoveProtectedBracket(view, key)
   ) {
-    return true;
+    return structuralDelete(view);
   }
 
   switch (key) {
@@ -250,7 +250,7 @@ function handleBracketKey(view: EditorView, key: string): boolean {
   return false;
 }
 
-function wouldPlainBackspaceDeleteProtectedCloser(
+function wouldPlainBackspaceDeleteProtectedBracket(
   view: EditorView,
   key: string,
 ): boolean {
@@ -260,10 +260,10 @@ function wouldPlainBackspaceDeleteProtectedCloser(
   if (!selection.empty) return false;
 
   const before = view.state.doc.sliceString(selection.from - 1, selection.from);
-  return CLOSING_BRACKETS.has(before);
+  return CLOSING_BRACKETS.has(before) || before in OPENING_BRACKETS;
 }
 
-function wouldPlainDeleteRemoveProtectedCloser(
+function wouldPlainDeleteRemoveProtectedBracket(
   view: EditorView,
   key: string,
 ): boolean {
@@ -273,7 +273,7 @@ function wouldPlainDeleteRemoveProtectedCloser(
   if (!selection.empty) return false;
 
   const after = view.state.doc.sliceString(selection.from, selection.from + 1);
-  return CLOSING_BRACKETS.has(after);
+  return CLOSING_BRACKETS.has(after) || after in OPENING_BRACKETS;
 }
 
 function confirmIsActiveAt(view: EditorView, from: number): boolean {
@@ -294,18 +294,18 @@ function structuralBackspace(view: EditorView): boolean {
   let targetNode: SyntaxNode;
 
   if (charBefore === '"') {
-    // Cursor is after a closing quote — the Lezer tree has a `"` child token
-    // inside a `String` node. Walk up to find the String ancestor.
     let node: SyntaxNode | null = tree.resolveInner(pos - 1, 1);
     while (node && node.name !== "String") {
       node = node.parent;
     }
-    if (!node || pos !== node.to) return true;
+    if (!node) return true;
+    // Closing quote: cursor at string end. Opening quote: cursor after string start.
+    if (pos !== node.to && pos - 1 !== node.from) return true;
     targetNode = node;
   } else {
-    // Cursor is after `)` / `]` / `}` — closer token's parent is the form.
-    const closerNode = tree.resolveInner(pos - 1, 1);
-    const container = closerNode.parent;
+    // Cursor is after `)` / `]` / `}` / `(` / `[` / `{` — token's parent is the form.
+    const bracketNode = tree.resolveInner(pos - 1, 1);
+    const container = bracketNode.parent;
     if (!container) return true;
     targetNode = container;
   }
@@ -324,6 +324,45 @@ function structuralBackspace(view: EditorView): boolean {
   }
 
   // First press: block deletion, flash to indicate confirm mode.
+  flashDeleteConfirm(view, targetNode.from, targetNode.to);
+  return true;
+}
+
+function structuralDelete(view: EditorView): boolean {
+  const pos = view.state.selection.main.from;
+  const tree = syntaxTree(view.state);
+  const charAfter = view.state.doc.sliceString(pos, pos + 1);
+
+  let targetNode: SyntaxNode;
+
+  if (charAfter === '"') {
+    let node: SyntaxNode | null = tree.resolveInner(pos, 1);
+    while (node && node.name !== "String") {
+      node = node.parent;
+    }
+    if (!node) return true;
+    // Opening quote: cursor at string start. Closing quote: cursor before string end.
+    if (pos !== node.from && pos + 1 !== node.to) return true;
+    targetNode = node;
+  } else {
+    const bracketNode = tree.resolveInner(pos, 1);
+    const container = bracketNode.parent;
+    if (!container) return true;
+    targetNode = container;
+  }
+
+  if (confirmIsActiveAt(view, targetNode.from)) {
+    view.dispatch({
+      changes: { from: targetNode.from, to: targetNode.to, insert: "" },
+      selection: { anchor: targetNode.from },
+      scrollIntoView: true,
+      userEvent: "delete",
+      annotations: isolateHistory.of("full"),
+    });
+    syncStructuralCursorFromSelection(view);
+    return true;
+  }
+
   flashDeleteConfirm(view, targetNode.from, targetNode.to);
   return true;
 }

@@ -118,7 +118,157 @@
       expect_code: ""
   new_code: ""
 
-# ── §4. Type expression, enter, focus behavior ──────────────────────────────
+# ── §4. Backspace before opening brackets (safe-delete) ───────────────────
+
+- name: "backspace after opening paren: first press blocked, second deletes form"
+  code: "(foo)"
+  cursor: 1
+  steps:
+    - action: backspace
+      expect_code: "(foo)"
+    - action: backspace
+      expect_code: ""
+  new_code: ""
+
+- name: "backspace after opening bracket of vector: first press blocked, second deletes"
+  code: "[1 2 3]"
+  cursor: 1
+  steps:
+    - action: backspace
+      expect_code: "[1 2 3]"
+    - action: backspace
+      expect_code: ""
+  new_code: ""
+
+- name: "backspace after opening bracket of hash-map: first press blocked, second deletes"
+  code: "{:a 1}"
+  cursor: 1
+  steps:
+    - action: backspace
+      expect_code: "{:a 1}"
+    - action: backspace
+      expect_code: ""
+  new_code: ""
+
+- name: "backspace after opening quote of string: first press blocked, second deletes"
+  code: '"hello"'
+  cursor: 1
+  steps:
+    - action: backspace
+      expect_code: '"hello"'
+    - action: backspace
+      expect_code: ""
+  new_code: ""
+
+# ── §5. Delete before closing brackets (safe-delete) ──────────────────────
+
+- name: "delete before closing paren: first press blocked, second deletes form"
+  code: "(foo)"
+  cursor: 4
+  steps:
+    - action: delete
+      expect_code: "(foo)"
+    - action: delete
+      expect_code: ""
+  new_code: ""
+
+- name: "delete before closing bracket of vector: first press blocked, second deletes"
+  code: "[1 2 3]"
+  cursor: 6
+  steps:
+    - action: delete
+      expect_code: "[1 2 3]"
+    - action: delete
+      expect_code: ""
+  new_code: ""
+
+- name: "delete before closing bracket of hash-map: first press blocked, second deletes"
+  code: "{:a 1}"
+  cursor: 5
+  steps:
+    - action: delete
+      expect_code: "{:a 1}"
+    - action: delete
+      expect_code: ""
+  new_code: ""
+
+- name: "delete before closing quote of string: first press blocked, second deletes"
+  code: '"hello"'
+  cursor: 6
+  steps:
+    - action: delete
+      expect_code: '"hello"'
+    - action: delete
+      expect_code: ""
+  new_code: ""
+
+# ── §6. Delete before opening brackets (safe-delete) ──────────────────────
+
+- name: "delete before opening paren: first press blocked, second deletes form"
+  code: "(foo)"
+  cursor: 0
+  steps:
+    - action: delete
+      expect_code: "(foo)"
+    - action: delete
+      expect_code: ""
+  new_code: ""
+
+- name: "delete before opening bracket of vector: first press blocked, second deletes"
+  code: "[1 2 3]"
+  cursor: 0
+  steps:
+    - action: delete
+      expect_code: "[1 2 3]"
+    - action: delete
+      expect_code: ""
+  new_code: ""
+
+- name: "delete before opening bracket of hash-map: first press blocked, second deletes"
+  code: "{:a 1}"
+  cursor: 0
+  steps:
+    - action: delete
+      expect_code: "{:a 1}"
+    - action: delete
+      expect_code: ""
+  new_code: ""
+
+- name: "delete before opening quote of string: first press blocked, second deletes"
+  code: '"hello"'
+  cursor: 0
+  steps:
+    - action: delete
+      expect_code: '"hello"'
+    - action: delete
+      expect_code: ""
+  new_code: ""
+
+# ── §7. Undo restores after safe-delete escalation ────────────────────────
+
+- name: "backspace after opening paren: undo restores after escalation delete"
+  code: "(foo)"
+  cursor: 1
+  steps:
+    - action: backspace
+      expect_code: "(foo)"
+    - action: backspace
+      expect_code: ""
+    - action: undo
+      expect_code: "(foo)"
+  new_code: "(foo)"
+
+- name: "delete before opening paren: undo restores after escalation delete"
+  code: "(foo)"
+  cursor: 0
+  steps:
+    - action: delete
+      expect_code: "(foo)"
+    - action: delete
+      expect_code: ""
+    - action: undo
+      expect_code: "(foo)"
+  new_code: "(foo)"
 
 - name: "type expression, enter drops focus, auto-close on new line"
   code: ""

@@ -157,6 +157,51 @@ describe("Backspace — protection ON", () => {
     expect(view.state.doc.toString()).toBe("(ac)");
     view.destroy();
   });
+
+  it("blocks backspace when cursor is after opening paren (first press)", () => {
+    const view = createView("(foo)", 1); // cursor after '('
+    backspace(view);
+    expect(view.state.doc.toString()).toBe("(foo)");
+    view.destroy();
+  });
+
+  it("deletes whole form on second backspace after opening paren (escalation)", () => {
+    const view = createView("(foo)", 1);
+    backspace(view); // first: blocked
+    backspace(view); // second: delete
+    expect(view.state.doc.toString()).toBe("");
+    view.destroy();
+  });
+
+  it("blocks backspace after opening bracket of vector (first press)", () => {
+    const view = createView("[bar]", 1); // cursor after '['
+    backspace(view);
+    expect(view.state.doc.toString()).toBe("[bar]");
+    view.destroy();
+  });
+
+  it("deletes whole vector on second backspace after opening bracket (escalation)", () => {
+    const view = createView("[bar]", 1);
+    backspace(view); // first: blocked
+    backspace(view); // second: delete
+    expect(view.state.doc.toString()).toBe("");
+    view.destroy();
+  });
+
+  it("blocks backspace after opening quote of string (first press)", () => {
+    const view = createView('"hello"', 1); // cursor after opening '"'
+    backspace(view);
+    expect(view.state.doc.toString()).toBe('"hello"');
+    view.destroy();
+  });
+
+  it("deletes whole string on second backspace after opening quote (escalation)", () => {
+    const view = createView('"hello"', 1);
+    backspace(view); // first: blocked
+    backspace(view); // second: delete
+    expect(view.state.doc.toString()).toBe("");
+    view.destroy();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -205,10 +250,93 @@ describe("Delete — protection ON", () => {
     view.destroy();
   });
 
-  it("blocks Delete when cursor is before a closing paren in non-empty form", () => {
+  it("blocks Delete when cursor is before a closing paren in non-empty form (first press)", () => {
     const view = createView("(foo)", 4); // cursor before ')'
     del(view);
     expect(view.state.doc.toString()).toBe("(foo)");
+    view.destroy();
+  });
+
+  it("deletes whole form on second Delete before closing paren (escalation)", () => {
+    const view = createView("(foo)", 4);
+    del(view); // first: blocked
+    del(view); // second: delete
+    expect(view.state.doc.toString()).toBe("");
+    view.destroy();
+  });
+
+  it("blocks Delete before closing bracket (first press)", () => {
+    const view = createView("[bar]", 4); // cursor before ']'
+    del(view);
+    expect(view.state.doc.toString()).toBe("[bar]");
+    view.destroy();
+  });
+
+  it("deletes whole vector on second Delete (escalation)", () => {
+    const view = createView("[bar]", 4);
+    del(view); // first: blocked
+    del(view); // second: delete
+    expect(view.state.doc.toString()).toBe("");
+    view.destroy();
+  });
+
+  it("blocks Delete before closing quote of string (first press)", () => {
+    const view = createView('"hello"', 6); // cursor before closing '"'
+    del(view);
+    expect(view.state.doc.toString()).toBe('"hello"');
+    view.destroy();
+  });
+
+  it("deletes whole string on second Delete before closing quote (escalation)", () => {
+    const view = createView('"hello"', 6); // cursor before closing '"'
+    del(view); // first: blocked
+    del(view); // second: delete
+    expect(view.state.doc.toString()).toBe("");
+    view.destroy();
+  });
+
+  it("blocks Delete when cursor is before opening paren (first press)", () => {
+    const view = createView("(foo)", 0); // cursor before '('
+    del(view);
+    expect(view.state.doc.toString()).toBe("(foo)");
+    view.destroy();
+  });
+
+  it("deletes whole form on second Delete before opening paren (escalation)", () => {
+    const view = createView("(foo)", 0);
+    del(view); // first: blocked
+    del(view); // second: delete
+    expect(view.state.doc.toString()).toBe("");
+    view.destroy();
+  });
+
+  it("blocks Delete before opening bracket of vector (first press)", () => {
+    const view = createView("[bar]", 0);
+    del(view);
+    expect(view.state.doc.toString()).toBe("[bar]");
+    view.destroy();
+  });
+
+  it("deletes whole vector on second Delete before opening bracket (escalation)", () => {
+    const view = createView("[bar]", 0);
+    del(view); // first: blocked
+    del(view); // second: delete
+    expect(view.state.doc.toString()).toBe("");
+    view.destroy();
+  });
+
+  it("blocks Delete before opening quote of string (first press)", () => {
+    const view = createView('"hello"', 0); // cursor before opening '"'
+    del(view);
+    expect(view.state.doc.toString()).toBe('"hello"');
+    view.destroy();
+  });
+
+  it("deletes whole string on second Delete before opening quote (escalation)", () => {
+    const view = createView('"hello"', 0);
+    del(view); // first: blocked
+    del(view); // second: delete
+    expect(view.state.doc.toString()).toBe("");
     view.destroy();
   });
 });
