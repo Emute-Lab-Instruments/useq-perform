@@ -42,6 +42,17 @@
   0% { background-color: var(--code-eval-highlight-color-preview); }
   100% { background-color: transparent; }
 }
+
+/* Delete-confirm pulse: continuous glow while awaiting second backspace */
+.cm-delete-confirm {
+  animation: delete-confirm-pulse 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+@keyframes delete-confirm-pulse {
+  0%, 100% { background-color: transparent; outline: 2px solid transparent; outline-offset: 1px; }
+  50%      { background-color: rgba(255, 100, 80, 0.30); outline: 2px solid rgba(255, 80, 60, 0.55); outline-offset: 1px; }
+}
 /* Current node highlighting */
 .cm-current-node {
   background-color: rgba(255, 100, 150, 0.2);
@@ -104,6 +115,8 @@
   background:
     linear-gradient(180deg, rgba(18, 24, 31, 0.96), rgba(11, 15, 21, 0.96));
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.22);
+  position: relative;
+  z-index: 2;
 }
 
 .cm-probe-widget-chrome {
@@ -123,19 +136,15 @@
 }
 
 .cm-probe-close-btn {
-  opacity: 0;
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.72);
   cursor: pointer;
   font-size: 10px;
   line-height: 1;
-  padding: 0;
-  transition: opacity 0.14s ease, color 0.14s ease;
-}
-
-.cm-probe-widget:hover .cm-probe-close-btn {
-  opacity: 1;
+  padding: 0 2px;
+  position: relative;
+  z-index: 2;
 }
 
 .cm-probe-close-btn:hover {

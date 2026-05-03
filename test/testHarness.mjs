@@ -6,21 +6,21 @@
  * routed through `dispatchAction(view, "nav.*"/"edit.*")` against a real
  * headless `EditorView` (jsdom is wired in `test/setup.mjs`).
  *
- * Supports two YAML formats:
+ * Supports two YAML row formats:
  *
- * Legacy (editing_tests.yaml):
+ * Field-based rows (editing_tests.yaml):
  *   code, selection, new_selection, new_code, actions, steps, selection_cursor, cursor_char
  *
- * Guillemet (navigation_tests.yaml):
+ * Guillemet-marked rows (navigation_tests.yaml):
  *   code with «» marking initial selection, expected, actions
  *
  * Public API kept compatible with `test/structural-yaml.test.mjs`:
  *   runTestCase, loadTestFile, runTestFile, runAllTests
  *
- * Many YAML actions don't have a 1:1 dispatcher equivalent yet (cut/paste/
- * type/insert/move/duplicate/delete are legacy-only — the new core uses
- * radial-menu pickers and structural mutators instead). Those tests will fail;
- * the failure list is categorised in `structural-yaml.test.mjs` KNOWN_FAILURES.
+ * Some YAML actions do not have a router/dispatcher equivalent yet
+ * (cut/paste/insert/move/duplicate and similar command vocabulary). Those
+ * rows are kept as pending semantic targets in `structural-yaml.test.mjs`
+ * until the implementation or spec catches up.
  */
 
 import fs from 'fs';
@@ -36,18 +36,20 @@ import { default_extensions } from '@nextjournal/clojure-mode';
 // and crashes outside Vite's loader. The harness only needs the state field
 // for cursor reads; visual decorations don't affect dispatcher behaviour.
 import { dispatchAction } from '../src/editors/extensions/structure/adapter/dispatcher.ts';
+import { executeEditorCommand } from '../src/editors/commands/editorCommandRouter.ts';
 import { structField, setStructState } from '../src/editors/extensions/structure/adapter/stateField.ts';
 import { pathsFromCursorSet } from '../src/editors/extensions/structure/adapter/cursorPath.ts';
+import { deleteConfirmField } from '../src/editors/extensions/deleteConfirmFlash.ts';
+import { history } from '@codemirror/commands';
 
 // ── Action mapping ──────────────────────────────────────────────────────────
 //
 // Every entry maps a YAML action name to a dispatcher action string. Actions
-// the new core does not (yet) implement are recorded as "legacy" — they are
-// intentional gaps and the corresponding tests will fail until either:
+// the router/core does not yet implement are recorded as pending/unmapped —
+// they are intentional evidence rows until either:
 //   (a) a new dispatcher action lands (e.g. nav.left/right are in flight),
 //   (b) the new core grows the corresponding mutator, or
-//   (c) the legacy DSL is dropped from the YAML (cut/paste/type/insert have
-//       no equivalent in the radial-menu UX).
+//   (c) the YAML row is refined to the current command vocabulary.
 
 /** Actions with a working 1:1 dispatcher equivalent. */
 const ACTION_MAP = {
@@ -82,11 +84,17 @@ const ACTION_MAP = {
   'prevHole': 'nav.prevHole',
   'previousHole': 'nav.prevHole',
 
+  // meta navigation (§5.1.9)
+  'intoMeta': 'nav.intoMeta',
+
   // mutators
+  'delete': 'edit.delete',
   'slurp_right': 'edit.slurpForward',
   'slurp_left': 'edit.slurpBackward',
   'barf_right': 'edit.barfForward',
   'barf_left': 'edit.barfBackward',
+  'move_next': 'edit.transposeNext',
+  'move_previous': 'edit.transposePrev',
 };
 
 /**
@@ -98,31 +106,27 @@ const ACTION_MAP = {
  *       §5.1.7 but dispatcher doesn't expose it yet)
  *   (b) needs a new core mutator (e.g. delete/cut/paste/duplicate — would
  *       require a clipboard concept and a `remove` op in core/mutate.ts)
- *   (c) legacy DSL doesn't map to the new model (insert+symbol+apply* — the
- *       new UX uses radial-menu pickers; type:"x" — there is no character-
- *       level typing in structural mode; right_char — explicit caret-level
- *       motion isn't part of the structural vocabulary)
+ *   (c) command vocabulary not mapped to the current router/model
+ *       (insert+symbol+apply*, right_char, and similar rows need either a
+ *       router command, a spec decision, or a YAML refinement)
  */
-const LEGACY_ACTIONS = new Set([
-  'delete',
+const UNMAPPED_ACTIONS = new Set([
   'cut',
   'paste',
   'paste_before',
   'duplicate',
-  'move_next',
-  'move_previous',
   'move_right',
   'move_left',
   'move_up',
   'move_down',
   'right_char',
-  'intoMeta',
 ]);
 
 // Tokens that show up inside compound `actions:` arrays as part of an
-// `insert <category> <symbol> <applyType>` legacy construct. We swallow them
-// without warning so the harness output stays useful.
-const LEGACY_COMPOUND_TOKENS = new Set([
+// `insert <category> <symbol> <applyType>` command vocabulary that is not
+// router-backed yet. We swallow them without warning so the harness output
+// stays focused on rows that are actively mapped.
+const UNMAPPED_COMPOUND_TOKENS = new Set([
   'insert',
   'maths',
   'apply',
@@ -130,12 +134,24 @@ const LEGACY_COMPOUND_TOKENS = new Set([
   'apply_call',
   'apply_call_pre',
   'apply_wrap',
-  'type',
   'let',
   'navigate_to_hole',
   'navigate_to_binding',
   'navigate_to_usage',
 ]);
+
+const KEY_COMMANDS = {
+  'backspace': { kind: 'key', key: 'Backspace', source: 'test' },
+  'key.backspace': { kind: 'key', key: 'Backspace', source: 'test' },
+  'delete': { kind: 'key', key: 'Delete', source: 'test' },
+  'key.delete': { kind: 'key', key: 'Delete', source: 'test' },
+  'enter': { kind: 'key', key: 'Enter', source: 'test' },
+  'key.enter': { kind: 'key', key: 'Enter', source: 'test' },
+  'undo': { kind: 'undo', source: 'test' },
+  'key.undo': { kind: 'undo', source: 'test' },
+  'redo': { kind: 'redo', source: 'test' },
+  'key.redo': { kind: 'redo', source: 'test' },
+};
 
 // ── Guillemet («») parsing ──────────────────────────────────────────────────
 
@@ -155,7 +171,7 @@ function parseGuillemets(raw) {
   };
 }
 
-// ── Legacy helpers (kept for editing_tests.yaml) ────────────────────────────
+// ── Field-based row helpers (editing_tests.yaml) ────────────────────────────
 
 function parseCaretString(value) {
   if (typeof value !== 'string') {
@@ -222,7 +238,7 @@ function createView(doc) {
     state: EditorState.create({
       doc,
       // Only the state field is required — decorations are visual-only.
-      extensions: [...default_extensions, structField],
+      extensions: [...default_extensions, history(), structField, deleteConfirmField],
     }),
   });
 }
@@ -365,6 +381,21 @@ function getSelectionStart(view) {
   return range ? range.from : 0;
 }
 
+function seedEditorSelection(view, cursorSpec) {
+  if (cursorSpec === undefined || cursorSpec === null) return;
+  let anchor = null;
+  if (cursorSpec === 'end') {
+    anchor = view.state.doc.length;
+  } else if (cursorSpec === 'start') {
+    anchor = 0;
+  } else if (Number.isInteger(cursorSpec)) {
+    anchor = Math.max(0, Math.min(cursorSpec, view.state.doc.length));
+  }
+  if (anchor !== null) {
+    view.dispatch({ selection: { anchor } });
+  }
+}
+
 // ── Action application ──────────────────────────────────────────────────────
 
 /**
@@ -372,21 +403,26 @@ function getSelectionStart(view) {
  * in place via dispatcher → applyOp → CodeMirror transactions.
  *
  * Compound actions (arrays) are flattened into a sequence of dispatches.
- * Legacy compound constructs `[insert, <cat>, <sym>, <applyType>]` and
- * `[type, <text>]` are skipped silently — see LEGACY_COMPOUND_TOKENS above.
+ * Compound constructs `[insert, <cat>, <sym>, <applyType>]` that are not
+ * router-backed yet are skipped silently — see UNMAPPED_COMPOUND_TOKENS above.
+ * Keyboard-like actions route through the shared editor command router.
  */
 function applyAction(view, action) {
   if (Array.isArray(action)) {
     for (let i = 0; i < action.length; i++) {
       const cur = action[i];
 
-      // Legacy `insert <category> <symbol> <applyType>`: skip 3 tokens.
+      // Unmapped `insert <category> <symbol> <applyType>`: skip 3 tokens.
       if (cur === 'insert' && i + 3 < action.length) {
         i += 3;
         continue;
       }
-      // Legacy `type "..."`: skip 1 token.
       if (cur === 'type' && i + 1 < action.length) {
+        executeEditorCommand(view, {
+          kind: 'typeText',
+          text: String(action[i + 1] ?? ''),
+          source: 'test',
+        });
         i += 1;
         continue;
       }
@@ -398,8 +434,30 @@ function applyAction(view, action) {
 
   if (typeof action !== 'string') return;
 
-  // Skip the prefixed type form `type:"..."` (legacy).
-  if (action.startsWith('type:')) return;
+  if (action.startsWith('type:')) {
+    executeEditorCommand(view, {
+      kind: 'typeText',
+      text: action.slice('type:'.length),
+      source: 'test',
+    });
+    return;
+  }
+
+  const typeMatch = action.match(/^type\s+["']([\s\S]*)["']$/);
+  if (typeMatch) {
+    executeEditorCommand(view, {
+      kind: 'typeText',
+      text: typeMatch[1],
+      source: 'test',
+    });
+    return;
+  }
+
+  const keyCommand = KEY_COMMANDS[action];
+  if (keyCommand) {
+    executeEditorCommand(view, keyCommand);
+    return;
+  }
 
   // Mapped action — translate and dispatch.
   const dispatcherAction = ACTION_MAP[action];
@@ -408,14 +466,15 @@ function applyAction(view, action) {
     return;
   }
 
-  // Known legacy actions: silently skip; tests using them are expected to
+  // Known unmapped actions: silently skip; tests using them are expected to
   // appear in KNOWN_FAILURES (or to be marked unimplemented).
-  if (LEGACY_ACTIONS.has(action) || LEGACY_COMPOUND_TOKENS.has(action)) {
+  if (UNMAPPED_ACTIONS.has(action) || UNMAPPED_COMPOUND_TOKENS.has(action)) {
     return;
   }
 
   // Unrecognised pattern (literal symbol arguments to `insert`, e.g. "+")
-  // — treat as data, not as an op. Match the legacy harness's tolerance.
+  // — treat as data, not as an op. Keep this permissive so symbolic arguments
+  // inside not-yet-mapped compound actions do not obscure the real failure.
   if (action.match(/^[+\-*/=<>!&|0-9xy[\]_()]+$/)) {
     return;
   }
@@ -438,6 +497,7 @@ function runTestCase(testCase) {
       : (parseCaretString(testCase.code || '')).text;
     view = createView(rawCode);
     const initialCode = view.state.doc.toString();
+    seedEditorSelection(view, testCase.cursor);
 
     // ── Set initial selection ──────────────────────────────────────────
     if (isGuillemetFormat) {
@@ -457,7 +517,7 @@ function runTestCase(testCase) {
         }
       }
     } else {
-      // Legacy: separate selection field.
+      // Field-based rows use a separate selection field.
       const selectionSpec = normalizeSelectionSpec(testCase.selection);
       if (selectionSpec) {
         const selectionStart = findNthOccurrence(initialCode, selectionSpec.text, selectionSpec.occurrence);
@@ -491,6 +551,22 @@ function runTestCase(testCase) {
         const step = testCase.steps[i];
         applyAction(view, step.action);
 
+        if (step.expect_code !== undefined) {
+          const actualCode = view.state.doc.toString();
+          if (actualCode !== step.expect_code) {
+            return {
+              passed: false,
+              name: `${testCase.name} (step ${i + 1})`,
+              error: `Code mismatch after action '${step.action}'`,
+              expected: step.expect_code,
+              actual: actualCode,
+            };
+          }
+        }
+
+        if (step.new_selection === null) {
+          continue;
+        }
         const stepSelectionSpec = parseStepSelection(step.new_selection);
         if (stepSelectionSpec) {
           const currentSelection = getSelectedText(view);
@@ -510,7 +586,7 @@ function runTestCase(testCase) {
       applyAction(view, testCase.actions);
     }
 
-    // ── Check final code (legacy only) ─────────────────────────────────
+    // ── Check final code (field-based rows) ─────────────────────────────
     const finalCode = view.state.doc.toString();
     const expectedCode = testCase.new_code;
     if (expectedCode !== undefined && finalCode !== expectedCode) {
@@ -527,7 +603,7 @@ function runTestCase(testCase) {
 
     // ── Check final selection ──────────────────────────────────────────
     const expectedText = isGuillemetFormat ? testCase.expected : null;
-    const legacySpec = isGuillemetFormat ? null : normalizeSelectionSpec(testCase.new_selection);
+    const finalSelectionSpec = isGuillemetFormat ? null : normalizeSelectionSpec(testCase.new_selection);
 
     if (expectedText !== undefined && expectedText !== null) {
       const finalSelection = getSelectedText(view);
@@ -541,26 +617,26 @@ function runTestCase(testCase) {
           finalCode,
         };
       }
-    } else if (legacySpec) {
+    } else if (finalSelectionSpec) {
       const finalSelection = getSelectedText(view);
-      if (finalSelection !== legacySpec.text) {
+      if (finalSelection !== finalSelectionSpec.text) {
         return {
           passed: false,
           name: testCase.name,
           error: `Selection mismatch after actions`,
-          expected: legacySpec.text,
+          expected: finalSelectionSpec.text,
           actual: finalSelection,
           finalCode,
         };
       }
 
-      const expectedFinalStart = findNthOccurrence(finalCode, legacySpec.text, legacySpec.occurrence);
+      const expectedFinalStart = findNthOccurrence(finalCode, finalSelectionSpec.text, finalSelectionSpec.occurrence);
       if (expectedFinalStart === -1) {
         return {
           passed: false,
           name: testCase.name,
-          error: `Could not find occurrence ${legacySpec.occurrence} of "${legacySpec.text}" in final code`,
-          expected: legacySpec.text,
+          error: `Could not find occurrence ${finalSelectionSpec.occurrence} of "${finalSelectionSpec.text}" in final code`,
+          expected: finalSelectionSpec.text,
           actual: finalCode,
         };
       }
@@ -570,7 +646,7 @@ function runTestCase(testCase) {
         return {
           passed: false,
           name: testCase.name,
-          error: `Final selection occurrence mismatch for "${legacySpec.text}"`,
+          error: `Final selection occurrence mismatch for "${finalSelectionSpec.text}"`,
           expected: expectedFinalStart,
           actual: actualFinalStart,
         };

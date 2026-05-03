@@ -28,10 +28,13 @@ import { structuralCoreExtensions } from "./extensions/structure/adapter/extensi
 // Tests/Inspector can override via `setEvalIntegrationConfig()`.
 setEvalIntegrationConfig(createDefaultEvalIntegrationConfig());
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
+import { deleteConfirmField } from "./extensions/deleteConfirmFlash.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
 import { probeExtensions } from "./extensions/probes.ts";
 import { inlineResultsField } from "./extensions/inlineResults.ts";
 import { diagnosticField } from "./extensions/diagnostics.ts";
+import { createLiveEditWidgetsExtension } from "./extensions/liveEdit/widgets.ts";
+import { liveEditOnValueChange } from "../effects/liveEditRuntime.ts";
 import { dbg } from "../lib/debug.ts";
 import { mapManualControlBindingsThroughChanges } from "../lib/manualControlState.ts";
 
@@ -144,7 +147,9 @@ export const baseExtensions = [
   lastEvaluatedExpressionField,
   ...createExpressionGutter(createDefaultGutterConfig()),
   ...probeExtensions,
+  ...createLiveEditWidgetsExtension({ onValueChange: liveEditOnValueChange }),
   evalHighlightField,
+  deleteConfirmField,
   inlineResultsField,
   diagnosticField,
   visReadabilityPlugin,

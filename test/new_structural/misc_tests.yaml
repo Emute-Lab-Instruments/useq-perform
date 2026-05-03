@@ -1,0 +1,136 @@
+# Structural Editor Misc Test Cases — Keyboard, Typing & Structural Highlights
+#
+# These YAML files are a living regression/spec-refinement suite for
+# data-driven editor command scenarios: command sequences, cursor/focus
+# movement, source edits, and bug-capture cases that should be easy for agents
+# to extend. A failing row may indicate an implementation bug, a semantic
+# refinement, or a spec update that still needs to land; do not assume failures
+# are stale expectations without triage.
+#
+# FORMAT (step-based, for undo/history-dependent sequences):
+#   name: descriptive test name
+#   code: initial buffer content
+#   cursor: initial cursor position ("end" or 0-based offset) — defaults to "end"
+#   steps: ordered list of action→assertion pairs
+#     action: single action or list of actions  (harness key: singular)
+#     expect_code: expected buffer content after action
+#     new_selection: expected node focus after action (null = no focus)
+#   new_code: expected final buffer content (top-level, checked after all steps)
+#   new_selection: expected final selection/focus
+#
+# KEYBOARD ACTIONS:
+#   type "text"  — type text character by character (triggers auto-close, etc.)
+#   backspace    — backspace key (structural-aware)
+#   delete       — forward delete key (structural-aware)
+#   undo         — undo last action
+#   enter        — enter / newline key
+
+# ── §1. Auto-close parentheses: insert, backspace, undo, delete ────────────
+
+- name: "auto-close: ( inserts pair, backspace deletes both"
+  code: ""
+  steps:
+    - action: [type, "("]
+      expect_code: "()"
+      new_selection: "()"
+    - action: backspace
+      expect_code: ""
+    - action: undo
+      expect_code: "()"
+      new_selection: "()"
+    - action: delete
+      expect_code: ""
+  new_code: ""
+
+- name: "backspace after closing paren: first press blocked, second deletes form"
+  code: "(foo)"
+  cursor: end
+  steps:
+    - action: backspace
+      expect_code: "(foo)"
+    - action: backspace
+      expect_code: ""
+    - action: undo
+      expect_code: "(foo)"
+  new_code: "(foo)"
+
+# ── §2. Structural backspace on complete expression ─────────────────────────
+
+- name: "backspace after (1 2 3): first press blocked, second deletes form"
+  code: "(1 2 3)"
+  cursor: end
+  steps:
+    - action: backspace
+      expect_code: "(1 2 3)"
+    - action: backspace
+      expect_code: ""
+    - action: undo
+      expect_code: "(1 2 3)"
+  new_code: "(1 2 3)"
+
+- name: "backspace after (a (b c)): first press blocked, second deletes form"
+  code: "(a (b c))"
+  cursor: end
+  steps:
+    - action: backspace
+      expect_code: "(a (b c))"
+    - action: backspace
+      expect_code: ""
+    - action: undo
+      expect_code: "(a (b c))"
+    - action: backspace
+      expect_code: "(a (b c))"
+    - action: backspace
+      expect_code: ""
+  new_code: ""
+
+# ── §3. Structural backspace on strings, vectors, maps ─────────────────────
+
+- name: "backspace after string closing quote: first press blocked, second deletes"
+  code: '"hello"'
+  cursor: end
+  steps:
+    - action: backspace
+      expect_code: '"hello"'
+    - action: backspace
+      expect_code: ""
+    - action: undo
+      expect_code: '"hello"'
+  new_code: '"hello"'
+
+- name: "backspace after vector: first press blocked, second deletes"
+  code: "[1 2 3]"
+  cursor: end
+  steps:
+    - action: backspace
+      expect_code: "[1 2 3]"
+    - action: backspace
+      expect_code: ""
+  new_code: ""
+
+- name: "backspace after hash-map: first press blocked, second deletes"
+  code: "{:a 1 :b 2}"
+  cursor: end
+  steps:
+    - action: backspace
+      expect_code: "{:a 1 :b 2}"
+    - action: backspace
+      expect_code: ""
+  new_code: ""
+
+# ── §4. Type expression, enter, focus behavior ──────────────────────────────
+
+- name: "type expression, enter drops focus, auto-close on new line"
+  code: ""
+  steps:
+    - action: [type, "(a1 bar)"]
+      expect_code: "(a1 bar)"
+      new_selection: "(a1 bar)"
+    - action: enter
+      expect_code: "(a1 bar)\n"
+      new_selection: null
+    - action: [type, "("]
+      expect_code: "(a1 bar)\n()"
+      new_selection: "()"
+  new_code: "(a1 bar)\n()"
+  new_selection: "()"
