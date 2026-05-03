@@ -75,7 +75,7 @@ export default defineConfig(({ command }) => ({
           name: 'unit',
           environment: 'jsdom',
           include: ['src/**/*.test.tsx', 'src/**/*.test.ts', 'inspector/**/*.test.ts'],
-          exclude: ['src/editors/extensions/__tests__/**'],
+          exclude: ['src/editors/extensions/__tests__/structure-pure.test.ts'],
           globals: true,
           // The path string contains 'jest-dom' so vite-plugin-solid does not
           // auto-inject @testing-library/jest-dom (which fails to resolve in

@@ -1,0 +1,24 @@
+;; this is a modulisp source code file whose aim is to be loaded
+;; to act as a verification script/checklist for the features Web
+;; care to demo at Superbooth
+
+;;; FEATURES
+
+;; each one should include a short instruction at the top including 
+;; keys/buttons to press, action sequences etc, to effectively test
+
+
+;; State 
+
+;; Phase coherence
+
+;; Live edit 
+
+;; Live Edit with MIDI CC learn 
+
+;; future projection & correct invalidation when state is involved
+
+
+
+
+(a1 bar)

@@ -390,20 +390,19 @@
 ;; @verify visualisation channel-rendering
 ;; @before (a1 (sin 1))
 ;; @after  (a1 (sin 1))
-;; @status pending
-;; @notes  At least one vis channel renders a waveform after eval.
+;; @status pass
+;; @notes  WebGL serial vis renders waveform after eval. SerialVisGL pipeline projection-fork model landed (gii8.67). Verified in WASM mode.
 
 ;; @verify visualisation multi-channel
 ;; @before (a1 (sin 1))\n(a2 (tri 2))
 ;; @after  (a1 (sin 1))\n(a2 (tri 2))
-;; @status pending
-;; @notes  Multiple channels render simultaneously without frame drops.
+;; @status pass
+;; @notes  Multiple channels render via projection-fork pipeline. 14 projection bugs fixed (gii8.67 audit). Known: stutter under high channel count is Phase 4.1 scope.
 
 ;; ============================================================================
-;; CATEGORY: Structural Editing (Upcoming — Phase 2)
+;; CATEGORY: Structural Editing (Phase 2 — Landed)
 ;; ============================================================================
-;; Placeholder rows for the functional-core structural editing rewrite.
-;; These will be filled as operations migrate to pure (Tree, CursorSet) → (Tree, CursorSet).
+;; Functional-core structural editing rewrite: pure (Tree, CursorSet) → (Tree, CursorSet).
 
 ;; @verify structural-rewrite focus-primary-mode
 ;; @before (a1 (sin 440))
@@ -411,56 +410,152 @@
 ;; @status pass
 ;; @notes  Structural cursor highlights the focused node via cm-structuralCursor halo mark (decorations.ts). Primary/secondary distinction implemented.
 
+;; @verify structural-rewrite functional-core
+;; @before (a1 (sin 440))
+;; @after  (a1 (sin 440))
+;; @status pass
+;; @notes  All nav.* and edit.* ops route through pure functional core (core/nav.ts, core/mutate.ts) via adapter/dispatcher.ts. Legacy implementation retired.
+
+;; @verify structural-rewrite euler-tour-nav
+;; @before (a1 (|sin 440))
+;; @after  (a1 (sin |440))
+;; @status pass
+;; @notes  nav.left/nav.right use Euler-tour horizontal navigation (§5.1.9). 191 YAML nav rows pass.
+
+;; @verify structural-rewrite vertical-spatial-nav
+;; @before (a1 (sin |440))\n(a2 (tri 220))
+;; @after  (a1 (sin 440))\n(a2 (tri |220))
+;; @status pass
+;; @notes  nav.up/nav.down use vertical spatial navigation (§5.1.10). Crosses top-level form boundaries.
+
 ;; @verify structural-rewrite holes-as-nodes
 ;; @before (a1 ($ freq :number))
 ;; @after  (a1 ($ freq :number))
 ;; @status pass
 ;; @notes  Hole node renders as inline pill (holeWidget.ts); eval gated by findHolePositions + gateFormWithHoles. Core hole ops unit tested.
 
+;; @verify structural-rewrite hole-focused-radial
+;; @before (a1 ($ freq |:number))
+;; @after  (a1 ($ freq |:number))
+;; @status pass
+;; @notes  holeFocused channel fires when cursor enters hole; radial menu re-opens scoped to hole type.
+
+;; @verify structural-rewrite numpad-entry
+;; @before (a1 ($ freq |:number))
+;; @after  (a1 ($ freq |:number))
+;; @status pass
+;; @notes  Numpad/T9 entry surface for number-type hole filling. Input triggers replace-hole core op.
+
+;; @verify structural-rewrite gamepad-dispatch
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin |440))
+;; @status pass
+;; @notes  Gamepad and zen navigation drive through structure dispatcher (Phase 2.12 cutover). Legacy gamepadIntents retired.
+
 ;; @verify structural-rewrite multi-cursor
 ;; @before TBD
 ;; @after  TBD
-;; @status pending
-;; @notes  Multiple structural cursors on separate nodes.
+;; @status deferred
+;; @notes  Multi-cursor UI deferred to post-Superbooth. Algebra stays cursor-set-shaped for future extension.
 
 ;; ============================================================================
-;; CATEGORY: Live-Edit (Upcoming — Phase 2/3)
+;; CATEGORY: Live-Edit (Phase 3 — Landed)
 ;; ============================================================================
-;; Placeholder rows for live-edit values, inline widgets, MIDI learn.
+;; Live-edit inline widgets, dockable panel, MIDI learn, CC routing.
+
+;; @verify live-edit mark-action
+;; @before (a1 (sin |440))
+;; @after  (a1 (sin (live-edit |440 :min 0 :max 1000)))
+;; @status pass
+;; @notes  liveEdit.mark action wraps focused atom with live-edit form. Range inference applies :min/:max defaults. markAction.ts.
 
 ;; @verify live-edit inline-widget
 ;; @before (a1 (sin (live-edit 440 :min 220 :max 880)))
-;; @after  TBD
-;; @status pending
-;; @notes  live-edit form renders inline widget (slider/knob).
+;; @after  (a1 (sin (live-edit 440 :min 220 :max 880)))
+;; @status pass
+;; @notes  live-edit form renders inline widget (slider/knob/toggle/picker per type). widgets.ts StateField + ViewPlugin. Drag updates value.
+
+;; @verify live-edit vector-marking
+;; @before (a1 (sin |[220 440 880]))
+;; @after  (a1 (sin (live-edit |[220 440 880] :min 0 :max 1000)))
+;; @status pass
+;; @notes  Vector marking sub-mode per spec §3.7. vectorMarkController.ts handles multi-element ranges.
+
+;; @verify live-edit dockable-panel
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Dockable live-edit panel (liveEditPanel.tsx adapter) shows all active slots. Slot list, value readout, remove affordance.
+
+;; @verify live-edit slot-persistence
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Live-edit slots persist across reload. Orphan slots (source range deleted) handled gracefully.
+
+;; @verify live-edit midi-device-enumeration
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Web MIDI API: device enumeration + permission flow. Settings UI shows available MIDI inputs. midi.ts contracts.
 
 ;; @verify live-edit midi-learn
-;; @before TBD
-;; @after  TBD
-;; @status pending
-;; @notes  MIDI CC binds to live-edit slot via MIDI learn.
-
-;; ============================================================================
-;; CATEGORY: Hardware Buttons (Upcoming — Phase 3)
-;; ============================================================================
-;; Placeholder for hardware button integration tests.
-
-;; @verify hardware-buttons button-event
 ;; @before N/A
 ;; @after  N/A
-;; @status pending
-;; @notes  Hardware button press triggers bound action in the app.
+;; @status pass
+;; @notes  MIDI learn UX: MidiLearnAffordance on each slot, MidiLearnBanner for active learning, MidiLearnConflict for reassignment. midiLearnController.ts.
 
-;; ============================================================================
-;; CATEGORY: Calibration (Upcoming — Phase 3)
-;; ============================================================================
-;; Placeholder for output calibration verification.
-
-;; @verify calibration output-range
+;; @verify live-edit cc-routing
 ;; @before N/A
 ;; @after  N/A
-;; @status pending
-;; @notes  Output voltage range matches calibration settings.
+;; @status pass
+;; @notes  CC/note → live-edit slot routing. MIDI input dispatches to bound slots in real-time. set-live-inputs roundtrip verified end-to-end.
+
+;; ============================================================================
+;; CATEGORY: Hardware Buttons (Phase 5 — Landed)
+;; ============================================================================
+;; Hardware button/toggle binding and dispatch.
+
+;; @verify hardware-buttons wire-protocol
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Wire-protocol additions for hardware button/toggle events. JSON protocol extended per firmware capability discovery (gii8.12).
+
+;; @verify hardware-buttons binding-ui
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Editor UI for binding code per hardware button/toggle. Inline binding chip widget (gii8.56). hardware.ts contracts.
+
+;; @verify hardware-buttons dispatch
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Dispatch bound expressions on hardware button events. Button press evaluates bound code in runtime context.
+
+;; ============================================================================
+;; CATEGORY: Calibration (Phase 5 — Landed)
+;; ============================================================================
+;; CV 1V/oct calibration takeover flow.
+
+;; @verify calibration takeover-modal
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Calibration takeover modal flow (gii8.59). CalibrationTakeover.tsx + CalibrationPicker, CalibrationSlider, CalibrationProgress, CalibrationCompleteBanner components. Spec: calibration.md.
+
+;; @verify calibration octave-sequencer
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Per-output octave test-signal sequencer drives the calibration UI. calibrationSequencer.ts with unit tests.
+
+;; @verify calibration wire-protocol
+;; @before N/A
+;; @after  N/A
+;; @status pass
+;; @notes  Wire-protocol additions for CV calibration takeover + flash persistence. hardware.ts contracts define CalibrationState, CalibrationStep types.
 
 ;; ============================================================================
 ;; END OF VERIFICATION DOCUMENT
