@@ -89,6 +89,8 @@ let runtimePromise: Promise<UseqRuntime> | null = null;
 let lastKnownTimeWindowSupport = false;
 let lastKnownTickAndProjectSupport = false;
 let lastKnownLiveInputsSupport = false;
+let classificationsFnStored: (() => string) | null = null;
+let dependenciesFnStored: ((idx: number) => number) | null = null;
 function isUseqWasmEnabled(): boolean {
   try {
     return getAppSettings()?.wasm?.enabled ?? true;
@@ -673,6 +675,10 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const setLiveInputsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_set_live_inputs) as ((json: string) => number) | null;
   const getLiveSlotsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_get_live_slots) as (() => string) | null;
 
+  // Bind output classification ABI exports (visualisation.md §7.3–7.4)
+  const classificationsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_classifications) as (() => string) | null;
+  const dependenciesFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_dependencies) as ((idx: number) => number) | null;
+
   (globalThis as { __useqWasmRuntime?: UseqWasmRuntimeGlobal }).__useqWasmRuntime = {
     useq_last_diagnostics: lastDiagsFn ?? undefined,
     useq_active_diagnostics: activeDiagsFn ?? undefined,
@@ -685,6 +691,8 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
   lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
   lastKnownLiveInputsSupport = setLiveInputsFn !== null;
+  classificationsFnStored = classificationsFn;
+  dependenciesFnStored = dependenciesFn;
 
   return {
     module,
@@ -1006,6 +1014,48 @@ export async function getLiveSlots(): Promise<LiveSlotMetadata[]> {
 /** Whether the live-inputs ABI is available. */
 export function supportsLiveInputs(): boolean {
   return lastKnownLiveInputsSupport;
+}
+
+// ---------------------------------------------------------------------------
+// Output Classification (visualisation.md §7.3–7.4)
+// ---------------------------------------------------------------------------
+
+import type { OutputClassification } from "../contracts/runtimePorts";
+import { OutputClass } from "../contracts/runtimePorts";
+
+export async function readOutputClassifications(): Promise<OutputClassification | null> {
+  if (!isUseqWasmEnabled()) return null;
+  await ensureUseqWasmLoaded();
+  if (!classificationsFnStored) return null;
+
+  try {
+    const json = classificationsFnStored();
+    if (!json) return null;
+    const raw = JSON.parse(json) as number[];
+    if (!Array.isArray(raw)) return null;
+
+    const classes: OutputClass[] = raw.map((v) => {
+      if (v === 1) return OutputClass.Pure;
+      if (v === 2) return OutputClass.InputDep;
+      if (v === 3) return OutputClass.Stateful;
+      return OutputClass.Inactive;
+    });
+
+    const inputMasks: number[] = [];
+    if (dependenciesFnStored) {
+      for (let i = 0; i < raw.length; i++) {
+        inputMasks.push(dependenciesFnStored(i));
+      }
+    } else {
+      for (let i = 0; i < raw.length; i++) {
+        inputMasks.push(0);
+      }
+    }
+
+    return { classes, inputMasks };
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

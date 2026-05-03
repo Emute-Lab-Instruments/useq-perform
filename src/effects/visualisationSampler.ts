@@ -32,7 +32,7 @@ import {
   getAppSettings,
   subscribeAppSettings,
 } from "../runtime/appSettingsRepository.ts";
-import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
+import { codeEvaluated as codeEvaluatedChannel, liveEditValueChanged } from "../contracts/runtimeChannels";
 import { recordDriftSample, checkDriftThreshold } from "./driftDetector";
 import { serialVisPaletteChangedChannel } from "../contracts/visualisationChannels";
 import { addValueChangeListener } from "./mockControlInputs.ts";
@@ -40,7 +40,9 @@ import {
   PROJECTION_MODE_NONE,
   PROJECTION_MODE_RESET_FILL,
   PROJECTION_MODE_EXTEND,
+  OutputClass,
   type ProjectionMode,
+  type OutputClassification,
 } from "../contracts/runtimePorts";
 import type { VisExpression, VisSample, VisSettings } from "../utils/visualisationStore.ts";
 import {
@@ -321,12 +323,56 @@ function isWasmErrorResult(result: string | null | undefined): boolean {
   return typeof result === "string" && result.trim() === WASM_ERROR_RESULT;
 }
 
+// ── Output classification cache ─────────────────────────────────────
+//
+// Cached after each code eval. Used for selective invalidation (spec §4.4)
+// and projection fast-path decisions. null = classifications unavailable,
+// fall back to conservative invalidation.
+
+let cachedClassification: OutputClassification | null = null;
+
+function outputIndexForName(name: string): number {
+  if (name.length !== 2) return -1;
+  const prefix = name[0];
+  const digit = name.charCodeAt(1) - 49; // '1' = 0, '8' = 7
+  if (digit < 0 || digit > 7) return -1;
+  switch (prefix) {
+    case "a": return digit;
+    case "d": return 8 + digit;
+    case "s": return 16 + digit;
+    default: return -1;
+  }
+}
+
+function getOutputClass(name: string): OutputClass {
+  if (!cachedClassification) return OutputClass.Stateful; // conservative
+  const idx = outputIndexForName(name);
+  if (idx < 0 || idx >= cachedClassification.classes.length) return OutputClass.Stateful;
+  return cachedClassification.classes[idx];
+}
+
+function getOutputInputMask(name: string): number {
+  if (!cachedClassification) return 0xFFFFFFFF; // conservative: assume all inputs
+  const idx = outputIndexForName(name);
+  if (idx < 0 || idx >= cachedClassification.inputMasks.length) return 0xFFFFFFFF;
+  return cachedClassification.inputMasks[idx];
+}
+
+async function refreshClassificationCache(): Promise<void> {
+  try {
+    cachedClassification = await wasmPort().readOutputClassifications();
+  } catch {
+    cachedClassification = null;
+  }
+}
+
 // ── Future invalidation & frontier tracking ───────────────────────
 //
-// Conservative invalidation (spec §3.7, §5.5): any code eval, settings
-// change, or external-input change beyond inputEpsilon resets the entire
-// projection fork. Per-output selective invalidation is deferred until
-// useq_output_dependencies (spec §7.4) is implemented in the WASM engine.
+// Selective invalidation (spec §4.4): input changes only invalidate
+// outputs whose dependency mask includes the changed input channel.
+// Pure outputs never need fork invalidation on input changes.
+// Falls back to conservative (invalidate all) when classifications
+// are unavailable.
 
 const DEFAULT_INPUT_EPSILON = 0.01;
 
@@ -1061,6 +1107,9 @@ export function notifyExpressionEvaluated(
 ): void {
   invalidateFutureProjections();
   setLastChangeKind("data");
+  // Refresh classification cache asynchronously after each eval.
+  // The cache will be ready by the next frame's tickAndProject call.
+  refreshClassificationCache();
 }
 
 export function reportExpressionColor(
@@ -1145,15 +1194,29 @@ if (typeof window !== "undefined") {
   });
 
   // External input changes beyond inputEpsilon invalidate the
-  // projection fork (spec §4.4). Conservative: invalidates ALL
-  // outputs regardless of which inputs they reference. Per-output
-  // invalidation requires useq_output_dependencies (spec §7.4).
+  // projection fork (spec §4.4). Selective: only invalidate when at
+  // least one active output is input-dependent or stateful. Pure
+  // outputs are unaffected by input changes.
   addValueChangeListener((_name, newValue, oldValue) => {
     const epsilon = visStore.settings.inputEpsilon ?? DEFAULT_INPUT_EPSILON;
-    if (Math.abs(newValue - oldValue) > epsilon) {
+    if (Math.abs(newValue - oldValue) <= epsilon) return;
+
+    const outputs = Object.keys(visStore.expressions);
+    const anyAffected = outputs.some((name) => {
+      const cls = getOutputClass(name);
+      return cls === OutputClass.InputDep || cls === OutputClass.Stateful;
+    });
+
+    if (anyAffected) {
       invalidateFutureProjections();
       setLastChangeKind("data");
     }
+  });
+
+  // Live-edit value changes invalidate the projection fork (spec §3.7).
+  liveEditValueChanged.subscribe(() => {
+    invalidateFutureProjections();
+    setLastChangeKind("data");
   });
 
   serialVisPaletteChangedChannel.subscribe((detail) => {

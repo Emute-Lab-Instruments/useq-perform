@@ -75,11 +75,10 @@ async function handleDriftDetected(detail: DriftDetectedDetail): Promise<void> {
       dbg(`stateSync[${syncId}]: snapshot apply failed (WASM export may be unavailable)`);
       post("State resync failed — WASM apply_state_snapshot not available.", "warn");
     }
-
-    resetDriftScores();
   } catch (error) {
     dbg(`stateSync[${syncId}]: error during resync: ${error}`);
   } finally {
+    resetDriftScores();
     syncing = false;
   }
 }

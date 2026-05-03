@@ -27,6 +27,7 @@ export const CODE_EVALUATED_EVENT = "useq-code-evaluated";
 export const ANIMATE_CONNECT_EVENT = "useq-animate-connect";
 export const DEVICE_PLUGGED_IN_EVENT = "useq-device-plugged-in";
 export const DRIFT_DETECTED_EVENT = "useq-drift-detected";
+export const LIVE_EDIT_VALUE_CHANGED_EVENT = "useq-live-edit-value-changed";
 
 // ── Payload types ───────────────────────────────────────────────
 
@@ -69,6 +70,13 @@ export interface DriftDetectedDetail {
   aggregate: number;
 }
 
+/** Payload when a live-edit slot value changes (used for projection invalidation). */
+export interface LiveEditValueChangedDetail {
+  slotId: string;
+  newValue: number;
+  oldValue: number;
+}
+
 /** Payload for standalone diagnostics frames (spec §5.9). */
 export interface StandaloneDiagnosticsDetail {
   diagnostics: UseqDiagnostic[];
@@ -86,6 +94,7 @@ export interface RuntimeEventDetailMap {
   [ANIMATE_CONNECT_EVENT]: AnimateConnectDetail;
   [DEVICE_PLUGGED_IN_EVENT]: DevicePluggedInDetail;
   [DRIFT_DETECTED_EVENT]: DriftDetectedDetail;
+  [LIVE_EDIT_VALUE_CHANGED_EVENT]: LiveEditValueChangedDetail;
 }
 
 export type RuntimeEventName = keyof RuntimeEventDetailMap;
@@ -100,6 +109,7 @@ export const RUNTIME_EVENT_NAMES = Object.freeze([
   ANIMATE_CONNECT_EVENT,
   DEVICE_PLUGGED_IN_EVENT,
   DRIFT_DETECTED_EVENT,
+  LIVE_EDIT_VALUE_CHANGED_EVENT,
 ] as const satisfies readonly RuntimeEventName[]);
 
 // ── Contract assertion ──────────────────────────────────────────
@@ -140,6 +150,9 @@ export const devicePluggedIn = createChannel<DevicePluggedInDetail>();
 
 /** WASM↔hardware output drift detected (published by drift detector). */
 export const driftDetected = createChannel<DriftDetectedDetail>();
+
+/** Live-edit slot value changed beyond epsilon (published by live-edit runtime). */
+export const liveEditValueChanged = createChannel<LiveEditValueChangedDetail>();
 
 /** App settings changed (published by runtimeService after any mutation). */
 export const settingsChanged = createChannel<AppSettings>();

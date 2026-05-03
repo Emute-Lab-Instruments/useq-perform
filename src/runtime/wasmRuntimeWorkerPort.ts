@@ -378,5 +378,12 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       );
       return response.success;
     },
+
+    async readOutputClassifications(): Promise<import("../contracts/runtimePorts").OutputClassification | null> {
+      // Worker port: not yet wired through the worker protocol.
+      // Falls back to null (conservative invalidation) until the worker
+      // protocol is extended.
+      return null;
+    },
   };
 }

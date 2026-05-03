@@ -120,8 +120,8 @@ export const webSerialHostPort: WebSerialHostPort = {
   async requestStateSnapshot(): Promise<StateSnapshot | null> {
     try {
       const response = await sendGetState();
-      if (response.success && (response as any).state) {
-        return (response as any).state as StateSnapshot;
+      if (response.success && response.state && typeof response.state === "object") {
+        return response.state as StateSnapshot;
       }
       return null;
     } catch {

@@ -27,6 +27,7 @@
 
 import type {
   LiveSlotMetadata,
+  OutputClassification,
   RuntimeDiagnostic,
   SampleSeriesMap,
   TickAndProjectResult,
@@ -45,6 +46,7 @@ import {
   evalOutputAtTime,
   evalOutputsInTimeWindow,
   getLiveSlots as getLiveSlotsFromWasm,
+  readOutputClassifications as readOutputClassificationsFromWasm,
   setLiveInputs as setLiveInputsInWasm,
   supportsLiveInputs as wasmSupportsLiveInputs,
   tickAndProjectOutputs,
@@ -201,6 +203,10 @@ export const wasmRuntimePort: WasmRuntimePort = {
 
   async applyStateSnapshot(snapshot: StateSnapshot): Promise<boolean> {
     return applyStateSnapshotSync(snapshot);
+  },
+
+  async readOutputClassifications(): Promise<OutputClassification | null> {
+    return readOutputClassificationsFromWasm();
   },
 };
 

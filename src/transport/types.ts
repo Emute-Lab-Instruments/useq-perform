@@ -88,8 +88,8 @@ export interface JsonResponse {
   kind?: string;
   /** Hardware input id (spec §5.10 `hw-input`). */
   id?: string;
-  /** Hardware input state (spec §5.10 `hw-input`). */
-  state?: string | boolean;
+  /** Hardware input state (spec §5.10 `hw-input`), or state-snapshot payload (state-sync.md §2). */
+  state?: string | boolean | import("../contracts/runtimeTypes").StateSnapshot;
   /** Device-side timestamp in ms (spec §5.10 `hw-input`). */
   ts?: number;
   /** Firmware's authoritative cumulative offset in cents (spec §5.13 `calibrate-adjust`). */

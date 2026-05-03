@@ -196,6 +196,31 @@ export interface TickAndProjectResult {
   projectionSamples: SampleSeriesMap;
 }
 
+/**
+ * Output classification (visualisation.md §4).
+ *
+ * Determined by the compiler after each eval. Drives projection
+ * fast-path decisions: pure outputs can be projected without a fork,
+ * input-dep outputs only invalidate when their referenced inputs change.
+ */
+export enum OutputClass {
+  Inactive = 0,
+  Pure = 1,
+  InputDep = 2,
+  Stateful = 3,
+}
+
+/**
+ * Per-output classification and dependency metadata.
+ * Returned by `readOutputClassifications()`.
+ */
+export interface OutputClassification {
+  /** Classification for each output index (0–41). */
+  classes: OutputClass[];
+  /** Per-output bitmask of referenced hardware input channels. */
+  inputMasks: number[];
+}
+
 /** Metadata for a live-edit slot returned from the WASM runtime. */
 export interface LiveSlotMetadata {
   id: string;
@@ -344,6 +369,18 @@ export interface WasmRuntimePort extends SharedRuntimePort {
    * if the export is unavailable or the apply fails.
    */
   applyStateSnapshot(snapshot: StateSnapshot): Promise<boolean>;
+
+  /**
+   * Read per-output classification from the WASM engine (spec §7.3–7.4).
+   *
+   * Returns classification (Pure/InputDep/Stateful) and input dependency
+   * bitmask for each output. Used by the sampler for selective invalidation
+   * and projection fast-path decisions.
+   *
+   * Returns null if the exports are unavailable (graceful fallback to
+   * conservative invalidation).
+   */
+  readOutputClassifications(): Promise<OutputClassification | null>;
 }
 
 // ---------------------------------------------------------------------------

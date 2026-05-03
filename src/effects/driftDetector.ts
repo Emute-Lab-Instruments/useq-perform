@@ -13,7 +13,7 @@
  * @see docs/specs/state-sync.md
  */
 
-import { serialBuffers, serialOutputBufferRouting } from "../transport/stream-parser";
+import { serialBuffers } from "../transport/stream-parser";
 import {
   driftDetected as driftDetectedChannel,
   codeEvaluated as codeEvaluatedChannel,
@@ -46,20 +46,22 @@ let enabled = false;
 // Buffer index 0 is always time; output buffers start at 1.
 
 function outputNameToBufferIndex(name: string): number | null {
+  // Only serial outputs (s1–s8) have corresponding stream channels.
+  // The routing table maps wire channel ID → buffer index, and for
+  // output sN the buffer index is always N (by construction in
+  // buildSerialOutputRouting). Verify the mapping exists.
   const match = /^s([1-9]\d*)$/.exec(name);
   if (!match) return null;
-  const channelNumber = Number.parseInt(match[1], 10);
-  for (const [channelId, bufIdx] of Object.entries(serialOutputBufferRouting)) {
-    if (bufIdx === channelNumber) return bufIdx;
-  }
-  return channelNumber;
+  const bufferIndex = Number.parseInt(match[1], 10);
+  if (bufferIndex < 0 || bufferIndex >= serialBuffers.length) return null;
+  return bufferIndex;
 }
 
 // ── Core comparison ─────────────────────────────────────────────────
 
 function relativeError(hwValue: number, wasmValue: number): number {
   const diff = Math.abs(hwValue - wasmValue);
-  const denom = Math.max(Math.abs(hwValue), EPSILON);
+  const denom = Math.max(Math.abs(hwValue), Math.abs(wasmValue), EPSILON);
   return diff / denom;
 }
 
