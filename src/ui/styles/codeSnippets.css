@@ -427,26 +427,3 @@
     background: var(--accent-color);
     color: var(--panel-bg, #000);
 }
-
-/* Scrollbar styling */
-.code-snippets-list {
-    scrollbar-width: thin;
-    scrollbar-color: var(--accent-color) transparent;
-}
-
-.code-snippets-list::-webkit-scrollbar {
-    width: 5px;
-}
-
-.code-snippets-list::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.code-snippets-list::-webkit-scrollbar-thumb {
-    background: var(--accent-color);
-    border-radius: 0;
-}
-
-.code-snippets-list::-webkit-scrollbar-thumb:hover {
-    filter: brightness(1.3);
-}

@@ -99,26 +99,6 @@
   background-color: var(--panel-section-bg);
   padding: 0;
   padding-left: 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--accent-color) transparent;
-
-  &::-webkit-scrollbar {
-    width: 5px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background-color: var(--accent-color);
-    opacity: 0.5;
-    border-radius: 0;
-  }
-
-  &::-webkit-scrollbar-thumb:hover {
-    background-color: var(--accent-color-hover);
-  }
 }
 
 .panel-tab {

@@ -35,6 +35,7 @@ import {
   type ProbeRange,
 } from "./probeHelpers.ts";
 import { drawProbeWaveformGL } from "../../ui/visualisation/webglLineRenderer.ts";
+import { perf } from "../../lib/perfTrace.ts";
 
 // ---------------------------------------------------------------------------
 // ProbeConfig — dependency injection interface
@@ -870,6 +871,7 @@ async function sampleWaveform(
   }
 
   // Fast path: one WASM call for the whole window.
+  if (import.meta.env.DEV) perf.begin("probe-batch-eval");
   try {
     const batch = await _config.evalExpressionAtTimes(code, times);
     if (batch) {
@@ -877,16 +879,29 @@ async function sampleWaveform(
       // through to the per-sample legacy path so a single misbehaving
       // sub-expression doesn't kill the whole probe.
       if (batch.samples.length === count) {
+        if (import.meta.env.DEV) {
+          perf.count("probe-batch-success");
+          perf.count("probe-batch-samples", count);
+          perf.end("probe-batch-eval");
+        }
         return { current: batch.current, samples: batch.samples };
       }
       // Empty samples but a current string → propagate as a no-op
       // (matches the legacy "non-numeric result" branch).
       if (batch.samples.length === 0 && batch.current) {
+        if (import.meta.env.DEV) {
+          perf.count("probe-batch-non-numeric");
+          perf.end("probe-batch-eval");
+        }
         return { current: batch.current, samples: [] };
       }
     }
   } catch (error) {
     dbg(`probe: batch sample failed for ${code} (${error})`);
+  }
+  if (import.meta.env.DEV) {
+    perf.count("probe-batch-fallback");
+    perf.end("probe-batch-eval");
   }
 
   // Fallback: per-sample loop. Only reached when the batch path fails or
@@ -1033,17 +1048,29 @@ async function computeHighlights(
   forms: IndexedFormTarget[],
   probes: PersistedProbeSpec[],
 ): Promise<FromListHighlight[]> {
+  if (import.meta.env.DEV) {
+    perf.begin("probe-highlights");
+    perf.count("probe-highlights-forms", forms.length);
+  }
   const highlights: FromListHighlight[] = [];
 
   for (const form of forms) {
     const contextual = buildProbeExpression(state, form.phasorRange, "contextual");
     if (contextual?.code) {
+      if (import.meta.env.DEV) {
+        perf.begin("probe-highlights-eval");
+        perf.count("probe-highlights-eval-contextual");
+      }
       try {
-        const result = await evaluateProbeCode(contextual.code);
+        const currentTime = _config.getCurrentTime();
+        const timedCode = buildEvalAtTimeExpression(contextual.code, currentTime);
+        const result = await evaluateProbeCode(timedCode);
         if (!isErrorResult(result)) {
+          const numeric = Number(result);
+          const phasor = Number.isFinite(numeric) ? numeric : 0;
           const index = computeFromListIndex(
             form.elementRanges.length,
-            Number(result),
+            phasor,
           );
           const active = index == null ? null : form.elementRanges[index];
           if (active) {
@@ -1056,6 +1083,8 @@ async function computeHighlights(
         }
       } catch (error) {
         dbg(`probe: failed to highlight indexed form (${error})`);
+      } finally {
+        if (import.meta.env.DEV) perf.end("probe-highlights-eval");
       }
     }
 
@@ -1082,6 +1111,10 @@ async function computeHighlights(
     const raw = buildProbeExpression(state, form.phasorRange, "raw");
     if (!raw?.code) continue;
 
+    if (import.meta.env.DEV) {
+      perf.begin("probe-highlights-eval");
+      perf.count("probe-highlights-eval-raw");
+    }
     try {
       const result = await evaluateProbeCode(raw.code);
       if (isErrorResult(result)) continue;
@@ -1098,9 +1131,12 @@ async function computeHighlights(
       });
     } catch (error) {
       dbg(`probe: failed to compute raw indexed highlight (${error})`);
+    } finally {
+      if (import.meta.env.DEV) perf.end("probe-highlights-eval");
     }
   }
 
+  if (import.meta.env.DEV) perf.end("probe-highlights");
   return highlights;
 }
 
@@ -1110,7 +1146,8 @@ class ProbePlugin {
   private samplingInFlight = false;
   private visibleForms: IndexedFormTarget[] = [];
   private previousProbeSignature = "";
-  private probesActive = false;
+  /** True when the rAF tick loop should run (probes or visible indexed forms). */
+  private tickLoopActive = false;
   private resizeObserver: ResizeObserver;
   private resizeTimers: Map<string, number> = new Map();
   private contextLineCanvas: HTMLCanvasElement | null = null;
@@ -1120,8 +1157,8 @@ class ProbePlugin {
   constructor(private readonly view: EditorView) {
     const probes = view.state.field(probeField).probes;
     this.previousProbeSignature = probeSignature(probes);
-    this.probesActive = probes.length > 0;
     this.recomputeVisibleForms(view);
+    this.tickLoopActive = probes.length > 0 || this.visibleForms.length > 0;
     this.onClick = this.onClick.bind(this);
     this.onWindowDurationInput = this.onWindowDurationInput.bind(this);
     this.onResize = this.onResize.bind(this);
@@ -1133,7 +1170,7 @@ class ProbePlugin {
     this.resizeObserver = new ResizeObserver(this.onResize);
     this.observeProbeWidgets();
     this.initContextLineCanvas();
-    if (this.probesActive) {
+    if (this.tickLoopActive) {
       this.frameId = window.requestAnimationFrame(this.tick);
     }
   }
@@ -1151,17 +1188,17 @@ class ProbePlugin {
       persistProbes(probes);
     }
 
-    // Start or stop the animation frame loop based on whether probes exist.
-    const wasActive = this.probesActive;
-    this.probesActive = probes.length > 0;
-    if (this.probesActive && !wasActive && this.frameId == null) {
+    // Start or stop the animation frame loop based on whether probes or visible indexed forms exist.
+    const wasActive = this.tickLoopActive;
+    this.tickLoopActive = probes.length > 0 || this.visibleForms.length > 0;
+    if (this.tickLoopActive && !wasActive && this.frameId == null) {
       this.frameId = window.requestAnimationFrame(this.tick);
-    } else if (!this.probesActive && wasActive && this.frameId != null) {
+    } else if (!this.tickLoopActive && wasActive && this.frameId != null) {
       window.cancelAnimationFrame(this.frameId);
       this.frameId = null;
     }
 
-    if (this.probesActive && (update.docChanged || update.viewportChanged || update.geometryChanged)) {
+    if (this.tickLoopActive && (update.docChanged || update.viewportChanged || update.geometryChanged)) {
       this.drawContextLines();
     }
   }
@@ -1384,8 +1421,14 @@ class ProbePlugin {
 
   private async tick(now: number): Promise<void> {
     this.frameId = window.requestAnimationFrame(this.tick);
-    if (this.samplingInFlight) return;
-    if (now - this.lastRun < getProbeRefreshIntervalMs()) return;
+    if (this.samplingInFlight) {
+      if (import.meta.env.DEV) perf.count("probe-tick-skipped-inflight");
+      return;
+    }
+    if (now - this.lastRun < getProbeRefreshIntervalMs()) {
+      if (import.meta.env.DEV) perf.count("probe-tick-skipped-throttle");
+      return;
+    }
     this.lastRun = now;
 
     const snapshot = this.view.state.field(probeField);
@@ -1406,12 +1449,19 @@ class ProbePlugin {
       return;
     }
 
+    if (import.meta.env.DEV) {
+      perf.begin("probe-tick");
+      perf.count("probe-tick-runs");
+      perf.count("probe-tick-visible-probes", visibleProbes.length);
+      perf.count("probe-tick-visible-forms", this.visibleForms.length);
+    }
     this.samplingInFlight = true;
     try {
       const currentTime = _config.getCurrentTime();
       const updates: ProbeRenderUpdate[] = [];
 
       for (const probe of visibleProbes) {
+        if (import.meta.env.DEV) perf.begin("probe-build-render");
         const next = await buildRenderForProbe(
           this.view.state,
           probe,
@@ -1420,9 +1470,12 @@ class ProbePlugin {
             probeSampleCount: _config.getDefaultSamples(),
           },
         );
+        if (import.meta.env.DEV) perf.end("probe-build-render");
         if (!next) continue;
 
+        if (import.meta.env.DEV) perf.begin("probe-paint");
         updateProbeDOM(next.probe.id, next.probe, next.render);
+        if (import.meta.env.DEV) perf.end("probe-paint");
 
         const existing = snapshot.renderById[next.probe.id];
         updates.push({
@@ -1431,11 +1484,14 @@ class ProbePlugin {
         });
       }
 
-      const highlights = await computeHighlights(
-        this.view.state,
-        this.visibleForms,
-        snapshot.probes,
-      );
+      const highlightsEnabled = getAppSettings().visualisation?.probeHighlightsEnabled !== false;
+      const highlights = highlightsEnabled
+        ? await computeHighlights(
+            this.view.state,
+            this.visibleForms,
+            snapshot.probes,
+          )
+        : [];
 
       this.view.dispatch({
         effects: updateProbeRenderEffect.of({ updates, highlights }),
@@ -1446,6 +1502,7 @@ class ProbePlugin {
       dbg(`probe: sampling tick failed (${error})`);
     } finally {
       this.samplingInFlight = false;
+      if (import.meta.env.DEV) perf.end("probe-tick");
     }
   }
 }

@@ -86,10 +86,15 @@ export function UISettings(props: UISettingsProps = {}) {
           onChange={(val) => updateUIField("nodeHighlightYOffset", val)}
         />
       </FormRow>
-      <FormRow label="Show indent guide">
-        <Checkbox
-          checked={s().ui?.indentGuideEnabled !== false}
-          onChange={(val) => updateUIField("indentGuideEnabled", val)}
+      <FormRow label="Indent guides">
+        <Select
+          value={s().ui?.indentGuideMode ?? "always"}
+          options={[
+            { value: "always", label: "Always" },
+            { value: "path", label: "Path to focused node" },
+            { value: "never", label: "Never" },
+          ]}
+          onChange={(val) => updateUIField("indentGuideMode", val)}
         />
       </FormRow>
       <FormRow label="Indent guide width" level="advanced">
@@ -101,7 +106,7 @@ export function UISettings(props: UISettingsProps = {}) {
           onChange={(val) => updateUIField("indentGuideWidth", val)}
         />
       </FormRow>
-      <FormRow label="Indent guide opacity" level="advanced">
+      <FormRow label="Indent guide opacity">
         <NumberInput
           value={s().ui?.indentGuideOpacity ?? 0.15}
           min={0}

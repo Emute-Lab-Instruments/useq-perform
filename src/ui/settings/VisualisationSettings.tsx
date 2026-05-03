@@ -36,6 +36,12 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
   return (
     <Section title="Visualisation">
       <SubGroup label="Waveform display">
+        <FormRow label="Show future projection">
+          <Checkbox
+            checked={s().visualisation?.showFutureProjection === true}
+            onChange={(val) => updateVisField("showFutureProjection", val)}
+          />
+        </FormRow>
         <FormRow label="Visible window duration">
           <RangeInput
             value={s().visualisation?.windowDuration ?? 10}
@@ -63,6 +69,16 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
             max={400}
             step={10}
             onChange={(val) => updateVisField("sampleCount", val)}
+          />
+        </FormRow>
+        <FormRow label="Temporal sample density" level="advanced">
+          <RangeInput
+            value={s().visualisation?.temporalSampleRateMultiplier ?? 1}
+            min={0.05}
+            max={1}
+            step={0.05}
+            formatValue={(v) => `${v.toFixed(2)}x`}
+            onChange={(val) => updateVisField("temporalSampleRateMultiplier", val)}
           />
         </FormRow>
         <FormRow label="Waveform line width">
@@ -104,6 +120,12 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
       </SubGroup>
 
       <SubGroup label="Probes" level="advanced">
+        <FormRow label="Element-cycling highlights">
+          <Checkbox
+            checked={s().visualisation?.probeHighlightsEnabled !== false}
+            onChange={(val) => updateVisField("probeHighlightsEnabled", val)}
+          />
+        </FormRow>
         <FormRow label="Probe waveform line width">
           <RangeInput
             value={s().visualisation?.probeLineWidth ?? 2}
@@ -243,6 +265,39 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
             disabled={s().visualisation?.readabilityEnabled === false}
             formatValue={(v) => `${Math.round(v)} lines`}
             onChange={(val) => updateVisField("readabilityOverscan", val)}
+          />
+        </FormRow>
+      </SubGroup>
+
+      <SubGroup label="Projection pipeline" defaultOpen={false} level="advanced">
+        <FormRow label="Future line alpha">
+          <RangeInput
+            value={s().visualisation?.futureLineAlpha ?? 0.6}
+            min={0}
+            max={1}
+            step={0.05}
+            formatValue={(v) => v.toFixed(2)}
+            onChange={(val) => updateVisField("futureLineAlpha", val)}
+          />
+        </FormRow>
+        <FormRow label="Min future sample rate">
+          <RangeInput
+            value={s().visualisation?.minFutureSampleRate ?? 30}
+            min={1}
+            max={120}
+            step={1}
+            formatValue={(v) => `${Math.round(v)} Hz`}
+            onChange={(val) => updateVisField("minFutureSampleRate", val)}
+          />
+        </FormRow>
+        <FormRow label="Extension batch size">
+          <RangeInput
+            value={s().visualisation?.extensionBatchSize ?? 4}
+            min={1}
+            max={32}
+            step={1}
+            formatValue={(v) => `${Math.round(v)} samples`}
+            onChange={(val) => updateVisField("extensionBatchSize", val)}
           />
         </FormRow>
       </SubGroup>

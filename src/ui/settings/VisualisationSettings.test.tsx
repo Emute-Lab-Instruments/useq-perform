@@ -20,6 +20,7 @@ vi.mock("../../utils/settingsStore", () => ({
       circularOffset: 0,
       futureLeadSeconds: 1,
       digitalLaneGap: 4,
+      temporalSampleRateMultiplier: 1,
     },
   },
   requestSettingsUpdate,
@@ -76,6 +77,7 @@ describe("VisualisationSettings", () => {
     expect(screen.getByText("Visible window duration")).toBeTruthy();
     expect(screen.getByText("Future lead window")).toBeTruthy();
     expect(screen.getByText("Visible sample count")).toBeTruthy();
+    expect(screen.getByText("Temporal sample density")).toBeTruthy();
     expect(screen.queryByText("Visual offset window")).toBeNull();
   });
 
@@ -152,6 +154,21 @@ describe("VisualisationSettings", () => {
     expect(requestSettingsUpdate).toHaveBeenCalledWith({
       visualisation: expect.objectContaining({
         probeRefreshIntervalMs: 50,
+      }),
+    });
+  });
+
+  it("updates temporal sample density through the settings panel", () => {
+    render(() => <VisualisationSettings />);
+    expandAll();
+
+    fireEvent.change(getRowInput("Temporal sample density"), {
+      target: { value: "0.75" },
+    });
+
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
+      visualisation: expect.objectContaining({
+        temporalSampleRateMultiplier: 0.75,
       }),
     });
   });

@@ -1,20 +1,8 @@
 import { For, Show } from "solid-js";
 import { Section, FormRow, Checkbox } from "./FormControls";
-import type { MidiInputDescriptor } from "../../contracts/midi.ts";
+import type { MidiInputDescriptor, MidiPermissionState } from "../../contracts/midi.ts";
 
-/**
- * Permission state for browser-side Web MIDI input.
- *
- * - `unknown`: never requested. Show a CTA + explainer.
- * - `granted`: enumerate devices.
- * - `denied`: user (or browser) blocked access. Show a recovery hint.
- * - `unsupported`: this browser doesn't expose Web MIDI at all.
- */
-export type MidiPermissionState =
-  | "unknown"
-  | "granted"
-  | "denied"
-  | "unsupported";
+export type { MidiPermissionState };
 
 export interface MidiSettingsProps {
   permission: MidiPermissionState;

@@ -24,6 +24,13 @@ const CONNECTION_LABELS: Record<ConnectionState, string> = {
   both: 'HW+WASM',
 };
 
+const CONNECTION_BADGE_LABELS: Record<ConnectionState, string> = {
+  none: '',
+  wasm: 'W',
+  hardware: 'HW',
+  both: 'HW+W',
+};
+
 const CONNECTION_CLASSES: Record<ConnectionState, string> = {
   none: 'transport-none',
   wasm: 'transport-wasm',
@@ -70,13 +77,15 @@ export function MainToolbar(props: MainToolbarProps) {
           onClick={() => props.onConnect()}
         >
           <Cable />
+          {CONNECTION_BADGE_LABELS[props.connectionState] && (
+            <span
+              class={`connect-badge ${CONNECTION_CLASSES[props.connectionState]}`}
+              aria-live="polite"
+            >
+              {CONNECTION_BADGE_LABELS[props.connectionState]}
+            </span>
+          )}
         </button>
-        <span
-          class={`runtime-mode-label ${CONNECTION_CLASSES[props.connectionState]}`}
-          aria-live="polite"
-        >
-          {runtimeStatus()}
-        </span>
         <button
           class="toolbar-button"
           title="Graph"

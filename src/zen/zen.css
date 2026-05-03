@@ -88,8 +88,6 @@
   gap: 10px;
   overflow-x: auto;
   padding-bottom: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: #333 transparent;
 }
 
 /* Exercise card */

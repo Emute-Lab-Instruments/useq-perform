@@ -332,7 +332,7 @@ export function collectVisibleIndexedForms(
   }
 
   visit(tree.topNode);
-  results.sort((left, right) => left.formRange.from - right.formRange.from);
+  results.sort((left, right) => left.formRange.from - right.formRange.to);
   return results;
 }
 

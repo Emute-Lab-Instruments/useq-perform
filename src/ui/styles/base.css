@@ -61,3 +61,37 @@ body {
 input, button, select, textarea {
   font-family: var(--code-font);
 }
+
+/* ── Universal scrollbar ──────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-color) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--accent-color);
+  border-radius: 0;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  filter: brightness(1.3);
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

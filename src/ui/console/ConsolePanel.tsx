@@ -18,7 +18,6 @@ import {
   consoleStore,
   clearConsole,
   type ConsoleMessage,
-  type ConsoleMessageType,
 } from "../../utils/consoleStore.ts";
 import { settings as globalSettings } from "../../utils/settingsStore.ts";
 import { usePointerDrag } from "../panel-chrome/usePointerDrag.ts";
@@ -26,28 +25,21 @@ import type { ConsoleSettings } from "../../lib/settings/schema.ts";
 import "./console.css";
 
 // ---------------------------------------------------------------------------
-// Geometry
+// Size
 // ---------------------------------------------------------------------------
 
 const MIN_W = 280;
 const MIN_H = 120;
-const MARGIN = 16;
 
-interface Geometry {
-  x: number;
-  y: number;
+interface Size {
   w: number;
   h: number;
 }
 
-function defaultGeometry(): Geometry {
-  const w = Math.min(520, window.innerWidth * 0.4);
-  const h = Math.min(340, window.innerHeight * 0.35);
+function defaultSize(): Size {
   return {
-    x: window.innerWidth - w - MARGIN,
-    y: window.innerHeight - h - MARGIN,
-    w,
-    h,
+    w: Math.min(520, window.innerWidth * 0.4),
+    h: Math.min(340, window.innerHeight * 0.35),
   };
 }
 
@@ -179,39 +171,33 @@ function stripHtml(html: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Resize edge component
+// Resize edge component (bottom-right anchored: n/w/nw grow away from anchor)
 // ---------------------------------------------------------------------------
 
-type ResizeEdge = "n" | "s" | "e" | "w" | "nw" | "ne" | "sw" | "se";
+type ResizeEdge = "n" | "w" | "nw";
 
 function ResizeZone(props: {
   edge: ResizeEdge;
-  geo: () => Geometry;
-  setGeo: (g: Geometry) => void;
+  size: () => Size;
+  setSize: (s: Size) => void;
 }) {
   const drag = usePointerDrag({
     onStart: () => { /* snapshot taken via closure */ },
     onMove: (_e, dx, dy) => {
-      const p = startGeo;
-      let { x, y, w, h } = p;
-      const edge = props.edge;
+      const p = startSize;
+      let { w, h } = p;
 
-      if (edge.includes("w")) { x = p.x + dx; w = p.w - dx; }
-      if (edge.includes("e")) { w = p.w + dx; }
-      if (edge.includes("n")) { y = p.y + dy; h = p.h - dy; }
-      if (edge.includes("s")) { h = p.h + dy; }
+      if (props.edge.includes("w")) w = p.w - dx;
+      if (props.edge.includes("n")) h = p.h - dy;
 
-      if (w < MIN_W) { if (edge.includes("w")) x = p.x + p.w - MIN_W; w = MIN_W; }
-      if (h < MIN_H) { if (edge.includes("n")) y = p.y + p.h - MIN_H; h = MIN_H; }
-
-      props.setGeo({ x, y, w, h });
+      props.setSize({ w: Math.max(MIN_W, w), h: Math.max(MIN_H, h) });
     },
   });
 
-  let startGeo: Geometry;
+  let startSize: Size;
 
   const handlePointerDown = (e: PointerEvent) => {
-    startGeo = { ...props.geo() };
+    startSize = { ...props.size() };
     drag(e);
   };
 
@@ -228,12 +214,11 @@ function ResizeZone(props: {
 // ---------------------------------------------------------------------------
 
 export function ConsolePanel() {
-  const [geo, setGeo] = createSignal<Geometry>(defaultGeometry());
+  const [size, setSize] = createSignal<Size>(defaultSize());
   const [collapsed, setCollapsed] = createSignal(false);
   const [unreadCount, setUnreadCount] = createSignal(0);
   const [isAutoScrolling, setIsAutoScrolling] = createSignal(true);
   const [showScrollIndicator, setShowScrollIndicator] = createSignal(false);
-  /** ID of the message currently being typewritten, or null if idle. */
   const [typewriterActiveId, setTypewriterActiveId] = createSignal<number | null>(null);
   let contentRef: HTMLDivElement | undefined;
   let prevMessageCount = 0;
@@ -246,7 +231,6 @@ export function ConsolePanel() {
       typewriterIntervalMs: 20,
     };
 
-  /** Called when a typewriter entry finishes — advance to next pending. */
   const onTypewriterDone = (_id: number) => {
     const msgs = consoleStore.messages;
     const currentIdx = msgs.findIndex((m) => m.id === _id);
@@ -257,7 +241,6 @@ export function ConsolePanel() {
     }
   };
 
-  // Auto-scroll on new messages + kick typewriter queue
   createEffect(() => {
     const msgs = consoleStore.messages;
     const count = msgs.length;
@@ -269,7 +252,6 @@ export function ConsolePanel() {
           if (contentRef) contentRef.scrollTop = contentRef.scrollHeight;
         });
       }
-      // Start typewriter on the first new message if queue is idle
       if (consoleSettings().entryAnimation === "typewriter" && typewriterActiveId() === null) {
         const firstNew = msgs[prevMessageCount];
         if (firstNew) setTypewriterActiveId(firstNew.id);
@@ -278,7 +260,6 @@ export function ConsolePanel() {
     prevMessageCount = count;
   });
 
-  // Scroll tracking
   const onScroll = () => {
     if (!contentRef) return;
     const atBottom =
@@ -293,25 +274,6 @@ export function ConsolePanel() {
     setShowScrollIndicator(false);
   };
 
-  // Title bar drag
-  let dragStartGeo: Geometry;
-  const titleDrag = usePointerDrag({
-    onStart: () => { dragStartGeo = { ...geo() }; },
-    onMove: (_e, dx, dy) => {
-      setGeo({
-        ...dragStartGeo,
-        x: dragStartGeo.x + dx,
-        y: dragStartGeo.y + dy,
-      });
-    },
-  });
-
-  const handleTitlePointerDown = (e: PointerEvent) => {
-    if ((e.target as HTMLElement).closest(".console-chrome-btn, .console-badge")) return;
-    titleDrag(e);
-  };
-
-  // Collapse / expand
   const collapse = () => {
     setCollapsed(true);
     setUnreadCount(0);
@@ -323,20 +285,7 @@ export function ConsolePanel() {
     requestAnimationFrame(scrollToBottom);
   };
 
-  // Keep in bounds on window resize
-  const onResize = () => {
-    const g = geo();
-    let changed = false;
-    let { x, y } = g;
-    if (x + g.w > window.innerWidth) { x = Math.max(0, window.innerWidth - g.w - MARGIN); changed = true; }
-    if (y + g.h > window.innerHeight) { y = Math.max(48, window.innerHeight - g.h - MARGIN); changed = true; }
-    if (changed) setGeo({ ...g, x, y });
-  };
-
-  onMount(() => window.addEventListener("resize", onResize));
-  onCleanup(() => window.removeEventListener("resize", onResize));
-
-  const edges: ResizeEdge[] = ["n", "s", "e", "w", "nw", "ne", "sw", "se"];
+  const edges: ResizeEdge[] = ["n", "w", "nw"];
 
   return (
     <>
@@ -345,19 +294,17 @@ export function ConsolePanel() {
         class="console-panel"
         classList={{ "console-panel--hidden": collapsed() }}
         style={{
-          left: `${geo().x}px`,
-          top: `${geo().y}px`,
-          width: `${geo().w}px`,
-          height: `${geo().h}px`,
+          width: `${size().w}px`,
+          height: `${size().h}px`,
         }}
       >
         {/* Resize zones */}
         <For each={edges}>
-          {(edge) => <ResizeZone edge={edge} geo={geo} setGeo={setGeo} />}
+          {(edge) => <ResizeZone edge={edge} size={size} setSize={setSize} />}
         </For>
 
         {/* Title bar */}
-        <div class="console-title-bar" onPointerDown={handleTitlePointerDown}>
+        <div class="console-title-bar">
           <span class="title-text">
             <span class="title-accent">&gt;</span> console
           </span>

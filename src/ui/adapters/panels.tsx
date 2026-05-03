@@ -45,7 +45,6 @@ export function togglePanelVisibility(panelId: string) {
   const getter = visibilityGetters[panelId];
   const setter = visibilitySetters[panelId];
   if (getter && setter) {
-    // If opening a non-independent panel, close other non-independent panels first
     if (!getter() && !independentPanels.has(panelId)) {
       hideAllPanels();
     }

@@ -79,22 +79,27 @@ describe("MainToolbar", () => {
     expect(onConnect).toHaveBeenCalledOnce();
   });
 
-  it("renders visible runtime-mode label with correct text for each state", () => {
-    const states: Array<{ state: MainToolbarProps["connectionState"]; label: string; cssClass: string }> = [
-      { state: "none", label: "Offline", cssClass: "transport-none" },
-      { state: "wasm", label: "WASM", cssClass: "transport-wasm" },
-      { state: "hardware", label: "Hardware", cssClass: "transport-hardware" },
-      { state: "both", label: "HW+WASM", cssClass: "transport-both" },
+  it("renders connect badge with correct text for each connected state", () => {
+    const states: Array<{ state: MainToolbarProps["connectionState"]; badge: string; cssClass: string }> = [
+      { state: "wasm", badge: "W", cssClass: "transport-wasm" },
+      { state: "hardware", badge: "HW", cssClass: "transport-hardware" },
+      { state: "both", badge: "HW+W", cssClass: "transport-both" },
     ];
 
-    for (const { state, label, cssClass } of states) {
+    for (const { state, badge, cssClass } of states) {
       const { container } = render(() => <MainToolbar {...defaultProps({ connectionState: state })} />);
-      const labelEl = container.querySelector(".runtime-mode-label");
-      expect(labelEl).toBeTruthy();
-      expect(labelEl?.textContent).toBe(label);
-      expect(labelEl?.classList.contains(cssClass)).toBe(true);
+      const badgeEl = container.querySelector(".connect-badge");
+      expect(badgeEl).toBeTruthy();
+      expect(badgeEl?.textContent).toBe(badge);
+      expect(badgeEl?.classList.contains(cssClass)).toBe(true);
       cleanup();
     }
+  });
+
+  it("does not render connect badge when disconnected", () => {
+    const { container } = render(() => <MainToolbar {...defaultProps({ connectionState: "none" })} />);
+    const badgeEl = container.querySelector(".connect-badge");
+    expect(badgeEl).toBeNull();
   });
 
   it("calls onToggleGraph when graph button is clicked", () => {

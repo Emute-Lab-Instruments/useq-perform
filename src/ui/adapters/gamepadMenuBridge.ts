@@ -26,6 +26,7 @@ import {
   getTrimmedRange,
 } from "../../editors/extensions/lezerHelpers.ts";
 import { checkAndPublishHoleFocus } from "../../editors/holeFocusEmitter.ts";
+import { executeEditorCommand } from "../../editors/commands/editorCommandRouter.ts";
 
 import type { PickerEntry } from "../DoubleRadialPicker.tsx";
 import type {
@@ -180,41 +181,57 @@ export function bindGamepadMenuBridge(
 
       switch (applyMode) {
         case "replace":
-          view.dispatch({
-            changes: { from, to, insert: symbol },
-            selection: { anchor: from + symbol.length },
+          executeEditorCommand(view, {
+            kind: "replaceRange",
+            from,
+            to,
+            insert: symbol,
+            selectionAnchor: from + symbol.length,
             scrollIntoView: true,
             userEvent: "replace.picker",
+            source: "menu",
           });
           break;
 
         case "apply_call": {
           const funcCall = ` (${symbol} _)`;
-          view.dispatch({
-            changes: { from: to, to, insert: funcCall },
-            selection: { anchor: to + funcCall.indexOf("_") },
+          executeEditorCommand(view, {
+            kind: "replaceRange",
+            from: to,
+            to,
+            insert: funcCall,
+            selectionAnchor: to + funcCall.indexOf("_"),
             scrollIntoView: true,
             userEvent: "insert.call.picker",
+            source: "menu",
           });
           break;
         }
 
         case "apply_pre":
-          view.dispatch({
-            changes: { from, to: from, insert: symbol + " " },
-            selection: { anchor: from },
+          executeEditorCommand(view, {
+            kind: "replaceRange",
+            from,
+            to: from,
+            insert: symbol + " ",
+            selectionAnchor: from,
             scrollIntoView: true,
             userEvent: "insert.before.picker",
+            source: "menu",
           });
           break;
 
         case "apply":
         default:
-          view.dispatch({
-            changes: { from: to, to, insert: " " + symbol },
-            selection: { anchor: to + 1 },
+          executeEditorCommand(view, {
+            kind: "replaceRange",
+            from: to,
+            to,
+            insert: " " + symbol,
+            selectionAnchor: to + 1,
             scrollIntoView: true,
             userEvent: "insert.after.picker",
+            source: "menu",
           });
           break;
       }
@@ -223,17 +240,15 @@ export function bindGamepadMenuBridge(
       logger.error?.(
         `[gamepadMenuBridge] Error applying selection: ${message}`
       );
-      view.dispatch({
-        changes: {
-          from: view.state.selection.main.from,
-          to: view.state.selection.main.to,
-          insert: text,
-        },
-        selection: {
-          anchor: view.state.selection.main.from + text.length,
-        },
+      executeEditorCommand(view, {
+        kind: "replaceRange",
+        from: view.state.selection.main.from,
+        to: view.state.selection.main.to,
+        insert: text,
+        selectionAnchor: view.state.selection.main.from + text.length,
         scrollIntoView: true,
         userEvent: "insert.picker.fallback",
+        source: "menu",
       });
     }
 
@@ -329,11 +344,15 @@ export function bindGamepadMenuBridge(
         }
         // Replace the hole source text with the entered number literal
         const literal = formatNumberLiteral(value);
-        view.dispatch({
-          changes: { from: detail.from, to: detail.to, insert: literal },
-          selection: { anchor: detail.from + literal.length },
+        executeEditorCommand(view, {
+          kind: "replaceRange",
+          from: detail.from,
+          to: detail.to,
+          insert: literal,
+          selectionAnchor: detail.from + literal.length,
           scrollIntoView: true,
           userEvent: "replace.numpad",
+          source: "menu",
         });
         pickerDirection = null;
         closeMenuFn = null;
