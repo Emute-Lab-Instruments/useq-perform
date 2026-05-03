@@ -5,7 +5,7 @@ export default defineScenario({
   name: 'Real uSEQ patch',
   type: 'contract',
   sourceFiles: [
-    'src/editors/extensions/structure/adapter/decorations.ts',
+    'src/editors/extensions/structure/adapter/nodeOverlays.ts',
     'src/editors/extensions/expressionEval.ts',
   ],
   description: 'A realistic uSEQ patch with output assignments (a1, d1, s1), modulation, and typical patterns. Tests highlight rendering on production-like code.',

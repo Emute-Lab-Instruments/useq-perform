@@ -5,7 +5,7 @@ export default defineScenario({
   name: 'Empty list',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/adapter/decorations.ts',
+    'src/editors/extensions/structure/adapter/nodeOverlays.ts',
     'src/editors/extensions/lezerHelpers.ts',
   ],
   description: 'Cursor inside an empty list (). Tests that the highlight handles zero-width content nodes gracefully.',

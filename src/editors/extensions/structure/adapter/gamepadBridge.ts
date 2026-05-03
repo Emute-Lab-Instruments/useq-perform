@@ -18,7 +18,7 @@
 import type { EditorView } from "@codemirror/view";
 
 import * as ch from "../../../../contracts/gamepadChannels.ts";
-import { dispatchAction } from "./dispatcher.ts";
+import { executeEditorCommand } from "../../../commands/editorCommandRouter.ts";
 
 export interface GamepadBridgeHandle {
   dispose(): void;
@@ -48,23 +48,39 @@ export function bindStructuralGamepadBridge(
     switch (direction) {
       case "down":
       case "right":
-        dispatchAction(view, "nav.next");
+        executeEditorCommand(view, {
+          kind: "structural",
+          action: "nav.next",
+          source: "gamepad",
+        });
         break;
       case "up":
       case "left":
-        dispatchAction(view, "nav.prev");
+        executeEditorCommand(view, {
+          kind: "structural",
+          action: "nav.prev",
+          source: "gamepad",
+        });
         break;
     }
   });
 
   const unsubEnter = ch.enter.subscribe(() => {
     if (!guard()) return;
-    dispatchAction(view, "nav.in");
+    executeEditorCommand(view, {
+      kind: "structural",
+      action: "nav.in",
+      source: "gamepad",
+    });
   });
 
   const unsubBack = ch.back.subscribe(() => {
     if (!guard()) return;
-    dispatchAction(view, "nav.out");
+    executeEditorCommand(view, {
+      kind: "structural",
+      action: "nav.out",
+      source: "gamepad",
+    });
   });
 
   return {

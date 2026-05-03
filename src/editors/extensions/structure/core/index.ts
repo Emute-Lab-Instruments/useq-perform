@@ -61,6 +61,7 @@ export { findHolesInOrder, holeAcceptsKind, isHole, isHoleType, makeHole } from 
 export {
   childrenOf,
   findById,
+  indexOfChild,
   isCompound,
   isLeaf,
   makeCompound,

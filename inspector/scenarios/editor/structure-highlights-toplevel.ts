@@ -6,7 +6,7 @@ export default defineScenario({
   type: 'contract',
   sourceFiles: [
     'src/editors/extensions.ts',
-    'src/editors/extensions/structure/adapter/decorations.ts',
+    'src/editors/extensions/structure/adapter/nodeOverlays.ts',
   ],
   description: 'Three top-level forms with cursor at the opening paren of the first. The entire first (define ...) should be highlighted as a top-level program node.',
   editor: {

@@ -5,7 +5,7 @@ export default defineScenario({
   name: 'Cursor at paren boundary',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/adapter/decorations.ts',
+    'src/editors/extensions/structure/adapter/nodeOverlays.ts',
     'src/editors/extensions/lezerHelpers.ts',
   ],
   description: 'Cursor positioned right at a closing paren followed by an opening paren — tests which node gets highlighted at the )(  boundary.',

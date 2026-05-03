@@ -31,10 +31,24 @@ import {
   type DocumentNode,
   type HoleType,
   type IdGen,
+  type Meta,
   type Node,
   type NodeId,
   type Tree,
 } from "../core/index.ts";
+
+// ─── Wrapper Meta payloads ────────────────────────────────────────────────
+
+/** Payload for a `live-edit` Meta (§6.2, live-edit.md §2.2). */
+export interface LiveEditMetaPayload {
+  id?: string;
+  min?: number;
+  max?: number;
+  name?: string;
+  options?: string[];
+  step?: number;
+  precision?: number;
+}
 
 /** Source range for an id, used for halos and text replacement. */
 export interface SourceRange {
@@ -175,6 +189,132 @@ function tryHoleRecognition(
   return holeNode;
 }
 
+// ─── Wrapper recognition ──────────────────────────────────────────────────
+
+/** Known keyword args for `live-edit` wrappers and their expected value types. */
+const LIVE_EDIT_KEYWORD_ARGS = new Set([
+  ":id",
+  ":min",
+  ":max",
+  ":name",
+  ":options",
+  ":step",
+  ":precision",
+]);
+
+/** Numeric keyword args that should be parsed as numbers. */
+const NUMERIC_ARGS = new Set([":min", ":max", ":step", ":precision"]);
+
+/** String keyword args (value should have quotes stripped). */
+const STRING_ARGS = new Set([":id", ":name"]);
+
+/**
+ * Parse keyword args from a slice of Lezer children into a LiveEditMetaPayload.
+ * Iterates children in pairs: keyword then value. Unrecognized keywords are
+ * silently ignored (forwards-compatible).
+ */
+function parseKeywordArgs(
+  children: SyntaxNode[],
+  state: EditorState,
+): LiveEditMetaPayload {
+  const payload: LiveEditMetaPayload = {};
+  let i = 0;
+  while (i < children.length - 1) {
+    const kwNode = children[i]!;
+    const valNode = children[i + 1]!;
+    const kwText = state.doc.sliceString(kwNode.from, kwNode.to);
+
+    if (!LIVE_EDIT_KEYWORD_ARGS.has(kwText)) {
+      // Unknown keyword — skip pair
+      i += 2;
+      continue;
+    }
+
+    const valText = state.doc.sliceString(valNode.from, valNode.to);
+    const key = kwText.slice(1) as keyof LiveEditMetaPayload; // strip leading ":"
+
+    if (NUMERIC_ARGS.has(kwText)) {
+      (payload as Record<string, unknown>)[key] = Number(valText);
+    } else if (STRING_ARGS.has(kwText)) {
+      // Strip surrounding quotes from string values
+      const unquoted =
+        valText.startsWith('"') && valText.endsWith('"')
+          ? valText.slice(1, -1)
+          : valText;
+      (payload as Record<string, unknown>)[key] = unquoted;
+    } else if (kwText === ":options") {
+      // Options is a vector of keywords: [:up :down] → ["up", "down"]
+      // The valNode should be a Vector. Parse its logical children.
+      const opts: string[] = [];
+      if (valNode.type.name === "Vector") {
+        let cur = valNode.firstChild;
+        while (cur) {
+          if (!isStructuralToken(cur)) {
+            const t = state.doc.sliceString(cur.from, cur.to);
+            // Strip leading colon from keywords, keep other values as-is.
+            opts.push(t.startsWith(":") ? t.slice(1) : t);
+          }
+          cur = cur.nextSibling;
+        }
+      }
+      payload.options = opts;
+    }
+
+    i += 2;
+  }
+  return payload;
+}
+
+/**
+ * Detect whether a List node matches a recognized wrapper pattern (§6.2).
+ * Currently recognizes `(live-edit <host> <keyword-args...>)`.
+ *
+ * Returns the host node with a Meta prepended if valid, or null if the list's
+ * head is not a recognized wrapper name. Pushes a structural warning if the
+ * head matches but the shape is malformed (e.g. no host node).
+ */
+function tryWrapperRecognition(
+  node: SyntaxNode,
+  state: EditorState,
+  ids: IdGen,
+  idIndex: Map<NodeId, SourceRange>,
+  warnings: StructuralWarning[],
+): Node | null {
+  const children = logicalChildren(node);
+  if (children.length === 0) return null;
+
+  const headText = state.doc.sliceString(children[0]!.from, children[0]!.to);
+  if (headText !== "live-edit") return null;
+
+  // Head is `live-edit` — this is a wrapper attempt.
+
+  if (children.length < 2) {
+    warnings.push({
+      from: node.from,
+      to: node.to,
+      message: `Malformed live-edit wrapper: expected (live-edit <host> ...) but got no host node`,
+    });
+    return null;
+  }
+
+  // Convert the host (children[1]) recursively
+  const host = convert(children[1]!, state, ids, idIndex, warnings);
+  if (!host) return null;
+
+  // Parse keyword args from children[2..]
+  const payload = parseKeywordArgs(children.slice(2), state);
+
+  // Attach Meta to host
+  const meta: Meta = { kind: "live-edit", payload };
+  const hostMetas = "metas" in host ? host.metas : [];
+  const withMeta = { ...host, metas: [meta, ...hostMetas] };
+
+  // The host's id should map to the full wrapper range for decoration replacement
+  idIndex.set(host.id, { from: node.from, to: node.to });
+
+  return withMeta;
+}
+
 /**
  * Convert a Lezer SyntaxNode into a core Node, recursively. Returns null when
  * the lezer node is structural (skip it).
@@ -196,6 +336,10 @@ function convert(
     if (name === "List") {
       const holeResult = tryHoleRecognition(node, state, ids, idIndex, warnings);
       if (holeResult !== null) return holeResult;
+
+      // §6.2: wrapper recognition (live-edit, etc.)
+      const wrapperResult = tryWrapperRecognition(node, state, ids, idIndex, warnings);
+      if (wrapperResult !== null) return wrapperResult;
     }
 
     const id = ids.next();

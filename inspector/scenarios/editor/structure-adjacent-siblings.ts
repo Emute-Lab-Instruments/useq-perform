@@ -5,7 +5,7 @@ export default defineScenario({
   name: 'Adjacent sibling forms',
   type: 'canary',
   sourceFiles: [
-    'src/editors/extensions/structure/adapter/decorations.ts',
+    'src/editors/extensions/structure/adapter/nodeOverlays.ts',
     'src/editors/extensions/lezerHelpers.ts',
   ],
   description: 'Multiple sibling expressions inside a parent form, cursor on the middle one. Tests that exactly the right sibling is highlighted and the parent line shows correctly.',

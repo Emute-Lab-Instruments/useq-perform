@@ -4,17 +4,19 @@
  * `dispatchAction(view, name)` runs a named structural op against the editor.
  * Currently supported actions (names follow structural-editing.md exactly):
  *
- *   Nav:    nav.out, nav.in (§5.1.1, §5.1.2)
- *           nav.next, nav.prev, nav.first, nav.last (§5.1.3, §5.1.4)
- *           nav.extendNext, nav.extendPrev, nav.shrink (§5.1.5, §5.1.6)
- *           nav.nextHole, nav.prevHole (§5.1.8)
- *           nav.right, nav.left (§5.1.9 — Euler-tour horizontal)
- *           nav.up, nav.down (§5.1.10 — vertical spatial; lives in the
+ *   Spatial (primary):
+ *           nav.right, nav.left (§5.1.1 — Euler-tour horizontal)
+ *           nav.up, nav.down (§5.1.2 — vertical spatial; lives in the
  *             adapter because it needs source positions)
+ *   Tree-level (secondary):
+ *           nav.out, nav.in (§5.1.3, §5.1.4)
+ *           nav.next, nav.prev, nav.first, nav.last (§5.1.5, §5.1.6)
+ *           nav.extendNext, nav.extendPrev, nav.shrink (§5.1.7, §5.1.8)
+ *           nav.nextHole, nav.prevHole (§5.1.10)
  *   Mutate: edit.slurpForward, edit.slurpBackward,
  *           edit.barfForward, edit.barfBackward,
  *           edit.raise, edit.splice,
- *           edit.transposeNext, edit.transposePrev,
+ *           edit.transposeNext, edit.transposePrev, edit.delete,
  *           edit.encloseList/Vector/Map/Set
  *
  * Reserved for future spatial implementations (not yet wired):
@@ -79,6 +81,7 @@ function actionOp(name: string): Op | null {
     case "edit.splice":        return (s) => getMutators().splice(s);
     case "edit.transposeNext": return (s) => getMutators().transposeNext(s);
     case "edit.transposePrev": return (s) => getMutators().transposePrev(s);
+    case "edit.delete":        return (s) => getMutators().delete(s);
     case "edit.encloseList":   return (s) => getMutators().enclose.list(s);
     case "edit.encloseVector": return (s) => getMutators().enclose.vector(s);
     case "edit.encloseMap":    return (s) => getMutators().enclose.map(s);
@@ -129,6 +132,7 @@ export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   "edit.splice",
   "edit.transposeNext",
   "edit.transposePrev",
+  "edit.delete",
   "edit.encloseList",
   "edit.encloseVector",
   "edit.encloseMap",

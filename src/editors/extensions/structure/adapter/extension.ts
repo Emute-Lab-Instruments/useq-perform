@@ -10,18 +10,20 @@
 
 import type { Extension } from "@codemirror/state";
 
-import {
-  structuralCursorDecorations,
-  structuralCursorTheme,
-} from "./decorations.ts";
+import { structuralCursorFromSelection } from "./cursorFromSelection.ts";
 import { holePillDecorations, holePillTheme } from "./holeWidget.ts";
+import {
+  structuralNodeOverlay,
+  structuralNodeOverlayTheme,
+} from "./nodeOverlays.ts";
 import { structField } from "./stateField.ts";
 
 export function structuralCoreExtensions(): Extension[] {
   return [
     structField,
-    structuralCursorDecorations,
-    structuralCursorTheme,
+    structuralCursorFromSelection,
+    structuralNodeOverlay,
+    structuralNodeOverlayTheme,
     holePillDecorations,
     holePillTheme,
   ];
