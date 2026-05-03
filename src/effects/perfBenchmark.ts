@@ -15,29 +15,32 @@ import { evalInUseqWasm } from "../runtime/wasmInterpreter.ts";
 import { perf } from "../lib/perfTrace.ts";
 
 // Expressions of varying complexity for realistic benchmarking.
-// These mirror real user patterns from uSEQ live-coding.
+// These mirror real user patterns from uSEQ live-coding — output
+// assignments use the `(aN body)` / `(dN body)` form, not `define`.
+//
+// uSEQ has 8 analog (a1..a8) and 8 digital (d1..d8) outputs (spec
+// outputs.md §1). Names outside that range are not valid output sinks
+// and would silently sample as NaN.
 const BENCHMARK_EXPRESSIONS: Array<{ name: string; code: string }> = [
-  // Simple phasors
-  { name: "a1", code: "(define a1 (phasor 1))" },
-  { name: "a2", code: "(define a2 (phasor 2))" },
-  { name: "a3", code: "(define a3 (phasor 0.5))" },
-  // Arithmetic on phasors
-  { name: "a4", code: "(define a4 (* (phasor 1) (phasor 3)))" },
-  { name: "a5", code: "(define a5 (+ (* 0.5 (phasor 1)) (* 0.5 (phasor 5))))" },
-  // Conditionals
-  { name: "a6", code: "(define a6 (if (> (phasor 1) 0.5) 1 0))" },
-  // Digital outputs
-  { name: "d1", code: "(define d1 (sqr 2))" },
-  { name: "d2", code: "(define d2 (sqr 4))" },
-  { name: "d3", code: "(define d3 (sqr 8))" },
-  // Nested arithmetic (heavier eval load)
-  { name: "a7", code: "(define a7 (* (+ (phasor 1) (phasor 2)) (phasor 0.25)))" },
-  { name: "a8", code: "(define a8 (- 1 (* (phasor 3) (phasor 7))))" },
-  { name: "a9", code: "(define a9 (+ (* 0.3 (phasor 1)) (* 0.3 (phasor 2)) (* 0.4 (phasor 4))))" },
-  // Deeper nesting (worst case)
-  { name: "a10", code: "(define a10 (* (+ (phasor 1) (* (phasor 2) (if (> (phasor 0.5) 0.5) 1 0.5))) 0.5))" },
-  { name: "a11", code: "(define a11 (* (phasor 1) (+ 0.5 (* 0.5 (phasor 3)))))" },
-  { name: "a12", code: "(define a12 (+ (* 0.25 (phasor 1)) (* 0.25 (phasor 2)) (* 0.25 (phasor 4)) (* 0.25 (phasor 8))))" },
+  // Tier 1 — simple bar-phase passthroughs.
+  { name: "a1", code: "(a1 bar)" },
+  { name: "a2", code: "(a2 (slow 2 bar))" },
+  { name: "a3", code: "(a3 (fast 4 bar))" },
+  // Tier 2 — smooth shapers.
+  { name: "a4", code: "(a4 (usin bar))" },
+  { name: "a5", code: "(a5 (usin (fast 8 bar)))" },
+  // Tier 3 — quantised + arithmetic.
+  { name: "a6", code: "(a6 (from-list [0.1 0.4 0.2 0.7] bar))" },
+  { name: "a7", code: "(a7 (* (usin bar) (usin (fast 3 bar))))" },
+  { name: "a8", code: "(a8 (+ (* 0.1 (usin beat)) (* 0.2 (from-list [1 2 1 4] (slow 2 bar)))))" },
+  // Digital outputs (Tier 1 onward beyond 8 channels).
+  { name: "d1", code: "(d1 (sqr 2))" },
+  { name: "d2", code: "(d2 (sqr 4))" },
+  { name: "d3", code: "(d3 (sqr 8))" },
+  { name: "d4", code: "(d4 (sqr 1))" },
+  { name: "d5", code: "(d5 (sqr 16))" },
+  { name: "d6", code: "(d6 (sqr 0.5))" },
+  { name: "d7", code: "(d7 (sqr 0.25))" },
 ];
 
 let activeChannels: string[] = [];

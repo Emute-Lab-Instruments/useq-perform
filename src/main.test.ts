@@ -122,6 +122,10 @@ vi.mock("./ui/adapters/toolbars.tsx", () => ({
   mountMainToolbar,
 }));
 
+vi.mock("./effects/liveEditRuntime.ts", () => ({
+  attachBridgeToEditor: vi.fn(),
+}));
+
 
 describe("bootstrap (via startLegacyApp re-export)", () => {
   beforeEach(() => {
