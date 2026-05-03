@@ -48,6 +48,44 @@ export interface BindingChip {
   disabled: boolean;
 }
 
+// ── Hardware input events (wire-protocol.md §5.10) ──────────────────────
+
+/**
+ * Kind of hardware input that generated the event.
+ *
+ * - `"button"` — momentary switch (`:sw1`, `:sw2`, `:swr`).
+ * - `"toggle"` — sticky toggle switch.
+ * - `"encoder"` — encoder click (rising-edge only; position is a signal).
+ * - `"gate"` — external gate input (`:in1`, `:in2`).
+ */
+export type HwInputEventKind = "button" | "toggle" | "encoder" | "gate";
+
+/**
+ * Payload of a device → editor `hw-input` push message (wire-protocol §5.10).
+ *
+ * Buttons/encoders/gates carry `"pressed"` / `"released"` edge states.
+ * Toggles carry `true` (on) / `false` (off) post-flip state.
+ */
+export interface HwInputEvent {
+  /** Discriminator for the control type. */
+  kind: HwInputEventKind;
+  /**
+   * Physical-control keyword without the leading colon.
+   * E.g. `"sw1"`, `"sw2"`, `"swr"`, `"in1"`.
+   */
+  id: string;
+  /**
+   * For button/encoder/gate: `"pressed"` or `"released"`.
+   * For toggle: `true` (on) or `false` (off).
+   */
+  state: "pressed" | "released" | boolean;
+  /**
+   * Device-side timestamp (microseconds since boot, truncated to ms).
+   * Optional — absent when the firmware does not yet emit timestamps.
+   */
+  ts?: number;
+}
+
 // ── Calibration (calibration.md) ─────────────────────────────────────────
 
 /**
@@ -116,3 +154,91 @@ export const CALIBRATION_TARGET_VOLTS: Record<CalibrationOctaveIndex, number> = 
 
 /** §4.1 — slider extent ±50 cents around the target. */
 export const CALIBRATION_SLIDER_RANGE_CENTS = 50;
+
+// ── Calibration wire-protocol types (wire-protocol.md §5.11–§5.16) ──
+
+/**
+ * Editor → device: enter calibration takeover for one output (§5.11).
+ * Firmware freezes all other outputs, drives the named output, and acks.
+ */
+export interface CalibrateBeginRequest {
+  type: "calibrate-begin";
+  output: string;
+}
+
+/**
+ * Editor → device: drive the output to a target voltage (§5.12).
+ * Sent on takeover entry and when advancing to the next octave.
+ */
+export interface CalibrateSetTargetRequest {
+  type: "calibrate-set-target";
+  output: string;
+  voltage: number;
+}
+
+/**
+ * Editor → device: apply a fine correction delta to the current
+ * output (§5.13). The firmware accumulates deltas; the editor
+ * mirrors the cumulative offset for display (§4.5).
+ */
+export interface CalibrateAdjustRequest {
+  type: "calibrate-adjust";
+  output: string;
+  delta: number;
+}
+
+/**
+ * Editor → device: stage the current calibration point in flash
+ * for the given octave (§5.14). The commit is deferred until
+ * `calibrate-end { commit: true }`.
+ */
+export interface CalibrateSavePointRequest {
+  type: "calibrate-save-point";
+  output: string;
+  octave: CalibrationOctaveIndex;
+}
+
+/**
+ * Editor → device: exit calibration takeover (§5.15).
+ * `commit: true`  → flush staged points to flash.
+ * `commit: false` → revert to pre-takeover calibration.
+ */
+export interface CalibrateEndRequest {
+  type: "calibrate-end";
+  commit: boolean;
+}
+
+/**
+ * Device → editor: ack/nack for any calibrate-* request (§5.16).
+ *
+ * On success, `success: true` and optional payload fields.
+ * On rejection, `success: false` with a human-readable `error` and
+ * optional `clampedOffset` (firmware's authoritative value when the
+ * editor's accumulated delta was clamped — §4.5, §7.2).
+ */
+export interface CalibrateResponse {
+  type: "response";
+  requestId: string;
+  success: boolean;
+  /** Human-readable rejection reason (present when `success: false`). */
+  error?: string;
+  /**
+   * Firmware's authoritative cumulative offset in cents after an adjust
+   * or save-point. Present when the firmware clamped the requested value
+   * (§4.5). The editor must snap its slider to this value.
+   */
+  clampedOffset?: number;
+  /**
+   * Per-output calibration status returned in the `calibrate-begin` ack
+   * so the editor knows the starting state (§2.3).
+   */
+  status?: CalibrationStatus;
+}
+
+/** Discriminated union of all calibrate-* request shapes. */
+export type CalibrateRequest =
+  | CalibrateBeginRequest
+  | CalibrateSetTargetRequest
+  | CalibrateAdjustRequest
+  | CalibrateSavePointRequest
+  | CalibrateEndRequest;
