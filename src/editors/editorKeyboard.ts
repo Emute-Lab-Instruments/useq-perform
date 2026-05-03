@@ -7,8 +7,6 @@
  */
 
 import type { EditorView } from "@codemirror/view";
-import { deleteCharForward } from "@codemirror/commands";
-import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 import { applyEditorFontSize } from "../lib/editorStore.ts";
 import { referenceSearchChannel } from "../ui/help/helpChannels.ts";
 import { dbg } from "../lib/debug.ts";
@@ -78,59 +76,3 @@ export function setFontSize(editor: EditorView | null, size: number): void {
   applyEditorFontSize(editor, size);
 }
 
-// ---------------------------------------------------------------------------
-// Bracket balancing
-// ---------------------------------------------------------------------------
-
-const openingBracketChars = ["(", "[", "{"];
-const closingBracketChars = [")", "]", "}"];
-const bracketChars = openingBracketChars.concat(closingBracketChars);
-
-export function areMatchingBracketChars(char1: string, char2: string): boolean {
-  const idx1 = openingBracketChars.indexOf(char1);
-  if (idx1 >= 0) {
-    return char2 === closingBracketChars[idx1];
-  }
-  const idx2 = closingBracketChars.indexOf(char1);
-  if (idx2 >= 0) {
-    return char2 === openingBracketChars[idx2];
-  }
-  return false;
-}
-
-export function makeDeleteWrapper(
-  originalRun: (view: EditorView) => boolean,
-): (view: EditorView) => boolean {
-  return (view: EditorView): boolean => {
-    const userSettings = getAppSettings();
-    const preventUnbalancing =
-      userSettings.editor?.preventBracketUnbalancing ?? true;
-    dbg("Delete wrapper - prevent unbalancing setting:", preventUnbalancing);
-
-    if (!preventUnbalancing) {
-      dbg("Bracket prevention DISABLED, using normal deletion");
-      return originalRun(view);
-    }
-
-    dbg("Bracket prevention ENABLED, checking brackets");
-
-    const { state } = view;
-    const { from } = state.selection.main;
-
-    const nextChar = state.doc.sliceString(from, from + 1);
-    if (bracketChars.includes(nextChar)) {
-      const prevChar = state.doc.sliceString(from - 1, from);
-      if (areMatchingBracketChars(prevChar, nextChar)) {
-        dbg("matching brackets");
-        view.dispatch({
-          changes: { from: from - 1, to: from, insert: "" },
-        });
-        deleteCharForward(view);
-        return true;
-      } else {
-        return originalRun(view);
-      }
-    }
-    return originalRun(view);
-  };
-}
