@@ -37,6 +37,7 @@ import {
 } from "../../contracts/wasmAbi";
 import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract";
 import type {
+  LiveSlotMetadata,
   RuntimeDiagnostic,
   TickAndProjectResult,
   TimeSample,
@@ -90,6 +91,10 @@ interface InterpreterHandle {
   ) => TickAndProjectResult | null;
   supportsTimeWindow: () => boolean;
   supportsTickAndProject: () => boolean;
+  supportsLiveInputs: () => boolean;
+  setLiveInputs: (values: Record<string, number>) => number;
+  getLiveSlots: () => LiveSlotMetadata[];
+  applyStateSnapshot: (json: string) => boolean;
   release: () => void;
 }
 
@@ -262,6 +267,19 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     module,
     OPTIONAL_WASM_EXPORTS.useq_active_diagnostics,
   ) as (() => string) | null;
+  const setLiveInputsFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_set_live_inputs,
+  ) as ((json: string) => number) | null;
+  const getLiveSlotsFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_get_live_slots,
+  ) as (() => string) | null;
+  const applyStateSnapshotFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_apply_state_snapshot,
+  ) as ((json: string) => number) | null;
+
   (globalThis as { __useqWasmRuntime?: UseqRuntimeGlobal }).__useqWasmRuntime = {
     useq_last_diagnostics: lastDiagsFn ?? undefined,
     useq_active_diagnostics: activeDiagsFn ?? undefined,
@@ -453,6 +471,33 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     tickAndProject,
     supportsTimeWindow: (): boolean => typedEval !== null || legacyEval !== null,
     supportsTickAndProject: (): boolean => tickAndProjectEval !== null,
+    supportsLiveInputs: (): boolean => setLiveInputsFn !== null,
+    setLiveInputs: (values: Record<string, number>): number => {
+      if (!setLiveInputsFn) return 0;
+      try {
+        return setLiveInputsFn(JSON.stringify(values));
+      } catch {
+        return 0;
+      }
+    },
+    getLiveSlots: (): LiveSlotMetadata[] => {
+      if (!getLiveSlotsFn) return [];
+      try {
+        const json = getLiveSlotsFn();
+        if (!json) return [];
+        return JSON.parse(json) as LiveSlotMetadata[];
+      } catch {
+        return [];
+      }
+    },
+    applyStateSnapshot: (json: string): boolean => {
+      if (!applyStateSnapshotFn) return false;
+      try {
+        return applyStateSnapshotFn(json) === 0;
+      } catch {
+        return false;
+      }
+    },
     release: releaseBuffer,
   };
 }
@@ -514,6 +559,8 @@ function snapshotCapabilities(): WorkerCapabilitySnapshot {
       wasmEnabled && interpreter !== null && interpreter.supportsTimeWindow(),
     supportsTickAndProject:
       wasmEnabled && interpreter !== null && interpreter.supportsTickAndProject(),
+    supportsLiveInputs:
+      wasmEnabled && interpreter !== null && interpreter.supportsLiveInputs(),
   };
 }
 
@@ -643,6 +690,28 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           id,
           diagnostics: readActiveDiagnosticsLocal(),
         });
+        return;
+      }
+      case "setLiveInputs": {
+        let applied = 0;
+        if (wasmEnabled && interpreter) {
+          applied = interpreter.setLiveInputs(request.values);
+        }
+        postResponse({ type: "setLiveInputs-result", id, applied });
+        return;
+      }
+      case "getLiveSlots": {
+        const slots: LiveSlotMetadata[] =
+          wasmEnabled && interpreter ? interpreter.getLiveSlots() : [];
+        postResponse({ type: "getLiveSlots-result", id, slots });
+        return;
+      }
+      case "applyStateSnapshot": {
+        let success = false;
+        if (wasmEnabled && interpreter) {
+          success = interpreter.applyStateSnapshot(JSON.stringify(request.snapshot));
+        }
+        postResponse({ type: "applyStateSnapshot-result", id, success });
         return;
       }
       default: {

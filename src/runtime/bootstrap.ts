@@ -16,6 +16,7 @@ import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
 import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepository.ts';
 import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
+import { attachBridgeToEditor } from '../effects/liveEditRuntime.ts';
 import { createGamepadPipeline } from '../lib/gamepad/index.ts';
 import { bindGamepadNavigation } from '../editors/gamepadNavigation.ts';
 import { bindStructuralGamepadBridge } from '../editors/extensions/structure/adapter/extension.ts';
@@ -32,6 +33,7 @@ import {
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
 import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
+import { mountSampleFpsOverlay } from '../ui/sampleFpsOverlay.ts';
 import {
   getActiveWasmRuntimePort,
   setActiveWasmRuntimePort,
@@ -136,6 +138,10 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
   // (see `requestVisualisationRender` in `visualisationRuntime.ts`); no
   // boot-time rAF loop is needed.
 
+  // Attach the live-edit store→widget bridge so reactive slot changes
+  // flow into the CodeMirror widget decorations.
+  attachBridgeToEditor(editor);
+
   // Mount Solid UI adapters and wire editor store.
   // panels.tsx and toolbars.tsx are loaded dynamically so Vite can split them into
   // separate chunks. The try/catch guards against mount-time failures.
@@ -158,6 +164,7 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     panels.mountSettingsPanel();
     panels.mountHelpPanel();
     panels.mountDesignSelector(environmentState?.startupFlags?.devmode === true);
+    mountSampleFpsOverlay();
   } catch (error) {
     reportBootstrapFailure("ui-adapter-mount", error);
   }

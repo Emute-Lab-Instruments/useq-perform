@@ -26,12 +26,14 @@
  */
 
 import type {
+  LiveSlotMetadata,
   RuntimeDiagnostic,
   SampleSeriesMap,
   TickAndProjectResult,
   WasmRuntimeCapabilities,
   WasmRuntimePort,
 } from "../contracts/runtimePorts";
+import type { StateSnapshot } from "../contracts/runtimeTypes";
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import { TRANSPORT_STATE_TO_COMMAND } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
@@ -42,6 +44,9 @@ import {
   evalInUseqWasmSilently,
   evalOutputAtTime,
   evalOutputsInTimeWindow,
+  getLiveSlots as getLiveSlotsFromWasm,
+  setLiveInputs as setLiveInputsInWasm,
+  supportsLiveInputs as wasmSupportsLiveInputs,
   tickAndProjectOutputs,
   updateUseqWasmTime,
   wasmRuntimePort as legacyWasmRuntimePort,
@@ -99,6 +104,7 @@ export const wasmRuntimePort: WasmRuntimePort = {
       supportsEval: inner.supportsEval,
       supportsTimeWindow: inner.supportsTimeWindow,
       supportsTickAndProject: inner.supportsTickAndProject,
+      supportsLiveInputs: wasmSupportsLiveInputs(),
     };
   },
 
@@ -169,10 +175,12 @@ export const wasmRuntimePort: WasmRuntimePort = {
   tickAndProject(
     outputs: string[],
     tickTime: number,
+    projectionMode: import("../contracts/runtimePorts").ProjectionMode,
     projectEnd: number,
     numFutureSamples: number,
+    projectionOrigin: number,
   ): Promise<TickAndProjectResult | null> {
-    return tickAndProjectOutputs(outputs, tickTime, projectEnd, numFutureSamples);
+    return tickAndProjectOutputs(outputs, tickTime, projectionMode, projectEnd, numFutureSamples, projectionOrigin);
   },
 
   async readLastDiagnostics(): Promise<RuntimeDiagnostic[]> {
@@ -181,6 +189,18 @@ export const wasmRuntimePort: WasmRuntimePort = {
 
   async readActiveDiagnostics(): Promise<RuntimeDiagnostic[]> {
     return readActiveDiagnosticsSync();
+  },
+
+  async setLiveInputs(values: Record<string, number>): Promise<number> {
+    return setLiveInputsInWasm(values);
+  },
+
+  async getLiveSlots(): Promise<LiveSlotMetadata[]> {
+    return getLiveSlotsFromWasm();
+  },
+
+  async applyStateSnapshot(snapshot: StateSnapshot): Promise<boolean> {
+    return applyStateSnapshotSync(snapshot);
   },
 };
 
@@ -221,5 +241,22 @@ function readActiveDiagnosticsSync(): RuntimeDiagnostic[] {
     return _lastActiveDiagsResult;
   } catch {
     return _lastActiveDiagsResult;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// State snapshot application (state-sync.md §3)
+// ---------------------------------------------------------------------------
+
+function applyStateSnapshotSync(snapshot: StateSnapshot): boolean {
+  try {
+    const runtime = (globalThis as {
+      __useqWasmRuntime?: { useq_apply_state_snapshot?: (json: string) => number };
+    }).__useqWasmRuntime;
+    if (!runtime?.useq_apply_state_snapshot) return false;
+    const result = runtime.useq_apply_state_snapshot(JSON.stringify(snapshot));
+    return result === 0;
+  } catch {
+    return false;
   }
 }

@@ -25,9 +25,11 @@ import type {
 import { SHARED_TRANSPORT_COMMANDS } from "../contracts/useqRuntimeContract";
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 
+import type { StateSnapshot } from "../contracts/runtimeTypes";
 import {
   getProtocolMode,
   sendTouSEQ,
+  sendGetState,
 } from "./json-protocol.ts";
 import {
   getSerialPort,
@@ -113,5 +115,17 @@ export const webSerialHostPort: WebSerialHostPort = {
     capture: ((response: string) => void) | null = null
   ): Promise<void> {
     await sendTouSEQ(code, capture);
+  },
+
+  async requestStateSnapshot(): Promise<StateSnapshot | null> {
+    try {
+      const response = await sendGetState();
+      if (response.success && (response as any).state) {
+        return (response as any).state as StateSnapshot;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   },
 };

@@ -6,6 +6,21 @@ import { showModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
 import { startLocalClock } from '../effects/localClock.ts';
 import { registerVisualisation } from '../effects/visualisationSampler.ts';
+import {
+  initStateSyncOrchestrator,
+  teardownStateSyncOrchestrator,
+} from '../effects/stateSyncOrchestrator.ts';
+import { webSerialHostPort } from '../transport/webSerialHostPort.ts';
+import {
+  createHardwareBindingDispatcher,
+  type HardwareBindingDispatcherHandle,
+  type DispatcherConfig,
+} from '../effects/hardwareBindingDispatcher.ts';
+import {
+  setBindingChips,
+  setBindingChipFireCallback,
+} from '../editors/extensions/hardwareBinding/chipWidget.ts';
+import { editor as getEditorSignal } from '../lib/editorStore.ts';
 import type { BootstrapPlan } from './bootstrap.ts';
 import type { EnvironmentState } from './startupContext.ts';
 import { announceRuntimeSession } from './runtimeService.ts';
@@ -41,6 +56,26 @@ async function activateDefaultNoModuleExpressions() {
   }
 }
 
+/** Active hardware binding dispatcher handle — disposed on app.stop(). */
+let hwBindingDispatcher: HardwareBindingDispatcherHandle | null = null;
+
+/**
+ * Build the DispatcherConfig that bridges the effects layer (dispatcher)
+ * with the editors layer (chip widget). This lives in appLifecycle.ts
+ * because the runtime layer is allowed to import from both.
+ */
+function createDispatcherConfig(): DispatcherConfig {
+  return {
+    syncChips(chips) {
+      const view = getEditorSignal();
+      if (view) setBindingChips(view, chips);
+    },
+    setFireCallback(cb) {
+      setBindingChipFireCallback(cb);
+    },
+  };
+}
+
 async function startBrowserLocalRuntime(options: {
   announceMessage: string;
   seedDefaultExpressions?: boolean;
@@ -58,6 +93,19 @@ async function startBrowserLocalRuntime(options: {
     startLocalClock();
   } catch (error) {
     console.warn('Failed to start local clock:', error);
+  }
+
+  // Start hardware binding dispatcher after WASM and editor are available.
+  try {
+    hwBindingDispatcher = createHardwareBindingDispatcher(createDispatcherConfig());
+  } catch (error) {
+    console.warn('Failed to start hardware binding dispatcher:', error);
+  }
+
+  try {
+    initStateSyncOrchestrator(webSerialHostPort, getActiveWasmRuntimePort());
+  } catch (error) {
+    console.warn('Failed to initialise state sync orchestrator:', error);
   }
 
   post(options.announceMessage);
@@ -134,9 +182,25 @@ export function createApp(
       if (plan.attemptHardwareReconnect) {
         await checkForSavedPortAndMaybeConnect();
       }
+
+      // Start hardware binding dispatcher for hardware-only mode too.
+      // Events from the device still need binding dispatch even without
+      // a browser-local WASM runtime.
+      if (!hwBindingDispatcher) {
+        try {
+          hwBindingDispatcher = createHardwareBindingDispatcher(createDispatcherConfig());
+        } catch (error) {
+          console.warn('Failed to start hardware binding dispatcher:', error);
+        }
+      }
     },
 
     async stop() {
+      teardownStateSyncOrchestrator();
+      if (hwBindingDispatcher) {
+        hwBindingDispatcher.dispose();
+        hwBindingDispatcher = null;
+      }
     }
   };
 

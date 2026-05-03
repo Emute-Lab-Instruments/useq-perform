@@ -84,6 +84,20 @@ export interface JsonResponse {
   diagnostics?: UseqDiagnostic[];
   /** Unsolicited log level (spec §5.6). */
   level?: string;
+  /** Hardware input kind (spec §5.10 `hw-input`). */
+  kind?: string;
+  /** Hardware input id (spec §5.10 `hw-input`). */
+  id?: string;
+  /** Hardware input state (spec §5.10 `hw-input`). */
+  state?: string | boolean;
+  /** Device-side timestamp in ms (spec §5.10 `hw-input`). */
+  ts?: number;
+  /** Firmware's authoritative cumulative offset in cents (spec §5.13 `calibrate-adjust`). */
+  clampedOffset?: number;
+  /** Per-output calibration status (spec §5.11 `calibrate-begin` response). */
+  status?: { kind: string; date?: string; savedOctaves?: number[] };
+  /** Human-readable error reason (calibrate-* rejections, spec §5.16). */
+  error?: string;
 }
 
 /** Options for writeJsonRequest */

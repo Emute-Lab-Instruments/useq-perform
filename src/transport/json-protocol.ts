@@ -17,6 +17,12 @@ import {
   buildHelloRequest,
   buildSerialOutputRouting,
   buildSetLiveInputsRequest,
+  buildCalibrateBeginRequest,
+  buildCalibrateSetTargetRequest,
+  buildCalibrateAdjustRequest,
+  buildCalibrateSavePointRequest,
+  buildCalibrateEndRequest,
+  buildGetStateRequest,
   DEFAULT_STREAM_MAX_RATE_HZ,
   type IoConfig,
   type StreamChannelConfig,
@@ -30,6 +36,8 @@ import {
   animateConnect as animateConnectChannel,
   standaloneDiagnostics as standaloneDiagnosticsChannel,
 } from "../contracts/runtimeChannels";
+import { hwInput as hwInputChannel } from "../contracts/hardwareChannels";
+import type { HwInputEvent } from "../contracts/hardware";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 import { cleanCode, isPortWritable } from "./serial-utils.ts";
 
@@ -482,6 +490,118 @@ export function sendSetLiveInputs(
   });
 }
 
+// ── Calibration senders (wire-protocol.md §5.11–§5.15) ──────────────
+
+/** Default timeout for calibration requests (save-point writes can be slow). */
+const CALIBRATE_TIMEOUT_MS = 5_000;
+
+/**
+ * Enter calibration takeover for one output (§5.10).
+ *
+ * Returns the response so the caller can read `status` (per-output
+ * calibration state) and `success`. On rejection the promise still
+ * resolves — the caller checks `success`.
+ */
+export function sendCalibrateBegin(output: string): Promise<JsonResponse> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
+  return writeJsonRequest(buildCalibrateBeginRequest(output), {
+    skipConsole: true,
+    timeout: CALIBRATE_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Drive the output to a target voltage (§5.11).
+ */
+export function sendCalibrateSetTarget(
+  output: string,
+  voltage: number
+): Promise<JsonResponse> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
+  return writeJsonRequest(buildCalibrateSetTargetRequest(output, voltage), {
+    skipConsole: true,
+    timeout: CALIBRATE_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Apply a fine correction delta in cents (§5.12).
+ *
+ * The response may include `clampedOffset` if the firmware clamped the
+ * accumulated value — the caller must snap its UI to match.
+ */
+export function sendCalibrateAdjust(
+  output: string,
+  delta: number
+): Promise<JsonResponse> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
+  return writeJsonRequest(buildCalibrateAdjustRequest(output, delta), {
+    skipConsole: true,
+    timeout: CALIBRATE_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Stage a calibration point for the given octave (§5.13).
+ *
+ * The value is staged in RAM; it is not flushed to flash until
+ * `sendCalibrateEnd(true)`.
+ */
+export function sendCalibrateSavePoint(
+  output: string,
+  octave: 0 | 1 | 2 | 3 | 4
+): Promise<JsonResponse> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
+  return writeJsonRequest(buildCalibrateSavePointRequest(output, octave), {
+    skipConsole: true,
+    timeout: CALIBRATE_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Exit calibration takeover (§5.14).
+ *
+ * `commit: true`  — flush staged points to flash and resume normal operation.
+ * `commit: false` — discard staged points, revert to pre-takeover calibration.
+ */
+export function sendCalibrateEnd(commit: boolean): Promise<JsonResponse> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
+  return writeJsonRequest(buildCalibrateEndRequest(commit), {
+    skipConsole: true,
+    timeout: CALIBRATE_TIMEOUT_MS,
+  });
+}
+
+// ── State snapshot query (state-sync.md §2) ─────────────────────────
+
+const GET_STATE_TIMEOUT_MS = 5_000;
+
+export function sendGetState(): Promise<JsonResponse> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
+  return writeJsonRequest(buildGetStateRequest(), {
+    skipConsole: true,
+    timeout: GET_STATE_TIMEOUT_MS,
+  });
+}
+
 // ── sendTouSEQ (primary code-send API) ───────────────────────────────
 
 /**
@@ -590,6 +710,23 @@ export function handleJsonMessage(rawMessage: string): void {
       } catch (dispatchError) {
         console.error("Failed to dispatch standalone diagnostics", dispatchError);
       }
+    }
+    return;
+  }
+
+  // §5.10 — unsolicited `hw-input` frame (hardware button/toggle/encoder/gate event).
+  if (parsed.type === "hw-input") {
+    const kind = parsed.kind as string | undefined;
+    const id = parsed.id as string | undefined;
+    const state = parsed.state as string | boolean | undefined;
+    if (kind && id && state !== undefined) {
+      try {
+        hwInputChannel.publish({ kind, id, state, ts: parsed.ts as number | undefined } as HwInputEvent);
+      } catch (dispatchError) {
+        console.error("Failed to dispatch hw-input event", dispatchError);
+      }
+    } else {
+      dbg("Received malformed hw-input frame (missing kind/id/state):", parsed);
     }
     return;
   }

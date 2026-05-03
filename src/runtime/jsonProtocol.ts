@@ -51,6 +51,40 @@ export interface JsonSetLiveInputsRequest {
   slots: Record<string, number | boolean | string>;
 }
 
+// ── Calibration request shapes (wire-protocol.md §5.11–§5.15) ───────
+
+export interface JsonCalibrateBeginRequest {
+  type: "calibrate-begin";
+  output: string;
+}
+
+export interface JsonCalibrateSetTargetRequest {
+  type: "calibrate-set-target";
+  output: string;
+  voltage: number;
+}
+
+export interface JsonCalibrateAdjustRequest {
+  type: "calibrate-adjust";
+  output: string;
+  delta: number;
+}
+
+export interface JsonCalibrateSavePointRequest {
+  type: "calibrate-save-point";
+  output: string;
+  octave: 0 | 1 | 2 | 3 | 4;
+}
+
+export interface JsonCalibrateEndRequest {
+  type: "calibrate-end";
+  commit: boolean;
+}
+
+export interface JsonGetStateRequest {
+  type: "get-state";
+}
+
 /**
  * Discriminated union of every editor → runtime JSON request shape.
  *
@@ -65,7 +99,13 @@ export type JsonRequest =
   | JsonHeartbeatRequest
   | JsonStreamConfigRequest
   | JsonEvalRequest
-  | JsonSetLiveInputsRequest;
+  | JsonSetLiveInputsRequest
+  | JsonCalibrateBeginRequest
+  | JsonCalibrateSetTargetRequest
+  | JsonCalibrateAdjustRequest
+  | JsonCalibrateSavePointRequest
+  | JsonCalibrateEndRequest
+  | JsonGetStateRequest;
 
 export interface JsonResponseBody {
   requestId?: string;
@@ -132,6 +172,45 @@ export function buildSetLiveInputsRequest(
   slots: Record<string, number | boolean | string>
 ): JsonSetLiveInputsRequest {
   return { type: "set-live-inputs", slots };
+}
+
+// ── Calibration request builders (wire-protocol.md §5.11–§5.15) ─────
+
+export function buildCalibrateBeginRequest(
+  output: string
+): JsonCalibrateBeginRequest {
+  return { type: "calibrate-begin", output };
+}
+
+export function buildCalibrateSetTargetRequest(
+  output: string,
+  voltage: number
+): JsonCalibrateSetTargetRequest {
+  return { type: "calibrate-set-target", output, voltage };
+}
+
+export function buildCalibrateAdjustRequest(
+  output: string,
+  delta: number
+): JsonCalibrateAdjustRequest {
+  return { type: "calibrate-adjust", output, delta };
+}
+
+export function buildCalibrateSavePointRequest(
+  output: string,
+  octave: 0 | 1 | 2 | 3 | 4
+): JsonCalibrateSavePointRequest {
+  return { type: "calibrate-save-point", output, octave };
+}
+
+export function buildCalibrateEndRequest(
+  commit: boolean
+): JsonCalibrateEndRequest {
+  return { type: "calibrate-end", commit };
+}
+
+export function buildGetStateRequest(): JsonGetStateRequest {
+  return { type: "get-state" };
 }
 
 export function buildDefaultStreamConfig(

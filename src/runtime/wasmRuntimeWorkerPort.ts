@@ -28,12 +28,14 @@
 
 import { dbg } from "../lib/debug.ts";
 import type {
+  LiveSlotMetadata,
   RuntimeDiagnostic,
   SampleSeriesMap,
   TickAndProjectResult,
   WasmRuntimeCapabilities,
   WasmRuntimePort,
 } from "../contracts/runtimePorts";
+import type { StateSnapshot } from "../contracts/runtimeTypes";
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
 import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
@@ -75,6 +77,7 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
     supportsEval: false,
     supportsTimeWindow: false,
     supportsTickAndProject: false,
+    supportsLiveInputs: false,
   };
 
   function ensureWorker(): Worker {
@@ -195,6 +198,8 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
         supportsTimeWindow: enabled && lastKnownCapabilities.supportsTimeWindow,
         supportsTickAndProject:
           enabled && lastKnownCapabilities.supportsTickAndProject,
+        supportsLiveInputs:
+          enabled && lastKnownCapabilities.supportsLiveInputs === true,
       };
     },
 
@@ -276,15 +281,17 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
     async tickAndProject(
       outputs: string[],
       tickTime: number,
+      projectionMode: import("../contracts/runtimePorts").ProjectionMode,
       projectEnd: number,
       numFutureSamples: number,
+      projectionOrigin: number,
     ): Promise<TickAndProjectResult | null> {
       if (!isUseqWasmEnabled()) return null;
       await ensureLoadedInternal();
       const response = await send<
         Extract<WasmWorkerResponse, { type: "tickAndProject-result" }>
       >(
-        { type: "tickAndProject", outputs, tickTime, projectEnd, numFutureSamples },
+        { type: "tickAndProject", outputs, tickTime, projectionMode, projectEnd, numFutureSamples, projectionOrigin },
         "tickAndProject-result",
       );
       lastKnownCapabilities = {
@@ -334,6 +341,42 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
         "readActiveDiagnostics-result",
       );
       return response.diagnostics;
+    },
+
+    async setLiveInputs(values: Record<string, number>): Promise<number> {
+      if (!isUseqWasmEnabled()) return 0;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "setLiveInputs-result" }>
+      >(
+        { type: "setLiveInputs", values },
+        "setLiveInputs-result",
+      );
+      return response.applied;
+    },
+
+    async getLiveSlots(): Promise<LiveSlotMetadata[]> {
+      if (!isUseqWasmEnabled()) return [];
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "getLiveSlots-result" }>
+      >(
+        { type: "getLiveSlots" },
+        "getLiveSlots-result",
+      );
+      return response.slots;
+    },
+
+    async applyStateSnapshot(snapshot: StateSnapshot): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "applyStateSnapshot-result" }>
+      >(
+        { type: "applyStateSnapshot", snapshot },
+        "applyStateSnapshot-result",
+      );
+      return response.success;
     },
   };
 }

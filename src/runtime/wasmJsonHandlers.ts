@@ -179,19 +179,61 @@ export async function handleEvalRequest(
 /**
  * Handle a `set-live-inputs` request in WASM mode.
  *
- * Full WASM ABI integration (`useq_set_live_inputs`) ships when the live-edit
- * feature lands. For now the handler acks with `applied: 0` so the protocol
- * stays exhaustive and the editor's pending-request bookkeeping can flush.
+ * Calls through to the WASM ABI `useq_set_live_inputs` export to inject
+ * live-edit slot values directly into the signal engine's NodePool.
  */
 export function handleSetLiveInputsRequest(
   request: JsonSetLiveInputsRequest & { requestId?: string }
 ): JsonResponseBody {
-  return {
-    requestId: bumpRequestId(request),
-    success: true,
-    type: "response",
-    applied: 0,
-  } as JsonResponseBody & { applied: number };
+  const requestId = bumpRequestId(request);
+
+  // Access the WASM runtime global for direct ABI call (avoids async).
+  // The handler is called within the JSON protocol engine which has already
+  // ensured the WASM module is loaded.
+  const global = (globalThis as { __useqWasmRuntime?: {
+    useq_set_live_inputs?: (json: string) => number;
+  } }).__useqWasmRuntime;
+
+  if (!global?.useq_set_live_inputs) {
+    return {
+      requestId,
+      success: true,
+      type: "response",
+      applied: 0,
+    } as JsonResponseBody & { applied: number };
+  }
+
+  // Convert slot values to the numeric record the WASM ABI expects.
+  // The wire format allows number | boolean | string, but the WASM side
+  // only handles doubles — coerce booleans and skip non-numeric strings.
+  const numericValues: Record<string, number> = {};
+  for (const [key, val] of Object.entries(request.slots ?? {})) {
+    if (typeof val === "number") {
+      numericValues[key] = val;
+    } else if (typeof val === "boolean") {
+      numericValues[key] = val ? 1.0 : 0.0;
+    }
+    // string values are skipped — they're for keyword slots which aren't
+    // supported at the ABI level yet.
+  }
+
+  try {
+    const json = JSON.stringify(numericValues);
+    const applied = global.useq_set_live_inputs(json);
+    return {
+      requestId,
+      success: true,
+      type: "response",
+      applied,
+    } as JsonResponseBody & { applied: number };
+  } catch {
+    return {
+      requestId,
+      success: false,
+      type: "response",
+      text: "useq_set_live_inputs threw an exception",
+    };
+  }
 }
 
 /**
@@ -216,6 +258,19 @@ export async function dispatchWasmJsonRequest(
       return handleEvalRequest(request, backend, options);
     case "set-live-inputs":
       return handleSetLiveInputsRequest(request);
+    // Calibration and state-snapshot requests are hardware-only.
+    case "calibrate-begin":
+    case "calibrate-set-target":
+    case "calibrate-adjust":
+    case "calibrate-save-point":
+    case "calibrate-end":
+    case "get-state":
+      return {
+        requestId: request.requestId,
+        success: false,
+        type: "response",
+        text: `${request.type} is not supported in WASM mode`,
+      };
     default: {
       const exhaustive: never = request;
       void exhaustive;

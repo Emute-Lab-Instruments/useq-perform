@@ -21,10 +21,12 @@
 import type { TransportState } from "../../machines/transport.machine";
 import type { SharedTransportCommand } from "../../contracts/useqRuntimeContract";
 import type {
+  LiveSlotMetadata,
   RuntimeDiagnostic,
   TickAndProjectResult,
   TimeSample,
 } from "../../contracts/runtimePorts";
+import type { StateSnapshot } from "../../contracts/runtimeTypes";
 
 // ─── Request payloads ──────────────────────────────────────────────────────
 
@@ -73,8 +75,10 @@ export interface TickAndProjectRequest {
   id: number;
   outputs: string[];
   tickTime: number;
+  projectionMode: number;
   projectEnd: number;
   numFutureSamples: number;
+  projectionOrigin: number;
 }
 
 export interface SyncTransportStateRequest {
@@ -99,6 +103,23 @@ export interface ReadActiveDiagnosticsRequest {
   id: number;
 }
 
+export interface SetLiveInputsRequest {
+  type: "setLiveInputs";
+  id: number;
+  values: Record<string, number>;
+}
+
+export interface GetLiveSlotsRequest {
+  type: "getLiveSlots";
+  id: number;
+}
+
+export interface ApplyStateSnapshotRequest {
+  type: "applyStateSnapshot";
+  id: number;
+  snapshot: StateSnapshot;
+}
+
 export type WasmWorkerRequest =
   | LoadRequest
   | EvalCodeRequest
@@ -109,7 +130,10 @@ export type WasmWorkerRequest =
   | SyncTransportStateRequest
   | SendTransportCommandRequest
   | ReadLastDiagnosticsRequest
-  | ReadActiveDiagnosticsRequest;
+  | ReadActiveDiagnosticsRequest
+  | SetLiveInputsRequest
+  | GetLiveSlotsRequest
+  | ApplyStateSnapshotRequest;
 
 // ─── Response payloads ─────────────────────────────────────────────────────
 
@@ -123,6 +147,7 @@ export interface WorkerCapabilitySnapshot {
   supportsEval: boolean;
   supportsTimeWindow: boolean;
   supportsTickAndProject: boolean;
+  supportsLiveInputs: boolean;
 }
 
 export interface LoadResponse {
@@ -192,6 +217,24 @@ export interface ReadActiveDiagnosticsResponse {
   diagnostics: RuntimeDiagnostic[];
 }
 
+export interface SetLiveInputsResponse {
+  type: "setLiveInputs-result";
+  id: number;
+  applied: number;
+}
+
+export interface GetLiveSlotsResponse {
+  type: "getLiveSlots-result";
+  id: number;
+  slots: LiveSlotMetadata[];
+}
+
+export interface ApplyStateSnapshotResponse {
+  type: "applyStateSnapshot-result";
+  id: number;
+  success: boolean;
+}
+
 export interface ErrorResponse {
   type: "error";
   id: number;
@@ -209,4 +252,7 @@ export type WasmWorkerResponse =
   | SendTransportCommandResponse
   | ReadLastDiagnosticsResponse
   | ReadActiveDiagnosticsResponse
+  | SetLiveInputsResponse
+  | GetLiveSlotsResponse
+  | ApplyStateSnapshotResponse
   | ErrorResponse;

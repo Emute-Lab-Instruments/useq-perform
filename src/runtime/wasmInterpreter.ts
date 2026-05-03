@@ -35,13 +35,15 @@ export type TransportState = 'playing' | 'paused' | 'stopped';
 
 /**
  * Shape of the `globalThis.__useqWasmRuntime` handle exposed to diagnostic
- * readers. Set by the WASM init paths (main-thread and worker) so the
- * `readLast/ActiveDiagnostics` helpers can pull structured diagnostics
- * without holding a direct module reference.
+ * readers and live-edit slot access. Set by the WASM init paths (main-thread
+ * and worker) so helpers can pull structured data without holding a direct
+ * module reference.
  */
 export interface UseqWasmRuntimeGlobal {
   useq_last_diagnostics?: () => string;
   useq_active_diagnostics?: () => string;
+  useq_set_live_inputs?: (json: string) => number;
+  useq_get_live_slots?: () => string;
 }
 
 // Emscripten module interface (minimal typing for what we use)
@@ -86,6 +88,7 @@ let scriptLoadPromise: Promise<void> | null = null;
 let runtimePromise: Promise<UseqRuntime> | null = null;
 let lastKnownTimeWindowSupport = false;
 let lastKnownTickAndProjectSupport = false;
+let lastKnownLiveInputsSupport = false;
 function isUseqWasmEnabled(): boolean {
   try {
     return getAppSettings()?.wasm?.enabled ?? true;
@@ -665,15 +668,23 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   // can pull structured diagnostics for inline editor squiggles.
   const lastDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_last_diagnostics) as (() => string) | null;
   const activeDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_active_diagnostics) as (() => string) | null;
+
+  // Bind live-edit slot ABI exports
+  const setLiveInputsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_set_live_inputs) as ((json: string) => number) | null;
+  const getLiveSlotsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_get_live_slots) as (() => string) | null;
+
   (globalThis as { __useqWasmRuntime?: UseqWasmRuntimeGlobal }).__useqWasmRuntime = {
     useq_last_diagnostics: lastDiagsFn ?? undefined,
     useq_active_diagnostics: activeDiagsFn ?? undefined,
+    useq_set_live_inputs: setLiveInputsFn ?? undefined,
+    useq_get_live_slots: getLiveSlotsFn ?? undefined,
   };
 
   useq_init();
   dbg("uSEQ WASM interpreter initialised");
   lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
   lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
+  lastKnownLiveInputsSupport = setLiveInputsFn !== null;
 
   return {
     module,
@@ -931,6 +942,71 @@ export const wasmRuntimePort: WasmRuntimePort = {
   evalOutputsInTimeWindow,
   tickAndProject: tickAndProjectOutputs,
 };
+
+// ---------------------------------------------------------------------------
+// Live-edit slot ABI bindings
+// ---------------------------------------------------------------------------
+
+/**
+ * Inject live-edit slot values into the WASM interpreter.
+ *
+ * @param values - Record of slot id → numeric value.
+ * @returns Count of successfully applied writes (0 if unavailable).
+ */
+export async function setLiveInputs(values: Record<string, number>): Promise<number> {
+  if (!isUseqWasmEnabled()) return 0;
+
+  // Ensure WASM is loaded (this sets up __useqWasmRuntime)
+  await ensureUseqWasmLoaded();
+  const global = (globalThis as { __useqWasmRuntime?: UseqWasmRuntimeGlobal }).__useqWasmRuntime;
+  if (!global?.useq_set_live_inputs) return 0;
+
+  try {
+    const json = JSON.stringify(values);
+    const applied = global.useq_set_live_inputs(json);
+    lastKnownLiveInputsSupport = true;
+    return applied;
+  } catch {
+    lastKnownLiveInputsSupport = false;
+    return 0;
+  }
+}
+
+/** Metadata for a live-edit slot returned from the WASM runtime. */
+export interface LiveSlotMetadata {
+  id: string;
+  value: number;
+  min: number;
+  max: number;
+  seed: number;
+}
+
+/**
+ * Query all allocated live-edit slots from the WASM interpreter.
+ *
+ * @returns Array of slot metadata, or empty if unavailable.
+ */
+export async function getLiveSlots(): Promise<LiveSlotMetadata[]> {
+  if (!isUseqWasmEnabled()) return [];
+
+  // Ensure WASM is loaded (this sets up __useqWasmRuntime)
+  await ensureUseqWasmLoaded();
+  const global = (globalThis as { __useqWasmRuntime?: UseqWasmRuntimeGlobal }).__useqWasmRuntime;
+  if (!global?.useq_get_live_slots) return [];
+
+  try {
+    const json = global.useq_get_live_slots();
+    if (!json) return [];
+    return JSON.parse(json) as LiveSlotMetadata[];
+  } catch {
+    return [];
+  }
+}
+
+/** Whether the live-inputs ABI is available. */
+export function supportsLiveInputs(): boolean {
+  return lastKnownLiveInputsSupport;
+}
 
 // ---------------------------------------------------------------------------
 // Diagnostic type — re-exported from canonical location
