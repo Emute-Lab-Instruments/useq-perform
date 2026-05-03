@@ -122,7 +122,11 @@ function cleanupReader(
 ): void {
   readingActive = false;
   currentReader = null;
-  reader.releaseLock();
+  try {
+    reader.releaseLock();
+  } catch {
+    // Already released by cancel() — safe to ignore.
+  }
 }
 
 /**

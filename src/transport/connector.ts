@@ -160,7 +160,7 @@ export async function toggleConnect(): Promise<void> {
   } else {
     const savedport = await checkForSavedPort();
     if (savedport) {
-      connectToSerialPort(savedport);
+      await connectToSerialPort(savedport);
     } else {
       askForPortAndConnect();
     }

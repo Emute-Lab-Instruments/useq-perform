@@ -118,6 +118,9 @@ export function scanBindings(docText: string): ParsedBinding[] {
           if (docText[i] === "\\") i++; // skip escaped char
           i++;
         }
+        // i now points at the closing quote (or past end).
+        // Don't increment here — the outer i++ will advance past it.
+        continue;
       }
       i++;
     }

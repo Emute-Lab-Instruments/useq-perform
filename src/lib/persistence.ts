@@ -182,7 +182,11 @@ export function remove(key: string): void {
     return;
   }
 
-  window.localStorage.removeItem(key);
+  try {
+    window.localStorage.removeItem(key);
+  } catch (e) {
+    console.warn(`[persistence] Failed to remove key "${key}".`, e);
+  }
 }
 
 /**

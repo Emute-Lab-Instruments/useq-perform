@@ -363,8 +363,19 @@ export function writeJsonRequest(
     pending.resolve = resolve;
     pending.reject = reject;
 
+    const writer = port.writable!.getWriter();
+    let writerReleased = false;
+
+    const releaseWriter = () => {
+      if (!writerReleased) {
+        writerReleased = true;
+        try { writer.releaseLock(); } catch { /* already released */ }
+      }
+    };
+
     if (options.timeout && options.timeout > 0) {
       pending.timeoutId = setTimeout(() => {
+        releaseWriter();
         protocolState.pendingRequests.delete(requestId);
         reject(new Error(`Request ${requestId} timed out`));
       }, options.timeout);
@@ -372,15 +383,13 @@ export function writeJsonRequest(
 
     protocolState.pendingRequests.set(requestId, pending);
 
-    const writer = port.writable!.getWriter();
-
     writer
       .write(encoder.encode(message))
       .then(() => {
-        writer.releaseLock();
+        releaseWriter();
       })
       .catch((error: Error) => {
-        writer.releaseLock();
+        releaseWriter();
         if (pending.timeoutId) {
           clearTimeout(pending.timeoutId);
         }
