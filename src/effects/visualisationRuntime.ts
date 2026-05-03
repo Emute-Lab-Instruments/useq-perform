@@ -4,11 +4,14 @@
  * Single owner of the visualisation render+sample lifecycle.
  *
  * Responsibilities:
- *   1. One rAF loop drives both sampling and rendering.
+ *   1. One rAF loop drives rendering and queues any live samples needed
+ *      to catch up to the configured temporal sample rate.
  *   2. Tracks "current time" for browser-local mode (rAF tick) and
  *      for hardware mode (`notifyExternalTimeUpdate`).
- *   3. Coalesces sampling: at most one tick-and-project cycle is in
- *      flight at a time; newer times supersede pending ones.
+ *   3. Serializes sampling: at most one tick-and-project cycle is in
+ *      flight at a time. Browser-local mode may queue multiple
+ *      intermediate tick times per frame; hardware/external time updates
+ *      coalesce to the newest time.
  *   4. Delegates to `visualisationSampler.tickAndProject()` for the
  *      actual WASM work (tick → record past → project future).
  *
@@ -27,6 +30,7 @@ import {
   visStore,
 } from "../utils/visualisationStore.ts";
 import {
+  getTemporalSampleRate,
   tickAndProject,
   syncInterpreterTime,
 } from "./visualisationSampler.ts";
@@ -40,6 +44,7 @@ import { recordTickElapsed } from "./adaptiveQuality.ts";
  */
 export interface VisualisationRenderHook {
   paint(): void;
+  afterPaint?(): void;
   isVisible(): boolean;
 }
 
@@ -53,8 +58,9 @@ export function registerVisualisationRenderHook(
 
 // ── Tunables ─────────────────────────────────────────────────────────
 
-const TARGET_TICK_MS = 1000 / 30;
 const DIAG_POLL_INTERVAL = 6;
+const MAX_LOCAL_SAMPLES_PER_FRAME = 64;
+const SAMPLE_TIME_EPSILON = 1e-6;
 
 // ── Tick state ─────────────────────────────────────────────────���─────
 
@@ -68,10 +74,16 @@ let frameCount = 0;
 let localTimeActive = false;
 let localResetMs: number | null = null;
 let localElapsedSeconds = 0;
+let lastLocalSampleTime: number | null = null;
 
 // ── Sampling coalescing ─────────────────────────────────────────────
 
-let pendingSampleTime: number | null = null;
+interface SampleRequest {
+  timeSeconds: number;
+  projectFuture: boolean;
+}
+
+const sampleQueue: SampleRequest[] = [];
 let samplingInFlight = false;
 
 // ── Diagnostic poll coalescing ──────────────────────────────────────
@@ -85,6 +97,26 @@ let diagPollInFlight = false;
 // ── Render gating ───────────────────────────────────────────────────
 
 let renderRequested = false;
+
+// ── Sample FPS tracking ─────────────────────────────────────────────
+
+const SAMPLE_FPS_WINDOW = 60;
+const sampleTimestamps: number[] = [];
+
+function recordSampleTick(): void {
+  const now = performance.now();
+  sampleTimestamps.push(now);
+  while (sampleTimestamps.length > SAMPLE_FPS_WINDOW) sampleTimestamps.shift();
+}
+
+/** Rolling sample rate (completed WASM tick-and-project cycles per second). */
+export function getSampleFPS(): number {
+  if (sampleTimestamps.length < 2) return 0;
+  const span =
+    (sampleTimestamps[sampleTimestamps.length - 1] - sampleTimestamps[0]) / 1000;
+  if (span <= 0) return 0;
+  return (sampleTimestamps.length - 1) / span;
+}
 
 // ── Public API ──────────────────────────────────────────────────────
 
@@ -114,13 +146,15 @@ export function setLocalTimeMode(active: boolean): void {
     } else {
       localResetMs = performance.now() - localElapsedSeconds * 1000;
     }
-    if (running) requestSampleAt(localElapsedSeconds);
+    lastLocalSampleTime = null;
+    if (running) requestLocalSamplesThrough(localElapsedSeconds);
   }
 }
 
 export function resetLocalTime(): void {
   localResetMs = localTimeActive ? performance.now() : null;
   localElapsedSeconds = 0;
+  lastLocalSampleTime = null;
 }
 
 export function isLocalTimeActive(): boolean {
@@ -139,7 +173,7 @@ export function notifyExternalTimeUpdate(time: number): void {
     currentTimeSeconds: numeric,
     displayTimeSeconds: numeric,
   });
-  requestSampleAt(numeric);
+  requestSampleAt(numeric, { replace: true, projectFuture: true });
   void drainSamplingQueue();
 }
 
@@ -173,7 +207,6 @@ function tick(): void {
   scheduleNextTick();
 
   const now = performance.now();
-  if (now - lastTickMs < TARGET_TICK_MS) return;
   // Measure the elapsed time *between* committed ticks (i.e. the
   // realised frame interval) and feed the pressure detector. We do this
   // before updating `lastTickMs` so we have access to the previous
@@ -184,7 +217,7 @@ function tick(): void {
   }
   lastTickMs = now;
 
-  perf.begin("frame-tick");
+  if (import.meta.env.DEV) perf.begin("frame-tick");
   frameCount++;
 
   if (localTimeActive) {
@@ -194,7 +227,7 @@ function tick(): void {
       currentTimeSeconds: localElapsedSeconds,
       displayTimeSeconds: localElapsedSeconds,
     });
-    requestSampleAt(localElapsedSeconds);
+    requestLocalSamplesThrough(localElapsedSeconds);
   }
 
   if (frameCount % DIAG_POLL_INTERVAL === 0 && !diagPollInFlight) {
@@ -222,7 +255,7 @@ function tick(): void {
     renderFrame();
   }
 
-  perf.end("frame-tick");
+  if (import.meta.env.DEV) perf.end("frame-tick");
 }
 
 function scheduleImmediateRender(): void {
@@ -234,19 +267,74 @@ function scheduleImmediateRender(): void {
 
 function renderFrame(): void {
   if (!renderHook) return;
-  perf.begin("render-frame");
+  if (import.meta.env.DEV) perf.begin("render-frame");
   if (!renderHook.isVisible()) {
-    perf.end("render-frame");
+    if (import.meta.env.DEV) perf.end("render-frame");
     return;
   }
   renderHook.paint();
-  perf.end("render-frame");
+  renderHook.afterPaint?.();
+  if (import.meta.env.DEV) perf.end("render-frame");
 }
 
 // ── Internal: sampling ──────────────────────────────────────────────
 
-function requestSampleAt(time: number): void {
-  pendingSampleTime = time;
+function requestSampleAt(
+  time: number,
+  options: { replace?: boolean; projectFuture?: boolean } = {},
+): void {
+  const request: SampleRequest = {
+    timeSeconds: time,
+    projectFuture: options.projectFuture !== false,
+  };
+  if (options.replace) {
+    sampleQueue.length = 0;
+    sampleQueue.push(request);
+    return;
+  }
+  if (request.projectFuture) {
+    for (const queued of sampleQueue) queued.projectFuture = false;
+  }
+  sampleQueue.push(request);
+}
+
+function requestLocalSamplesThrough(currentTimeSeconds: number): void {
+  const targetHz = getTemporalSampleRate();
+  if (!Number.isFinite(targetHz) || targetHz <= 0) {
+    requestSampleAt(currentTimeSeconds, { projectFuture: true });
+    lastLocalSampleTime = currentTimeSeconds;
+    return;
+  }
+
+  const intervalSeconds = 1 / targetHz;
+  if (
+    lastLocalSampleTime === null ||
+    currentTimeSeconds <= lastLocalSampleTime ||
+    currentTimeSeconds - lastLocalSampleTime >
+      intervalSeconds * MAX_LOCAL_SAMPLES_PER_FRAME
+  ) {
+    requestSampleAt(currentTimeSeconds, { projectFuture: true });
+    lastLocalSampleTime = currentTimeSeconds;
+    return;
+  }
+
+  let queued = 0;
+  let nextTime = lastLocalSampleTime + intervalSeconds;
+  for (
+    ;
+    nextTime <= currentTimeSeconds + SAMPLE_TIME_EPSILON &&
+    queued < MAX_LOCAL_SAMPLES_PER_FRAME;
+    nextTime += intervalSeconds
+  ) {
+    requestSampleAt(nextTime, { projectFuture: false });
+    lastLocalSampleTime = nextTime;
+    queued++;
+  }
+
+  if (queued > 0) {
+    for (const request of sampleQueue) request.projectFuture = false;
+    sampleQueue[sampleQueue.length - 1].projectFuture = true;
+  }
 }
 
 let inFlightDrainPromise: Promise<void> | null = null;
@@ -256,14 +344,13 @@ async function drainSamplingQueue(): Promise<void> {
     if (inFlightDrainPromise) await inFlightDrainPromise;
     return;
   }
-  if (pendingSampleTime === null) return;
+  if (sampleQueue.length === 0) return;
   samplingInFlight = true;
   inFlightDrainPromise = (async () => {
     try {
-      while (pendingSampleTime !== null) {
-        const t = pendingSampleTime;
-        pendingSampleTime = null;
-        await runSample(t);
+      while (sampleQueue.length > 0) {
+        const request = sampleQueue.shift()!;
+        await runSample(request.timeSeconds, request.projectFuture);
       }
     } finally {
       samplingInFlight = false;
@@ -273,30 +360,34 @@ async function drainSamplingQueue(): Promise<void> {
   await inFlightDrainPromise;
 }
 
-async function runSample(timeSeconds: number): Promise<void> {
-  perf.begin("resample-total");
+async function runSample(
+  timeSeconds: number,
+  projectFuture: boolean,
+): Promise<void> {
+  if (import.meta.env.DEV) perf.begin("resample-total");
   try {
-    perf.begin("wasm-update-time");
+    if (import.meta.env.DEV) perf.begin("wasm-update-time");
     try {
       await syncInterpreterTime(timeSeconds);
     } catch (error) {
       dbg(`visualisationRuntime: failed to sync interpreter time: ${error}`);
-      perf.end("wasm-update-time");
+      if (import.meta.env.DEV) perf.end("wasm-update-time");
       return;
     }
-    perf.end("wasm-update-time");
+    if (import.meta.env.DEV) perf.end("wasm-update-time");
 
     // tick-and-project also samples `bar` from the same batch; run it
     // unconditionally so the bar value stays current even when no
     // user expressions are registered.
     const settings = visStore.settings;
-    perf.begin("tick-and-project");
-    await tickAndProject(timeSeconds, settings);
-    perf.end("tick-and-project");
+    if (import.meta.env.DEV) perf.begin("tick-and-project");
+    await tickAndProject(timeSeconds, settings, { projectFuture });
+    if (import.meta.env.DEV) perf.end("tick-and-project");
+    recordSampleTick();
 
     setLastChangeKind("data");
   } finally {
-    perf.end("resample-total");
+    if (import.meta.env.DEV) perf.end("resample-total");
   }
 }
 
@@ -311,7 +402,8 @@ export function _resetForTests(): void {
   localTimeActive = false;
   localResetMs = null;
   localElapsedSeconds = 0;
-  pendingSampleTime = null;
+  lastLocalSampleTime = null;
+  sampleQueue.length = 0;
   samplingInFlight = false;
   diagPollInFlight = false;
   renderRequested = false;

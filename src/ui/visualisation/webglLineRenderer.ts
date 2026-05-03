@@ -10,7 +10,10 @@
  * Geometry pre-computed in clip space; vertex shader is a pass-through.
  * `lineWidth` parameterises the extrusion half-width.
  *
- * The fragment shader handles past/future alpha split via `uClipFutureStart`.
+ * The fragment shader selects past/future alpha per draw call via
+ * `uClipFutureStart`. Callers that need a semantic split upload and
+ * draw independent ranges instead of asking the shader to clip a
+ * continuous polyline.
  */
 
 import { perf } from "../../lib/perfTrace.ts";
@@ -74,17 +77,10 @@ uniform vec3  uColor;
 uniform float uAlphaPast;
 uniform float uAlphaFuture;
 uniform float uClipFutureStart;  // 0 if rendering past, 1 if rendering future
-in float vTime;
-in float vIsFuture;
 out vec4 fragColor;
 
 void main() {
-  if (uClipFutureStart > 0.5) {
-    if (vIsFuture < 0.5) discard;
-  } else {
-    if (vIsFuture > 0.5) discard;
-  }
-  float alpha = mix(uAlphaPast, uAlphaFuture, vIsFuture);
+  float alpha = uClipFutureStart > 0.5 ? uAlphaFuture : uAlphaPast;
   fragColor = vec4(uColor * alpha, alpha);
 }
 `;

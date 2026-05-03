@@ -217,6 +217,17 @@ function computeVisibleLineBoundsViewport(view: EditorView, overscan: number): P
 const EDITOR_RAISED_Z = '21';
 const VIS_CANVAS_ID = 'serialcanvas-gl';
 
+// ---------------------------------------------------------------------------
+// afterPaint registration — lets the vis render loop call us synchronously
+// within the same rAF tick, so we always read a valid drawing buffer.
+// ---------------------------------------------------------------------------
+
+let activePlugin: VisReadabilityPlugin | null = null;
+
+export function readabilityAfterPaint(): void {
+  activePlugin?.renderFrame();
+}
+
 function isVisPanelVisible(): boolean {
   return isVisualisationPanelVisible();
 }
@@ -273,8 +284,6 @@ class VisReadabilityPlugin {
   private scrollRebuildTimer: ReturnType<typeof setTimeout> | null = null;
   /** Cached clip path built from staircase polygons. */
   private clipPath: Path2D | null = null;
-  /** rAF handle for the render loop. */
-  private rafId: number | null = null;
   /** Unsubscribe from app settings changes. */
   private unsubSettings: (() => void) | null = null;
   /** Whether readability was enabled the last time we checked. */
@@ -359,7 +368,8 @@ class VisReadabilityPlugin {
   }
 
   destroy(): void {
-    this.stopRenderLoop();
+    if (activePlugin === this) activePlugin = null;
+    this.overlayCtx?.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
     if (this.scrollRebuildTimer !== null) clearTimeout(this.scrollRebuildTimer);
     this.unsubSettings?.();
     this.resizeObserver?.disconnect();
@@ -370,33 +380,15 @@ class VisReadabilityPlugin {
     this.view.dom.style.backgroundColor = '';
   }
 
-  // ---- Render loop ---------------------------------------------------------
-
-  private startRenderLoop(): void {
-    if (this.rafId !== null) return;
-    const tick = () => {
-      this.renderFrame();
-      this.rafId = requestAnimationFrame(tick);
-    };
-    this.rafId = requestAnimationFrame(tick);
-  }
-
-  private stopRenderLoop(): void {
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
-    // Clear the overlay so no stale blur lingers.
-    this.overlayCtx?.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-  }
+  // ---- Render (called from vis afterPaint hook) ----------------------------
 
   /**
-   * Called every animation frame while vis is active.
+   * Called synchronously after the vis renderer paints, within the same rAF.
    * 1. Copy the vis canvas into the blur buffer (with ctx.filter blur).
    * 2. Clip the overlay canvas to the staircase polygons (scroll-adjusted).
    * 3. Draw the blur buffer through the clip mask.
    */
-  private renderFrame(): void {
+  renderFrame(): void {
     const ctx = this.overlayCtx;
     const blurCtx = this.blurCtx;
     if (!ctx || !blurCtx || !this.clipPath) return;
@@ -536,8 +528,8 @@ class VisReadabilityPlugin {
 
   /**
    * When vis is visible: raise the editor panel above the vis, make the CM
-   * editor background transparent, and start the render loop.
-   * When vis is hidden: restore defaults and stop the render loop.
+   * editor background transparent, and register for afterPaint callbacks.
+   * When vis is hidden: restore defaults and unregister.
    */
   private applyVisState(visVisible: boolean): void {
     if (visVisible === this.wasVisVisible) return;
@@ -546,11 +538,12 @@ class VisReadabilityPlugin {
     if (visVisible) {
       if (this.editorPanel) this.editorPanel.style.zIndex = EDITOR_RAISED_Z;
       this.view.dom.style.backgroundColor = 'transparent';
-      this.startRenderLoop();
+      activePlugin = this;
     } else {
       if (this.editorPanel) this.editorPanel.style.zIndex = '';
       this.view.dom.style.backgroundColor = '';
-      this.stopRenderLoop();
+      if (activePlugin === this) activePlugin = null;
+      this.overlayCtx?.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
     }
   }
 }

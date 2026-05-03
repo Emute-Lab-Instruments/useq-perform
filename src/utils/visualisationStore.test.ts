@@ -43,6 +43,7 @@ describe("visualisationStore", () => {
       const { visStore } = await loadVisStore();
 
       expect(visStore.settings).toEqual({
+        showFutureProjection: false,
         windowDuration: 10,
         sampleCount: 100,
         lineWidth: 1.5,
@@ -52,6 +53,11 @@ describe("visualisationStore", () => {
         circularOffset: 0,
         futureLeadSeconds: 1,
         digitalLaneGap: 4,
+        futureLineAlpha: 0.6,
+        minFutureSampleRate: 30,
+        extensionBatchSize: 4,
+        temporalSampleRateMultiplier: 1,
+        inputEpsilon: 0.01,
       });
     });
   });
@@ -117,6 +123,11 @@ describe("visualisationStore", () => {
         circularOffset: 2,
         futureLeadSeconds: 3,
         digitalLaneGap: 8,
+        futureLineAlpha: 0.6,
+        minFutureSampleRate: 30,
+        extensionBatchSize: 4,
+        temporalSampleRateMultiplier: 1,
+        inputEpsilon: 0.01,
       });
 
       expect(visStore.settings.windowDuration).toBe(20);

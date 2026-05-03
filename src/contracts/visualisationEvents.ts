@@ -27,6 +27,7 @@ export interface VisualisationSettingsDetail {
   circularOffset: number;
   futureLeadSeconds: number;
   digitalLaneGap: number;
+  temporalSampleRateMultiplier: number;
 }
 
 export interface VisualisationSessionDetail {

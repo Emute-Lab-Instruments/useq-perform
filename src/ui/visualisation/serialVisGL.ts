@@ -24,7 +24,8 @@
  *   - One rendering path: CPU-extruded triangle strip with bevel joins.
  *     Geometry is pre-computed in clip space; the vertex shader is a
  *     pass-through. `lineWidth` parameterises the extrusion half-width.
- *   - Past/future alpha split via fragment-shader uniform `uClipFutureStart`.
+ *   - Past/future alpha split is selected per draw call after the
+ *     renderer uploads independent past and future VBOs.
  *   - Axis lines, value labels, and "no expressions" fallback text are
  *     kept on a 2D overlay canvas (created lazily and stacked under the
  *     GL canvas).  Drawing crisp text in WebGL is out of scope — and the
@@ -33,6 +34,7 @@
  */
 
 import { perf } from "../../lib/perfTrace.ts";
+import { projectionTrace } from "../../lib/projectionTrace.ts";
 import type { VisExpression, VisSettings } from "../../utils/visualisationStore.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
 import {
@@ -141,6 +143,55 @@ function getAccentColor(): string {
 
 let glCanvas: HTMLCanvasElement | null = null;
 
+// ── Screenshot capture ─────────────────────────────────────────────
+
+let _screenshotPending = false;
+
+export function requestVisScreenshot(): void {
+  _screenshotPending = true;
+}
+
+function captureScreenshot(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement): void {
+  const w = canvas.width;
+  const h = canvas.height;
+
+  const pixels = new Uint8Array(w * h * 4);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+  const out = document.createElement("canvas");
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext("2d")!;
+
+  // GL readPixels is bottom-up; flip vertically
+  const imageData = ctx.createImageData(w, h);
+  for (let row = 0; row < h; row++) {
+    const srcOffset = (h - 1 - row) * w * 4;
+    const dstOffset = row * w * 4;
+    imageData.data.set(pixels.subarray(srcOffset, srcOffset + w * 4), dstOffset);
+  }
+
+  // Draw the overlay (axes/labels) first, then GL content on top
+  const overlay = overlayCanvas;
+  if (overlay) ctx.drawImage(overlay, 0, 0);
+  ctx.putImageData(imageData, 0, 0);
+  // Re-draw overlay on top for labels
+  if (overlay) {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.drawImage(overlay, 0, 0);
+  }
+
+  out.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vis-${Date.now()}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, "image/png");
+}
+
 /**
  * Get (or lazily create) a dedicated WebGL canvas inside the panel.
  */
@@ -223,6 +274,7 @@ let overlayDirtyW = 0;
 let overlayDirtyH = 0;
 let overlayDirtyHasExpr = false;
 let overlayDirtyAccent = "";
+let overlayDirtyShowFuture = true;
 
 function ensureOverlayCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
@@ -251,7 +303,7 @@ function ensureOverlayCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement | nul
   return o;
 }
 
-function drawOverlay(canvas: HTMLCanvasElement, hasExpressions: boolean): void {
+function drawOverlay(canvas: HTMLCanvasElement, hasExpressions: boolean, showFuture = true): void {
   const overlay = ensureOverlayCanvas(canvas);
   if (!overlay) return;
   const ctx = overlay.getContext("2d");
@@ -273,7 +325,7 @@ function drawOverlay(canvas: HTMLCanvasElement, hasExpressions: boolean): void {
   const verticalPadding = h * 0.1;
   const drawableHeight = h - verticalPadding * 2;
   const centerY = h / 2;
-  const centerX = w / 2;
+  const nowX = showFuture ? w / 2 : w;
 
   // Center axis (0.5) dotted line
   ctx.strokeStyle = accentColor;
@@ -284,13 +336,15 @@ function drawOverlay(canvas: HTMLCanvasElement, hasExpressions: boolean): void {
   ctx.lineTo(w, centerY);
   ctx.stroke();
 
-  // Current time vertical line
-  ctx.setLineDash([]);
-  ctx.strokeStyle = AXIS_COLOR;
-  ctx.beginPath();
-  ctx.moveTo(centerX, 0);
-  ctx.lineTo(centerX, h);
-  ctx.stroke();
+  // Current time vertical line (center when showing future, right edge when past-only)
+  if (showFuture) {
+    ctx.setLineDash([]);
+    ctx.strokeStyle = AXIS_COLOR;
+    ctx.beginPath();
+    ctx.moveTo(nowX, 0);
+    ctx.lineTo(nowX, h);
+    ctx.stroke();
+  }
 
   // Y-axis markings
   ctx.font = "10px Arial";
@@ -369,7 +423,7 @@ function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
     alpha: true,
     premultipliedAlpha: true,
     antialias: true,
-    preserveDrawingBuffer: false,
+    preserveDrawingBuffer: true,
   }) as WebGL2RenderingContext | null;
   if (!gl) {
     console.warn("[serialVisGL] WebGL2 context unavailable");
@@ -428,13 +482,17 @@ function ensureCombinedSlot(i: number): VisSampleLike {
  * to the boundary between past and future so the draw path can issue
  * separate draw calls (spec §3.9 — no interpolation across now).
  *
- * The last past sample and first future sample may share the same
- * value at t=now (the live tick serves as boundary anchor, §3.1.1).
+ * When there is a past sample, the future segment starts from a
+ * boundary anchor at exactly `currentTime` with the newest past value
+ * (spec §3.1.1).  The anchor must not use the past sample's original
+ * timestamp; if the sampler trails the display clock, that would create
+ * a moving cross-boundary segment.
  */
 function buildCombinedSamples(
   key: string,
   getRenderData: (exprType: string) => OutputRenderData | null,
   currentTime: number,
+  maxFutureBoundaryGapSeconds = Infinity,
 ): VisSampleLike[] {
   combinedScratch.length = 0;
   combinedSplitIndex = 0;
@@ -443,6 +501,13 @@ function buildCombinedSamples(
   const past = data.pastBuffer;
   const fb = data.futureBuffer;
   let w = 0;
+  let expiredFutureCount = 0;
+  let keptFutureCount = 0;
+  let firstFutureTime: number | null = null;
+  let firstFutureValue: number | null = null;
+  let firstFutureGap: number | null = null;
+  let anchorInserted = false;
+  let anchorSkippedDueGap = false;
   for (let i = 0; i < past.length; i++) {
     const slot = ensureCombinedSlot(w++);
     slot.time = past.timeAt(i);
@@ -450,27 +515,78 @@ function buildCombinedSamples(
   }
   combinedSplitIndex = w;
   if (fb && fb.length > 0) {
-    const anchorPos = w;
     let hasFuture = false;
     for (let i = 0; i < fb.length; i++) {
       const t = fb.timeAt(i);
-      if (t <= currentTime) continue;
+      if (t <= currentTime) {
+        expiredFutureCount++;
+        continue;
+      }
+      if (firstFutureTime === null) {
+        firstFutureTime = t;
+        firstFutureValue = fb.valueAt(i);
+        firstFutureGap = t - currentTime;
+      }
       if (!hasFuture && combinedSplitIndex > 0) {
-        // Boundary anchor: repeat the most recent past sample at the start
-        // of the future segment so both segments visually meet at t=now
-        // without the GPU interpolating between them.
-        const anchor = ensureCombinedSlot(w++);
-        anchor.time = combinedScratch[combinedSplitIndex - 1].time;
-        anchor.value = combinedScratch[combinedSplitIndex - 1].value;
+        if (t - currentTime <= maxFutureBoundaryGapSeconds) {
+          // Boundary anchor: repeat the most recent past sample at the start
+          // of the future segment so both segments visually meet at t=now
+          // without the GPU interpolating between them.
+          const anchor = ensureCombinedSlot(w++);
+          anchor.time = currentTime;
+          anchor.value = combinedScratch[combinedSplitIndex - 1].value;
+          anchorInserted = true;
+        } else {
+          anchorSkippedDueGap = true;
+        }
         hasFuture = true;
       }
       const slot = ensureCombinedSlot(w++);
       slot.time = t;
       slot.value = fb.valueAt(i);
+      keptFutureCount++;
     }
   }
   combinedScratch.length = w;
+  if (import.meta.env.DEV) {
+    const detail: Record<string, unknown> = {
+      output: key,
+      currentTime,
+      pastLength: past.length,
+      futureLength: fb?.length ?? 0,
+      splitIndex: combinedSplitIndex,
+      combinedLength: w,
+      expiredFutureCount,
+      keptFutureCount,
+      firstFutureTime,
+      firstFutureValue,
+      firstFutureGap,
+      maxFutureBoundaryGapSeconds,
+      anchorInserted,
+      anchorSkippedDueGap,
+      pastNewestTime: past.newestTime,
+      pastNewestGap: past.newestTime === -Infinity ? null : past.newestTime - currentTime,
+      futureOldestTime: fb?.oldestTime ?? null,
+      futureNewestTime: fb?.newestTime ?? null,
+    };
+    if (projectionTrace.shouldCaptureSamples()) {
+      detail.combinedSamples = combinedScratch.map((sample) => ({
+        time: sample.time,
+        gap: sample.time - currentTime,
+        value: sample.value,
+      }));
+    }
+    projectionTrace.record("renderer-build", detail);
+  }
   return combinedScratch;
+}
+
+function futureBoundaryMaxGapSeconds(settings: VisSettings): number {
+  const futureDensityHz = Math.max(
+    settings.minFutureSampleRate || 1,
+    (settings.sampleCount || 100) / (settings.windowDuration || 1),
+  );
+  return 4 / Math.max(1, futureDensityHz);
 }
 
 function getOrCreateBuffer(state: GLState, key: string): ExprBuffer {
@@ -636,10 +752,13 @@ export function computeAdaptivePastBufferRate(
   canvasWidth: number,
   windowDurationSeconds: number,
   divisor: number,
+  showFuture = true,
 ): number | null {
-  const halfWindowSeconds = (windowDurationSeconds || 1) / 2;
-  if (halfWindowSeconds <= 0 || canvasWidth <= 0) return null;
-  const baseRate = Math.floor(canvasWidth / 2) / halfWindowSeconds;
+  const windowSeconds = windowDurationSeconds || 1;
+  if (windowSeconds <= 0 || canvasWidth <= 0) return null;
+  const pixelSpan = showFuture ? Math.floor(canvasWidth / 2) : canvasWidth;
+  const timeSpan = showFuture ? windowSeconds / 2 : windowSeconds;
+  const baseRate = pixelSpan / timeSpan;
   const safeDivisor = divisor > 0 ? divisor : 1;
   const target = baseRate / safeDivisor;
   return target > 0 ? target : null;
@@ -700,6 +819,7 @@ export function drawSerialVisGL(input: VisRenderInput): void {
   const { expressions, settings, currentTime, getRenderData } = input;
   const exprKeys = Object.keys(expressions);
   const hasExpressions = exprKeys.length > 0;
+  const showFuture = settings.showFutureProjection === true;
   if (import.meta.env.DEV) {
     perf.count("vis-gl-frames");
     perf.count("vis-gl-expressions-total", exprKeys.length);
@@ -707,8 +827,9 @@ export function drawSerialVisGL(input: VisRenderInput): void {
 
   // Push the pixel-matched sample rate to the sampler (spec
   // visualisation.md §2.2.1).  One sample per horizontal pixel in the
-  // past half eliminates sub-pixel jitter.  The sampler early-returns
-  // when the rate is unchanged, so this is cheap on every paint.
+  // past region eliminates sub-pixel jitter.  When future projection is
+  // off the past fills the full canvas width, so the rate doubles.
+  // The sampler early-returns when the rate is unchanged.
   //
   // Lever 3 (adaptive quality, spec §1.7/§9.2): under sustained frame
   // pressure, divide the pixel-matched rate by the adaptive divisor
@@ -718,6 +839,7 @@ export function drawSerialVisGL(input: VisRenderInput): void {
     w,
     settings.windowDuration,
     getSampleRateDivisor(),
+    showFuture,
   );
   if (targetRate !== null) setPastBufferSampleRate(targetRate);
   if (import.meta.env.DEV) perf.end("vis-gl-setup");
@@ -731,13 +853,15 @@ export function drawSerialVisGL(input: VisRenderInput): void {
     ow !== overlayDirtyW ||
     oh !== overlayDirtyH ||
     hasExpressions !== overlayDirtyHasExpr ||
-    accent !== overlayDirtyAccent
+    accent !== overlayDirtyAccent ||
+    showFuture !== overlayDirtyShowFuture
   ) {
-    drawOverlay(canvas, hasExpressions);
+    drawOverlay(canvas, hasExpressions, showFuture);
     overlayDirtyW = ow;
     overlayDirtyH = oh;
     overlayDirtyHasExpr = hasExpressions;
     overlayDirtyAccent = accent;
+    overlayDirtyShowFuture = showFuture;
     if (import.meta.env.DEV) perf.count("vis-gl-overlay-painted");
   } else if (import.meta.env.DEV) {
     perf.count("vis-gl-overlay-skipped");
@@ -749,12 +873,14 @@ export function drawSerialVisGL(input: VisRenderInput): void {
     return;
   }
 
-  const lineWidth = settings.lineWidth ?? 1.5;
+  const dpr = window.devicePixelRatio || 1;
+  const lineWidth = (settings.lineWidth ?? 1.5) * dpr;
   const futureLineAlpha = settings.futureLineAlpha ?? 0.6;
+  const maxFutureBoundaryGap = futureBoundaryMaxGapSeconds(settings);
   const totalWindow = settings.windowDuration || 1;
   const halfWindow = totalWindow / 2;
-  const windowStart = currentTime - halfWindow;
-  const windowEnd = currentTime + halfWindow;
+  const windowStart = showFuture ? currentTime - halfWindow : currentTime - totalWindow;
+  const windowEnd = showFuture ? currentTime + halfWindow : currentTime;
 
   const verticalPadding = h * 0.1;
   const drawableHeight = h - verticalPadding * 2;
@@ -783,9 +909,14 @@ export function drawSerialVisGL(input: VisRenderInput): void {
     state, gl, w, h, exprKeys, expressions, currentTime,
     futureLineAlpha, lineWidth, windowStart, windowEnd,
     analogYTop, analogYBottom, digitalLaneY,
-    getRenderData,
+    getRenderData, showFuture, maxFutureBoundaryGap,
   );
   if (import.meta.env.DEV) perf.end("vis-gl-draw-pass");
+
+  if (_screenshotPending) {
+    _screenshotPending = false;
+    captureScreenshot(gl, canvas);
+  }
 
   if (import.meta.env.DEV) perf.end("vis-gl-render");
 }
@@ -820,6 +951,8 @@ function drawExpressions(
   analogYBottom: number,
   digitalLaneY: (exprType: string) => { yTop: number; yBottom: number } | null,
   getRenderData: (exprType: string) => OutputRenderData | null,
+  showFuture: boolean,
+  maxFutureBoundaryGap: number,
 ): void {
   gl.useProgram(state.program);
   gl.bindVertexArray(state.vao);
@@ -835,7 +968,12 @@ function drawExpressions(
     activeKeys.add(key);
     const expression = expressions[key];
     if (import.meta.env.DEV) perf.begin("vis-gl-build-samples");
-    const samples = buildCombinedSamples(key, getRenderData, currentTime);
+    const samples = buildCombinedSamples(
+      key,
+      getRenderData,
+      currentTime,
+      maxFutureBoundaryGap,
+    );
     const splitIndex = combinedSplitIndex;
     if (import.meta.env.DEV) perf.end("vis-gl-build-samples");
     if (samples.length < 2) continue;
@@ -880,7 +1018,7 @@ function drawExpressions(
     }
 
     // Future segment (uClipFutureStart=1, contains only future vertices)
-    if (buf.futureVertexCount >= 3) {
+    if (showFuture && buf.futureVertexCount >= 3) {
       gl.bindBuffer(gl.ARRAY_BUFFER, buf.futureVbo);
       gl.enableVertexAttribArray(0);
       gl.vertexAttribPointer(0, 2, gl.FLOAT, false, stride, 0);
@@ -892,6 +1030,18 @@ function drawExpressions(
     }
 
     if (import.meta.env.DEV) {
+      projectionTrace.record("renderer-draw", {
+        output: key,
+        currentTime,
+        showFuture,
+        splitIndex,
+        sampleCount: samples.length,
+        pastVertexCount: buf.pastVertexCount,
+        futureVertexCount: buf.futureVertexCount,
+        drawCalls,
+        windowStart,
+        windowEnd,
+      });
       perf.count("vis-gl-draw-calls", drawCalls);
       perf.end("vis-gl-draw");
     }
@@ -923,6 +1073,7 @@ export function _resetGLStateForTests(): void {
   overlayDirtyH = 0;
   overlayDirtyHasExpr = false;
   overlayDirtyAccent = "";
+  overlayDirtyShowFuture = true;
 }
 
 export const __serialVisGLInternals = {

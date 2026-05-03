@@ -1,11 +1,12 @@
 /**
  * Visualisation Sampler — faithful-past / projected-future architecture
  *
- * Each frame the runtime calls `tickAndProject()`:
- *   1. Tick — advance WASM state to t=now, record output values in
+ * The runtime calls `tickAndProject()` for each committed live sample:
+ *   1. Tick — advance WASM state to the sample time, record output values in
  *      per-output rolling buffers (PastBuffer).
- *   2. Project — batch-evaluate future window from t=now forward with
- *      save/restore (live state is not corrupted).
+ *   2. Project — on the newest sample for a frame, batch-evaluate the
+ *      future window from t=now forward with save/restore (live state is
+ *      not corrupted). Intermediate catch-up samples skip projection.
  *
  * The renderer reads per-output data via `getRenderData()`.
  *
@@ -16,6 +17,7 @@
 
 import { dbg } from "../lib/debug.ts";
 import { perf } from "../lib/perfTrace.ts";
+import { projectionTrace } from "../lib/projectionTrace.ts";
 import { PastBuffer } from "../lib/PastBuffer.ts";
 import {
   shouldSkipFutureEdgePush,
@@ -31,6 +33,7 @@ import {
   subscribeAppSettings,
 } from "../runtime/appSettingsRepository.ts";
 import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
+import { recordDriftSample, checkDriftThreshold } from "./driftDetector";
 import { serialVisPaletteChangedChannel } from "../contracts/visualisationChannels";
 import { addValueChangeListener } from "./mockControlInputs.ts";
 import {
@@ -78,10 +81,16 @@ const DEFAULT_FUTURE_LEAD_SECONDS = 1;
 const MAX_FUTURE_LEAD_SECONDS = 8;
 const WASM_ERROR_RESULT = "{error}";
 
+// Guard band for frontier coverage (spec §3.8): expressed in seconds so
+// variable rAF cadence doesn't create sawtooth coverage. The frontier is
+// considered "adequate" when it reaches futureEdge + guardBand.
+export const FRONTIER_GUARD_BAND_SECONDS = 0.5;
+
 // Default history: visible past + 5s headroom, max 30s at ~30fps
 const DEFAULT_HISTORY_HEADROOM = 5;
 const DEFAULT_MAX_HISTORY_SECONDS = 30;
 const ASSUMED_FRAME_RATE = 30;
+const FUTURE_BOUNDARY_GAP_SAMPLE_MULTIPLIER = 4;
 
 // ── Past buffer sample rate (pixel-matched) ─────────────────────────
 //
@@ -91,8 +100,8 @@ const ASSUMED_FRAME_RATE = 30;
 // `setPastBufferSampleRate()`.  Past buffers are sized for
 // `DEFAULT_MAX_HISTORY_SECONDS` worth of samples at this rate.
 //
-// Future buffers retain the rAF-driven density (one push per frame at
-// the far edge, batch refill on invalidation) — see §2.2.2.
+// The live temporal sampler can run at this rate too when
+// `temporalSampleRateMultiplier` is 1.0.
 let pastBufferSampleRate = ASSUMED_FRAME_RATE;
 
 function pastBufferCapacity(): number {
@@ -102,8 +111,31 @@ function pastBufferCapacity(): number {
   );
 }
 
+function futureProjectionSampleRate(settings: VisSettings): number {
+  return Math.max(
+    settings.minFutureSampleRate,
+    (settings.sampleCount || 100) / (settings.windowDuration || 1),
+    pastBufferSampleRate,
+  );
+}
+
+function updateFutureBufferCapacity(settings: VisSettings): void {
+  const MIN_FUTURE_CAP = Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * ASSUMED_FRAME_RATE);
+  const MAX_FUTURE_CAP = 8192;
+  const rate = futureProjectionSampleRate(settings);
+  const settingsCap = Math.ceil(
+    (settings.windowDuration + (settings.futureLeadSeconds || 0)) * rate * 1.5,
+  );
+  futureBufferCap = Math.min(MAX_FUTURE_CAP, Math.max(MIN_FUTURE_CAP, settingsCap));
+}
+
 export function getPastBufferSampleRate(): number {
   return pastBufferSampleRate;
+}
+
+export function getTemporalSampleRate(): number {
+  const multiplier = visStore.settings.temporalSampleRateMultiplier ?? 1;
+  return Math.max(1, pastBufferSampleRate * multiplier);
 }
 
 /**
@@ -123,6 +155,8 @@ export function setPastBufferSampleRate(hz: number): void {
   const next = Math.max(1, Math.round(numeric));
   if (next === pastBufferSampleRate) return;
   pastBufferSampleRate = next;
+  updateFutureBufferCapacity(visStore.settings);
+  invalidateFutureProjections();
   // Reallocate every past buffer at the new capacity, copying the
   // existing in-order samples across.  Newest samples win on overflow.
   const newCapacity = pastBufferCapacity();
@@ -197,6 +231,7 @@ export function getRenderData(exprType: string): OutputRenderData | null {
 
 function getDefaults(): VisSettings {
   return {
+    showFutureProjection: false,
     windowDuration: 10,
     sampleCount: 100,
     lineWidth: 1.5,
@@ -209,6 +244,7 @@ function getDefaults(): VisSettings {
     futureLineAlpha: 0.6,
     minFutureSampleRate: 30,
     extensionBatchSize: 4,
+    temporalSampleRateMultiplier: 1,
     inputEpsilon: DEFAULT_INPUT_EPSILON,
   };
 }
@@ -216,6 +252,7 @@ function getDefaults(): VisSettings {
 function clampSettings(raw: Partial<VisSettings> | null): VisSettings {
   const defaults = getDefaults();
   const safe: VisSettings = { ...defaults, ...(raw || {}) };
+  safe.showFutureProjection = safe.showFutureProjection === true;
   safe.windowDuration = Math.min(
     20,
     Math.max(1, Number(safe.windowDuration) || defaults.windowDuration),
@@ -261,6 +298,10 @@ function clampSettings(raw: Partial<VisSettings> | null): VisSettings {
   safe.extensionBatchSize = Number.isFinite(batchNumeric)
     ? Math.min(32, Math.max(1, Math.floor(batchNumeric)))
     : defaults.extensionBatchSize;
+  const temporalMultiplierNumeric = Number(safe.temporalSampleRateMultiplier);
+  safe.temporalSampleRateMultiplier = Number.isFinite(temporalMultiplierNumeric)
+    ? Math.min(1, Math.max(0.05, temporalMultiplierNumeric))
+    : defaults.temporalSampleRateMultiplier;
   const epsilonNumeric = Number(safe.inputEpsilon);
   safe.inputEpsilon = Number.isFinite(epsilonNumeric)
     ? Math.min(1, Math.max(0, epsilonNumeric))
@@ -295,12 +336,135 @@ let projectionFrontier = -Infinity;
 export function invalidateFutureProjections(): void {
   futureInvalidated = true;
   projectionFrontier = -Infinity;
+  if (import.meta.env.DEV) {
+    projectionTrace.record("sampler-invalidate", {
+      projectionFrontier,
+      expressionCount: Object.keys(visStore.expressions).length,
+    });
+  }
 }
 
 export function getProjectionFrontier(): number {
   return projectionFrontier;
 }
 
+function futureBoundaryMaxGapSeconds(futureDensityHz: number): number {
+  const safeHz = Math.max(1, futureDensityHz);
+  return FUTURE_BOUNDARY_GAP_SAMPLE_MULTIPLIER / safeHz;
+}
+
+function futureExtensionSampleCount(
+  origin: number,
+  projectEnd: number,
+  futureDensityHz: number,
+  minimumBatchSize: number,
+): number {
+  const duration = Math.max(0, projectEnd - origin);
+  return Math.max(
+    minimumBatchSize,
+    Math.ceil(duration * Math.max(1, futureDensityHz)),
+  );
+}
+
+function futureBufferHasNearBoundaryCoverage(
+  buf: PastBuffer | undefined,
+  currentTime: number,
+  maxGapSeconds: number,
+): boolean {
+  if (!buf || buf.length === 0) return false;
+  for (let i = 0; i < buf.length; i++) {
+    const t = buf.timeAt(i);
+    if (t <= currentTime) continue;
+    return t - currentTime <= maxGapSeconds;
+  }
+  return false;
+}
+
+function futureBufferTraceSummary(
+  name: string,
+  currentTime: number,
+): Record<string, unknown> {
+  const buf = futureBuffers.get(name);
+  if (!buf) {
+    return { length: 0, exists: false };
+  }
+  let firstFutureTime: number | null = null;
+  let firstFutureValue: number | null = null;
+  let firstFutureIndex: number | null = null;
+  let expiredCount = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const t = buf.timeAt(i);
+    if (t <= currentTime) {
+      expiredCount++;
+      continue;
+    }
+    firstFutureTime = t;
+    firstFutureValue = buf.valueAt(i);
+    firstFutureIndex = i;
+    break;
+  }
+  return {
+    exists: true,
+    length: buf.length,
+    capacity: buf.capacity,
+    oldestTime: buf.oldestTime,
+    newestTime: buf.newestTime,
+    expiredCount,
+    firstFutureIndex,
+    firstFutureTime,
+    firstFutureValue,
+    firstFutureGap: firstFutureTime === null ? null : firstFutureTime - currentTime,
+  };
+}
+
+function sampleTraceSummary(
+  samples: VisSample[] | undefined,
+  currentTime: number,
+): Record<string, unknown> {
+  if (!samples || samples.length === 0) {
+    return { count: 0 };
+  }
+  let firstFiniteIndex: number | null = null;
+  let lastFiniteIndex: number | null = null;
+  let nonFiniteIndex: number | null = null;
+  let minValue = Infinity;
+  let maxValue = -Infinity;
+  for (let i = 0; i < samples.length; i++) {
+    const value = samples[i].value;
+    if (!Number.isFinite(value)) {
+      if (nonFiniteIndex === null) nonFiniteIndex = i;
+      continue;
+    }
+    if (firstFiniteIndex === null) firstFiniteIndex = i;
+    lastFiniteIndex = i;
+    if (value < minValue) minValue = value;
+    if (value > maxValue) maxValue = value;
+  }
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const detail: Record<string, unknown> = {
+    count: samples.length,
+    firstTime: first.time,
+    firstGap: first.time - currentTime,
+    firstValue: first.value,
+    lastTime: last.time,
+    lastGap: last.time - currentTime,
+    lastValue: last.value,
+    firstFiniteIndex,
+    lastFiniteIndex,
+    nonFiniteIndex,
+    minValue: minValue === Infinity ? null : minValue,
+    maxValue: maxValue === -Infinity ? null : maxValue,
+  };
+  if (projectionTrace.shouldCaptureSamples()) {
+    detail.samples = samples.map((sample) => ({
+      time: sample.time,
+      gap: sample.time - currentTime,
+      value: sample.value,
+    }));
+  }
+  return detail;
+}
 
 // ── Tick & Project ──────────────────────────────────────────────────
 
@@ -330,13 +494,15 @@ function applyTickValues(
     const value = tickValues.get(name);
     if (typeof value === "number" && Number.isFinite(value)) {
       buf.push(timeSeconds, value);
+      recordDriftSample(name, value);
     }
   }
+  checkDriftThreshold();
 }
 
 /**
- * Per-frame tick: advance WASM state to t=now, record past values,
- * then manage the projection fork's future buffers.
+ * Live sample tick: advance WASM state to the supplied time, record past
+ * values, then optionally manage the projection fork's future buffers.
  *
  * Projection modes (spec visualisation.md §5, §7.2):
  *   - Reset-fill (mode 1): on invalidation — clone post-tick state into
@@ -348,26 +514,36 @@ function applyTickValues(
 export async function tickAndProject(
   timeSeconds: number,
   settings: VisSettings,
+  options: { projectFuture?: boolean } = {},
 ): Promise<void> {
   const outputs = Object.keys(visStore.expressions);
   const requestedOutputs = ["bar", ...outputs];
   const noUserOutputs = outputs.length === 0;
+  const projectFuture = options.projectFuture !== false;
 
   const halfWindow = settings.windowDuration / 2;
   const futureEdge = timeSeconds + halfWindow + (settings.futureLeadSeconds || 0);
 
   // Compute the required future sample density (spec §3.1.2).
-  const futureDensityHz = Math.max(
-    settings.minFutureSampleRate,
-    (settings.sampleCount || 100) / (settings.windowDuration || 1),
-  );
+  const futureDensityHz = futureProjectionSampleRate(settings);
+  const maxBoundaryGap = futureBoundaryMaxGapSeconds(futureDensityHz);
+  const traceBuffersBefore = import.meta.env.DEV
+    ? Object.fromEntries(outputs.map((name) => [
+      name,
+      futureBufferTraceSummary(name, timeSeconds),
+    ]))
+    : {};
 
   // Decide projection mode.
-  let needsResetFill = futureInvalidated;
-  if (!needsResetFill && !noUserOutputs) {
+  let needsResetFill = projectFuture && futureInvalidated;
+  if (projectFuture && !needsResetFill && !noUserOutputs) {
     for (const name of outputs) {
       const fb = futureBuffers.get(name);
-      if (!fb || fb.length < 2) {
+      if (
+        !fb ||
+        fb.length < 2 ||
+        !futureBufferHasNearBoundaryCoverage(fb, timeSeconds, maxBoundaryGap)
+      ) {
         needsResetFill = true;
         break;
       }
@@ -378,15 +554,38 @@ export async function tickAndProject(
   // pressure, skip steady-state frontier extension. Coverage running out
   // triggers a reset-fill instead.
   const skipProjection =
-    !needsResetFill &&
-    !noUserOutputs &&
-    shouldSkipFutureEdgePush();
+    !projectFuture ||
+    (!needsResetFill && !noUserOutputs && shouldSkipFutureEdgePush());
 
+  // Spec §3.8: frontier coverage with guard band. The frontier is
+  // "adequate" when it covers futureEdge + guardBand. Extension is only
+  // needed when the frontier falls short of that target.
+  const futureEdgeWithGuard = futureEdge + FRONTIER_GUARD_BAND_SECONDS;
   const needsExtension =
     !needsResetFill &&
     !noUserOutputs &&
     !skipProjection &&
-    projectionFrontier < futureEdge;
+    projectionFrontier < futureEdgeWithGuard;
+
+  if (import.meta.env.DEV) {
+    projectionTrace.record("sampler-decision", {
+      timeSeconds,
+      outputs,
+      requestedOutputs,
+      projectFuture,
+      noUserOutputs,
+      futureInvalidated,
+      needsResetFill,
+      skipProjection,
+      needsExtension,
+      projectionFrontier,
+      futureEdge,
+      futureEdgeWithGuard,
+      futureDensityHz,
+      maxBoundaryGap,
+      buffersBefore: traceBuffersBefore,
+    });
+  }
 
   // ── Combined path (projection-fork ABI) ──────────────────────────
   const portCaps = wasmPort().capabilities();
@@ -412,14 +611,40 @@ export async function tickAndProject(
       );
       origin = timeSeconds;
       modeLabel = "reset-fill";
-    } else {
+    } else if (needsExtension) {
       projMode = PROJECTION_MODE_EXTEND;
-      projectEnd = futureEdge;
-      numSamples = settings.extensionBatchSize;
+      projectEnd = futureEdgeWithGuard;
       origin = projectionFrontier;
+      numSamples = futureExtensionSampleCount(
+        origin,
+        projectEnd,
+        futureDensityHz,
+        settings.extensionBatchSize,
+      );
       modeLabel = "extend";
+    } else {
+      // Frontier already covers futureEdge + guard band — tick only.
+      projMode = PROJECTION_MODE_NONE;
+      projectEnd = timeSeconds;
+      numSamples = 0;
+      origin = timeSeconds;
+      modeLabel = "frontier-adequate";
     }
     if (import.meta.env.DEV) perf.count(`sampler-mode-${modeLabel}`);
+    if (import.meta.env.DEV) {
+      projectionTrace.record("sampler-mode", {
+        path: "combined",
+        modeLabel,
+        projectionMode: projMode,
+        timeSeconds,
+        projectEnd,
+        origin,
+        numSamples,
+        futureEdge,
+        futureEdgeWithGuard,
+        projectionFrontierBefore: projectionFrontier,
+      });
+    }
 
     if (import.meta.env.DEV) perf.begin("sampler-combined-wasm");
     let combined;
@@ -439,6 +664,21 @@ export async function tickAndProject(
     if (import.meta.env.DEV) perf.end("sampler-combined-wasm");
 
     if (combined) {
+      if (import.meta.env.DEV) {
+        projectionTrace.record("sampler-combined-result", {
+          modeLabel,
+          projectionMode: projMode,
+          timeSeconds,
+          projectEnd,
+          origin,
+          numSamples,
+          tickValues: Object.fromEntries(combined.tickValues),
+          perOutput: Object.fromEntries(outputs.map((name) => [
+            name,
+            sampleTraceSummary(combined.projectionSamples.get(name), timeSeconds),
+          ])),
+        });
+      }
       if (import.meta.env.DEV) perf.begin("sampler-apply-tick");
       applyTickValues(outputs, timeSeconds, combined.tickValues);
       if (import.meta.env.DEV) perf.end("sampler-apply-tick");
@@ -460,6 +700,17 @@ export async function tickAndProject(
             buf.push(samples[i].time, samples[i].value);
             actualFrontier = Math.max(actualFrontier, samples[i].time);
           }
+          if (import.meta.env.DEV) {
+            projectionTrace.record("sampler-buffer-apply", {
+              path: "combined",
+              modeLabel,
+              output: name,
+              action: "reset-fill",
+              timeSeconds,
+              samples: sampleTraceSummary(samples, timeSeconds),
+              bufferAfter: futureBufferTraceSummary(name, timeSeconds),
+            });
+          }
         }
         // M2 fix: advance frontier only to the actual max time pushed,
         // not the requested projectEnd, to avoid suppressing re-extension.
@@ -477,6 +728,17 @@ export async function tickAndProject(
             if (!Number.isFinite(samples[i].value)) break;
             buf.push(samples[i].time, samples[i].value);
             actualFrontier = Math.max(actualFrontier, samples[i].time);
+          }
+          if (import.meta.env.DEV) {
+            projectionTrace.record("sampler-buffer-apply", {
+              path: "combined",
+              modeLabel,
+              output: name,
+              action: "extend",
+              timeSeconds,
+              samples: sampleTraceSummary(samples, timeSeconds),
+              bufferAfter: futureBufferTraceSummary(name, timeSeconds),
+            });
           }
         }
         // M2 fix: advance frontier only to actual max time pushed.
@@ -514,13 +776,26 @@ export async function tickAndProject(
   if (outputs.length === 0) return;
 
   // Legacy path: use evalOutputsInTimeWindow for refill (no fork).
-  if (futureInvalidated || needsResetFill) {
+  if (projectFuture && (futureInvalidated || needsResetFill)) {
     if (import.meta.env.DEV) perf.count("sampler-legacy-refill");
     futureInvalidated = false;
     const futureSampleCount = Math.max(
       2,
       Math.ceil((futureEdge - timeSeconds) * futureDensityHz),
     );
+    if (import.meta.env.DEV) {
+      projectionTrace.record("sampler-mode", {
+        path: "legacy",
+        modeLabel: "reset-fill",
+        timeSeconds,
+        projectEnd: futureEdge,
+        origin: timeSeconds,
+        numSamples: futureSampleCount,
+        futureEdge,
+        futureEdgeWithGuard,
+        projectionFrontierBefore: projectionFrontier,
+      });
+    }
     if (import.meta.env.DEV) perf.begin("sampler-legacy-refill-wasm");
     let futureResults: Map<string, VisSample[]>;
     try {
@@ -533,6 +808,18 @@ export async function tickAndProject(
       return;
     }
     if (import.meta.env.DEV) perf.end("sampler-legacy-refill-wasm");
+    if (import.meta.env.DEV) {
+      projectionTrace.record("sampler-legacy-result", {
+        modeLabel: "reset-fill",
+        timeSeconds,
+        projectEnd: futureEdge,
+        numSamples: futureSampleCount,
+        perOutput: Object.fromEntries(outputs.map((name) => [
+          name,
+          sampleTraceSummary(futureResults.get(name), timeSeconds),
+        ])),
+      });
+    }
     for (const [name, samples] of futureResults) {
       const buf = ensureFutureBuffer(name);
       buf.clear();
@@ -541,6 +828,17 @@ export async function tickAndProject(
           buf.push(samples[i].time, samples[i].value);
         }
       }
+      if (import.meta.env.DEV) {
+        projectionTrace.record("sampler-buffer-apply", {
+          path: "legacy",
+          modeLabel: "reset-fill",
+          output: name,
+          action: "reset-fill",
+          timeSeconds,
+          samples: sampleTraceSummary(samples, timeSeconds),
+          bufferAfter: futureBufferTraceSummary(name, timeSeconds),
+        });
+      }
     }
     projectionFrontier = futureEdge;
     return;
@@ -548,10 +846,49 @@ export async function tickAndProject(
 
   if (skipProjection) {
     if (import.meta.env.DEV) perf.count("sampler-legacy-skipped");
+    if (import.meta.env.DEV) {
+      projectionTrace.record("sampler-mode", {
+        path: "legacy",
+        modeLabel: "skip",
+        timeSeconds,
+        projectionFrontier,
+        futureEdge,
+        futureEdgeWithGuard,
+      });
+    }
+    return;
+  }
+
+  // Legacy steady-state: frontier adequate → tick only.
+  if (!needsExtension) {
+    if (import.meta.env.DEV) perf.count("sampler-legacy-frontier-adequate");
+    if (import.meta.env.DEV) {
+      projectionTrace.record("sampler-mode", {
+        path: "legacy",
+        modeLabel: "frontier-adequate",
+        timeSeconds,
+        projectionFrontier,
+        futureEdge,
+        futureEdgeWithGuard,
+      });
+    }
     return;
   }
 
   // Legacy steady-state: push one sample at the far edge.
+  if (import.meta.env.DEV) {
+    projectionTrace.record("sampler-mode", {
+      path: "legacy",
+      modeLabel: "edge",
+      timeSeconds,
+      projectEnd: futureEdge,
+      origin: futureEdge,
+      numSamples: 1,
+      projectionFrontierBefore: projectionFrontier,
+      futureEdge,
+      futureEdgeWithGuard,
+    });
+  }
   if (import.meta.env.DEV) perf.begin("sampler-legacy-edge-wasm");
   let edgeValues: Map<string, VisSample[]>;
   try {
@@ -563,9 +900,32 @@ export async function tickAndProject(
     return;
   }
   if (import.meta.env.DEV) perf.end("sampler-legacy-edge-wasm");
+  if (import.meta.env.DEV) {
+    projectionTrace.record("sampler-legacy-result", {
+      modeLabel: "edge",
+      timeSeconds,
+      projectEnd: futureEdge,
+      numSamples: 1,
+      perOutput: Object.fromEntries(outputs.map((name) => [
+        name,
+        sampleTraceSummary(edgeValues.get(name), timeSeconds),
+      ])),
+    });
+  }
   for (const [name, samples] of edgeValues) {
     if (samples.length > 0 && Number.isFinite(samples[0].value)) {
       ensureFutureBuffer(name).push(futureEdge, samples[0].value);
+      if (import.meta.env.DEV) {
+        projectionTrace.record("sampler-buffer-apply", {
+          path: "legacy",
+          modeLabel: "edge",
+          output: name,
+          action: "append-edge",
+          timeSeconds,
+          samples: sampleTraceSummary(samples, timeSeconds),
+          bufferAfter: futureBufferTraceSummary(name, timeSeconds),
+        });
+      }
     }
   }
   projectionFrontier = futureEdge;
@@ -740,16 +1100,7 @@ function loadAndApplySettings(): VisSettings {
   const settings = clampSettings(visual);
   updateSettings(settings);
 
-  // m6 fix: recompute future buffer capacity from settings so high-density
-  // configurations don't overflow the ring buffer. 1.5x headroom, floored
-  // at the default and capped at 8192.
-  const MIN_FUTURE_CAP = Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * ASSUMED_FRAME_RATE);
-  const MAX_FUTURE_CAP = 8192;
-  const settingsCap = Math.ceil(
-    (settings.windowDuration + (settings.futureLeadSeconds || 0)) *
-    settings.minFutureSampleRate * 1.5,
-  );
-  futureBufferCap = Math.min(MAX_FUTURE_CAP, Math.max(MIN_FUTURE_CAP, settingsCap));
+  updateFutureBufferCapacity(settings);
 
   return settings;
 }

@@ -70,6 +70,42 @@ export interface RuntimeBootstrapFailure {
   message: string;
 }
 
+// ── State snapshot types (state-sync.md) ─────────────────────
+
+export interface StateSnapshotCell {
+  type: "number" | "data" | "callable" | "nil";
+  value?: number;
+  values?: number[];
+  source?: string;
+}
+
+export interface StateSnapshotOutput {
+  source: string;
+  health: "idle" | "running" | "fallback" | "error";
+  lkgValue: number;
+}
+
+export interface StateSnapshotSlot {
+  id: string;
+  value: number;
+}
+
+export interface StateSnapshotLiveSlot {
+  id: string;
+  value: number;
+  min: number;
+  max: number;
+}
+
+export interface StateSnapshot {
+  transport: { playing: boolean; timeOffset: number };
+  time: number;
+  cells: Record<string, StateSnapshotCell>;
+  outputs: Record<string, StateSnapshotOutput>;
+  stateSlots: StateSnapshotSlot[];
+  liveSlots: StateSnapshotLiveSlot[];
+}
+
 export interface RuntimeDiagnosticsSnapshot {
   startupMode: StartupMode;
   protocolMode: RuntimeProtocolMode;

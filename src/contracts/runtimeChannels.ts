@@ -26,6 +26,7 @@ export const BOOTSTRAP_FAILURE_EVENT = "useq-bootstrap-failure";
 export const CODE_EVALUATED_EVENT = "useq-code-evaluated";
 export const ANIMATE_CONNECT_EVENT = "useq-animate-connect";
 export const DEVICE_PLUGGED_IN_EVENT = "useq-device-plugged-in";
+export const DRIFT_DETECTED_EVENT = "useq-drift-detected";
 
 // ── Payload types ───────────────────────────────────────────────
 
@@ -60,6 +61,14 @@ export interface CodeEvaluatedDetail {
 export type AnimateConnectDetail = undefined;
 export type DevicePluggedInDetail = undefined;
 
+/** Payload when WASM↔hardware output drift exceeds the sync threshold. */
+export interface DriftDetectedDetail {
+  /** Per-output drift scores (0 = perfect match, 1 = total divergence). */
+  perOutput: Record<string, number>;
+  /** Aggregate drift score across all compared outputs. */
+  aggregate: number;
+}
+
 /** Payload for standalone diagnostics frames (spec §5.9). */
 export interface StandaloneDiagnosticsDetail {
   diagnostics: UseqDiagnostic[];
@@ -76,6 +85,7 @@ export interface RuntimeEventDetailMap {
   [CODE_EVALUATED_EVENT]: CodeEvaluatedDetail;
   [ANIMATE_CONNECT_EVENT]: AnimateConnectDetail;
   [DEVICE_PLUGGED_IN_EVENT]: DevicePluggedInDetail;
+  [DRIFT_DETECTED_EVENT]: DriftDetectedDetail;
 }
 
 export type RuntimeEventName = keyof RuntimeEventDetailMap;
@@ -89,6 +99,7 @@ export const RUNTIME_EVENT_NAMES = Object.freeze([
   CODE_EVALUATED_EVENT,
   ANIMATE_CONNECT_EVENT,
   DEVICE_PLUGGED_IN_EVENT,
+  DRIFT_DETECTED_EVENT,
 ] as const satisfies readonly RuntimeEventName[]);
 
 // ── Contract assertion ──────────────────────────────────────────
@@ -126,6 +137,9 @@ export const animateConnect = createChannel<AnimateConnectDetail>();
 
 /** A previously-saved serial device was physically plugged in. */
 export const devicePluggedIn = createChannel<DevicePluggedInDetail>();
+
+/** WASM↔hardware output drift detected (published by drift detector). */
+export const driftDetected = createChannel<DriftDetectedDetail>();
 
 /** App settings changed (published by runtimeService after any mutation). */
 export const settingsChanged = createChannel<AppSettings>();

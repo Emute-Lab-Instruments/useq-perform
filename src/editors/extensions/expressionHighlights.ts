@@ -321,6 +321,8 @@ export function processExpressionRanges(
  * Returns [gutterField, clickPlugin, gutter] as an array of extensions.
  */
 export function createExpressionGutter(config: GutterConfig): Extension[] {
+  let buildingMarkers = false;
+
   function buildMarkers(state: EditorState): any {
     const builder = new RangeSetBuilder<ExpressionGutterMarker>();
     const doc = state.doc;
@@ -343,17 +345,22 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
       config.getExpressionColor,
     );
 
-    const markers = processExpressionRanges(
-      expressionRanges,
-      lastEvaluated,
-      (lineNum) => doc.line(lineNum),
-      config.reportColor,
-      config.isClearButtonEnabled,
-      config.isVisualised,
-    );
+    buildingMarkers = true;
+    try {
+      const markers = processExpressionRanges(
+        expressionRanges,
+        lastEvaluated,
+        (lineNum) => doc.line(lineNum),
+        config.reportColor,
+        config.isClearButtonEnabled,
+        config.isVisualised,
+      );
 
-    for (const { pos, marker } of markers) {
-      builder.add(pos, pos, marker);
+      for (const { pos, marker } of markers) {
+        builder.add(pos, pos, marker);
+      }
+    } finally {
+      buildingMarkers = false;
     }
 
     return builder.finish();
@@ -418,6 +425,7 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
       }
 
       private onExternalChange() {
+        if (buildingMarkers) return;
         if (!this.view.dom?.isConnected) {
           console.warn(
             "[expressionHighlights] onExternalChange: editor view is disconnected, skipping dispatch",

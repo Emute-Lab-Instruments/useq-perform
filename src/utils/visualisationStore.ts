@@ -32,6 +32,7 @@ export interface VisExpression {
 }
 
 export interface VisSettings {
+  showFutureProjection: boolean;
   windowDuration: number;
   sampleCount: number;
   lineWidth: number;
@@ -41,6 +42,11 @@ export interface VisSettings {
   circularOffset: number;
   futureLeadSeconds: number;
   digitalLaneGap: number;
+  futureLineAlpha: number;
+  minFutureSampleRate: number;
+  extensionBatchSize: number;
+  temporalSampleRateMultiplier: number;
+  inputEpsilon: number;
 }
 
 export interface SerialBufferSnapshot {
@@ -75,6 +81,7 @@ export interface VisualisationState {
 export type VisualisationSession = VisualisationState;
 
 const DEFAULT_SETTINGS: VisSettings = {
+  showFutureProjection: false,
   windowDuration: 10,
   sampleCount: 100,
   lineWidth: 1.5,
@@ -84,6 +91,11 @@ const DEFAULT_SETTINGS: VisSettings = {
   circularOffset: 0,
   futureLeadSeconds: 1,
   digitalLaneGap: 4,
+  futureLineAlpha: 0.6,
+  minFutureSampleRate: 30,
+  extensionBatchSize: 4,
+  temporalSampleRateMultiplier: 1,
+  inputEpsilon: 0.01,
 };
 
 const EMPTY_SERIAL_BUFFERS: SerialBufferSnapshot = {

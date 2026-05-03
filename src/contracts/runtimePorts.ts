@@ -46,7 +46,7 @@
 
 import type { TransportState } from "../machines/transport.machine";
 import type { SharedTransportCommand } from "./useqRuntimeContract";
-import type { RuntimeDiagnostic, RuntimeProtocolMode } from "./runtimeTypes";
+import type { RuntimeDiagnostic, RuntimeProtocolMode, StateSnapshot } from "./runtimeTypes";
 
 // ---------------------------------------------------------------------------
 // Shared transport surface — implemented by both ports
@@ -148,6 +148,15 @@ export interface WebSerialHostPort extends SharedRuntimePort {
     code: string,
     capture?: ((response: string) => void) | null
   ): Promise<void>;
+
+  /**
+   * Request a full interpreter state snapshot from the hardware.
+   *
+   * Sends a `get-state` JSON request and parses the `state-snapshot`
+   * response. Resolves to `null` if the firmware doesn't support the
+   * message type or the request times out.
+   */
+  requestStateSnapshot(): Promise<StateSnapshot | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,15 +173,36 @@ export interface TimeSample {
 export type SampleSeriesMap = Map<string, TimeSample[]>;
 
 /**
+ * Projection mode for the combined tick + project ABI (spec §7.2).
+ *   0 — no projection (tick only).
+ *   1 — reset-fill: clone post-tick state into a new fork, project from
+ *       strictly after now to `projectionEnd`.
+ *   2 — extend-frontier: advance the existing fork toward `projectionEnd`.
+ */
+export const PROJECTION_MODE_NONE = 0 as const;
+export const PROJECTION_MODE_RESET_FILL = 1 as const;
+export const PROJECTION_MODE_EXTEND = 2 as const;
+export type ProjectionMode = 0 | 1 | 2;
+
+/**
  * Result of the combined tick + future projection ABI call.
  *
  * `tickValues` carries the state-advancing tick output (one entry per
  * requested output, NaN for inactive). `projectionSamples` carries the
- * future samples produced under save/restore.
+ * future samples produced by the projection fork.
  */
 export interface TickAndProjectResult {
   tickValues: Map<string, number>;
   projectionSamples: SampleSeriesMap;
+}
+
+/** Metadata for a live-edit slot returned from the WASM runtime. */
+export interface LiveSlotMetadata {
+  id: string;
+  value: number;
+  min: number;
+  max: number;
+  seed: number;
 }
 
 /** Capability snapshot for the WASM port. */
@@ -185,6 +215,8 @@ export interface WasmRuntimeCapabilities extends RuntimePortCapabilities {
   readonly supportsTimeWindow: boolean;
   /** Whether the combined tick + project export is available. */
   readonly supportsTickAndProject: boolean;
+  /** Whether live-edit slot injection is available. */
+  readonly supportsLiveInputs: boolean;
 }
 
 /**
@@ -259,8 +291,10 @@ export interface WasmRuntimePort extends SharedRuntimePort {
   tickAndProject(
     outputs: string[],
     tickTime: number,
+    projectionMode: ProjectionMode,
     projectEnd: number,
     numFutureSamples: number,
+    projectionOrigin: number,
   ): Promise<TickAndProjectResult | null>;
 
   /**
@@ -282,6 +316,34 @@ export interface WasmRuntimePort extends SharedRuntimePort {
    * export is unavailable, or parsing fails.
    */
   readActiveDiagnostics(): Promise<RuntimeDiagnostic[]>;
+
+  /**
+   * Inject live-edit slot values into the WASM interpreter.
+   *
+   * Keys are slot id strings, values are doubles. Returns the count of
+   * successfully applied writes. Resolves to 0 if the runtime is not
+   * loaded or the export is unavailable.
+   */
+  setLiveInputs(values: Record<string, number>): Promise<number>;
+
+  /**
+   * Query all allocated live-edit slots and their metadata from the WASM
+   * interpreter. Returns an empty array if the runtime is not loaded or
+   * the export is unavailable.
+   */
+  getLiveSlots(): Promise<LiveSlotMetadata[]>;
+
+  /**
+   * Apply a state snapshot from the hardware to bring WASM into sync.
+   *
+   * Re-evaluates all cell definitions and output source text from the
+   * snapshot, then patches state slot values and live-edit slots to match
+   * the hardware's actual state. Returns true on success.
+   *
+   * Requires the `useq_apply_state_snapshot` WASM export. Returns false
+   * if the export is unavailable or the apply fails.
+   */
+  applyStateSnapshot(snapshot: StateSnapshot): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------

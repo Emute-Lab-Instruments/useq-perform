@@ -97,6 +97,17 @@ vi.mock("../utils/outputHealthStore.ts", () => ({
   refreshOutputHealth: vi.fn(),
 }));
 
+const mockInputListeners = vi.hoisted(() => {
+  const listeners = new Set<(...args: unknown[]) => void>();
+  return {
+    listeners,
+    addValueChangeListener: vi.fn((cb: (...args: unknown[]) => void) => { listeners.add(cb); }),
+    removeValueChangeListener: vi.fn((cb: (...args: unknown[]) => void) => { listeners.delete(cb); }),
+  };
+});
+
+vi.mock("./mockControlInputs.ts", () => mockInputListeners);
+
 describe("visualisation sampling boundary", () => {
   beforeEach(async () => {
     vi.resetModules();
@@ -672,6 +683,54 @@ describe("visualisation sampling boundary", () => {
       expect(after!.pastBuffer.length).toBe(lengthBefore);
       expect(after!.pastBuffer.newestTime).toBe(newestBefore);
     });
+
+    it("local runtime ticks intermediate samples up to the visual sample rate", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      const rafCallbacks: FrameRequestCallback[] = [];
+      let nowMs = 0;
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb: FrameRequestCallback) => {
+          rafCallbacks.push(cb);
+          return rafCallbacks.length;
+        });
+      const cancelSpy = vi
+        .spyOn(window, "cancelAnimationFrame")
+        .mockImplementation(() => {});
+      const nowSpy = vi
+        .spyOn(performance, "now")
+        .mockImplementation(() => nowMs);
+
+      try {
+        sampler.setPastBufferSampleRate(120);
+        await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+        runtime.setLocalTimeMode(true);
+        runtime.startVisualisationRuntime();
+
+        nowMs = 1000 / 60;
+        rafCallbacks.shift()!(nowMs);
+        await runtime._drainForTests();
+
+        nowMs = 2000 / 60;
+        rafCallbacks.shift()!(nowMs);
+        await runtime._drainForTests();
+
+        const renderData = sampler.getRenderData("a1");
+        expect(renderData).not.toBeNull();
+        expect(renderData!.pastBuffer.length).toBe(3);
+        expect(renderData!.pastBuffer.timeAt(0)).toBeCloseTo(1 / 60);
+        expect(renderData!.pastBuffer.timeAt(1)).toBeCloseTo(1 / 40);
+        expect(renderData!.pastBuffer.timeAt(2)).toBeCloseTo(1 / 30);
+      } finally {
+        runtime._resetForTests();
+        rafSpy.mockRestore();
+        cancelSpy.mockRestore();
+        nowSpy.mockRestore();
+      }
+    });
   });
 
 
@@ -929,6 +988,475 @@ describe("visualisation sampling boundary", () => {
       expect(edgeCall).toBeDefined();
 
       adaptive._resetForTests();
+    });
+  });
+
+  describe("projection invalidation triggers (spec: visualisation.md §3.7, §4.4)", () => {
+    it("external input change above epsilon invalidates future projection", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      runtime.notifyExternalTimeUpdate(1.0);
+      await runtime._drainForTests();
+
+      expect(sampler.getProjectionFrontier()).toBeGreaterThan(-Infinity);
+      const frontierBefore = sampler.getProjectionFrontier();
+
+      // Simulate an external input change > epsilon (default 0.01)
+      for (const listener of mockInputListeners.listeners) {
+        listener("ain1", 0.6, 0.5);
+      }
+
+      // Frontier should be reset
+      expect(sampler.getProjectionFrontier()).toBe(-Infinity);
+
+      // Next tick should trigger a reset-fill
+      runtime.notifyExternalTimeUpdate(1.05);
+      await runtime._drainForTests();
+      expect(sampler.getProjectionFrontier()).toBeGreaterThan(frontierBefore);
+    });
+
+    it("external input change below epsilon does NOT invalidate", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      runtime.notifyExternalTimeUpdate(1.0);
+      await runtime._drainForTests();
+
+      const frontierBefore = sampler.getProjectionFrontier();
+      expect(frontierBefore).toBeGreaterThan(-Infinity);
+
+      // Simulate a change smaller than epsilon
+      for (const listener of mockInputListeners.listeners) {
+        listener("ain1", 0.505, 0.5);
+      }
+
+      // Frontier should NOT be reset
+      expect(sampler.getProjectionFrontier()).toBe(frontierBefore);
+    });
+
+    it("code eval always invalidates future projection", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      runtime.notifyExternalTimeUpdate(1.0);
+      await runtime._drainForTests();
+
+      expect(sampler.getProjectionFrontier()).toBeGreaterThan(-Infinity);
+
+      sampler.notifyExpressionEvaluated();
+      expect(sampler.getProjectionFrontier()).toBe(-Infinity);
+    });
+
+    it("failed eval preserves past buffer and last-good projection text", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+      const { visStore } = await import("../utils/visualisationStore.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      runtime.notifyExternalTimeUpdate(1.0);
+      await runtime._drainForTests();
+
+      const data = sampler.getRenderData("a1");
+      expect(data).not.toBeNull();
+      const pastLengthBefore = data!.pastBuffer.length;
+      expect(pastLengthBefore).toBeGreaterThan(0);
+
+      // Make the next eval fail
+      wasmInterpreterMocks.evalInUseqWasm.mockRejectedValueOnce(
+        new Error("compile error"),
+      );
+      await sampler.refreshVisualisedExpression("a1", "(a1 BROKEN)");
+
+      // Past buffer preserved (spec §6.3)
+      const dataAfter = sampler.getRenderData("a1");
+      expect(dataAfter).not.toBeNull();
+      expect(dataAfter!.pastBuffer.length).toBe(pastLengthBefore);
+
+      // Expression text reverted to last known good
+      expect(visStore.expressions.a1.expressionText).toBe("(a1 (sin 1))");
+    });
+  });
+
+  describe("frontier tracking & mode switching (spec: visualisation.md §3, §5)", () => {
+    afterEach(() => {
+      portState.supportsTickAndProject = false;
+      portState.tickAndProject = vi.fn().mockResolvedValue(null);
+    });
+
+    it("first tick triggers reset-fill, subsequent tick uses extend mode", async () => {
+      // Track which projection modes the combined path receives.
+      const modes: number[] = [];
+      const calls: Array<{
+        tickTime: number;
+        projectionMode: number;
+        projectEnd: number;
+        numFutureSamples: number;
+      }> = [];
+      const tickAndProjectMock = vi.fn(async (
+        outputs: string[],
+        tickTime: number,
+        projectionMode: number,
+        projectEnd: number,
+        numFutureSamples: number,
+      ) => {
+        modes.push(projectionMode);
+        calls.push({ tickTime, projectionMode, projectEnd, numFutureSamples });
+        const tickValues = new Map<string, number>();
+        for (const name of outputs) tickValues.set(name, 0.5);
+        const projectionSamples = new Map<string, Array<{ time: number; value: number }>>();
+        if (numFutureSamples > 0) {
+          // Return samples that don't quite reach projectEnd so frontier
+          // stays behind futureEdge + guard, triggering extend next frame.
+          const dt = numFutureSamples > 1 ? (projectEnd - tickTime) / (numFutureSamples) : 0;
+          for (const name of outputs) {
+            if (name === "bar") continue;
+            const samples: Array<{ time: number; value: number }> = [];
+            for (let i = 1; i <= numFutureSamples; i++) {
+              samples.push({ time: tickTime + dt * i, value: 0.7 });
+            }
+            projectionSamples.set(name, samples);
+          }
+        }
+        return { tickValues, projectionSamples };
+      });
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = tickAndProjectMock;
+
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      // First tick: should reset-fill (mode 1)
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+      expect(modes[0]).toBe(1); // PROJECTION_MODE_RESET_FILL
+
+      // Second tick at a slightly later time: frontier may still be behind
+      // the guard band, so it should request extend (mode 2).
+      runtime.notifyExternalTimeUpdate(5.033);
+      await runtime._drainForTests();
+      expect(modes.length).toBeGreaterThanOrEqual(2);
+      expect(modes[1]).toBe(2); // PROJECTION_MODE_EXTEND
+      expect(calls[1].numFutureSamples).toBeGreaterThan(4);
+    });
+
+    it("reset-fills instead of extending when the future buffer has no near-boundary coverage", async () => {
+      const modes: number[] = [];
+      const tickAndProjectMock = vi.fn(async (
+        outputs: string[],
+        _tickTime: number,
+        projectionMode: number,
+        projectEnd: number,
+        numFutureSamples: number,
+      ) => {
+        modes.push(projectionMode);
+        const tickValues = new Map<string, number>();
+        for (const name of outputs) tickValues.set(name, 0.5);
+        const projectionSamples = new Map<string, Array<{ time: number; value: number }>>();
+        if (numFutureSamples > 0 && projectionMode !== 0) {
+          for (const name of outputs) {
+            if (name === "bar") continue;
+            projectionSamples.set(name, [
+              { time: projectEnd - 0.5, value: 0.7 },
+              { time: projectEnd, value: 0.8 },
+            ]);
+          }
+        }
+        return { tickValues, projectionSamples };
+      });
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = tickAndProjectMock;
+
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+      expect(modes[0]).toBe(1);
+
+      runtime.notifyExternalTimeUpdate(5.033);
+      await runtime._drainForTests();
+      expect(modes[1]).toBe(1);
+    });
+
+    it("frontier-adequate: combined path uses mode 0 when frontier covers future + guard band", async () => {
+      const { FRONTIER_GUARD_BAND_SECONDS } = await import(
+        "./visualisationSampler.ts"
+      );
+      const modes: number[] = [];
+      const tickAndProjectMock = vi.fn(async (
+        outputs: string[],
+        tickTime: number,
+        projectionMode: number,
+        projectEnd: number,
+        numFutureSamples: number,
+      ) => {
+        modes.push(projectionMode);
+        const tickValues = new Map<string, number>();
+        for (const name of outputs) tickValues.set(name, 0.5);
+        const projectionSamples = new Map<string, Array<{ time: number; value: number }>>();
+        if (numFutureSamples > 0 && projectionMode !== 0) {
+          // On reset-fill/extend: project samples past the guard band
+          // target so the frontier ends up beyond what the next tick needs.
+          // The extend target is futureEdgeWithGuard, so return samples
+          // reaching at least that.
+          for (const name of outputs) {
+            if (name === "bar") continue;
+            const samples: Array<{ time: number; value: number }> = [];
+            const dt = (projectEnd - tickTime) / numFutureSamples;
+            for (let i = 1; i <= numFutureSamples; i++) {
+              samples.push({ time: tickTime + dt * i, value: 0.7 });
+            }
+            projectionSamples.set(name, samples);
+          }
+        }
+        return { tickValues, projectionSamples };
+      });
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = tickAndProjectMock;
+
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      // First tick at t=5.0: reset-fill populates the future buffer.
+      // futureEdge = 5.0 + 5 + 1 = 11.0. frontier after reset-fill = 11.0.
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+      expect(modes[0]).toBe(1); // reset-fill
+
+      const frontierAfterReset = sampler.getProjectionFrontier();
+      expect(frontierAfterReset).toBeGreaterThan(5.0);
+
+      // Second tick: frontier (11.0) < futureEdgeWithGuard at 5.033
+      // (11.033 + 0.5 = 11.533), so extend mode fires.
+      runtime.notifyExternalTimeUpdate(5.033);
+      await runtime._drainForTests();
+      expect(modes[1]).toBe(2); // extend
+
+      // After extend, frontier should cover the guard band target.
+      const frontierAfterExtend = sampler.getProjectionFrontier();
+      // futureEdgeWithGuard at 5.033 = 5.033 + 5 + 1 + 0.5 = 11.533
+      expect(frontierAfterExtend).toBeGreaterThanOrEqual(
+        5.033 + 5 + 1 + FRONTIER_GUARD_BAND_SECONDS,
+      );
+
+      // Third tick at 5.066: futureEdgeWithGuard = 5.066 + 5 + 1 + 0.5 = 11.566
+      // frontier from extend should be at 11.533 which is just under 11.566.
+      // BUT the extend target was futureEdgeWithGuard at 5.033 = 11.533,
+      // which is < 11.566, so another extend may fire. Let's advance just
+      // slightly so the frontier covers the new guard target.
+      // Actually, advance to a time where frontier clearly covers it.
+      runtime.notifyExternalTimeUpdate(5.04);
+      await runtime._drainForTests();
+      // futureEdgeWithGuard at 5.04 = 5.04 + 5 + 1 + 0.5 = 11.54
+      // frontier after extend at 5.033 = futureEdgeWithGuard at 5.033 = 11.533
+      // 11.533 < 11.54, so extend still fires — that's correct for close times.
+
+      // To get frontier-adequate, we need the frontier to be well ahead.
+      // Let the extend at t=5.04 push frontier to 11.54, then tick at 5.04 again
+      // (or very close). Actually let's just verify the sequence: after
+      // enough extends, once frontier > futureEdgeWithGuard, mode 0 fires.
+      // Do one more extend tick at 5.05 which targets 11.55, while frontier
+      // from 5.04 extend was 11.54. That would still need extend.
+      // The mock for extend returns samples up to projectEnd which is
+      // futureEdgeWithGuard. After extending at 5.04 with target 11.54,
+      // frontier becomes 11.54. At 5.04, futureEdgeWithGuard = 11.54.
+      // So 11.54 >= 11.54 means needsExtension is false!
+
+      // Let's re-tick at 5.04 — frontier should be 11.54, target is 11.54.
+      // Actually we already ticked at 5.04. Let's check modes.
+      // After 3 ticks so far: modes[0]=1 (reset), modes[1]=2 (extend), modes[2]=?
+      // At t=5.04: frontier from modes[1] extend = frontierAfterExtend.
+      // The extend at t=5.033 targeted futureEdgeWithGuard = 11.533.
+      // frontier = 11.533. At t=5.04: futureEdgeWithGuard = 11.54.
+      // 11.533 < 11.54, so extend again. modes[2] = 2.
+
+      // After modes[2] extend at 5.04 targeting 11.54, frontier = 11.54.
+      // Now tick at 5.04 again (same time advances nothing).
+      // Let's use a time that's still covered: 5.033 again.
+      runtime.notifyExternalTimeUpdate(5.033);
+      await runtime._drainForTests();
+
+      // At 5.033: futureEdgeWithGuard = 11.533. frontier from last extend
+      // should be >= 11.54. So 11.54 >= 11.533 → frontier-adequate → mode 0!
+      const lastMode = modes[modes.length - 1];
+      expect(lastMode).toBe(0); // PROJECTION_MODE_NONE (frontier-adequate)
+    });
+
+    it("invalidation resets frontier and triggers reset-fill on next tick", async () => {
+      const modes: number[] = [];
+      const tickAndProjectMock = vi.fn(async (
+        outputs: string[],
+        tickTime: number,
+        projectionMode: number,
+        projectEnd: number,
+        numFutureSamples: number,
+      ) => {
+        modes.push(projectionMode);
+        const tickValues = new Map<string, number>();
+        for (const name of outputs) tickValues.set(name, 0.5);
+        const projectionSamples = new Map<string, Array<{ time: number; value: number }>>();
+        if (numFutureSamples > 0 && projectionMode !== 0) {
+          for (const name of outputs) {
+            if (name === "bar") continue;
+            const samples: Array<{ time: number; value: number }> = [];
+            const dt = (projectEnd - tickTime) / numFutureSamples;
+            for (let i = 1; i <= numFutureSamples; i++) {
+              samples.push({ time: tickTime + dt * i, value: 0.7 });
+            }
+            projectionSamples.set(name, samples);
+          }
+        }
+        return { tickValues, projectionSamples };
+      });
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = tickAndProjectMock;
+
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      // First tick: reset-fill
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+      expect(modes[0]).toBe(1);
+
+      // Invalidate (e.g. code eval)
+      sampler.invalidateFutureProjections();
+      expect(sampler.getProjectionFrontier()).toBe(-Infinity);
+
+      // Next tick should be another reset-fill
+      runtime.notifyExternalTimeUpdate(5.05);
+      await runtime._drainForTests();
+      expect(modes[1]).toBe(1); // reset-fill again
+    });
+
+    it("past buffers only receive live tick samples, never projection data", async () => {
+      const tickAndProjectMock = vi.fn(async (
+        outputs: string[],
+        tickTime: number,
+        _projectionMode: number,
+        projectEnd: number,
+        numFutureSamples: number,
+      ) => {
+        const tickValues = new Map<string, number>();
+        // Tick value is 0.42 at the tick time
+        for (const name of outputs) tickValues.set(name, 0.42);
+        const projectionSamples = new Map<string, Array<{ time: number; value: number }>>();
+        if (numFutureSamples > 0) {
+          for (const name of outputs) {
+            if (name === "bar") continue;
+            const samples: Array<{ time: number; value: number }> = [];
+            const dt = (projectEnd - tickTime) / numFutureSamples;
+            for (let i = 1; i <= numFutureSamples; i++) {
+              // Projection values are 0.99 — different from tick
+              samples.push({ time: tickTime + dt * i, value: 0.99 });
+            }
+            projectionSamples.set(name, samples);
+          }
+        }
+        return { tickValues, projectionSamples };
+      });
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = tickAndProjectMock;
+
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+
+      const renderData = sampler.getRenderData("a1");
+      expect(renderData).not.toBeNull();
+
+      // Past buffer should contain exactly the tick value (0.42), not
+      // any projection values (0.99).
+      const pastBuf = renderData!.pastBuffer;
+      expect(pastBuf.length).toBe(1);
+      expect(pastBuf.valueAt(0)).toBe(0.42);
+
+      // Future buffer should contain projection values (0.99).
+      const futureBuf = renderData!.futureBuffer;
+      expect(futureBuf).toBeDefined();
+      expect(futureBuf!.length).toBeGreaterThan(0);
+      expect(futureBuf!.valueAt(0)).toBe(0.99);
+    });
+
+    it("future buffers are cleared on reset-fill but past buffers are preserved", async () => {
+      const tickAndProjectMock = vi.fn(async (
+        outputs: string[],
+        tickTime: number,
+        projectionMode: number,
+        projectEnd: number,
+        numFutureSamples: number,
+      ) => {
+        const tickValues = new Map<string, number>();
+        for (const name of outputs) tickValues.set(name, 0.5);
+        const projectionSamples = new Map<string, Array<{ time: number; value: number }>>();
+        if (numFutureSamples > 0 && projectionMode !== 0) {
+          for (const name of outputs) {
+            if (name === "bar") continue;
+            const samples: Array<{ time: number; value: number }> = [];
+            const dt = (projectEnd - tickTime) / numFutureSamples;
+            for (let i = 1; i <= numFutureSamples; i++) {
+              samples.push({ time: tickTime + dt * i, value: 0.7 });
+            }
+            projectionSamples.set(name, samples);
+          }
+        }
+        return { tickValues, projectionSamples };
+      });
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = tickAndProjectMock;
+
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      // Two ticks to accumulate past buffer samples
+      runtime.notifyExternalTimeUpdate(5.0);
+      await runtime._drainForTests();
+      runtime.notifyExternalTimeUpdate(5.033);
+      await runtime._drainForTests();
+
+      const dataBefore = sampler.getRenderData("a1");
+      expect(dataBefore).not.toBeNull();
+      const pastLengthBefore = dataBefore!.pastBuffer.length;
+      expect(pastLengthBefore).toBe(2);
+
+      // Invalidate and tick again — reset-fill
+      sampler.invalidateFutureProjections();
+      runtime.notifyExternalTimeUpdate(5.066);
+      await runtime._drainForTests();
+
+      const dataAfter = sampler.getRenderData("a1");
+      expect(dataAfter).not.toBeNull();
+      // Past buffer accumulated another sample (3 total)
+      expect(dataAfter!.pastBuffer.length).toBe(3);
+      // Future buffer was cleared and re-filled (new projection data)
+      expect(dataAfter!.futureBuffer).toBeDefined();
+      expect(dataAfter!.futureBuffer!.length).toBeGreaterThan(0);
+    });
+
+    it("FRONTIER_GUARD_BAND_SECONDS is exported and positive", async () => {
+      const { FRONTIER_GUARD_BAND_SECONDS } = await import(
+        "./visualisationSampler.ts"
+      );
+      expect(typeof FRONTIER_GUARD_BAND_SECONDS).toBe("number");
+      expect(FRONTIER_GUARD_BAND_SECONDS).toBeGreaterThan(0);
     });
   });
 });

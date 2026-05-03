@@ -133,7 +133,7 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
   useq_tick_and_project: {
     symbol: "useq_tick_and_project",
     returnType: "number",
-    argTypes: ["string", "number", "number", "number", "number", "number"],
+    argTypes: ["string", "number", "number", "number", "number", "number", "number"],
   },
   useq_last_error: {
     symbol: "useq_last_error",
@@ -149,6 +149,21 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     symbol: "useq_active_diagnostics",
     returnType: "string",
     argTypes: [],
+  },
+  useq_set_live_inputs: {
+    symbol: "useq_set_live_inputs",
+    returnType: "number",
+    argTypes: ["string"],
+  },
+  useq_get_live_slots: {
+    symbol: "useq_get_live_slots",
+    returnType: "string",
+    argTypes: [],
+  },
+  useq_apply_state_snapshot: {
+    symbol: "useq_apply_state_snapshot",
+    returnType: "number",
+    argTypes: ["string"],
   },
 } as const satisfies Record<string, CwrapDescriptor>);
 

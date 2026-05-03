@@ -276,13 +276,16 @@ describe("buildThickLineGeometry", () => {
 describe("sampleFingerprint", () => {
   it("returns zeroed fingerprint for empty array", () => {
     const fp = sampleFingerprint([]);
-    expect(fp).toEqual({ len: 0, firstTime: 0, lastTime: 0 });
+    expect(fp).toEqual({ len: 0, firstTime: 0, lastTime: 0, valueHash: 0 });
   });
 
   it("captures length and boundary times", () => {
     const samples = makeSamples([[1, 0], [2, 0.5], [3, 1]]);
     const fp = sampleFingerprint(samples);
-    expect(fp).toEqual({ len: 3, firstTime: 1, lastTime: 3 });
+    expect(fp.len).toBe(3);
+    expect(fp.firstTime).toBe(1);
+    expect(fp.lastTime).toBe(3);
+    expect(fp.valueHash).toBeTypeOf("number");
   });
 
   it("detects change when time window shifts", () => {
@@ -299,8 +302,14 @@ describe("sampleFingerprint", () => {
 
   it("returns false when fingerprints match", () => {
     const a = sampleFingerprint(makeSamples([[1, 0], [2, 0.5], [3, 1]]));
-    const b = sampleFingerprint(makeSamples([[1, 0.9], [2, 0.1], [3, 0.5]]));
+    const b = sampleFingerprint(makeSamples([[1, 0], [2, 0.5], [3, 1]]));
     expect(fingerprintChanged(a, b)).toBe(false);
+  });
+
+  it("detects value change even with same timestamps", () => {
+    const a = sampleFingerprint(makeSamples([[1, 0], [2, 0.5], [3, 1]]));
+    const b = sampleFingerprint(makeSamples([[1, 0.9], [2, 0.1], [3, 0.5]]));
+    expect(fingerprintChanged(a, b)).toBe(true);
   });
 
   it("null fingerprint always counts as changed", () => {
@@ -353,12 +362,45 @@ describe("buildCombinedSamples (pure)", () => {
     const samples = buildCombinedSamples("a1", getRenderData, 2);
     expect(getRenderData).toHaveBeenCalledWith("a1");
     expect(calls).toEqual(["a1"]);
-    // 3 past + 2 future where t > currentTime (2): t=3, t=4
-    expect(samples.length).toBe(5);
+    // 3 past + boundary anchor + 2 future where t > currentTime (2): t=3, t=4
+    expect(samples.length).toBe(6);
     expect(samples[0]).toEqual({ time: 0, value: 0.1 });
     expect(samples[2]).toEqual({ time: 2, value: 0.9 });
-    expect(samples[3]).toEqual({ time: 3, value: 0.4 });
-    expect(samples[4]).toEqual({ time: 4, value: 0.2 });
+    // Boundary anchor repeats the last past sample at currentTime.
+    expect(samples[3]).toEqual({ time: 2, value: 0.9 });
+    expect(samples[4]).toEqual({ time: 3, value: 0.4 });
+    expect(samples[5]).toEqual({ time: 4, value: 0.2 });
+  });
+
+  it("anchors future geometry at currentTime when near-boundary future coverage exists", () => {
+    const past = new PastBuffer(2);
+    past.push(0, 0.1);
+    past.push(1, 0.6);
+    const future = new PastBuffer(2);
+    future.push(2.03, 0.4);
+    future.push(2.06, 0.2);
+
+    const getRenderData = (k: string) =>
+      k === "a1" ? { pastBuffer: past, futureBuffer: future } : null;
+
+    const samples = buildCombinedSamples("a1", getRenderData, 2, 0.25);
+    expect(samples.map((s) => s.time)).toEqual([0, 1, 2, 2.03, 2.06]);
+    expect(samples[2]).toEqual({ time: 2, value: 0.6 });
+  });
+
+  it("does not anchor across a missing near-future gap", () => {
+    const past = new PastBuffer(2);
+    past.push(0, 0.1);
+    past.push(1, 0.6);
+    const future = new PastBuffer(2);
+    future.push(3, 0.4);
+    future.push(4, 0.2);
+
+    const getRenderData = (k: string) =>
+      k === "a1" ? { pastBuffer: past, futureBuffer: future } : null;
+
+    const samples = buildCombinedSamples("a1", getRenderData, 2, 0.25);
+    expect(samples.map((s) => s.time)).toEqual([0, 1, 3, 4]);
   });
 
   it("filters future samples whose time <= currentTime", () => {
@@ -374,7 +416,8 @@ describe("buildCombinedSamples (pure)", () => {
       k === "a1" ? { pastBuffer: past, futureBuffer: future } : null;
 
     const samples = buildCombinedSamples("a1", getRenderData, 2);
-    expect(samples.map((s) => s.time)).toEqual([0, 3, 4]);
+    // Past (t=0) + boundary anchor at currentTime + future (t=3, t=4)
+    expect(samples.map((s) => s.time)).toEqual([0, 2, 3, 4]);
   });
 
   it("returns empty array when getRenderData returns null", () => {
@@ -412,6 +455,12 @@ describe("drawSerialVisGL (pure path)", () => {
         circularOffset: 0,
         futureLeadSeconds: 1,
         digitalLaneGap: 4,
+        showFutureProjection: false,
+        futureLineAlpha: 0.6,
+        minFutureSampleRate: 30,
+        extensionBatchSize: 4,
+        temporalSampleRateMultiplier: 1,
+        inputEpsilon: 0.01,
       },
       currentTime: 0,
       getRenderData: () => null,
@@ -433,6 +482,12 @@ describe("drawSerialVisGL (pure path)", () => {
         circularOffset: 0,
         futureLeadSeconds: 1,
         digitalLaneGap: 4,
+        showFutureProjection: false,
+        futureLineAlpha: 0.6,
+        minFutureSampleRate: 30,
+        extensionBatchSize: 4,
+        temporalSampleRateMultiplier: 1,
+        inputEpsilon: 0.01,
       },
       currentTime: 0,
       getRenderData,

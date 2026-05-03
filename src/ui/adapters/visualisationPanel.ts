@@ -14,6 +14,7 @@ import {
   activateGLCanvas,
   isVisPanelVisible,
 } from "../visualisation/serialVisGL";
+import { readabilityAfterPaint } from "../../editors/extensions/visReadability";
 
 registerVisualisationRenderHook({
   paint: () => {
@@ -21,6 +22,7 @@ registerVisualisationRenderHook({
     ensureGLCanvasGeometry();
     drawSerialVisGLFromStores();
   },
+  afterPaint: readabilityAfterPaint,
   isVisible: () => isVisPanelVisible(),
 });
 
