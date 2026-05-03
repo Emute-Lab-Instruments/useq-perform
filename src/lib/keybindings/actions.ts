@@ -77,9 +77,22 @@ export const actions = {
     reversible: false,
     icon: "activity",
   },
+  "vis.screenshot": {
+    description: "Save visualisation screenshot to disk",
+    category: "ui",
+    reversible: false,
+    icon: "camera",
+  },
 
   // -- Editor ---------------------------------------------------------------
 
+  "edit.pasteSample": {
+    description: "Paste sample ModuLisp code",
+    category: "editor",
+    reversible: true,
+    icon: "clipboard-paste",
+    requiresEditor: true,
+  },
   "doc.symbol": {
     description: "Show documentation for symbol at cursor",
     category: "editor",
@@ -109,14 +122,6 @@ export const actions = {
     reversible: true,
     requiresEditor: true,
   },
-  "edit.backspaceNormal": {
-    description: "Backspace (bypass bracket protection)",
-    category: "editor",
-    reversible: true,
-    repeatable: true,
-    requiresEditor: true,
-  },
-
   "edit.delete": {
     description: "Delete node at cursor",
     category: "editor",

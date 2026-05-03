@@ -64,13 +64,6 @@ export const simplifiedBindings: KeyBinding[] = [
   { action: "nav.home", key: "Home" },
   { action: "nav.end", key: "End" },
 
-  // -- Backspace gate -------------------------------------------------------
-  {
-    action: "edit.backspaceNormal",
-    key: "Backspace",
-    when: "!editor.bracketProtect",
-  },
-
   // -- Picker menu (scoped to picker open) ----------------------------------
   { action: "picker.up", key: "ArrowUp", when: "picker.open" },
   { action: "picker.down", key: "ArrowDown", when: "picker.open" },

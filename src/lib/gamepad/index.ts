@@ -97,18 +97,6 @@ function createActionRunner(getEditor: () => EditorView | undefined) {
       case "nav.back":
         ch.back.publish({});
         break;
-      case "nav.adjustNumber":
-        ch.adjustNumber.publish({ delta: 1 });
-        break;
-      case "control.toggleManualLeft":
-        ch.toggleManualControl.publish({ stick: "left" });
-        break;
-      case "control.toggleManualRight":
-        ch.toggleManualControl.publish({ stick: "right" });
-        break;
-      case "edit.delete":
-        ch.deleteNode.publish({});
-        break;
       case "menu.openBefore":
         ch.openMenu.publish({ direction: "before" });
         break;

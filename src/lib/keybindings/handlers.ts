@@ -4,9 +4,9 @@
 // This is the bridge between the pure-data action registry and the
 // runtime modules that actually perform each action.
 //
-// Only editor-invokable actions are registered here. Gamepad-only,
-// picker, menu, and analog-only actions are dispatched through their
-// respective channel subscribers and do NOT appear in this registry.
+// Editor-invokable actions are registered here regardless of whether they are
+// triggered by keyboard, gamepad, palette, or another input resolver. Menu UI
+// actions and analog-only streams still use their own typed channels.
 
 import type { EditorView } from "@codemirror/view";
 import type { ActionId } from "./actions.ts";
@@ -34,6 +34,7 @@ import {
   toggleSerialVis,
   showDocumentationForSymbol,
 } from "../../editors/editorKeyboard.ts";
+import { requestVisScreenshot } from "../../ui/visualisation/serialVisGL.ts";
 import {
   toggleCurrentProbe,
   expandCurrentProbeContext,
@@ -42,12 +43,10 @@ import {
 import {
   cursorLineEnd,
   cursorLineStart,
-  deleteCharBackward,
-  undo,
-  redo,
 } from "@codemirror/commands";
+import { SAMPLE_CODE } from "./sampleCode.ts";
 import { openPalette } from "../../ui/keybindings/ActionPalette.tsx";
-import { dispatchAction } from "../../editors/extensions/structure/adapter/dispatcher.ts";
+import { executeEditorCommand } from "../../editors/commands/editorCommandRouter.ts";
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
 
 // ---------------------------------------------------------------------------
@@ -73,7 +72,12 @@ const killToEndOfList = findClojureHandler("Ctrl-k");
 // ---------------------------------------------------------------------------
 
 function structHandler(dispatchName: string): EditorHandler {
-  return (view) => dispatchAction(view, dispatchName);
+  return (view) =>
+    executeEditorCommand(view, {
+      kind: "structural",
+      action: dispatchName,
+      source: "keyboard",
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -90,12 +94,22 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "palette.open": () => { openPalette(); return true; },
   "panel.help": toggleHelp,
   "panel.vis": toggleSerialVis,
+  "vis.screenshot": () => { requestVisScreenshot(); return true; },
 
   // -- Editor ---------------------------------------------------------------
+  "edit.pasteSample": (view: EditorView) =>
+    executeEditorCommand(view, {
+      kind: "replaceDocument",
+      text: SAMPLE_CODE,
+      source: "keyboard",
+    }),
   "doc.symbol": showDocumentationForSymbol,
-  "edit.undo": undo,
-  "edit.redo": redo,
-  "edit.backspaceNormal": deleteCharBackward,
+  "edit.undo": (view: EditorView) =>
+    executeEditorCommand(view, { kind: "undo", source: "keyboard" }),
+  "edit.redo": (view: EditorView) =>
+    executeEditorCommand(view, { kind: "redo", source: "keyboard" }),
+  "edit.delete": (view: EditorView) =>
+    executeEditorCommand(view, { kind: "deleteNode", source: "keyboard" }),
 
   // -- Navigation (cursor movement) ------------------------------------------
   "nav.home": cursorLineStart,
@@ -112,6 +126,26 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "edit.wrapVector": structHandler("edit.encloseVector"),
   "edit.transposeFwd": structHandler("edit.transposeNext"),
   "edit.transposeBack": structHandler("edit.transposePrev"),
+
+  // -- Gamepad editor actions ----------------------------------------------
+  "nav.adjustNumber": (view: EditorView) =>
+    executeEditorCommand(view, {
+      kind: "adjustNumber",
+      delta: 1,
+      source: "gamepad",
+    }),
+  "control.toggleManualLeft": (view: EditorView) =>
+    executeEditorCommand(view, {
+      kind: "toggleManualControl",
+      stick: "left",
+      source: "gamepad",
+    }),
+  "control.toggleManualRight": (view: EditorView) =>
+    executeEditorCommand(view, {
+      kind: "toggleManualControl",
+      stick: "right",
+      source: "gamepad",
+    }),
 
   // -- Structure (legacy — no core equivalent yet) --------------------------
   ...(killToEndOfList && { "edit.killToEndOfList": killToEndOfList }),

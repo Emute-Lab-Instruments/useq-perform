@@ -54,7 +54,6 @@ const validCategories: ActionCategory[] = [
 // Actions not expected to have a handler in the handler registry.
 // Picker/menu scoped actions are dispatched via their own channel subscribers.
 // nav.home / nav.end are handled by CodeMirror's built-in defaultKeymap.
-// edit.backspaceNormal is a conditional gate, not a handler-registry action.
 const handlerExemptActions = new Set<string>([
   "picker.up",
   "picker.down",
@@ -65,7 +64,6 @@ const handlerExemptActions = new Set<string>([
   "menu.openBefore",
   "menu.openAfter",
   "menu.radial",
-  "edit.backspaceNormal",
   "nav.home",
   "nav.end",
 ]);
@@ -228,6 +226,7 @@ describe("Default keyboard binding key snapshot", () => {
         "Alt-e ]",
         "Alt-e j",
         "Alt-e k",
+        "Alt-e p",
         "Alt-e r",
         "Alt-e s",
         "Alt-e v",
@@ -246,7 +245,6 @@ describe("Default keyboard binding key snapshot", () => {
         "ArrowLeft",
         "ArrowRight",
         "ArrowUp",
-        "Backspace",
         "Ctrl-'",
         "Ctrl-;",
         "Ctrl-[",

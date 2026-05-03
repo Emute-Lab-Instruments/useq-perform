@@ -40,6 +40,7 @@ export const defaultKeyBindings: KeyBinding[] = [
   // -- Panel toggles (from useq_keymap) -------------------------------------
   { action: "panel.help", key: "Alt-/", preventDefault: true },
   { action: "panel.vis", key: "Alt-g", preventDefault: true },
+  { action: "vis.screenshot", key: "Alt-o g", preventDefault: true },
 
   // -- Documentation (from useq_keymap) -------------------------------------
   { action: "doc.symbol", key: "Alt-f", preventDefault: true },
@@ -68,15 +69,6 @@ export const defaultKeyBindings: KeyBinding[] = [
   // -- Navigation -----------------------------------------------------------
   { action: "nav.home", key: "Home" },
   { action: "nav.end", key: "End" },
-
-  // -- Backspace gate -------------------------------------------------------
-  // When bracket protection is disabled, normal backspace takes precedence
-  // over clojure-mode's bracket-aware handler.
-  {
-    action: "edit.backspaceNormal",
-    key: "Backspace",
-    when: "!editor.bracketProtect",
-  },
 
   // -- Picker menu (scoped to picker open) ----------------------------------
   { action: "picker.up", key: "ArrowUp", when: "picker.open" },
@@ -107,6 +99,7 @@ export const defaultKeyBindings: KeyBinding[] = [
   { action: "edit.wrapVector", key: "Alt-e v" },
   { action: "edit.transposeFwd", key: "Alt-e j" },
   { action: "edit.transposeBack", key: "Alt-e k" },
+  { action: "edit.pasteSample", key: "Alt-e p" },
 
   // -- Chord alternatives: probe management (Alt-o namespace) -------------
   // "o" for "observe" — avoids conflict with direct Alt-p binding.
