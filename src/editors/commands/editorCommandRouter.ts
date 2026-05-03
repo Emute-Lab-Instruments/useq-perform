@@ -93,6 +93,34 @@ const typedGetTrimmedRange = getTrimmedRange as (
   state: EditorState,
 ) => { from: number; to: number } | null;
 
+function clampPosition(pos: number, docLength: number): number {
+  if (!Number.isFinite(pos)) return 0;
+  return Math.max(0, Math.min(Math.trunc(pos), docLength));
+}
+
+function normaliseMainSelection(view: EditorView): {
+  from: number;
+  to: number;
+  head: number;
+  empty: boolean;
+} {
+  const selection = view.state.selection.main;
+  const docLength = view.state.doc.length;
+  const anchor = clampPosition(selection.anchor, docLength);
+  const head = clampPosition(selection.head, docLength);
+  const from = Math.min(anchor, head);
+  const to = Math.max(anchor, head);
+
+  if (selection.anchor !== from || selection.head !== to) {
+    view.dispatch({
+      selection: { anchor: from, head: to },
+      annotations: Transaction.addToHistory.of(false),
+    });
+  }
+
+  return { from, to, head: to, empty: from === to };
+}
+
 export function executeEditorCommand(
   view: EditorView,
   command: EditorCommand,
@@ -156,6 +184,7 @@ function pressEditorKey(
   view: EditorView,
   command: Extract<EditorCommand, { kind: "key" }>,
 ): boolean {
+  normaliseMainSelection(view);
   const key = command.key;
   if (handleBracketKey(view, key)) {
     return true;
@@ -183,12 +212,16 @@ function pressEditorKey(
     return structuralDelete(view);
   }
 
+  const selection = normaliseMainSelection(view);
   switch (key) {
     case "Backspace":
+      if (!selection.empty) return replaceSelection(view, "", "delete");
       return deleteCharBackward(view);
     case "Delete":
+      if (!selection.empty) return replaceSelection(view, "", "delete");
       return deleteCharForward(view);
     case "Enter":
+      if (!selection.empty) return replaceSelection(view, "\n", "input");
       return insertNewline(view);
     default:
       if (key.length === 1) {
@@ -199,7 +232,7 @@ function pressEditorKey(
 }
 
 function handleBracketKey(view: EditorView, key: string): boolean {
-  const selection = view.state.selection.main;
+  const selection = normaliseMainSelection(view);
 
   if (OPENING_BRACKETS[key]) {
     const selectedText = view.state.doc.sliceString(selection.from, selection.to);
@@ -230,6 +263,10 @@ function handleBracketKey(view: EditorView, key: string): boolean {
     }
   }
 
+  if (CLOSING_BRACKETS.has(key)) {
+    return replaceSelection(view, key, "input");
+  }
+
   if ((key === "Backspace" || key === "Delete") && selection.empty) {
     const before = view.state.doc.sliceString(selection.from - 1, selection.from);
     const after = view.state.doc.sliceString(selection.from, selection.from + 1);
@@ -256,7 +293,7 @@ function wouldPlainBackspaceDeleteProtectedBracket(
 ): boolean {
   if (key !== "Backspace") return false;
 
-  const selection = view.state.selection.main;
+  const selection = normaliseMainSelection(view);
   if (!selection.empty) return false;
 
   const before = view.state.doc.sliceString(selection.from - 1, selection.from);
@@ -269,7 +306,7 @@ function wouldPlainDeleteRemoveProtectedBracket(
 ): boolean {
   if (key !== "Delete") return false;
 
-  const selection = view.state.selection.main;
+  const selection = normaliseMainSelection(view);
   if (!selection.empty) return false;
 
   const after = view.state.doc.sliceString(selection.from, selection.from + 1);
@@ -287,7 +324,7 @@ function confirmIsActiveAt(view: EditorView, from: number): boolean {
 }
 
 function structuralBackspace(view: EditorView): boolean {
-  const pos = view.state.selection.main.from;
+  const pos = normaliseMainSelection(view).from;
   const tree = syntaxTree(view.state);
   const charBefore = view.state.doc.sliceString(pos - 1, pos);
 
@@ -329,7 +366,7 @@ function structuralBackspace(view: EditorView): boolean {
 }
 
 function structuralDelete(view: EditorView): boolean {
-  const pos = view.state.selection.main.from;
+  const pos = normaliseMainSelection(view).from;
   const tree = syntaxTree(view.state);
   const charAfter = view.state.doc.sliceString(pos, pos + 1);
 
@@ -391,7 +428,7 @@ function replaceSelection(
   insert: string,
   userEvent: string,
 ): boolean {
-  const selection = view.state.selection.main;
+  const selection = normaliseMainSelection(view);
   return replaceRange(view, {
     kind: "replaceRange",
     from: selection.from,
@@ -407,15 +444,25 @@ function replaceRange(
   view: EditorView,
   command: Extract<EditorCommand, { kind: "replaceRange" }>,
 ): boolean {
+  const docLength = view.state.doc.length;
+  const rawFrom = clampPosition(command.from, docLength);
+  const rawTo = clampPosition(command.to, docLength);
+  const from = Math.min(rawFrom, rawTo);
+  const to = Math.max(rawFrom, rawTo);
+  const nextDocLength = docLength - (to - from) + command.insert.length;
+  const selectionAnchor = clampPosition(
+    command.selectionAnchor ?? from + command.insert.length,
+    nextDocLength,
+  );
   const change: ChangeSpec = {
-    from: command.from,
-    to: command.to,
+    from,
+    to,
     insert: command.insert,
   };
   view.dispatch({
     changes: change,
     selection: {
-      anchor: command.selectionAnchor ?? command.from + command.insert.length,
+      anchor: selectionAnchor,
     },
     scrollIntoView: command.scrollIntoView ?? true,
     userEvent: command.userEvent,

@@ -1,7 +1,7 @@
 # Structural editing and navigation
 
 > Spec: ontology and algebra of structural coding in the main editor. Foundation for all keyboard- and gamepad-driven structure operations. Counterpart to [MAIN.md](MAIN.md).
-> See also [editor.md](editor.md) §1.10 (which this spec elaborates), [keybindings.md](keybindings.md) for the action registry, [gamepad.md](gamepad.md) for input bindings.
+> See also [editor.md](editor.md) §1.10 (which this spec elaborates), [keybindings.md](keybindings.md) for the action registry, [gamepad.md](gamepad.md) for input bindings, and [structural-fuzzing.md](structural-fuzzing.md) for deterministic safety coverage.
 >
 > This spec defines what structural operations *mean*. Concrete keyboard chords and gamepad buttons live in the input specs; both reach the same operations defined here.
 

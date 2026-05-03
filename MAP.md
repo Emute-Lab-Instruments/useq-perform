@@ -173,6 +173,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - [docs/specs/hardware-bindings.md](docs/specs/hardware-bindings.md) — hardware button/toggle binding wrapper forms, inline chip widgets, test-fire UX.
 - [docs/specs/calibration.md](docs/specs/calibration.md) — CV 1V/oct calibration full-screen takeover flow.
 - [docs/specs/structural-editing.md](docs/specs/structural-editing.md) — focus-primary ontology, Metas, holes, nav/mutate algebra.
+- [docs/specs/structural-fuzzing.md](docs/specs/structural-fuzzing.md) — deterministic fuzz harness for structural command dispatch, cursor/range invariants, and parser-recovery safety.
 - [docs/specs/input-dispatch.md](docs/specs/input-dispatch.md) — command router as single chokepoint for editor-directed intents.
 - [docs/specs/radial-menu.md](docs/specs/radial-menu.md) — gamepad-driven double-ring command surface.
 - [docs/specs/zen-mode.md](docs/specs/zen-mode.md) — distraction-free structural editing practice environment.

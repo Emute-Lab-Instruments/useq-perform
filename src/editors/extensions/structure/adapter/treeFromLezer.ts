@@ -96,6 +96,10 @@ function isStructuralToken(node: SyntaxNode): boolean {
   return STRUCTURAL_TOKEN_NAMES.has(node.type.name);
 }
 
+function isWithinParent(parent: SyntaxNode, child: SyntaxNode): boolean {
+  return child.from >= parent.from && child.to <= parent.to;
+}
+
 /**
  * Collect the logical (non-structural-token) children of a Lezer node.
  * Used for hole-pattern detection before minting ids.
@@ -104,7 +108,7 @@ function logicalChildren(node: SyntaxNode): SyntaxNode[] {
   const out: SyntaxNode[] = [];
   let cur = node.firstChild;
   while (cur) {
-    if (!isStructuralToken(cur)) out.push(cur);
+    if (!isStructuralToken(cur) && isWithinParent(node, cur)) out.push(cur);
     cur = cur.nextSibling;
   }
   return out;
@@ -348,12 +352,18 @@ function convert(
     const children: Node[] = [];
     let cur = node.firstChild;
     while (cur) {
+      if (!isWithinParent(node, cur)) {
+        cur = cur.nextSibling;
+        continue;
+      }
       // §iterateLogicalChildren parity: Set wraps a Map in clojure-mode.
       // Flatten the Map's children directly into the Set's children.
       if (name === "Set" && cur.type.name === "Map") {
         let inner = cur.firstChild;
         while (inner) {
-          const child = convert(inner, state, ids, idIndex, warnings);
+          const child = isWithinParent(node, inner)
+            ? convert(inner, state, ids, idIndex, warnings)
+            : null;
           if (child !== null) children.push(child);
           inner = inner.nextSibling;
         }
