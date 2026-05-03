@@ -25,6 +25,7 @@ export type {
   VisualisationSettings,
   RuntimeSettings,
   WasmSettings,
+  HardwareSettings,
   EvalResultMode,
   ConsoleEntryAnimation,
   ConsoleSettings,

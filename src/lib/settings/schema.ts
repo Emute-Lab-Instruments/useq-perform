@@ -37,7 +37,13 @@ export interface UISettings {
   gamepadPickerStyle: "grid" | "radial";
   nodeHighlightCornerRadius: number;
   nodeHighlightYOffset: number;
-  indentGuideEnabled: boolean;
+  /**
+   * Indent-guide visibility:
+   *   - "always": draw a guide for every multi-line container in the document
+   *   - "path":   draw guides only for the focused node's ancestor chain
+   *   - "never":  hide indent guides
+   */
+  indentGuideMode: "always" | "path" | "never";
   indentGuideWidth: number;
   indentGuideOpacity: number;
   indentGuideLuminosity: number;
@@ -47,6 +53,7 @@ export interface UISettings {
 }
 
 export interface VisualisationSettings {
+  showFutureProjection: boolean;
   windowDuration: number;
   sampleCount: number;
   lineWidth: number;
@@ -59,6 +66,8 @@ export interface VisualisationSettings {
   circularOffset: number;
   futureLeadSeconds: number;
   digitalLaneGap: number;
+  /** Whether from-list/seq element-cycling highlights are shown without active probes. */
+  probeHighlightsEnabled: boolean;
   /** Blur radius (px) for the readability overlay behind code text. */
   readabilityBlurRadius: number;
   /** Extra padding (px) around each code line in the blur mask. */
@@ -88,6 +97,15 @@ export interface VisualisationSettings {
    * See docs/specs/visualisation.md §1.7/§9.2.
    */
   adaptiveQuality: boolean;
+  futureLineAlpha: number;
+  minFutureSampleRate: number;
+  extensionBatchSize: number;
+  /**
+   * Fraction of the visual past-buffer sample rate used for live WASM
+   * ticks. 1.0 means one temporal sample for each horizontal visual
+   * sample column; lower values reduce CPU cost.
+   */
+  temporalSampleRateMultiplier: number;
 }
 
 export interface RuntimeSettings {
@@ -107,6 +125,20 @@ export interface WasmSettings {
 export interface StructureSettings {
   /** Whether wrappers and holes are folded to inline pills by default. */
   foldAllWrappers: boolean;
+}
+
+/**
+ * Hardware binding settings (docs/specs/hardware-bindings.md §6).
+ */
+export interface HardwareSettings {
+  /** Master switch — when off, all bindings are inert (§6.1). */
+  bindingsEnabled: boolean;
+  /** Whether on-press/on-release/on-button/on-toggle wrappers fold to chips by default (§6.2). */
+  bindingFoldDefault: boolean;
+  /** Max queued events per binding before drops (§6.3). */
+  bindingQueueDepth: number;
+  /** UI tick rate in Hz for on-button :hold phase dispatch (§6.4). */
+  holdTickHz: number;
 }
 
 /**
@@ -183,13 +215,14 @@ export interface AppSettings {
   console: ConsoleSettings;
   evalResults: EvalResultsSettings;
   structure: StructureSettings;
+  hardware: HardwareSettings;
   keybindings?: KeybindingsSettings;
   keymaps?: Record<string, string>;
   [key: string]: unknown;
 }
 
 export type AppSettingsPatch = Partial<
-  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "structure" | "keybindings">
+  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "structure" | "hardware" | "keybindings">
 > & {
   editor?: Partial<EditorSettings>;
   storage?: Partial<StorageSettings>;
@@ -200,6 +233,7 @@ export type AppSettingsPatch = Partial<
   console?: Partial<ConsoleSettings>;
   evalResults?: Partial<EvalResultsSettings>;
   structure?: Partial<StructureSettings>;
+  hardware?: Partial<HardwareSettings>;
   keybindings?: Partial<KeybindingsSettings>;
   keymaps?: Record<string, string>;
 };
@@ -240,6 +274,7 @@ export interface AppDevModeState {
 }
 
 const DEFAULT_VISUALISATION: VisualisationSettings = {
+  showFutureProjection: false,
   windowDuration: 10,
   sampleCount: 100,
   lineWidth: 1.5,
@@ -252,6 +287,7 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   circularOffset: 0,
   futureLeadSeconds: 1,
   digitalLaneGap: 4,
+  probeHighlightsEnabled: true,
   readabilityBlurRadius: 10,
   readabilityPadding: 3,
   readabilityTintOpacity: 0.5,
@@ -263,6 +299,10 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   readabilityOverscan: 30,
   readabilityEnabled: true,
   adaptiveQuality: true,
+  futureLineAlpha: 0.6,
+  minFutureSampleRate: 30,
+  extensionBatchSize: 4,
+  temporalSampleRateMultiplier: 1,
 };
 
 export const defaultDevModeConfiguration: AppDevModeState = {
@@ -303,9 +343,9 @@ export const defaultUserSettings: AppSettings = {
     gamepadPickerStyle: "grid",
     nodeHighlightCornerRadius: 3,
     nodeHighlightYOffset: 0,
-    indentGuideEnabled: true,
-    indentGuideWidth: 1,
-    indentGuideOpacity: 0.15,
+    indentGuideMode: "always",
+    indentGuideWidth: 2,
+    indentGuideOpacity: 0.6,
     indentGuideLuminosity: 0.5,
     indentGuideDash: 4,
     indentGuideGap: 4,
@@ -334,6 +374,12 @@ export const defaultUserSettings: AppSettings = {
   structure: {
     foldAllWrappers: true,
   },
+  hardware: {
+    bindingsEnabled: true,
+    bindingFoldDefault: true,
+    bindingQueueDepth: 4,
+    holdTickHz: 30,
+  },
   keybindings: {
     profile: "default",
     layout: "qwerty-us",
@@ -355,6 +401,7 @@ export function createDefaultUserSettings(): AppSettings {
     console: { ...defaultUserSettings.console },
     evalResults: { ...defaultUserSettings.evalResults },
     structure: { ...defaultUserSettings.structure },
+    hardware: { ...defaultUserSettings.hardware },
     keybindings: defaultUserSettings.keybindings
       ? { ...defaultUserSettings.keybindings }
       : undefined,

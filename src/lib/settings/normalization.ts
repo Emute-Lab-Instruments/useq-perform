@@ -62,6 +62,7 @@ export function normalizeUserSettings(value: unknown): AppSettings {
   const runtime = isRecord(raw.runtime) ? raw.runtime : {};
   const wasm = isRecord(raw.wasm) ? raw.wasm : {};
   const structure = isRecord(raw.structure) ? raw.structure : {};
+  const hardware = isRecord(raw.hardware) ? raw.hardware : {};
   const keybindings = isRecord(raw.keybindings) ? raw.keybindings : undefined;
   const keymaps = isRecord(raw.keymaps) ? raw.keymaps : undefined;
 
@@ -123,6 +124,12 @@ export function normalizeUserSettings(value: unknown): AppSettings {
           : ui.expressionClearButtonEnabled !== false,
       gamepadPickerStyle:
         ui.gamepadPickerStyle === "radial" ? "radial" : defaults.ui.gamepadPickerStyle,
+      indentGuideMode:
+        ui.indentGuideMode === "always" ||
+        ui.indentGuideMode === "path" ||
+        ui.indentGuideMode === "never"
+          ? ui.indentGuideMode
+          : defaults.ui.indentGuideMode,
     },
     visualisation: normalizeVisualisationSettings(raw.visualisation, defaults.visualisation),
     evalResults: normalizeEvalResultsSettings(raw.evalResults, defaults.evalResults),
@@ -150,6 +157,26 @@ export function normalizeUserSettings(value: unknown): AppSettings {
         structure.foldAllWrappers == null
           ? defaults.structure.foldAllWrappers
           : structure.foldAllWrappers !== false,
+    },
+    hardware: {
+      ...defaults.hardware,
+      ...hardware,
+      bindingsEnabled:
+        hardware.bindingsEnabled == null
+          ? defaults.hardware.bindingsEnabled
+          : hardware.bindingsEnabled !== false,
+      bindingFoldDefault:
+        hardware.bindingFoldDefault == null
+          ? defaults.hardware.bindingFoldDefault
+          : hardware.bindingFoldDefault !== false,
+      bindingQueueDepth: coerceNumber(
+        hardware.bindingQueueDepth,
+        defaults.hardware.bindingQueueDepth,
+      ),
+      holdTickHz: coerceNumber(
+        hardware.holdTickHz,
+        defaults.hardware.holdTickHz,
+      ),
     },
     keybindings: keybindings
       ? normalizeKeybindingsSettings(keybindings, defaults.keybindings)
@@ -198,6 +225,9 @@ export function mergeUserSettings(
     structure: isRecord(patch.structure)
       ? { ...normalizedBase.structure, ...patch.structure }
       : normalizedBase.structure,
+    hardware: isRecord(patch.hardware)
+      ? { ...normalizedBase.hardware, ...patch.hardware }
+      : normalizedBase.hardware,
     keybindings: isRecord(patch.keybindings)
       ? { ...(normalizedBase.keybindings || {}), ...patch.keybindings }
       : normalizedBase.keybindings,
@@ -315,6 +345,10 @@ export function settingsPatchFromConfiguration(
 
   if (isRecord(user.wasm)) {
     patch.wasm = { ...user.wasm };
+  }
+
+  if (isRecord(user.hardware)) {
+    patch.hardware = { ...user.hardware };
   }
 
   if (isRecord(user.keybindings)) {

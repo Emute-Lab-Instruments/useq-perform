@@ -15,6 +15,8 @@ export function normalizeVisualisationSettings(
   const raw = isRecord(value) ? value : {};
 
   return {
+    showFutureProjection:
+      raw.showFutureProjection == null ? defaults.showFutureProjection : raw.showFutureProjection !== false,
     windowDuration: coerceNumber(raw.windowDuration, defaults.windowDuration),
     sampleCount: coerceNumber(raw.sampleCount, defaults.sampleCount),
     lineWidth: coerceNumber(raw.lineWidth, defaults.lineWidth),
@@ -34,6 +36,8 @@ export function normalizeVisualisationSettings(
     circularOffset: coerceNumber(raw.circularOffset, defaults.circularOffset),
     futureLeadSeconds: coerceNumber(raw.futureLeadSeconds, defaults.futureLeadSeconds),
     digitalLaneGap: coerceNumber(raw.digitalLaneGap, defaults.digitalLaneGap),
+    probeHighlightsEnabled:
+      raw.probeHighlightsEnabled == null ? defaults.probeHighlightsEnabled : raw.probeHighlightsEnabled !== false,
     readabilityBlurRadius: coerceNumber(raw.readabilityBlurRadius, defaults.readabilityBlurRadius),
     readabilityPadding: coerceNumber(raw.readabilityPadding, defaults.readabilityPadding),
     readabilityTintOpacity: coerceNumber(raw.readabilityTintOpacity, defaults.readabilityTintOpacity),
@@ -50,6 +54,10 @@ export function normalizeVisualisationSettings(
     futureLineAlpha: coerceNumber(raw.futureLineAlpha, defaults.futureLineAlpha),
     minFutureSampleRate: coerceNumber(raw.minFutureSampleRate, defaults.minFutureSampleRate),
     extensionBatchSize: coerceNumber(raw.extensionBatchSize, defaults.extensionBatchSize),
+    temporalSampleRateMultiplier: coerceNumber(
+      raw.temporalSampleRateMultiplier,
+      defaults.temporalSampleRateMultiplier,
+    ),
   };
 }
 
@@ -62,6 +70,10 @@ export function extractVisualisationPatch(
 ): Partial<VisualisationSettings> {
   const patch: Partial<VisualisationSettings> = {};
   const defaults = defaultUserSettings.visualisation;
+
+  if ("showFutureProjection" in visualisation) {
+    patch.showFutureProjection = visualisation.showFutureProjection !== false;
+  }
 
   if ("windowDuration" in visualisation) {
     patch.windowDuration = normalizeVisualisationSettings(
@@ -112,6 +124,10 @@ export function extractVisualisationPatch(
 
   if ("digitalLaneGap" in visualisation) {
     patch.digitalLaneGap = coerceNumber(visualisation.digitalLaneGap, defaults.digitalLaneGap);
+  }
+
+  if ("probeHighlightsEnabled" in visualisation) {
+    patch.probeHighlightsEnabled = visualisation.probeHighlightsEnabled !== false;
   }
 
   if ("readabilityBlurRadius" in visualisation) {
@@ -168,6 +184,13 @@ export function extractVisualisationPatch(
 
   if ("extensionBatchSize" in visualisation) {
     patch.extensionBatchSize = coerceNumber(visualisation.extensionBatchSize, defaults.extensionBatchSize);
+  }
+
+  if ("temporalSampleRateMultiplier" in visualisation) {
+    patch.temporalSampleRateMultiplier = coerceNumber(
+      visualisation.temporalSampleRateMultiplier,
+      defaults.temporalSampleRateMultiplier,
+    );
   }
 
   return patch;

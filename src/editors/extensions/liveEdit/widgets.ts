@@ -1,12 +1,10 @@
 /**
- * Live-edit inline widgets — visual-only first pass (gii8.39).
+ * Live-edit inline widgets (gii8.39).
  *
  * Replaces `(live-edit ...)` source ranges with inline interactive controls
- * (knob / toggle / picker). The widgets are visual + locally interactive only:
- * dragging or clicking updates per-widget local state and re-paints, but
- * does NOT call any runtime API or persistence layer. Wire-up to
- * `set-live-inputs`, the live-edit store, and right-click menus arrives in
- * later beads.
+ * (knob / toggle / picker). Widgets update local visual state on interaction
+ * and call an optional `onValueChange` callback so the store and runtime can
+ * be updated. When no callback is provided the widgets remain visual-only.
  *
  * Spec: docs/specs/live-edit.md §2.4 (folding), §2.6 (type variants), §4
  * (widget shape, states, drag, popover, value readout, modified-from-seed).
@@ -30,6 +28,7 @@ import {
 } from "@codemirror/view";
 import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import {
+  Facet,
   RangeSetBuilder,
   StateEffect,
   StateField,
@@ -41,6 +40,36 @@ import type {
   SlotValue,
   SlotWidgetState,
 } from "../../../contracts/liveEdit.ts";
+
+// ─── Widget configuration ────────────────────────────────────────────────────
+
+/**
+ * Configuration passed to `createLiveEditWidgetsExtension`.
+ * All fields are optional — omitting them leaves the widgets visual-only.
+ */
+export interface LiveEditWidgetConfig {
+  /**
+   * Called whenever a widget value changes via user interaction.
+   * The bridge module wires this to `store.setValue(id, value)`.
+   */
+  onValueChange?: (slotId: string, value: SlotValue) => void;
+}
+
+/**
+ * Facet that carries the widget configuration for a specific editor instance.
+ * Using a facet instead of a module-level variable ensures each editor view
+ * holds its own config, fixing the silent-overwrite bug when multiple editors
+ * coexist (Inspector, Storybook, etc.).
+ *
+ * The combiner keeps only the last provided value so a single
+ * `liveEditWidgetConfigFacet.of(config)` in the extensions array wins cleanly.
+ */
+export const liveEditWidgetConfigFacet = Facet.define<
+  LiveEditWidgetConfig,
+  LiveEditWidgetConfig
+>({
+  combine: (vals) => vals[vals.length - 1] ?? {},
+});
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -243,7 +272,7 @@ abstract class LiveEditBaseWidget extends WidgetType {
     return false;
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const wrapper = document.createElement("span");
     wrapper.className = `cm-live-edit cm-live-edit--${this.slot.kind}`;
     wrapper.setAttribute(
@@ -253,7 +282,7 @@ abstract class LiveEditBaseWidget extends WidgetType {
     if (this.slot.modified) wrapper.classList.add("is-modified");
     applyStateClasses(wrapper, this.slot.state);
 
-    this.renderControl(wrapper);
+    this.renderControl(wrapper, view);
     this.renderReadout(wrapper);
     appendStateBadge(wrapper, this.slot.state);
 
@@ -261,7 +290,7 @@ abstract class LiveEditBaseWidget extends WidgetType {
   }
 
   /** Subclass-specific control surface, appended to the wrapper. */
-  protected abstract renderControl(wrapper: HTMLElement): void;
+  protected abstract renderControl(wrapper: HTMLElement, view: EditorView): void;
 
   protected renderReadout(wrapper: HTMLElement): void {
     const readout = document.createElement("span");
@@ -297,7 +326,7 @@ function sameOptions(a?: string[], b?: string[]): boolean {
 // ── Knob (numeric scalar / vector-element) ──────────────────────────────────
 
 class KnobWidget extends LiveEditBaseWidget {
-  protected override renderControl(wrapper: HTMLElement): void {
+  protected override renderControl(wrapper: HTMLElement, view: EditorView): void {
     const min = typeof this.slot.min === "number" ? this.slot.min : 0;
     const max = typeof this.slot.max === "number" ? this.slot.max : 1;
 
@@ -333,7 +362,9 @@ class KnobWidget extends LiveEditBaseWidget {
       ev.preventDefault();
       ev.stopPropagation();
       const startY = ev.clientY;
-      const startVal = v;
+      const startVal = typeof this.localValue === "number"
+        ? this.localValue
+        : Number(this.localValue) || 0;
       const range = max - min;
       const onMove = (mv: MouseEvent): void => {
         const dy = startY - mv.clientY; // up = increase
@@ -345,6 +376,7 @@ class KnobWidget extends LiveEditBaseWidget {
         indicator.style.transform = `rotate(${a}deg)`;
         knob.setAttribute("aria-valuenow", String(next));
         this.refreshReadout(wrapper);
+        view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, next);
       };
       const onUp = (): void => {
         document.removeEventListener("mousemove", onMove);
@@ -361,7 +393,7 @@ class KnobWidget extends LiveEditBaseWidget {
 // ── Slider (numeric scalar — alternative variant) ───────────────────────────
 
 class SliderWidget extends LiveEditBaseWidget {
-  protected override renderControl(wrapper: HTMLElement): void {
+  protected override renderControl(wrapper: HTMLElement, view: EditorView): void {
     const min = typeof this.slot.min === "number" ? this.slot.min : 0;
     const max = typeof this.slot.max === "number" ? this.slot.max : 1;
 
@@ -403,6 +435,7 @@ class SliderWidget extends LiveEditBaseWidget {
         handle.style.left = `${ratio * 100}%`;
         track.setAttribute("aria-valuenow", String(next));
         this.refreshReadout(wrapper);
+        view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, next);
       };
       apply(ev.clientX);
       const onMove = (mv: MouseEvent): void => apply(mv.clientX);
@@ -421,7 +454,7 @@ class SliderWidget extends LiveEditBaseWidget {
 // ── Toggle (boolean) ────────────────────────────────────────────────────────
 
 class ToggleWidget extends LiveEditBaseWidget {
-  protected override renderControl(wrapper: HTMLElement): void {
+  protected override renderControl(wrapper: HTMLElement, view: EditorView): void {
     const pill = document.createElement("span");
     pill.className = "cm-live-edit-toggle";
     pill.setAttribute("role", "switch");
@@ -441,6 +474,7 @@ class ToggleWidget extends LiveEditBaseWidget {
       this.localValue = !this.localValue;
       update();
       this.refreshReadout(wrapper);
+      view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, this.localValue as boolean);
     });
 
     wrapper.appendChild(pill);
@@ -459,7 +493,7 @@ class ToggleWidget extends LiveEditBaseWidget {
 // ── Picker (keyword enum) ───────────────────────────────────────────────────
 
 class PickerWidget extends LiveEditBaseWidget {
-  protected override renderControl(wrapper: HTMLElement): void {
+  protected override renderControl(wrapper: HTMLElement, view: EditorView): void {
     const row = document.createElement("span");
     row.className = "cm-live-edit-picker";
     row.setAttribute("role", "listbox");
@@ -491,6 +525,7 @@ class PickerWidget extends LiveEditBaseWidget {
           child.textContent = `:${childOpt} ${isThis ? "●" : "○"}`;
         }
         this.refreshReadout(wrapper);
+        view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, opt);
       });
 
       row.appendChild(seg);
@@ -786,7 +821,16 @@ const liveEditTheme = EditorView.baseTheme({
  * Compose the live-edit widgets extension: state field + decorations view
  * plugin + base theme. Returned as an array so the caller can spread directly
  * into a CodeMirror extension list.
+ *
+ * @param config - Optional configuration. Provide `onValueChange` to connect
+ *   widget interactions to the live-edit store (or any other value sink).
+ *   Without a config the widgets remain visual-only.
  */
-export function createLiveEditWidgetsExtension(): Extension[] {
-  return [liveEditSlotsField, liveEditDecorations, liveEditTheme];
+export function createLiveEditWidgetsExtension(config?: LiveEditWidgetConfig): Extension[] {
+  return [
+    liveEditWidgetConfigFacet.of(config ?? {}),
+    liveEditSlotsField,
+    liveEditDecorations,
+    liveEditTheme,
+  ];
 }

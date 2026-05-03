@@ -5,6 +5,22 @@
 // Frame: MAIN.md §4.2 — input only, browser-side, no MIDI out, no sysex,
 // no firmware-side MIDI.
 
+// ── Permission ─────────────────────────────────────────────────────────────
+
+/**
+ * Permission state for browser-side Web MIDI input.
+ *
+ * - `unknown`: never requested. Show a CTA + explainer.
+ * - `granted`: enumerate devices.
+ * - `denied`: user (or browser) blocked access. Show a recovery hint.
+ * - `unsupported`: this browser doesn't expose Web MIDI at all.
+ */
+export type MidiPermissionState =
+  | "unknown"
+  | "granted"
+  | "denied"
+  | "unsupported";
+
 // ── Device enumeration ─────────────────────────────────────────────────────
 
 export type MidiPortState = "connected" | "disconnected";

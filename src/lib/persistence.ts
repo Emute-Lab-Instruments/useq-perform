@@ -50,6 +50,9 @@ export const PERSISTENCE_KEYS = {
   // Zen mode
   zenProgress: "useq:zen:progress",
 
+  // Live-edit panel
+  liveEdits: "uSEQ-Perform-Editor-LiveEdits",
+
   // Legacy migration keys (will be removed after migration)
   legacyEditorConfig: "editorConfig",
   legacySettings: "useqConfig",

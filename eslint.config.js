@@ -185,6 +185,13 @@ export default tseslint.config(
     rules: { "import-x/no-restricted-paths": "off" },
   },
   {
+    // liveEditRuntime.ts imports from editors/ for the widget store bridge.
+    // This effect orchestrates live-edit slot discovery and the reactive
+    // bridge between the store and the CodeMirror widgets.
+    files: ["src/effects/liveEditRuntime.ts"],
+    rules: { "import-x/no-restricted-paths": "off" },
+  },
+  {
     // effects/ui.ts imports from ui/adapters for panel toggle operations.
     // This is an effects module that directly drives UI side-effects.
     files: ["src/effects/ui.ts"],
