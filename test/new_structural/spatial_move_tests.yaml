@@ -1,0 +1,45 @@
+# Structural Editor Test Cases — Spatial Move Operations
+#
+# Tests for move_right, move_left, move_up, move_down. These are aspirational
+# spatial repositioning ops not yet spec'd — they represent directional movement
+# of expressions in 2D space rather than sibling-order swaps.
+#
+# Test format:
+# - name: descriptive test name
+#   code: initial code state
+#   selection: currently selected expression
+#   actions: action or list of actions to perform
+#   new_code: resulting code after actions
+#   new_selection: selected expression after actions (if relevant)
+
+# ============================================================================
+# MOVE OPERATIONS (using left/right/up/down)
+# ============================================================================
+
+- name: "move right - moves spatially"
+  code: "(a (b c) d)"
+  selection: "a"
+  actions: move_right
+  new_code: "((b c) a d)"
+  new_selection: "a"
+
+- name: "move left - moves spatially"
+  code: "(a (b c) d)"
+  selection: "d"
+  actions: move_left
+  new_code: "(a d (b c))"
+  new_selection: "d"
+
+- name: "move down - moves to next line same level"
+  code: "(a b)\n(c d)"
+  selection: "a"
+  actions: move_down
+  new_code: "(b)\n(a c d)"
+  new_selection: "a"
+
+- name: "move up - moves to previous line same level"
+  code: "(a b)\n(c d)"
+  selection: "c"
+  actions: move_up
+  new_code: "(a b c)\n(d)"
+  new_selection: "c"

@@ -1,0 +1,84 @@
+# Structural Editor Test Cases — Clipboard Operations
+#
+# Cut/paste and duplicate operations. These need a clipboard concept not yet
+# implemented in the structural editing core; tests capture intended semantics
+# for when that plumbing lands.
+#
+# Test format:
+# - name: descriptive test name
+#   code: initial code state
+#   selection: currently selected expression
+#   actions: action or list of actions to perform
+#   new_code: resulting code after actions
+#   new_selection: selected expression after actions (if relevant)
+
+# ============================================================================
+# CUT AND PASTE OPERATIONS
+# ============================================================================
+
+- name: "cut and paste symbol"
+  code: "(foo bar baz)"
+  selection: "bar"
+  actions: [cut, next, paste]
+  new_code: "(foo baz bar)"
+  new_selection: "bar"
+
+- name: "cut and paste to different position"
+  code: "(a b c d)"
+  selection: "b"
+  actions: [cut, next, next, paste]
+  new_code: "(a c d b)"
+  new_selection: "b"
+
+- name: "cut and paste expression"
+  code: "(+ 1 (* 2 3))"
+  selection: "(* 2 3)"
+  actions: [cut, paste]
+  new_code: "(+ 1 (* 2 3))"
+  new_selection: "(* 2 3)"
+
+- name: "cut and paste expression (prev)"
+  code: "(+ 1 (* 2 3))"
+  selection: "(* 2 3)"
+  actions: [cut, previous, paste_before]
+  new_code: "((* 2 3) + 1)"
+  new_selection: "(* 2 3)"
+
+- name: "cut from one list and paste to another"
+  code: "(foo bar) (baz qux)"
+  selection: "bar"
+  actions: [cut, out, next, in, next, paste]
+  new_code: "(foo) (baz qux bar)"
+  new_selection: "bar"
+
+- name: "cut and paste with paste_before"
+  code: "(a b c)"
+  selection: "c"
+  actions: [cut, previous, previous, paste_before]
+  new_code: "(c a b)"
+  new_selection: "c"
+
+- name: "cut nested and paste at top level"
+  code: "((a b) c)"
+  selection: "b"
+  actions: [cut, out, out, paste]
+  new_code: "((a) c) b"
+  new_selection: "b"
+
+# ============================================================================
+# DUPLICATE OPERATIONS
+# ============================================================================
+
+- name: "duplicate symbol"
+  code: "(a b c)"
+  selection: "b"
+  actions: duplicate
+  new_code: "(a b b c)"
+  new_selection: ["b", 2]
+
+- name: "duplicate expression"
+  code: "(+ 1 2) 3"
+  selection: "(+ 1 2)"
+  actions: duplicate
+  new_code: "(+ 1 2) (+ 1 2) 3"
+  new_selection: ["(+ 1 2)", 2]

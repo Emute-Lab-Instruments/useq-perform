@@ -1,0 +1,198 @@
+# Structural Editor Test Cases — Picker/Insert Operations
+#
+# All tests using [insert, category, symbol, apply*] compound actions (insert
+# symbol, insert function call, wrap operations, and complex editing sequences
+# that use insert). These depend on picker-menu simulation and are subject to
+# change as picker workflows evolve.
+#
+# Test format:
+# - name: descriptive test name
+#   code: initial code state
+#   selection: currently selected expression
+#   actions: action or list of actions to perform
+#   new_code: resulting code after actions
+#   new_selection: selected expression after actions (if relevant)
+
+# ============================================================================
+# INSERT - SIMPLE SYMBOLS (apply and apply_pre)
+# ============================================================================
+
+- name: "insert symbol after - apply"
+  code: "(a b)"
+  selection: "a"
+  actions: [insert, maths, "+", apply]
+  new_code: "(a + b)"
+  new_selection: "+"
+
+- name: "insert symbol before - apply_pre"
+  code: "(a b)"
+  selection: "b"
+  actions: [insert, maths, "+", apply_pre]
+  new_code: "(a + b)"
+  new_selection: "+"
+
+- name: "insert at end of list"
+  code: "(a b)"
+  selection: "b"
+  actions: [insert, maths, "*", apply]
+  new_code: "(a b *)"
+  new_selection: "*"
+
+- name: "insert at start of list"
+  code: "(a b)"
+  selection: "a"
+  actions: [insert, maths, "-", apply_pre]
+  new_code: "(- a b)"
+  new_selection: "-"
+
+- name: "insert into empty list"
+  code: "()"
+  selection: "()"
+  actions: [insert, maths, "+", apply]
+  new_code: "(+)"
+  new_selection: "+"
+
+- name: "insert in vector"
+  code: "[a b]"
+  selection: "a"
+  actions: [insert, maths, "+", apply]
+  new_code: "[a + b]"
+  new_selection: "+"
+
+# ============================================================================
+# INSERT - FUNCTION CALLS (apply_call and apply_call_pre)
+# ============================================================================
+
+- name: "insert function call after - apply_call"
+  code: "(a b)"
+  selection: "a"
+  actions: [insert, maths, "+", apply_call]
+  new_code: "(a (+ _) b)"
+  new_selection: "_"
+
+- name: "insert function call before - apply_call_pre"
+  code: "(a b)"
+  selection: "b"
+  actions: [insert, maths, "+", apply_call_pre]
+  new_code: "(a (+ _) b)"
+  new_selection: "_"
+
+- name: "insert function call at end"
+  code: "(foo bar)"
+  selection: "bar"
+  actions: [insert, maths, "*", apply_call]
+  new_code: "(foo bar (* _))"
+  new_selection: "_"
+
+- name: "insert nested function call"
+  code: "(+ 1 2)"
+  selection: "1"
+  actions: [insert, maths, "*", apply_call]
+  new_code: "(+ 1 (* _) 2)"
+  new_selection: "_"
+
+- name: "insert function with multiple holes"
+  code: "(a)"
+  selection: "a"
+  actions: [insert, maths, "+", apply_call]
+  new_code: "(a (+ _))"
+  new_selection: "_"
+
+# ============================================================================
+# INSERT - WRAP OPERATIONS (apply_wrap)
+# ============================================================================
+
+- name: "wrap symbol in function call"
+  code: "(a b c)"
+  selection: "b"
+  actions: [insert, maths, "+", apply_wrap]
+  new_code: "(a (+ b _) c)"
+  new_selection: "_"
+
+- name: "wrap expression in function call"
+  code: "(foo (* 2 3) bar)"
+  selection: "(* 2 3)"
+  actions: [insert, maths, "+", apply_wrap]
+  new_code: "(foo (+ (* 2 3) _) bar)"
+  new_selection: "_"
+
+- name: "wrap first element"
+  code: "(a b c)"
+  selection: "a"
+  actions: [insert, maths, "*", apply_wrap]
+  new_code: "((* a _) b c)"
+  new_selection: "_"
+
+- name: "wrap last element"
+  code: "(a b c)"
+  selection: "c"
+  actions: [insert, maths, "-", apply_wrap]
+  new_code: "(a b (- c _))"
+  new_selection: "_"
+
+- name: "wrap entire expression"
+  code: "(a b)"
+  selection: "(a b)"
+  actions: [insert, maths, "+", apply_wrap]
+  new_code: "(+ (a b) _)"
+  new_selection: "_"
+
+- name: "wrap in vector"
+  code: "[1 2 3]"
+  selection: "2"
+  actions: [insert, maths, "*", apply_wrap]
+  new_code: "[1 (* 2 _) 3]"
+  new_selection: "_"
+
+# ============================================================================
+# COMPLEX EDITING SEQUENCES (insert-dependent)
+# ============================================================================
+
+- name: "insert, fill hole, and continue"
+  code: "(+ 1)"
+  selection: "1"
+  actions: [insert, maths, "*", apply_call, type, "5", insert, maths, "3", apply]
+  new_code: "(+ 1 (* 5 3))"
+  new_selection: "3"
+
+- name: "wrap and fill"
+  code: "(foo bar)"
+  selection: "bar"
+  actions: [insert, maths, "+", apply_wrap, type, "10"]
+  new_code: "(foo (+ bar 10))"
+  new_selection: "10"
+
+- name: "delete and insert replacement"
+  code: "(+ 1 2)"
+  selection: "+"
+  actions: [delete, insert, maths, "*", apply_pre]
+  new_code: "(* 1 2)"
+  new_selection: "*"
+
+- name: "cut, navigate, paste, and wrap"
+  code: "(a (b c) d)"
+  selection: "d"
+  actions: [cut, in, next, paste, insert, maths, "+", apply_wrap, type, "1"]
+  new_code: "(a (b c (+ d 1)))"
+  new_selection: "1"
+
+- name: "slurp and insert"
+  code: "(+ 1) 2"
+  selection: "(+ 1)"
+  actions: [slurp_right, in, next, next, insert, maths, "*", apply_wrap, type, "3"]
+  new_code: "(+ 1 (* 2 3))"
+  new_selection: "3"
+
+- name: "barf and wrap expelled element"
+  code: "(+ 1 2 3)"
+  selection: "(+ 1 2 3)"
+  actions: [barf_right, next, insert, maths, "*", apply_wrap, type, "4"]
+  new_code: "(+ 1 2) (* 3 4)"
+  new_selection: "4"
+
+- name: "multiple moves and insert"
+  code: "(a b c d)"
+  selection: "b"
+  actions: [move_next, move_next, insert, maths, "+", apply_call_pre, type, "x", insert, maths, "y", apply]
+  new_code: "(a c d (+ x y) b)"
+  new_selection: "y"

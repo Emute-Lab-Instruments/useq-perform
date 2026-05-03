@@ -1,5 +1,12 @@
 # Structural Code Editor Navigation Test Cases for Clojure
 #
+# These YAML files are a living regression/spec-refinement suite for
+# data-driven editor command scenarios: command sequences, cursor/focus
+# movement, source edits, and bug-capture cases that should be easy for agents
+# to extend. A failing row may indicate an implementation bug, a semantic
+# refinement, or a spec update that still needs to land; do not assume failures
+# are stale expectations without triage.
+#
 # FORMAT:
 #   code: source text with «» marking the initially selected node
 #   actions: navigation action or list of actions
@@ -25,7 +32,7 @@
 
 - name: "previous symbol - simple"
   code: "hello «world»"
-  actions: prev
+  actions: previous
   expected: "hello"
 
 - name: "next symbol - multiple symbols"
@@ -35,7 +42,7 @@
 
 - name: "previous symbol - multiple symbols"
   code: "«foo» bar baz"
-  actions: prev
+  actions: previous
   expected: "foo"
 
 - name: "next stops at level boundary"
@@ -50,7 +57,7 @@
 
 - name: "previous stops at level boundary"
   code: "(«+» 1 (* 2 3))"
-  actions: prev
+  actions: previous
   expected: "+"
 
 # ── §2. Entering and exiting compounds (in/out) ─────────────────────────────
@@ -82,12 +89,12 @@
 
 - name: "deep in/out round-trip"
   code: "«(a (b (c d)))»"
-  actions: [in, next, in, in]
+  actions: [in, next, in, next, in]
   expected: "c"
 
 - name: "out from deep nesting"
   code: "(a (b («c» d)))"
-  actions: [out, out]
+  actions: [out, out, out]
   expected: "(a (b (c d)))"
 
 # ── §3. Horizontal spatial navigation (right/left) ─────────────────────────
@@ -122,7 +129,7 @@
   expected: "hello"
 
 - name: "left exits then moves to previous"
-  code: "(+ 1 (* «*» 2 3))"
+  code: "(+ 1 («*» 2 3))"
   actions: left
   expected: "(* 2 3)"
 
@@ -231,18 +238,18 @@
   expected: "+"
 
 - name: "out explicitly exits nested list"
-  code: "(+ 1 (* «*» 2 3))"
+  code: "(+ 1 («*» 2 3))"
   actions: out
   expected: "(* 2 3)"
 
 - name: "out exits multiple levels explicitly"
-  code: "(+ 1 (* «*» 2 3))"
+  code: "(+ 1 («*» 2 3))"
   actions: [out, out]
   expected: "(+ 1 (* 2 3))"
 
 - name: "previous stays at level, does not exit"
   code: "(+ 1 (* «*» 2 3))"
-  actions: prev
+  actions: previous
   expected: "*"
 
 # ── §6. Vector navigation ───────────────────────────────────────────────────
@@ -284,7 +291,7 @@
 
 - name: "previous stops at start of vector"
   code: "[«1» 2 3]"
-  actions: prev
+  actions: previous
   expected: "1"
 
 # ── §7. Nested vectors ──────────────────────────────────────────────────────
@@ -348,12 +355,12 @@
 
 - name: "previous navigates backward in map"
   code: "{:a 1 «:b» 2}"
-  actions: prev
+  actions: previous
   expected: "1"
 
 - name: "previous stops at first key"
   code: "{«:a» 1 :b 2}"
-  actions: prev
+  actions: previous
   expected: ":a"
 
 - name: "left exits map at start"
@@ -657,7 +664,7 @@
 
 - name: "navigate if with right"
   code: "(if «test» then else)"
-  actions: [right, right, right]
+  actions: [right, right]
   expected: "else"
 
 - name: "navigate cond with next"
@@ -685,9 +692,9 @@
 # ── §22. Destructuring ──────────────────────────────────────────────────────
 
 - name: "navigate destructuring in let"
-  code: "(let «{:keys [a b]}» m (+ a b))"
-  actions: next
-  expected: "[{:keys [a b]} m]"
+  code: "(let [{:keys [a b]} «m»] (+ a b))"
+  actions: previous
+  expected: "{:keys [a b]}"
 
 - name: "navigate into destructuring map"
   code: "(let [{:keys [a b]} m] (+ a b))"
@@ -725,7 +732,7 @@
 
 - name: "previous at start of list stays"
   code: "(«a» b c)"
-  actions: prev
+  actions: previous
   expected: "a"
 
 - name: "right at end moves to parent"
@@ -827,7 +834,7 @@
 - name: "first in map"
   code: "{«:b» 2 :a 1}"
   actions: first
-  expected: ":a"
+  expected: ":b"
 
 - name: "last in map"
   code: "{:a 1 «:b» 2}"
@@ -898,7 +905,7 @@
 
 - name: "navigate from hole with prev"
   code: "(osc freq «($ amp :number)»)"
-  actions: prev
+  actions: previous
   expected: "freq"
 
 - name: "right from hole exits to parent"
@@ -906,10 +913,10 @@
   actions: right
   expected: "(osc ($ amp :number))"
 
-- name: "left from hole exits to parent"
+- name: "left from hole goes to previous sibling"
   code: "(osc «($ freq :number)» amp)"
   actions: left
-  expected: "(osc ($ freq :number) amp)"
+  expected: "osc"
 
 - name: "hole is atomic - in is no-op"
   code: "(osc «($ freq :number)»)"
@@ -940,17 +947,17 @@
 
 - name: "prevHole from after hole"
   code: "(osc ($ freq :number) «amp»)"
-  actions: prevHole
+  actions: previousHole
   expected: "($ freq :number)"
 
 - name: "prevHole from on a hole goes to previous"
   code: "(osc «($ amp :number)» ($ body :expr))"
-  actions: prevHole
+  actions: previousHole
   expected: "($ amp :number)"
 
 - name: "prevHole at first hole is no-op"
   code: "(osc «($ freq :number)» amp)"
-  actions: prevHole
+  actions: previousHole
   expected: "($ freq :number)"
 
 - name: "nextHole crosses top-level forms"
@@ -960,7 +967,7 @@
 
 - name: "prevHole crosses top-level forms"
   code: "(osc ($ freq :number))\n(synth «bar»)"
-  actions: prevHole
+  actions: previousHole
   expected: "($ freq :number)"
 
 - name: "nextHole with no holes is no-op"
