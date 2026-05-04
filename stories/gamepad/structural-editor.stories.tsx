@@ -175,11 +175,23 @@ interface CursorInfo {
   range: { from: number; to: number } | null;
 }
 
+const NO_CURSOR_INFO: CursorInfo = {
+  path: [],
+  nodeKind: null,
+  label: 'no cursor',
+  range: null,
+};
+
 function getCursorInfo(view: EditorView): CursorInfo | null {
   const value = view.state.field(structField, false);
   if (!value) return null;
 
   const { state, idIndex, cursors } = value;
+
+  // Guard: when no cursor has been set yet (initial state), cursors or
+  // cursors.primary may be undefined.
+  if (!cursors?.primary) return { ...NO_CURSOR_INFO };
+
   const primary = cursors.primary;
   const targetId = primary.kind === 'node' ? primary.target : primary.parent;
 
