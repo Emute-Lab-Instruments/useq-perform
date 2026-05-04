@@ -243,6 +243,12 @@ export function applyReplace(
     return { ok: false, reason: "invalid-target" };
   }
 
+  // Existence guard: `replaceNode` throws when the id is not in the tree.
+  // The other three verbs guard via `parentOf` / `findById` before mutating.
+  if (findById(tree.root, targetId) === null) {
+    return { ok: false, reason: "invalid-target" };
+  }
+
   // `replaceNode` requires an addressable node id; the document root is
   // already excluded above. The replacement is always addressable.
   const newRoot = replaceNode(tree.root, targetId, replacement);

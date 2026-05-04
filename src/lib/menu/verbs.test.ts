@@ -511,23 +511,16 @@ describe("applyReplace", () => {
     expect(outer.children[0].kind).toBe("number");
   });
 
-  it("THROWS on missing cursor target — known verbs.ts gap (no findById guard before replaceNode)", () => {
-    // Discovered behaviour: applyReplace checks `targetId === tree.root.id`
-    // but does not verify the target is actually present in the tree before
-    // calling `replaceNode`. `replaceNode` throws when the id is missing,
-    // bypassing the structured `invalid-target` Result. applyInsert and the
-    // other verbs do guard via parentOf / findById; applyReplace omits that
-    // step. Pinned here so the gap is visible until a future fix.
+  it("returns invalid-target if the cursor target is not in the tree", () => {
     const root = doc(ids, sym("a", ids));
-    expect(() =>
-      applyReplace(
-        asTree(root),
-        cursorOn("nope"),
-        symItem("x"),
-        "left",
-        ids,
-      ),
-    ).toThrow(/replaceNode: node nope not in tree/);
+    const r = applyReplace(
+      asTree(root),
+      cursorOn("nope"),
+      symItem("x"),
+      "left",
+      ids,
+    );
+    expect(r).toEqual({ ok: false, reason: "invalid-target" });
   });
 });
 
