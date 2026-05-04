@@ -364,6 +364,46 @@ export const actions = {
     category: "menu",
     reversible: false,
   },
+  "menu.tab.cyclePrev": {
+    description: "Cycle menu tab backward",
+    category: "menu",
+    reversible: false,
+  },
+  "menu.tab.cycleNext": {
+    description: "Cycle menu tab forward",
+    category: "menu",
+    reversible: false,
+  },
+  "menu.verb.insert": {
+    description: "Menu: insert verb",
+    category: "menu",
+    reversible: true,
+  },
+  "menu.verb.replace": {
+    description: "Menu: replace verb",
+    category: "menu",
+    reversible: true,
+  },
+  "menu.verb.wrapWith": {
+    description: "Menu: wrap-with verb",
+    category: "menu",
+    reversible: true,
+  },
+  "menu.verb.call": {
+    description: "Menu: call verb",
+    category: "menu",
+    reversible: true,
+  },
+  "menu.text.open": {
+    description: "Open text entry sub-mode",
+    category: "menu",
+    reversible: false,
+  },
+  "menu.cancel": {
+    description: "Dismiss menu",
+    category: "menu",
+    reversible: false,
+  },
 
   // -- Picker ---------------------------------------------------------------
 
