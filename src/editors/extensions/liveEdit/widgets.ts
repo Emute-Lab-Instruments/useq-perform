@@ -32,6 +32,7 @@ import {
   RangeSetBuilder,
   StateEffect,
   StateField,
+  Text,
   type Extension,
 } from "@codemirror/state";
 
@@ -808,7 +809,8 @@ function widgetFor(slot: LiveEditSlot): LiveEditBaseWidget {
   }
 }
 
-function buildDecorations(slots: LiveEditSlot[], docLen: number): DecorationSet {
+function buildDecorations(slots: LiveEditSlot[], doc: Text): DecorationSet {
+  const docLen = doc.length;
   if (slots.length === 0) return Decoration.none;
 
   // Sort by `from` for RangeSetBuilder ordering requirement.
@@ -822,6 +824,15 @@ function buildDecorations(slots: LiveEditSlot[], docLen: number): DecorationSet 
     if (to <= from) continue;
     // Drop overlapping ranges to satisfy RangeSetBuilder ordering.
     if (from < lastTo) continue;
+    // CodeMirror forbids Decoration.replace() spanning line breaks in
+    // StateField-sourced decorations. Live-edit wrappers are always
+    // single-line (formatting.md §3.7); drop any multi-line range.
+    if (doc.lineAt(from).number !== doc.lineAt(to - 1).number) {
+      console.warn(
+        `[liveEdit] Dropping multi-line slot "${slot.id}" (line ${doc.lineAt(from).number}–${doc.lineAt(to - 1).number}). Live-edit wrappers must be single-line.`,
+      );
+      continue;
+    }
     builder.add(
       from,
       to,
@@ -842,7 +853,7 @@ const liveEditDecorations = ViewPlugin.fromClass(
     decorations: DecorationSet;
     constructor(view: EditorView) {
       const slots = view.state.field(liveEditSlotsField, false) ?? [];
-      this.decorations = buildDecorations(slots, view.state.doc.length);
+      this.decorations = buildDecorations(slots, view.state.doc);
     }
     update(u: ViewUpdate): void {
       const oldSlots = u.startState.field(liveEditSlotsField, false);
@@ -850,7 +861,7 @@ const liveEditDecorations = ViewPlugin.fromClass(
       if (u.docChanged || oldSlots !== newSlots) {
         this.decorations = buildDecorations(
           newSlots ?? [],
-          u.state.doc.length,
+          u.state.doc,
         );
       }
     }

@@ -14,7 +14,7 @@
 
 import { ViewPlugin } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
-import type { ChangeSpec } from "@codemirror/state";
+import { type ChangeSpec, Transaction } from "@codemirror/state";
 
 import { generateId } from "./markAction.ts";
 
@@ -110,11 +110,9 @@ export const liveEditPasteHandler = ViewPlugin.fromClass(
     update(u: ViewUpdate): void {
       if (!u.docChanged) return;
 
-      // Check if any paste or input event introduced the change
       const isPasteOrInput = u.transactions.some(
         (tr) =>
           tr.isUserEvent("input.paste") ||
-          tr.isUserEvent("input") ||
           tr.isUserEvent("liveEdit.mark") ||
           tr.isUserEvent("liveEdit.vectorMark"),
       );
@@ -162,9 +160,7 @@ export const liveEditPasteHandler = ViewPlugin.fromClass(
         if (changes.length > 0) {
           view.dispatch({
             changes,
-            annotations: [
-              // Mark as our rewrite event so we don't re-process it
-            ],
+            annotations: [Transaction.addToHistory.of(false)],
             userEvent: "liveEdit.pasteRewrite",
           });
         }

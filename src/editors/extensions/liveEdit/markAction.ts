@@ -658,7 +658,7 @@ export function executeLiveEditCommit(
     let formatted: string;
     const value = slot.value;
     if (typeof value === "number") {
-      const precision = slot.precision ?? 2;
+      const precision = (slot.precision != null && slot.precision >= 0) ? slot.precision : 2;
       formatted = value.toFixed(Math.min(precision, 8));
       // Remove trailing zeros after decimal (but keep at least one decimal if it had decimals)
       if (formatted.includes(".")) {
@@ -677,8 +677,8 @@ export function executeLiveEditCommit(
     });
 
     commitInFlight.add(slotId);
-    // Release atomicity guard after a timeout (eval round-trip)
-    setTimeout(() => commitInFlight.delete(slotId), 5000);
+    // Fallback: release after eval round-trip timeout (500ms is generous for WASM eval)
+    setTimeout(() => commitInFlight.delete(slotId), 500);
   }
 
   if (changes.length > 0) {
