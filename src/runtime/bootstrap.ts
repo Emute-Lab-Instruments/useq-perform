@@ -16,15 +16,16 @@ import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
 import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepository.ts';
 import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
-import { attachBridgeToEditor } from '../effects/liveEditRuntime.ts';
+import { attachBridgeToEditor, installPageLifecycleHandlers } from '../effects/liveEditRuntime.ts';
 import { createGamepadPipeline } from '../lib/gamepad/index.ts';
 import { bindGamepadNavigation } from '../editors/gamepadNavigation.ts';
-import { bindGamepadMenuBridge } from '../ui/adapters/gamepadMenuBridge.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
 import { mountModal } from '../ui/adapters/modal.tsx';
-import { mountPickerMenu } from '../ui/adapters/picker-menu.tsx';
-import { mountDoubleRadialMenu } from '../ui/adapters/double-radial-menu.tsx';
+import { mountRadialMenu } from '../ui/adapters/radialMenu.tsx';
 import { mountPalette } from '../ui/adapters/palette.tsx';
+import { createMenuDispatcher } from '../lib/menu/dispatcher.ts';
+import { menuState, dispatchMenuInput } from '../lib/menu/store.ts';
+import { getCachedManifest } from '../lib/menu/manifest.ts';
 import { mountModifierHints } from '../ui/adapters/modifier-hints.tsx';
 import {
   publishRuntimeDiagnostics,
@@ -141,6 +142,9 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
   // flow into the CodeMirror widget decorations.
   attachBridgeToEditor(editor);
 
+  // Install pagehide/visibilitychange flush for live-edit persistence (§7.2).
+  installPageLifecycleHandlers();
+
   // Mount Solid UI adapters and wire editor store.
   // panels.tsx and toolbars.tsx are loaded dynamically so Vite can split them into
   // separate chunks. The try/catch guards against mount-time failures.
@@ -155,8 +159,7 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     toolbars.mountMainToolbar();
     toolbars.mountOnboardingBanner();
     mountModal();
-    mountPickerMenu();
-    mountDoubleRadialMenu();
+    mountRadialMenu();
     mountPalette();
     mountModifierHints();
     // Mount panels and design selector
@@ -168,15 +171,20 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     reportBootstrapFailure("ui-adapter-mount", error);
   }
 
-  // Wire up three-stage gamepad pipeline + remaining channel subscribers
-  // (eval, manual-control axis). Structural nav flows through the
-  // keybindings handler registry directly: gamepad pipeline → ActionId
-  // (`nav.up`/`nav.down`/`nav.left`/`nav.right`, `edit.*`) → handler →
-  // structural dispatcher. No legacy spatial-mode toggle, no per-direction
-  // channel subscriptions.
-  const gamepadPipeline = createGamepadPipeline({ editor });
+  // Wire up three-stage gamepad pipeline + menu dispatcher.
+  // Structural nav flows through the keybindings handler registry directly:
+  // gamepad pipeline → ActionId (`nav.up`/`nav.down`/`nav.left`/`nav.right`,
+  // `edit.*`) → handler → structural dispatcher. Menu actions (`menu.*`)
+  // route to the menu dispatcher which drives the pure state machine.
+  const menuDispatcher = createMenuDispatcher({
+    getMenuState: menuState,
+    dispatchInput: dispatchMenuInput,
+    getManifest: () => getCachedManifest(),
+    getEditorView: () => editor,
+  });
+  const gamepadPipeline = createGamepadPipeline({ editor, menuDispatcher });
+  const menuCleanup = menuDispatcher.bind(editor);
   const navHandle = bindGamepadNavigation(editor);
-  const menuHandle = bindGamepadMenuBridge({ view: editor });
   // Expose dispatcher on window for console-driven testing during round 2.
   if (typeof globalThis !== 'undefined') {
     void import('../editors/extensions/structure/adapter/dispatcher.ts')

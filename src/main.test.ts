@@ -27,11 +27,16 @@ const bootstrapRuntimeSession = vi.fn(() => ({
 const initEditorPanel = vi.fn(async () => ({ id: "editor" }));
 const createGamepadPipeline = vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), dispose: vi.fn() }));
 const bindGamepadNavigation = vi.fn(() => ({ dispose: vi.fn() }));
-const bindGamepadMenuBridge = vi.fn(() => ({ dispose: vi.fn() }));
+const createMenuDispatcher = vi.fn(() => ({
+  bind: vi.fn(() => vi.fn()),
+  handleAction: vi.fn(),
+  handleAxis: vi.fn(),
+  open: vi.fn(),
+  close: vi.fn(),
+}));
 const setEditor = vi.fn();
 const mountModal = vi.fn();
-const mountPickerMenu = vi.fn();
-const mountDoubleRadialMenu = vi.fn();
+const mountRadialMenu = vi.fn();
 const registerVisualisationPanel = vi.fn();
 const mountTransportToolbar = vi.fn();
 const mountMainToolbar = vi.fn();
@@ -85,8 +90,18 @@ vi.mock("./editors/gamepadNavigation.ts", () => ({
   bindGamepadNavigation,
 }));
 
-vi.mock("./ui/adapters/gamepadMenuBridge.ts", () => ({
-  bindGamepadMenuBridge,
+vi.mock("./lib/menu/dispatcher.ts", () => ({
+  createMenuDispatcher,
+}));
+
+vi.mock("./lib/menu/store.ts", () => ({
+  menuState: vi.fn(() => ({ phase: "closed" })),
+  dispatchMenuInput: vi.fn(),
+  isMenuOpen: vi.fn(() => false),
+}));
+
+vi.mock("./lib/menu/manifest.ts", () => ({
+  getCachedManifest: vi.fn(() => null),
 }));
 
 vi.mock("./lib/editorStore.ts", () => ({
@@ -98,12 +113,8 @@ vi.mock("./ui/adapters/modal.tsx", () => ({
   mountModal,
 }));
 
-vi.mock("./ui/adapters/picker-menu.tsx", () => ({
-  mountPickerMenu,
-}));
-
-vi.mock("./ui/adapters/double-radial-menu.tsx", () => ({
-  mountDoubleRadialMenu,
+vi.mock("./ui/adapters/radialMenu.tsx", () => ({
+  mountRadialMenu,
 }));
 
 vi.mock("./ui/adapters/visualisationPanel", () => ({
@@ -124,6 +135,7 @@ vi.mock("./ui/adapters/toolbars.tsx", () => ({
 
 vi.mock("./effects/liveEditRuntime.ts", () => ({
   attachBridgeToEditor: vi.fn(),
+  installPageLifecycleHandlers: vi.fn(),
 }));
 
 

@@ -11,7 +11,6 @@ import {
   resolveGesture,
 } from "../resolver";
 import type { AppStateSnapshot, GamepadState, Layer, LayerName } from "../types";
-import { pickerLayer } from "./picker";
 import { radialLayer } from "./radial";
 import { modalShiftLayers } from "./modal-shift";
 import { leaderLayers, leaderTransientLayers } from "./leader";
@@ -41,28 +40,6 @@ function mkState(overrides: Partial<GamepadState> = {}): AppStateSnapshot {
     },
   };
 }
-
-describe("paradigm: picker", () => {
-  it("passes binding lint", () => {
-    expect(lintBindings([pickerLayer])).toEqual([]);
-  });
-
-  it("resolves tap(A) to picker.select when menu is open", () => {
-    const layers = [pickerLayer];
-    const map = buildLayerMap(layers);
-    const state: AppStateSnapshot = { ...mkState(), menuOpen: true };
-    const r = resolveGesture(tap("A"), state, layers, map);
-    expect(r?.kind).toBe("action");
-    if (r?.kind === "action") expect(r.action).toBe("picker.select");
-  });
-
-  it("inactive when menu is closed", () => {
-    const layers = [pickerLayer];
-    const map = buildLayerMap(layers);
-    const r = resolveGesture(tap("A"), mkState(), layers, map);
-    expect(r).toBeNull();
-  });
-});
 
 describe("paradigm: radial-menu layer", () => {
   const layers = [radialLayer];

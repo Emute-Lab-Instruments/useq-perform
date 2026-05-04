@@ -6,17 +6,7 @@
 >
 > This spec defines what the menu *means*. Concrete hardware-button assignments are inherited from [gamepad.md](gamepad.md)'s gesture vocabulary. Concrete item content is pulled from a bundled JSON manifest (§7).
 
-### Source files (current / legacy)
-
-- `src/ui/RadialMenu.tsx` — SVG radial menu renderer
-- `src/ui/DoubleRadialPicker.tsx` — double-ring radial picker component
-- `src/ui/adapters/double-radial-menu.tsx` — `mountDoubleRadialMenu()` imperative adapter
-- `src/ui/adapters/gamepadMenuBridge.ts` — gamepad-to-menu bridge (picker integration)
-- `src/lib/gamepad/paradigms/picker.ts` — picker layer (legacy; replaced by radial layer per §11.3)
-- `src/contracts/gamepadChannels.ts` — axis channels consumed by the menu
-- `src/lib/keybindings/actions.ts` — `menu.*` action IDs (§11.4)
-
-### Source files (planned per §11.1 — not yet implemented)
+### Source files
 
 - `src/lib/menu/types.ts` — MenuTab, MenuItem, Verb, MenuState, HoleSpec
 - `src/lib/menu/manifest.ts` / `manifest.json` — manifest loading, lint, cache
@@ -25,8 +15,11 @@
 - `src/lib/menu/chain.ts` — auto-chain runner
 - `src/lib/menu/dispatcher.ts` — menu dispatcher (impure)
 - `src/lib/menu/store.ts` — Solid reactive store (menuStore)
-- `src/ui/menu/RadialMenu.tsx` — new SVG renderer (props-based)
-- `src/ui/adapters/radialMenu.ts` — new imperative adapter
+- `src/ui/menu/RadialMenu.tsx` — SVG renderer (props-based)
+- `src/ui/adapters/radialMenu.tsx` — imperative adapter (`mountRadialMenu`)
+- `src/lib/gamepad/paradigms/radial.ts` — radial-menu paradigm layer (§11.3)
+- `src/contracts/gamepadChannels.ts` — axis channels consumed by manual control
+- `src/lib/keybindings/actions.ts` — `menu.*` action IDs (§11.4)
 
 ---
 

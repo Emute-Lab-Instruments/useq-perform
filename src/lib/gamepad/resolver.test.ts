@@ -70,17 +70,15 @@ const globalLayer: Layer = {
   axes: { right: ch("manual-control") },
 };
 
-const pickerLayer: Layer = {
-  name: ln("picker"),
+const radialFixtureLayer: Layer = {
+  name: ln("radial-menu"),
   when: (s) => !!(s as Record<string, unknown>).menuOpen,
   gestures: {
-    [keyOf(tap("Up"))]: "picker.up",
-    [keyOf(tap("Down"))]: "picker.down",
-    [keyOf(tap("A"))]: "picker.select",
-    [keyOf(tap("B"))]: "picker.cancel",
+    [keyOf(tap("A"))]: "menu.verb.insert",
+    [keyOf(tap("B"))]: "menu.cancel",
   },
-  axes: { left: ch("picker.angle"), right: ch("picker.angle") },
-  onMiss: "fall-through",
+  axes: { left: ch("menu.left.angle"), right: ch("menu.right.angle") },
+  onMiss: "pop-and-discard",
 };
 
 const dualBindLayer: Layer = {
@@ -122,7 +120,7 @@ const afterYLayer: Layer = {
 
 describe("activeStack", () => {
   it("returns predicate-driven layers whose when() is true", () => {
-    const layers = [globalLayer, pickerLayer];
+    const layers = [globalLayer, radialFixtureLayer];
     const map = buildLayerMap(layers);
     const state = mkState();
 
@@ -131,14 +129,14 @@ describe("activeStack", () => {
   });
 
   it("includes layers whose when predicate passes", () => {
-    const layers = [globalLayer, pickerLayer];
+    const layers = [globalLayer, radialFixtureLayer];
     const map = buildLayerMap(layers);
     const state: AppStateSnapshot = { ...mkState(), menuOpen: true };
 
     const stack = activeStack(state, layers, map);
     expect(stack.map((l) => l.name)).toEqual([
       ln("global"),
-      ln("picker"),
+      ln("radial-menu"),
     ]);
   });
 
@@ -191,7 +189,7 @@ describe("activeStack", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveGesture", () => {
-  const layers = [globalLayer, pickerLayer];
+  const layers = [globalLayer, radialFixtureLayer];
   const map = buildLayerMap([...layers, afterYLayer, leaderBaseLayer]);
 
   it("resolves a gesture to an action in the first matching layer", () => {
@@ -219,19 +217,19 @@ describe("resolveGesture", () => {
 
   it("higher layers shadow lower layers", () => {
     // Picker before global — declaration order = priority order
-    const priorityLayers = [pickerLayer, globalLayer];
+    const priorityLayers = [radialFixtureLayer, globalLayer];
     const m = buildLayerMap(priorityLayers);
     const state: AppStateSnapshot = { ...mkState(), menuOpen: true };
     const result = resolveGesture(tap("A"), state, priorityLayers, m);
     expect(result).toEqual({
       kind: "action",
-      action: "picker.select",
+      action: "menu.verb.insert",
       gesture: tap("A"),
     });
   });
 
   it("falls through to lower layers when higher layer doesn't bind", () => {
-    const priorityLayers = [pickerLayer, globalLayer];
+    const priorityLayers = [radialFixtureLayer, globalLayer];
     const m = buildLayerMap(priorityLayers);
     const state: AppStateSnapshot = { ...mkState(), menuOpen: true };
     const result = resolveGesture(tap("Start"), state, priorityLayers, m);
@@ -405,7 +403,7 @@ describe("resolveGesture — transient layer miss", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveAxis", () => {
-  const layers = [globalLayer, pickerLayer];
+  const layers = [globalLayer, radialFixtureLayer];
   const map = buildLayerMap(layers);
 
   it("resolves right stick to channel from the topmost binding layer", () => {
@@ -420,14 +418,14 @@ describe("resolveAxis", () => {
   });
 
   it("higher layers shadow lower axis bindings", () => {
-    const priorityLayers = [pickerLayer, globalLayer];
+    const priorityLayers = [radialFixtureLayer, globalLayer];
     const m = buildLayerMap(priorityLayers);
     const state: AppStateSnapshot = { ...mkState(), menuOpen: true };
     const frame = mkFrame("RightStick", 0.5, 0.3);
     const result = resolveAxis(frame, state, priorityLayers, m);
     expect(result).toEqual({
       kind: "axis",
-      channel: ch("picker.angle"),
+      channel: ch("menu.right.angle"),
       stick: "RightStick",
       frame,
     });
@@ -439,7 +437,7 @@ describe("resolveAxis", () => {
     const result = resolveAxis(frame, state, layers, map);
     expect(result).toEqual({
       kind: "axis",
-      channel: ch("picker.angle"),
+      channel: ch("menu.left.angle"),
       stick: "LeftStick",
       frame,
     });
@@ -498,9 +496,9 @@ describe("lintBindings", () => {
 
 describe("buildLayerMap", () => {
   it("builds a map keyed by layer name", () => {
-    const map = buildLayerMap([globalLayer, pickerLayer]);
+    const map = buildLayerMap([globalLayer, radialFixtureLayer]);
     expect(map.get(ln("global"))).toBe(globalLayer);
-    expect(map.get(ln("picker"))).toBe(pickerLayer);
+    expect(map.get(ln("radial-menu"))).toBe(radialFixtureLayer);
     expect(map.size).toBe(2);
   });
 });

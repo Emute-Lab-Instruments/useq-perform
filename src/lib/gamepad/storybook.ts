@@ -56,7 +56,7 @@ import {
   resolveAxis,
   buildLayerMap,
 } from "./resolver";
-import { pickerLayer } from "./paradigms/picker";
+import { radialLayer } from "./paradigms/radial";
 import { modalShiftLayers } from "./paradigms/modal-shift";
 import {
   leaderLayers,
@@ -203,23 +203,23 @@ function layersForParadigm(
   switch (paradigm) {
     case "leader":
       return {
-        layers: [pickerLayer, ...leaderLayers],
+        layers: [radialLayer, ...leaderLayers],
         transientLayers: leaderTransientLayers,
       };
     case "hydra":
       return {
-        layers: [pickerLayer, ...hydraLayers],
+        layers: [radialLayer, ...hydraLayers],
         transientLayers: hydraTransientLayers,
       };
     case "chord-heavy":
       return {
-        layers: [pickerLayer, ...chordHeavyLayers],
+        layers: [radialLayer, ...chordHeavyLayers],
         transientLayers: [],
       };
     case "modal-shift":
     default:
       return {
-        layers: [pickerLayer, ...modalShiftLayers],
+        layers: [radialLayer, ...modalShiftLayers],
         transientLayers: [],
       };
   }

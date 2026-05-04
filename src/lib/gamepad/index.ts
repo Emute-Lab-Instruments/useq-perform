@@ -18,13 +18,14 @@ import {
 } from "./gamepadManager";
 import { getHandler, type ActionHandler } from "../keybindings/handlers";
 import type { ActionId } from "../keybindings/actions";
+import type { MenuDispatcher } from "../menu/dispatcher";
 import * as ch from "../../contracts/gamepadChannels";
 
 import { diffSnapshots } from "./hardware";
 import { step, flush, INITIAL_STATE, DEFAULT_TIMING, type RecognizerState, type Timing } from "./recognizer";
 import { resolveGesture, resolveAxis, buildLayerMap, activeStack } from "./resolver";
 import { createDispatcher, type Dispatcher } from "./dispatcher";
-import { pickerLayer } from "./paradigms/picker";
+import { radialLayer } from "./paradigms/radial";
 import { modalShiftLayers } from "./paradigms/modal-shift";
 import type {
   AxisChannelName,
@@ -49,6 +50,12 @@ export type GamepadPipelineOptions = {
   readonly layers?: readonly Layer[];
   readonly transientLayers?: readonly Layer[];
   /**
+   * Optional menu dispatcher for routing `menu.*` actions and axis events
+   * from the radial-menu paradigm layer. When provided, menu actions go
+   * directly to the dispatcher instead of legacy typed channels.
+   */
+  readonly menuDispatcher?: MenuDispatcher;
+  /**
    * Optional observer called for every fired ActionId. Used by surfaces
    * (e.g. zen mode grid) that want to react to gamepad-resolved actions
    * without subscribing to a typed channel. Fires before the action
@@ -70,11 +77,18 @@ export interface GamepadPipeline {
 function createActionRunner(
   getEditor: () => EditorView | undefined,
   onAction?: (action: ActionId) => void,
+  menuDispatcher?: MenuDispatcher,
 ) {
   return function fireAction(action: ActionId): void {
     // Notify external observer (e.g. zen mode grid navigation) before
     // dispatching. The observer can read the action id and react.
     onAction?.(action);
+
+    // Route menu.* actions to the menu dispatcher if available.
+    if (menuDispatcher && action.startsWith("menu.")) {
+      menuDispatcher.handleAction(action);
+      return;
+    }
 
     // Try keybinding handler first (covers eval, edit, probe, panel,
     // structural nav, etc.)
@@ -89,36 +103,9 @@ function createActionRunner(
       return;
     }
 
-    // Bridge to remaining typed channels for menu / picker actions that
-    // still flow through channel subscribers. Tracks G/H will retire these.
+    // Bridge to remaining typed channels for actions that still flow
+    // through channel subscribers (eval, manual-control, etc.).
     switch (action) {
-      case "menu.openBefore":
-        ch.openMenu.publish({ direction: "before" });
-        break;
-      case "menu.openAfter":
-        ch.openMenu.publish({ direction: "after" });
-        break;
-      case "menu.radial":
-        ch.openRadialMenu.publish({ direction: "replace" });
-        break;
-      case "picker.up":
-        ch.pickerNavigate.publish({ direction: "up" });
-        break;
-      case "picker.down":
-        ch.pickerNavigate.publish({ direction: "down" });
-        break;
-      case "picker.left":
-        ch.pickerNavigate.publish({ direction: "left" });
-        break;
-      case "picker.right":
-        ch.pickerNavigate.publish({ direction: "right" });
-        break;
-      case "picker.select":
-        ch.pickerSelect.publish({});
-        break;
-      case "picker.cancel":
-        ch.pickerCancel.publish({});
-        break;
       default:
         break;
     }
@@ -144,7 +131,7 @@ export function createGamepadPipeline(
 
   // Layer configuration
   const predicateLayers: readonly Layer[] = options.layers ?? [
-    pickerLayer,
+    radialLayer,
     ...modalShiftLayers,
   ];
   const allTransientLayers: readonly Layer[] = options.transientLayers ?? [];
@@ -157,13 +144,6 @@ export function createGamepadPipeline(
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let started = false;
   let editor: EditorView | undefined = options.editor;
-  let menuOpen = false;
-
-  // Track controller mode from the menu bridge so the picker layer
-  // activates when a menu is open.
-  const unsubMode = ch.controllerMode.subscribe((mode) => {
-    menuOpen = mode === "picker" || mode === "number-picker" || mode === "loading-picker";
-  });
 
   const gamepadState: {
     heldButtons: Set<string>;
@@ -195,11 +175,10 @@ export function createGamepadPipeline(
   function getAppState() {
     return {
       gamepad: getState(),
-      menuOpen,
     };
   }
 
-  const fireAction = createActionRunner(() => editor, options.onAction);
+  const fireAction = createActionRunner(() => editor, options.onAction, options.menuDispatcher);
 
   function doUndo(): void {
     if (!editor) return;
@@ -211,6 +190,27 @@ export function createGamepadPipeline(
     fireAction,
     undo: doUndo,
     publishAxis: (_channel: AxisChannelName, frame: AxisFrame) => {
+      // Route menu axis channels to the menu dispatcher.
+      if (
+        options.menuDispatcher &&
+        (_channel === "menu.left.angle" || _channel === "menu.right.angle")
+      ) {
+        const stick = _channel === "menu.left.angle" ? "left" as const : "right" as const;
+        const mag = Math.sqrt(frame.x * frame.x + frame.y * frame.y);
+        const ENGAGEMENT_THRESHOLD = 0.5;
+        if (mag < ENGAGEMENT_THRESHOLD) {
+          options.menuDispatcher.handleAxis(stick, null);
+        } else {
+          // Compute segment index from polar angle. Default 12 segments
+          // per ring; the reducer clamps to the active tab's count.
+          const angle = Math.atan2(frame.x, -frame.y); // 0 = north, CW positive
+          const SEGMENTS = 12;
+          const normalised = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+          const segment = Math.floor((normalised / (2 * Math.PI)) * SEGMENTS);
+          options.menuDispatcher.handleAxis(stick, segment);
+        }
+        return;
+      }
       ch.stickAxis.publish({
         stick: frame.stick === "LeftStick" ? "left" : "right",
         x: frame.x,
@@ -291,8 +291,7 @@ export function createGamepadPipeline(
   function processGestures(gestures: readonly GestureEvent[]): void {
     for (const ge of gestures) {
       // Capture appState per-gesture so that side effects from dispatch
-      // (e.g. menuOpen flipping via controllerMode channel) are visible
-      // to subsequent gestures in the same batch.
+      // are visible to subsequent gestures in the same batch.
       const appState = getAppState();
       const resolution = resolveGesture(
         ge.gesture,
@@ -336,7 +335,6 @@ export function createGamepadPipeline(
     dispose(): void {
       this.stop();
       dispatcher.dispose();
-      unsubMode();
       manager.reset();
     },
   };
@@ -345,7 +343,7 @@ export function createGamepadPipeline(
 // Re-export commonly used types and constructors
 export { keyOf, tap, hold, held, chord, flick, doubleTap, at } from "./gestures";
 export type { Gesture, GestureEvent, LogicalEvent, AxisFrame, Layer, LayerName } from "./types";
-export { pickerLayer } from "./paradigms/picker";
+export { radialLayer } from "./paradigms/radial";
 export { modalShiftLayers } from "./paradigms/modal-shift";
 export { leaderLayers, leaderTransientLayers } from "./paradigms/leader";
 export { hydraLayers, hydraTransientLayers } from "./paradigms/hydra";

@@ -132,7 +132,7 @@ describe("Single-bundle build structure", () => {
       const content = readBuildFile(ENTRY_POINT);
       // Check for evidence of adapters
       const hasAdapters = content.includes("mountModal") ||
-                          content.includes("mountPickerMenu") ||
+                          content.includes("mountRadialMenu") ||
                           content.includes("mountSettingsPanel");
       expect(
         hasAdapters,
