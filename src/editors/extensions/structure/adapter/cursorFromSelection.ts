@@ -9,6 +9,10 @@
  * selection changes and re-points the structural cursor at the smallest
  * addressable node enclosing the caret head.
  *
+ * When the caret is not inside any node's source range (whitespace between
+ * top-level forms), the cursor resets to the document root, which clears
+ * the halo overlay (resolveCursorTargets skips the doc root).
+ *
  * Loop avoidance: a transaction carrying a `setStructState` effect was
  * dispatched by structural nav itself (`adapter/applyOp.ts`), so we skip it.
  * That covers the case where `nav.out` lifts the cursor to a parent compound
@@ -32,6 +36,11 @@ import { pathsFromCursorSet } from "./cursorPath.ts";
 import { setStructState, structField } from "./stateField.ts";
 import type { IdIndex } from "./treeFromLezer.ts";
 
+/**
+ * Find the deepest non-document node whose inclusive source range
+ * contains `pos`.  Ranges are [from, to] (inclusive both ends).
+ * Returns null when `pos` falls in the gap between nodes → halo clears.
+ */
 function findSmallestEnclosingAddressableNode(
   root: DocumentNode,
   idIndex: IdIndex,
@@ -74,7 +83,30 @@ export const structuralCursorFromSelection = ViewPlugin.fromClass(
         value.idIndex,
         pos,
       );
-      if (enclosingId === null) return;
+
+      // No node encloses the caret → clear the halo by setting cursor to
+      // the doc root. resolveCursorTargets() already skips the doc root,
+      // so the polygon overlay disappears.
+      if (enclosingId === null) {
+        const primary = value.state.cursors.primary;
+        if (primary.kind === "node" && primary.target === value.state.tree.root.id) return;
+        const cs = singleCursor(nodeCursor(value.state.tree.root.id));
+        const newState: State = { tree: value.state.tree, cursors: cs };
+        const view = this.view;
+        const idIndex = value.idIndex;
+        queueMicrotask(() => {
+          if (this.destroyed) return;
+          view.dispatch({
+            effects: setStructState.of({
+              state: newState,
+              idIndex,
+              cursorPaths: pathsFromCursorSet(cs, newState.tree),
+            }),
+          });
+        });
+        return;
+      }
+
       const primary = value.state.cursors.primary;
       if (primary.kind === "node" && primary.target === enclosingId) return;
       // Can't dispatch inside update(); defer to a microtask.

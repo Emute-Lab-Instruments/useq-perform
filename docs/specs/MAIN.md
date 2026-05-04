@@ -181,6 +181,10 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.25 [state-sync.md](state-sync.md) — WASM↔hardware drift detection and recalibration in `both` mode.
 
+6.26 [state-identity.md](state-identity.md) — hidden/editor-generated IDs for anonymous stateful expressions, linked inactive variants, duplicate-active validation, runtime state-resource schemas, and stateful probe projection.
+
+6.27 [formatting.md](formatting.md) — auto-formatting policy: when the editor reformats (structural mutations only), what "well-formatted" means (width + complexity thresholds, arg-aligned breaking, `do`-block rules), and preservation of user layout intent (inter-top-level whitespace sacred, insertion-mode hands-off).
+
 ---
 
 ## 7. Cross-References
@@ -206,6 +210,10 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 7.10 `../../src-useq/docs/specs/diagnostics.md` — diagnostic system contract (severity, category, source span, ABI surface). See also `../../src-useq/docs/specs/failure-model.md` for failure semantics (LKG, health states, REPL-vs-output channels).
 
 7.10.1 `../../src-useq/docs/specs/visualisation-projection.md` — WASM-side projection-fork and future-frontier contract used by [visualisation.md](visualisation.md).
+
+7.10.2 [state-identity.md](state-identity.md) — editor↔runtime contract for stable identity of anonymous stateful expressions across live edits, output variants, probes, and hidden eval rewrites.
+
+7.10.3 `../../src-useq/docs/specs/state-identity.md` — runtime/language counterpart for state-resource IDs, cold-eval signal expression results, duplicate-active ID diagnostics, and projection semantics.
 
 7.11 [gamepad-handoff.md](gamepad-handoff.md) — gamepad pipeline rebuild status and handoff notes (working document, not normative).
 

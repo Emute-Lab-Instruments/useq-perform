@@ -1,14 +1,10 @@
 /**
  * Print a core Node back to ModuLisp source text.
  *
- * Round-2 strategy (per task brief): whole-form re-render. We do NOT preserve
- * original whitespace, line breaks, or comments inside the printed range —
- * the caller replaces the entire source range of a top-level form with the
- * printed string. Whitespace fidelity is explicitly out of scope.
- *
- * Output uses single spaces between siblings; compounds with multiple
- * children get a single trailing space removed. No indentation. The user is
- * expected to reformat manually if they care about layout — round-3 work.
+ * Current: flat single-line output (single spaces between siblings, no
+ * indentation). This is a placeholder — the target behaviour is defined in
+ * docs/specs/formatting.md §3 (width + complexity thresholds, arg-aligned
+ * breaking, do-block rules, recursive layout).
  */
 
 import type { Meta, Node } from "../core/index.ts";

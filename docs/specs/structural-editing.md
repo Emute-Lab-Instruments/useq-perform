@@ -67,7 +67,7 @@
 - Mutations whose target node is inside an error region are rejected with a no-op flash.
 - Errors in one branch of the tree do not poison operations elsewhere.
 
-2.6 **Whitespace and line comments belong to the parent** as inter-child padding. They are not nodes. Structural mutations preserve the parent's padding pattern as faithfully as Lezer's reformatting rules allow. Both `;` line comments and `;;` form comments share this rule.
+2.6 **Whitespace and line comments belong to the parent** as inter-child padding. They are not nodes. After a structural mutation, the affected top-level form is reformatted per [formatting.md](formatting.md) §3 (width + complexity thresholds, arg-aligned breaking, `do`-block rules). Whitespace between top-level forms is never touched by mutations — it is the performer's scene layout ([formatting.md](formatting.md) §2.1). Both `;` line comments and `;;` form comments share this rule; comment placement during reformatting follows [formatting.md](formatting.md) §4.2.
 
 2.7 **`#_` ignore-form is a Meta**, not a comment (§6). The host form remains a first-class node visible to navigation, with an `ignore` Meta marking it. Ignored code stays visible in the document; its sole effect is that the runtime skips evaluation.
 
@@ -147,6 +147,8 @@ Recognition is structural, not textual: a list whose head is the literal symbol 
 - Operations against the document root are atomic; they do not interleave with sibling cursors.
 
 3.6 **Cursor stability across edits.** After any text edit (structural or insertion-mode), every cursor's target is remapped to the corresponding node in the new tree. If a target no longer exists, the cursor relocates to the nearest surviving ancestor. If the document is now empty, the cursor relocates to the document root.
+
+3.6.1 **Halo clears when caret leaves all nodes.** When the CodeMirror caret moves to a position not enclosed by any node's inclusive source range (i.e. whitespace between top-level forms or between siblings), the structural cursor resets to the document root. Since `resolveCursorTargets` already skips the document root (§3.3), the halo disappears. The cursor re-targets the nearest enclosing node the moment the caret re-enters a node's range. Source ranges are inclusive `[from, to]`: being on the closing paren (`pos === to`) counts as "inside" and the form retains the halo. Tie-breaking when the caret sits on a position shared by exactly two adjacent forms (e.g. one space between `(a) (b)`) follows the inclusive-range rule — the left form's range includes the gap, so the left form wins.
 
 3.7 **Range cursor invariants.** A range's endpoints share a parent and are non-degenerate (length ≥ 2). A mutation that collapses a range to one node converts it to a node cursor. A mutation that destroys one endpoint relocates the range to remain valid, or collapses it.
 

@@ -1,0 +1,105 @@
+# Halo-clearing golden tests
+#
+# When the CodeMirror caret is not inside any AST node's inclusive source
+# range [from, to], the structural halo should clear (cursor → doc root).
+#
+# Ranges are inclusive: being on the closing paren (pos === to) counts as
+# "inside" and halos the form. Being one position past to does NOT.
+#
+# Tie-break: `(a 1) (b 2)` at the space (pos=5) is inside `(a 1)` because
+# its range [0,5] includes 5 — closing boundary "owns" the gap.
+
+# --- No halo: in the gap between nodes ---
+
+- name: "caret in blank line between two forms → no halo"
+  code: "(a 1)\n\n(b 2)"
+  cursor: 6
+  new_selection: none
+
+- name: "caret in multiple blank lines between forms → no halo"
+  code: "(a 1)\n\n\n\n(b 2)"
+  cursor: 7
+  new_selection: none
+
+- name: "leading whitespace before any form → no halo"
+  code: "   \n(a 1)"
+  cursor: 0
+  new_selection: none
+
+- name: "trailing whitespace after all forms → no halo"
+  code: "(a 1)\n   "
+  cursor: end
+  new_selection: none
+
+- name: "only whitespace in buffer → no halo"
+  code: "   \n\n   "
+  cursor: 2
+  new_selection: none
+
+- name: "two spaces between same-line forms → no halo"
+  code: "(a 1)  (b 2)"
+  cursor: 6
+  new_selection: none
+
+- name: "space before form → no halo"
+  code: " (a 1)"
+  cursor: 0
+  new_selection: none
+
+- name: "space after form at end of doc → no halo"
+  code: "(a 1) "
+  cursor: end
+  new_selection: none
+
+# --- Halo: cursor inside a node's inclusive range ---
+
+- name: "caret on opening paren → halo"
+  code: "(a 1)\n\n(b 2)"
+  cursor: 0
+  new_selection: "(a 1)"
+
+- name: "caret on closing paren (pos = to) → halo"
+  code: "(a 1)\n\n(b 2)"
+  cursor: 4
+  new_selection: "1"
+
+- name: "caret just past closing paren (pos = to + 1 of list) → halo on list"
+  code: "(a 1)\n\n(b 2)"
+  cursor: 5
+  new_selection: "(a 1)"
+
+- name: "single space between same-line forms → halo on left (closing boundary)"
+  code: "(a 1) (b 2)"
+  cursor: 5
+  new_selection: "(a 1)"
+
+- name: "single newline between forms → halo on left"
+  code: "(a 1)\n(b 2)"
+  cursor: 5
+  new_selection: "(a 1)"
+
+# --- Nested forms ---
+
+- name: "caret on opening paren of inner form → halo on inner"
+  code: "(a (b 1) (c 2))"
+  cursor: 3
+  new_selection: "(b 1)"
+
+- name: "caret inside inner form leaf → halo on leaf"
+  code: "(a (b 1) (c 2))"
+  cursor: 4
+  new_selection: "b"
+
+- name: "caret just past inner form closing paren → halo on inner"
+  code: "(a (b 1) (c 2))"
+  cursor: 8
+  new_selection: "(b 1)"
+
+# --- State transition: type a form into whitespace ---
+
+- name: "type a form into whitespace → halo appears on new form"
+  code: "(a 1)\n\n(b 2)"
+  cursor: 6
+  steps:
+    - action: [type, "(c 3)"]
+      new_selection: "(c 3)"

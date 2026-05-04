@@ -39,8 +39,11 @@ import { dispatchAction } from '../src/editors/extensions/structure/adapter/disp
 import { executeEditorCommand } from '../src/editors/commands/editorCommandRouter.ts';
 import { structField, setStructState } from '../src/editors/extensions/structure/adapter/stateField.ts';
 import { pathsFromCursorSet } from '../src/editors/extensions/structure/adapter/cursorPath.ts';
+import { _internals } from '../src/editors/extensions/structure/adapter/cursorFromSelection.ts';
 import { deleteConfirmField } from '../src/editors/extensions/deleteConfirmFlash.ts';
 import { history } from '@codemirror/commands';
+
+const { findSmallestEnclosingAddressableNode } = _internals;
 
 // ── Action mapping ──────────────────────────────────────────────────────────
 //
@@ -370,6 +373,14 @@ function getSelectedText(view) {
   return docText.slice(range.from, range.to);
 }
 
+/** True when the structural cursor sits on the document root (= no halo). */
+function isCursorOnDocRoot(view) {
+  const value = view.state.field(structField);
+  const cursor = value.state.cursors.primary;
+  if (cursor.kind !== 'node') return false;
+  return cursor.target === value.state.tree.root.id;
+}
+
 /** Doc offset of the start of the primary cursor's focused end. */
 function getSelectionStart(view) {
   const value = view.state.field(structField);
@@ -542,6 +553,24 @@ function runTestCase(testCase) {
             actual: selectedText,
           };
         }
+      } else if (testCase.cursor !== undefined) {
+        // No explicit selection, but cursor was set — auto-seed from caret position
+        // (mirrors what structuralCursorFromSelection does in the live app).
+        const value = view.state.field(structField);
+        const pos = view.state.selection.main.head;
+        const enclosingId = findSmallestEnclosingAddressableNode(
+          value.state.tree.root,
+          value.idIndex,
+          pos,
+        );
+        if (enclosingId !== null) {
+          seedCursorAtRange(view,
+            value.idIndex.get(enclosingId).from,
+            value.idIndex.get(enclosingId).to,
+          );
+        }
+        // If null, cursor stays on doc root (= no halo), which is the desired
+        // behaviour for "caret in whitespace" test cases.
       }
     }
 
@@ -565,6 +594,18 @@ function runTestCase(testCase) {
         }
 
         if (step.new_selection === null) {
+          continue;
+        }
+        if (step.new_selection === 'none') {
+          if (!isCursorOnDocRoot(view)) {
+            return {
+              passed: false,
+              name: `${testCase.name} (step ${i + 1})`,
+              error: `Expected no halo (cursor on doc root) after action '${step.action}'`,
+              expected: 'none',
+              actual: getSelectedText(view),
+            };
+          }
           continue;
         }
         const stepSelectionSpec = parseStepSelection(step.new_selection);
@@ -603,9 +644,21 @@ function runTestCase(testCase) {
 
     // ── Check final selection ──────────────────────────────────────────
     const expectedText = isGuillemetFormat ? testCase.expected : null;
+    const finalSelectionNone = !isGuillemetFormat && testCase.new_selection === 'none';
     const finalSelectionSpec = isGuillemetFormat ? null : normalizeSelectionSpec(testCase.new_selection);
 
-    if (expectedText !== undefined && expectedText !== null) {
+    if (finalSelectionNone) {
+      if (!isCursorOnDocRoot(view)) {
+        return {
+          passed: false,
+          name: testCase.name,
+          error: `Expected no halo (cursor on doc root) after actions`,
+          expected: 'none',
+          actual: getSelectedText(view),
+          finalCode,
+        };
+      }
+    } else if (expectedText !== undefined && expectedText !== null) {
       const finalSelection = getSelectedText(view);
       if (finalSelection !== expectedText) {
         return {

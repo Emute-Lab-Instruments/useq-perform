@@ -67,3 +67,8 @@ registerSuite(
   'Structural YAML — Misc (keyboard/typing)',
   loadYaml('new_structural/misc_tests.yaml'),
 );
+
+registerSuite(
+  'Structural YAML — Halo clearing',
+  loadYaml('new_structural/halo_clear_on_whitespace.yaml'),
+);
