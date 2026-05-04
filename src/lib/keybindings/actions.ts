@@ -239,43 +239,50 @@ export const actions = {
     reversible: false,
     requiresEditor: true,
   },
-  "nav.toggleMode": {
-    description: "Toggle navigation mode",
-    category: "navigation",
-    reversible: false,
-  },
-  "nav.structuralUp": {
-    description: "Navigate out (structural)",
+  "nav.up": {
+    description: "Spatial nav: move to nearest node on previous source line",
     category: "navigation",
     reversible: false,
     requiresEditor: true,
   },
-  "nav.structuralDown": {
-    description: "Navigate in (structural)",
+  "nav.down": {
+    description: "Spatial nav: move to nearest node on next source line",
     category: "navigation",
     reversible: false,
     requiresEditor: true,
   },
-  "nav.structuralLeft": {
-    description: "Navigate prev (structural)",
+  "nav.left": {
+    description: "Spatial nav: retreat through Euler-tour traversal",
     category: "navigation",
     reversible: false,
     requiresEditor: true,
   },
-  "nav.structuralRight": {
-    description: "Navigate next (structural)",
+  "nav.right": {
+    description: "Spatial nav: advance through Euler-tour traversal",
     category: "navigation",
     reversible: false,
     requiresEditor: true,
   },
-  "nav.enter": {
-    description: "Navigate into node (drill in)",
+  "nav.in": {
+    description: "Tree nav: descend to first child",
     category: "navigation",
     reversible: false,
     requiresEditor: true,
   },
-  "nav.back": {
-    description: "Navigate out of node (drill out)",
+  "nav.out": {
+    description: "Tree nav: ascend to parent",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.next": {
+    description: "Tree nav: move to next sibling",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.prev": {
+    description: "Tree nav: move to previous sibling",
     category: "navigation",
     reversible: false,
     requiresEditor: true,

@@ -108,13 +108,14 @@ export const defaultKeyBindings: KeyBinding[] = [
   { action: "probe.expand", key: "Alt-o h" },
   { action: "probe.contract", key: "Alt-o s" },
 
-  // -- Structural navigation ------------------------------------------------
-  // Intentionally NO default binding.  Registered as actions so users can
-  // bind them if desired.  The gamepad provides this via navigation mode.
-  // "nav.structuralUp"    — unbound
-  // "nav.structuralDown"  — unbound
-  // "nav.structuralLeft"  — unbound
-  // "nav.structuralRight" — unbound
+  // -- Spatial navigation ---------------------------------------------------
+  // Intentionally NO default keyboard binding.  Registered as actions so
+  // users can bind them if desired.  The gamepad provides this via the D-pad
+  // in every default paradigm (see structural-editing.md §4.5).
+  // "nav.up"    — unbound
+  // "nav.down"  — unbound
+  // "nav.left"  — unbound
+  // "nav.right" — unbound
 ];
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,6 @@ export const defaultKeyBindings: KeyBinding[] = [
 
 export const defaultGamepadBindings: GamepadBinding[] = [
   { action: "eval.now", combo: ["Start"] },
-  { action: "nav.toggleMode", combo: ["Back"] },
   { action: "edit.delete", combo: ["Y"] },
   { action: "menu.openBefore", combo: ["LB", "A"] },
   { action: "menu.openAfter", combo: ["RB", "A"] },

@@ -4,8 +4,9 @@
  * `structuralCoreExtensions()` returns the array to add to the editor's
  * extension list. The state field auto-installs and decorations follow.
  *
- * Note: keymaps and gamepad bindings are NOT part of this bundle. The
- * gamepad bridge is wired separately in `bootstrap.ts`.
+ * Note: keymaps are NOT part of this bundle. The gamepad pipeline reaches
+ * structural ops via `nav.up`/`nav.down`/`nav.left`/`nav.right` ActionIds
+ * routed through the keybindings handler registry → `dispatchAction`.
  */
 
 import type { Extension } from "@codemirror/state";
@@ -30,5 +31,3 @@ export function structuralCoreExtensions(): Extension[] {
 }
 
 export { dispatchAction } from "./dispatcher.ts";
-export { bindStructuralGamepadBridge } from "./gamepadBridge.ts";
-export type { GamepadBridgeHandle } from "./gamepadBridge.ts";

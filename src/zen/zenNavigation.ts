@@ -3,11 +3,18 @@ import type { ActionId } from "../lib/keybindings/actions";
 
 import { findNodeAt, getTrimmedRange } from "../editors/extensions/lezerHelpers";
 import { dispatchAction } from "../editors/extensions/structure/adapter/dispatcher";
-import * as ch from "../contracts/gamepadChannels";
 
 export type ActionGate = (actionId: ActionId) => "allow" | "block";
 
 export interface ZenNavigationHandle {
+  /**
+   * Forward a gamepad-resolved ActionId from the gamepad pipeline's
+   * `onAction` observer. Implements the same gating + structural-dispatch
+   * logic as keyboard, so an exercise can be cleared from either input.
+   * Returns true if the action was consumed (the gate did not block and
+   * the dispatcher ran successfully).
+   */
+  onAction(actionId: ActionId): boolean;
   dispose(): void;
 }
 
@@ -47,48 +54,23 @@ function hideEditorCursor(view: EditorView): void {
   if (view?.dom) view.dom.classList.add("hide-cursor");
 }
 
-const directionToActionId: Record<string, Record<string, ActionId>> = {
-  spatial: {
-    up: "nav.structuralUp",
-    down: "nav.structuralDown",
-    left: "nav.structuralLeft",
-    right: "nav.structuralRight",
-  },
-  structural: {
-    up: "nav.structuralUp",
-    down: "nav.structuralDown",
-    left: "nav.structuralLeft",
-    right: "nav.structuralRight",
-  },
-};
-
-// Direction → dispatcher action name, per navigation mode.
-// - spatial:   geometric movement (up/down/left/right by source position)
-// - structural: sibling-step (prev/next regardless of axis)
-const directionToDispatch: Record<
-  "spatial" | "structural",
-  Record<string, string>
-> = {
-  spatial: {
-    up: "nav.up",
-    down: "nav.down",
-    left: "nav.left",
-    right: "nav.right",
-  },
-  structural: {
-    up: "nav.prev",
-    down: "nav.next",
-    left: "nav.prev",
-    right: "nav.next",
-  },
+// Map an ActionId to the structural-dispatcher action name. Only listed
+// actions are routed; everything else is ignored by the zen bridge.
+const ACTION_TO_DISPATCH: Partial<Record<ActionId, string>> = {
+  "nav.up": "nav.up",
+  "nav.down": "nav.down",
+  "nav.left": "nav.left",
+  "nav.right": "nav.right",
+  "nav.in": "nav.in",
+  "nav.out": "nav.out",
+  "nav.next": "nav.next",
+  "nav.prev": "nav.prev",
 };
 
 export function bindZenGamepadNavigation(
   view: EditorView,
   gate: ActionGate,
 ): ZenNavigationHandle {
-  let navigationMode: "spatial" | "structural" = "spatial";
-
   const pointerListener = () => {
     if (view?.dom) view.dom.classList.remove("hide-cursor");
   };
@@ -96,56 +78,29 @@ export function bindZenGamepadNavigation(
     view.dom.addEventListener("pointerdown", pointerListener);
   }
 
-  const unsubNavigate = ch.navigate.subscribe(({ direction }) => {
-    if (!view) return;
+  function onAction(actionId: ActionId): boolean {
+    if (!view) return false;
+    if (gate(actionId) === "block") return false;
 
-    const actionId = directionToActionId[navigationMode]?.[direction];
-    if (actionId && gate(actionId) === "block") return;
+    if (actionId === "edit.delete") {
+      if (deleteNodeAtCursor(view)) {
+        hideEditorCursor(view);
+        return true;
+      }
+      return false;
+    }
 
-    const dispatchName = directionToDispatch[navigationMode]?.[direction];
+    const dispatchName = ACTION_TO_DISPATCH[actionId];
     if (dispatchName && dispatchAction(view, dispatchName)) {
       hideEditorCursor(view);
+      return true;
     }
-  });
-
-  const unsubEnter = ch.enter.subscribe(() => {
-    if (!view) return;
-    if (gate("nav.enter") === "block") return;
-    if (dispatchAction(view, "nav.in")) {
-      hideEditorCursor(view);
-    }
-  });
-
-  const unsubBack = ch.back.subscribe(() => {
-    if (!view) return;
-    if (gate("nav.back") === "block") return;
-    if (dispatchAction(view, "nav.out")) {
-      hideEditorCursor(view);
-    }
-  });
-
-  const unsubToggleNavMode = ch.toggleNavMode.subscribe(() => {
-    navigationMode =
-      navigationMode === "structural" ? "spatial" : "structural";
-  });
-
-  const unsubDeleteNode = ch.deleteNode.subscribe(() => {
-    if (!view) return;
-    if (gate("edit.delete") === "block") return;
-    if (deleteNodeAtCursor(view)) hideEditorCursor(view);
-  });
-
-  // Slurp/barf channels don't exist yet as typed channels —
-  // they go through the keyboard resolver. If/when they're wired
-  // to gamepad, add subscribers here with gate checks.
+    return false;
+  }
 
   return {
+    onAction,
     dispose() {
-      unsubNavigate();
-      unsubEnter();
-      unsubBack();
-      unsubToggleNavMode();
-      unsubDeleteNode();
       if (view?.dom) {
         view.dom.removeEventListener("pointerdown", pointerListener);
       }

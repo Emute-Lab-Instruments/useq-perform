@@ -160,20 +160,20 @@ describe("dual binding — eager-with-undo", () => {
 
     d.dispatch({
       kind: "dual",
-      binding: { tap: "nav.structuralUp", held: "nav.structuralUp" },
+      binding: { tap: "nav.up", held: "nav.up" },
       gesture: tap("Up"),
     });
 
     // First held tick — no undo
     d.dispatch({
       kind: "dual",
-      binding: { tap: "nav.structuralUp", held: "nav.structuralUp" },
+      binding: { tap: "nav.up", held: "nav.up" },
       gesture: held("Up", 1),
     });
 
     expect(log).toEqual([
-      { kind: "fire", action: "nav.structuralUp" },
-      { kind: "fire", action: "nav.structuralUp" },
+      { kind: "fire", action: "nav.up" },
+      { kind: "fire", action: "nav.up" },
     ]);
     expect(log.some((e) => e.kind === "undo")).toBe(false);
     d.dispose();

@@ -15,28 +15,27 @@ const ln = (n: string) => n as LayerName;
 const ch = (n: string) => n as AxisChannelName;
 
 // Base layer:
-//   D-pad = navigate, A = enter/drill-in, B = back/drill-out,
+//   D-pad = spatial nav (primary, per structural-editing.md §4.5 / §5.1-A),
 //   Start = eval, Y = delete, X = radial menu,
 //   LB = adjust(-1), RB = adjust(+1),
 //   StickPress = toggle manual control
+//
+// Face-button verbs (A/B) are intentionally unbound here pending B6.
 const baseLayer: Layer = {
   name: ln("modal-base"),
   when: () => true,
   gestures: {
-    [keyOf(tap("Up"))]: "nav.structuralUp",
-    [keyOf(held("Up"))]: "nav.structuralUp",
-    [keyOf(tap("Down"))]: "nav.structuralDown",
-    [keyOf(held("Down"))]: "nav.structuralDown",
-    [keyOf(tap("Left"))]: "nav.structuralLeft",
-    [keyOf(held("Left"))]: "nav.structuralLeft",
-    [keyOf(tap("Right"))]: "nav.structuralRight",
-    [keyOf(held("Right"))]: "nav.structuralRight",
-    [keyOf(tap("A"))]: "nav.enter",
-    [keyOf(tap("B"))]: "nav.back",
+    [keyOf(tap("Up"))]: "nav.up",
+    [keyOf(held("Up"))]: "nav.up",
+    [keyOf(tap("Down"))]: "nav.down",
+    [keyOf(held("Down"))]: "nav.down",
+    [keyOf(tap("Left"))]: "nav.left",
+    [keyOf(held("Left"))]: "nav.left",
+    [keyOf(tap("Right"))]: "nav.right",
+    [keyOf(held("Right"))]: "nav.right",
     [keyOf(tap("Start"))]: "eval.now",
     [keyOf(tap("X"))]: "menu.radial",
     [keyOf(tap("Y"))]: "edit.delete",
-    [keyOf(tap("Back"))]: "nav.toggleMode",
     [keyOf(tap("LeftStickPress"))]: "control.toggleManualLeft",
     [keyOf(tap("RightStickPress"))]: "control.toggleManualRight",
     [keyOf(chord(["LB", "A"]))]: "menu.openBefore",

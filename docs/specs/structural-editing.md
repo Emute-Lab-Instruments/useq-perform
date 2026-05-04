@@ -26,7 +26,6 @@
 - `src/editors/extensions/structure/adapter/spatialNav.ts` — spatial navigation resolution (§5.1-A)
 - `src/editors/extensions/structure/adapter/cursorFromSelection.ts` — text-caret-to-structural-cursor snapping
 - `src/editors/extensions/structure/adapter/cursorPath.ts` — cursor path utilities
-- `src/editors/extensions/structure/adapter/gamepadBridge.ts` — gamepad-to-structural-op bridge
 - `src/editors/extensions/structure/adapter/printTree.ts` — debug tree printer
 
 **Related:**
@@ -333,7 +332,7 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 
 8.2 Both input devices reach the same algebra. A gamepad button bound to `edit.slurpForward` and a keyboard chord bound to the same action produce identical state transitions.
 
-8.3 The gamepad paradigms in [gamepad.md](gamepad.md) bind their D-pad and stick gestures to the operations defined in §5.1. (See `src/editors/extensions/structure/adapter/gamepadBridge.ts`, `src/editors/gamepadNavigation.ts`) In structural mode, the primary directional inputs (D-pad, left stick) drive spatial navigation (`nav.up`/`nav.down`/`nav.left`/`nav.right`); tree-level operations (`nav.out`/`nav.in`/`nav.next`/`nav.prev`) are available on secondary inputs or modifier chords. In insertion mode, directional inputs drive the character caret. The mode boundary (§4) determines which behaviour is active.
+8.3 The gamepad paradigms in [gamepad.md](gamepad.md) bind their D-pad and stick gestures to the operations defined in §5.1. (See `src/lib/keybindings/handlers.ts`, `src/editors/extensions/structure/adapter/dispatcher.ts`, `src/editors/gamepadNavigation.ts`) In structural mode, the primary directional inputs (D-pad, left stick) drive spatial navigation (`nav.up`/`nav.down`/`nav.left`/`nav.right`); tree-level operations (`nav.out`/`nav.in`/`nav.next`/`nav.prev`) are available on secondary inputs or modifier chords. In insertion mode, directional inputs drive the character caret. The mode boundary (§4) determines which behaviour is active.
 
 ---
 

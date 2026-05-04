@@ -17,8 +17,7 @@
 - `src/lib/keybindings/actions.ts` — `ActionDef.reversible`, `ReversibleActionId`, `NonReversibleActionId`, `isReversible()`
 - `src/lib/gamepad/gamepadManager.ts` — low-level Gamepad API polling (legacy, to be replaced)
 - `src/contracts/gamepadChannels.ts` — axis channel registry and typed gamepad channels
-- `src/editors/gamepadNavigation.ts` — gamepad-to-editor navigation bridge
-- `src/editors/extensions/structure/adapter/gamepadBridge.ts` — gamepad-to-structural-editing bridge
+- `src/editors/gamepadNavigation.ts` — gamepad-to-editor navigation bridge (eval, manual-control axis only; spatial nav ActionIds dispatch through the keybindings handler registry directly)
 - `src/ui/adapters/gamepadMenuBridge.ts` — picker bridge (migrates to action-based dispatch)
 - Tests: `src/lib/gamepad/{gestures,recognizer,resolver,dispatcher,hardware}.test.ts`, `src/lib/gamepad/paradigms/paradigms.test.ts`
 

@@ -65,7 +65,7 @@ const globalLayer: Layer = {
     [keyOf(tap("Start"))]: "eval.now",
     [keyOf(tap("A"))]: "edit.slurpFwd",
     [keyOf(tap("B"))]: "edit.barfFwd",
-    [keyOf(held("Up"))]: "nav.structuralUp",
+    [keyOf(held("Up"))]: "nav.up",
   },
   axes: { right: ch("manual-control") },
 };
@@ -212,7 +212,7 @@ describe("resolveGesture", () => {
     const result = resolveGesture(held("Up", 3), mkState(), layers, map);
     expect(result).toEqual({
       kind: "action",
-      action: "nav.structuralUp",
+      action: "nav.up",
       gesture: held("Up", 3),
     });
   });

@@ -9,22 +9,6 @@ import { createChannel, type TypedChannel } from "../lib/typedChannel";
 
 // ── Intent payloads ─────────────────────────────────────────────
 
-/** D-pad / directional navigation intent. */
-export interface NavigateIntent {
-  direction: "up" | "down" | "left" | "right";
-  /** Whether this is a repeat (held button) rather than a fresh press. */
-  repeat: boolean;
-}
-
-/** Enter / drill-in intent (A button). */
-export interface EnterIntent {}
-
-/** Back / drill-out intent (B button). */
-export interface BackIntent {}
-
-/** Toggle navigation mode (spatial ↔ structural). */
-export interface ToggleNavModeIntent {}
-
 /** Evaluate the current editor content (Start button). */
 export interface EvalIntent {}
 
@@ -79,18 +63,6 @@ export interface PickerApplyIntent {
 }
 
 // ── Channels ────────────────────────────────────────────────────
-
-/** Directional navigation (d-pad). */
-export const navigate: TypedChannel<NavigateIntent> = createChannel();
-
-/** Enter / drill-in. */
-export const enter: TypedChannel<EnterIntent> = createChannel();
-
-/** Back / drill-out. */
-export const back: TypedChannel<BackIntent> = createChannel();
-
-/** Toggle navigation mode. */
-export const toggleNavMode: TypedChannel<ToggleNavModeIntent> = createChannel();
 
 /** Evaluate editor content. */
 export const evalNow: TypedChannel<EvalIntent> = createChannel();

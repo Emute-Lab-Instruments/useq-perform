@@ -48,6 +48,13 @@ export type GamepadPipelineOptions = {
   readonly timing?: Partial<Timing>;
   readonly layers?: readonly Layer[];
   readonly transientLayers?: readonly Layer[];
+  /**
+   * Optional observer called for every fired ActionId. Used by surfaces
+   * (e.g. zen mode grid) that want to react to gamepad-resolved actions
+   * without subscribing to a typed channel. Fires before the action
+   * handler runs.
+   */
+  readonly onAction?: (action: ActionId) => void;
 };
 
 export interface GamepadPipeline {
@@ -60,9 +67,17 @@ export interface GamepadPipeline {
 // Action runner — bridges ActionId to handlers + legacy channels
 // ---------------------------------------------------------------------------
 
-function createActionRunner(getEditor: () => EditorView | undefined) {
+function createActionRunner(
+  getEditor: () => EditorView | undefined,
+  onAction?: (action: ActionId) => void,
+) {
   return function fireAction(action: ActionId): void {
-    // Try keybinding handler first (covers eval, edit, probe, panel, etc.)
+    // Notify external observer (e.g. zen mode grid navigation) before
+    // dispatching. The observer can read the action id and react.
+    onAction?.(action);
+
+    // Try keybinding handler first (covers eval, edit, probe, panel,
+    // structural nav, etc.)
     const handler = getHandler(action);
     if (handler) {
       const editor = getEditor();
@@ -74,29 +89,9 @@ function createActionRunner(getEditor: () => EditorView | undefined) {
       return;
     }
 
-    // Bridge to legacy channels for actions not yet in the handler registry
+    // Bridge to remaining typed channels for menu / picker actions that
+    // still flow through channel subscribers. Tracks G/H will retire these.
     switch (action) {
-      case "nav.structuralUp":
-        ch.navigate.publish({ direction: "up", repeat: false });
-        break;
-      case "nav.structuralDown":
-        ch.navigate.publish({ direction: "down", repeat: false });
-        break;
-      case "nav.structuralLeft":
-        ch.navigate.publish({ direction: "left", repeat: false });
-        break;
-      case "nav.structuralRight":
-        ch.navigate.publish({ direction: "right", repeat: false });
-        break;
-      case "nav.toggleMode":
-        ch.toggleNavMode.publish({});
-        break;
-      case "nav.enter":
-        ch.enter.publish({});
-        break;
-      case "nav.back":
-        ch.back.publish({});
-        break;
       case "menu.openBefore":
         ch.openMenu.publish({ direction: "before" });
         break;
@@ -204,7 +199,7 @@ export function createGamepadPipeline(
     };
   }
 
-  const fireAction = createActionRunner(() => editor);
+  const fireAction = createActionRunner(() => editor, options.onAction);
 
   function doUndo(): void {
     if (!editor) return;
@@ -246,6 +241,11 @@ export function createGamepadPipeline(
     if (!snapshot?.connected) {
       prevSnapshot = null;
       recognizerState = INITIAL_STATE;
+      // Clear stale gamepad state so reconnection starts clean
+      gamepadState.heldButtons.clear();
+      gamepadState.transientLayers = [];
+      gamepadState.stickPositions.LeftStick = { x: 0, y: 0 };
+      gamepadState.stickPositions.RightStick = { x: 0, y: 0 };
       return;
     }
 
@@ -289,8 +289,11 @@ export function createGamepadPipeline(
   }
 
   function processGestures(gestures: readonly GestureEvent[]): void {
-    const appState = getAppState();
     for (const ge of gestures) {
+      // Capture appState per-gesture so that side effects from dispatch
+      // (e.g. menuOpen flipping via controllerMode channel) are visible
+      // to subsequent gestures in the same batch.
+      const appState = getAppState();
       const resolution = resolveGesture(
         ge.gesture,
         appState,
@@ -302,8 +305,8 @@ export function createGamepadPipeline(
   }
 
   function processAxes(axes: readonly AxisFrame[]): void {
-    const appState = getAppState();
     for (const frame of axes) {
+      const appState = getAppState();
       const resolution = resolveAxis(frame, appState, predicateLayers, layerMap);
       if (resolution) dispatcher.dispatch(resolution);
     }

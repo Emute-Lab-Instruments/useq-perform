@@ -115,6 +115,18 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "nav.home": cursorLineStart,
   "nav.end": cursorLineEnd,
 
+  // -- Spatial navigation (primary D-pad / arrow direction; structural-editing.md §5.1-A)
+  "nav.up": structHandler("nav.up"),
+  "nav.down": structHandler("nav.down"),
+  "nav.left": structHandler("nav.left"),
+  "nav.right": structHandler("nav.right"),
+
+  // -- Tree-level navigation (secondary; structural-editing.md §5.1-B)
+  "nav.in": structHandler("nav.in"),
+  "nav.out": structHandler("nav.out"),
+  "nav.next": structHandler("nav.next"),
+  "nav.prev": structHandler("nav.prev"),
+
   // -- Structure (functional-core via adapter dispatcher) --------------------
   "edit.slurpFwd": structHandler("edit.slurpForward"),
   "edit.slurpBack": structHandler("edit.slurpBackward"),

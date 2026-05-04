@@ -4,7 +4,8 @@ import { categories, getExercisesByCategory, type Exercise } from "./exercises";
 import ZenGrid from "./ZenGrid";
 import ZenExercise from "./ZenExercise";
 import { createGamepadPipeline, type GamepadPipeline } from "../lib/gamepad/index";
-import * as ch from "../contracts/gamepadChannels";
+import { publishZenAction, subscribeZenAction } from "./zenActionBus";
+import type { ActionId } from "../lib/keybindings/actions";
 import "./zen.css";
 
 const ZenMode: Component = () => {
@@ -96,12 +97,16 @@ const ZenMode: Component = () => {
     if (ex) enterExercise(ex.id);
   }
 
-  // -- Gamepad channel subscriptions --
-
-  let unsubNavigate: (() => void) | undefined;
-  let unsubEnter: (() => void) | undefined;
-  let unsubBack: (() => void) | undefined;
-  let unsubToggleNav: (() => void) | undefined;
+  // -- Gamepad action subscriptions --
+  //
+  // The grid handler runs only while view === "grid"; ZenExercise
+  // separately subscribes for the editor while view === "exercise". The
+  // bus invokes handlers in registration order and short-circuits on the
+  // first true return — registering this handler at mount keeps it below
+  // any later-registered exercise handlers (per Solid component lifecycle
+  // ordering); when in the grid state, the exercise handler isn't
+  // registered, so this handler fires.
+  let unsubGridAction: (() => void) | undefined;
 
   onMount(() => {
     document.addEventListener("keydown", handleKeydown);
@@ -110,8 +115,14 @@ const ZenMode: Component = () => {
     window.addEventListener("gamepadconnected", onGamepadConnected);
     window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
 
-    // Start gamepad pipeline
-    gamepadPipeline = createGamepadPipeline({});
+    // Start gamepad pipeline. Any fired ActionId is forwarded to the
+    // zen action bus; the active surface (grid here, or exercise in
+    // ZenExercise) consumes it.
+    gamepadPipeline = createGamepadPipeline({
+      onAction: (action: ActionId) => {
+        publishZenAction(action);
+      },
+    });
     gamepadPipeline.start();
     console.log("[zen] Gamepad pipeline started, polling for controllers...");
 
@@ -123,32 +134,32 @@ const ZenMode: Component = () => {
       }
     }
 
-    // Subscribe to channels for grid navigation
-    unsubNavigate = ch.navigate.subscribe(({ direction }) => {
-      if (state.view !== "grid") return;
+    unsubGridAction = subscribeZenAction((action) => {
+      if (state.view !== "grid") return false;
       setDetectedInput("gamepad");
-      navigateGrid(direction);
-    });
-
-    unsubEnter = ch.enter.subscribe(() => {
-      if (state.view !== "grid") return;
-      setDetectedInput("gamepad");
-      selectFocused();
-    });
-
-    unsubBack = ch.back.subscribe(() => {
-      if (state.view !== "grid") return;
-      setDetectedInput("gamepad");
-      exitZenMode();
-    });
-
-    // Back/Select button (toggleNavMode) → also acts as "return to grid"
-    unsubToggleNav = ch.toggleNavMode.subscribe(() => {
-      setDetectedInput("gamepad");
-      if (state.view === "exercise") {
-        returnToGrid();
-      } else {
-        exitZenMode();
+      switch (action) {
+        case "nav.up":
+          navigateGrid("up");
+          return true;
+        case "nav.down":
+          navigateGrid("down");
+          return true;
+        case "nav.left":
+          navigateGrid("left");
+          return true;
+        case "nav.right":
+          navigateGrid("right");
+          return true;
+        case "nav.in":
+          // Treat tree-descend as "select" while on the grid.
+          selectFocused();
+          return true;
+        case "nav.out":
+          // Treat tree-ascend as "exit zen" while on the grid.
+          exitZenMode();
+          return true;
+        default:
+          return false;
       }
     });
   });
@@ -159,10 +170,7 @@ const ZenMode: Component = () => {
     window.removeEventListener("gamepadconnected", onGamepadConnected);
     window.removeEventListener("gamepaddisconnected", onGamepadDisconnected);
 
-    unsubNavigate?.();
-    unsubEnter?.();
-    unsubBack?.();
-    unsubToggleNav?.();
+    unsubGridAction?.();
 
     if (gamepadPipeline) {
       gamepadPipeline.dispose();

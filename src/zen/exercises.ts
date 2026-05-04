@@ -137,7 +137,7 @@ export const exercises: Exercise[] = [
     start: "(+ «1» 2 3)",
     target: "(+ 1 «2» 3)",
     prompt: "spotlight",
-    actions: ["nav.structuralRight"],
+    actions: ["nav.right"],
     hints: ["Move to the next sibling"],
   }),
 
@@ -147,7 +147,7 @@ export const exercises: Exercise[] = [
     start: "(+ 1 «2» 3)",
     target: "(+ «1» 2 3)",
     prompt: "spotlight",
-    actions: ["nav.structuralLeft"],
+    actions: ["nav.left"],
     hints: ["Move to the previous sibling"],
   }),
 
@@ -157,7 +157,7 @@ export const exercises: Exercise[] = [
     start: "(map «inc» [1 2 3])",
     target: "(map inc «[1 2 3]»)",
     prompt: "spotlight",
-    actions: ["nav.structuralRight"],
+    actions: ["nav.right"],
     hints: ["Keep moving right through the siblings"],
   }),
 
@@ -167,7 +167,7 @@ export const exercises: Exercise[] = [
     start: "(def x «(+ 1 2)»)",
     target: "(def x («+» 1 2))",
     prompt: "spotlight",
-    actions: ["nav.enter"],
+    actions: ["nav.in"],
     hints: ["Drill into the focused expression"],
   }),
 
@@ -177,7 +177,7 @@ export const exercises: Exercise[] = [
     start: "(def x («+» 1 2))",
     target: "(def x «(+ 1 2)»)",
     prompt: "spotlight",
-    actions: ["nav.back"],
+    actions: ["nav.out"],
     hints: ["Back out to the containing expression"],
   }),
 
@@ -187,7 +187,7 @@ export const exercises: Exercise[] = [
     start: "(+ «1» 2)",
     target: "«(+ 1 2)»",
     prompt: "spotlight",
-    actions: ["nav.structuralUp"],
+    actions: ["nav.up"],
     hints: ["Move up to the parent container"],
   }),
 
@@ -198,9 +198,9 @@ export const exercises: Exercise[] = [
     target: "(+ 1 (- «3» 4))",
     prompt: "spotlight",
     actions: [
-      "nav.structuralRight",
-      "nav.enter",
-      "nav.structuralRight",
+      "nav.right",
+      "nav.in",
+      "nav.right",
     ],
     hints: [
       "Move right to reach the nested expression",
@@ -485,9 +485,9 @@ export const exercises: Exercise[] = [
     target: "(let [x 1] «(+ x 10)»)",
     prompt: "beforeAfter",
     actions: [
-      "nav.structuralDown",
-      "nav.structuralRight",
-      "nav.structuralRight",
+      "nav.down",
+      "nav.right",
+      "nav.right",
       "edit.slurpFwd",
     ],
     hints: [
@@ -540,7 +540,7 @@ export const exercises: Exercise[] = [
     target: "(do «(inc x x)»)",
     prompt: "puzzle",
     actions: [
-      "nav.structuralRight",
+      "nav.right",
       "edit.slurpBack",
     ],
     hints: [

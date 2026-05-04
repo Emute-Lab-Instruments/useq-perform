@@ -19,7 +19,6 @@ import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
 import { attachBridgeToEditor } from '../effects/liveEditRuntime.ts';
 import { createGamepadPipeline } from '../lib/gamepad/index.ts';
 import { bindGamepadNavigation } from '../editors/gamepadNavigation.ts';
-import { bindStructuralGamepadBridge } from '../editors/extensions/structure/adapter/extension.ts';
 import { bindGamepadMenuBridge } from '../ui/adapters/gamepadMenuBridge.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
 import { mountModal } from '../ui/adapters/modal.tsx';
@@ -169,13 +168,15 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     reportBootstrapFailure("ui-adapter-mount", error);
   }
 
-  // Wire up three-stage gamepad pipeline + legacy channel subscribers
+  // Wire up three-stage gamepad pipeline + remaining channel subscribers
+  // (eval, manual-control axis). Structural nav flows through the
+  // keybindings handler registry directly: gamepad pipeline → ActionId
+  // (`nav.up`/`nav.down`/`nav.left`/`nav.right`, `edit.*`) → handler →
+  // structural dispatcher. No legacy spatial-mode toggle, no per-direction
+  // channel subscriptions.
   const gamepadPipeline = createGamepadPipeline({ editor });
   const navHandle = bindGamepadNavigation(editor);
   const menuHandle = bindGamepadMenuBridge({ view: editor });
-  // Structural-editing core. Bridge is always installed; it activates only
-  // while the gamepad is in structural-navigation mode.
-  const structHandle = bindStructuralGamepadBridge(editor, () => true);
   // Expose dispatcher on window for console-driven testing during round 2.
   if (typeof globalThis !== 'undefined') {
     void import('../editors/extensions/structure/adapter/dispatcher.ts')

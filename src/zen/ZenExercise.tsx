@@ -1,4 +1,4 @@
-import { Component, Show, For, createSignal, createEffect, on, createMemo } from "solid-js";
+import { Component, Show, For, createSignal, createEffect, on, onCleanup, createMemo } from "solid-js";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { history } from "@codemirror/commands";
@@ -19,11 +19,17 @@ import {
   cycleGuidanceMode,
   checkGuidedAction,
   logAction,
+  incrementWrongMoves,
 } from "./store";
 import { getExercisesByCategory, type Exercise } from "./exercises";
 import type { StepState } from "./sequenceTracker";
-import { bindZenGamepadNavigation, type ActionGate } from "./zenNavigation";
+import {
+  bindZenGamepadNavigation,
+  type ActionGate,
+  type ZenNavigationHandle,
+} from "./zenNavigation";
 import { createZenKeymapGuard } from "./zenKeymapGuard";
+import { subscribeZenAction } from "./zenActionBus";
 import type { ActionId } from "../lib/keybindings/actions";
 
 const ZenExercise: Component = () => {
@@ -31,12 +37,17 @@ const ZenExercise: Component = () => {
   let targetContainer: HTMLDivElement | undefined;
   let editorView: EditorView | undefined;
   let targetView: EditorView | undefined;
-  let navHandle: { dispose(): void } | undefined;
+  let navHandle: ZenNavigationHandle | undefined;
+  let unsubAction: (() => void) | undefined;
   let completed = false;
   const [glowing, setGlowing] = createSignal(false);
   const [showDone, setShowDone] = createSignal(false);
 
   function teardown() {
+    if (unsubAction) {
+      unsubAction();
+      unsubAction = undefined;
+    }
     if (navHandle) {
       navHandle.dispose();
       navHandle = undefined;
@@ -61,6 +72,7 @@ const ZenExercise: Component = () => {
       return "allow";
     }
     if (result === "wrong") {
+      incrementWrongMoves();
       return "block";
     }
     // "unchecked" (Hints/Bare mode) — allow freely
@@ -85,6 +97,13 @@ const ZenExercise: Component = () => {
     targetView = createTargetEditor(targetContainer, ex);
 
     navHandle = bindZenGamepadNavigation(editorView, actionGate);
+    // Forward gamepad-resolved ActionIds (from ZenMode's pipeline) to the
+    // exercise nav handle while this exercise is mounted.
+    const exerciseHandle = navHandle;
+    unsubAction = subscribeZenAction((action) => {
+      if (state.view !== "exercise") return false;
+      return exerciseHandle.onAction(action);
+    });
 
     queueMicrotask(() => { ready = true; });
 
@@ -97,6 +116,8 @@ const ZenExercise: Component = () => {
       () => setup(),
     ),
   );
+
+  onCleanup(teardown);
 
   function handleCompletion() {
     const ex = activeExercise();

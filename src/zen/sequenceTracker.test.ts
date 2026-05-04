@@ -10,8 +10,8 @@ describe("sequenceTracker", () => {
   describe("createSequenceState", () => {
     it("initializes with first step active", () => {
       const state = createSequenceState([
-        "nav.structuralRight" as ActionId,
-        "nav.enter" as ActionId,
+        "nav.right" as ActionId,
+        "nav.in" as ActionId,
       ]);
       expect(state.currentStep).toBe(0);
       expect(state.stepStates).toEqual(["active", "pending"]);
@@ -34,10 +34,10 @@ describe("sequenceTracker", () => {
   describe("checkAction", () => {
     it("marks step completed on correct action", () => {
       const state = createSequenceState([
-        "nav.structuralRight" as ActionId,
-        "nav.enter" as ActionId,
+        "nav.right" as ActionId,
+        "nav.in" as ActionId,
       ]);
-      const result = checkAction(state, "nav.structuralRight" as ActionId);
+      const result = checkAction(state, "nav.right" as ActionId);
       expect(result.kind).toBe("correct");
       expect(result.sequenceState.currentStep).toBe(1);
       expect(result.sequenceState.stepStates).toEqual(["completed", "active"]);
@@ -46,10 +46,10 @@ describe("sequenceTracker", () => {
 
     it("returns wrong on incorrect action", () => {
       const state = createSequenceState([
-        "nav.structuralRight" as ActionId,
-        "nav.enter" as ActionId,
+        "nav.right" as ActionId,
+        "nav.in" as ActionId,
       ]);
-      const result = checkAction(state, "nav.structuralLeft" as ActionId);
+      const result = checkAction(state, "nav.left" as ActionId);
       expect(result.kind).toBe("wrong");
       expect(result.sequenceState.currentStep).toBe(0);
       expect(result.sequenceState.stepStates).toEqual(["active", "pending"]);
@@ -57,11 +57,11 @@ describe("sequenceTracker", () => {
 
     it("completes on final correct action", () => {
       let state = createSequenceState([
-        "nav.structuralRight" as ActionId,
-        "nav.enter" as ActionId,
+        "nav.right" as ActionId,
+        "nav.in" as ActionId,
       ]);
-      state = checkAction(state, "nav.structuralRight" as ActionId).sequenceState;
-      const result = checkAction(state, "nav.enter" as ActionId);
+      state = checkAction(state, "nav.right" as ActionId).sequenceState;
+      const result = checkAction(state, "nav.in" as ActionId);
       expect(result.kind).toBe("correct");
       expect(result.sequenceState.isComplete).toBe(true);
       expect(result.sequenceState.stepStates).toEqual([
@@ -80,15 +80,15 @@ describe("sequenceTracker", () => {
 
     it("tracks multi-step progress correctly", () => {
       const actions: ActionId[] = [
-        "nav.structuralDown" as ActionId,
-        "nav.structuralRight" as ActionId,
-        "nav.structuralRight" as ActionId,
+        "nav.down" as ActionId,
+        "nav.right" as ActionId,
+        "nav.right" as ActionId,
         "edit.slurpFwd" as ActionId,
       ];
       let state = createSequenceState(actions);
 
       // Step 1
-      let result = checkAction(state, "nav.structuralDown" as ActionId);
+      let result = checkAction(state, "nav.down" as ActionId);
       expect(result.kind).toBe("correct");
       expect(result.sequenceState.stepStates).toEqual([
         "completed",
@@ -99,7 +99,7 @@ describe("sequenceTracker", () => {
 
       // Step 2
       state = result.sequenceState;
-      result = checkAction(state, "nav.structuralRight" as ActionId);
+      result = checkAction(state, "nav.right" as ActionId);
       expect(result.kind).toBe("correct");
       expect(result.sequenceState.stepStates).toEqual([
         "completed",
@@ -110,12 +110,12 @@ describe("sequenceTracker", () => {
 
       // Step 3 — wrong
       state = result.sequenceState;
-      result = checkAction(state, "nav.structuralLeft" as ActionId);
+      result = checkAction(state, "nav.left" as ActionId);
       expect(result.kind).toBe("wrong");
       expect(result.sequenceState.currentStep).toBe(2);
 
       // Step 3 — correct
-      result = checkAction(state, "nav.structuralRight" as ActionId);
+      result = checkAction(state, "nav.right" as ActionId);
       expect(result.kind).toBe("correct");
 
       // Step 4
@@ -150,10 +150,10 @@ describe("sequenceTracker", () => {
   describe("resetSequence", () => {
     it("resets a partially completed sequence", () => {
       let state = createSequenceState([
-        "nav.structuralRight" as ActionId,
-        "nav.enter" as ActionId,
+        "nav.right" as ActionId,
+        "nav.in" as ActionId,
       ]);
-      state = checkAction(state, "nav.structuralRight" as ActionId).sequenceState;
+      state = checkAction(state, "nav.right" as ActionId).sequenceState;
       expect(state.currentStep).toBe(1);
 
       const reset = resetSequence(state);

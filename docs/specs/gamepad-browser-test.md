@@ -12,8 +12,8 @@
 - `src/lib/gamepad/paradigms/modal-shift.ts` — default paradigm tested here
 - `src/lib/gamepad/paradigms/picker.ts` — picker layer active during menu tests
 - `src/contracts/gamepadChannels.ts` — typed channels (subscribe in console for debugging)
-- `src/editors/gamepadNavigation.ts` — editor navigation from gamepad intents
-- `src/editors/extensions/structure/adapter/gamepadBridge.ts` — structural editing bridge
+- `src/editors/gamepadNavigation.ts` — editor navigation from gamepad intents (eval / manual-control axis)
+- `src/lib/keybindings/handlers.ts` — handler registry; dispatches `nav.up`/`nav.down`/`nav.left`/`nav.right` and other ActionIds to the structural dispatcher
 - `src/ui/adapters/gamepadMenuBridge.ts` — picker/menu bridge
 
 ---
@@ -106,7 +106,7 @@
 
 **Test**: Press left stick in, then move it — check if number at cursor changes (if manual control is active).
 
-## 8. LB-shifted layer (structural editing) (see `src/lib/gamepad/paradigms/modal-shift.ts`, `src/editors/extensions/structure/adapter/gamepadBridge.ts`)
+## 8. LB-shifted layer (structural editing) (see `src/lib/gamepad/paradigms/modal-shift.ts`, `src/lib/keybindings/handlers.ts`)
 
 Hold LB, then press:
 

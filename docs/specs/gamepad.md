@@ -19,7 +19,7 @@
 - `src/contracts/gamepadChannels.ts` — axis channel registry and typed gamepad channels
 - `src/lib/keybindings/actions.ts` — `ActionDef.reversible`, `ReversibleActionId`, `NonReversibleActionId`
 - `src/editors/gamepadNavigation.ts` — gamepad-to-editor navigation bridge
-- `src/editors/extensions/structure/adapter/gamepadBridge.ts` — gamepad-to-structural-editing bridge
+- `src/editors/extensions/structure/adapter/dispatcher.ts` — structural-op dispatcher (reached from the gamepad pipeline via the keybindings handler registry)
 
 ---
 
