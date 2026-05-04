@@ -25,6 +25,7 @@ import type {
   ApplyTarget,
   FrozenSnapshot,
   Handedness,
+  HoleType,
   Manifest,
   MenuFace,
   MenuInput,
@@ -38,8 +39,9 @@ import type {
 import { subPhase } from "./state";
 import { applyVerb, type ApplyResult } from "./verbs";
 import { nextChainStep, type ChainStep } from "./chain";
-import type { CursorSet, IdGen, NodeId, Tree } from "../../editors/extensions/structure/core/types";
+import type { CursorSet, HoleNode, IdGen, NodeId, Tree } from "../../editors/extensions/structure/core/types";
 import { defaultIdGen } from "../../editors/extensions/structure/core/index";
+import { findById } from "../../editors/extensions/structure/core/traversal";
 import { structField } from "../../editors/extensions/structure/adapter/stateField";
 import { printNode } from "../../editors/extensions/structure/adapter/printTree";
 import { executeEditorCommand } from "../../editors/commands/editorCommandRouter";
@@ -291,6 +293,8 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
     }
 
     // menu.text.open — open text entry sub-mode (§14.1.3).
+    // Routes to numpad for :number holes, T9 for :string / :symbol holes.
+    // No-op (flash) for :keyword, :expr, or when no active hole.
     if (action === "menu.text.open") {
       const state = deps.getMenuState();
       // Can only open sub-mode from open or closed state.
@@ -299,13 +303,24 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
       if (!view) return;
       const target = currentApplyTarget(view);
       if (!target) return;
-      // Default to numpad for number holes; the dispatcher caller
-      // determines the mode. For now, open numpad with the active verb
-      // defaulting to insert-left.
-      const activeVerb: Verb = { kind: "insert", hand: "left" };
+
+      // Determine the hole type at the current cursor position.
+      const holeType = resolveHoleType(view, target);
+
+      // Route based on hole type (§14.1.2 / §14.1.3).
+      const mode = textModeForHoleType(holeType);
+      if (mode === null) {
+        // :keyword, :expr, or no active hole — no-op flash.
+        return;
+      }
+
+      // Resolve the active verb. When in open state with a frozen snapshot,
+      // derive from the freeze; otherwise default to insert-left.
+      const activeVerb = resolveActiveVerb(state);
+
       deps.dispatchInput({
         kind: "subModeOpen",
-        mode: "numpad",
+        mode,
         target,
         activeVerb,
         returnTo: state.phase === "open" ? "open" : "closed",
@@ -899,4 +914,60 @@ function currentApplyTarget(view: EditorView): ApplyTarget | null {
     primary.kind === "node" ? primary.target : primary.start;
   // Brand the node id as an ApplyTarget.
   return { __brand: "ApplyTarget", nodeId: targetId } as unknown as ApplyTarget;
+}
+
+/**
+ * Resolve the hole type at the current apply target position.
+ * Looks up the structural node at the target and returns its holeType
+ * if it is a HoleNode; returns null otherwise.
+ *
+ * @see docs/specs/radial-menu.md §14.1.2
+ */
+function resolveHoleType(view: EditorView, target: ApplyTarget): HoleType | null {
+  const structValue = view.state.field(structField, false);
+  if (!structValue) return null;
+  const nodeId = (target as unknown as { nodeId: NodeId }).nodeId;
+  if (nodeId === undefined) return null;
+  const node = findById(structValue.state.tree.root, nodeId);
+  if (node === null || node.kind !== "hole") return null;
+  return (node as HoleNode).holeType ?? null;
+}
+
+/**
+ * Map a hole type to the appropriate text-entry sub-mode.
+ * Per spec §14.1.2 / §14.1.3:
+ * - `:number` → numpad (free-form numeric entry)
+ * - `:string` → T9 (character-by-character text entry)
+ * - `:symbol` → T9 (new-name coinage)
+ * - `:keyword`, `:expr`, or null → no-op (returns null)
+ *
+ * @see docs/specs/radial-menu.md §14.1.2
+ */
+export function textModeForHoleType(holeType: HoleType | null): "numpad" | "t9" | null {
+  if (holeType === null) return null;
+  switch (holeType) {
+    case "number":
+      return "numpad";
+    case "string":
+    case "symbol":
+      return "t9";
+    case "keyword":
+    case "expr":
+      return null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Resolve the active verb for a sub-mode entry. When the menu is in the
+ * open state with a frozen snapshot, derive the verb from the shoulder held
+ * (hand). Otherwise default to insert-left.
+ */
+function resolveActiveVerb(state: MenuState): Verb {
+  if (state.phase === "open" && state.frozen !== null) {
+    const hand = state.shoulderHeld === "none" ? "left" : state.shoulderHeld;
+    return { kind: "insert", hand };
+  }
+  return { kind: "insert", hand: "left" };
 }

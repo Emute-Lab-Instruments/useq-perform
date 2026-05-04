@@ -11,7 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createMenuDispatcher, type MenuDispatcher, type MenuDispatcherDeps, numpadCharAt, t9GroupAt, t9CharAt, T9_KEY_COUNT } from "./dispatcher";
+import { createMenuDispatcher, type MenuDispatcher, type MenuDispatcherDeps, numpadCharAt, t9GroupAt, t9CharAt, T9_POSITION_COUNT, textModeForHoleType } from "./dispatcher";
 import { INITIAL_STATE, reduce } from "./state";
 import type {
   ActionId,
@@ -38,6 +38,7 @@ import {
 import {
   doc,
   sym,
+  hole,
 } from "../../editors/extensions/structure/core/__tests__/builders";
 
 // ---------------------------------------------------------------------------
@@ -109,6 +110,17 @@ function fakeStructValue(tree: Tree): FakeStructValue {
     state: { tree, cursors: singleCursor(nodeCursor(tree.root.id)) },
     idIndex,
   };
+}
+
+/**
+ * Like fakeStructValue but positions the primary cursor on a specific child
+ * node instead of the document root. Used for text.open routing tests where
+ * the dispatcher reads the node at the cursor position.
+ */
+function fakeStructValueOnNode(tree: Tree, targetId: NodeId): FakeStructValue {
+  const sv = fakeStructValue(tree);
+  sv.state = { tree, cursors: singleCursor(nodeCursor(targetId)) };
+  return sv;
 }
 
 /** Minimal node printer matching the real printNode output. */
@@ -806,7 +818,7 @@ describe("MenuDispatcher", () => {
 
     it("t9GroupAt returns null for out-of-range index", () => {
       expect(t9GroupAt(-1)).toBeNull();
-      expect(t9GroupAt(T9_KEY_COUNT)).toBeNull();
+      expect(t9GroupAt(T9_POSITION_COUNT)).toBeNull();
     });
 
     it("t9CharAt returns first character with tapCount 0", () => {
@@ -832,7 +844,7 @@ describe("MenuDispatcher", () => {
     });
 
     it("all 9 T9 key positions are accessible", () => {
-      for (let i = 0; i < T9_KEY_COUNT; i++) {
+      for (let i = 0; i < T9_POSITION_COUNT; i++) {
         expect(t9GroupAt(i)).not.toBeNull();
         expect(t9CharAt(i, 0)).not.toBeNull();
       }
@@ -1035,6 +1047,356 @@ describe("MenuDispatcher", () => {
         .filter((e) => e.kind === "dispatchInput")
         .map((e) => e.detail as MenuInput);
       expect(inputs.some((i) => i.kind === "subModeAppend")).toBe(false);
+    });
+  });
+
+  // ---- menu.text.open routing (§14.1.2 / §14.1.3) ----------------------
+
+  describe("menu.text.open routing", () => {
+    // ---- Pure function tests for textModeForHoleType --------------------
+
+    describe("textModeForHoleType (pure)", () => {
+      it("returns numpad for :number", () => {
+        expect(textModeForHoleType("number")).toBe("numpad");
+      });
+
+      it("returns t9 for :string", () => {
+        expect(textModeForHoleType("string")).toBe("t9");
+      });
+
+      it("returns t9 for :symbol", () => {
+        expect(textModeForHoleType("symbol")).toBe("t9");
+      });
+
+      it("returns null for :keyword", () => {
+        expect(textModeForHoleType("keyword")).toBeNull();
+      });
+
+      it("returns null for :expr", () => {
+        expect(textModeForHoleType("expr")).toBeNull();
+      });
+
+      it("returns null for null (no active hole)", () => {
+        expect(textModeForHoleType(null)).toBeNull();
+      });
+    });
+
+    // ---- Integration tests for menu.text.open action --------------------
+
+    describe("action routing", () => {
+      it("routes :number hole to numpad sub-mode", () => {
+        const ids = defaultIdGen();
+        const holeNode = hole("freq", "number", ids);
+        const rootNode = doc(ids, holeNode);
+        const tree: Tree = { root: rootNode };
+
+        const sv = fakeStructValueOnNode(tree, holeNode.id);
+        const fakeView = createFakeEditorView(sv);
+
+        const { dispatcher, setEditorView, setMenuState, fireAction, getMenuState } = createHarness();
+        setEditorView(fakeView);
+        dispatcher.bind(fakeView);
+
+        // Put the menu in open state.
+        const target = { __brand: "ApplyTarget", nodeId: holeNode.id } as unknown as ApplyTarget;
+        const manifest = makeManifest();
+        setMenuState({
+          phase: "open",
+          leftTabIdx: 0,
+          rightTabIdx: 0,
+          leftHover: null,
+          rightHover: null,
+          shoulderHeld: "none",
+          frozen: null,
+          target,
+          manifest,
+        });
+
+        fireAction("menu.text.open");
+
+        const state = getMenuState();
+        expect(state.phase).toBe("numpad");
+        if (state.phase === "numpad") {
+          expect(state.buffer).toBe("");
+          expect(state.returnTo).toBe("open");
+        }
+      });
+
+      it("routes :string hole to T9 sub-mode", () => {
+        const ids = defaultIdGen();
+        const holeNode = hole("label", "string", ids);
+        const rootNode = doc(ids, holeNode);
+        const tree: Tree = { root: rootNode };
+
+        const sv = fakeStructValueOnNode(tree, holeNode.id);
+        const fakeView = createFakeEditorView(sv);
+
+        const { dispatcher, setEditorView, setMenuState, fireAction, getMenuState } = createHarness();
+        setEditorView(fakeView);
+        dispatcher.bind(fakeView);
+
+        const target = { __brand: "ApplyTarget", nodeId: holeNode.id } as unknown as ApplyTarget;
+        const manifest = makeManifest();
+        setMenuState({
+          phase: "open",
+          leftTabIdx: 0,
+          rightTabIdx: 0,
+          leftHover: null,
+          rightHover: null,
+          shoulderHeld: "none",
+          frozen: null,
+          target,
+          manifest,
+        });
+
+        fireAction("menu.text.open");
+
+        const state = getMenuState();
+        expect(state.phase).toBe("t9");
+        if (state.phase === "t9") {
+          expect(state.buffer).toBe("");
+          expect(state.caseMode).toBe("lower");
+          expect(state.returnTo).toBe("open");
+        }
+      });
+
+      it("routes :symbol hole to T9 sub-mode", () => {
+        const ids = defaultIdGen();
+        const holeNode = hole("name", "symbol", ids);
+        const rootNode = doc(ids, holeNode);
+        const tree: Tree = { root: rootNode };
+
+        const sv = fakeStructValueOnNode(tree, holeNode.id);
+        const fakeView = createFakeEditorView(sv);
+
+        const { dispatcher, setEditorView, setMenuState, fireAction, getMenuState } = createHarness();
+        setEditorView(fakeView);
+        dispatcher.bind(fakeView);
+
+        const target = { __brand: "ApplyTarget", nodeId: holeNode.id } as unknown as ApplyTarget;
+        const manifest = makeManifest();
+        setMenuState({
+          phase: "open",
+          leftTabIdx: 0,
+          rightTabIdx: 0,
+          leftHover: null,
+          rightHover: null,
+          shoulderHeld: "none",
+          frozen: null,
+          target,
+          manifest,
+        });
+
+        fireAction("menu.text.open");
+
+        const state = getMenuState();
+        expect(state.phase).toBe("t9");
+      });
+
+      it(":keyword hole is a no-op (menu stays open)", () => {
+        const ids = defaultIdGen();
+        const holeNode = hole("kw", "keyword", ids);
+        const rootNode = doc(ids, holeNode);
+        const tree: Tree = { root: rootNode };
+
+        const sv = fakeStructValueOnNode(tree, holeNode.id);
+        const fakeView = createFakeEditorView(sv);
+
+        const { dispatcher, setEditorView, setMenuState, fireAction, getMenuState } = createHarness();
+        setEditorView(fakeView);
+        dispatcher.bind(fakeView);
+
+        const target = { __brand: "ApplyTarget", nodeId: holeNode.id } as unknown as ApplyTarget;
+        const manifest = makeManifest();
+        setMenuState({
+          phase: "open",
+          leftTabIdx: 0,
+          rightTabIdx: 0,
+          leftHover: null,
+          rightHover: null,
+          shoulderHeld: "none",
+          frozen: null,
+          target,
+          manifest,
+        });
+
+        fireAction("menu.text.open");
+
+        // Should stay in open state (no-op).
+        expect(getMenuState().phase).toBe("open");
+      });
+
+      it(":expr hole is a no-op (menu stays open)", () => {
+        const ids = defaultIdGen();
+        const holeNode = hole("body", "expr", ids);
+        const rootNode = doc(ids, holeNode);
+        const tree: Tree = { root: rootNode };
+
+        const sv = fakeStructValueOnNode(tree, holeNode.id);
+        const fakeView = createFakeEditorView(sv);
+
+        const { dispatcher, setEditorView, setMenuState, fireAction, getMenuState } = createHarness();
+        setEditorView(fakeView);
+        dispatcher.bind(fakeView);
+
+        const target = { __brand: "ApplyTarget", nodeId: holeNode.id } as unknown as ApplyTarget;
+        const manifest = makeManifest();
+        setMenuState({
+          phase: "open",
+          leftTabIdx: 0,
+          rightTabIdx: 0,
+          leftHover: null,
+          rightHover: null,
+          shoulderHeld: "none",
+          frozen: null,
+          target,
+          manifest,
+        });
+
+        fireAction("menu.text.open");
+
+        // Should stay in open state (no-op).
+        expect(getMenuState().phase).toBe("open");
+      });
+
+      it("no active hole (cursor on symbol) is a no-op", () => {
+        const ids = defaultIdGen();
+        const xNode = sym("x", ids);
+        const rootNode = doc(ids, xNode);
+        const tree: Tree = { root: rootNode };
+
+        const sv = fakeStructValue(tree);
+        const fakeView = createFakeEditorView(sv);
+
+        const { dispatcher, setEditorView, setMenuState, fireAction, getMenuState } = createHarness();
+        setEditorView(fakeView);
+        dispatcher.bind(fakeView);
+
+        const target = { __brand: "ApplyTarget", nodeId: xNode.id } as unknown as ApplyTarget;
+        const manifest = makeManifest();
+        setMenuState({
+          phase: "open",
+          leftTabIdx: 0,
+          rightTabIdx: 0,
+          leftHover: null,
+          rightHover: null,
+          shoulderHeld: "none",
+          frozen: null,
+          target,
+          manifest,
+        });
+
+        fireAction("menu.text.open");
+
+        // Should stay in open state (no-op — no hole at cursor).
+        expect(getMenuState().phase).toBe("open");
+      });
+
+      it("is no-op when menu is in numpad phase", () => {
+        const ids = defaultIdGen();
+        const holeNode = hole("freq", "number", ids);
+        const rootNode = doc(ids, holeNode);
+        const tree: Tree = { root: rootNode };
+
+        const sv = fakeStructValue(tree);
+        const fakeView = createFakeEditorView(sv);
+
+        const { dispatcher, setEditorView, setMenuState, fireAction, getMenuState } = createHarness();
+        setEditorView(fakeView);
+        dispatcher.bind(fakeView);
+
+        const target = { __brand: "ApplyTarget", nodeId: holeNode.id } as unknown as ApplyTarget;
+        setMenuState({
+          phase: "numpad",
+          buffer: "42",
+          target,
+          returnTo: "open",
+          activeVerb: { kind: "insert", hand: "left" },
+        });
+
+        fireAction("menu.text.open");
+
+        // Should stay in numpad state (no-op).
+        expect(getMenuState().phase).toBe("numpad");
+        if (getMenuState().phase === "numpad") {
+          expect((getMenuState() as any).buffer).toBe("42");
+        }
+      });
+
+      it("is no-op when menu is in T9 phase", () => {
+        const ids = defaultIdGen();
+        const holeNode = hole("label", "string", ids);
+        const rootNode = doc(ids, holeNode);
+        const tree: Tree = { root: rootNode };
+
+        const sv = fakeStructValue(tree);
+        const fakeView = createFakeEditorView(sv);
+
+        const { dispatcher, setEditorView, setMenuState, fireAction, getMenuState } = createHarness();
+        setEditorView(fakeView);
+        dispatcher.bind(fakeView);
+
+        const target = { __brand: "ApplyTarget", nodeId: holeNode.id } as unknown as ApplyTarget;
+        setMenuState({
+          phase: "t9",
+          buffer: "ab",
+          lastKey: null,
+          lastKeyAt: 0,
+          caseMode: "lower",
+          target,
+          returnTo: "open",
+          activeVerb: { kind: "insert", hand: "left" },
+        });
+
+        fireAction("menu.text.open");
+
+        // Should stay in t9 state (no-op).
+        expect(getMenuState().phase).toBe("t9");
+        if (getMenuState().phase === "t9") {
+          expect((getMenuState() as any).buffer).toBe("ab");
+        }
+      });
+
+      it("derives active verb hand from frozen shoulder held", () => {
+        const ids = defaultIdGen();
+        const holeNode = hole("freq", "number", ids);
+        const rootNode = doc(ids, holeNode);
+        const tree: Tree = { root: rootNode };
+
+        const sv = fakeStructValueOnNode(tree, holeNode.id);
+        const fakeView = createFakeEditorView(sv);
+
+        const { dispatcher, setEditorView, setMenuState, fireAction, getMenuState, log } = createHarness();
+        setEditorView(fakeView);
+        dispatcher.bind(fakeView);
+
+        const target = { __brand: "ApplyTarget", nodeId: holeNode.id } as unknown as ApplyTarget;
+        const manifest = makeManifest();
+        setMenuState({
+          phase: "open",
+          leftTabIdx: 0,
+          rightTabIdx: 0,
+          leftHover: 0,
+          rightHover: 0,
+          shoulderHeld: "right",
+          frozen: {
+            leftTabIdx: 0,
+            leftPicked: "math" as CategoryId,
+            rightTabIdx: 0,
+            rightPicked: "item-x" as ItemId,
+          },
+          target,
+          manifest,
+        });
+
+        fireAction("menu.text.open");
+
+        const state = getMenuState();
+        expect(state.phase).toBe("numpad");
+        if (state.phase === "numpad") {
+          expect(state.activeVerb.hand).toBe("right");
+        }
+      });
     });
   });
 });
