@@ -442,6 +442,49 @@ export const actions = {
     reversible: false,
   },
 
+  // -- Insertion mode (character-level caret movement) ----------------------
+
+  "insertion.left": {
+    description: "Move character caret left (insertion mode)",
+    category: "navigation",
+    reversible: false,
+    repeatable: true,
+    requiresEditor: true,
+  },
+  "insertion.right": {
+    description: "Move character caret right (insertion mode)",
+    category: "navigation",
+    reversible: false,
+    repeatable: true,
+    requiresEditor: true,
+  },
+  "insertion.up": {
+    description: "Move character caret up (insertion mode)",
+    category: "navigation",
+    reversible: false,
+    repeatable: true,
+    requiresEditor: true,
+  },
+  "insertion.down": {
+    description: "Move character caret down (insertion mode)",
+    category: "navigation",
+    reversible: false,
+    repeatable: true,
+    requiresEditor: true,
+  },
+  "edit.enterInsertion": {
+    description: "Enter insertion mode at cursor",
+    category: "editor",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "edit.exitInsertion": {
+    description: "Exit insertion mode, return to structural mode",
+    category: "editor",
+    reversible: false,
+    requiresEditor: true,
+  },
+
   // -- Live-Edit (vector-mark sub-mode) -------------------------------------
 
   "liveEdit.vectorConfirm": {

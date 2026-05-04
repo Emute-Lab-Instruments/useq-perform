@@ -137,9 +137,38 @@ const lbRbShiftedLayer: Layer = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Insertion-mode layer (B7): D-pad and stick drive the character caret per
+// structural-editing.md §4.5.
+//
+// When the editor is in insertion mode (free-form text editing), the D-pad
+// remaps from spatial navigation (nav.up/down/left/right) to character-level
+// caret movement (insertion.up/down/left/right). The layer sits above the
+// base layer so it shadows D-pad bindings when active.
+//
+// B (Back) exits insertion mode, returning to structural mode.
+// ─────────────────────────────────────────────────────────────────────────────
+const insertionLayer: Layer = {
+  name: ln("insertion-mode"),
+  when: (s: AppStateSnapshot) => s.insertionMode === true,
+  gestures: {
+    [keyOf(tap("Up"))]: "insertion.up",
+    [keyOf(held("Up"))]: "insertion.up",
+    [keyOf(tap("Down"))]: "insertion.down",
+    [keyOf(held("Down"))]: "insertion.down",
+    [keyOf(tap("Left"))]: "insertion.left",
+    [keyOf(held("Left"))]: "insertion.left",
+    [keyOf(tap("Right"))]: "insertion.right",
+    [keyOf(held("Right"))]: "insertion.right",
+    [keyOf(tap("B"))]: "edit.exitInsertion",
+    [keyOf(tap("Start"))]: "eval.now",
+  },
+};
+
 export const modalShiftLayers: readonly Layer[] = [
   lbRbShiftedLayer,
   lbShiftedLayer,
   rbShiftedLayer,
+  insertionLayer,
   baseLayer,
 ];

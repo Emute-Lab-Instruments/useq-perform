@@ -26,7 +26,7 @@ const mockedIsMenuOpen = vi.mocked(isMenuOpen);
 
 const ln = (n: string) => n as LayerName;
 
-function mkState(overrides: Partial<GamepadState> = {}): AppStateSnapshot {
+function mkState(overrides: Partial<GamepadState> = {}, extra: Record<string, unknown> = {}): AppStateSnapshot {
   return {
     gamepad: {
       heldButtons: new Set(),
@@ -38,6 +38,7 @@ function mkState(overrides: Partial<GamepadState> = {}): AppStateSnapshot {
       },
       ...overrides,
     },
+    ...extra,
   };
 }
 
@@ -198,6 +199,72 @@ describe("paradigm: modal-shift", () => {
           `action ${id} not in registry`,
         ).toBe(true);
       }
+    });
+  });
+
+  // ─── Insertion-mode layer (B7: D-pad drives character caret) ──────────────
+  describe("insertion-mode layer", () => {
+    const insertionState = () => mkState({}, { insertionMode: true });
+
+    it("insertion layer passes binding lint", () => {
+      expect(lintBindings([...modalShiftLayers])).toEqual([]);
+    });
+
+    const dpadCases: Array<{
+      gesture: ReturnType<typeof tap>;
+      action: string;
+      label: string;
+    }> = [
+      { gesture: tap("Up"), action: "insertion.up", label: "tap(Up) → insertion.up" },
+      { gesture: tap("Down"), action: "insertion.down", label: "tap(Down) → insertion.down" },
+      { gesture: tap("Left"), action: "insertion.left", label: "tap(Left) → insertion.left" },
+      { gesture: tap("Right"), action: "insertion.right", label: "tap(Right) → insertion.right" },
+    ];
+
+    for (const { gesture, action, label } of dpadCases) {
+      it(`when insertionMode: D-pad ${label}`, () => {
+        const map = buildLayerMap([...modalShiftLayers]);
+        const r = resolveGesture(gesture, insertionState(), [...modalShiftLayers], map);
+        expect(r?.kind).toBe("action");
+        if (r?.kind === "action") expect(r.action).toBe(action);
+      });
+    }
+
+    it("when insertionMode: held(Up) resolves to insertion.up (repeating)", () => {
+      const map = buildLayerMap([...modalShiftLayers]);
+      const r = resolveGesture(held("Up"), insertionState(), [...modalShiftLayers], map);
+      expect(r?.kind).toBe("action");
+      if (r?.kind === "action") expect(r.action).toBe("insertion.up");
+    });
+
+    it("when insertionMode: tap(B) exits insertion mode", () => {
+      const map = buildLayerMap([...modalShiftLayers]);
+      const r = resolveGesture(tap("B"), insertionState(), [...modalShiftLayers], map);
+      expect(r?.kind).toBe("action");
+      if (r?.kind === "action") expect(r.action).toBe("edit.exitInsertion");
+    });
+
+    it("when insertionMode: tap(Start) still evaluates", () => {
+      const map = buildLayerMap([...modalShiftLayers]);
+      const r = resolveGesture(tap("Start"), insertionState(), [...modalShiftLayers], map);
+      expect(r?.kind).toBe("action");
+      if (r?.kind === "action") expect(r.action).toBe("eval.now");
+    });
+
+    it("when NOT insertionMode: D-pad falls through to base layer (nav.*)", () => {
+      const map = buildLayerMap([...modalShiftLayers]);
+      const normalState = mkState();
+      const r = resolveGesture(tap("Up"), normalState, [...modalShiftLayers], map);
+      expect(r?.kind).toBe("action");
+      if (r?.kind === "action") expect(r.action).toBe("nav.up");
+    });
+
+    it("insertion layer does NOT activate when insertionMode is false", () => {
+      const map = buildLayerMap([...modalShiftLayers]);
+      const state = mkState({}, { insertionMode: false });
+      const r = resolveGesture(tap("Left"), state, [...modalShiftLayers], map);
+      expect(r?.kind).toBe("action");
+      if (r?.kind === "action") expect(r.action).toBe("nav.left");
     });
   });
 });

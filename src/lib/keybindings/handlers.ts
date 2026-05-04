@@ -41,8 +41,12 @@ import {
   contractCurrentProbeContext,
 } from "../../editors/extensions/probes.ts";
 import {
+  cursorCharLeft,
+  cursorCharRight,
+  cursorLineDown,
   cursorLineEnd,
   cursorLineStart,
+  cursorLineUp,
 } from "@codemirror/commands";
 import { SAMPLE_CODE } from "./sampleCode.ts";
 import { openPalette } from "../../ui/keybindings/ActionPalette.tsx";
@@ -173,6 +177,16 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   // -- Live-Edit (vector-mark sub-mode, §3.7.3) ----------------------------
   "liveEdit.vectorConfirm": structHandler("liveEdit.vectorConfirm"),
   "liveEdit.vectorCancel": structHandler("liveEdit.vectorCancel"),
+
+  // -- Insertion mode (character-level caret movement) ----------------------
+  "insertion.left":  cursorCharLeft,
+  "insertion.right": cursorCharRight,
+  "insertion.up":    cursorLineUp,
+  "insertion.down":  cursorLineDown,
+  "edit.enterInsertion": (view: EditorView) =>
+    executeEditorCommand(view, { kind: "structural", action: "mode.insert", source: "gamepad" }),
+  "edit.exitInsertion": (view: EditorView) =>
+    executeEditorCommand(view, { kind: "structural", action: "mode.structural", source: "gamepad" }),
 };
 
 // ---------------------------------------------------------------------------
