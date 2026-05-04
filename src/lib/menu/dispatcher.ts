@@ -31,6 +31,7 @@ import type {
   MenuState,
   MenuStateNumpad,
   MenuStateOpen,
+  MenuStateT9,
   Verb,
   VerbKind,
 } from "./types";
@@ -190,6 +191,13 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
   // the face-A handler to look up the character to append (§14.2 / §14.3).
   let numpadHoverChar: string | null = null;
 
+  // T9 sub-mode: tracks the current key index the left stick points at
+  // and the multi-tap state for the current key (§14.4).
+  let t9HoverIdx: number | null = null;
+  let t9TapCount: number = 0;
+  let t9ActiveIdx: number | null = null; // the position being multi-tapped
+  let t9IdleTimer: ReturnType<typeof setTimeout> | null = null;
+
   return {
     bind(editorView: EditorView): () => void {
       // Clear any previous bindings.
@@ -251,6 +259,7 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
   // -----------------------------------------------------------------------
 
   function unbind(): void {
+    clearT9Timer();
     for (const cleanup of cleanups) {
       cleanup();
     }
@@ -351,6 +360,34 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
         }
       }
 
+      // T9 face-button mapping per §14.4.3:
+      //   A (insert)  → cycle character at current stick position (multi-tap)
+      //   X (replace) → subModeCommitAndContinue
+      //   Y (wrapWith)→ subModeBackspace
+      //   B (call)    → subModeCommitAndExit
+      if (state.phase === "t9") {
+        if (action === "menu.verb.insert") {
+          handleT9Cycle();
+          return;
+        }
+        if (action === "menu.verb.replace") {
+          // Commit any pending multi-tap character first
+          commitPendingT9();
+          deps.dispatchInput({ kind: "subModeCommitAndContinue" });
+          return;
+        }
+        if (action === "menu.verb.wrapWith") {
+          commitPendingT9();
+          deps.dispatchInput({ kind: "subModeBackspace" });
+          return;
+        }
+        if (action === "menu.verb.call") {
+          commitPendingT9();
+          deps.dispatchInput({ kind: "subModeCommitAndExit" });
+          return;
+        }
+      }
+
       const verbKind = actionToVerbKind(action);
       if (verbKind) {
         dispatchVerb(verbKind);
@@ -371,6 +408,13 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
     // but we track the position so face-A can look up the character.
     if (state.phase === "numpad" && stick === "left") {
       numpadHoverChar = hover !== null ? numpadCharAt(hover) : null;
+      return;
+    }
+
+    // In T9 phase, the left stick selects a T9 key position.
+    // We track the position so face-A can look up the character group (§14.4).
+    if (state.phase === "t9" && stick === "left") {
+      t9HoverIdx = hover !== null && hover < T9_POSITION_COUNT ? hover : null;
       return;
     }
 
@@ -580,6 +624,111 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
       source: "menu",
     });
   }
+
+  // -----------------------------------------------------------------------
+  // Internal — T9 multi-tap cycling (spec §14.4)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Handle a face-A press in T9 mode. Multi-tap cycles through the
+   * character group at the current stick position.
+   *
+   * §14.4.1: a character commits when:
+   *   (a) T_t9Commit (600 ms) elapses since the last A press at that position
+   *   (b) the user moves the stick to a different position and presses A
+   *   (c) any non-A face button fires
+   *
+   * @see docs/specs/radial-menu.md §14.4
+   */
+  function handleT9Cycle(): void {
+    const state = deps.getMenuState();
+    if (state.phase !== "t9") return;
+    const t9State = state as MenuStateT9;
+
+    const pos = t9HoverIdx;
+    if (pos === null) return; // no stick position → no-op
+
+    const group = t9GroupAt(pos);
+    if (group === null) return;
+
+    const ts = performance.now();
+
+    // Determine if we're continuing a multi-tap on the same position or
+    // starting a new one.
+    if (t9ActiveIdx !== null && t9ActiveIdx === pos) {
+      // Same position — cycle to the next character in the group.
+      t9TapCount++;
+    } else {
+      // Different position — commit any pending character from the previous.
+      if (t9ActiveIdx !== null) {
+        commitPendingT9();
+      }
+      t9ActiveIdx = pos;
+      t9TapCount = 0;
+    }
+
+    // Compute the character at this tap position.
+    const char = t9CharAt(pos, t9TapCount, t9State.caseMode === "upper");
+    if (char === null) return;
+
+    // If this is the first tap on a new position, append the character.
+    // If this is a subsequent tap on the same position, replace the trailing
+    // character in the buffer.
+    if (t9TapCount === 0) {
+      // First tap on this position — append.
+      deps.dispatchInput({ kind: "subModeAppend", char });
+    } else {
+      // Subsequent tap — replace trailing char: backspace + append.
+      deps.dispatchInput({ kind: "subModeBackspace" });
+      deps.dispatchInput({ kind: "subModeAppend", char });
+    }
+
+    // Update the multi-tap bookkeeping in the state machine.
+    const digitLabel = T9_DIGIT_LABELS[pos] ?? String(pos);
+    deps.dispatchInput({ kind: "subModeT9Cycle", key: digitLabel, ts });
+
+    // Reset the idle timer.
+    resetT9Timer();
+  }
+
+  /**
+   * Commit any pending multi-tap character. After commit, the character
+   * is frozen in the buffer and a new tap starts fresh.
+   */
+  function commitPendingT9(): void {
+    if (t9ActiveIdx === null) return;
+    const ts = performance.now();
+    deps.dispatchInput({ kind: "subModeT9IdleCommit", ts });
+    t9ActiveIdx = null;
+    t9TapCount = 0;
+    clearT9Timer();
+  }
+
+  /**
+   * Reset the T9 idle-commit timer. Called on each face-A press.
+   */
+  function resetT9Timer(): void {
+    clearT9Timer();
+    t9IdleTimer = setTimeout(() => {
+      const state = deps.getMenuState();
+      if (state.phase !== "t9") {
+        t9ActiveIdx = null;
+        t9TapCount = 0;
+        return;
+      }
+      commitPendingT9();
+    }, T9_COMMIT_TIMEOUT_MS);
+  }
+
+  /**
+   * Clear the T9 idle-commit timer.
+   */
+  function clearT9Timer(): void {
+    if (t9IdleTimer !== null) {
+      clearTimeout(t9IdleTimer);
+      t9IdleTimer = null;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -625,6 +774,84 @@ export const NUMPAD_INNER_COUNT = 9;
 
 /** Total numpad positions (inner + centre + outer). */
 export const NUMPAD_TOTAL_COUNT = NUMPAD_CHARS.length;
+
+// ---------------------------------------------------------------------------
+// T9 character groups (spec §14.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * T9 multi-tap character groups per spec §14.4 polar grid.
+ *
+ * Key positions match the numpad layout (same polar grid). Each entry maps
+ * a key index to the characters available at that position. Multi-tap cycles
+ * through the characters: tap 1 = char 0, tap 2 = char 1, etc.
+ *
+ * The T9 layout reuses the numpad's inner ring positions (indices 0–8):
+ *   0=NW(1), 1=N(2), 2=NE(3), 3=W(4), 4=E(6),
+ *   5=SW(7), 6=S(8), 7=SE(9), 8=centre(5)
+ *
+ * @see docs/specs/radial-menu.md §14.4
+ */
+const T9_GROUPS: readonly (readonly string[])[] = [
+  // Index 0 (NW position, digit 1): symbols
+  ["-", "_", "/", "1"],
+  // Index 1 (N position, digit 2): abc
+  ["a", "b", "c", "2"],
+  // Index 2 (NE position, digit 3): def
+  ["d", "e", "f", "3"],
+  // Index 3 (W position, digit 4): ghi
+  ["g", "h", "i", "4"],
+  // Index 4 (centre position, digit 5): jkl
+  ["j", "k", "l", "5"],
+  // Index 5 (E position, digit 6): mno
+  ["m", "n", "o", "6"],
+  // Index 6 (SW position, digit 7): pqrs
+  ["p", "q", "r", "s"],
+  // Index 7 (S position, digit 8): tuv
+  ["t", "u", "v", "8"],
+  // Index 8 (SE position, digit 9): wxyz
+  ["w", "x", "y", "z"],
+];
+
+/** T9 commit idle timeout in ms (spec §14.4.1). */
+const T9_COMMIT_TIMEOUT_MS = 600;
+
+/**
+ * The digit label for each T9 position (for display and identification).
+ */
+export const T9_DIGIT_LABELS: readonly string[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+/** Number of T9 positions. */
+export const T9_POSITION_COUNT = T9_GROUPS.length;
+
+/**
+ * Map a T9 key index to its character group. Returns null for out-of-range.
+ *
+ * @see docs/specs/radial-menu.md §14.4
+ */
+export function t9GroupAt(keyIndex: number): readonly string[] | null {
+  if (keyIndex < 0 || keyIndex >= T9_GROUPS.length) return null;
+  return T9_GROUPS[keyIndex] ?? null;
+}
+
+/**
+ * Compute the character at a given T9 key position and tap count.
+ * Cycles through the group: `tapCount % group.length`.
+ *
+ * @param keyIndex — T9 key position (0–8)
+ * @param tapCount — number of taps at this position (0-based)
+ * @param upper — whether to return uppercase (RB latch)
+ * @returns the character, or null if the key index is invalid
+ *
+ * @see docs/specs/radial-menu.md §14.4
+ */
+export function t9CharAt(keyIndex: number, tapCount: number, upper: boolean = false): string | null {
+  const group = t9GroupAt(keyIndex);
+  if (group === null) return null;
+  const char = group[tapCount % group.length];
+  if (char === undefined) return null;
+  return upper ? char.toUpperCase() : char;
+}
 
 /**
  * Map a menu verb action ID to its VerbKind.

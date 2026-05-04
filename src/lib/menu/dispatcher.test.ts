@@ -11,7 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createMenuDispatcher, type MenuDispatcher, type MenuDispatcherDeps } from "./dispatcher";
+import { createMenuDispatcher, type MenuDispatcher, type MenuDispatcherDeps, numpadCharAt, t9GroupAt, t9CharAt, T9_KEY_COUNT } from "./dispatcher";
 import { INITIAL_STATE, reduce } from "./state";
 import type {
   ActionId,
@@ -788,6 +788,253 @@ describe("MenuDispatcher", () => {
       // to handleAction directly, which still works (no subscription needed).
       // This verifies unbind doesn't throw.
       expect(() => fireAction("menu.cancel")).not.toThrow();
+    });
+  });
+
+  // ---- T9 sub-mode helpers (pure function tests) -------------------------
+
+  describe("T9 character lookup", () => {
+    it("t9GroupAt returns correct group for key 1 (abc)", () => {
+      const group = t9GroupAt(1); // digit 2 position: abc
+      expect(group).toEqual(["a", "b", "c", "2"]);
+    });
+
+    it("t9GroupAt returns correct group for key 6 (pqrs)", () => {
+      const group = t9GroupAt(6); // digit 7 position: pqrs
+      expect(group).toEqual(["p", "q", "r", "s"]);
+    });
+
+    it("t9GroupAt returns null for out-of-range index", () => {
+      expect(t9GroupAt(-1)).toBeNull();
+      expect(t9GroupAt(T9_KEY_COUNT)).toBeNull();
+    });
+
+    it("t9CharAt returns first character with tapCount 0", () => {
+      expect(t9CharAt(1, 0)).toBe("a"); // key 1, tap 0 → 'a'
+    });
+
+    it("t9CharAt cycles through group with tapCount", () => {
+      expect(t9CharAt(1, 0)).toBe("a");
+      expect(t9CharAt(1, 1)).toBe("b");
+      expect(t9CharAt(1, 2)).toBe("c");
+      expect(t9CharAt(1, 3)).toBe("2");
+      expect(t9CharAt(1, 4)).toBe("a"); // wraps
+    });
+
+    it("t9CharAt with upper=true returns uppercase", () => {
+      expect(t9CharAt(1, 0, true)).toBe("A");
+      expect(t9CharAt(1, 2, true)).toBe("C");
+    });
+
+    it("t9CharAt returns null for invalid key index", () => {
+      expect(t9CharAt(-1, 0)).toBeNull();
+      expect(t9CharAt(99, 0)).toBeNull();
+    });
+
+    it("all 9 T9 key positions are accessible", () => {
+      for (let i = 0; i < T9_KEY_COUNT; i++) {
+        expect(t9GroupAt(i)).not.toBeNull();
+        expect(t9CharAt(i, 0)).not.toBeNull();
+      }
+    });
+  });
+
+  // ---- T9 face-button routing --------------------------------------------
+
+  describe("T9 face-button routing", () => {
+    it("face A (menu.verb.insert) in T9 phase dispatches subModeT9Cycle + subModeAppend", () => {
+      const { fireAction, fireAxis, setMenuState, log } = createHarness();
+      const target = { __brand: "ApplyTarget" } as unknown as ApplyTarget;
+
+      // Set T9 state.
+      setMenuState({
+        phase: "t9",
+        buffer: "",
+        lastKey: null,
+        lastKeyAt: 0,
+        caseMode: "lower",
+        target,
+        returnTo: "closed",
+        activeVerb: { kind: "insert", hand: "left" },
+      });
+
+      // Move stick to key position 1 (digit 2 = abc).
+      fireAxis("left", 1);
+
+      // Press face A to cycle character.
+      fireAction("menu.verb.insert");
+
+      const inputs = log
+        .filter((e) => e.kind === "dispatchInput")
+        .map((e) => e.detail as MenuInput);
+
+      // Should have dispatched subModeAppend('a') and subModeT9Cycle.
+      const append = inputs.find((i) => i.kind === "subModeAppend");
+      expect(append).toBeDefined();
+      if (append?.kind === "subModeAppend") {
+        expect(append.char).toBe("a");
+      }
+
+      const cycle = inputs.find((i) => i.kind === "subModeT9Cycle");
+      expect(cycle).toBeDefined();
+    });
+
+    it("face X (menu.verb.replace) in T9 dispatches subModeCommitAndContinue", () => {
+      const { fireAction, setMenuState, log } = createHarness();
+
+      setMenuState({
+        phase: "t9",
+        buffer: "ab",
+        lastKey: null,
+        lastKeyAt: 0,
+        caseMode: "lower",
+        target: {} as ApplyTarget,
+        returnTo: "closed",
+        activeVerb: { kind: "insert", hand: "left" },
+      });
+
+      fireAction("menu.verb.replace");
+
+      const inputs = log
+        .filter((e) => e.kind === "dispatchInput")
+        .map((e) => e.detail as MenuInput);
+      expect(inputs.some((i) => i.kind === "subModeCommitAndContinue")).toBe(true);
+    });
+
+    it("face Y (menu.verb.wrapWith) in T9 dispatches subModeBackspace", () => {
+      const { fireAction, setMenuState, log } = createHarness();
+
+      setMenuState({
+        phase: "t9",
+        buffer: "abc",
+        lastKey: null,
+        lastKeyAt: 0,
+        caseMode: "lower",
+        target: {} as ApplyTarget,
+        returnTo: "closed",
+        activeVerb: { kind: "insert", hand: "left" },
+      });
+
+      fireAction("menu.verb.wrapWith");
+
+      const inputs = log
+        .filter((e) => e.kind === "dispatchInput")
+        .map((e) => e.detail as MenuInput);
+      expect(inputs.some((i) => i.kind === "subModeBackspace")).toBe(true);
+    });
+
+    it("face B (menu.verb.call) in T9 dispatches subModeCommitAndExit", () => {
+      const { fireAction, setMenuState, log } = createHarness();
+
+      setMenuState({
+        phase: "t9",
+        buffer: "test",
+        lastKey: null,
+        lastKeyAt: 0,
+        caseMode: "lower",
+        target: {} as ApplyTarget,
+        returnTo: "closed",
+        activeVerb: { kind: "insert", hand: "left" },
+      });
+
+      fireAction("menu.verb.call");
+
+      const inputs = log
+        .filter((e) => e.kind === "dispatchInput")
+        .map((e) => e.detail as MenuInput);
+      expect(inputs.some((i) => i.kind === "subModeCommitAndExit")).toBe(true);
+    });
+
+    it("multi-tap cycling: pressing A twice on same key cycles to next char", () => {
+      const { fireAction, fireAxis, setMenuState, log } = createHarness();
+
+      setMenuState({
+        phase: "t9",
+        buffer: "",
+        lastKey: null,
+        lastKeyAt: 0,
+        caseMode: "lower",
+        target: {} as ApplyTarget,
+        returnTo: "closed",
+        activeVerb: { kind: "insert", hand: "left" },
+      });
+
+      fireAxis("left", 1); // key 1 = abc
+
+      // First tap → 'a'
+      fireAction("menu.verb.insert");
+
+      // Second tap on same key → backspace 'a' + append 'b'
+      fireAction("menu.verb.insert");
+
+      const inputs = log
+        .filter((e) => e.kind === "dispatchInput")
+        .map((e) => e.detail as MenuInput);
+
+      const appends = inputs.filter((i) => i.kind === "subModeAppend");
+      const backspaces = inputs.filter((i) => i.kind === "subModeBackspace");
+
+      // First tap: append 'a'. Second tap: backspace + append 'b'.
+      expect(appends.length).toBeGreaterThanOrEqual(2);
+      if (appends[0]?.kind === "subModeAppend") expect(appends[0].char).toBe("a");
+      if (appends[1]?.kind === "subModeAppend") expect(appends[1].char).toBe("b");
+      expect(backspaces.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ---- T9 axis tracking --------------------------------------------------
+
+  describe("T9 axis tracking", () => {
+    it("left stick position is tracked for T9 key lookup", () => {
+      const { fireAxis, setMenuState, fireAction, log } = createHarness();
+
+      setMenuState({
+        phase: "t9",
+        buffer: "",
+        lastKey: null,
+        lastKeyAt: 0,
+        caseMode: "lower",
+        target: {} as ApplyTarget,
+        returnTo: "closed",
+        activeVerb: { kind: "insert", hand: "left" },
+      });
+
+      // Move to key 2 (digit 3 = def)
+      fireAxis("left", 2);
+      fireAction("menu.verb.insert");
+
+      const inputs = log
+        .filter((e) => e.kind === "dispatchInput")
+        .map((e) => e.detail as MenuInput);
+      const append = inputs.find((i) => i.kind === "subModeAppend");
+      expect(append).toBeDefined();
+      if (append?.kind === "subModeAppend") {
+        expect(append.char).toBe("d"); // key 2, first char
+      }
+    });
+
+    it("null hover (stick centred) produces no character on face A", () => {
+      const { fireAxis, setMenuState, fireAction, log } = createHarness();
+
+      setMenuState({
+        phase: "t9",
+        buffer: "",
+        lastKey: null,
+        lastKeyAt: 0,
+        caseMode: "lower",
+        target: {} as ApplyTarget,
+        returnTo: "closed",
+        activeVerb: { kind: "insert", hand: "left" },
+      });
+
+      // Stick centred — no key position
+      fireAxis("left", null);
+      fireAction("menu.verb.insert");
+
+      const inputs = log
+        .filter((e) => e.kind === "dispatchInput")
+        .map((e) => e.detail as MenuInput);
+      expect(inputs.some((i) => i.kind === "subModeAppend")).toBe(false);
     });
   });
 });
