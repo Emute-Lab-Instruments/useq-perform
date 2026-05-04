@@ -39,6 +39,12 @@ import type {
 import { subPhase } from "./state";
 import { applyVerb, type ApplyResult } from "./verbs";
 import { nextChainStep, type ChainStep } from "./chain";
+import {
+  loadManifest,
+  getCachedManifest,
+  setCachedManifest,
+} from "./manifest";
+import manifestJson from "./manifest.json";
 import type { CursorSet, HoleNode, IdGen, NodeId, Tree } from "../../editors/extensions/structure/core/types";
 import { defaultIdGen } from "../../editors/extensions/structure/core/index";
 import { findById } from "../../editors/extensions/structure/core/traversal";
@@ -207,6 +213,16 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
 
       boundView = editorView;
       ids = defaultIdGen("menu");
+
+      // Pre-warm the manifest cache on first bind so the cold-open path
+      // never hits a JSON parse. If the cache is already populated (e.g.
+      // by a previous bind or a test), skip the redundant parse.
+      if (getCachedManifest() === null) {
+        const result = loadManifest(manifestJson);
+        if (result.ok) {
+          setCachedManifest(result.value);
+        }
+      }
 
       // Register action routing if the deps provide it.
       if (deps.onActions) {
