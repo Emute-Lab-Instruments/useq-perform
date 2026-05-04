@@ -62,6 +62,7 @@ export function normalizeUserSettings(value: unknown): AppSettings {
   const runtime = isRecord(raw.runtime) ? raw.runtime : {};
   const wasm = isRecord(raw.wasm) ? raw.wasm : {};
   const structure = isRecord(raw.structure) ? raw.structure : {};
+  const format = isRecord(raw.format) ? raw.format : {};
   const hardware = isRecord(raw.hardware) ? raw.hardware : {};
   const keybindings = isRecord(raw.keybindings) ? raw.keybindings : undefined;
   const keymaps = isRecord(raw.keymaps) ? raw.keymaps : undefined;
@@ -157,6 +158,21 @@ export function normalizeUserSettings(value: unknown): AppSettings {
         structure.foldAllWrappers == null
           ? defaults.structure.foldAllWrappers
           : structure.foldAllWrappers !== false,
+    },
+    format: {
+      ...defaults.format,
+      ...format,
+      lineWidth: coerceNumber(format.lineWidth, defaults.format.lineWidth),
+      complexityThreshold: coerceNumber(format.complexityThreshold, defaults.format.complexityThreshold),
+      minAvailableWidth: coerceNumber(format.minAvailableWidth, defaults.format.minAvailableWidth),
+      indentStyle:
+        format.indentStyle === "align" || format.indentStyle === "fixed"
+          ? format.indentStyle
+          : defaults.format.indentStyle,
+      autoFormatOnMutation:
+        format.autoFormatOnMutation == null
+          ? defaults.format.autoFormatOnMutation
+          : format.autoFormatOnMutation !== false,
     },
     hardware: {
       ...defaults.hardware,

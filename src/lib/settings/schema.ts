@@ -127,6 +127,20 @@ export interface StructureSettings {
   foldAllWrappers: boolean;
 }
 
+/** Auto-formatting policy (docs/specs/formatting.md). */
+export interface FormatSettings {
+  /** Maximum line width before breaking (§3.1). */
+  lineWidth: number;
+  /** Node weight at which a parent must break (§3.2). */
+  complexityThreshold: number;
+  /** Fall back to body indent when alignment leaves fewer chars than this (§3.4). */
+  minAvailableWidth: number;
+  /** "align": args align to first arg. "fixed": 2-space indent always (§5). */
+  indentStyle: "align" | "fixed";
+  /** Reformat after structural mutations (§2.2). */
+  autoFormatOnMutation: boolean;
+}
+
 /**
  * Hardware binding settings (docs/specs/hardware-bindings.md §6).
  */
@@ -215,6 +229,7 @@ export interface AppSettings {
   console: ConsoleSettings;
   evalResults: EvalResultsSettings;
   structure: StructureSettings;
+  format: FormatSettings;
   hardware: HardwareSettings;
   keybindings?: KeybindingsSettings;
   keymaps?: Record<string, string>;
@@ -222,7 +237,7 @@ export interface AppSettings {
 }
 
 export type AppSettingsPatch = Partial<
-  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "structure" | "hardware" | "keybindings">
+  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "structure" | "format" | "hardware" | "keybindings">
 > & {
   editor?: Partial<EditorSettings>;
   storage?: Partial<StorageSettings>;
@@ -233,6 +248,7 @@ export type AppSettingsPatch = Partial<
   console?: Partial<ConsoleSettings>;
   evalResults?: Partial<EvalResultsSettings>;
   structure?: Partial<StructureSettings>;
+  format?: Partial<FormatSettings>;
   hardware?: Partial<HardwareSettings>;
   keybindings?: Partial<KeybindingsSettings>;
   keymaps?: Record<string, string>;
@@ -374,6 +390,13 @@ export const defaultUserSettings: AppSettings = {
   structure: {
     foldAllWrappers: true,
   },
+  format: {
+    lineWidth: 60,
+    complexityThreshold: 4,
+    minAvailableWidth: 20,
+    indentStyle: "align",
+    autoFormatOnMutation: true,
+  },
   hardware: {
     bindingsEnabled: true,
     bindingFoldDefault: true,
@@ -401,6 +424,7 @@ export function createDefaultUserSettings(): AppSettings {
     console: { ...defaultUserSettings.console },
     evalResults: { ...defaultUserSettings.evalResults },
     structure: { ...defaultUserSettings.structure },
+    format: { ...defaultUserSettings.format },
     hardware: { ...defaultUserSettings.hardware },
     keybindings: defaultUserSettings.keybindings
       ? { ...defaultUserSettings.keybindings }

@@ -21,19 +21,30 @@
  * the run report.
  */
 
-import type { ChangeSpec, EditorState } from "@codemirror/state";
+import type { ChangeSpec } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 
-import type { Cursor, NodeId, OpResult, State, Tree } from "../core/index.ts";
+import type { Cursor, OpResult, State, Tree } from "../core/index.ts";
 import { pathOf } from "../core/traversal.ts";
+import { getAppSettings } from "../../../../runtime/appSettingsRepository.ts";
 import { pathsFromCursorSet } from "./cursorPath.ts";
-import { printNode } from "./printTree.ts";
+import { formatNode, printNode } from "./printTree.ts";
 import { setStructState, structField } from "./stateField.ts";
-import { treeFromLezer } from "./treeFromLezer.ts";
+import { treeFromLezer, type IdIndex } from "./treeFromLezer.ts";
 
 interface NoOpEntry {
   cursor: Cursor;
   reason: string;
+}
+
+type NodePrinter = (n: import("../core/index.ts").Node) => string;
+
+function getNodePrinter(): NodePrinter {
+  const fmt = getAppSettings().format;
+  if (fmt.autoFormatOnMutation) {
+    return (n) => formatNode(n, fmt);
+  }
+  return printNode;
 }
 
 /**
@@ -84,16 +95,99 @@ export function applyOp(
   // Tree changed — derive a text edit. Find the smallest top-level form
   // ancestor of the new primary cursor's focus that we can re-render.
   const affectedTopLevel = findAffectedTopLevelIndex(before.tree, after.tree);
+  const print = getNodePrinter();
   if (affectedTopLevel === null) {
     // Whole-doc rerender fallback.
-    return dispatchWholeDocReplace(view, after);
+    return dispatchWholeDocReplace(view, before, value.idIndex, after, print);
   }
 
-  return dispatchTopLevelReplace(view, value.idIndex, after, affectedTopLevel);
+  return dispatchTopLevelReplace(view, before, value.idIndex, after, affectedTopLevel, print);
 }
 
-function dispatchWholeDocReplace(view: EditorView, after: State): boolean {
-  const text = printNode(after.tree.root);
+/**
+ * Build the new document text for a whole-doc replace, preserving the
+ * inter-top-level whitespace from the original document (spec §2.1).
+ *
+ * Strategy:
+ *   - Extract the original gaps (text between top-level form ranges) from the
+ *     current doc using the `before` tree's idIndex.
+ *   - Print each new top-level form individually.
+ *   - Stitch the printed forms back together with the original gaps.
+ *
+ * When the number of top-level forms changes (e.g. splice, raise, enclose),
+ * gaps are handled as follows:
+ *   - If there are fewer new forms than old, trailing gaps are dropped.
+ *   - If there are more new forms than old (e.g. splice), the gap between the
+ *     new sibling forms defaults to `\n\n` (single blank line, per §2.1
+ *     exception).
+ *
+ * The text before the first form and after the last form is always preserved
+ * from the original document.
+ */
+function buildDocWithPreservedGaps(
+  docText: string,
+  before: State,
+  beforeIdIndex: IdIndex,
+  after: State,
+  print: NodePrinter,
+): string {
+  const oldChildren = before.tree.root.children;
+  const newChildren = after.tree.root.children;
+
+  // Collect original source ranges for the old top-level forms.
+  const oldRanges: Array<{ from: number; to: number }> = [];
+  for (const child of oldChildren) {
+    const range = beforeIdIndex.get(child.id);
+    if (range) {
+      oldRanges.push(range);
+    }
+  }
+
+  // Extract leading text (before the first old form).
+  const leadingText =
+    oldRanges.length > 0 ? docText.slice(0, oldRanges[0].from) : "";
+
+  // Extract gaps between consecutive old forms.
+  const gaps: string[] = [];
+  for (let i = 0; i + 1 < oldRanges.length; i++) {
+    gaps.push(docText.slice(oldRanges[i].to, oldRanges[i + 1].from));
+  }
+
+  // Extract trailing text (after the last old form).
+  const trailingText =
+    oldRanges.length > 0
+      ? docText.slice(oldRanges[oldRanges.length - 1].to)
+      : "";
+
+  // If we couldn't resolve any old ranges, fall back to flat join.
+  if (oldRanges.length === 0 || newChildren.length === 0) {
+    return newChildren.map(print).join("\n");
+  }
+
+  // Print each new top-level form.
+  const printed = newChildren.map(print);
+
+  // Stitch: leading + form0 + gap0 + form1 + gap1 + … + formN + trailing.
+  const DEFAULT_GAP = "\n\n";
+  let result = leadingText + printed[0];
+  for (let i = 1; i < printed.length; i++) {
+    // Use original gap when available; fall back to a single blank line.
+    const gap = i - 1 < gaps.length ? gaps[i - 1] : DEFAULT_GAP;
+    result += gap + printed[i];
+  }
+  result += trailingText;
+  return result;
+}
+
+function dispatchWholeDocReplace(
+  view: EditorView,
+  before: State,
+  beforeIdIndex: IdIndex,
+  after: State,
+  print: NodePrinter,
+): boolean {
+  const docText = view.state.doc.toString();
+  const text = buildDocWithPreservedGaps(docText, before, beforeIdIndex, after, print);
   const change: ChangeSpec = {
     from: 0,
     to: view.state.doc.length,
@@ -113,29 +207,31 @@ function dispatchWholeDocReplace(view: EditorView, after: State): boolean {
 
 function dispatchTopLevelReplace(
   view: EditorView,
-  oldIdIndex: ReadonlyMap<NodeId, { from: number; to: number }>,
+  before: State,
+  oldIdIndex: IdIndex,
   after: State,
   topLevelIndex: number,
+  print: NodePrinter,
 ): boolean {
   // Source range to replace = original range of the OLD tree's top-level
   // form at `topLevelIndex`. We look it up via the previous idIndex.
-  const oldRoot = view.state.field(structField).state.tree.root;
+  const oldRoot = before.tree.root;
   const oldChild = oldRoot.children[topLevelIndex];
   if (!oldChild) {
-    return dispatchWholeDocReplace(view, after);
+    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print);
   }
   const oldRange = oldIdIndex.get(oldChild.id);
   if (!oldRange) {
-    return dispatchWholeDocReplace(view, after);
+    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print);
   }
   const newRoot = after.tree.root;
   const newChild = newRoot.children[topLevelIndex];
   if (!newChild) {
     // The mutation removed this top-level form. Whole-doc re-render covers
     // this rare case.
-    return dispatchWholeDocReplace(view, after);
+    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print);
   }
-  const text = printNode(newChild);
+  const text = print(newChild);
   const change: ChangeSpec = {
     from: oldRange.from,
     to: oldRange.to,
