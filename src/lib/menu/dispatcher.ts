@@ -29,6 +29,7 @@ import type {
   MenuFace,
   MenuInput,
   MenuState,
+  MenuStateNumpad,
   MenuStateOpen,
   Verb,
   VerbKind,
@@ -86,6 +87,13 @@ export interface MenuDispatcher {
    * or `null` when below engagement threshold.
    */
   handleAxis(stick: "left" | "right", hover: number | null): void;
+
+  /**
+   * Append a character in numpad sub-mode. No-op if not in numpad phase.
+   * Used by the gamepad paradigm layer for face-A presses mapped to the
+   * current stick position's character (§14.3).
+   */
+  numpadAppend(char: string): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +185,11 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
   // IdGen for verb applications. Fresh on each bind to avoid collisions.
   let ids: IdGen = defaultIdGen("menu");
 
+  // Numpad sub-mode: tracks the last character the left stick points at.
+  // Updated by handleAxisImpl when the menu is in numpad phase. Used by
+  // the face-A handler to look up the character to append (§14.2 / §14.3).
+  let numpadHoverChar: string | null = null;
+
   return {
     bind(editorView: EditorView): () => void {
       // Clear any previous bindings.
@@ -224,6 +237,13 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
     handleAxis(stick: "left" | "right", hover: number | null): void {
       handleAxisImpl(stick, hover);
     },
+
+    numpadAppend(char: string): void {
+      const state = deps.getMenuState();
+      if (state.phase === "numpad") {
+        deps.dispatchInput({ kind: "subModeAppend", char });
+      }
+    },
   };
 
   // -----------------------------------------------------------------------
@@ -263,7 +283,24 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
 
     // menu.text.open — open text entry sub-mode (§14.1.3).
     if (action === "menu.text.open") {
-      // Text entry sub-mode is a future feature (H3+). For now, no-op.
+      const state = deps.getMenuState();
+      // Can only open sub-mode from open or closed state.
+      if (state.phase !== "open" && state.phase !== "closed") return;
+      const view = deps.getEditorView();
+      if (!view) return;
+      const target = currentApplyTarget(view);
+      if (!target) return;
+      // Default to numpad for number holes; the dispatcher caller
+      // determines the mode. For now, open numpad with the active verb
+      // defaulting to insert-left.
+      const activeVerb: Verb = { kind: "insert", hand: "left" };
+      deps.dispatchInput({
+        kind: "subModeOpen",
+        mode: "numpad",
+        target,
+        activeVerb,
+        returnTo: state.phase === "open" ? "open" : "closed",
+      });
       return;
     }
 
@@ -277,8 +314,43 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
       return;
     }
 
-    // Verb actions.
+    // Verb actions — in numpad phase, face buttons have different meanings (§14.3).
     if (MENU_VERB_ACTIONS.has(action)) {
+      const state = deps.getMenuState();
+
+      // Numpad face-button mapping per §14.3:
+      //   A (insert)  → subModeAppend — the dispatcher must provide the char
+      //                 via the stick→char mapping, but since we only receive
+      //                 the action ID here, the append is handled by the
+      //                 gamepad paradigm layer that sends subModeAppend
+      //                 directly. Here we handle the other three faces.
+      //   X (replace) → subModeCommitAndContinue
+      //   Y (wrapWith)→ subModeBackspace
+      //   B (call)    → subModeCommitAndExit
+      if (state.phase === "numpad") {
+        if (action === "menu.verb.replace") {
+          deps.dispatchInput({ kind: "subModeCommitAndContinue" });
+          return;
+        }
+        if (action === "menu.verb.wrapWith") {
+          deps.dispatchInput({ kind: "subModeBackspace" });
+          return;
+        }
+        if (action === "menu.verb.call") {
+          deps.dispatchInput({ kind: "subModeCommitAndExit" });
+          return;
+        }
+        // menu.verb.insert (face A) in numpad: append the character at the
+        // current stick position. Per §14.3: "Append the digit / character at
+        // the current stick position to buffer."
+        if (action === "menu.verb.insert") {
+          if (numpadHoverChar !== null) {
+            deps.dispatchInput({ kind: "subModeAppend", char: numpadHoverChar });
+          }
+          return;
+        }
+      }
+
       const verbKind = actionToVerbKind(action);
       if (verbKind) {
         dispatchVerb(verbKind);
@@ -293,6 +365,15 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
 
   function handleAxisImpl(stick: "left" | "right", hover: number | null): void {
     const state = deps.getMenuState();
+
+    // In numpad phase, the left stick selects a numpad key position.
+    // We don't dispatch to the reducer (axis inputs are no-ops in numpad),
+    // but we track the position so face-A can look up the character.
+    if (state.phase === "numpad" && stick === "left") {
+      numpadHoverChar = hover !== null ? numpadCharAt(hover) : null;
+      return;
+    }
+
     if (state.phase !== "open") return;
 
     if (stick === "left") {
@@ -504,6 +585,46 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
 // ---------------------------------------------------------------------------
 // Helpers (pure, exported for testing)
 // ---------------------------------------------------------------------------
+
+/**
+ * Numpad character lookup table per spec §14.2 polar grid.
+ *
+ * The inner ring has 8 compass positions + centre (index 8 = "5").
+ * The outer ring has 8 compass positions. Indices 0–7 = inner ring,
+ * indices 8–15 = outer ring.
+ *
+ * Inner ring (8 segments, compass order): NW=1, N=2, NE=3, W=4,
+ * E=6, SW=7, S=8, SE=9. Centre=5.
+ *
+ * Outer ring (8 segments, compass order): S=0, SW=',', SE='.',
+ * N='±', NE='e', E='⌫', NW='Esc', W='✓'.
+ *
+ * @see docs/specs/radial-menu.md §14.2
+ */
+const NUMPAD_CHARS: readonly string[] = [
+  // Inner ring (indices 0–7): compass order NW, N, NE, W, E, SW, S, SE
+  "1", "2", "3", "4", "6", "7", "8", "9",
+  // Centre (index 8)
+  "5",
+  // Outer ring (indices 9–16): compass order S, SW, SE, N, NE, E, NW, W
+  "0", ",", ".", "±", "e", "⌫", "Esc", "✓",
+];
+
+/**
+ * Map a numpad segment index to its character. Returns null for out-of-range.
+ *
+ * @see docs/specs/radial-menu.md §14.2
+ */
+export function numpadCharAt(index: number): string | null {
+  if (index < 0 || index >= NUMPAD_CHARS.length) return null;
+  return NUMPAD_CHARS[index] ?? null;
+}
+
+/** Number of inner-ring + centre positions (indices 0–8). */
+export const NUMPAD_INNER_COUNT = 9;
+
+/** Total numpad positions (inner + centre + outer). */
+export const NUMPAD_TOTAL_COUNT = NUMPAD_CHARS.length;
 
 /**
  * Map a menu verb action ID to its VerbKind.

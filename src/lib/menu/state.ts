@@ -506,11 +506,75 @@ function updateHover(
 // Reducer — numpad sub-mode (spec §14.2 / §14.3)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Numpad buffer validation helpers (spec §14.2 / §15.3.1 / §15.3.2)
+// ---------------------------------------------------------------------------
+
+/** Maximum buffer length before append is rejected. Prevents unbounded growth. */
+const NUMPAD_MAX_BUFFER = 20;
+
+/**
+ * Validate and apply a character append to the numpad buffer.
+ *
+ * Per spec §15.3.1:
+ * - Digits `0`–`9`: always allowed (subject to overflow guard).
+ * - `.` (decimal point): only one allowed; second is rejected.
+ * - `e` (scientific notation): only one allowed; rejected if buffer is empty
+ *   or already contains `e`.
+ * - `±` (sign toggle): flips leading sign rather than appending. If buffer is
+ *   empty, prepends `-`. If buffer starts with `-`, removes it. Otherwise
+ *   prepends `-`.
+ *
+ * Any other character is appended verbatim (the dispatcher is responsible for
+ * only sending valid characters, but the reducer degrades gracefully).
+ *
+ * @see docs/specs/radial-menu.md §15.3.1
+ * @see docs/specs/radial-menu.md §15.3.2
+ */
+function appendToNumpadBuffer(buffer: string, char: string): string {
+  // Sign toggle (±) — per §15.3.1 outer-ring N position.
+  // Sign toggle modifies the buffer (prepends/removes '-'), not appends,
+  // so it bypasses the overflow guard.
+  if (char === "±" || char === "∓") {
+    if (buffer.length === 0) return "-";
+    if (buffer.startsWith("-")) return buffer.slice(1);
+    return `-${buffer}`;
+  }
+
+  // Overflow guard: reject if buffer is already at max length.
+  if (buffer.length >= NUMPAD_MAX_BUFFER) return buffer;
+
+  // Decimal point: only one allowed.
+  if (char === ".") {
+    if (buffer.includes(".")) return buffer;
+    // If buffer is just "-" or empty, allow the decimal point.
+    return buffer + char;
+  }
+
+  // Scientific notation 'e': only one allowed, and buffer must not be empty
+  // or just a sign.
+  if (char === "e" || char === "E") {
+    if (buffer.includes("e") || buffer.includes("E")) return buffer;
+    if (buffer.length === 0 || buffer === "-") return buffer;
+    return buffer + char;
+  }
+
+  // Regular digit or any other character: append verbatim.
+  return buffer + char;
+}
+
+// ---------------------------------------------------------------------------
+// Reducer — numpad sub-mode (spec §14.2 / §14.3)
+// ---------------------------------------------------------------------------
+
 function reduceNumpad(state: MenuStateNumpad, input: MenuInput): MenuState {
   switch (input.kind) {
     // ---- buffer mutation --------------------------------------------------
-    case "subModeAppend":
-      return { ...state, buffer: state.buffer + input.char };
+    case "subModeAppend": {
+      const newBuffer = appendToNumpadBuffer(state.buffer, input.char);
+      if (newBuffer === state.buffer) return state; // no-op if rejected
+      return { ...state, buffer: newBuffer };
+    }
 
     case "subModeBackspace":
       if (state.buffer.length === 0) return state;

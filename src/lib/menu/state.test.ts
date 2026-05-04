@@ -874,6 +874,131 @@ describe("reduce: numpad", () => {
     expect(reduce(np, { kind: "subModeT9Cycle", key: "abc", ts: 0 })).toBe(np);
     expect(reduce(np, { kind: "subModeT9IdleCommit", ts: 0 })).toBe(np);
   });
+
+  // -----------------------------------------------------------------------
+  // Numpad buffer validation (spec §14.2 / §15.3.1 / §15.3.2)
+  // -----------------------------------------------------------------------
+
+  describe("numpad buffer validation", () => {
+    it("decimal point: only one allowed", () => {
+      const np = makeNumpad({ buffer: "1.5" });
+      // Second decimal point is rejected — buffer unchanged.
+      expect(reduce(np, { kind: "subModeAppend", char: "." })).toBe(np);
+    });
+
+    it("decimal point: first one is allowed", () => {
+      const np = makeNumpad({ buffer: "12" });
+      expect(reduce(np, { kind: "subModeAppend", char: "." })).toEqual({
+        ...np,
+        buffer: "12.",
+      });
+    });
+
+    it("decimal point: allowed on empty buffer", () => {
+      const np = makeNumpad();
+      expect(reduce(np, { kind: "subModeAppend", char: "." })).toEqual({
+        ...np,
+        buffer: ".",
+      });
+    });
+
+    it("decimal point: allowed after sign only", () => {
+      const np = makeNumpad({ buffer: "-" });
+      expect(reduce(np, { kind: "subModeAppend", char: "." })).toEqual({
+        ...np,
+        buffer: "-.",
+      });
+    });
+
+    it("sign toggle (±): prepends '-' to empty buffer", () => {
+      const np = makeNumpad();
+      expect(reduce(np, { kind: "subModeAppend", char: "±" })).toEqual({
+        ...np,
+        buffer: "-",
+      });
+    });
+
+    it("sign toggle (±): removes leading '-' from negative buffer", () => {
+      const np = makeNumpad({ buffer: "-42" });
+      expect(reduce(np, { kind: "subModeAppend", char: "±" })).toEqual({
+        ...np,
+        buffer: "42",
+      });
+    });
+
+    it("sign toggle (±): prepends '-' to positive buffer", () => {
+      const np = makeNumpad({ buffer: "42" });
+      expect(reduce(np, { kind: "subModeAppend", char: "±" })).toEqual({
+        ...np,
+        buffer: "-42",
+      });
+    });
+
+    it("sign toggle (±): toggles on bare '-' buffer → empty", () => {
+      const np = makeNumpad({ buffer: "-" });
+      expect(reduce(np, { kind: "subModeAppend", char: "±" })).toEqual({
+        ...np,
+        buffer: "",
+      });
+    });
+
+    it("scientific notation 'e': allowed after digits", () => {
+      const np = makeNumpad({ buffer: "10" });
+      expect(reduce(np, { kind: "subModeAppend", char: "e" })).toEqual({
+        ...np,
+        buffer: "10e",
+      });
+    });
+
+    it("scientific notation 'e': rejected if buffer already has 'e'", () => {
+      const np = makeNumpad({ buffer: "1e3" });
+      expect(reduce(np, { kind: "subModeAppend", char: "e" })).toBe(np);
+    });
+
+    it("scientific notation 'e': rejected on empty buffer", () => {
+      const np = makeNumpad();
+      expect(reduce(np, { kind: "subModeAppend", char: "e" })).toBe(np);
+    });
+
+    it("scientific notation 'e': rejected on bare '-' buffer", () => {
+      const np = makeNumpad({ buffer: "-" });
+      expect(reduce(np, { kind: "subModeAppend", char: "e" })).toBe(np);
+    });
+
+    it("buffer overflow: rejects append at max length (20 chars)", () => {
+      const np = makeNumpad({ buffer: "12345678901234567890" });
+      expect(reduce(np, { kind: "subModeAppend", char: "1" })).toBe(np);
+    });
+
+    it("buffer overflow: allows append below max length", () => {
+      const np = makeNumpad({ buffer: "1234567890123456789" }); // 19 chars
+      expect(reduce(np, { kind: "subModeAppend", char: "0" })).toEqual({
+        ...np,
+        buffer: "12345678901234567890",
+      });
+    });
+
+    it("sign toggle on max-length buffer: still works (modifies, not appends)", () => {
+      const np = makeNumpad({ buffer: "12345678901234567890" }); // 20 chars
+      expect(reduce(np, { kind: "subModeAppend", char: "±" })).toEqual({
+        ...np,
+        buffer: "-12345678901234567890",
+      });
+    });
+
+    it("full number construction: -3.14e2", () => {
+      const np = makeNumpad();
+      let state = reduce(np, { kind: "subModeAppend", char: "±" }); // "-"
+      state = reduce(state, { kind: "subModeAppend", char: "3" });  // "-3"
+      state = reduce(state, { kind: "subModeAppend", char: "." });  // "-3."
+      state = reduce(state, { kind: "subModeAppend", char: "1" });  // "-3.1"
+      state = reduce(state, { kind: "subModeAppend", char: "4" });  // "-3.14"
+      state = reduce(state, { kind: "subModeAppend", char: "e" });  // "-3.14e"
+      state = reduce(state, { kind: "subModeAppend", char: "2" });  // "-3.14e2"
+      if (state.phase !== "numpad") { expect.fail("expected numpad"); return; }
+      expect(state.buffer).toBe("-3.14e2");
+    });
+  });
 });
 
 // ===========================================================================
