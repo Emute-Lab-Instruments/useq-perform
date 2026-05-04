@@ -48,6 +48,7 @@ import { formatNode } from "./printTree.ts";
 import { setStructState, structField } from "./stateField.ts";
 import { pathsFromCursorSet } from "./cursorPath.ts";
 import { treeFromLezer } from "./treeFromLezer.ts";
+import { vectorController } from "../../liveEdit/markAction.ts";
 
 let _mutators: Mutators | null = null;
 function getMutators(): Mutators {
@@ -227,6 +228,29 @@ function formatDocument(view: EditorView): boolean {
 
 /** Run the named action against the editor. Returns true on dispatch. */
 export function dispatchAction(view: EditorView, name: string): boolean {
+  // ── Vector-mark sub-mode interception (live-edit.md §3.7.3) ──────────
+  // When the vector-mark controller is active, nav.next/prev/right/left
+  // move between markable elements instead of normal structural nav.
+  // liveEdit.vectorConfirm and liveEdit.vectorCancel are also handled here.
+  if (vectorController.active) {
+    switch (name) {
+      case "nav.next":
+      case "nav.right":
+        vectorController.next(view);
+        return true;
+      case "nav.prev":
+      case "nav.left":
+        vectorController.prev(view);
+        return true;
+      case "liveEdit.vectorConfirm":
+        vectorController.commit(view);
+        return true;
+      case "liveEdit.vectorCancel":
+        vectorController.cancel(view);
+        return true;
+    }
+  }
+
   // Spatial vertical nav takes the view directly (it needs source positions
   // that the pure core doesn't carry — see spatialNav.ts).
   if (name === "nav.up") return navUp(view);
@@ -276,4 +300,6 @@ export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   "edit.encloseSet",
   "format.topLevel",
   "format.document",
+  "liveEdit.vectorConfirm",
+  "liveEdit.vectorCancel",
 ]);

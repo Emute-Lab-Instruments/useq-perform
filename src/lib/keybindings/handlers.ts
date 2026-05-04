@@ -169,6 +169,10 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "probe.toggleRaw": (view: EditorView) => toggleCurrentProbe(view, "raw"),
   "probe.expand": expandCurrentProbeContext,
   "probe.contract": contractCurrentProbeContext,
+
+  // -- Live-Edit (vector-mark sub-mode, §3.7.3) ----------------------------
+  "liveEdit.vectorConfirm": structHandler("liveEdit.vectorConfirm"),
+  "liveEdit.vectorCancel": structHandler("liveEdit.vectorCancel"),
 };
 
 // ---------------------------------------------------------------------------

@@ -228,6 +228,14 @@ export interface LiveSlotMetadata {
   min: number;
   max: number;
   seed: number;
+  /** Slot variant: numeric (default), boolean (0/1), keyword (option index). */
+  variant?: "numeric" | "boolean" | "keyword";
+  /** Keyword option strings (only present for keyword variant). */
+  options?: string[];
+  /** Step granularity hint from the wrapper. */
+  step?: number;
+  /** Display precision hint from the wrapper. */
+  precision?: number;
 }
 
 /** Capability snapshot for the WASM port. */

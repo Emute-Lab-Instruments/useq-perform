@@ -36,13 +36,14 @@ import {
   type Node,
 } from "../structure/core/index.ts";
 import { inferRange } from "./rangeInference.ts";
-import { generateId } from "./markAction.ts";
+import { generateId, buildLiveEditWrapper } from "./markAction.ts";
 import {
   clearVectorMarkSession,
   setVectorMarkSession,
   vectorMarkSessionField,
 } from "./vectorMarking.ts";
 import { executeEditorCommand } from "../../commands/editorCommandRouter.ts";
+import { evaluate } from "../../../effects/editorEvaluation.ts";
 
 // ── Public interface ──────────────────────────────────────────────────────
 
@@ -337,12 +338,8 @@ export function createVectorMarkController(options?: {
         const seed = parseSeedFromText(sourceText);
         const inferred = inferRange(seed, parentHead);
 
-        // Build the wrapper text.
-        let wrapper = `(live-edit ${sourceText} :id "${id}"`;
-        if (inferred) {
-          wrapper += ` :min ${inferred.min} :max ${inferred.max}`;
-        }
-        wrapper += ")";
+        // Build the wrapper text (§2.1: include :precision and :step).
+        const wrapper = buildLiveEditWrapper(sourceText, id, inferred);
 
         changes.push({
           from: el.range.from,
@@ -396,6 +393,11 @@ export function createVectorMarkController(options?: {
           userEvent: "liveEdit.vectorMark",
           source: "keyboard",
         });
+
+        // §3.7.3: one eval fires for the parent form after commit.
+        setTimeout(() => {
+          evaluate(view, "toplevel");
+        }, 0);
       }
 
       clearVectorMarkSession(view);

@@ -441,6 +441,21 @@ export const actions = {
     category: "menu",
     reversible: false,
   },
+
+  // -- Live-Edit (vector-mark sub-mode) -------------------------------------
+
+  "liveEdit.vectorConfirm": {
+    description: "Confirm vector-mark selection and wrap marked elements",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "liveEdit.vectorCancel": {
+    description: "Cancel vector-mark sub-mode without changes",
+    category: "editor",
+    reversible: false,
+    requiresEditor: true,
+  },
 } as const satisfies Record<string, ActionDef>;
 
 // ---------------------------------------------------------------------------

@@ -34,7 +34,9 @@ import { probeExtensions } from "./extensions/probes.ts";
 import { inlineResultsField } from "./extensions/inlineResults.ts";
 import { diagnosticField } from "./extensions/diagnostics.ts";
 import { createLiveEditWidgetsExtension } from "./extensions/liveEdit/widgets.ts";
-import { liveEditOnValueChange } from "../effects/liveEditRuntime.ts";
+import { liveEditPasteHandler } from "./extensions/liveEdit/pasteHandler.ts";
+import { createIdleEvalPlugin } from "./extensions/liveEdit/idleEval.ts";
+import { liveEditOnValueChange, onDocumentChange } from "../effects/liveEditRuntime.ts";
 import { dbg } from "../lib/debug.ts";
 import { mapManualControlBindingsThroughChanges } from "../lib/manualControlState.ts";
 
@@ -59,6 +61,8 @@ export const updateListener = EditorView.updateListener.of((update) => {
   // Keep manual-control bindings stable across arbitrary edits.
   if (update.docChanged) {
     mapManualControlBindingsThroughChanges(update.changes);
+    // §7.3 trigger 2: debounced reconciliation on document change.
+    onDocumentChange(update.view);
   }
 });
 
@@ -148,6 +152,8 @@ export const baseExtensions = [
   ...createExpressionGutter(createDefaultGutterConfig()),
   ...probeExtensions,
   ...createLiveEditWidgetsExtension({ onValueChange: liveEditOnValueChange }),
+  liveEditPasteHandler,
+  createIdleEvalPlugin(),
   evalHighlightField,
   deleteConfirmField,
   inlineResultsField,

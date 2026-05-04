@@ -73,7 +73,7 @@ describe("liveEdit.mark — marking", () => {
 
     const text = view.state.doc.toString();
     // Should contain the live-edit wrapper
-    expect(text).toMatch(/\(live-edit 0\.5 :id "[a-z2-9]{4}" :min \d+ :max \d+\)/);
+    expect(text).toMatch(/\(live-edit 0\.5 :id "[a-z2-9]{4}" :min \d+ :max \d+/);
     // Parent osc context: inferRange(0.5, "osc") → min 20, max 2000
     expect(text).toContain(":min 20");
     expect(text).toContain(":max 2000");
@@ -191,7 +191,7 @@ describe("liveEdit.mark — unmarking", () => {
     // Mark
     executeLiveEditMark(view);
     const text = view.state.doc.toString();
-    expect(text).toMatch(/\(live-edit 0\.5 :id "[a-z2-9]{4}" :min 0 :max 1\)/);
+    expect(text).toMatch(/\(live-edit 0\.5 :id "[a-z2-9]{4}" :min 0 :max 1/);
     // The new id should not be "old"
     const match = text.match(/:id "([^"]+)"/);
     // (Could coincidentally be "old" but astronomically unlikely)

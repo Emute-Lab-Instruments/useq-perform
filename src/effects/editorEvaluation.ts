@@ -13,7 +13,7 @@ import { top_level_string } from "@nextjournal/clojure-mode/extensions/eval-regi
 import { sendTouSEQ } from "../transport/json-protocol.ts";
 import { post } from "../utils/consoleStore.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
-import { discoverSlotsAfterEval } from "./liveEditRuntime.ts";
+import { discoverSlotsAfterEval, runBootReconciliation } from "./liveEditRuntime.ts";
 
 // Editor eval and diagnostics readback both route through the active
 // WASM runtime port so the worker-backed default actually moves
@@ -189,6 +189,8 @@ function evalWasm(
         // Fire-and-forget: slot discovery is non-blocking and non-critical.
         if (!hasErrors && opts.view) {
           discoverSlotsAfterEval(opts.view).catch(() => {});
+          // §7.3 trigger 3: boot-time reconciliation after first successful eval.
+          runBootReconciliation(opts.view);
         }
       }
 

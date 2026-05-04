@@ -323,16 +323,41 @@ function sameOptions(a?: string[], b?: string[]): boolean {
   return true;
 }
 
+// ── Shared constants (§10.14, §10.15) ───────────────────────────────────────
+
+/** Fine-drag step multiplier when Shift is held (§4.6.1, §10.15). */
+const DEFAULT_FINE_DRAG_RATIO = 0.1;
+
+/**
+ * Get the step for this slot, defaulting to 10^-precision per §4.5.
+ */
+function slotStep(slot: LiveEditSlot): number {
+  if (typeof slot.step === "number" && slot.step > 0) return slot.step;
+  const precision = typeof slot.precision === "number" ? slot.precision : 2;
+  return Math.pow(10, -precision);
+}
+
+/**
+ * Snap a value to the nearest step boundary per §4.5.
+ */
+function snapToStep(value: number, step: number, min: number): number {
+  if (step <= 0) return value;
+  return min + Math.round((value - min) / step) * step;
+}
+
 // ── Knob (numeric scalar / vector-element) ──────────────────────────────────
 
 class KnobWidget extends LiveEditBaseWidget {
   protected override renderControl(wrapper: HTMLElement, view: EditorView): void {
     const min = typeof this.slot.min === "number" ? this.slot.min : 0;
     const max = typeof this.slot.max === "number" ? this.slot.max : 1;
+    const step = slotStep(this.slot);
+    const fineDragRatio = DEFAULT_FINE_DRAG_RATIO;
 
     const knob = document.createElement("span");
     knob.className = "cm-live-edit-knob";
     knob.setAttribute("role", "slider");
+    knob.setAttribute("tabindex", "0");
     knob.setAttribute("aria-valuemin", String(min));
     knob.setAttribute("aria-valuemax", String(max));
     knob.setAttribute("aria-valuenow", String(this.localValue));
@@ -357,8 +382,28 @@ class KnobWidget extends LiveEditBaseWidget {
     indicator.style.transform = `rotate(${angle}deg)`;
     knob.appendChild(indicator);
 
-    // Mouse drag — local visual state only (§4.6.1).
+    /** Helper to update the knob visual + value and emit the change. */
+    const updateValue = (next: number): void => {
+      this.localValue = next;
+      const a = valueToKnobAngle(next, min, max);
+      indicator.style.transform = `rotate(${a}deg)`;
+      knob.setAttribute("aria-valuenow", String(next));
+      this.refreshReadout(wrapper);
+      view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, next);
+    };
+
+    // §4.6.1: Cmd/Ctrl + click — reset to seed.
     knob.addEventListener("mousedown", (ev) => {
+      if (ev.metaKey || ev.ctrlKey) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (typeof this.slot.seed === "number") {
+          updateValue(this.slot.seed);
+        }
+        return;
+      }
+
+      // §4.6.1: Mouse drag with step snapping (§4.5) and Shift fine control.
       ev.preventDefault();
       ev.stopPropagation();
       const startY = ev.clientY;
@@ -368,15 +413,15 @@ class KnobWidget extends LiveEditBaseWidget {
       const range = max - min;
       const onMove = (mv: MouseEvent): void => {
         const dy = startY - mv.clientY; // up = increase
+        // §4.6.1: Shift + drag — fine control (scale step by fineDragRatio).
+        const ratio = mv.shiftKey ? fineDragRatio : 1;
         // 200 px traverses the full range.
-        const delta = (dy / 200) * range;
-        const next = clamp(startVal + delta, min, max);
-        this.localValue = next;
-        const a = valueToKnobAngle(next, min, max);
-        indicator.style.transform = `rotate(${a}deg)`;
-        knob.setAttribute("aria-valuenow", String(next));
-        this.refreshReadout(wrapper);
-        view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, next);
+        const delta = (dy / 200) * range * ratio;
+        // §4.5: snap to :step
+        const raw = startVal + delta;
+        const snapped = snapToStep(raw, step, min);
+        const next = clamp(snapped, min, max);
+        updateValue(next);
       };
       const onUp = (): void => {
         document.removeEventListener("mousemove", onMove);
@@ -384,6 +429,52 @@ class KnobWidget extends LiveEditBaseWidget {
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
+    });
+
+    // §4.6.1: Scroll wheel — step by :step per notch.
+    knob.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const currentVal = typeof this.localValue === "number"
+        ? this.localValue
+        : Number(this.localValue) || 0;
+      const effectiveStep = ev.shiftKey ? step * fineDragRatio : step;
+      const direction = ev.deltaY < 0 ? 1 : -1;
+      const next = clamp(currentVal + direction * effectiveStep, min, max);
+      updateValue(next);
+    });
+
+    // §4.6.2: Keyboard arrows — step by :step for scalars.
+    knob.addEventListener("keydown", (ev) => {
+      const currentVal = typeof this.localValue === "number"
+        ? this.localValue
+        : Number(this.localValue) || 0;
+      const effectiveStep = ev.shiftKey ? step * fineDragRatio : step;
+
+      if (ev.key === "ArrowUp" || ev.key === "ArrowRight") {
+        ev.preventDefault();
+        const next = clamp(currentVal + effectiveStep, min, max);
+        updateValue(next);
+      } else if (ev.key === "ArrowDown" || ev.key === "ArrowLeft") {
+        ev.preventDefault();
+        const next = clamp(currentVal - effectiveStep, min, max);
+        updateValue(next);
+      }
+    });
+
+    // §4.6.1: Right-click — context menu placeholder.
+    knob.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      // Dispatch a custom event for the context menu handler to pick up.
+      // The context menu UI (rename, edit range, unmark, MIDI learn) is
+      // rendered by the panel/adapter layer, not the widget itself.
+      wrapper.dispatchEvent(
+        new CustomEvent("liveEditContextMenu", {
+          detail: { slotId: this.slot.id, x: ev.clientX, y: ev.clientY },
+          bubbles: true,
+        }),
+      );
     });
 
     wrapper.appendChild(knob);
@@ -396,10 +487,13 @@ class SliderWidget extends LiveEditBaseWidget {
   protected override renderControl(wrapper: HTMLElement, view: EditorView): void {
     const min = typeof this.slot.min === "number" ? this.slot.min : 0;
     const max = typeof this.slot.max === "number" ? this.slot.max : 1;
+    const step = slotStep(this.slot);
+    const fineDragRatio = DEFAULT_FINE_DRAG_RATIO;
 
     const track = document.createElement("span");
     track.className = "cm-live-edit-slider";
     track.setAttribute("role", "slider");
+    track.setAttribute("tabindex", "0");
     track.setAttribute("aria-valuemin", String(min));
     track.setAttribute("aria-valuemax", String(max));
     track.setAttribute("aria-valuenow", String(this.localValue));
@@ -423,28 +517,91 @@ class SliderWidget extends LiveEditBaseWidget {
     handle.style.left = `${t * 100}%`;
     track.appendChild(handle);
 
+    /** Helper to update slider visual + value and emit the change. */
+    const updateValue = (next: number): void => {
+      this.localValue = next;
+      const ratio = clamp((next - min) / (max - min || 1), 0, 1);
+      handle.style.left = `${ratio * 100}%`;
+      track.setAttribute("aria-valuenow", String(next));
+      this.refreshReadout(wrapper);
+      view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, next);
+    };
+
+    // §4.6.1: Cmd/Ctrl + click — reset to seed.
     track.addEventListener("mousedown", (ev) => {
+      if (ev.metaKey || ev.ctrlKey) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (typeof this.slot.seed === "number") {
+          updateValue(this.slot.seed);
+        }
+        return;
+      }
+
       ev.preventDefault();
       ev.stopPropagation();
       const rect = track.getBoundingClientRect();
       const range = max - min;
-      const apply = (clientX: number): void => {
+      const apply = (clientX: number, shiftKey: boolean): void => {
         const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
-        const next = min + ratio * range;
-        this.localValue = next;
-        handle.style.left = `${ratio * 100}%`;
-        track.setAttribute("aria-valuenow", String(next));
-        this.refreshReadout(wrapper);
-        view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, next);
+        const raw = min + ratio * range;
+        // §4.5: snap to step; §4.6.1: Shift fine control
+        const effectiveStep = shiftKey ? step * fineDragRatio : step;
+        const snapped = snapToStep(raw, effectiveStep, min);
+        const next = clamp(snapped, min, max);
+        updateValue(next);
       };
-      apply(ev.clientX);
-      const onMove = (mv: MouseEvent): void => apply(mv.clientX);
+      apply(ev.clientX, ev.shiftKey);
+      const onMove = (mv: MouseEvent): void => apply(mv.clientX, mv.shiftKey);
       const onUp = (): void => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
+    });
+
+    // §4.6.1: Scroll wheel — step by :step per notch.
+    track.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const currentVal = typeof this.localValue === "number"
+        ? this.localValue
+        : Number(this.localValue) || 0;
+      const effectiveStep = ev.shiftKey ? step * fineDragRatio : step;
+      const direction = ev.deltaY < 0 ? 1 : -1;
+      const next = clamp(currentVal + direction * effectiveStep, min, max);
+      updateValue(next);
+    });
+
+    // §4.6.2: Keyboard arrows — step by :step.
+    track.addEventListener("keydown", (ev) => {
+      const currentVal = typeof this.localValue === "number"
+        ? this.localValue
+        : Number(this.localValue) || 0;
+      const effectiveStep = ev.shiftKey ? step * fineDragRatio : step;
+
+      if (ev.key === "ArrowUp" || ev.key === "ArrowRight") {
+        ev.preventDefault();
+        const next = clamp(currentVal + effectiveStep, min, max);
+        updateValue(next);
+      } else if (ev.key === "ArrowDown" || ev.key === "ArrowLeft") {
+        ev.preventDefault();
+        const next = clamp(currentVal - effectiveStep, min, max);
+        updateValue(next);
+      }
+    });
+
+    // §4.6.1: Right-click — context menu.
+    track.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      wrapper.dispatchEvent(
+        new CustomEvent("liveEditContextMenu", {
+          detail: { slotId: this.slot.id, x: ev.clientX, y: ev.clientY },
+          bubbles: true,
+        }),
+      );
     });
 
     wrapper.appendChild(track);
@@ -458,6 +615,7 @@ class ToggleWidget extends LiveEditBaseWidget {
     const pill = document.createElement("span");
     pill.className = "cm-live-edit-toggle";
     pill.setAttribute("role", "switch");
+    pill.setAttribute("tabindex", "0");
 
     const update = (): void => {
       const on = Boolean(this.localValue);
@@ -468,13 +626,49 @@ class ToggleWidget extends LiveEditBaseWidget {
     };
     update();
 
-    pill.addEventListener("mousedown", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
+    const toggle = (): void => {
       this.localValue = !this.localValue;
       update();
       this.refreshReadout(wrapper);
       view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, this.localValue as boolean);
+    };
+
+    // §4.6.1: Cmd/Ctrl + click — reset to seed.
+    pill.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.metaKey || ev.ctrlKey) {
+        this.localValue = this.slot.seed;
+        update();
+        this.refreshReadout(wrapper);
+        view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, this.localValue as boolean);
+        return;
+      }
+      toggle();
+    });
+
+    // §4.6.2: Keyboard arrows — toggle booleans.
+    pill.addEventListener("keydown", (ev) => {
+      if (
+        ev.key === "ArrowUp" || ev.key === "ArrowDown" ||
+        ev.key === "ArrowLeft" || ev.key === "ArrowRight" ||
+        ev.key === " " || ev.key === "Enter"
+      ) {
+        ev.preventDefault();
+        toggle();
+      }
+    });
+
+    // §4.6.1: Right-click — context menu.
+    pill.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      wrapper.dispatchEvent(
+        new CustomEvent("liveEditContextMenu", {
+          detail: { slotId: this.slot.id, x: ev.clientX, y: ev.clientY },
+          bubbles: true,
+        }),
+      );
     });
 
     wrapper.appendChild(pill);
@@ -497,11 +691,31 @@ class PickerWidget extends LiveEditBaseWidget {
     const row = document.createElement("span");
     row.className = "cm-live-edit-picker";
     row.setAttribute("role", "listbox");
+    row.setAttribute("tabindex", "0");
 
     const options =
       this.slot.options && this.slot.options.length > 0
         ? this.slot.options
         : [String(this.slot.value)];
+
+    /** Update all segments to reflect the current localValue. */
+    const refreshSegments = (): void => {
+      for (const child of Array.from(row.children) as HTMLElement[]) {
+        const childOpt = child.dataset.option ?? "";
+        const isSelected = childOpt === String(this.localValue);
+        child.classList.toggle("is-selected", isSelected);
+        child.setAttribute("aria-selected", String(isSelected));
+        child.textContent = `:${childOpt} ${isSelected ? "●" : "○"}`;
+      }
+    };
+
+    /** Select an option by value. */
+    const selectOption = (opt: string): void => {
+      this.localValue = opt;
+      refreshSegments();
+      this.refreshReadout(wrapper);
+      view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, opt);
+    };
 
     for (const opt of options) {
       const seg = document.createElement("span");
@@ -513,23 +727,55 @@ class PickerWidget extends LiveEditBaseWidget {
       seg.setAttribute("role", "option");
       seg.setAttribute("aria-selected", String(filled));
 
+      // §4.6.1: Cmd/Ctrl + click — reset to seed.
       seg.addEventListener("mousedown", (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
-        this.localValue = opt;
-        for (const child of Array.from(row.children) as HTMLElement[]) {
-          const isThis = child === seg;
-          child.classList.toggle("is-selected", isThis);
-          child.setAttribute("aria-selected", String(isThis));
-          const childOpt = child.dataset.option ?? "";
-          child.textContent = `:${childOpt} ${isThis ? "●" : "○"}`;
+        if (ev.metaKey || ev.ctrlKey) {
+          selectOption(String(this.slot.seed));
+          return;
         }
-        this.refreshReadout(wrapper);
-        view.state.facet(liveEditWidgetConfigFacet).onValueChange?.(this.slot.id, opt);
+        selectOption(opt);
       });
 
       row.appendChild(seg);
     }
+
+    // §4.6.2: Keyboard arrows — cycle enums.
+    row.addEventListener("keydown", (ev) => {
+      const currentIdx = options.indexOf(String(this.localValue));
+      if (ev.key === "ArrowRight" || ev.key === "ArrowUp") {
+        ev.preventDefault();
+        const nextIdx = (currentIdx + 1) % options.length;
+        selectOption(options[nextIdx]);
+      } else if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") {
+        ev.preventDefault();
+        const prevIdx = (currentIdx - 1 + options.length) % options.length;
+        selectOption(options[prevIdx]);
+      }
+    });
+
+    // §4.6.1: Scroll wheel — cycle options.
+    row.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const currentIdx = options.indexOf(String(this.localValue));
+      const direction = ev.deltaY < 0 ? 1 : -1;
+      const nextIdx = (currentIdx + direction + options.length) % options.length;
+      selectOption(options[nextIdx]);
+    });
+
+    // §4.6.1: Right-click — context menu.
+    row.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      wrapper.dispatchEvent(
+        new CustomEvent("liveEditContextMenu", {
+          detail: { slotId: this.slot.id, x: ev.clientX, y: ev.clientY },
+          bubbles: true,
+        }),
+      );
+    });
 
     wrapper.appendChild(row);
   }

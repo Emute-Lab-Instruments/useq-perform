@@ -116,6 +116,10 @@ export const defaultKeyBindings: KeyBinding[] = [
   // "nav.down"  — unbound
   // "nav.left"  — unbound
   // "nav.right" — unbound
+
+  // -- Live-Edit vector-mark sub-mode (§3.7.3, §3.7.8) --------------------
+  { action: "liveEdit.vectorConfirm", key: "Enter", when: "vectorMark.active" },
+  { action: "liveEdit.vectorCancel", key: "Escape", when: "vectorMark.active" },
 ];
 
 // ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@ import type { EditorView } from "@codemirror/view";
 import type { LiveEditSlot, SlotKind } from "../contracts/liveEdit.ts";
 import type { LiveSlotMetadata } from "../contracts/runtimePorts.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
+import { isConnectedToModule, isJsonProtocolActive, sendSetLiveInputs } from "../transport/index.ts";
 
 // ─── Singleton instances ────────────────────────────────────────────────────
 
@@ -37,9 +38,129 @@ const storeValueHandler = createValueChangeHandler(liveEditStore);
 
 // ─── Value change callback (widget → store → WASM) ──────────────────────────
 
+// ─── Value conversion (§2.6 — boolean/keyword → double for WASM) ──────────
+
 /**
- * Called by widget interactions. Updates the store AND pushes the new value
- * to the WASM runtime so the interpreter sees the change on the next tick.
+ * Convert a slot value to the double representation expected by the WASM ABI.
+ * - numeric: pass through
+ * - boolean: true → 1, false → 0
+ * - keyword: index into slot.options, or 0 if not found
+ */
+function slotValueToDouble(value: number | boolean | string, slot?: LiveEditSlot): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  // keyword → option index
+  if (typeof value === "string" && slot?.options) {
+    const idx = slot.options.indexOf(value);
+    return idx >= 0 ? idx : 0;
+  }
+  return 0;
+}
+
+// ─── Per-tick batching and diff-encoding (§9.1–9.2) ────────────────────────
+
+/** Default UI tick rate (Hz). Auto-throttled to 30 Hz when N>10 active. */
+const DEFAULT_UI_TICK_HZ = 60;
+const THROTTLE_THRESHOLD = 10;
+const THROTTLED_UI_TICK_HZ = 30;
+
+/** Pending values to send on the next UI tick. Keyed by slot id. */
+const pendingWasmValues = new Map<string, number>();
+const pendingHwValues = new Map<string, number | boolean | string>();
+
+/** Last-sent table for diff-encoding — only send changed values. */
+const lastSentWasm = new Map<string, number>();
+const lastSentHw = new Map<string, number | boolean | string>();
+
+let batchTickTimer: ReturnType<typeof setInterval> | null = null;
+let currentTickHz = DEFAULT_UI_TICK_HZ;
+
+function startBatchTicker(): void {
+  if (batchTickTimer !== null) return;
+  scheduleTicker();
+}
+
+function scheduleTicker(): void {
+  const intervalMs = 1000 / currentTickHz;
+  batchTickTimer = setInterval(flushBatchedValues, intervalMs);
+}
+
+function adjustTickRate(): void {
+  const activeCount = pendingWasmValues.size;
+  const targetHz = activeCount > THROTTLE_THRESHOLD
+    ? THROTTLED_UI_TICK_HZ
+    : DEFAULT_UI_TICK_HZ;
+
+  if (targetHz !== currentTickHz) {
+    currentTickHz = targetHz;
+    if (batchTickTimer !== null) {
+      clearInterval(batchTickTimer);
+      batchTickTimer = null;
+      scheduleTicker();
+    }
+  }
+}
+
+/**
+ * Flush all pending value changes in a single batched call per runtime.
+ * Uses diff-encoding: only sends values that changed since last send.
+ */
+function flushBatchedValues(): void {
+  // ── WASM batch ──────────────────────────────────────────────────────
+  if (pendingWasmValues.size > 0) {
+    const wasmBatch: Record<string, number> = {};
+    let wasmDirty = false;
+
+    for (const [id, val] of pendingWasmValues) {
+      const lastVal = lastSentWasm.get(id);
+      if (lastVal === undefined || lastVal !== val) {
+        wasmBatch[id] = val;
+        lastSentWasm.set(id, val);
+        wasmDirty = true;
+      }
+    }
+    pendingWasmValues.clear();
+
+    if (wasmDirty) {
+      getActiveWasmRuntimePort().setLiveInputs(wasmBatch).catch(() => {
+        // Silently ignore — runtime may not be loaded yet
+      });
+    }
+  }
+
+  // ── Hardware batch ──────────────────────────────────────────────────
+  if (pendingHwValues.size > 0) {
+    const hwBatch: Record<string, number | boolean | string> = {};
+    let hwDirty = false;
+
+    for (const [id, val] of pendingHwValues) {
+      const lastVal = lastSentHw.get(id);
+      if (lastVal === undefined || lastVal !== val) {
+        hwBatch[id] = val;
+        lastSentHw.set(id, val);
+        hwDirty = true;
+      }
+    }
+    pendingHwValues.clear();
+
+    if (hwDirty && isConnectedToModule() && isJsonProtocolActive()) {
+      sendSetLiveInputs(hwBatch).catch(() => {
+        // Silently ignore — serial may have disconnected mid-send
+      });
+    }
+  }
+}
+
+/**
+ * Called by widget interactions. Updates the store AND queues the value
+ * for batched dispatch to runtimes on the next UI tick.
+ *
+ * Spec: §6.5 wasm-preview state — slots allocated on WASM only (from a soft
+ * eval) push values to WASM only; pre-existing hardware-registered slots push
+ * to both runtimes.
+ *
+ * §9.1: Single batched useq_set_live_inputs per UI tick regardless of N.
+ * §9.2: Diff-encoding — only send changed values via last-sent table.
  */
 export function liveEditOnValueChange(slotId: string, value: number | boolean | string): void {
   // Update the store (sets modified flag, triggers reactive subscribers)
@@ -50,13 +171,23 @@ export function liveEditOnValueChange(slotId: string, value: number | boolean | 
     liveEditPersistence.saveValue(slotId, value);
   }
 
-  // Push to WASM runtime — only numeric values are supported by the ABI
-  if (typeof value === "number") {
-    const values: Record<string, number> = { [slotId]: value };
-    getActiveWasmRuntimePort().setLiveInputs(values).catch(() => {
-      // Silently ignore — runtime may not be loaded yet
-    });
+  // Convert to double for WASM (§2.6: boolean → 0/1, keyword → option index)
+  const slot = liveEditStore.getSlot(slotId);
+  const wasmDouble = slotValueToDouble(value, slot);
+
+  // Queue for batched WASM push
+  pendingWasmValues.set(slotId, wasmDouble);
+
+  // Queue for batched hardware push (§4.3: wasm-preview slots skip hardware)
+  if (slot?.state !== "wasm-preview") {
+    pendingHwValues.set(slotId, value);
   }
+
+  // Adjust tick rate based on active knob count (§9.1)
+  adjustTickRate();
+
+  // Ensure the batch ticker is running
+  startBatchTicker();
 }
 
 // ─── Bridge attachment ──────────────────────────────────────────────────────
@@ -185,44 +316,190 @@ export async function discoverSlotsAfterEval(view: EditorView): Promise<void> {
 
     const existingSlot = liveEditStore.getSlot(wasmSlot.id);
 
-    // Determine the value: prefer store (user already interacted) > persisted > WASM seed
-    let value: number;
-    if (existingSlot && typeof existingSlot.value === "number") {
+    // §2.6: Detect slot kind from WASM metadata variant field
+    const kind: SlotKind = wasmSlot.variant === "boolean" ? "boolean"
+      : wasmSlot.variant === "keyword" ? "keyword"
+      : "numeric";
+
+    // Determine the value: prefer store (user already interacted) > persisted > WASM seed.
+    // For boolean slots, interpret double as boolean. For keyword slots, interpret
+    // double as option index.
+    let value: number | boolean | string;
+    if (existingSlot && existingSlot.value !== undefined) {
       value = existingSlot.value;
-    } else if (wasmSlot.id in persisted.values && typeof persisted.values[wasmSlot.id] === "number") {
-      value = persisted.values[wasmSlot.id] as number;
+    } else if (wasmSlot.id in persisted.values) {
+      value = persisted.values[wasmSlot.id];
+    } else if (kind === "boolean") {
+      value = wasmSlot.seed !== 0;
+    } else if (kind === "keyword" && wasmSlot.options && wasmSlot.options.length > 0) {
+      const seedIdx = Math.round(wasmSlot.seed);
+      value = wasmSlot.options[Math.min(seedIdx, wasmSlot.options.length - 1)] ?? wasmSlot.options[0];
     } else {
       value = wasmSlot.seed;
     }
 
-    const kind: SlotKind = "numeric"; // WASM slots are always numeric for now
+    // Compute the seed in the appropriate type for the slot kind
+    let seed: number | boolean | string;
+    if (kind === "boolean") {
+      seed = wasmSlot.seed !== 0;
+    } else if (kind === "keyword" && wasmSlot.options && wasmSlot.options.length > 0) {
+      const seedIdx = Math.round(wasmSlot.seed);
+      seed = wasmSlot.options[Math.min(seedIdx, wasmSlot.options.length - 1)] ?? wasmSlot.options[0];
+    } else {
+      seed = wasmSlot.seed;
+    }
+
+    // Compute modified flag per §4.4
+    let modified: boolean;
+    if (typeof value === "number" && typeof seed === "number") {
+      const step = wasmSlot.step ?? 0.01;
+      modified = Math.abs(value - seed) > step / 2;
+    } else {
+      modified = value !== seed;
+    }
+
     const slot: LiveEditSlot = {
       id: wasmSlot.id,
       kind,
-      seed: wasmSlot.seed,
+      seed,
       value,
       min: wasmSlot.min,
       max: wasmSlot.max,
+      step: wasmSlot.step,
+      precision: wasmSlot.precision,
+      options: wasmSlot.options,
       state: "idle",
       range,
-      modified: Math.abs(value - wasmSlot.seed) > 0.005,
+      modified,
     };
 
     liveEditStore.registerSlot(slot);
   }
 
-  // If any persisted values differ from seed, push them to WASM so the
-  // runtime is in sync with the store from frame 1.
+  // If any persisted values differ from seed, push them to both runtimes
+  // so the store is in sync from frame 1.
+  // §2.6: Convert boolean/keyword values to doubles for WASM.
   const currentValues = liveEditStore.getValuesRecord();
-  const numericValues: Record<string, number> = {};
+  const wasmDoubles: Record<string, number> = {};
   let hasValues = false;
   for (const [id, val] of Object.entries(currentValues)) {
-    if (typeof val === "number") {
-      numericValues[id] = val;
-      hasValues = true;
-    }
+    const storeSlot = liveEditStore.getSlot(id);
+    wasmDoubles[id] = slotValueToDouble(val, storeSlot);
+    hasValues = true;
   }
   if (hasValues) {
-    port.setLiveInputs(numericValues).catch(() => {});
+    // Push to WASM (all values as doubles)
+    port.setLiveInputs(wasmDoubles).catch(() => {});
+
+    // Push to hardware transport if connected (spec §7.3, §8.4)
+    if (isConnectedToModule() && isJsonProtocolActive()) {
+      const hwValues: Record<string, number | boolean | string> = {};
+      for (const [id, val] of Object.entries(currentValues)) {
+        hwValues[id] = val;
+      }
+      sendSetLiveInputs(hwValues).catch(() => {});
+    }
   }
+
+  // Clear wasm-preview state for all discovered slots after a normal eval
+  // (spec §6.5: subsequent normal eval clears the wasm-preview badge).
+  for (const wasmSlot of wasmSlots) {
+    const existingSlot = liveEditStore.getSlot(wasmSlot.id);
+    if (existingSlot?.state === "wasm-preview") {
+      liveEditStore.setState(wasmSlot.id, "idle");
+    }
+  }
+
+  // Trigger reconciliation after successful eval (§7.3 trigger 1).
+  triggerReconciliation(view);
+}
+
+// ─── Reconciliation triggers (§7.3) ──────────────────────────────────────
+
+/**
+ * Extract live-edit IDs from the current document for reconciliation.
+ */
+function getDocumentLiveEditIds(view: EditorView): Set<string> {
+  const docText = view.state.doc.toString();
+  const ranges = scanDocumentForLiveEditRanges(docText);
+  return new Set(ranges.keys());
+}
+
+/**
+ * Run reconciliation against the current document (§7.3).
+ * Moves orphaned values to the orphan table and restores cut-pasted ones.
+ * Also cleans up the last-sent diff-encoding tables for removed slots.
+ */
+function triggerReconciliation(view: EditorView): void {
+  const currentIds = getDocumentLiveEditIds(view);
+  liveEditPersistence.reconcile(currentIds);
+
+  // Clean up diff-encoding tables for slots no longer in the document
+  for (const id of lastSentWasm.keys()) {
+    if (!currentIds.has(id)) lastSentWasm.delete(id);
+  }
+  for (const id of lastSentHw.keys()) {
+    if (!currentIds.has(id)) lastSentHw.delete(id);
+  }
+}
+
+// ─── Document-change debounced reconciliation (§7.3 trigger 2) ──────────
+
+let docChangeTimer: ReturnType<typeof setTimeout> | null = null;
+const DOC_CHANGE_DEBOUNCE_MS = 500;
+
+/**
+ * Called on document changes. Debounces at ~500ms and runs reconciliation.
+ * Covers the case where eval is failing repeatedly while the user edits
+ * live-edit wrappers — persisted values still get cleaned up.
+ */
+export function onDocumentChange(view: EditorView): void {
+  if (docChangeTimer !== null) {
+    clearTimeout(docChangeTimer);
+  }
+  docChangeTimer = setTimeout(() => {
+    docChangeTimer = null;
+    triggerReconciliation(view);
+  }, DOC_CHANGE_DEBOUNCE_MS);
+}
+
+// ─── Page lifecycle flush (§7.2) ────────────────────────────────────────
+
+/**
+ * Flush pending debounced values on page hide / visibility change.
+ * Should be called once during app bootstrap to install the listeners.
+ */
+export function installPageLifecycleHandlers(): void {
+  const flush = () => {
+    const values = liveEditStore.getValuesRecord();
+    const stringValues: Record<string, number | boolean | string> = {};
+    for (const [id, val] of Object.entries(values)) {
+      stringValues[id] = val;
+    }
+    liveEditPersistence.flushValues(stringValues);
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      flush();
+    }
+  });
+  window.addEventListener("pagehide", flush);
+}
+
+// ─── Boot-time reconciliation (§7.3 trigger 3) ─────────────────────────
+
+let bootReconciliationDone = false;
+
+/**
+ * Called after the first successful eval on page load. Restores persisted
+ * values and reconciles against the document.
+ *
+ * If no eval fires within `idleEvalMs`, call this anyway to at least
+ * reconcile orphans.
+ */
+export function runBootReconciliation(view: EditorView): void {
+  if (bootReconciliationDone) return;
+  bootReconciliationDone = true;
+  triggerReconciliation(view);
 }
