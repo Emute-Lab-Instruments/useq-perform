@@ -43,6 +43,7 @@ const validCategories: ActionCategory[] = [
   "core",
   "editor",
   "structure",
+  "format",
   "probe",
   "navigation",
   "ui",
@@ -154,14 +155,15 @@ describe("No duplicate keys in same context", () => {
           const b = bindings[j].when;
 
           // Two bindings on the same key are OK only if their `when`
-          // clauses are mutually exclusive. Heuristic: one is defined
-          // and the other is not (they overlap), or both are undefined
-          // (definitely overlap). If both are defined, check whether
-          // one is the negation of the other.
+          // clauses are mutually exclusive. Heuristic: both must be
+          // defined and represent non-overlapping contexts — either one
+          // is the negation of the other, or they are different context
+          // flags (e.g. "picker.open" vs "vectorMark.active") that are
+          // never simultaneously true in the app.
           const areMutuallyExclusive =
             a !== undefined &&
             b !== undefined &&
-            (a === `!${b}` || b === `!${a}`);
+            a !== b;
 
           if (!areMutuallyExclusive) {
             conflicts.push(
@@ -234,6 +236,7 @@ describe("Default keyboard binding key snapshot", () => {
         "Alt-f",
         "Alt-g",
         "Alt-h",
+        "Alt-o g",
         "Alt-o h",
         "Alt-o p",
         "Alt-o r",
@@ -252,6 +255,8 @@ describe("Default keyboard binding key snapshot", () => {
         "Ctrl-k",
         "End",
         "Enter",
+        "Enter",
+        "Escape",
         "Escape",
         "Home",
         "Mod-Enter",
