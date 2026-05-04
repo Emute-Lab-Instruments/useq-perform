@@ -83,6 +83,76 @@ describe("paradigm: modal-shift", () => {
     expect(r?.kind).toBe("action");
     if (r?.kind === "action") expect(r.action).toBe("probe.toggle");
   });
+
+  // ─── LB+RB shift layer (B6: face-button structural verbs) ─────────────────
+  // Face buttons: raise / splice / transpose pair
+  // D-pad:        enclose family (list / vector / map / set)
+  describe("LB+RB shifted layer: structural shape verbs (B6)", () => {
+    const lbrbState = () => mkState({ heldButtons: new Set(["LB", "RB"]) });
+
+    const cases: Array<{
+      gesture: ReturnType<typeof tap>;
+      action: string;
+      label: string;
+    }> = [
+      // Face buttons
+      { gesture: tap("A"), action: "edit.raise", label: "tap(A) → edit.raise" },
+      { gesture: tap("B"), action: "edit.splice", label: "tap(B) → edit.splice" },
+      { gesture: tap("X"), action: "edit.transposeBack", label: "tap(X) → edit.transposeBack" },
+      { gesture: tap("Y"), action: "edit.transposeFwd", label: "tap(Y) → edit.transposeFwd" },
+      // D-pad encloses
+      { gesture: tap("Up"), action: "edit.wrapList", label: "tap(Up) → edit.wrapList" },
+      { gesture: tap("Down"), action: "edit.wrapVector", label: "tap(Down) → edit.wrapVector" },
+      { gesture: tap("Left"), action: "edit.wrapMap", label: "tap(Left) → edit.wrapMap" },
+      { gesture: tap("Right"), action: "edit.wrapSet", label: "tap(Right) → edit.wrapSet" },
+    ];
+
+    for (const { gesture, action, label } of cases) {
+      it(`when LB+RB held: ${label}`, () => {
+        const map = buildLayerMap([...modalShiftLayers]);
+        const r = resolveGesture(gesture, lbrbState(), [...modalShiftLayers], map);
+        expect(r?.kind).toBe("action");
+        if (r?.kind === "action") expect(r.action).toBe(action);
+      });
+    }
+
+    it("LB+RB layer shadows the single-shift LB layer for tap(A)", () => {
+      // With only LB held → slurpFwd; with both LB+RB held → raise.
+      const map = buildLayerMap([...modalShiftLayers]);
+      const lbOnly = mkState({ heldButtons: new Set(["LB"]) });
+      const both = mkState({ heldButtons: new Set(["LB", "RB"]) });
+      const lbRes = resolveGesture(tap("A"), lbOnly, [...modalShiftLayers], map);
+      const bothRes = resolveGesture(tap("A"), both, [...modalShiftLayers], map);
+      expect(lbRes?.kind).toBe("action");
+      if (lbRes?.kind === "action") expect(lbRes.action).toBe("edit.slurpFwd");
+      expect(bothRes?.kind).toBe("action");
+      if (bothRes?.kind === "action") expect(bothRes.action).toBe("edit.raise");
+    });
+
+    it("every action bound on the modal-shift paradigm exists in the action registry", async () => {
+      // Note: we deliberately don't import handlers.ts here — that pulls in
+      // the editor/transport runtime stack, which can't initialise in this
+      // pure-unit context. Existence in the action registry is the contract
+      // the keybinding system uses for ID validity; handler wiring is covered
+      // by keybindings.test.ts's "X has a registered handler" suite.
+      const { actions } = await import("../../keybindings/actions");
+
+      const allBoundActions = new Set<string>();
+      for (const layer of modalShiftLayers) {
+        if (!layer.gestures) continue;
+        for (const v of Object.values(layer.gestures)) {
+          if (typeof v === "string") allBoundActions.add(v);
+        }
+      }
+
+      for (const id of allBoundActions) {
+        expect(
+          Object.prototype.hasOwnProperty.call(actions, id),
+          `action ${id} not in registry`,
+        ).toBe(true);
+      }
+    });
+  });
 });
 
 describe("paradigm: leader", () => {

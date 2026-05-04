@@ -181,6 +181,18 @@ export const actions = {
     reversible: true,
     requiresEditor: true,
   },
+  "edit.wrapMap": {
+    description: "Wrap in map (curly braces)",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.wrapSet": {
+    description: "Wrap in set (#{ ... })",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
   "edit.transposeFwd": {
     description: "Transpose forward (swap with next sibling)",
     category: "structure",

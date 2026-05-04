@@ -136,6 +136,8 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "edit.splice": structHandler("edit.splice"),
   "edit.wrapList": structHandler("edit.encloseList"),
   "edit.wrapVector": structHandler("edit.encloseVector"),
+  "edit.wrapMap": structHandler("edit.encloseMap"),
+  "edit.wrapSet": structHandler("edit.encloseSet"),
   "edit.transposeFwd": structHandler("edit.transposeNext"),
   "edit.transposeBack": structHandler("edit.transposePrev"),
 
