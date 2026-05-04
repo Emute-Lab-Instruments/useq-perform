@@ -10,6 +10,7 @@ import type {
   ActionId,
   AxisChannelName,
   AxisFrame,
+  DualBinding,
   GamepadState,
   LayerName,
   Resolution,
@@ -53,6 +54,8 @@ function createTestConfig() {
       },
     }),
     now: () => Date.now(),
+    // Use short holdMs for fast tests
+    holdMs: 250,
   };
 
   return { config, log };
@@ -95,7 +98,7 @@ describe("action dispatch", () => {
 // ---------------------------------------------------------------------------
 
 describe("dual binding — eager-with-undo", () => {
-  it("fires tap eagerly on press", () => {
+  it("fires reversible tap eagerly on press", () => {
     const { config, log } = createTestConfig();
     const d = createDispatcher(config);
 
@@ -140,18 +143,14 @@ describe("dual binding — eager-with-undo", () => {
       gesture: tap("A"),
     });
 
-    // Simulate release by dispatching the hold resolution before timer fires
-    // (In practice, the recognizer would emit hold only if held past T_hold,
-    // and the timer in the dispatcher handles the rollback. If released early,
-    // no hold resolution arrives and the timer is cleared by dispose.)
     vi.advanceTimersByTime(100); // well before 250ms
-
     expect(log).toEqual([{ kind: "fire", action: "edit.slurpFwd" }]);
-    d.dispose();
 
-    // After dispose, timer shouldn't fire
+    // Release clears the pending eager tap — timer won't fire after this
+    d.notifyRelease("A");
     vi.advanceTimersByTime(200);
-    expect(log).toHaveLength(1);
+    expect(log).toHaveLength(1); // still just the initial tap
+    d.dispose();
   });
 
   it("fires held ticks without undoing tap (spec §5.2.5)", () => {
@@ -191,6 +190,258 @@ describe("dual binding — eager-with-undo", () => {
 
     vi.advanceTimersByTime(500);
     expect(log).toEqual([{ kind: "fire", action: "edit.slurpFwd" }]);
+    d.dispose();
+  });
+
+  it("recognizer hold gesture triggers undo+hold for eager tap", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+
+    // Tap fires eagerly
+    d.dispatch({
+      kind: "dual",
+      binding: { tap: "edit.slurpFwd", hold: "eval.now" },
+      gesture: tap("A"),
+    });
+
+    // Recognizer emits hold before timer fires
+    d.dispatch({
+      kind: "dual",
+      binding: { tap: "edit.slurpFwd", hold: "eval.now" },
+      gesture: hold("A"),
+    });
+
+    expect(log).toEqual([
+      { kind: "fire", action: "edit.slurpFwd" },
+      { kind: "undo" },
+      { kind: "fire", action: "eval.now" },
+    ]);
+
+    // Timer should be cancelled — no double-fire
+    vi.advanceTimersByTime(300);
+    expect(log).toHaveLength(3);
+    d.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dual binding — deferred tap for non-reversible actions
+// ---------------------------------------------------------------------------
+
+describe("dual binding — deferred (non-reversible) tap", () => {
+  // Non-reversible tap in a dual binding is a type error at compile time
+  // (DualBinding.tap is ReversibleActionId). These tests verify the
+  // dispatcher's runtime safety net — if a non-reversible action somehow
+  // reaches a dual binding, it defers instead of eagerly firing.
+  const nonReversibleBinding: DualBinding = {
+    tap: "picker.select" as unknown as DualBinding["tap"],
+    hold: "edit.raise",
+  };
+
+  it("does NOT fire non-reversible tap eagerly", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+
+    d.dispatch({
+      kind: "dual",
+      binding: nonReversibleBinding,
+      gesture: tap("A"),
+    });
+
+    // Tap should NOT have fired — deferred
+    expect(log).toEqual([]);
+    d.dispose();
+  });
+
+  it("fires deferred tap on release before T_hold", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+
+    d.dispatch({
+      kind: "dual",
+      binding: nonReversibleBinding,
+      gesture: tap("A"),
+    });
+
+    expect(log).toEqual([]); // not fired yet
+
+    // Release before hold threshold → fire deferred tap
+    d.notifyRelease("A");
+
+    expect(log).toEqual([{ kind: "fire", action: "picker.select" }]);
+    d.dispose();
+  });
+
+  it("fires hold instead of deferred tap when T_hold elapses", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+
+    d.dispatch({
+      kind: "dual",
+      binding: nonReversibleBinding,
+      gesture: tap("A"),
+    });
+
+    // Hold timer expires
+    vi.advanceTimersByTime(250);
+
+    // Hold fires; tap is discarded (never fired, no undo)
+    expect(log).toEqual([{ kind: "fire", action: "edit.raise" }]);
+    expect(log.some((e) => e.kind === "undo")).toBe(false);
+    d.dispose();
+  });
+
+  it("recognizer hold gesture fires hold for deferred tap", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+
+    d.dispatch({
+      kind: "dual",
+      binding: nonReversibleBinding,
+      gesture: tap("A"),
+    });
+
+    // Recognizer emits hold before timer fires
+    d.dispatch({
+      kind: "dual",
+      binding: nonReversibleBinding,
+      gesture: hold("A"),
+    });
+
+    // Hold fires; no undo (tap was never fired)
+    expect(log).toEqual([{ kind: "fire", action: "edit.raise" }]);
+
+    // Timer should be cancelled — no double-fire
+    vi.advanceTimersByTime(300);
+    expect(log).toHaveLength(1);
+    d.dispose();
+  });
+
+  it("release after T_hold does not fire stale tap", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+
+    d.dispatch({
+      kind: "dual",
+      binding: nonReversibleBinding,
+      gesture: tap("A"),
+    });
+
+    // Hold timer expires — hold fires
+    vi.advanceTimersByTime(250);
+    expect(log).toEqual([{ kind: "fire", action: "edit.raise" }]);
+
+    // Late release — no stale tap
+    d.notifyRelease("A");
+    expect(log).toHaveLength(1);
+    d.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Button with only tap binding (no hold/held peer)
+// ---------------------------------------------------------------------------
+
+describe("tap-only binding (no hold peer)", () => {
+  it("fires immediately regardless of reversibility", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+
+    // Reversible action, no hold peer
+    d.dispatch({
+      kind: "dual",
+      binding: { tap: "edit.slurpFwd" },
+      gesture: tap("A"),
+    });
+
+    expect(log).toEqual([{ kind: "fire", action: "edit.slurpFwd" }]);
+
+    // Non-reversible action, no hold peer — also fires immediately
+    d.dispatch({
+      kind: "dual",
+      binding: { tap: "picker.select" as unknown as DualBinding["tap"] },
+      gesture: tap("B"),
+    });
+
+    expect(log).toEqual([
+      { kind: "fire", action: "edit.slurpFwd" },
+      { kind: "fire", action: "picker.select" },
+    ]);
+
+    vi.advanceTimersByTime(500);
+    expect(log).toHaveLength(2); // no timers, no undos
+    d.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Multiple rapid taps
+// ---------------------------------------------------------------------------
+
+describe("multiple rapid taps", () => {
+  it("each eager tap fires and commits independently", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+
+    // First tap — eager, released quickly
+    d.dispatch({
+      kind: "dual",
+      binding: { tap: "edit.slurpFwd", hold: "eval.now" },
+      gesture: tap("A"),
+    });
+    d.notifyRelease("A"); // release before hold threshold
+
+    expect(log).toEqual([{ kind: "fire", action: "edit.slurpFwd" }]);
+
+    // Second tap — eager again
+    d.dispatch({
+      kind: "dual",
+      binding: { tap: "edit.slurpFwd", hold: "eval.now" },
+      gesture: tap("A"),
+    });
+    d.notifyRelease("A"); // release before hold threshold
+
+    expect(log).toEqual([
+      { kind: "fire", action: "edit.slurpFwd" },
+      { kind: "fire", action: "edit.slurpFwd" },
+    ]);
+
+    // No stale undos
+    vi.advanceTimersByTime(500);
+    expect(log.some((e) => e.kind === "undo")).toBe(false);
+    d.dispose();
+  });
+
+  it("multiple deferred taps fire and commit independently", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+    const nonReversibleBinding: DualBinding = {
+      tap: "picker.select" as unknown as DualBinding["tap"],
+      hold: "edit.raise",
+    };
+
+    // First tap — deferred, released quickly
+    d.dispatch({
+      kind: "dual",
+      binding: nonReversibleBinding,
+      gesture: tap("A"),
+    });
+    d.notifyRelease("A");
+
+    expect(log).toEqual([{ kind: "fire", action: "picker.select" }]);
+
+    // Second tap — deferred again
+    d.dispatch({
+      kind: "dual",
+      binding: nonReversibleBinding,
+      gesture: tap("A"),
+    });
+    d.notifyRelease("A");
+
+    expect(log).toEqual([
+      { kind: "fire", action: "picker.select" },
+      { kind: "fire", action: "picker.select" },
+    ]);
     d.dispose();
   });
 });
@@ -321,7 +572,7 @@ describe("miss handling", () => {
 // ---------------------------------------------------------------------------
 
 describe("dispose", () => {
-  it("cancels pending timers", () => {
+  it("cancels pending eager-with-undo timers", () => {
     const { config, log } = createTestConfig();
     const d = createDispatcher(config);
 
@@ -336,5 +587,26 @@ describe("dispose", () => {
 
     // Only the initial tap should be in the log; hold timer was cancelled
     expect(log).toEqual([{ kind: "fire", action: "edit.slurpFwd" }]);
+  });
+
+  it("cancels pending deferred tap timers", () => {
+    const { config, log } = createTestConfig();
+    const d = createDispatcher(config);
+    const nonReversibleBinding: DualBinding = {
+      tap: "picker.select" as unknown as DualBinding["tap"],
+      hold: "edit.raise",
+    };
+
+    d.dispatch({
+      kind: "dual",
+      binding: nonReversibleBinding,
+      gesture: tap("A"),
+    });
+
+    d.dispose();
+    vi.advanceTimersByTime(500);
+
+    // Nothing should have fired
+    expect(log).toEqual([]);
   });
 });

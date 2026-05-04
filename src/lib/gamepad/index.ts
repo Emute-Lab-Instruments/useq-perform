@@ -274,6 +274,9 @@ export function createGamepadPipeline(
         gamepadState.heldButtons.add(event.btn);
       } else if (event.kind === "release") {
         gamepadState.heldButtons.delete(event.btn);
+        // Notify dispatcher so deferred (non-reversible) taps that were
+        // held back pending the hold timer can fire now.
+        dispatcher.notifyRelease(event.btn);
       }
 
       const out = step(recognizerState, event, timing);
