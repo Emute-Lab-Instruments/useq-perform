@@ -576,3 +576,161 @@ describe("manifest cache", () => {
     expect(getCachedManifest()).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// bd-69.13 — lint-failure cases + golden-parse
+// ---------------------------------------------------------------------------
+
+import stubManifestJson from "./manifest.json";
+
+describe("bd-69.13: golden parse of C3 stub manifest", () => {
+  it("manifest.json loads with Result.ok and zero lint errors", () => {
+    const result = loadManifest(stubManifestJson);
+    const manifest = expectOk(result);
+    expect(manifest.version).toBe(1);
+    expect(manifest.tabs.length).toBeGreaterThan(0);
+    // Verify lint also passes (loadManifest runs lint internally, but confirm
+    // the direct call is clean too).
+    expect(lint(manifest)).toEqual([]);
+  });
+});
+
+describe("bd-69.13: duplicate item ID across tabs → caught", () => {
+  it("flags an item ID that appears in two different tabs", () => {
+    const errors = expectErr(
+      loadManifest({
+        version: 1,
+        tabs: [
+          {
+            id: "tab-a",
+            label: "Tab A",
+            categories: [
+              {
+                id: "cat-a",
+                label: "Cat A",
+                items: [
+                  { kind: "symbol", id: "shared-item", label: "X", text: "x" },
+                ],
+              },
+            ],
+          },
+          {
+            id: "tab-b",
+            label: "Tab B",
+            categories: [
+              {
+                id: "cat-b",
+                label: "Cat B",
+                items: [
+                  {
+                    kind: "symbol",
+                    id: "shared-item",
+                    label: "Y",
+                    text: "y",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const dupErrors = errors.filter((e) => e.kind === "duplicate-id");
+    expect(dupErrors.length).toBeGreaterThanOrEqual(1);
+    expect(dupErrors[0].message).toContain("shared-item");
+  });
+});
+
+describe("bd-69.13: duplicate category ID within a tab → caught", () => {
+  it("flags two categories in the same tab sharing an ID", () => {
+    const errors = expectErr(
+      loadManifest({
+        version: 1,
+        tabs: [
+          {
+            id: "tab",
+            label: "Tab",
+            categories: [
+              {
+                id: "dup-cat",
+                label: "First",
+                items: [
+                  { kind: "symbol", id: "a", label: "a", text: "a" },
+                ],
+              },
+              {
+                id: "dup-cat",
+                label: "Second",
+                items: [
+                  { kind: "symbol", id: "b", label: "b", text: "b" },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const catErrors = errors.filter((e) => e.kind === "duplicate-category");
+    expect(catErrors.length).toBeGreaterThanOrEqual(1);
+    expect(catErrors[0].message).toContain("dup-cat");
+  });
+});
+
+describe("bd-69.13: item referencing undefined hole type → caught", () => {
+  it("rejects a function signature hole with an invalid type", () => {
+    const errors = expectErr(
+      loadManifest({
+        version: 1,
+        tabs: [
+          {
+            id: "tab",
+            label: "Tab",
+            categories: [
+              {
+                id: "cat",
+                label: "Cat",
+                items: [
+                  {
+                    kind: "function",
+                    id: "fn-bad",
+                    label: "bad",
+                    head: "bad",
+                    signature: [
+                      { name: "x", type: "not-a-hole-type" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const holeErrors = errors.filter((e) => e.kind === "unknown-hole-type");
+    expect(holeErrors).toHaveLength(1);
+    expect(holeErrors[0].message).toContain("not-a-hole-type");
+  });
+});
+
+describe("bd-69.13: malformed JSON string → Result.Err, not throw", () => {
+  it("returns Result.Err for a raw malformed string (does not throw)", () => {
+    // loadManifest takes `unknown`. A non-parseable JSON string like
+    // "{invalid" is just a string — isObject() rejects it, returning
+    // a structured ManifestError rather than throwing.
+    const result = loadManifest("{invalid");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors.some((e) => e.kind === "malformed")).toBe(true);
+    }
+  });
+
+  it("returns Result.Err for the number 42 (does not throw)", () => {
+    const result = loadManifest(42);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].kind).toBe("malformed");
+    }
+  });
+});
