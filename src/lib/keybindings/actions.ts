@@ -11,6 +11,7 @@ export type ActionCategory =
   | "core"
   | "editor"
   | "structure"
+  | "format"
   | "probe"
   | "navigation"
   | "ui"
@@ -125,6 +126,21 @@ export const actions = {
   "edit.delete": {
     description: "Delete node at cursor",
     category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+
+  // -- Format ---------------------------------------------------------------
+
+  "format.topLevel": {
+    description: "Reformat the current top-level form",
+    category: "format",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "format.document": {
+    description: "Reformat all top-level forms",
+    category: "format",
     reversible: true,
     requiresEditor: true,
   },
