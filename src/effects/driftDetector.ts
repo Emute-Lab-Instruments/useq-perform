@@ -61,7 +61,7 @@ function outputNameToBufferIndex(name: string): number | null {
 
 function relativeError(hwValue: number, wasmValue: number): number {
   const diff = Math.abs(hwValue - wasmValue);
-  const denom = Math.max(Math.abs(hwValue), Math.abs(wasmValue), EPSILON);
+  const denom = Math.max(Math.abs(hwValue), EPSILON);
   return diff / denom;
 }
 

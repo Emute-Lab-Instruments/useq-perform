@@ -89,8 +89,10 @@ export function CalibrationTakeover(props: CalibrationTakeoverProps) {
   type BodyMode = "complete" | "error" | "abort-confirm" | "actions";
   const bodyMode = (): BodyMode => {
     if (props.session.complete) return "complete";
-    if (props.session.error) return "error";
+    // abort-confirm must take precedence over error so the user can always
+    // exit after a firmware rejection (spec ??7.2 -> ??6.2).
     if (props.session.abortConfirm) return "abort-confirm";
+    if (props.session.error) return "error";
     return "actions";
   };
 

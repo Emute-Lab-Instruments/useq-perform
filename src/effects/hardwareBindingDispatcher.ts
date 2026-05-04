@@ -100,6 +100,12 @@ export function scanBindings(docText: string): ParsedBinding[] {
   let match: RegExpExecArray | null;
   while ((match = BINDING_HEAD_RE.exec(docText)) !== null) {
     const formStart = match.index;
+
+    // Skip matches inside line comments (;; ...).
+    const lineStart = docText.lastIndexOf("\n", formStart - 1) + 1;
+    const prefix = docText.slice(lineStart, formStart);
+    if (prefix.includes(";")) continue;
+
     const event = match[1] as BindingEventKind;
     const inputId = match[2]!;
     const bodyStart = formStart + match[0].length;
@@ -113,13 +119,13 @@ export function scanBindings(docText: string): ParsedBinding[] {
       else if (ch === ")") depth--;
       // Skip string literals to avoid false paren matches.
       else if (ch === '"') {
-        i++;
+        i++; // advance past opening quote
         while (i < docText.length && docText[i] !== '"') {
           if (docText[i] === "\\") i++; // skip escaped char
           i++;
         }
         // i now points at the closing quote (or past end).
-        // Don't increment here — the outer i++ will advance past it.
+        i++; // advance past closing quote
         continue;
       }
       i++;
@@ -182,6 +188,13 @@ function queueKey(event: BindingEventKind, inputId: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Virtual toggle latch for test-fire (§5.1)
+// ---------------------------------------------------------------------------
+
+/** Per-session virtual toggle state per input-id. Keyed by inputId with colon. */
+const virtualToggleLatch = new Map<string, boolean>();
+
+// ---------------------------------------------------------------------------
 // Eval dispatch
 // ---------------------------------------------------------------------------
 
@@ -213,10 +226,12 @@ async function evalBinding(
       const msg = diagnostics[0]!.message;
       lastError.set(key, msg);
       console.warn(`[hw-binding] ${inputId} eval error: ${msg}`);
-    } else {
-      // Clear error on successful fire.
-      lastError.delete(key);
+      // Compile-time error (§7.1): block hardware dispatch.
+      return;
     }
+
+    // Clear error on successful fire.
+    lastError.delete(key);
 
     // Also send to hardware if not in no-module mode.
     if (!noModuleMode) {
@@ -574,10 +589,14 @@ export function createHardwareBindingDispatcher(
       : chip.inputId;
 
     if (chip.event === "on-toggle") {
+      // Flip the virtual toggle latch (§5.1: per-session, per-chip).
+      const prev = virtualToggleLatch.get(chip.inputId) ?? false;
+      const next = !prev;
+      virtualToggleLatch.set(chip.inputId, next);
       hwInput.publish({
         kind: "toggle",
         id: bareId,
-        state: true, // Virtual toggle latch — always flips to true on click.
+        state: next,
         ts: performance.now(),
       });
     } else {
@@ -624,6 +643,7 @@ export function createHardwareBindingDispatcher(
       lastFireMs.clear();
       lastPhase.clear();
       lastError.clear();
+      virtualToggleLatch.clear();
     },
   };
 }

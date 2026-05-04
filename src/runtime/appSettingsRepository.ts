@@ -88,6 +88,21 @@ async function loadCodeOverrideFromStartupFlags(): Promise<string | null> {
     return defaultMainEditorStartingCode;
   }
 
+  // Spec (url-params.md §1.3): if both ?txt and ?gist are specified,
+  // ?txt wins. ?gist is ignored.
+  if (startupFlags.params.txt) {
+    try {
+      const response = await fetch(startupFlags.params.txt);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return await response.text();
+    } catch (error) {
+      console.error("appSettingsRepository: Failed to load text from URL:", error);
+      return TEXT_NOT_FOUND_MESSAGE;
+    }
+  }
+
   if (startupFlags.params.gist) {
     const gistId = parseGistId(startupFlags.params.gist);
     if (!gistId) {
@@ -113,19 +128,6 @@ async function loadCodeOverrideFromStartupFlags(): Promise<string | null> {
     } catch (error) {
       console.error("appSettingsRepository: Failed to load gist from URL:", error);
       return GIST_NOT_FOUND_MESSAGE;
-    }
-  }
-
-  if (startupFlags.params.txt) {
-    try {
-      const response = await fetch(startupFlags.params.txt);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      return await response.text();
-    } catch (error) {
-      console.error("appSettingsRepository: Failed to load text from URL:", error);
-      return TEXT_NOT_FOUND_MESSAGE;
     }
   }
 

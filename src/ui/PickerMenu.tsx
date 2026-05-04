@@ -81,6 +81,7 @@ export function PickerMenu(props: PickerMenuProps) {
     }
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
+      e.stopPropagation();
       selectItem(activeIdx());
       return;
     }
@@ -93,19 +94,27 @@ export function PickerMenu(props: PickerMenuProps) {
       let newCol = currentCol;
 
       if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        e.stopPropagation();
         const maxColInRow =
           Math.min(NUM_COLUMNS, len - currentRow * NUM_COLUMNS) - 1;
         newCol = currentCol < maxColInRow ? currentCol + 1 : 0;
       } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        e.stopPropagation();
         newCol = currentCol > 0 ? currentCol - 1 : NUM_COLUMNS - 1;
         if (newRow * NUM_COLUMNS + newCol >= len) {
           newCol = len - 1 - newRow * NUM_COLUMNS;
         }
       } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        e.stopPropagation();
         newRow = currentRow < numRows - 1 ? currentRow + 1 : 0;
         if (newRow * NUM_COLUMNS + currentCol >= len) newRow = 0;
         newCol = currentCol;
       } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        e.stopPropagation();
         newRow = currentRow > 0 ? currentRow - 1 : numRows - 1;
         if (newRow * NUM_COLUMNS + currentCol >= len) {
           newRow = Math.floor((len - 1) / NUM_COLUMNS);
@@ -121,8 +130,12 @@ export function PickerMenu(props: PickerMenuProps) {
     } else {
       // Vertical layout (reversed to match legacy)
       if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        e.stopPropagation();
         setActive((activeIdx() + 1) % len);
       } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        e.stopPropagation();
         setActive((activeIdx() - 1 + len) % len);
       }
     }
@@ -178,7 +191,8 @@ export function PickerMenu(props: PickerMenuProps) {
     }
   };
 
-  // Non-Escape keyboard navigation — still handled locally via window listener.
+  // Non-Escape keyboard navigation — captured at window level to intercept
+  // before CodeMirror processes the key. Escape is handled by the overlay manager.
   const handleKeyDownNav = (e: KeyboardEvent) => {
     if (e.key === "Escape") return; // Escape is handled by the overlay manager
     handleKeyDown(e);
@@ -189,7 +203,7 @@ export function PickerMenu(props: PickerMenuProps) {
   let unsubSelect: (() => void) | undefined;
   let unsubCancel: (() => void) | undefined;
   onMount(() => {
-    window.addEventListener("keydown", handleKeyDownNav);
+    window.addEventListener("keydown", handleKeyDownNav, true);
     unsubNavigate = gamepadCh.pickerNavigate.subscribe(handleGamepadNavigate);
     unsubSelect = gamepadCh.pickerSelect.subscribe(() => selectItem(activeIdx()));
     unsubCancel = gamepadCh.pickerCancel.subscribe(() => close());
@@ -198,7 +212,7 @@ export function PickerMenu(props: PickerMenuProps) {
   });
 
   onCleanup(() => {
-    window.removeEventListener("keydown", handleKeyDownNav);
+    window.removeEventListener("keydown", handleKeyDownNav, true);
     unsubNavigate?.();
     unsubSelect?.();
     unsubCancel?.();
@@ -378,7 +392,7 @@ export function NumberPickerMenu(props: NumberPickerMenuProps) {
   let unsubCancel: (() => void) | undefined;
   let unsubApply: (() => void) | undefined;
   onMount(() => {
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
     unsubNavigate = gamepadCh.pickerNavigate.subscribe(handleGamepadNavigate);
     unsubSelect = gamepadCh.pickerSelect.subscribe(handleGamepadSelect);
     unsubCancel = gamepadCh.pickerCancel.subscribe(() => close());
@@ -388,7 +402,7 @@ export function NumberPickerMenu(props: NumberPickerMenuProps) {
   });
 
   onCleanup(() => {
-    window.removeEventListener("keydown", handleKeyDown);
+    window.removeEventListener("keydown", handleKeyDown, true);
     unsubNavigate?.();
     unsubSelect?.();
     unsubCancel?.();

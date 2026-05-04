@@ -45,6 +45,8 @@ function handleKeyDown(e: KeyboardEvent): void {
   if (e.key !== "Escape") return;
   const top = stack[stack.length - 1];
   if (top) {
+    e.preventDefault();
+    e.stopPropagation();
     top.onEscape();
   }
 }

@@ -35,7 +35,7 @@ import {
 import { codeEvaluated as codeEvaluatedChannel, liveEditValueChanged } from "../contracts/runtimeChannels";
 import { recordDriftSample, checkDriftThreshold } from "./driftDetector";
 import { serialVisPaletteChangedChannel } from "../contracts/visualisationChannels";
-import { addValueChangeListener } from "./mockControlInputs.ts";
+import { addValueChangeListener, removeValueChangeListener } from "./mockControlInputs.ts";
 import {
   PROJECTION_MODE_NONE,
   PROJECTION_MODE_RESET_FILL,
@@ -1174,30 +1174,37 @@ function refreshAllColors(settings: VisSettings): void {
   }
 }
 
+// Track subscription handles for HMR cleanup — without this, hot-module
+// reloads stack phantom listeners referencing stale module-level state.
+const _unsubs: (() => void)[] = [];
+
 if (typeof window !== "undefined") {
   setTimeout(() => {
     try {
       loadAndApplySettings();
 
-      subscribeAppSettings(() => {
+      const unsubSettings = subscribeAppSettings(() => {
         loadAndApplySettings();
         invalidateFutureProjections();
         setLastChangeKind("settings");
       });
+      _unsubs.push(unsubSettings);
     } catch {
       // TDZ — appSettingsRepository not ready.
     }
   }, 0);
 
-  codeEvaluatedChannel.subscribe(() => {
-    notifyExpressionEvaluated();
-  });
+  _unsubs.push(
+    codeEvaluatedChannel.subscribe(() => {
+      notifyExpressionEvaluated();
+    }),
+  );
 
   // External input changes beyond inputEpsilon invalidate the
   // projection fork (spec §4.4). Selective: only invalidate when at
   // least one active output is input-dependent or stateful. Pure
   // outputs are unaffected by input changes.
-  addValueChangeListener((_name, newValue, oldValue) => {
+  const mockControlListener = (_name: string, newValue: number, oldValue: number) => {
     const epsilon = visStore.settings.inputEpsilon ?? DEFAULT_INPUT_EPSILON;
     if (Math.abs(newValue - oldValue) <= epsilon) return;
 
@@ -1211,19 +1218,32 @@ if (typeof window !== "undefined") {
       invalidateFutureProjections();
       setLastChangeKind("data");
     }
-  });
+  };
+  addValueChangeListener(mockControlListener);
 
   // Live-edit value changes invalidate the projection fork (spec §3.7).
-  liveEditValueChanged.subscribe(() => {
-    invalidateFutureProjections();
-    setLastChangeKind("data");
-  });
+  _unsubs.push(
+    liveEditValueChanged.subscribe(() => {
+      invalidateFutureProjections();
+      setLastChangeKind("data");
+    }),
+  );
 
-  serialVisPaletteChangedChannel.subscribe((detail) => {
-    if (Array.isArray(detail?.palette)) {
-      setVisPalette(detail.palette);
-    }
-    refreshAllColors(visStore.settings);
-    setLastChangeKind("palette");
-  });
+  _unsubs.push(
+    serialVisPaletteChangedChannel.subscribe((detail) => {
+      if (Array.isArray(detail?.palette)) {
+        setVisPalette(detail.palette);
+      }
+      refreshAllColors(visStore.settings);
+      setLastChangeKind("palette");
+    }),
+  );
+
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      for (const unsub of _unsubs) unsub();
+      _unsubs.length = 0;
+      removeValueChangeListener(mockControlListener);
+    });
+  }
 }

@@ -137,17 +137,19 @@ export function createDispatcher(config: DispatcherConfig): Dispatcher {
     }
 
     if (gesture.kind === "hold") {
-      // If there's a pending eager tap for this button, the timer already
-      // handles the undo+dispatch. But if the resolver emits a hold
-      // without a prior tap (e.g. standalone hold binding), fire directly.
       const pending = pendingDuals.get(key);
       if (pending) {
-        // Timer will handle it; but if it somehow arrives as a separate
-        // resolution, clear the timer and do it now.
+        // Eager-with-undo: timer hasn't fired yet, so handle it now.
         clearPending(key);
         config.undo();
+        if (binding.hold) {
+          config.fireAction(binding.hold);
+        }
       }
-      if (binding.hold) {
+      // If no pending entry, the setTimeout already handled the undo+hold
+      // (or this dual has no tap, in which case no timer was set and we
+      // must fire the hold directly).
+      else if (!binding.tap && binding.hold) {
         config.fireAction(binding.hold);
       }
       return;

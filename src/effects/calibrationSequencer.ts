@@ -445,7 +445,11 @@ export function createCalibrationSequencer(
     },
 
     requestAbort(): void {
-      if (_state.phase !== "calibrating" || !_state.session) return;
+      if (
+        (_state.phase !== "calibrating" && _state.phase !== "error") ||
+        !_state.session
+      )
+        return;
       updateSession({ abortConfirm: true });
     },
 

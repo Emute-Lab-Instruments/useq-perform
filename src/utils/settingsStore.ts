@@ -25,13 +25,24 @@ export function requestSettingsUpdate(values: Record<string, unknown>) {
 
 function syncSettingsStore(nextSettings: AppSettings): void {
   setSettings(reconcile(mergeUserSettings(createDefaultUserSettings(), nextSettings)));
-  if (nextSettings?.ui?.consoleLinesLimit) {
+  if (typeof nextSettings?.ui?.consoleLinesLimit === "number") {
     setMaxConsoleLines(nextSettings.ui.consoleLinesLimit);
   }
 }
 
 // Subscribe to settings changes via the typed channel published by runtimeService.
+// The unsubscribe handle is stored for HMR cleanup — without it, hot-module
+// reloads stack phantom listeners that reference stale module-level state.
+let _unsubSettingsChanged: (() => void) | null = null;
+
 if (typeof window !== "undefined") {
   syncSettingsStore(getAppSettings());
-  settingsChanged.subscribe(syncSettingsStore);
+  _unsubSettingsChanged = settingsChanged.subscribe(syncSettingsStore);
+
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      _unsubSettingsChanged?.();
+      _unsubSettingsChanged = null;
+    });
+  }
 }

@@ -44,6 +44,7 @@ export interface UseqWasmRuntimeGlobal {
   useq_active_diagnostics?: () => string;
   useq_set_live_inputs?: (json: string) => number;
   useq_get_live_slots?: () => string;
+  useq_apply_state_snapshot?: (json: string) => number;
 }
 
 // Emscripten module interface (minimal typing for what we use)
@@ -675,6 +676,9 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const setLiveInputsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_set_live_inputs) as ((json: string) => number) | null;
   const getLiveSlotsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_get_live_slots) as (() => string) | null;
 
+  // Bind state snapshot ABI export (state-sync.md §3)
+  const applyStateSnapshotFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_apply_state_snapshot) as ((json: string) => number) | null;
+
   // Bind output classification ABI exports (visualisation.md §7.3–7.4)
   const classificationsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_classifications) as (() => string) | null;
   const dependenciesFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_dependencies) as ((idx: number) => number) | null;
@@ -684,6 +688,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     useq_active_diagnostics: activeDiagsFn ?? undefined,
     useq_set_live_inputs: setLiveInputsFn ?? undefined,
     useq_get_live_slots: getLiveSlotsFn ?? undefined,
+    useq_apply_state_snapshot: applyStateSnapshotFn ?? undefined,
   };
 
   useq_init();
