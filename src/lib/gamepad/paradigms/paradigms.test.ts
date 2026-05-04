@@ -3,7 +3,7 @@
 // Smoke tests: each paradigm's layers resolve gestures through the
 // resolver without errors. Not exhaustive — validates the plumbing.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { chord, keyOf, tap, held } from "../gestures";
 import {
   buildLayerMap,
@@ -12,10 +12,18 @@ import {
 } from "../resolver";
 import type { AppStateSnapshot, GamepadState, Layer, LayerName } from "../types";
 import { pickerLayer } from "./picker";
+import { radialLayer } from "./radial";
 import { modalShiftLayers } from "./modal-shift";
 import { leaderLayers, leaderTransientLayers } from "./leader";
 import { hydraLayers, hydraTransientLayers } from "./hydra";
 import { chordHeavyLayers } from "./chord-heavy";
+
+vi.mock("../../menu/store", () => ({
+  isMenuOpen: vi.fn(() => false),
+}));
+
+import { isMenuOpen } from "../../menu/store";
+const mockedIsMenuOpen = vi.mocked(isMenuOpen);
 
 const ln = (n: string) => n as LayerName;
 
@@ -53,6 +61,68 @@ describe("paradigm: picker", () => {
     const map = buildLayerMap(layers);
     const r = resolveGesture(tap("A"), mkState(), layers, map);
     expect(r).toBeNull();
+  });
+});
+
+describe("paradigm: radial-menu layer", () => {
+  const layers = [radialLayer];
+  const map = buildLayerMap(layers);
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("passes binding lint", () => {
+    expect(lintBindings(layers)).toEqual([]);
+  });
+
+  it("layer activates when isMenuOpen() returns true", () => {
+    mockedIsMenuOpen.mockReturnValue(true);
+    const r = resolveGesture(tap("A"), mkState(), layers, map);
+    expect(r?.kind).toBe("action");
+    if (r?.kind === "action") expect(r.action).toBe("menu.verb.insert");
+  });
+
+  it("layer does NOT activate when menu is closed", () => {
+    mockedIsMenuOpen.mockReturnValue(false);
+    const r = resolveGesture(tap("A"), mkState(), layers, map);
+    expect(r).toBeNull();
+  });
+
+  it("maps all 7 gestures to the correct ActionIds", () => {
+    mockedIsMenuOpen.mockReturnValue(true);
+
+    const gestureCases: Array<{
+      gesture: ReturnType<typeof tap>;
+      action: string;
+      label: string;
+    }> = [
+      { gesture: tap("LB"), action: "menu.tab.cyclePrev", label: "tap(LB) → menu.tab.cyclePrev" },
+      { gesture: tap("RB"), action: "menu.tab.cycleNext", label: "tap(RB) → menu.tab.cycleNext" },
+      { gesture: tap("A"), action: "menu.verb.insert", label: "tap(A) → menu.verb.insert" },
+      { gesture: tap("X"), action: "menu.verb.replace", label: "tap(X) → menu.verb.replace" },
+      { gesture: tap("Y"), action: "menu.verb.wrapWith", label: "tap(Y) → menu.verb.wrapWith" },
+      { gesture: tap("B"), action: "menu.verb.call", label: "tap(B) → menu.verb.call" },
+      { gesture: tap("Back"), action: "menu.cancel", label: "tap(Back) → menu.cancel" },
+    ];
+
+    for (const { gesture, action, label } of gestureCases) {
+      const r = resolveGesture(gesture, mkState(), layers, map);
+      expect(r?.kind, `${label}: expected action resolution`).toBe("action");
+      if (r?.kind === "action") {
+        expect(r.action, `${label}`).toBe(action);
+      }
+    }
+  });
+
+  it("declares both axes with correct channel names", () => {
+    expect(radialLayer.axes).toBeDefined();
+    expect(radialLayer.axes!.left).toBe("menu.left.angle");
+    expect(radialLayer.axes!.right).toBe("menu.right.angle");
+  });
+
+  it("onMiss is pop-and-discard", () => {
+    expect(radialLayer.onMiss).toBe("pop-and-discard");
   });
 });
 
