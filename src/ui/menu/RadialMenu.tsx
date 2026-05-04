@@ -38,6 +38,7 @@
 
 import { For, Show, createMemo, type JSX } from "solid-js";
 import { polarToCartesian } from "../../utils/geometry";
+import "./menu.css";
 import type {
   Manifest,
   MenuCategory,

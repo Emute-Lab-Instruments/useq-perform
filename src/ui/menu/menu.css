@@ -1,0 +1,654 @@
+/* =====================================================================
+ * src/ui/menu/menu.css
+ *
+ * Pure presentational stylesheet for the gamepad-driven radial menu
+ * (docs/specs/radial-menu.md §3.2 surface, §6 transitions, §6.4 frozen
+ * visuals, §9 centre breadcrumb + preview, §14 sub-modes).
+ *
+ * Style contract is the class names emitted by:
+ *   - src/ui/menu/RadialMenu.tsx       (.radial-menu-*  + sub-mode classes)
+ *   - src/ui/menu/CenterPanel.tsx      (.menu-center-*, .menu-breadcrumb-*,
+ *                                        .menu-preview-*)
+ *
+ * NOTE on class-name divergence: the bead description references shorter
+ * names (".menu-ring", ".menu-slot", ".freeze-lock-glyph", ".freeze-chevron",
+ * ".menu-tab-strip", ".menu-numpad", ".menu-t9"). The current Track-G1
+ * component (RadialMenu.tsx) uses the longer ".radial-menu-*" prefix for
+ * those same hooks. We style the names actually emitted by the component;
+ * if the component is later renamed to match the shorter convention, this
+ * file is the single update point.
+ *
+ * Design principles:
+ *   - Theme-driven via CSS custom properties from src/ui/styles/index.css
+ *     (--accent-color, --panel-bg, --text-primary, --code-font, etc.).
+ *   - All transitions <= 150ms (this is a performance app).
+ *   - Pure CSS, no preprocessor, no JS-driven animation.
+ *   - Backdrop sits above editor chrome but below modals (z-index 1500 —
+ *     editor toolbars top out at 35, action-palette at 2000).
+ * ===================================================================== */
+
+/* ---------------------------------------------------------------------
+ * Local theme tokens — derived from app variables, with sane fallbacks.
+ * Keep names ".radial-menu-*" for namespacing; never leak into globals.
+ * ------------------------------------------------------------------ */
+:root {
+  --radial-menu-z: 1500;
+  --radial-menu-bg: var(--panel-bg, rgba(20, 22, 27, 0.96));
+  --radial-menu-border: var(--panel-border, rgba(255, 255, 255, 0.18));
+  --radial-menu-segment-fill: rgba(255, 255, 255, 0.04);
+  --radial-menu-segment-stroke: rgba(255, 255, 255, 0.14);
+  --radial-menu-segment-hover-fill: rgba(0, 255, 65, 0.18);
+  --radial-menu-segment-hover-stroke: var(--accent-color, #00ff41);
+  --radial-menu-segment-frozen-fill: rgba(0, 255, 65, 0.32);
+  --radial-menu-segment-frozen-stroke: var(--accent-color, #00ff41);
+  --radial-menu-text: var(--text-primary, #f8f8f2);
+  --radial-menu-text-dim: rgba(248, 248, 242, 0.55);
+  --radial-menu-accent: var(--accent-color, #00ff41);
+  --radial-menu-warn: #ffb86c;
+  --radial-menu-left-tint: rgba(120, 200, 255, 0.95);   /* cool — left hand */
+  --radial-menu-right-tint: rgba(255, 140, 170, 0.95);  /* warm — right hand */
+  --radial-menu-both-tint: rgba(255, 220, 120, 0.95);
+  --radial-menu-transition: 120ms ease-out;
+}
+
+/* ---------------------------------------------------------------------
+ * 1. Backdrop + root frame
+ *    Spec §3.2.1: ~30% editor visibility behind dim layer.
+ * ------------------------------------------------------------------ */
+
+.radial-menu-root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--radial-menu-z);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  color: var(--radial-menu-text);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.radial-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  /* §3.2.1 dim layer — matches palette backdrop intent (rgba dark + blur)
+     but is visually distinct from picker dim (slightly heavier). */
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: radial-menu-fade-in 120ms ease-out;
+}
+
+.radial-menu-frame {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(88vmin, 720px);
+  height: min(88vmin, 720px);
+  /* No background — the SVG ring fills, the centre slot gets its own. */
+}
+
+/* ---------------------------------------------------------------------
+ * 2. Open-state container + sub-phase modulation
+ *    Spec §3.2 layout, §3.3 sub-phase visual cues.
+ * ------------------------------------------------------------------ */
+
+.radial-menu-open {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  /* tab strip / svg / right-tab strip stacked centrally */
+  grid-template-rows: auto 1fr auto;
+  align-items: center;
+  justify-items: center;
+}
+
+/* Sub-phase visual differentiation (spec §3.3 / §6) — a subtle outer ring
+ * tint distinguishes which sub-phase is active without screaming. */
+.radial-menu-open.subphase-cyclingLeftTabs .radial-menu-svg {
+  filter: drop-shadow(0 0 14px rgba(120, 200, 255, 0.18));
+}
+.radial-menu-open.subphase-cyclingRightTabs .radial-menu-svg {
+  filter: drop-shadow(0 0 14px rgba(255, 200, 120, 0.18));
+}
+.radial-menu-open.subphase-picking .radial-menu-svg {
+  filter: drop-shadow(0 0 18px rgba(0, 255, 65, 0.18));
+}
+.radial-menu-open.subphase-frozen .radial-menu-svg {
+  filter: drop-shadow(0 0 26px rgba(0, 255, 65, 0.32));
+}
+
+/* ---------------------------------------------------------------------
+ * 3. Tab strip (top + bottom)
+ *    Spec §3.2.4: active left-tab name above; right-tab name below.
+ * ------------------------------------------------------------------ */
+
+.radial-menu-tab-strip,
+.radial-menu-right-tab-strip {
+  display: flex;
+  flex-direction: row;
+  gap: 18px;
+  padding: 8px 14px;
+  margin: 8px 0;
+  background: var(--radial-menu-bg);
+  border: 1px solid var(--radial-menu-border);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.radial-menu-tab-label,
+.radial-menu-right-tab-label {
+  color: var(--radial-menu-text-dim);
+  padding: 4px 10px;
+  border-radius: 4px;
+  transition: color var(--radial-menu-transition),
+              background-color var(--radial-menu-transition);
+}
+
+.radial-menu-tab-label.is-active,
+.radial-menu-right-tab-label.is-active {
+  color: var(--radial-menu-accent);
+  background: rgba(0, 255, 65, 0.08);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------
+ * 4. SVG canvas + ring containers
+ * ------------------------------------------------------------------ */
+
+.radial-menu-svg {
+  display: block;
+  width: 100%;
+  max-width: min(80vmin, 640px);
+  max-height: min(80vmin, 640px);
+  height: auto;
+  overflow: visible; /* drop-shadow filters need to escape */
+}
+
+.radial-menu-left-ring,
+.radial-menu-right-ring {
+  transition: opacity var(--radial-menu-transition);
+}
+
+/* §6.4 frozen-state dim: the non-firing ring is dimmed when a single hand
+ * is held. Driven by the `is-dimmed` modifier set in RadialMenu.tsx. */
+.radial-menu-left-ring.is-dimmed,
+.radial-menu-right-ring.is-dimmed {
+  opacity: 0.32;
+}
+
+/* ---------------------------------------------------------------------
+ * 5. Segments (slots) — default / hover / frozen states
+ *    Spec §6.2 slot states.
+ * ------------------------------------------------------------------ */
+
+.radial-menu-segment {
+  cursor: default;
+  transition: opacity var(--radial-menu-transition);
+}
+
+.radial-menu-segment-fill {
+  fill: var(--radial-menu-segment-fill);
+  stroke: var(--radial-menu-segment-stroke);
+  stroke-width: 1.5;
+  transition: fill var(--radial-menu-transition),
+              stroke var(--radial-menu-transition),
+              stroke-width var(--radial-menu-transition);
+}
+
+.radial-menu-segment.is-hover .radial-menu-segment-fill {
+  fill: var(--radial-menu-segment-hover-fill);
+  stroke: var(--radial-menu-segment-hover-stroke);
+  stroke-width: 2;
+}
+
+.radial-menu-segment.is-frozen .radial-menu-segment-fill {
+  fill: var(--radial-menu-segment-frozen-fill);
+  stroke: var(--radial-menu-segment-frozen-stroke);
+  stroke-width: 2.5;
+  /* a tiny visual lock — frozen segments glow slightly */
+  filter: drop-shadow(0 0 6px rgba(0, 255, 65, 0.55));
+}
+
+.radial-menu-segment-label {
+  fill: var(--radial-menu-text);
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  transition: fill var(--radial-menu-transition);
+}
+
+.radial-menu-segment.is-hover .radial-menu-segment-label,
+.radial-menu-segment.is-frozen .radial-menu-segment-label {
+  fill: var(--radial-menu-accent);
+  font-weight: 600;
+}
+
+/* Empty ring placeholder — §6.2.1 */
+.radial-menu-empty-ring-outline {
+  stroke: var(--radial-menu-segment-stroke);
+  stroke-width: 1;
+  stroke-dasharray: 4 6;
+  opacity: 0.5;
+}
+.radial-menu-empty-ring-label {
+  fill: var(--radial-menu-text-dim);
+  font-style: italic;
+  font-size: 14px;
+}
+
+.radial-menu-centre-bg {
+  stroke: var(--radial-menu-segment-stroke);
+  stroke-width: 1;
+  opacity: 0.4;
+}
+
+/* ---------------------------------------------------------------------
+ * 6. Frozen-state visuals (lock glyph + handedness chevron)
+ *    Spec §6.4 / §9.2.
+ * ------------------------------------------------------------------ */
+
+.radial-menu-freeze-lock-bg {
+  fill: var(--radial-menu-bg);
+  stroke: var(--radial-menu-accent);
+  stroke-width: 1.5;
+}
+.radial-menu-freeze-lock-glyph {
+  fill: var(--radial-menu-accent);
+  font-weight: 700;
+  animation: radial-menu-lock-pulse 1200ms ease-in-out infinite;
+}
+
+.radial-menu-freeze-chevron {
+  /* Pure container — children handle their own colour. */
+  pointer-events: none;
+}
+.radial-menu-freeze-chevron[data-handedness="left"] .radial-menu-chevron-glyph {
+  fill: var(--radial-menu-left-tint);
+}
+.radial-menu-freeze-chevron[data-handedness="right"] .radial-menu-chevron-glyph {
+  fill: var(--radial-menu-right-tint);
+}
+.radial-menu-freeze-chevron[data-handedness="both"] .radial-menu-chevron-glyph {
+  fill: var(--radial-menu-both-tint);
+}
+.radial-menu-chevron-glyph {
+  font-size: 26px;
+  font-weight: 700;
+  filter: drop-shadow(0 0 8px currentColor);
+  animation: radial-menu-chevron-bob 900ms ease-in-out infinite alternate;
+}
+
+/* ---------------------------------------------------------------------
+ * 7. Shoulder-cue arrows (cycling sub-phases)
+ *    Spec §3.3 LB/RB cycle indicators.
+ * ------------------------------------------------------------------ */
+
+.radial-menu-shoulder-cue-glyph {
+  fill: var(--radial-menu-text-dim);
+  font-size: 14px;
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  letter-spacing: 0.06em;
+}
+.radial-menu-shoulder-cue.is-pulsing .radial-menu-shoulder-cue-glyph {
+  animation: radial-menu-shoulder-pulse 1000ms ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------------
+ * 8. Centre slot — preview frame typography
+ *    Spec §9 centre area: monospace, large, dim panel.
+ * ------------------------------------------------------------------ */
+
+.radial-menu-centre-slot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(38%, 260px);
+  max-height: min(40%, 280px);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: var(--radial-menu-bg);
+  border: 1px solid var(--radial-menu-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.55);
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.radial-menu-centre-slot[data-subphase="frozen"] {
+  border-color: var(--radial-menu-accent);
+  box-shadow: 0 6px 32px rgba(0, 255, 65, 0.25);
+}
+
+/* CenterPanel inner structure — owned by CenterPanel.tsx */
+.menu-center-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.menu-center-breadcrumb {
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+  color: var(--radial-menu-text);
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-breadcrumb-text {
+  display: inline-block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.menu-breadcrumb-frozen {
+  color: var(--radial-menu-accent);
+  font-weight: 600;
+}
+.menu-breadcrumb-hint {
+  color: var(--radial-menu-text-dim);
+  font-style: italic;
+}
+.menu-breadcrumb-sep {
+  color: var(--radial-menu-text-dim);
+  margin: 0 2px;
+}
+.menu-breadcrumb-verb {
+  color: var(--radial-menu-warn);
+  font-weight: 600;
+  margin-left: 6px;
+}
+
+.menu-center-preview {
+  width: 100%;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--radial-menu-text);
+  max-height: 180px;
+  overflow: hidden;
+}
+
+.menu-preview-placeholder {
+  color: var(--radial-menu-text-dim);
+  font-style: italic;
+  font-size: 0.8rem;
+  padding: 12px 0;
+}
+
+.menu-preview-code {
+  margin: 0;
+  padding: 6px 8px;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.32);
+  border-radius: 4px;
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--radial-menu-text);
+}
+
+.menu-preview-buffer {
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.32);
+  border-radius: 4px;
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  font-size: 1.6rem;
+  letter-spacing: 0.04em;
+  color: var(--radial-menu-text);
+  text-align: center;
+  min-height: 2.4em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.menu-preview-buffer-text {
+  white-space: pre;
+}
+.menu-preview-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--radial-menu-accent);
+  animation: radial-menu-cursor-blink 800ms steps(1, end) infinite;
+}
+.menu-preview-case-hint {
+  color: var(--radial-menu-warn);
+  font-size: 0.7em;
+  letter-spacing: 0.08em;
+  margin-left: 6px;
+}
+
+/* Default in-component buffer display (used when no previewSlot is passed) */
+.radial-menu-buffer-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 0;
+}
+.radial-menu-buffer-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--radial-menu-text-dim);
+}
+.radial-menu-buffer-verb {
+  color: var(--radial-menu-accent);
+  font-weight: 600;
+}
+.radial-menu-buffer-value {
+  font-size: 1.4rem;
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  color: var(--radial-menu-text);
+  min-height: 1.4em;
+}
+.radial-menu-buffer-placeholder {
+  color: var(--radial-menu-text-dim);
+  animation: radial-menu-cursor-blink 800ms steps(1, end) infinite;
+}
+
+/* ---------------------------------------------------------------------
+ * 9. Verb-hint row (frozen + sub-modes)
+ *    Spec §9.2 bottom row.
+ * ------------------------------------------------------------------ */
+
+.radial-menu-verb-hints {
+  display: flex;
+  flex-direction: row;
+  gap: 14px;
+  padding: 8px 14px;
+  margin-top: 8px;
+  background: var(--radial-menu-bg);
+  border: 1px solid var(--radial-menu-border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--radial-menu-text);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.radial-menu-verb-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.radial-menu-verb-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--radial-menu-accent);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+/* ---------------------------------------------------------------------
+ * 10. Sub-modes — numpad + t9 polar grids
+ *     Spec §14.2 / §14.4. Same theme, polar-grid layout instead of rings.
+ * ------------------------------------------------------------------ */
+
+.radial-menu-numpad,
+.radial-menu-t9 {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  justify-items: center;
+}
+
+.radial-menu-key-bg,
+.radial-menu-t9-key-bg {
+  fill: var(--radial-menu-segment-fill);
+  stroke: var(--radial-menu-segment-stroke);
+  stroke-width: 1.5;
+  transition: fill var(--radial-menu-transition),
+              stroke var(--radial-menu-transition);
+}
+
+.radial-menu-key-centre .radial-menu-key-bg {
+  /* centre key gets a slightly stronger ring so users see it as "5". */
+  stroke: var(--radial-menu-segment-hover-stroke);
+  stroke-width: 1.8;
+  fill: rgba(0, 255, 65, 0.06);
+}
+
+.radial-menu-key-label {
+  fill: var(--radial-menu-text);
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  font-size: 18px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* T9 keys — digit + letter triplet stacked. */
+.radial-menu-t9-key {
+  transition: opacity var(--radial-menu-transition);
+}
+.radial-menu-t9-key.is-active .radial-menu-t9-key-bg {
+  fill: var(--radial-menu-segment-frozen-fill);
+  stroke: var(--radial-menu-segment-frozen-stroke);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px rgba(0, 255, 65, 0.55));
+}
+.radial-menu-t9-key-digit {
+  fill: var(--radial-menu-text);
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  font-size: 16px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.radial-menu-t9-key-letters {
+  fill: var(--radial-menu-text-dim);
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+.radial-menu-t9-key.is-active .radial-menu-t9-key-digit,
+.radial-menu-t9-key.is-active .radial-menu-t9-key-letters {
+  fill: var(--radial-menu-accent);
+}
+
+.radial-menu-t9-caps {
+  fill: var(--radial-menu-text-dim);
+  font-family: var(--code-font, 'IBM Plex Mono', monospace);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+  transition: fill var(--radial-menu-transition);
+}
+.radial-menu-t9-caps.is-active {
+  fill: var(--radial-menu-warn);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------
+ * 11. Animations — all <= 150ms or low-frequency loops.
+ * ------------------------------------------------------------------ */
+
+@keyframes radial-menu-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes radial-menu-lock-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+@keyframes radial-menu-chevron-bob {
+  from { transform: translateX(-2px); }
+  to   { transform: translateX(2px); }
+}
+
+@keyframes radial-menu-shoulder-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+
+@keyframes radial-menu-cursor-blink {
+  0%, 50%   { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+/* ---------------------------------------------------------------------
+ * 12. Smaller-viewport adjustments (720p still fits).
+ *     Performance-app, desktop-only — no phone breakpoints.
+ * ------------------------------------------------------------------ */
+
+@media (max-height: 800px) {
+  .radial-menu-frame {
+    width: min(82vmin, 580px);
+    height: min(82vmin, 580px);
+  }
+  .radial-menu-svg {
+    max-width: min(74vmin, 520px);
+    max-height: min(74vmin, 520px);
+  }
+  .menu-preview-buffer {
+    font-size: 1.3rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radial-menu-backdrop,
+  .radial-menu-freeze-lock-glyph,
+  .radial-menu-chevron-glyph,
+  .radial-menu-shoulder-cue.is-pulsing .radial-menu-shoulder-cue-glyph,
+  .menu-preview-cursor,
+  .radial-menu-buffer-placeholder {
+    animation: none;
+  }
+}
