@@ -1,0 +1,132 @@
+{
+  "_about": "v1 stub manifest for the gamepad-driven radial menu (docs/specs/radial-menu.md §7). Curated v1 content is a separate epic; this stub exercises all four verbs (insert/replace/wrapWith/call) and all hole types valid in function signatures (number, symbol, keyword, expr). See bd useq-perform-4zt.69.12.",
+  "version": 1,
+  "tabs": [
+    {
+      "id": "sound",
+      "label": "Sound",
+      "categories": [
+        {
+          "id": "oscillators",
+          "label": "Oscillators",
+          "icon": "~",
+          "items": [
+            {
+              "kind": "function",
+              "id": "fn.saw",
+              "label": "saw",
+              "head": "saw",
+              "signature": [
+                { "name": "freq", "type": "number" }
+              ],
+              "tags": ["audio", "oscillator"]
+            },
+            {
+              "kind": "function",
+              "id": "fn.square",
+              "label": "square",
+              "head": "square",
+              "signature": [
+                { "name": "freq", "type": "number" },
+                { "name": "duty", "type": "number" }
+              ],
+              "tags": ["audio", "oscillator"]
+            },
+            {
+              "kind": "function",
+              "id": "fn.sine",
+              "label": "sine",
+              "head": "sine",
+              "signature": [
+                { "name": "freq", "type": "number" }
+              ],
+              "tags": ["audio", "oscillator"]
+            }
+          ]
+        },
+        {
+          "id": "envelopes",
+          "label": "Envelopes",
+          "icon": "/\\",
+          "items": [
+            {
+              "kind": "function",
+              "id": "fn.env",
+              "label": "env",
+              "head": "env",
+              "signature": [
+                { "name": "attack", "type": "number" },
+                { "name": "release", "type": "number" },
+                { "name": "body", "type": "expr" }
+              ],
+              "tags": ["audio", "envelope"]
+            },
+            {
+              "kind": "function",
+              "id": "fn.mul",
+              "label": "mul",
+              "head": "*",
+              "signature": [
+                { "name": "a", "type": "expr" },
+                { "name": "b", "type": "expr" }
+              ],
+              "tags": ["math", "envelope"]
+            },
+            {
+              "kind": "function",
+              "id": "fn.lp",
+              "label": "lp",
+              "head": "lp",
+              "signature": [
+                { "name": "cutoff", "type": "number" },
+                { "name": "body", "type": "expr" }
+              ],
+              "tags": ["audio", "filter"]
+            }
+          ]
+        },
+        {
+          "id": "numbers",
+          "label": "Numbers",
+          "icon": "#",
+          "items": [
+            {
+              "kind": "literal",
+              "id": "lit.num.1",
+              "label": "1",
+              "literal": 1,
+              "literalKind": "number"
+            },
+            {
+              "kind": "literal",
+              "id": "lit.num.100",
+              "label": "100",
+              "literal": 100,
+              "literalKind": "number"
+            },
+            {
+              "kind": "literal",
+              "id": "lit.num.0_5",
+              "label": "0.5",
+              "literal": 0.5,
+              "literalKind": "number"
+            }
+          ]
+        },
+        {
+          "id": "symbols",
+          "label": "Symbols",
+          "icon": "$",
+          "items": [
+            {
+              "kind": "symbol",
+              "id": "sym.freq-of",
+              "label": "freq-of",
+              "text": "freq-of"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
