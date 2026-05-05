@@ -13,6 +13,8 @@
 - `src/editors/extensions/liveEdit/vectorMarkController.ts` — vector-mark sub-mode controller (§3.7)
 - `src/editors/extensions/liveEdit/vectorMarking.ts` — vector-mark decorations and preview markers
 - `src/editors/extensions/liveEdit/widgetStoreBridge.ts` — bridge between CodeMirror widgets and the live-edit store
+- `src/editors/extensions/liveEdit/pasteHandler.ts` — duplicate `:id` rewriting on paste (§3.9)
+- `src/editors/extensions/liveEdit/idleEval.ts` — auto-eval after structural changes (§6.6)
 
 **Effects and state:**
 - `src/effects/liveEditStore.ts` — reactive store for live-edit slots, value streaming, reconciliation
@@ -179,7 +181,9 @@ If the user idles for ≥ `liveEdit.subModeIdleHintMs` (default 2000 ms) with no
 
 ## 4. Widget
 
-4.1 The inline widget is a CodeMirror replace decoration that hides the wrapper text and renders a control surface in its place. (See `src/editors/extensions/liveEdit/widgets.ts`) **Idle height is exactly the line height** so knob-turns and focus changes do not reflow surrounding code. Width adapts to the surrounding line.
+4.1 The inline widget is a CodeMirror `Decoration.replace()` that hides the wrapper text and renders a control surface in its place. (See `src/editors/extensions/liveEdit/widgets.ts`) **Idle height is exactly the line height** so knob-turns and focus changes do not reflow surrounding code. Width adapts to the surrounding line.
+
+**Single-line invariant.** CodeMirror forbids `Decoration.replace()` from spanning line breaks when the decoration source is a StateField. The wrapper's source text MUST therefore occupy a single line at all times. The formatter enforces this ([formatting.md §3.7](formatting.md)). The decoration builder in `widgets.ts` also guards against multi-line ranges: if a slot's `from`/`to` spans multiple lines, the slot is silently dropped and a console warning is emitted. When insertion mode (§2.5) is implemented, a `changeFilter` MUST reject any transaction that would insert a newline inside a live-edit wrapper range.
 
 When focused (structural cursor on the widget, mouse hovering, or gamepad targeting), the widget renders an **expanded view as an overlay popover anchored above the inline widget** (or below if there is no room above). The popover does not push lines down; the document layout is invariant under focus changes. Popover dismisses when focus leaves the widget.
 

@@ -334,6 +334,10 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 
 8.3 The gamepad paradigms in [gamepad.md](gamepad.md) bind their D-pad and stick gestures to the operations defined in §5.1. (See `src/lib/keybindings/handlers.ts`, `src/editors/extensions/structure/adapter/dispatcher.ts`, `src/editors/gamepadNavigation.ts`) In structural mode, the primary directional inputs (D-pad, left stick) drive spatial navigation (`nav.up`/`nav.down`/`nav.left`/`nav.right`); tree-level operations (`nav.out`/`nav.in`/`nav.next`/`nav.prev`) are available on secondary inputs or modifier chords. In insertion mode, directional inputs drive the character caret. The mode boundary (§4) determines which behaviour is active.
 
+8.4 The **act-on layer** ([gamepad.md §6.6](gamepad.md)) provides a verb-selection interface on the A button: tap A to select the current node as a target, then press a second button to choose the operation (replace, wrap, cut, copy, paste, duplicate, raise, promote-to-live-edit). LT+A opens the radial menu pre-scoped to the focused node's type (context-sensitive quick-replace). RT+A enters grab mode for spatial repositioning via D-pad.
+
+8.5 **Atom manipulation** ([atom-manipulation.md](atom-manipulation.md)) provides in-place value editing of leaf nodes: LB/RB increment/decrement numbers, cycle symbols through semantic groups, toggle booleans. L3 flips number polarity. Both joysticks become a range-control + value-scrub surface when the cursor is on a float literal.
+
 ---
 
 ## 9. Open / Deferred

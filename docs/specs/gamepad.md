@@ -400,21 +400,35 @@ This section sketches four ready-made binding setups. They are *examples* — th
 ### 6.1 Modal-shift (see `src/lib/gamepad/paradigms/modal-shift.ts`)
 
 > `LB` and `RB` (held) act as keyboard-style modifier keys. The default layer covers ~14 buttons; each shift doubles the vocabulary. Tap-only on most buttons; one or two `tap+hold` pairs for power moves.
+>
+> **A-button redesign.** A is a verb-select leader (§6.6): tap A → push act-on layer (choose what to do); LT+A → quick-replace (context-sensitive radial); RT+A → grab mode (spatial move). The previous `nav.in` binding is removed — D-pad spatial nav covers tree descent.
 
 ```ts
 const baseLayer: Layer = {
   name: 'modal-base',
   when: () => true,
   gestures: {
-    [keyOf(tap('Up'))]:    'nav.out',
-    [keyOf(held('Up'))]:   'nav.out',
-    [keyOf(tap('Down'))]:  'nav.in',
-    [keyOf(tap('A'))]:     'edit.fillHole',          // gamepad-only stays in structural mode
+    [keyOf(tap('Up'))]:    'nav.up',
+    [keyOf(held('Up'))]:   'nav.up',
+    [keyOf(tap('Down'))]:  'nav.down',
+    [keyOf(held('Down'))]: 'nav.down',
+    [keyOf(tap('Left'))]:  'nav.left',
+    [keyOf(held('Left'))]: 'nav.left',
+    [keyOf(tap('Right'))]: 'nav.right',
+    [keyOf(held('Right'))]: 'nav.right',
+    [keyOf(tap('A'))]:     /* push 'act-on' layer (§6.6) */
+    [keyOf(tap('B'))]:     'nav.out',
+    [keyOf(tap('X'))]:     'menu.radial',
+    [keyOf(tap('Y'))]:     'edit.delete',
     [keyOf(tap('Start'))]: 'eval.now',
+    [keyOf(tap('Back'))]:  'edit.undo',
+    [keyOf(chord(['LT', 'A']))]:  'actOn.quickReplace',
+    [keyOf(chord(['RT', 'A']))]:  'actOn.grab',
+    [keyOf(chord(['LB', 'A']))]:  'menu.openBefore',
+    [keyOf(chord(['RB', 'A']))]:  'menu.openAfter',
+    [keyOf(chord(['LeftStickPress', 'RightStickPress']))]: 'mainMenu.open',
     // Note: mode.insert is intentionally NOT bound in any default gamepad paradigm
-    // — insertion mode is keyboard-only by intent (structural-editing §4.2.1). Free-form
-    // text and digit entry happen through the radial menu's numpad/T9 sub-modes.
-    // ...
+    // — insertion mode is keyboard-only by intent (structural-editing §4.2.1).
   },
   axes: { right: 'manual-control' },
 }
@@ -423,15 +437,18 @@ const lbShifted: Layer = {
   name: 'modal-lb',
   when: state => state.gamepad.heldButtons.has('LB'),
   gestures: {
-    [keyOf(tap('A'))]:     'edit.slurpForward',
-    [keyOf(tap('B'))]:     'edit.barfForward',
-    [keyOf(tap('Up'))]:    'nav.first',
-    // ...
+    [keyOf(tap('A'))]:     'edit.slurpFwd',
+    [keyOf(tap('B'))]:     'edit.barfFwd',
+    [keyOf(tap('X'))]:     'edit.slurpBack',
+    [keyOf(tap('Y'))]:     'edit.barfBack',
+    [keyOf(tap('Up'))]:    'nav.home',
+    [keyOf(tap('Down'))]:  'nav.end',
+    [keyOf(tap('Start'))]: 'eval.quantised',
   },
 }
 ```
 
-Layer order in the stack: `modal-lb` (or `modal-rb`, `modal-lb-rb`) above `modal-base`. The `LB`-button itself binds nothing on `modal-base` — its sole role is to shift the layer.
+Layer order in the stack: `main-menu` > `picker` > `act-on` / `grab-mode` > `atom-edit` > `modal-lb-rb` > `modal-lb` > `modal-rb` > `insertion-mode` > `modal-base`. The `LB`/`RB` buttons bind nothing on `modal-base` — their sole role is to shift the layer. The atom-edit layer (§6.7) intercepts LB/RB taps when on a leaf atom and no modifier is held.
 
 ### 6.2 Leader (vim) (see `src/lib/gamepad/paradigms/leader.ts`)
 
@@ -532,6 +549,150 @@ const pickerLayer: Layer = {
 ```
 
 The picker layer sits at the top of the predicate-driven stack when active, masking conflicting bindings in the structural / base layers below.
+
+### 6.6 Act-on layer (modal-shift extension)
+
+> The **act-on** pattern gives the A button a new role as a verb-selection leader. Pressing A on a node means "I intend to do something to this node" and opens a transient layer where the next button chooses the verb. This replaces the previous `nav.in` binding on A (spatial navigation via D-pad already covers tree descent). See also [atom-manipulation.md](atom-manipulation.md) (the atom-adjust system), [radial-menu.md](radial-menu.md) (radial content insertion).
+
+6.6.1 **Three modes on A.** The A button participates in three distinct interactions depending on modifier context:
+
+| Gesture | Action | Description |
+|---------|--------|-------------|
+| `tap('A')` (base, no modifier) | push `act-on` layer | Verb-select leader (Option A) |
+| `chord(['LT', 'A'])` | `actOn.quickReplace` | Context-sensitive radial open (Option B) |
+| `chord(['RT', 'A'])` | `actOn.grab` | Grab mode — spatial move (Option C) |
+
+6.6.2 **Act-on transient layer (Option A).** Pressing A pushes a transient layer. The node under the cursor gains a distinct "selected-for-action" halo (a thicker or differently-coloured border on the structural cursor halo). The user then presses a second button to choose the verb:
+
+```ts
+const actOnLayer: Layer = {
+  name:   'act-on',
+  popOn:  ['resolution', 'timeout'],
+  ttlMs:  2000,
+  onMiss: 'pop-and-fall-through',
+  gestures: {
+    // Verb selection
+    [keyOf(tap('X'))]:     'actOn.replace',       // open radial in replace mode
+    [keyOf(tap('Y'))]:     'actOn.wrapWith',      // open radial in wrapWith mode
+    [keyOf(tap('B'))]:     'actOn.cut',           // cut to clipboard
+    [keyOf(tap('A'))]:     'actOn.duplicate',     // duplicate node in-place (after sibling)
+    [keyOf(tap('LB'))]:    'actOn.copy',          // copy to clipboard
+    [keyOf(tap('RB'))]:    'actOn.paste',         // paste from clipboard (after cursor)
+    [keyOf(tap('Up'))]:    'edit.raise',          // raise (move up one level)
+    [keyOf(tap('Down'))]:  'actOn.wrapList',      // wrap in list (move down one level)
+    [keyOf(tap('Start'))]: 'liveEdit.mark',       // promote to live-edit knob
+    [keyOf(tap('Back'))]:  'system.cancelLeader', // cancel — pop layer, no action
+  },
+}
+```
+
+6.6.3 **Quick-replace (Option B: LT+A chord).** Fires `actOn.quickReplace`, which opens the radial menu pre-scoped to the **type of the focused node**:
+- On a `symbol` → radial opens with the symbols tab active, pre-filtered to the current symbol's cycle group (per [atom-manipulation.md §3](atom-manipulation.md))
+- On a `number` → enters numpad sub-mode directly ([radial-menu.md §15](radial-menu.md))
+- On a `keyword` → opens keyword picker
+- On a compound → opens radial with `wrapWith` / `call` verbs prominent
+- On a `hole` → opens radial scoped to the hole's `:type` (same as auto-chain behaviour per [structural-editing.md §2.9.9](structural-editing.md))
+
+This collapses "select target + choose verb + pick content" into a single chord + pick. Fast path for the common case of "replace this with something of the same kind."
+
+6.6.4 **Grab mode (Option C: RT+A chord).** Fires `actOn.grab`, entering a transient "grabbed" state:
+- The cursor halo changes to a "holding" visual (e.g. filled rather than outlined, or a distinct colour).
+- D-pad moves the grabbed node spatially:
+  - Left/Right → `edit.transposePrev` / `edit.transposeNext` (swap with siblings)
+  - Up → `edit.raise` (move up one tree level)
+  - Down → `edit.enclose.list` (wrap in a new list — moves down one level)
+- Releasing state:
+  - A → drop in current position (pop grab layer, no-op — the moves already applied)
+  - B → undo all moves since grab started (batch undo back to pre-grab state) and pop
+  - Y → duplicate at current position and drop (the original stays where it was at grab-start; a copy appears at the new position)
+- The grab layer uses `popOn: ['predicate']` tied to a `grabActive` flag; it does not auto-timeout (the user is actively working).
+
+```ts
+const grabLayer: Layer = {
+  name:   'grab-mode',
+  when:   state => state.gamepad.grabActive,
+  gestures: {
+    [keyOf(tap('Left'))]:  'edit.transposePrev',
+    [keyOf(held('Left'))]: 'edit.transposePrev',
+    [keyOf(tap('Right'))]: 'edit.transposeNext',
+    [keyOf(held('Right'))]: 'edit.transposeNext',
+    [keyOf(tap('Up'))]:    'edit.raise',
+    [keyOf(tap('Down'))]:  'actOn.wrapList',
+    [keyOf(tap('A'))]:     'actOn.drop',           // commit position, pop layer
+    [keyOf(tap('B'))]:     'actOn.cancelGrab',     // undo all moves, pop layer
+    [keyOf(tap('Y'))]:     'actOn.duplicateDrop',  // duplicate at position, pop layer
+  },
+}
+```
+
+6.6.5 **Layer ordering.** The `act-on` and `grab-mode` layers sit above the structural base layers but below the picker/radial layers and the main-menu layer.
+
+### 6.7 Atom-manipulation layer (see [atom-manipulation.md](atom-manipulation.md))
+
+> A predicate-driven layer that activates when the structural cursor is on a leaf atom. Binds LB/RB tap to contextual adjust (increment/decrement numbers, cycle symbols), L3 to polarity flip, and both sticks to float-editing axis channels.
+
+```ts
+const atomLayer: Layer = {
+  name: 'atom-edit',
+  when: state =>
+    state.editor.mode === 'structural' &&
+    state.cursor.isOnLeaf &&
+    !state.gamepad.heldButtons.has('LB') &&
+    !state.gamepad.heldButtons.has('RB'),
+  gestures: {
+    [keyOf(tap('LB'))]:             'atom.adjustDown',
+    [keyOf(held('LB'))]:            'atom.adjustDown',
+    [keyOf(tap('RB'))]:             'atom.adjustUp',
+    [keyOf(held('RB'))]:            'atom.adjustUp',
+    [keyOf(tap('LeftStickPress'))]: 'atom.flipPolarity',
+  },
+  axes: {
+    left:  'atom.rangeControl',   // zoom + pan on number line (floats only)
+    right: 'atom.valueSelect',    // value scrub (floats only)
+  },
+}
+```
+
+6.7.1 The atom layer sits **below** the modifier-shifted layers (`modal-lb`, `modal-rb`, `modal-lb-rb`) and the `act-on` / `grab-mode` transient layers. This ensures that holding LB still enters the slurp/barf layer (the `!heldButtons.has('LB')` predicate deactivates the atom layer when a modifier is held).
+
+6.7.2 The axis bindings (`atom.rangeControl`, `atom.valueSelect`) only produce effects when the cursor is on a float literal — the subscriber ignores frames when on integers, symbols, or other node kinds. The axis bindings override `manual-control` when the atom layer is active.
+
+6.7.3 `atom.flipPolarity` fires only on number nodes; on non-numbers, the binding falls through to the base layer's `control.toggleManualLeft`.
+
+### 6.8 Main-menu layer (see [main-menu.md](main-menu.md))
+
+> Opened by the L3+R3 chord; provides a system/pause menu for non-performance actions.
+
+```ts
+const mainMenuOpenBinding = {
+  // In the base layer's gestures:
+  [keyOf(chord(['LeftStickPress', 'RightStickPress']))]: 'mainMenu.open',
+}
+
+const mainMenuLayer: Layer = {
+  name: 'main-menu',
+  when: state => state.mainMenu.open,
+  gestures: {
+    [keyOf(tap('Up'))]:    'mainMenu.prev',
+    [keyOf(held('Up'))]:   'mainMenu.prev',
+    [keyOf(tap('Down'))]:  'mainMenu.next',
+    [keyOf(held('Down'))]: 'mainMenu.next',
+    [keyOf(tap('A'))]:     'mainMenu.select',
+    [keyOf(tap('Start'))]: 'mainMenu.select',
+    [keyOf(tap('B'))]:     'mainMenu.back',
+    [keyOf(tap('Back'))]:  'mainMenu.close',
+    [keyOf(tap('LB'))]:    'mainMenu.adjustDown',
+    [keyOf(held('LB'))]:   'mainMenu.adjustDown',
+    [keyOf(tap('RB'))]:    'mainMenu.adjustUp',
+    [keyOf(held('RB'))]:   'mainMenu.adjustUp',
+    [keyOf(chord(['LeftStickPress', 'RightStickPress']))]: 'mainMenu.close',
+  },
+}
+```
+
+6.8.1 The main-menu layer sits at the **highest** priority in the predicate-driven stack (above picker, above act-on, above everything). When open, it masks all other input.
+
+6.8.2 The L3+R3 chord binding in the base layer opens the menu; the same chord in the menu layer closes it (toggle behaviour).
 
 ---
 

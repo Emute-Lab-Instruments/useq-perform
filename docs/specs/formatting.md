@@ -9,7 +9,7 @@
 
 ### Source files
 
-- `src/editors/extensions/structure/adapter/printTree.ts` — tree-to-source printer (current: whitespace-destructive; target: formatting-aware)
+- `src/editors/extensions/structure/adapter/printTree.ts` — tree-to-source printer: flat `printNode` + formatting-aware `formatNode` (width + complexity thresholds, arg-aligned breaking, `do`-block rules)
 - `src/editors/extensions/structure/adapter/applyOp.ts` — dispatches structural mutations to CodeMirror
 
 ---
@@ -249,12 +249,24 @@ so they are typically short and stay on one line:
 (live-edit 120 :id "bpm1" :min 60 :max 200 :name "tempo")
 ```
 
-When a wrapper-call exceeds `format.lineWidth` (long keyword arg lists), it
-breaks at keyword boundaries with arg-aligned indent:
+**`live-edit` wrappers are always single-line.** Unlike other wrapper-calls,
+`live-edit` forms MUST NOT break across lines. The inline widget replaces the
+entire wrapper source with a `Decoration.replace()` (see [live-edit.md §4.1](live-edit.md)),
+and CodeMirror forbids replace decorations from spanning line breaks when
+provided via a StateField plugin. A multi-line wrapper would crash the editor.
+The formatter treats the wrapper as occupying a fixed estimated width (~6–8
+character widths, since the rendered widget replaces the hidden source text)
+rather than counting the hidden source characters. If keyword args would push
+the source text past `format.lineWidth`, the formatter still keeps the wrapper
+on one line — the user sees the compact widget, not the source text.
+
+Other wrapper-calls (`debug`, `time`, user wrappers) without inline replace
+decorations follow the general rule: when they exceed `format.lineWidth`, they
+break at keyword boundaries with arg-aligned indent:
 
 ```
-(live-edit 0.5 :id "abc" :min 0 :max 1
-               :name "cutoff" :step 0.01 :precision 3)
+(debug 0.5 :id "abc" :min 0 :max 1
+             :name "cutoff" :step 0.01 :precision 3)
 ```
 
 The structural editor folds wrapper Metas by default (replacing them with

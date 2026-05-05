@@ -97,11 +97,13 @@ App-wide degradation contracts. Cited from feature sub-specs.
 - Run browser-local WASM by default when hardware is unavailable; complement hardware when both are present.
 - A "don't wait for hardware" setting that lets local editing/eval proceed without a connection gate.
 - Distinct visual indication of hardware-connected vs WASM-only states.
-- Visualisation in both WASM-driven and hardware-streamed modes.
+- Visualisation in both WASM-driven and hardware-streamed modes. WebGL2 renderer with faithful-past / projected-future pipeline, frontier tracking, adaptive quality, per-output VBOs, and output classification (see [visualisation.md](visualisation.md)).
 - Internal time (rAF-driven `performance.now`) as the WASM clock when no hardware is present.
 - Loading committed config, persisted settings, and retained URL bootstrap overrides.
+- Structural editing: focus-primary navigation and mutation of s-expressions via a pure functional core (Tree, CursorSet), with holes as first-class placeholders, spatial navigation, auto-formatting on structural mutations, and insertion-mode for character-level editing (see [structural-editing.md](structural-editing.md), [formatting.md](formatting.md)).
+- Gamepad-driven radial menu: double-ring command surface for picking nouns (language forms, templates) and applying verbs (wrap/replace/insert) into the document, with auto-chain for rapid sequential insertion (see [radial-menu.md](radial-menu.md)).
 - Browser MIDI input via Web MIDI API for routing CC/notes into `live-edit` slots (MIDI learn). MIDI output and firmware-side MIDI remain out of scope.
-- `live-edit` values: `(live-edit …)` wrapper form, inline widgets, dockable panel, persistence (see [live-edit.md](live-edit.md)).
+- `live-edit` values: `(live-edit …)` wrapper form, inline widgets (knob/slider/toggle/picker), dockable panel, vector-mark sub-mode, persistence, orphan GC (see [live-edit.md](live-edit.md)).
 - Hardware bindings: `(on-press …)` / `(on-release …)` / `(on-button …)` / `(on-toggle …)` wrapper forms binding ModuLisp expressions to hardware switch/encoder events, inline chip widgets, test-fire UX (see [hardware-bindings.md](hardware-bindings.md)).
 - CV 1V/oct calibration: full-screen takeover flow that walks the user through tuning each analog output against an external tuner, with per-octave save and flash persistence (see [calibration.md](calibration.md)).
 
@@ -184,6 +186,10 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 6.26 [state-identity.md](state-identity.md) — hidden/editor-generated IDs for anonymous stateful expressions, linked inactive variants, duplicate-active validation, runtime state-resource schemas, and stateful probe projection.
 
 6.27 [formatting.md](formatting.md) — auto-formatting policy: when the editor reformats (structural mutations only), what "well-formatted" means (width + complexity thresholds, arg-aligned breaking, `do`-block rules), and preservation of user layout intent (inter-top-level whitespace sacred, insertion-mode hands-off).
+
+6.28 [atom-manipulation.md](atom-manipulation.md) — contextual value editing for leaf nodes: LB/RB increment/cycle (numbers, symbols, booleans, keywords), symbol cycle groups, cycling widget, joystick-driven float editing (range zoom/pan + value scrub), polarity flip (L3).
+
+6.29 [main-menu.md](main-menu.md) — system/pause menu (L3+R3 chord), vertical item list, save/restore/settings/transport/help submenus, gamepad navigation layer.
 
 ---
 
