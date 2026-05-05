@@ -45,6 +45,7 @@ import {
   type NodeId,
   type State,
 } from "../extensions/structure/core/index.ts";
+import { atomAdjust, flipPolarity } from "../extensions/structure/core/atomOps.ts";
 
 export type EditorCommandSource =
   | "keyboard"
@@ -66,6 +67,8 @@ export type EditorCommand =
   | { kind: "structural"; action: string; source?: EditorCommandSource }
   | { kind: "deleteNode"; source?: EditorCommandSource }
   | { kind: "adjustNumber"; delta: number; source?: EditorCommandSource }
+  | { kind: "atomAdjust"; direction: 1 | -1; source?: EditorCommandSource }
+  | { kind: "atomFlipPolarity"; source?: EditorCommandSource }
   | { kind: "toggleManualControl"; stick: "left" | "right"; source?: EditorCommandSource }
   | { kind: "manualControlAxis"; stick: "left" | "right"; x: number; y: number; nowMs?: number; source?: EditorCommandSource };
 
@@ -165,6 +168,12 @@ export function executeEditorCommand(
 
     case "adjustNumber":
       return adjustNumberAtCursor(view, command.delta);
+
+    case "atomAdjust":
+      return atomAdjustAtCursor(view, command.direction);
+
+    case "atomFlipPolarity":
+      return atomFlipPolarityAtCursor(view);
 
     case "toggleManualControl":
       return toggleManualControl(view, command.stick);
@@ -712,4 +721,65 @@ function formatManualControlNumber(value: number): string {
     text = text.replace(/\.?0+$/, "");
   }
   return text;
+}
+
+// ─── Atom manipulation (atom-manipulation.md §2) ────────────────────────────
+
+function getLezerNodeKind(node: SyntaxNode): string | null {
+  const name = node.type?.name;
+  if (!name) return null;
+  if (name === "Number") return "number";
+  if (name === "Symbol") return "symbol";
+  if (name === "Keyword") return "keyword";
+  if (name === "Boolean") return "symbol";
+  if (name === "String") return "string";
+  return null;
+}
+
+function atomAdjustAtCursor(view: EditorView, direction: 1 | -1): boolean {
+  const node = getCursorNode(view);
+  if (!node) return false;
+
+  const kind = getLezerNodeKind(node);
+  if (!kind) return false;
+
+  const text = view.state.doc.sliceString(node.from, node.to);
+  const result = atomAdjust(text, kind, direction);
+
+  if (result.kind === "no-op") return false;
+
+  const newText = result.kind === "adjusted" ? result.newText : result.newText;
+
+  return replaceRange(view, {
+    kind: "replaceRange",
+    from: node.from,
+    to: node.to,
+    insert: newText,
+    selectionAnchor: node.from,
+    scrollIntoView: true,
+    userEvent: "edit.atom",
+  });
+}
+
+function atomFlipPolarityAtCursor(view: EditorView): boolean {
+  const node = getCursorNode(view);
+  if (!node) return false;
+
+  const kind = getLezerNodeKind(node);
+  if (kind !== "number") return false;
+
+  const text = view.state.doc.sliceString(node.from, node.to);
+  const result = flipPolarity(text);
+
+  if (result.kind === "no-op") return false;
+
+  return replaceRange(view, {
+    kind: "replaceRange",
+    from: node.from,
+    to: node.to,
+    insert: result.newText,
+    selectionAnchor: node.from,
+    scrollIntoView: true,
+    userEvent: "edit.atom",
+  });
 }

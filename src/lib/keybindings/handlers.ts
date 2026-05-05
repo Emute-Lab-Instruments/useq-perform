@@ -130,6 +130,13 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "nav.out": structHandler("nav.out"),
   "nav.next": structHandler("nav.next"),
   "nav.prev": structHandler("nav.prev"),
+  "nav.first": structHandler("nav.first"),
+  "nav.last": structHandler("nav.last"),
+  "nav.extendNext": structHandler("nav.extendNext"),
+  "nav.extendPrev": structHandler("nav.extendPrev"),
+  "nav.shrink": structHandler("nav.shrink"),
+  "nav.nextHole": structHandler("nav.nextHole"),
+  "nav.prevHole": structHandler("nav.prevHole"),
 
   // -- Structure (functional-core via adapter dispatcher) --------------------
   "edit.slurpFwd": structHandler("edit.slurpForward"),
@@ -145,7 +152,21 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "edit.transposeFwd": structHandler("edit.transposeNext"),
   "edit.transposeBack": structHandler("edit.transposePrev"),
 
-  // -- Gamepad editor actions ----------------------------------------------
+  // -- Meta operations (§6.6) -----------------------------------------------
+  "meta.add": structHandler("meta.add"),
+  "meta.remove": structHandler("meta.remove"),
+  "meta.cycle": structHandler("meta.cycle"),
+  "meta.foldToggle": structHandler("meta.foldToggle"),
+
+  // -- Atom manipulation (atom-manipulation.md §2-§5) -----------------------
+  "atom.adjustUp": (view: EditorView) =>
+    executeEditorCommand(view, { kind: "atomAdjust", direction: 1, source: "gamepad" }),
+  "atom.adjustDown": (view: EditorView) =>
+    executeEditorCommand(view, { kind: "atomAdjust", direction: -1, source: "gamepad" }),
+  "atom.flipPolarity": (view: EditorView) =>
+    executeEditorCommand(view, { kind: "atomFlipPolarity", source: "gamepad" }),
+
+  // -- Gamepad editor actions (legacy) -------------------------------------
   "nav.adjustNumber": (view: EditorView) =>
     executeEditorCommand(view, {
       kind: "adjustNumber",
@@ -173,6 +194,12 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "probe.toggleRaw": (view: EditorView) => toggleCurrentProbe(view, "raw"),
   "probe.expand": expandCurrentProbeContext,
   "probe.contract": contractCurrentProbeContext,
+
+  // -- Document-root bulk (§5.3) --------------------------------------------
+  "doc.deleteAll": structHandler("doc.deleteAll"),
+  "doc.cutAll": structHandler("doc.cutAll"),
+  "doc.copyAll": structHandler("doc.copyAll"),
+  "doc.selectAll": structHandler("doc.selectAll"),
 
   // -- Live-Edit (vector-mark sub-mode, §3.7.3) ----------------------------
   "liveEdit.vectorConfirm": structHandler("liveEdit.vectorConfirm"),

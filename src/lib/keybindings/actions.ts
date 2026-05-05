@@ -315,11 +315,130 @@ export const actions = {
     reversible: false,
     requiresEditor: true,
   },
+  "nav.first": {
+    description: "Tree nav: move to first sibling",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.last": {
+    description: "Tree nav: move to last sibling",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.extendNext": {
+    description: "Extend range cursor to next sibling",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.extendPrev": {
+    description: "Extend range cursor to previous sibling",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.shrink": {
+    description: "Shrink range cursor by one sibling",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.nextHole": {
+    description: "Jump to next hole in document order",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "nav.prevHole": {
+    description: "Jump to previous hole in document order",
+    category: "navigation",
+    reversible: false,
+    requiresEditor: true,
+  },
+
+  // -- Structure: Meta operations (§6.6) ------------------------------------
+
+  "meta.add": {
+    description: "Add a Meta to the focused node",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "meta.remove": {
+    description: "Remove outermost Meta from focused node",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "meta.cycle": {
+    description: "Cycle outermost Meta kind (quote → unquote → off)",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "meta.foldToggle": {
+    description: "Toggle Meta drawer visibility for focused node",
+    category: "structure",
+    reversible: false,
+    requiresEditor: true,
+  },
+
+  // -- Structure: Document-root operations (§5.3) --------------------------
+
+  "doc.deleteAll": {
+    description: "Delete all top-level forms",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "doc.cutAll": {
+    description: "Cut all top-level forms to clipboard",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "doc.copyAll": {
+    description: "Copy all top-level forms to clipboard",
+    category: "structure",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "doc.selectAll": {
+    description: "Select all (cursor → document root)",
+    category: "structure",
+    reversible: false,
+    requiresEditor: true,
+  },
+
+  // -- Atom manipulation (atom-manipulation.md §2-§5) -----------------------
+
+  "atom.adjustUp": {
+    description: "Atom adjust: increment number / cycle next symbol",
+    category: "structure",
+    reversible: true,
+    repeatable: true,
+    requiresEditor: true,
+  },
+  "atom.adjustDown": {
+    description: "Atom adjust: decrement number / cycle prev symbol",
+    category: "structure",
+    reversible: true,
+    repeatable: true,
+    requiresEditor: true,
+  },
+  "atom.flipPolarity": {
+    description: "Flip sign of number at cursor",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
 
   // -- Gamepad --------------------------------------------------------------
 
   "nav.adjustNumber": {
-    description: "Adjust number at cursor",
+    description: "Adjust number at cursor (legacy)",
     category: "gamepad",
     reversible: true,
     requiresEditor: true,
@@ -345,6 +464,135 @@ export const actions = {
     description: "Toggle manual control for right stick",
     category: "gamepad",
     reversible: false,
+  },
+
+
+  // -- Act-on layer (gamepad.md §6.6) ---------------------------------------
+
+  "actOn.open": {
+    description: "Select node for action (open act-on layer)",
+    category: "gamepad",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "actOn.quickReplace": {
+    description: "Open radial menu scoped to focused node type (quick-replace)",
+    category: "gamepad",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "actOn.grab": {
+    description: "Enter grab mode — move node with D-pad",
+    category: "gamepad",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "actOn.replace": {
+    description: "Act-on: open radial in replace mode",
+    category: "gamepad",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "actOn.wrapWith": {
+    description: "Act-on: open radial in wrapWith mode",
+    category: "gamepad",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "actOn.cut": {
+    description: "Act-on: cut node to clipboard",
+    category: "gamepad",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "actOn.copy": {
+    description: "Act-on: copy node to clipboard",
+    category: "gamepad",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "actOn.paste": {
+    description: "Act-on: paste from clipboard after cursor",
+    category: "gamepad",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "actOn.duplicate": {
+    description: "Act-on: duplicate node in-place",
+    category: "gamepad",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "actOn.wrapList": {
+    description: "Act-on: wrap node in list (move down a level)",
+    category: "gamepad",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "actOn.drop": {
+    description: "Grab: drop node at current position",
+    category: "gamepad",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "actOn.cancelGrab": {
+    description: "Grab: undo all moves and exit",
+    category: "gamepad",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "actOn.duplicateDrop": {
+    description: "Grab: duplicate at current position and exit",
+    category: "gamepad",
+    reversible: true,
+    requiresEditor: true,
+  },
+
+  // -- Main menu (main-menu.md) ---------------------------------------------
+
+  "mainMenu.open": {
+    description: "Open main menu",
+    category: "ui",
+    reversible: false,
+  },
+  "mainMenu.close": {
+    description: "Close main menu",
+    category: "ui",
+    reversible: false,
+  },
+  "mainMenu.next": {
+    description: "Main menu: focus next item",
+    category: "ui",
+    reversible: false,
+    repeatable: true,
+  },
+  "mainMenu.prev": {
+    description: "Main menu: focus previous item",
+    category: "ui",
+    reversible: false,
+    repeatable: true,
+  },
+  "mainMenu.select": {
+    description: "Main menu: activate focused item",
+    category: "ui",
+    reversible: false,
+  },
+  "mainMenu.back": {
+    description: "Main menu: navigate back / close",
+    category: "ui",
+    reversible: false,
+  },
+  "mainMenu.adjustUp": {
+    description: "Main menu: increment value",
+    category: "ui",
+    reversible: false,
+    repeatable: true,
+  },
+  "mainMenu.adjustDown": {
+    description: "Main menu: decrement value",
+    category: "ui",
+    reversible: false,
+    repeatable: true,
   },
 
   // -- Menu -----------------------------------------------------------------
