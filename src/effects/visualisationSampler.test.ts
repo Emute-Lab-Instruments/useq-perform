@@ -86,6 +86,7 @@ vi.mock("../lib/visualisationUtils.ts", () => ({
 
 vi.mock("../contracts/runtimeChannels", () => ({
   codeEvaluated: { subscribe: vi.fn() },
+  liveEditValueChanged: { subscribe: vi.fn() },
 }));
 
 vi.mock("../contracts/visualisationChannels", () => ({

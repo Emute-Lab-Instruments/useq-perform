@@ -104,6 +104,7 @@ vi.mock("../contracts/runtimeChannels", () => ({
   bootstrapFailure: { publish: vi.fn(), subscribe: vi.fn() },
   animateConnect: { publish: vi.fn(), subscribe: vi.fn() },
   devicePluggedIn: { publish: vi.fn(), subscribe: vi.fn() },
+  liveEditValueChanged: { subscribe: vi.fn() },
 }));
 
 vi.mock("../contracts/visualisationChannels", () => ({

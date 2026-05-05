@@ -27,6 +27,7 @@ vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
 
 vi.mock("../transport/json-protocol.ts", () => ({
   sendTouSEQ: mockSendTouSEQ,
+  initProtocol: vi.fn(),
 }));
 
 vi.mock("../editors/extensions/expressionEval.ts", () => ({
