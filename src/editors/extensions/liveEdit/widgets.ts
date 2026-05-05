@@ -809,7 +809,7 @@ function widgetFor(slot: LiveEditSlot): LiveEditBaseWidget {
   }
 }
 
-function buildDecorations(slots: LiveEditSlot[], doc: Text): DecorationSet {
+export function buildDecorations(slots: LiveEditSlot[], doc: Text): DecorationSet {
   const docLen = doc.length;
   if (slots.length === 0) return Decoration.none;
 
