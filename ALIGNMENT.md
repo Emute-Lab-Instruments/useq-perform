@@ -5,31 +5,28 @@ future. Counterpart to `MAP.md` ("what is"); this file is "how good is what is,
 vs. what we need". Pruned ruthlessly. If an entry crystallises into "fix now",
 promote it to a bead and delete it from here.
 
-Last full pass: **2026-05-03**.
+Last full pass: **2026-05-05**.
 
 ---
 
-## Active push (Superbooth 2026) — *near-complete, 2026-05-03*
+## Active push (Superbooth 2026) — *Phase 6, 2026-05-05*
 
-Epic `useq-perform-gii8`: 59 of 67 issues closed across 7 phases.
+Epic `useq-perform-4zt` (successor to `gii8`): Phase 6 in progress. Phases 0-5 complete.
 
-**Landed:**
+**Landed (all phases prior to Phase 6):**
 - **Phase 0** — Preflight: WASM diagnostics, persistence, DI, connection mutex, doc sweep.
 - **Phase 1** — Foundation: vis investigation, firmware capability discovery, gamepad pipeline cutover, worker-default.
 - **Phase 2** — Structural editing rewrite: pure functional core (Tree, CursorSet), adapter layer, holes, eval gates, numpad entry, gamepad/zen dispatch.
 - **Phase 3** — Live-edit + MIDI: inline widgets (knob/slider/toggle/picker), dockable panel, marking flow, vector marking, MIDI learn, CC routing.
+- **Phase 4** — Vis projection-fork pipeline: WebGL-only renderer, faithful-past / projected-future, frontier tracking, adaptive quality, multi-sample queue, output classification. 14 bug fixes from audit.
 - **Phase 5** — Hardware: button/toggle bindings, inline chip widgets, CV calibration takeover.
-- **gii8.67** — Vis projection-fork pipeline: 14 bug fixes from audit.
+- **Gamepad radial menu** — Full radial menu system (`src/lib/menu/`): state machine, verb dispatch, auto-chain, manifest/templates, preview cache. Bootstrap cutover deleted all legacy picker code.
 
-**Remaining (8 issues):**
-- `gii8.32` — Verification doc backfill (mostly done, 69/70 rows pass).
-- `gii8.47` — Vis stutter (Phase 4.1). Original stutter fixed; 9 vis pipeline commits since. Needs re-verification.
-- `gii8.50` — Probe oscilloscope UX pass (keybinding, dismissal, multi-probe).
-- `gii8.52` — Phase 4 verification gate.
-- `gii8.63` — Public-build cold-cache smoke pass. Build/typecheck/lint all clean.
-- `gii8.64` — Doc refresh (MAP.md and MAIN.md updated).
-- `gii8.65` — Demo runbook (needs user input).
-- `gii8.66` — Phase 6 verification gate.
+**Remaining (Phase 6, 4 issues):**
+- `4zt.60` — Advance submodule pin + resolve src-useq SIGSEGV blockers.
+- `4zt.61` — Public-build cold-cache smoke pass on the demo machine.
+- `4zt.62` — Final doc refresh (this task).
+- `4zt.68` — Phase 6 final gate.
 
 ---
 
@@ -100,17 +97,16 @@ when that issue starts.
 
 **Cost.** S each for the three follow-up workstreams above.
 
-### 3. Visualisation WebGL-only cutover — mostly done *(2026-05-03)*
+### 3. Visualisation WebGL-only cutover — complete *(2026-05-05)*
 
-**What.** WebGL is now the primary vis renderer. `serialVisGL.ts` is the
-production path with projection-fork pipeline, adaptive quality, and
-pixel-matched sampling. Probe oscilloscope also renders via WebGL (gii8.49).
+**What.** WebGL is the sole vis renderer. `serialVisGL.ts` is the
+production path with projection-fork pipeline, adaptive quality, frontier
+tracking, per-output VBOs, and pixel-matched sampling. Probe oscilloscope
+also renders via WebGL. Canvas-2D code removed.
 
-**Status.** Core pipeline landed. Remaining: stutter re-verification (gii8.47),
-probe UX pass (gii8.50), and Phase 4 gate (gii8.52). Canvas-2D fallback
-removal may still need a final sweep.
+**Status.** Complete. No remaining work items.
 
-**Cost.** S (mostly verification + UX polish).
+**Cost.** Done.
 
 ### 4. Hardware-path test coverage gaps remain around timing + WASM parity *(2026-04-29)*
 
