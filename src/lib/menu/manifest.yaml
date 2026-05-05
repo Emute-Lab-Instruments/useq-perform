@@ -1,0 +1,380 @@
+# Radial Menu Manifest (human-editable source)
+# =============================================
+#
+# Structure:
+#   tabs[].categories[] → left ring segments (left stick)
+#   tabs[].categories[].items[] → right ring segments (right stick)
+#   tabs[].rightTabs[] → filter views on items (LB/RB to cycle once category hovered)
+#
+# Item kinds:
+#   function  — inserts (head hole1 hole2 …); signature defines typed holes for auto-chain
+#   symbol    — inserts a bare name
+#   literal   — inserts a value (number, boolean, keyword)
+#   snippet   — inserts a multi-node template with holes
+#
+# Hole types: number, symbol, keyword, expr, string
+#
+# Tab order = frequency of use (first tab = most reached-for in performance)
+
+version: 1
+
+tabs:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # TAB 1: SOUND — signal generation, sequencing, timing, hardware I/O
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: sound
+    label: Sound
+
+    rightTabs:
+      - id: all
+        label: All
+      - id: favourites
+        label: Favourites
+      - id: recent
+        label: Recent
+
+    categories:
+
+      - id: waveforms
+        label: Waveforms
+        icon: "~"
+        items:
+          - { kind: function, id: fn.sine,    label: sine,    head: sine,    signature: [{name: freq, type: number}] }
+          - { kind: function, id: fn.usin,    label: usin,    head: usin,    signature: [{name: phasor, type: expr}] }
+          - { kind: function, id: fn.sqr,     label: sqr,     head: sqr,     signature: [{name: phasor, type: expr}] }
+          - { kind: function, id: fn.tri,     label: tri,     head: tri,     signature: [{name: duty, type: number}, {name: phasor, type: expr}] }
+          - { kind: function, id: fn.pulse,   label: pulse,   head: pulse,   signature: [{name: width, type: number}] }
+          - { kind: function, id: fn.euclid,  label: euclid,  head: euclid,  signature: [{name: n, type: number}, {name: k, type: number}, {name: pw, type: number}, {name: phasor, type: expr}] }
+          - { kind: function, id: fn.random,  label: random,  head: random,  signature: [{name: low, type: number}, {name: high, type: number}] }
+          - { kind: function, id: fn.random2, label: "random'", head: "random'", signature: [{name: low, type: number}, {name: high, type: number}] }
+
+      - id: sequencing
+        label: Sequencing
+        icon: "▦"
+        items:
+          - { kind: function, id: fn.step,      label: step,      head: step,      signature: [{name: count, type: number}, {name: offset, type: number}] }
+          - { kind: function, id: fn.gates,     label: gates,     head: gates,     signature: [{name: list, type: expr}, {name: phasor, type: expr}, {name: speed, type: number}, {name: pw, type: number}] }
+          - { kind: function, id: fn.gatesw,    label: gatesw,    head: gatesw,    signature: [{name: list, type: expr}, {name: phasor, type: expr}] }
+          - { kind: function, id: fn.trigs,     label: trigs,     head: trigs,     signature: [{name: list, type: expr}, {name: phasor, type: expr}, {name: pw, type: number}] }
+          - { kind: function, id: fn.interp,    label: interp,    head: interp,    signature: [{name: values, type: expr}, {name: phasor, type: expr}] }
+          - { kind: function, id: fn.from-list, label: from-list, head: from-list, signature: [{name: list, type: expr}, {name: position, type: expr}] }
+          - { kind: function, id: fn.ridx,      label: ridx,      head: ridx,      signature: [{name: ratios, type: expr}, {name: phasor, type: expr}] }
+          - { kind: function, id: fn.rstep,     label: rstep,     head: rstep,     signature: [{name: ratios, type: expr}, {name: phasor, type: expr}] }
+          - { kind: function, id: fn.rpulse,    label: rpulse,    head: rpulse,    signature: [{name: ratios, type: expr}, {name: pw, type: number}, {name: phasor, type: expr}] }
+          - { kind: function, id: fn.rwarp,     label: rwarp,     head: rwarp,     signature: [{name: ratios, type: expr}, {name: phasor, type: expr}] }
+
+      - id: time
+        label: Time
+        icon: "⏱"
+        items:
+          - { kind: function, id: fn.slow,  label: slow,  head: slow,  signature: [{name: factor, type: number}, {name: signal, type: expr}] }
+          - { kind: function, id: fn.fast,  label: fast,  head: fast,  signature: [{name: factor, type: number}, {name: signal, type: expr}] }
+          - { kind: function, id: fn.shift, label: shift, head: shift, signature: [{name: offset, type: number}, {name: phasor, type: expr}] }
+          - { kind: function, id: fn.t,     label: t,     head: t }
+          - { kind: function, id: fn.bar,   label: bar,   head: bar }
+          - { kind: function, id: fn.beat,  label: beat,  head: beat }
+          - { kind: function, id: fn.phrase, label: phrase, head: phrase }
+          - { kind: function, id: fn.bpm,   label: bpm,   head: bpm }
+
+      - id: io
+        label: I/O
+        icon: "⇌"
+        items:
+          # Analogue outputs
+          - { kind: function, id: fn.a1, label: a1, head: a1, signature: [{name: form, type: expr}] }
+          - { kind: function, id: fn.a2, label: a2, head: a2, signature: [{name: form, type: expr}] }
+          - { kind: function, id: fn.a3, label: a3, head: a3, signature: [{name: form, type: expr}] }
+          # Digital outputs
+          - { kind: function, id: fn.d1, label: d1, head: d1, signature: [{name: form, type: expr}] }
+          - { kind: function, id: fn.d2, label: d2, head: d2, signature: [{name: form, type: expr}] }
+          - { kind: function, id: fn.d3, label: d3, head: d3, signature: [{name: form, type: expr}] }
+          # Serial outputs
+          - { kind: function, id: fn.q0, label: q0, head: q0, signature: [{name: form, type: expr}] }
+          # Inputs (no signature — zero-arg readers)
+          - { kind: function, id: fn.ain1, label: ain1, head: ain1 }
+          - { kind: function, id: fn.ain2, label: ain2, head: ain2 }
+          - { kind: function, id: fn.in1,  label: in1,  head: in1 }
+          - { kind: function, id: fn.in2,  label: in2,  head: in2 }
+          - { kind: function, id: fn.swm,  label: swm,  head: swm }
+          - { kind: function, id: fn.swt,  label: swt,  head: swt }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # TAB 2: STRUCTURE — control flow, maths, data manipulation
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: structure
+    label: Structure
+
+    rightTabs:
+      - id: all
+        label: All
+      - id: favourites
+        label: Favourites
+
+    categories:
+
+      - id: math
+        label: Math
+        icon: "±"
+        items:
+          - { kind: function, id: fn.add,   label: "+",   head: "+",   signature: [{name: a, type: number}, {name: b, type: number}] }
+          - { kind: function, id: fn.sub,   label: "-",   head: "-",   signature: [{name: a, type: number}, {name: b, type: number}] }
+          - { kind: function, id: fn.mul,   label: "*",   head: "*",   signature: [{name: a, type: number}, {name: b, type: number}] }
+          - { kind: function, id: fn.mod,   label: "%",   head: "%",   signature: [{name: a, type: number}, {name: b, type: number}] }
+          - { kind: function, id: fn.pow,   label: pow,   head: pow,   signature: [{name: exp, type: number}, {name: value, type: number}] }
+          - { kind: function, id: fn.floor, label: floor, head: floor, signature: [{name: value, type: number}] }
+          - { kind: function, id: fn.ceil,  label: ceil,  head: ceil,  signature: [{name: value, type: number}] }
+          - { kind: function, id: fn.scale, label: scale, head: scale, signature: [{name: inMin, type: number}, {name: inMax, type: number}, {name: outMin, type: number}, {name: outMax, type: number}, {name: val, type: expr}] }
+          - { kind: function, id: fn.bi2uni, label: "bi->uni", head: "bi->uni", signature: [{name: value, type: expr}] }
+          - { kind: function, id: fn.uni2bi, label: "uni->bi", head: "uni->bi", signature: [{name: value, type: expr}] }
+
+      - id: control
+        label: Control
+        icon: "⎇"
+        items:
+          - { kind: function, id: fn.if,     label: if,     head: if,     signature: [{name: test, type: expr}, {name: then, type: expr}, {name: else, type: expr}] }
+          - { kind: function, id: fn.do,     label: do,     head: do,     signature: [{name: body, type: expr}] }
+          - { kind: function, id: fn.for,    label: for,    head: for,    signature: [{name: name, type: symbol}, {name: list, type: expr}, {name: body, type: expr}] }
+          - { kind: function, id: fn.while,  label: while,  head: while,  signature: [{name: condition, type: expr}, {name: body, type: expr}] }
+          - { kind: function, id: fn.define, label: define, head: define, signature: [{name: name, type: symbol}, {name: expression, type: expr}] }
+          - { kind: function, id: fn.defun,  label: defun,  head: defun,  signature: [{name: name, type: symbol}, {name: params, type: expr}, {name: body, type: expr}] }
+          - { kind: function, id: fn.lambda, label: lambda, head: lambda, signature: [{name: params, type: expr}, {name: body, type: expr}] }
+          - { kind: function, id: fn.let,    label: let,    head: let,    signature: [{name: bindings, type: expr}, {name: body, type: expr}] }
+          - { kind: function, id: fn.set,    label: set,    head: set,    signature: [{name: name, type: symbol}, {name: expression, type: expr}] }
+
+      - id: lists
+        label: Lists
+        icon: "[]"
+        items:
+          - { kind: function, id: fn.list,    label: list,    head: list,    signature: [{name: items, type: expr}] }
+          - { kind: function, id: fn.vec,     label: vec,     head: vec,     signature: [{name: items, type: expr}] }
+          - { kind: function, id: fn.range,   label: range,   head: range,   signature: [{name: low, type: number}, {name: high, type: number}] }
+          - { kind: function, id: fn.zeros,   label: zeros,   head: zeros,   signature: [{name: length, type: number}] }
+          - { kind: function, id: fn.map,     label: map,     head: map,     signature: [{name: fn, type: expr}, {name: list, type: expr}] }
+          - { kind: function, id: fn.filter,  label: filter,  head: filter,  signature: [{name: test, type: expr}, {name: list, type: expr}] }
+          - { kind: function, id: fn.first,   label: first,   head: first,   signature: [{name: list, type: expr}] }
+          - { kind: function, id: fn.rest,    label: rest,    head: rest,    signature: [{name: list, type: expr}] }
+          - { kind: function, id: fn.index,   label: index,   head: index,   signature: [{name: list, type: expr}, {name: idx, type: number}] }
+          - { kind: function, id: fn.slice,   label: slice,   head: slice,   signature: [{name: list, type: expr}, {name: from, type: number}, {name: count, type: number}] }
+          - { kind: function, id: fn.push,    label: push,    head: push,    signature: [{name: list, type: expr}, {name: value, type: expr}] }
+          - { kind: function, id: fn.flatten, label: flatten, head: flatten, signature: [{name: list, type: expr}] }
+
+      - id: comparison
+        label: Compare
+        icon: "≠"
+        items:
+          - { kind: function, id: fn.eq,  label: "=",  head: "=",  signature: [{name: a, type: expr}, {name: b, type: expr}] }
+          - { kind: function, id: fn.neq, label: "!=", head: "!=", signature: [{name: a, type: expr}, {name: b, type: expr}] }
+          - { kind: function, id: fn.lt,  label: "<",  head: "<",  signature: [{name: a, type: expr}, {name: b, type: expr}] }
+          - { kind: function, id: fn.lte, label: "<=", head: "<=", signature: [{name: a, type: expr}, {name: b, type: expr}] }
+          - { kind: function, id: fn.gt,  label: ">",  head: ">",  signature: [{name: a, type: expr}, {name: b, type: expr}] }
+          - { kind: function, id: fn.gte, label: ">=", head: ">=", signature: [{name: a, type: expr}, {name: b, type: expr}] }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # TAB 3: VALUES — numbers, symbols, booleans, keywords
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: values
+    label: Values
+
+    rightTabs:
+      - id: all
+        label: All
+      - id: audio
+        label: Audio
+      - id: timing
+        label: Timing
+
+    categories:
+
+      - id: numbers
+        label: Numbers
+        icon: "#"
+        items:
+          - { kind: literal, id: lit.0,   label: "0",   literal: 0,   literalKind: number }
+          - { kind: literal, id: lit.1,   label: "1",   literal: 1,   literalKind: number }
+          - { kind: literal, id: lit.2,   label: "2",   literal: 2,   literalKind: number }
+          - { kind: literal, id: lit.3,   label: "3",   literal: 3,   literalKind: number }
+          - { kind: literal, id: lit.4,   label: "4",   literal: 4,   literalKind: number }
+          - { kind: literal, id: lit.5,   label: "5",   literal: 5,   literalKind: number }
+          - { kind: literal, id: lit.6,   label: "6",   literal: 6,   literalKind: number }
+          - { kind: literal, id: lit.7,   label: "7",   literal: 7,   literalKind: number }
+          - { kind: literal, id: lit.8,   label: "8",   literal: 8,   literalKind: number }
+          - { kind: literal, id: lit.12,  label: "12",  literal: 12,  literalKind: number }
+          - { kind: literal, id: lit.16,  label: "16",  literal: 16,  literalKind: number }
+          - { kind: literal, id: lit.100, label: "100", literal: 100, literalKind: number }
+
+      - id: fractions
+        label: Fractions
+        icon: "½"
+        items:
+          - { kind: literal, id: lit.0_1,  label: "0.1",  literal: 0.1,  literalKind: number }
+          - { kind: literal, id: lit.0_25, label: "0.25", literal: 0.25, literalKind: number }
+          - { kind: literal, id: lit.0_33, label: "0.33", literal: 0.33, literalKind: number }
+          - { kind: literal, id: lit.0_5,  label: "0.5",  literal: 0.5,  literalKind: number }
+          - { kind: literal, id: lit.0_66, label: "0.66", literal: 0.66, literalKind: number }
+          - { kind: literal, id: lit.0_75, label: "0.75", literal: 0.75, literalKind: number }
+          - { kind: literal, id: lit.0_9,  label: "0.9",  literal: 0.9,  literalKind: number }
+          - { kind: literal, id: lit.1_5,  label: "1.5",  literal: 1.5,  literalKind: number }
+          - { kind: literal, id: lit.2_0,  label: "2.0",  literal: 2.0,  literalKind: number }
+          - { kind: literal, id: lit.n1,   label: "-1",   literal: -1,   literalKind: number }
+          - { kind: literal, id: lit.120,  label: "120",  literal: 120,  literalKind: number }
+          - { kind: literal, id: lit.440,  label: "440",  literal: 440,  literalKind: number }
+
+      - id: symbols
+        label: Symbols
+        icon: "α"
+        items:
+          - { kind: symbol, id: sym.x,      label: x,      text: x }
+          - { kind: symbol, id: sym.i,      label: i,      text: i }
+          - { kind: symbol, id: sym.n,      label: n,      text: n }
+          - { kind: symbol, id: sym.t,      label: t,      text: t }
+          - { kind: symbol, id: sym.freq,   label: freq,   text: freq }
+          - { kind: symbol, id: sym.cutoff, label: cutoff, text: cutoff }
+          - { kind: symbol, id: sym.gain,   label: gain,   text: gain }
+          - { kind: symbol, id: sym.phase,  label: phase,  text: phase }
+          - { kind: symbol, id: sym.rate,   label: rate,   text: rate }
+          - { kind: symbol, id: sym.dur,    label: dur,    text: dur }
+          - { kind: symbol, id: sym.bpm,    label: bpm,    text: bpm }
+          - { kind: symbol, id: sym.step,   label: step,   text: step }
+
+      - id: booleans
+        label: Booleans
+        icon: "⊤"
+        items:
+          - { kind: literal, id: lit.true,  label: "true",  literal: true,  literalKind: boolean }
+          - { kind: literal, id: lit.false, label: "false", literal: false, literalKind: boolean }
+
+      - id: keywords
+        label: Keywords
+        icon: ":"
+        # Context-aware: when inside a (live-edit …) form, populated with
+        # live-edit keys (:id, :min, :max, :step, :precision, :options, :name).
+        # Otherwise shows generic keywords.
+        items:
+          - { kind: literal, id: kw.up,    label: ":up",    literal: up,    literalKind: keyword }
+          - { kind: literal, id: kw.down,  label: ":down",  literal: down,  literalKind: keyword }
+          - { kind: literal, id: kw.left,  label: ":left",  literal: left,  literalKind: keyword }
+          - { kind: literal, id: kw.right, label: ":right", literal: right, literalKind: keyword }
+          - { kind: literal, id: kw.id,    label: ":id",    literal: id,    literalKind: keyword }
+          - { kind: literal, id: kw.min,   label: ":min",   literal: min,   literalKind: keyword }
+          - { kind: literal, id: kw.max,   label: ":max",   literal: max,   literalKind: keyword }
+          - { kind: literal, id: kw.step,  label: ":step",  literal: step,  literalKind: keyword }
+          - { kind: literal, id: kw.name,  label: ":name",  literal: name,  literalKind: keyword }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # TAB 4: SNIPPETS — multi-node templates with typed holes
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: snippets
+    label: Snippets
+
+    rightTabs:
+      - id: all
+        label: All
+      - id: favourites
+        label: Favourites
+
+    categories:
+
+      - id: signals
+        label: Signals
+        icon: "∿"
+        items:
+          - kind: snippet
+            id: snip.sine
+            label: "(sine freq)"
+            template: "(sine ($ freq :number))"
+          - kind: snippet
+            id: snip.tri
+            label: "(tri duty phasor)"
+            template: "(tri ($ duty :number) ($ phasor :expr))"
+          - kind: snippet
+            id: snip.sqr
+            label: "(sqr phasor)"
+            template: "(sqr ($ phasor :expr))"
+          - kind: snippet
+            id: snip.pulse
+            label: "(pulse width)"
+            template: "(pulse ($ width :number))"
+          - kind: snippet
+            id: snip.euclid
+            label: "(euclid n k pw phasor)"
+            template: "(euclid ($ n :number) ($ k :number) ($ pw :number) ($ phasor :expr))"
+
+      - id: patterns
+        label: Patterns
+        icon: "▦"
+        items:
+          - kind: snippet
+            id: snip.step
+            label: "(step count offset)"
+            template: "(step ($ count :number) ($ offset :number))"
+          - kind: snippet
+            id: snip.gates
+            label: "(gates list phasor speed pw)"
+            template: "(gates ($ list :expr) ($ phasor :expr) ($ speed :number) ($ pw :number))"
+          - kind: snippet
+            id: snip.trigs
+            label: "(trigs list phasor pw)"
+            template: "(trigs ($ list :expr) ($ phasor :expr) ($ pw :number))"
+          - kind: snippet
+            id: snip.interp
+            label: "(interp values phasor)"
+            template: "(interp ($ values :expr) ($ phasor :expr))"
+          - kind: snippet
+            id: snip.from-list
+            label: "(from-list list pos)"
+            template: "(from-list ($ list :expr) ($ position :expr))"
+
+      - id: control
+        label: Control
+        icon: "⎇"
+        items:
+          - kind: snippet
+            id: snip.if
+            label: "(if cond then else)"
+            template: "(if ($ cond :expr) ($ then :expr) ($ else :expr))"
+          - kind: snippet
+            id: snip.let
+            label: "(let [name val] body)"
+            template: "(let [($ name :symbol) ($ value :expr)] ($ body :expr))"
+          - kind: snippet
+            id: snip.define
+            label: "(define name value)"
+            template: "(define ($ name :symbol) ($ value :expr))"
+          - kind: snippet
+            id: snip.defun
+            label: "(defun name [params] body)"
+            template: "(defun ($ name :symbol) [($ params :expr)] ($ body :expr))"
+          - kind: snippet
+            id: snip.for
+            label: "(for name list body)"
+            template: "(for ($ name :symbol) ($ list :expr) ($ body :expr))"
+          - kind: snippet
+            id: snip.while
+            label: "(while cond body)"
+            template: "(while ($ condition :expr) ($ body :expr))"
+
+      - id: mapping
+        label: Mapping
+        icon: "↦"
+        items:
+          - kind: snippet
+            id: snip.slow
+            label: "(slow rate body)"
+            template: "(slow ($ rate :number) ($ body :expr))"
+          - kind: snippet
+            id: snip.fast
+            label: "(fast rate body)"
+            template: "(fast ($ rate :number) ($ body :expr))"
+          - kind: snippet
+            id: snip.scale
+            label: "(scale inMin inMax outMin outMax val)"
+            template: "(scale ($ inMin :number) ($ inMax :number) ($ outMin :number) ($ outMax :number) ($ val :expr))"
+          - kind: snippet
+            id: snip.map
+            label: "(map fn list)"
+            template: "(map ($ fn :expr) ($ list :expr))"
+          - kind: snippet
+            id: snip.filter
+            label: "(filter test list)"
+            template: "(filter ($ test :expr) ($ list :expr))"
