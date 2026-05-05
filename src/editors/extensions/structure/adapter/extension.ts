@@ -17,11 +17,12 @@ import {
   structuralNodeOverlay,
   structuralNodeOverlayTheme,
 } from "./nodeOverlays.ts";
-import { structField } from "./stateField.ts";
+import { insertionModeField, structField } from "./stateField.ts";
 
 export function structuralCoreExtensions(): Extension[] {
   return [
     structField,
+    insertionModeField,
     structuralCursorFromSelection,
     structuralNodeOverlay,
     structuralNodeOverlayTheme,

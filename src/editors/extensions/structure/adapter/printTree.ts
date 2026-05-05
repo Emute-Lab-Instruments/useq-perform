@@ -47,13 +47,40 @@ function wrapWithMetas(
 ): string {
   let result = text;
   for (const meta of metas) {
-    if (meta.kind === "live-edit") {
-      const args = formatLiveEditArgs(
-        meta.payload as LiveEditMetaPayload,
-      );
-      result = `(live-edit ${result}${args})`;
+    switch (meta.kind) {
+      case "live-edit": {
+        const args = formatLiveEditArgs(
+          meta.payload as LiveEditMetaPayload,
+        );
+        result = `(live-edit ${result}${args})`;
+        break;
+      }
+      case "ignore":
+        result = `#_${result}`;
+        break;
+      case "quote":
+        result = `'${result}`;
+        break;
+      case "unquote":
+        result = `~${result}`;
+        break;
+      case "unquote-splicing":
+        result = `~@${result}`;
+        break;
+      case "deref":
+        result = `@${result}`;
+        break;
+      case "syntax-quote":
+        result = `\`${result}`;
+        break;
+      case "metadata":
+        result = `^${meta.payload != null ? String(meta.payload) + " " : ""}${result}`;
+        break;
+      // Unknown meta kinds: wrap as a named form (fallback)
+      default:
+        result = `(${meta.kind} ${result})`;
+        break;
     }
-    // Other Meta kinds can be added here later.
   }
   return result;
 }

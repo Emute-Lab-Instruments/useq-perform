@@ -85,3 +85,22 @@ export const structField = StateField.define<StructFieldValue>({
     return value;
   },
 });
+
+// ─── Insertion mode (§4 mode boundary) ──────────────────────────────────────
+//
+// Boolean state field: true when the editor is in insertion mode (free-form
+// text editing), false when in structural mode (default). Toggled by
+// mode.insert / mode.structural actions dispatched from the gamepad layer.
+
+/** Effect to toggle insertion mode on or off. */
+export const setInsertionMode = StateEffect.define<boolean>();
+
+export const insertionModeField = StateField.define<boolean>({
+  create: () => false,
+  update(value, tr: Transaction): boolean {
+    for (const e of tr.effects) {
+      if (e.is(setInsertionMode)) return e.value;
+    }
+    return value;
+  },
+});

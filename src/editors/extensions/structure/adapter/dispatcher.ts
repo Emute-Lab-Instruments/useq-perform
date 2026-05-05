@@ -36,16 +36,22 @@ import type { EditorView } from "@codemirror/view";
 
 import {
   defaultIdGen,
+  docDeleteAll,
+  docSelectAll,
   makeMutators,
+  metaAdd,
+  metaCycle,
+  metaFoldToggle,
+  metaRemove,
   nav,
   type Mutators,
   type State,
 } from "../core/index.ts";
 import { applyOp } from "./applyOp.ts";
+import { formatNode, printNode } from "./printTree.ts";
 import { navDown, navUp } from "./spatialNav.ts";
 import { getAppSettings } from "../../../../runtime/appSettingsRepository.ts";
-import { formatNode } from "./printTree.ts";
-import { setStructState, structField } from "./stateField.ts";
+import { setInsertionMode, setStructState, structField } from "./stateField.ts";
 import { pathsFromCursorSet } from "./cursorPath.ts";
 import { treeFromLezer } from "./treeFromLezer.ts";
 import { vectorController } from "../../liveEdit/markAction.ts";
@@ -92,6 +98,12 @@ function actionOp(name: string): Op | null {
     case "edit.encloseVector": return (s) => getMutators().enclose.vector(s);
     case "edit.encloseMap":    return (s) => getMutators().enclose.map(s);
     case "edit.encloseSet":    return (s) => getMutators().enclose.set(s);
+
+    // Meta ops (§6.6)
+    case "meta.add":           return metaAdd("ignore");
+    case "meta.remove":        return metaRemove;
+    case "meta.cycle":         return metaCycle();
+    case "meta.foldToggle":    return metaFoldToggle;
 
     default:
       return null;
@@ -226,6 +238,44 @@ function formatDocument(view: EditorView): boolean {
   return true;
 }
 
+// ─── Document-root bulk ops with clipboard side-effects ───────────────────
+
+/**
+ * doc.copyAll: copy all top-level forms to clipboard, cursor on root.
+ * Tree is unchanged.
+ */
+function docCopyAll(view: EditorView): boolean {
+  const value = view.state.field(structField, false);
+  if (!value) return false;
+  const { state } = value;
+  const children = state.tree.root.children;
+  if (children.length === 0) return false;
+  const text = children.map(printNode).join("\n");
+  navigator.clipboard.writeText(text).catch((err) => {
+    console.warn("[structure] clipboard write failed:", err);
+  });
+  // Apply cursor-to-root via docSelectAll (pure part).
+  return applyOp(view, docSelectAll);
+}
+
+/**
+ * doc.cutAll: cut all top-level forms to clipboard, then delete them.
+ * Cursor lands on the empty document root.
+ */
+function docCutAll(view: EditorView): boolean {
+  const value = view.state.field(structField, false);
+  if (!value) return false;
+  const { state } = value;
+  const children = state.tree.root.children;
+  if (children.length === 0) return false;
+  const text = children.map(printNode).join("\n");
+  navigator.clipboard.writeText(text).catch((err) => {
+    console.warn("[structure] clipboard write failed:", err);
+  });
+  // Apply tree mutation via docDeleteAll (pure part).
+  return applyOp(view, docDeleteAll);
+}
+
 /** Run the named action against the editor. Returns true on dispatch. */
 export function dispatchAction(view: EditorView, name: string): boolean {
   // ── Vector-mark sub-mode interception (live-edit.md §3.7.3) ──────────
@@ -251,6 +301,16 @@ export function dispatchAction(view: EditorView, name: string): boolean {
     }
   }
 
+  // ── Mode transitions (§4 mode boundary) ─────────────────────────────────
+  if (name === "mode.insert") {
+    view.dispatch({ effects: setInsertionMode.of(true) });
+    return true;
+  }
+  if (name === "mode.structural") {
+    view.dispatch({ effects: setInsertionMode.of(false) });
+    return true;
+  }
+
   // Spatial vertical nav takes the view directly (it needs source positions
   // that the pure core doesn't carry — see spatialNav.ts).
   if (name === "nav.up") return navUp(view);
@@ -259,6 +319,12 @@ export function dispatchAction(view: EditorView, name: string): boolean {
   // Format actions operate directly on the editor without a tree mutation.
   if (name === "format.topLevel") return formatTopLevel(view);
   if (name === "format.document") return formatDocument(view);
+
+  // Document-root bulk operations (§5.3).
+  if (name === "doc.deleteAll") return applyOp(view, docDeleteAll);
+  if (name === "doc.selectAll") return applyOp(view, docSelectAll);
+  if (name === "doc.copyAll") return docCopyAll(view);
+  if (name === "doc.cutAll") return docCutAll(view);
 
   const op = actionOp(name);
   if (op === null) {
@@ -300,6 +366,14 @@ export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   "edit.encloseSet",
   "format.topLevel",
   "format.document",
+  "doc.deleteAll",
+  "doc.cutAll",
+  "doc.copyAll",
+  "doc.selectAll",
+  "meta.add",
+  "meta.remove",
+  "meta.cycle",
+  "meta.foldToggle",
   "liveEdit.vectorConfirm",
   "liveEdit.vectorCancel",
 ]);

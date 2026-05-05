@@ -169,7 +169,54 @@ describe("edit.* actions wired through functional core", () => {
     });
   });
 
-  // ─── No-op cases ────────────────────────────────────────────��─────────────
+  // ─── Meta ops (§6.6) ──────────────────────────────────────────────────────
+
+  describe("meta ops", () => {
+    it("meta.add adds an ignore meta to the focused node", () => {
+      const view = createView("(a b)");
+      navIntoFirstForm(view); // cursor on "a"
+      const ok = dispatchAction(view, "meta.add");
+      expect(ok).toBe(true);
+      // The node should now have an ignore meta — rendered as #_a in source
+      const text = view.state.doc.toString();
+      expect(text).toContain("#_");
+      view.destroy();
+    });
+
+    it("meta.remove is dispatched (no-op when tree lacks meta recognition)", () => {
+      // NOTE: Full round-trip (add → re-parse → remove) requires treeFromLezer
+      // to recognise #_ as an ignore Meta (§6.2 recognition layer, not yet
+      // implemented). The pure core meta.remove is tested in core/meta.test.ts.
+      // Here we verify the dispatcher wiring doesn't crash.
+      const view = createView("(a b)");
+      navIntoFirstForm(view); // cursor on "a" (no metas)
+      const ok = dispatchAction(view, "meta.remove");
+      // No-op because after re-parse the tree has no metas.
+      expect(ok).toBe(false);
+      view.destroy();
+    });
+
+    it("meta.remove is a no-op when node has no metas", () => {
+      const view = createView("(a b)");
+      navIntoFirstForm(view); // cursor on "a" (no metas)
+      const ok = dispatchAction(view, "meta.remove");
+      expect(ok).toBe(false);
+      view.destroy();
+    });
+
+    it("meta.cycle adds first cycle kind to bare node", () => {
+      const view = createView("(a b)");
+      navIntoFirstForm(view); // cursor on "a"
+      const ok = dispatchAction(view, "meta.cycle");
+      expect(ok).toBe(true);
+      // Should add a quote meta
+      const text = view.state.doc.toString();
+      expect(text).toContain("'");
+      view.destroy();
+    });
+  });
+
+  // ─── No-op cases ───────────────────────────────────────────────────────────
 
   describe("no-op rejection", () => {
     it("slurp at document root is a no-op", () => {
