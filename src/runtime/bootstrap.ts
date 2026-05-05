@@ -171,6 +171,18 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     reportBootstrapFailure("ui-adapter-mount", error);
   }
 
+  // Mount virtual gamepad overlay when ?virtualGamepad=true is set.
+  // Must be installed before the gamepad pipeline starts so the synthetic
+  // gamepad is visible to the first poll.
+  if (environmentState?.startupFlags?.params?.virtualGamepad === "true") {
+    try {
+      const { mountVirtualGamepad } = await import("../ui/adapters/virtualGamepad.tsx");
+      mountVirtualGamepad();
+    } catch (error) {
+      reportBootstrapFailure("virtual-gamepad-mount", error);
+    }
+  }
+
   // Wire up three-stage gamepad pipeline + menu dispatcher.
   // Structural nav flows through the keybindings handler registry directly:
   // gamepad pipeline → ActionId (`nav.up`/`nav.down`/`nav.left`/`nav.right`,

@@ -1,6 +1,7 @@
 import { post } from '../utils/consoleStore.ts';
 import { checkForSavedPortAndMaybeConnect } from '../transport/connector.ts';
 import { getActiveWasmRuntimePort } from './activeWasmRuntimePort.ts';
+import { SHARED_TRANSPORT_COMMANDS } from '../contracts/useqRuntimeContract.ts';
 
 import { showModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
@@ -93,6 +94,15 @@ async function startBrowserLocalRuntime(options: {
     startLocalClock();
   } catch (error) {
     console.warn('Failed to start local clock:', error);
+  }
+
+  // The transport machine starts in "playing" but emitPlay only fires on
+  // transitions, so the WASM interpreter never receives (useq-play) at
+  // startup. Sync it explicitly here.
+  try {
+    await getActiveWasmRuntimePort().sendTransportCommand(SHARED_TRANSPORT_COMMANDS.play);
+  } catch (_e) {
+    // Non-fatal: the interpreter will accept play commands later.
   }
 
   // Start hardware binding dispatcher after WASM and editor are available.
