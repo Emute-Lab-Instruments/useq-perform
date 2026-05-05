@@ -20,6 +20,8 @@ import { getHandler, type ActionHandler } from "../keybindings/handlers";
 import type { ActionId } from "../keybindings/actions";
 import type { MenuDispatcher } from "../menu/dispatcher";
 import * as ch from "../../contracts/gamepadChannels";
+import { insertionModeField, structField } from "../../editors/extensions/structure/adapter/stateField.ts";
+import { findById, isLeaf, type LeafKind } from "../../editors/extensions/structure/core/index.ts";
 
 import { diffSnapshots } from "./hardware";
 import { step, flush, INITIAL_STATE, DEFAULT_TIMING, type RecognizerState, type Timing } from "./recognizer";
@@ -173,8 +175,33 @@ export function createGamepadPipeline(
   }
 
   function getAppState() {
+    let insertionMode = false;
+    let cursorOnLeafAtom = false;
+    let cursorNodeKind: string | null = null;
+
+    if (editor) {
+      // Read insertion mode from the dedicated state field.
+      insertionMode = editor.state.field(insertionModeField, false) ?? false;
+
+      // Read structural cursor state to determine if on a leaf atom.
+      const sf = editor.state.field(structField, false);
+      if (sf) {
+        const primary = sf.state.cursors.primary;
+        if (primary.kind === "node") {
+          const node = findById(sf.state.tree.root, primary.target);
+          if (node && isLeaf(node) && node.kind !== "document") {
+            cursorOnLeafAtom = true;
+            cursorNodeKind = node.kind as LeafKind;
+          }
+        }
+      }
+    }
+
     return {
       gamepad: getState(),
+      insertionMode,
+      cursorOnLeafAtom,
+      cursorNodeKind,
     };
   }
 

@@ -59,11 +59,16 @@ const ch = (n: string) => n as AxisChannelName;
 
 // Base layer:
 //   D-pad = spatial nav (primary, per structural-editing.md §4.5 / §5.1-A),
-//   Start = eval, Y = delete, X = radial menu,
-//   LB = adjust(-1), RB = adjust(+1),
-//   StickPress = toggle manual control
+//   Start = eval, Back = undo, Y = delete, X = radial menu,
+//   A = act-on leader (gamepad.md §6.6), B = nav.out,
+//   LT+A = quick-replace, RT+A = grab mode,
+//   LB+A / RB+A = menu.openBefore/After,
+//   L3+R3 = main menu,
+//   StickPress = toggle manual control (when not on number)
 //
-// Face-button verbs (A/B) are intentionally unbound here pending B6.
+// The previous nav.in binding on A is removed — D-pad spatial nav already
+// covers tree descent. A is now prime real-estate for the act-on verb-select
+// leader pattern (see gamepad.md §6.6).
 const baseLayer: Layer = {
   name: ln("modal-base"),
   when: () => true,
@@ -76,13 +81,19 @@ const baseLayer: Layer = {
     [keyOf(held("Left"))]: "nav.left",
     [keyOf(tap("Right"))]: "nav.right",
     [keyOf(held("Right"))]: "nav.right",
+    [keyOf(tap("A"))]: "actOn.open",
+    [keyOf(tap("B"))]: "nav.out",
     [keyOf(tap("Start"))]: "eval.now",
+    [keyOf(tap("Back"))]: "edit.undo",
     [keyOf(tap("X"))]: "menu.radial",
     [keyOf(tap("Y"))]: "edit.delete",
     [keyOf(tap("LeftStickPress"))]: "control.toggleManualLeft",
     [keyOf(tap("RightStickPress"))]: "control.toggleManualRight",
     [keyOf(chord(["LB", "A"]))]: "menu.openBefore",
     [keyOf(chord(["RB", "A"]))]: "menu.openAfter",
+    [keyOf(chord(["LT", "A"]))]: "actOn.quickReplace",
+    [keyOf(chord(["RT", "A"]))]: "actOn.grab",
+    [keyOf(chord(["LeftStickPress", "RightStickPress"]))]: "mainMenu.open",
   },
   axes: { right: ch("manual-control") },
 };
@@ -138,6 +149,39 @@ const lbRbShiftedLayer: Layer = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Atom-edit layer (§2.4 / §5.4): LB/RB tap adjusts the leaf atom under the
+// cursor. LeftStickPress flips polarity on numbers.
+//
+// Active when:
+//   - the cursor is on a leaf atom (number, symbol, keyword, string, hole)
+//   - NOT in insertion mode
+//   - neither LB nor RB is held as a modifier (so held-shift layers shadow)
+//
+// Per spec §2.4: "When the cursor is on a compound node, LB/RB tap has no
+// atom-adjust binding — the tap falls through." This is achieved by the
+// predicate only activating on leaves.
+//
+// Per spec §5.4: LeftStickPress polarity flip only makes sense on numbers,
+// but we bind it here and let the handler return false for non-numbers (the
+// resolver falls through to the base layer's control.toggleManualLeft on
+// no-op). Actually, since the atom layer shadows base, we just accept that
+// L3 on non-numbers is a no-op at the handler level.
+// ─────────────────────────────────────────────────────────────────────────────
+const atomEditLayer: Layer = {
+  name: ln("atom-edit"),
+  when: (s: AppStateSnapshot) =>
+    s.cursorOnLeafAtom === true &&
+    s.insertionMode !== true &&
+    !s.gamepad.heldButtons.has("LB") &&
+    !s.gamepad.heldButtons.has("RB"),
+  gestures: {
+    [keyOf(tap("LB"))]: "atom.adjustDown",
+    [keyOf(tap("RB"))]: "atom.adjustUp",
+    [keyOf(tap("LeftStickPress"))]: "atom.flipPolarity",
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Insertion-mode layer (B7): D-pad and stick drive the character caret per
 // structural-editing.md §4.5.
 //
@@ -170,5 +214,6 @@ export const modalShiftLayers: readonly Layer[] = [
   lbShiftedLayer,
   rbShiftedLayer,
   insertionLayer,
+  atomEditLayer,
   baseLayer,
 ];
