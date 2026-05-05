@@ -21,6 +21,10 @@ vi.mock("../../menu/store", () => ({
   isMenuOpen: vi.fn(() => false),
 }));
 
+vi.mock("../../mainMenu/store", () => ({
+  isMainMenuOpen: vi.fn(() => false),
+}));
+
 import { isMenuOpen } from "../../menu/store";
 const mockedIsMenuOpen = vi.mocked(isMenuOpen);
 
@@ -146,13 +150,11 @@ describe("paradigm: modal-shift", () => {
       // Face buttons
       { gesture: tap("A"), action: "edit.raise", label: "tap(A) → edit.raise" },
       { gesture: tap("B"), action: "edit.splice", label: "tap(B) → edit.splice" },
-      { gesture: tap("X"), action: "edit.transposeBack", label: "tap(X) → edit.transposeBack" },
-      { gesture: tap("Y"), action: "edit.transposeFwd", label: "tap(Y) → edit.transposeFwd" },
-      // D-pad encloses
+      // D-pad: transpose pair + enclose
+      { gesture: tap("Left"), action: "edit.transposeBack", label: "tap(Left) → edit.transposeBack" },
+      { gesture: tap("Right"), action: "edit.transposeFwd", label: "tap(Right) → edit.transposeFwd" },
       { gesture: tap("Up"), action: "edit.wrapList", label: "tap(Up) → edit.wrapList" },
       { gesture: tap("Down"), action: "edit.wrapVector", label: "tap(Down) → edit.wrapVector" },
-      { gesture: tap("Left"), action: "edit.wrapMap", label: "tap(Left) → edit.wrapMap" },
-      { gesture: tap("Right"), action: "edit.wrapSet", label: "tap(Right) → edit.wrapSet" },
     ];
 
     for (const { gesture, action, label } of cases) {

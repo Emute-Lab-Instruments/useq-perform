@@ -100,14 +100,19 @@ async function processSerialDataLoop(
   buffer: Uint8Array,
   onJsonMessage: (msg: string) => void
 ): Promise<Uint8Array> {
+  let chunkCount = 0;
   while (readingActive) {
     const readResult = await reader.read();
     if (readResult.done) break;
 
-    const byteArray = combineBuffers(
-      buffer,
-      new Uint8Array(readResult.value!.buffer)
-    );
+    const incoming = new Uint8Array(readResult.value!.buffer);
+    chunkCount++;
+    if (chunkCount <= 20) {
+      const hex = Array.from(incoming.slice(0, 40)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      console.log(`[stream-parser] chunk #${chunkCount} (${incoming.length} bytes): ${hex}${incoming.length > 40 ? '...' : ''}`);
+    }
+
+    const byteArray = combineBuffers(buffer, incoming);
     const state = processAllMessages(
       byteArray,
       onJsonMessage
@@ -225,11 +230,10 @@ function processBareJsonModeData(
 ): SerialProcessingState {
   for (let i = 0; i < byteArray.length; i++) {
     if (byteArray[i] === 10) {
-      // LF at position i — message body is [0, i) without the newline.
-      // If preceded by CR, trim it too.
       const end = (i > 0 && byteArray[i - 1] === 13) ? i - 1 : i;
       const messageText = extractMessageText(byteArray.slice(0, end));
       if (messageText.length > 0) {
+        console.log(`[stream-parser] JSON frame received: ${messageText.slice(0, 200)}${messageText.length > 200 ? '...' : ''}`);
         onJsonMessage(messageText);
       }
       return {

@@ -1,0 +1,99 @@
+/* src/ui/mainMenu/mainMenu.css
+ *
+ * Styles for the main menu overlay.
+ * @see docs/specs/main-menu.md §5
+ */
+
+.main-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  animation: main-menu-fade-in 150ms ease-out;
+}
+
+.main-menu-panel {
+  background: var(--bg-primary, #1a1a2e);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 8px;
+  min-width: 320px;
+  max-width: 420px;
+  padding: 0;
+  animation: main-menu-scale-in 150ms ease-out;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.main-menu-header {
+  padding: 20px 24px 12px;
+  font-family: var(--ui-font, system-ui, sans-serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+  text-align: center;
+}
+
+.main-menu-back-label {
+  font-size: 1.1rem;
+  color: var(--text-secondary, #aaa);
+}
+
+.main-menu-divider {
+  height: 1px;
+  background: var(--border-color, #333);
+  margin: 0 16px;
+}
+
+.main-menu-items {
+  padding: 8px 0;
+}
+
+.main-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 24px;
+  cursor: pointer;
+  font-family: var(--ui-font, system-ui, sans-serif);
+  font-size: 1.1rem;
+  color: var(--text-primary, #e0e0e0);
+  transition: background 80ms ease;
+  user-select: none;
+}
+
+.main-menu-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.main-menu-item--focused {
+  background: var(--accent-bg, rgba(88, 166, 255, 0.15));
+  color: var(--accent-color, #58a6ff);
+}
+
+.main-menu-item-indicator {
+  width: 1.5em;
+  font-size: 0.9em;
+  flex-shrink: 0;
+}
+
+.main-menu-item-label {
+  flex: 1;
+}
+
+.main-menu-item-chevron {
+  font-size: 0.75em;
+  opacity: 0.5;
+  margin-left: 8px;
+}
+
+/* Animations (spec §5.2) */
+@keyframes main-menu-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes main-menu-scale-in {
+  from { transform: scale(0.95); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}

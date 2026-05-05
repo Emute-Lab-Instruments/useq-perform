@@ -22,16 +22,17 @@
 //                Back → redo
 //
 //   LB+RB held — structural shape verbs (the verbs added in B6):
-//                  Face buttons (raise/splice/transpose):
+//                  Face buttons (raise/splice):
 //                    A → edit.raise
 //                    B → edit.splice
-//                    X → edit.transposeBack
-//                    Y → edit.transposeFwd
-//                  D-pad (enclose family — directions are mnemonics, not literal):
+//                  D-pad (transpose pair + enclose family):
+//                    Left  → edit.transposeBack
+//                    Right → edit.transposeFwd
 //                    Up    → edit.wrapList    (parens)
 //                    Down  → edit.wrapVector  (square brackets)
-//                    Left  → edit.wrapMap     (curly braces)
-//                    Right → edit.wrapSet     (#{...})
+//                  NOTE: wrapMap and wrapSet unbound — D-pad Left/Right
+//                  reassigned to transpose during playtesting. These verbs
+//                  need a new home (radial menu or secondary chord).
 //
 // Why this scheme:
 //   - Preserves existing LB (slurp/barf) and RB (probes) layers — both already
@@ -53,6 +54,7 @@ import type {
   Layer,
   LayerName,
 } from "../types";
+import { isMainMenuOpen } from "../../mainMenu/store";
 
 const ln = (n: string) => n as LayerName;
 const ch = (n: string) => n as AxisChannelName;
@@ -135,16 +137,14 @@ const lbRbShiftedLayer: Layer = {
   when: (s: AppStateSnapshot) =>
     s.gamepad.heldButtons.has("LB") && s.gamepad.heldButtons.has("RB"),
   gestures: {
-    // Face buttons: raise / splice / transpose pair
+    // Face buttons: raise / splice
     [keyOf(tap("A"))]: "edit.raise",
     [keyOf(tap("B"))]: "edit.splice",
-    [keyOf(tap("X"))]: "edit.transposeBack",
-    [keyOf(tap("Y"))]: "edit.transposeFwd",
-    // D-pad: enclose family (4 bracket variants on 4 cardinals)
+    // D-pad: transpose pair + enclose (wrapMap/wrapSet unbound)
+    [keyOf(tap("Left"))]: "edit.transposeBack",
+    [keyOf(tap("Right"))]: "edit.transposeFwd",
     [keyOf(tap("Up"))]: "edit.wrapList",
     [keyOf(tap("Down"))]: "edit.wrapVector",
-    [keyOf(tap("Left"))]: "edit.wrapMap",
-    [keyOf(tap("Right"))]: "edit.wrapSet",
   },
 };
 
@@ -209,7 +209,33 @@ const insertionLayer: Layer = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Main menu layer (main-menu.md §4.1): masks all other gamepad input when the
+// main menu is open. D-pad navigates the menu; face buttons select/back/close.
+// L3+R3 chord toggles (closes) the menu.
+// ─────────────────────────────────────────────────────────────────────────────
+const mainMenuLayer: Layer = {
+  name: ln("main-menu"),
+  when: () => isMainMenuOpen(),
+  gestures: {
+    [keyOf(tap("Up"))]: "mainMenu.prev",
+    [keyOf(held("Up"))]: "mainMenu.prev",
+    [keyOf(tap("Down"))]: "mainMenu.next",
+    [keyOf(held("Down"))]: "mainMenu.next",
+    [keyOf(tap("A"))]: "mainMenu.select",
+    [keyOf(tap("Start"))]: "mainMenu.select",
+    [keyOf(tap("B"))]: "mainMenu.back",
+    [keyOf(tap("Back"))]: "mainMenu.close",
+    [keyOf(tap("LB"))]: "mainMenu.adjustDown",
+    [keyOf(tap("RB"))]: "mainMenu.adjustUp",
+    [keyOf(held("LB"))]: "mainMenu.adjustDown",
+    [keyOf(held("RB"))]: "mainMenu.adjustUp",
+    [keyOf(chord(["LeftStickPress", "RightStickPress"]))]: "mainMenu.close",
+  },
+};
+
 export const modalShiftLayers: readonly Layer[] = [
+  mainMenuLayer,
   lbRbShiftedLayer,
   lbShiftedLayer,
   rbShiftedLayer,

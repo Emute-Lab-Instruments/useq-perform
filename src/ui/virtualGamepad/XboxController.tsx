@@ -113,7 +113,9 @@ export default function XboxController() {
       ref={setSvgRef}
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 800 600"
-      style={{ "max-width": "100%", height: "auto", background: "transparent" }}
+      style={{ "max-width": "100%", height: "auto",
+         background: "#000000" 
+        }}
     >
       <defs>
         <linearGradient id="vgp-bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">

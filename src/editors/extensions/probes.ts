@@ -1116,7 +1116,9 @@ async function computeHighlights(
       perf.count("probe-highlights-eval-raw");
     }
     try {
-      const result = await evaluateProbeCode(raw.code);
+      const currentTime = _config.getCurrentTime();
+      const timedCode = buildEvalAtTimeExpression(raw.code, currentTime);
+      const result = await evaluateProbeCode(timedCode);
       if (isErrorResult(result)) continue;
       const index = computeFromListIndex(
         form.elementRanges.length,

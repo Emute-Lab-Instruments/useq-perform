@@ -12,14 +12,6 @@ import { createChannel, type TypedChannel } from "../lib/typedChannel";
 /** Evaluate the current editor content (Start button). */
 export interface EvalIntent {}
 
-/** Delete the node at the cursor (Y button). */
-export interface DeleteNodeIntent {}
-
-/** Number adjustment at cursor (LB / RB bumpers). */
-export interface AdjustNumberIntent {
-  delta: number;
-}
-
 /** Toggle manual control binding for a stick. */
 export interface ToggleManualControlIntent {
   stick: "left" | "right";
@@ -36,12 +28,6 @@ export interface StickAxisUpdate {
 
 /** Evaluate editor content. */
 export const evalNow: TypedChannel<EvalIntent> = createChannel();
-
-/** Delete node at cursor. */
-export const deleteNode: TypedChannel<DeleteNodeIntent> = createChannel();
-
-/** Adjust number at cursor. */
-export const adjustNumber: TypedChannel<AdjustNumberIntent> = createChannel();
 
 /** Toggle manual control. */
 export const toggleManualControl: TypedChannel<ToggleManualControlIntent> = createChannel();

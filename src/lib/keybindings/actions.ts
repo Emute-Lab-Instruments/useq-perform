@@ -437,12 +437,6 @@ export const actions = {
 
   // -- Gamepad --------------------------------------------------------------
 
-  "nav.adjustNumber": {
-    description: "Adjust number at cursor (legacy)",
-    category: "gamepad",
-    reversible: true,
-    requiresEditor: true,
-  },
   "control.bindStick": {
     description: "Bind stick to number",
     category: "gamepad",

@@ -214,6 +214,8 @@ export interface KeybindingsSettings {
   chordTimeout?: number;
   /** Milliseconds before modifier-hold hints appear. */
   modifierHintDelay?: number;
+  /** Display mode for modifier-hold hints overlay. */
+  modifierHintStyle?: "cursor" | "bar" | "modal";
   /** Whether modifier keys latch instead of requiring hold. */
   stickyModifiers?: boolean;
 }

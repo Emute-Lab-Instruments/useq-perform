@@ -111,6 +111,46 @@ function actionOp(name: string): Op | null {
 }
 
 /**
+ * Line-bounded horizontal nav: run nav.left/right but reject if the result
+ * cursor lands on a different source line than the current cursor. This gives
+ * gamepad-friendly "wall at line boundary" behaviour.
+ */
+function navHorizontalBounded(
+  view: EditorView,
+  op: (s: State) => import("../core/index.ts").OpResult,
+): boolean {
+  const value = view.state.field(structField, false);
+  if (!value) return false;
+
+  const before = value.state;
+  const result = op(before);
+  const after = result.state;
+
+  if (after.cursors === before.cursors) return false;
+
+  const beforeId =
+    before.cursors.primary.kind === "node"
+      ? before.cursors.primary.target
+      : before.cursors.primary.start;
+  const afterId =
+    after.cursors.primary.kind === "node"
+      ? after.cursors.primary.target
+      : after.cursors.primary.start;
+
+  const beforeRange = value.idIndex.get(beforeId);
+  const afterRange = value.idIndex.get(afterId);
+
+  if (beforeRange && afterRange) {
+    const doc = view.state.doc;
+    const beforeLine = doc.lineAt(beforeRange.from).number;
+    const afterLine = doc.lineAt(afterRange.from).number;
+    if (beforeLine !== afterLine) return false;
+  }
+
+  return applyOp(view, op);
+}
+
+/**
  * Reformat the top-level form containing the primary cursor.
  * This is a presentation-only change — the structural tree is NOT mutated;
  * the state field stays intact after the doc-change re-parse.
@@ -311,10 +351,12 @@ export function dispatchAction(view: EditorView, name: string): boolean {
     return true;
   }
 
-  // Spatial vertical nav takes the view directly (it needs source positions
-  // that the pure core doesn't carry — see spatialNav.ts).
+  // Spatial nav takes the view directly (needs source positions that the
+  // pure core doesn't carry — see spatialNav.ts).
   if (name === "nav.up") return navUp(view);
   if (name === "nav.down") return navDown(view);
+  if (name === "nav.left") return navHorizontalBounded(view, nav.left);
+  if (name === "nav.right") return navHorizontalBounded(view, nav.right);
 
   // Format actions operate directly on the editor without a tree mutation.
   if (name === "format.topLevel") return formatTopLevel(view);

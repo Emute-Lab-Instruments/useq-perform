@@ -1,300 +1,249 @@
-/**
- * ModifierHints — ephemeral overlay showing available completions when a
- * modifier key is held for a configurable delay.
- *
- * Renders as a floating panel near the editor cursor (or screen-centered
- * when no cursor position is available). The overlay uses `pointer-events: none`
- * so it never steals focus or intercepts clicks.
- *
- * Mount once at bootstrap via `mountModifierHints()` — the component manages
- * its own visibility based on keyboard events.
- */
-
 import {
   createSignal,
-  createEffect,
   onCleanup,
   Show,
-  For,
+  Switch,
+  Match,
   type JSX,
 } from "solid-js";
-import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
-import { actions, type ActionId } from "../../lib/keybindings/actions.ts";
 import { settings } from "../../utils/settingsStore.ts";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface HintEntry {
-  key: string;
-  description: string;
-  isChord: boolean;
-}
-
-// Map from `event.key` to the modifier prefix used in CodeMirror key notation.
-const MODIFIER_KEYS: Record<string, string> = {
-  Control: "Ctrl",
-  Alt: "Alt",
-  Meta: "Meta",
-  Shift: "Shift",
-};
-
-// Display-friendly labels for the overlay header.
-const MODIFIER_LABELS: Record<string, string> = {
-  Ctrl: "Ctrl",
-  Alt: "Alt",
-  Meta: "Cmd",
-  Shift: "Shift",
-};
-
-// CodeMirror uses "Mod" as an alias for Ctrl (non-Mac) / Meta (Mac).
-const isMac =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad|iPod/.test(navigator.platform);
-
-// ---------------------------------------------------------------------------
-// Hint content builder
-// ---------------------------------------------------------------------------
-
-/**
- * Build the list of available completions for a given modifier prefix.
- * Filters to direct (non-context-scoped) bindings and deduplicates chord
- * namespaces so each leader key appears once with a `->` indicator.
- */
-function getHintsForModifier(modifier: string): HintEntry[] {
-  // Collect all prefixes that match. "Ctrl" also matches "Mod" on the
-  // appropriate platform.
-  const prefixes = [modifier + "-"];
-  if (modifier === "Ctrl" && !isMac) prefixes.push("Mod-");
-  if (modifier === "Meta" && isMac) prefixes.push("Mod-");
-
-  const seen = new Set<string>();
-  const entries: HintEntry[] = [];
-
-  for (const binding of defaultKeyBindings) {
-    // Skip context-gated bindings (picker, bracket protect, etc.)
-    if (binding.when) continue;
-
-    const matchedPrefix = prefixes.find((p) => binding.key.startsWith(p));
-    if (!matchedPrefix) continue;
-
-    const remainder = binding.key.slice(matchedPrefix.length);
-    if (!remainder) continue;
-
-    const isChord = remainder.includes(" ");
-    const displayKey = isChord ? remainder.split(" ")[0] : remainder;
-
-    // Deduplicate: for chords, only show the leader once.
-    const dedupeKey = isChord ? `chord:${displayKey}` : `key:${displayKey}`;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-
-    const action = actions[binding.action as ActionId];
-    const description = isChord
-      ? describeChordNamespace(displayKey, matchedPrefix)
-      : action?.description ?? binding.action;
-
-    entries.push({ key: displayKey, description, isChord });
-  }
-
-  // Sort: direct bindings first, then chords; alphabetical within each group.
-  entries.sort((a, b) => {
-    if (a.isChord !== b.isChord) return a.isChord ? 1 : -1;
-    return a.key.localeCompare(b.key);
-  });
-
-  return entries;
-}
-
-/**
- * Build a short label for a chord namespace by inspecting what actions live
- * under it (e.g. "Structure..." or "Observe...").
- */
-function describeChordNamespace(
-  leaderKey: string,
-  prefix: string,
-): string {
-  const full = prefix + leaderKey + " ";
-  const childActions = defaultKeyBindings
-    .filter((b) => b.key.startsWith(full) && !b.when)
-    .map((b) => actions[b.action as ActionId]?.category)
-    .filter(Boolean);
-
-  // Pick the dominant category label.
-  const cats = [...new Set(childActions)];
-  if (cats.length === 1) {
-    const labels: Record<string, string> = {
-      structure: "Structure",
-      probe: "Observe",
-      editor: "Edit",
-      navigation: "Navigate",
-      ui: "UI",
-      core: "Core",
-    };
-    return (labels[cats[0]] ?? cats[0]) + "...";
-  }
-  return "More...";
-}
-
-// ---------------------------------------------------------------------------
-// Cursor position helper
-// ---------------------------------------------------------------------------
-
-function getEditorCursorPosition(): { x: number; y: number } | null {
-  const editor = document.querySelector(".cm-editor");
-  if (!editor) return null;
-
-  const cursor = editor.querySelector(".cm-cursor-primary, .cm-cursor");
-  if (cursor) {
-    const rect = cursor.getBoundingClientRect();
-    return { x: rect.left, y: rect.bottom + 4 };
-  }
-
-  // Fallback: use editor center.
-  const editorRect = editor.getBoundingClientRect();
-  return {
-    x: editorRect.left + editorRect.width / 2,
-    y: editorRect.top + editorRect.height * 0.3,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+import { editor } from "../../lib/editorStore.ts";
+import { getHandler } from "../../lib/keybindings/handlers.ts";
+import { actions, type ActionId } from "../../lib/keybindings/actions.ts";
+import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
+import {
+  MODIFIER_KEYS,
+  MODIFIER_LABELS,
+  getHintsForModifier,
+  getChordCompletions,
+  isChordLeader,
+  type HintEntry,
+  type HintStyle,
+} from "./hintData.ts";
+import {
+  hintState,
+  heldModifier,
+  pendingChordPrefix,
+  expandedNamespaces,
+  sticky,
+  startModifierHold,
+  handleNonModifierKey,
+  handleModifierRelease,
+  handleMouseEnter,
+  handleMouseLeave,
+  getStickyModifier,
+  dismissHints,
+  toggleNamespace,
+} from "./hintStateMachine.ts";
+import { ModifierHintsCursor, getEditorCursorPosition } from "./hints/ModifierHintsCursor.tsx";
+import { ModifierHintsBar } from "./hints/ModifierHintsBar.tsx";
+import { ModifierHintsModal } from "./hints/ModifierHintsModal.tsx";
 
 export function ModifierHints(): JSX.Element {
-  const [heldModifier, setHeldModifier] = createSignal<string | null>(null);
-  const [visible, setVisible] = createSignal(false);
-  const [position, setPosition] = createSignal<{
-    x: number;
-    y: number;
-  } | null>(null);
+  const [position, setPosition] = createSignal<{ x: number; y: number } | null>(null);
 
-  let holdTimer: number | null = null;
+  const style = (): HintStyle =>
+    (settings.keybindings?.modifierHintStyle as HintStyle) ?? "cursor";
 
-  function getDelay(): number {
-    return settings.keybindings?.modifierHintDelay ?? 500;
+  const visible = () => hintState() !== "HIDDEN";
+
+  const hints = (): HintEntry[] => {
+    const state = hintState();
+    if (state === "MODIFIER_ACTIVE") {
+      const mod = heldModifier();
+      return mod ? getHintsForModifier(mod) : [];
+    }
+    if (state === "CHORD_PENDING") {
+      const prefix = pendingChordPrefix();
+      return prefix ? getChordCompletions(prefix) : [];
+    }
+    return [];
+  };
+
+  const header = (): string => {
+    const state = hintState();
+    if (state === "MODIFIER_ACTIVE") {
+      const mod = heldModifier();
+      if (!mod) return "";
+      return (MODIFIER_LABELS[mod] ?? mod) + " + ...";
+    }
+    if (state === "CHORD_PENDING") {
+      const prefix = pendingChordPrefix();
+      if (!prefix) return "";
+      return prefix + " → ...";
+    }
+    return "";
+  };
+
+  function executeEntry(entry: HintEntry): void {
+    if (!entry.actionId) return;
+    const handler = getHandler(entry.actionId);
+    if (handler) {
+      const action = actions[entry.actionId] as { requiresEditor?: boolean };
+      const view = editor();
+      if (action.requiresEditor && view) {
+        (handler as (v: any) => boolean)(view);
+      } else if (!action.requiresEditor) {
+        (handler as () => boolean)();
+      }
+    }
+    dismissHints();
   }
 
-  function clearHold(): void {
-    if (holdTimer !== null) {
-      clearTimeout(holdTimer);
-      holdTimer = null;
+  function handleToggleExpand(entry: HintEntry): void {
+    toggleNamespace(entry.key);
+  }
+
+  /**
+   * In sticky mode (modifier released, mouse in popup), bare keystrokes
+   * should be dispatched as if the modifier were still held.
+   * Returns true if the key was handled (should preventDefault + stop propagation).
+   */
+  function handleStickyKey(key: string): boolean {
+    const mod = getStickyModifier();
+    if (!mod) return false;
+
+    const state = hintState();
+
+    if (state === "MODIFIER_ACTIVE") {
+      // Check if this is a chord leader under the sticky modifier
+      if (isChordLeader(mod, key)) {
+        handleNonModifierKey(key);
+        return true;
+      }
+      // Try to find and execute a direct binding
+      const bindingKey = mod + "-" + key;
+      const binding = defaultKeyBindings.find(
+        (b) => b.key === bindingKey && !b.when
+      );
+      if (binding) {
+        const handler = getHandler(binding.action as ActionId);
+        if (handler) {
+          const action = actions[binding.action as ActionId] as { requiresEditor?: boolean };
+          const view = editor();
+          if (action.requiresEditor && view) {
+            (handler as (v: any) => boolean)(view);
+          } else if (!action.requiresEditor) {
+            (handler as () => boolean)();
+          }
+        }
+        dismissHints();
+        return true;
+      }
     }
-    setHeldModifier(null);
-    setVisible(false);
+
+    if (state === "CHORD_PENDING") {
+      const prefix = pendingChordPrefix();
+      if (!prefix) return false;
+      const bindingKey = prefix + " " + key;
+      const binding = defaultKeyBindings.find(
+        (b) => b.key === bindingKey && !b.when
+      );
+      if (binding) {
+        const handler = getHandler(binding.action as ActionId);
+        if (handler) {
+          const action = actions[binding.action as ActionId] as { requiresEditor?: boolean };
+          const view = editor();
+          if (action.requiresEditor && view) {
+            (handler as (v: any) => boolean)(view);
+          } else if (!action.requiresEditor) {
+            (handler as () => boolean)();
+          }
+        }
+        dismissHints();
+        return true;
+      }
+    }
+
+    return false;
   }
 
   function onKeyDown(e: KeyboardEvent): void {
     const modPrefix = MODIFIER_KEYS[e.key];
-
     if (modPrefix) {
-      // A modifier key was pressed. Only start the timer if no other
-      // modifier is currently held and this is a lone modifier press.
       if (heldModifier() === null) {
-        const delay = getDelay();
-        // Delay of 0 means disabled.
-        if (delay <= 0) return;
-
-        setHeldModifier(modPrefix);
-        holdTimer = window.setTimeout(() => {
-          holdTimer = null;
-          // Verify the modifier is still held (no other key pressed).
-          if (heldModifier() === modPrefix) {
-            setPosition(getEditorCursorPosition());
-            setVisible(true);
-          }
-        }, delay);
+        startModifierHold(modPrefix);
+        if (style() === "cursor") {
+          setPosition(getEditorCursorPosition());
+        }
       }
+    } else if (e.key === "Escape") {
+      dismissHints();
     } else {
-      // A non-modifier key was pressed — user is executing a combo.
-      clearHold();
+      // In sticky mode, intercept the bare key and execute the binding ourselves
+      if (sticky() && handleStickyKey(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      handleNonModifierKey(e.key);
     }
   }
 
   function onKeyUp(e: KeyboardEvent): void {
     const modPrefix = MODIFIER_KEYS[e.key];
-    if (modPrefix && heldModifier() === modPrefix) {
-      clearHold();
+    if (modPrefix) {
+      handleModifierRelease(modPrefix);
     }
   }
 
-  // Window blur also clears (user switched away).
   function onBlur(): void {
-    clearHold();
+    dismissHints();
   }
 
-  // Register global listeners.
   if (typeof window !== "undefined") {
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
     window.addEventListener("blur", onBlur);
 
     onCleanup(() => {
-      clearHold();
+      dismissHints();
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
       window.removeEventListener("blur", onBlur);
     });
   }
 
-  // Build hints reactively based on held modifier.
-  const hints = () => {
-    const mod = heldModifier();
-    if (!mod) return [];
-    return getHintsForModifier(mod);
-  };
-
-  const displayLabel = () => {
-    const mod = heldModifier();
-    if (!mod) return "";
-    return MODIFIER_LABELS[mod] ?? mod;
-  };
-
-  // Compute inline position styles. Clamp to viewport.
-  const positionStyle = (): JSX.CSSProperties => {
-    const pos = position();
-    if (!pos) {
-      // Center horizontally, upper third vertically.
-      return {
-        left: "50%",
-        top: "25vh",
-        transform: "translateX(-50%)",
-      };
-    }
-
-    // Clamp so the overlay stays within the viewport.
-    const x = Math.min(pos.x, window.innerWidth - 280);
-    const y = Math.min(pos.y, window.innerHeight - 200);
-
-    return {
-      left: `${Math.max(8, x)}px`,
-      top: `${Math.max(8, y)}px`,
-    };
-  };
-
   return (
     <Show when={visible() && hints().length > 0}>
-      <div class="modifier-hints" style={positionStyle()}>
-        <div class="modifier-hints-header">
-          {displayLabel()} + ...
-        </div>
-        <div class="modifier-hints-list">
-          <For each={hints()}>
-            {(entry) => (
-              <div class="modifier-hints-row">
-                <span class="modifier-hints-key">
-                  {entry.key}
-                  {entry.isChord && (
-                    <span class="modifier-hints-chord-arrow">{"\u2192"}</span>
-                  )}
-                </span>
-                <span class="modifier-hints-desc">{entry.description}</span>
-              </div>
-            )}
-          </For>
-        </div>
+      <div class="mh-content-fade">
+        <Switch>
+          <Match when={style() === "cursor"}>
+            <ModifierHintsCursor
+              header={header()}
+              entries={hints()}
+              expandedNamespaces={expandedNamespaces()}
+              onExecute={executeEntry}
+              onToggleExpand={handleToggleExpand}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+              position={position()}
+            />
+          </Match>
+          <Match when={style() === "bar"}>
+            <ModifierHintsBar
+              header={header()}
+              entries={hints()}
+              expandedNamespaces={expandedNamespaces()}
+              onExecute={executeEntry}
+              onToggleExpand={handleToggleExpand}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+            />
+          </Match>
+          <Match when={style() === "modal"}>
+            <ModifierHintsModal
+              header={header()}
+              entries={hints()}
+              expandedNamespaces={expandedNamespaces()}
+              onExecute={executeEntry}
+              onToggleExpand={handleToggleExpand}
+              onBackdropClick={dismissHints}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+            />
+          </Match>
+        </Switch>
       </div>
     </Show>
   );

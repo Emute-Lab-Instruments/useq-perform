@@ -88,6 +88,7 @@ vi.mock("./lib/gamepad/index.ts", () => ({
 
 vi.mock("./editors/gamepadNavigation.ts", () => ({
   bindGamepadNavigation,
+  hideSystemCursor: vi.fn(),
 }));
 
 vi.mock("./lib/menu/dispatcher.ts", () => ({
@@ -104,6 +105,18 @@ vi.mock("./lib/menu/manifest.ts", () => ({
   getCachedManifest: vi.fn(() => null),
 }));
 
+vi.mock("./lib/mainMenu/store.ts", () => ({
+  openMainMenu: vi.fn(),
+  closeMainMenu: vi.fn(),
+  isMainMenuOpen: vi.fn(() => false),
+  dispatchMainMenu: vi.fn(),
+  mainMenuState: vi.fn(() => ({ phase: "closed" })),
+}));
+
+vi.mock("./ui/mainMenu/menuItems.ts", () => ({
+  resolveItems: vi.fn(() => []),
+}));
+
 vi.mock("./lib/editorStore.ts", () => ({
   setEditor,
   initEditorPanel,
@@ -115,6 +128,10 @@ vi.mock("./ui/adapters/modal.tsx", () => ({
 
 vi.mock("./ui/adapters/radialMenu.tsx", () => ({
   mountRadialMenu,
+}));
+
+vi.mock("./ui/adapters/mainMenu.tsx", () => ({
+  mountMainMenu: vi.fn(),
 }));
 
 vi.mock("./ui/adapters/visualisationPanel", () => ({

@@ -52,6 +52,14 @@ import { SAMPLE_CODE } from "./sampleCode.ts";
 import { openPalette } from "../../ui/keybindings/ActionPalette.tsx";
 import { executeEditorCommand } from "../../editors/commands/editorCommandRouter.ts";
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
+import {
+  openMainMenu,
+  closeMainMenu,
+  isMainMenuOpen,
+  dispatchMainMenu,
+  mainMenuState,
+} from "../mainMenu/store.ts";
+import { resolveItems } from "../../ui/mainMenu/menuItems.ts";
 
 // ---------------------------------------------------------------------------
 // Clojure-mode handler extraction (legacy — retained only for killToEndOfList
@@ -99,6 +107,43 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "panel.help": toggleHelp,
   "panel.vis": toggleSerialVis,
   "vis.screenshot": () => { requestVisScreenshot(); return true; },
+
+  // -- Main menu (main-menu.md) ----------------------------------------------
+  "mainMenu.open": () => {
+    if (isMainMenuOpen()) {
+      closeMainMenu();
+    } else {
+      openMainMenu();
+    }
+    return true;
+  },
+  "mainMenu.close": () => { closeMainMenu(); return true; },
+  "mainMenu.next": () => {
+    const items = resolveItems(mainMenuState().submenuStack);
+    dispatchMainMenu({ type: "next", itemCount: items.length });
+    return true;
+  },
+  "mainMenu.prev": () => {
+    const items = resolveItems(mainMenuState().submenuStack);
+    dispatchMainMenu({ type: "prev", itemCount: items.length });
+    return true;
+  },
+  "mainMenu.select": () => {
+    const state = mainMenuState();
+    const items = resolveItems(state.submenuStack);
+    const item = items[state.focusIndex];
+    if (!item) return true;
+    if (item.type === "submenu") {
+      dispatchMainMenu({ type: "pushSubmenu", submenuId: item.id });
+    } else {
+      // Action items close the menu (resume or any other action)
+      closeMainMenu();
+    }
+    return true;
+  },
+  "mainMenu.back": () => { dispatchMainMenu({ type: "back" }); return true; },
+  "mainMenu.adjustUp": () => { /* stub — no adjustable items yet */ return true; },
+  "mainMenu.adjustDown": () => { /* stub — no adjustable items yet */ return true; },
 
   // -- Editor ---------------------------------------------------------------
   "edit.pasteSample": (view: EditorView) =>
@@ -166,13 +211,7 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "atom.flipPolarity": (view: EditorView) =>
     executeEditorCommand(view, { kind: "atomFlipPolarity", source: "gamepad" }),
 
-  // -- Gamepad editor actions (legacy) -------------------------------------
-  "nav.adjustNumber": (view: EditorView) =>
-    executeEditorCommand(view, {
-      kind: "adjustNumber",
-      delta: 1,
-      source: "gamepad",
-    }),
+  // -- Gamepad editor actions ------------------------------------------------
   "control.toggleManualLeft": (view: EditorView) =>
     executeEditorCommand(view, {
       kind: "toggleManualControl",

@@ -108,13 +108,13 @@ export function RadialMenu(props: RadialMenuProps): JSX.Element {
         <div class="radial-menu-backdrop" />
         <div class="radial-menu-frame">
           <Show when={props.state.phase === "open"}>
-            {renderOpen(props.state as MenuStateOpen, props.manifest, props.previewSlot)}
+            <OpenRenderer state={props.state as MenuStateOpen} manifest={props.manifest} previewSlot={props.previewSlot} />
           </Show>
           <Show when={props.state.phase === "numpad"}>
-            {renderNumpad(props.state as MenuStateNumpad, props.previewSlot)}
+            <NumpadRenderer state={props.state as MenuStateNumpad} previewSlot={props.previewSlot} />
           </Show>
           <Show when={props.state.phase === "t9"}>
-            {renderT9(props.state as MenuStateT9, props.previewSlot)}
+            <T9Renderer state={props.state as MenuStateT9} previewSlot={props.previewSlot} />
           </Show>
         </div>
       </div>
@@ -141,19 +141,23 @@ function deriveSubPhase(state: MenuStateOpen): OpenSubPhase {
 // Open-state rendering (spec §6, §3.2, §3.3)
 // ---------------------------------------------------------------------------
 
-function renderOpen(
-  state: MenuStateOpen,
-  manifest: Manifest,
-  previewSlot: JSX.Element | undefined,
-): JSX.Element {
+interface OpenRendererProps {
+  readonly state: MenuStateOpen;
+  readonly manifest: Manifest;
+  readonly previewSlot?: JSX.Element;
+}
+
+function OpenRenderer(props: OpenRendererProps): JSX.Element {
   // Cache derived structures so JSX expressions don't re-walk the manifest
   // per attribute access (perf budget §11.5).
-  const phase = createMemo(() => deriveSubPhase(state));
-  const activeTab = createMemo(() => manifest.tabs[state.leftTabIdx]);
+  // All reads go through `props.state.*` / `props.manifest.*` so Solid's
+  // JSX compiler creates reactive getters that track back to the signal.
+  const phase = createMemo(() => deriveSubPhase(props.state));
+  const activeTab = createMemo(() => props.manifest.tabs[props.state.leftTabIdx]);
   const categories = createMemo(() => activeTab()?.categories ?? []);
   const hoveredCategory = createMemo<MenuCategory | undefined>(() => {
-    if (state.leftHover === null) return undefined;
-    return categories()[state.leftHover];
+    if (props.state.leftHover === null) return undefined;
+    return categories()[props.state.leftHover];
   });
   const items = createMemo<readonly MenuItem[]>(
     () => hoveredCategory()?.items ?? [],
@@ -163,11 +167,11 @@ function renderOpen(
     <div class={`radial-menu-open subphase-${phase()}`}>
       {/* Tab strip across top — spec §3.2.4, §3.2.5 */}
       <div class="radial-menu-tab-strip">
-        <For each={manifest.tabs}>
+        <For each={props.manifest.tabs}>
           {(tab, i) => (
             <span
               class="radial-menu-tab-label"
-              classList={{ "is-active": i() === state.leftTabIdx }}
+              classList={{ "is-active": i() === props.state.leftTabIdx }}
               data-tab-id={tab.id}
             >
               {tab.label}
@@ -187,32 +191,32 @@ function renderOpen(
         {/* Left ring — categories of the active tab */}
         <Ring
           segmentCount={categories().length}
-          hover={state.leftHover}
+          hover={props.state.leftHover}
           frozenIdx={
-            state.frozen !== null
-              ? findCategoryIndex(activeTab()?.categories ?? [], state.frozen.leftPicked)
+            props.state.frozen !== null
+              ? findCategoryIndex(activeTab()?.categories ?? [], props.state.frozen.leftPicked)
               : null
           }
           outerR={RING_OUTER}
           innerR={(RING_OUTER + RING_INNER) / 2}
           ringClass="radial-menu-left-ring"
-          dimmed={phase() === "frozen" && state.frozen?.leftPicked !== undefined && state.shoulderHeld === "right"}
+          dimmed={phase() === "frozen" && props.state.frozen?.leftPicked !== undefined && props.state.shoulderHeld === "right"}
           labels={categories().map((c) => c.label)}
         />
 
         {/* Right ring — items of the hovered category */}
         <Ring
           segmentCount={items().length}
-          hover={state.rightHover}
+          hover={props.state.rightHover}
           frozenIdx={
-            state.frozen !== null
-              ? findItemIndex(items(), state.frozen.rightPicked)
+            props.state.frozen !== null
+              ? findItemIndex(items(), props.state.frozen.rightPicked)
               : null
           }
           outerR={(RING_OUTER + RING_INNER) / 2}
           innerR={RING_INNER}
           ringClass="radial-menu-right-ring"
-          dimmed={phase() === "frozen" && state.shoulderHeld === "left"}
+          dimmed={phase() === "frozen" && props.state.shoulderHeld === "left"}
           labels={items().map((i) => i.label)}
         />
 
@@ -223,8 +227,8 @@ function renderOpen(
         <Show when={phase() === "cyclingRightTabs"}>
           <ShoulderCueArrows side="both" pulse />
         </Show>
-        <Show when={phase() === "frozen" && state.frozen}>
-          <FreezeChevron held={state.shoulderHeld} />
+        <Show when={phase() === "frozen" && props.state.frozen}>
+          <FreezeChevron held={props.state.shoulderHeld} />
           <FreezeLockGlyph />
         </Show>
 
@@ -241,12 +245,12 @@ function renderOpen(
 
       {/* Centre slot — Track G2's CenterPanel goes here */}
       <div class="radial-menu-centre-slot" data-subphase={phase()}>
-        {previewSlot}
+        {props.previewSlot}
       </div>
 
       {/* Verb-hint row, only meaningful in frozen state — spec §9.2 */}
       <Show when={phase() === "frozen"}>
-        <VerbHints held={state.shoulderHeld} />
+        <VerbHints held={props.state.shoulderHeld} />
       </Show>
 
       {/* Right-tab indicator (bottom) — spec §3.2.4 */}
@@ -256,7 +260,7 @@ function renderOpen(
             {(rt, i) => (
               <span
                 class="radial-menu-right-tab-label"
-                classList={{ "is-active": i() === state.rightTabIdx }}
+                classList={{ "is-active": i() === props.state.rightTabIdx }}
                 data-right-tab-id={rt.id}
               >
                 {rt.label}
@@ -471,7 +475,12 @@ const NUMPAD_OUTER_KEYS = [
   { angle: 270, label: "✓" },
 ];
 
-function renderNumpad(state: MenuStateNumpad, previewSlot: JSX.Element | undefined): JSX.Element {
+interface NumpadRendererProps {
+  readonly state: MenuStateNumpad;
+  readonly previewSlot?: JSX.Element;
+}
+
+function NumpadRenderer(props: NumpadRendererProps): JSX.Element {
   return (
     <div class="radial-menu-numpad">
       <svg
@@ -493,8 +502,8 @@ function renderNumpad(state: MenuStateNumpad, previewSlot: JSX.Element | undefin
       </svg>
 
       <div class="radial-menu-centre-slot" data-subphase="numpad">
-        <Show when={previewSlot} fallback={<DefaultBufferDisplay buffer={state.buffer} kind="number" verb={state.activeVerb} />}>
-          {previewSlot}
+        <Show when={props.previewSlot} fallback={<DefaultBufferDisplay buffer={props.state.buffer} kind="number" verb={props.state.activeVerb} />}>
+          {props.previewSlot}
         </Show>
       </div>
 
@@ -537,7 +546,12 @@ const T9_KEYS = [
 
 const T9_CENTRE = { label: "5", letters: "jkl" };
 
-function renderT9(state: MenuStateT9, previewSlot: JSX.Element | undefined): JSX.Element {
+interface T9RendererProps {
+  readonly state: MenuStateT9;
+  readonly previewSlot?: JSX.Element;
+}
+
+function T9Renderer(props: T9RendererProps): JSX.Element {
   return (
     <div class="radial-menu-t9">
       <svg
@@ -554,8 +568,8 @@ function renderT9(state: MenuStateT9, previewSlot: JSX.Element | undefined): JSX
               angle={k.angle}
               radius={(SUBMODE_OUTER + SUBMODE_INNER) / 2}
               digit={k.label}
-              letters={state.caseMode === "upper" ? k.letters.toUpperCase() : k.letters}
-              isActive={state.lastKey === k.label}
+              letters={props.state.caseMode === "upper" ? k.letters.toUpperCase() : k.letters}
+              isActive={props.state.lastKey === k.label}
             />
           )}
         </For>
@@ -563,8 +577,8 @@ function renderT9(state: MenuStateT9, previewSlot: JSX.Element | undefined): JSX
           angle={0}
           radius={0}
           digit={T9_CENTRE.label}
-          letters={state.caseMode === "upper" ? T9_CENTRE.letters.toUpperCase() : T9_CENTRE.letters}
-          isActive={state.lastKey === T9_CENTRE.label}
+          letters={props.state.caseMode === "upper" ? T9_CENTRE.letters.toUpperCase() : T9_CENTRE.letters}
+          isActive={props.state.lastKey === T9_CENTRE.label}
         />
         {/* Caps indicator (§14.4.2) — RB latches caps */}
         <text
@@ -572,15 +586,15 @@ function renderT9(state: MenuStateT9, previewSlot: JSX.Element | undefined): JSX
           y={32}
           class="radial-menu-t9-caps"
           text-anchor="end"
-          classList={{ "is-active": state.caseMode === "upper" }}
+          classList={{ "is-active": props.state.caseMode === "upper" }}
         >
-          {state.caseMode === "upper" ? "ABC" : "abc"}
+          {props.state.caseMode === "upper" ? "ABC" : "abc"}
         </text>
       </svg>
 
       <div class="radial-menu-centre-slot" data-subphase="t9">
-        <Show when={previewSlot} fallback={<DefaultBufferDisplay buffer={state.buffer} kind="text" verb={state.activeVerb} />}>
-          {previewSlot}
+        <Show when={props.previewSlot} fallback={<DefaultBufferDisplay buffer={props.state.buffer} kind="text" verb={props.state.activeVerb} />}>
+          {props.previewSlot}
         </Show>
       </div>
 

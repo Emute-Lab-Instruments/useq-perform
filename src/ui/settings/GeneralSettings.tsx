@@ -11,6 +11,7 @@ import { VisualisationSettings } from "./VisualisationSettings";
 import { ConfigurationManagement, handleSettingsExport, handleSettingsImport } from "./ConfigurationManagement";
 import { ConsoleSettings } from "./ConsoleSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
+import { KeybindingsSettings } from "./KeybindingsSettings";
 import type { AppSettings } from "../../lib/appSettings.ts";
 
 export interface GeneralSettingsProps {
@@ -45,6 +46,7 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
       <EvalResultsSettings settings={s()} onUpdateSettings={update} />
       <StorageSettings settings={s()} onUpdateSettings={update} />
       <UISettings settings={s()} onUpdateSettings={update} />
+      <KeybindingsSettings settings={s()} onUpdateSettings={update} />
       <VisualisationSettings settings={s()} onUpdateSettings={update} />
       <AdvancedSettings settings={s()} onUpdateSettings={update} />
       <ConfigurationManagement onReload={reload} />

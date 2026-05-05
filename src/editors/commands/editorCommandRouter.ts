@@ -4,12 +4,10 @@
 // gamepad, menu, and tests should send command objects here instead of
 // directly composing CodeMirror transactions.
 
-import { Transaction, type ChangeSpec, type EditorState } from "@codemirror/state";
+import { Transaction, findClusterBreak, type ChangeSpec, type EditorState } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { runScopeHandlers } from "@codemirror/view";
 import {
-  deleteCharBackward,
-  deleteCharForward,
   insertNewline,
   isolateHistory,
   redo,
@@ -225,10 +223,10 @@ function pressEditorKey(
   switch (key) {
     case "Backspace":
       if (!selection.empty) return replaceSelection(view, "", "delete");
-      return deleteCharBackward(view);
+      return deleteOneCharBackward(view);
     case "Delete":
       if (!selection.empty) return replaceSelection(view, "", "delete");
-      return deleteCharForward(view);
+      return deleteOneCharForward(view);
     case "Enter":
       if (!selection.empty) return replaceSelection(view, "\n", "input");
       return insertNewline(view);
@@ -447,6 +445,47 @@ function replaceSelection(
     scrollIntoView: true,
     userEvent,
   });
+}
+
+/**
+ * Delete one character backward, preserving grapheme-cluster boundaries.
+ * Uses userEvent "delete" so the clojure-mode line formatter skips
+ * reformatting (it only recognises "delete", not "delete.backward").
+ */
+function deleteOneCharBackward(view: EditorView): boolean {
+  const sel = view.state.selection.main;
+  if (!sel.empty || sel.from === 0) return false;
+  const pos = sel.from;
+  const line = view.state.doc.lineAt(pos);
+  let target = findClusterBreak(line.text, pos - line.from, false) + line.from;
+  if (target === pos && line.number > 1) target = pos - 1;
+  if (target === pos) return false;
+  view.dispatch({
+    changes: { from: target, to: pos },
+    selection: { anchor: target },
+    userEvent: "delete",
+    scrollIntoView: true,
+  });
+  return true;
+}
+
+function deleteOneCharForward(view: EditorView): boolean {
+  const sel = view.state.selection.main;
+  if (!sel.empty) return false;
+  const pos = sel.from;
+  const doc = view.state.doc;
+  if (pos >= doc.length) return false;
+  const line = doc.lineAt(pos);
+  let target = findClusterBreak(line.text, pos - line.from, true) + line.from;
+  if (target === pos && line.number < doc.lines) target = pos + 1;
+  if (target === pos) return false;
+  view.dispatch({
+    changes: { from: pos, to: target },
+    selection: { anchor: pos },
+    userEvent: "delete",
+    scrollIntoView: true,
+  });
+  return true;
 }
 
 function replaceRange(

@@ -1,0 +1,90 @@
+ [expressionHighlights] onExternalChange: dispatch failed on editor view 
+ 
+ [expressionHighlights] onExternalChange: dispatch failed on editor view 
+bundle.js:85 Uncaught 
+extensions.js:40 [expressionHighlights] onExternalChange: dispatch failed on editor view RangeError: Maximum call stack size exceeded
+    at t_.gen (bundle.js:85:80069)
+    at [Symbol.iterator] (bundle.js:85:80717)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+    at t_.gen (bundle.js:85:84529)
+    at Generator.next (<anonymous>)
+    at t_.gen (bundle.js:85:80091)
+    at Generator.next (<anonymous>)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+onExternalChange @ extensions.js:40
+(anonymous) @ extensions.js:40
+(anonymous) @ bundle.js:19
+publish @ bundle.js:19
+lr @ bundle.js:19
+Kq @ bundle.js:19
+extensions.js:40 [expressionHighlights] onExternalChange: dispatch failed on editor view RangeError: Maximum call stack size exceeded
+    at t_.gen (bundle.js:85:80069)
+    at [Symbol.iterator] (bundle.js:85:80717)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+    at t_.gen (bundle.js:85:84529)
+    at Generator.next (<anonymous>)
+    at t_.gen (bundle.js:85:80091)
+    at Generator.next (<anonymous>)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+onExternalChange @ extensions.js:40
+(anonymous) @ extensions.js:40
+(anonymous) @ bundle.js:19
+publish @ bundle.js:19
+lr @ bundle.js:19
+Qq @ bundle.js:19
+extensions.js:40 [expressionHighlights] onExternalChange: dispatch failed on editor view RangeError: Maximum call stack size exceeded
+    at t_.gen (bundle.js:85:80069)
+    at [Symbol.iterator] (bundle.js:85:80717)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+    at t_.gen (bundle.js:85:84529)
+    at Generator.next (<anonymous>)
+    at t_.gen (bundle.js:85:80091)
+    at Generator.next (<anonymous>)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+onExternalChange @ extensions.js:40
+(anonymous) @ extensions.js:40
+(anonymous) @ bundle.js:19
+publish @ bundle.js:19
+lr @ bundle.js:19
+Qq @ bundle.js:19
+extensions.js:40 [expressionHighlights] onExternalChange: dispatch failed on editor view RangeError: Maximum call stack size exceeded
+    at t_.gen (bundle.js:85:80069)
+    at [Symbol.iterator] (bundle.js:85:80717)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+    at t_.gen (bundle.js:85:84529)
+    at Generator.next (<anonymous>)
+    at t_.gen (bundle.js:85:80091)
+    at Generator.next (<anonymous>)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+onExternalChange @ extensions.js:40
+(anonymous) @ extensions.js:40
+(anonymous) @ bundle.js:19
+publish @ bundle.js:19
+lr @ bundle.js:19
+Kq @ bundle.js:19
+extensions.js:40 [expressionHighlights] onExternalChange: dispatch failed on editor view RangeError: Maximum call stack size exceeded
+    at t_.gen (bundle.js:85:80069)
+    at [Symbol.iterator] (bundle.js:85:80717)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+    at t_.gen (bundle.js:85:84529)
+    at Generator.next (<anonymous>)
+    at t_.gen (bundle.js:85:80091)
+    at Generator.next (<anonymous>)
+    at [Symbol.iterator] (bundle.js:85:80865)
+    at [Symbol.iterator].next (<anonymous>)
+onExternalChange @ extensions.js:40
+(anonymous) @ extensions.js:40
+(anonymous) @ bundle.js:19
+publish @ bundle.js:19
+lr @ bundle.js:19
+Qq @ bundle.js:19
+extensions.js:40 [expressionHighlights] 

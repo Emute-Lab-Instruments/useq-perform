@@ -38,6 +38,14 @@ function hideEditorCursor(view: EditorView): void {
   }
 }
 
+export function hideSystemCursor(): void {
+  document.body.classList.add("gamepad-active");
+}
+
+function showSystemCursor(): void {
+  document.body.classList.remove("gamepad-active");
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -53,11 +61,15 @@ export interface GamepadNavigationHandle {
 export function bindGamepadNavigation(
   view: EditorView
 ): GamepadNavigationHandle {
-  // Restore cursor on pointer interaction
+  // Restore cursors on pointer interaction
   const pointerListener = () => showEditorCursor(view);
   if (view?.dom) {
     view.dom.addEventListener("pointerdown", pointerListener);
   }
+
+  // Restore system cursor on mouse movement
+  const mouseMoveListener = () => showSystemCursor();
+  document.addEventListener("mousemove", mouseMoveListener);
 
   // -- Eval -----------------------------------------------------------------
 
@@ -78,6 +90,7 @@ export function bindGamepadNavigation(
       source: "gamepad",
     });
     if (updated) hideEditorCursor(view);
+    hideSystemCursor();
   });
 
   // -- Dispose --------------------------------------------------------------
@@ -89,6 +102,8 @@ export function bindGamepadNavigation(
       if (view?.dom) {
         view.dom.removeEventListener("pointerdown", pointerListener);
       }
+      document.removeEventListener("mousemove", mouseMoveListener);
+      showSystemCursor();
     },
   };
 }

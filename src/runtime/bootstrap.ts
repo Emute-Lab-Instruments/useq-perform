@@ -18,10 +18,11 @@ import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepo
 import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
 import { attachBridgeToEditor, installPageLifecycleHandlers } from '../effects/liveEditRuntime.ts';
 import { createGamepadPipeline } from '../lib/gamepad/index.ts';
-import { bindGamepadNavigation } from '../editors/gamepadNavigation.ts';
+import { bindGamepadNavigation, hideSystemCursor } from '../editors/gamepadNavigation.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
 import { mountModal } from '../ui/adapters/modal.tsx';
 import { mountRadialMenu } from '../ui/adapters/radialMenu.tsx';
+import { mountMainMenu } from '../ui/adapters/mainMenu.tsx';
 import { mountPalette } from '../ui/adapters/palette.tsx';
 import { createMenuDispatcher } from '../lib/menu/dispatcher.ts';
 import { menuState, dispatchMenuInput } from '../lib/menu/store.ts';
@@ -160,6 +161,7 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     toolbars.mountOnboardingBanner();
     mountModal();
     mountRadialMenu();
+    mountMainMenu();
     mountPalette();
     mountModifierHints();
     // Mount panels and design selector
@@ -194,7 +196,7 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     getManifest: () => getCachedManifest(),
     getEditorView: () => editor,
   });
-  const gamepadPipeline = createGamepadPipeline({ editor, menuDispatcher });
+  const gamepadPipeline = createGamepadPipeline({ editor, menuDispatcher, onAction: hideSystemCursor });
   const menuCleanup = menuDispatcher.bind(editor);
   const navHandle = bindGamepadNavigation(editor);
   // Expose dispatcher on window for console-driven testing during round 2.
