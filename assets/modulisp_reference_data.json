@@ -1,598 +1,397 @@
 [
   {
-    "name": "-",
-    "aliases": [],
-    "description": "Subtracts the second number from the first.",
-    "parameters": [
-      {
-        "name": "value1",
-        "description": "The value to subtract from",
-        "range": "number"
-      }
-    ],
-    "examples": [
-      "(- 5 2) ; => 3",
-      "(- 10 3 2) ; => 5",
-      "(- 10 1 1 1 1) ; => 6"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths"
-    ]
-  },
-  {
-    "name": "!=",
-    "aliases": [],
-    "description": "Returns true if the two values are not equal, false otherwise.",
-    "parameters": [
-      {
-        "name": "value1",
-        "description": "The first value to compare",
-        "range": "any"
-      },
-      {
-        "name": "value2",
-        "description": "The second value to compare",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(!= 1 2) ; => true",
-      "(!= 1 1) ; => false"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "*",
-    "aliases": [],
-    "description": "Returns the result of multiplying all of its arguments, which are expected to evaluate to numbers.",
-    "parameters": [
-      {
-        "name": "[numbers]",
-        "description": "Parameter 1 of function *",
-        "range": ""
-      }
-    ],
-    "examples": [
-      "(* 2 2 2) ;; => 8",
-      "(* 2 2.5) ;; => 5.00"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths"
-    ]
-  },
-  {
-    "name": "%",
-    "aliases": [],
-    "description": "Calculates the remainder of the division of the first value by the second value.",
-    "parameters": [
-      {
-        "name": "value1",
-        "description": "The value to be divided",
-        "range": "number"
-      },
-      {
-        "name": "value2",
-        "description": "The value to divide by",
-        "range": "number"
-      }
-    ],
-    "examples": [
-      "(% 6 3) ; => 0",
-      "(% 7 3) ; => 1"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ],
-    "internal_comments": [
-      "TODO add moving examples"
-    ]
-  },
-  {
     "name": "+",
-    "aliases": [],
-    "description": "Returns the sum of all its arguments, which are expected to evaluate to numbers.",
+    "aliases": ["add"],
+    "description": "Returns the sum of all its arguments. Variadic: accepts any number of args. `(+)` returns 0, `(+ x)` returns x.",
     "parameters": [
       {
-        "name": "[numbers]",
-        "description": "Parameter 1 of function +",
-        "range": ""
+        "name": "numbers",
+        "description": "Any number of numeric values",
+        "range": "number",
+        "variadic": true
       }
     ],
     "examples": [
       "(+ 1 2 3) ;; => 6",
-      "(a1 (scale 0 2 0 1 (+ beat bar))"
+      "(a1 (+ beat bar))",
+      "(+ 0.5 (* 0.5 (usin beat)))"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths"
-    ]
+    "category": "maths",
+    "tags": ["arithmetic", "maths", "operators"]
   },
   {
-    "name": "<",
-    "aliases": [],
-    "description": "Checks if the first value is less than the second value.",
+    "name": "-",
+    "aliases": ["subtract", "sub"],
+    "description": "Subtraction. With one arg, negates: `(- x)` = `(- 0 x)`. With multiple args, left-folds subtraction.",
     "parameters": [
       {
-        "name": "value1",
-        "description": "The first value to compare",
-        "range": "any"
-      },
-      {
-        "name": "value2",
-        "description": "The second value to compare",
-        "range": "any"
+        "name": "numbers",
+        "description": "One or more numeric values",
+        "range": "number",
+        "variadic": true
       }
     ],
     "examples": [
-      "(< 1 2) ; => true",
-      "(< 5 3) ; => false"
+      "(- 5 2) ;; => 3",
+      "(- 10 3 2) ;; => 5",
+      "(- x) ;; negate x"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths",
-      "evaluation control"
-    ]
+    "category": "maths",
+    "tags": ["arithmetic", "maths", "operators"]
   },
   {
-    "name": "<=",
-    "aliases": [],
-    "description": "Checks if the first value is less than or equal to the second value.",
+    "name": "*",
+    "aliases": ["multiply", "mul"],
+    "description": "Multiplies all arguments together. Variadic: `(*)` returns 1, `(* x)` returns x.",
     "parameters": [
       {
-        "name": "value1",
-        "description": "The first value to compare",
-        "range": "any"
-      },
-      {
-        "name": "value2",
-        "description": "The second value to compare",
-        "range": "any"
+        "name": "numbers",
+        "description": "Any number of numeric values",
+        "range": "number",
+        "variadic": true
       }
     ],
     "examples": [
-      "(<= 1 2) ; => true",
-      "(<= 2 2) ; => true",
-      "(<= 3 2) ; => false"
+      "(* 2 2 2) ;; => 8",
+      "(* 0.5 beat)",
+      "(a1 (* ain1 (usin bar)))"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths",
-      "evaluation control"
-    ]
+    "category": "maths",
+    "tags": ["arithmetic", "maths", "operators"]
   },
   {
-    "name": "=",
-    "aliases": [],
-    "description": "Checks if two values are equal.",
+    "name": "/",
+    "aliases": ["divide", "div"],
+    "description": "Division. With one arg: `(/ x)` = `(/ 1 x)`. With multiple args, left-folds division.",
     "parameters": [
       {
-        "name": "value1",
-        "description": "The first value to compare",
-        "range": "any"
-      },
-      {
-        "name": "value2",
-        "description": "The second value to compare",
-        "range": "any"
+        "name": "numbers",
+        "description": "One or more numeric values",
+        "range": "number",
+        "variadic": true
       }
     ],
     "examples": [
-      "(= 1 1) ; => true",
-      "(= 1 2) ; => false"
+      "(/ 10 2) ;; => 5",
+      "(/ 1 3) ;; => 0.333...",
+      "(/ bpm 60) ;; beats per second"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths",
-      "evaluation control"
-    ]
+    "category": "maths",
+    "tags": ["arithmetic", "maths", "operators"]
   },
   {
-    "name": ">",
-    "aliases": [],
-    "description": "Checks if the first value is greater than the second value.",
-    "parameters": [
-      {
-        "name": "value1",
-        "description": "The first value to compare",
-        "range": "any"
-      },
-      {
-        "name": "value2",
-        "description": "The second value to compare",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(> 2 1) ; => true",
-      "(> 1 2) ; => false"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": ">=",
-    "aliases": [],
-    "description": "Checks if the first value is greater than or equal to the second value.",
-    "parameters": [
-      {
-        "name": "value1",
-        "description": "The first value to compare",
-        "range": "any"
-      },
-      {
-        "name": "value2",
-        "description": "The second value to compare",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(>= 2 1) ; => true",
-      "(>= 2 2) ; => true",
-      "(>= 1 2) ; => false"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "a[1/2/3/...]",
-    "aliases": [],
-    "description": "Specify a function to calculate the value of analog output 1/2/3/etc. This function will be evaluated once every update loop.",
-    "parameters": [
-      {
-        "name": "form",
-        "description": "Parameter 1 of function a[1/2/3/...]",
-        "range": ""
-      }
-    ],
-    "examples": [
-      "(a1 (* 3 (from-list [0.4 0.1] bar)))",
-      "(a2 0)",
-      ";; Silence all analog outs at the same time",
-      "(do \n  (a1 0)\n  (a2 0)\n  (a3 0))"
-    ],
-    "category": "outputs",
-    "tags": [
-      "outputs",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "ain1",
-    "aliases": [],
-    "description": "Returns the value of CV input 1\n\nExample: to echo CV input 1 to CV output 1",
-    "parameters": [],
-    "examples": [
-      "(a1 ain1)"
-    ],
-    "category": "inputs",
-    "tags": [
-      "inputs"
-    ]
-  },
-  {
-    "name": "ain2",
-    "aliases": [],
-    "description": "Returns the value of CV input 2\n\nExample: to echo CV input 2 to CV output 2",
-    "parameters": [],
-    "examples": [
-      "(a2 ain2)"
-    ],
-    "category": "inputs",
-    "tags": [
-      "inputs"
-    ]
-  },
-  {
-    "name": "bar",
-    "aliases": [],
-    "description": "A phasor, rising from 0-1 over the length of a bar (dependent on the BPM and time signature).",
-    "parameters": [],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
-  },
-  {
-    "name": "beat",
-    "aliases": [],
-    "description": "A phasor, rising from 0-1 over the length of a beat (dependent on the BPM and time signature).",
-    "parameters": [],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
-  },
-  {
-    "name": "bi->uni",
-    "aliases": [],
-    "description": "Converts a bipolar value (-1 to 1) to a unipolar value (0 to 1).",
+    "name": "%",
+    "aliases": ["mod", "modulo", "remainder"],
+    "description": "Modulo (remainder after division). Variadic left-fold with 2+ args.",
     "parameters": [
       {
         "name": "value",
-        "description": "The bipolar value to convert",
-        "range": "Number"
-      }
-    ],
-    "examples": [
-      "(bi->uni -1) ;; => 0.0",
-      "(bi->uni 0) ;; => 0.5",
-      "(bi->uni 1) ;; => 1.0",
-      "(a1 (b->u (sine (* 2 pi beat))))"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
-  },
-  {
-    "name": "bpm",
-    "aliases": [],
-    "description": "The tempo in beats per minute.",
-    "parameters": [],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
-  },
-  {
-    "name": "bps",
-    "aliases": [],
-    "description": "The tempo in beats per second.",
-    "parameters": [],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
-  },
-  {
-    "name": "ceil",
-    "aliases": [],
-    "description": "Rounds a number up to the nearest integer.",
-    "parameters": [
+        "description": "The value to be divided",
+        "range": "number"
+      },
       {
-        "name": "value",
-        "description": "The value to round up",
+        "name": "divisor",
+        "description": "The divisor",
         "range": "number"
       }
     ],
     "examples": [
-      "(ceil 3.7) ; => 4",
-      "(ceil -1.2) ; => -1"
+      "(% 7 3) ;; => 1",
+      "(% t 1.0) ;; fractional seconds (saw wave at 1Hz)"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths"
-    ]
+    "category": "maths",
+    "tags": ["arithmetic", "maths", "operators"]
   },
   {
-    "name": "d[1/2/3/...]",
+    "name": "min",
     "aliases": [],
-    "description": "Specify a function to calculate the value of digital (i.e. binary) output 1/2/3/etc. This function will be evaluated once every update loop.",
+    "description": "Returns the minimum of its arguments. Variadic left-fold with 2+ args.",
     "parameters": [
       {
-        "name": "form",
-        "description": "Parameter 1 of function d[1/2/3/...]",
-        "range": ""
+        "name": "values",
+        "description": "Two or more numeric values",
+        "range": "number",
+        "variadic": true
       }
     ],
     "examples": [
-      "(d1 (square (slow 2 beat)))",
-      "(d2 (from-list [0 0 1 0 1 1 0 1] (slow 2 bar)))",
-      ";; Silence all digital outs at the same time",
-      "(do \n  (d1 0)\n  (d2 0)\n  (d3 0))"
+      "(min 3 7) ;; => 3",
+      "(min beat 0.5) ;; clamp beat to max 0.5",
+      "(a1 (min ain1 0.8))"
     ],
-    "category": "outputs",
-    "tags": [
-      "outputs",
-      "evaluation control"
-    ]
+    "category": "maths",
+    "tags": ["arithmetic", "maths", "operators", "clamp"]
   },
   {
-    "name": "define",
+    "name": "max",
     "aliases": [],
-    "description": "Creates a new **signal** definition, essentially assigning a name to a (potentialy time-varying) expression. These definitions are accessible from anywhere in the code, unless they are shadowed by a local binding with higher precedence (e.g. when inside a `let` expression body).",
+    "description": "Returns the maximum of its arguments. Variadic left-fold with 2+ args.",
     "parameters": [
       {
-        "name": "name",
-        "description": "The name to assign to the expression",
-        "range": "Symbol"
+        "name": "values",
+        "description": "Two or more numeric values",
+        "range": "number",
+        "variadic": true
+      }
+    ],
+    "examples": [
+      "(max 3 7) ;; => 7",
+      "(max beat 0.1) ;; floor beat at 0.1",
+      "(a1 (max 0 (- (* 2 beat) 1)))"
+    ],
+    "category": "maths",
+    "tags": ["arithmetic", "maths", "operators", "clamp"]
+  },
+  {
+    "name": ">",
+    "aliases": ["gt"],
+    "description": "Returns 1.0 if the first value is greater than the second, 0.0 otherwise.",
+    "parameters": [
+      {
+        "name": "a",
+        "description": "First value",
+        "range": "number"
       },
       {
-        "name": "expression",
-        "description": "The expression to associate with the name",
-        "range": "Any"
+        "name": "b",
+        "description": "Second value",
+        "range": "number"
       }
     ],
     "examples": [
-      "(define my-number-three (+ 1 2))\n\n(+ my-number-three 1) ;; => 4",
-      "(define a 1)\n(define b 2)\n(define my-number-three (+ a b))\n\n;; Check the value first\nmy-number-three ;; => 3 - as expected\n\n;; Let's Redefine one of the variables used in its definition\n(define a 101)\n\n;; Check the value again\nmy-number-three ;; => 103 - it's been updated!",
-      "(define my-ramp          (slow 2 beat))\n(define my-inverted-ramp (- 1 my-ramp))\n\n;; the two expressions above are equivalent to this one:\n\n(defs my-ramp          (slow 2 beat)\n      my-inverted-ramp (- 1 my-ramp))"
+      "(> beat 0.5) ;; 1.0 in second half of beat",
+      "(d1 (> ain1 0.5))"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
+    "category": "maths",
+    "tags": ["comparison", "logic", "operators"]
   },
   {
-    "name": "defun",
-    "aliases": [],
-    "description": "Creates and names a function. The body can be any number of forms, and the function's return value will always be the return value of the last expression.",
+    "name": "<",
+    "aliases": ["lt"],
+    "description": "Returns 1.0 if the first value is less than the second, 0.0 otherwise.",
     "parameters": [
       {
-        "name": "name",
-        "description": "The name of the function",
-        "range": "Symbol"
+        "name": "a",
+        "description": "First value",
+        "range": "number"
       },
       {
-        "name": "params",
-        "description": "A list of the function's parameter names",
-        "range": "List/Vector of Symbols"
-      },
-      {
-        "name": "body",
-        "description": "The body of code to run when called",
-        "range": "Any"
+        "name": "b",
+        "description": "Second value",
+        "range": "number"
       }
     ],
     "examples": [
-      "(defun my-no-args-function []\n  (println \"Hello from inside the function!\"))\n  \n(my-no-args-function) ;; => prints the message\n\n;; if the function name is long, you can put each of the other arguments\n;; on their own lines\n\n(defn my-addition-function \n  [a b] \n  (+ a b))\n\n(my-addition-function 3 5) ;; => 8"
+      "(< beat 0.5) ;; 1.0 in first half of beat",
+      "(d1 (< bar 0.25))"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
+    "category": "maths",
+    "tags": ["comparison", "logic", "operators"]
   },
   {
-    "name": "do",
-    "aliases": [],
-    "description": "Evaluates the given arguments in order and returns the value of the last argument.",
+    "name": ">=",
+    "aliases": ["gte"],
+    "description": "Returns 1.0 if the first value is greater than or equal to the second, 0.0 otherwise.",
     "parameters": [
       {
-        "name": "args",
-        "description": "Any number of expressions",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(do (println \"Hello\") \n    (println \"World!\") \n    (+ 1 2)) ;; => 3",
-      "(do\n  (d1 (sqr bar))\n  (d2 (sqr (slow 2 bar))))\n \n;; silence all analog outs\n(do\n  (a1 0)\n  (a2 0)\n  (a3 0))"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "euclid",
-    "aliases": [],
-    "description": "Generate a sequence of gates based on euclidean sequencing.\n\nFor more info: https://erikdemaine.org/papers/DeepRhythms_CGTA/paper.pdf\n\nDemaine, E.D., Gomez-Martin, F., Meijer, H., Rappaport, D., Taslakian, P., Toussaint, G.T., Winograd, T. and Wood, D.R., 2009. The distance geometry of music. Computational geometry, 42(5), pp.429-454.",
-    "parameters": [
-      {
-        "name": "n",
-        "description": "the number of beats to fit into the period of the phasor",
-        "range": ">0"
+        "name": "a",
+        "description": "First value",
+        "range": "number"
       },
       {
-        "name": "k",
-        "description": "the number of beats to fit, equally spaced, into n beats",
-        "range": ">0"
-      },
-      {
-        "name": "pulseWidth",
-        "description": "Width of the gates (relative)",
-        "range": ">0 and <1",
-        "optional": true
-      },
-      {
-        "name": "phasor",
-        "description": "A phasor",
-        "range": "0 - 1"
+        "name": "b",
+        "description": "Second value",
+        "range": "number"
       }
     ],
     "examples": [
-      "(d1 (euclid 16 (step phrase 4 4) 0.3 bar))",
-      "(d2 (euclid 32 8 0.1 bar))",
-      "(d3 (euclid 32 18 (step (fast 4 phrase) (slow 2 bar))))"
+      "(>= beat 0.75) ;; 1.0 in last quarter",
+      "(>= ain1 ain2)"
     ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing"
-    ]
+    "category": "maths",
+    "tags": ["comparison", "logic", "operators"]
   },
   {
-    "name": "filter",
-    "aliases": [],
-    "description": "Filters a list using a single-argument function that should return `true` or `false`. Any value that's in the input list and for which the test function returns false will be excluded from the resulting list.",
+    "name": "<=",
+    "aliases": ["lte"],
+    "description": "Returns 1.0 if the first value is less than or equal to the second, 0.0 otherwise.",
     "parameters": [
       {
-        "name": "test function",
-        "description": "A function to apply to each element",
-        "range": "1-arg Function that returns a Bool"
+        "name": "a",
+        "description": "First value",
+        "range": "number"
       },
       {
-        "name": "list",
-        "description": "A list of values",
-        "range": "Any"
+        "name": "b",
+        "description": "Second value",
+        "range": "number"
       }
     ],
     "examples": [
-      "(filter (fn [x] (> x 2)) \n  [1 2 3 4]) ; => [3 4]"
+      "(<= beat 0.5)",
+      "(<= ain1 0.3)"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
+    "category": "maths",
+    "tags": ["comparison", "logic", "operators"]
   },
   {
-    "name": "first",
-    "aliases": [],
-    "description": "Returns the first element of the list.",
+    "name": "=",
+    "aliases": ["eq", "equals"],
+    "description": "Returns 1.0 if two values are equal, 0.0 otherwise.",
     "parameters": [
       {
-        "name": "list",
-        "description": "A list of values",
-        "range": "any"
+        "name": "a",
+        "description": "First value",
+        "range": "number"
+      },
+      {
+        "name": "b",
+        "description": "Second value",
+        "range": "number"
       }
     ],
     "examples": [
-      "(first [1 2 3 4]) ;; => 1"
+      "(= 1 1) ;; => 1.0",
+      "(= beat-num 0) ;; first beat of bar"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
+    "category": "maths",
+    "tags": ["comparison", "logic", "operators"]
   },
   {
-    "name": "flatten",
+    "name": "not",
     "aliases": [],
-    "description": "Take a list with multiple dimensions and return a single dimensional list of the value, in sequence.",
+    "description": "Logical NOT. Returns 1.0 if the value is 0 (falsy), 0.0 otherwise.",
     "parameters": [
       {
-        "name": "list",
-        "description": "The list to push to",
-        "range": "List/Vector"
+        "name": "value",
+        "description": "Value to negate",
+        "range": "number"
       }
     ],
     "examples": [
-      "(flatten [[1 2] 5 5 [9 8 7]]) ;; => [1 2 5 5 9 8 7]",
-      "(flatten [0 1 [2 3]]) ;; => [0 1 2 3]",
-      "(flatten [[0 [1 [2 [3 4]]]]]) ;; => [0 1 2 3 4]"
+      "(not 0) ;; => 1.0",
+      "(not 1) ;; => 0.0",
+      "(d1 (not in1))"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists",
-      "sequencing"
-    ]
+    "category": "maths",
+    "tags": ["logic", "operators"]
+  },
+  {
+    "name": "and",
+    "aliases": [],
+    "description": "Logical AND. Returns 1.0 if both values are non-zero, 0.0 otherwise.",
+    "parameters": [
+      {
+        "name": "a",
+        "description": "First value",
+        "range": "number"
+      },
+      {
+        "name": "b",
+        "description": "Second value",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(and in1 in2) ;; both inputs high",
+      "(d1 (and (> beat 0.5) (< bar 0.25)))"
+    ],
+    "category": "maths",
+    "tags": ["logic", "operators"]
+  },
+  {
+    "name": "or",
+    "aliases": [],
+    "description": "Logical OR. Returns 1.0 if either value is non-zero, 0.0 otherwise.",
+    "parameters": [
+      {
+        "name": "a",
+        "description": "First value",
+        "range": "number"
+      },
+      {
+        "name": "b",
+        "description": "Second value",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(or in1 in2) ;; either input high",
+      "(d1 (or (> beat 0.9) (< beat 0.1)))"
+    ],
+    "category": "maths",
+    "tags": ["logic", "operators"]
+  },
+  {
+    "name": "sin",
+    "aliases": ["sine"],
+    "description": "Sine function. Takes radians, returns [-1, 1].",
+    "parameters": [
+      {
+        "name": "radians",
+        "description": "Angle in radians",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(sin (* 6.28 beat)) ;; sine wave over one beat",
+      "(a1 (bi-to-uni (sin (* 6.28 bar))))"
+    ],
+    "category": "maths",
+    "tags": ["maths", "trigonometry", "waveform"]
+  },
+  {
+    "name": "cos",
+    "aliases": ["cosine"],
+    "description": "Cosine function. Takes radians, returns [-1, 1].",
+    "parameters": [
+      {
+        "name": "radians",
+        "description": "Angle in radians",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(cos (* 6.28 beat))",
+      "(a1 (bi-to-uni (cos (* 6.28 bar))))"
+    ],
+    "category": "maths",
+    "tags": ["maths", "trigonometry", "waveform"]
+  },
+  {
+    "name": "tan",
+    "aliases": ["tangent"],
+    "description": "Tangent function. Takes radians.",
+    "parameters": [
+      {
+        "name": "radians",
+        "description": "Angle in radians",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(tan (* 3.14 beat))"
+    ],
+    "category": "maths",
+    "tags": ["maths", "trigonometry"]
+  },
+  {
+    "name": "abs",
+    "aliases": ["absolute"],
+    "description": "Absolute value.",
+    "parameters": [
+      {
+        "name": "value",
+        "description": "Input value",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(abs -5) ;; => 5",
+      "(abs (- ain1 0.5)) ;; distance from center"
+    ],
+    "category": "maths",
+    "tags": ["maths"]
   },
   {
     "name": "floor",
@@ -606,1483 +405,2068 @@
       }
     ],
     "examples": [
-      "(floor 3.7) ; => 3",
-      "(floor -1.2) ; => -2",
-      "(floor 3.1) ; => 3"
+      "(floor 3.7) ;; => 3",
+      "(floor (* 4 beat)) ;; integer steps 0,1,2,3 across beat"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths"
-    ]
+    "category": "maths",
+    "tags": ["maths", "quantise"]
   },
   {
-    "name": "for",
-    "aliases": [],
-    "description": "Iterates over a list of values, assigns each value to a name, and then evaluates a number of expressions in which that name can be used to refer to each of the iterated values.",
+    "name": "ceil",
+    "aliases": ["ceiling"],
+    "description": "Rounds a number up to the nearest integer.",
     "parameters": [
-      {
-        "name": "name",
-        "description": "The name to assign to each value",
-        "range": "Symbol"
-      },
-      {
-        "name": "list",
-        "description": "The list of values to iterate over",
-        "range": "List/Vector"
-      },
-      {
-        "name": "body",
-        "description": "Any number of expressions",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(for my-number [1 2 3]\n  (println \"My number is: \")\n  (println my-number)\n  my-number) ;; => prints each number in order, returns 3",
-      "(for i [1 2 3] (+ i 1))",
-      "(for x [1 2 3] (println (* x 2)))"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "evaluation control"
-    ],
-    "internal_comments": [
-      "FIXME @bug"
-    ]
-  },
-  {
-    "name": "from-flattened-list",
-    "aliases": [],
-    "description": "Like 'from-list', but flattens the list first so that nesting doesn't matter.",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "A list of values",
-        "range": "any"
-      },
-      {
-        "name": "position",
-        "description": "A normalised index",
-        "range": "0-1"
-      }
-    ],
-    "examples": [
-      "(from-flattened-list [1 [2 3] [4]] 0.25) ;; => 2"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists"
-    ]
-  },
-  {
-    "name": "from-list",
-    "aliases": [],
-    "description": "Read an item from a list, using a normalised index.\n\nItems in the list are evaluated before being returned, so you can use functions, variables, and generally any valid expressions in the list.",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "A list of values",
-        "range": "any"
-      },
-      {
-        "name": "position",
-        "description": "A normalised index",
-        "range": "0-1"
-      }
-    ],
-    "examples": [
-      "(from-list [1 2 3 4] 0.6) ; => 3",
-      "(from-list [1 2 3 4] bar))",
-      "(seq [1 (/ phrase 2)] bar))",
-      "(from-list [1 phrase] bar))",
-      "(from-list [1 2 (from-list [1 2] bar)] \n    (slow 2 bar))",
-      "(from-list [1 5 2] 0.5)"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists"
-    ]
-  },
-  {
-    "name": "gates",
-    "aliases": [],
-    "description": "Output a sequence of gates, with variable pulse width.",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "A list of gate values",
-        "range": "0 or 1"
-      },
-      {
-        "name": "phasor",
-        "description": "The sequence is output once per cycle of the phasor",
-        "range": "0-1"
-      },
-      {
-        "name": "speed",
-        "description": "Modify the speed of the phasor",
-        "range": ">= 1"
-      },
-      {
-        "name": "pulse width",
-        "description": "The pulse width of the gates",
-        "default": 0.5,
-        "range": "0-1",
-        "optional": true
-      }
-    ],
-    "examples": [
-      "(d2 (gates [0 1 1 0  1 1 1 0  1 1 0 1  1 0 0 1] (+ swm 0.3) bar))",
-      "(d2 (gates [0 1 1 0 1 0 0 swt] 0.5 (fast 2 bar)))",
-      "(d1 (gates [1 0 1 0] bar 2 0.75))"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "gatesw",
-    "aliases": [],
-    "description": "Output a sequence of gates, with pulse width controlled from values in the list",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "A list of gate/pulse width values, varying from 0 (0% pulse width) to 9 (100% pulse width / tie into the next note)",
-        "range": "0 - 9"
-      },
-      {
-        "name": "phasor",
-        "description": "The sequence is output once per cycle of the phasor",
-        "range": "0-1"
-      }
-    ],
-    "examples": [
-      "(d2 (gatesw [9 9 5 9 3 0 3 8] (fast 2 bar)))",
-      "(d1 (gatesw [1 2 3 4 5] bar))"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists"
-    ]
-  },
-  {
-    "name": "get-clock-source",
-    "aliases": [],
-    "description": "Returns the source for the clock, either internal (0), gate input 1 (1) or gate input 2 (2).",
-    "parameters": [],
-    "examples": [
-      "(get-clock-source)"
-    ],
-    "category": "timing",
-    "tags": [
-      "timing",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "if",
-    "aliases": [],
-    "description": "Conditionally executes one of two branches depending on the outcome of a boolean test.",
-    "parameters": [
-      {
-        "name": "test",
-        "description": "An expression that evaluates to either true or false",
-        "range": "any"
-      },
-      {
-        "name": "then",
-        "description": "An expression to evaluate if the test returns true",
-        "range": "any"
-      },
-      {
-        "name": "else",
-        "description": "An expression to evaluate if the test returns false",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(if (> 3 2)\n  (println \"Three is greater than two\")\n  (println \"Two is greater than three!?!?\"))",
-      "(if (= 1 1) (println \"yes\") (println \"no\"))"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "in1",
-    "aliases": [],
-    "description": "Returns the value of digital input 1.\n\nExample: to echo digital input 1 to digital output 1",
-    "parameters": [],
-    "examples": [
-      "(d1 in1)",
-      "(if in1 1 0)"
-    ],
-    "category": "inputs",
-    "tags": [
-      "inputs"
-    ]
-  },
-  {
-    "name": "in2",
-    "aliases": [],
-    "description": "Returns the value of digital input 2.\n\nExample: to echo digital input 2 to digital output 1",
-    "parameters": [],
-    "examples": [
-      "(d1 in2)",
-      "(if in2 1 0)"
-    ],
-    "category": "inputs",
-    "tags": [
-      "inputs"
-    ]
-  },
-  {
-    "name": "index",
-    "aliases": [],
-    "description": "Returns the element at the given index in the list.",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "A list of values",
-        "range": "any"
-      },
-      {
-        "name": "index",
-        "description": "The index of the element to retrieve",
-        "range": "integer"
-      }
-    ],
-    "examples": [
-      "(index [1 2 3] 1) ; => 2",
-      "(index [4 5 6] 0) ; => 4"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
-  },
-  {
-    "name": "insert",
-    "aliases": [],
-    "description": "Inserts a value in a specific position in the list.",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "The list to insert in",
-        "range": "List/Vector"
-      },
-      {
-        "name": "position",
-        "description": "Where in the list to put the value",
-        "range": "any integer >= 0"
-      },
       {
         "name": "value",
-        "description": "The value to insert",
-        "range": "Any"
+        "description": "The value to round up",
+        "range": "number"
       }
     ],
     "examples": [
-      "(insert [0 1 2 3] 3 0.5) ;; => [0 1 2 0.5 3]",
-      "(insert [4 5 6] 1 7)"
+      "(ceil 3.2) ;; => 4",
+      "(ceil -1.2) ;; => -1"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
+    "category": "maths",
+    "tags": ["maths", "quantise"]
   },
   {
-    "name": "interp",
-    "aliases": [],
-    "description": "Interpolate across a list, using a phasor.  This function acts as if the list of values describes a continuous envelope, and returns the value at a position in that envelope.  e.g.",
+    "name": "sqrt",
+    "aliases": ["square-root"],
+    "description": "Square root.",
     "parameters": [
       {
-        "name": "values",
-        "description": "A list of values",
-        "range": "any list"
-      },
-      {
-        "name": "phasor",
-        "description": "A phasor",
-        "range": "0 - 1"
+        "name": "value",
+        "description": "Input value (non-negative)",
+        "range": "number >= 0"
       }
     ],
     "examples": [
-      "(interp [0 0.5 0] 0.75)",
-      "(a1 (interp [1 0.5 0 0.6 1] bar))",
-      "(a2 (interp [0 (usin bar) 1] section))",
-      "(interp [0 1 0] bar)"
+      "(sqrt 9) ;; => 3",
+      "(sqrt beat) ;; curved ramp"
     ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists"
-    ]
+    "category": "maths",
+    "tags": ["maths"]
   },
   {
-    "name": "lambda",
-    "aliases": [],
-    "description": "Creates an anonymous function that's ready to use. It works more-or-less exactly the same as `defun`/`defn`, except it doesn't expect a name.\n\nTIP: `lambda`/`fn` is often used with higher-order functions, such as `map`, to create a local/temporary function:",
+    "name": "neg",
+    "aliases": ["negate"],
+    "description": "Negate a value (multiply by -1).",
     "parameters": [
       {
-        "name": "params",
-        "description": "A list of the function's parameter names",
-        "range": "List/Vector of Symbols"
-      },
-      {
-        "name": "body",
-        "description": "The body of code to run when called",
-        "range": "Any"
+        "name": "value",
+        "description": "Input value",
+        "range": "number"
       }
     ],
     "examples": [
-      "(map (lambda [x] (* x x)) \n  [1 2 3 4]) ; => [1 4 9 16]",
-      "(lambda [x y] (+ x y))"
+      "(neg 5) ;; => -5",
+      "(neg beat) ;; falling ramp"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
+    "category": "maths",
+    "tags": ["maths", "arithmetic"]
   },
   {
-    "name": "let",
-    "aliases": [],
-    "description": "Creates a number of locally-named variables that are only accessible within the body of the `let` expression.",
+    "name": "frac",
+    "aliases": ["fractional"],
+    "description": "Fractional part of a number: `x - floor(x)`. Always in [0, 1).",
     "parameters": [
       {
-        "name": "bindings",
-        "description": "A list of binding pairs",
-        "range": "List/Vector of pairs of symbols and expressions"
-      },
-      {
-        "name": "body",
-        "description": "Any number of expressions to evaluate within the local context",
-        "range": "Any"
+        "name": "value",
+        "description": "Input value",
+        "range": "number"
       }
     ],
     "examples": [
-      "(let [a 1\n      b 2]\n  (+ a b)) ;; => 3",
-      "(let [a \"Hello\"\n      b (str a \", World!\")]\n  (println b)) ;; => \"Hello, World!\"",
-      "(define a 10000)\n(define b 99999)\n(define c 10)\n\n(let [a 1\n      b 2]\n  (+ a b c)) ;; => 13",
-      "(let [x 5] (* x x))"
+      "(frac 3.7) ;; => 0.7",
+      "(frac (* 4 beat)) ;; 4x speed saw wave"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
-  },
-  {
-    "name": "list",
-    "aliases": [],
-    "description": "Creates a list containing the given arguments.",
-    "parameters": [
-      {
-        "name": "args",
-        "description": "Any number of values",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(list 1 2 3) ; => (1 2 3)",
-      "(list 'a 'b 'c) ; => (a b c)",
-      "(list 1 2 (+ 1 2)) ;; => (1 2 3)",
-      "(quote (1 2 3))           ;; => (1 2 3)",
-      "'(1 2 3) ;; => (1 2 3)",
-      "(list 4 5 6)",
-      ";; but, here the addition does not get evaluated first:\n'(1 2 (+ 1 2) ;; => (1 2 (+ 1 2))"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
-  },
-  {
-    "name": "map",
-    "aliases": [],
-    "description": "Applies a function to each element of a list and returns a list of the results.",
-    "parameters": [
-      {
-        "name": "function",
-        "description": "A function to apply to each element",
-        "range": "function"
-      },
-      {
-        "name": "list",
-        "description": "A list of values",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(map (fn [x] (* x x)) \n  [1 2 3 4]) ; => [1 4 9 16]",
-      "(map (lambda [x] (+ x 5)) [1 2 3])"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
-  },
-  {
-    "name": "perf",
-    "aliases": [],
-    "description": "Reports the most recent performance metrics.\n\n' (useq_perf) ; => prints performance metrics\n'",
-    "parameters": [],
-    "examples": [
-      "(perf)"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
-  },
-  {
-    "name": "phrase",
-    "aliases": [],
-    "description": "A phasor, rising from 0-1 over the length of a phrase (dependent on the BPM, time signature, and phrase length in bars).",
-    "parameters": [],
-    "examples": [
-      "(phrase)"
-    ],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
+    "category": "maths",
+    "tags": ["maths", "waveform"]
   },
   {
     "name": "pow",
     "aliases": [],
-    "description": "Returns the result of raising the base to the power of the exponent.",
+    "description": "Raises base to a power. Note argument order: `(pow exponent base)` = base^exponent.",
     "parameters": [
       {
         "name": "exponent",
-        "description": "The exponent value",
-        "range": "Number"
+        "description": "The power to raise to",
+        "range": "number"
       },
       {
-        "name": "value",
+        "name": "base",
         "description": "The base value",
-        "range": "Number"
+        "range": "number"
       }
     ],
     "examples": [
-      "(pow 3 2) ;; => 8.0",
-      "(pow 2 5) ;; => 25.0",
-      "(pow 2 3)"
+      "(pow 3 2) ;; => 8 (2^3)",
+      "(pow 2 beat) ;; exponential curve",
+      "(a1 (pow 0.5 bar)) ;; square root curve"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths"
-    ]
+    "category": "maths",
+    "tags": ["maths", "curve"]
+  },
+  {
+    "name": "expt",
+    "aliases": ["exponent"],
+    "description": "Raises base to a power. Standard argument order: `(expt base exponent)` = base^exponent.",
+    "parameters": [
+      {
+        "name": "base",
+        "description": "The base value",
+        "range": "number"
+      },
+      {
+        "name": "exponent",
+        "description": "The power to raise to",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(expt 2 3) ;; => 8",
+      "(expt beat 2) ;; quadratic curve"
+    ],
+    "category": "maths",
+    "tags": ["maths", "curve"]
+  },
+  {
+    "name": "clamp",
+    "aliases": ["constrain", "clip"],
+    "description": "Constrains a value between a minimum and maximum.",
+    "parameters": [
+      {
+        "name": "low",
+        "description": "Minimum bound",
+        "range": "number"
+      },
+      {
+        "name": "high",
+        "description": "Maximum bound",
+        "range": "number"
+      },
+      {
+        "name": "value",
+        "description": "The value to clamp",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(clamp 0 1 1.5) ;; => 1.0",
+      "(clamp 0.2 0.8 ain1) ;; constrain CV input",
+      "(a1 (clamp 0 0.5 bar))"
+    ],
+    "category": "maths",
+    "tags": ["maths", "clamp", "range"]
+  },
+  {
+    "name": "lerp",
+    "aliases": ["mix", "linear-interpolate"],
+    "description": "Linear interpolation between two values. `(lerp a b t)` = a + (b - a) * t.",
+    "parameters": [
+      {
+        "name": "a",
+        "description": "Start value",
+        "range": "number"
+      },
+      {
+        "name": "b",
+        "description": "End value",
+        "range": "number"
+      },
+      {
+        "name": "t",
+        "description": "Interpolation amount (0 = a, 1 = b)",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(lerp 0 10 0.5) ;; => 5",
+      "(lerp 0.2 0.8 beat) ;; ramp from 0.2 to 0.8",
+      "(a1 (lerp ain1 ain2 bar))"
+    ],
+    "category": "maths",
+    "tags": ["maths", "interpolation", "mix"]
+  },
+  {
+    "name": "scale",
+    "aliases": ["map-range"],
+    "description": "Scales a value from [0, 1] to a target range. `(scale out-min out-max value)` maps value from [0,1] to [out-min, out-max].",
+    "parameters": [
+      {
+        "name": "out-min",
+        "description": "Minimum of output range",
+        "range": "number"
+      },
+      {
+        "name": "out-max",
+        "description": "Maximum of output range",
+        "range": "number"
+      },
+      {
+        "name": "value",
+        "description": "The value to scale (expected 0-1)",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(scale 0 100 0.5) ;; => 50",
+      "(a1 (scale 0.2 0.8 beat)) ;; ramp from 0.2 to 0.8",
+      "(scale -1 1 bar) ;; bipolar ramp"
+    ],
+    "category": "maths",
+    "tags": ["maths", "range", "map"]
+  },
+  {
+    "name": "usin",
+    "aliases": ["unipolar-sine"],
+    "description": "Unipolar sine: takes a phasor [0,1] and outputs a sine wave [0,1]. Equivalent to `0.5 + 0.5 * sin(x * 2π)`.",
+    "parameters": [
+      {
+        "name": "phasor",
+        "description": "Input phasor (0-1 maps to one full cycle)",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(a1 (usin beat)) ;; smooth sine LFO per beat",
+      "(a2 (usin (slow 4 bar)))",
+      "(usin 0.25) ;; => ~0.854"
+    ],
+    "category": "waveforms",
+    "tags": ["waveform", "sine", "oscillator", "unipolar"]
+  },
+  {
+    "name": "ucos",
+    "aliases": ["unipolar-cosine"],
+    "description": "Unipolar cosine: takes a phasor [0,1] and outputs a cosine wave [0,1]. Starts at 1.0, falls to 0, returns to 1.",
+    "parameters": [
+      {
+        "name": "phasor",
+        "description": "Input phasor (0-1 maps to one full cycle)",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(a1 (ucos beat)) ;; cosine LFO (starts high)",
+      "(ucos 0) ;; => 1.0"
+    ],
+    "category": "waveforms",
+    "tags": ["waveform", "cosine", "oscillator", "unipolar"]
+  },
+  {
+    "name": "bi-to-uni",
+    "aliases": ["b>u", "bi->uni", "bipolar-to-unipolar"],
+    "description": "Converts a bipolar value [-1, 1] to unipolar [0, 1]. Formula: `x * 0.5 + 0.5`.",
+    "parameters": [
+      {
+        "name": "value",
+        "description": "Bipolar value to convert",
+        "range": "-1 to 1"
+      }
+    ],
+    "examples": [
+      "(bi-to-uni -1) ;; => 0.0",
+      "(bi-to-uni 0) ;; => 0.5",
+      "(a1 (b>u (sin (* 6.28 beat))))"
+    ],
+    "category": "maths",
+    "tags": ["conversion", "range", "bipolar", "unipolar"]
+  },
+  {
+    "name": "uni-to-bi",
+    "aliases": ["u>b", "uni->bi", "unipolar-to-bipolar"],
+    "description": "Converts a unipolar value [0, 1] to bipolar [-1, 1]. Formula: `x * 2 - 1`.",
+    "parameters": [
+      {
+        "name": "value",
+        "description": "Unipolar value to convert",
+        "range": "0 to 1"
+      }
+    ],
+    "examples": [
+      "(uni-to-bi 0) ;; => -1.0",
+      "(uni-to-bi 0.5) ;; => 0.0",
+      "(u>b beat) ;; rising ramp from -1 to 1"
+    ],
+    "category": "maths",
+    "tags": ["conversion", "range", "bipolar", "unipolar"]
+  },
+  {
+    "name": "tri",
+    "aliases": ["triangle"],
+    "description": "Triangle wave shaper. With 1 arg: symmetric triangle from phasor. With 2 args: `(tri duty phase)` — duty controls the peak position (0-1).",
+    "parameters": [
+      {
+        "name": "duty",
+        "description": "Peak position within cycle (0 = immediate fall, 0.5 = symmetric, 1 = immediate rise)",
+        "range": "0-1",
+        "optional": true
+      },
+      {
+        "name": "phase",
+        "description": "Input phasor",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(a1 (tri beat)) ;; symmetric triangle",
+      "(a1 (tri 0.1 bar)) ;; sharp attack, slow decay",
+      "(a2 (tri 0.9 (fast 2 bar))) ;; slow attack, sharp decay"
+    ],
+    "category": "waveforms",
+    "tags": ["waveform", "triangle", "shaper", "sequencing"]
+  },
+  {
+    "name": "sqr",
+    "aliases": ["square"],
+    "description": "Square wave shaper. Converts a phasor to a square wave (0 or 1). With 1 arg: 50% duty cycle. With 2 args: `(sqr duty phase)`.",
+    "parameters": [
+      {
+        "name": "duty",
+        "description": "Pulse width (fraction of cycle that is high)",
+        "range": "0-1",
+        "optional": true
+      },
+      {
+        "name": "phase",
+        "description": "Input phasor",
+        "range": "0-1"
+      }
+    ],
+    "examples": [
+      "(d1 (sqr beat)) ;; gate: high for first half of each beat",
+      "(d1 (sqr (fast 2 bar)))",
+      "(d2 (sqr 0.25 beat)) ;; short pulse"
+    ],
+    "category": "waveforms",
+    "tags": ["waveform", "square", "gate", "shaper", "sequencing"]
   },
   {
     "name": "pulse",
     "aliases": [],
-    "description": "Outputs a pulse wave.",
+    "description": "Pulse/gate: returns 1.0 when phase < width, 0.0 otherwise. `(pulse width phase)`.",
     "parameters": [
       {
-        "name": "pulse width",
-        "description": "The relative width of each pulse",
+        "name": "width",
+        "description": "Pulse width (duty cycle)",
+        "range": "0-1"
+      },
+      {
+        "name": "phase",
+        "description": "Input phasor",
         "range": "0-1"
       }
     ],
     "examples": [
-      "(pulse 0.5)",
-      "(pulse 0.2)"
+      "(d1 (pulse 0.1 beat)) ;; short trigger at start of beat",
+      "(d2 (pulse 0.5 bar)) ;; half-bar gate",
+      "(pulse 0.25 (fast 4 bar))"
     ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing"
-    ]
+    "category": "waveforms",
+    "tags": ["waveform", "gate", "trigger", "sequencing"]
   },
   {
-    "name": "push",
-    "aliases": [],
-    "description": "Pushes a value to the top of a list.",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "The list to push to",
-        "range": "List/Vector"
-      },
-      {
-        "name": "value",
-        "description": "The value to push",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(push [1 2 3] 5) ;; => [5 1 2 3]",
-      "(push [4 5 6] 7)"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
-  },
-  {
-    "name": "q0",
-    "aliases": [],
-    "description": "Specify a function to run at the start of each quantisation period (by default, each bar)",
-    "parameters": [
-      {
-        "name": "form",
-        "description": "Parameter 1 of function q0",
-        "range": ""
-      }
-    ],
-    "examples": [
-      "(q0 (println bar))",
-      "(q0 0)",
-      "(q0 (+ 1 2))"
-    ],
-    "category": "outputs",
-    "tags": [
-      "outputs",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "random",
-    "aliases": [],
-    "description": "Generates a random integer on every beat (unless otherwise modified with fast/slow, offset etc).",
-    "parameters": [
-      {
-        "name": "low",
-        "description": "the lowest random integer the function should generate",
-        "range": "any",
-        "optional": true
-      },
-      {
-        "name": "high",
-        "description": "the highest random integer the function should generate",
-        "range": "any",
-        "optional": true
-      }
-    ],
-    "examples": [
-      "(a1 (random))",
-      "(a2 (slow 2 (random 0.5 0.8)))"
-    ],
-    "category": "probabilistic",
-    "tags": [
-      "randomness"
-    ]
-  },
-  {
-    "name": "random'",
-    "aliases": [],
-    "description": "Generates a random integer whenever it's called.",
-    "parameters": [
-      {
-        "name": "low",
-        "description": "the lowest random integer the function should generate",
-        "range": "any"
-      },
-      {
-        "name": "high",
-        "description": "the highest random integer the function should generate",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(* (random 0 1000) 0.001)",
-      "(random 1 10)"
-    ],
-    "category": "probabilistic",
-    "tags": [
-      "randomness"
-    ]
-  },
-  {
-    "name": "range",
-    "aliases": [],
-    "description": "Create a vector of numbers from low to high.",
-    "parameters": [
-      {
-        "name": "low",
-        "description": "The lowest number in the series",
-        "range": "any integer"
-      },
-      {
-        "name": "high",
-        "description": "The highest number in the series",
-        "range": "any integer"
-      }
-    ],
-    "examples": [
-      "(range 1 3) ; => [1 2 3]",
-      "(range -10 0) ; => [-10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0]",
-      "(range 5 10)"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
-  },
-  {
-    "name": "remove",
-    "aliases": [],
-    "description": "Removes from the list the value at the specified index (if it exists).",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "The list to remove from",
-        "range": "List/Vector"
-      },
-      {
-        "name": "index",
-        "description": "The index of the item to remove",
-        "range": "any integer >= 0 and <= list length"
-      }
-    ],
-    "examples": [
-      "(remove [0 1 2 3 4] 2) ;; => [0 1 3 4]",
-      "(remove [5 6 7] 0)"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
-  },
-  {
-    "name": "reset-clock-ext",
-    "aliases": [],
-    "description": "Reset the data used by the external clock tracker.  If you are changing from one external clock to another, it might be useful to run this.  After running this function, the first rising edge to be detected will be assumed to be the start of the first bar.",
+    "name": "t",
+    "aliases": ["transport-time"],
+    "description": "Logical transport time in seconds since last reset. Monotonically increasing during playback. Resets with transport controls.",
     "parameters": [],
     "examples": [
-      "(reset-clock-ext)"
+      "(a1 (frac t)) ;; 1-second saw wave",
+      "(> t 10) ;; true after 10 seconds"
     ],
     "category": "timing",
-    "tags": [
-      "timing",
-      "playback"
-    ]
+    "tags": ["timing", "time", "transport"]
   },
   {
-    "name": "reset-clock-int",
-    "aliases": [],
-    "description": "Reset the internal clock, starting the logical time from 0.",
+    "name": "dt",
+    "aliases": ["delta-time"],
+    "description": "Time delta between the current sample and the previous sample, in seconds. Useful for rate-based calculations.",
     "parameters": [],
     "examples": [
-      "(reset-clock-int)"
+      "(* rate dt) ;; displacement this tick"
     ],
     "category": "timing",
-    "tags": [
-      "timing",
-      "playback"
-    ]
+    "tags": ["timing", "time", "delta"]
   },
   {
-    "name": "rest",
+    "name": "beat",
     "aliases": [],
-    "description": "Returns all but the first element of the list.",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "A list of values",
-        "range": "any"
-      }
-    ],
+    "description": "A phasor rising from 0 to 1 over the duration of one beat (determined by BPM).",
+    "parameters": [],
     "examples": [
-      "(tail [1 2 3 4]) ; => [2 3 4]",
-      "(rest [5 6 7])"
+      "(a1 beat) ;; saw ramp per beat",
+      "(d1 (sqr beat)) ;; half-beat gate",
+      "(a1 (usin beat)) ;; sine LFO per beat"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
+    "category": "timing",
+    "tags": ["timing", "phasor", "beat"]
   },
   {
-    "name": "ridx",
+    "name": "bar",
     "aliases": [],
-    "description": "Transform a phasor (or other signal) into a series of steps.  The list of ratios (as with 'rpulse' above) determines the timing and length of the steps.  The amplitude of the step is determined by the index of the time ratio in the list of ratios.  It's a bit like 'rstep' above, but the steps occur at even divisions of the range 0-1, depending on the number of time ratios specificied. This means 'ridx' is useful as a phasor for indexing other lists (e.g. using 'seq'); you can control the timing of when you move through items in another list.",
-    "parameters": [
-      {
-        "name": "ratios",
-        "description": "a list of ratios of time periods that the phasor will be divided into",
-        "range": "any"
-      },
-      {
-        "name": "phasor",
-        "description": "A phasor",
-        "range": "0 - 1"
-      }
-    ],
+    "description": "A phasor rising from 0 to 1 over the duration of one bar (determined by BPM and time signature).",
+    "parameters": [],
     "examples": [
-      "rpulse",
-      "rstep",
-      "ridx",
-      "seq",
-      "(a1 (ridx [1 1 1 3] bar))",
-      "(a1 (ridx [1 1 15 3 3] bar))",
-      "(ridx [1 2 3] bar)"
+      "(a1 bar) ;; saw ramp per bar",
+      "(a1 (step [0.2 0.5 0.8 1.0] bar))"
     ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists"
-    ]
+    "category": "timing",
+    "tags": ["timing", "phasor", "bar"]
   },
   {
-    "name": "rpulse",
+    "name": "phrase",
     "aliases": [],
-    "description": "Generate pulses by dividing a phasor into sections according to a list of timing ratios, and emiting a pulse at the start of each section.",
-    "parameters": [
-      {
-        "name": "ratios",
-        "description": "a list of ratios of time periods that the phasor will be divided into",
-        "range": "any"
-      },
-      {
-        "name": "pulseWidth",
-        "description": "width of the pulses",
-        "range": ">0 and <1"
-      },
-      {
-        "name": "phasor",
-        "description": "A phasor",
-        "range": "0 - 1"
-      }
-    ],
+    "description": "A phasor rising from 0 to 1 over the duration of one phrase (multiple bars).",
+    "parameters": [],
     "examples": [
-      "(d1 (rpulse [1 1] 0.5 bar))",
-      "(d1 (rpulse [15 15] 0.5 bar))",
-      "(d1 (rpulse [3 3 3] 0.2 bar))",
-      "(d1 (rpulse [1 1 2 3 1] 0.1 bar))",
-      "(d1 (rpulse [3 1 1 1 3 2 1] 0.9 bar))",
-      "(rpulse [1 2] 0.3 bar)"
+      "(a1 (usin phrase)) ;; slow sine over phrase",
+      "(a2 (interp [0 1 0.5 0.8] phrase))"
     ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists"
-    ]
-  },
-  {
-    "name": "rstep",
-    "aliases": [],
-    "description": "Transform a phasor (or other signal) into a series of steps.  The list of ratios (as with 'rpulse' above) determines the timing and length of the steps.  The amplitude of the step is determined by the phasor's value at the beginning of the step. \n\nIt's the equivelant of triggering a sample and hold on the phasor, according to the timing of the ratios.",
-    "parameters": [
-      {
-        "name": "ratios",
-        "description": "a list of ratios of time periods that the phasor will be divided into",
-        "range": "any"
-      },
-      {
-        "name": "phasor",
-        "description": "A phasor",
-        "range": "0 - 1"
-      }
-    ],
-    "examples": [
-      "rpulse",
-      "interp",
-      "(a1 (rstep [1 1 2] bar))",
-      "(a1 (rstep [6 6 6 2 2 2] bar))",
-      "rstep",
-      "(a2 (interp [0 0.2 1 0] (rstep [3 1 1 1] (slow 4 bar))))"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists"
-    ]
-  },
-  {
-    "name": "rwarp",
-    "aliases": [],
-    "description": "This works similarly to 'ridx' above, except that the function produces a ramp between points at the start of each time period.  This could be useful with functions like 'gatesw', which take a ramp as input and use this to control pulse width. In this case, you could control the timing of when you move though each gate.",
-    "parameters": [
-      {
-        "name": "ratios",
-        "description": "a list of ratios of time periods that the phasor will be divided into",
-        "range": "any"
-      },
-      {
-        "name": "phasor",
-        "description": "A phasor",
-        "range": "0 - 1"
-      }
-    ],
-    "examples": [
-      "ridx",
-      "gatesw",
-      "(a1 (rwarp [1 5 12] bar))",
-      "(a1 (rwarp [200 40 10] bar))",
-      ";fibonacci ratios\n(a1 (rwarp [1 2 3 5 8 13 21 34 55] bar))",
-      "gatesw",
-      "(a1 (gatesw [4 8 1 8] (rwarp [3 5 2 6] bar)))"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists"
-    ]
-  },
-  {
-    "name": "s[x]",
-    "aliases": [],
-    "description": "Send a sequence over the USB serial connection.  This sequence can be decoded by your USB client software.  To differentiate from other text send by the module, serial data is send in a 11 byte message in the following format:\n[31][0][index of serial stream][8 bytes representing a double]\n\nThe useq editor can decode these messages and forward them as MIDI.",
-    "parameters": [
-      {
-        "name": "form",
-        "description": "Parameter 1 of function s[x]",
-        "range": ""
-      }
-    ],
-    "examples": [],
-    "category": "outputs",
-    "tags": [
-      "outputs",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "scale",
-    "aliases": [],
-    "description": "Scales a value from one range to another.",
-    "parameters": [
-      {
-        "name": "in-min",
-        "description": "The minimum input range",
-        "range": "Number"
-      },
-      {
-        "name": "in-max",
-        "description": "The maximum input range",
-        "range": "Number"
-      },
-      {
-        "name": "out-min",
-        "description": "The minimum output range",
-        "range": "Number"
-      },
-      {
-        "name": "out-max",
-        "description": "The maximum output range",
-        "range": "Number"
-      },
-      {
-        "name": "val",
-        "description": "The value to scale",
-        "range": "Number"
-      }
-    ],
-    "examples": [
-      "(scale 0 1 0 100 0.5) ;; => 50.0\n(scale 0 100 0 1 25) ;; => 0.25"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
+    "category": "timing",
+    "tags": ["timing", "phasor", "phrase"]
   },
   {
     "name": "section",
     "aliases": [],
-    "description": "A phasor, rising from 0-1 over the length of a section (dependent on the BPM, time signature, and section length in bars).",
+    "description": "A phasor rising from 0 to 1 over the duration of one section (multiple phrases).",
     "parameters": [],
-    "examples": [],
+    "examples": [
+      "(a1 (usin section)) ;; very slow modulation"
+    ],
     "category": "timing",
-    "tags": [
-      "timing"
-    ]
+    "tags": ["timing", "phasor", "section"]
+  },
+  {
+    "name": "beat-num",
+    "aliases": ["beat-count"],
+    "description": "Integer counter of total beats elapsed (floor of continuous beat count).",
+    "parameters": [],
+    "examples": [
+      "(= (% beat-num 4) 0) ;; true on every 4th beat",
+      "(% beat-num 8) ;; cycles 0-7"
+    ],
+    "category": "timing",
+    "tags": ["timing", "counter", "beat"]
+  },
+  {
+    "name": "bar-num",
+    "aliases": ["bar-count"],
+    "description": "Integer counter of total bars elapsed.",
+    "parameters": [],
+    "examples": [
+      "(= (% bar-num 4) 0) ;; every 4th bar",
+      "(% bar-num 2) ;; alternating bars: 0, 1, 0, 1..."
+    ],
+    "category": "timing",
+    "tags": ["timing", "counter", "bar"]
+  },
+  {
+    "name": "beat-dur",
+    "aliases": ["beat-duration"],
+    "description": "Duration of one beat in seconds (= 60 / bpm).",
+    "parameters": [],
+    "examples": [
+      "beat-dur ;; at 120 bpm => 0.5"
+    ],
+    "category": "timing",
+    "tags": ["timing", "duration", "beat"]
+  },
+  {
+    "name": "bar-dur",
+    "aliases": ["bar-duration"],
+    "description": "Duration of one bar in seconds (= beat-dur × beats-per-bar).",
+    "parameters": [],
+    "examples": [
+      "bar-dur ;; at 120 bpm, 4/4 => 2.0"
+    ],
+    "category": "timing",
+    "tags": ["timing", "duration", "bar"]
+  },
+  {
+    "name": "bpm",
+    "aliases": ["tempo"],
+    "description": "The current tempo in beats per minute. Readable in signal context; settable via `set-bpm` in cold context.",
+    "parameters": [],
+    "examples": [
+      "bpm ;; => 120 (or whatever is set)",
+      "(/ bpm 60) ;; beats per second"
+    ],
+    "category": "timing",
+    "tags": ["timing", "tempo"]
+  },
+  {
+    "name": "beats-per-bar",
+    "aliases": ["time-sig"],
+    "description": "Number of beats in one bar (time signature numerator).",
+    "parameters": [],
+    "examples": [
+      "beats-per-bar ;; => 4 (in 4/4)"
+    ],
+    "category": "timing",
+    "tags": ["timing", "time-signature"]
+  },
+  {
+    "name": "bars-per-phrase",
+    "aliases": [],
+    "description": "Number of bars in one phrase.",
+    "parameters": [],
+    "examples": [
+      "bars-per-phrase ;; => 4 (default)"
+    ],
+    "category": "timing",
+    "tags": ["timing", "structure"]
+  },
+  {
+    "name": "phrases-per-section",
+    "aliases": [],
+    "description": "Number of phrases in one section.",
+    "parameters": [],
+    "examples": [
+      "phrases-per-section ;; => 4 (default)"
+    ],
+    "category": "timing",
+    "tags": ["timing", "structure"]
+  },
+  {
+    "name": "fast",
+    "aliases": ["speed-up"],
+    "description": "Speed up time for everything inside the body. All time-leaves (beat, bar, t, etc.) inside the body run faster by the given factor.",
+    "parameters": [
+      {
+        "name": "factor",
+        "description": "Speed multiplier (2 = double speed)",
+        "range": "number > 0"
+      },
+      {
+        "name": "body",
+        "description": "Expression whose time is sped up",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(a1 (fast 2 beat)) ;; 2x speed ramp",
+      "(d1 (sqr (fast 4 bar))) ;; 4 pulses per bar",
+      "(fast 2 (step [1 0 0.5] bar)) ;; sequence at double speed"
+    ],
+    "category": "time-transforms",
+    "tags": ["time", "speed", "rate", "sequencing", "timing"]
+  },
+  {
+    "name": "slow",
+    "aliases": ["slow-down"],
+    "description": "Slow down time for everything inside the body. All time-leaves inside the body run slower by the given factor.",
+    "parameters": [
+      {
+        "name": "factor",
+        "description": "Slowdown divisor (2 = half speed)",
+        "range": "number > 0"
+      },
+      {
+        "name": "body",
+        "description": "Expression whose time is slowed",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(a1 (slow 2 beat)) ;; half-speed ramp (= bar in 4/4)",
+      "(d1 (sqr (slow 4 beat))) ;; one pulse per 4 beats",
+      "(slow 2 (step [1 0.5 0] bar)) ;; sequence at half speed"
+    ],
+    "category": "time-transforms",
+    "tags": ["time", "speed", "rate", "sequencing", "timing"]
+  },
+  {
+    "name": "offset",
+    "aliases": ["shift"],
+    "description": "Shift time forward for everything inside the body. Offsets all time-leaves by the given amount. Commonly used to offset phasors: `(offset 0.5 bar)` starts the bar phasor from the halfway point.",
+    "parameters": [
+      {
+        "name": "amount",
+        "description": "Time offset amount (for phasors: 0-1 shifts start point)",
+        "range": "number"
+      },
+      {
+        "name": "body",
+        "description": "Expression whose time is shifted",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(a1 (offset 0.5 bar)) ;; bar starting from halfway",
+      "(d1 (sqr (fast 2 bar)))\n(d2 (sqr (fast 2 (offset 0.5 bar)))) ;; offset copy",
+      "(offset 0.25 (step [1 0 1 0] bar))"
+    ],
+    "category": "time-transforms",
+    "tags": ["time", "offset", "shift", "phase", "sequencing", "timing"]
+  },
+  {
+    "name": "loop-at",
+    "aliases": ["time-loop"],
+    "description": "Loops time modulo a duration. The body's time resets every `duration` seconds.",
+    "parameters": [
+      {
+        "name": "duration",
+        "description": "Loop length in the time domain",
+        "range": "number > 0"
+      },
+      {
+        "name": "body",
+        "description": "Expression to loop",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(loop-at 2 t) ;; 2-second saw wave",
+      "(loop-at bar-dur (usin beat)) ;; explicit loop boundary"
+    ],
+    "category": "time-transforms",
+    "tags": ["time", "loop", "modulo"]
+  },
+  {
+    "name": "eval-at-time",
+    "aliases": ["at-time", "time-as"],
+    "description": "Evaluate body at an arbitrary time value. Replaces the time context entirely — the body sees the given time expression as `t`.",
+    "parameters": [
+      {
+        "name": "time-expr",
+        "description": "The time value to evaluate at",
+        "range": "number"
+      },
+      {
+        "name": "body",
+        "description": "Expression to evaluate at that time",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(eval-at-time (* 2 t) beat) ;; beat at double real-time",
+      "(eval-at-time (+ t ain1) bar) ;; CV-modulated time"
+    ],
+    "category": "time-transforms",
+    "tags": ["time", "substitution", "advanced"]
+  },
+  {
+    "name": "step",
+    "aliases": ["seq", "from-list"],
+    "description": "Step sequencer: indexes a data list by a phasor. Divides the phasor range into equal steps and outputs the value at the current step. Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "data",
+        "description": "List/vector of values to sequence through",
+        "range": "list of numbers"
+      },
+      {
+        "name": "phase",
+        "description": "Phasor to index by (0-1)",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(a1 (step [0.2 0.5 0.8 1.0] bar))",
+      "(a1 (seq [1 0.5 0] (slow 2 bar)))",
+      "(from-list [0.1 0.4 0.9] phrase)",
+      "(step [1 0 1 0 1 1 0 1] (fast 2 bar))"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "step", "list", "pattern"]
+  },
+  {
+    "name": "gates",
+    "aliases": [],
+    "description": "Gate sequencer: like `step` but outputs 1 (gate on) for non-zero values and 0 (gate off) for zero values. Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "data",
+        "description": "List of gate values (0 = off, non-zero = on)",
+        "range": "list of 0/1"
+      },
+      {
+        "name": "phase",
+        "description": "Phasor to index by",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(d1 (gates [1 0 1 0 1 1 0 1] bar))",
+      "(d2 (gates [1 0 0 1] (fast 2 bar)))",
+      "(d1 (gates [1 1 0 1 0 0 1 0] (slow 2 bar)))"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "gate", "rhythm", "pattern"]
+  },
+  {
+    "name": "trigs",
+    "aliases": ["triggers"],
+    "description": "Trigger sequencer: like `gates` but outputs gate values directly (0-1 amplitude). Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "data",
+        "description": "List of trigger values (0 = off, 1-9 = amplitude levels)",
+        "range": "list of 0-9"
+      },
+      {
+        "name": "phase",
+        "description": "Phasor to index by",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(s1 (trigs [9 0 5 0 9 0 3 0] bar))",
+      "(a1 (* 0.111 (trigs [1 3 5 7 9] (fast 2 bar))))"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "trigger", "velocity", "pattern"]
+  },
+  {
+    "name": "gatesw",
+    "aliases": ["gates-width"],
+    "description": "Gate sequencer with per-step pulse width control. Values 0-9 encode both gate-on and pulse width: 0 = off, 1 = shortest gate, 9 = full-length tie. Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "data",
+        "description": "List of gate+width values (0 = off, 1-9 = increasing pulse width)",
+        "range": "list of 0-9"
+      },
+      {
+        "name": "phase",
+        "description": "Phasor to index by",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(d1 (gatesw [9 9 5 9 3 0 3 8] (fast 2 bar)))",
+      "(d2 (gatesw [1 5 9 5] bar))"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "gate", "pulse-width", "pattern"]
+  },
+  {
+    "name": "euclid",
+    "aliases": ["eu", "euclidean"],
+    "description": "Euclidean rhythm generator. Distributes `active` pulses as evenly as possible across `total` steps. Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "total",
+        "description": "Total number of steps in the pattern",
+        "range": "integer > 0"
+      },
+      {
+        "name": "active",
+        "description": "Number of active (on) steps to distribute",
+        "range": "integer > 0"
+      },
+      {
+        "name": "pulse-width",
+        "description": "Width of each pulse (0-1)",
+        "range": "0-1",
+        "optional": true
+      },
+      {
+        "name": "phase",
+        "description": "Phasor to drive the pattern",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(d1 (euclid 8 3 bar)) ;; 3-in-8 pattern over bar",
+      "(d2 (eu 16 5 0.3 bar)) ;; with pulse width",
+      "(d1 (euclid 8 5 (fast 2 bar)))"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "rhythm", "euclidean", "pattern", "gate"]
+  },
+  {
+    "name": "interp",
+    "aliases": ["flatseq", "envelope"],
+    "description": "Linear interpolation through a list of values, treating them as a continuous envelope. Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "data",
+        "description": "List of values to interpolate between",
+        "range": "list of numbers"
+      },
+      {
+        "name": "phase",
+        "description": "Position in envelope (0 = first value, 1 = last value)",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(a1 (interp [0 1 0] bar)) ;; triangle envelope",
+      "(a1 (interp [0 0.8 0.2 1.0 0] phrase))",
+      "(interp [0 1 0.5] (slow 2 bar))"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "interpolation", "envelope", "list"]
+  },
+  {
+    "name": "dm",
+    "aliases": ["demux", "gate-select"],
+    "description": "Demux/conditional gate: if condition is non-zero, output value; otherwise output default. `(dm condition default value)`.",
+    "parameters": [
+      {
+        "name": "condition",
+        "description": "Gate condition (non-zero = pass value)",
+        "range": "number"
+      },
+      {
+        "name": "default",
+        "description": "Value when condition is zero",
+        "range": "number"
+      },
+      {
+        "name": "value",
+        "description": "Value when condition is non-zero",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(dm in1 0 (usin beat)) ;; sine when input high, 0 when low",
+      "(a1 (dm (> bar 0.5) 0.2 0.8))"
+    ],
+    "category": "sequencing",
+    "tags": ["gate", "conditional", "mux", "switch"]
+  },
+  {
+    "name": "rpulse",
+    "aliases": ["ratio-pulse"],
+    "description": "Generates pulses at ratio-divided phasor sections. The ratios list defines relative timing divisions; a pulse fires at the start of each section. Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "ratios",
+        "description": "List of time-period ratios",
+        "range": "list of numbers > 0"
+      },
+      {
+        "name": "pulse-width",
+        "description": "Width of each pulse",
+        "range": "0-1"
+      },
+      {
+        "name": "phase",
+        "description": "Phasor to divide",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(d1 (rpulse [1 1] 0.5 bar)) ;; two equal pulses per bar",
+      "(d1 (rpulse [3 1 1 1] 0.2 bar)) ;; swing rhythm",
+      "(d2 (rpulse [1 2 1 2] 0.1 (slow 2 bar)))"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "rhythm", "ratio", "pulse", "pattern"]
+  },
+  {
+    "name": "rstep",
+    "aliases": ["ratio-step"],
+    "description": "Sample-and-hold on phasor at ratio-timed points. Returns the normalised start position of the current subdivision. Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "ratios",
+        "description": "List of time-period ratios",
+        "range": "list of numbers > 0"
+      },
+      {
+        "name": "phase",
+        "description": "Phasor to divide",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(a1 (rstep [1 1 2] bar))",
+      "(a1 (rstep [3 1 1 1] (slow 4 bar)))",
+      "(a2 (interp [0 0.5 1 0] (rstep [3 1] bar)))"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "rhythm", "ratio", "sample-hold", "pattern"]
+  },
+  {
+    "name": "ridx",
+    "aliases": ["ratio-index"],
+    "description": "Ratio-indexed steps. Divides a phasor by ratios and outputs the normalised index (i/N) of the current subdivision. Useful as a phasor for indexing other sequences with non-uniform timing. Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "ratios",
+        "description": "List of time-period ratios",
+        "range": "list of numbers > 0"
+      },
+      {
+        "name": "phase",
+        "description": "Phasor to divide",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(a1 (ridx [1 1 1 3] bar))",
+      "(a1 (step [0.2 0.5 0.8] (ridx [3 1 2] bar))) ;; non-uniform sequencing"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "rhythm", "ratio", "index", "pattern"]
+  },
+  {
+    "name": "rwarp",
+    "aliases": ["ratio-warp"],
+    "description": "Remaps time through non-uniform subdivisions. Like `ridx` but produces ramps between points (continuous) rather than steps. Useful for driving `gatesw` with non-uniform timing. Phase defaults to `beat` if omitted.",
+    "parameters": [
+      {
+        "name": "ratios",
+        "description": "List of time-period ratios",
+        "range": "list of numbers > 0"
+      },
+      {
+        "name": "phase",
+        "description": "Phasor to warp",
+        "range": "0-1",
+        "optional": true,
+        "default": "beat"
+      }
+    ],
+    "examples": [
+      "(a1 (rwarp [1 5 12] bar))",
+      "(d1 (gatesw [4 8 1 8] (rwarp [3 5 2 6] bar)))",
+      "(a1 (rwarp [1 2 3 5 8] bar)) ;; fibonacci timing"
+    ],
+    "category": "sequencing",
+    "tags": ["sequencing", "rhythm", "ratio", "warp", "pattern"]
+  },
+  {
+    "name": "random",
+    "aliases": ["rand"],
+    "description": "Deterministic per-beat random value. Changes once per beat (affected by fast/slow). Returns a float in [0,1] with no args, or scaled to [lo, hi] with args.",
+    "parameters": [
+      {
+        "name": "lo",
+        "description": "Minimum value",
+        "range": "number",
+        "optional": true,
+        "default": "0"
+      },
+      {
+        "name": "hi",
+        "description": "Maximum value",
+        "range": "number",
+        "optional": true,
+        "default": "1"
+      }
+    ],
+    "examples": [
+      "(a1 (random)) ;; random 0-1 per beat",
+      "(a1 (random 0.2 0.8)) ;; random in range",
+      "(a1 (fast 4 (random))) ;; changes 4x per beat"
+    ],
+    "category": "probabilistic",
+    "tags": ["random", "noise", "generative", "probabilistic"]
+  },
+  {
+    "name": "index-rand",
+    "aliases": ["hash-rand"],
+    "description": "Deterministic random value keyed by an arbitrary index. Same index always produces the same value. Useful for creating repeatable pseudo-random patterns.",
+    "parameters": [
+      {
+        "name": "index",
+        "description": "Index to hash (any number)",
+        "range": "number"
+      },
+      {
+        "name": "lo",
+        "description": "Minimum value",
+        "range": "number",
+        "optional": true,
+        "default": "0"
+      },
+      {
+        "name": "hi",
+        "description": "Maximum value",
+        "range": "number",
+        "optional": true,
+        "default": "1"
+      }
+    ],
+    "examples": [
+      "(index-rand beat-num) ;; deterministic random per beat",
+      "(index-rand bar-num 0.2 0.8) ;; per-bar random in range",
+      "(step (range 0 7) (index-rand beat-num 0 1))"
+    ],
+    "category": "probabilistic",
+    "tags": ["random", "noise", "hash", "deterministic", "generative"]
+  },
+  {
+    "name": "range",
+    "aliases": [],
+    "description": "Creates a compile-time sequence of numbers. All arguments must be constants. `(range end)`, `(range start end)`, or `(range start end step)`.",
+    "parameters": [
+      {
+        "name": "start",
+        "description": "Start value (default 0)",
+        "range": "constant number",
+        "optional": true,
+        "default": "0"
+      },
+      {
+        "name": "end",
+        "description": "End value (exclusive)",
+        "range": "constant number"
+      },
+      {
+        "name": "step",
+        "description": "Step size (default 1)",
+        "range": "constant number",
+        "optional": true,
+        "default": "1"
+      }
+    ],
+    "examples": [
+      "(range 4) ;; => [0 1 2 3]",
+      "(range 1 5) ;; => [1 2 3 4]",
+      "(range 0 1 0.25) ;; => [0 0.25 0.5 0.75]"
+    ],
+    "category": "data",
+    "tags": ["data", "list", "generate", "sequence"]
+  },
+  {
+    "name": "if",
+    "aliases": ["cond"],
+    "description": "Conditional: returns `then` value when condition is non-zero, `else` value otherwise. Else defaults to 0.0 if omitted.",
+    "parameters": [
+      {
+        "name": "condition",
+        "description": "Test expression",
+        "range": "number (0 = false, non-zero = true)"
+      },
+      {
+        "name": "then",
+        "description": "Value when condition is true",
+        "range": "any"
+      },
+      {
+        "name": "else",
+        "description": "Value when condition is false",
+        "range": "any",
+        "optional": true,
+        "default": "0.0"
+      }
+    ],
+    "examples": [
+      "(if (> beat 0.5) 1 0) ;; same as (sqr beat)",
+      "(a1 (if in1 (usin bar) 0)) ;; sine when input high",
+      "(if (> bar 0.75) 0.8 0.2)"
+    ],
+    "category": "control-flow",
+    "tags": ["control", "conditional", "logic"]
+  },
+  {
+    "name": "while",
+    "aliases": ["gate-when"],
+    "description": "Signal gate: returns body value when condition is non-zero, 0.0 when condition is zero. In signal context this is NOT a loop — it's a conditional gate.",
+    "parameters": [
+      {
+        "name": "condition",
+        "description": "Gate condition",
+        "range": "number (0 = gate closed)"
+      },
+      {
+        "name": "body",
+        "description": "Value to pass through when gate is open",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(while in1 (usin beat)) ;; sine only when input high",
+      "(a1 (while (> bar 0.5) beat))"
+    ],
+    "category": "control-flow",
+    "tags": ["control", "gate", "conditional"]
+  },
+  {
+    "name": "let",
+    "aliases": [],
+    "description": "Local bindings. Creates named values scoped to the body. Bindings are pairs in a vector: `[name1 val1 name2 val2 ...]`.",
+    "parameters": [
+      {
+        "name": "bindings",
+        "description": "Vector of name/value pairs",
+        "range": "[symbol expr ...]"
+      },
+      {
+        "name": "body",
+        "description": "Expression(s) using the bound names",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(let [x beat\n      y (usin x)]\n  (* y 0.5))",
+      "(let [speed 4\n      ramp (fast speed bar)]\n  (step [0.2 0.8 0.5] ramp))"
+    ],
+    "category": "control-flow",
+    "tags": ["binding", "local", "scope", "variable"]
+  },
+  {
+    "name": "do",
+    "aliases": ["scope", "begin"],
+    "description": "Evaluates expressions in sequence, returns the last value. Useful for grouping multiple output assignments or side-effects at top level.",
+    "parameters": [
+      {
+        "name": "expressions",
+        "description": "One or more expressions",
+        "range": "any",
+        "variadic": true
+      }
+    ],
+    "examples": [
+      "(do\n  (a1 (usin beat))\n  (d1 (sqr bar)))",
+      "(do\n  (a1 0)\n  (a2 0)\n  (d1 0))"
+    ],
+    "category": "control-flow",
+    "tags": ["grouping", "sequence", "block"]
+  },
+  {
+    "name": "for",
+    "aliases": [],
+    "description": "Compile-time loop: unrolls over a collection at compile time. The collection must be a constant (literal vector or `range`). Returns the last iteration's value.",
+    "parameters": [
+      {
+        "name": "var",
+        "description": "Iteration variable name",
+        "range": "symbol"
+      },
+      {
+        "name": "collection",
+        "description": "Compile-time constant collection to iterate over",
+        "range": "vector or range"
+      },
+      {
+        "name": "body",
+        "description": "Expression to evaluate for each element",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(for i [1 2 3 4]\n  (a1 (* i 0.25 beat)))",
+      "(for i (range 1 5)\n  (+ i beat))"
+    ],
+    "category": "control-flow",
+    "tags": ["loop", "iteration", "unroll"]
+  },
+  {
+    "name": "define",
+    "aliases": ["def"],
+    "description": "Creates a named cell (reactive binding). The expression is stored and recompiled into any output that references it. Redefining a cell invalidates all dependent outputs.",
+    "parameters": [
+      {
+        "name": "name",
+        "description": "Symbol name for the cell",
+        "range": "symbol"
+      },
+      {
+        "name": "expression",
+        "description": "The expression to bind (can be time-varying)",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(define my-ramp (slow 2 beat))",
+      "(define my-lfo (usin bar))\n(a1 my-lfo) ;; uses the defined signal",
+      "(define speed 4)\n(a1 (fast speed beat))"
+    ],
+    "category": "definitions",
+    "tags": ["define", "binding", "cell", "reactive", "variable"]
+  },
+  {
+    "name": "defn",
+    "aliases": ["defun", "define-function"],
+    "description": "Defines a named function. In signal context, functions are inlined at every call site (no closures). Parameters are bound to argument expressions at compile time.",
+    "parameters": [
+      {
+        "name": "name",
+        "description": "Function name",
+        "range": "symbol"
+      },
+      {
+        "name": "params",
+        "description": "Parameter list",
+        "range": "[symbol ...]"
+      },
+      {
+        "name": "body",
+        "description": "Function body",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(defn double [x] (* 2 x))\n(a1 (double beat))",
+      "(defn clamp01 [v] (clamp 0 1 v))\n(a1 (clamp01 ain1))",
+      "(defun wobble [speed depth]\n  (* depth (usin (fast speed bar))))"
+    ],
+    "category": "definitions",
+    "tags": ["define", "function", "lambda", "abstraction"]
+  },
+  {
+    "name": "defs",
+    "aliases": ["define-many"],
+    "description": "Bulk define: defines multiple name/value pairs in one form. Equivalent to multiple `define` calls.",
+    "parameters": [
+      {
+        "name": "pairs",
+        "description": "Alternating name/value pairs in a vector",
+        "range": "[name1 val1 name2 val2 ...]"
+      }
+    ],
+    "examples": [
+      "(defs my-ramp (slow 2 beat)\n      my-lfo  (usin bar)\n      speed   4)"
+    ],
+    "category": "definitions",
+    "tags": ["define", "binding", "bulk"]
   },
   {
     "name": "set",
     "aliases": [],
-    "description": "Creates a new **static** definition, essentially assigning a name to the value that an expression evaluates to _at the moment_ that the definition is executed. These definitions are accessible from anywhere in the code, unless they are shadowed by a local binding with higher precedence (e.g. when inside a `let` expression body).",
+    "description": "Evaluates the expression immediately and stores the resulting numeric value. Unlike `define`, the stored value is static — it won't update reactively if dependencies change.",
     "parameters": [
       {
         "name": "name",
-        "description": "The name to assign to the expression's current value",
-        "range": "Symbol"
+        "description": "Symbol name",
+        "range": "symbol"
       },
       {
         "name": "expression",
-        "description": "The expression to evaluate",
-        "range": "Any"
-      }
-    ],
-    "examples": [
-      "(set my-current-point-in-bar bar) ;; => stores the current \n\n;; Let's compare the value that `bar` had at the moment\n;; of definition with the value that it has now:\n\n(= bar my-current-point-in-bar) ;; => most likely false, as time has moved on",
-      "(set a 1)\n(set b 2)\n(set my-number-three (+ a b))\n\n;; Check the value\nmy-number-three ;; => 3 - as expected\n\n;; Change one of the variables used in its definition\n(set a 99999)\n\n;; Check the value again \nmy-number-three ;; => 3 - nothing has changed!"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
-  },
-  {
-    "name": "set-bpm",
-    "aliases": [],
-    "description": "Set the speed of the sequencer in beats per minute.",
-    "parameters": [
-      {
-        "name": "bpm",
-        "description": "Parameter 1 of function set-bpm",
-        "range": ""
-      }
-    ],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
-  },
-  {
-    "name": "set-clock-ext",
-    "aliases": [],
-    "description": "Sets the clock source to be driven by either gate input 1 or 2.  uSEQ will calculate the current bpm from the time between rising edges of the gate.  It will also stay in phase by reseting uSEQs logical time to zero, either at the start of each phrase if the bpm tracking is stable, or every bar if the bpm tracking is unstable.  If you change the speed of the external signal, uSEQ will try to adapt to it as quickly as possible. uSEQ will track bars and phrases by counting from the first rising edge it receives.  You can reset this information using `reset-clock-ext`.",
-    "parameters": [],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing",
-      "evaluation control"
-    ]
-  },
-  {
-    "name": "set-clock-int",
-    "aliases": [],
-    "description": "Sets the clock source to the internal clock",
-    "parameters": [],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
-  },
-  {
-    "name": "set-time-sig",
-    "aliases": [],
-    "description": "Set the time signature of the sequencer.",
-    "parameters": [
-      {
-        "name": "numerator",
-        "description": "number of beats in a measure",
-        "range": "> 0"
-      }
-    ],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
-  },
-  {
-    "name": "shift",
-    "aliases": ["offset"],
-    "description": "Start a phasor from a specified point.",
-    "parameters": [
-      {
-        "name": "offset",
-        "description": "The offset to start the phasor from",
-        "range": "0-1"
-      },
-      {
-        "name": "phasor",
-        "description": "A phasor",
-        "range": "0 - 1"
-      }
-    ],
-    "examples": [
-      "(a1 (shift 0 bar))\n(a2 (shift 0.25 bar))",
-      "(d1 (sqr (fast 2 bar)))\n(d2 (sqr (fast 2 (shift 0.5 bar))))"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing"
-    ]
-  },
-  {
-    "name": "fast",
-    "aliases": [],
-    "description": "Speed up any signal by multiplying the rate at which time flows for all of its components.",
-    "parameters": [
-      {
-        "name": "factor",
-        "description": "The amount by which to multiply the rate of time flowing into the signal (note: values below 1 will slow down the signal)",
-        "range": "any"
-      },
-      {
-        "name": "signal",
-        "description": "The signal for which to speed up time",
+        "description": "Expression to evaluate once",
         "range": "any"
       }
     ],
     "examples": [
-      "(a1 (fast 4 beat)) ; same as `beat` in 4/4",
-      "(d1 (fast 2 (sqr bar)))\n; equivalently, we could also write\n(d1 (sqr (fast 2 bar)))"
+      "(set snapshot bar) ;; captures bar's value at this instant",
+      "(set scale-factor 0.75)\n(a1 (* scale-factor beat))"
     ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing", "timing"
-    ]
+    "category": "definitions",
+    "tags": ["define", "binding", "static", "snapshot"]
   },
   {
-    "name": "slow",
-    "aliases": [],
-    "description": "Slow down any signal by dividing the rate at which time flows for all of its components.",
+    "name": "defstate",
+    "aliases": ["define-state"],
+    "description": "Defines a stateful accumulator cell. Stores persistent state that updates each tick. Initial value must be a literal number.",
     "parameters": [
       {
-        "name": "factor",
-        "description": "The amount by which to divide the rate of time flowing into the signal (note: values below 1 will speed up the signal)",
-        "range": "any"
+        "name": "name",
+        "description": "State variable name",
+        "range": "symbol"
       },
       {
-        "name": "signal",
-        "description": "The signal for which to slow down time",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(a1 (slow 4 beat)) ; same as `bar` in 4/4",
-      "(d1 (slow 2 (sqr beat)))\n; equivalently, we could also write\n(d1 (sqr (slow 2 beat)))"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing", "timing"
-    ]
-  },
-  {
-    "name": "sine",
-    "aliases": [],
-    "description": "(get-expr my-foo) ;; => (+ 1 2 3)",
-    "parameters": [
-      {
-        "name": "value",
-        "description": "Parameter 1 of function sine",
-        "range": ""
-      }
-    ],
-    "examples": [],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "maths"
-    ]
-  },
-  {
-    "name": "slice",
-    "aliases": [],
-    "description": "Extract a subset of a list or vector.\n\nThis supports negative indexing, where negative indexes are counted backwards from the end.",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "The list to push to",
-        "range": "List/Vector"
+        "name": "init",
+        "description": "Initial value (must be a literal number)",
+        "range": "number literal"
       },
       {
-        "name": "starting-from",
-        "description": "Index of the first value in the slice",
-        "range": "Integer"
-      },
-      {
-        "name": "how many",
-        "description": "Index of the value following the end of the slice",
-        "range": "Integer"
-      }
-    ],
-    "examples": [
-      "(slice [1 2 3 4 5] 0 3) ;; => [1 2 3]\n(slice [1 2 3 4 5] 0 -1) ;; => [1 2 3 4]\n(slice [1 2 3 4 5] 1 -3) ;; => [2]\n(slice [1 2 3 4 5] -3 -1) ;; => [3 4]"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
-  },
-  {
-    "name": "sqr",
-    "aliases": [],
-    "description": "Turns a phasor into a square wave.",
-    "parameters": [
-      {
-        "name": "phasor",
-        "description": "Parameter 1 of function sqr",
-        "range": ""
-      }
-    ],
-    "examples": [],
-    "category": "sequencing",
-    "tags": [
-      "sequencing"
-    ]
-  },
-  {
-    "name": "step",
-    "aliases": [],
-    "description": "Turn a phasor into an integer counter.",
-    "parameters": [
-      {
-        "name": "count",
-        "description": "the number of divisions to divide the phasor into",
-        "range": ">0"
-      },
-      {
-        "name": "offset",
-        "description": "The relative point to start the counter from",
-        "range": "any",
-        "optional": true
-      }
-    ],
-    "examples": [],
-    "category": "sequencing",
-    "tags": [
-      "sequencing"
-    ]
-  },
-  {
-    "name": "swm",
-    "aliases": [],
-    "description": "Read the value of the momentary switch\n\n\nControl the speed of a square wave with momentary switch 1",
-    "parameters": [],
-    "examples": [],
-    "category": "inputs",
-    "tags": [
-      "inputs"
-    ]
-  },
-  {
-    "name": "swt",
-    "aliases": [],
-    "description": "Read the value of the toggle switch",
-    "parameters": [],
-    "examples": [],
-    "category": "inputs",
-    "tags": [
-      "inputs"
-    ]
-  },
-  {
-    "name": "t",
-    "aliases": [],
-    "description": "Logical time, similar to the notion of playback transport time in most DAWs; the number of seconds since the last user-requested reset of the transport.",
-    "parameters": [],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
-  },
-  {
-    "name": "time",
-    "aliases": [],
-    "description": "The number of seconds since the module was last switched on.",
-    "parameters": [],
-    "examples": [],
-    "category": "timing",
-    "tags": [
-      "timing"
-    ]
-  },
-  {
-    "name": "tri",
-    "aliases": [],
-    "description": "Variable duty triangle wave",
-    "parameters": [
-      {
-        "name": "duty",
-        "description": "The point within the phase when the triangle should reach its peak",
-        "range": "0-1"
-      },
-      {
-        "name": "phasor",
-        "description": "A phasor (e.g. bar, beat)",
-        "range": "0-1"
-      }
-    ],
-    "examples": [
-      "(a1 (tri 0.1 (fast 4 bar)))",
-      "pow",
-      "(a1 (pow (tri 0.2 (fast 4 bar)) 0.6))"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing"
-    ]
-  },
-  {
-    "name": "trigs",
-    "aliases": [],
-    "description": "Output a sequence of gates, each of which can have a different amplitude, determined by a list of amplitudes.",
-    "parameters": [
-      {
-        "name": "list",
-        "description": "A list of trigger values, varying from 0 (0% amplitude) to 9 (100% amplitude)",
-        "range": "0 - 9"
-      },
-      {
-        "name": "phasor",
-        "description": "The sequence is output once per cycle of the phasor",
-        "range": "0-1"
-      },
-      {
-        "name": "pulseWidth",
-        "description": "The pulse width of the trigger",
-        "range": "0 - 1",
-        "default": 0.1,
-        "optional": true
-      }
-    ],
-    "examples": [
-      "(s3 (trigs [0 1 9 0 1] (fast 2 bar)))\n;; With a higher pulse width:\n(s4 (trigs [0 1 9 0 1] 0.7 (fast 2 bar)))"
-    ],
-    "category": "sequencing",
-    "tags": [
-      "sequencing",
-      "lists"
-    ]
-  },
-  {
-    "name": "uni->bi",
-    "aliases": [],
-    "description": "Converts a unipolar value (0 to 1) to a bipolar value (-1 to 1).",
-    "parameters": [
-      {
-        "name": "value",
-        "description": "The unipolar value to convert",
-        "range": "Number"
-      }
-    ],
-    "examples": [
-      "(uni->bi 0) ;; => -1.0\n(uni->bi 0.5) ;; => 0.0\n(uni->bi 1) ;; => 1.0"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
-  },
-  {
-    "name": "usin",
-    "aliases": [],
-    "description": "Generates a unipolar sine wave from the given phasor.",
-    "parameters": [
-      {
-        "name": "phasor",
-        "description": "A value between 0 and 1",
-        "range": "0-1"
-      }
-    ],
-    "examples": [
-      "(usin 0.5) ; => 1.0\n\n(usin 0.25) ; => 0.8535533905932737"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
-  },
-  {
-    "name": "vec",
-    "aliases": [],
-    "description": "Creates a vector containing the given arguments.",
-    "parameters": [
-      {
-        "name": "args",
-        "description": "Any number of values",
+        "name": "update-expr",
+        "description": "Expression computed each tick (can reference the state variable by name)",
         "range": "any"
       }
     ],
     "examples": [
-      "(vec 1 2 3) ; => [1 2 3]\n\n(vec 'a 'b 'c) ; => [a b c]"
+      "(defstate counter 0 (+ counter dt))",
+      "(defstate ramp 0 (% (+ ramp (* 0.1 dt)) 1))"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming"
-    ]
-  },
-  {
-    "name": "while",
-    "aliases": [],
-    "description": "Executes a number of expressions repeatedly until the condition evaluates to false.",
-    "parameters": [
-      {
-        "name": "condition",
-        "description": "Any expression that evaluates to a boolean",
-        "range": "Bool"
-      },
-      {
-        "name": "body",
-        "description": "Any number of expressions to evaluate",
-        "range": "any"
-      }
-    ],
-    "examples": [
-      "(set i 0)\n\n(while (< i 10)\n  (println \"i is now = \")\n  (println i)\n  (set i (+ i 1)))"
-    ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "evaluation control"
-    ]
+    "category": "definitions",
+    "tags": ["state", "accumulator", "stateful", "define"]
   },
   {
     "name": "zeros",
     "aliases": [],
-    "description": "Creates a list of zeros of the specified length.",
+    "description": "Creates a vector of zeros of the specified length. Useful for initializing sequence data.",
     "parameters": [
       {
         "name": "length",
-        "description": "The number of zeros to generate",
-        "range": "any integer >= 0"
+        "description": "Number of zeros",
+        "range": "integer >= 0"
       }
     ],
     "examples": [
-      "(zeros 5) ; => [0 0 0 0 0]\n(zeros 0) ; => []"
+      "(zeros 8) ;; => [0 0 0 0 0 0 0 0]",
+      "(define my-seq (zeros 16))"
     ],
-    "category": "modulisp",
-    "tags": [
-      "functional programming",
-      "lists"
-    ]
+    "category": "data",
+    "tags": ["data", "list", "initialize"]
   },
   {
-    "name": "useq-firmware-info",
-    "aliases": [],
-    "description": "Prints the module's current firmware version.",
-    "parameters": [],
-    "examples": [
-      "(useq-firmware-info)"
-    ],
-    "category": "system",
-    "tags": [
-      "system"
-    ]
-  },
-  {
-    "name": "useq-get-id",
-    "aliases": [],
-    "description": "Prints the current module's ID.",
-    "parameters": [],
-    "examples": [
-      "(useq-get-id)"
-    ],
-    "category": "system",
-    "tags": [
-      "system"
-    ]
-  },
-  {
-    "name": "useq-set-id",
-    "aliases": [],
-    "description": "Sets the module's identity, which could be a number or a name (as a string).",
+    "name": "get-expr",
+    "aliases": ["get-source"],
+    "description": "Retrieves the stored source expression for a named cell. Useful for inspection/debugging.",
     "parameters": [
       {
-        "name": "new id",
-        "description": "The new ID to set",
-        "range": "number or string"
+        "name": "name",
+        "description": "Name of defined cell",
+        "range": "symbol"
       }
     ],
     "examples": [
-      "(useq-set-id 3)"
+      "(define foo (+ 1 2 3))\n(get-expr foo) ;; => (+ 1 2 3)"
     ],
-    "category": "system",
-    "tags": [
-      "system"
-    ]
+    "category": "definitions",
+    "tags": ["debug", "inspect", "source"]
   },
   {
-    "name": "useq-memory-save",
-    "aliases": [],
-    "description": "Saves the current state of the module (i.e. all definitions) to the persistent flash storage, which will be re-loaded on every subsequent boot.",
-    "parameters": [],
-    "examples": [
-      "(useq-memory-save)"
-    ],
-    "category": "system",
-    "tags": [
-      "system"
-    ]
-  },
-  {
-    "name": "useq-memory-restore",
-    "aliases": [
-      "useq-memory-load"
-    ],
-    "description": "Restores the state of the module (i.e. all definitions) to that which is saved in the persistent flash storage, effectively resetting the module to how it was when it last booted.",
-    "parameters": [],
-    "examples": [
-      "(useq-memory-restore)"
-    ],
-    "category": "system",
-    "tags": [
-      "system"
-    ]
-  },
-  {
-    "name": "useq-memory-erase",
-    "aliases": [
-      "useq-memory-clear"
-    ],
-    "description": "Erases all user definitions that were previously saved on the module's persistent flash storage. The next time the module boots, it will default to only the built-in definitions.\n\nWARNING: this will permanently delete all saved user definitions.",
-    "parameters": [],
-    "examples": [
-      "(useq-memory-erase)"
-    ],
-    "category": "system",
-    "tags": [
-      "system"
-    ]
-  },
-  {
-    "name": "useq-stop-all",
-    "aliases": [],
-    "description": "Stops and clears all outputs, effectively emptying the update loop.",
-    "parameters": [],
-    "examples": [
-      "(useq-stop-all)"
-    ],
-    "category": "system",
-    "tags": [
-      "system"
-    ]
-  },
-  {
-    "name": "useq-reboot",
-    "aliases": [],
-    "description": "Reboots the module.",
-    "parameters": [],
-    "examples": [
-      "(useq-reboot)"
-    ],
-    "category": "system",
-    "tags": [
-      "system"
-    ]
-  },
-  {
-    "name": "timeit",
-    "aliases": [],
-    "description": "Returns the amount of time it took to run the statement, in microseconds.",
+    "name": "prev",
+    "aliases": ["previous"],
+    "description": "Reads the previous tick's output value for a named output. Enables feedback between outputs.",
     "parameters": [
       {
-        "name": "statement",
-        "description": "Any LISP statement",
-        "range": "-"
+        "name": "output-name",
+        "description": "Name of an output (a1-a8, d1-d8, s1-s8)",
+        "range": "output symbol"
       }
     ],
     "examples": [
-      "(timeit (+ 1 1))"
+      "(a1 (+ 0.01 (prev a1))) ;; accumulating ramp",
+      "(a2 (lerp (prev a2) ain1 0.1)) ;; smoothed input",
+      "(d1 (if (> (prev a1) 0.9) 1 0)) ;; threshold on a1"
     ],
-    "category": "system",
-    "tags": [
-      "system"
-    ]
+    "category": "feedback",
+    "tags": ["feedback", "previous", "cross-output", "state"]
+  },
+  {
+    "name": "integrate",
+    "aliases": ["accum", "accumulate"],
+    "description": "Stateful accumulator: adds `rate × dt` each tick. Wraps around — use `clamp` or `%` to bound. Keyword `:id` for explicit state identity.",
+    "parameters": [
+      {
+        "name": "rate",
+        "description": "Rate of accumulation per second",
+        "range": "number"
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (% (integrate 1) 1)) ;; 1Hz saw wave",
+      "(a1 (% (integrate (* 2 ain1)) 1)) ;; CV-controlled rate"
+    ],
+    "category": "ugens",
+    "tags": ["state", "accumulator", "integrator", "stateful"]
+  },
+  {
+    "name": "phasor",
+    "aliases": [],
+    "description": "Free-running phasor at a given frequency (Hz). Ramps from 0 to 1 continuously. Independent of beat/bar timing. Keyword `:phase` sets initial phase, `:id` for state identity.",
+    "parameters": [
+      {
+        "name": "freq",
+        "description": "Frequency in Hz",
+        "range": "number > 0"
+      },
+      {
+        "name": ":phase",
+        "description": "Initial phase offset",
+        "range": "0-1",
+        "optional": true,
+        "keyword": true
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (phasor 1)) ;; 1Hz saw wave",
+      "(a1 (phasor 0.5 :phase 0.25)) ;; start at quarter-phase",
+      "(d1 (sqr (phasor 2))) ;; 2Hz square wave"
+    ],
+    "category": "ugens",
+    "tags": ["oscillator", "phasor", "frequency", "stateful", "lfo"]
+  },
+  {
+    "name": "lfo",
+    "aliases": ["osc", "oscillator"],
+    "description": "Multi-waveform oscillator. Keyword `:wave` selects shape (`:sin`, `:tri`, `:saw`, `:sqr`). Keyword `:pw` sets pulse width for square. Defaults to sine. Output range [0, 1].",
+    "parameters": [
+      {
+        "name": "freq",
+        "description": "Frequency in Hz",
+        "range": "number > 0"
+      },
+      {
+        "name": ":wave",
+        "description": "Waveform shape",
+        "range": ":sin, :tri, :saw, :sqr",
+        "optional": true,
+        "keyword": true,
+        "default": ":sin"
+      },
+      {
+        "name": ":phase",
+        "description": "Initial phase offset",
+        "range": "0-1",
+        "optional": true,
+        "keyword": true
+      },
+      {
+        "name": ":pw",
+        "description": "Pulse width (for :sqr wave)",
+        "range": "0-1",
+        "optional": true,
+        "keyword": true
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (lfo 0.5)) ;; 0.5Hz sine",
+      "(a1 (lfo 1 :wave :tri)) ;; 1Hz triangle",
+      "(a1 (osc 2 :wave :saw)) ;; 2Hz sawtooth",
+      "(d1 (lfo 4 :wave :sqr :pw 0.25)) ;; 4Hz narrow pulse"
+    ],
+    "category": "ugens",
+    "tags": ["oscillator", "lfo", "sine", "triangle", "sawtooth", "square", "stateful", "waveform"]
+  },
+  {
+    "name": "tri-osc",
+    "aliases": ["triangle-osc"],
+    "description": "Triangle oscillator shorthand. Equivalent to `(lfo freq :wave :tri)`.",
+    "parameters": [
+      {
+        "name": "freq",
+        "description": "Frequency in Hz",
+        "range": "number > 0"
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (tri-osc 1)) ;; 1Hz triangle"
+    ],
+    "category": "ugens",
+    "tags": ["oscillator", "triangle", "stateful", "waveform"]
+  },
+  {
+    "name": "saw",
+    "aliases": ["saw-osc", "sawtooth"],
+    "description": "Sawtooth oscillator shorthand. Equivalent to `(lfo freq :wave :saw)`.",
+    "parameters": [
+      {
+        "name": "freq",
+        "description": "Frequency in Hz",
+        "range": "number > 0"
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (saw 2)) ;; 2Hz sawtooth"
+    ],
+    "category": "ugens",
+    "tags": ["oscillator", "sawtooth", "stateful", "waveform"]
+  },
+  {
+    "name": "sqr-osc",
+    "aliases": ["square-osc"],
+    "description": "Square oscillator shorthand. Equivalent to `(lfo freq :wave :sqr)`.",
+    "parameters": [
+      {
+        "name": "freq",
+        "description": "Frequency in Hz",
+        "range": "number > 0"
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(d1 (sqr-osc 4)) ;; 4Hz square gate"
+    ],
+    "category": "ugens",
+    "tags": ["oscillator", "square", "stateful", "waveform"]
+  },
+  {
+    "name": "slew",
+    "aliases": ["slew-limiter", "portamento"],
+    "description": "Slew rate limiter: smoothly transitions towards target at a maximum rate (units per second). Useful for portamento, smoothing, lag.",
+    "parameters": [
+      {
+        "name": "target",
+        "description": "Target value to move towards",
+        "range": "number"
+      },
+      {
+        "name": "rate",
+        "description": "Maximum rate of change (units per second)",
+        "range": "number > 0"
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (slew (step [0 0.5 1 0.3] bar) 2)) ;; smoothed steps",
+      "(a1 (slew ain1 5)) ;; smooth CV input",
+      "(a1 (slew (random 0 1) 1)) ;; slow random walk"
+    ],
+    "category": "ugens",
+    "tags": ["filter", "smooth", "slew", "portamento", "lag", "stateful"]
+  },
+  {
+    "name": "one-pole",
+    "aliases": ["lpf", "low-pass", "lowpass"],
+    "description": "First-order low-pass filter (one-pole). Smooths the input signal with a given cutoff coefficient.",
+    "parameters": [
+      {
+        "name": "input",
+        "description": "Signal to filter",
+        "range": "number"
+      },
+      {
+        "name": "cutoff",
+        "description": "Filter coefficient (higher = more smoothing)",
+        "range": "number > 0"
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (one-pole ain1 10)) ;; smoothed CV input",
+      "(a1 (lpf (random) 5)) ;; smoothed random"
+    ],
+    "category": "ugens",
+    "tags": ["filter", "lowpass", "smooth", "stateful"]
+  },
+  {
+    "name": "env-follow",
+    "aliases": ["envelope-follower", "follower"],
+    "description": "Asymmetric envelope follower. Rises quickly (attack) and falls slowly (release). Defaults: attack=10, release=5.",
+    "parameters": [
+      {
+        "name": "input",
+        "description": "Signal to follow",
+        "range": "number"
+      },
+      {
+        "name": "attack",
+        "description": "Attack rate (higher = faster rise)",
+        "range": "number > 0",
+        "optional": true,
+        "default": "10"
+      },
+      {
+        "name": "release",
+        "description": "Release rate (higher = faster fall)",
+        "range": "number > 0",
+        "optional": true,
+        "default": "5"
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (env-follow ain1)) ;; default rates",
+      "(a1 (env-follow ain1 20 2)) ;; fast attack, slow release",
+      "(a1 (envelope-follower in1 50 1))"
+    ],
+    "category": "ugens",
+    "tags": ["envelope", "follower", "dynamics", "stateful"]
+  },
+  {
+    "name": "sah",
+    "aliases": ["latch", "sample-and-hold", "sample-hold"],
+    "description": "Sample and hold: captures the input value on each rising edge of the trigger signal. Holds the value until the next trigger.",
+    "parameters": [
+      {
+        "name": "input",
+        "description": "Signal to sample",
+        "range": "number"
+      },
+      {
+        "name": "trigger",
+        "description": "Trigger signal (samples on rising edge: 0→non-zero transition)",
+        "range": "number"
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (sah ain1 (sqr beat))) ;; sample CV each beat",
+      "(a1 (latch (random) (euclid 8 3 bar))) ;; random on euclidean triggers"
+    ],
+    "category": "ugens",
+    "tags": ["sample-hold", "trigger", "latch", "stateful"]
+  },
+  {
+    "name": "noise",
+    "aliases": ["white-noise"],
+    "description": "Deterministic white noise [-1, 1]. Changes every sample. Uses a hash counter for reproducibility.",
+    "parameters": [
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (bi-to-uni (noise))) ;; unipolar noise",
+      "(a1 (* 0.1 (noise))) ;; quiet noise",
+      "(a1 (one-pole (noise) 20)) ;; filtered noise"
+    ],
+    "category": "ugens",
+    "tags": ["noise", "random", "stateful", "generative"]
+  },
+  {
+    "name": "toggle",
+    "aliases": ["flip-flop", "t-flip-flop"],
+    "description": "T-flip-flop: toggles between 0 and 1 on each rising edge of the trigger.",
+    "parameters": [
+      {
+        "name": "trigger",
+        "description": "Trigger signal (toggles on rising edge)",
+        "range": "number"
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(d1 (toggle in1)) ;; toggle output on button press",
+      "(d1 (toggle (sqr beat))) ;; half-speed square"
+    ],
+    "category": "ugens",
+    "tags": ["toggle", "flip-flop", "trigger", "stateful", "gate"]
+  },
+  {
+    "name": "count",
+    "aliases": ["counter", "edge-count"],
+    "description": "Rising-edge counter: increments by 1 on each rising edge of the trigger. Optional `:reset` trigger resets to 0.",
+    "parameters": [
+      {
+        "name": "trigger",
+        "description": "Signal to count rising edges of",
+        "range": "number"
+      },
+      {
+        "name": ":reset",
+        "description": "Reset trigger (resets count to 0 on rising edge)",
+        "range": "number",
+        "optional": true,
+        "keyword": true
+      },
+      {
+        "name": ":id",
+        "description": "State identity string",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(count (sqr beat)) ;; counts beats",
+      "(count in1 :reset (sqr bar)) ;; count inputs, reset each bar"
+    ],
+    "category": "ugens",
+    "tags": ["counter", "trigger", "stateful", "accumulator"]
+  },
+  {
+    "name": "live-edit",
+    "aliases": ["knob", "parameter", "param"],
+    "description": "Runtime-adjustable parameter. Creates a value that can be modified from the editor UI without re-evaluating. Keyword options control range, name, and step size.",
+    "parameters": [
+      {
+        "name": "seed",
+        "description": "Initial/default value",
+        "range": "number"
+      },
+      {
+        "name": ":id",
+        "description": "Unique identifier (required)",
+        "range": "string",
+        "keyword": true
+      },
+      {
+        "name": ":min",
+        "description": "Minimum value",
+        "range": "number",
+        "optional": true,
+        "keyword": true,
+        "default": "0"
+      },
+      {
+        "name": ":max",
+        "description": "Maximum value",
+        "range": "number",
+        "optional": true,
+        "keyword": true,
+        "default": "1"
+      },
+      {
+        "name": ":name",
+        "description": "Display label in editor",
+        "range": "string",
+        "optional": true,
+        "keyword": true
+      },
+      {
+        "name": ":step",
+        "description": "Step size for adjustments",
+        "range": "number",
+        "optional": true,
+        "keyword": true
+      },
+      {
+        "name": ":precision",
+        "description": "Display decimal places",
+        "range": "integer",
+        "optional": true,
+        "keyword": true
+      }
+    ],
+    "examples": [
+      "(a1 (usin (fast (live-edit 2 :id \"speed\" :min 1 :max 8) bar)))",
+      "(define depth (live-edit 0.5 :id \"depth\" :name \"LFO Depth\"))",
+      "(a1 (* (live-edit 1 :id \"vol\" :max 1 :step 0.01) beat))"
+    ],
+    "category": "interaction",
+    "tags": ["live-edit", "parameter", "knob", "interactive", "ui"]
+  },
+  {
+    "name": "input",
+    "aliases": [],
+    "description": "Read a hardware input by channel number. Channel must be a constant: 0=in1, 1=in2, 2=ain1, 3=ain2.",
+    "parameters": [
+      {
+        "name": "channel",
+        "description": "Input channel number (constant)",
+        "range": "0-3"
+      }
+    ],
+    "examples": [
+      "(input 0) ;; same as in1",
+      "(input 2) ;; same as ain1"
+    ],
+    "category": "inputs",
+    "tags": ["input", "hardware", "cv"]
+  },
+  {
+    "name": "in1",
+    "aliases": ["digital-input-1"],
+    "description": "Digital input 1. Returns 0 or 1.",
+    "parameters": [],
+    "examples": [
+      "(d1 in1) ;; echo input to output",
+      "(if in1 (usin beat) 0)"
+    ],
+    "category": "inputs",
+    "tags": ["input", "digital", "gate", "hardware"]
+  },
+  {
+    "name": "in2",
+    "aliases": ["digital-input-2"],
+    "description": "Digital input 2. Returns 0 or 1.",
+    "parameters": [],
+    "examples": [
+      "(d1 in2)",
+      "(d2 (and in1 in2))"
+    ],
+    "category": "inputs",
+    "tags": ["input", "digital", "gate", "hardware"]
+  },
+  {
+    "name": "ain1",
+    "aliases": ["cv-input-1", "analog-input-1"],
+    "description": "Analog/CV input 1. Returns a continuous value (typically 0 to 1).",
+    "parameters": [],
+    "examples": [
+      "(a1 ain1) ;; pass through",
+      "(a1 (fast ain1 beat)) ;; CV controls speed"
+    ],
+    "category": "inputs",
+    "tags": ["input", "analog", "cv", "hardware"]
+  },
+  {
+    "name": "ain2",
+    "aliases": ["cv-input-2", "analog-input-2"],
+    "description": "Analog/CV input 2. Returns a continuous value (typically 0 to 1).",
+    "parameters": [],
+    "examples": [
+      "(a2 ain2)",
+      "(a1 (lerp ain1 ain2 beat))"
+    ],
+    "category": "inputs",
+    "tags": ["input", "analog", "cv", "hardware"]
+  },
+  {
+    "name": "a1",
+    "aliases": ["a2", "a3", "a4", "a5", "a6", "a7", "a8"],
+    "description": "Assign a signal expression to analog output 1 (through 8). The expression is compiled into a signal graph and evaluated every tick to produce a continuous voltage.",
+    "parameters": [
+      {
+        "name": "expression",
+        "description": "Signal expression to assign",
+        "range": "any (evaluates to number)"
+      }
+    ],
+    "examples": [
+      "(a1 (usin beat)) ;; sine wave per beat",
+      "(a1 0.5) ;; constant voltage",
+      "(do\n  (a1 (usin bar))\n  (a2 (ucos bar)))"
+    ],
+    "category": "outputs",
+    "tags": ["output", "analog", "cv", "assign"]
+  },
+  {
+    "name": "d1",
+    "aliases": ["d2", "d3", "d4", "d5", "d6", "d7", "d8"],
+    "description": "Assign a signal expression to digital output 1 (through 8). The expression is evaluated every tick; non-zero = high, zero = low.",
+    "parameters": [
+      {
+        "name": "expression",
+        "description": "Signal expression to assign (non-zero = high)",
+        "range": "any (evaluates to number)"
+      }
+    ],
+    "examples": [
+      "(d1 (sqr beat)) ;; half-beat gate",
+      "(d1 (gates [1 0 1 0 1 1 0 1] bar))",
+      "(d2 (euclid 8 5 bar))"
+    ],
+    "category": "outputs",
+    "tags": ["output", "digital", "gate", "assign"]
+  },
+  {
+    "name": "s1",
+    "aliases": ["s2", "s3", "s4", "s5", "s6", "s7", "s8"],
+    "description": "Assign a signal expression to serial output 1 (through 8). Values are streamed over USB serial as binary messages. Can be decoded by the editor for MIDI output etc.",
+    "parameters": [
+      {
+        "name": "expression",
+        "description": "Signal expression to stream",
+        "range": "any (evaluates to number)"
+      }
+    ],
+    "examples": [
+      "(s1 (step [60 64 67 72] bar)) ;; MIDI note sequence",
+      "(s2 (trigs [9 0 5 0 9 0 3 0] bar))"
+    ],
+    "category": "outputs",
+    "tags": ["output", "serial", "midi", "stream", "assign"]
+  },
+  {
+    "name": "set-bpm",
+    "aliases": ["tempo!"],
+    "description": "Set the sequencer tempo in beats per minute.",
+    "parameters": [
+      {
+        "name": "bpm",
+        "description": "Tempo value",
+        "range": "number > 0"
+      }
+    ],
+    "examples": [
+      "(set-bpm 120)",
+      "(set-bpm 140)"
+    ],
+    "category": "transport",
+    "tags": ["tempo", "bpm", "transport", "timing"]
+  },
+  {
+    "name": "set-time-sig",
+    "aliases": ["time-signature!"],
+    "description": "Set the time signature (beats per bar and subdivision).",
+    "parameters": [
+      {
+        "name": "beats",
+        "description": "Beats per bar",
+        "range": "integer > 0"
+      },
+      {
+        "name": "subdivision",
+        "description": "Beat subdivision",
+        "range": "integer > 0"
+      }
+    ],
+    "examples": [
+      "(set-time-sig 4 4) ;; standard 4/4",
+      "(set-time-sig 3 4) ;; waltz time",
+      "(set-time-sig 7 8)"
+    ],
+    "category": "transport",
+    "tags": ["timing", "time-signature", "transport"]
+  },
+  {
+    "name": "useq-clear",
+    "aliases": ["clear-all", "stop-all"],
+    "description": "Clears all outputs and resets the signal engine. All running programs stop immediately.",
+    "parameters": [],
+    "examples": [
+      "(useq-clear)"
+    ],
+    "category": "transport",
+    "tags": ["transport", "reset", "clear", "stop"]
+  },
+  {
+    "name": "useq-play",
+    "aliases": ["play"],
+    "description": "Start/resume playback. Time begins advancing.",
+    "parameters": [],
+    "examples": [
+      "(useq-play)"
+    ],
+    "category": "transport",
+    "tags": ["transport", "play", "start"]
+  },
+  {
+    "name": "useq-pause",
+    "aliases": ["pause"],
+    "description": "Pause playback. Time stops advancing but outputs hold their current values.",
+    "parameters": [],
+    "examples": [
+      "(useq-pause)"
+    ],
+    "category": "transport",
+    "tags": ["transport", "pause"]
+  },
+  {
+    "name": "useq-stop",
+    "aliases": ["stop"],
+    "description": "Stop playback and reset time to zero.",
+    "parameters": [],
+    "examples": [
+      "(useq-stop)"
+    ],
+    "category": "transport",
+    "tags": ["transport", "stop", "reset"]
+  },
+  {
+    "name": "useq-rewind",
+    "aliases": ["rewind"],
+    "description": "Reset time offset to zero without stopping playback.",
+    "parameters": [],
+    "examples": [
+      "(useq-rewind)"
+    ],
+    "category": "transport",
+    "tags": ["transport", "rewind", "reset"]
+  },
+  {
+    "name": "useq-set-time-offset",
+    "aliases": ["set-time"],
+    "description": "Set the absolute time offset in seconds.",
+    "parameters": [
+      {
+        "name": "seconds",
+        "description": "Time position to jump to",
+        "range": "number >= 0"
+      }
+    ],
+    "examples": [
+      "(useq-set-time-offset 0) ;; jump to start",
+      "(useq-set-time-offset 30) ;; jump to 30s"
+    ],
+    "category": "transport",
+    "tags": ["transport", "time", "seek"]
+  },
+  {
+    "name": "useq-nudge-time",
+    "aliases": ["nudge-time"],
+    "description": "Nudge the time offset by a delta (positive = forward, negative = backward).",
+    "parameters": [
+      {
+        "name": "delta",
+        "description": "Seconds to nudge by",
+        "range": "number"
+      }
+    ],
+    "examples": [
+      "(useq-nudge-time 0.5) ;; forward half second",
+      "(useq-nudge-time -1) ;; back one second"
+    ],
+    "category": "transport",
+    "tags": ["transport", "time", "nudge"]
+  },
+  {
+    "name": "lambda",
+    "aliases": ["fn", "anonymous-function"],
+    "description": "Creates an anonymous function. Must be defined with `defn` and called by name in signal context — inline anonymous lambdas in signal expressions will produce an error suggesting this.",
+    "parameters": [
+      {
+        "name": "params",
+        "description": "Parameter list",
+        "range": "[symbol ...]"
+      },
+      {
+        "name": "body",
+        "description": "Function body",
+        "range": "any"
+      }
+    ],
+    "examples": [
+      "(defn my-fn [x] (* x 2))\n(a1 (my-fn beat))",
+      ";; In cold context, lambdas work directly:\n(define scale-fn (fn [x] (* x 0.5)))"
+    ],
+    "category": "definitions",
+    "tags": ["function", "lambda", "anonymous", "abstraction"]
   }
 ]
