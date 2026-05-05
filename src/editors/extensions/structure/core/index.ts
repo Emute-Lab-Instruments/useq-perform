@@ -73,3 +73,12 @@ export {
 export { nav } from "./nav.ts";
 export { makeMutators } from "./mutate.ts";
 export type { Mutators } from "./mutate.ts";
+export { docDeleteAll, docSelectAll } from "./docOps.ts";
+export {
+  metaAdd,
+  metaRemove,
+  metaCycle,
+  metaFoldToggle,
+  DEFAULT_META_CYCLE,
+} from "./meta.ts";
+export type { MetaFoldToggleResult, MetaFoldSet } from "./meta.ts";
