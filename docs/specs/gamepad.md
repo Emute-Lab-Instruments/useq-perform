@@ -11,7 +11,7 @@
 - `src/lib/gamepad/gestures.ts` — smart constructors (`tap`, `hold`, `chord`, `flick`, ...) and `keyOf` canonicalisation
 - `src/lib/gamepad/recognizer.ts` — Stage 2: `step`, `flush`, `recognize` (LogicalEvent[] to Gesture[] + AxisFrame[])
 - `src/lib/gamepad/resolver.ts` — Stage 3: `activeStack`, `resolveGesture`, `resolveAxis`, `lintBindings`
-- `src/lib/gamepad/dispatcher.ts` — eager-with-undo dispatch, action firing, layer push/pop, store mutation
+- `src/lib/gamepad/dispatcher.ts` — action firing, layer push/pop, store mutation
 - `src/lib/gamepad/hardware.ts` — Stage 1: snapshot diffing (`diffSnapshots`) to LogicalEvent[]
 - `src/lib/gamepad/index.ts` — full pipeline wiring: `createGamepadPipeline()`, re-exports
 - `src/lib/gamepad/paradigms/` — paradigm files: `modal-shift.ts`, `leader.ts`, `hydra.ts`, `chord-heavy.ts`, `picker.ts`
@@ -53,7 +53,7 @@
 
 2.3 **Stage 3 — Resolution.** Maps each `Gesture` (or `AxisFrame`) against the **layer stack** to produce an `ActionId` (or an axis-channel publication, or a transient-layer push). Layers are evaluated top-down; the first matching layer wins. Resolution is a pure function over `(Gesture, AppState, Layer[]) → Resolution`. (see `src/lib/gamepad/resolver.ts`)
 
-2.4 The **dispatcher** (separate from resolution) actually fires actions, manages the eager-with-undo timing for dual-bound buttons, and mutates the gamepad state store. It is the only impure component. (see `src/lib/gamepad/dispatcher.ts`)
+2.4 The **dispatcher** (separate from resolution) actually fires actions and mutates the gamepad state store. It is the only impure component. (see `src/lib/gamepad/dispatcher.ts`)
 
 ---
 
@@ -369,15 +369,14 @@ type ActionId             = ReversibleActionId | NonReversibleActionId
 
 5.2.1 When `tap` on a button has **no** `hold` and **no** `doubleTap` peer in the matched layer, tap commits **eagerly on press**. Zero perceived latency for the common case.
 
-5.2.2 When `tap` has a `hold` peer (a `DualBinding` with both fields), the tap action MUST be `ReversibleActionId`. Compile-time error otherwise. Behaviour:
-- On press: fire `tap` action eagerly.
-- Start the hold timer (`T_hold = 250 ms`).
-- If the button is released before the timer expires, the timer is cancelled; the tap action is left committed.
-- If the timer expires while the button is still held: call `editor.undo()` exactly once, then dispatch the `hold` action. The user perceives a brief flicker on the rare hold path; the common tap path has no latency.
+5.2.2 When `tap` has a `hold` peer (a `DualBinding` with both fields), behaviour is currently:
+- On press: fire `tap` action immediately.
+- On hold: fire `hold` action immediately.
+**NOTE**: The eager-with-undo feature (tap fires eagerly, then undo+hold on timer expiry) is deferred for future implementation. Currently, both tap and hold fire without timing or undo logic.
 
 5.2.3 When `tap` has a `doubleTap` peer, the dispatcher defers tap commitment until the double-tap window (`T_doubleTap = 300 ms`) closes after the first release. If a second press arrives within the window, fire `doubleTap`; otherwise fire `tap`. (No undo gymnastics here — tap simply waits, accepting up to ~300 ms latency on the dual case.)
 
-5.2.4 When `tap` has both a `hold` peer **and** a `doubleTap` peer: behaviour is the union — eager-on-press tap with hold-undo-rollback (5.2.2), and additionally the eager tap is rolled back if a second press arrives within the double-tap window. This is permitted only if the `tap` action is reversible.
+5.2.4 When `tap` has both a `hold` peer **and** a `doubleTap` peer: behaviour regarding the hold peer is as described in 5.2.2. The doubleTap handling is deferred pending refinement of the eager-with-undo feature.
 
 5.2.5 `held` (auto-repeat) and `hold` are mutually exclusive per button (§3.2.3). When `tap` has a `held` peer, the recognizer fires `tap` eagerly on press, then begins emitting `held` ticks after the initial repeat delay. The tap action is **not** rolled back when `held` fires — they are intended to dispatch *the same* underlying user intent (e.g. `nav.next` on both tap and held, where the held repeats are simply more of the same action). If the dual binding has a different action for `held` than for `tap`, the user must accept that both actions fire.
 

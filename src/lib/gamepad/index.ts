@@ -16,7 +16,7 @@ import {
   type GamepadManager,
   type GamepadSnapshot,
 } from "./gamepadManager";
-import { getHandler, type ActionHandler } from "../keybindings/handlers";
+import { getHandler } from "../keybindings/handlers";
 import type { ActionId } from "../keybindings/actions";
 import type { MenuDispatcher } from "../menu/dispatcher";
 import * as ch from "../../contracts/gamepadChannels";
@@ -207,15 +207,8 @@ export function createGamepadPipeline(
 
   const fireAction = createActionRunner(() => editor, options.onAction, options.menuDispatcher);
 
-  function doUndo(): void {
-    if (!editor) return;
-    const handler = getHandler("edit.undo");
-    if (handler) (handler as (v: EditorView) => boolean)(editor);
-  }
-
   const dispatcher: Dispatcher = createDispatcher({
     fireAction,
-    undo: doUndo,
     publishAxis: (_channel: AxisChannelName, frame: AxisFrame) => {
       // Route menu axis channels to the menu dispatcher.
       if (
@@ -301,9 +294,6 @@ export function createGamepadPipeline(
         gamepadState.heldButtons.add(event.btn);
       } else if (event.kind === "release") {
         gamepadState.heldButtons.delete(event.btn);
-        // Notify dispatcher so deferred (non-reversible) taps that were
-        // held back pending the hold timer can fire now.
-        dispatcher.notifyRelease(event.btn);
       }
 
       const out = step(recognizerState, event, timing);

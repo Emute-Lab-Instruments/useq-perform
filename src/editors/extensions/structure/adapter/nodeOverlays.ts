@@ -416,7 +416,7 @@ class StructuralNodeOverlayPlugin {
       height: 100%;
       pointer-events: none;
       z-index: 0;
-      overflow: visible;
+      overflow: hidden;
     `;
     view.scrollDOM.appendChild(this.svgOverlay);
     this.unsubSettings = subscribeAppSettings(() => this.debouncedMeasure());
