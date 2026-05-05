@@ -159,6 +159,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.13.1 [input-dispatch.md](input-dispatch.md) — command router as the single chokepoint for all editor-directed user intents; policy enforcement architecture; keyboard translator constraints.
 
+6.13.2 [which-key.md](which-key.md) — modifier-hint overlay display modes (cursor/bar/modal), chord-pending transitions, click-to-execute, inline namespace expansion.
+
 6.14 [gamepad.md](gamepad.md) — three-stage pipeline (logical input → gestures + axis → bindings), gesture primitives (tap/hold/held/doubleTap/chord/flick), layered bindings (predicate + transient), eager-with-undo dual-bindings, paradigms (modal-shift / leader / hydra / chord-heavy).
 
 6.15 [themes.md](themes.md) — catalogue, atomic application across editor/chrome/vis, custom themes.

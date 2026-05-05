@@ -43,7 +43,7 @@
 
 1.10 The **action palette** (`Mod-Shift-P`) opens a fuzzy-searchable overlay listing all non-analog actions with their current bindings. Enter executes; Escape closes; a transient toast may surface the binding for the executed action. (see `src/ui/keybindings/ActionPalette.tsx`)
 
-1.11 **Modifier hints.** Holding a modifier (`Ctrl`, `Alt`, `Meta`, `Shift`) for `keybindings.modifierHintDelay` ms (default 500; 0 disables) reveals an ephemeral hint overlay near the cursor showing available completions. Releasing the modifier or pressing a second key dismisses immediately. (see `src/ui/keybindings/ModifierHints.tsx`)
+1.11 **Modifier hints.** Holding a modifier (`Ctrl`, `Alt`, `Meta`, `Shift`) for `keybindings.modifierHintDelay` ms (default 500; 0 disables) reveals an ephemeral hint overlay showing available completions. Display mode, chord transitions, click-to-execute interactivity, and inline namespace expansion are specified in [which-key.md](which-key.md). (see `src/ui/keybindings/ModifierHints.tsx`)
 
 1.12 **Sticky modifiers** (`keybindings.stickyModifiers`, default false) latch a modifier for the next keypress. Visualisation indicates a stuck modifier. (see `src/lib/keybindings/stickyModifiers.ts`)
 
