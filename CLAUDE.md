@@ -12,6 +12,75 @@ uSEQ Perform is the web live-coding interface for the uSEQ hardware module. This
 
 **Behavioural specs**: `docs/specs/MAIN.md` is the normative app-behaviour spec. It indexes per-feature sub-specs under `docs/specs/` (bootstrap, runtime modes, eval, transport, probes, visualisation, etc.). These specs define what the app *means* and what tests must verify — where the spec disagrees with the implementation, the spec wins and the implementation is the bug. Consult before changing app behaviour or writing tests.
 
+### Spec Lookup (keyword → file)
+
+Before working on a feature, find and read the relevant spec(s). Match by keyword:
+
+| Keywords | Spec |
+|----------|------|
+| startup, boot, preload, browser support, recovery, init, loading, first load, splash, app start | `docs/specs/bootstrap.md` |
+| runtime mode, wasm, hardware, both, none, connection, indicator, serial, USB, connected, disconnected, offline, status | `docs/specs/runtime-modes.md` |
+| url params, ?nosave, ?config, ?gist, query string, deep link, share link, URL | `docs/specs/url-params.md` |
+| localStorage, persistence, save, load, schema version, storage, remember, retain, restore, cache | `docs/specs/persistence.md` |
+| settings, devmode, settings panel, mutation surface, preferences, config, options, toggles | `docs/specs/settings.md` |
+| editor, autosave, bracket, gutter, focus rules, secondary editor, CodeMirror, syntax highlighting, line numbers, text editing | `docs/specs/editor.md` |
+| eval, compile, diagnostics, inline results, output health, run, execute, error, warning, squiggly, red underline, feedback | `docs/specs/code-evaluation.md` |
+| transport, play, stop, clock, tempo, state machine, BPM, pause, reset, playback, timing, sync | `docs/specs/transport.md` |
+| visualisation, canvas, WebGL, lanes, sampling, waveform, oscilloscope, scope, graph, plot, trace, render, animation, FPS, channels, display | `docs/specs/visualisation.md` |
+| console, messages, log, auto-scroll, output, print, debug, terminal, REPL output | `docs/specs/console.md` |
+| help, reference, snippets, onboarding, guide, documentation, cheatsheet, examples, intro | `docs/specs/help.md` |
+| user guide, lessons, tutorial, playground, learning, walkthrough, interactive, teach, howto | `docs/specs/user-guide.md` |
+| modal, picker, overlay stack, popup, dialog, dropdown, menu, floating, z-index, layer | `docs/specs/overlays.md` |
+| keybindings, shortcuts, profiles, action registry, contexts, palette, hotkeys, keyboard, mapping, remap, command palette | `docs/specs/keybindings.md` |
+| input dispatch, command router, chokepoint, policy, event handling, key handler, action dispatch, intent routing | `docs/specs/input-dispatch.md` |
+| which-key, modifier hints, chord pending, modifier overlay, hint popup, key helper, shortcut guide, discoverable | `docs/specs/which-key.md` |
+| gamepad, controller, buttons, sticks, gestures, paradigms, hold, tap, Xbox, PlayStation, DualSense, joystick, trigger, bumper, D-pad, analog stick | `docs/specs/gamepad.md` |
+| radial menu, noun picker, double-ring, wrap, replace, insert content, pie menu, circular menu, form picker, template, snippet insertion | `docs/specs/radial-menu.md` |
+| main menu, pause menu, L3+R3, save/restore, system menu, escape menu, global menu | `docs/specs/main-menu.md` |
+| themes, colours, palette, dark, light, appearance, skin, style, accent, colour scheme | `docs/specs/themes.md` |
+| reactive flow, typed channels, stores, signals, import boundaries, pub/sub, events, data flow, subscriptions, state management | `docs/specs/reactive-flow.md` |
+| probes, from-list, highlight, inline widget, sampling, watch, monitor, inspect value, live value, visualise expression | `docs/specs/probes.md` |
+| structural editing, s-expression, halo, focus, grab, holes, navigation, cursor, paredit, AST, tree, node, parent, child, sibling, wrap, unwrap, splice, slurp, barf, raise, select expression | `docs/specs/structural-editing.md` |
+| structural fuzzing, fuzz, command dispatch coverage, property testing, random testing, invariant, stress test | `docs/specs/structural-fuzzing.md` |
+| formatting, indent, auto-format, line breaking, width, pretty print, layout, whitespace, newlines, alignment, wrapping | `docs/specs/formatting.md` |
+| atom, increment, cycle, LB/RB, number editing, joystick scrub, polarity, value editing, bump, nudge, step, symbol cycling, rotate value, next/prev | `docs/specs/atom-manipulation.md` |
+| live-edit, knob, slider, toggle, widget, MIDI learn, dockable panel, parameter, control, tweak, real-time edit, CC, fader, continuous control | `docs/specs/live-edit.md` |
+| hardware bindings, on-press, on-release, on-button, on-toggle, chip widget, button mapping, switch, encoder, physical control, event binding | `docs/specs/hardware-bindings.md` |
+| calibration, 1V/oct, tuning, CV output, per-octave, pitch, tune, voltage, DAC, accuracy, scale | `docs/specs/calibration.md` |
+| inspector, dev review, scenarios, approval, visual testing, screenshot, regression, component review | `docs/specs/inspector.md` |
+| zen mode, practice, distraction-free, focus mode, minimal, training, sandbox | `docs/specs/zen-mode.md` |
+| state sync, drift, WASM↔hardware, recalibration, mismatch, desync, diverge, reconcile, shadow | `docs/specs/state-sync.md` |
+| state identity, stateful expressions, anonymous state, IDs, stable ID, identity tracking, state slot, refactor state | `docs/specs/state-identity.md` |
+| runtime contract, WASM ABI, capability split, firmware contract, exports, imports, boundary, API surface, interface | `docs/specs/runtime-contract.md` |
+
+**Language/firmware specs** (in `src-useq/docs/specs/`):
+
+| Keywords | Spec |
+|----------|------|
+| ModuLisp semantics, language overview, Lisp, syntax, grammar | `src-useq/docs/specs/MAIN.md` |
+| signal model, implicit lifting, pure functions of time, reactive, continuous, per-sample, functional | `src-useq/docs/specs/signal-model.md` |
+| time, phasors, t, t0, ground-time, counters, durations, beat, bar, phrase, section, clock, BPM, tempo, rhythm | `src-useq/docs/specs/time.md` |
+| time warps, premap, time-as, fast, slow, offset, speed, rate, multiply, divide, shift, phase | `src-useq/docs/specs/time-warps.md` |
+| state, define-state, integrate, cross-sample, UGens, memory, accumulator, feedback, slew, filter, stateful, env-follow | `src-useq/docs/specs/state.md` |
+| state identity (runtime), state-resource IDs, projection, stable ID, cold-eval, duplicate-active | `src-useq/docs/specs/state-identity.md` |
+| cells, reactivity, define, dependency tracking, cascade, variable, binding, let, assign, reference, name | `src-useq/docs/specs/cells.md` |
+| compilation, node graph, compile passes, loop unrolling, compiler, CSE, constant folding, optimisation, DAG, topological | `src-useq/docs/specs/compilation.md` |
+| functions, lambda, recursion, variadic, inlining, fn, defun, callable, closure, higher-order, apply | `src-useq/docs/specs/functions.md` |
+| values, types, numbers, vectors, nil, truthiness, float, integer, boolean, list, string, data types, numeric | `src-useq/docs/specs/values-types.md` |
+| outputs, a1-a8, d1-d8, s1-s8, q0, LKG, active program, analog, digital, voltage, gate out, CV out | `src-useq/docs/specs/outputs.md` |
+| prev, cross-output reads, feedback loops, batch, previous value, last sample, read other output, inter-output | `src-useq/docs/specs/prev.md` |
+| inputs, gate, CV, switches, encoders, swm, swt, swr, rot, analog in, digital in, potentiometer, external signal | `src-useq/docs/specs/inputs.md` |
+| live-edit (runtime), compiler treatment, slot allocation, input slot, externally-driven, set-live-inputs | `src-useq/docs/specs/live-edit.md` |
+| top-level forms, eval surface, do block, imperative, REPL, expression, statement, program entry | `src-useq/docs/specs/top-level.md` |
+| dialects, reactive vs imperative, mode switching, style, paradigm, sequential, procedural | `src-useq/docs/specs/dialects.md` |
+| diagnostics ABI, wire format, error categories, severity, error reporting, warning, hint, suggestion, span | `src-useq/docs/specs/diagnostics.md` |
+| failure model, LKG, health states, REPL channels, blame, error recovery, fallback, crash, last known good, graceful | `src-useq/docs/specs/failure-model.md` |
+| wire protocol, serial, JSON messages, handshake, framing, USB, CDC, communication, request/response, streaming, 0x1F | `src-useq/docs/specs/wire-protocol.md` |
+| firmware, tick loop, hardware variants, boot, flash, embedded, Pico, RP2040, PlatformIO, Arduino | `src-useq/docs/specs/firmware.md` |
+| hardware I/O, pins, LED, variants, boot sequence, GPIO, PWM, DAC, ADC, physical | `src-useq/docs/specs/hardware-io.md` |
+| visualisation projection, WASM fork, future frontier, prediction, lookahead, speculative, future rendering | `src-useq/docs/specs/visualisation-projection.md` |
+| devtools, instrumentation, telemetry, tick profiling, debug, performance, metrics, tracing, observability | `src-useq/docs/specs/devtools.md` |
+
 ## Build and Development
 
 - `npm run dev` - runs config server, static server, and watch builds. (`portless useq-perform npm run dev`)
