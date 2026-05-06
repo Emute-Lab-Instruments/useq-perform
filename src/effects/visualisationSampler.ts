@@ -461,6 +461,49 @@ function futureBufferHasNearBoundaryCoverage(
   return false;
 }
 
+function applyResetFillSamples(
+  name: string,
+  samples: VisSample[] | undefined,
+  resetApplyOutputs: Set<string> | null,
+  currentTime: number,
+  path: "combined" | "legacy",
+  modeLabel: string,
+): number {
+  if (!samples) return projectionFrontier;
+
+  const shouldResetBuffer =
+    resetApplyOutputs === null || resetApplyOutputs.has(name);
+  const buf = ensureFutureBuffer(name);
+  const appendAfterTime = shouldResetBuffer ? -Infinity : buf.newestTime;
+  if (shouldResetBuffer) buf.clear();
+
+  let actualFrontier = projectionFrontier;
+  for (let i = 0; i < samples.length; i++) {
+    const sample = samples[i];
+    // m2 fix (spec §6.4): truncate trace on first non-finite value.
+    if (!Number.isFinite(sample.value)) break;
+    if (shouldResetBuffer || sample.time > appendAfterTime) {
+      buf.push(sample.time, sample.value);
+    }
+    actualFrontier = Math.max(actualFrontier, sample.time);
+  }
+
+  if (import.meta.env.DEV) {
+    projectionTrace.record("sampler-buffer-apply", {
+      path,
+      modeLabel,
+      output: name,
+      action: shouldResetBuffer ? "reset-fill" : "preserve-and-extend",
+      timeSeconds: currentTime,
+      appendAfterTime,
+      samples: sampleTraceSummary(samples, currentTime),
+      bufferAfter: futureBufferTraceSummary(name, currentTime),
+    });
+  }
+
+  return actualFrontier;
+}
+
 function futureBufferTraceSummary(
   name: string,
   currentTime: number,
@@ -789,28 +832,17 @@ export async function tickAndProject(
         let actualFrontier = projectionFrontier;
         for (const name of outputs) {
           const samples = combined.projectionSamples.get(name);
-          if (!samples) continue;
-          const shouldApplySamples =
-            resetApplyOutputs === null || resetApplyOutputs.has(name);
-          const buf = shouldApplySamples ? ensureFutureBuffer(name) : null;
-          if (buf) buf.clear();
-          for (let i = 0; i < samples.length; i++) {
-            // m2 fix (spec §6.4): truncate trace on first non-finite value.
-            if (!Number.isFinite(samples[i].value)) break;
-            if (buf) buf.push(samples[i].time, samples[i].value);
-            actualFrontier = Math.max(actualFrontier, samples[i].time);
-          }
-          if (import.meta.env.DEV) {
-            projectionTrace.record("sampler-buffer-apply", {
-              path: "combined",
-              modeLabel,
-              output: name,
-              action: shouldApplySamples ? "reset-fill" : "preserve",
+          actualFrontier = Math.max(
+            actualFrontier,
+            applyResetFillSamples(
+              name,
+              samples,
+              resetApplyOutputs,
               timeSeconds,
-              samples: sampleTraceSummary(samples, timeSeconds),
-              bufferAfter: futureBufferTraceSummary(name, timeSeconds),
-            });
-          }
+              "combined",
+              modeLabel,
+            ),
+          );
         }
         // M2 fix: advance frontier only to the actual max time pushed,
         // not the requested projectEnd, to avoid suppressing re-extension.
@@ -922,26 +954,14 @@ export async function tickAndProject(
       });
     }
     for (const [name, samples] of futureResults) {
-      const shouldApplySamples =
-        resetApplyOutputs === null || resetApplyOutputs.has(name);
-      const buf = shouldApplySamples ? ensureFutureBuffer(name) : null;
-      if (buf) buf.clear();
-      for (let i = 0; i < samples.length; i++) {
-        if (Number.isFinite(samples[i].value)) {
-          if (buf) buf.push(samples[i].time, samples[i].value);
-        }
-      }
-      if (import.meta.env.DEV) {
-        projectionTrace.record("sampler-buffer-apply", {
-          path: "legacy",
-          modeLabel: "reset-fill",
-          output: name,
-          action: shouldApplySamples ? "reset-fill" : "preserve",
-          timeSeconds,
-          samples: sampleTraceSummary(samples, timeSeconds),
-          bufferAfter: futureBufferTraceSummary(name, timeSeconds),
-        });
-      }
+      applyResetFillSamples(
+        name,
+        samples,
+        resetApplyOutputs,
+        timeSeconds,
+        "legacy",
+        "reset-fill",
+      );
     }
     projectionFrontier = futureEdge;
     return;

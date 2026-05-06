@@ -1208,7 +1208,7 @@ describe("visualisation sampling boundary", () => {
       expect(sampler.getProjectionFrontier()).toBe(-Infinity);
     });
 
-    it("scoped expression invalidation preserves unaffected future buffers", async () => {
+    it("scoped expression invalidation preserves and extends unaffected future buffers", async () => {
       const sampler = await import("./visualisationSampler.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
@@ -1219,6 +1219,7 @@ describe("visualisation sampling boundary", () => {
       const d1Before = sampler.getRenderData("d1")!.futureBuffer!;
       const a1NewestBefore = a1Before.newestTime;
       const d1NewestBefore = d1Before.newestTime;
+      const d1OldestBefore = d1Before.oldestTime;
 
       sampler.notifyExpressionEvaluated("a1");
       await projectFutureAt(sampler, 1.1);
@@ -1226,7 +1227,8 @@ describe("visualisation sampling boundary", () => {
       const a1After = sampler.getRenderData("a1")!.futureBuffer!;
       const d1After = sampler.getRenderData("d1")!.futureBuffer!;
       expect(a1After.newestTime).toBeGreaterThan(a1NewestBefore);
-      expect(d1After.newestTime).toBe(d1NewestBefore);
+      expect(d1After.oldestTime).toBe(d1OldestBefore);
+      expect(d1After.newestTime).toBeGreaterThan(d1NewestBefore);
     });
 
     it("failed eval preserves past buffer and last-good projection text", async () => {
