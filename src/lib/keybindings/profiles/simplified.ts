@@ -49,8 +49,8 @@ export const simplifiedBindings: KeyBinding[] = [
   // Chords instead of Ctrl-bracket (keeps simultaneous modifier count to 1)
   { action: "edit.slurpFwd", key: "Alt-e ]" },
   { action: "edit.slurpBack", key: "Alt-e [" },
-  { action: "edit.barfFwd", key: "Alt-e '" },
-  { action: "edit.barfBack", key: "Alt-e ;" },
+  { action: "edit.barfFwd", key: "Alt-e Shift-]" },
+  { action: "edit.barfBack", key: "Alt-e Shift-[" },
 
   // -- Clojure-mode passthrough ---------------------------------------------
   { action: "edit.killToEndOfList", key: "Ctrl-k" },

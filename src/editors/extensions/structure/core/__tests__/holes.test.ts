@@ -157,24 +157,25 @@ describe("holes are atomic for structural ops (§2.9.2)", () => {
     expect(pp(r.state.tree.root)).toBe("[⟨freq:number⟩ b]");
   });
 
-  it("slurpForward rejects on a hole (on-leaf)", () => {
+  it("slurpForward from a hole bubbles to enclosing compound", () => {
     __resetIdCounterForTests();
     const ids = defaultIdGen();
     const m = makeMutators({ ids });
     const h = hole("x", "expr", ids);
     const root = doc(ids, list(ids, h, sym("a", ids)));
     const r = m.slurpForward(stateOn(root, h.id));
-    expect(r.noOps[0]?.reason).toBe("on-leaf");
+    expect(r.noOps[0]?.reason).toBe("no-next-sibling");
   });
 
-  it("barfForward rejects on a hole (on-leaf)", () => {
+  it("barfForward from a hole bubbles to enclosing compound", () => {
     __resetIdCounterForTests();
     const ids = defaultIdGen();
     const m = makeMutators({ ids });
     const h = hole("x", "expr", ids);
-    const root = doc(ids, list(ids, h, sym("a", ids)));
+    const a = sym("a", ids);
+    const root = doc(ids, list(ids, h, a));
     const r = m.barfForward(stateOn(root, h.id));
-    expect(r.noOps[0]?.reason).toBe("on-leaf");
+    expect(r.noOps).toHaveLength(0);
   });
 
   it("raise on a hole replaces its parent (hole as whole unit)", () => {

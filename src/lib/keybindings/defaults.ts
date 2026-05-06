@@ -56,8 +56,8 @@ export const defaultKeyBindings: KeyBinding[] = [
   // OS interception on macOS / Linux.
   { action: "edit.slurpFwd", key: "Ctrl-]" },
   { action: "edit.slurpBack", key: "Ctrl-[" },
-  { action: "edit.barfFwd", key: "Ctrl-'" },
-  { action: "edit.barfBack", key: "Ctrl-;" },
+  { action: "edit.barfFwd", key: "Ctrl-Shift-]" },
+  { action: "edit.barfBack", key: "Ctrl-Shift-[" },
 
   // -- Clojure-mode passthrough (not remapped) ------------------------------
   { action: "edit.killToEndOfList", key: "Ctrl-k" },
@@ -91,8 +91,8 @@ export const defaultKeyBindings: KeyBinding[] = [
   // CodeMirror handles multi-stroke (space-separated) keys natively.
   { action: "edit.slurpFwd", key: "Alt-e ]" },
   { action: "edit.slurpBack", key: "Alt-e [" },
-  { action: "edit.barfFwd", key: "Alt-e '" },
-  { action: "edit.barfBack", key: "Alt-e ;" },
+  { action: "edit.barfFwd", key: "Alt-e Shift-]" },
+  { action: "edit.barfBack", key: "Alt-e Shift-[" },
   { action: "edit.raise", key: "Alt-e r" },
   { action: "edit.splice", key: "Alt-e s" },
   { action: "edit.wrapList", key: "Alt-e w" },

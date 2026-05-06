@@ -392,6 +392,7 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
       private view: EditorView;
       private onClick: (e: MouseEvent) => void;
       private removeExternalListener: () => void;
+      private rafPending = 0;
 
       constructor(view: EditorView) {
         this.view = view;
@@ -405,6 +406,7 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
       destroy() {
         this.view.dom.removeEventListener("click", this.onClick);
         this.removeExternalListener();
+        if (this.rafPending) cancelAnimationFrame(this.rafPending);
       }
 
       update(_update: ViewUpdate) {}
@@ -425,23 +427,19 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
       }
 
       private onExternalChange() {
-        if (buildingMarkers) return;
-        if (!this.view.dom?.isConnected) {
-          console.warn(
-            "[expressionHighlights] onExternalChange: editor view is disconnected, skipping dispatch",
-          );
-          return;
-        }
-        try {
-          this.view.dispatch({
-            annotations: settingsChangedAnnotation.of(true),
-          });
-        } catch (e) {
-          console.warn(
-            "[expressionHighlights] onExternalChange: dispatch failed on editor view",
-            e,
-          );
-        }
+        if (this.rafPending) return;
+        this.rafPending = requestAnimationFrame(() => {
+          this.rafPending = 0;
+          if (buildingMarkers) return;
+          if (!this.view.dom?.isConnected) return;
+          try {
+            this.view.dispatch({
+              annotations: settingsChangedAnnotation.of(true),
+            });
+          } catch (_) {
+            // View in a bad state — swallow silently; next rAF will retry.
+          }
+        });
       }
     },
   );

@@ -174,12 +174,15 @@ function targetCompound(
   c: Cursor,
   tree: Tree,
 ): { node: Compound; reason?: undefined } | { node?: undefined; reason: NoOpReason } {
-  if (c.kind === "range") return { reason: "on-leaf" }; // ranges aren't single compounds
+  if (c.kind === "range") return { reason: "on-leaf" };
   const n = findById(tree.root, c.target);
   if (n === null) return { reason: "at-document-root" };
   if (n.kind === "document") return { reason: "at-document-root" };
-  if (!isCompound(n)) return { reason: "on-leaf" };
-  return { node: n };
+  if (isCompound(n)) return { node: n };
+  // Leaf: bubble up to the nearest enclosing compound (Paredit convention).
+  const parent = parentOf(tree.root, n.id);
+  if (parent === null || parent.kind === "document") return { reason: "at-document-root" };
+  return { node: parent };
 }
 
 // ─── Range-cursor helpers ─────────────────────────────────────────────────

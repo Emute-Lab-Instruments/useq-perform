@@ -56,12 +56,12 @@ describe("edit.slurpForward", () => {
     expect(r.state.tree.root).toBe(root);
   });
 
-  it("is a no-op on a leaf cursor (use atomSlurp instead)", () => {
+  it("is a no-op on a bare leaf at the doc root", () => {
     const { ids, m } = setup();
     const a = sym("a", ids);
     const root = doc(ids, a);
     const r = m.slurpForward(stateOn(root, a.id));
-    expect(r.noOps[0]?.reason).toBe("on-leaf");
+    expect(r.noOps[0]?.reason).toBe("at-document-root");
   });
 
   it("preserves metas on the slurped sibling", () => {
