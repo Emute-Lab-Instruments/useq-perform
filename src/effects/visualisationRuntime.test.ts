@@ -460,6 +460,90 @@ describe("vis renderer survives runtime transitions (spec: visualisation.md §1.
   });
 
   describe("runtime cache invariants across transitions", () => {
+    it("preserves queued hardware projection when external time coalesces during an in-flight sample", async () => {
+      await setRuntimeMode({ hasHardwareConnection: true });
+
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const runtime = await import("./visualisationRuntime.ts");
+      const mockEval = vi.mocked(evalOutputsInTimeWindow);
+
+      const makeResult = (
+        exprTypes: string[],
+        start: number,
+        end: number,
+        count: number,
+      ) => {
+        const result = new Map<string, Array<{ time: number; value: number }>>();
+        const step = count > 1 ? (end - start) / (count - 1) : 0;
+        for (const expr of exprTypes) {
+          const samples: Array<{ time: number; value: number }> = [];
+          for (let i = 0; i < count; i++) {
+            samples.push({ time: start + step * i, value: 0.5 });
+          }
+          result.set(expr, samples);
+        }
+        return result;
+      };
+
+      const rafCallbacks: FrameRequestCallback[] = [];
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb: FrameRequestCallback) => {
+          rafCallbacks.push(cb);
+          return rafCallbacks.length;
+        });
+      const cancelSpy = vi
+        .spyOn(window, "cancelAnimationFrame")
+        .mockImplementation(() => {});
+
+      try {
+        await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+        let releaseFirstSample: (() => void) | null = null;
+        mockEval.mockReset();
+        mockEval.mockImplementation((exprTypes, start, end, count) => {
+          if (start === 1.0 && end === 1.0 && count === 1) {
+            return new Promise((resolve) => {
+              releaseFirstSample = () => {
+                resolve(makeResult(exprTypes, start, end, count));
+              };
+            });
+          }
+          return Promise.resolve(makeResult(exprTypes, start, end, count));
+        });
+
+        runtime.notifyExternalTimeUpdate(1.0);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(releaseFirstSample).not.toBeNull();
+
+        runtime.startVisualisationRuntime();
+        for (let frame = 0; frame < 6; frame++) {
+          const cb = rafCallbacks.shift();
+          expect(cb).toBeDefined();
+          cb!(frame * 16);
+        }
+
+        // This replace used to erase the queued rAF projection request,
+        // leaving only a tick-only sample at the newest hardware time.
+        runtime.notifyExternalTimeUpdate(1.1);
+        releaseFirstSample!();
+        await runtime._drainForTests();
+
+        const refillCall = mockEval.mock.calls.find(
+          ([_outputs, start, end, count]) =>
+            start === 1.1 && end > 1.1 && count > 1,
+        );
+        expect(refillCall).toBeDefined();
+      } finally {
+        runtime._resetForTests();
+        rafSpy.mockRestore();
+        cancelSpy.mockRestore();
+      }
+    });
+
     it("mode changes do not interfere with tick-and-project cycle", async () => {
       await setRuntimeMode({ hasHardwareConnection: false });
 

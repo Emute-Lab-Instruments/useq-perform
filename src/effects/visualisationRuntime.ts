@@ -37,6 +37,7 @@ import {
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 import { refreshOutputHealth } from "../utils/outputHealthStore.ts";
 import { recordTickElapsed } from "./adaptiveQuality.ts";
+import { projectionTrace } from "../lib/projectionTrace.ts";
 
 /**
  * Render hook supplied by a UI adapter — `effects/` is forbidden from
@@ -59,6 +60,7 @@ export function registerVisualisationRenderHook(
 // ── Tunables ─────────────────────────────────────────────────────────
 
 const DIAG_POLL_INTERVAL = 6;
+const HARDWARE_PROJECTION_INTERVAL = 6;
 const MAX_LOCAL_SAMPLES_PER_FRAME = 64;
 const SAMPLE_TIME_EPSILON = 1e-6;
 
@@ -173,7 +175,7 @@ export function notifyExternalTimeUpdate(time: number): void {
     currentTimeSeconds: numeric,
     displayTimeSeconds: numeric,
   });
-  requestSampleAt(numeric, { replace: true, projectFuture: true });
+  requestSampleAt(numeric, { replace: true, projectFuture: false });
   void drainSamplingQueue();
 }
 
@@ -249,6 +251,13 @@ function tick(): void {
       });
   }
 
+  if (!localTimeActive && frameCount % HARDWARE_PROJECTION_INTERVAL === 0) {
+    const t = visStore.currentTime;
+    if (Number.isFinite(t) && t > 0) {
+      requestSampleAt(t, { replace: false, projectFuture: true });
+    }
+  }
+
   void drainSamplingQueue();
 
   if (renderRequested) {
@@ -283,19 +292,56 @@ function requestSampleAt(
   time: number,
   options: { replace?: boolean; projectFuture?: boolean } = {},
 ): void {
+  const queueBefore = sampleQueue.map((request) => ({
+    timeSeconds: request.timeSeconds,
+    projectFuture: request.projectFuture,
+  }));
+  const requestedProjectFuture = options.projectFuture !== false;
+  const preserveQueuedProjection =
+    options.replace === true && sampleQueue.some((request) => request.projectFuture);
   const request: SampleRequest = {
     timeSeconds: time,
-    projectFuture: options.projectFuture !== false,
+    projectFuture: requestedProjectFuture || preserveQueuedProjection,
   };
   if (options.replace) {
     sampleQueue.length = 0;
     sampleQueue.push(request);
+    if (import.meta.env.DEV) {
+      projectionTrace.record("runtime-sample-request", {
+        time,
+        replace: true,
+        requestedProjectFuture,
+        preserveQueuedProjection,
+        queuedProjectFuture: request.projectFuture,
+        samplingInFlight,
+        queueBefore,
+        queueAfter: sampleQueue.map((queued) => ({
+          timeSeconds: queued.timeSeconds,
+          projectFuture: queued.projectFuture,
+        })),
+      });
+    }
     return;
   }
   if (request.projectFuture) {
     for (const queued of sampleQueue) queued.projectFuture = false;
   }
   sampleQueue.push(request);
+  if (import.meta.env.DEV) {
+    projectionTrace.record("runtime-sample-request", {
+      time,
+      replace: false,
+      requestedProjectFuture,
+      preserveQueuedProjection,
+      queuedProjectFuture: request.projectFuture,
+      samplingInFlight,
+      queueBefore,
+      queueAfter: sampleQueue.map((queued) => ({
+        timeSeconds: queued.timeSeconds,
+        projectFuture: queued.projectFuture,
+      })),
+    });
+  }
 }
 
 function requestLocalSamplesThrough(currentTimeSeconds: number): void {
@@ -364,6 +410,13 @@ async function runSample(
   timeSeconds: number,
   projectFuture: boolean,
 ): Promise<void> {
+  if (import.meta.env.DEV) {
+    projectionTrace.record("runtime-sample-run", {
+      timeSeconds,
+      projectFuture,
+      queueLength: sampleQueue.length,
+    });
+  }
   if (import.meta.env.DEV) perf.begin("resample-total");
   try {
     if (import.meta.env.DEV) perf.begin("wasm-update-time");
