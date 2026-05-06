@@ -65,6 +65,13 @@
   new_code: "(foo bar)"
   new_selection: "bar"
 
+- name: "delete last arg in multi-form doc stays local"
+  code: "(d1 (sqr beat))\n\n(a2 bar)\n(a3 1)\n(a1 1)"
+  selection: ["1", 2]
+  actions: delete
+  new_code: "(d1 (sqr beat))\n\n(a2 bar)\n(a3)\n(a1 1)"
+  new_selection: "a3"
+
 # ============================================================================
 # SLURP OPERATIONS (lists)
 # ============================================================================

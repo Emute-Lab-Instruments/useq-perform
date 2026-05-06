@@ -21,7 +21,7 @@ import type {
   Tree,
 } from "../core/index.ts";
 import { nodeCursor, singleCursor } from "../core/index.ts";
-import { pathOf, nodeAtPath } from "../core/traversal.ts";
+import { pathOf, nodeAtPathClamped } from "../core/traversal.ts";
 
 export type CursorPath = ReadonlyArray<number>;
 
@@ -35,10 +35,8 @@ export function cursorAtPath(
   path: CursorPath,
   tree: Tree,
 ): Cursor {
-  const node = nodeAtPath(tree.root, path);
-  if (node === null || node.kind === "document") {
-    // Resolve to the first top-level form, or the doc root if document is
-    // empty.
+  const node = nodeAtPathClamped(tree.root, path);
+  if (node.kind === "document") {
     const first = (tree.root as DocumentNode).children[0] as Node | undefined;
     return nodeCursor(first?.id ?? tree.root.id);
   }
@@ -47,8 +45,8 @@ export function cursorAtPath(
 
 /**
  * Re-derive a CursorSet onto a freshly-parsed tree, using paths captured
- * from the previous tree. If a cursor's path no longer resolves (out of
- * range after edits), it falls back to the document root.
+ * from the previous tree. Out-of-range indices are clamped to the nearest
+ * valid sibling, keeping the cursor in the same neighbourhood.
  */
 export function rederiveCursors(
   paths: ReadonlyArray<CursorPath>,

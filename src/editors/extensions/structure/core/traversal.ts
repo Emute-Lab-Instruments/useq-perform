@@ -90,6 +90,22 @@ export function nodeAtPath(root: DocumentNode, path: Path): Node | null {
   return cur;
 }
 
+/**
+ * Like nodeAtPath but clamps each index to the valid child range instead of
+ * returning null. If a container has no children, returns whatever we've
+ * reached so far. This keeps the cursor in the neighbourhood of the
+ * invalidated path (e.g. after a text edit shrinks a list).
+ */
+export function nodeAtPathClamped(root: DocumentNode, path: Path): Node {
+  let cur: Node = root;
+  for (const i of path) {
+    const kids = childrenOf(cur);
+    if (kids.length === 0) break;
+    cur = kids[Math.max(0, Math.min(i, kids.length - 1))];
+  }
+  return cur;
+}
+
 /** Find a node by id, or null. */
 export function findById(root: DocumentNode, id: NodeId): Node | null {
   if (root.id === id) return root;

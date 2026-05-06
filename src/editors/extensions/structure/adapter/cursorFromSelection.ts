@@ -1,23 +1,22 @@
 /**
  * Auto-sync the structural cursor to the CodeMirror caret.
  *
- * The new functional core treats the structural cursor as first-class state
- * (spec §1.3 — focus-primary). The legacy node-highlight plugin had no
- * structural cursor; it derived the halo on the fly from the CM caret via
- * `findNodeAt`. To restore the legacy "polygon follows the caret" UX without
- * tearing out the new cursor model, this plugin watches user-driven CM
- * selection changes and re-points the structural cursor at the smallest
- * addressable node enclosing the caret head.
+ * Watches both selection-only changes and doc-change transactions (typing,
+ * backspace, undo, etc.) and re-points the structural cursor at the smallest
+ * addressable node enclosing the caret head. This keeps the halo tracking
+ * what the user is actively editing.
  *
  * When the caret is not inside any node's source range (whitespace between
  * top-level forms), the cursor resets to the document root, which clears
  * the halo overlay (resolveCursorTargets skips the doc root).
  *
- * Loop avoidance: a transaction carrying a `setStructState` effect was
- * dispatched by structural nav itself (`adapter/applyOp.ts`), so we skip it.
- * That covers the case where `nav.out` lifts the cursor to a parent compound
- * — without the skip, the auto-sync would immediately drag the cursor back
- * down to the smallest enclosing leaf.
+ * Loop avoidance:
+ *   - Transactions carrying a `setStructState` effect (structural nav or
+ *     setCursorFromState) are skipped — they already set the correct cursor.
+ *   - Transactions with userEvent `structure.mutate` or `format.*` are
+ *     skipped — they trigger a follow-up setCursorFromState dispatch.
+ *   - A sequence counter ensures stale microtasks (queued before a newer
+ *     update arrived) are discarded.
  */
 
 import { ViewPlugin } from "@codemirror/view";
@@ -62,18 +61,21 @@ export const structuralCursorFromSelection = ViewPlugin.fromClass(
   class {
     private view: EditorView;
     private destroyed = false;
+    private syncSeq = 0;
     constructor(view: EditorView) {
       this.view = view;
     }
     update(u: ViewUpdate): void {
-      if (!u.selectionSet) return;
-      // Doc edits run cursorPath re-derivation; let that win.
-      if (u.docChanged) return;
-      // If structural nav drove this transaction, don't fight it.
+      if (!u.selectionSet && !u.docChanged) return;
+      // If structural nav/mutation drove this transaction, don't fight it.
+      // Structural mutations dispatch a follow-up setCursorFromState that
+      // sets the correct cursor — interfering here would race with it.
       for (const tr of u.transactions) {
         for (const e of tr.effects) {
           if (e.is(setStructState)) return;
         }
+        if (tr.isUserEvent("structure.mutate")) return;
+        if (tr.isUserEvent("format.")) return;
       }
       const value = u.state.field(structField, false);
       if (!value) return;
@@ -94,8 +96,9 @@ export const structuralCursorFromSelection = ViewPlugin.fromClass(
         const newState: State = { tree: value.state.tree, cursors: cs };
         const view = this.view;
         const idIndex = value.idIndex;
+        const seq = ++this.syncSeq;
         queueMicrotask(() => {
-          if (this.destroyed) return;
+          if (this.destroyed || this.syncSeq !== seq) return;
           view.dispatch({
             effects: setStructState.of({
               state: newState,
@@ -113,8 +116,9 @@ export const structuralCursorFromSelection = ViewPlugin.fromClass(
       const view = this.view;
       const idIndex = value.idIndex;
       const tree = value.state.tree;
+      const seq = ++this.syncSeq;
       queueMicrotask(() => {
-        if (this.destroyed) return;
+        if (this.destroyed || this.syncSeq !== seq) return;
         const cs = singleCursor(nodeCursor(enclosingId));
         const newState: State = { tree, cursors: cs };
         view.dispatch({

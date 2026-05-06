@@ -27,7 +27,7 @@ import type { EditorView } from "@codemirror/view";
 import type { Cursor, OpResult, State, Tree } from "../core/index.ts";
 import { pathOf } from "../core/traversal.ts";
 import { getAppSettings } from "../../../../runtime/appSettingsRepository.ts";
-import { pathsFromCursorSet } from "./cursorPath.ts";
+import { pathsFromCursorSet, rederiveCursors } from "./cursorPath.ts";
 import { formatNode, printNode } from "./printTree.ts";
 import { setStructState, structField } from "./stateField.ts";
 import { treeFromLezer, type IdIndex } from "./treeFromLezer.ts";
@@ -258,7 +258,7 @@ function setCursorFromState(view: EditorView, after: State): void {
   // Re-parse against the now-current doc to get the fresh tree + idIndex.
   const { tree, idIndex } = treeFromLezer(view.state);
   const intendedPaths = pathsFromCursorSet(after.cursors, after.tree);
-  const cursors = redoCursorsFromPaths(intendedPaths, tree);
+  const cursors = rederiveCursors(intendedPaths, tree);
   view.dispatch({
     effects: setStructState.of({
       state: { tree, cursors },
@@ -266,38 +266,6 @@ function setCursorFromState(view: EditorView, after: State): void {
       cursorPaths: pathsFromCursorSet(cursors, tree),
     }),
   });
-}
-
-function redoCursorsFromPaths(
-  paths: ReadonlyArray<ReadonlyArray<number>>,
-  tree: Tree,
-) {
-  type CoreNode = import("../core/index.ts").Node;
-  // Rebuild a CursorSet at those paths against the new tree.
-  const out = paths.map((p) => {
-    let cur: CoreNode = tree.root;
-    for (const i of p) {
-      if (
-        cur.kind === "list" || cur.kind === "vector" ||
-        cur.kind === "map" || cur.kind === "set" || cur.kind === "document"
-      ) {
-        const next: CoreNode | undefined = cur.children[i];
-        if (!next) {
-          cur = tree.root;
-          break;
-        }
-        cur = next;
-      } else {
-        cur = tree.root;
-        break;
-      }
-    }
-    return { kind: "node" as const, target: cur.id };
-  });
-  if (out.length === 0) {
-    return { primary: { kind: "node" as const, target: tree.root.id }, secondaries: [] };
-  }
-  return { primary: out[0], secondaries: out.slice(1) };
 }
 
 /**

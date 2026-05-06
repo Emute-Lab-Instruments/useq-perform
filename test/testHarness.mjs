@@ -37,13 +37,27 @@ import { default_extensions } from '@nextjournal/clojure-mode';
 // for cursor reads; visual decorations don't affect dispatcher behaviour.
 import { dispatchAction } from '../src/editors/extensions/structure/adapter/dispatcher.ts';
 import { executeEditorCommand } from '../src/editors/commands/editorCommandRouter.ts';
-import { structField, setStructState } from '../src/editors/extensions/structure/adapter/stateField.ts';
-import { pathsFromCursorSet } from '../src/editors/extensions/structure/adapter/cursorPath.ts';
+import { structField, setStructState, grabModeField, setGrabMode } from '../src/editors/extensions/structure/adapter/stateField.ts';
+import {
+  startGrab,
+  endGrab,
+  isGrabActive,
+  recordGrabMove,
+  getGrabMoveCount,
+  getGrabSnapshot,
+} from '../src/lib/gamepad/grabState.ts';
+import { pathsFromCursorSet, rederiveCursors } from '../src/editors/extensions/structure/adapter/cursorPath.ts';
 import { _internals } from '../src/editors/extensions/structure/adapter/cursorFromSelection.ts';
 import { deleteConfirmField } from '../src/editors/extensions/deleteConfirmFlash.ts';
 import { history } from '@codemirror/commands';
 
 const { findSmallestEnclosingAddressableNode } = _internals;
+
+// ── Cursor restoration for grab cancel ─────────────────────────────────────
+
+function _restoreCursors(paths, tree) {
+  return rederiveCursors(paths, tree);
+}
 
 // ── Action mapping ──────────────────────────────────────────────────────────
 //
@@ -241,7 +255,7 @@ function createView(doc) {
     state: EditorState.create({
       doc,
       // Only the state field is required — decorations are visual-only.
-      extensions: [...default_extensions, history(), structField, deleteConfirmField],
+      extensions: [...default_extensions, history(), structField, grabModeField, deleteConfirmField],
     }),
   });
 }
@@ -464,6 +478,83 @@ function applyAction(view, action) {
     return;
   }
 
+  // ── Grab-mode actions (gamepad.md §6.6.4) ──────────────────────────────
+  if (action === 'grab') {
+    if (!isGrabActive()) {
+      const value = view.state.field(structField);
+      const doc = view.state.doc.toString();
+      const paths = pathsFromCursorSet(value.state.cursors, value.state.tree);
+      startGrab(doc, paths);
+      view.dispatch({ effects: setGrabMode.of(true) });
+    }
+    return;
+  }
+  if (action === 'drop') {
+    if (isGrabActive()) {
+      endGrab();
+      view.dispatch({ effects: setGrabMode.of(false) });
+    }
+    return;
+  }
+  if (action === 'cancel_grab') {
+    if (isGrabActive()) {
+      const snapshot = getGrabSnapshot();
+      const count = getGrabMoveCount();
+      endGrab();
+      for (let i = 0; i < count; i++) {
+        executeEditorCommand(view, { kind: 'undo', source: 'test' });
+      }
+      // Re-derive cursor from saved snapshot paths against restored tree
+      if (snapshot) {
+        const value = view.state.field(structField, false);
+        if (value) {
+          const cursors = _restoreCursors(snapshot.cursorPaths, value.state.tree);
+          view.dispatch({
+            effects: [
+              setStructState.of({
+                state: { tree: value.state.tree, cursors },
+                idIndex: value.idIndex,
+                cursorPaths: snapshot.cursorPaths,
+              }),
+              setGrabMode.of(false),
+            ],
+          });
+          return;
+        }
+      }
+      view.dispatch({ effects: setGrabMode.of(false) });
+    }
+    return;
+  }
+  if (action === 'grab_move_left') {
+    if (isGrabActive()) {
+      const ok = dispatchAction(view, 'edit.transposePrev');
+      if (ok) recordGrabMove();
+    }
+    return;
+  }
+  if (action === 'grab_move_right') {
+    if (isGrabActive()) {
+      const ok = dispatchAction(view, 'edit.transposeNext');
+      if (ok) recordGrabMove();
+    }
+    return;
+  }
+  if (action === 'grab_move_up') {
+    if (isGrabActive()) {
+      const ok = dispatchAction(view, 'edit.raise');
+      if (ok) recordGrabMove();
+    }
+    return;
+  }
+  if (action === 'grab_move_down') {
+    if (isGrabActive()) {
+      const ok = dispatchAction(view, 'edit.encloseList');
+      if (ok) recordGrabMove();
+    }
+    return;
+  }
+
   const keyCommand = KEY_COMMANDS[action];
   if (keyCommand) {
     executeEditorCommand(view, keyCommand);
@@ -498,6 +589,8 @@ function applyAction(view, action) {
 
 function runTestCase(testCase) {
   let view = null;
+  // Reset grab state between tests so module-level state doesn't leak.
+  if (isGrabActive()) endGrab();
   try {
     // Detect format
     const guil = parseGuillemets(testCase.code);
