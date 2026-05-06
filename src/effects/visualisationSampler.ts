@@ -637,11 +637,20 @@ export async function tickAndProject(
   }
 
   // Lever 1 (adaptive quality, spec §1.7/§9.2): under sustained frame
-  // pressure, skip steady-state frontier extension. Coverage running out
-  // triggers a reset-fill instead.
+  // pressure, skip non-urgent lead/guard extension while the visible future
+  // window remains covered. Once the frontier falls inside the visible
+  // window's guard band, extension is urgent and must run even under pressure;
+  // otherwise the drawn future line visibly ages into a growing far-edge gap.
+  const visibleFutureEdgeWithGuard =
+    timeSeconds + halfWindow + FRONTIER_GUARD_BAND_SECONDS;
   const skipProjection =
     !projectFuture ||
-    (!needsResetFill && !noUserOutputs && shouldSkipFutureEdgePush());
+    (
+      !needsResetFill &&
+      !noUserOutputs &&
+      shouldSkipFutureEdgePush() &&
+      projectionFrontier >= visibleFutureEdgeWithGuard
+    );
 
   // Spec §3.8: frontier coverage with guard band. The frontier is
   // "adequate" when it covers futureEdge + guardBand. Extension is only
@@ -667,6 +676,7 @@ export async function tickAndProject(
       projectionFrontier,
       futureEdge,
       futureEdgeWithGuard,
+      visibleFutureEdgeWithGuard,
       futureDensityHz,
       maxBoundaryGap,
       resetApplyOutputs: resetApplyOutputs ? Array.from(resetApplyOutputs) : "all",

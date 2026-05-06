@@ -1019,6 +1019,40 @@ describe("visualisation sampling boundary", () => {
       adaptive._resetForTests();
     });
 
+    it("at pressure level >= 1, extension still runs before the visible future edge gaps", async () => {
+      const adaptive = await import("./adaptiveQuality.ts");
+      adaptive._resetForTests();
+
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const mockBatch = vi.mocked(evalOutputsInTimeWindow);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      // Reset-fill at t=5.0 gives frontier ~= 11.0. At t=5.6 the visible
+      // future edge plus guard is 11.1, so extension is no longer optional
+      // even though adaptive pressure is active.
+      await projectFutureAt(sampler, 5.0);
+
+      for (let i = 0; i < adaptive.MILD_MISS_COUNT; i++) {
+        adaptive.recordTickElapsed(adaptive.MISS_THRESHOLD_MS + 10);
+      }
+      expect(adaptive.getPressureLevel()).toBeGreaterThanOrEqual(1);
+
+      mockBatch.mockClear();
+      await projectFutureAt(sampler, 5.6);
+
+      const edgeCall = mockBatch.mock.calls.find(
+        ([_outputs, start, end, count]) =>
+          start === end && count === 1 && start > 5.6,
+      );
+      expect(edgeCall).toBeDefined();
+
+      adaptive._resetForTests();
+    });
+
     it("with adaptiveQuality disabled, edge call IS still issued even at high raw pressure", async () => {
       const adaptive = await import("./adaptiveQuality.ts");
       adaptive._resetForTests();
