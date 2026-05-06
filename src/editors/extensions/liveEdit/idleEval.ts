@@ -73,10 +73,18 @@ export function createIdleEvalPlugin(options?: {
           tr.isUserEvent("liveEdit.pasteRewrite"),
         );
 
-        // Also check for paste events that might introduce wrappers
-        const isPaste = u.transactions.some((tr) =>
-          tr.isUserEvent("input.paste"),
-        );
+        // Only treat paste as relevant if it actually introduced
+        // live-edit wrappers — plain code paste should not auto-eval.
+        const isPaste = u.transactions.some((tr) => {
+          if (!tr.isUserEvent("input.paste")) return false;
+          let hasWrapper = false;
+          tr.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
+            if (!hasWrapper && inserted.toString().includes("(live-edit ")) {
+              hasWrapper = true;
+            }
+          });
+          return hasWrapper;
+        });
 
         // Check if an explicit eval was already triggered (via the eval
         // user event that editorEvaluation.ts emits)
