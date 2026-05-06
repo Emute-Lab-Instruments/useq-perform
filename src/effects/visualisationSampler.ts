@@ -36,6 +36,7 @@ import { codeEvaluated as codeEvaluatedChannel, liveEditValueChanged } from "../
 import { recordDriftSample, checkDriftThreshold } from "./driftDetector";
 import { serialVisPaletteChangedChannel } from "../contracts/visualisationChannels";
 import { addValueChangeListener, removeValueChangeListener } from "./mockControlInputs.ts";
+import { hwInputStream } from "../contracts/hardwareChannels.ts";
 import {
   PROJECTION_MODE_NONE,
   PROJECTION_MODE_RESET_FILL,
@@ -58,8 +59,8 @@ import {
 // ── WASM port ───────────────────────────────────────────────────────
 
 const wasmPort = () => getActiveWasmRuntimePort();
-const evalInUseqWasm = (code: string): Promise<string | null> =>
-  wasmPort().evalCode(code);
+const evalInUseqWasmSilently = (code: string): Promise<string | null> =>
+  wasmPort().evalCodeSilently(code);
 const updateUseqWasmTime = (timeSeconds: number): Promise<void> =>
   wasmPort().updateTime(timeSeconds);
 const evalOutputsInTimeWindow = (
@@ -117,7 +118,6 @@ function futureProjectionSampleRate(settings: VisSettings): number {
   return Math.max(
     settings.minFutureSampleRate,
     (settings.sampleCount || 100) / (settings.windowDuration || 1),
-    pastBufferSampleRate,
   );
 }
 
@@ -157,8 +157,6 @@ export function setPastBufferSampleRate(hz: number): void {
   const next = Math.max(1, Math.round(numeric));
   if (next === pastBufferSampleRate) return;
   pastBufferSampleRate = next;
-  updateFutureBufferCapacity(visStore.settings);
-  invalidateFutureProjections();
   // Reallocate every past buffer at the new capacity, copying the
   // existing in-order samples across.  Newest samples win on overflow.
   const newCapacity = pastBufferCapacity();
@@ -323,6 +321,11 @@ function isWasmErrorResult(result: string | null | undefined): boolean {
   return typeof result === "string" && result.trim() === WASM_ERROR_RESULT;
 }
 
+function inferEvaluatedOutputType(code: string | null | undefined): string | null {
+  const match = String(code || "").match(/^\s*\(\s*([ads][1-8])(?:\s|\))/);
+  return match?.[1] ?? null;
+}
+
 // ── Output classification cache ─────────────────────────────────────
 //
 // Cached after each code eval. Used for selective invalidation (spec §4.4)
@@ -366,6 +369,15 @@ async function refreshClassificationCache(): Promise<void> {
   }
 }
 
+function projectionSettingsKey(settings: VisSettings): string {
+  return JSON.stringify({
+    windowDuration: settings.windowDuration,
+    sampleCount: settings.sampleCount,
+    futureLeadSeconds: settings.futureLeadSeconds,
+    minFutureSampleRate: settings.minFutureSampleRate,
+  });
+}
+
 // ── Future invalidation & frontier tracking ───────────────────────
 //
 // Selective invalidation (spec §4.4): input changes only invalidate
@@ -378,14 +390,37 @@ const DEFAULT_INPUT_EPSILON = 0.01;
 
 let futureInvalidated = false;
 let projectionFrontier = -Infinity;
+let invalidatedFutureOutputs: Set<string> | null = new Set();
 
-export function invalidateFutureProjections(): void {
+function normalizeInvalidatedOutputs(
+  exprTypes?: string | Iterable<string> | null,
+): Set<string> | null {
+  if (!exprTypes) return null;
+  const values = typeof exprTypes === "string" ? [exprTypes] : Array.from(exprTypes);
+  const normalized = values
+    .map((value) => String(value || "").trim())
+    .filter((value) => value.length > 0);
+  return normalized.length > 0 ? new Set(normalized) : null;
+}
+
+export function invalidateFutureProjections(
+  exprTypes?: string | Iterable<string> | null,
+): void {
+  const scopedOutputs = normalizeInvalidatedOutputs(exprTypes);
+  const alreadyAllInvalidated = futureInvalidated && invalidatedFutureOutputs === null;
   futureInvalidated = true;
   projectionFrontier = -Infinity;
+  if (!scopedOutputs) {
+    invalidatedFutureOutputs = null;
+  } else if (!alreadyAllInvalidated) {
+    if (invalidatedFutureOutputs === null) invalidatedFutureOutputs = new Set();
+    for (const name of scopedOutputs) invalidatedFutureOutputs.add(name);
+  }
   if (import.meta.env.DEV) {
     projectionTrace.record("sampler-invalidate", {
       projectionFrontier,
       expressionCount: Object.keys(visStore.expressions).length,
+      outputs: scopedOutputs ? Array.from(scopedOutputs) : "all",
     });
   }
 }
@@ -582,6 +617,10 @@ export async function tickAndProject(
 
   // Decide projection mode.
   let needsResetFill = projectFuture && futureInvalidated;
+  let resetApplyOutputs: Set<string> | null =
+    needsResetFill && invalidatedFutureOutputs !== null
+      ? new Set(outputs.filter((name) => invalidatedFutureOutputs?.has(name)))
+      : null;
   if (projectFuture && !needsResetFill && !noUserOutputs) {
     for (const name of outputs) {
       const fb = futureBuffers.get(name);
@@ -591,6 +630,7 @@ export async function tickAndProject(
         !futureBufferHasNearBoundaryCoverage(fb, timeSeconds, maxBoundaryGap)
       ) {
         needsResetFill = true;
+        resetApplyOutputs = null;
         break;
       }
     }
@@ -629,6 +669,7 @@ export async function tickAndProject(
       futureEdgeWithGuard,
       futureDensityHz,
       maxBoundaryGap,
+      resetApplyOutputs: resetApplyOutputs ? Array.from(resetApplyOutputs) : "all",
       buffersBefore: traceBuffersBefore,
     });
   }
@@ -734,16 +775,19 @@ export async function tickAndProject(
       if (projMode === PROJECTION_MODE_RESET_FILL) {
         if (import.meta.env.DEV) perf.begin("sampler-refill-apply");
         futureInvalidated = false;
+        invalidatedFutureOutputs = new Set();
         let actualFrontier = projectionFrontier;
         for (const name of outputs) {
           const samples = combined.projectionSamples.get(name);
           if (!samples) continue;
-          const buf = ensureFutureBuffer(name);
-          buf.clear();
+          const shouldApplySamples =
+            resetApplyOutputs === null || resetApplyOutputs.has(name);
+          const buf = shouldApplySamples ? ensureFutureBuffer(name) : null;
+          if (buf) buf.clear();
           for (let i = 0; i < samples.length; i++) {
             // m2 fix (spec §6.4): truncate trace on first non-finite value.
             if (!Number.isFinite(samples[i].value)) break;
-            buf.push(samples[i].time, samples[i].value);
+            if (buf) buf.push(samples[i].time, samples[i].value);
             actualFrontier = Math.max(actualFrontier, samples[i].time);
           }
           if (import.meta.env.DEV) {
@@ -751,7 +795,7 @@ export async function tickAndProject(
               path: "combined",
               modeLabel,
               output: name,
-              action: "reset-fill",
+              action: shouldApplySamples ? "reset-fill" : "preserve",
               timeSeconds,
               samples: sampleTraceSummary(samples, timeSeconds),
               bufferAfter: futureBufferTraceSummary(name, timeSeconds),
@@ -825,6 +869,7 @@ export async function tickAndProject(
   if (projectFuture && (futureInvalidated || needsResetFill)) {
     if (import.meta.env.DEV) perf.count("sampler-legacy-refill");
     futureInvalidated = false;
+    invalidatedFutureOutputs = new Set();
     const futureSampleCount = Math.max(
       2,
       Math.ceil((futureEdge - timeSeconds) * futureDensityHz),
@@ -867,11 +912,13 @@ export async function tickAndProject(
       });
     }
     for (const [name, samples] of futureResults) {
-      const buf = ensureFutureBuffer(name);
-      buf.clear();
+      const shouldApplySamples =
+        resetApplyOutputs === null || resetApplyOutputs.has(name);
+      const buf = shouldApplySamples ? ensureFutureBuffer(name) : null;
+      if (buf) buf.clear();
       for (let i = 0; i < samples.length; i++) {
         if (Number.isFinite(samples[i].value)) {
-          buf.push(samples[i].time, samples[i].value);
+          if (buf) buf.push(samples[i].time, samples[i].value);
         }
       }
       if (import.meta.env.DEV) {
@@ -879,7 +926,7 @@ export async function tickAndProject(
           path: "legacy",
           modeLabel: "reset-fill",
           output: name,
-          action: "reset-fill",
+          action: shouldApplySamples ? "reset-fill" : "preserve",
           timeSeconds,
           samples: sampleTraceSummary(samples, timeSeconds),
           bufferAfter: futureBufferTraceSummary(name, timeSeconds),
@@ -998,7 +1045,8 @@ export async function registerVisualisation(
     return;
   }
 
-  await evalInUseqWasm(trimmed);
+  await evalInUseqWasmSilently(trimmed);
+  await refreshClassificationCache();
 
   ensurePastBuffer(exprType);
   const fb = futureBuffers.get(exprType);
@@ -1014,6 +1062,7 @@ export async function registerVisualisation(
     position,
   };
   updateExpressions(expressions);
+  invalidateFutureProjections(exprType);
   setLastChangeKind("register", { exprType });
 }
 
@@ -1061,21 +1110,25 @@ export async function refreshVisualisedExpression(
     return;
 
   let nextExpressionText = expr.expressionText;
+  let expressionChanged = false;
   try {
-    const result = await evalInUseqWasm(trimmed);
+    const result = await evalInUseqWasmSilently(trimmed);
     if (isWasmErrorResult(result)) {
       throw new Error(`uSEQ returned ${WASM_ERROR_RESULT}`);
     }
     nextExpressionText = trimmed;
+    expressionChanged = nextExpressionText !== expr.expressionText;
+    await refreshClassificationCache();
   } catch (error) {
     dbg(
       `visualisationSampler: failed to update interpreter for ${exprType}: ${error}`,
     );
     try {
-      const restoreResult = await evalInUseqWasm(expr.expressionText);
+      const restoreResult = await evalInUseqWasmSilently(expr.expressionText);
       if (isWasmErrorResult(restoreResult)) {
         throw new Error(`uSEQ returned ${WASM_ERROR_RESULT}`);
       }
+      await refreshClassificationCache();
     } catch (restoreError) {
       dbg(
         `visualisationSampler: failed to restore last good expression for ${exprType}: ${restoreError}`,
@@ -1083,11 +1136,13 @@ export async function refreshVisualisedExpression(
     }
   }
 
-  // Past buffer is preserved — future will re-project on next frame.
-  const fb = futureBuffers.get(exprType);
-  if (fb) fb.clear();
-  futureInvalidated = true;
-  projectionFrontier = -Infinity;
+  if (expressionChanged) {
+    // Past buffer is preserved — this output's future will re-project on
+    // the next future sample without trashing unrelated future buffers.
+    const fb = futureBuffers.get(exprType);
+    if (fb) fb.clear();
+    invalidateFutureProjections(exprType);
+  }
 
   const color = resolveColor(exprType, visStore.settings.circularOffset);
   const expressions = { ...visStore.expressions };
@@ -1103,9 +1158,9 @@ export async function refreshVisualisedExpression(
 }
 
 export function notifyExpressionEvaluated(
-  _exprType: string | null = null,
+  exprType: string | null = null,
 ): void {
-  invalidateFutureProjections();
+  invalidateFutureProjections(exprType);
   setLastChangeKind("data");
   // Refresh classification cache asynchronously after each eval.
   // The cache will be ready by the next frame's tickAndProject call.
@@ -1177,15 +1232,25 @@ function refreshAllColors(settings: VisSettings): void {
 // Track subscription handles for HMR cleanup — without this, hot-module
 // reloads stack phantom listeners referencing stale module-level state.
 const _unsubs: (() => void)[] = [];
+const lastHwInputValues = new Map<number, number>();
+let lastProjectionSettingsKey: string | null = null;
 
 if (typeof window !== "undefined") {
   setTimeout(() => {
     try {
-      loadAndApplySettings();
+      const initialSettings = loadAndApplySettings();
+      lastProjectionSettingsKey = projectionSettingsKey(initialSettings);
 
       const unsubSettings = subscribeAppSettings(() => {
-        loadAndApplySettings();
-        invalidateFutureProjections();
+        const nextSettings = loadAndApplySettings();
+        const nextKey = projectionSettingsKey(nextSettings);
+        if (
+          lastProjectionSettingsKey !== null &&
+          nextKey !== lastProjectionSettingsKey
+        ) {
+          invalidateFutureProjections();
+        }
+        lastProjectionSettingsKey = nextKey;
         setLastChangeKind("settings");
       });
       _unsubs.push(unsubSettings);
@@ -1195,8 +1260,8 @@ if (typeof window !== "undefined") {
   }, 0);
 
   _unsubs.push(
-    codeEvaluatedChannel.subscribe(() => {
-      notifyExpressionEvaluated();
+    codeEvaluatedChannel.subscribe((detail) => {
+      notifyExpressionEvaluated(inferEvaluatedOutputType(detail?.code));
     }),
   );
 
@@ -1209,17 +1274,48 @@ if (typeof window !== "undefined") {
     if (Math.abs(newValue - oldValue) <= epsilon) return;
 
     const outputs = Object.keys(visStore.expressions);
-    const anyAffected = outputs.some((name) => {
+    const affectedOutputs = outputs.filter((name) => {
       const cls = getOutputClass(name);
       return cls === OutputClass.InputDep || cls === OutputClass.Stateful;
     });
 
-    if (anyAffected) {
-      invalidateFutureProjections();
+    if (affectedOutputs.length > 0) {
+      invalidateFutureProjections(affectedOutputs);
       setLastChangeKind("data");
     }
   };
   addValueChangeListener(mockControlListener);
+
+  // Hardware input stream values: forward to WASM and selectively
+  // invalidate projections for outputs that depend on the changed input.
+  _unsubs.push(
+    hwInputStream.subscribe(({ hwInputIndex, value }) => {
+      const numericIndex = Number(hwInputIndex);
+      const numericValue = Number(value);
+      if (!Number.isInteger(numericIndex) || !Number.isFinite(numericValue)) {
+        return;
+      }
+
+      const epsilon = visStore.settings.inputEpsilon ?? DEFAULT_INPUT_EPSILON;
+      const previousValue = lastHwInputValues.get(numericIndex) ?? 0;
+      if (Math.abs(numericValue - previousValue) <= epsilon) {
+        return;
+      }
+      lastHwInputValues.set(numericIndex, numericValue);
+
+      wasmPort().setHwInputValue(numericIndex, numericValue).catch(() => {});
+
+      const outputs = Object.keys(visStore.expressions);
+      const affectedOutputs = outputs.filter((name) => {
+        const mask = getOutputInputMask(name);
+        return (mask & (1 << numericIndex)) !== 0;
+      });
+      if (affectedOutputs.length > 0) {
+        invalidateFutureProjections(affectedOutputs);
+        setLastChangeKind("data");
+      }
+    }),
+  );
 
   // Live-edit value changes invalidate the projection fork (spec §3.7).
   _unsubs.push(

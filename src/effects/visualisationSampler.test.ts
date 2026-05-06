@@ -44,6 +44,8 @@ vi.mock("../runtime/wasmInterpreter.ts", () => wasmInterpreterMocks);
 const portState = vi.hoisted(() => ({
   supportsTickAndProject: false,
   tickAndProject: vi.fn().mockResolvedValue(null),
+  readOutputClassifications: vi.fn().mockResolvedValue(null),
+  setHwInputValue: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
@@ -69,14 +71,36 @@ vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
       (portState.tickAndProject as (...a: unknown[]) => unknown)(...args),
     readActiveDiagnostics: vi.fn().mockResolvedValue([]),
     readLastDiagnostics: vi.fn().mockResolvedValue([]),
+    setHwInputValue: portState.setHwInputValue,
+    readOutputClassifications: portState.readOutputClassifications,
   }),
   setActiveWasmRuntimePort: vi.fn(),
   isUsingInProcessWasmRuntime: () => true,
 }));
 
+const appSettingsMock = vi.hoisted(() => {
+  const state: {
+    settings: Record<string, unknown>;
+    listeners: Set<() => void>;
+  } = {
+    settings: { visualisation: {} },
+    listeners: new Set(),
+  };
+  return {
+    state,
+    getAppSettings: vi.fn(() => state.settings),
+    subscribeAppSettings: vi.fn((listener: () => void) => {
+      state.listeners.add(listener);
+      return () => {
+        state.listeners.delete(listener);
+      };
+    }),
+  };
+});
+
 vi.mock("../runtime/appSettingsRepository.ts", () => ({
-  getAppSettings: vi.fn().mockReturnValue({ visualisation: {} }),
-  subscribeAppSettings: vi.fn().mockReturnValue(() => {}),
+  getAppSettings: appSettingsMock.getAppSettings,
+  subscribeAppSettings: appSettingsMock.subscribeAppSettings,
 }));
 
 vi.mock("../lib/visualisationUtils.ts", () => ({
@@ -94,6 +118,23 @@ vi.mock("../contracts/visualisationChannels", () => ({
   visualisationSessionChannel: { publish: vi.fn() },
 }));
 
+const hardwareChannelMock = vi.hoisted(() => {
+  const listeners = new Set<(detail: { hwInputIndex: number; value: number }) => void>();
+  return {
+    listeners,
+    subscribe: vi.fn((listener: (detail: { hwInputIndex: number; value: number }) => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    }),
+  };
+});
+
+vi.mock("../contracts/hardwareChannels.ts", () => ({
+  hwInputStream: { subscribe: hardwareChannelMock.subscribe },
+}));
+
 vi.mock("../utils/outputHealthStore.ts", () => ({
   refreshOutputHealth: vi.fn(),
 }));
@@ -109,9 +150,34 @@ const mockInputListeners = vi.hoisted(() => {
 
 vi.mock("./mockControlInputs.ts", () => mockInputListeners);
 
+async function projectFutureAt(
+  sampler: typeof import("./visualisationSampler.ts"),
+  timeSeconds: number,
+): Promise<void> {
+  const { visStore, updateTime } = await import("../utils/visualisationStore.ts");
+  updateTime(timeSeconds);
+  await sampler.tickAndProject(timeSeconds, visStore.settings, {
+    projectFuture: true,
+  });
+}
+
 describe("visualisation sampling boundary", () => {
   beforeEach(async () => {
     vi.resetModules();
+    portState.supportsTickAndProject = false;
+    portState.tickAndProject.mockReset();
+    portState.tickAndProject.mockResolvedValue(null);
+    portState.readOutputClassifications.mockReset();
+    portState.readOutputClassifications.mockResolvedValue(null);
+    portState.setHwInputValue.mockReset();
+    portState.setHwInputValue.mockResolvedValue(undefined);
+    appSettingsMock.state.settings = { visualisation: {} };
+    appSettingsMock.state.listeners.clear();
+    appSettingsMock.getAppSettings.mockClear();
+    appSettingsMock.subscribeAppSettings.mockClear();
+    hardwareChannelMock.listeners.clear();
+    hardwareChannelMock.subscribe.mockClear();
+    mockInputListeners.listeners.clear();
   });
 
   describe("concurrent expression registration (regression: race condition)", () => {
@@ -272,12 +338,9 @@ describe("visualisation sampling boundary", () => {
 
     it("future buffer is produced alongside the tick", async () => {
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
-
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
 
       const renderData = sampler.getRenderData("a1");
       expect(renderData!.futureBuffer).toBeDefined();
@@ -685,6 +748,20 @@ describe("visualisation sampling boundary", () => {
       expect(after!.pastBuffer.newestTime).toBe(newestBefore);
     });
 
+    it("does not invalidate future projection when only the past sample rate changes", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      await projectFutureAt(sampler, 5.0);
+
+      const frontierBefore = sampler.getProjectionFrontier();
+      expect(frontierBefore).toBeGreaterThan(-Infinity);
+
+      sampler.setPastBufferSampleRate(sampler.getPastBufferSampleRate() + 17);
+
+      expect(sampler.getProjectionFrontier()).toBe(frontierBefore);
+    });
+
     it("local runtime ticks intermediate samples up to the visual sample rate", async () => {
       const sampler = await import("./visualisationSampler.ts");
       const runtime = await import("./visualisationRuntime.ts");
@@ -747,6 +824,7 @@ describe("visualisation sampling boundary", () => {
       const tickAndProjectMock = vi.fn(async (
         outputs: string[],
         tickTime: number,
+        _projectionMode: number,
         projectEnd: number,
         numFutureSamples: number,
       ) => {
@@ -779,9 +857,7 @@ describe("visualisation sampling boundary", () => {
 
       mockBatch.mockClear();
       tickAndProjectMock.mockClear();
-
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
 
       // The combined path: tickAndProject was called, the legacy
       // single-sample tick was NOT.
@@ -836,6 +912,7 @@ describe("visualisation sampling boundary", () => {
       const tickAndProjectMock = vi.fn(async (
         outputs: string[],
         tickTime: number,
+        _projectionMode: number,
         projectEnd: number,
         numFutureSamples: number,
       ) => {
@@ -858,12 +935,9 @@ describe("visualisation sampling boundary", () => {
       portState.tickAndProject = tickAndProjectMock;
 
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
-
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
 
       const renderData = sampler.getRenderData("a1");
       expect(renderData).not.toBeNull();
@@ -888,19 +962,16 @@ describe("visualisation sampling boundary", () => {
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
       const mockBatch = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
       // First tick batch-refills the future buffer; subsequent ticks
       // (with sufficient coverage) take the far-edge branch.
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
 
       mockBatch.mockClear();
-      runtime.notifyExternalTimeUpdate(5.05);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.05);
 
       // The far-edge call is a single-sample window at the future edge.
       // Find any call whose start === end (i.e. the edge push).
@@ -919,15 +990,13 @@ describe("visualisation sampling boundary", () => {
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
       const mockBatch = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
       // Prime: do an initial tick so the future buffer is populated and
       // subsequent ticks would otherwise take the far-edge branch.
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
 
       // Drive into pressure level 1 (mild).
       for (let i = 0; i < adaptive.MILD_MISS_COUNT; i++) {
@@ -936,8 +1005,7 @@ describe("visualisation sampling boundary", () => {
       expect(adaptive.getPressureLevel()).toBeGreaterThanOrEqual(1);
 
       mockBatch.mockClear();
-      runtime.notifyExternalTimeUpdate(5.05);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.05);
 
       // The tick still fires (start === end at t=5.05), but no far-edge
       // single-sample call should have been made (start > 5.05 with
@@ -959,13 +1027,11 @@ describe("visualisation sampling boundary", () => {
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
       const mockBatch = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
 
       // Drive into severe pressure.
       for (let i = 0; i < adaptive.SEVERE_MISS_COUNT; i++) {
@@ -979,8 +1045,7 @@ describe("visualisation sampling boundary", () => {
       expect(adaptive.shouldSkipFutureEdgePush()).toBe(false);
 
       mockBatch.mockClear();
-      runtime.notifyExternalTimeUpdate(5.05);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.05);
 
       const edgeCall = mockBatch.mock.calls.find(
         ([_outputs, start, end, count]) =>
@@ -995,11 +1060,9 @@ describe("visualisation sampling boundary", () => {
   describe("projection invalidation triggers (spec: visualisation.md §3.7, §4.4)", () => {
     it("external input change above epsilon invalidates future projection", async () => {
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
-      runtime.notifyExternalTimeUpdate(1.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 1.0);
 
       expect(sampler.getProjectionFrontier()).toBeGreaterThan(-Infinity);
       const frontierBefore = sampler.getProjectionFrontier();
@@ -1013,18 +1076,15 @@ describe("visualisation sampling boundary", () => {
       expect(sampler.getProjectionFrontier()).toBe(-Infinity);
 
       // Next tick should trigger a reset-fill
-      runtime.notifyExternalTimeUpdate(1.05);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 1.05);
       expect(sampler.getProjectionFrontier()).toBeGreaterThan(frontierBefore);
     });
 
     it("external input change below epsilon does NOT invalidate", async () => {
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
-      runtime.notifyExternalTimeUpdate(1.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 1.0);
 
       const frontierBefore = sampler.getProjectionFrontier();
       expect(frontierBefore).toBeGreaterThan(-Infinity);
@@ -1038,18 +1098,101 @@ describe("visualisation sampling boundary", () => {
       expect(sampler.getProjectionFrontier()).toBe(frontierBefore);
     });
 
-    it("code eval always invalidates future projection", async () => {
+    it("hardware input stream changes below epsilon do NOT invalidate", async () => {
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
-      runtime.notifyExternalTimeUpdate(1.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 1.0);
+
+      const frontierBefore = sampler.getProjectionFrontier();
+      expect(frontierBefore).toBeGreaterThan(-Infinity);
+      expect(hardwareChannelMock.listeners.size).toBeGreaterThan(0);
+
+      for (const listener of hardwareChannelMock.listeners) {
+        listener({ hwInputIndex: 8, value: 0.005 });
+      }
+
+      expect(portState.setHwInputValue).not.toHaveBeenCalled();
+      expect(sampler.getProjectionFrontier()).toBe(frontierBefore);
+    });
+
+    it("hardware input stream changes above epsilon invalidate affected projections", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      await projectFutureAt(sampler, 1.0);
+
+      expect(sampler.getProjectionFrontier()).toBeGreaterThan(-Infinity);
+
+      for (const listener of hardwareChannelMock.listeners) {
+        listener({ hwInputIndex: 8, value: 0.02 });
+      }
+
+      expect(portState.setHwInputValue).toHaveBeenCalledWith(8, 0.02);
+      expect(sampler.getProjectionFrontier()).toBe(-Infinity);
+    });
+
+    it("non-visualisation settings changes do NOT invalidate future projection", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+
+      // visualisationSampler registers the settings listener on a timer to
+      // avoid startup TDZ issues.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      await projectFutureAt(sampler, 1.0);
+
+      const frontierBefore = sampler.getProjectionFrontier();
+      expect(frontierBefore).toBeGreaterThan(-Infinity);
+      expect(appSettingsMock.state.listeners.size).toBeGreaterThan(0);
+
+      appSettingsMock.state.settings = {
+        visualisation: {},
+        editor: { code: "(a1 changed but not evaluated)" },
+      };
+      for (const listener of appSettingsMock.state.listeners) listener();
+
+      expect(sampler.getProjectionFrontier()).toBe(frontierBefore);
+
+      appSettingsMock.state.settings = {
+        visualisation: { windowDuration: 12 },
+      };
+      for (const listener of appSettingsMock.state.listeners) listener();
+
+      expect(sampler.getProjectionFrontier()).toBe(-Infinity);
+    });
+
+    it("code eval always invalidates future projection", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      await projectFutureAt(sampler, 1.0);
 
       expect(sampler.getProjectionFrontier()).toBeGreaterThan(-Infinity);
 
       sampler.notifyExpressionEvaluated();
       expect(sampler.getProjectionFrontier()).toBe(-Infinity);
+    });
+
+    it("scoped expression invalidation preserves unaffected future buffers", async () => {
+      const sampler = await import("./visualisationSampler.ts");
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      await sampler.registerVisualisation("d1", "(d1 (square 1))");
+      await projectFutureAt(sampler, 1.0);
+
+      const a1Before = sampler.getRenderData("a1")!.futureBuffer!;
+      const d1Before = sampler.getRenderData("d1")!.futureBuffer!;
+      const a1NewestBefore = a1Before.newestTime;
+      const d1NewestBefore = d1Before.newestTime;
+
+      sampler.notifyExpressionEvaluated("a1");
+      await projectFutureAt(sampler, 1.1);
+
+      const a1After = sampler.getRenderData("a1")!.futureBuffer!;
+      const d1After = sampler.getRenderData("d1")!.futureBuffer!;
+      expect(a1After.newestTime).toBeGreaterThan(a1NewestBefore);
+      expect(d1After.newestTime).toBe(d1NewestBefore);
     });
 
     it("failed eval preserves past buffer and last-good projection text", async () => {
@@ -1060,6 +1203,9 @@ describe("visualisation sampling boundary", () => {
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
       runtime.notifyExternalTimeUpdate(1.0);
       await runtime._drainForTests();
+      await projectFutureAt(sampler, 1.01);
+      const frontierBefore = sampler.getProjectionFrontier();
+      expect(frontierBefore).toBeGreaterThan(-Infinity);
 
       const data = sampler.getRenderData("a1");
       expect(data).not.toBeNull();
@@ -1076,6 +1222,7 @@ describe("visualisation sampling boundary", () => {
       const dataAfter = sampler.getRenderData("a1");
       expect(dataAfter).not.toBeNull();
       expect(dataAfter!.pastBuffer.length).toBe(pastLengthBefore);
+      expect(sampler.getProjectionFrontier()).toBe(frontierBefore);
 
       // Expression text reverted to last known good
       expect(visStore.expressions.a1.expressionText).toBe("(a1 (sin 1))");
@@ -1128,19 +1275,16 @@ describe("visualisation sampling boundary", () => {
       portState.tickAndProject = tickAndProjectMock;
 
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
       // First tick: should reset-fill (mode 1)
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
       expect(modes[0]).toBe(1); // PROJECTION_MODE_RESET_FILL
 
       // Second tick at a slightly later time: frontier may still be behind
       // the guard band, so it should request extend (mode 2).
-      runtime.notifyExternalTimeUpdate(5.033);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.033);
       expect(modes.length).toBeGreaterThanOrEqual(2);
       expect(modes[1]).toBe(2); // PROJECTION_MODE_EXTEND
       expect(calls[1].numFutureSamples).toBeGreaterThan(4);
@@ -1174,16 +1318,13 @@ describe("visualisation sampling boundary", () => {
       portState.tickAndProject = tickAndProjectMock;
 
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
       expect(modes[0]).toBe(1);
 
-      runtime.notifyExternalTimeUpdate(5.033);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.033);
       expect(modes[1]).toBe(1);
     });
 
@@ -1224,14 +1365,12 @@ describe("visualisation sampling boundary", () => {
       portState.tickAndProject = tickAndProjectMock;
 
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
       // First tick at t=5.0: reset-fill populates the future buffer.
       // futureEdge = 5.0 + 5 + 1 = 11.0. frontier after reset-fill = 11.0.
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
       expect(modes[0]).toBe(1); // reset-fill
 
       const frontierAfterReset = sampler.getProjectionFrontier();
@@ -1239,8 +1378,7 @@ describe("visualisation sampling boundary", () => {
 
       // Second tick: frontier (11.0) < futureEdgeWithGuard at 5.033
       // (11.033 + 0.5 = 11.533), so extend mode fires.
-      runtime.notifyExternalTimeUpdate(5.033);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.033);
       expect(modes[1]).toBe(2); // extend
 
       // After extend, frontier should cover the guard band target.
@@ -1256,8 +1394,7 @@ describe("visualisation sampling boundary", () => {
       // which is < 11.566, so another extend may fire. Let's advance just
       // slightly so the frontier covers the new guard target.
       // Actually, advance to a time where frontier clearly covers it.
-      runtime.notifyExternalTimeUpdate(5.04);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.04);
       // futureEdgeWithGuard at 5.04 = 5.04 + 5 + 1 + 0.5 = 11.54
       // frontier after extend at 5.033 = futureEdgeWithGuard at 5.033 = 11.533
       // 11.533 < 11.54, so extend still fires — that's correct for close times.
@@ -1284,8 +1421,7 @@ describe("visualisation sampling boundary", () => {
       // After modes[2] extend at 5.04 targeting 11.54, frontier = 11.54.
       // Now tick at 5.04 again (same time advances nothing).
       // Let's use a time that's still covered: 5.033 again.
-      runtime.notifyExternalTimeUpdate(5.033);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.033);
 
       // At 5.033: futureEdgeWithGuard = 11.533. frontier from last extend
       // should be >= 11.54. So 11.54 >= 11.533 → frontier-adequate → mode 0!
@@ -1323,13 +1459,11 @@ describe("visualisation sampling boundary", () => {
       portState.tickAndProject = tickAndProjectMock;
 
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
       // First tick: reset-fill
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
       expect(modes[0]).toBe(1);
 
       // Invalidate (e.g. code eval)
@@ -1337,8 +1471,7 @@ describe("visualisation sampling boundary", () => {
       expect(sampler.getProjectionFrontier()).toBe(-Infinity);
 
       // Next tick should be another reset-fill
-      runtime.notifyExternalTimeUpdate(5.05);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.05);
       expect(modes[1]).toBe(1); // reset-fill again
     });
 
@@ -1372,12 +1505,10 @@ describe("visualisation sampling boundary", () => {
       portState.tickAndProject = tickAndProjectMock;
 
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
 
       const renderData = sampler.getRenderData("a1");
       expect(renderData).not.toBeNull();
@@ -1423,15 +1554,12 @@ describe("visualisation sampling boundary", () => {
       portState.tickAndProject = tickAndProjectMock;
 
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");
 
       // Two ticks to accumulate past buffer samples
-      runtime.notifyExternalTimeUpdate(5.0);
-      await runtime._drainForTests();
-      runtime.notifyExternalTimeUpdate(5.033);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.0);
+      await projectFutureAt(sampler, 5.033);
 
       const dataBefore = sampler.getRenderData("a1");
       expect(dataBefore).not.toBeNull();
@@ -1440,8 +1568,7 @@ describe("visualisation sampling boundary", () => {
 
       // Invalidate and tick again — reset-fill
       sampler.invalidateFutureProjections();
-      runtime.notifyExternalTimeUpdate(5.066);
-      await runtime._drainForTests();
+      await projectFutureAt(sampler, 5.066);
 
       const dataAfter = sampler.getRenderData("a1");
       expect(dataAfter).not.toBeNull();
