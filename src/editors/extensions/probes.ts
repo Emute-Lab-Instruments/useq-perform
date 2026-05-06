@@ -1043,49 +1043,110 @@ async function buildRenderForProbe(
   };
 }
 
+// Key by mode + operator + vector content. This is invariant while the user
+// edits the phasor (the part most likely to be transiently broken) but
+// invalidates the moment the vector itself changes — which is the point at
+// which a stale LKG expression would index into a changed array.
+function highlightCacheKey(
+  state: EditorState,
+  form: IndexedFormTarget,
+  mode: HighlightMode,
+): string {
+  const listText = state.sliceDoc(form.listRange.from, form.listRange.to);
+  return `${mode}|${form.operatorName ?? ""}|${listText}`;
+}
+
+function pushHighlightFromIndex(
+  highlights: FromListHighlight[],
+  form: IndexedFormTarget,
+  index: number,
+  mode: HighlightMode,
+): boolean {
+  if (index < 0 || index >= form.elementRanges.length) return false;
+  const active = form.elementRanges[index];
+  if (!active) return false;
+  highlights.push({ from: active.from, to: active.to, mode });
+  return true;
+}
+
+// Evaluate a phasor expression at the current time and produce a from-list
+// index. Returns null if the eval failed or yielded a non-numeric result.
+async function evalPhasorIndex(
+  code: string,
+  elementCount: number,
+): Promise<number | null> {
+  const currentTime = _config.getCurrentTime();
+  const timedCode = buildEvalAtTimeExpression(code, currentTime);
+  const result = await evaluateProbeCode(timedCode);
+  if (isErrorResult(result)) return null;
+  const numeric = Number(result);
+  const phasor = Number.isFinite(numeric) ? numeric : 0;
+  return computeFromListIndex(elementCount, phasor);
+}
+
+// Try fresh code; on failure, fall back to the cached LKG code (which is
+// re-evaluated at the current time so the highlight keeps animating). On
+// fresh success, the cache is refreshed.
+async function resolvePhasorHighlight(
+  freshCode: string | null,
+  cacheKey: string,
+  elementCount: number,
+  lkg: Map<string, string>,
+): Promise<number | null> {
+  if (freshCode) {
+    try {
+      const index = await evalPhasorIndex(freshCode, elementCount);
+      if (index != null) {
+        lkg.set(cacheKey, freshCode);
+        return index;
+      }
+    } catch (error) {
+      dbg(`probe: fresh phasor eval failed (${error})`);
+    }
+  }
+  const cached = lkg.get(cacheKey);
+  if (!cached) return null;
+  try {
+    return await evalPhasorIndex(cached, elementCount);
+  } catch (error) {
+    dbg(`probe: cached phasor eval failed (${error})`);
+    return null;
+  }
+}
+
 async function computeHighlights(
   state: EditorState,
   forms: IndexedFormTarget[],
   probes: PersistedProbeSpec[],
+  lkg: Map<string, string>,
 ): Promise<FromListHighlight[]> {
   if (import.meta.env.DEV) {
     perf.begin("probe-highlights");
     perf.count("probe-highlights-forms", forms.length);
   }
   const highlights: FromListHighlight[] = [];
+  const validKeys = new Set<string>();
+  for (const form of forms) {
+    validKeys.add(highlightCacheKey(state, form, "contextual"));
+    validKeys.add(highlightCacheKey(state, form, "raw"));
+  }
 
   for (const form of forms) {
+    const contextualKey = highlightCacheKey(state, form, "contextual");
     const contextual = buildProbeExpression(state, form.phasorRange, "contextual");
-    if (contextual?.code) {
-      if (import.meta.env.DEV) {
-        perf.begin("probe-highlights-eval");
-        perf.count("probe-highlights-eval-contextual");
-      }
-      try {
-        const currentTime = _config.getCurrentTime();
-        const timedCode = buildEvalAtTimeExpression(contextual.code, currentTime);
-        const result = await evaluateProbeCode(timedCode);
-        if (!isErrorResult(result)) {
-          const numeric = Number(result);
-          const phasor = Number.isFinite(numeric) ? numeric : 0;
-          const index = computeFromListIndex(
-            form.elementRanges.length,
-            phasor,
-          );
-          const active = index == null ? null : form.elementRanges[index];
-          if (active) {
-            highlights.push({
-              from: active.from,
-              to: active.to,
-              mode: "contextual",
-            });
-          }
-        }
-      } catch (error) {
-        dbg(`probe: failed to highlight indexed form (${error})`);
-      } finally {
-        if (import.meta.env.DEV) perf.end("probe-highlights-eval");
-      }
+    if (import.meta.env.DEV) {
+      perf.begin("probe-highlights-eval");
+      perf.count("probe-highlights-eval-contextual");
+    }
+    const contextualIndex = await resolvePhasorHighlight(
+      contextual?.code ?? null,
+      contextualKey,
+      form.elementRanges.length,
+      lkg,
+    );
+    if (import.meta.env.DEV) perf.end("probe-highlights-eval");
+    if (contextualIndex != null) {
+      pushHighlightFromIndex(highlights, form, contextualIndex, "contextual");
     }
 
     const formCode = state.sliceDoc(form.formRange.from, form.formRange.to).trim();
@@ -1108,34 +1169,26 @@ async function computeHighlights(
       continue;
     }
 
+    const rawKey = highlightCacheKey(state, form, "raw");
     const raw = buildProbeExpression(state, form.phasorRange, "raw");
-    if (!raw?.code) continue;
-
     if (import.meta.env.DEV) {
       perf.begin("probe-highlights-eval");
       perf.count("probe-highlights-eval-raw");
     }
-    try {
-      const currentTime = _config.getCurrentTime();
-      const timedCode = buildEvalAtTimeExpression(raw.code, currentTime);
-      const result = await evaluateProbeCode(timedCode);
-      if (isErrorResult(result)) continue;
-      const index = computeFromListIndex(
-        form.elementRanges.length,
-        Number(result),
-      );
-      const active = index == null ? null : form.elementRanges[index];
-      if (!active) continue;
-      highlights.push({
-        from: active.from,
-        to: active.to,
-        mode: "raw",
-      });
-    } catch (error) {
-      dbg(`probe: failed to compute raw indexed highlight (${error})`);
-    } finally {
-      if (import.meta.env.DEV) perf.end("probe-highlights-eval");
+    const rawIndex = await resolvePhasorHighlight(
+      raw?.code ?? null,
+      rawKey,
+      form.elementRanges.length,
+      lkg,
+    );
+    if (import.meta.env.DEV) perf.end("probe-highlights-eval");
+    if (rawIndex != null) {
+      pushHighlightFromIndex(highlights, form, rawIndex, "raw");
     }
+  }
+
+  for (const key of [...lkg.keys()]) {
+    if (!validKeys.has(key)) lkg.delete(key);
   }
 
   if (import.meta.env.DEV) perf.end("probe-highlights");
@@ -1152,6 +1205,7 @@ class ProbePlugin {
   private tickLoopActive = false;
   private resizeObserver: ResizeObserver;
   private resizeTimers: Map<string, number> = new Map();
+  private highlightLKG: Map<string, string> = new Map();
   private contextLineCanvas: HTMLCanvasElement | null = null;
   private onScroll: () => void;
   private onWindowResize: () => void;
@@ -1492,6 +1546,7 @@ class ProbePlugin {
             this.view.state,
             this.visibleForms,
             snapshot.probes,
+            this.highlightLKG,
           )
         : [];
 
