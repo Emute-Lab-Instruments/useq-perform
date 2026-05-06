@@ -21,9 +21,10 @@
  * Design notes:
  *   - One rendering context per canvas; the canvas is locked to WebGL2 once
  *     `drawSerialVisGL()` runs.
- *   - One rendering path: CPU-extruded triangle strip with bevel joins.
- *     Geometry is pre-computed in clip space; the vertex shader is a
- *     pass-through. `lineWidth` parameterises the extrusion half-width.
+ *   - One rendering path: CPU-extruded triangle strip with miter joins
+ *     (gentle curves) and bevel joins (sharp turns >~90°).  Geometry is
+ *     pre-computed in clip space; the vertex shader is a pass-through.
+ *     `lineWidth` parameterises the extrusion half-width.
  *   - Past/future alpha split is selected per draw call after the
  *     renderer uploads independent past and future VBOs.
  *   - Axis lines, value labels, and "no expressions" fallback text are

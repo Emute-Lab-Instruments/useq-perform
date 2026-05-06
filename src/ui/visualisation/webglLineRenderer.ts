@@ -6,8 +6,9 @@
  * serial visualisation panel (`serialVisGL.ts`) and inline probe
  * oscilloscopes (`probes.ts`).
  *
- * One rendering path: CPU-extruded TRIANGLE_STRIP with bevel joins.
- * Geometry pre-computed in clip space; vertex shader is a pass-through.
+ * One rendering path: CPU-extruded TRIANGLE_STRIP with miter joins
+ * (gentle curves) and bevel joins (sharp turns >~90°).  Geometry is
+ * pre-computed in clip space; vertex shader is a pass-through.
  * `lineWidth` parameterises the extrusion half-width.
  *
  * The fragment shader selects past/future alpha per draw call via
@@ -318,7 +319,7 @@ export function buildThickLineGeometry(
 ): number {
   if (vertexCount < 2) return 0;
 
-  const maxVerts = vertexCount * 5;
+  const maxVerts = vertexCount * 6;
   ensureThickScratch(maxVerts * THICK_FLOATS_PER_VERTEX);
 
   const windowSpan = Math.max(windowEnd - windowStart, 1e-6);
@@ -369,20 +370,13 @@ export function buildThickLineGeometry(
     const [n0x, n0y] = segmentNormal(i - 1);
     const [n1x, n1y] = segmentNormal(i);
 
-    let mx = (n0x + n1x) * 0.5;
-    let my = (n0y + n1y) * 0.5;
-    let mLen = Math.sqrt(mx * mx + my * my);
+    const mx = (n0x + n1x) * 0.5;
+    const my = (n0y + n1y) * 0.5;
+    const mLen = Math.sqrt(mx * mx + my * my);
 
-    if (mLen < 1e-10) {
-      mx = n0x;
-      my = n0y;
-      mLen = 1;
-    }
-
-    const dot = (n0x * mx + n0y * my) / mLen;
-    const miterFactor = dot > 0.5 ? 1 / dot : 2;
-
-    if (miterFactor > 2) {
+    if (mLen < 0.7) {
+      // Sharp turn (>~90°) — bevel join: end old segment, degenerate
+      // restart, begin new segment.  Prevents miter offset blowup.
       emit(cx[i] + n0x * hwX, cy[i] + n0y * hwY, times[i]);
       emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
       emit(cx[i] - n0x * hwX, cy[i] - n0y * hwY, times[i]);
@@ -390,7 +384,9 @@ export function buildThickLineGeometry(
       emit(cx[i] + n1x * hwX, cy[i] + n1y * hwY, times[i]);
       emit(cx[i] - n1x * hwX, cy[i] - n1y * hwY, times[i]);
     } else {
-      const scale = miterFactor / Math.max(mLen, 1e-10);
+      const dot = (n0x * mx + n0y * my) / mLen;
+      const miterFactor = dot > 0.5 ? 1 / dot : 2;
+      const scale = miterFactor / mLen;
       const ox = mx * scale * hwX;
       const oy = my * scale * hwY;
       emit(cx[i] + ox, cy[i] + oy, times[i]);
