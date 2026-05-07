@@ -1,4 +1,4 @@
-import { Component, For, Show, createSignal, onCleanup } from "solid-js";
+import { Component, For, Show, createSignal, createEffect, onCleanup } from "solid-js";
 import { 
   toggleStarred, 
   toggleExpanded, 
@@ -16,6 +16,14 @@ export const ReferenceItem: Component<{ entry: ReferenceEntry; targetVersion: Ve
   const isStarred = () => referenceStore.starred.has(props.entry.name);
   const [copiedExample, setCopiedExample] = createSignal<string | null>(null);
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Defer building the body (markdown parse + per-example CodeMirror editors)
+  // until the row is first expanded. Once built, keep it in the DOM so the
+  // grid-row collapse animation continues to work on later toggles.
+  const [hasBeenExpanded, setHasBeenExpanded] = createSignal(isExpanded());
+  createEffect(() => {
+    if (isExpanded()) setHasBeenExpanded(true);
+  });
 
   const isAvailable = () => {
     if (!props.targetVersion || !props.entry.meta.introduced) return true;
@@ -78,6 +86,7 @@ export const ReferenceItem: Component<{ entry: ReferenceEntry; targetVersion: Ve
         class="doc-function-content-wrapper"
         classList={{ "doc-function-content-wrapper--expanded": isExpanded() }}
       >
+        <Show when={hasBeenExpanded()}>
         <div class="doc-function-content-inner">
           <div class="doc-function-content doc-function-content--active">
             <Show when={!isAvailable()}>
@@ -145,6 +154,7 @@ export const ReferenceItem: Component<{ entry: ReferenceEntry; targetVersion: Ve
             </Show>
           </div>
         </div>
+        </Show>
       </div>
     </div>
   );

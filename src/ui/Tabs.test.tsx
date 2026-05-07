@@ -8,21 +8,20 @@ describe("Tabs", () => {
     { id: "tab2", name: "Tab 2", content: () => <div data-testid="content2">Content 2</div> },
   ];
 
-  it("renders the first tab by default", () => {
+  it("renders only the active tab by default; inactive tabs are not yet mounted", () => {
     render(() => <Tabs tabs={tabs} />);
     const button1 = screen.getByText("Tab 1");
     const content1 = screen.getByTestId("content1");
 
     expect(button1).toHaveClass("active");
     expect(content1.parentElement).toHaveClass("active");
-    // Inactive tab is in the DOM but hidden via CSS display:none
-    const content2 = screen.getByTestId("content2");
-    expect(content2.parentElement).not.toHaveClass("active");
-    expect(content2.parentElement!.style.display).toBe("none");
+    // Tab 2 has not been activated yet — its content factory is not invoked.
+    expect(screen.queryByTestId("content2")).toBeNull();
   });
 
-  it("switches tabs when clicked", async () => {
+  it("mounts a tab the first time it becomes active and keeps it mounted afterwards", async () => {
     render(() => <Tabs tabs={tabs} />);
+    const button1 = screen.getByText("Tab 1");
     const button2 = screen.getByText("Tab 2");
 
     fireEvent.click(button2);
@@ -30,9 +29,14 @@ describe("Tabs", () => {
     expect(button2).toHaveClass("active");
     const content2 = screen.getByTestId("content2");
     expect(content2.parentElement).toHaveClass("active");
-    // Previous tab is still in the DOM but hidden
+    // Tab 1 was already activated, so its content stays in the DOM, just hidden.
     const content1 = screen.getByTestId("content1");
     expect(content1.parentElement).not.toHaveClass("active");
     expect(content1.parentElement!.style.display).toBe("none");
+
+    // Switching back doesn't re-mount Tab 1 — same DOM node.
+    fireEvent.click(button1);
+    expect(screen.getByTestId("content1")).toBe(content1);
+    expect(content2.parentElement!.style.display).toBe("none");
   });
 });

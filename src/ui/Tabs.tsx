@@ -1,10 +1,10 @@
-import { createSignal, For, Show, JSX, onMount, onCleanup } from "solid-js";
+import { createSignal, createEffect, For, Show, JSX, onMount, onCleanup } from "solid-js";
 import type { TypedChannel } from "../lib/typedChannel";
 
 export interface Tab {
   id: string;
   name: string;
-  /** Render function called lazily when the tab becomes active. */
+  /** Render function called lazily the first time the tab becomes active. */
   content: () => JSX.Element;
 }
 
@@ -30,6 +30,25 @@ export function Tabs(props: TabsProps) {
     setInternalActiveTabId(id);
     props.onTabChange?.(id);
   };
+
+  // Track which tabs have ever been activated. Inactive tabs render nothing
+  // until first viewed; once mounted they stay in the DOM (hidden via display)
+  // so tab switches preserve scroll/search/expand state cheaply.
+  const initialId =
+    props.activeTabId ?? props.initialTabId ?? (props.tabs.length > 0 ? props.tabs[0].id : "");
+  const [activatedTabs, setActivatedTabs] = createSignal<Set<string>>(
+    new Set(initialId ? [initialId] : []),
+  );
+
+  createEffect(() => {
+    const id = activeTabId();
+    if (!id) return;
+    const current = activatedTabs();
+    if (current.has(id)) return;
+    const next = new Set(current);
+    next.add(id);
+    setActivatedTabs(next);
+  });
 
   onMount(() => {
     if (props.switchChannel) {
@@ -67,7 +86,9 @@ export function Tabs(props: TabsProps) {
               id={tab.id}
               style={{ display: activeTabId() === tab.id ? "" : "none" }}
             >
-              {tab.content()}
+              <Show when={activatedTabs().has(tab.id)}>
+                {tab.content()}
+              </Show>
             </div>
           )}
         </For>
