@@ -236,6 +236,25 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       return response.result;
     },
 
+    async evalCodeWithDiagnostics(
+      code: string,
+    ): Promise<{ result: string | null; diagnostics: RuntimeDiagnostic[] }> {
+      if (!isUseqWasmEnabled()) return { result: null, diagnostics: [] };
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "evalCodeWithDiagnostics-result" }>
+      >(
+        { type: "evalCodeWithDiagnostics", code, publish: true },
+        "evalCodeWithDiagnostics-result",
+      );
+      try {
+        codeEvaluatedChannel.publish({ code });
+      } catch (error) {
+        dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
+      }
+      return { result: response.result, diagnostics: response.diagnostics };
+    },
+
     async updateTime(timeSeconds: number): Promise<void> {
       if (!isUseqWasmEnabled()) return;
       await ensureLoadedInternal();

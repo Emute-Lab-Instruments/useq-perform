@@ -48,6 +48,21 @@ export interface EvalCodeRequest {
   publish: boolean;
 }
 
+/**
+ * Eval + diagnostics in a single round-trip. The worker calls
+ * `interpreter.evaluate(code)` and reads `useq_last_diagnostics` in the
+ * same handler before returning, so the diagnostics are guaranteed to
+ * belong to this eval. Required to avoid the race where two concurrent
+ * evals interleave their evalCode/readLastDiagnostics messages on the
+ * worker FIFO and pick up each other's diagnostics.
+ */
+export interface EvalCodeWithDiagnosticsRequest {
+  type: "evalCodeWithDiagnostics";
+  id: number;
+  code: string;
+  publish: boolean;
+}
+
 export interface UpdateTimeRequest {
   type: "updateTime";
   id: number;
@@ -123,6 +138,7 @@ export interface ApplyStateSnapshotRequest {
 export type WasmWorkerRequest =
   | LoadRequest
   | EvalCodeRequest
+  | EvalCodeWithDiagnosticsRequest
   | UpdateTimeRequest
   | EvalOutputAtTimeRequest
   | EvalOutputsInTimeWindowRequest
@@ -161,6 +177,16 @@ export interface EvalCodeResponse {
   id: number;
   /** `null` only when WASM is disabled main-side at request time. */
   result: string | null;
+}
+
+export interface EvalCodeWithDiagnosticsResponse {
+  type: "evalCodeWithDiagnostics-result";
+  id: number;
+  /** `null` only when WASM is disabled main-side at request time. */
+  result: string | null;
+  /** Diagnostics emitted by *this* eval, read atomically inside the
+   *  worker handler. */
+  diagnostics: RuntimeDiagnostic[];
 }
 
 export interface UpdateTimeResponse {
@@ -244,6 +270,7 @@ export interface ErrorResponse {
 export type WasmWorkerResponse =
   | LoadResponse
   | EvalCodeResponse
+  | EvalCodeWithDiagnosticsResponse
   | UpdateTimeResponse
   | EvalOutputAtTimeResponse
   | EvalOutputsInTimeWindowResponse

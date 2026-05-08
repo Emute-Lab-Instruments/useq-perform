@@ -7,6 +7,9 @@ import { EditorView } from "@codemirror/view";
 // ---------------------------------------------------------------------------
 
 const mockEvalCode = vi.hoisted(() => vi.fn(() => Promise.resolve("42")));
+const mockEvalCodeWithDiagnostics = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ result: "42", diagnostics: [] })),
+);
 const mockSendTouSEQ = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const mockDetectAndTrack = vi.hoisted(() => vi.fn());
 const mockDispatchInlineResult = vi.hoisted(() => vi.fn());
@@ -21,6 +24,7 @@ vi.mock("@nextjournal/clojure-mode/extensions/eval-region", () => ({
 vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
   getActiveWasmRuntimePort: () => ({
     evalCode: mockEvalCode,
+    evalCodeWithDiagnostics: mockEvalCodeWithDiagnostics,
     readLastDiagnostics: mockReadLastDiagnostics,
   }),
 }));
@@ -110,20 +114,23 @@ describe("soft eval routing in runtime mode 'both'", () => {
 
   it("dispatches to the WASM port", async () => {
     evaluate(view, "soft");
-    await vi.waitFor(() => expect(mockEvalCode).toHaveBeenCalledOnce());
-    expect(mockEvalCode).toHaveBeenCalledWith("(a1 1)");
+    await vi.waitFor(() => expect(mockEvalCodeWithDiagnostics).toHaveBeenCalledOnce());
+    expect(mockEvalCodeWithDiagnostics).toHaveBeenCalledWith("(a1 1)");
   });
 
   it("sends ZERO bytes to the hardware port", async () => {
     evaluate(view, "soft");
-    await vi.waitFor(() => expect(mockEvalCode).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mockEvalCodeWithDiagnostics).toHaveBeenCalledOnce());
     expect(mockSendTouSEQ).not.toHaveBeenCalled();
   });
 
   it("hardware port receives nothing even when WASM resolves", async () => {
-    mockEvalCode.mockResolvedValueOnce("preview-result");
+    mockEvalCodeWithDiagnostics.mockResolvedValueOnce({
+      result: "preview-result",
+      diagnostics: [],
+    });
     evaluate(view, "soft");
-    await vi.waitFor(() => expect(mockEvalCode).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mockEvalCodeWithDiagnostics).toHaveBeenCalledOnce());
     expect(mockSendTouSEQ).not.toHaveBeenCalled();
   });
 });

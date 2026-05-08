@@ -157,6 +157,25 @@ export const wasmRuntimePort: WasmRuntimePort = {
     return textFromResponse(response.text);
   },
 
+  async evalCodeWithDiagnostics(
+    code: string,
+  ): Promise<{ result: string | null; diagnostics: RuntimeDiagnostic[] }> {
+    // In-process: we run on the JS main thread, so reading diagnostics
+    // synchronously after sendEval resolves is sufficient — no concurrent
+    // eval can run between the await and the diagnostics read.
+    //
+    // Unlike `evalCode`, this method never throws — the caller distinguishes
+    // success from failure by inspecting `diagnostics` for severity:"error".
+    // That matches the worker port and avoids losing diagnostics in a catch.
+    const response = await engine().sendEval(code);
+    const diagnostics = readLastDiagnosticsSync();
+    const result =
+      response.success === false
+        ? (response.text ?? null)
+        : textFromResponse(response.text);
+    return { result, diagnostics };
+  },
+
   updateTime(timeSeconds: number): Promise<void> {
     return updateUseqWasmTime(timeSeconds);
   },

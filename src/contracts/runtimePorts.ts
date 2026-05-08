@@ -294,6 +294,21 @@ export interface WasmRuntimePort extends SharedRuntimePort {
    */
   evalCodeSilently(code: string): Promise<string | null>;
 
+  /**
+   * Eval + last-diagnostics in one round-trip. Returns the eval's own
+   * diagnostics (read in the same worker handler that ran the eval), so
+   * callers do not have to follow with a separate `readLastDiagnostics()`
+   * — which is racy when multiple evals overlap, because the diagnostics
+   * slot is global and the second eval clobbers it before the first eval
+   * gets a chance to read it.
+   *
+   * Used by the editor evaluation pipeline to attach inline diagnostics
+   * to the correct eval range.
+   */
+  evalCodeWithDiagnostics(
+    code: string,
+  ): Promise<{ result: string | null; diagnostics: RuntimeDiagnostic[] }>;
+
   /** Advance the WASM interpreter's wall-clock. */
   updateTime(timeSeconds: number): Promise<void>;
 

@@ -592,6 +592,30 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         postResponse({ type: "evalCode-result", id, result });
         return;
       }
+      case "evalCodeWithDiagnostics": {
+        if (!wasmEnabled) {
+          postResponse({
+            type: "evalCodeWithDiagnostics-result",
+            id,
+            result: null,
+            diagnostics: [],
+          });
+          return;
+        }
+        if (!interpreter) throw new Error("WASM worker: interpreter not loaded");
+        const result = interpreter.evaluate(request.code);
+        // Read diagnostics in the same handler so they belong to this eval —
+        // any concurrent eval queued behind us has not run yet, so
+        // `useq_last_diagnostics` is still ours.
+        const diagnostics = readLastDiagnosticsLocal();
+        postResponse({
+          type: "evalCodeWithDiagnostics-result",
+          id,
+          result,
+          diagnostics,
+        });
+        return;
+      }
       case "updateTime": {
         if (wasmEnabled && interpreter) {
           interpreter.updateTime(request.timeSeconds);

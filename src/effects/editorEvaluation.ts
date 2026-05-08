@@ -15,12 +15,17 @@ import { post } from "../utils/consoleStore.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 import { discoverSlotsAfterEval, runBootReconciliation } from "./liveEditRuntime.ts";
 
-// Editor eval and diagnostics readback both route through the active
-// WASM runtime port so the worker-backed default actually moves
-// user-driven evals off the main thread AND keeps inline error
-// squiggles working from the worker-side diagnostics.
-const evalInUseqWasm = (code: string): Promise<string | null> =>
-  getActiveWasmRuntimePort().evalCode(code);
+// Editor eval and diagnostics readback are atomic on the active WASM
+// runtime port: `evalCodeWithDiagnostics` returns the eval's own
+// diagnostics, read inside the same worker handler. A separate
+// `readLastDiagnostics` round-trip would race when two evals overlap,
+// because the diagnostics slot is global and the second eval clobbers it
+// before the first eval's read can see it — see
+// `src/runtime/diagnosticReadRace.test.ts`.
+const evalInUseqWasm = (
+  code: string,
+): Promise<{ result: string | null; diagnostics: UseqDiagnostic[] }> =>
+  getActiveWasmRuntimePort().evalCodeWithDiagnostics(code);
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import { rewriteCodeSliceForModule } from "../lib/manualControlState.ts";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
@@ -122,6 +127,34 @@ function getToplevelCode(state: EditorState): {
 }
 
 // ---------------------------------------------------------------------------
+// Per-view eval-sequence guard (spec §1.10: "one in-flight eval per editor;
+// a slow eval cannot misattribute its output to a later eval")
+// ---------------------------------------------------------------------------
+//
+// Each `evalWasm` call bumps a per-view counter and captures the resulting
+// sequence number. When the eval resolves, if the captured number isn't
+// still the latest the view has issued, the result is dropped — applying
+// it would clobber a fresher eval's effects (diagnostics, inline result,
+// output health) with stale state.
+//
+// Today both the worker and in-process transports happen to deliver
+// responses in dispatch order, so the bug rarely manifests. This guard
+// makes correctness independent of transport ordering, satisfying the
+// spec contract regardless of future engine changes (parallel workers,
+// cancellation, etc.).
+const viewEvalSeq = new WeakMap<EditorView, number>();
+
+function nextEvalSeq(view: EditorView): number {
+  const next = (viewEvalSeq.get(view) ?? 0) + 1;
+  viewEvalSeq.set(view, next);
+  return next;
+}
+
+function isLatestEvalSeq(view: EditorView, seq: number): boolean {
+  return viewEvalSeq.get(view) === seq;
+}
+
+// ---------------------------------------------------------------------------
 // WASM evaluation helper
 // ---------------------------------------------------------------------------
 
@@ -143,12 +176,19 @@ function evalWasm(
   const docOffset = opts.docOffset ?? 0;
   const rangeFrom = opts.range?.from ?? 0;
   const rangeTo = opts.range?.to ?? (opts.view?.state.doc.length ?? 0);
+  const view = opts.view;
+  const seq = view ? nextEvalSeq(view) : 0;
+  const isStale = () => view !== undefined && !isLatestEvalSeq(view, seq);
 
   return evalInUseqWasm(wasmCode)
-    .then(async (result: unknown) => {
-      // Read diagnostics after the eval has resolved so the worker (or
-      // in-process) state reflects this evaluation's outcome.
-      const diagnostics = await getActiveWasmRuntimePort().readLastDiagnostics();
+    .then(async ({ result, diagnostics }) => {
+      // A newer eval has been dispatched on this view since we started.
+      // Drop our result so we don't clobber the fresher eval's effects.
+      // Empty `text` makes the outer `.then`'s `dispatchInlineResult` a
+      // no-op, and we skip every editor-state mutation below.
+      if (isStale()) {
+        return { text: "", isError: false, pos: evalPos };
+      }
       const output = typeof result === "string" ? result : String(result ?? "");
       const trimmed = output.trim();
 
@@ -205,6 +245,11 @@ function evalWasm(
       return { text: trimmed, isError: false, pos: evalPos };
     })
     .catch((error: unknown) => {
+      // A stale failed eval should not surface its error to the user —
+      // the newer eval owns the editor state now.
+      if (isStale()) {
+        return { text: "", isError: false, pos: evalPos };
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[modulisp] eval error: ${message}`);
       if (opts.isPreview) {
