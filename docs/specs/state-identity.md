@@ -121,7 +121,8 @@ scope (section 5).
 ```
 
 Only one is active at a time. The editor shows this through eval/gutter rails
-and eval highlights. The inactive forms are variants, not competing programs.
+and eval highlights ([expression-gutter.md](expression-gutter.md)). The inactive
+forms are variants, not competing programs.
 
 3.2 It is natural for variants to share state:
 

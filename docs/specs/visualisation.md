@@ -31,6 +31,8 @@
 
 1.5 **Lane layout.** Digital outputs are rendered as step-mode binary traces in stacked lanes. Analogue outputs are rendered as continuous traces in stacked lanes. Lane height is derived from drawable area divided by lane count. The channel set is dynamic — determined by the hello handshake for hardware (the main uSEQ module has 3 analogue + 3 digital; expanders add more) and by the output recognition pattern (a1–a8, d1–d8, s1–s8) for WASM.
 
+1.5.1 **Per-variant channel selection.** When the buffer holds multiple variants for the same output (`(a1 …)` written more than once), a **per-output toggle** picks which variant is sampled and rendered for that lane — at most one variant per output is active for vis at any time. Eval implicitly toggles the just-evaluated form's vis on; explicit user toggle (gutter play button or `vis.toggleAtHalo` action) overrides. Soft eval does not toggle. Toggling on a variant that is not the currently-running one triggers implicit soft-sampling of that variant in WASM, independent of what the module is producing. Full contract: [expression-gutter.md §3](expression-gutter.md).
+
 1.6 **Empty state.** When no expressions are assigned and no probes exist, the panel shows a placeholder ("No expressions selected") and consumes near-zero CPU. (see `src/ui/SerialVis.tsx`)
 
 1.7 **Render frequency** is animation-frame paced. The renderer no-ops when the panel is not visible. Rendering must remain smooth (≥ 30 FPS) at the documented channel target — see [MAIN.md §3.3](MAIN.md).
@@ -102,6 +104,7 @@ Future buffers are **stable between invalidation events**. The already-projected
 3.7 **Invalidation triggers.** A future buffer is cleared and reset-filled when:
 - The output's expression is re-evaluated (code eval).
 - Settings that affect projection (window duration, sample count, future lead) change.
+- The vis toggle for that output swaps to a different variant ([expression-gutter.md §3.6](expression-gutter.md)).
 - (Planned) A referenced external input or live-edit value changes — requires per-output dependency tracking via `useq_output_dependencies` (§7.4). Currently uses conservative invalidation (all outputs cleared on any eval).
 
 3.8 **Future frontier coverage.** The renderer needs future coverage through `now + windowDuration/2 + futureLeadSeconds`. The sampler asks the WASM runtime to extend the projection fork whenever `projectionFrontierTime` is behind that target plus a small guard band. The guard band should be expressed in seconds or samples, not in wall-clock frames, so variable rAF cadence does not create sawtooth coverage. Extension sample times are deterministic: for old frontier `F`, requested end `E`, and count `N`, samples are at `F + step`, `F + 2*step`, ..., `E`, where `step = (E - F) / N`.

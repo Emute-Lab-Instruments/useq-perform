@@ -23,7 +23,8 @@ Before working on a feature, find and read the relevant spec(s). Match by keywor
 | url params, ?nosave, ?config, ?gist, query string, deep link, share link, URL | `docs/specs/url-params.md` |
 | localStorage, persistence, save, load, schema version, storage, remember, retain, restore, cache | `docs/specs/persistence.md` |
 | settings, devmode, settings panel, mutation surface, preferences, config, options, toggles | `docs/specs/settings.md` |
-| editor, autosave, bracket, gutter, focus rules, secondary editor, CodeMirror, syntax highlighting, line numbers, text editing | `docs/specs/editor.md` |
+| editor, autosave, bracket, focus rules, secondary editor, CodeMirror, syntax highlighting, line numbers, text editing | `docs/specs/editor.md` |
+| gutter, gutter rail, expression gutter, play button, vis toggle, last-evaluated, active rail, failure pulse, stale pulse, exclusive vis, vis.toggleAtHalo, soft sampling | `docs/specs/expression-gutter.md` |
 | eval, compile, diagnostics, inline results, output health, run, execute, error, warning, squiggly, red underline, feedback | `docs/specs/code-evaluation.md` |
 | transport, play, stop, clock, tempo, state machine, BPM, pause, reset, playback, timing, sync | `docs/specs/transport.md` |
 | visualisation, canvas, WebGL, lanes, sampling, waveform, oscilloscope, scope, graph, plot, trace, render, animation, FPS, channels, display | `docs/specs/visualisation.md` |

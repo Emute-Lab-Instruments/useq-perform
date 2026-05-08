@@ -193,6 +193,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.29 [main-menu.md](main-menu.md) — system/pause menu (L3+R3 chord), vertical item list, save/restore/settings/transport/help submenus, gamepad navigation layer.
 
+6.30 [expression-gutter.md](expression-gutter.md) — gutter rails (which expression is currently running per output) and play buttons (per-output vis toggle); failure/stale pulses; implicit soft sampling of toggled-but-unevaluated variants; eval implicitly toggles vis on (soft eval excepted); persistence and hardware-connect reset; `vis.toggleAtHalo` action.
+
 ---
 
 ## 7. Cross-References
