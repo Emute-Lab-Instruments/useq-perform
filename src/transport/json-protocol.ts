@@ -53,7 +53,7 @@ import {
   type SendJsonEvalOptions,
   type CaptureCallback,
 } from "./types.ts";
-import { setSerialOutputBufferRouting } from "./stream-parser.ts";
+import { serialBuffers, setSerialOutputBufferRouting } from "./stream-parser.ts";
 
 // ── Module state (set once by initProtocol) ──────────────────────────
 
@@ -136,6 +136,7 @@ export function resetProtocolState(): void {
   _handshakeResolve = null;
   _handshakePromise = null;
   setSerialOutputBufferRouting({});
+  for (const buf of serialBuffers) buf.clear();
   stopHeartbeat();
   reportProtocolModeChanged(getProtocolMode());
 }
