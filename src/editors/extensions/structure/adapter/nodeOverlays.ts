@@ -409,14 +409,17 @@ class StructuralNodeOverlayPlugin {
   constructor(view: EditorView) {
     this.view = view;
     this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    // Size is set explicitly each render to match scrollDOM's full scrollable
+    // content area (not just the visible viewport): polygons are positioned in
+    // doc-space, so the SVG must cover doc-space [0, scrollHeight] or anything
+    // below the first viewport gets clipped even after the user scrolls to it.
     this.svgOverlay.style.cssText = `
       position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
+      top: 0;
+      left: 0;
       pointer-events: none;
       z-index: 0;
-      overflow: hidden;
+      overflow: visible;
     `;
     view.scrollDOM.appendChild(this.svgOverlay);
     this.unsubSettings = subscribeAppSettings(() => this.debouncedMeasure());
@@ -634,10 +637,15 @@ class StructuralNodeOverlayPlugin {
       this.svgOverlay.removeChild(this.svgOverlay.firstChild);
     }
 
+    // Cover the full scrollable content, not just the visible viewport —
+    // polygon coords are in doc-space (see computeNodeLineBounds), so the SVG
+    // must extend to scrollHeight or anything below the initial viewport is
+    // clipped by the SVG's own bounds and never reappears on scroll.
     const scrollWidth = this.view.scrollDOM.scrollWidth;
     const scrollHeight = this.view.scrollDOM.scrollHeight;
-    this.svgOverlay.setAttribute('width', String(scrollWidth));
-    this.svgOverlay.setAttribute('height', String(scrollHeight));
+    this.svgOverlay.style.width = `${scrollWidth}px`;
+    this.svgOverlay.style.height = `${scrollHeight}px`;
+    this.svgOverlay.setAttribute('viewBox', `0 0 ${scrollWidth} ${scrollHeight}`);
 
     // Apply fade opacity to the overlay as a whole (legacy renders all halo
     // elements together; one opacity dim covers indent guides + polygons +
@@ -732,7 +740,7 @@ class StructuralNodeOverlayPlugin {
     // highlight is showing structure.
     this.view.dom.classList.toggle('useq-hide-bracket-match', measure.polygons.length > 0);
 
-    dlog("rendered: svg children=", this.svgOverlay.childNodes.length, "svg w/h=", this.svgOverlay.getAttribute('width'), this.svgOverlay.getAttribute('height'));
+    dlog("rendered: svg children=", this.svgOverlay.childNodes.length, "viewBox=", this.svgOverlay.getAttribute('viewBox'));
   }
 }
 
