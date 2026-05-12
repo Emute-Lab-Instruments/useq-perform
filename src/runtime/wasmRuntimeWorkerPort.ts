@@ -374,6 +374,57 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       return response.applied;
     },
 
+    async setHwInputValue(index: number, value: number): Promise<void> {
+      if (!isUseqWasmEnabled()) return;
+      await ensureLoadedInternal();
+      await send<
+        Extract<WasmWorkerResponse, { type: "setHwInputValue-result" }>
+      >(
+        { type: "setHwInputValue", index, value },
+        "setHwInputValue-result",
+      );
+    },
+
+    async probeSet(slot: number, code: string): Promise<number> {
+      if (!isUseqWasmEnabled()) return -1;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "probeSet-result" }>
+      >(
+        { type: "probeSet", slot, code },
+        "probeSet-result",
+      );
+      return response.status;
+    },
+
+    async probeSample(
+      slot: number,
+      startTime: number,
+      endTime: number,
+      count: number,
+    ): Promise<Float64Array | null> {
+      if (!isUseqWasmEnabled()) return null;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "probeSample-result" }>
+      >(
+        { type: "probeSample", slot, startTime, endTime, count },
+        "probeSample-result",
+      );
+      return response.samples ? Float64Array.from(response.samples) : null;
+    },
+
+    async probeFree(slot: number): Promise<void> {
+      if (!isUseqWasmEnabled()) return;
+      await ensureLoadedInternal();
+      await send<
+        Extract<WasmWorkerResponse, { type: "probeFree-result" }>
+      >(
+        { type: "probeFree", slot },
+        "probeFree-result",
+      );
+    },
+
     async getLiveSlots(): Promise<LiveSlotMetadata[]> {
       if (!isUseqWasmEnabled()) return [];
       await ensureLoadedInternal();

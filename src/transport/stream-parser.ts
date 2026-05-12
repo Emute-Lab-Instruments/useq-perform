@@ -22,6 +22,7 @@ import {
   type SerialProcessingState,
   type BufferMapFunction,
 } from "./types.ts";
+import { hwInputStream } from "../contracts/hardwareChannels.ts";
 
 // ── Shared mutable state ─────────────────────────────────────────────
 // These are the canonical instances; other modules reference them.
@@ -37,6 +38,14 @@ export function setSerialOutputBufferRouting(
   routing: Record<number, number>
 ): void {
   serialOutputBufferRouting = routing;
+}
+
+export let serialInputHwRouting: Record<number, number> = {};
+
+export function setSerialInputHwRouting(
+  routing: Record<number, number>
+): void {
+  serialInputHwRouting = routing;
 }
 
 export const serialMapFunctions: Array<BufferMapFunction | undefined> = [];
@@ -109,7 +118,7 @@ async function processSerialDataLoop(
     chunkCount++;
     if (chunkCount <= 20) {
       const hex = Array.from(incoming.slice(0, 40)).map(b => b.toString(16).padStart(2, '0')).join(' ');
-      console.log(`[stream-parser] chunk #${chunkCount} (${incoming.length} bytes): ${hex}${incoming.length > 40 ? '...' : ''}`);
+      // console.log(`[stream-parser] chunk #${chunkCount} (${incoming.length} bytes): ${hex}${incoming.length > 40 ? '...' : ''}`);
     }
 
     const byteArray = combineBuffers(buffer, incoming);
@@ -233,7 +242,7 @@ function processBareJsonModeData(
       const end = (i > 0 && byteArray[i - 1] === 13) ? i - 1 : i;
       const messageText = extractMessageText(byteArray.slice(0, end));
       if (messageText.length > 0) {
-        console.log(`[stream-parser] JSON frame received: ${messageText.slice(0, 200)}${messageText.length > 200 ? '...' : ''}`);
+        // console.log(`[stream-parser] JSON frame received: ${messageText.slice(0, 200)}${messageText.length > 200 ? '...' : ''}`);
         onJsonMessage(messageText);
       }
       return {
@@ -278,6 +287,11 @@ function processSerialStreamValue(byteArray: Uint8Array): void {
     serialOutputBufferRouting[channel] ?? channel - 1;
   if (bufferIndex >= 0 && bufferIndex < serialBuffers.length) {
     updateSerialBuffer(bufferIndex, val);
+  }
+
+  const hwInputIndex = serialInputHwRouting[channel];
+  if (hwInputIndex !== undefined) {
+    hwInputStream.publish({ hwInputIndex, value: val });
   }
 }
 

@@ -9,9 +9,6 @@
 import { dbg } from '../lib/debug.ts';
 import { getActiveWasmRuntimePort } from '../runtime/activeWasmRuntimePort.ts';
 
-const evalInUseqWasm = (code: string): Promise<string | null> =>
-  getActiveWasmRuntimePort().evalCode(code);
-
 /** Known control input names */
 export type ControlName = 'ain1' | 'ain2' | 'din1' | 'din2' | 'swm' | 'swt';
 
@@ -43,30 +40,13 @@ const controlValues: Record<ControlName, number> = {
     swt: 0.5    // Toggle switch (0, 0.5, or 1)
 };
 
-function normaliseControlName(name: string): string | null {
-    if (typeof name !== 'string') {
-        return null;
-    }
-    const trimmed = name.trim();
-    if (!trimmed) {
-        return null;
-    }
-    const sanitised = trimmed.replace(/[^a-z0-9-]/gi, '');
-    if (!sanitised) {
-        return null;
-    }
-    return sanitised;
-}
-
-function formatControlValueLiteral(value: number): string {
-    if (!Number.isFinite(value)) {
-        return '0';
-    }
-    if (Number.isInteger(value)) {
-        return String(value);
-    }
-    return value.toFixed(6).replace(/\.0+$/, '').replace(/0+$/, '').replace(/\.$/, '');
-}
+/** Map mock control names to WASM g_hw_inputs[] indices (graph_builder.cpp). */
+const CONTROL_TO_HW_INDEX: Partial<Record<ControlName, number>> = {
+    ain1: 8,
+    ain2: 9,
+    din1: 0,
+    din2: 1,
+};
 
 // Listeners for value changes
 const valueChangeListeners = new Set<ValueChangeListener>();
@@ -146,28 +126,11 @@ function notifyValueChanged(name: ControlName, newValue: number, oldValue: numbe
     }
 }
 
-/**
- * Update the WASM interpreter with a mock control value
- * We do this by defining the control as a constant signal
- */
 async function updateInterpreterValue(name: string, value: number): Promise<void> {
+    const hwIndex = CONTROL_TO_HW_INDEX[name as ControlName];
+    if (hwIndex === undefined) return;
     try {
-        const normalised = normaliseControlName(name);
-        if (!normalised) {
-            dbg(`mockControlInputs: refusing to define invalid control name "${name}"`);
-            return;
-        }
-
-        const numericValue = Number(value);
-        if (!Number.isFinite(numericValue)) {
-            dbg(`mockControlInputs: control ${normalised} value ${value} is not finite`);
-            return;
-        }
-
-        const literal = formatControlValueLiteral(numericValue);
-
-        // Represent hardware input functions as zero-arg functions that return the latest mock value.
-        await evalInUseqWasm(`(defn ${normalised} () ${literal})`);
+        await getActiveWasmRuntimePort().setHwInputValue(hwIndex, value);
     } catch (error) {
         dbg(`mockControlInputs: failed to update interpreter for ${name}: ${error}`);
     }

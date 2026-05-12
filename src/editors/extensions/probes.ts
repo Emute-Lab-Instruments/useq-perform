@@ -34,7 +34,7 @@ import {
   type ProbeMode,
   type ProbeRange,
 } from "./probeHelpers.ts";
-import { drawProbeWaveformGL } from "../../ui/visualisation/webglLineRenderer.ts";
+import { drawProbeWaveformGL, releaseProbeGLState } from "../../ui/visualisation/webglLineRenderer.ts";
 import { perf } from "../../lib/perfTrace.ts";
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,12 @@ export interface ProbeConfig {
   savePersistedProbes: (data: PersistedProbeSpec[]) => void;
   /** Remove persisted probe state (when empty) */
   removePersistedProbes: () => void;
+  /** Install/update a probe expression in a compile-cached WASM slot. Returns 0 on success. */
+  probeSet: (slot: number, code: string) => Promise<number>;
+  /** Sample an already-compiled probe slot at evenly-spaced times. Returns Float64Array or null. */
+  probeSample: (slot: number, startTime: number, endTime: number, count: number) => Promise<Float64Array | null>;
+  /** Free a probe slot. */
+  probeFree: (slot: number) => Promise<void>;
 }
 
 /** Create a ProbeConfig that delegates to the existing singletons. */
@@ -114,6 +120,9 @@ export function createDefaultProbeConfig(): ProbeConfig {
     removePersistedProbes: () => {
       remove(PERSISTENCE_KEYS.editorProbes);
     },
+    probeSet: (slot, code) => getActiveWasmRuntimePort().probeSet(slot, code),
+    probeSample: (slot, start, end, count) => getActiveWasmRuntimePort().probeSample(slot, start, end, count),
+    probeFree: (slot) => getActiveWasmRuntimePort().probeFree(slot),
   };
 }
 
@@ -146,10 +155,12 @@ async function defaultEvalExpressionAtTimes(
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
 
-  // Error short-circuit: interpreter returned an error string instead of a
-  // vector. Surface it to the caller so the probe widget can display it.
+  // Batch eval can fail when the combined vector expression overflows the
+  // WASM interpreter's token limit (256 tokens).  Return null so the caller
+  // falls through to the per-sample path, which evaluates each time-point
+  // individually and stays well under the limit.
   if (trimmed.startsWith(ERROR_PREFIX)) {
-    return { samples: [], current: trimmed };
+    return null;
   }
 
   const samples = parseNumericVector(trimmed);
@@ -275,7 +286,6 @@ interface ProbeRenderUpdate {
 const toggleProbeEffect = StateEffect.define<PersistedProbeSpec>();
 const removeProbeEffect = StateEffect.define<{ id: string }>();
 const setProbeDepthEffect = StateEffect.define<{ id: string; delta: number }>();
-const setProbeCanvasSizeEffect = StateEffect.define<{ id: string; width: number; height: number }>();
 const setProbeWindowDurationEffect = StateEffect.define<{ id: string; durationMs: number }>();
 const updateProbeRenderEffect = StateEffect.define<{
   updates: ProbeRenderUpdate[];
@@ -408,6 +418,7 @@ function updateProbeDOM(
 
   if (!render || render.kind === "loading") {
     if (elements.canvas) {
+      releaseProbeGLState(elements.canvas);
       elements.canvas.remove();
       elements.canvas = null;
     }
@@ -439,6 +450,7 @@ function updateProbeDOM(
     drawWaveform(canvas, render, _config.getLineWidth());
   } else {
     if (elements.canvas) {
+      releaseProbeGLState(elements.canvas);
       elements.canvas.remove();
       elements.canvas = null;
     }
@@ -468,33 +480,9 @@ class ProbeWidget extends WidgetType {
     const root = document.createElement("span");
     root.className = "cm-probe-widget";
     root.dataset.probeId = this.probe.id;
-    root.style.width = `${this.probe.canvasWidth + 4}px`;
-    root.style.height = `${this.probe.canvasHeight + 18}px`;
 
-    const body = document.createElement("span");
-    body.className = "cm-probe-widget-body";
-
-    let canvas: HTMLCanvasElement | null = null;
-    let textEl: HTMLElement | null = null;
-
-    const render = this.render;
-    if (!render || render.kind === "loading") {
-      textEl = document.createElement("span");
-      textEl.className = "cm-probe-widget-text";
-      textEl.textContent = "sampling...";
-      body.appendChild(textEl);
-    } else if (render.kind === "waveform") {
-      canvas = document.createElement("canvas");
-      canvas.width = this.probe.canvasWidth;
-      canvas.height = this.probe.canvasHeight;
-      drawWaveform(canvas, render, _config.getLineWidth());
-      body.appendChild(canvas);
-    } else {
-      textEl = document.createElement("span");
-      textEl.className = `cm-probe-widget-text is-${render.kind}`;
-      textEl.innerHTML = escapeHtml(render.text);
-      body.appendChild(textEl);
-    }
+    const chrome = document.createElement("span");
+    chrome.className = "cm-probe-widget-chrome";
 
     const depthOverlay = document.createElement("span");
     depthOverlay.className = "cm-probe-depth-overlay";
@@ -537,7 +525,7 @@ class ProbeWidget extends WidgetType {
       depthOverlay.appendChild(rightCaret);
     }
 
-    body.appendChild(depthOverlay);
+    chrome.appendChild(depthOverlay);
 
     const close = document.createElement("button");
     close.type = "button";
@@ -546,7 +534,32 @@ class ProbeWidget extends WidgetType {
     close.title = "Remove probe";
     close.setAttribute("aria-label", "Remove probe");
     close.textContent = "×";
-    body.appendChild(close);
+    chrome.appendChild(close);
+
+    const body = document.createElement("span");
+    body.className = "cm-probe-widget-body";
+
+    let canvas: HTMLCanvasElement | null = null;
+    let textEl: HTMLElement | null = null;
+
+    const render = this.render;
+    if (!render || render.kind === "loading") {
+      textEl = document.createElement("span");
+      textEl.className = "cm-probe-widget-text";
+      textEl.textContent = "sampling...";
+      body.appendChild(textEl);
+    } else if (render.kind === "waveform") {
+      canvas = document.createElement("canvas");
+      canvas.width = this.probe.canvasWidth;
+      canvas.height = this.probe.canvasHeight;
+      drawWaveform(canvas, render, _config.getLineWidth());
+      body.appendChild(canvas);
+    } else {
+      textEl = document.createElement("span");
+      textEl.className = `cm-probe-widget-text is-${render.kind}`;
+      textEl.innerHTML = escapeHtml(render.text);
+      body.appendChild(textEl);
+    }
 
     const windowDurationContainer = document.createElement("span");
     windowDurationContainer.className = "cm-probe-window-duration";
@@ -568,9 +581,9 @@ class ProbeWidget extends WidgetType {
     windowDurationValue.textContent = `${this.probe.windowDurationMs}ms`;
     windowDurationContainer.appendChild(windowDurationValue);
 
-    body.appendChild(windowDurationContainer);
-
+    root.appendChild(chrome);
     root.appendChild(body);
+    root.appendChild(windowDurationContainer);
 
     probeDOMRegistry.set(this.probe.id, {
       root,
@@ -589,6 +602,10 @@ class ProbeWidget extends WidgetType {
   destroy(dom: HTMLElement): void {
     const id = dom.dataset.probeId;
     if (id) {
+      const elements = probeDOMRegistry.get(id);
+      if (elements?.canvas) {
+        releaseProbeGLState(elements.canvas);
+      }
       probeDOMRegistry.delete(id);
     }
   }
@@ -747,12 +764,6 @@ const probeField = StateField.define<ProbeFieldValue>({
           const nextDepth = Math.max(0, Math.min(probe.maxDepth, probe.depth + delta));
           return nextDepth === probe.depth ? probe : { ...probe, depth: nextDepth };
         });
-      } else if (effect.is(setProbeCanvasSizeEffect)) {
-        const { id, width, height } = effect.value;
-        probes = probes.map((probe) => {
-          if (probe.id !== id) return probe;
-          return { ...probe, canvasWidth: width, canvasHeight: height };
-        });
       } else if (effect.is(setProbeWindowDurationEffect)) {
         const { id, durationMs } = effect.value;
         const clampedDuration = Math.max(MIN_PROBE_WINDOW_DURATION_MS, Math.min(MAX_PROBE_WINDOW_DURATION_MS, durationMs));
@@ -905,7 +916,8 @@ async function sampleWaveform(
   }
 
   // Fallback: per-sample loop. Only reached when the batch path fails or
-  // is unavailable. Preserves original semantics.
+  // is unavailable. Preserves original semantics — including letting
+  // throws propagate so the caller can retry with the cached expression.
   const samples: number[] = [];
   let currentResult = "";
   for (let index = 0; index < count; index++) {
@@ -926,11 +938,37 @@ async function sampleWaveform(
   return { current: currentResult, samples };
 }
 
+async function sampleWaveformViaSlot(
+  slotId: number,
+  code: string,
+  currentTime: number,
+  windowDuration: number,
+  sampleCount: number,
+): Promise<{ current: string; samples: number[] } | null> {
+  const setResult = await _config.probeSet(slotId, code);
+  if (setResult < 0) return null;
+
+  const startTime = currentTime - windowDuration;
+  const endTime = currentTime;
+  const count = Math.max(2, Math.floor(sampleCount) || DEFAULT_PROBE_SAMPLE_COUNT);
+
+  const raw = await _config.probeSample(slotId, startTime, endTime, count);
+  if (!raw || raw.length === 0) return null;
+
+  const samples = Array.from(raw);
+  const last = samples[samples.length - 1];
+  const current = Number.isFinite(last) ? formatSampleScalar(last) : "NaN";
+  return { current, samples };
+}
+
+const MAX_PROBE_SLOTS = 8;
+
 async function buildRenderForProbe(
   state: EditorState,
   probe: PersistedProbeSpec,
   currentTime: number,
   settings: { probeSampleCount: number },
+  slotId?: number,
 ): Promise<ProbeRenderUpdate | null> {
   const built = buildProbeExpression(
     state,
@@ -969,9 +1007,14 @@ async function buildRenderForProbe(
     attempts.push(probe.cachedCode);
   }
 
+  let lastError: string | null = null;
   for (const code of attempts) {
     try {
-      const sample = await sampleWaveform(
+      // Fast path: compile-cached probe slot (compile once, sample many)
+      const slotSample = slotId != null
+        ? await sampleWaveformViaSlot(slotId, code, currentTime, windowDurationSeconds, sampleCount)
+        : null;
+      const sample = slotSample ?? await sampleWaveform(
         code,
         currentTime,
         windowDurationSeconds,
@@ -1019,6 +1062,7 @@ async function buildRenderForProbe(
         },
       };
     } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
       dbg(`probe: sample failed for ${probe.id} (${error})`);
     }
   }
@@ -1032,7 +1076,9 @@ async function buildRenderForProbe(
     render: {
       revision: 0,
       kind: "error",
-      text: probe.cachedCode ? "using last valid expression" : "probe unavailable",
+      text: lastError
+        ? (lastError.startsWith(ERROR_PREFIX) ? lastError : `${ERROR_PREFIX} ${lastError}`)
+        : "probe unavailable",
       samples: [],
       currentTime,
       windowStart: currentTime - windowDurationSeconds,
@@ -1203,12 +1249,19 @@ class ProbePlugin {
   private previousProbeSignature = "";
   /** True when the rAF tick loop should run (probes or visible indexed forms). */
   private tickLoopActive = false;
-  private resizeObserver: ResizeObserver;
-  private resizeTimers: Map<string, number> = new Map();
   private highlightLKG: Map<string, string> = new Map();
   private contextLineCanvas: HTMLCanvasElement | null = null;
   private onScroll: () => void;
   private onWindowResize: () => void;
+  private slotMap: Map<string, number> = new Map();
+  private slotFree: number[] = Array.from({ length: MAX_PROBE_SLOTS }, (_, i) => i);
+  // Slots whose WASM-side probeFree() is in flight. They cannot be reallocated
+  // until the free resolves, because the worker processes free/set/sample in
+  // postMessage order — but a new alloc that runs before the free is even
+  // initiated (e.g. allocSlot synchronous, freeSlot's await still pending) can
+  // hand the same slot back to the JS side and corrupt the WASM-side compile
+  // cache for the next probe. See useq-perform-k2ip.
+  private slotDraining: Set<number> = new Set();
 
   constructor(private readonly view: EditorView) {
     const probes = view.state.field(probeField).probes;
@@ -1217,14 +1270,11 @@ class ProbePlugin {
     this.tickLoopActive = probes.length > 0 || this.visibleForms.length > 0;
     this.onClick = this.onClick.bind(this);
     this.onWindowDurationInput = this.onWindowDurationInput.bind(this);
-    this.onResize = this.onResize.bind(this);
     this.tick = this.tick.bind(this);
     this.onScroll = () => this.drawContextLines();
     this.onWindowResize = () => this.drawContextLines();
     this.view.dom.addEventListener("click", this.onClick);
     this.view.dom.addEventListener("input", this.onWindowDurationInput);
-    this.resizeObserver = new ResizeObserver(this.onResize);
-    this.observeProbeWidgets();
     this.initContextLineCanvas();
     if (this.tickLoopActive) {
       this.frameId = window.requestAnimationFrame(this.tick);
@@ -1234,7 +1284,6 @@ class ProbePlugin {
   update(update: ViewUpdate): void {
     if (update.docChanged || update.viewportChanged) {
       this.recomputeVisibleForms(update.view);
-      this.observeProbeWidgets();
     }
 
     const probes = update.state.field(probeField).probes;
@@ -1259,13 +1308,32 @@ class ProbePlugin {
     }
   }
 
+  private allocSlot(probeId: string): number | undefined {
+    const existing = this.slotMap.get(probeId);
+    if (existing != null) return existing;
+    const slot = this.slotFree.pop();
+    if (slot == null) return undefined;
+    this.slotMap.set(probeId, slot);
+    return slot;
+  }
+
+  private freeSlot(probeId: string): void {
+    const slot = this.slotMap.get(probeId);
+    if (slot == null) return;
+    this.slotMap.delete(probeId);
+    this.slotDraining.add(slot);
+    _config.probeFree(slot).finally(() => {
+      this.slotDraining.delete(slot);
+      this.slotFree.push(slot);
+    });
+  }
+
   destroy(): void {
     if (this.frameId != null) {
       window.cancelAnimationFrame(this.frameId);
       this.frameId = null;
     }
-    this.resizeObserver.disconnect();
-    this.resizeTimers.clear();
+    for (const [id] of this.slotMap) this.freeSlot(id);
     this.view.dom.removeEventListener("click", this.onClick);
     this.view.dom.removeEventListener("input", this.onWindowDurationInput);
     this.destroyContextLineCanvas();
@@ -1369,41 +1437,6 @@ class ProbePlugin {
       ctx.arc(nameCenterX, nameCenterY, 2.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-    }
-  }
-
-  private observeProbeWidgets(): void {
-    this.resizeObserver.disconnect();
-    const widgets = this.view.dom.querySelectorAll(".cm-probe-widget");
-    for (const widget of widgets) {
-      if (widget instanceof HTMLElement) {
-        this.resizeObserver.observe(widget);
-      }
-    }
-  }
-
-  private onResize(entries: ResizeObserverEntry[]): void {
-    for (const entry of entries) {
-      const widget = entry.target;
-      if (!(widget instanceof HTMLElement)) continue;
-      const id = widget.dataset.probeId;
-      if (!id) continue;
-
-      const width = Math.round(entry.contentRect.width - 4);
-      const height = Math.round(entry.contentRect.height - 18);
-      if (width < 40 || height < 30) continue;
-
-      const existingTimer = this.resizeTimers.get(id);
-      if (existingTimer != null) {
-        window.clearTimeout(existingTimer);
-      }
-
-      this.resizeTimers.set(id, window.setTimeout(() => {
-        this.resizeTimers.delete(id);
-        this.view.dispatch({
-          effects: setProbeCanvasSizeEffect.of({ id, width, height }),
-        });
-      }, 150));
     }
   }
 
@@ -1516,8 +1549,15 @@ class ProbePlugin {
       const currentTime = _config.getCurrentTime();
       const updates: ProbeRenderUpdate[] = [];
 
+      // Free slots for probes that no longer exist
+      const activeIds = new Set(snapshot.probes.map((p) => p.id));
+      for (const id of this.slotMap.keys()) {
+        if (!activeIds.has(id)) this.freeSlot(id);
+      }
+
       for (const probe of visibleProbes) {
         if (import.meta.env.DEV) perf.begin("probe-build-render");
+        const slotId = this.allocSlot(probe.id);
         const next = await buildRenderForProbe(
           this.view.state,
           probe,
@@ -1525,6 +1565,7 @@ class ProbePlugin {
           {
             probeSampleCount: _config.getDefaultSamples(),
           },
+          slotId,
         );
         if (import.meta.env.DEV) perf.end("probe-build-render");
         if (!next) continue;

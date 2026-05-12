@@ -109,11 +109,11 @@ body.gamepad-active, body.gamepad-active * {
 .cm-probe-widget {
   display: inline-flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 4px;
   margin-left: 10px;
   margin-right: 2px;
-  padding: 6px 7px 7px;
-  min-width: 148px;
+  padding: 5px 7px 6px;
   vertical-align: middle;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -136,16 +136,12 @@ body.gamepad-active, body.gamepad-active * {
   letter-spacing: 0.08em;
 }
 
-.cm-probe-widget-label {
-  color: rgba(255, 255, 255, 0.72);
-}
-
 .cm-probe-close-btn {
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.72);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 14px;
   line-height: 1;
   padding: 0 2px;
   position: relative;
@@ -157,9 +153,11 @@ body.gamepad-active, body.gamepad-active * {
 }
 
 .cm-probe-widget-body {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   min-height: 46px;
+  min-width: 138px;
 }
 
 .cm-probe-widget-body canvas {
@@ -170,20 +168,20 @@ body.gamepad-active, body.gamepad-active * {
 }
 
 .cm-probe-widget-text {
-  display: inline-flex;
-  max-width: 154px;
+  display: block;
+  max-width: 220px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 11px;
   line-height: 1.35;
   color: rgba(255, 255, 255, 0.88);
+  padding: 2px 4px;
 }
 
 .cm-probe-widget-text.is-error {
   color: #ff9c9c;
 }
 
-/* Probe depth overlay — positioned at bottom of widget body */
 .cm-probe-depth-overlay {
   display: flex;
   align-items: center;
@@ -220,23 +218,27 @@ body.gamepad-active, body.gamepad-active * {
   cursor: default;
 }
 
-/* Probe window duration slider */
 .cm-probe-window-duration {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 2px;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .cm-probe-window-duration-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 80px;
+  flex: 1 1 auto;
+  min-width: 60px;
   height: 3px;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
   outline: none;
   cursor: pointer;
+}
+
+.cm-probe-window-duration-value {
+  flex: 0 0 auto;
 }
 
 .cm-probe-window-duration-slider::-webkit-slider-thumb {

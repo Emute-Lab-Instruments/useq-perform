@@ -375,6 +375,37 @@ export interface WasmRuntimePort extends SharedRuntimePort {
   setLiveInputs(values: Record<string, number>): Promise<number>;
 
   /**
+   * Forward a single analog/CV hardware input value into the WASM
+   * interpreter (`useq_set_input_value(channel, value)`). `index` is the
+   * raw channel index (0–31); `value` is the floating-point input
+   * reading. Resolves silently when the runtime is disabled or the
+   * export is unavailable.
+   */
+  setHwInputValue(index: number, value: number): Promise<void>;
+
+  /**
+   * Install or update a probe expression in a compile-cached WASM slot.
+   * Returns 0 on success, -1 if probe slots are unsupported or the runtime
+   * is disabled. See `docs/specs/probes.md` §1.6 (compile-once, sample-many).
+   */
+  probeSet(slot: number, code: string): Promise<number>;
+
+  /**
+   * Sample an already-compiled probe slot at `count` evenly-spaced times in
+   * `[startTime, endTime]`. Returns `null` when the slot is empty, the
+   * runtime is disabled, or probe slots are unsupported.
+   */
+  probeSample(
+    slot: number,
+    startTime: number,
+    endTime: number,
+    count: number,
+  ): Promise<Float64Array | null>;
+
+  /** Free a probe slot. No-op if the runtime is disabled or the slot is empty. */
+  probeFree(slot: number): Promise<void>;
+
+  /**
    * Query all allocated live-edit slots and their metadata from the WASM
    * interpreter. Returns an empty array if the runtime is not loaded or
    * the export is unavailable.

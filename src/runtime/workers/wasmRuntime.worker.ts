@@ -93,6 +93,10 @@ interface InterpreterHandle {
   supportsTickAndProject: () => boolean;
   supportsLiveInputs: () => boolean;
   setLiveInputs: (values: Record<string, number>) => number;
+  setHwInputValue: (index: number, value: number) => void;
+  probeSet: (slot: number, code: string) => number;
+  probeSample: (slot: number, startTime: number, endTime: number, count: number) => Float64Array | null;
+  probeFree: (slot: number) => void;
   getLiveSlots: () => LiveSlotMetadata[];
   applyStateSnapshot: (json: string) => boolean;
   release: () => void;
@@ -271,6 +275,10 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     module,
     OPTIONAL_WASM_EXPORTS.useq_set_live_inputs,
   ) as ((json: string) => number) | null;
+  const setInputValueFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_set_input_value,
+  ) as ((channel: number, value: number) => void) | null;
   const getLiveSlotsFn = bindOptionalCwrap(
     module,
     OPTIONAL_WASM_EXPORTS.useq_get_live_slots,
@@ -279,6 +287,47 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     module,
     OPTIONAL_WASM_EXPORTS.useq_apply_state_snapshot,
   ) as ((json: string) => number) | null;
+  const probeSetFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_probe_set,
+  ) as ((slot: number, code: string) => number) | null;
+  const probeSampleFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_probe_sample,
+  ) as ((slot: number, start: number, end: number, count: number, bufPtr: number, bufCap: number) => number) | null;
+  const probeFreeFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_probe_free,
+  ) as ((slot: number) => void) | null;
+
+  let probeBufPtr = 0;
+  let probeBufCap = 0;
+  let probeBufView: Float64Array | null = null;
+  let probeBufHeap: ArrayBufferLike | null = null;
+  const ensureProbeBuf = (capacity: number): { ptr: number; view: Float64Array } => {
+    const moduleAny = module as unknown as {
+      _malloc: (n: number) => number;
+      _free: (p: number) => void;
+      HEAPF64: Float64Array;
+    };
+    const currentHeap = moduleAny.HEAPF64.buffer;
+    if (probeBufPtr && probeBufCap >= capacity && probeBufHeap === currentHeap && probeBufView) {
+      return { ptr: probeBufPtr, view: probeBufView };
+    }
+    if (probeBufPtr && probeBufHeap !== currentHeap) {
+      // Heap moved (e.g. memory grew) — pointer is now invalid; do not free.
+      probeBufPtr = 0;
+    } else if (probeBufPtr) {
+      moduleAny._free(probeBufPtr);
+      probeBufPtr = 0;
+    }
+    const bytes = capacity * 8;
+    probeBufPtr = moduleAny._malloc(bytes);
+    probeBufCap = capacity;
+    probeBufView = new Float64Array(currentHeap, probeBufPtr, capacity);
+    probeBufHeap = currentHeap;
+    return { ptr: probeBufPtr, view: probeBufView };
+  };
 
   (globalThis as { __useqWasmRuntime?: UseqRuntimeGlobal }).__useqWasmRuntime = {
     useq_last_diagnostics: lastDiagsFn ?? undefined,
@@ -478,6 +527,41 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
         return setLiveInputsFn(JSON.stringify(values));
       } catch {
         return 0;
+      }
+    },
+    setHwInputValue: (index: number, value: number): void => {
+      if (!setInputValueFn) return;
+      try {
+        setInputValueFn(Number(index) | 0, Number(value) || 0);
+      } catch {
+        // Best-effort forward.
+      }
+    },
+    probeSet: (slot: number, code: string): number => {
+      if (!probeSetFn) return -1;
+      try {
+        return probeSetFn(slot, code);
+      } catch {
+        return -1;
+      }
+    },
+    probeSample: (slot: number, startTime: number, endTime: number, count: number): Float64Array | null => {
+      if (!probeSampleFn || count < 1) return null;
+      try {
+        const { ptr, view } = ensureProbeBuf(count);
+        const written = probeSampleFn(slot, startTime, endTime, count, ptr, count);
+        if (written < 1) return null;
+        return view.subarray(0, written);
+      } catch {
+        return null;
+      }
+    },
+    probeFree: (slot: number): void => {
+      if (!probeFreeFn) return;
+      try {
+        probeFreeFn(slot);
+      } catch {
+        // Ignore free errors.
       }
     },
     getLiveSlots: (): LiveSlotMetadata[] => {
@@ -722,6 +806,38 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           applied = interpreter.setLiveInputs(request.values);
         }
         postResponse({ type: "setLiveInputs-result", id, applied });
+        return;
+      }
+      case "setHwInputValue": {
+        if (wasmEnabled && interpreter) {
+          interpreter.setHwInputValue(request.index, request.value);
+        }
+        postResponse({ type: "setHwInputValue-result", id });
+        return;
+      }
+      case "probeSet": {
+        const status = wasmEnabled && interpreter
+          ? interpreter.probeSet(request.slot, request.code)
+          : -1;
+        postResponse({ type: "probeSet-result", id, status });
+        return;
+      }
+      case "probeSample": {
+        const samples = wasmEnabled && interpreter
+          ? interpreter.probeSample(request.slot, request.startTime, request.endTime, request.count)
+          : null;
+        postResponse({
+          type: "probeSample-result",
+          id,
+          samples: samples ? Array.from(samples) : null,
+        });
+        return;
+      }
+      case "probeFree": {
+        if (wasmEnabled && interpreter) {
+          interpreter.probeFree(request.slot);
+        }
+        postResponse({ type: "probeFree-result", id });
         return;
       }
       case "getLiveSlots": {

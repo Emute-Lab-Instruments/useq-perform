@@ -5,6 +5,7 @@ import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
   buildHelloRequest,
+  buildInputChannelRouting,
   buildSerialOutputRouting,
   isJsonEligibleVersion,
   versionAtLeast,
@@ -26,7 +27,7 @@ describe("jsonProtocol", () => {
     expect(buildHeartbeatRequest()).toEqual({ type: "ping" });
   });
 
-  it("maps firmware inputs and outputs into the default stream-config request", () => {
+  it("maps firmware inputs into the default stream-config request", () => {
     expect(
       buildDefaultStreamConfig({
         inputs: [
@@ -42,11 +43,24 @@ describe("jsonProtocol", () => {
       type: "stream-config",
       maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ,
       channels: [
-        { id: 1, name: "ssin1", direction: "input", enabled: true, maxRateHz: 30 },
-        { id: 4, name: "ssin4", direction: "input", enabled: true, maxRateHz: 30 },
-        { id: 1, name: "time", direction: "output", enabled: true, maxRateHz: 30 },
-        { id: 2, name: "s1", direction: "output", enabled: true, maxRateHz: 30 },
+        { id: 1, name: "ssin1", direction: "input", enabled: true, maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ },
+        { id: 4, name: "ssin4", direction: "input", enabled: true, maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ },
       ],
+    });
+  });
+
+  it("maps firmware input channels to WASM hw_input indices", () => {
+    expect(
+      buildInputChannelRouting({
+        inputs: [
+          { index: 1, name: "ssin1" },
+          { index: 2, name: "ssin2" },
+          { index: 5, name: "unknown_input" },
+        ],
+      })
+    ).toEqual({
+      1: 8,  // ssin1 → ain1 → hw_input[8]
+      2: 9,  // ssin2 → ain2 → hw_input[9]
     });
   });
 

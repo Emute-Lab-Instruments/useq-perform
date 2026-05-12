@@ -47,6 +47,10 @@ import {
   evalOutputsInTimeWindow,
   getLiveSlots as getLiveSlotsFromWasm,
   readOutputClassifications as readOutputClassificationsFromWasm,
+  setHwInputValue as setHwInputValueInWasm,
+  probeFree as probeFreeInWasm,
+  probeSample as probeSampleInWasm,
+  probeSet as probeSetInWasm,
   setLiveInputs as setLiveInputsInWasm,
   supportsLiveInputs as wasmSupportsLiveInputs,
   tickAndProjectOutputs,
@@ -214,6 +218,27 @@ export const wasmRuntimePort: WasmRuntimePort = {
 
   async setLiveInputs(values: Record<string, number>): Promise<number> {
     return setLiveInputsInWasm(values);
+  },
+
+  async setHwInputValue(index: number, value: number): Promise<void> {
+    return setHwInputValueInWasm(index, value);
+  },
+
+  async probeSet(slot: number, code: string): Promise<number> {
+    return probeSetInWasm(slot, code);
+  },
+
+  async probeSample(
+    slot: number,
+    startTime: number,
+    endTime: number,
+    count: number,
+  ): Promise<Float64Array | null> {
+    return probeSampleInWasm(slot, startTime, endTime, count);
+  },
+
+  async probeFree(slot: number): Promise<void> {
+    return probeFreeInWasm(slot);
   },
 
   async getLiveSlots(): Promise<LiveSlotMetadata[]> {

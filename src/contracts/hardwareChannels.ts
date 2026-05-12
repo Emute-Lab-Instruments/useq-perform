@@ -15,3 +15,17 @@ import type { HwInputEvent } from "./hardware";
 /** Fires when the device pushes a hardware input event (button, toggle, encoder, gate). */
 export const hwInput: TypedChannel<HwInputEvent> =
   createChannel<HwInputEvent>();
+
+// ── Continuous input streaming ────────────────────────────────
+
+/** Payload for a continuous hardware input stream value (ain1, ain2, etc.). */
+export interface HwInputStreamValue {
+  /** WASM g_hw_inputs[] index (e.g. 8 for ain1, 9 for ain2). */
+  hwInputIndex: number;
+  /** The value from the stream frame. */
+  value: number;
+}
+
+/** Fires when a hardware input stream value arrives with a known WASM input mapping. */
+export const hwInputStream: TypedChannel<HwInputStreamValue> =
+  createChannel<HwInputStreamValue>();

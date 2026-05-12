@@ -126,7 +126,7 @@ export const JSON_PROTOCOL_MIN_VERSION: FirmwareVersion = Object.freeze({
   patch: 0,
 });
 
-export const DEFAULT_STREAM_MAX_RATE_HZ = 30;
+export const DEFAULT_STREAM_MAX_RATE_HZ = 100;
 export const SERIAL_OUTPUT_TIME_NAME = "time";
 
 export function versionAtLeast(
@@ -219,21 +219,14 @@ export function buildDefaultStreamConfig(
 ): JsonStreamConfigRequest {
   const channels: StreamChannelConfig[] = [];
 
+  // Subscribe to input channels only (ain1, ain2) — these send on-change.
+  // Time is always streamed by firmware at the configured rate.
+  // Output channels (s1-s8) are not subscribed by default.
   for (const input of ioConfig?.inputs ?? []) {
     channels.push({
       id: input.index,
       name: input.name,
       direction: "input",
-      enabled: true,
-      maxRateHz,
-    });
-  }
-
-  for (const output of ioConfig?.outputs ?? []) {
-    channels.push({
-      id: output.index,
-      name: output.name,
-      direction: "output",
       enabled: true,
       maxRateHz,
     });
@@ -270,6 +263,34 @@ export function buildWasmDefaultIoConfig(): IoConfig {
     })),
   ];
   return { inputs, outputs };
+}
+
+/**
+ * Map from firmware stream channel name → WASM g_hw_inputs[] index.
+ *
+ * The compiler maps ain1→8, ain2→9, in1→0, in2→1 (graph_builder.cpp
+ * resolve_hardware_input). Firmware advertises these as ssin1, ssin2, etc.
+ */
+export const STREAM_NAME_TO_HW_INPUT: Record<string, number> = {
+  ssin1: 8,   // ain1 → INP_AI1
+  ssin2: 9,   // ain2 → INP_AI2
+};
+
+/**
+ * Build a mapping from firmware stream channel wire-ID → WASM hw_input index.
+ * Only maps input channels that have a known WASM hw_input index.
+ */
+export function buildInputChannelRouting(
+  ioConfig: IoConfig | null | undefined
+): Record<number, number> {
+  const routing: Record<number, number> = {};
+  for (const input of ioConfig?.inputs ?? []) {
+    const hwIndex = STREAM_NAME_TO_HW_INPUT[input.name];
+    if (hwIndex !== undefined) {
+      routing[input.index] = hwIndex;
+    }
+  }
+  return routing;
 }
 
 export function buildSerialOutputRouting(ioConfig: IoConfig | null | undefined): Record<number, number> {

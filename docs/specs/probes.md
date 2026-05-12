@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Probes & From-List Highlights
 
 > Spec: probe widgets and the syntactic from-list highlight that rides on top of them. Counterpart to [MAIN.md](MAIN.md).

@@ -71,4 +71,6 @@ export {
   readingActive,
   serialOutputBufferRouting,
   setSerialOutputBufferRouting,
+  serialInputHwRouting,
+  setSerialInputHwRouting,
 } from "./stream-parser.ts";

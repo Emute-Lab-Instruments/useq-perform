@@ -17,6 +17,9 @@ const { evalInUseqWasmSilently } = vi.hoisted(() => ({
 vi.mock("../../runtime/activeWasmRuntimePort.ts", () => ({
   getActiveWasmRuntimePort: () => ({
     evalCodeSilently: evalInUseqWasmSilently,
+    probeSet: async () => -1,
+    probeSample: async () => null,
+    probeFree: async () => {},
   }),
 }));
 
@@ -654,14 +657,14 @@ describe("probe batch sampler (ProbeConfig.evalExpressionAtTimes)", () => {
     expect(result).toBeNull();
   });
 
-  it("propagates interpreter error strings as a current-only result", async () => {
+  it("returns null on interpreter error so caller falls through to per-sample eval", async () => {
     evalInUseqWasmSilently.mockResolvedValue("Error: bad form");
 
     const { createDefaultProbeConfig } = await loadProbeModule();
     const config = createDefaultProbeConfig();
 
     const result = await config.evalExpressionAtTimes("bar", [0, 1, 2]);
-    expect(result).toEqual({ samples: [], current: "Error: bad form" });
+    expect(result).toBeNull();
   });
 
   it("returns an empty result for an empty time vector without calling eval", async () => {

@@ -45,6 +45,7 @@ export interface UseqWasmRuntimeGlobal {
   useq_set_live_inputs?: (json: string) => number;
   useq_get_live_slots?: () => string;
   useq_apply_state_snapshot?: (json: string) => number;
+  useq_set_input_value?: (channel: number, value: number) => void;
 }
 
 // Emscripten module interface (minimal typing for what we use)
@@ -74,6 +75,10 @@ interface UseqRuntime {
   ) => TickAndProjectResult | null;
   supportsTimeWindow: boolean;
   supportsTickAndProject: boolean;
+  probeSet: (slot: number, code: string) => number;
+  probeSample: (slot: number, start: number, end: number, count: number) => Float64Array | null;
+  probeFree: (slot: number) => void;
+  supportsProbeSlots: boolean;
   release: () => void;
 }
 
@@ -675,6 +680,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   // Bind live-edit slot ABI exports
   const setLiveInputsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_set_live_inputs) as ((json: string) => number) | null;
   const getLiveSlotsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_get_live_slots) as (() => string) | null;
+  const setInputValueFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_set_input_value) as ((channel: number, value: number) => void) | null;
 
   // Bind state snapshot ABI export (state-sync.md §3)
   const applyStateSnapshotFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_apply_state_snapshot) as ((json: string) => number) | null;
@@ -683,12 +689,50 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const classificationsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_classifications) as (() => string) | null;
   const dependenciesFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_dependencies) as ((idx: number) => number) | null;
 
+  // Bind probe slot ABI exports (probes.md §1.6 — compile-once, sample-many)
+  const probeSetFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_set) as ((slot: number, code: string) => number) | null;
+  const probeSampleFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_sample) as ((slot: number, start: number, end: number, count: number, bufPtr: number, bufCap: number) => number) | null;
+  const probeFreeFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_free) as ((slot: number) => void) | null;
+
+  // Probe sample buffer — reuses same pattern as the batch evaluator
+  let probeBufPtr = 0;
+  let probeBufCap = 0;
+  let probeBufView: Float64Array | null = null;
+  let probeBufHeap: ArrayBufferLike | null = null;
+
+  const ensureProbeBuf = (count: number): { ptr: number; view: Float64Array } => {
+    const heapF64 = module.HEAPF64;
+    if (!heapF64) throw new Error("HEAPF64 unavailable");
+    const currentHeap = heapF64.buffer ?? null;
+
+    if (probeBufPtr && count <= probeBufCap) {
+      if (probeBufView && probeBufHeap === currentHeap) {
+        return { ptr: probeBufPtr, view: probeBufView };
+      }
+      const start = probeBufPtr / Float64Array.BYTES_PER_ELEMENT;
+      probeBufView = heapF64.subarray(start, start + probeBufCap);
+      probeBufHeap = currentHeap;
+      return { ptr: probeBufPtr, view: probeBufView };
+    }
+
+    if (probeBufPtr) { module._free(probeBufPtr); probeBufPtr = 0; }
+    const bytes = count * Float64Array.BYTES_PER_ELEMENT;
+    probeBufPtr = module._malloc(bytes);
+    if (!probeBufPtr) throw new Error("Failed to allocate probe sample buffer");
+    probeBufCap = count;
+    const start = probeBufPtr / Float64Array.BYTES_PER_ELEMENT;
+    probeBufView = heapF64.subarray(start, start + count);
+    probeBufHeap = currentHeap;
+    return { ptr: probeBufPtr, view: probeBufView };
+  };
+
   (globalThis as { __useqWasmRuntime?: UseqWasmRuntimeGlobal }).__useqWasmRuntime = {
     useq_last_diagnostics: lastDiagsFn ?? undefined,
     useq_active_diagnostics: activeDiagsFn ?? undefined,
     useq_set_live_inputs: setLiveInputsFn ?? undefined,
     useq_get_live_slots: getLiveSlotsFn ?? undefined,
     useq_apply_state_snapshot: applyStateSnapshotFn ?? undefined,
+    useq_set_input_value: setInputValueFn ?? undefined,
   };
 
   useq_init();
@@ -751,8 +795,24 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     },
     supportsTimeWindow: batchEvaluator.supportsTimeWindow(),
     supportsTickAndProject: batchEvaluator.supportsTickAndProject(),
+    supportsProbeSlots: probeSetFn !== null && probeSampleFn !== null,
+    probeSet: (slot: number, code: string): number => {
+      if (!probeSetFn) return -1;
+      return probeSetFn(slot, code) as number;
+    },
+    probeSample: (slot: number, start: number, end: number, count: number): Float64Array | null => {
+      if (!probeSampleFn || count < 1) return null;
+      const { ptr, view } = ensureProbeBuf(count);
+      const written = probeSampleFn(slot, start, end, count, ptr, count) as number;
+      if (written < 1) return null;
+      return view.subarray(0, written);
+    },
+    probeFree: (slot: number): void => {
+      if (probeFreeFn) probeFreeFn(slot);
+    },
     release: (): void => {
       batchEvaluator.release();
+      if (probeBufPtr) { module._free(probeBufPtr); probeBufPtr = 0; }
     }
   };
 }
@@ -878,6 +938,29 @@ export async function tickAndProjectOutputs(
   return runtime.tickAndProjectOutputs(outputs, tickTime, projectionMode, projectEnd, numFutureSamples, projectionOrigin);
 }
 
+export async function probeSet(slot: number, code: string): Promise<number> {
+  if (!isUseqWasmEnabled()) return -1;
+  const runtime = await ensureUseqWasmLoaded();
+  return runtime.probeSet(slot, code);
+}
+
+export async function probeSample(
+  slot: number,
+  startTime: number,
+  endTime: number,
+  count: number,
+): Promise<Float64Array | null> {
+  if (!isUseqWasmEnabled()) return null;
+  const runtime = await ensureUseqWasmLoaded();
+  return runtime.probeSample(slot, startTime, endTime, count);
+}
+
+export async function probeFree(slot: number): Promise<void> {
+  if (!isUseqWasmEnabled()) return;
+  const runtime = await ensureUseqWasmLoaded();
+  runtime.probeFree(slot);
+}
+
 /**
  * Capability report for a WasmRuntimePort instance.
  *
@@ -982,6 +1065,25 @@ export async function setLiveInputs(values: Record<string, number>): Promise<num
   } catch {
     lastKnownLiveInputsSupport = false;
     return 0;
+  }
+}
+
+/**
+ * Forward a single analog hardware input value to the WASM interpreter
+ * via `useq_set_input_value(channel, value)`.
+ *
+ * Silently no-ops when the runtime is disabled, the export is missing,
+ * or the underlying call throws.
+ */
+export async function setHwInputValue(index: number, value: number): Promise<void> {
+  if (!isUseqWasmEnabled()) return;
+  await ensureUseqWasmLoaded();
+  const global = (globalThis as { __useqWasmRuntime?: UseqWasmRuntimeGlobal }).__useqWasmRuntime;
+  if (!global?.useq_set_input_value) return;
+  try {
+    global.useq_set_input_value(Number(index) | 0, Number(value) || 0);
+  } catch {
+    // Best-effort forward — input updates are not critical to correctness.
   }
 }
 

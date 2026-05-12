@@ -547,10 +547,16 @@ interface ProbeGLState {
 }
 
 const probeGLStates = new WeakMap<HTMLCanvasElement, ProbeGLState>();
+const probeContextHandlersAttached = new WeakSet<HTMLCanvasElement>();
 
 function getOrCreateProbeGLState(canvas: HTMLCanvasElement): ProbeGLState | null {
   const existing = probeGLStates.get(canvas);
   if (existing && !existing.gl.isContextLost()) return existing;
+  if (existing) {
+    // Context was lost; the GL objects are gone with it — drop the stale state
+    // so we rebuild against whatever context the canvas hands us next.
+    probeGLStates.delete(canvas);
+  }
 
   const gl = canvas.getContext("webgl2", {
     alpha: true,
@@ -559,6 +565,22 @@ function getOrCreateProbeGLState(canvas: HTMLCanvasElement): ProbeGLState | null
     preserveDrawingBuffer: false,
   }) as WebGL2RenderingContext | null;
   if (!gl || typeof gl.createShader !== "function") return null;
+
+  // Attach context-loss handlers exactly once per canvas. Without preventDefault
+  // on `webglcontextlost`, the browser will not fire `webglcontextrestored`
+  // and the probe canvas freezes permanently. The handler also drops the
+  // cached state so the next draw rebuilds program/VAO/VBO against the
+  // restored context.
+  if (!probeContextHandlersAttached.has(canvas)) {
+    canvas.addEventListener("webglcontextlost", (event) => {
+      event.preventDefault();
+      probeGLStates.delete(canvas);
+    });
+    canvas.addEventListener("webglcontextrestored", () => {
+      probeGLStates.delete(canvas);
+    });
+    probeContextHandlersAttached.add(canvas);
+  }
 
   const thickProgram = linkProgram(gl, THICK_VERTEX_SRC, FRAGMENT_SRC, [
     [0, "aPosition"],
@@ -642,38 +664,47 @@ export function drawProbeWaveformGL(
   }
   gl.clear(gl.COLOR_BUFFER_BIT);
 
-  // Filter to finite samples for range computation
+  // Filter to finite samples for range computation. If we have fewer than two
+  // finite samples, fall through to a synthetic flatline so the probe shows a
+  // dim "no signal" indicator instead of a frozen-looking blank canvas.
   const finiteSamples = samples.filter(Number.isFinite);
-  if (finiteSamples.length < 2) {
-    if (import.meta.env.DEV) perf.end("probe-gl-paint");
-    return;
-  }
+  const hasFiniteSignal = finiteSamples.length >= 2;
 
   // Compute Y range: baseline [0, 1], expand if needed
   let min = 0;
   let max = 1;
-  for (const value of finiteSamples) {
-    if (value < min) min = value;
-    if (value > max) max = value;
-  }
-  if (Math.abs(max - min) < 1e-9) {
-    max = min + 1;
+  if (hasFiniteSignal) {
+    for (const value of finiteSamples) {
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    if (Math.abs(max - min) < 1e-9) {
+      max = min + 1;
+    }
   }
 
   // Build sample-like objects for the geometry builder.
   // Use synthetic time 0..1 (probes don't need past/future split).
   if (import.meta.env.DEV) perf.begin("probe-gl-build");
-  const sampleCount = samples.length;
-  const visSamples: VisSampleLike[] = new Array(sampleCount);
-  for (let i = 0; i < sampleCount; i++) {
-    const rawVal = samples[i];
-    const normalizedVal = Number.isFinite(rawVal)
-      ? (rawVal - min) / (max - min)
-      : 0.5;
-    visSamples[i] = {
-      time: sampleCount > 1 ? i / (sampleCount - 1) : 0.5,
-      value: normalizedVal,
-    };
+  let visSamples: VisSampleLike[];
+  if (hasFiniteSignal) {
+    const sampleCount = samples.length;
+    visSamples = new Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) {
+      const rawVal = samples[i];
+      const normalizedVal = Number.isFinite(rawVal)
+        ? (rawVal - min) / (max - min)
+        : 0.5;
+      visSamples[i] = {
+        time: sampleCount > 1 ? i / (sampleCount - 1) : 0.5,
+        value: normalizedVal,
+      };
+    }
+  } else {
+    visSamples = [
+      { time: 0, value: 0.5 },
+      { time: 1, value: 0.5 },
+    ];
   }
   if (import.meta.env.DEV) perf.end("probe-gl-build");
 
@@ -723,8 +754,9 @@ export function drawProbeWaveformGL(
 
   const [r, g, b] = parseColor(color);
   gl.uniform3f(state.tuColor, r, g, b);
-  gl.uniform1f(state.tuAlphaPast, 1.0);
-  gl.uniform1f(state.tuAlphaFuture, 1.0);
+  const lineAlpha = hasFiniteSignal ? 1.0 : 0.25;
+  gl.uniform1f(state.tuAlphaPast, lineAlpha);
+  gl.uniform1f(state.tuAlphaFuture, lineAlpha);
   // No past/future split for probes -- set currentTime beyond all samples
   gl.uniform1f(state.tuCurrentTime, 2.0);
   gl.uniform1f(state.tuClipFutureStart, 0);
@@ -736,6 +768,23 @@ export function drawProbeWaveformGL(
     perf.end("probe-gl-draw");
     perf.end("probe-gl-paint");
   }
+}
+
+/**
+ * Eagerly release GL resources for a probe canvas. Call when the canvas is
+ * being detached from the DOM — relying on GC to reclaim WebGL programs/VAOs/
+ * VBOs causes them to accumulate against Chrome's per-page WebGL context cap.
+ */
+export function releaseProbeGLState(canvas: HTMLCanvasElement): void {
+  const state = probeGLStates.get(canvas);
+  if (!state) return;
+  const { gl, thickProgram, thickVao, buffer } = state;
+  if (!gl.isContextLost()) {
+    gl.deleteProgram(thickProgram);
+    gl.deleteVertexArray(thickVao);
+    gl.deleteBuffer(buffer.vbo);
+  }
+  probeGLStates.delete(canvas);
 }
 
 /**

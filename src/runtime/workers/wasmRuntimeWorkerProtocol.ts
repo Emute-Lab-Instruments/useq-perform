@@ -124,6 +124,35 @@ export interface SetLiveInputsRequest {
   values: Record<string, number>;
 }
 
+export interface SetHwInputValueRequest {
+  type: "setHwInputValue";
+  id: number;
+  index: number;
+  value: number;
+}
+
+export interface ProbeSetRequest {
+  type: "probeSet";
+  id: number;
+  slot: number;
+  code: string;
+}
+
+export interface ProbeSampleRequest {
+  type: "probeSample";
+  id: number;
+  slot: number;
+  startTime: number;
+  endTime: number;
+  count: number;
+}
+
+export interface ProbeFreeRequest {
+  type: "probeFree";
+  id: number;
+  slot: number;
+}
+
 export interface GetLiveSlotsRequest {
   type: "getLiveSlots";
   id: number;
@@ -148,6 +177,10 @@ export type WasmWorkerRequest =
   | ReadLastDiagnosticsRequest
   | ReadActiveDiagnosticsRequest
   | SetLiveInputsRequest
+  | SetHwInputValueRequest
+  | ProbeSetRequest
+  | ProbeSampleRequest
+  | ProbeFreeRequest
   | GetLiveSlotsRequest
   | ApplyStateSnapshotRequest;
 
@@ -249,6 +282,29 @@ export interface SetLiveInputsResponse {
   applied: number;
 }
 
+export interface SetHwInputValueResponse {
+  type: "setHwInputValue-result";
+  id: number;
+}
+
+export interface ProbeSetResponse {
+  type: "probeSet-result";
+  id: number;
+  status: number;
+}
+
+export interface ProbeSampleResponse {
+  type: "probeSample-result";
+  id: number;
+  /** Plain array (Float64Array is not structured-clone-portable across all browsers). */
+  samples: number[] | null;
+}
+
+export interface ProbeFreeResponse {
+  type: "probeFree-result";
+  id: number;
+}
+
 export interface GetLiveSlotsResponse {
   type: "getLiveSlots-result";
   id: number;
@@ -280,6 +336,10 @@ export type WasmWorkerResponse =
   | ReadLastDiagnosticsResponse
   | ReadActiveDiagnosticsResponse
   | SetLiveInputsResponse
+  | SetHwInputValueResponse
+  | ProbeSetResponse
+  | ProbeSampleResponse
+  | ProbeFreeResponse
   | GetLiveSlotsResponse
   | ApplyStateSnapshotResponse
   | ErrorResponse;

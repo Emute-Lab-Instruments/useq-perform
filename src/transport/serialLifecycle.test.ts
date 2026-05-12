@@ -773,11 +773,9 @@ describe("hardware transport lifecycle", () => {
       );
       expect(streamConfig).toBeDefined();
       const channels = streamConfig!.channels as Array<Record<string, unknown>>;
-      // Should include the input + both outputs from hello.config.
-      expect(channels).toHaveLength(3);
+      // Only input channels are subscribed; outputs are not.
+      expect(channels).toHaveLength(1);
       expect(channels.every((c) => c.enabled === true)).toBe(true);
-      expect(channels.find((c) => c.name === "time" && c.direction === "output")).toBeTruthy();
-      expect(channels.find((c) => c.name === "s1" && c.direction === "output")).toBeTruthy();
       expect(channels.find((c) => c.name === "ssin1" && c.direction === "input")).toBeTruthy();
     });
 

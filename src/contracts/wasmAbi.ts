@@ -155,6 +155,11 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     returnType: "number",
     argTypes: ["string"],
   },
+  useq_set_input_value: {
+    symbol: "useq_set_input_value",
+    returnType: null,
+    argTypes: ["number", "number"],
+  },
   useq_get_live_slots: {
     symbol: "useq_get_live_slots",
     returnType: "string",
@@ -173,6 +178,21 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
   useq_output_dependencies: {
     symbol: "useq_output_dependencies",
     returnType: "number",
+    argTypes: ["number"],
+  },
+  useq_probe_set: {
+    symbol: "useq_probe_set",
+    returnType: "number",
+    argTypes: ["number", "string"],
+  },
+  useq_probe_sample: {
+    symbol: "useq_probe_sample",
+    returnType: "number",
+    argTypes: ["number", "number", "number", "number", "number", "number"],
+  },
+  useq_probe_free: {
+    symbol: "useq_probe_free",
+    returnType: null,
     argTypes: ["number"],
   },
 } as const satisfies Record<string, CwrapDescriptor>);
