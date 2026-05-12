@@ -1,14 +1,18 @@
 /**
  * Print a core Node back to ModuLisp source text.
  *
- * Two printers:
+ * Three printers — selection driven by `format.autoFormatStrategy` (§2.6):
  *   - `printNode`: flat single-line output (single spaces, no indentation).
- *     Used when `format.autoFormatOnMutation = false` (§2.6).
+ *     Strategy "off".
+ *   - `printNodeWithBreaks`: same as `printNode` but emits newlines between
+ *     `do` block children (everything else flat). Pairs with the
+ *     `indent-fixed-point` strategy: the printer hands the indenter
+ *     line-broken-but-unindented source, the indenter fixes columns.
  *   - `formatNode`: formatting-aware output per docs/specs/formatting.md §3.
- *     Width + complexity thresholds, arg-aligned or fixed-indent breaking,
- *     do-block rules, define body indent, recursive layout.
+ *     Strategy "reflow". Width + complexity thresholds, arg-aligned or
+ *     fixed-indent breaking, do-block rules, define body indent, recursive.
  *
- * Both are pure functions — no side effects, no CodeMirror dependency.
+ * All three are pure — no side effects, no CodeMirror dependency.
  */
 
 import type { Meta, Node } from "../core/index.ts";
@@ -116,6 +120,63 @@ export function printNode(n: Node): string {
     case "set":
       return wrapWithMetas(
         `#{${n.children.map(printNode).join(" ")}}`,
+        n.metas,
+      );
+  }
+}
+
+// ─── Line-breaking printer (do-children only) ───────────────────────────────
+
+/**
+ * Like `printNode`, but children of `do` blocks are joined by `"\n"` instead
+ * of `" "`. Used by the `indent-fixed-point` strategy so the post-pass
+ * indenter has actual lines to operate on.
+ *
+ * Everything outside `do` blocks stays flat — fixing column widths is the
+ * indenter's job, not the printer's.
+ */
+export function printNodeWithBreaks(n: Node): string {
+  switch (n.kind) {
+    case "document":
+      return n.children.map(printNodeWithBreaks).join("\n");
+    case "symbol":
+    case "number":
+    case "keyword":
+    case "string":
+      return wrapWithMetas(n.text, n.metas);
+    case "hole":
+      return wrapWithMetas(`($ ${n.name} :${n.holeType})`, n.metas);
+    case "list": {
+      const head = n.children[0];
+      const isDo =
+        head && head.kind === "symbol" && head.text === "do" &&
+        n.children.length > 1;
+      if (isDo) {
+        const headText = printNodeWithBreaks(head);
+        const rest = n.children
+          .slice(1)
+          .map(printNodeWithBreaks)
+          .join("\n");
+        return wrapWithMetas(`(${headText}\n${rest})`, n.metas);
+      }
+      return wrapWithMetas(
+        `(${n.children.map(printNodeWithBreaks).join(" ")})`,
+        n.metas,
+      );
+    }
+    case "vector":
+      return wrapWithMetas(
+        `[${n.children.map(printNodeWithBreaks).join(" ")}]`,
+        n.metas,
+      );
+    case "map":
+      return wrapWithMetas(
+        `{${n.children.map(printNodeWithBreaks).join(" ")}}`,
+        n.metas,
+      );
+    case "set":
+      return wrapWithMetas(
+        `#{${n.children.map(printNodeWithBreaks).join(" ")}}`,
         n.metas,
       );
   }
@@ -491,9 +552,8 @@ function maxWeight(nodes: ReadonlyArray<Node>): number {
  * FormatSettings and returns properly formatted source text. Pure function
  * — no side effects, no CodeMirror dependency.
  *
- * The caller (applyOp) chooses between `printNode` (flat, for
- * autoFormatOnMutation=false) and `formatNode` (formatted, for
- * autoFormatOnMutation=true).
+ * The caller (applyOp) picks the printer based on `format.autoFormatStrategy`
+ * — see the file header.
  */
 export function formatNode(n: Node, fmt: FormatSettings): string {
   return formatAtColumn(n, fmt, 0);

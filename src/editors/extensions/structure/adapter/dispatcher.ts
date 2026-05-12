@@ -48,6 +48,7 @@ import {
   type State,
 } from "../core/index.ts";
 import { applyOp } from "./applyOp.ts";
+import { indentRangeToFixedPoint } from "./indentFixedPoint.ts";
 import { formatNode, printNode } from "./printTree.ts";
 import { navDown, navUp } from "./spatialNav.ts";
 import { getAppSettings } from "../../../../runtime/appSettingsRepository.ts";
@@ -278,6 +279,54 @@ function formatDocument(view: EditorView): boolean {
   return true;
 }
 
+/**
+ * Re-indent the top-level form containing the primary cursor by iterating
+ * CodeMirror's `indentRange` to a fixed point (= pressing Tab repeatedly
+ * until nothing changes). Acts on existing source whitespace only; the tree
+ * is not rebuilt and the structural state is preserved across the dispatch.
+ *
+ * One of the auto-format strategies under experimentation — see
+ * docs/specs/formatting.md §2.6 / §7.
+ */
+function indentToFixedPointAction(view: EditorView): boolean {
+  const value = view.state.field(structField, false);
+  if (!value) return false;
+
+  const { state, idIndex } = value;
+  const primary = state.cursors.primary;
+  const targetId = primary.kind === "node" ? primary.target : primary.parent;
+  const docChildren = state.tree.root.children;
+
+  let topLevelChild: import("../core/index.ts").Node | null = null;
+  for (const child of docChildren) {
+    if (child.id === targetId) {
+      topLevelChild = child;
+      break;
+    }
+  }
+  if (!topLevelChild) {
+    const targetRange = idIndex.get(targetId);
+    if (targetRange) {
+      for (const child of docChildren) {
+        const childRange = idIndex.get(child.id);
+        if (
+          childRange &&
+          childRange.from <= targetRange.from &&
+          childRange.to >= targetRange.to
+        ) {
+          topLevelChild = child;
+          break;
+        }
+      }
+    }
+  }
+  if (!topLevelChild) return false;
+  const range = idIndex.get(topLevelChild.id);
+  if (!range) return false;
+
+  return indentRangeToFixedPoint(view, range.from, range.to);
+}
+
 // ─── Document-root bulk ops with clipboard side-effects ───────────────────
 
 /**
@@ -361,6 +410,7 @@ export function dispatchAction(view: EditorView, name: string): boolean {
   // Format actions operate directly on the editor without a tree mutation.
   if (name === "format.topLevel") return formatTopLevel(view);
   if (name === "format.document") return formatDocument(view);
+  if (name === "format.indentToFixedPoint") return indentToFixedPointAction(view);
 
   // Document-root bulk operations (§5.3).
   if (name === "doc.deleteAll") return applyOp(view, docDeleteAll);
@@ -408,6 +458,7 @@ export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   "edit.encloseSet",
   "format.topLevel",
   "format.document",
+  "format.indentToFixedPoint",
   "doc.deleteAll",
   "doc.cutAll",
   "doc.copyAll",

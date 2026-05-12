@@ -105,7 +105,7 @@ const defaultFmt: FormatSettings = {
   complexityThreshold: 4,
   minAvailableWidth: 20,
   indentStyle: "align",
-  autoFormatOnMutation: true,
+  autoFormatStrategy: "reflow",
 };
 
 /** Create settings with overrides. */

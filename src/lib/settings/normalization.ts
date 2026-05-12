@@ -169,10 +169,12 @@ export function normalizeUserSettings(value: unknown): AppSettings {
         format.indentStyle === "align" || format.indentStyle === "fixed"
           ? format.indentStyle
           : defaults.format.indentStyle,
-      autoFormatOnMutation:
-        format.autoFormatOnMutation == null
-          ? defaults.format.autoFormatOnMutation
-          : format.autoFormatOnMutation !== false,
+      autoFormatStrategy:
+        format.autoFormatStrategy === "off" ||
+        format.autoFormatStrategy === "reflow" ||
+        format.autoFormatStrategy === "indent-fixed-point"
+          ? format.autoFormatStrategy
+          : defaults.format.autoFormatStrategy,
     },
     hardware: {
       ...defaults.hardware,

@@ -1,6 +1,7 @@
 import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
-import { Section, FormRow, Checkbox } from "./FormControls";
+import { Section, FormRow, Checkbox, Select } from "./FormControls";
 import type { AppSettings } from "../../lib/appSettings.ts";
+import type { FormatSettings } from "../../lib/settings/schema.ts";
 
 export interface AdvancedSettingsProps {
   settings?: AppSettings;
@@ -39,6 +40,17 @@ export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
     });
   };
 
+  const handleAutoFormatStrategyChange = (
+    value: FormatSettings["autoFormatStrategy"],
+  ) => {
+    update({
+      format: {
+        ...s().format,
+        autoFormatStrategy: value,
+      },
+    });
+  };
+
   return (
     <Section title="Advanced Settings" level="advanced">
       <FormRow label="Reconnect saved hardware on startup">
@@ -57,6 +69,24 @@ export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
         <Checkbox
           checked={s().wasm?.enabled !== false}
           onChange={handleWasmEnabledChange}
+        />
+      </FormRow>
+      <FormRow label="Auto-format after structural edit (experimental)">
+        <Select
+          value={s().format?.autoFormatStrategy ?? "reflow"}
+          options={[
+            { value: "off", label: "Off (flat output)" },
+            { value: "reflow", label: "Reflow (§3 width + complexity)" },
+            {
+              value: "indent-fixed-point",
+              label: "Indent to fixed point (Tab × N)",
+            },
+          ]}
+          onChange={(v) =>
+            handleAutoFormatStrategyChange(
+              v as FormatSettings["autoFormatStrategy"],
+            )
+          }
         />
       </FormRow>
     </Section>

@@ -28,7 +28,8 @@ import type { Cursor, OpResult, State, Tree } from "../core/index.ts";
 import { pathOf } from "../core/traversal.ts";
 import { getAppSettings } from "../../../../runtime/appSettingsRepository.ts";
 import { pathsFromCursorSet, rederiveCursors } from "./cursorPath.ts";
-import { formatNode, printNode } from "./printTree.ts";
+import { formatNode, printNode, printNodeWithBreaks } from "./printTree.ts";
+import { indentRangeToFixedPoint } from "./indentFixedPoint.ts";
 import { setStructState, structField } from "./stateField.ts";
 import { treeFromLezer, type IdIndex } from "./treeFromLezer.ts";
 
@@ -39,12 +40,22 @@ interface NoOpEntry {
 
 type NodePrinter = (n: import("../core/index.ts").Node) => string;
 
-function getNodePrinter(): NodePrinter {
-  const fmt = getAppSettings().format;
-  if (fmt.autoFormatOnMutation) {
-    return (n) => formatNode(n, fmt);
+type AutoFormatStrategy = "off" | "reflow" | "indent-fixed-point";
+
+function getAutoFormatStrategy(): AutoFormatStrategy {
+  return getAppSettings().format.autoFormatStrategy;
+}
+
+function getNodePrinter(strategy: AutoFormatStrategy): NodePrinter {
+  switch (strategy) {
+    case "reflow":
+      return (n) => formatNode(n, getAppSettings().format);
+    case "indent-fixed-point":
+      return printNodeWithBreaks;
+    case "off":
+    default:
+      return printNode;
   }
-  return printNode;
 }
 
 /**
@@ -95,13 +106,14 @@ export function applyOp(
   // Tree changed — derive a text edit. Find the smallest top-level form
   // ancestor of the new primary cursor's focus that we can re-render.
   const affectedTopLevel = findAffectedTopLevelIndex(before.tree, after.tree);
-  const print = getNodePrinter();
+  const strategy = getAutoFormatStrategy();
+  const print = getNodePrinter(strategy);
   if (affectedTopLevel === null) {
     // Whole-doc rerender fallback.
-    return dispatchWholeDocReplace(view, before, value.idIndex, after, print);
+    return dispatchWholeDocReplace(view, before, value.idIndex, after, print, strategy);
   }
 
-  return dispatchTopLevelReplace(view, before, value.idIndex, after, affectedTopLevel, print);
+  return dispatchTopLevelReplace(view, before, value.idIndex, after, affectedTopLevel, print, strategy);
 }
 
 /**
@@ -185,6 +197,7 @@ function dispatchWholeDocReplace(
   beforeIdIndex: IdIndex,
   after: State,
   print: NodePrinter,
+  strategy: AutoFormatStrategy,
 ): boolean {
   const docText = view.state.doc.toString();
   const text = buildDocWithPreservedGaps(docText, before, beforeIdIndex, after, print);
@@ -201,6 +214,10 @@ function dispatchWholeDocReplace(
   // After dispatch, the state field will have re-parsed. Now move the
   // cursor focus by re-deriving it from the new state's path.
   setCursorFromState(view, after);
+  if (strategy === "indent-fixed-point") {
+    indentRangeToFixedPoint(view, 0, view.state.doc.length);
+    setCursorFromState(view, after);
+  }
   scrollPrimaryIntoView(view);
   return true;
 }
@@ -212,24 +229,25 @@ function dispatchTopLevelReplace(
   after: State,
   topLevelIndex: number,
   print: NodePrinter,
+  strategy: AutoFormatStrategy,
 ): boolean {
   // Source range to replace = original range of the OLD tree's top-level
   // form at `topLevelIndex`. We look it up via the previous idIndex.
   const oldRoot = before.tree.root;
   const oldChild = oldRoot.children[topLevelIndex];
   if (!oldChild) {
-    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print);
+    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print, strategy);
   }
   const oldRange = oldIdIndex.get(oldChild.id);
   if (!oldRange) {
-    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print);
+    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print, strategy);
   }
   const newRoot = after.tree.root;
   const newChild = newRoot.children[topLevelIndex];
   if (!newChild) {
     // The mutation removed this top-level form. Whole-doc re-render covers
     // this rare case.
-    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print);
+    return dispatchWholeDocReplace(view, before, oldIdIndex, after, print, strategy);
   }
   const text = print(newChild);
   const change: ChangeSpec = {
@@ -243,6 +261,12 @@ function dispatchTopLevelReplace(
     scrollIntoView: true,
   });
   setCursorFromState(view, after);
+  if (strategy === "indent-fixed-point") {
+    // Re-indent only the affected range. After the dispatch above, the new
+    // range is [oldRange.from, oldRange.from + text.length).
+    indentRangeToFixedPoint(view, oldRange.from, oldRange.from + text.length);
+    setCursorFromState(view, after);
+  }
   scrollPrimaryIntoView(view);
   return true;
 }

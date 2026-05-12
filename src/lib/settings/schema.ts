@@ -137,8 +137,18 @@ export interface FormatSettings {
   minAvailableWidth: number;
   /** "align": args align to first arg. "fixed": 2-space indent always (§5). */
   indentStyle: "align" | "fixed";
-  /** Reformat after structural mutations (§2.2). */
-  autoFormatOnMutation: boolean;
+  /**
+   * Strategy used to format the affected top-level form after a structural
+   * mutation. Auto-formatting is an open design question — strategies are
+   * pickable for experimentation (see §2.6 / §7).
+   *
+   *  - "off": flat single-line print, no post-pass.
+   *  - "reflow": full §3 width/complexity reprint via `formatNode`.
+   *  - "indent-fixed-point": flat print with newlines at `do` children, then
+   *    iterate CodeMirror's `indentRange` (= "press Tab to fixed point") on
+   *    the affected range.
+   */
+  autoFormatStrategy: "off" | "reflow" | "indent-fixed-point";
 }
 
 /**
@@ -397,7 +407,7 @@ export const defaultUserSettings: AppSettings = {
     complexityThreshold: 4,
     minAvailableWidth: 20,
     indentStyle: "align",
-    autoFormatOnMutation: true,
+    autoFormatStrategy: "reflow",
   },
   hardware: {
     bindingsEnabled: true,

@@ -13,21 +13,24 @@ import type { Extension } from "@codemirror/state";
 
 import { structuralCursorFromSelection } from "./cursorFromSelection.ts";
 import { holePillDecorations, holePillTheme } from "./holeWidget.ts";
+import { indentOnNewlineChange } from "./indentOnNewline.ts";
 import {
   structuralNodeOverlay,
   structuralNodeOverlayTheme,
 } from "./nodeOverlays.ts";
-import { insertionModeField, structField } from "./stateField.ts";
+import { grabModeField, insertionModeField, structField } from "./stateField.ts";
 
 export function structuralCoreExtensions(): Extension[] {
   return [
     structField,
     insertionModeField,
+    grabModeField,
     structuralCursorFromSelection,
     structuralNodeOverlay,
     structuralNodeOverlayTheme,
     holePillDecorations,
     holePillTheme,
+    indentOnNewlineChange,
   ];
 }
 

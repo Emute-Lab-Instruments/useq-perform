@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Formatting
 
 > Spec: auto-formatting policy for the structural editor. Defines when the
@@ -85,17 +90,33 @@ the primary cursor per §3. An explicit `format.document` action reformats all
 top-level forms (without touching inter-top-level whitespace). These are
 opt-in; they are not triggered by any implicit gesture.
 
-### 2.6 `format.autoFormatOnMutation = false`
+### 2.6 Auto-format strategies (experimental — see §7.5)
 
-When auto-formatting is disabled, structural mutations still produce source
-text (they must — the tree changed), but the printer uses minimal formatting:
-single spaces between siblings, no line breaks within forms. This is the
-current behaviour of `printTree.ts`. It is intentionally *flat*, not
-*layout-preserving* — preserving the old layout across a tree mutation is a
-harder problem (the old source offsets no longer correspond to the new tree)
-and is out of scope. Users who disable auto-format accept flat output from
-mutations and use the explicit reformat command (§2.5) when they want
-readable layout.
+The behaviour after a structural mutation is selected by
+`format.autoFormatStrategy` — a devmode-only setting while we figure out
+which approach actually serves performance use. **Three strategies are
+currently wired**; none is canonical yet:
+
+- **`"off"`.** Structural mutations still produce source text (they must —
+  the tree changed), but the printer uses minimal formatting: single spaces
+  between siblings, no line breaks within forms. Intentionally *flat*, not
+  *layout-preserving* — preserving the old layout across a tree mutation is
+  a harder problem (the old source offsets no longer correspond to the new
+  tree) and is out of scope. Users who select "off" use the explicit
+  reformat command (§2.5) when they want readable layout.
+- **`"reflow"` (current default).** Full §3 width + complexity reprint via
+  `formatNode`. Throws away any pre-mutation whitespace and rebuilds layout
+  from the tree.
+- **`"indent-fixed-point"`.** A simpler alternative: the printer emits flat
+  output but breaks `do` block children onto separate lines; then the
+  affected range is run through CodeMirror's `indentRange` in a loop until
+  it stabilises (i.e. "press Tab until nothing changes"). Leans on the
+  language's existing indent service rather than the bespoke §3 printer.
+
+The same fixed-point indenter is exposed as the standalone action
+`format.indentToFixedPoint`, which re-indents the top-level form containing
+the primary cursor without rebuilding the tree — useful as a manual cleanup
+after pasting or hand-editing.
 
 ---
 
@@ -321,7 +342,7 @@ per §2.1.)
 | `format.complexityThreshold` | number | 4 | Node weight at which a parent must break |
 | `format.minAvailableWidth` | number | 20 | Floor: fall back to body indent when alignment would leave fewer chars than this |
 | `format.indentStyle` | `"align" \| "fixed"` | `"align"` | `align`: args align to first arg. `fixed`: 2-space indent always |
-| `format.autoFormatOnMutation` | boolean | true | Reformat after structural mutations |
+| `format.autoFormatStrategy` | `"off" \| "reflow" \| "indent-fixed-point"` | `"reflow"` | Post-mutation formatting strategy (§2.6). Devmode-only UI. |
 
 5.1 `format.indentStyle = "fixed"` is provided for narrow displays or user
 preference. It produces:
@@ -388,3 +409,20 @@ jarring content-shift of full reformatting.
 reformatting (as a "commit point" for the form's layout) is a possible future
 addition. Currently excluded — eval is frequent enough that it would feel
 intrusive.
+
+7.5 **Which auto-format strategy wins.** Auto-formatting after structural
+mutations is *not settled*. Three strategies (`off` / `reflow` /
+`indent-fixed-point`) coexist behind `format.autoFormatStrategy` so we can
+A/B them against real performance use. Open questions:
+
+- Does the §3 reflow ever produce a layout the performer dislikes enough that
+  they would prefer "flat + Tab-to-fixed-point" instead?
+- Should opt-in/opt-out be **per structural command** (e.g. always reflow on
+  `enclose`, but stay flat on `slurp`/`barf`)? Currently it's all-or-nothing
+  per strategy.
+- Is the line-break heuristic in `printNodeWithBreaks` (newlines at `do`
+  children only) sufficient for the indent-fixed-point strategy, or does it
+  need broader break rules to be useful?
+
+Expect the field, the strategy list, and possibly the entire mechanism to
+change once real use answers these.

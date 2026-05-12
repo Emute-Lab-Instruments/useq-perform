@@ -223,6 +223,7 @@ function pressEditorKey(
   switch (key) {
     case "Backspace":
       if (!selection.empty) return replaceSelection(view, "", "delete");
+      if (tryJoinAtLineIndentBackward(view, selection.head)) return true;
       return deleteOneCharBackward(view);
     case "Delete":
       if (!selection.empty) return replaceSelection(view, "", "delete");
@@ -452,6 +453,50 @@ function replaceSelection(
  * Uses userEvent "delete" so the clojure-mode line formatter skips
  * reformatting (it only recognises "delete", not "delete.backward").
  */
+/**
+ * Smart Backspace at line-start indent: if the cursor is on a non-first line
+ * and every character before it on the current line is whitespace, delete
+ * back through the preceding newline (joining lines), inserting a single
+ * space iff the tokens on either side of the join are both non-whitespace
+ * non-bracket characters. Otherwise the join is gapless.
+ *
+ * Returns false when not at an indent boundary, letting plain Backspace run.
+ *
+ * The fixed-point indenter (see indentOnNewline.ts) re-runs automatically
+ * after the dispatch — this function only owns the join itself.
+ */
+function tryJoinAtLineIndentBackward(view: EditorView, pos: number): boolean {
+  const doc = view.state.doc;
+  if (pos <= 0) return false;
+  const line = doc.lineAt(pos);
+  if (line.number === 1) return false;
+  const before = doc.sliceString(line.from, pos);
+  if (/\S/.test(before)) return false;
+
+  const prevLineEnd = doc.line(line.number - 1).to;
+  const charBefore =
+    prevLineEnd > 0 ? doc.sliceString(prevLineEnd - 1, prevLineEnd) : "";
+  const charAfter =
+    pos < doc.length ? doc.sliceString(pos, pos + 1) : "";
+  const isOpen = (c: string) => c === "(" || c === "[" || c === "{";
+  const isClose = (c: string) => c === ")" || c === "]" || c === "}";
+  const needsSpace =
+    charBefore !== "" &&
+    charAfter !== "" &&
+    !/\s/.test(charBefore) &&
+    !/\s/.test(charAfter) &&
+    !isOpen(charBefore) &&
+    !isClose(charAfter);
+  const insert = needsSpace ? " " : "";
+  view.dispatch({
+    changes: { from: prevLineEnd, to: pos, insert },
+    selection: { anchor: prevLineEnd + insert.length },
+    userEvent: "delete.joinIndent",
+    scrollIntoView: true,
+  });
+  return true;
+}
+
 function deleteOneCharBackward(view: EditorView): boolean {
   const sel = view.state.selection.main;
   if (!sel.empty || sel.from === 0) return false;
