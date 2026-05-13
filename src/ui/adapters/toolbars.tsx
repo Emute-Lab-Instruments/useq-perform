@@ -10,7 +10,10 @@ import { MainToolbar, type ConnectionState } from "../MainToolbar";
 import { OnboardingBanner } from "../OnboardingBanner";
 import { createSolidAdapter } from "./createSolidAdapter";
 import { adjustFontSize, loadCode, saveCode } from "../../effects/editor";
-import { animateConnect as animateConnectChannel } from "../../contracts/runtimeChannels";
+import {
+  animateConnect as animateConnectChannel,
+  codeEvaluated as codeEvaluatedChannel,
+} from "../../contracts/runtimeChannels";
 import {
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
@@ -19,6 +22,7 @@ import {
 import { toggleChromePanel } from "./panels";
 import { toggleVisualisationPanel } from "./visualisationPanel";
 import { getTransportOrchestrator } from "../../effects/transportOrchestrator";
+import { getActiveWasmRuntimePort } from "../../runtime/activeWasmRuntimePort";
 import { useActorSignal } from "../../lib/useActorSignal";
 import { visStore } from "../../utils/visualisationStore";
 
@@ -63,12 +67,50 @@ function ensureMainRoot(): HTMLElement {
 function ConnectedTransportToolbar() {
   const orchestrator = getTransportOrchestrator();
   const { state, send } = useActorSignal(orchestrator.actor as any);
+  const [bpm, setBpm] = createSignal<number | null>(null);
+
+  // BPM is a runtime cell; refresh on mount, after every code eval, and on
+  // a slow timer to catch the post-load value when the worker comes up
+  // before the user has evaluated anything.
+  let alive = true;
+  const refreshBpm = async () => {
+    try {
+      const text = await getActiveWasmRuntimePort().evalCodeSilently("bpm");
+      if (!alive) return;
+      if (text === null) {
+        setBpm(null);
+        return;
+      }
+      const parsed = Number(text);
+      setBpm(Number.isFinite(parsed) ? parsed : null);
+    } catch {
+      if (alive) setBpm(null);
+    }
+  };
+
+  onMount(() => {
+    void refreshBpm();
+    const unsub = codeEvaluatedChannel.subscribe(() => {
+      void refreshBpm();
+    });
+    // Slow heartbeat so the box appears once the worker finishes loading
+    // even if no code has been evaluated yet.
+    const timer = window.setInterval(() => {
+      if (bpm() === null) void refreshBpm();
+    }, 1000);
+    onCleanup(() => {
+      alive = false;
+      unsub();
+      window.clearInterval(timer);
+    });
+  });
 
   return (
     <TransportToolbar
       state={state().value as TransportToolbarProps["state"]}
       mode={state().context.mode as TransportToolbarProps["mode"]}
       progress={visStore.bar}
+      bpm={bpm()}
       onPlay={() => send({ type: "PLAY" })}
       onPause={() => send({ type: "PAUSE" })}
       onStop={() => send({ type: "STOP" })}

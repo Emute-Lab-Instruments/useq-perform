@@ -7,7 +7,7 @@
 // Receives state and callbacks as props. The adapter layer
 // (adapters/toolbars.tsx) wires the real orchestrator into props.
 
-import { onCleanup, onMount } from "solid-js";
+import { Show, onCleanup, onMount } from "solid-js";
 import { ProgressBar } from "./ProgressBar";
 import { Play, Pause, Square, Rewind, X } from "lucide-solid";
 
@@ -15,11 +15,18 @@ export interface TransportToolbarProps {
   state: "playing" | "paused" | "stopped";
   mode: "none" | "wasm" | "hardware" | "both";
   progress: number;
+  /** Current BPM reported by the WASM runtime, or null when unavailable. */
+  bpm?: number | null;
   onPlay: () => void;
   onPause: () => void;
   onStop: () => void;
   onRewind: () => void;
   onClear: () => void;
+}
+
+function formatBpm(value: number): string {
+  // Whole numbers render bare; fractional bpm gets one decimal.
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 const TOP_TOOLBAR_HEIGHT_VAR = "--top-toolbar-height";
@@ -101,8 +108,23 @@ export function TransportToolbar(props: TransportToolbarProps) {
   const isRewindDisabled = () => isModeNone();
   const isClearDisabled = () => isModeNone();
 
+  const bpmValue = () => {
+    const v = props.bpm;
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  };
+
   return (
     <div id="panel-top-toolbar" ref={toolbarRef}>
+      <Show when={bpmValue() !== null}>
+        <div
+          class="bpm-display"
+          title="Current BPM (WASM runtime)"
+          aria-label={`Current BPM: ${formatBpm(bpmValue() as number)}`}
+        >
+          <span class="bpm-value">{formatBpm(bpmValue() as number)}</span>
+          <span class="bpm-unit">BPM</span>
+        </div>
+      </Show>
       <div class="toolbar-row">
         <button
           class={playButtonClass()}
