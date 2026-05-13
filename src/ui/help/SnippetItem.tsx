@@ -6,7 +6,9 @@ import {
   Snippet
 } from "../../utils/snippetStore";
 import { CodeMirrorEditor } from "./CodeMirrorEditor";
+import { SnippetOscilloscope } from "./SnippetOscilloscope";
 import { insertEditorText as globalInsertEditorText } from "../../lib/editorStore";
+import { settings as globalSettings } from "../../utils/settingsStore";
 
 export interface SnippetItemProps {
   snippet: Snippet;
@@ -103,8 +105,11 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
         </Show>
       </div>
       <div class="code-snippet-editor-container">
-        <CodeMirrorEditor code={props.snippet.code} readOnly={true} />
+        <CodeMirrorEditor code={props.snippet.code} readOnly={true} enableProbes={true} />
       </div>
+      <Show when={globalSettings.visualisation?.snippetOscilloscopesEnabled === true}>
+        <SnippetOscilloscope code={props.snippet.code} />
+      </Show>
       <div class="code-snippet-actions">
         <button class="code-snippet-action-btn" onClick={handleCopy} title="Copy to clipboard">
           {copyFeedback() ? "✅" : "📋"}

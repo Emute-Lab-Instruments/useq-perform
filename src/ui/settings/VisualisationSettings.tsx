@@ -159,6 +159,12 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
               )}
           />
         </FormRow>
+        <FormRow label="Live oscilloscope per snippet">
+          <Checkbox
+            checked={s().visualisation?.snippetOscilloscopesEnabled === true}
+            onChange={(val) => updateVisField("snippetOscilloscopesEnabled", val)}
+          />
+        </FormRow>
       </SubGroup>
 
       <SubGroup label="Readability" defaultOpen={false} level="advanced">

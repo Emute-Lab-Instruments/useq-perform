@@ -230,6 +230,27 @@
     font-size: 12px;
 }
 
+.code-snippet-editor-container .cm-cursor,
+.code-snippet-editor-container .cm-dropCursor {
+    display: none !important;
+}
+
+.code-snippet-oscilloscope {
+    display: block;
+    margin-bottom: 6px;
+    border: 1px solid var(--section-separator, rgba(255, 255, 255, 0.06));
+    border-radius: var(--item-border-radius);
+    overflow: hidden;
+    line-height: 0;
+    background: rgba(13, 18, 24, 0.94);
+}
+
+.code-snippet-oscilloscope canvas {
+    display: block;
+    width: 100%;
+    height: 36px;
+}
+
 .code-snippet-actions {
     display: flex;
     gap: 6px;

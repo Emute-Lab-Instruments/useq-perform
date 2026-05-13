@@ -58,6 +58,10 @@ export function normalizeVisualisationSettings(
       raw.temporalSampleRateMultiplier,
       defaults.temporalSampleRateMultiplier,
     ),
+    snippetOscilloscopesEnabled:
+      raw.snippetOscilloscopesEnabled == null
+        ? defaults.snippetOscilloscopesEnabled
+        : raw.snippetOscilloscopesEnabled === true,
   };
 }
 
@@ -191,6 +195,11 @@ export function extractVisualisationPatch(
       visualisation.temporalSampleRateMultiplier,
       defaults.temporalSampleRateMultiplier,
     );
+  }
+
+  if ("snippetOscilloscopesEnabled" in visualisation) {
+    patch.snippetOscilloscopesEnabled =
+      visualisation.snippetOscilloscopesEnabled === true;
   }
 
   return patch;

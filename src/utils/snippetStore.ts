@@ -29,6 +29,63 @@ export const STARTER_SNIPPETS: Omit<Snippet, "id" | "createdAt">[] = [
   // Interactive Patches
   { title: "CV Speed Control", code: "(d1 (sqr (fast (scale 0 1 1 8 ain1) bar)))", tags: ["interactive", "starter"] },
   { title: "Switch Pattern Select", code: "(d2 (if swm (euclid 7 16 bar) (euclid 3 8 bar)))", tags: ["interactive", "starter"] },
+
+  // Algebra fundamentals (Ch. 2) — the conceptual core
+  { title: "Threshold to Gate", code: "(d1 (> (sin bar) 0.3))", tags: ["algebra", "rhythm", "starter"] },
+  { title: "Moving Threshold", code: "(d1 (> (sin (fast 4 bar)) (sin bar)))", tags: ["algebra", "rhythm", "starter"] },
+  { title: "Inverted Pattern", code: "(d2 (- 1 (euclid 3 8 bar)))", tags: ["algebra", "rhythm", "starter"] },
+  { title: "Staircase 4-Step", code: "(a1 (/ (floor (* 4 bar)) 4))", tags: ["algebra", "melodic", "starter"] },
+  { title: "Zero-Window Gate", code: "(a1 (* (sqr (fast 4 bar)) (sin (fast 32 bar))))", tags: ["algebra", "modulation", "starter"] },
+  {
+    title: "Polyrhythm 3v4",
+    code: "(d1 (sqr (fast 3 bar)))\n(d2 (sqr (fast 4 bar)))",
+    tags: ["algebra", "rhythm", "starter"],
+  },
+
+  // Rhythm & composition (Ch. 4)
+  { title: "Boolean AND Rhythm", code: "(d1 (* (euclid 3 8 bar) (euclid 5 8 bar)))", tags: ["rhythm", "composition", "starter"] },
+  { title: "Boolean XOR Rhythm", code: "(d1 (abs (- (euclid 3 8 bar) (euclid 5 8 bar))))", tags: ["rhythm", "composition", "starter"] },
+  {
+    title: "Phase-Shifted Canon",
+    code: "(d1 (euclid 3 8 bar))\n(d2 (euclid 3 8 (shift 0.25 bar)))",
+    tags: ["rhythm", "composition", "starter"],
+  },
+  { title: "Gate Sequence", code: "(d1 (gates [1 0 1 1 0 1 0 1] 0.5 bar))", tags: ["rhythm", "starter"] },
+  { title: "Trigger Sequence", code: "(a1 (trigs [9 0 5 0 7 0 3 0] 0.3 bar))", tags: ["rhythm", "melodic", "starter"] },
+  {
+    title: "Layered Drum Kit",
+    code: "(d1 (sqr beat))\n(d2 (sqr (fast 8 bar)))\n(d3 (euclid 3 8 bar))",
+    tags: ["rhythm", "composition", "starter"],
+  },
+
+  // Modulation & expression (Ch. 3)
+  { title: "AR Envelope", code: "(a1 (tri (fast 4 bar) 0.1))", tags: ["modulation", "envelope", "starter"] },
+  { title: "Pluck", code: "(a1 (* (- 1 (fast 4 bar)) (sin (fast 64 bar)) (sqr (fast 4 bar))))", tags: ["modulation", "envelope", "starter"] },
+  { title: "PWM", code: "(d1 (> (saw (fast 8 bar)) (sin bar)))", tags: ["modulation", "starter"] },
+  { title: "LFO-Modulated Speed", code: "(d1 (sqr (fast (scale -1 1 2 8 (sin (slow 4 bar))) bar)))", tags: ["modulation", "starter"] },
+  { title: "Crossfade Two Signals", code: "(a1 (+ (* bar (sin (fast 8 bar))) (* (- 1 bar) (tri (fast 8 bar)))))", tags: ["modulation", "starter"] },
+  { title: "Drawn Contour", code: "(a1 (interp [0 0.8 0.3 1 0] (fast 2 bar)))", tags: ["modulation", "melodic", "starter"] },
+
+  // Interactive / hardware (Ch. 4.4)
+  { title: "CV Threshold", code: "(d1 (> ain1 0.5))", tags: ["interactive", "starter"] },
+  {
+    title: "Toggle 3-Way Mode",
+    code: "(d1 (if (= swt 1) (euclid 5 8 bar) (if (= swt -1) (euclid 3 8 bar) (sqr beat))))",
+    tags: ["interactive", "starter"],
+  },
+
+  // Editor / tools showcase (Ch. 5)
+  { title: "Random Sample-and-Hold", code: "(a1 (random (fast 4 bar)))", tags: ["tools", "melodic", "starter"] },
+  {
+    title: "Named Speed (def)",
+    code: "(def speed 4)\n(d1 (sqr (fast speed bar)))",
+    tags: ["language", "tools", "starter"],
+  },
+  {
+    title: "Set Tempo + Sig",
+    code: "(set-bpm 128)\n(set-time-sig 4 4)\n(d1 (sqr beat))",
+    tags: ["tools", "starter"],
+  },
 ];
 
 function seedStarters(): { snippets: Snippet[]; nextId: number } {

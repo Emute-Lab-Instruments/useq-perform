@@ -106,6 +106,12 @@ export interface VisualisationSettings {
    * sample column; lower values reduce CPU cost.
    */
   temporalSampleRateMultiplier: number;
+  /**
+   * When `true`, each snippet in the help panel's Code Snippets tab
+   * renders a small live oscilloscope strip that samples the snippet's
+   * inner expression via `eval-at-time`. Devmode-only.
+   */
+  snippetOscilloscopesEnabled: boolean;
 }
 
 export interface RuntimeSettings {
@@ -331,6 +337,7 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   minFutureSampleRate: 30,
   extensionBatchSize: 4,
   temporalSampleRateMultiplier: 1,
+  snippetOscilloscopesEnabled: false,
 };
 
 export const defaultDevModeConfiguration: AppDevModeState = {

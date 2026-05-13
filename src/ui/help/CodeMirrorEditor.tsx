@@ -1,7 +1,12 @@
 import { Component, onMount, onCleanup } from "solid-js";
 import { EditorView } from "@codemirror/view";
 import { EditorState, Extension } from "@codemirror/state";
-import { baseExtensions, readOnlyExtensions, guideEditorExtensions } from "../../editors/extensions.ts";
+import {
+  baseExtensions,
+  readOnlyExtensions,
+  snippetReadOnlyExtensions,
+  guideEditorExtensions,
+} from "../../editors/extensions.ts";
 import { themes } from "../../editors/themes.ts";
 import { settings } from "../../utils/settingsStore";
 
@@ -10,6 +15,12 @@ interface CodeMirrorEditorProps {
   readOnly?: boolean;
   /** Use lightweight extensions (no probes/eval tracking). For guide playgrounds. */
   lightweight?: boolean;
+  /**
+   * In read-only mode, include the probe extension so indexed-form snippets
+   * (from-list / seq / gates / trigs) get the same live active-element
+   * highlight as the main editor. Ignored when `readOnly` is false.
+   */
+  enableProbes?: boolean;
   onCodeChange?: (code: string) => void;
   maxHeight?: string;
   minHeight?: string;
@@ -30,7 +41,9 @@ export const CodeMirrorEditor: Component<CodeMirrorEditorProps> = (props) => {
     const themeExtension = themesRecord[currentTheme] ?? themesRecord["oneDark"];
 
     const base = props.readOnly
-      ? readOnlyExtensions
+      ? props.enableProbes
+        ? snippetReadOnlyExtensions
+        : readOnlyExtensions
       : props.lightweight
         ? guideEditorExtensions
         : baseExtensions;

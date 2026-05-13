@@ -1076,12 +1076,19 @@
   {
     "name": "gates",
     "aliases": [],
-    "description": "Gate sequencer: like `step` but outputs 1 (gate on) for non-zero values and 0 (gate off) for zero values. Phase defaults to `beat` if omitted.",
+    "description": "Gate sequencer: outputs 1 during the first `width` fraction of each step where the pattern value is non-zero, 0 otherwise. Width defaults to 0.5 (50% duty cycle). Phase defaults to `beat` if omitted.",
     "parameters": [
       {
         "name": "data",
         "description": "List of gate values (0 = off, non-zero = on)",
         "range": "list of 0/1"
+      },
+      {
+        "name": "width",
+        "description": "Gate duty cycle (fraction of step duration)",
+        "range": "0-1",
+        "optional": true,
+        "default": "0.5"
       },
       {
         "name": "phase",
@@ -1094,7 +1101,7 @@
     "examples": [
       "(d1 (gates [1 0 1 0 1 1 0 1] bar))",
       "(d2 (gates [1 0 0 1] (fast 2 bar)))",
-      "(d1 (gates [1 1 0 1 0 0 1 0] (slow 2 bar)))"
+      "(d3 (gates [1 0 1 1 0 1 0 1] 0.3 bar))"
     ],
     "category": "sequencing",
     "tags": ["sequencing", "gate", "rhythm", "pattern"]
