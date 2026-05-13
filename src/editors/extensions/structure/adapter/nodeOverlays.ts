@@ -44,7 +44,7 @@ import {
   type Node,
   type NodeId,
 } from "../core/index.ts";
-import { structField } from "./stateField.ts";
+import { grabModeField, structField } from "./stateField.ts";
 import type { IdIndex, SourceRange } from "./treeFromLezer.ts";
 
 // ─── Debug logging ───────────────────────────────────────────────────────────
@@ -105,7 +105,15 @@ function computeNodeLineBounds(
   const lastLine = doc.lineAt(nodeTo);
   const charWidth = view.defaultCharacterWidth;
   const minPadCols = 2;
+  // Convert client-rect coords (viewport-relative) into doc-space by adding
+  // the scroller's current scroll offset. The SVG overlay is appended to
+  // scrollDOM and scrolls with content, so its internal coord system is
+  // doc-space — same as what view.lineBlockAt(...).top returns. Mixing the
+  // two spaces here would cause the halo to drift by scrollTop on every
+  // scroll position.
   const scrollRect = view.scrollDOM.getBoundingClientRect();
+  const docOriginTop = scrollRect.top - view.scrollDOM.scrollTop;
+  const docOriginLeft = scrollRect.left - view.scrollDOM.scrollLeft;
 
   const entries: Array<{
     line: Line;
@@ -151,40 +159,31 @@ function computeNodeLineBounds(
   let baseLeftX: number;
   if (minStartLine) {
     const baseCoords = view.coordsAtPos(minStartLine.from + minStartCol, -1);
-    baseLeftX = baseCoords ? baseCoords.left - scrollRect.left : minStartCol * charWidth;
+    baseLeftX = baseCoords ? baseCoords.left - docOriginLeft : minStartCol * charWidth;
   } else {
     baseLeftX = 0;
   }
 
-  // Measure cursor height via coordsAtPos at a known text position — this
-  // matches exactly what CodeMirror uses to size the cursor element.
-  let cursorTop: number | null = null;
-  let cursorBottom: number | null = null;
-  if (entries.length > 0) {
-    const samplePos = entries[0]!.line.from + entries[0]!.start;
-    const coords = view.coordsAtPos(samplePos, 1);
-    if (coords) {
-      cursorTop = coords.top - scrollRect.top;
-      cursorBottom = coords.bottom - scrollRect.top;
-    }
-  }
-  // Height offset from block.top to cursor.top (consistent across lines with same font)
-  const cursorVOffset = (cursorTop !== null && entries.length > 0)
-    ? cursorTop - entries[0]!.block.top : null;
-  const cursorH = (cursorTop !== null && cursorBottom !== null)
-    ? cursorBottom - cursorTop : null;
-
+  // Measure the actual text rect *per line* via coordsAtPos. Any line may
+  // carry decorations (probe oscilloscope widgets, inline result chips,
+  // future inline/block widgets) that change its block height or vertical
+  // text alignment — so a single offset captured from the first line and
+  // re-applied across the node misaligns the polygon on every other line.
+  // CodeMirror's `coordsAtPos` already reports the rendered caret rect
+  // accounting for decorations on that exact line, which generalises to
+  // any future decoration without special-casing.
   return entries.map(({ line, lineNum, block, start, end }) => {
     let rightX: number;
     if (start < end) {
       const rightCoords = view.coordsAtPos(line.from + end, 1);
-      rightX = rightCoords ? rightCoords.right - scrollRect.left : end * charWidth;
+      rightX = rightCoords ? rightCoords.right - docOriginLeft : end * charWidth;
     } else {
       rightX = baseLeftX + minPadCols * charWidth;
     }
 
-    const top = (cursorVOffset !== null) ? block.top + cursorVOffset : block.top;
-    const bottom = (cursorH !== null) ? top + cursorH : block.bottom;
+    const caret = view.coordsAtPos(line.from + start, 1);
+    const top = caret ? caret.top - docOriginTop : block.top;
+    const bottom = caret ? caret.bottom - docOriginTop : block.bottom;
 
     return {
       lineNumber: lineNum,
@@ -387,6 +386,7 @@ interface NodeOverlayMeasure {
   cursorAtEdge: boolean;
   cursorInside: boolean;
   fade: boolean;
+  grabbed: boolean;
 }
 
 const DEFAULT_INDENT_STYLE: IndentGuideStyle = {
@@ -431,14 +431,15 @@ class StructuralNodeOverlayPlugin {
     this.view = u.view;
     const oldField = u.startState.field(structField, false);
     const newField = u.state.field(structField, false);
-    // selectionSet is required so the cursor-clip read picks up the new caret
-    // position even when the structural cursor itself didn't change.
+    const oldGrab = u.startState.field(grabModeField, false);
+    const newGrab = u.state.field(grabModeField, false);
     if (
       u.docChanged ||
       u.viewportChanged ||
       u.geometryChanged ||
       u.selectionSet ||
-      oldField !== newField
+      oldField !== newField ||
+      oldGrab !== newGrab
     ) {
       this.debouncedMeasure();
     }
@@ -478,6 +479,7 @@ class StructuralNodeOverlayPlugin {
           cursorAtEdge: false,
           cursorInside: false,
           fade: false,
+          grabbed: false,
         };
 
         const value = view.state.field(structField, false);
@@ -623,6 +625,7 @@ class StructuralNodeOverlayPlugin {
           cursorAtEdge,
           cursorInside,
           fade: fadeProvider(),
+          grabbed: view.state.field(grabModeField, false) ?? false,
         };
       },
       write(measure: NodeOverlayMeasure) {
@@ -674,12 +677,18 @@ class StructuralNodeOverlayPlugin {
     }
 
     // 2. Node polygons.
+    const polyFill = measure.grabbed
+      ? 'rgba(100, 200, 255, 0.25)'
+      : 'rgba(255, 100, 150, 0.15)';
+    const polyStroke = measure.grabbed
+      ? 'rgba(60, 180, 255, 0.9)'
+      : 'rgba(255, 80, 130, 0.7)';
     for (const poly of measure.polygons) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', poly.pathD);
-      path.setAttribute('fill', 'rgba(255, 100, 150, 0.15)');
-      path.setAttribute('stroke', 'rgba(255, 80, 130, 0.7)');
-      path.setAttribute('stroke-width', '2');
+      path.setAttribute('fill', polyFill);
+      path.setAttribute('stroke', polyStroke);
+      path.setAttribute('stroke-width', measure.grabbed ? '2.5' : '2');
       this.svgOverlay.appendChild(path);
     }
 

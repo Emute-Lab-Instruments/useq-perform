@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Live-Edit Values
 
 > Spec: editor-side machinery for marking literal values in source as live-controllable knobs/toggles/pickers, manipulating them via inline widgets and a dockable panel (with gamepad), persisting their current values across reloads, and committing the final value back into the source. Counterpart to [MAIN.md](MAIN.md).
@@ -89,7 +94,7 @@ The **source is the canonical declaration**; the **slot is the canonical current
 - **Structural mode, cursor on a markable leaf literal**: mark/unmark per §3.2/§3.3.
 - **Structural mode, cursor on a vector compound**: enter vector-mark sub-mode per §3.7.
 - **Insertion mode, text caret near a literal**: walk up the AST from the caret to find the smallest enclosing markable literal; mark/unmark in place. Caret repositions just after the new wrapper or back at the unwrapped literal. User stays in insertion mode.
-- **Cursor on an existing `live-edit` wrapper (in either mode)**: unmark per §3.3.
+- **Cursor on an existing `live-edit` wrapper (in either mode)**: toggle off — replace the wrapper with a literal of the slot's *current* value (commit). See §3.3.
 - **Anywhere else**: no-op flash with a console toast ("live-edit not valid here: <reason>").
 
 3.2 **Marking** wraps the literal: (See `src/editors/extensions/liveEdit/markAction.ts`)
@@ -99,9 +104,12 @@ The **source is the canonical declaration**; the **slot is the canonical current
 4. Trigger an immediate eval of the enclosing top-level form. The compiler allocates the input slot; on success, the editor registers the widget in the live-edit store.
 5. The runtime is initialised to `<seed>` for the new slot via `set-live-inputs` (so widget and runtime agree from frame 1).
 
-3.3 **Unmarking** strips the wrapper, restoring the inner literal:
-1. Replace `(live-edit X :id <id> …)` with `X`.
-2. Trigger an immediate eval. The compiler frees the slot; the widget vanishes; persisted value enters orphan state (§7.3).
+3.3 **Toggling off** (the back half of the `liveEdit.mark` toggle) replaces the wrapper with a literal of the slot's *current* value, formatted to `:precision`. This is commit semantics (§6.1), shared by `liveEdit.mark`'s off-path and the explicit `liveEdit.commit` action:
+1. Look up the slot's current value via the live-edit store. If no slot is allocated yet (e.g. before the first eval), fall back to the seed source text — toggling off untouched is then equivalent to the bare literal.
+2. Replace `(live-edit X :id <id> …)` with the formatted value.
+3. Trigger an immediate eval. The compiler frees the slot; the widget vanishes; persisted value enters orphan state (§7.3).
+
+The user's intent on toggle-off is "preserve what the knob currently shows in the source," not "throw away my tuning." Restore-to-seed remains available as the explicit `liveEdit.resetToSeed` action (§6.2).
 
 3.4 **Range inference.** At mark-time, `:min`/`:max` are inferred from the seed and its lexical context. (See `src/editors/extensions/liveEdit/rangeInference.ts`) **Parent-head rules are checked first** — if the parent form has a recognised head, its context-specific range wins over the generic value-based rules. This is intentional: `(osc 0.5)` should get a frequency range, not the unit range, because 0.5 Hz is a valid control-rate oscillator frequency (uSEQ is control-rate only; there is no audio-rate processing in this language).
 
@@ -188,7 +196,7 @@ If the user idles for ≥ `liveEdit.subModeIdleHintMs` (default 2000 ms) with no
 When focused (structural cursor on the widget, mouse hovering, or gamepad targeting), the widget renders an **expanded view as an overlay popover anchored above the inline widget** (or below if there is no room above). The popover does not push lines down; the document layout is invariant under focus changes. Popover dismisses when focus leaves the widget.
 
 4.2 **Visual variants:**
-- **Numeric scalar** — knob (default; line-height circular control with a center-to-edge indicator line; range swept ~270° from 7 o'clock to 5 o'clock; 12 o'clock = midpoint of `[:min, :max]`). On focus, the popover renders an enlarged knob (~96–128px) with the value readout. Slider variant available via setting (§10.4).
+- **Numeric scalar** — knob (default; line-height circular control with a center-to-edge indicator line; range swept ~300° from 7 o'clock to 5 o'clock through 12; 12 o'clock = midpoint of `[:min, :max]`). On focus, the popover renders an enlarged knob (~96–128px) with the value readout. Slider variant available via setting (§10.4).
 - **Boolean** — two-state pill toggle: `[● on]` / `[off ●]`. Single-line, click to flip. No expand-on-focus (no extra detail to show).
 - **Keyword (enum)** — segmented picker: `[:up ●][:down ○][:hold ○]`, current option filled, others outlined. Click an option to select; arrows cycle. For enums with > 4 options, the segmented row scrolls horizontally inside the widget bounds; the popover variant on focus shows all options.
 - **Numeric vector element** — row of knobs at line height; brackets `[ ]` preserved. Each element behaves as an independent scalar live-edit, including its own focus popover.

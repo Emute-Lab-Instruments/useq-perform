@@ -104,3 +104,21 @@ export const insertionModeField = StateField.define<boolean>({
     return value;
   },
 });
+
+// ─── Grab mode (gamepad.md §6.6.4) ────────────────────────────────────────
+//
+// Boolean state field: true when the editor is in grab mode (node is being
+// moved via D-pad). Used by the overlay plugin to change the cursor polygon
+// colour. The actual grab state (move count, etc.) lives in grabState.ts.
+
+export const setGrabMode = StateEffect.define<boolean>();
+
+export const grabModeField = StateField.define<boolean>({
+  create: () => false,
+  update(value, tr: Transaction): boolean {
+    for (const e of tr.effects) {
+      if (e.is(setGrabMode)) return e.value;
+    }
+    return value;
+  },
+});

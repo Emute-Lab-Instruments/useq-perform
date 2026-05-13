@@ -22,6 +22,7 @@ import type { MenuDispatcher } from "../menu/dispatcher";
 import * as ch from "../../contracts/gamepadChannels";
 import { insertionModeField, structField } from "../../editors/extensions/structure/adapter/stateField.ts";
 import { findById, isLeaf, type LeafKind } from "../../editors/extensions/structure/core/index.ts";
+import { isGrabActive } from "./grabState.ts";
 
 import { diffSnapshots } from "./hardware";
 import { step, flush, INITIAL_STATE, DEFAULT_TIMING, type RecognizerState, type Timing } from "./recognizer";
@@ -202,6 +203,7 @@ export function createGamepadPipeline(
       insertionMode,
       cursorOnLeafAtom,
       cursorNodeKind,
+      grabActive: isGrabActive(),
     };
   }
 

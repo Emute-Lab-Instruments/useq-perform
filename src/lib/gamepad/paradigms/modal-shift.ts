@@ -55,6 +55,7 @@ import type {
   LayerName,
 } from "../types";
 import { isMainMenuOpen } from "../../mainMenu/store";
+import { isGrabActive } from "../grabState";
 
 const ln = (n: string) => n as LayerName;
 const ch = (n: string) => n as AxisChannelName;
@@ -149,31 +150,55 @@ const lbRbShiftedLayer: Layer = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Grab-mode layer (§6.6.4): D-pad moves the grabbed node, face buttons
+// exit grab mode. Active only while the grab flag is set (predicate-driven,
+// no timeout). Sits above the base layer and shoulder-shift layers so it
+// captures all input during grab.
+// ─────────────────────────────────────────────────────────────────────────────
+const grabLayer: Layer = {
+  name: ln("grab-mode"),
+  when: () => isGrabActive(),
+  gestures: {
+    [keyOf(tap("Left"))]: "grab.moveLeft",
+    [keyOf(held("Left"))]: "grab.moveLeft",
+    [keyOf(tap("Right"))]: "grab.moveRight",
+    [keyOf(held("Right"))]: "grab.moveRight",
+    [keyOf(tap("Up"))]: "grab.moveUp",
+    [keyOf(tap("Down"))]: "grab.moveDown",
+    [keyOf(tap("A"))]: "actOn.drop",
+    [keyOf(tap("B"))]: "actOn.cancelGrab",
+    [keyOf(tap("Y"))]: "actOn.duplicateDrop",
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Atom-edit layer (§2.4 / §5.4): LB/RB tap adjusts the leaf atom under the
 // cursor. LeftStickPress flips polarity on numbers.
 //
 // Active when:
 //   - the cursor is on a leaf atom (number, symbol, keyword, string, hole)
 //   - NOT in insertion mode
-//   - neither LB nor RB is held as a modifier (so held-shift layers shadow)
+//
+// `tap` fires on press, so by the time tap("LB") resolves, heldButtons
+// already contains "LB" — the predicate cannot exclude based on held shoulder
+// buttons or atom-adjust would never fire. The spec's "atom-adjust only when
+// neither LB nor RB is held" relies on eager-with-undo (deferred per commit
+// e16799b); without it we accept that LB+A for slurp also fires one adjust
+// step. Layer ordering still keeps lbShifted/rbShifted above this for face
+// buttons, and neither shoulder layer binds tap("LB")/tap("RB") directly.
 //
 // Per spec §2.4: "When the cursor is on a compound node, LB/RB tap has no
-// atom-adjust binding — the tap falls through." This is achieved by the
-// predicate only activating on leaves.
+// atom-adjust binding — the tap falls through." Achieved by the predicate
+// activating only on leaves.
 //
 // Per spec §5.4: LeftStickPress polarity flip only makes sense on numbers,
-// but we bind it here and let the handler return false for non-numbers (the
-// resolver falls through to the base layer's control.toggleManualLeft on
-// no-op). Actually, since the atom layer shadows base, we just accept that
-// L3 on non-numbers is a no-op at the handler level.
+// but we bind it here and let the handler return false for non-numbers.
 // ─────────────────────────────────────────────────────────────────────────────
 const atomEditLayer: Layer = {
   name: ln("atom-edit"),
   when: (s: AppStateSnapshot) =>
     s.cursorOnLeafAtom === true &&
-    s.insertionMode !== true &&
-    !s.gamepad.heldButtons.has("LB") &&
-    !s.gamepad.heldButtons.has("RB"),
+    s.insertionMode !== true,
   gestures: {
     [keyOf(tap("LB"))]: "atom.adjustDown",
     [keyOf(tap("RB"))]: "atom.adjustUp",
@@ -236,6 +261,7 @@ const mainMenuLayer: Layer = {
 
 export const modalShiftLayers: readonly Layer[] = [
   mainMenuLayer,
+  grabLayer,
   lbRbShiftedLayer,
   lbShiftedLayer,
   rbShiftedLayer,

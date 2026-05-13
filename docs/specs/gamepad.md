@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Gamepad input
 
 > Spec: ontology and algebra of gamepad input. Defines the **primitives** out of which every gamepad-driven interaction is built, and the **paradigms** (binding setups) the system supports for experimentation.
@@ -595,33 +600,35 @@ const actOnLayer: Layer = {
 This collapses "select target + choose verb + pick content" into a single chord + pick. Fast path for the common case of "replace this with something of the same kind."
 
 6.6.4 **Grab mode (Option C: RT+A chord).** Fires `actOn.grab`, entering a transient "grabbed" state:
-- The cursor halo changes to a "holding" visual (e.g. filled rather than outlined, or a distinct colour).
-- D-pad moves the grabbed node spatially:
-  - Left/Right → `edit.transposePrev` / `edit.transposeNext` (swap with siblings)
-  - Up → `edit.raise` (move up one tree level)
-  - Down → `edit.enclose.list` (wrap in a new list — moves down one level)
-- Releasing state:
-  - A → drop in current position (pop grab layer, no-op — the moves already applied)
-  - B → undo all moves since grab started (batch undo back to pre-grab state) and pop
-  - Y → duplicate at current position and drop (the original stays where it was at grab-start; a copy appears at the new position)
-- The grab layer uses `popOn: ['predicate']` tied to a `grabActive` flag; it does not auto-timeout (the user is actively working).
+- The cursor polygon switches to a distinct colour (blue fill + stroke, thicker border) to indicate the node is being held.
+- D-pad moves the grabbed node through the AST via dedicated `grab.move*` actions that wrap the structural ops with move-count tracking:
+  - Left/Right → `grab.moveLeft` / `grab.moveRight` (transpose with siblings via `edit.transposePrev` / `edit.transposeNext`)
+  - Up → `grab.moveUp` (raise node out of its parent via `edit.raise`)
+  - Down → `grab.moveDown` (wrap node in a new list via `edit.encloseList`)
+  - Each D-pad press moves the node immediately; held repeats fire.
+- Exit gestures:
+  - A → `actOn.drop`: commit position (no-op on tree — moves already applied), exit grab
+  - B → `actOn.cancelGrab`: batch-undo all moves back to the pre-grab state (restoring both tree and cursor), exit grab
+  - Y → `actOn.duplicateDrop`: exit grab (stub — duplicate-at-position semantics deferred)
+- Grab state is tracked in `src/lib/gamepad/grabState.ts` (module-level, not CodeMirror state). A snapshot of the document text and cursor paths is saved on entry, enabling cursor restoration on cancel. A separate CM `grabModeField` boolean drives the visual indicator.
+- The grab layer uses `when: () => isGrabActive()` (predicate-driven); it does not auto-timeout.
 
 ```ts
 const grabLayer: Layer = {
   name:   'grab-mode',
-  when:   state => state.gamepad.grabActive,
+  when:   () => isGrabActive(),
   gestures: {
-    [keyOf(tap('Left'))]:  'edit.transposePrev',
-    [keyOf(held('Left'))]: 'edit.transposePrev',
-    [keyOf(tap('Right'))]: 'edit.transposeNext',
-    [keyOf(held('Right'))]: 'edit.transposeNext',
-    [keyOf(tap('Up'))]:    'edit.raise',
-    [keyOf(tap('Down'))]:  'actOn.wrapList',
-    [keyOf(tap('A'))]:     'actOn.drop',           // commit position, pop layer
-    [keyOf(tap('B'))]:     'actOn.cancelGrab',     // undo all moves, pop layer
-    [keyOf(tap('Y'))]:     'actOn.duplicateDrop',  // duplicate at position, pop layer
+    [keyOf(tap('Left'))]:  'grab.moveLeft',
+    [keyOf(held('Left'))]: 'grab.moveLeft',
+    [keyOf(tap('Right'))]: 'grab.moveRight',
+    [keyOf(held('Right'))]: 'grab.moveRight',
+    [keyOf(tap('Up'))]:    'grab.moveUp',
+    [keyOf(tap('Down'))]:  'grab.moveDown',
+    [keyOf(tap('A'))]:     'actOn.drop',
+    [keyOf(tap('B'))]:     'actOn.cancelGrab',
+    [keyOf(tap('Y'))]:     'actOn.duplicateDrop',
   },
-}
+};
 ```
 
 6.6.5 **Layer ordering.** The `act-on` and `grab-mode` layers sit above the structural base layers but below the picker/radial layers and the main-menu layer.

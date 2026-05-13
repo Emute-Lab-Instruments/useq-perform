@@ -64,6 +64,11 @@ registerSuite(
 );
 
 registerSuite(
+  'Structural YAML — Grab Mode',
+  loadYaml('new_structural/grab_mode_tests.yaml'),
+);
+
+registerSuite(
   'Structural YAML — Misc (keyboard/typing)',
   loadYaml('new_structural/misc_tests.yaml'),
 );

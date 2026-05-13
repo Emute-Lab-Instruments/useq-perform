@@ -1,0 +1,156 @@
+# Structural Editor Test Cases — Grab Mode
+#
+# Tests for grab-mode node movement (gamepad.md §6.6.4). Grab picks up the
+# selected node and moves it with D-pad directions. Drop commits the move;
+# cancel undoes all moves back to the pre-grab state.
+#
+# Test format:
+# - name: descriptive test name
+#   code: initial code state
+#   selection: currently selected expression
+#   actions: action or list of actions to perform
+#   new_code: resulting code after actions
+#   new_selection: selected expression after actions
+
+# ============================================================================
+# GRAB + MOVE LEFT/RIGHT + DROP (transpose)
+# ============================================================================
+
+- name: "grab + move right + drop transposes with next sibling"
+  code: "(a b c)"
+  selection: "a"
+  actions: [grab, grab_move_right, drop]
+  new_code: "(b a c)"
+  new_selection: "a"
+
+- name: "grab + move left + drop transposes with prev sibling"
+  code: "(a b c)"
+  selection: "c"
+  actions: [grab, grab_move_left, drop]
+  new_code: "(a c b)"
+  new_selection: "c"
+
+- name: "grab + two moves right + drop"
+  code: "(a b c d)"
+  selection: "a"
+  actions: [grab, grab_move_right, grab_move_right, drop]
+  new_code: "(b c a d)"
+  new_selection: "a"
+
+- name: "grab + three moves right + drop moves to end"
+  code: "(a b c d)"
+  selection: "a"
+  actions: [grab, grab_move_right, grab_move_right, grab_move_right, drop]
+  new_code: "(b c d a)"
+  new_selection: "a"
+
+- name: "grab + move compound expression right"
+  code: "((+ 1 2) a b)"
+  selection: "(+ 1 2)"
+  actions: [grab, grab_move_right, drop]
+  new_code: "(a (+ 1 2) b)"
+  new_selection: "(+ 1 2)"
+
+- name: "grab + move left then right returns to original"
+  code: "(a b c)"
+  selection: "b"
+  actions: [grab, grab_move_left, grab_move_right, drop]
+  new_code: "(a b c)"
+  new_selection: "b"
+
+# ============================================================================
+# GRAB + CANCEL (batch undo)
+# ============================================================================
+
+- name: "grab + move right + cancel undoes move"
+  code: "(a b c)"
+  selection: "a"
+  actions: [grab, grab_move_right, cancel_grab]
+  new_code: "(a b c)"
+  new_selection: "a"
+
+- name: "grab + two moves + cancel undoes all"
+  code: "(a b c d)"
+  selection: "a"
+  actions: [grab, grab_move_right, grab_move_right, cancel_grab]
+  new_code: "(a b c d)"
+  new_selection: "a"
+
+- name: "grab + three moves + cancel undoes all"
+  code: "(a b c d e)"
+  selection: "a"
+  actions: [grab, grab_move_right, grab_move_right, grab_move_right, cancel_grab]
+  new_code: "(a b c d e)"
+  new_selection: "a"
+
+- name: "grab + no moves + cancel is no-op"
+  code: "(a b c)"
+  selection: "b"
+  actions: [grab, cancel_grab]
+  new_code: "(a b c)"
+  new_selection: "b"
+
+# ============================================================================
+# GRAB + DROP (no-op cases)
+# ============================================================================
+
+- name: "grab + no moves + drop is no-op"
+  code: "(a b c)"
+  selection: "b"
+  actions: [grab, drop]
+  new_code: "(a b c)"
+  new_selection: "b"
+
+# ============================================================================
+# GRAB + MOVE UP (raise) + DROP
+# ============================================================================
+
+- name: "grab + move up raises node out of parent"
+  code: "(a (b c) d)"
+  selection: "b"
+  actions: [grab, grab_move_up, drop]
+  new_code: "(a b d)"
+  new_selection: "b"
+
+- name: "grab + move up + cancel restores nesting"
+  code: "(a (b c) d)"
+  selection: "b"
+  actions: [grab, grab_move_up, cancel_grab]
+  new_code: "(a (b c) d)"
+  new_selection: "b"
+
+# ============================================================================
+# GRAB + MOVE DOWN (enclose in list) + DROP
+# ============================================================================
+
+- name: "grab + move down wraps in list"
+  code: "(a b c)"
+  selection: "b"
+  actions: [grab, grab_move_down, drop]
+  new_code: "(a (b) c)"
+  new_selection: "(b)"
+
+- name: "grab + move down + cancel unwraps"
+  code: "(a b c)"
+  selection: "b"
+  actions: [grab, grab_move_down, cancel_grab]
+  new_code: "(a b c)"
+  new_selection: "b"
+
+# ============================================================================
+# MIXED MOVEMENT SEQUENCES
+# ============================================================================
+
+- name: "grab + move right + move right + move left + drop"
+  code: "(a b c d)"
+  selection: "a"
+  actions: [grab, grab_move_right, grab_move_right, grab_move_left, drop]
+  new_code: "(b a c d)"
+  new_selection: "a"
+
+- name: "grab + complex sequence + cancel undoes all"
+  code: "(a b c d)"
+  selection: "a"
+  actions: [grab, grab_move_right, grab_move_right, grab_move_left, cancel_grab]
+  new_code: "(a b c d)"
+  new_selection: "a"

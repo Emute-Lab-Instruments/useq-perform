@@ -28,7 +28,8 @@ import type { LiveEditMetaPayload } from "../structure/adapter/treeFromLezer.ts"
 import { printNode } from "../structure/adapter/printTree.ts";
 import { executeEditorCommand } from "../../commands/editorCommandRouter.ts";
 import { inferRange } from "./rangeInference.ts";
-import { liveEditPersistence, liveEditOnValueChange } from "../../../effects/liveEditRuntime.ts";
+import { liveEditPersistence, liveEditOnValueChange, liveEditStore } from "../../../effects/liveEditRuntime.ts";
+import type { LiveEditSlot } from "../../../contracts/liveEdit.ts";
 import { evaluate } from "../../../effects/editorEvaluation.ts";
 import { createVectorMarkController, type VectorMarkController } from "./vectorMarkController.ts";
 import { registerContext } from "../../../lib/keybindings/contexts.ts";
@@ -183,6 +184,29 @@ function getParentHead(
   return undefined;
 }
 
+// ── Value → literal text ──────────────────────────────────────────────────
+
+/**
+ * Format a slot's current value as the literal text we paste back into source.
+ * Used by toggle-off (replace wrapper with current value) and `liveEdit.commit`.
+ */
+function formatSlotValueAsLiteral(slot: LiveEditSlot): string {
+  const value = slot.value;
+  if (typeof value === "number") {
+    const precision =
+      slot.precision != null && slot.precision >= 0 ? slot.precision : 2;
+    let formatted = value.toFixed(Math.min(precision, 8));
+    if (formatted.includes(".")) {
+      formatted = formatted.replace(/0+$/, "").replace(/\.$/, "");
+    }
+    return formatted;
+  }
+  if (typeof value === "boolean") return String(value);
+  // keyword: stored without leading colon — restore it
+  const s = String(value);
+  return s.startsWith(":") ? s : `:${s}`;
+}
+
 // ── Seed value extraction ─────────────────────────────────────────────────
 
 function parseSeedValue(node: Node): number | boolean | string {
@@ -324,7 +348,7 @@ export function executeLiveEditMark(view: EditorView): boolean {
     const targetNode = findById(root, cursor.target);
     if (!targetNode || targetNode.kind === "document") continue;
 
-    // ── Check for existing live-edit Meta → unmark ────────────────────
+    // ── Check for existing live-edit Meta → toggle off (commit) ───────
     const liveEditMeta = targetNode.metas.find(
       (m: Meta) => m.kind === "live-edit",
     );
@@ -333,8 +357,17 @@ export function executeLiveEditMark(view: EditorView): boolean {
       const wrapperRange = idIndex.get(targetNode.id);
       if (!wrapperRange) continue;
 
+      // Toggle-off semantics: replace the wrapper with the *current* live
+      // value (commit), not the seed. Falls back to the seed source text
+      // when the slot isn't allocated yet (e.g., before first eval).
+      const payload = liveEditMeta.payload as LiveEditMetaPayload;
+      const slotId = payload.id;
+      const slot = slotId ? liveEditStore.getSlot(slotId) : undefined;
+
       let innerText: string;
-      if (
+      if (slot) {
+        innerText = formatSlotValueAsLiteral(slot);
+      } else if (
         targetNode.kind === "number" ||
         targetNode.kind === "symbol" ||
         targetNode.kind === "keyword" ||
@@ -432,13 +465,13 @@ export function executeLiveEditMarkInsertionMode(view: EditorView): boolean {
     return false;
   }
 
-  // Check for existing live-edit Meta → unmark
+  // Check for existing live-edit Meta → toggle off (commit current value)
   if (deepestNode.kind !== "document") {
     const liveEditMeta = deepestNode.metas.find(
       (m: Meta) => m.kind === "live-edit",
     );
     if (liveEditMeta) {
-      return executeUnmark(view, deepestNode, idIndex);
+      return executeToggleOff(view, deepestNode, liveEditMeta, idIndex);
     }
   }
 
@@ -560,21 +593,33 @@ function executeMark(
   return true;
 }
 
-// ── Unmark ────────────────────────────────────────────────────────────────
+// ── Toggle-off (commit current value) ────────────────────────────────────
 
-function executeUnmark(
+/**
+ * Toggle a live-edit off by replacing the wrapper with a literal of the
+ * slot's current value. Falls back to the seed source text when the slot
+ * isn't allocated yet (e.g., before the first eval).
+ *
+ * §6.1 (commit) semantics, used by the `liveEdit.mark` toggle in both
+ * structural and insertion modes.
+ */
+function executeToggleOff(
   view: EditorView,
   targetNode: Node,
+  liveEditMeta: Meta,
   idIndex: ReadonlyMap<string, { from: number; to: number }>,
 ): boolean {
-  // The idIndex maps the host node's id to the wrapper's full source range
-  // (set by treeFromLezer during wrapper recognition).
   const wrapperRange = idIndex.get(targetNode.id);
   if (!wrapperRange) return false;
 
-  // Get the inner literal text. For leaf nodes this is node.text.
+  const payload = liveEditMeta.payload as LiveEditMetaPayload;
+  const slotId = payload.id;
+  const slot = slotId ? liveEditStore.getSlot(slotId) : undefined;
+
   let innerText: string;
-  if (
+  if (slot) {
+    innerText = formatSlotValueAsLiteral(slot);
+  } else if (
     targetNode.kind === "number" ||
     targetNode.kind === "symbol" ||
     targetNode.kind === "keyword" ||
@@ -582,11 +627,9 @@ function executeUnmark(
   ) {
     innerText = targetNode.text;
   } else {
-    // Should not happen for live-edit hosts, but fall back to the printNode approach
     innerText = printNode(targetNode);
   }
 
-  // Replace the wrapper's source range with just the inner literal text
   executeEditorCommand(view, {
     kind: "replaceRange",
     from: wrapperRange.from,
@@ -596,7 +639,6 @@ function executeUnmark(
     source: "keyboard",
   });
 
-  // §3.3 step 2: trigger immediate eval to free the slot.
   triggerPostMarkEval(view);
 
   return true;
@@ -618,7 +660,7 @@ const commitInFlight = new Set<string>();
 
 export function executeLiveEditCommit(
   view: EditorView,
-  store: { getSlot(id: string): { value: number | boolean | string; precision?: number } | undefined },
+  store: { getSlot(id: string): LiveEditSlot | undefined },
 ): boolean {
   const structValue = view.state.field(structField, false);
   if (!structValue) return false;
@@ -654,26 +696,10 @@ export function executeLiveEditCommit(
     const wrapperRange = idIndex.get(targetNode.id);
     if (!wrapperRange) continue;
 
-    // Format the current value per :precision
-    let formatted: string;
-    const value = slot.value;
-    if (typeof value === "number") {
-      const precision = (slot.precision != null && slot.precision >= 0) ? slot.precision : 2;
-      formatted = value.toFixed(Math.min(precision, 8));
-      // Remove trailing zeros after decimal (but keep at least one decimal if it had decimals)
-      if (formatted.includes(".")) {
-        formatted = formatted.replace(/0+$/, "").replace(/\.$/, "");
-      }
-    } else if (typeof value === "boolean") {
-      formatted = String(value);
-    } else {
-      formatted = value; // keyword
-    }
-
     changes.push({
       from: wrapperRange.from,
       to: wrapperRange.to,
-      insert: formatted,
+      insert: formatSlotValueAsLiteral(slot),
     });
 
     commitInFlight.add(slotId);

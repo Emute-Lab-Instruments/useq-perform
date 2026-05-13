@@ -81,9 +81,11 @@ export const liveEditWidgetConfigFacet = Facet.define<
  */
 const SCALAR_WIDGET_VARIANT: "knob" | "slider" = "knob";
 
-/** Knob sweep, 7 o'clock to 5 o'clock. §4.2. */
-const KNOB_SWEEP_DEG = 270;
-const KNOB_START_DEG = -135; // 7 o'clock relative to 12 o'clock north
+/** Knob sweep, 7 o'clock (min) to 5 o'clock (max), passing over 12. §4.2.
+ *  7 o'clock = -150° from 12; 5 o'clock = +150° from 12; total sweep = 300°.
+ *  At t=0.5 the indicator points to 12 o'clock (midpoint of [min, max]). */
+const KNOB_SWEEP_DEG = 300;
+const KNOB_START_DEG = -150;
 
 // ─── State plumbing ──────────────────────────────────────────────────────────
 
@@ -119,8 +121,8 @@ function clamp(n: number, lo: number, hi: number): number {
 }
 
 /**
- * Map a numeric value into the knob's 270° sweep, returning degrees relative
- * to the 12 o'clock indicator orientation we use in CSS (rotate(0deg) points
+ * Map a numeric value into the knob's sweep, returning degrees relative to
+ * the 12 o'clock indicator orientation we use in CSS (rotate(0deg) points
  * up). 12 o'clock = midpoint of [min, max]; 7 o'clock = min; 5 o'clock = max.
  */
 function valueToKnobAngle(
@@ -412,6 +414,9 @@ class KnobWidget extends LiveEditBaseWidget {
         ? this.localValue
         : Number(this.localValue) || 0;
       const range = max - min;
+      // Suppress the indicator's CSS transition during drag so the knob tracks
+      // the cursor without playing catch-up.
+      knob.classList.add("is-dragging");
       const onMove = (mv: MouseEvent): void => {
         const dy = startY - mv.clientY; // up = increase
         // §4.6.1: Shift + drag — fine control (scale step by fineDragRatio).
@@ -425,11 +430,20 @@ class KnobWidget extends LiveEditBaseWidget {
         updateValue(next);
       };
       const onUp = (): void => {
+        knob.classList.remove("is-dragging");
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        window.removeEventListener("blur", onUp);
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
+      // Safety nets for releases the document-level mouseup misses
+      // (drag off-window, browser focus change, OS-level pointer cancel).
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
+      window.addEventListener("blur", onUp);
     });
 
     // §4.6.1: Scroll wheel — step by :step per notch.
@@ -976,6 +990,12 @@ const liveEditTheme = EditorView.baseTheme({
     backgroundColor: "rgba(220, 240, 255, 0.95)",
     transformOrigin: "1px 2px", // origin near center of knob (rotation pivot)
     borderRadius: "1px",
+    transition: "transform 80ms cubic-bezier(0.2, 0.7, 0.3, 1)",
+    willChange: "transform",
+  },
+  // Drag must feel direct — kill the transition while the user is dragging.
+  ".cm-live-edit-knob.is-dragging .cm-live-edit-knob-indicator": {
+    transition: "none",
   },
   ".cm-live-edit.is-modified .cm-live-edit-knob-indicator": {
     backgroundColor: "rgba(255, 220, 160, 1)",

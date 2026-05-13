@@ -542,6 +542,36 @@ export const actions = {
     requiresEditor: true,
   },
 
+  // -- Grab-mode D-pad movement (gamepad.md §6.6.4) ---------------------------
+  //
+  // These actions wrap the structural ops with grab-move counting so that
+  // actOn.cancelGrab can batch-undo the correct number of steps.
+
+  "grab.moveLeft": {
+    description: "Grab: move node left (transpose prev)",
+    category: "gamepad",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "grab.moveRight": {
+    description: "Grab: move node right (transpose next)",
+    category: "gamepad",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "grab.moveUp": {
+    description: "Grab: move node up (raise)",
+    category: "gamepad",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "grab.moveDown": {
+    description: "Grab: move node down (enclose in list)",
+    category: "gamepad",
+    reversible: true,
+    requiresEditor: true,
+  },
+
   // -- Main menu (main-menu.md) ---------------------------------------------
 
   "mainMenu.open": {
@@ -724,6 +754,16 @@ export const actions = {
     description: "Exit insertion mode, return to structural mode",
     category: "editor",
     reversible: false,
+    requiresEditor: true,
+  },
+
+  // -- Live-Edit ------------------------------------------------------------
+
+  "liveEdit.mark": {
+    description:
+      "Toggle live-edit on the cursor's literal: wrap if bare, replace with current value if already wrapped",
+    category: "editor",
+    reversible: true,
     requiresEditor: true,
   },
 
