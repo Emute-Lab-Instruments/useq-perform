@@ -9,12 +9,10 @@ import type { Extension } from '@codemirror/state';
 
 export const extensionRegistry: Record<string, () => Promise<Extension | Extension[]>> = {
   'structure-highlight': async () => {
-    // TODO: Phase 2.12 retired the legacy structure module; `navigationMetaField`
-    // and `nodeHighlightPlugin` no longer exist. Existing
-    // structure-highlights.stories.tsx will need to be repointed at the new
-    // structure adapter (`src/editors/extensions/structure/adapter/`) or
-    // retired. Returning [] keeps the storybook build green.
-    return [];
+    const { structuralCoreExtensions } = await import(
+      '@src/editors/extensions/structure/adapter/extension'
+    );
+    return structuralCoreExtensions();
   },
   'eval-highlight': async () => {
     const { evalHighlightField } = await import('@src/editors/extensions/evalHighlight');
