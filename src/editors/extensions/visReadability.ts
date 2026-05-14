@@ -390,8 +390,12 @@ class VisReadabilityPlugin {
    */
   renderFrame(): void {
     const ctx = this.overlayCtx;
+    if (!ctx) return;
     const blurCtx = this.blurCtx;
-    if (!ctx || !blurCtx || !this.clipPath) return;
+    if (!blurCtx || !this.clipPath) {
+      ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+      return;
+    }
 
     // Check if readability is disabled — skip all GPU work.
     if (!this.wasEnabled) {

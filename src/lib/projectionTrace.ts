@@ -60,6 +60,28 @@ export interface ProjectionTraceSummary {
   byKind: Array<{ kind: string; count: number }>;
 }
 
+export interface ProjectionTraceDiagnosis {
+  enabled: boolean;
+  inspectedEvents: number;
+  byKind: Array<{ kind: string; count: number }>;
+  lastRuntimeRequests: Record<string, unknown>[];
+  lastRuntimeRuns: Record<string, unknown>[];
+  lastSamplerModes: Record<string, unknown>[];
+  lastRendererBuilds: Record<string, unknown>[];
+  warningCounts: {
+    projectRuns: number;
+    tickOnlyRuns: number;
+    resetFills: number;
+    extends: number;
+    skips: number;
+    frontierAdequate: number;
+    rendererFutureEmpty: number;
+    rendererBoundaryGap: number;
+    rendererFarGap: number;
+  };
+  hints: string[];
+}
+
 let enabled = false;
 let capacity = 10000;
 let captureSamples = false;
@@ -195,6 +217,175 @@ function dump(filter: ProjectionTraceFilter = {}): ProjectionTraceSnapshot {
   return snapshot(filter);
 }
 
+function asNumber(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function tail<T>(rows: T[], count: number): T[] {
+  const safeCount = Math.max(0, Math.floor(Number(count) || 0));
+  return rows.slice(Math.max(0, rows.length - safeCount));
+}
+
+function compactRuntimeRequest(event: ProjectionTraceEvent): Record<string, unknown> {
+  const detail = event.detail;
+  return {
+    seq: event.seq,
+    time: detail.time,
+    replace: detail.replace,
+    requestedProjectFuture: detail.requestedProjectFuture,
+    preserveQueuedProjection: detail.preserveQueuedProjection,
+    queuedProjectFuture: detail.queuedProjectFuture,
+    samplingInFlight: detail.samplingInFlight,
+    queueBeforeLength: Array.isArray(detail.queueBefore)
+      ? detail.queueBefore.length
+      : null,
+    queueAfter: detail.queueAfter,
+  };
+}
+
+function compactRuntimeRun(event: ProjectionTraceEvent): Record<string, unknown> {
+  const detail = event.detail;
+  return {
+    seq: event.seq,
+    timeSeconds: detail.timeSeconds,
+    projectFuture: detail.projectFuture,
+    queueLength: detail.queueLength,
+  };
+}
+
+function compactSamplerMode(event: ProjectionTraceEvent): Record<string, unknown> {
+  const detail = event.detail;
+  const projectionFrontier = asNumber(detail.projectionFrontierBefore);
+  const futureEdge = asNumber(detail.futureEdge);
+  const visibleFutureEdgeWithGuard = asNumber(detail.visibleFutureEdgeWithGuard);
+  return {
+    seq: event.seq,
+    path: detail.path,
+    modeLabel: detail.modeLabel,
+    projectionMode: detail.projectionMode,
+    timeSeconds: detail.timeSeconds,
+    projectEnd: detail.projectEnd,
+    origin: detail.origin,
+    numSamples: detail.numSamples,
+    projectionFrontierBefore: projectionFrontier,
+    futureEdge,
+    visibleFutureEdgeWithGuard,
+    visibleSlack:
+      projectionFrontier !== null && visibleFutureEdgeWithGuard !== null
+        ? projectionFrontier - visibleFutureEdgeWithGuard
+        : null,
+    fullSlack:
+      projectionFrontier !== null && futureEdge !== null
+        ? projectionFrontier - futureEdge
+        : null,
+  };
+}
+
+function compactRendererBuild(event: ProjectionTraceEvent): Record<string, unknown> {
+  const detail = event.detail;
+  const currentTime = asNumber(detail.currentTime);
+  const futureNewestTime = asNumber(detail.futureNewestTime);
+  const firstFutureGap = asNumber(detail.firstFutureGap);
+  return {
+    seq: event.seq,
+    output: detail.output,
+    currentTime,
+    combinedLength: detail.combinedLength,
+    futureLength: detail.futureLength,
+    keptFutureCount: detail.keptFutureCount,
+    expiredFutureCount: detail.expiredFutureCount,
+    firstFutureGap,
+    maxFutureBoundaryGapSeconds: detail.maxFutureBoundaryGapSeconds,
+    futureNewestTime,
+    farFutureGap:
+      currentTime !== null && futureNewestTime !== null
+        ? futureNewestTime - currentTime
+        : null,
+    anchorInserted: detail.anchorInserted,
+    anchorSkippedDueGap: detail.anchorSkippedDueGap,
+  };
+}
+
+function diagnose(output?: string, recentCount = 5000): ProjectionTraceDiagnosis {
+  const inspected = tail(events, recentCount);
+  const relevant = output
+    ? inspected.filter((event) => matchesFilter(event, { output }))
+    : inspected;
+
+  const counts = new Map<string, number>();
+  for (const event of relevant) {
+    counts.set(event.kind, (counts.get(event.kind) ?? 0) + 1);
+  }
+  const byKindRows = Array.from(counts, ([kind, count]) => ({ kind, count }));
+  byKindRows.sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind));
+
+  const runtimeRequests = inspected.filter((event) => event.kind === "runtime-sample-request");
+  const runtimeRuns = inspected.filter((event) => event.kind === "runtime-sample-run");
+  const samplerModes = relevant.filter((event) => event.kind === "sampler-mode");
+  const rendererBuilds = relevant.filter((event) => event.kind === "renderer-build");
+
+  const projectRuns = runtimeRuns.filter((event) => event.detail.projectFuture === true).length;
+  const tickOnlyRuns = runtimeRuns.length - projectRuns;
+  const resetFills = samplerModes.filter((event) => event.detail.modeLabel === "reset-fill").length;
+  const extendCount = samplerModes.filter((event) => event.detail.modeLabel === "extend").length;
+  const skips = samplerModes.filter((event) => event.detail.modeLabel === "skip").length;
+  const frontierAdequate = samplerModes.filter(
+    (event) => event.detail.modeLabel === "frontier-adequate",
+  ).length;
+  const rendererFutureEmpty = rendererBuilds.filter(
+    (event) => Number(event.detail.keptFutureCount || 0) === 0,
+  ).length;
+  const rendererBoundaryGap = rendererBuilds.filter(
+    (event) => event.detail.anchorSkippedDueGap === true,
+  ).length;
+  const rendererFarGap = rendererBuilds.filter((event) => {
+    const currentTime = asNumber(event.detail.currentTime);
+    const newest = asNumber(event.detail.futureNewestTime);
+    if (currentTime === null || newest === null) return false;
+    return newest - currentTime < 1;
+  }).length;
+
+  const hints: string[] = [];
+  if (projectRuns === 0 && runtimeRuns.length > 0) {
+    hints.push("No projectFuture samples ran; inspect runtime-sample-request queue state.");
+  }
+  if (skips > 0 && extendCount === 0) {
+    hints.push("Projection was skipped under pressure without extensions in this window.");
+  }
+  if (frontierAdequate > 0 && rendererFarGap > 0) {
+    hints.push("Sampler thought frontier was adequate while renderer saw short future coverage.");
+  }
+  if (rendererBoundaryGap > 0) {
+    hints.push("Renderer skipped the boundary anchor because the first future sample was too far from now.");
+  }
+  if (resetFills > extendCount * 2 && resetFills > 2) {
+    hints.push("Reset-fill count is high relative to extension; check invalidation churn.");
+  }
+
+  return {
+    enabled,
+    inspectedEvents: relevant.length,
+    byKind: byKindRows,
+    lastRuntimeRequests: tail(runtimeRequests, 12).map(compactRuntimeRequest),
+    lastRuntimeRuns: tail(runtimeRuns, 12).map(compactRuntimeRun),
+    lastSamplerModes: tail(samplerModes, 20).map(compactSamplerMode),
+    lastRendererBuilds: tail(rendererBuilds, 20).map(compactRendererBuild),
+    warningCounts: {
+      projectRuns,
+      tickOnlyRuns,
+      resetFills,
+      extends: extendCount,
+      skips,
+      frontierAdequate,
+      rendererFutureEmpty,
+      rendererBoundaryGap,
+      rendererFarGap,
+    },
+    hints,
+  };
+}
+
 export const projectionTrace = {
   enable,
   disable,
@@ -208,6 +399,7 @@ export const projectionTrace = {
   snapshot,
   dump,
   summary,
+  diagnose,
 };
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
@@ -222,5 +414,6 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     snapshot,
     dump,
     summary,
+    diagnose,
   };
 }

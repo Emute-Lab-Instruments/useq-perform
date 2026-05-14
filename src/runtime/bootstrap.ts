@@ -34,7 +34,6 @@ import {
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
 import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
-import { mountSampleFpsOverlay } from '../ui/sampleFpsOverlay.ts';
 import {
   getActiveWasmRuntimePort,
   setActiveWasmRuntimePort,
@@ -168,7 +167,6 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     panels.mountSettingsPanel();
     panels.mountHelpPanel();
     panels.mountDesignSelector(environmentState?.startupFlags?.devmode === true);
-    mountSampleFpsOverlay();
   } catch (error) {
     reportBootstrapFailure("ui-adapter-mount", error);
   }

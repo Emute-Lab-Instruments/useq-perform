@@ -77,6 +77,15 @@ let localTimeActive = false;
 let localResetMs: number | null = null;
 let localElapsedSeconds = 0;
 let lastLocalSampleTime: number | null = null;
+// Wall-clock sample time of the most recent *completed* WASM tick
+// (i.e. dequeued and run, not just queued). Used by
+// `requestLocalSamplesThrough` to detect drain starvation: when
+// completion falls more than one frame's worth of intervals behind the
+// current time, we stop queueing per-interval catch-up samples and
+// instead enqueue a single sample-with-projection. That caps per-frame
+// add-rate at 1, letting the queue (and the projection at its back)
+// drain rather than grow unboundedly.
+let lastCompletedSampleTime: number | null = null;
 
 // ── Sampling coalescing ─────────────────────────────────────────────
 
@@ -99,26 +108,6 @@ let diagPollInFlight = false;
 // ── Render gating ───────────────────────────────────────────────────
 
 let renderRequested = false;
-
-// ── Sample FPS tracking ─────────────────────────────────────────────
-
-const SAMPLE_FPS_WINDOW = 60;
-const sampleTimestamps: number[] = [];
-
-function recordSampleTick(): void {
-  const now = performance.now();
-  sampleTimestamps.push(now);
-  while (sampleTimestamps.length > SAMPLE_FPS_WINDOW) sampleTimestamps.shift();
-}
-
-/** Rolling sample rate (completed WASM tick-and-project cycles per second). */
-export function getSampleFPS(): number {
-  if (sampleTimestamps.length < 2) return 0;
-  const span =
-    (sampleTimestamps[sampleTimestamps.length - 1] - sampleTimestamps[0]) / 1000;
-  if (span <= 0) return 0;
-  return (sampleTimestamps.length - 1) / span;
-}
 
 // ── Public API ──────────────────────────────────────────────────────
 
@@ -149,6 +138,7 @@ export function setLocalTimeMode(active: boolean): void {
       localResetMs = performance.now() - localElapsedSeconds * 1000;
     }
     lastLocalSampleTime = null;
+    lastCompletedSampleTime = null;
     if (running) requestLocalSamplesThrough(localElapsedSeconds);
   }
 }
@@ -157,6 +147,7 @@ export function resetLocalTime(): void {
   localResetMs = localTimeActive ? performance.now() : null;
   localElapsedSeconds = 0;
   lastLocalSampleTime = null;
+  lastCompletedSampleTime = null;
 }
 
 export function isLocalTimeActive(): boolean {
@@ -353,9 +344,18 @@ function requestLocalSamplesThrough(currentTimeSeconds: number): void {
   }
 
   const intervalSeconds = 1 / targetHz;
+  // Drain starvation: if WASM completion has fallen more than a frame's
+  // worth of intervals behind, skip catch-up. Adding more per-interval
+  // samples while the queue is starved would push the projection
+  // request (always at the back) further out of reach.
+  const completionBehind =
+    lastCompletedSampleTime !== null &&
+    currentTimeSeconds - lastCompletedSampleTime >
+      intervalSeconds * MAX_LOCAL_SAMPLES_PER_FRAME;
   if (
     lastLocalSampleTime === null ||
     currentTimeSeconds <= lastLocalSampleTime ||
+    completionBehind ||
     currentTimeSeconds - lastLocalSampleTime >
       intervalSeconds * MAX_LOCAL_SAMPLES_PER_FRAME
   ) {
@@ -436,7 +436,7 @@ async function runSample(
     if (import.meta.env.DEV) perf.begin("tick-and-project");
     await tickAndProject(timeSeconds, settings, { projectFuture });
     if (import.meta.env.DEV) perf.end("tick-and-project");
-    recordSampleTick();
+    lastCompletedSampleTime = timeSeconds;
 
     setLastChangeKind("data");
   } finally {
@@ -456,6 +456,7 @@ export function _resetForTests(): void {
   localResetMs = null;
   localElapsedSeconds = 0;
   lastLocalSampleTime = null;
+  lastCompletedSampleTime = null;
   sampleQueue.length = 0;
   samplingInFlight = false;
   diagPollInFlight = false;
