@@ -40,11 +40,16 @@ const restoredMode = validModes.includes(initialProgress.guidanceMode as Guidanc
   ? (initialProgress.guidanceMode as GuidanceMode)
   : "guided";
 
+const validInputs: DetectedInput[] = ["gamepad", "keyboard"];
+const restoredInput = validInputs.includes(initialProgress.inputMode as DetectedInput)
+  ? (initialProgress.inputMode as DetectedInput)
+  : "keyboard";
+
 const [state, setState] = createStore<ZenState>({
   view: "grid",
   activeExerciseId: null,
   actionLog: [],
-  detectedInput: "keyboard",
+  detectedInput: restoredInput,
   paradigm: "modal-shift",
   wrongMoves: 0,
   completed: false,
@@ -130,7 +135,11 @@ export function advanceToNext() {
 }
 
 export function setDetectedInput(input: DetectedInput) {
+  if (state.detectedInput === input) return;
   setState("detectedInput", input);
+  const p = progress();
+  saveProgress({ ...p, inputMode: input });
+  setProgressStore({ ...p, inputMode: input });
 }
 
 export function setParadigm(p: string) {
@@ -175,6 +184,7 @@ export function resetProgress() {
     lastExercise: null,
     paradigm: null,
     guidanceMode: null,
+    inputMode: null,
   };
   saveProgress(fresh);
   setProgressStore(fresh);

@@ -1,11 +1,12 @@
-import { Component, Show, onMount, onCleanup, createSignal } from "solid-js";
+import { Component, Show, onMount, onCleanup, createSignal, createEffect } from "solid-js";
 import { state, returnToGrid, enterExercise, setDetectedInput, getFirstIncomplete } from "./store";
-import { categories, getExercisesByCategory, type Exercise } from "./exercises";
+import { categories, getExercisesByCategory, getExercise, type Exercise } from "./exercises";
 import ZenGrid from "./ZenGrid";
 import ZenExercise from "./ZenExercise";
 import { createGamepadPipeline, type GamepadPipeline } from "../lib/gamepad/index";
 import { publishZenAction, subscribeZenAction } from "./zenActionBus";
 import type { ActionId } from "../lib/keybindings/actions";
+import { buildZenHash, parseZenHash, ZEN_HASH_PREFIX } from "./routing";
 import "./zen.css";
 
 const ZenMode: Component = () => {
@@ -34,7 +35,6 @@ const ZenMode: Component = () => {
       }
       return;
     }
-    setDetectedInput("keyboard");
 
     if (state.view !== "grid") return;
 
@@ -114,6 +114,21 @@ const ZenMode: Component = () => {
 
     window.addEventListener("gamepadconnected", onGamepadConnected);
     window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
+    window.addEventListener("hashchange", onHashChange);
+
+    // Keep URL in sync with the active exercise. When state changes, push a
+    // new history entry so the back button steps through visited exercises.
+    // The hashchange listener handles paste/back/forward in the reverse
+    // direction; both sides no-op when hash and state already agree, so the
+    // two reactions can't ping-pong.
+    createEffect(() => {
+      const desired = state.view === "exercise" && state.activeExerciseId
+        ? buildZenHash(state.activeExerciseId)
+        : buildZenHash(null);
+      if (window.location.hash !== desired) {
+        history.pushState(null, "", desired);
+      }
+    });
 
     // Start gamepad pipeline. Any fired ActionId is forwarded to the
     // zen action bus; the active surface (grid here, or exercise in
@@ -136,7 +151,6 @@ const ZenMode: Component = () => {
 
     unsubGridAction = subscribeZenAction((action) => {
       if (state.view !== "grid") return false;
-      setDetectedInput("gamepad");
       switch (action) {
         case "nav.up":
           navigateGrid("up");
@@ -169,6 +183,7 @@ const ZenMode: Component = () => {
     document.body.classList.remove("zen-active");
     window.removeEventListener("gamepadconnected", onGamepadConnected);
     window.removeEventListener("gamepaddisconnected", onGamepadDisconnected);
+    window.removeEventListener("hashchange", onHashChange);
 
     unsubGridAction?.();
 
@@ -186,6 +201,31 @@ const ZenMode: Component = () => {
 
   function onGamepadDisconnected(e: GamepadEvent) {
     console.log(`[zen] Gamepad disconnected: "${e.gamepad.id}" (index ${e.gamepad.index})`);
+  }
+
+  function onHashChange() {
+    const hash = window.location.hash;
+    if (!hash.startsWith(ZEN_HASH_PREFIX)) {
+      // User navigated outside the zen URL space (e.g. back past the grid).
+      // Reload so the main app boots normally.
+      window.location.reload();
+      return;
+    }
+    const { exerciseId } = parseZenHash(hash);
+    if (exerciseId && state.activeExerciseId === exerciseId) return;
+    if (exerciseId) {
+      const ex = getExercise(exerciseId);
+      if (ex) {
+        enterExercise(ex.id);
+        return;
+      }
+      // Unknown id — rewrite the URL back to the current view so the user
+      // doesn't end up staring at a misleading link.
+      if (state.view === "exercise") returnToGrid();
+      else history.replaceState(null, "", buildZenHash(null));
+      return;
+    }
+    if (state.view === "exercise") returnToGrid();
   }
 
   function exitZenMode() {

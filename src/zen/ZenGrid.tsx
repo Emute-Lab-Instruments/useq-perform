@@ -10,6 +10,7 @@ import {
   getCategoryProgress,
   getFirstIncomplete,
 } from "./store";
+import ZenInputToggle from "./ZenInputToggle";
 
 interface ZenGridProps {
   onExit: () => void;
@@ -30,6 +31,7 @@ const ZenGrid: Component<ZenGridProps> = (props) => {
       <div class="zen-grid-header">
         <h1 class="zen-grid-title">Structural Editing</h1>
         <div class="zen-grid-actions">
+          <ZenInputToggle />
           <Show when={firstIncomplete()}>
             <button
               class="zen-btn zen-btn-primary"

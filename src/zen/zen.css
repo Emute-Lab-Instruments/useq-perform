@@ -227,18 +227,21 @@
 .zen-button-sequence {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 10px 24px;
-  background: rgba(20, 20, 28, 0.8);
-  border-bottom: 1px solid #1a1a20;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px 6px;
+  background: transparent;
+  border-bottom: none;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .zen-seq-arrow {
-  color: #445;
-  font-size: 11px;
+  color: #667;
+  font-size: 14px;
+  line-height: 1;
   margin: 0 2px;
+  user-select: none;
 }
 
 .zen-seq-badge {
@@ -329,8 +332,9 @@
 .zen-editors-area {
   flex: 1;
   display: flex;
+  align-items: flex-start;
   gap: 16px;
-  padding: 24px;
+  padding: 8px 24px 24px;
   min-height: 0;
 }
 
@@ -342,13 +346,11 @@
 }
 
 .zen-editor-active {
-  flex: 3;
+  flex: 1;
 }
 
 .zen-editor-target {
   flex: 1;
-  min-width: 200px;
-  max-width: 350px;
 }
 
 .zen-editor-label {
@@ -375,17 +377,23 @@
 }
 
 .zen-editor {
-  flex: 1;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid #2a2a30;
   background: #15191e;
-  min-height: 0;
+  width: 100%;
+  max-height: 100%;
 }
 
 .zen-editor .cm-editor {
   background: transparent;
-  height: 100%;
+  height: auto;
+  width: 100%;
+}
+
+.zen-editor .cm-scroller {
+  overflow: auto;
+  max-height: 100%;
 }
 
 .zen-editor .cm-gutters {
@@ -499,4 +507,48 @@
 .zen-btn-active {
   color: #cc8844;
   border-color: #664422;
+}
+
+/* ─── Input mode toggle (keyboard / gamepad) ───────────── */
+
+.zen-input-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #2a2a30;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #141418;
+}
+
+.zen-input-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #666;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.zen-input-toggle-btn + .zen-input-toggle-btn {
+  border-left: 1px solid #2a2a30;
+}
+
+.zen-input-toggle-btn:hover {
+  color: #ccc;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.zen-input-toggle-active {
+  color: #88ccff;
+  background: rgba(40, 80, 130, 0.35);
+}
+
+.zen-input-toggle-active:hover {
+  color: #88ccff;
+  background: rgba(50, 100, 160, 0.45);
 }

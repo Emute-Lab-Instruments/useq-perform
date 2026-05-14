@@ -7,6 +7,7 @@ import { bracketMatching } from "@codemirror/language";
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 import { baseKeymap } from "../editors/keymaps";
 import { editorBaseTheme, themes } from "../editors/themes";
+import { structuralCoreExtensions } from "../editors/extensions/structure/adapter/extension";
 import { getAppSettings } from "../runtime/appSettingsRepository";
 import { validateExercise } from "./validation";
 import { getButtonHint, getDeduplicatedHints, type ButtonHint } from "./hints";
@@ -31,6 +32,7 @@ import {
 import { createZenKeymapGuard } from "./zenKeymapGuard";
 import { subscribeZenAction } from "./zenActionBus";
 import type { ActionId } from "../lib/keybindings/actions";
+import ZenInputToggle from "./ZenInputToggle";
 
 const ZenExercise: Component = () => {
   let editorContainer: HTMLDivElement | undefined;
@@ -105,7 +107,12 @@ const ZenExercise: Component = () => {
       return exerciseHandle.onAction(action);
     });
 
-    queueMicrotask(() => { ready = true; });
+    queueMicrotask(() => {
+      ready = true;
+      // Focus the user's editor so keyboard shortcuts (e.g. Ctrl+]) work
+      // immediately on load without an extra click.
+      editorView?.focus();
+    });
 
     console.log(`[zen] Exercise loaded: "${ex.title}" (${ex.id})`);
   }
@@ -183,6 +190,7 @@ const ZenExercise: Component = () => {
           <span class="zen-topbar-title">{activeExercise()?.title}</span>
         </div>
         <div class="zen-topbar-right">
+          <ZenInputToggle />
           <Show when={activeExercise()}>
             <span class="zen-topbar-counter">
               {exerciseIndex(activeExercise()!) + 1}/{exerciseCategoryTotal(activeExercise()!)}
@@ -195,40 +203,6 @@ const ZenExercise: Component = () => {
       <Show when={showInstruction() && activeExercise()?.hints?.[0]}>
         <div class="zen-instruction">
           {activeExercise()!.hints![0]}
-        </div>
-      </Show>
-
-      {/* Guided: ordered button sequence */}
-      <Show when={showSequence() && guidedSequence().length > 0}>
-        <div
-          class="zen-button-sequence"
-          classList={{ "zen-sequence-shake": state.wrongActionFlash }}
-        >
-          <For each={guidedSequence()}>
-            {(step, i) => {
-              const label = () =>
-                state.detectedInput === "gamepad"
-                  ? step.hint.gamepad
-                  : step.hint.keyboard;
-              return (
-                <>
-                  <Show when={i() > 0}>
-                    <span class="zen-seq-arrow">&rarr;</span>
-                  </Show>
-                  <span
-                    class="zen-seq-badge"
-                    classList={{
-                      "zen-seq-completed": step.state === "completed",
-                      "zen-seq-active": step.state === "active",
-                      "zen-seq-pending": step.state === "pending",
-                    }}
-                  >
-                    {label() || step.action.split(".").pop()}
-                  </span>
-                </>
-              );
-            }}
-          </For>
         </div>
       </Show>
 
@@ -254,6 +228,40 @@ const ZenExercise: Component = () => {
       {/* Progressive text hint (on wrong moves) */}
       <Show when={showInstruction() && currentHint()}>
         <div class="zen-hint">{currentHint()}</div>
+      </Show>
+
+      {/* Guided: ordered button sequence — sits directly above the editors */}
+      <Show when={showSequence() && guidedSequence().length > 0}>
+        <div
+          class="zen-button-sequence"
+          classList={{ "zen-sequence-shake": state.wrongActionFlash }}
+        >
+          <For each={guidedSequence()}>
+            {(step, i) => {
+              const label = () =>
+                state.detectedInput === "gamepad"
+                  ? step.hint.gamepad
+                  : step.hint.keyboard;
+              return (
+                <>
+                  <Show when={i() > 0}>
+                    <span class="zen-seq-arrow" aria-hidden="true">&rarr;</span>
+                  </Show>
+                  <span
+                    class="zen-seq-badge"
+                    classList={{
+                      "zen-seq-completed": step.state === "completed",
+                      "zen-seq-active": step.state === "active",
+                      "zen-seq-pending": step.state === "pending",
+                    }}
+                  >
+                    {label() || step.action.split(".").pop()}
+                  </span>
+                </>
+              );
+            }}
+          </For>
+        </div>
       </Show>
 
       {/* Main area: two-column editors */}
@@ -328,6 +336,7 @@ function createZenEditor(
         ".cm-scroller": { overflow: "auto" },
       }),
       ...clojureExtensions,
+      ...structuralCoreExtensions(),
       validationListener,
     ],
   });
