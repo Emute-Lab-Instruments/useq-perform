@@ -55,9 +55,16 @@ export function normalizeKeybindingsSettings(
   if (raw.modifierHintDelay != null) {
     result.modifierHintDelay = clampNumber(
       coerceNumber(raw.modifierHintDelay, 500),
-      100,
+      0,
       2000,
     );
+  }
+
+  if (raw.modifierHintStyle != null) {
+    const valid = ["cursor", "bar", "modal"];
+    result.modifierHintStyle = valid.includes(raw.modifierHintStyle as string)
+      ? (raw.modifierHintStyle as "cursor" | "bar" | "modal")
+      : undefined;
   }
 
   if (raw.stickyModifiers != null) {
