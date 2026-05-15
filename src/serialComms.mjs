@@ -143,9 +143,13 @@ function processSerialData(byteArray, state) {
           console.log(msg);
           
           if (serialVars.capture) {
-            console.log("captured");
-            serialVars.captureFunc(msg);
             serialVars.capture = false;
+            try {
+              serialVars.captureFunc(msg);
+            } catch (e) {
+              console.error("Error in serial capture callback:", e);
+              post("Connected to uSEQ (could not read firmware version)");
+            }
           } else if (msg !== "") {
             post("uSEQ: " + msg);
           }
@@ -255,7 +259,7 @@ function connectToSerialPort(port) {
     setSerialPort(port);
     serialReader();
     $("#btnConnect").hide(1000);
-    console.log("checking version");
+    post("Serial port connected, checking firmware...");
     sendTouSEQ("@(useq-report-firmware-info)", upgradeCheck);
   }).catch((err) => {
     console.log(err);

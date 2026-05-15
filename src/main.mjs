@@ -24,7 +24,7 @@ import {
 import { sendTouSEQ, setSerialPort, getSerialPort, serialReader, serialMapFunctions, connectToSerialPort } from './serialComms.mjs';
 import { post } from './console.mjs';
 import { drawSerialVis } from './serialVis.mjs';
-import { interfaceStates, panelStates } from './panelStates.mjs';
+import { interfaceStates, panelStates, togglePanelState } from './panelStates.mjs';
 
 export { createEditor, connectToSerialPort, setupMIDI, defSerialMap, midictrl };
 
@@ -229,13 +229,7 @@ $(function () {
   });
   
   $("#helpButton").click(() => {
-    if (interfaceStates.helpPanelState === panelStates.OFF) {
-      $("#helppanel").show(100);
-      interfaceStates.helpPanelState = panelStates.PANEL;
-    } else {
-      $("#helppanel").hide(100);
-      interfaceStates.helpPanelState = panelStates.OFF;
-    }
+    togglePanelState('helpPanel', 'helppanel');
   });
   
   $("#themeButton").on("click", async () => {
@@ -255,11 +249,14 @@ $(function () {
     }
   });
 
-  // Handle ESC key to close help panel
+  // Handle ESC key to close help panel, Cmd/Ctrl+H to toggle it
   $(document).on('keydown', function(e) {
     if (e.key === 'Escape' && interfaceStates.helpPanelState === panelStates.PANEL) {
       $("#helppanel").hide();
       interfaceStates.helpPanelState = panelStates.OFF;
+    } else if (e.key === 'h' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      togglePanelState('helpPanel', 'helppanel');
     }
   });
 
