@@ -113,6 +113,16 @@ export const readOnlyExtensions = [
   ...default_clojure_extensions,
 ];
 
+// Read-only extensions plus the probe extension, so indexed-form snippets
+// (from-list / from-flat-list / seq / gates / trigs) get the same live
+// active-element highlight as the main editor. The probe extension's
+// contextual highlighting runs automatically and only requires WASM eval —
+// no user toggle needed.
+export const snippetReadOnlyExtensions = [
+  ...readOnlyExtensions,
+  ...probeExtensions,
+];
+
 // Core functionality extensions
 const functionalExtensions = [
   history(),
