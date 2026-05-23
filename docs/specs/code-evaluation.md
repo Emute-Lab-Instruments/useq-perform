@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Code Evaluation
 
 > Spec: eval lifecycle, diagnostics, output health, probes. Counterpart to [MAIN.md](MAIN.md).

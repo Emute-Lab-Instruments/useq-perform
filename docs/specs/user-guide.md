@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # User Guide Spec
 
 Design specification for the unified uSEQ Perform user guide. This replaces the current fragmented system (beginner/advanced markdown guides + separate lessons tab) with a single, progressive, interactive document.

@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Runtime Modes
 
 > Spec: hardware-vs-WASM runtime mode semantics. Counterpart to [MAIN.md](MAIN.md).

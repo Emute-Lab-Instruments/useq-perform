@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: cross-cutting
+---
+
 # Input Dispatch
 
 > Spec: the command router as the single chokepoint for all user intents. Counterpart to [MAIN.md](MAIN.md).

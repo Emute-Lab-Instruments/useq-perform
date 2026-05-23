@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Themes
 
 > Spec: theme catalogue and atomic application across surfaces. Counterpart to [MAIN.md](MAIN.md).

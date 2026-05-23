@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Keybindings
 
 > Spec: action registry, profiles/layouts, OS mapping, contexts, chords. Counterpart to [MAIN.md](MAIN.md).

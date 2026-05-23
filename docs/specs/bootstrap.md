@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Bootstrap
 
 > Spec: app startup. Counterpart to [MAIN.md](MAIN.md).

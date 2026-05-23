@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Editor
 
 > Spec: main and secondary editor instances. Counterpart to [MAIN.md](MAIN.md).

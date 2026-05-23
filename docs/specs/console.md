@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Console
 
 > Spec: console panel. Counterpart to [MAIN.md](MAIN.md).

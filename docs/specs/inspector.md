@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: cross-cutting
+---
+
 # Inspector — Dev Review Tool
 
 ### Source files

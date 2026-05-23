@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Which-Key (Modifier Hints)
 
 > Spec: the modifier-hint overlay ("which-key popup") — display modes, chord

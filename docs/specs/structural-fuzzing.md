@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: cross-cutting
+---
+
 # Structural fuzzing
 
 > Spec: deterministic fuzz coverage for structural editor command dispatch,

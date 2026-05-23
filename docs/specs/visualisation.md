@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Visualisation
 
 > Spec: visualisation panel, sampling, past/future semantics, output classification, palette. Counterpart to [MAIN.md](MAIN.md).

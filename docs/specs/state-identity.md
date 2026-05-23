@@ -1,3 +1,8 @@
+---
+stability: aspirational
+layer: cross-cutting
+---
+
 # Stateful Expression Identity
 
 > Spec: stable identity for anonymous stateful expressions across live edits,

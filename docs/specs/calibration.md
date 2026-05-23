@@ -1,3 +1,8 @@
+---
+stability: aspirational
+layer: behavioural
+---
+
 # CV 1V/oct Calibration Takeover
 
 > Spec: editor-side machinery for the CV-output 1V/oct calibration flow — a full-screen takeover that walks the user through tuning each analog output against an external tuner, with per-octave save and flash persistence. Counterpart to [MAIN.md](MAIN.md).

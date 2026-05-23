@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Zen mode
 
 > Spec: distraction-free practice environment for structural editing with gamepad (or keyboard).

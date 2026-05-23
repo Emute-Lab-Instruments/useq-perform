@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: cross-cutting
+---
+
 # useq-perform Semantics
 
 > Implementation-agnostic semantic spec for the `useq-perform` web app.

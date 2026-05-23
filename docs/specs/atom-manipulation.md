@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Atom manipulation
 
 > Spec: contextual value editing for leaf nodes in structural mode. Covers LB/RB increment/cycle, symbol cycle groups, the cycling widget, joystick-driven float editing, and polarity flip. Counterpart to [MAIN.md](MAIN.md).

@@ -1,3 +1,8 @@
+---
+stability: aspirational
+layer: behavioural
+---
+
 # State Sync
 
 > Spec: WASM↔hardware drift detection and recalibration. Counterpart to [MAIN.md](MAIN.md).

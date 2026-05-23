@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: cross-cutting
+---
+
 # Reactive Flow
 
 > Spec: typed-channel invariants, mutation surfaces, import boundaries, and channel/store inventory. Counterpart to [MAIN.md](MAIN.md).

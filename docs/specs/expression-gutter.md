@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Expression Gutter
 
 > Spec: gutter rails (which expression is currently running) and play buttons (per-output vis toggle). Counterpart to [MAIN.md](MAIN.md).

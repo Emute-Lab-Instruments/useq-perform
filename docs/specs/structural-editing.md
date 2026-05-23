@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Structural editing and navigation
 
 > Spec: ontology and algebra of structural coding in the main editor. Foundation for all keyboard- and gamepad-driven structure operations. Counterpart to [MAIN.md](MAIN.md).

@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # URL Parameters
 
 > Spec: bootstrap URL parameters and their precedence. Counterpart to [MAIN.md](MAIN.md).

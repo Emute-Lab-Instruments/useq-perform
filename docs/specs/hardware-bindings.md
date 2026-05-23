@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Hardware Bindings
 
 > Spec: editor-side machinery for binding ModuLisp expressions to hardware button/toggle/encoder events. Counterpart to [MAIN.md](MAIN.md).

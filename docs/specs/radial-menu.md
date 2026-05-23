@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Radial menu
 
 > Spec: ontology and algebra of the centre-screen, double-ring, gamepad-driven command surface for picking and applying nouns (functions, symbols, literals, snippets) into the document. Counterpart to [PRD.md](../../PRD.md).

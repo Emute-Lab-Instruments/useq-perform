@@ -1,3 +1,9 @@
+---
+stability: evolving
+layer: cross-cutting
+non-normative: true
+---
+
 # Gamepad browser test script
 
 > Manual test plan for the new three-stage gamepad pipeline.

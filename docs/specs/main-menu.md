@@ -1,3 +1,8 @@
+---
+stability: evolving
+layer: behavioural
+---
+
 # Main menu
 
 > Spec: the system/pause menu — a full-screen modal for non-performance actions (settings, save/restore, help, practice zone, connection status). Opened by L3+R3 chord. Counterpart to [MAIN.md](MAIN.md).

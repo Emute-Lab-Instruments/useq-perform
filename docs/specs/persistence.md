@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Persistence
 
 > Spec: localStorage keys and the persistence service. Counterpart to [MAIN.md](MAIN.md).

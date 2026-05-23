@@ -1,3 +1,9 @@
+---
+stability: evolving
+layer: cross-cutting
+non-normative: true
+---
+
 # Gamepad rebuild — handoff
 
 > **Status as of 2026-05-01.** All three stages of the new gamepad pipeline are complete with **176 passing tests**. Action registry has reversibility metadata (`ReversibleActionId` / `NonReversibleActionId`). Five paradigm files ship. Full pipeline wiring in `index.ts` provides a drop-in `createGamepadPipeline()` replacement for `gamepadIntents.ts`. The actual cutover in `bootstrap.ts` (swapping the import) and browser testing are still ahead.

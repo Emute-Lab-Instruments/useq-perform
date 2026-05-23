@@ -34,7 +34,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `typedChannel.ts` — pub/sub primitive used by everything in `contracts/`.
   - `persistence.ts` — central localStorage service (typed keys, nosave, error recovery).
   - `appSettings.ts` — thin re-export shim over `settings/` modules.
-  - `gamepad/` — **three-stage gamepad pipeline** (spec: `docs/specs/gamepad.md`). `gamepadManager.ts` (hardware polling, snapshot normalisation, GamepadManager class), `types.ts` (full type vocabulary including Layer, Resolution, DualBinding), `gestures.ts` (smart constructors + keyOf), `recognizer.ts` (Stage 2: pure gesture recognition), `resolver.ts` (Stage 3: layer-stack resolution), `dispatcher.ts` (eager-with-undo action dispatch), `hardware.ts` (Stage 1: snapshot diffing to LogicalEvent[]), `index.ts` (full pipeline wiring). Paradigms: `paradigms/{radial,modal-shift,leader,hydra,chord-heavy}.ts` (`radial.ts` is the transient radial-menu layer activated when the menu is open; replaces the legacy picker layer).
+  - `gamepad/` — **three-stage gamepad pipeline** (spec: `docs/specs/gamepad.md`). `gamepadManager.ts` (hardware polling, snapshot normalisation, GamepadManager class), `types.ts` (full type vocabulary including Layer, Resolution, DualBinding), `gestures.ts` (smart constructors + keyOf), `recognizer.ts` (Stage 2: pure gesture recognition), `resolver.ts` (Stage 3: layer-stack resolution), `dispatcher.ts` (eager-with-undo action dispatch), `hardware.ts` (Stage 1: snapshot diffing to LogicalEvent[]), `grabState.ts` (grab-mode state: active flag, move counter, doc/cursor snapshot for cancel-undo), `index.ts` (full pipeline wiring). Paradigms: `paradigms/{radial,modal-shift,leader,hydra,chord-heavy}.ts` (`radial.ts` is the transient radial-menu layer activated when the menu is open; replaces the legacy picker layer; `modal-shift.ts` includes the `grab-mode` layer).
   - `menu/` — **radial menu system** (spec: `docs/specs/radial-menu.md`). Gamepad-driven double-ring command surface for noun insertion. `state.ts` (state machine: closed→open→committed→auto-chain, ring navigation, segment focus), `dispatcher.ts` (wires gamepad input to state machine, applies verb mutations to document, auto-chain logic), `verbs.ts` (face-button verbs: wrap/replace/insertBefore/insertAfter/splice), `manifest.ts` + `manifest.json` (ring segment content definitions per language category), `templates.ts` (template expansion from ring selections), `chain.ts` (auto-chain: reopen the menu at the next structural position after a commit), `store.ts` (reactive Solid store bridge to state), `types.ts` (full type vocabulary: Ring, Segment, Verb, ChainTarget, MenuState), `previewCache.ts` (preview text cache for ring segments). Heavily tested (`state.test.ts`, `dispatcher.test.ts`, `dispatcher.e2e.test.ts`, `verbs.test.ts`, `chain.test.ts`, `manifest.test.ts`, `templates.test.ts`, `state.property.test.ts`, performance tests).
   - `mainMenu/` — main menu state store (`store.ts`: open/closed, focus index, submenu stack). See [docs/specs/main-menu.md](docs/specs/main-menu.md).
   - `manualControlState.ts` — manual control state tracking.
@@ -94,7 +94,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `mockControlInputs.ts`, `perfBenchmark.ts` (DEV-only — `window.__useqBench.run(channelCount)` exercises the vis pipeline at scale).
 - `src/editors/` — CodeMirror layer. Imports lib/contracts/effects/transport.
   - `extensions.ts` — extension barrel.
-  - `extensions/structure/` — structural-editing core. `core/` holds the pure functional tree/cursor logic: `types.ts` (Tree, Node, Cursor, CursorSet, State, OpResult data shapes), `nav.ts` (pure navigation ops), `mutate.ts` (pure mutation ops via `makeMutators(cfg)`), `holes.ts` (hole creation, recognition, traversal), `traversal.ts` (tree traversal helpers, `findById`), `meta.ts` (Meta stack operations: add/remove/cycle/foldToggle per spec §6.6), `docOps.ts` (document-root bulk operations: deleteAll/selectAll per spec §5.3), `index.ts` (public re-exports). No CodeMirror dependency. `adapter/` holds the CodeMirror binding: `stateField.ts`, `nodeOverlays.ts` (SVG overlay for cursor halos, indent guides, node polygons), `holeWidget.ts` (hole pill widgets), `dispatcher.ts` (op dispatch — supports `nav.up`/`nav.down`/`nav.left`/`nav.right` plus tree-walk variants and `format.topLevel`/`format.document` reformat commands), `treeFromLezer.ts`, `spatialNav.ts` (vertical spatial nav using source positions), `applyOp.ts` (structural op application, wires formatter into mutation dispatch, preserves inter-top-level whitespace via `buildDocWithPreservedGaps`), `cursorFromSelection.ts`, `cursorPath.ts`, `extension.ts`, `printTree.ts` (flat `printNode` + formatting-aware `formatNode` per [docs/specs/formatting.md](docs/specs/formatting.md)). Spatial-nav ActionIds (`nav.up`/`nav.down`/`nav.left`/`nav.right`) reach the dispatcher via the keybindings handler registry — there is no separate gamepad bridge. Both layers have `__tests__/` dirs.
+  - `extensions/structure/` — structural-editing core. `core/` holds the pure functional tree/cursor logic: `types.ts` (Tree, Node, Cursor, CursorSet, State, OpResult data shapes), `nav.ts` (pure navigation ops), `mutate.ts` (pure mutation ops via `makeMutators(cfg)`), `holes.ts` (hole creation, recognition, traversal), `traversal.ts` (tree traversal helpers, `findById`), `meta.ts` (Meta stack operations: add/remove/cycle/foldToggle per spec §6.6), `docOps.ts` (document-root bulk operations: deleteAll/selectAll per spec §5.3), `index.ts` (public re-exports). No CodeMirror dependency. `adapter/` holds the CodeMirror binding: `stateField.ts`, `nodeOverlays.ts` (SVG overlay for cursor halos, indent guides, node polygons), `holeWidget.ts` (hole pill widgets), `dispatcher.ts` (op dispatch — supports `nav.up`/`nav.down`/`nav.left`/`nav.right` plus tree-walk variants and `format.topLevel`/`format.document`/`format.indentToFixedPoint` reformat commands), `treeFromLezer.ts`, `spatialNav.ts` (vertical spatial nav using source positions), `applyOp.ts` (structural op application, picks printer + optional post-pass via `format.autoFormatStrategy`, preserves inter-top-level whitespace via `buildDocWithPreservedGaps`), `cursorFromSelection.ts`, `cursorPath.ts`, `extension.ts`, `printTree.ts` (flat `printNode`, line-breaking `printNodeWithBreaks`, formatting-aware `formatNode` per [docs/specs/formatting.md](docs/specs/formatting.md)), `indentFixedPoint.ts` (iterates CodeMirror `indentRange` to a fixed point — the "press Tab N times" auto-indent). Spatial-nav ActionIds (`nav.up`/`nav.down`/`nav.left`/`nav.right`) reach the dispatcher via the keybindings handler registry — there is no separate gamepad bridge. Both layers have `__tests__/` dirs.
   - `extensions/expressionHighlights.ts`, `expressionEval.ts`, `expressionEvalState.ts`, `expressionEvalDefaults.ts` — code-evaluation feedback (gutter pills, play-button DOM, last-evaluated tracking, Lezer-driven expression-bounds detection).
   - `extensions/lezerHelpers.ts` — Lezer/AST helpers (`findNodeAt`, `getTrimmedRange`, `getContainerNodeAt`, `isStructuralToken`, `isContainerNode`, `isOperatorNode`) used by callers outside the structural-editing core.
   - `extensions/probes.ts`, `probeHelpers.ts` — inline probe widgets (DI-configured).
@@ -206,6 +206,48 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - `src/lib/appSettings.ts` is now a thin re-export; the real schema/normalisation/persistence live under `src/lib/settings/`.
 - `scripts/documentation/` is archival (pre-current pipelines); ignored by ESLint and not part of the live build.
 - bd uses a Dolt-backed backend in this repo; sync via `bd dolt push`/`bd dolt pull`, not `bd sync`.
+
+## Specs
+
+- **Root**: `docs/specs/`
+- **Entry**: `MAIN.md`
+- **Layout**: `flat` (frontmatter-tiered; promote to two-layer per-concern only when a real second impl emerges)
+- **Index**: `docs/specs/.index.json` (auto-generated, git-tracked; regenerate via `/specs regenerate-index`)
+- **Skill**: invoke `/specs` to review/maintain/add/navigate. The skill auto-suggests relevant §s when a coding task touches spec-cited files.
+
+### Roots (multi-tree)
+
+```yaml
+roots:
+  - path: docs/specs
+    role: app-behaviour
+  - path: src-useq/docs/specs
+    role: language-semantics
+    counterparts: true   # files of same name pair across roots (MAIN.md, state-identity.md, …)
+```
+
+### Local conventions
+
+- MAIN.md uses three-level sub-indexing (`§6.13.1`, `§7.10.1`) — fine; the navigator recognises both `§N.M` and `§N.M.K`.
+- Two files are explicitly **non-normative** working documents (carry `non-normative: true` in frontmatter): `gamepad-handoff.md`, `gamepad-browser-test.md`. Reviewer should propose moving them to `_drafts/` next time the corpus is touched.
+- `src-useq/` is a git submodule; spec changes there require a separate commit in the submodule.
+
+### Exclusions
+
+- `_archive/` (always)
+- `_reviews/` (always)
+- `_drafts/` (always)
+
+### Lint policy
+
+```yaml
+validators: [reference-integrity, frontmatter-integrity, layer-stability-consistency]
+# spec-touched-when-behaviour-touched requires a git hook wiring; not enabled by default
+```
+
+### How to use specs in this project
+
+Before changing behaviour, find the relevant spec via `/specs navigate <task>` or directly read MAIN.md's keyword table in `CLAUDE.md`. The spec wins over implementation by intent — if the spec is wrong, update it in the same commit as the code change. New cross-cutting concerns (failure model, perf, stable surface) go in MAIN.md; per-feature concerns in their own sub-spec.
 
 ## Strategic concerns
 

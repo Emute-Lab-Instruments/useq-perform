@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Help, Reference, Snippets, Onboarding
 
 > Spec: in-app education and orientation surfaces. Counterpart to [MAIN.md](MAIN.md).
@@ -28,6 +33,8 @@
 1.4 **Code Snippets** lists user-savable code fragments (see `src/ui/help/CodeSnippetsTab.tsx`, `src/utils/snippetStore.ts`). The first load seeds a starter set (rhythm, modulation, melodic, interactive) with `createdAt = 0`; user-created snippets sort newer-first above the starters. Starred items sort first overall.
 
 1.5 Each snippet has `id`, `title`, `code`, `tags`, `createdAt`. Operations: add, update (title/code/tags), delete (also removes from starred), toggle star.
+
+1.5.1 **Snippet live oscilloscope (devmode).** When `visualisation.snippetOscilloscopesEnabled` is on (devmode-only toggle in the Visualisation → Probes settings group), each snippet card renders a small live oscilloscope strip outside the snippet's code editor (so it stays visible while the editor scrolls internally). The strip samples the snippet's first inner expression — the body of any leading `(an|dn|sn|qn …)` output binding is stripped before sampling so the live runtime is not re-bound — via `eval-at-time` over a one-second window around `visStore.currentTime`.
 
 1.6 **Reference target version.** Reference content is tagged by uSEQ language version; the user may switch the target version via a control. The chosen version persists.
 

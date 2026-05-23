@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: cross-cutting
+---
+
 # Editor Runtime Contract
 
 This document is the editor-facing contract for the firmware and WASM runtimes that `useq-perform` consumes.

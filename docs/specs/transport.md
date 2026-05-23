@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Transport
 
 > Spec: transport state machine, clock policy, indicator. Counterpart to [MAIN.md](MAIN.md).

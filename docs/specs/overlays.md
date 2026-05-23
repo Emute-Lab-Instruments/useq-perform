@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Overlays
 
 > Spec: modals, pickers, radial menus, and the overlay stack. Counterpart to [MAIN.md](MAIN.md).

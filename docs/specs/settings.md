@@ -1,3 +1,8 @@
+---
+stability: stable
+layer: behavioural
+---
+
 # Settings
 
 > Spec: settings schema, mutation surface, panel layout. Counterpart to [MAIN.md](MAIN.md).
