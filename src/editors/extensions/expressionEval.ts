@@ -11,6 +11,7 @@ import type { EditorView } from "@codemirror/view";
 import {
   isExpressionVisualised,
   toggleVisualisation,
+  registerVisualisation,
   refreshVisualisedExpression,
   notifyExpressionEvaluated,
 } from "../../effects/visualisationSampler.ts";
@@ -150,8 +151,17 @@ function findExpressionDefinitionBounds(
 /**
  * Detect the expression at the current cursor, dispatch evaluation annotations,
  * and refresh any active visualisations.
+ *
+ * `isPreview` (soft eval): the rail tracks "what is running on the module",
+ * which a soft eval does not change (expression-gutter.md §2.4). When preview
+ * is set we skip the rail-active annotation entirely so
+ * `lastEvaluatedExpressionField` is untouched, but we still refresh
+ * already-visualised expressions so the soft preview updates the vis trace.
  */
-export function detectAndTrackExpressionEvaluation(view: EditorView): void {
+export function detectAndTrackExpressionEvaluation(
+  view: EditorView,
+  opts: { isPreview?: boolean } = {},
+): void {
   const state = view.state;
   const doc = state.doc;
   const ui = (getAppSettings()?.ui as any) || {};
@@ -217,28 +227,56 @@ export function detectAndTrackExpressionEvaluation(view: EditorView): void {
 
   if (lastInChunk.size > 0) {
     const evaluations = Array.from(lastInChunk.values());
-    const annotations = evaluations.map((info) =>
-      expressionEvaluatedAnnotation.of({
-        expressionType: info.expressionType,
-        position: info.position,
-      }),
-    );
-    view.dispatch({ annotations });
+
+    // Soft eval is a WASM-only preview that does not commit to hardware, so it
+    // must not move the rail-active state (expression-gutter.md §2.4). Only a
+    // non-preview eval dispatches the annotation that updates
+    // `lastEvaluatedExpressionField` (the field `isRangeActive` reads).
+    if (!opts.isPreview) {
+      const annotations = evaluations.map((info) =>
+        expressionEvaluatedAnnotation.of({
+          expressionType: info.expressionType,
+          position: info.position,
+        }),
+      );
+      view.dispatch({ annotations });
+    }
 
     for (const info of evaluations) {
       const exprType = info.expressionType;
       notifyExpressionEvaluated(exprType);
 
       const position = { from: info.position.line, to: info.position.line };
-      if (!isExpressionVisualised(exprType, position)) continue;
-
       const definition = findExpressionDefinition(view, exprType);
       const newText = definition?.expressionText?.trim();
       if (!newText) continue;
 
-      refreshVisualisedExpression(exprType, newText, position).catch((error: any) => {
-        dbg(`Visualise: failed to refresh ${exprType} after evaluation: ${error}`);
-      });
+      const alreadyVisualised = isExpressionVisualised(exprType, position);
+
+      if (opts.isPreview) {
+        // Soft eval is an inspection action — it must NOT flip the toggle
+        // (expression-gutter.md §3.4). Only refresh an already-toggled variant
+        // so the preview updates its trace.
+        if (!alreadyVisualised) continue;
+        refreshVisualisedExpression(exprType, newText, position).catch((error: any) => {
+          dbg(`Visualise: failed to refresh ${exprType} after evaluation: ${error}`);
+        });
+        continue;
+      }
+
+      // Non-soft eval implicitly toggles vis on for the assigned output,
+      // exclusive per output (expression-gutter.md §3.4, code-evaluation.md
+      // §1.8). registerVisualisation keys by output name, so re-registering a1
+      // replaces any prior a1 variant — that is the per-output exclusivity.
+      if (alreadyVisualised) {
+        refreshVisualisedExpression(exprType, newText, position).catch((error: any) => {
+          dbg(`Visualise: failed to refresh ${exprType} after evaluation: ${error}`);
+        });
+      } else {
+        registerVisualisation(exprType, newText, position).catch((error: any) => {
+          dbg(`Visualise: failed to register ${exprType} after evaluation: ${error}`);
+        });
+      }
     }
   }
 }
@@ -284,6 +322,60 @@ export function handlePlayExpression(view: EditorView, exprType: string): void {
   const bounds = findExpressionDefinitionBounds(view, exprType);
   const position = bounds ? { from: bounds.from, to: bounds.to } : undefined;
   handleVisualiseExpression(view, exprType, expressionText, position);
+}
+
+/**
+ * Toggle vis for the top-level form at the current structural halo position
+ * (expression-gutter.md §4.1, `vis.toggleAtHalo`). Resolves the output
+ * assignment at the head of the enclosing top-level form; if the form is not a
+ * recognised output assignment the action is a no-op (§4.2).
+ *
+ * Returns true when a toggle was performed, false when there was no recognised
+ * output form at the halo.
+ */
+export function handleToggleVisAtHalo(view: EditorView): boolean {
+  const state = view.state;
+  const doc = state.doc;
+  const pos = state.selection.main.from;
+
+  // Resolve the enclosing top-level form via the syntax tree.
+  let node: any = findNodeAt(state, pos, pos);
+  if (!node) return false;
+  while (node.parent && node.parent.type.name !== "Program") {
+    node = node.parent;
+  }
+  if (!(node.parent && node.parent.type.name === "Program")) return false;
+
+  const formFrom = node.from;
+  const formTo = node.to;
+
+  // Find the output assignment at the head of this form. matchPattern is broad,
+  // so we require the matched token to sit at (or right after) the form's
+  // opening — i.e. the head position of the list (§1.4: only output
+  // assignments get a rail/toggle).
+  const startLineNum = doc.lineAt(formFrom).number;
+  const endLineNum = doc.lineAt(formTo).number;
+  for (let lineNum = startLineNum; lineNum <= endLineNum; lineNum++) {
+    const lineObj = doc.line(lineNum);
+    const lineText = lineObj.text;
+    const lineFrom = lineObj.from;
+    let match: RegExpExecArray | null;
+    matchPattern.lastIndex = 0;
+    while ((match = matchPattern.exec(lineText)) !== null) {
+      const matchStart = lineFrom + match.index;
+      if (matchStart < formFrom || matchStart > formTo) continue;
+      // Head position: the char before the token (skipping inner whitespace)
+      // must be the form's opening paren.
+      const before = doc.sliceString(formFrom, matchStart);
+      if (!/^\(\s*$/.test(before)) continue;
+      const exprType = `${match[1]}${match[2]}`;
+      const expressionText = doc.sliceString(formFrom, formTo).trim();
+      const position = { from: formFrom, to: formTo };
+      handleVisualiseExpression(view, exprType, expressionText, position);
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Toggle visualisation for an expression. */

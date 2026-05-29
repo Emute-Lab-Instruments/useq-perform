@@ -41,6 +41,7 @@ import {
   contractCurrentProbeContext,
 } from "../../editors/extensions/probes.ts";
 import { executeLiveEditMark } from "../../editors/extensions/liveEdit/markAction.ts";
+import { handleToggleVisAtHalo } from "../../editors/extensions/expressionEval.ts";
 import {
   cursorCharLeft,
   cursorCharRight,
@@ -150,6 +151,9 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "panel.help": toggleHelp,
   "panel.vis": toggleSerialVis,
   "vis.screenshot": () => { requestVisScreenshot(); return true; },
+
+  // -- Vis (expression-gutter.md §4.1) ---------------------------------------
+  "vis.toggleAtHalo": (view: EditorView) => handleToggleVisAtHalo(view),
 
   // -- Main menu (main-menu.md) ----------------------------------------------
   "mainMenu.open": () => {

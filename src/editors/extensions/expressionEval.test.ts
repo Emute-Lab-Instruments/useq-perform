@@ -25,15 +25,22 @@ import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { findNodeAt } from "./lezerHelpers.ts";
 import {
+  detectAndTrackExpressionEvaluation,
   handleClearExpression,
   handlePlayExpression,
   setEvalIntegrationConfig,
   type EvalIntegrationConfig,
 } from "./expressionEval.ts";
+import { lastEvaluatedExpressionField } from "./expressionEvalState.ts";
+import {
+  registerVisualisation,
+  refreshVisualisedExpression,
+} from "../../effects/visualisationSampler.ts";
 
 vi.mock("../../effects/visualisationSampler.ts", () => ({
   isExpressionVisualised: () => false,
   toggleVisualisation: vi.fn(async () => {}),
+  registerVisualisation: vi.fn(async () => {}),
   refreshVisualisedExpression: vi.fn(async () => {}),
   notifyExpressionEvaluated: vi.fn(),
 }));
@@ -377,6 +384,70 @@ describe("expressionEval: DI seam routes through EvalIntegrationConfig", () => {
     handleClearExpression(view, "a1");
 
     expect(config.sendCode).not.toHaveBeenCalled();
+  });
+});
+
+describe("expressionEval: soft eval does not move the rail-active state (§2.4)", () => {
+  // detectAndTrackExpressionEvaluation updates lastEvaluatedExpressionField via
+  // the expressionEvaluatedAnnotation. isRangeActive reads that field to decide
+  // the gutter rail's active state. A soft (preview) eval must NOT move the rail
+  // — expression-gutter.md §2.4. So preview must leave the field untouched.
+  function makeRailView(doc: string): EditorView {
+    return new EditorView({
+      state: EditorState.create({
+        doc,
+        extensions: [...default_extensions, lastEvaluatedExpressionField],
+      }).update({ selection: EditorSelection.cursor(2) }).state,
+    });
+  }
+
+  it("a non-preview eval records last-evaluated for the output", () => {
+    const view = makeRailView("(a1 440)");
+    detectAndTrackExpressionEvaluation(view);
+    const map = view.state.field(lastEvaluatedExpressionField);
+    expect(map.has("a1")).toBe(true);
+  });
+
+  it("a preview (soft) eval does NOT record last-evaluated, leaving the rail unmoved", () => {
+    const view = makeRailView("(a1 440)");
+    detectAndTrackExpressionEvaluation(view, { isPreview: true });
+    const map = view.state.field(lastEvaluatedExpressionField);
+    expect(map.has("a1")).toBe(false);
+  });
+
+  it("a non-preview eval implicitly toggles vis on for the assigned output (§3.4)", () => {
+    vi.mocked(registerVisualisation).mockClear();
+    const view = makeRailView("(a1 440)");
+    detectAndTrackExpressionEvaluation(view);
+    // a1 was not previously visualised, so eval should register it.
+    expect(vi.mocked(registerVisualisation)).toHaveBeenCalled();
+    expect(vi.mocked(registerVisualisation).mock.calls[0][0]).toBe("a1");
+  });
+
+  it("a preview (soft) eval does NOT implicitly toggle vis on (§3.4 exception)", () => {
+    vi.mocked(registerVisualisation).mockClear();
+    vi.mocked(refreshVisualisedExpression).mockClear();
+    const view = makeRailView("(a1 440)");
+    detectAndTrackExpressionEvaluation(view, { isPreview: true });
+    // a1 is not already visualised, so soft eval neither registers nor refreshes.
+    expect(vi.mocked(registerVisualisation)).not.toHaveBeenCalled();
+    expect(vi.mocked(refreshVisualisedExpression)).not.toHaveBeenCalled();
+  });
+
+  it("a preview eval does not overwrite a previously-committed rail", () => {
+    const view = makeRailView("(a1 440)\n(a1 220)");
+    // Commit the first form (cursor at 2 -> first form).
+    detectAndTrackExpressionEvaluation(view);
+    const committed = view.state.field(lastEvaluatedExpressionField).get("a1");
+    expect(committed).toBeTruthy();
+
+    // Move cursor into the second form and soft-eval it.
+    view.dispatch({ selection: EditorSelection.cursor(11) });
+    detectAndTrackExpressionEvaluation(view, { isPreview: true });
+
+    const after = view.state.field(lastEvaluatedExpressionField).get("a1");
+    // Rail still points at the committed (first) form, not the soft-eval'd one.
+    expect(after).toEqual(committed);
   });
 });
 

@@ -25,7 +25,8 @@ layer: behavioural
 - `src/editors/extensions/probes.ts` — probe inline widgets
 - `src/editors/extensions/evalHighlight.ts` — eval flash decoration
 - `src/editors/extensions/visReadability.ts` — visualisation readability extension
-- `src/effects/editor.ts` — editor side-effect module (autosave, focus, lifecycle)
+- `src/effects/editor.ts` — editor side-effect module (focus, lifecycle, font-size, save-to-file)
+- `src/lib/editorStore.ts` — editor instance lifecycle, including the autosave timer (`setupAutosaveTimer`)
 - `src/lib/persistence.ts` — persistence service (localStorage access)
 
 1.1 The app uses CodeMirror 6 as the substrate for **multiple editor instances** that share a common foundation but differ in role and in which extensions they carry. There is exactly one **main editor** (the user's live-coding surface); additional **secondary editors** appear inline in the help guide as code examples, tutorial playgrounds, theme demos/previews, snippet previews, and similar contexts.
@@ -36,7 +37,7 @@ layer: behavioural
 
 1.4 The main editor's content on first load is determined by precedence: explicit URL load (`?gist`/`?txt`) > persisted user code > startup-context default > empty.
 
-1.5 **Autosave** (main editor only). With `storage.saveCodeLocally && storage.autoSaveEnabled` (both default true), the main editor persists its full content every `storage.autoSaveInterval` ms (default 5000, min 1000, max 60000). The interval is reconfigured live when settings change. Secondary editors do not autosave. (See `src/effects/editor.ts`, `src/lib/persistence.ts`)
+1.5 **Autosave** (main editor only). With `storage.saveCodeLocally && storage.autoSaveEnabled` (both default true), the main editor persists its full content every `storage.autoSaveInterval` ms (default 5000, min 1000, max 60000). The interval is reconfigured live when settings change. Secondary editors do not autosave. (See `setupAutosaveTimer` in `src/lib/editorStore.ts`, `src/lib/persistence.ts`)
 
 1.6 The main editor is themed via a CodeMirror compartment driven by `editor.theme`. Theme switches must be hot — no reload, no flash of unstyled content — and must coincide with chrome theme changes (see [themes.md](themes.md)). Secondary editors may either follow the global theme or be pinned to a specific theme (e.g. theme-demo previews show one theme regardless of the user's active theme). (See `src/editors/themes.ts`)
 
