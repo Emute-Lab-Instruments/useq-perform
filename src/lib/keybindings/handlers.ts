@@ -75,6 +75,29 @@ import {
   mainMenuState,
 } from "../mainMenu/store.ts";
 import { resolveItems } from "../../ui/mainMenu/menuItems.ts";
+import { isMenuOpen, dispatchMenuInput } from "../menu/store.ts";
+
+// ---------------------------------------------------------------------------
+// Main-menu helpers (main-menu.md §1.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Force-close any active editor sub-mode before opening the main menu.
+ * Per main-menu.md §1.4 the main menu is reachable from any editor state and
+ * must take over cleanly. We close the sub-modes that have well-defined close
+ * APIs: the radial content menu and grab mode. (Insertion mode and
+ * vector-mark are left to their own exit gestures — closing them blindly here
+ * would risk committing or discarding in-flight edits.)
+ */
+function closeActiveSubModes(view: EditorView): void {
+  if (isMenuOpen()) {
+    dispatchMenuInput({ kind: "cancel" });
+  }
+  if (isGrabActive()) {
+    endGrab();
+    view.dispatch({ effects: setGrabMode.of(false) });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Clojure-mode handler extraction (legacy — retained only for killToEndOfList
@@ -152,12 +175,22 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "vis.screenshot": () => { requestVisScreenshot(); return true; },
 
   // -- Main menu (main-menu.md) ----------------------------------------------
-  "mainMenu.open": () => {
+  // §1.4: opening the main menu forcibly closes any active sub-mode (radial
+  // menu, grab mode, vector-mark, etc.) before pushing the main-menu layer.
+  // L3+R3 toggles, so when already open we just close.
+  "mainMenu.open": (view: EditorView) => {
     if (isMainMenuOpen()) {
+      // L3+R3 / Escape toggles: already open → close.
       closeMainMenu();
-    } else {
-      openMainMenu();
+      return true;
     }
+    // §1.4: opening the menu forcibly closes any active sub-mode first.
+    // §2.1.2 (keyboard Escape opener): the vector-mark Escape binding is a
+    // higher-precedence conditional keymap entry, so while vector-mark is
+    // active Escape cancels that and never reaches here; a second Escape
+    // (nothing left to cancel) then opens the menu.
+    closeActiveSubModes(view);
+    openMainMenu();
     return true;
   },
   "mainMenu.close": () => { closeMainMenu(); return true; },

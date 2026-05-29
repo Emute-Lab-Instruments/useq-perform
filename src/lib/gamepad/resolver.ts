@@ -88,6 +88,15 @@ export function resolveGesture(
       if (policy === "fall-through") continue;
       return { kind: "miss", gesture, policy };
     }
+
+    // Exclusive (masking) predicate layer: a `when`-gated layer marked
+    // `mask: true` takes over all input while active. An unbound gesture is
+    // discarded rather than leaking to lower layers (radial-menu.md §1.1 /
+    // §12.6). `onMiss` is honoured only for transient layers, so masking
+    // predicate layers need this explicit stop.
+    if (layer.mask) {
+      return { kind: "miss", gesture, policy: layer.onMiss ?? "pop-and-discard" };
+    }
   }
 
   return null;

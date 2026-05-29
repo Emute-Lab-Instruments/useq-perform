@@ -399,6 +399,67 @@ describe("resolveGesture — transient layer miss", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveGesture — masking (exclusive) predicate layer (radial-menu.md §1.1)
+// ---------------------------------------------------------------------------
+
+describe("resolveGesture — masking predicate layer", () => {
+  // A `when`-gated layer marked `mask: true` (like the live radial menu) is
+  // NOT a transient push, so onMiss alone never fires. `mask` must make the
+  // resolver discard any gesture the layer does not bind, instead of letting
+  // it leak to lower layers (here `globalLayer`, which would mutate the editor).
+  const maskingRadial: Layer = {
+    name: ln("radial-menu"),
+    when: (s) => !!(s as Record<string, unknown>).menuOpen,
+    gestures: {
+      [keyOf(tap("A"))]: "menu.verb.insert",
+      [keyOf(tap("B"))]: "menu.cancel",
+    },
+    mask: true,
+    onMiss: "pop-and-discard",
+  };
+
+  it("discards an unbound gesture instead of falling through to the base layer", () => {
+    // globalLayer binds tap('Start') → eval.now and held('Up') → nav.up.
+    // With the masking radial layer active, neither should leak through.
+    const layers = [maskingRadial, globalLayer];
+    const map = buildLayerMap(layers);
+    const state: AppStateSnapshot = { ...mkState(), menuOpen: true };
+
+    const result = resolveGesture(held("Up", 3), state, layers, map);
+    expect(result).toEqual({
+      kind: "miss",
+      gesture: held("Up", 3),
+      policy: "pop-and-discard",
+    });
+  });
+
+  it("still resolves gestures the masking layer DOES bind", () => {
+    const layers = [maskingRadial, globalLayer];
+    const map = buildLayerMap(layers);
+    const state: AppStateSnapshot = { ...mkState(), menuOpen: true };
+
+    const result = resolveGesture(tap("A"), state, layers, map);
+    expect(result).toEqual({
+      kind: "action",
+      action: "menu.verb.insert",
+      gesture: tap("A"),
+    });
+  });
+
+  it("does not mask when the layer's predicate is inactive", () => {
+    const layers = [maskingRadial, globalLayer];
+    const map = buildLayerMap(layers);
+    // menuOpen falsy → radial layer not active → base layer resolves normally.
+    const result = resolveGesture(tap("Start"), mkState(), layers, map);
+    expect(result).toEqual({
+      kind: "action",
+      action: "eval.now",
+      gesture: tap("Start"),
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resolveAxis
 // ---------------------------------------------------------------------------
 

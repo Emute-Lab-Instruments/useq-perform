@@ -38,7 +38,7 @@ layer: behavioural
 
 1.4 The menu has **two rings** — left ring renders categories of the active left-tab; right ring renders items of the active right-tab. Rings are navigated by the two analogue sticks (left stick → left ring, right stick → right ring). LB/RB cycle tabs at the active ring level (§4).
 
-1.5 The menu's lifecycle is **single-fire-leader**: a `tap(Y)` opens it, the user makes one apply commit, the menu closes. Auto-chain (§8) re-opens the menu with a narrowed scope when an inserted form has typed holes.
+1.5 The menu's lifecycle is **single-fire-leader**: a `tap(X)` opens it, the user makes one apply commit, the menu closes. Auto-chain (§8) re-opens the menu with a narrowed scope when an inserted form has typed holes.
 
 1.6 Implementation is **driven by data**. The active manifest is a typed JSON document; the state machine is a pure function over `(MenuState, Input) → MenuState`. Hardware-free unit tests cover every transition, identical in style to the gamepad pipeline tests (gamepad.md §8).
 
@@ -210,13 +210,13 @@ The manifest is loaded once at app boot, parsed, validated, and cached. There is
 
 ### 3.1 Opening
 
-3.1.1 The menu opens on `tap(Y)`, bound at the **structural** layer. (see `src/lib/gamepad/paradigms/picker.ts` for current picker layer) Insertion mode is keyboard-only by intent ([structural-editing.md §4.2.1](structural-editing.md)); a gamepad-only user is never in insertion mode and the menu is always reachable. (For mixed input: if the user is in insertion mode via the keyboard, `tap(Y)` on the gamepad first exits to structural, then opens the menu — a single chord, no extra step required.) The leader-binding pushes the **`radial-menu` transient layer** onto the gamepad layer stack and sets `menuStore.open = true`.
+3.1.1 The menu opens on `tap(X)` (bound to `menu.radial` on the base/structural layer — see `src/lib/gamepad/paradigms/modal-shift.ts` and gamepad.md §6.1). Insertion mode is keyboard-only by intent ([structural-editing.md §4.2.1](structural-editing.md)); a gamepad-only user is never in insertion mode and the menu is always reachable. The open action sets `menuStore.open = true`; the **`radial-menu` layer** (`src/lib/gamepad/paradigms/radial.ts`) is a `when`-gated predicate layer that activates while the menu is open and masks all other gamepad input (§11.3, §12.6).
 
 3.1.2 Initial `MenuState` is `{ phase: 'open', leftTabIdx: 0, rightTabIdx: 0, leftHover: null, rightHover: null, shoulderHeld: 'none', frozen: null }`. The first tab in the manifest is the default left tab.
 
 3.1.3 The structural cursor's target at the moment the menu opens is captured into the menu's local context as the **apply target**. It is the static reference for verb application throughout the menu's open lifetime; structural-mode mutations from elsewhere cannot occur while the menu is open (input is masked).
 
-3.1.4 `tap(Y)` is the leader gesture *only* on the structural layer. Once the menu is open, the radial layer takes over and `Y` becomes the Wrap verb (§3.3) — there is no contention because the layers are mutually exclusive.
+3.1.4 `tap(X)` is the open gesture *only* on the base/structural layer. Once the menu is open, the radial layer takes over: `X` becomes the Replace verb and `Y` becomes the Wrap verb (§3.3) — there is no contention because the layers are mutually exclusive.
 
 ### 3.2 Surface
 
@@ -402,7 +402,7 @@ A "hole" is a node matching the placeholder convention (§8.1). Cursor placement
 
 ```
 closed
-  ─ tap(Y) ─→  open(t=0, rt=0, lh=null, rh=null, sh='none', frozen=null)
+  ─ tap(X) ─→  open(t=0, rt=0, lh=null, rh=null, sh='none', frozen=null)
 
 open(t, rt, lh, rh, sh, frozen)  with derived sub-phase from (lh, rh, frozen)
 
@@ -526,9 +526,9 @@ Keyword literals in source begin with a leading `:` (`:up`, `:down`). The manife
 
 The pre-selected hover is set into `leftHover` so the user just engages the right stick to start picking. To override the pre-selection they can release the left stick and re-engage on a different category.
 
-The two no-auto-open rows above realise the carve-out specified in [structural-editing.md §2.9.9](structural-editing.md): for holes with no narrowing scope, opening a wide menu without user intent costs more than it saves. The chain pauses on those holes; the cursor sits on the pill (with halo); the user taps `Y` to summon the menu when ready, and chain resumes on the *next* hole the commit lands the cursor on.
+The two no-auto-open rows above realise the carve-out specified in [structural-editing.md §2.9.9](structural-editing.md): for holes with no narrowing scope, opening a wide menu without user intent costs more than it saves. The chain pauses on those holes; the cursor sits on the pill (with halo); the user taps `X` to summon the menu when ready, and chain resumes on the *next* hole the commit lands the cursor on.
 
-8.2.2 The chain continues until either no more holes remain on the inserted form or the user cancels (Back). On cancel, **remaining holes stay in the document**. The user can fill them later by navigating to a hole and pressing `tap(Y)` to re-summon the menu — a hole as the apply target re-opens the menu with the same narrowed scope. Manual navigation onto a hole (via `nav.nextHole` / `nav.prevHole` / arrow nav) **never** auto-opens the menu, even for typed holes; the user always taps `Y` to summon it. See [structural-editing.md §2.9.9](structural-editing.md).
+8.2.2 The chain continues until either no more holes remain on the inserted form or the user cancels (Back). On cancel, **remaining holes stay in the document**. The user can fill them later by navigating to a hole and pressing `tap(X)` to re-summon the menu — a hole as the apply target re-opens the menu with the same narrowed scope. Manual navigation onto a hole (via `nav.nextHole` / `nav.prevHole` / arrow nav) **never** auto-opens the menu, even for typed holes; the user always taps `X` to summon it. See [structural-editing.md §2.9.9](structural-editing.md).
 
 8.2.3 Each chain step is a separate, undoable mutation on the document. The user can `editor.undo` to step back through the chain.
 
@@ -644,7 +644,7 @@ The dispatcher (`src/lib/menu/dispatcher.ts`) is the single impure component. It
 - Translates input into state-machine events.
 - Calls `state.reduce(currentState, event)` to compute the next state.
 - On verb commit, calls `verbs.apply(tree, cursorSet, item, verb)` and dispatches the resulting document mutation through the editor's transaction API.
-- Handles auto-chain by inspecting the cursor post-mutation and, if a hole is found, re-opens the menu via the same path as `tap(Y)` would.
+- Handles auto-chain by inspecting the cursor post-mutation and, if a hole is found, re-opens the menu via the same path as `tap(X)` would.
 
 ### 11.3 Picker layer (gamepad.md §6.5) replacement (current: `src/lib/gamepad/paradigms/picker.ts`)
 
@@ -670,6 +670,12 @@ const radialLayer: Layer = {
     left:  'menu.left.angle',
     right: 'menu.right.angle',
   },
+  // Full input takeover (§1.1, §12.6). The radial layer is a `when`-gated
+  // predicate layer (not a transient push), so `onMiss` alone is inert — the
+  // resolver only honours `onMiss` for transient layers. `mask: true` makes the
+  // resolver discard any gesture this layer does not bind (e.g. D-pad) while
+  // the menu is open, instead of leaking it to the editor's base layer.
+  mask: true,
   onMiss: 'pop-and-discard',
 }
 ```
@@ -695,7 +701,7 @@ These are added to `src/lib/keybindings/actions.ts`. Note: there are no `menu.fr
 
 ### 11.5 Performance budgets
 
-- **Cold open (`tap(Y)` to first frame painted):** ≤ 80 ms target, ≤ 150 ms max. The menu's first frame must include the active left tab and any pre-selected hover.
+- **Cold open (`tap(X)` to first frame painted):** ≤ 80 ms target, ≤ 150 ms max. The menu's first frame must include the active left tab and any pre-selected hover.
 - **Sub-phase transition rendering:** ≤ 16 ms per transition (one animation frame).
 - **Live preview re-render on `shoulderHeld` change:** ≤ 16 ms. Preview thumbnail computation must be cached per `(item, verb)` pair so changing handedness doesn't re-parse the predicted insertion.
 - **Auto-chain reopen (verb commit to next menu's first frame):** ≤ 100 ms. This includes the document mutation, hole detection, and menu re-paint.
@@ -706,7 +712,7 @@ These are added to `src/lib/keybindings/actions.ts`. Note: there are no `menu.fr
 
 12.1 **Apply target invalid.** If the cursor target at menu-open is the document root and the picked item is not a valid top-level form (e.g. a bare keyword), the verb produces a no-op flash and the menu closes without mutation.
 
-12.2 **Manifest fails to load or lint.** Menu is disabled; `tap(Y)` is a no-op-flash with a console error. App continues to work via keyboard.
+12.2 **Manifest fails to load or lint.** Menu is disabled; `tap(X)` is a no-op-flash with a console error. App continues to work via keyboard.
 
 12.3 **Unfilled holes during eval.** Eval is rejected with a diagnostic; the affected output enters LKG fallback per [MAIN.md §2.1](MAIN.md). Holes do not crash the runtime.
 

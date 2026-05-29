@@ -158,6 +158,17 @@ export type Layer = {
   readonly onMiss?: MissPolicy;
   readonly ttlMs?: number;
   readonly cancelGesture?: Gesture;
+  /**
+   * When `true`, this layer is **exclusive**: while active, any gesture it does
+   * not bind is discarded rather than falling through to lower layers. This
+   * gives a predicate-driven layer (e.g. the radial menu, which is registered
+   * as a permanent `when`-gated layer rather than a transient push) the same
+   * full input-takeover semantics that `onMiss` provides for transient layers.
+   *
+   * Unbound gestures resolve to a `miss` with `pop-and-discard` policy and the
+   * resolver stops walking the stack. See radial-menu.md §1.1 / §12.6.
+   */
+  readonly mask?: boolean;
 };
 
 export type TransientLayerEntry = {
