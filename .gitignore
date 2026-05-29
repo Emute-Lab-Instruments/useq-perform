@@ -36,3 +36,8 @@ inspector/.approvals.json
 inspector/dist/
 test-results/
 reports/
+
+# Stray nested checkouts / scratch — never part of this repo
+.worktrees/
+src-useq-i2c-expander/
+midi-cv.useq
