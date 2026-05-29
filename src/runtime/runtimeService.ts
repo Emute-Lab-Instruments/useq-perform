@@ -1,13 +1,18 @@
 /**
- * Barrel re-export — preserves the original public API surface.
+ * runtimeService — the public runtime-service facade.
  *
- * Implementation has been split into domain-specific services:
- *   - runtimeSessionService.ts  — session/connection state management
- *   - runtimeSettingsService.ts — settings persistence
+ * This is the canonical import surface for runtime operations (settings
+ * mutation, session/connection state, transport orchestration). All consumers
+ * import from here; it is not a legacy shim and has no parallel code path.
+ *
+ * The implementation is split into domain-specific service files for internal
+ * organisation only:
+ *   - runtimeSessionService.ts   — session/connection state management
+ *   - runtimeSettingsService.ts  — settings persistence (sole settings mutation)
  *   - runtimeTransportService.ts — transport orchestration & protocol negotiation
  *
- * New code should import from the specific service file directly.
- * This barrel exists for backward compatibility with existing import sites.
+ * Per docs/specs/settings.md §1.2, settings mutations go through
+ * `runtimeService.updateSettings(patch)` (re-exported below).
  */
 
 // ── Session service ────────────────────────────────────────────

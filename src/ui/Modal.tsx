@@ -63,8 +63,14 @@ export function Modal(props: ModalProps) {
     }
   };
 
+  // Element that held focus before the modal opened, restored on close.
+  let previouslyFocused: HTMLElement | null = null;
+
   onMount(() => {
     document.addEventListener("keydown", handleTabKey);
+
+    // Remember what had focus so we can restore it when the modal closes.
+    previouslyFocused = document.activeElement as HTMLElement | null;
 
     // Get focusable elements and focus the first one
     focusableElements = getFocusableElements();
@@ -75,6 +81,11 @@ export function Modal(props: ModalProps) {
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleTabKey);
+    // Restore focus to the previously-focused element, if it is still
+    // connected to the document.
+    if (previouslyFocused?.isConnected) {
+      previouslyFocused.focus?.();
+    }
   });
 
   // Register with the overlay manager for Escape handling and scroll lock,
