@@ -1,3 +1,7 @@
 node-option:
   - import=tsx/esm
 exit: true
+# Standalone CLI runner (self-executes + process.exit) — not a mocha spec.
+# Its scenarios are exercised inside the suite via structural-yaml.test.mjs.
+ignore:
+  - "test/run-grab-tests.mjs"
