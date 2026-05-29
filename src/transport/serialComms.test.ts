@@ -581,7 +581,7 @@ describe("serialComms fake host harness", () => {
 
     // Should have logged the parse error
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "Failed to parse JSON message from uSEQ",
+      "[json-protocol] Failed to parse JSON:",
       expect.any(String),
       expect.any(Error)
     );
