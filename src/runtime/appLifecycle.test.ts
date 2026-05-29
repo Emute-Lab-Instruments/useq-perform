@@ -36,6 +36,7 @@ vi.mock("./wasmInterpreter.ts", () => ({
 
 vi.mock("../ui/adapters/modal.tsx", () => ({
   showModal: vi.fn(),
+  showConfirmModal: vi.fn(),
 }));
 
 vi.mock("../effects/mockControlInputs.ts", () => ({

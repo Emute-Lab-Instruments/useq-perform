@@ -7,7 +7,7 @@
  *   - {@link WasmRuntimePort}   — in-browser WASM build of the same interpreter.
  *
  * Both ports expose a small **shared transport surface** (the 6-command floor
- * defined in `docs/RUNTIME_CONTRACT.md`) plus a port-specific surface for
+ * defined in `docs/specs/runtime-contract.md`) plus a port-specific surface for
  * capabilities that only one side has (the JSON handshake on hardware, the
  * batch-output sampling on WASM, etc).
  *
@@ -28,7 +28,7 @@
  *     proxy is then a swap of one concrete adapter, not a re-shape of every
  *     caller.
  *
- * Per `RUNTIME_CONTRACT.md`, the shared command set is the 6-builtin floor
+ * Per `docs/specs/runtime-contract.md`, the shared command set is the 6-builtin floor
  * (play / pause / stop / rewind / clear / get-transport-state). Anything
  * port-specific lives on the port-specific interface.
  *
@@ -62,7 +62,7 @@ export interface RuntimePortCapabilities {
 }
 
 /**
- * The shared transport surface defined by `RUNTIME_CONTRACT.md`.
+ * The shared transport surface defined by `docs/specs/runtime-contract.md`.
  *
  * Both ports must implement exactly this much. Port-specific capabilities
  * live on the port-specific sub-interfaces.

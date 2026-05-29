@@ -29,6 +29,7 @@ const evalInUseqWasm = (
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import { rewriteCodeSliceForModule } from "../lib/manualControlState.ts";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
+import { evalRejectionForNoRuntime } from "./noneModeGate.ts";
 import { flashEvalHighlight } from "../editors/extensions/evalHighlight.ts";
 import { detectAndTrackExpressionEvaluation } from "../editors/extensions/expressionEval.ts";
 import { markOutputRunning } from "../utils/outputHealthStore.ts";
@@ -276,6 +277,15 @@ function evalWasm(
  */
 export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
   const state = view.state;
+
+  // runtime-modes.md §1.10: in `none` mode there is no runtime to evaluate
+  // against. The editor still accepts input, but eval is rejected with a
+  // user-visible warning — the app must never silently drop the eval.
+  const noRuntimeWarning = evalRejectionForNoRuntime();
+  if (noRuntimeWarning) {
+    post(noRuntimeWarning, "warn");
+    return false;
+  }
 
   switch (strategy) {
     case "expression": {

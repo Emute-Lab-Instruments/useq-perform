@@ -25,7 +25,7 @@
  * testable without spinning up the WASM runtime.
  *
  * @see docs/PROTOCOL.md — wire format
- * @see docs/RUNTIME_CONTRACT.md — capability split
+ * @see docs/specs/runtime-contract.md — capability split
  */
 
 import {

@@ -22,7 +22,7 @@ layer: behavioural
 - `useqExperienceLevel`, `useq:onboarding-dismissed` (onboarding state)
 - `moduLispReference:starredFunctions`, `:expandedFunctions`, `:targetVersion`
 - `codeSnippets:snippets`, `:starred`, `:nextId`
-- `editorContent` (autosave target)
+- `useq:zen:progress` (zen-mode lesson progress — see [zen-mode.md §8.1](zen-mode.md))
 - `uSEQ-Perform-Editor-Probes` (probe state)
 - `uSEQ-Perform-Editor-LiveEdits` (live-edit values, orphan state, MIDI bindings, panel state)
 - `uSEQ-Perform-DevMode-State` (devmode toggle)

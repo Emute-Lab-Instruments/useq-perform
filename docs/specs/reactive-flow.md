@@ -19,6 +19,7 @@ layer: cross-cutting
 - `src/utils/consoleStore.ts` — reactive console message store
 - `src/utils/referenceStore.ts` — reactive function-reference store
 - `src/utils/snippetStore.ts` — reactive snippet store
+- `src/utils/outputHealthStore.ts` — reactive per-output health store (runtime/eval layer → editor health UI)
 - `src/runtime/appSettingsRepository.ts` — canonical non-reactive settings holder
 - `src/runtime/runtimeSessionStore.ts` — non-reactive connection/session state
 - `src/runtime/runtimeService.ts` — sole settings mutation surface (fans out to repository + channel)
@@ -28,7 +29,7 @@ layer: cross-cutting
 
 1.1 Inter-module communication uses **typed pub/sub channels** from a single primitive (see `src/lib/typedChannel.ts`). CustomEvents and globals are forbidden for runtime/visualisation/gamepad/help signals.
 
-1.2 The **canonical reactive stores** are: `settingsStore`, `visStore`, `consoleStore`, `referenceStore`, `snippetStore`. UI reads from stores; mutations go through named functions or the runtime service.
+1.2 The **canonical reactive stores** are: `settingsStore`, `visStore`, `consoleStore`, `referenceStore`, `snippetStore`, `outputHealthStore`. UI reads from stores; mutations go through named functions or the runtime service.
 
 1.3 **Settings is the only mutation surface that fans out to multiple stores.** All other stores are mutated by their owning subsystem only.
 
@@ -47,6 +48,7 @@ layer: cross-cutting
 | `consoleStore` | `ConsoleState` | `addConsoleMessage()`, `clearConsole()` | Chronological console messages |
 | `referenceStore` | Reference data | Reference-store mutation helpers | Function-reference star/expand/target-version state |
 | `snippetStore` | Snippet data | Snippet-store mutation helpers | User snippets and starter snippets |
+| `outputHealthStore` | `OutputHealthState` | `markOutputRunning()` / diagnostic poll in `outputHealthStore.ts` | Per-output health (`idle`/`running`/`fallback`/`error`); owned by runtime/eval layer, read by editor health UI |
 
 ## 3. Channel Inventory
 
@@ -61,6 +63,11 @@ Runtime channels (see `src/contracts/runtimeChannels.ts`):
 | `codeEvaluated` | `CodeEvaluatedDetail` | Runtime/evaluation layer | Visualisation sampler and editor feedback |
 | `runtimeDiagnostics` | diagnostic snapshot | `runtimeDiagnostics` | Diagnostics UI |
 | `bootstrapFailure` | failure detail | `runtimeDiagnostics` | Recovery UI |
+| `animateConnect` | `AnimateConnectDetail` | JSON protocol driver (not-connected) | Connect-button animation (UI) |
+| `devicePluggedIn` | `DevicePluggedInDetail` | `connector.ts` (saved device replug) | Reconnect UI / prompt |
+| `driftDetected` | `DriftDetectedDetail` | `driftDetector` | `stateSyncOrchestrator` |
+| `liveEditValueChanged` | `LiveEditValueChangedDetail` | live-edit runtime | `visualisationSampler` |
+| `standaloneDiagnostics` | `StandaloneDiagnosticsDetail` | JSON protocol driver (spec §5.9) | Diagnostics UI |
 
 Visualisation channels (see `src/contracts/visualisationChannels.ts`):
 

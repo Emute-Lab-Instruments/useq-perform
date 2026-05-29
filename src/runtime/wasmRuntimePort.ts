@@ -21,7 +21,7 @@
  * When the worker version lands, replace the singleton below with one whose
  * methods proxy through `Worker.postMessage()` — caller code does not change.
  *
- * @see docs/RUNTIME_CONTRACT.md
+ * @see docs/specs/runtime-contract.md
  * @see src/runtime/wasmJsonTransport.ts
  */
 

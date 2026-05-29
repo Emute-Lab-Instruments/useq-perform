@@ -27,7 +27,11 @@ describe("jsonProtocol", () => {
     expect(buildHeartbeatRequest()).toEqual({ type: "ping" });
   });
 
-  it("maps firmware inputs into the default stream-config request", () => {
+  it("maps firmware inputs and serial outputs into the default stream-config request", () => {
+    // The default config must subscribe both inputs AND serial outputs (s1-s8)
+    // so the drift detector (state-sync.md §1.2) has hardware output values to
+    // compare against. The `time` output is excluded — firmware always streams
+    // it.
     expect(
       buildDefaultStreamConfig({
         inputs: [
@@ -37,6 +41,7 @@ describe("jsonProtocol", () => {
         outputs: [
           { index: 1, name: "time" },
           { index: 2, name: "s1" },
+          { index: 3, name: "s2" },
         ],
       })
     ).toEqual({
@@ -45,6 +50,8 @@ describe("jsonProtocol", () => {
       channels: [
         { id: 1, name: "ssin1", direction: "input", enabled: true, maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ },
         { id: 4, name: "ssin4", direction: "input", enabled: true, maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ },
+        { id: 2, name: "s1", direction: "output", enabled: true, maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ },
+        { id: 3, name: "s2", direction: "output", enabled: true, maxRateHz: DEFAULT_STREAM_MAX_RATE_HZ },
       ],
     });
   });
