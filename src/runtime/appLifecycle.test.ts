@@ -7,7 +7,7 @@ const {
   announceRuntimeSession,
   checkForSavedPortAndMaybeConnect,
   initializeMockControls,
-  startMockTimeGenerator,
+  startLocalClockMock,
   registerVisualisation,
   showVisualisationPanel,
 } = vi.hoisted(() => ({
@@ -16,7 +16,7 @@ const {
   announceRuntimeSession: vi.fn(),
   checkForSavedPortAndMaybeConnect: vi.fn(),
   initializeMockControls: vi.fn(),
-  startMockTimeGenerator: vi.fn(),
+  startLocalClockMock: vi.fn(),
   registerVisualisation: vi.fn(),
   showVisualisationPanel: vi.fn(() => true),
 }));
@@ -43,7 +43,7 @@ vi.mock("../effects/mockControlInputs.ts", () => ({
 }));
 
 vi.mock("../effects/localClock.ts", () => ({
-  startLocalClock: startMockTimeGenerator,
+  startLocalClock: startLocalClockMock,
 }));
 
 vi.mock("../effects/visualisationSampler.ts", () => ({
@@ -100,7 +100,7 @@ describe("application no-module startup", () => {
     expect(ensureUseqWasmLoaded).toHaveBeenCalledTimes(1);
     expect(announceRuntimeSession).toHaveBeenCalledTimes(1);
     expect(initializeMockControls).toHaveBeenCalledTimes(1);
-    expect(startMockTimeGenerator).toHaveBeenCalledTimes(1);
+    expect(startLocalClockMock).toHaveBeenCalledTimes(1);
     expect(showVisualisationPanel).toHaveBeenCalledTimes(1);
     expect(registerVisualisation).toHaveBeenNthCalledWith(1, "a1", "(a1 bar)");
     expect(registerVisualisation).toHaveBeenNthCalledWith(2, "a2", "(a2 (slow 2 bar))");

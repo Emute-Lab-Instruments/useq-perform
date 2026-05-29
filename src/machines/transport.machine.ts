@@ -25,7 +25,10 @@ export const transportMachine = createMachine(
       events: TransportEvent;
     },
     id: "transport",
-    initial: "playing", // Hardware boots in "playing" state by default
+    // Spec transport.md §1.1: boots in "paused" if a runtime is available, else
+    // "stopped". The orchestrator drives the no-runtime case to "stopped" via an
+    // initial SYNC; "paused" is the safe default that awaits an explicit PLAY.
+    initial: "paused",
     context: {
       mode: "none",
     },

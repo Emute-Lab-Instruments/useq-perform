@@ -73,13 +73,3 @@ export function shutdownLocalClock(): void {
   setLocalTimeMode(false);
   stopVisualisationRuntime();
 }
-
-// ── Backward-compatible aliases ──────────────────────────────────────
-export {
-  startLocalClock as startMockTimeGenerator,
-  stopLocalClock as stopMockTimeGenerator,
-  resumeLocalClock as resumeMockTimeGenerator,
-  resetLocalClock as resetMockTimeGenerator,
-  isLocalClockRunning as isMockTimeGeneratorRunning,
-  getLocalClockTime as getCurrentMockTime,
-};

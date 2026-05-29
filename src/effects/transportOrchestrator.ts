@@ -1,6 +1,6 @@
 // src/effects/transportOrchestrator.ts
 //
-// Wires transport-machine lifecycle, runtime event listeners, mock-time clock
+// Wires transport-machine lifecycle, runtime event listeners, clock
 // policy, and mode synchronisation together in a single imperative start/stop
 // API.  This replaces the side-effect code that previously lived inside
 // TransportToolbar's onMount / createEffect hooks so it can run (and be
@@ -96,7 +96,7 @@ export interface TransportOrchestrator {
  * 2. Subscribe to the runtime service for mode changes and hardware-override.
  * 3. Listen for PROTOCOL_READY and JSON_META runtime events to sync the
  *    machine with hardware state.
- * 4. Watch transport state transitions and apply mock-time clock policy.
+ * 4. Watch transport state transitions and apply clock policy.
  *
  * Returns an object with `actor`, `send`, `getSnapshot`, `subscribe`, and
  * `dispose`.  The UI component can bind directly to these without owning
@@ -119,12 +119,14 @@ export function createTransportOrchestrator(): TransportOrchestrator {
   const actor = createActor(machine);
   const send = (event: any) => actor.send(event);
 
-  // ── 2. Transport-state → mock-time clock policy ────────────────
-  let prevTransportState: TransportState = "playing";
+  // ── 2. Transport-state → clock policy ──────────────────────────
+  // Machine boots in "paused" (spec §1.1). The no-runtime boot case is driven
+  // to "stopped" below via an initial SYNC once the mode is known.
+  let prevTransportState: TransportState = "paused";
 
   const actorSub = actor.subscribe((snapshot) => {
     const current = snapshot.value as TransportState;
-    // Skip the initial snapshot (actor starts in "playing")
+    // Skip the initial snapshot (actor starts in "paused")
     if (current === prevTransportState) return;
     const prev = prevTransportState;
     prevTransportState = current;
@@ -168,6 +170,13 @@ export function createTransportOrchestrator(): TransportOrchestrator {
 
   // ── Start ──────────────────────────────────────────────────────
   actor.start();
+
+  // Spec §1.1: boot in "paused" if a runtime is available, else "stopped".
+  // The machine's initial state is "paused"; drive it to "stopped" via a
+  // (non-emitting) SYNC when no runtime is available at boot.
+  if (getRuntimeServiceSnapshot().session.transportMode === "none") {
+    send({ type: "SYNC", state: "stopped" });
+  }
 
   // ── Dispose ────────────────────────────────────────────────────
   function dispose() {
