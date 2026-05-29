@@ -19,8 +19,12 @@
  *     ops interpret as pre-order — that gives the spec's "phase resets
  *     when arriving via a non-spatial op" behaviour for free.
  *
- * §5.1.7 (`nav.intoMeta`) is intentionally unimplemented — out of scope for
- * the probe per the task brief.
+ * §5.1.9 (`nav.intoMeta`) is intentionally unimplemented: the core tree model
+ * stores a Meta's `payload` as opaque `unknown` (see `types.ts`), so there is
+ * no addressable payload node for a cursor to descend into yet. Implementing
+ * it requires `treeFromLezer` to lower Meta payloads into real, id-bearing
+ * nodes (tracked alongside the wrapper-recognition work). Until then the op
+ * is absent from `nav` rather than a no-op stub.
  */
 
 import { findHolesInOrder } from "./holes.ts";

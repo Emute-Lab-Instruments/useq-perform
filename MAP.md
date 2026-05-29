@@ -80,6 +80,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `transportOrchestrator.ts`, `transportClock.ts` — XState-driven transport state and clock policy.
   - `localClock.ts` — rAF-driven internal clock when no hardware.
   - `editor.ts`, `editorEvaluation.ts` — editor-side eval orchestration (eslint exception: imports editors).
+  - `standaloneDiagnosticsRouter.ts` — routes unsolicited device→editor `diagnostics` frames (wire §5.9) from `standaloneDiagnostics` channel into the editor inline-diagnostics pipeline via `pushDiagnostics` (eslint exception: imports editors). Initialised once in `appLifecycle.createApp().start()`.
   - `visualisationSampler.ts` — WASM sampling with projection-fork architecture. Past buffer (`PastBuffer` rolling window, one sample/frame) + future buffer (batch-refilled on invalidation via save/restore, extended one sample/frame). Expression lifecycle (register/unregister/refresh), `tickAndProject()` entry point, `getRenderData()` for renderer consumption.
   - `adaptiveQuality.ts` — adaptive quality control for projection: skip thresholds, budget-aware future-edge push.
   - `hardwareBindingDispatcher.ts` — dispatches bound expressions on hardware button events. Subscribes to `hwInput` channel, scans editor doc for `(on-press|on-release|on-button|on-toggle)` forms, evals via WASM + hardware with per-binding FIFO queue and hold-tick coalescing ([docs/specs/hardware-bindings.md §4](docs/specs/hardware-bindings.md)). Editor-layer chip sync is injected via `DispatcherConfig` to respect import boundaries.

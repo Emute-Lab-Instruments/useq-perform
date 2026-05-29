@@ -839,11 +839,6 @@ export function setMainEditorTheme(themeName: string): void {
   }
 }
 
-// Stub — snippet editors theme switching is not yet implemented.
-export function setSnippetEditorsTheme(_themeName: string): void {
-  // TODO
-}
-
 // ---------------------------------------------------------------------------
 // CSS variable injection
 // ---------------------------------------------------------------------------

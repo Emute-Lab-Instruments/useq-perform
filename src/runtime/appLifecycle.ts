@@ -22,6 +22,7 @@ import {
   setBindingChipFireCallback,
 } from '../editors/extensions/hardwareBinding/chipWidget.ts';
 import { editor as getEditorSignal } from '../lib/editorStore.ts';
+import { initStandaloneDiagnosticsRouter } from '../effects/standaloneDiagnosticsRouter.ts';
 import type { BootstrapPlan } from './bootstrap.ts';
 import type { EnvironmentState } from './startupContext.ts';
 import { announceRuntimeSession } from './runtimeService.ts';
@@ -137,6 +138,10 @@ export function createApp(
     modals: {},
 
     async start() {
+      // Route unsolicited device→editor diagnostics frames (wire §5.9) into
+      // the editor's inline annotation pipeline. Active in every runtime mode.
+      initStandaloneDiagnosticsRouter();
+
       // Display welcome message
       const userName = environmentState.userSettings.name || 'User';
       post(`Hello, ${userName}!`);

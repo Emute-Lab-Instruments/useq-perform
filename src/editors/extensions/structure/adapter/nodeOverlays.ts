@@ -44,7 +44,7 @@ import {
   type Node,
   type NodeId,
 } from "../core/index.ts";
-import { grabModeField, structField } from "./stateField.ts";
+import { grabModeField, insertionModeField, structField } from "./stateField.ts";
 import type { IdIndex, SourceRange } from "./treeFromLezer.ts";
 
 // ─── Debug logging ───────────────────────────────────────────────────────────
@@ -290,20 +290,16 @@ function buildPolygonPath(group: LineBounds[], padding: number = 2, cornerRadius
 
 // ─── Overlay-fade hook ───────────────────────────────────────────────────────
 //
-// In keyboard mode there is no notion of an "insertion mode" — typing writes.
-// In gamepad mode (auto-enabled when a gamepad action fires; spec §3.4 input
-// gate via `gamepadStateStore.lastInputAt`) the overlay should fade when the
-// user enters the dedicated insertion mode (spec §4 mode boundary).
+// The structural halo recedes (renders at reduced opacity) while the editor is
+// in insertion mode, where the active surface is the CodeMirror text caret
+// rather than the structural cursor (spec §3.3 hides the caret in structural
+// mode; §4.5 ties the rendered mode to the cursor style). The insertion-mode
+// signal is the `insertionModeField` StateField on the editor state, read
+// directly in the measure pass below.
 //
-// That signal does not yet exist as a global store: the gamepad bridge tracks
-// structural-vs-spatial mode internally but doesn't surface "insertion mode".
-// Until it does, we wire the infrastructure (a per-measure boolean predicate)
-// behind a stub that returns `false`. A future commit can swap in the real
-// signal via `setStructuralOverlayFadeProvider(fn)` without touching this
-// file.
-//
-// TODO(structural-editing §3.4 / §4): replace the default no-op provider with
-// a subscriber on the gamepad-mode store once "insertion mode" is exposed.
+// `setStructuralOverlayFadeProvider` remains as an optional external override
+// for fade sources that are not state-driven; the default is a no-op and the
+// state-driven insertion-mode fade applies regardless.
 
 let fadeProvider: () => boolean = () => false;
 
@@ -433,13 +429,16 @@ class StructuralNodeOverlayPlugin {
     const newField = u.state.field(structField, false);
     const oldGrab = u.startState.field(grabModeField, false);
     const newGrab = u.state.field(grabModeField, false);
+    const oldInsert = u.startState.field(insertionModeField, false);
+    const newInsert = u.state.field(insertionModeField, false);
     if (
       u.docChanged ||
       u.viewportChanged ||
       u.geometryChanged ||
       u.selectionSet ||
       oldField !== newField ||
-      oldGrab !== newGrab
+      oldGrab !== newGrab ||
+      oldInsert !== newInsert
     ) {
       this.debouncedMeasure();
     }
@@ -624,7 +623,13 @@ class StructuralNodeOverlayPlugin {
           indentStyle,
           cursorAtEdge,
           cursorInside,
-          fade: fadeProvider(),
+          // §3.3/§4.5: the structural halo recedes in insertion mode (where
+          // the text caret is active instead). The insertion-mode signal lives
+          // on the editor state; the external fadeProvider remains an optional
+          // override for non-state-driven fade sources.
+          fade:
+            (view.state.field(insertionModeField, false) ?? false) ||
+            fadeProvider(),
           grabbed: view.state.field(grabModeField, false) ?? false,
         };
       },

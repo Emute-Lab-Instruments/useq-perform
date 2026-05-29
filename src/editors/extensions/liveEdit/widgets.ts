@@ -690,12 +690,10 @@ class ToggleWidget extends LiveEditBaseWidget {
   }
 
   protected override renderReadout(): void {
-    // Toggle's pill already names the state; the readout would be redundant
-    // and visually busy on a single line. Skip per pragmatic visual judgement
-    // (spec §4.2.1 mandates an always-on readout — but the pill itself is
-    // the readout for booleans).
-    // TODO(gii8.39): revisit once the spec clarifies whether the pill counts
-    // as the readout or whether a duplicate "on/off" string belongs alongside.
+    // Toggle's pill renders its own `on`/`off` label (see toDOM: "● on" /
+    // "off ●"), so it IS the readout for booleans. spec §4.2.1 carves out
+    // this exception: a separate adjacent on/off string would be redundant
+    // and visually busy on a single line. Intentionally a no-op.
   }
 }
 

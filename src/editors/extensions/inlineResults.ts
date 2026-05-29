@@ -40,12 +40,6 @@ interface InlineResultPayload {
 export const showInlineResult = StateEffect.define<InlineResultPayload>();
 export const clearInlineResults = StateEffect.define<void>();
 
-// FIXME: Gutter mode needs rework — the gutter renders in a separate column
-// from the line numbers and doesn't integrate well visually. Shelved for now.
-// Related code commented out below.
-//
-// const gutterResultEffect = StateEffect.define<InlineResultPayload | null>();
-
 class InlineResultWidget extends WidgetType {
   constructor(
     readonly text: string,
@@ -113,27 +107,6 @@ class FloatingResultWidget extends WidgetType {
   }
 }
 
-// FIXME: Gutter marker widget — re-enable when gutter mode is reworked.
-//
-// class ResultGutterMarker extends GutterMarker {
-//   constructor(readonly text: string, readonly isError: boolean) {
-//     super();
-//   }
-//
-//   toDOM(): HTMLElement {
-//     const el = document.createElement("div");
-//     el.className = this.isError
-//       ? "cm-gutter-result cm-gutter-result--error"
-//       : "cm-gutter-result";
-//     el.textContent = truncateText(this.text, 20);
-//     return el;
-//   }
-//
-//   eq(other: ResultGutterMarker): boolean {
-//     return this.text === other.text && this.isError === other.isError;
-//   }
-// }
-
 function truncateText(text: string, max: number): string {
   if (max <= 0 || text.length <= max) return text;
   return text.slice(0, max) + "…";
@@ -154,8 +127,6 @@ function formatTimestamp(show: boolean): string | null {
  * Returns an Extension (StateField) that provides editor decorations.
  */
 export function createInlineResultsField(config: InlineResultsConfig): Extension {
-  let dismissTimer: ReturnType<typeof setTimeout> | null = null;
-
   return StateField.define<DecorationSet>({
     create() {
       return Decoration.none;
@@ -165,10 +136,6 @@ export function createInlineResultsField(config: InlineResultsConfig): Extension
 
       for (const e of tr.effects) {
         if (e.is(clearInlineResults)) {
-          if (dismissTimer) {
-            clearTimeout(dismissTimer);
-            dismissTimer = null;
-          }
           return Decoration.none;
         }
 
@@ -182,11 +149,6 @@ export function createInlineResultsField(config: InlineResultsConfig): Extension
 
           const showTs = config.getShowTimestamp();
           const ts = formatTimestamp(showTs);
-
-          if (dismissTimer) {
-            clearTimeout(dismissTimer);
-            dismissTimer = null;
-          }
 
           const widgetSpec = mode === "floating"
             ? Decoration.widget({
@@ -206,15 +168,9 @@ export function createInlineResultsField(config: InlineResultsConfig): Extension
 
           const resultDecos = Decoration.set(widgetSpec.range(anchorPos));
 
-          if (mode === "inline-ephemeral" || mode === "floating") {
-            const delay = config.getAutoDismissMs();
-            if (delay > 0) {
-              dismissTimer = setTimeout(() => {
-                dismissTimer = null;
-              }, delay);
-            }
-          }
-
+          // Auto-dismiss is owned by dispatchInlineResult (see below), which
+          // schedules clearInlineResults via inlineDismissTimer. The field
+          // itself does not run a timer.
           return resultDecos;
         }
       }
@@ -243,68 +199,6 @@ export function createDefaultInlineResultsConfig(): InlineResultsConfig {
 export const inlineResultsField: Extension = createInlineResultsField(
   createDefaultInlineResultsConfig(),
 );
-
-// FIXME: Gutter result field and gutter extension — re-enable when gutter mode
-// is reworked. The gutter renders in a separate column from line numbers and
-// doesn't integrate well visually.
-//
-// let gutterDismissTimer: ReturnType<typeof setTimeout> | null = null;
-//
-// export const gutterResultField = StateField.define<RangeSet<GutterMarker>>({
-//   create() {
-//     return RangeSet.empty;
-//   },
-//   update(markers, tr) {
-//     for (const e of tr.effects) {
-//       if (e.is(gutterResultEffect)) {
-//         if (gutterDismissTimer) {
-//           clearTimeout(gutterDismissTimer);
-//           gutterDismissTimer = null;
-//         }
-//         if (e.value === null) {
-//           return RangeSet.empty;
-//         }
-//         const { text, pos, isError } = e.value;
-//         const builder = new RangeSetBuilder<GutterMarker>();
-//         builder.add(pos, pos, new ResultGutterMarker(text, isError ?? false));
-//         return builder.finish();
-//       }
-//     }
-//     return markers;
-//   },
-// });
-//
-// export const resultGutter = gutter({
-//   class: "cm-result-gutter",
-//   markers: (view) => view.state.field(gutterResultField, false) ?? RangeSet.empty,
-//   initialSpacer: () => new ResultGutterMarker("·", false),
-// });
-//
-// function showGutterResult(view: EditorView, text: string, pos: number, isError: boolean): void {
-//   const settings = getAppSettings().evalResults;
-//   if (settings?.mode !== "gutter") return;
-//
-//   if (gutterDismissTimer) {
-//     clearTimeout(gutterDismissTimer);
-//     gutterDismissTimer = null;
-//   }
-//
-//   view.dispatch({
-//     effects: gutterResultEffect.of({ text, pos, isError }),
-//   });
-//
-//   const delay = settings?.autoDismissMs ?? 3000;
-//   if (delay > 0) {
-//     gutterDismissTimer = setTimeout(() => {
-//       gutterDismissTimer = null;
-//       try {
-//         view.dispatch({ effects: gutterResultEffect.of(null) });
-//       } catch {
-//         // View may have been destroyed
-//       }
-//     }, delay);
-//   }
-// }
 
 let inlineDismissTimer: ReturnType<typeof setTimeout> | null = null;
 

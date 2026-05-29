@@ -315,7 +315,7 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 - `meta.cycle` — advance the outermost Meta through a configurable cycle of kinds (default cycle: `quote → unquote → off`).
 - `meta.foldToggle` — toggle drawer visibility for the focused node's Metas.
 
-6.7 **Navigation into Meta payloads.** Metas with structured payloads (`metadata`, wrapper Metas with arguments) are entered with `nav.intoMeta` (§5.1.7); the cursor descends into the payload, and `nav.out` returns to the host. Sigil and `ignore` Metas have no payload and reject this op.
+6.7 **Navigation into Meta payloads.** Metas with structured payloads (`metadata`, wrapper Metas with arguments) are entered with `nav.intoMeta` (§5.1.9); the cursor descends into the payload, and `nav.out` returns to the host. Sigil and `ignore` Metas have no payload and reject this op.
 
 ---
 

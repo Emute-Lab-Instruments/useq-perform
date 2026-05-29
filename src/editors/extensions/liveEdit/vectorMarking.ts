@@ -124,7 +124,7 @@ interface BuiltDeco {
   deco: Decoration;
 }
 
-function buildDecorations(state: EditorState): DecorationSet {
+function buildInlineDecorations(state: EditorState): DecorationSet {
   const session = state.field(vectorMarkSessionField, false);
   if (!session) return Decoration.none;
 
@@ -175,34 +175,70 @@ function buildDecorations(state: EditorState): DecorationSet {
     builder.add(from, to, deco);
   }
 
-  // §3.7.8 — single-line hint at the bottom of the vector. We always render
-  // it for the storybook MVP (no idle-fade animation yet); a real
-  // implementation gates this on `liveEdit.subModeIdleHintMs`.
-  const vectorTo = Math.max(0, Math.min(session.vectorRange.to, docLen));
-  const lineEnd = state.doc.lineAt(vectorTo).to;
-  builder.add(lineEnd, lineEnd, hintWidget);
-
   return builder.finish();
 }
 
-// ─── ViewPlugin ──────────────────────────────────────────────────────────────
+/**
+ * §3.7.8 — single-line block hint at the bottom of the vector.
+ *
+ * Block decorations may NOT be supplied from a ViewPlugin (CodeMirror throws
+ * `RangeError: Block decorations may not be specified via plugins`). It must
+ * come from a StateField via `provide`, so it lives here separately from the
+ * inline mark/focus decorations.
+ *
+ * We always render it for the storybook MVP (no idle-fade animation yet); a
+ * real implementation gates this on `liveEdit.subModeIdleHintMs`.
+ */
+function buildHintDecorations(state: EditorState): DecorationSet {
+  const session = state.field(vectorMarkSessionField, false);
+  if (!session) return Decoration.none;
+
+  const docLen = state.doc.length;
+  const vectorTo = Math.max(0, Math.min(session.vectorRange.to, docLen));
+  const lineEnd = state.doc.lineAt(vectorTo).to;
+
+  const builder = new RangeSetBuilder<Decoration>();
+  builder.add(lineEnd, lineEnd, hintWidget);
+  return builder.finish();
+}
+
+// ─── ViewPlugin (inline marks) + StateField (block hint) ─────────────────────
 
 const vectorMarkPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
-      this.decorations = buildDecorations(view.state);
+      this.decorations = buildInlineDecorations(view.state);
     }
     update(u: ViewUpdate) {
       const oldSession = u.startState.field(vectorMarkSessionField, false);
       const newSession = u.state.field(vectorMarkSessionField, false);
       if (u.docChanged || oldSession !== newSession) {
-        this.decorations = buildDecorations(u.state);
+        this.decorations = buildInlineDecorations(u.state);
       }
     }
   },
   { decorations: (v) => v.decorations },
 );
+
+/**
+ * StateField that supplies the block hint decoration. Block decorations must
+ * originate from a StateField (not a ViewPlugin), hence the dedicated field.
+ */
+const vectorMarkHintField = StateField.define<DecorationSet>({
+  create(state) {
+    return buildHintDecorations(state);
+  },
+  update(deco, tr) {
+    const oldSession = tr.startState.field(vectorMarkSessionField, false);
+    const newSession = tr.state.field(vectorMarkSessionField, false);
+    if (tr.docChanged || oldSession !== newSession) {
+      return buildHintDecorations(tr.state);
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
 
@@ -262,5 +298,10 @@ export const vectorMarkTheme = EditorView.baseTheme({
  * Registered in `harness/extension-registry.ts` under `'vector-marking'`.
  */
 export function createVectorMarkingExtension(): Extension[] {
-  return [vectorMarkSessionField, vectorMarkPlugin, vectorMarkTheme];
+  return [
+    vectorMarkSessionField,
+    vectorMarkHintField,
+    vectorMarkPlugin,
+    vectorMarkTheme,
+  ];
 }
