@@ -773,10 +773,15 @@ describe("hardware transport lifecycle", () => {
       );
       expect(streamConfig).toBeDefined();
       const channels = streamConfig!.channels as Array<Record<string, unknown>>;
-      // Only input channels are subscribed; outputs are not.
-      expect(channels).toHaveLength(1);
+      // Inputs AND serial outputs (s1-s8) are subscribed so the drift detector
+      // (state-sync.md §1.2) has hardware output values to compare against.
+      // The `time` output is excluded — firmware always streams it.
+      // Advertised config: inputs [ssin1], outputs [time, s1] ⇒ ssin1 + s1.
+      expect(channels).toHaveLength(2);
       expect(channels.every((c) => c.enabled === true)).toBe(true);
       expect(channels.find((c) => c.name === "ssin1" && c.direction === "input")).toBeTruthy();
+      expect(channels.find((c) => c.name === "s1" && c.direction === "output")).toBeTruthy();
+      expect(channels.find((c) => c.name === "time")).toBeFalsy();
     });
 
     it("refuses sendStreamConfig when hello handshake did not complete", async () => {

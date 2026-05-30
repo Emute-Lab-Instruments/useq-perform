@@ -34,6 +34,7 @@ import {
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
 import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
+import { applyKeymapFromUrl } from './applyKeymapFromUrl.ts';
 import {
   getActiveWasmRuntimePort,
   setActiveWasmRuntimePort,
@@ -274,6 +275,17 @@ export async function bootstrap(): Promise<BootstrapResult> {
 
   // ── Step 2: detect environment ─────────────────────────────────
   const environmentState = await examineEnvironment(getSettings());
+
+  // ── Step 2b: apply ?keymap URL profile ─────────────────────────
+  // url-params.md §2.3: read independently of the startupFlags parser.
+  if (typeof window !== "undefined") {
+    try {
+      applyKeymapFromUrl(window.location.href);
+    } catch (error) {
+      reportBootstrapFailure("keymap-url", error);
+    }
+  }
+
   const { userSettings, startupFlags } = environmentState;
 
   // ── Step 3: derive bootstrap plan (single call site) ───────────

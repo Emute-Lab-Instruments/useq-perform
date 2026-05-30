@@ -139,7 +139,7 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 
 - Canonical source tree: `src/`
 - Entry point: `src/main.ts`
-- **Reactive data flow**: `docs/REACTIVE_FLOW.md` — stores, channels, signals, and data flow paths. Consult before tracing state or adding reactive plumbing.
+- **Reactive data flow**: `docs/specs/reactive-flow.md` — stores, channels, signals, and data flow paths. Consult before tracing state or adding reactive plumbing.
 
 ### Source Layout
 
@@ -224,5 +224,5 @@ Use these to locate the source file for any visible UI element. Plugin tests: `n
 - Submodule updates require separate commits in those repos.
 - For editor-facing firmware truth, treat the `src-useq/` submodule in this repo as authoritative.
 - Run `npm run src-useq:status` before firmware-sensitive audits, and cite that pinned commit in follow-up work.
-- Promotion and runtime-capability rules live in `docs/RUNTIME_CONTRACT.md`.
+- Promotion and runtime-capability rules live in `docs/specs/runtime-contract.md`.
 - The `src-useq/` submodule contains a WASM interpreter that mirrors the actual firmware interpreter. The frontend uses this WASM build — it must be rebuilt (`npm run build:assets`) when the interpreter source in `src-useq/` changes.

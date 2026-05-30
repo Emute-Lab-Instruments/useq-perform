@@ -25,7 +25,7 @@ layer: behavioural
 - `src/lib/appSettings.ts` — settings types including `runtime.*` and `wasm.*` knobs
 - `src/transport/connector.ts` — `connectedToModule` flag (transport-internal)
 
-1.1 The app has exactly **four runtime modes** at any moment: `none`, `wasm`, `hardware`, `both`. (see `src/runtime/runtimeSession.ts`, `src/contracts/runtimeTypes.ts`)
+1.1 The app has exactly **four runtime modes** at any moment: `none`, `wasm`, `hardware`, `both`. These are the values of the canonical `TransportMode` type. A related `RuntimeConnectionMode` (`hardware` / `browser` / `none`) is derived from the same session inputs and is what the connection indicator (§1.6) reads to distinguish hardware from WASM-only; note it uses `browser` where `TransportMode` uses `wasm`. (see `src/runtime/runtimeSession.ts`, `src/contracts/runtimeTypes.ts`)
 
 1.2 **`none`** — no runtime is available. Eval is rejected with a user-visible message; transport controls are disabled or visually inert. The onboarding banner ([help.md §2](help.md)) is visible.
 
@@ -39,13 +39,13 @@ layer: behavioural
 
 1.6 **Mode determination is observable, not inferred from `connectedToModule`.** Any UI indicator showing "connected" must distinguish hardware from WASM-only — never collapse them.
 
-1.7 **Mode transitions are seamless.** Connecting hardware while in `wasm` upgrades to `both` without losing editor state, console history, or vis state. On hardware connect, the app prompts the user: "Hardware connected. Send current program to device?" — letting the user decide whether to sync the current WASM state to hardware. Disconnecting hardware while in `both` falls back to `wasm`. The user's evaluations across the boundary must continue to produce visible feedback. (see `src/runtime/runtimeSessionService.ts`)
+1.7 **Mode transitions are seamless.** Connecting hardware while in `wasm` upgrades to `both` without losing editor state, console history, or vis state. On hardware connect, the app prompts the user: "Hardware connected. Send current program to device?" — letting the user decide whether to sync the current WASM state to hardware. The prompt fires on the `wasm` → `both` transition (a fresh hardware connect while WASM is running), never on a boot directly into `both` nor on disconnect, and is suppressed when the editor is empty; on confirm the current editor program is sent over serial. Disconnecting hardware while in `both` falls back to `wasm`. The user's evaluations across the boundary must continue to produce visible feedback. (see `src/runtime/runtimeSessionService.ts`, `src/effects/hardwareConnectPrompt.ts`)
 
 1.8 Settings provide **`runtime.startLocallyWithoutHardware`** (default true): when true, the app boots into `wasm` mode without waiting for a hardware connection probe. (see `src/runtime/bootstrap.ts`, `src/runtime/appSettingsRepository.ts`)
 
 1.9 Settings provide **`runtime.autoReconnect`** (default true): when true, on app load the app attempts to reconnect to a previously saved Web Serial port (matched by `usbVendorId`/`usbProductId`). (see `src/transport/connector.ts`)
 
-1.10 Settings provide **`wasm.enabled`** (default true). When false: hardware is the only runtime; if hardware is also absent, mode is `none`. In `none` mode the editor still accepts input, but eval is rejected with a user-visible warning ("no runtime available — connect hardware or enable browser-local WASM"). The app must not silently drop evals. (see `src/lib/appSettings.ts`, `src/runtime/runtimeSession.ts`)
+1.10 Settings provide **`wasm.enabled`** (default true). When false: hardware is the only runtime; if hardware is also absent, mode is `none`. In `none` mode the editor still accepts input, but eval is rejected with a user-visible warning ("no runtime available — connect hardware or enable browser-local WASM"). The app must not silently drop evals. The gate is enforced at the top of `evaluate()` via `evalRejectionForNoRuntime()`. (see `src/lib/appSettings.ts`, `src/runtime/runtimeSession.ts`, `src/effects/noneModeGate.ts`, `src/effects/editorEvaluation.ts`)
 
 1.11 The **shared transport command set** that fans out to both runtimes is exactly: `(useq-play)`, `(useq-pause)`, `(useq-stop)`, `(useq-rewind)`, `(useq-clear)`, `(useq-get-transport-state)`. Anything else is hardware-only or WASM-only and must not be silently sent to the wrong runtime. (see `src/contracts/useqRuntimeContract.ts`, `src/runtime/runtimeTransportService.ts`)
 

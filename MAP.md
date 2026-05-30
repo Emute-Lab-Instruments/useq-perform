@@ -74,12 +74,14 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `workers/wasmRuntime.worker.ts` + `workers/wasmRuntimeWorkerProtocol.ts` — classic Web Worker hosting the WASM interpreter and the discriminated-union request/response protocol it speaks.
   - `runtimeDiagnostics.ts` — startup/environment diagnostics surface.
   - `startupContext.ts` — URL flag parsing and bootstrap context (incorporates the former `urlParams.ts`).
+  - `applyKeymapFromUrl.ts` — decodes the `?keymap=<base64>` URL profile at boot and merges it into `settings.keybindings` ([docs/specs/url-params.md §2.3](docs/specs/url-params.md), [docs/specs/keybindings.md §1.13](docs/specs/keybindings.md)).
   - `configManager.ts` + `default-config.json` — internal dev tooling for config import/export (paired with `scripts/config-server.mjs`).
   - `jsonProtocol.ts` — lightweight in-runtime helpers (distinct from `transport/json-protocol.ts`).
 - `src/effects/` — composable side-effect modules. Framework-agnostic where possible.
   - `transportOrchestrator.ts`, `transportClock.ts` — XState-driven transport state and clock policy.
   - `localClock.ts` — rAF-driven internal clock when no hardware.
   - `editor.ts`, `editorEvaluation.ts` — editor-side eval orchestration (eslint exception: imports editors).
+  - `noneModeGate.ts` — `none`-mode eval gate (rejects eval with the §1.10 "no runtime available" warning) ([docs/specs/runtime-modes.md §1.10](docs/specs/runtime-modes.md)).
   - `visualisationSampler.ts` — WASM sampling with projection-fork architecture. Past buffer (`PastBuffer` rolling window, one sample/frame) + future buffer (batch-refilled on invalidation via save/restore, extended one sample/frame). Expression lifecycle (register/unregister/refresh), `tickAndProject()` entry point, `getRenderData()` for renderer consumption.
   - `adaptiveQuality.ts` — adaptive quality control for projection: skip thresholds, budget-aware future-edge push.
   - `hardwareBindingDispatcher.ts` — dispatches bound expressions on hardware button events. Subscribes to `hwInput` channel, scans editor doc for `(on-press|on-release|on-button|on-toggle)` forms, evals via WASM + hardware with per-binding FIFO queue and hold-tick coalescing ([docs/specs/hardware-bindings.md §4](docs/specs/hardware-bindings.md)). Editor-layer chip sync is injected via `DispatcherConfig` to respect import boundaries.
@@ -91,6 +93,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `calibrationSequencer.ts` — CV 1V/oct calibration session state machine (wire-protocol-driven; manages begin/adjust/save-point/end lifecycle per [docs/specs/calibration.md](docs/specs/calibration.md)).
   - `driftDetector.ts` — per-output EMA drift scoring comparing hardware stream values against WASM tick values. Publishes `driftDetected` channel when aggregate exceeds threshold ([docs/specs/state-sync.md](docs/specs/state-sync.md)).
   - `stateSyncOrchestrator.ts` — subscribes to `driftDetected`, requests hardware state snapshot, applies to WASM. Manages cooldown, in-flight state, console feedback ([docs/specs/state-sync.md](docs/specs/state-sync.md)).
+  - `hardwareConnectPrompt.ts` — on a `wasm` → `both` transition (fresh hardware connect), prompts "send current program to device?" and sends the editor program on confirm ([docs/specs/runtime-modes.md §1.7](docs/specs/runtime-modes.md)).
   - `mockControlInputs.ts`, `perfBenchmark.ts` (DEV-only — `window.__useqBench.run(channelCount)` exercises the vis pipeline at scale).
 - `src/editors/` — CodeMirror layer. Imports lib/contracts/effects/transport.
   - `extensions.ts` — extension barrel.

@@ -219,14 +219,29 @@ export function buildDefaultStreamConfig(
 ): JsonStreamConfigRequest {
   const channels: StreamChannelConfig[] = [];
 
-  // Subscribe to input channels only (ain1, ain2) — these send on-change.
+  // Subscribe to input channels (ain1, ain2) — these send on-change.
   // Time is always streamed by firmware at the configured rate.
-  // Output channels (s1-s8) are not subscribed by default.
   for (const input of ioConfig?.inputs ?? []) {
     channels.push({
       id: input.index,
       name: input.name,
       direction: "input",
+      enabled: true,
+      maxRateHz,
+    });
+  }
+
+  // Subscribe to serial output channels (s1-s8) so the firmware streams the
+  // hardware-authoritative output values. The drift detector (state-sync.md
+  // §1.2) compares these against the WASM tick; without an output stream the
+  // serial output buffers never fill and every drift sample is dropped. The
+  // `time` output is excluded here — firmware streams it unconditionally.
+  for (const output of ioConfig?.outputs ?? []) {
+    if (output.name === SERIAL_OUTPUT_TIME_NAME) continue;
+    channels.push({
+      id: output.index,
+      name: output.name,
+      direction: "output",
       enabled: true,
       maxRateHz,
     });

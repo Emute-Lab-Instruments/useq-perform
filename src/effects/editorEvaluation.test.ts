@@ -5,6 +5,8 @@ import { linter } from "@codemirror/lint";
 import { diagnosticField, pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
 import { findHolePositions } from "../lib/holeDetection.ts";
+import { evalRejectionForNoRuntime, NO_RUNTIME_WARNING } from "./noneModeGate.ts";
+import { updateRuntimeSessionState } from "../runtime/runtimeSessionStore.ts";
 
 function createView(doc: string): EditorView {
   return new EditorView({
@@ -187,5 +189,57 @@ describe("findHolePositions", () => {
     const positions = findHolePositions(code);
     expect(positions).toHaveLength(1);
     expect(positions[0]).toBe(17);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// none-mode eval gating (runtime-modes.md §1.10)
+// ---------------------------------------------------------------------------
+
+describe("none-mode eval gating", () => {
+  afterEach(() => {
+    // Restore the default browser-local (wasm) session for other tests.
+    updateRuntimeSessionState({
+      hasHardwareConnection: false,
+      noModuleMode: false,
+      wasmEnabled: true,
+      connected: false,
+    });
+  });
+
+  it("rejects eval with the §1.10 warning in none mode", () => {
+    // No hardware + WASM disabled + no-module off ⇒ transportMode "none".
+    updateRuntimeSessionState({
+      hasHardwareConnection: false,
+      noModuleMode: false,
+      wasmEnabled: false,
+      connected: false,
+    });
+
+    const warning = evalRejectionForNoRuntime();
+    expect(warning).toBe(NO_RUNTIME_WARNING);
+    expect(warning).toContain("no runtime available");
+  });
+
+  it("does not gate eval when WASM is available (wasm mode)", () => {
+    updateRuntimeSessionState({
+      hasHardwareConnection: false,
+      noModuleMode: false,
+      wasmEnabled: true,
+      connected: false,
+    });
+
+    expect(evalRejectionForNoRuntime()).toBeNull();
+  });
+
+  it("does not gate eval when hardware is connected", () => {
+    updateRuntimeSessionState({
+      hasHardwareConnection: true,
+      noModuleMode: false,
+      wasmEnabled: false,
+      connected: true,
+    });
+
+    expect(evalRejectionForNoRuntime()).toBeNull();
   });
 });

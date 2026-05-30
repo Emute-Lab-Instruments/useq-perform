@@ -11,7 +11,7 @@
  * `_symbol` bindings even when the source build script intends to
  * export them.
  *
- * @see docs/RUNTIME_CONTRACT.md — "WASM ABI Contract" section
+ * @see docs/specs/runtime-contract.md — "WASM ABI Contract" section
  * @see src-useq/scripts/build_wasm.sh — EXPORTED_FUNCTIONS list
  * @see src-useq/wasm/wasm_wrapper.cpp — C extern definitions
  */
@@ -348,7 +348,7 @@ export function assertWasmAbi(module: EmscriptenModuleShape): WasmAbiValidation 
     throw new Error(
       `WASM ABI validation failed — missing required exports: ${result.missingRequired.join(", ")}. ` +
         `The WASM bundle does not match the editor's expected ABI. ` +
-        `See src/contracts/wasmAbi.ts and docs/RUNTIME_CONTRACT.md.`
+        `See src/contracts/wasmAbi.ts and docs/specs/runtime-contract.md.`
     );
   }
   return result;

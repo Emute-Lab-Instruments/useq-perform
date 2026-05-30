@@ -42,7 +42,7 @@
  *   re-shaping callers.
  *
  * @see docs/PROTOCOL.md
- * @see docs/RUNTIME_CONTRACT.md
+ * @see docs/specs/runtime-contract.md
  * @see src/transport/json-protocol.ts (the bytes-over-Web-Serial sibling)
  */
 
