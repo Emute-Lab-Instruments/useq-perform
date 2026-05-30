@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   getDiagnosticsSnapshot,
-  getRuntimeDiagnostics,
-  publishRuntimeDiagnostics,
   reportBootstrapFailure,
   resetRuntimeDiagnostics,
   seedBootstrapDiagnostics,
@@ -115,11 +113,12 @@ describe("runtimeDiagnostics (derived)", () => {
       protocolMode: "json",
     });
 
-    // Use the compat shim (as bootstrap.ts does)
-    const snapshot = publishRuntimeDiagnostics({
+    // Bootstrap-only fields are seeded; the rest is derived on publish.
+    seedBootstrapDiagnostics({
       startupMode: "hardware",
       settingsSources: ["defaults", "local-storage"],
     });
+    const snapshot = publishDiagnosticsSnapshot();
 
     expect(snapshot.protocolMode).toBe("json");
     expect(events).toHaveLength(1);
@@ -150,10 +149,6 @@ describe("runtimeDiagnostics (derived)", () => {
     expect(getDiagnosticsSnapshot().bootstrapFailures).toContainEqual(failure);
 
     unsub();
-  });
-
-  it("getRuntimeDiagnostics is an alias for getDiagnosticsSnapshot", () => {
-    expect(getRuntimeDiagnostics).toBe(getDiagnosticsSnapshot);
   });
 
   it("seedBootstrapDiagnostics sets startup mode and settings sources", () => {

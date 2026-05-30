@@ -1,11 +1,14 @@
 /**
- * Barrel re-export for settings modules.
+ * Sanctioned public barrel for the settings layer.
  *
- * All existing importers can continue to use `../lib/appSettings.ts`.
- * New code should prefer importing from the specific sub-module:
- *   - `../lib/settings/schema.ts`       — types, defaults, constants
- *   - `../lib/settings/normalization.ts` — normalize, merge, config documents
- *   - `../lib/settings/persistence.ts`   — read/write/clear persisted settings
+ * This is the canonical import surface for settings across the app (~30
+ * importers). It aggregates the internal split:
+ *   - `./settings/schema.ts`        — types, defaults, constants
+ *   - `./settings/normalization.ts` — normalize, merge, config documents
+ *   - `./settings/persistence.ts`   — read/write/clear persisted settings
+ *
+ * Import from here, not from the sub-modules — the split is an internal
+ * organisation detail, not a public API.
  */
 
 // Schema: types, defaults, constants

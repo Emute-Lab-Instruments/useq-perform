@@ -27,9 +27,6 @@ export function shouldUseLocalClock(): boolean {
   return !s.session.hasHardwareConnection && s.session.wasmEnabled;
 }
 
-// Backward-compatible alias
-export { shouldUseLocalClock as shouldUseMockTime };
-
 /**
  * Apply clock policy for a transport state transition.
  * Call this every time the transport machine changes state.
@@ -53,9 +50,6 @@ export function applyClockPolicy(
     resetLocalClock();
   }
 }
-
-// Backward-compatible alias
-export { applyClockPolicy as applyMockTimePolicy };
 
 // ── Runtime-connection listener ─────────────────────────────────
 

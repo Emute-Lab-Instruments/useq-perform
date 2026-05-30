@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
 import {
-  publishRuntimeDiagnostics,
+  publishDiagnosticsSnapshot,
   type RuntimeProtocolMode,
 } from "./runtimeDiagnostics";
 import type { WasmRuntimePort } from "../contracts/runtimePorts";
@@ -58,12 +58,14 @@ export function resolveRuntimeTransportMode(): TransportMode {
 
 /**
  * Called by transport producers to publish a diagnostics-only update
- * (e.g. protocol mode changed without a full connection change).
+ * (e.g. protocol mode changed without a full connection change). The published
+ * snapshot derives protocolMode from canonical session state; the argument is
+ * the change trigger and is not itself published.
  */
 export function reportProtocolModeChanged(
-  protocolMode: RuntimeProtocolMode
+  _protocolMode: RuntimeProtocolMode
 ): void {
-  publishRuntimeDiagnostics({ protocolMode });
+  publishDiagnosticsSnapshot();
 }
 
 export function sendRuntimeTransportCommand(command: SharedTransportCommand) {

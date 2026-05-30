@@ -1,12 +1,12 @@
 import { expect } from 'chai';
 import "./setup.mjs";
-import { 
-    startMockTimeGenerator, 
-    stopMockTimeGenerator, 
-    resumeMockTimeGenerator, 
-    resetMockTimeGenerator,
-    getCurrentMockTime,
-    isMockTimeGeneratorRunning 
+import {
+    startLocalClock as startMockTimeGenerator,
+    stopLocalClock as stopMockTimeGenerator,
+    resumeLocalClock as resumeMockTimeGenerator,
+    resetLocalClock as resetMockTimeGenerator,
+    getLocalClockTime as getCurrentMockTime,
+    isLocalClockRunning as isMockTimeGeneratorRunning
 } from '../src/effects/localClock.ts';
 
 // Mock window and performance (if not handled by setup.mjs)

@@ -7,7 +7,7 @@
  *
  * Design invariants:
  *   1. `resolveBootstrapPlan` is called at most once per session.
- *   2. `publishRuntimeDiagnostics` is called at most once per session.
+ *   2. `publishDiagnosticsSnapshot` is called at most once per session.
  *   3. The plan is threaded *into* `createApp` – the app never
  *      recomputes it.
  */
@@ -29,7 +29,8 @@ import { menuState, dispatchMenuInput } from '../lib/menu/store.ts';
 import { getCachedManifest } from '../lib/menu/manifest.ts';
 import { mountModifierHints } from '../ui/adapters/modifier-hints.tsx';
 import {
-  publishRuntimeDiagnostics,
+  seedBootstrapDiagnostics,
+  publishDiagnosticsSnapshot,
   reportBootstrapFailure,
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
@@ -285,7 +286,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
   });
 
   // ── Step 4: seed runtime session ───────────────────────────────
-  const runtimeState = bootstrapRuntimeSession(
+  bootstrapRuntimeSession(
     {
       hasHardwareConnection: false,
       noModuleMode: startupFlags.noModuleMode,
@@ -295,21 +296,16 @@ export async function bootstrap(): Promise<BootstrapResult> {
   );
 
   // ── Step 5: publish diagnostics (single call site) ─────────────
-  publishRuntimeDiagnostics({
+  // Seed the bootstrap-only fields (startupMode, settingsSources); the rest of
+  // the snapshot (activeEnvironment, protocolMode, runtimeSession) is derived
+  // from canonical state by publishDiagnosticsSnapshot().
+  seedBootstrapDiagnostics({
     startupMode: environmentState.areInBrowser
       ? bootstrapPlan.startupMode
       : 'browser-local',
     settingsSources: [...settingsSources],
-    activeEnvironment: {
-      areInBrowser: environmentState.areInBrowser,
-      areInDesktopApp: environmentState.areInDesktopApp,
-      isWebSerialAvailable: environmentState.isWebSerialAvailable,
-      isInDevmode: environmentState.isInDevmode,
-      urlParams: environmentState.urlParams,
-    },
-    protocolMode: runtimeState.protocolMode,
-    runtimeSession: runtimeState.session,
   });
+  publishDiagnosticsSnapshot();
 
   // ── Step 6: mount UI + start app ───────────────────────────────
   const appUI = await createAppUI(environmentState);

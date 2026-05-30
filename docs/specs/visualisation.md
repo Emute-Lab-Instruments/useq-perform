@@ -13,9 +13,8 @@ layer: behavioural
 - `src/effects/visualisationRuntime.ts` — rAF loop, past/future buffer management, projection fork lifecycle
 - `src/effects/visualisationSampler.ts` — per-frame sampling loop, tick-and-project dispatch, render-data assembly
 - `src/effects/adaptiveQuality.ts` — pressure detection, adaptive quality levers (§1.7.1)
-- `src/ui/visualisation/serialVisGL.ts` — WebGL rendering surface, lane layout, past/future segment drawing
+- `src/ui/visualisation/serialVisGL.ts` — WebGL rendering surface, lane layout, past/future segment drawing, plus a 2D overlay for axes, labels, and empty-state text; owns canvas mount/resize geometry (`activateGLCanvas`/`ensureGLCanvasGeometry`)
 - `src/ui/visualisation/webglLineRenderer.ts` — low-level WebGL line rasteriser
-- `src/ui/SerialVis.tsx` — vis panel Solid component (mount, resize, empty state)
 - `src/ui/VisLegend.tsx` — vis legend UI component
 - `src/utils/visualisationStore.ts` — reactive store (PastBuffer, rolling buffers, settings-derived state)
 - `src/contracts/visualisationChannels.ts` — typed pub/sub channels for vis events
@@ -38,7 +37,7 @@ layer: behavioural
 
 1.5.1 **Per-variant channel selection.** When the buffer holds multiple variants for the same output (`(a1 …)` written more than once), a **per-output toggle** picks which variant is sampled and rendered for that lane — at most one variant per output is active for vis at any time. Eval implicitly toggles the just-evaluated form's vis on; explicit user toggle (gutter play button or `vis.toggleAtHalo` action) overrides. Soft eval does not toggle. Toggling on a variant that is not the currently-running one triggers implicit soft-sampling of that variant in WASM, independent of what the module is producing. Full contract: [expression-gutter.md §3](expression-gutter.md).
 
-1.6 **Empty state.** When no expressions are assigned and no probes exist, the panel shows a placeholder ("No expressions selected") and consumes near-zero CPU. (see `src/ui/SerialVis.tsx`)
+1.6 **Empty state.** When no expressions are assigned and no probes exist, the panel shows a placeholder ("No expressions selected") and consumes near-zero CPU. The placeholder is drawn by the renderer's 2D overlay. (see `src/ui/visualisation/serialVisGL.ts`)
 
 1.7 **Render frequency** is animation-frame paced. The renderer no-ops when the panel is not visible. Rendering must remain smooth (≥ 30 FPS) at the documented channel target — see [MAIN.md §3.3](MAIN.md).
 

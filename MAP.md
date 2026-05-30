@@ -33,7 +33,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `editorStore.ts`, `editorDefaults.ts`, `editorCompartments.ts` — CodeMirror facade and config.
   - `typedChannel.ts` — pub/sub primitive used by everything in `contracts/`.
   - `persistence.ts` — central localStorage service (typed keys, nosave, error recovery).
-  - `appSettings.ts` — thin re-export shim over `settings/` modules.
+  - `appSettings.ts` — sanctioned public barrel over `settings/` modules; canonical settings import surface (~30 importers). The `settings/` split is internal — import from here, not the sub-modules.
   - `gamepad/` — **three-stage gamepad pipeline** (spec: `docs/specs/gamepad.md`). `gamepadManager.ts` (hardware polling, snapshot normalisation, GamepadManager class), `types.ts` (full type vocabulary including Layer, Resolution, DualBinding), `gestures.ts` (smart constructors + keyOf), `recognizer.ts` (Stage 2: pure gesture recognition), `resolver.ts` (Stage 3: layer-stack resolution), `dispatcher.ts` (eager-with-undo action dispatch), `hardware.ts` (Stage 1: snapshot diffing to LogicalEvent[]), `grabState.ts` (grab-mode state: active flag, move counter, doc/cursor snapshot for cancel-undo), `index.ts` (full pipeline wiring). Paradigms: `paradigms/{radial,modal-shift,leader,hydra,chord-heavy}.ts` (`radial.ts` is the transient radial-menu layer activated when the menu is open; replaces the legacy picker layer; `modal-shift.ts` includes the `grab-mode` layer).
   - `menu/` — **radial menu system** (spec: `docs/specs/radial-menu.md`). Gamepad-driven double-ring command surface for noun insertion. `state.ts` (state machine: closed→open→committed→auto-chain, ring navigation, segment focus), `dispatcher.ts` (wires gamepad input to state machine, applies verb mutations to document, auto-chain logic), `verbs.ts` (face-button verbs: wrap/replace/insertBefore/insertAfter/splice), `manifest.ts` + `manifest.json` (ring segment content definitions per language category), `templates.ts` (template expansion from ring selections), `chain.ts` (auto-chain: reopen the menu at the next structural position after a commit), `store.ts` (reactive Solid store bridge to state), `types.ts` (full type vocabulary: Ring, Segment, Verb, ChainTarget, MenuState), `previewCache.ts` (preview text cache for ring segments). Heavily tested (`state.test.ts`, `dispatcher.test.ts`, `dispatcher.e2e.test.ts`, `verbs.test.ts`, `chain.test.ts`, `manifest.test.ts`, `templates.test.ts`, `state.property.test.ts`, performance tests).
   - `mainMenu/` — main menu state store (`store.ts`: open/closed, focus index, submenu stack). See [docs/specs/main-menu.md](docs/specs/main-menu.md).
@@ -65,7 +65,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts` — split runtime concerns. Both transport- and session-services now talk to runtime ports rather than `transport/` or `wasmInterpreter` directly.
   - `runtimeSession.ts`, `runtimeSessionStore.ts` — hardware-vs-WASM precedence, plain-JS listener store.
   - `appSettingsRepository.ts` — canonical settings store (non-reactive). Mirrored into `settingsStore` via `settingsChanged` channel.
-  - `wasmInterpreter.ts` — WASM module load, ABI validation, eval/sample bindings, diagnostics readback. Wrapped by `wasmRuntimePort.ts` for callers.
+  - `wasmInterpreter.ts` — WASM module load, ABI validation, eval/sample bindings; binds optional export fns (diagnostics, live-edit, state-snapshot) onto the `__useqWasmRuntime` global. Wrapped by `wasmRuntimePort.ts` for callers; the port reads diagnostics back from that global (`readLastDiagnosticsSync` / `readActiveDiagnosticsSync`).
   - `wasmRuntimePort.ts` — adapter over `wasmInterpreter.ts` implementing the `WasmRuntimePort` contract. Surface is structured-cloneable / async / one-shot so it can become a worker postMessage boundary without re-shaping callers. Protocol-shaped operations (eval, transport commands) flow through `wasmJsonTransport.ts`; sampling-shaped operations stay direct.
   - `wasmJsonTransport.ts` — in-memory virtual transport that lets the WASM port speak the same `hello` / `stream-config` / `eval` / `ping` JSON protocol as hardware. Mirrors `transport/json-protocol.ts` at the message-shape level (no byte framing).
   - `wasmJsonHandlers.ts` — pure WASM-side request handlers for the JSON protocol. Dispatches `hello` / `ping` / `stream-config` / `eval` against an injected `WasmJsonBackend`.
@@ -106,7 +106,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `keymaps.ts`, `editorKeyboard.ts`, `gamepadNavigation.ts`, `themes.ts`.
 - `src/ui/` — Solid components. Leaf layer; can import from anywhere.
   - `MainToolbar.tsx`, `TransportToolbar.tsx` — top-level toolbars (props-based, with Wired wrappers in `adapters/`).
-  - `Modal.tsx`, `ProgressBar.tsx`, `Tabs.tsx`, `OnboardingBanner.tsx`, `SerialVis.tsx`, `VisLegend.tsx`, `InternalVis.tsx`.
+  - `Modal.tsx`, `ProgressBar.tsx`, `Tabs.tsx`, `OnboardingBanner.tsx`, `VisLegend.tsx`. (`InternalVis.tsx` is a legacy Canvas2D renderer not on the live path — the WebGL `serialVisGL.ts` is — and is a dead-code candidate.)
   - `menu/` — `RadialMenu.tsx` (double-ring radial menu rendering, segment layout, verb indicators), `CenterPanel.tsx` (centre status/preview display), `menu.css` (ring and segment styling).
   - `mainMenu/` — `MainMenu.tsx` (vertical list main menu overlay), `menuItems.ts` (static menu item definitions), `mainMenu.css`. Adapter: `adapters/mainMenu.tsx`.
   - `overlayManager.ts`.
@@ -137,7 +137,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `settingsStore.ts` — reactive mirror of `appSettingsRepository`.
   - `visualisationStore.ts`, `consoleStore.ts`, `referenceStore.ts`, `snippetStore.ts`, `outputHealthStore.ts`.
   - `geometry.ts`, `sanitize.ts`.
-- `src/machines/` — XState machines. `transport.machine.ts` (transport state) + `test.machine.ts` (test/example machine).
+- `src/machines/` — XState machines. `transport.machine.ts` (transport state).
 - `src/types/` — ambient declarations (`web-serial.d.ts`, `clojure-mode.d.ts`).
 - `src/build/` — build-time tests (`single-bundler.test.ts`).
 
@@ -203,7 +203,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - `?nosave` URL param fully bypasses persistence; useful in tests.
 - Dev mode (`npm run dev`) injects `data-component` attrs; production builds strip them.
 - `src/runtime/jsonProtocol.ts` and `src/transport/json-protocol.ts` are different files — the transport one is the wire driver, the runtime one is in-runtime helpers.
-- `src/lib/appSettings.ts` is now a thin re-export; the real schema/normalisation/persistence live under `src/lib/settings/`.
+- `src/lib/appSettings.ts` is the sanctioned settings barrel; schema/normalisation/persistence live under `src/lib/settings/` (internal split — import via the barrel).
 - `scripts/documentation/` is archival (pre-current pipelines); ignored by ESLint and not part of the live build.
 - bd uses a Dolt-backed backend in this repo; sync via `bd dolt push`/`bd dolt pull`, not `bd sync`.
 

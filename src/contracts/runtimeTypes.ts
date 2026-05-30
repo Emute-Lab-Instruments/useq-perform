@@ -37,8 +37,10 @@ export interface UseqDiagnostic {
 }
 
 /**
- * @deprecated Use {@link UseqDiagnostic} instead. This alias exists only for
- * migration convenience and will be removed in a future release.
+ * Sanctioned alias for {@link UseqDiagnostic}. Used across the live
+ * runtime/worker port path (runtimePorts, worker protocol, transport service).
+ * Both names refer to the same diagnostic shape; prefer `UseqDiagnostic` in
+ * new interpreter-facing code and `RuntimeDiagnostic` in runtime/port code.
  */
 export type RuntimeDiagnostic = UseqDiagnostic;
 

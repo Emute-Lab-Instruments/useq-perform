@@ -342,13 +342,6 @@ export function retryHelloOnReady(): void {
     });
 }
 
-/**
- * @deprecated Use sendHelloWithRetry() — kept for any external callers.
- */
-export async function maybeNegotiateJsonProtocol(): Promise<void> {
-  await sendHelloWithRetry();
-}
-
 async function sendDefaultStreamConfig(ioConfig: IoConfig): Promise<void> {
   if (!ioConfig) return;
 

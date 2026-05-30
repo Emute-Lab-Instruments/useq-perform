@@ -4,7 +4,7 @@ import {
 import type { ConnectionChangedDetail } from "../contracts/runtimeChannels";
 import type { AppSettings } from "../lib/appSettings";
 import {
-  publishRuntimeDiagnostics,
+  publishDiagnosticsSnapshot,
   type RuntimeProtocolMode,
 } from "./runtimeDiagnostics";
 import { webSerialHostPort } from "../transport/webSerialHostPort.ts";
@@ -79,10 +79,9 @@ function applySessionUpdate(
   const state = updateRuntimeSessionState(updates);
 
   if (options?.publishDiagnostics) {
-    publishRuntimeDiagnostics({
-      protocolMode: state.protocolMode,
-      runtimeSession: state.session,
-    });
+    // protocolMode and runtimeSession are derived from canonical state by
+    // publishDiagnosticsSnapshot(); state is already updated above.
+    publishDiagnosticsSnapshot();
   }
 
   if (options?.dispatchConnectionChanged) {
