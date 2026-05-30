@@ -4,7 +4,8 @@ const examineEnvironment = vi.fn();
 const startApp = vi.fn();
 const createApp = vi.fn(() => ({ start: startApp }));
 const loadConfigurationWithMetadata = vi.fn();
-const publishRuntimeDiagnostics = vi.fn();
+const seedBootstrapDiagnostics = vi.fn();
+const publishDiagnosticsSnapshot = vi.fn();
 const reportBootstrapFailure = vi.fn();
 const replaceSettings = vi.fn();
 const getSettings = vi.fn(() => ({
@@ -71,7 +72,8 @@ vi.mock("./runtime/appLifecycle.ts", () => ({
 }));
 
 vi.mock("./runtime/runtimeDiagnostics.ts", () => ({
-  publishRuntimeDiagnostics,
+  seedBootstrapDiagnostics,
+  publishDiagnosticsSnapshot,
   reportBootstrapFailure,
 }));
 
@@ -217,16 +219,13 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
       },
       { connected: false }
     );
-    expect(publishRuntimeDiagnostics).toHaveBeenCalledWith(
+    expect(seedBootstrapDiagnostics).toHaveBeenCalledWith(
       expect.objectContaining({
         settingsSources: ["defaults", "local-storage"],
-        activeEnvironment: expect.objectContaining({
-          areInBrowser: true,
-          isWebSerialAvailable: true,
-        }),
         startupMode: "browser-local",
       })
     );
+    expect(publishDiagnosticsSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces configuration bootstrap failures and still starts with examined environment", async () => {

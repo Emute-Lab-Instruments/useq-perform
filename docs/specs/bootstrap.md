@@ -16,7 +16,7 @@ layer: behavioural
 - `src/runtime/configManager.ts` — config loading and settings hydration
 - `src/runtime/appSettingsRepository.ts` — persisted settings load/save
 - `src/runtime/runtimeService.ts` — runtime session announcements post-bootstrap
-- `src/runtime/runtimeDiagnostics.ts` — `publishRuntimeDiagnostics()`, `reportBootstrapFailure()`
+- `src/runtime/runtimeDiagnostics.ts` — `seedBootstrapDiagnostics()` + `publishDiagnosticsSnapshot()`, `reportBootstrapFailure()`
 - `src/runtime/wasmInterpreter.ts` — WASM module preload and instantiation
 
 1.1 The shipped product is a single Vite bundle. Loading the app runs `bootstrap()` in a deterministic order: load persisted settings → eagerly start WASM load (§1.5) → parse URL params + detect environment → seed runtime session → mount UI → wire transport → start app lifecycle. (see `src/runtime/bootstrap.ts`, `src/main.ts`) Settings load and WASM preload run before URL parsing: the config loader reads the small set of boot-relevant URL params (`?nosave`, `?config`) directly when hydrating settings, and the WASM preload is deliberately kicked off as early as possible so the first eval does not pay the full cold-start.

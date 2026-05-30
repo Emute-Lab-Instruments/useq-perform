@@ -671,9 +671,12 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   };
   const batchEvaluator = createBatchEvaluator(module, evaluateOutputAtTime);
 
-  // Bind diagnostic readers and stash them on the global so the editor
-  // (`readLastDiagnostics` / `readActiveDiagnostics` in wasmRuntimePort.ts)
-  // can pull structured diagnostics for inline editor squiggles.
+  // Bind the raw diagnostic export fns and stash them on the
+  // `__useqWasmRuntime` global. The in-process port (`wasmRuntimePort.ts`,
+  // readLastDiagnosticsSync / readActiveDiagnosticsSync) reads them back from
+  // the global to pull structured diagnostics for inline editor squiggles.
+  // wasmInterpreter.ts intentionally exposes no reader functions of its own;
+  // the global is the sync seam shared by all optional WASM consumers below.
   const lastDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_last_diagnostics) as (() => string) | null;
   const activeDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_active_diagnostics) as (() => string) | null;
 
