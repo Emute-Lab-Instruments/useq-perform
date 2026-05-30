@@ -9,11 +9,11 @@ layer: behavioural
 
 ### Source files
 
-- `src/ui/help/HelpPanel.tsx` — top-level help panel with tab switching
-- `src/ui/help/ModuLispReferenceTab.tsx` — function reference tab (filterable, starred, expandable)
+- `src/ui/help/HelpPanel.tsx` — top-level help panel with tab switching (Guide | Reference | Code Snippets)
+- `src/ui/help/ReferencePanel.tsx` — Reference panel wrapper with Language | Editor inner tabs
+- `src/ui/help/ModuLispReferenceTab.tsx` — function reference tab (filterable, starred, expandable); the Reference > Language inner tab
 - `src/ui/help/CodeSnippetsTab.tsx` — code snippets tab (user-savable fragments)
-- `src/ui/help/KeybindingsTab.tsx` — keybindings guide tab (auto-generated from action registry)
-- `src/ui/help/ReferencePanel.tsx` — reference panel wrapper
+- `src/ui/help/KeybindingsTab.tsx` — keybindings guide (auto-generated from action registry); mounted as the Reference > Editor inner tab
 - `src/ui/help/helpChannels.ts` — help-panel-local typed channels (search, tab switching)
 - `src/ui/help/guide/` — guide system: `GuideTab.tsx`, `GuideSection.tsx`, `Playground.tsx`, `LiveProbe.tsx`, `guideData.ts`, `guideTypes.ts`, `contentBlocks.tsx`, `chapters/`
 - `src/lib/helpContentPreloader.ts` — eager preload of help content
@@ -24,7 +24,7 @@ layer: behavioural
 
 ## 1. Help Panel
 
-1.1 The help panel has **four tabs**: Guide, Reference, Code Snippets, Keybindings (see `src/ui/help/HelpPanel.tsx`).
+1.1 The help panel has **three top-level tabs**: Guide, Reference, Code Snippets (see `src/ui/help/HelpPanel.tsx`). The **Reference** tab has two inner tabs — **Language** (function reference) and **Editor** (keybindings guide) — mirroring the Guide's language/editor domain split (see [user-guide.md](user-guide.md) Resolved Decision 8). There is no standalone Keybindings tab; keybinding content lives under Reference > Editor.
 
 1.2 **Guide** is a chaptered user guide covering language, algebra, modulation, rhythm, and editor (see `src/ui/help/guide/GuideTab.tsx`, `src/ui/help/guide/chapters/`). Chapters are static markdown content with embedded live probes and small playgrounds. Detailed guide structure lives in [user-guide.md](user-guide.md).
 
@@ -34,11 +34,11 @@ layer: behavioural
 
 1.5 Each snippet has `id`, `title`, `code`, `tags`, `createdAt`. Operations: add, update (title/code/tags), delete (also removes from starred), toggle star.
 
-1.5.1 **Snippet live oscilloscope (devmode).** When `visualisation.snippetOscilloscopesEnabled` is on (devmode-only toggle in the Visualisation → Probes settings group), each snippet card renders a small live oscilloscope strip outside the snippet's code editor (so it stays visible while the editor scrolls internally). The strip samples the snippet's first inner expression — the body of any leading `(an|dn|sn|qn …)` output binding is stripped before sampling so the live runtime is not re-bound — via `eval-at-time` over a one-second window around `visStore.currentTime`.
+1.5.1 **Snippet live oscilloscope (devmode).** When `visualisation.snippetOscilloscopesEnabled` is on (devmode-only toggle in the Visualisation → Probes settings group), each snippet card renders a small live oscilloscope strip outside the snippet's code editor (so it stays visible while the editor scrolls internally). The strip samples the snippet's first inner expression — the body of any leading `(an|dn|sn|qn …)` output binding is stripped before sampling so the live runtime is not re-bound — via `eval-at-time` over a one-second window ending at `visStore.currentTime` (i.e. `[currentTime − 1s, currentTime]`, a trailing window).
 
 1.6 **Reference target version.** Reference content is tagged by uSEQ language version; the user may switch the target version via a control. The chosen version persists.
 
-1.7 **Keybindings** is a read-only guide showing current keybinding assignments, organised by category (see `src/ui/help/KeybindingsTab.tsx`). It is a reference/learning surface, not a configuration UI — rebinding is done in the Settings panel's Keybindings tab. The keybindings guide is auto-generated from the action registry and always reflects the current bindings.
+1.7 **Reference > Editor** is a read-only keybindings guide showing current keybinding assignments, organised by category (see `src/ui/help/KeybindingsTab.tsx`, mounted as the Editor inner tab of `src/ui/help/ReferencePanel.tsx`). It is a reference/learning surface, not a configuration UI — rebinding is done in the Settings panel's Keybindings tab. The keybindings guide is auto-generated from the action registry and always reflects the current bindings.
 
 1.8 **Search.** Snippets and reference both expose a single search box that filters by title/code/tags and by name/description/tags respectively (routed via `src/ui/help/helpChannels.ts`). Search is case-insensitive substring; ranking promotes title matches over body matches.
 

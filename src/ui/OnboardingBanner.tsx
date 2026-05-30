@@ -10,43 +10,71 @@ import { createSignal, onMount, onCleanup, Show } from "solid-js";
 import {
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
+  toggleRuntimeConnection,
 } from "../runtime/runtimeService";
 import { load, save, PERSISTENCE_KEYS } from "../lib/persistence";
 
-/** Check whether any connection (hardware or browser-local) is active. */
-function isConnected(state: ReturnType<typeof getRuntimeServiceSnapshot>): boolean {
-  return state.session.connectionMode !== "none";
+type ConnectionMode = ReturnType<
+  typeof getRuntimeServiceSnapshot
+>["session"]["connectionMode"];
+
+function readMode(
+  state: ReturnType<typeof getRuntimeServiceSnapshot>,
+): ConnectionMode {
+  return state.session.connectionMode;
 }
 
 export function OnboardingBanner() {
   const wasDismissed = load<boolean>(PERSISTENCE_KEYS.onboardingDismissed, false);
   const [dismissed, setDismissed] = createSignal(wasDismissed);
-  const [connected, setConnected] = createSignal(
-    isConnected(getRuntimeServiceSnapshot()),
+  const [mode, setMode] = createSignal<ConnectionMode>(
+    readMode(getRuntimeServiceSnapshot()),
   );
 
   onMount(() => {
     const unsubscribe = subscribeRuntimeService((next) => {
-      setConnected(isConnected(next));
+      setMode(readMode(next));
     });
     onCleanup(unsubscribe);
   });
 
-  const visible = () => !dismissed() && !connected();
+  /**
+   * `none` mode means there is no runtime at all (WASM disabled and no
+   * hardware) — the banner is urgent and must explain how to proceed. In any
+   * connected mode (`browser`/`hardware`) the banner stays hidden.
+   */
+  const isUrgent = () => mode() === "none";
+  const visible = () => !dismissed() && isUrgent();
 
   function handleDismiss() {
     setDismissed(true);
     save(PERSISTENCE_KEYS.onboardingDismissed, true);
   }
 
+  function handleConnect() {
+    void toggleRuntimeConnection();
+  }
+
   return (
     <Show when={visible()}>
-      <div class="onboarding-banner" role="status">
+      <div
+        class="onboarding-banner"
+        classList={{ "onboarding-banner--urgent": isUrgent() }}
+        role="status"
+      >
         <span class="onboarding-banner__text">
-          <strong>Welcome to uSEQ!</strong>{" "}
-          Connect your module via USB, or use the built-in virtual interpreter
-          to explore without hardware.
+          <strong>No runtime active.</strong>{" "}
+          Connect your uSEQ module via USB, or enable the built-in virtual
+          interpreter (WASM) in Settings to run code without hardware.
         </span>
+        <button
+          class="onboarding-banner__connect"
+          title="Connect via USB"
+          aria-label="Connect your uSEQ module via USB"
+          onClick={handleConnect}
+        >
+          Connect
+        </button>
         <button
           class="onboarding-banner__dismiss"
           title="Dismiss"
