@@ -180,6 +180,70 @@ export interface HardwareSettings {
 }
 
 /**
+ * Live-edit settings (docs/specs/live-edit.md §10).
+ *
+ * Only a subset of these are currently read by the implementation
+ * (`idAlphabet`/`idLength` by `markAction.ts`); the remainder are declared
+ * here so the documented configuration surface exists and persists. Each
+ * field maps 1:1 to a numbered §10 entry.
+ */
+export interface LiveEditSettings {
+  /** §10.1 — eval strategy used by `liveEdit.commit`. */
+  commitTriggersEval: "immediate" | "quantised";
+  /** §10.2 — URL-safe, low-ambiguity alphabet for generated `:id`s. */
+  idAlphabet: string;
+  /** §10.3 — generated `:id` length. */
+  idLength: number;
+  /** §10.4 — default scalar widget rendering. */
+  scalarWidget: "knob" | "slider";
+  /** §10.5 — time-to-live (hours) for orphaned persisted values. */
+  orphanGcHours: number;
+  /** §10.6 — initial preview-marker state in vector-mark sub-mode. */
+  vectorMarkDefault: "all" | "none";
+  /** §10.7 — idle delay (ms) before auto-eval; 0 disables auto-eval. */
+  idleEvalMs: number;
+  /** §10.8 — master switch for §6.6 idle auto-eval. */
+  autoEvalOnIdle: boolean;
+  /** §10.9 — UI tick rate (Hz) for value batching/sending. */
+  uiTickHz: number;
+  /** §10.10 — default dock position for the live-edit panel. */
+  panelDock: "right" | "bottom" | "left";
+  /** §10.11 — panel ordering strategy. */
+  panelOrder: "document" | "custom";
+  /** §10.13 — default MIDI channel-scope for new bindings. */
+  midiChannelScopeDefault: "specific" | "any";
+  /** §10.14 — focus-popover knob size (px). */
+  knobExpandPx: number;
+  /** §10.15 — Shift-held fine-drag step multiplier. */
+  fineDragRatio: number;
+}
+
+/**
+ * CV 1V/oct calibration settings (docs/specs/calibration.md §9).
+ *
+ * `sliderRangeCents`/`snapZeroToleranceCents`/`fineStepCents`/`coarseStepCents`
+ * are read by `CalibrationSlider`; `carryForwardOffset` gates the sequencer's
+ * carry-forward behaviour. `octaveRange`/`helperTextShown` are declared for the
+ * documented surface (§9.1/§9.6, §8.2).
+ */
+export interface CalibrationSettings {
+  /** §9.1 — octave point range. Reserved; not user-exposed in MVP. */
+  octaveRange: { from: number; to: number };
+  /** §9.2 — ±extent of the adjust slider in cents. */
+  sliderRangeCents: number;
+  /** §9.3 — soft-detent tolerance (cents) for the slider's zero snap. */
+  snapZeroToleranceCents: number;
+  /** §9.4 — step size for Shift+arrow / Shift+scroll. */
+  fineStepCents: number;
+  /** §9.5 — step size for Ctrl+arrow. */
+  coarseStepCents: number;
+  /** §9.6 — whether the slider helper text is shown. */
+  helperTextShown: boolean;
+  /** §9.7 — start the next octave at the previous octave's offset. */
+  carryForwardOffset: boolean;
+}
+
+/**
  * How evaluation results are displayed in the editor.
  *
  * - `"console"`          — results go to the console panel only (legacy default)
@@ -257,13 +321,15 @@ export interface AppSettings {
   structure: StructureSettings;
   format: FormatSettings;
   hardware: HardwareSettings;
+  liveEdit: LiveEditSettings;
+  calibration: CalibrationSettings;
   keybindings?: KeybindingsSettings;
   keymaps?: Record<string, string>;
   [key: string]: unknown;
 }
 
 export type AppSettingsPatch = Partial<
-  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "structure" | "format" | "hardware" | "keybindings">
+  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "structure" | "format" | "hardware" | "liveEdit" | "calibration" | "keybindings">
 > & {
   editor?: Partial<EditorSettings>;
   storage?: Partial<StorageSettings>;
@@ -276,6 +342,8 @@ export type AppSettingsPatch = Partial<
   structure?: Partial<StructureSettings>;
   format?: Partial<FormatSettings>;
   hardware?: Partial<HardwareSettings>;
+  liveEdit?: Partial<LiveEditSettings>;
+  calibration?: Partial<CalibrationSettings>;
   keybindings?: Partial<KeybindingsSettings>;
   keymaps?: Record<string, string>;
 };
@@ -434,6 +502,31 @@ export const defaultUserSettings: AppSettings = {
     bindingQueueDepth: 4,
     holdTickHz: 30,
   },
+  liveEdit: {
+    commitTriggersEval: "immediate",
+    idAlphabet: "abcdefghjkmnpqrstuvwxyz23456789",
+    idLength: 4,
+    scalarWidget: "knob",
+    orphanGcHours: 24,
+    vectorMarkDefault: "all",
+    idleEvalMs: 1500,
+    autoEvalOnIdle: true,
+    uiTickHz: 60,
+    panelDock: "right",
+    panelOrder: "document",
+    midiChannelScopeDefault: "specific",
+    knobExpandPx: 112,
+    fineDragRatio: 0.1,
+  },
+  calibration: {
+    octaveRange: { from: 0, to: 4 },
+    sliderRangeCents: 50,
+    snapZeroToleranceCents: 0.3,
+    fineStepCents: 0.1,
+    coarseStepCents: 10,
+    helperTextShown: true,
+    carryForwardOffset: true,
+  },
   keybindings: {
     profile: "default",
     layout: "qwerty-us",
@@ -457,6 +550,11 @@ export function createDefaultUserSettings(): AppSettings {
     structure: { ...defaultUserSettings.structure },
     format: { ...defaultUserSettings.format },
     hardware: { ...defaultUserSettings.hardware },
+    liveEdit: { ...defaultUserSettings.liveEdit },
+    calibration: {
+      ...defaultUserSettings.calibration,
+      octaveRange: { ...defaultUserSettings.calibration.octaveRange },
+    },
     keybindings: defaultUserSettings.keybindings
       ? { ...defaultUserSettings.keybindings }
       : undefined,

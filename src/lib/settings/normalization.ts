@@ -64,6 +64,11 @@ export function normalizeUserSettings(value: unknown): AppSettings {
   const structure = isRecord(raw.structure) ? raw.structure : {};
   const format = isRecord(raw.format) ? raw.format : {};
   const hardware = isRecord(raw.hardware) ? raw.hardware : {};
+  const liveEdit = isRecord(raw.liveEdit) ? raw.liveEdit : {};
+  const calibration = isRecord(raw.calibration) ? raw.calibration : {};
+  const calibrationOctaveRange = isRecord(calibration.octaveRange)
+    ? calibration.octaveRange
+    : {};
   const keybindings = isRecord(raw.keybindings) ? raw.keybindings : undefined;
   const keymaps = isRecord(raw.keymaps) ? raw.keymaps : undefined;
 
@@ -196,6 +201,95 @@ export function normalizeUserSettings(value: unknown): AppSettings {
         defaults.hardware.holdTickHz,
       ),
     },
+    liveEdit: {
+      ...defaults.liveEdit,
+      ...liveEdit,
+      commitTriggersEval:
+        liveEdit.commitTriggersEval === "quantised"
+          ? "quantised"
+          : defaults.liveEdit.commitTriggersEval,
+      idAlphabet:
+        typeof liveEdit.idAlphabet === "string" && liveEdit.idAlphabet.length > 0
+          ? liveEdit.idAlphabet
+          : defaults.liveEdit.idAlphabet,
+      idLength: coerceNumber(liveEdit.idLength, defaults.liveEdit.idLength),
+      scalarWidget:
+        liveEdit.scalarWidget === "slider"
+          ? "slider"
+          : defaults.liveEdit.scalarWidget,
+      orphanGcHours: coerceNumber(
+        liveEdit.orphanGcHours,
+        defaults.liveEdit.orphanGcHours,
+      ),
+      vectorMarkDefault:
+        liveEdit.vectorMarkDefault === "none"
+          ? "none"
+          : defaults.liveEdit.vectorMarkDefault,
+      idleEvalMs: coerceNumber(liveEdit.idleEvalMs, defaults.liveEdit.idleEvalMs),
+      autoEvalOnIdle:
+        liveEdit.autoEvalOnIdle == null
+          ? defaults.liveEdit.autoEvalOnIdle
+          : liveEdit.autoEvalOnIdle !== false,
+      uiTickHz: coerceNumber(liveEdit.uiTickHz, defaults.liveEdit.uiTickHz),
+      panelDock:
+        liveEdit.panelDock === "bottom" || liveEdit.panelDock === "left"
+          ? liveEdit.panelDock
+          : defaults.liveEdit.panelDock,
+      panelOrder:
+        liveEdit.panelOrder === "custom"
+          ? "custom"
+          : defaults.liveEdit.panelOrder,
+      midiChannelScopeDefault:
+        liveEdit.midiChannelScopeDefault === "any"
+          ? "any"
+          : defaults.liveEdit.midiChannelScopeDefault,
+      knobExpandPx: coerceNumber(
+        liveEdit.knobExpandPx,
+        defaults.liveEdit.knobExpandPx,
+      ),
+      fineDragRatio: coerceNumber(
+        liveEdit.fineDragRatio,
+        defaults.liveEdit.fineDragRatio,
+      ),
+    },
+    calibration: {
+      ...defaults.calibration,
+      ...calibration,
+      octaveRange: {
+        from: coerceNumber(
+          calibrationOctaveRange.from,
+          defaults.calibration.octaveRange.from,
+        ),
+        to: coerceNumber(
+          calibrationOctaveRange.to,
+          defaults.calibration.octaveRange.to,
+        ),
+      },
+      sliderRangeCents: coerceNumber(
+        calibration.sliderRangeCents,
+        defaults.calibration.sliderRangeCents,
+      ),
+      snapZeroToleranceCents: coerceNumber(
+        calibration.snapZeroToleranceCents,
+        defaults.calibration.snapZeroToleranceCents,
+      ),
+      fineStepCents: coerceNumber(
+        calibration.fineStepCents,
+        defaults.calibration.fineStepCents,
+      ),
+      coarseStepCents: coerceNumber(
+        calibration.coarseStepCents,
+        defaults.calibration.coarseStepCents,
+      ),
+      helperTextShown:
+        calibration.helperTextShown == null
+          ? defaults.calibration.helperTextShown
+          : calibration.helperTextShown !== false,
+      carryForwardOffset:
+        calibration.carryForwardOffset == null
+          ? defaults.calibration.carryForwardOffset
+          : calibration.carryForwardOffset !== false,
+    },
     keybindings: keybindings
       ? normalizeKeybindingsSettings(keybindings, defaults.keybindings)
       : defaults.keybindings,
@@ -246,6 +340,12 @@ export function mergeUserSettings(
     hardware: isRecord(patch.hardware)
       ? { ...normalizedBase.hardware, ...patch.hardware }
       : normalizedBase.hardware,
+    liveEdit: isRecord(patch.liveEdit)
+      ? { ...normalizedBase.liveEdit, ...patch.liveEdit }
+      : normalizedBase.liveEdit,
+    calibration: isRecord(patch.calibration)
+      ? { ...normalizedBase.calibration, ...patch.calibration }
+      : normalizedBase.calibration,
     keybindings: isRecord(patch.keybindings)
       ? { ...(normalizedBase.keybindings || {}), ...patch.keybindings }
       : normalizedBase.keybindings,
@@ -310,6 +410,11 @@ export function createConfigurationDocument(
       evalResults: { ...normalized.evalResults },
       runtime: { ...normalized.runtime },
       wasm: { ...normalized.wasm },
+      liveEdit: { ...normalized.liveEdit },
+      calibration: {
+        ...normalized.calibration,
+        octaveRange: { ...normalized.calibration.octaveRange },
+      },
       ...(normalized.keybindings ? { keybindings: { ...normalized.keybindings } } : {}),
       ...(normalized.keymaps ? { keymaps: { ...normalized.keymaps } } : {}),
     },
@@ -367,6 +472,14 @@ export function settingsPatchFromConfiguration(
 
   if (isRecord(user.hardware)) {
     patch.hardware = { ...user.hardware };
+  }
+
+  if (isRecord(user.liveEdit)) {
+    patch.liveEdit = { ...user.liveEdit };
+  }
+
+  if (isRecord(user.calibration)) {
+    patch.calibration = { ...user.calibration };
   }
 
   if (isRecord(user.keybindings)) {

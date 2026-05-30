@@ -22,7 +22,8 @@ layer: behavioural
 - `src/editors/extensions/liveEdit/idleEval.ts` — auto-eval after structural changes (§6.6)
 
 **Effects and state:**
-- `src/effects/liveEditStore.ts` — reactive store for live-edit slots, value streaming, reconciliation
+- `src/effects/liveEditStore.ts` — thin reactive store for live-edit slots (slot accessors, `setState`, `replaceAll`, values record)
+- `src/effects/liveEditRuntime.ts` — singleton wiring: value streaming (`setLiveInputs` batching, §4), slot discovery after eval, and §7.3 reconciliation triggers
 - `src/effects/liveEditPersistence.ts` — persistence layer (localStorage, orphan GC, MIDI binding persistence)
 - `src/effects/midiInput.ts` — Web MIDI input device enumeration and message routing
 - `src/effects/midiLearnController.ts` — MIDI learn flow (per-widget and batch learn)
@@ -349,7 +350,7 @@ This matches the Ableton Live / Bitwig default and minimises performance frictio
 
 ---
 
-## 6. Commit and Lifecycle Actions (see `src/effects/liveEditStore.ts`, `src/editors/extensions/liveEdit/widgetStoreBridge.ts`)
+## 6. Commit and Lifecycle Actions (see `src/effects/liveEditRuntime.ts`, `src/editors/extensions/liveEdit/widgetStoreBridge.ts`)
 
 6.1 **`liveEdit.commit`** (single-action bake-in):
 1. Snapshot the current value from the slot.

@@ -36,6 +36,10 @@ export type LifecyclePhase = "press" | "hold" | "release";
  * `error`               — diagnostic message from last fire (if it errored).
  *                         Renders the warning glyph instead of the dot.
  * `disabled`            — master switch off (§6.1) or runtime detached.
+ * `wasmPreview`         — §4.4: the binding was registered by a soft-eval and
+ *                         currently fires only against WASM (not lifted to
+ *                         hardware). Renders a distinct preview tone until a
+ *                         normal eval lifts it.
  */
 export interface BindingChip {
   inputId: HardwareInputId;
@@ -46,6 +50,7 @@ export interface BindingChip {
   lastPhase?: LifecyclePhase;
   error?: string;
   disabled: boolean;
+  wasmPreview?: boolean;
 }
 
 // ── Hardware input events (wire-protocol.md §5.10) ──────────────────────
