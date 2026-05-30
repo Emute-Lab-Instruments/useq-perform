@@ -84,6 +84,12 @@ export const actions = {
     reversible: false,
     icon: "camera",
   },
+  "view.zenMode": {
+    description: "Enter zen mode (structural editing practice)",
+    category: "ui",
+    reversible: false,
+    icon: "target",
+  },
 
   // -- Editor ---------------------------------------------------------------
 

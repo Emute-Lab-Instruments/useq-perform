@@ -370,6 +370,26 @@ export const exercises: Exercise[] = [
     hints: ["Enclose in a vector — square brackets"],
   }),
 
+  exercise("wrap-map-1", {
+    title: "Wrap in map",
+    category: "wrap",
+    start: "(merge «base» extra)",
+    target: "(merge «{base}» extra)",
+    prompt: "ghost",
+    actions: ["edit.wrapMap"],
+    hints: ["Enclose the focused node in a new map — curly braces"],
+  }),
+
+  exercise("wrap-set-1", {
+    title: "Wrap in set",
+    category: "wrap",
+    start: "(conj acc «x»)",
+    target: "(conj acc «#{x}»)",
+    prompt: "ghost",
+    actions: ["edit.wrapSet"],
+    hints: ["Enclose the focused node in a new set — #{ }"],
+  }),
+
   exercise("wrap-list-2", {
     title: "Wrap and call",
     category: "wrap",

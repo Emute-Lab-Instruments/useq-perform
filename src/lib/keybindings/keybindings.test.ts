@@ -262,6 +262,7 @@ describe("Default keyboard binding key snapshot", () => {
         "Mod-Enter",
         "Mod-Shift-Enter",
         "Mod-Shift-p",
+        "Mod-Shift-z",
         "Mod-z",
         "Shift-Mod-z",
       ]

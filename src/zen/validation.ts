@@ -2,7 +2,8 @@ import type { EditorView } from "@codemirror/view";
 import type { Exercise } from "./exercises";
 
 export interface ValidationResult {
-  astMatch: boolean;
+  /** Whitespace-insensitive equality between the editor text and the target. */
+  codeMatch: boolean;
   cursorMatch: boolean;
   complete: boolean;
 }
@@ -12,19 +13,25 @@ export function validateExercise(
   exercise: Exercise,
 ): ValidationResult {
   const currentCode = view.state.doc.toString();
-  const astMatch = normalizeCode(currentCode) === normalizeCode(exercise.targetCode);
+  const codeMatch = normalizeCode(currentCode) === normalizeCode(exercise.targetCode);
 
   // For navigation exercises (code doesn't change), validate cursor position
   // For mutation exercises, cursor check is lenient — just need the code right
   const codeChanges = normalizeCode(exercise.startCode) !== normalizeCode(exercise.targetCode);
   const cursorMatch = codeChanges
-    ? astMatch // if code changed and matches, cursor is "close enough"
+    ? codeMatch // if code changed and matches, cursor is "close enough"
     : checkCursorPosition(view, exercise.targetCursorText);
 
-  const complete = astMatch && cursorMatch;
-  return { astMatch, cursorMatch, complete };
+  const complete = codeMatch && cursorMatch;
+  return { codeMatch, cursorMatch, complete };
 }
 
+// Whitespace-insensitive comparison: collapse runs of whitespace to a single
+// space and trim. This is intentionally a normalised *string* comparison rather
+// than a structural tree-walk — for the current exercise set (whose start/target
+// differ only by structural-editing rearrangements) the two are equivalent, and
+// it avoids coupling zen validation to the structural parser. Tree-aware
+// comparison (ignoring comments, comparing node kinds) is a future refinement.
 function normalizeCode(code: string): string {
   return code.replace(/\s+/g, " ").trim();
 }

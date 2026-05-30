@@ -347,10 +347,45 @@
 
 .zen-editor-active {
   flex: 1;
+  min-width: 0;
 }
 
 .zen-editor-target {
   flex: 1;
+  min-width: 0;
+}
+
+/* Ghost & spotlight are single-column: the user editor fills the row and the
+   target is either overlaid (ghost) or absent (spotlight). */
+.zen-editors-area.zen-prompt-ghost,
+.zen-editors-area.zen-prompt-spotlight {
+  justify-content: center;
+}
+
+.zen-editors-area.zen-prompt-ghost .zen-editor-active,
+.zen-editors-area.zen-prompt-spotlight .zen-editor-active {
+  flex: 0 1 720px;
+  max-width: 720px;
+}
+
+/* Stack: layers the ghost target behind the live editor in ghost mode. */
+.zen-editor-stack {
+  position: relative;
+  width: 100%;
+}
+
+.zen-editor-ghost {
+  position: absolute;
+  inset: 0;
+  opacity: 0.22;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.zen-editor-stack > .zen-editor:not(.zen-editor-ghost) {
+  position: relative;
+  z-index: 1;
+  background: transparent;
 }
 
 .zen-editor-label {

@@ -84,7 +84,7 @@ const ZenExercise: Component = () => {
 
   function setup() {
     const ex = activeExercise();
-    if (!ex || !editorContainer || !targetContainer) return;
+    if (!ex || !editorContainer) return;
 
     teardown();
 
@@ -96,7 +96,17 @@ const ZenExercise: Component = () => {
       handleCompletion();
     });
 
-    targetView = createTargetEditor(targetContainer, ex);
+    // The target editor only exists for prompt modes that render it
+    // (beforeAfter, puzzle, ghost). spotlight has no target container.
+    // Guard on `isConnected` so a stale ref left behind by a previous prompt
+    // mode (Solid callback refs aren't cleared on unmount) is ignored.
+    if (
+      promptMode() !== "spotlight" &&
+      targetContainer &&
+      targetContainer.isConnected
+    ) {
+      targetView = createTargetEditor(targetContainer, ex);
+    }
 
     navHandle = bindZenGamepadNavigation(editorView, actionGate);
     // Forward gamepad-resolved ActionIds (from ZenMode's pipeline) to the
@@ -175,9 +185,22 @@ const ZenExercise: Component = () => {
     }
   });
 
-  const showInstruction = () => state.guidanceMode !== "bare";
+  const promptMode = createMemo(() => activeExercise()?.promptMode ?? "beforeAfter");
+
+  // Puzzle mode deliberately withholds operation hints — the user must figure
+  // out *which* operation to use. We therefore suppress the instruction text,
+  // the hint badges and the progressive hint regardless of guidance mode
+  // (Guided still shows the button sequence so the mode stays usable).
+  const isPuzzle = () => promptMode() === "puzzle";
+  // ghost overlays the target on the editor; spotlight relies on the structural
+  // halo. Neither shows a separate Target column.
+  const showTargetColumn = () => promptMode() === "beforeAfter" || isPuzzle();
+  const showGhostOverlay = () => promptMode() === "ghost";
+
+  const showInstruction = () =>
+    state.guidanceMode !== "bare" && !isPuzzle();
   const showSequence = () => state.guidanceMode === "guided";
-  const showHintsSet = () => state.guidanceMode === "hints";
+  const showHintsSet = () => state.guidanceMode === "hints" && !isPuzzle();
 
   return (
     <div class="zen-exercise">
@@ -264,8 +287,8 @@ const ZenExercise: Component = () => {
         </div>
       </Show>
 
-      {/* Main area: two-column editors */}
-      <div class="zen-editors-area">
+      {/* Main area: editors, laid out per prompt mode */}
+      <div class="zen-editors-area" classList={{ [`zen-prompt-${promptMode()}`]: true }}>
         <div
           class="zen-editor-wrapper zen-editor-active"
           classList={{ "zen-glow": glowing() }}
@@ -276,13 +299,22 @@ const ZenExercise: Component = () => {
             </div>
           </Show>
           <div class="zen-editor-label">Your code</div>
-          <div ref={editorContainer} class="zen-editor" />
+          <div class="zen-editor-stack">
+            {/* Ghost mode: translucent target rendered behind the editor */}
+            <Show when={showGhostOverlay()}>
+              <div ref={(el) => (targetContainer = el)} class="zen-editor zen-editor-ghost" />
+            </Show>
+            <div ref={editorContainer} class="zen-editor" />
+          </div>
         </div>
 
-        <div class="zen-editor-wrapper zen-editor-target">
-          <div class="zen-editor-label">Target</div>
-          <div ref={targetContainer} class="zen-editor zen-editor-readonly" />
-        </div>
+        {/* beforeAfter / puzzle: target shown in its own column */}
+        <Show when={showTargetColumn()}>
+          <div class="zen-editor-wrapper zen-editor-target">
+            <div class="zen-editor-label">{isPuzzle() ? "Reach this" : "Target"}</div>
+            <div ref={(el) => (targetContainer = el)} class="zen-editor zen-editor-readonly" />
+          </div>
+        </Show>
       </div>
 
       {/* Floating guidance mode toggle */}
