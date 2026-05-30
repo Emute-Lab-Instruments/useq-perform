@@ -122,8 +122,8 @@ export function VisualisationSettings(props: VisualisationSettingsProps = {}) {
       <SubGroup label="Probes" level="advanced">
         <FormRow label="Element-cycling highlights">
           <Checkbox
-            checked={s().visualisation?.probeHighlightsEnabled !== false}
-            onChange={(val) => updateVisField("probeHighlightsEnabled", val)}
+            checked={s().visualisation?.fromListHighlights !== false}
+            onChange={(val) => updateVisField("fromListHighlights", val)}
           />
         </FormRow>
         <FormRow label="Probe waveform line width">

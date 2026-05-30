@@ -363,6 +363,118 @@ describe("probe commands", () => {
     view.destroy();
   });
 
+  it("marks a probe stale on restore when the text at its offsets changed (spec §1.5.5/§1.8.3)", async () => {
+    // Persisted probe cached "bar" at 0-3, but the document now reads "baz"
+    // at those offsets. Rebuild succeeds but differs → stale, not silent rebind.
+    mockStorage.setItem(
+      PERSISTENCE_KEYS.editorProbes,
+      JSON.stringify([
+        {
+          id: "stale-probe",
+          from: 0,
+          to: 3,
+          mode: "raw",
+          depth: 0,
+          maxDepth: 0,
+          cachedCode: "bar",
+        },
+      ]),
+    );
+
+    const { probeField } = await loadProbeModule();
+    const view = createView("baz", probeField, { anchor: 0 });
+
+    const snapshot = view.state.field(probeField);
+    expect(snapshot.probes).toHaveLength(1);
+    expect(snapshot.staleIds.has("stale-probe")).toBe(true);
+    // The probe never silently rebinds to "baz".
+    expect(snapshot.probes[0].cachedCode).toBe("bar");
+    // The stale render is surfaced via decorations, not sampling: no render
+    // entry was produced for the stale probe.
+    expect(snapshot.renderById["stale-probe"]).toBeUndefined();
+
+    view.destroy();
+  });
+
+  it("restores cleanly (not stale) when the text at the saved offsets matches cachedCode", async () => {
+    mockStorage.setItem(
+      PERSISTENCE_KEYS.editorProbes,
+      JSON.stringify([
+        {
+          id: "fresh-probe",
+          from: 0,
+          to: 3,
+          mode: "raw",
+          depth: 0,
+          maxDepth: 0,
+          cachedCode: "bar",
+        },
+      ]),
+    );
+
+    const { probeField } = await loadProbeModule();
+    const view = createView("bar", probeField, { anchor: 0 });
+
+    const snapshot = view.state.field(probeField);
+    expect(snapshot.staleIds.has("fresh-probe")).toBe(false);
+
+    view.destroy();
+  });
+
+  it("clears the stale marker once the user edits the document (live-edit rebind, §1.5.3)", async () => {
+    mockStorage.setItem(
+      PERSISTENCE_KEYS.editorProbes,
+      JSON.stringify([
+        {
+          id: "stale-probe",
+          from: 0,
+          to: 3,
+          mode: "raw",
+          depth: 0,
+          maxDepth: 0,
+          cachedCode: "bar",
+        },
+      ]),
+    );
+
+    const { probeField } = await loadProbeModule();
+    const view = createView("baz", probeField, { anchor: 0 });
+    expect(view.state.field(probeField).staleIds.has("stale-probe")).toBe(true);
+
+    // Edit the probed text (replace "baz" with "bar") — a live document edit
+    // resolves the restore-only stale condition.
+    view.dispatch({ changes: { from: 0, to: 3, insert: "bar" } });
+    expect(view.state.doc.toString()).toBe("bar");
+    expect(view.state.field(probeField).staleIds.size).toBe(0);
+
+    view.destroy();
+  });
+
+  it("renders probes visually disabled and stops sampling in hardware-only mode (spec §1.6.3)", async () => {
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      if (code.startsWith("[")) return numericVector(40, 100);
+      return "100";
+    });
+
+    const { updateAppSettings } = await import("../../runtime/appSettingsRepository.ts");
+    updateAppSettings({ wasm: { enabled: false } });
+
+    const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
+    const view = createView("bar", probeExtensions, { anchor: 0 });
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
+
+    await runNextFrame();
+
+    const snapshot = view.state.field(probeField);
+    const probe = snapshot.probes[0];
+    expect(snapshot.renderById[probe.id]?.kind).toBe("disabled");
+    expect(snapshot.renderById[probe.id]?.text).toBe("WASM disabled");
+    // No WASM sampling occurred.
+    expect(evalInUseqWasmSilently).not.toHaveBeenCalled();
+
+    view.destroy();
+  });
+
   it("maps probe ranges through edits and clamps contextual depth when wrappers disappear", async () => {
     const { probeField, toggleCurrentProbe } = await loadProbeModule();
     const source = "(slow 2 bar)";

@@ -89,6 +89,12 @@ export interface ProbeConfig {
   probeSample: (slot: number, startTime: number, endTime: number, count: number) => Promise<Float64Array | null>;
   /** Free a probe slot. */
   probeFree: (slot: number) => Promise<void>;
+  /**
+   * Whether the WASM runtime is available for probe sampling. In
+   * `hardware`-only mode this is `false` and probes render visually disabled
+   * (spec §1.6.3): no sampling, no CPU.
+   */
+  isWasmEnabled: () => boolean;
 }
 
 /** Create a ProbeConfig that delegates to the existing singletons. */
@@ -123,6 +129,10 @@ export function createDefaultProbeConfig(): ProbeConfig {
     probeSet: (slot, code) => getActiveWasmRuntimePort().probeSet(slot, code),
     probeSample: (slot, start, end, count) => getActiveWasmRuntimePort().probeSample(slot, start, end, count),
     probeFree: (slot) => getActiveWasmRuntimePort().probeFree(slot),
+    // Hardware-only mode (spec §1.6.3) is exactly "WASM disabled". The session
+    // `wasmEnabled` input derives from this same setting; read it directly so
+    // the probe extension doesn't pull in the heavy runtime-session graph.
+    isWasmEnabled: () => getAppSettings().wasm?.enabled !== false,
   };
 }
 
@@ -208,7 +218,7 @@ let lastAccentColorRead = 0;
 // Follow-up options worth testing are block widgets under the form and an
 // absolutely positioned floating overlay anchored from editor coordinates.
 
-type ProbeRenderKind = "loading" | "waveform" | "text" | "error";
+type ProbeRenderKind = "loading" | "waveform" | "text" | "error" | "stale" | "disabled";
 type HighlightMode = "contextual" | "raw";
 
 export interface PersistedProbeSpec {
@@ -276,6 +286,13 @@ interface ProbeFieldValue {
   renderById: Record<string, ProbeRenderData>;
   highlights: FromListHighlight[];
   decorations: DecorationSet;
+  /**
+   * IDs of probes that restored into the **stale** state (spec §1.5.5/§1.8.3):
+   * the text at their saved offsets no longer matches `cachedCode`. Stale
+   * probes are visible but do not sample. The marker is cleared when the
+   * probe's range is edited (it re-binds via live-edit) or it is removed.
+   */
+  staleIds: Set<string>;
 }
 
 interface ProbeRenderUpdate {
@@ -461,6 +478,11 @@ function updateProbeDOM(
     }
     elements.textEl.className = `cm-probe-widget-text is-${render.kind}`;
     elements.textEl.innerHTML = escapeHtml(render.text);
+    if (render.kind === "stale") {
+      elements.textEl.title = "Probe text changed since it was saved — delete and recreate the probe.";
+    } else {
+      elements.textEl.removeAttribute("title");
+    }
   }
 }
 
@@ -558,6 +580,9 @@ class ProbeWidget extends WidgetType {
       textEl = document.createElement("span");
       textEl.className = `cm-probe-widget-text is-${render.kind}`;
       textEl.innerHTML = escapeHtml(render.text);
+      if (render.kind === "stale") {
+        textEl.title = "Probe text changed since it was saved — delete and recreate the probe.";
+      }
       body.appendChild(textEl);
     }
 
@@ -627,9 +652,12 @@ function buildDecorations(snapshot: ProbeFieldValue): DecorationSet {
   }
 
   for (const probe of snapshot.probes) {
+    const render = snapshot.staleIds.has(probe.id)
+      ? buildStaleRender(probe)
+      : (snapshot.renderById[probe.id] ?? null);
     decorations.push(
       Decoration.widget({
-        widget: new ProbeWidget(probe, snapshot.renderById[probe.id] ?? null),
+        widget: new ProbeWidget(probe, render),
         side: 1,
       }).range(probe.to),
     );
@@ -644,15 +672,35 @@ function buildSnapshot(
   probes: PersistedProbeSpec[],
   renderById: Record<string, ProbeRenderData>,
   highlights: FromListHighlight[],
+  staleIds: Set<string> = new Set(),
 ): ProbeFieldValue {
   const snapshot: ProbeFieldValue = {
     probes,
     renderById,
     highlights,
     decorations: Decoration.none,
+    staleIds,
   };
   snapshot.decorations = buildDecorations(snapshot);
   return snapshot;
+}
+
+/**
+ * Build the synthetic render used for a stale probe (spec §1.5.5): visible,
+ * non-sampling, with a warning icon and "probe text changed" tooltip.
+ */
+function buildStaleRender(probe: PersistedProbeSpec): ProbeRenderData {
+  return {
+    revision: 0,
+    kind: "stale",
+    text: "probe text changed",
+    samples: [],
+    currentTime: 0,
+    windowStart: 0,
+    windowDuration: probe.windowDurationMs / 1000,
+    depth: probe.depth,
+    maxDepth: probe.maxDepth,
+  };
 }
 
 function updateProbeRangeThroughChanges(
@@ -703,15 +751,38 @@ const probeField = StateField.define<ProbeFieldValue>({
     const probes = readPersistedProbes().filter(
       (p) => p.from <= docLen && p.to <= docLen
     );
-    return buildSnapshot(probes, {}, []);
+    // Spec §1.8.3 restore semantics: rebuild each probe's expression at its
+    // saved offsets and compare to the persisted `cachedCode`. If the text has
+    // changed (rebuild succeeds but differs), the probe is **stale** (§1.5.5) —
+    // visible, not sampling. Probes never silently rebind to mismatched text.
+    const staleIds = new Set<string>();
+    for (const probe of probes) {
+      const rebuilt = buildProbeExpression(
+        state,
+        { from: probe.from, to: probe.to },
+        probe.mode,
+        probe.mode === "raw" ? 0 : probe.depth,
+      );
+      const rebuiltCode = rebuilt?.code?.trim() ?? "";
+      // Only mark stale when rebuild SUCCEEDS but differs. A failed rebuild
+      // (null/empty) is the fallback case (§1.5.4), handled at sample time.
+      if (rebuiltCode && rebuiltCode !== probe.cachedCode.trim()) {
+        staleIds.add(probe.id);
+      }
+    }
+    return buildSnapshot(probes, {}, [], staleIds);
   },
 
   update(value, tr) {
     let probes = value.probes;
     let renderById = value.renderById;
     let highlights = value.highlights;
+    let staleIds = value.staleIds;
 
     if (tr.docChanged) {
+      // Live-edit re-binds probes to current text (§1.5.3); a document edit
+      // resolves the restore-only stale condition, so clear all stale markers.
+      if (staleIds.size > 0) staleIds = new Set();
       const docLen = tr.state.doc.length;
       // Map positions through the change set first, then filter by new
       // document length. Filtering before mapping would incorrectly drop
@@ -749,6 +820,10 @@ const probeField = StateField.define<ProbeFieldValue>({
           probes = probes.filter((_, index) => index !== existing);
           const { [removed.id]: _, ...rest } = renderById;
           renderById = rest;
+          if (staleIds.has(removed.id)) {
+            staleIds = new Set(staleIds);
+            staleIds.delete(removed.id);
+          }
         } else {
           probes = [...probes, probe];
         }
@@ -757,6 +832,10 @@ const probeField = StateField.define<ProbeFieldValue>({
         probes = probes.filter((probe) => probe.id !== id);
         const { [id]: _, ...rest } = renderById;
         renderById = rest;
+        if (staleIds.has(id)) {
+          staleIds = new Set(staleIds);
+          staleIds.delete(id);
+        }
       } else if (effect.is(setProbeDepthEffect)) {
         const { id, delta } = effect.value;
         probes = probes.map((probe) => {
@@ -786,7 +865,7 @@ const probeField = StateField.define<ProbeFieldValue>({
       }
     }
 
-    return buildSnapshot(probes, renderById, highlights);
+    return buildSnapshot(probes, renderById, highlights, staleIds);
   },
 
   provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
@@ -1538,6 +1617,40 @@ class ProbePlugin {
       return;
     }
 
+    // Spec §1.6.3 / §2.10: in hardware-only mode (WASM disabled) probes do not
+    // sample and from-list highlights are not computed. Each visible probe
+    // renders a visually-disabled state, retaining its last sample if any.
+    if (!_config.isWasmEnabled()) {
+      if (import.meta.env.DEV) perf.count("probe-tick-wasm-disabled");
+      const updates: ProbeRenderUpdate[] = [];
+      for (const probe of visibleProbes) {
+        const existing = snapshot.renderById[probe.id];
+        const disabledRender: ProbeRenderData = {
+          revision: 0,
+          kind: "disabled",
+          text: "WASM disabled",
+          samples: existing?.samples ?? [],
+          currentTime: existing?.currentTime ?? 0,
+          windowStart: existing?.windowStart ?? 0,
+          windowDuration: probe.windowDurationMs / 1000,
+          depth: probe.depth,
+          maxDepth: probe.maxDepth,
+        };
+        updateProbeDOM(probe.id, probe, disabledRender);
+        updates.push({
+          probe,
+          render: updateProbeRender(existing, disabledRender),
+        });
+      }
+      const needHighlightClear = snapshot.highlights.length > 0;
+      if (updates.length > 0 || needHighlightClear) {
+        this.view.dispatch({
+          effects: updateProbeRenderEffect.of({ updates, highlights: [] }),
+        });
+      }
+      return;
+    }
+
     if (import.meta.env.DEV) {
       perf.begin("probe-tick");
       perf.count("probe-tick-runs");
@@ -1556,6 +1669,9 @@ class ProbePlugin {
       }
 
       for (const probe of visibleProbes) {
+        // Stale probes (§1.5.5) are visible but do not sample. The stale
+        // render is supplied by the decoration builder; skip them here.
+        if (snapshot.staleIds.has(probe.id)) continue;
         if (import.meta.env.DEV) perf.begin("probe-build-render");
         const slotId = this.allocSlot(probe.id);
         const next = await buildRenderForProbe(
@@ -1581,7 +1697,7 @@ class ProbePlugin {
         });
       }
 
-      const highlightsEnabled = getAppSettings().visualisation?.probeHighlightsEnabled !== false;
+      const highlightsEnabled = getAppSettings().visualisation?.fromListHighlights !== false;
       const highlights = highlightsEnabled
         ? await computeHighlights(
             this.view.state,
@@ -1624,8 +1740,22 @@ function buildProbeSpec(
     cachedCode: built.code,
     canvasWidth: DEFAULT_PROBE_CANVAS_WIDTH,
     canvasHeight: DEFAULT_PROBE_CANVAS_HEIGHT,
-    windowDurationMs: DEFAULT_PROBE_WINDOW_DURATION_MS,
+    windowDurationMs: getProbeDefaultWindowDurationMs(),
   };
+}
+
+// Spec probes.md §1.7.2: a newly-created probe inherits the global default
+// window duration (`visualisation.probeDefaultWindowDurationMs`, fallback to
+// the constant). Once the user adjusts a probe's window it becomes sticky —
+// that stickiness is naturally achieved because each probe persists its own
+// `windowDurationMs` and `setProbeWindowDurationEffect` mutates only that probe.
+function getProbeDefaultWindowDurationMs(): number {
+  const raw = Number(getAppSettings().visualisation?.probeDefaultWindowDurationMs);
+  const value = Number.isFinite(raw) ? raw : DEFAULT_PROBE_WINDOW_DURATION_MS;
+  return Math.max(
+    MIN_PROBE_WINDOW_DURATION_MS,
+    Math.min(MAX_PROBE_WINDOW_DURATION_MS, value),
+  );
 }
 
 function findTargetProbeId(

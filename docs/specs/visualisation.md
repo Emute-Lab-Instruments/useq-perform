@@ -11,13 +11,14 @@ layer: behavioural
 ### Source files
 
 - `src/effects/visualisationRuntime.ts` — rAF loop, past/future buffer management, projection fork lifecycle
-- `src/effects/visualisationSampler.ts` — per-frame sampling loop, tick-and-project dispatch, render-data assembly
+- `src/effects/visualisationSampler.ts` — per-frame sampling loop, tick-and-project dispatch, render-data assembly, **per-output past/future rolling buffers** (the `pastBuffers`/`futureBuffers` Maps)
+- `src/lib/PastBuffer.ts` — the `PastBuffer` FIFO rolling-buffer class used for both past and future halves
 - `src/effects/adaptiveQuality.ts` — pressure detection, adaptive quality levers (§1.7.1)
 - `src/ui/visualisation/serialVisGL.ts` — WebGL rendering surface, lane layout, past/future segment drawing
 - `src/ui/visualisation/webglLineRenderer.ts` — low-level WebGL line rasteriser
 - `src/ui/SerialVis.tsx` — vis panel Solid component (mount, resize, empty state)
 - `src/ui/VisLegend.tsx` — vis legend UI component
-- `src/utils/visualisationStore.ts` — reactive store (PastBuffer, rolling buffers, settings-derived state)
+- `src/utils/visualisationStore.ts` — reactive store (current time, registered expressions, serial buffers, settings-derived state); note the rolling buffers themselves live in `visualisationSampler.ts`, not here
 - `src/contracts/visualisationChannels.ts` — typed pub/sub channels for vis events
 - `src/contracts/visualisationEvents.ts` — vis event type definitions
 - `src/ui/adapters/visualisationPanel.ts` — imperative adapter for vis panel mounting
@@ -56,7 +57,7 @@ Past values are ground truth: what the signal engine actually produced as time a
 
 2.1 **Recording model.** The browser-local WASM engine is ticked on a monotonic sampling timeline, not limited to one tick per animation frame. The target live tick rate is `pixelMatchedPastRate × visualisation.temporalSampleRateMultiplier`, where the multiplier is clamped to `0.05..1.0`. A multiplier of `1.0` means every horizontal visual sample column can receive its own state-advancing temporal sample. Each committed tick computes all active output values, commits state, and records the results into a **per-output rolling buffer**. This tick stream is the authoritative source of past values.
 
-2.2 **Rolling buffer shape.** (see `src/utils/visualisationStore.ts`) Each active output maintains a FIFO buffer of recorded samples. All outputs are sampled at the same committed tick times. The buffer is time-aligned at constant sample rate, so index arithmetic suffices for time lookups — no (time, value) pairs needed.
+2.2 **Rolling buffer shape.** (see `src/effects/visualisationSampler.ts` for the `pastBuffers` Map, `src/lib/PastBuffer.ts` for the FIFO class) Each active output maintains a FIFO buffer of recorded samples. All outputs are sampled at the same committed tick times. The buffer is time-aligned at constant sample rate, so index arithmetic suffices for time lookups — no (time, value) pairs needed.
 
 2.2.1 **Pixel-matched buffer capacity and tick density.** The rolling buffer's capacity is derived from rendering-surface pixel width: `bufferSampleRate = floor(canvasWidth / 2) / (windowDuration / 2)` when future projection is visible, and `bufferSampleRate = canvasWidth / windowDuration` when the past occupies the full surface. The renderer recomputes this on surface resize and integer-snaps it to avoid sub-pixel re-allocation. The live WASM tick target is configurable up to this same rate (§2.1), so `temporalSampleRateMultiplier = 1.0` gives literal one-sample-per-column past recording for the effective visual rate. Lower multipliers intentionally trade temporal fidelity for CPU headroom.
 

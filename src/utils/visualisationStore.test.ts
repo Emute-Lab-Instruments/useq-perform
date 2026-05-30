@@ -58,6 +58,8 @@ describe("visualisationStore", () => {
         extensionBatchSize: 4,
         temporalSampleRateMultiplier: 1,
         inputEpsilon: 0.01,
+        historyHeadroom: 5,
+        maxHistorySeconds: 30,
       });
     });
   });
