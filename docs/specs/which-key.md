@@ -12,7 +12,7 @@ layer: behavioural
 ### Source files
 
 - `src/ui/keybindings/ModifierHints.tsx` — orchestrator component (visibility, keyboard events, mode routing)
-- `src/lib/keybindings/chords.ts` — `pendingChord` / `setPendingChord` reactive signal
+- `src/ui/keybindings/hintStateMachine.ts` — state machine + `pendingChordPrefix` reactive signal (the chord bridge)
 - `src/lib/keybindings/actions.ts` — action registry (metadata, categories)
 - `src/lib/keybindings/defaults.ts` — default key-to-action maps
 - `src/lib/keybindings/handlers.ts` — action-to-implementation mapping, `executeEditorCommand()`
@@ -96,6 +96,13 @@ modifier is still held alone when the timer fires, the overlay becomes visible.
 recognised as a chord leader under the currently held modifier (e.g. `o` while
 `Alt` is held, and `Alt-o` is a known chord prefix). The overlay transitions to
 show the chord's completions. It does **not** dismiss.
+
+3.3.1 **HIDDEN → CHORD_PENDING (early chord)**: If the modifier is held but the
+hold timer has not yet fired (state is still HIDDEN) and the user presses a
+chord leader under that modifier, the overlay jumps straight to CHORD_PENDING
+and shows completions. This honours §6.1 ("…or even if it hasn't appeared yet")
+so the popup never misses a fast chord. A non-leader key in this situation
+returns to HIDDEN (the direct binding executes normally).
 
 3.4 **MODIFIER_ACTIVE → HIDDEN**: The user presses a non-leader key (executes a
 direct binding) or releases the modifier. The overlay dismisses immediately.
@@ -278,18 +285,22 @@ The entries are clickable (§5.1 applies).
 
 ### 6.3 CodeMirror integration
 
-6.3.1 The `pendingChord` signal in `src/lib/keybindings/chords.ts` is the
-bridge between CodeMirror's keymap state and the popup.
+6.3.1 The `pendingChordPrefix` signal in
+`src/ui/keybindings/hintStateMachine.ts` is the single source of truth for the
+committed chord prefix. The popup renders its completions from this signal; it
+is the bridge between the popup's view and the held-modifier/chord state.
 
-6.3.2 Detection of chord-leader status is done by the ModifierHints component
-itself (it inspects the binding list for multi-stroke keys matching the current
-modifier + pressed key). It does not require access to CodeMirror's private
-`currentPrefixes` state.
+6.3.2 Detection of chord-leader status is done by the state machine itself
+(via `isChordLeader()` in `hintData.ts`, which inspects the binding list for
+multi-stroke keys matching the current modifier + pressed key). It does not
+require access to CodeMirror's private `currentPrefixes` state.
 
 6.3.3 The popup's `onKeyDown` handler runs at capture phase (`{ capture: true }`)
-so it sees keystrokes before CodeMirror processes them. It calls
-`setPendingChord()` and allows the event to propagate — CodeMirror still handles
-the chord normally.
+so it sees keystrokes before CodeMirror processes them. In the default
+(non-sticky) path it sets `pendingChordPrefix` and lets the event propagate —
+CodeMirror still handles the chord normally. In **sticky** mode the popup
+intercepts the bare key (`preventDefault` + `stopPropagation`) and executes the
+binding itself (§5 sticky behaviour).
 
 ---
 
@@ -311,8 +322,11 @@ interface HintEntry {
 
 ### 7.2 Category grouping (bar and modal modes)
 
-In multi-column modes, entries are grouped by `ActionCategory`:
-`core` → `editor` → `structure` → `probe` → `navigation` → `ui` → `transport`.
+In multi-column modes, entries are grouped by `ActionCategory` in the order
+defined by `CATEGORY_ORDER` in `src/ui/keybindings/hintData.ts`:
+`core` → `editor` → `structure` → `format` → `probe` → `navigation` → `ui` →
+`transport`. The `gamepad` and `menu` categories are intentionally omitted —
+they have no keyboard bindings, so the modifier-hint popup never shows them.
 
 Category groups stay together in a single column (never split across columns).
 Columns are balanced by total row count.

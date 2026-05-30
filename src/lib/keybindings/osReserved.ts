@@ -51,6 +51,17 @@ export function detectOs(): OsFamily {
   return "linux";
 }
 
+/**
+ * Convenience helper: true when running on macOS/iOS.
+ *
+ * Single source of truth for Mac detection (keybindings.md §1.5). All
+ * modifier-notation and label code should call this rather than re-sniffing
+ * `navigator.userAgent`/`navigator.platform` independently.
+ */
+export function isMac(): boolean {
+  return detectOs() === "mac";
+}
+
 // ---------------------------------------------------------------------------
 // OS-reserved keys (soft warnings -- user CAN bind but gets a warning)
 // ---------------------------------------------------------------------------
