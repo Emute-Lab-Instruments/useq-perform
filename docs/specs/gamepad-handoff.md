@@ -6,9 +6,9 @@ non-normative: true
 
 # Gamepad rebuild — handoff
 
-> **Status as of 2026-05-01.** All three stages of the new gamepad pipeline are complete with **176 passing tests**. Action registry has reversibility metadata (`ReversibleActionId` / `NonReversibleActionId`). Five paradigm files ship. Full pipeline wiring in `index.ts` provides a drop-in `createGamepadPipeline()` replacement for `gamepadIntents.ts`. The actual cutover in `bootstrap.ts` (swapping the import) and browser testing are still ahead.
+> **Status as of 2026-05-30.** The new gamepad pipeline is the live one. All three stages are complete, the action registry has reversibility metadata (`ReversibleActionId` / `NonReversibleActionId`), and the paradigm files ship. **The cutover is done:** `bootstrap.ts` calls `createGamepadPipeline({ editor, menuDispatcher, onAction })` (no more `createGamepadIntentEmitter`), the legacy `src/lib/gamepadIntents.ts` and `src/lib/gamepad/paradigms/picker.ts` have been deleted, and `menuOpen` is wired live (the radial layer reads `isMenuOpen()` via its `when` predicate; it is no longer hardcoded `false`). The radial menu is now a `mask: true` predicate layer that takes over all input while open (radial-menu.md §1.1 / §12.6).
 >
-> Read this doc end-to-end before touching gamepad code. Then read [gamepad.md](gamepad.md) (normative spec) and skim [structural-editing.md](structural-editing.md) (the algebra the gamepad invokes through `ActionId`).
+> Read this doc end-to-end before touching gamepad code. Then read [gamepad.md](gamepad.md) (normative spec) and skim [structural-editing.md](structural-editing.md) (the algebra the gamepad invokes through `ActionId`). This doc is non-normative history; gamepad.md and radial-menu.md are the sources of truth.
 
 ### Source files
 
@@ -18,13 +18,13 @@ non-normative: true
 - `src/lib/gamepad/resolver.ts` — Stage 3: `activeStack`, `resolveGesture`, `resolveAxis`, `lintBindings`
 - `src/lib/gamepad/dispatcher.ts` — `createDispatcher`, eager-with-undo, action firing
 - `src/lib/gamepad/hardware.ts` — Stage 1: `diffSnapshots` (snapshot diffing to LogicalEvent[])
-- `src/lib/gamepad/index.ts` — full pipeline wiring: `createGamepadPipeline()`, re-exports
-- `src/lib/gamepad/paradigms/` — `modal-shift.ts`, `leader.ts`, `hydra.ts`, `chord-heavy.ts`, `picker.ts`
+- `src/lib/gamepad/index.ts` — full pipeline wiring: `createGamepadPipeline()`, re-exports, raw shoulder-edge forwarding to the menu dispatcher (radial-menu.md §6.2.5)
+- `src/lib/gamepad/paradigms/` — `radial.ts` (menu takeover layer), `modal-shift.ts`, `leader.ts`, `hydra.ts`, `chord-heavy.ts`
+- `src/lib/menu/dispatcher.ts` — `MenuDispatcher`: routes `menu.*` actions + axis + raw shoulder edges to the menu state machine, applies verb mutations
 - `src/lib/keybindings/actions.ts` — `ActionDef.reversible`, `ReversibleActionId`, `NonReversibleActionId`, `isReversible()`
-- `src/lib/gamepad/gamepadManager.ts` — low-level Gamepad API polling (legacy, to be replaced)
+- `src/lib/gamepad/gamepadManager.ts` — low-level Gamepad API polling
 - `src/contracts/gamepadChannels.ts` — axis channel registry and typed gamepad channels
 - `src/editors/gamepadNavigation.ts` — gamepad-to-editor navigation bridge (eval, manual-control axis only; spatial nav ActionIds dispatch through the keybindings handler registry directly)
-- `src/ui/adapters/gamepadMenuBridge.ts` — picker bridge (migrates to action-based dispatch)
 - Tests: `src/lib/gamepad/{gestures,recognizer,resolver,dispatcher,hardware}.test.ts`, `src/lib/gamepad/paradigms/paradigms.test.ts`
 
 ---
@@ -45,12 +45,12 @@ src/lib/gamepad/dispatcher.test.ts  — 12 tests (action dispatch, eager-with-un
 src/lib/keybindings/actions.ts      — ActionDef now has `reversible: boolean`; derives ReversibleActionId / NonReversibleActionId
 ```
 
-Total: **150/150** passing. Run with `npx vitest run --project unit src/lib/gamepad/`.
+Run the gamepad suite with `npx vitest run --project unit src/lib/gamepad/`.
 
 What remains:
-- The cutover from `src/lib/gamepadIntents.ts` — swap `createGamepadIntentEmitter()` for `createGamepadPipeline({ editor })` in `bootstrap.ts` and test in-browser
-- Wire `menuOpen` state into `getAppState()` in `index.ts` (currently hardcoded `false`)
 - Property tests via `fast-check` (§3.8 below)
+- Full act-on verb-selection layer (Option A, gamepad.md §6.6.2): `tap(A) → actOn.open` pushes a transient layer with verb sub-bindings. The grab-mode path (Option C, RT+A) ships; the leader layer and the node-level clipboard verbs (cut/copy/paste/duplicate) do not. See the bug-hunt findings for `gamepad-menus`.
+- Sibling-before/after menu open (`menu.openBefore` / `menu.openAfter`, LB+A / RB+A): bound but not yet handled — needs an apply-target "side" model the menu state machine does not currently carry.
 
 ---
 
@@ -94,14 +94,9 @@ These were chosen deliberately during the brainstorm. Every one has a "why" that
 ### ~~3.6 — Stage 1 hardware adapter~~ ✓ DONE
 ### ~~3.9 — Cleanup~~ ✓ DONE
 
-### 3.7 — Cutover from `gamepadIntents.ts`
+### ~~3.7 — Cutover from `gamepadIntents.ts`~~ ✓ DONE
 
-The old code is still wired into the running app. The new `createGamepadPipeline()` in `src/lib/gamepad/index.ts` is a drop-in replacement. To swap:
-1. In `bootstrap.ts`: replace `createGamepadIntentEmitter()` → `createGamepadPipeline({ editor })` (import from `./lib/gamepad`).
-2. The `bindGamepadNavigation` and `bindGamepadMenuBridge` calls can stay — the new pipeline publishes to the same channels during migration.
-3. Wire `menuOpen` state from the menu store into `getAppState()` in `index.ts`.
-4. Browser-test all paradigm interactions: navigation, picker mode, structural editing, leader sequences.
-5. Once validated, remove `gamepadIntents.ts` and the legacy combo registry in `keybindings/defaults.ts`.
+`bootstrap.ts` wires `createGamepadPipeline({ editor, menuDispatcher, onAction })` directly; `createGamepadIntentEmitter()` and `src/lib/gamepadIntents.ts` are gone. `menuOpen` is wired live — the radial layer's `when: () => isMenuOpen()` predicate (`src/lib/gamepad/paradigms/radial.ts`) reads the menu store, so `getAppState()` no longer needs a `menuOpen` field. Menu `menu.*` actions and axis frames route through the pipeline to the `MenuDispatcher`.
 
 ### 3.8 — Property tests via `fast-check`
 
@@ -141,7 +136,7 @@ Spec §8.3. Determinism is asserted in example tests today; property tests would
 - `src/lib/gamepad/dispatcher.ts` — `createDispatcher`, `DispatcherConfig`, `Dispatcher`
 - `src/lib/gamepad/hardware.ts` — Stage 1: `diffSnapshots` (snapshot diffing to LogicalEvent[])
 - `src/lib/gamepad/index.ts` — full pipeline wiring: `createGamepadPipeline()`, re-exports
-- `src/lib/gamepad/paradigms/picker.ts` — picker layer (always-present, activates when menu open)
+- `src/lib/gamepad/paradigms/radial.ts` — radial-menu takeover layer (`when: () => isMenuOpen()`, `mask: true`); replaced the old `picker.ts`
 - `src/lib/gamepad/paradigms/modal-shift.ts` — modal-shift paradigm (LB/RB as modifiers)
 - `src/lib/gamepad/paradigms/leader.ts` — leader (vim-style) paradigm
 - `src/lib/gamepad/paradigms/hydra.ts` — hydra (Emacs-style) paradigm
@@ -150,11 +145,12 @@ Spec §8.3. Determinism is asserted in example tests today; property tests would
 - `src/lib/gamepad/{gestures,recognizer,resolver,dispatcher,hardware}.test.ts` — golden + contract tests
 - `src/lib/gamepad/paradigms/paradigms.test.ts` — paradigm smoke tests through the resolver
 
-**Existing code that will be touched:**
-- `src/lib/gamepadIntents.ts` — legacy; will be replaced by Stages 1/3 + dispatcher
-- `src/contracts/gamepadChannels.ts` — legacy; the axis-channel registry from spec §4.6 will live somewhere similar
-- `src/ui/adapters/gamepadMenuBridge.ts` — picker bridge; migrates to action-based dispatch
-- `src/lib/gamepadManager.ts` — low-level polling; Stage 1 builds on / replaces this
+**Related code:**
+- `src/contracts/gamepadChannels.ts` — the axis-channel registry from spec §4.6 and typed gamepad channels
+- `src/lib/menu/` — the radial-menu state machine (`state.ts`), dispatcher (`dispatcher.ts`), store, and manifest
+- `src/lib/gamepad/gamepadManager.ts` — low-level polling; Stage 1 (`hardware.ts`) builds on this
+
+(`src/lib/gamepadIntents.ts` and `src/ui/adapters/gamepadMenuBridge.ts` were removed during the cutover.)
 
 **Test infrastructure:**
 - `vite.config.ts` — `unit` project includes `src/**/*.test.ts`

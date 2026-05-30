@@ -23,6 +23,7 @@ import * as ch from "../../contracts/gamepadChannels";
 import { insertionModeField, structField } from "../../editors/extensions/structure/adapter/stateField.ts";
 import { findById, isLeaf, type LeafKind } from "../../editors/extensions/structure/core/index.ts";
 import { isGrabActive } from "./grabState.ts";
+import { isMenuOpen } from "../menu/store.ts";
 
 import { diffSnapshots } from "./hardware";
 import { step, flush, INITIAL_STATE, DEFAULT_TIMING, type RecognizerState, type Timing } from "./recognizer";
@@ -148,6 +149,12 @@ export function createGamepadPipeline(
   let started = false;
   let editor: EditorView | undefined = options.editor;
 
+  // §6.2.5: LB and RB presses arriving within T_bothWindow are coalesced into
+  // a single `both` shoulder edge. We buffer the first shoulder press and flush
+  // it (as a single-side edge) once the window elapses with no partner press.
+  const T_BOTH_WINDOW_MS = 25;
+  let pendingShoulderPress: { side: "left" | "right"; ts: number } | null = null;
+
   const gamepadState: {
     heldButtons: Set<string>;
     transientLayers: TransientLayerEntry[];
@@ -256,6 +263,59 @@ export function createGamepadPipeline(
     now,
   });
 
+  // -- Shoulder freeze edges (radial-menu.md §3.3.2, §6.1, §6.2.5) ----------
+  //
+  // The radial menu's freeze mechanic is driven by RAW LB/RB press/release
+  // edges, not by gestures or actions (§11.4: "freeze is a state transition
+  // triggered by raw shoulder press/release events"). The gesture layer maps
+  // LB/RB *taps* to tab-cycle actions; here we additionally forward the
+  // underlying press/release edges to the dispatcher while the menu is open so
+  // that holding a shoulder in `picking` latches a FrozenSnapshot.
+
+  function mapShoulder(btn: string): "left" | "right" | null {
+    if (btn === "LB") return "left";
+    if (btn === "RB") return "right";
+    return null;
+  }
+
+  function emitShoulderPress(side: "left" | "right", t: number): void {
+    // §6.2.5: coalesce a near-simultaneous opposite-side press into `both`.
+    if (
+      pendingShoulderPress &&
+      pendingShoulderPress.side !== side &&
+      t - pendingShoulderPress.ts <= T_BOTH_WINDOW_MS
+    ) {
+      pendingShoulderPress = null;
+      options.menuDispatcher?.handleShoulder("both", "press", t);
+      return;
+    }
+    // Flush any stale pending press (different gesture, window expired) before
+    // buffering the new one.
+    flushPendingShoulder(t);
+    pendingShoulderPress = { side, ts: t };
+  }
+
+  function flushPendingShoulder(t: number): void {
+    if (
+      pendingShoulderPress &&
+      t - pendingShoulderPress.ts > T_BOTH_WINDOW_MS
+    ) {
+      const { side } = pendingShoulderPress;
+      pendingShoulderPress = null;
+      options.menuDispatcher?.handleShoulder(side, "press", t);
+    }
+  }
+
+  function emitShoulderRelease(side: "left" | "right", t: number): void {
+    // If the matching press is still buffered (released within the window),
+    // flush it as a single-side press first so the edge pair is well-formed.
+    if (pendingShoulderPress && pendingShoulderPress.side === side) {
+      pendingShoulderPress = null;
+      options.menuDispatcher?.handleShoulder(side, "press", t);
+    }
+    options.menuDispatcher?.handleShoulder(side, "release", t);
+  }
+
   // -- Tick -----------------------------------------------------------------
 
   function tick(): void {
@@ -282,6 +342,7 @@ export function createGamepadPipeline(
 
     if (events.length === 0) {
       // Still flush to advance timers
+      flushPendingShoulder(t);
       const flushed = flush(recognizerState, t);
       recognizerState = flushed.state;
       processGestures(flushed.gestures);
@@ -298,6 +359,20 @@ export function createGamepadPipeline(
         gamepadState.heldButtons.delete(event.btn);
       }
 
+      // Forward raw shoulder edges to the menu dispatcher's freeze mechanic
+      // while the menu is open (§3.3.2 / §6.1). Done before gesture stepping
+      // so the freeze latch is in place when the face-button tap resolves.
+      if (options.menuDispatcher && isMenuOpen()) {
+        const side =
+          event.kind === "press" || event.kind === "release"
+            ? mapShoulder(event.btn)
+            : null;
+        if (side !== null) {
+          if (event.kind === "press") emitShoulderPress(side, t);
+          else emitShoulderRelease(side, t);
+        }
+      }
+
       const out = step(recognizerState, event, timing);
       recognizerState = out.state;
       processGestures(out.gestures);
@@ -305,6 +380,7 @@ export function createGamepadPipeline(
     }
 
     // Flush to capture any timers past the current tick
+    flushPendingShoulder(t);
     const flushed = flush(recognizerState, t);
     recognizerState = flushed.state;
     processGestures(flushed.gestures);

@@ -120,6 +120,16 @@ export const defaultKeyBindings: KeyBinding[] = [
   // -- Live-Edit vector-mark sub-mode (§3.7.3, §3.7.8) --------------------
   { action: "liveEdit.vectorConfirm", key: "Enter", when: "vectorMark.active" },
   { action: "liveEdit.vectorCancel", key: "Escape", when: "vectorMark.active" },
+
+  // -- Main menu (main-menu.md §2.1.2) --------------------------------------
+  // Escape opens the system/pause menu. Deliberately UNCONDITIONAL so it lands
+  // at lower keymap precedence than the conditional Escape bindings above
+  // (picker.cancel / vectorCancel are `Prec.high`). Those run first and, while
+  // their sub-mode is active, consume Escape (cancel-first, §2.1.2); only when
+  // nothing is left to cancel does this binding fire and open the menu.
+  // Ctrl+Shift+P is NOT used — it is already palette.open (see above); §2.1.2
+  // lists it as a non-binding "secondary" suggestion, so Escape is the opener.
+  { action: "mainMenu.open", key: "Escape", preventDefault: false },
 ];
 
 // ---------------------------------------------------------------------------
