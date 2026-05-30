@@ -119,6 +119,7 @@ class BindingChipWidget extends WidgetType {
       a.lastPhase === b.lastPhase &&
       a.error === b.error &&
       a.disabled === b.disabled &&
+      a.wasmPreview === b.wasmPreview &&
       a.range.from === b.range.from &&
       a.range.to === b.range.to
     );
@@ -132,11 +133,20 @@ class BindingChipWidget extends WidgetType {
     root.setAttribute(
       "aria-label",
       `binding ${chip.event} ${chip.inputId}${
-        chip.error ? " (error)" : chip.disabled ? " (disabled)" : ""
+        chip.error
+          ? " (error)"
+          : chip.disabled
+            ? " (disabled)"
+            : chip.wasmPreview
+              ? " (wasm preview)"
+              : ""
       }`,
     );
     if (chip.disabled) root.classList.add("cm-binding-chip--disabled");
     if (chip.error) root.classList.add("cm-binding-chip--error");
+    if (chip.wasmPreview && !chip.error) {
+      root.classList.add("cm-binding-chip--wasm-preview");
+    }
     if (chip.lastFireMs > 0) {
       root.setAttribute("data-fired-at", String(chip.lastFireMs));
     }
@@ -398,6 +408,13 @@ const bindingChipTheme = EditorView.baseTheme({
     opacity: "0.45",
     cursor: "default",
     borderStyle: "dashed",
+  },
+  // WASM-preview state (§4.4): soft-eval-registered, not yet lifted to hardware.
+  ".cm-binding-chip--wasm-preview": {
+    borderColor: "rgba(200, 170, 255, 0.65)",
+    borderStyle: "dashed",
+    backgroundColor: "rgba(200, 170, 255, 0.10)",
+    color: "rgba(230, 215, 255, 0.92)",
   },
 });
 

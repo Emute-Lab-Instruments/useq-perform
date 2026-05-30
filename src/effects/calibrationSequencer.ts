@@ -226,10 +226,22 @@ function resumeStepStatus(
 
 // ── Factory ──────────────────────────────────────────────────────────────────
 
+/** Tunables the sequencer reads (sourced from `calibration.*` settings, §9). */
+export interface CalibrationSequencerOptions {
+  /**
+   * §9.7 — when `true` (default), advancing to the next octave starts the
+   * slider at the previous octave's committed offset; when `false` it starts
+   * at zero.
+   */
+  carryForwardOffset?: boolean;
+}
+
 export function createCalibrationSequencer(
   transport: CalibrationTransport,
+  options: CalibrationSequencerOptions = {},
 ): CalibrationSequencer {
   const listeners = new Set<SequencerListener>();
+  const carryForwardOffset = options.carryForwardOffset ?? true;
 
   let _state: SequencerState = {
     phase: "idle",
@@ -424,8 +436,10 @@ export function createCalibrationSequencer(
       };
       updateSession({ stepStatus: newStatus, saving: false });
 
-      // Carry forward the current offset for the next step (??4.3).
-      await advanceOrComplete(output, step, offsetCents);
+      // Carry forward the current offset for the next step (§4.3) only when
+      // `calibration.carryForwardOffset` is enabled (§9.7); otherwise start
+      // the next octave at zero.
+      await advanceOrComplete(output, step, carryForwardOffset ? offsetCents : 0);
     },
 
     async skip(): Promise<void> {

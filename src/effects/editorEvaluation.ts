@@ -35,6 +35,11 @@ import { markOutputRunning } from "../utils/outputHealthStore.ts";
 import { dispatchInlineResult } from "../editors/extensions/inlineResults.ts";
 import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
 import { findHolePositions, findHoleEnd } from "../lib/holeDetection.ts";
+import {
+  bindingKeysInText,
+  markBindingsSoftPreview,
+  clearBindingsSoftPreview,
+} from "./hardwareBindingDispatcher.ts";
 
 // ---------------------------------------------------------------------------
 // Output assignment detection
@@ -421,6 +426,18 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
       }
     });
 
+  // §4.4 binding wasm-preview lifecycle: a normal (non-soft) eval that reaches
+  // the module lifts any bindings in the form out of preview; in no-module
+  // mode the form stays WASM-only, so those bindings remain previews.
+  const bindingKeys = bindingKeysInText(rawCode);
+  if (bindingKeys.length > 0) {
+    if (noModuleMode) {
+      markBindingsSoftPreview(bindingKeys);
+    } else {
+      clearBindingsSoftPreview(bindingKeys);
+    }
+  }
+
   if (!noModuleMode) {
     sendTouSEQ(moduleCode);
   }
@@ -449,6 +466,12 @@ function evaluateSoft(ctx: EvalContext): boolean {
   }
 
   const isImmediate = code.startsWith("@");
+
+  // §4.4: a soft eval registers bindings on WASM only — mark them as previews.
+  const bindingKeys = bindingKeysInText(code);
+  if (bindingKeys.length > 0) {
+    markBindingsSoftPreview(bindingKeys);
+  }
 
   if (hasView) {
     detectAndTrackExpressionEvaluation(view);
