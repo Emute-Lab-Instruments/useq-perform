@@ -203,6 +203,8 @@ When focused (structural cursor on the widget, mouse hovering, or gamepad target
 
 4.2.1 **Always-on value readout.** Every inline widget shows its current value (number, formatted to `:precision`; boolean as `on`/`off`; keyword as `:name`) immediately to the right of the control, separated by a space. The readout uses the editor's monospace font and inherits syntax-highlighting tone for the literal type. The readout is the user's at-a-glance source of truth for the live value during performance.
 
+Exception — **boolean toggles**: the toggle pill already renders its `on`/`off` state as its own label (e.g. `● on` / `off ●`), so it serves as its own readout. A separate adjacent `on`/`off` string would be redundant and visually busy on a single line; toggle widgets therefore omit the separate readout.
+
 4.2.2 **Name display is panel-only.** Inline widgets never render `:name`; the surrounding source code is the context. The panel (§5) is where `:name` is shown. This keeps inline widgets minimal and line-height-bounded.
 
 4.2.3 **Cursor halo.** When the structural cursor is on a live-edit widget, the widget renders inside the standard structural-mode cursor halo per [structural-editing.md §3.3](structural-editing.md). The halo composes with all other widget states (listening, modified-from-seed, etc.) — the halo is the cursor; the widget's own visual layer is the value/state.

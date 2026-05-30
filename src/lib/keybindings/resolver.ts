@@ -18,7 +18,7 @@ import {
 } from "./defaults.ts";
 import { getHandler, type ActionHandler } from "./handlers.ts";
 import { isBrowserReserved, isOsReserved, type ReservedKey } from "./osReserved.ts";
-import { whenExpressionsOverlap } from "./contexts.ts";
+import { whenExpressionsOverlap, evaluateWhen } from "./contexts.ts";
 import { recordAction } from "./usageTracker.ts";
 import { announceAction } from "./announcer.ts";
 
@@ -347,7 +347,8 @@ export function createResolver(opts?: {
         // Use .length to discriminate at runtime.
         const originalHandler = rb.handler;
         const actionId = rb.action;
-        const trackedRun = (view: any) => {
+        const when = rb.when;
+        const invoke = (view: any) => {
           recordAction(actionId);
           announceAction(actionId);
           return originalHandler.length > 0
@@ -355,20 +356,28 @@ export function createResolver(opts?: {
             : (originalHandler as () => boolean)();
         };
 
-        const cmBinding: CMKeyBinding = {
-          key: rb.key,
-          run: trackedRun,
-          preventDefault: rb.preventDefault,
-        };
-
-        if (rb.when !== undefined) {
-          // TODO Phase 3: context evaluation — for now, conditional
-          // bindings are included as-is. The when-clause is not evaluated
-          // at the CodeMirror level; it will be handled by a wrapping
-          // dispatch layer in Phase 3.
-          conditionalCM.push(cmBinding);
+        if (when !== undefined) {
+          // Context-gated binding (keybindings.md §1.7/§1.9). Evaluate the
+          // when-clause at fire time: when the context is not active, return
+          // false so CodeMirror falls through to the next binding on this key
+          // (e.g. an unconditional binding, or another non-overlapping
+          // conditional one). The usage/announce side effects only fire when
+          // the binding actually runs.
+          const gatedRun = (view: any) => {
+            if (!evaluateWhen(when)) return false;
+            return invoke(view);
+          };
+          conditionalCM.push({
+            key: rb.key,
+            run: gatedRun,
+            preventDefault: rb.preventDefault,
+          });
         } else {
-          unconditionalCM.push(cmBinding);
+          unconditionalCM.push({
+            key: rb.key,
+            run: invoke,
+            preventDefault: rb.preventDefault,
+          });
         }
       }
 

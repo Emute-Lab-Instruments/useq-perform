@@ -20,7 +20,7 @@
  *           edit.encloseList/Vector/Map/Set
  *
  * Reserved for future spatial implementations (not yet wired):
- *   nav.intoMeta (§5.1.7)
+ *   nav.intoMeta (§5.1.9)
  *
  * Other names log a warning and no-op. The mutation factory is created lazily
  * the first time we see a mutating action, with an id generator local to the
