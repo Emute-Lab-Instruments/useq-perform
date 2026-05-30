@@ -162,7 +162,10 @@ function setupAutosaveTimer(editorView: EditorView, settings: any): void {
   }
   const storage = settings.storage || {};
   if (storage.autoSaveEnabled && storage.saveCodeLocally) {
-    const interval = Math.max(1000, parseInt(storage.autoSaveInterval, 10) || 5000);
+    const interval = Math.min(
+      60000,
+      Math.max(1000, parseInt(storage.autoSaveInterval, 10) || 5000),
+    );
     autosaveTimer = setInterval(() => {
       if (editorView && editorView.state) {
         saveRaw(PERSISTENCE_KEYS.editorCode, editorView.state.doc.toString());

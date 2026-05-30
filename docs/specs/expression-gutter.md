@@ -113,3 +113,7 @@ The play button (▶) on each rail toggles whether that expression is the one be
 5.2 **Stale-pulse classifier.** §2.6 distinguishes "trivial" (whitespace/comments) from "non-trivial" edits via tokenised comparison. The exact trivia rules (e.g. is reformatting trivial when it preserves all tokens?) may need tuning once users live with the pulse. Refine based on feedback.
 
 5.3 **Soft-eval rail feedback.** §2.4 — soft eval leaves no per-form rail trace beyond the flash. Whether a transient "soft-evaluated recently" mark on the rail would help the user track what they have been auditioning vs. what is live is open. Currently the eval flash is the only signal.
+
+5.4 **Stale-edit pulse (§2.6) — not yet implemented.** The white-bordered stale pulse requires per-active-form source snapshots plus a non-trivia tokenised comparison on every edit. Neither the snapshot store nor the tokeniser exists today; the rail does not pulse on edit. Implement alongside the classifier work in §5.2.
+
+5.5 **Vis-toggle persistence (§3.7) — not yet implemented.** `visualisationStore` holds toggled expressions in memory only: nothing is written through the persistence service (§3.7.1), and there is no connect/disconnect reset (§3.7.3). Persisting requires a stable per-form identifier (the [state-identity.md](state-identity.md) model) that vis toggles do not yet carry. Deferred until that identity scheme is available for vis toggles.

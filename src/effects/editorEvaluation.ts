@@ -451,7 +451,9 @@ function evaluateSoft(ctx: EvalContext): boolean {
   const isImmediate = code.startsWith("@");
 
   if (hasView) {
-    detectAndTrackExpressionEvaluation(view);
+    // Soft eval must not move the rail-active state (expression-gutter.md §2.4):
+    // refresh already-visualised expressions but leave last-evaluated untouched.
+    detectAndTrackExpressionEvaluation(view, { isPreview: true });
     flashEvalHighlight(view, undefined, undefined, { isPreview: true });
   }
 

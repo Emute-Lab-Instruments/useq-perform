@@ -47,6 +47,7 @@ const validCategories: ActionCategory[] = [
   "probe",
   "navigation",
   "ui",
+  "vis",
   "transport",
   "gamepad",
   "menu",

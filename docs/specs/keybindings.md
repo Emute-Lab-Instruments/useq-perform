@@ -30,7 +30,7 @@ layer: behavioural
 
 1.1 **Action registry is the single source of truth.** Every bindable operation is named by an `ActionId` string. CodeMirror handlers, the help tab, the keyboard visualiser, the action palette, and gamepad bindings all reference the same `ActionId` strings. (see `src/lib/keybindings/actions.ts`)
 
-1.2 Action categories are: `core`, `editor`, `structure`, `probe`, `navigation`, `ui`, `transport`, `gamepad`, `menu`. Each action has a description, category, optional icon, optional `requiresEditor`/`repeatable`/`analogOnly` flags.
+1.2 Action categories are: `core`, `editor`, `structure`, `format`, `probe`, `navigation`, `ui`, `vis`, `transport`, `gamepad`, `menu`. Each action has a description, category, optional icon, optional `requiresEditor`/`repeatable`/`analogOnly` flags.
 
 1.3 **Keybindings are profile-based.** A `profile` selects a set of default bindings; user `overrides` is a sparse map of `ActionId → key`. The active map is `profile defaults ⊕ overrides`. (see `src/lib/keybindings/defaults.ts`, `src/lib/keybindings/profiles.ts`)
 
