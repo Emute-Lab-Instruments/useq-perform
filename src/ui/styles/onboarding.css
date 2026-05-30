@@ -42,6 +42,13 @@
   color: var(--accent-color, #00ff41);
 }
 
+/* Urgent variant — no runtime at all (none mode). */
+.onboarding-banner--urgent {
+  border-color: var(--accent-color, #00ff41);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+.onboarding-banner__connect,
 .onboarding-banner__dismiss {
   flex-shrink: 0;
   padding: 2px 8px;
@@ -56,8 +63,15 @@
   white-space: nowrap;
 }
 
+.onboarding-banner__connect:hover,
 .onboarding-banner__dismiss:hover {
   background: var(--panel-item-hover-bg, rgba(255, 255, 255, 0.1));
+  border-color: var(--accent-color, #00ff41);
+  color: var(--accent-color, #00ff41);
+}
+
+/* The connect button is the primary action — accent it. */
+.onboarding-banner__connect {
   border-color: var(--accent-color, #00ff41);
   color: var(--accent-color, #00ff41);
 }

@@ -68,6 +68,25 @@ describe("consoleStore", () => {
     expect(consoleStore.messages[0].content).toBe("posted");
   });
 
+  it("escapes raw HTML on every entry point (console.md §1.4)", () => {
+    // addConsoleMessage and postToConsole previously stored content verbatim;
+    // all entry points must now escape unsafe HTML.
+    addConsoleMessage("<img src=x onerror=alert(1)>");
+    postToConsole("<script>evil()</script>");
+
+    expect(consoleStore.messages[0].content).not.toContain("<img");
+    expect(consoleStore.messages[0].content).toContain("&lt;img");
+    expect(consoleStore.messages[1].content).not.toContain("<script>");
+    expect(consoleStore.messages[1].content).toContain("&lt;script&gt;");
+  });
+
+  it("renders inline markdown (bold/italic/code) through every entry point", () => {
+    addConsoleMessage("**bold** and `code`");
+    expect(consoleStore.messages[0].content).toBe(
+      "<strong>bold</strong> and <code>code</code>",
+    );
+  });
+
   it("caps messages at MAX_CONSOLE_LINES (1000)", () => {
     for (let i = 0; i < 1010; i++) {
       addConsoleMessage(`msg ${i}`);

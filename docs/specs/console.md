@@ -20,7 +20,7 @@ layer: behavioural
 
 1.4 The console supports **inline markdown in content**: `**bold**`, `*italic*`, `` `code` ``, and `[label](url)` links. Other HTML must be escaped.
 
-1.5 New entries animate in. Animation style is `console.entryAnimation` (`slide`, `fade`, `none`, default `slide`). Typewriter mode reveals text at `console.typewriterIntervalMs` (default 20ms) per character. A queue ensures only one entry animates at a time. **Burst pressure valve**: when > 3 messages are pending in the animation queue, all pending messages appear instantly and animation resumes for subsequent messages. (see `src/ui/console/ConsolePanel.tsx`)
+1.5 New entries animate in. Animation style is `console.entryAnimation` (`slide`, `fade`, `none`, default `slide`). The `slide` and `fade` styles are independent per-entry CSS transitions (all new entries animate concurrently). **Typewriter** mode reveals text at `console.typewriterIntervalMs` (default 20ms) per character and is the only serialized style: a queue ensures only one entry typewrites at a time. **Burst pressure valve** (typewriter only): when > 3 messages are pending in the typewriter queue, all pending messages appear instantly and animation resumes for subsequent messages. (see `src/ui/console/ConsolePanel.tsx`)
 
 1.6 **Auto-scroll.** When the user is within ~30 px of the bottom, new entries auto-scroll. When the user has scrolled away, an unread indicator appears and auto-scroll is suspended until the user scrolls back to the bottom or invokes a "scroll to latest" affordance. (see `src/ui/console/ConsolePanel.tsx`)
 

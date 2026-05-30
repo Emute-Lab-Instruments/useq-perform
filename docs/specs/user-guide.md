@@ -545,12 +545,14 @@ Guide | Reference | Snippets
 
 Each of Guide and Reference has an inner **Language / Editor** domain grouping (either as inner tabs or as a visual section split). This gives users a consistent mental model: "Am I looking up something about the language or the tool?"
 
-- **Guide > Language**: Chapters 2–5 (syntax, algebra, modulation, rhythm)
-- **Guide > Editor**: Chapters 1 and 6 (getting started, editor tools)
+- **Guide > Language**: Chapters 1–4 (syntax, algebra, modulation, rhythm)
+- **Guide > Editor**: Chapter 5 (editor tools)
 - **Reference > Language**: Function reference (current ModuLispReferenceTab)
 - **Reference > Editor**: Keyboard shortcuts (current KeybindingsTab content), settings reference
 
-The standalone Keybindings tab is removed. Its content moves into Reference > Editor and is also taught in-context in Guide > Editor (structural editing in Chapter 2.5, eval modes in Chapter 6.3).
+(As implemented per Resolved Decision 9, Chapter 1 "Getting Started" was removed; the guide opens directly with language content, giving five chapters total — Ch.1–4 language, Ch.5 editor.)
+
+The standalone Keybindings tab is removed. Its content moves into Reference > Editor and is also taught in-context in Guide chapters.
 
 ### CSS
 
@@ -597,7 +599,7 @@ The existing `lessons.css` is extended to cover the new block types (deep-dive, 
 | 5.1–5.5 Editor/Tools          | Beginner guide + new content     |
 | All deep-dive blocks          | New                              |
 | All try-it prompts            | New                              |
-| Starter snippets (~10)        | New (all four categories)        |
+| Starter snippets (~33)        | New (rhythm, modulation, melodic, interactive, algebra, composition, tools) |
 | Reference > Editor sub-tab    | Migrate from KeybindingsTab      |
 
 ---
@@ -614,7 +616,7 @@ The existing `lessons.css` is extended to cover the new block types (deep-dive, 
 
 5. **Keybindings tab removed.** Content moves to Reference > Editor (as a shortcut lookup) and is taught in-context in Guide chapters 2 and 6.
 
-6. **Starter snippets ship.** All four categories: rhythm patterns, modulation shapes, melodic sequences, and interactive patches. ~8-10 snippets total, tagged by category.
+6. **Starter snippets ship.** A curated starter set (~33 snippets as shipped) spanning rhythm patterns, modulation shapes, melodic sequences, interactive patches, algebra, composition, and tools, each tagged by category (and `starter`). The set grew beyond the original ~8-10 estimate as content was written; see `src/utils/snippetStore.ts` `STARTER_SNIPPETS` for the canonical list. Resolved Open Question 2.
 
 7. **Guide domain split: visual sections** (not inner tabs). Language and Editor chapters appear in one scroll, separated by prominent section dividers. Flatter hierarchy than tabs-within-tabs.
 
@@ -632,6 +634,6 @@ The existing `lessons.css` is extended to cover the new block types (deep-dive, 
 
 1. **Live probe performance budget.** Evaluating 200 time-points per output through WASM on every keystroke (even debounced) could be heavy with complex expressions. Need to profile and set a timeout — if evaluation takes >50ms, skip the update and show a "complex expression" indicator.
 
-2. **Starter snippet content.** Exact code and tags for the ~10 starter snippets need writing. Should align with guide chapters so users recognise patterns they learned.
+2. ~~**Starter snippet content.**~~ Resolved (see Resolved Decision 6): the starter set is written and shipped in `src/utils/snippetStore.ts`.
 
 3. **Onboarding banner persistence.** Should the banner reappear on every session without a connection, or only on first visit? If the user dismisses it, when does it come back?
