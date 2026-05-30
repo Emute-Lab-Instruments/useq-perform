@@ -234,7 +234,7 @@ Explicit tree-walking for when the user needs to navigate the logical structure 
 
 5.1.8 `nav.shrink` — releases the most-recently-added end of a range cursor; collapses to a node cursor when length reaches 1.
 
-5.1.9 `nav.intoMeta` — descends from the host node into the payload of its outermost Meta (§6.7). Reverse is `nav.out`. No-op flash if the outermost Meta has no payload.
+5.1.9 `nav.intoMeta` — descends from the host node into the payload of its outermost Meta (§6.7). Reverse is `nav.out`. No-op flash if the outermost Meta has no payload. **Deferred:** Meta payloads (`Meta.payload`) are currently opaque and not represented as addressable `Node`s in the functional core, so there is nothing for a cursor to land on. Implementing this op requires lowering structured Meta payloads into the Node tree first.
 
 5.1.10 `nav.nextHole` / `nav.prevHole` — advance the cursor to the next / previous `hole` leaf in document order (across all top-level forms). No-op flash if no hole exists. Used by the radial menu's auto-chain (when stepping between holes within an inserted form) and by the keyboard `Tab` / `Shift-Tab` actions for hole-jumping.
 
@@ -299,6 +299,16 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
   - Function definitions tagged with `^:annotation` (or equivalent marker) at definition time. The runtime exposes the recognised set via a query.
   - The user setting `structure.userWrappers` — a list of names (and optionally a per-name `:disabled` flag to suppress a built-in match).
 
+> **Implementation status (§6.2).** `treeFromLezer` recognises sigils (`'`, `` ` ``,
+> `~`, `~@`, `@`) and the `^X` metadata prefix, folding them into Meta-bearing
+> hosts — the inverse of `printTree.wrapWithMetas`. The `live-edit` wrapper call
+> is recognised. **Not yet implemented:** the `ignore`-form (`#_`) — the clojure
+> grammar drops `#_` in `@skip`, so it cannot be recovered from the parse tree;
+> and the general built-in / user / annotation **wrapper registry**
+> (`structure.builtinWrappers`, `structure.userWrappers`, `^:annotation`-tagged
+> functions). Until the registry lands, only `live-edit` is treated as a wrapper
+> Meta; other wrapper-style calls remain plain lists.
+
 6.3 **Stacking is significant.** `(debug 'foo)` is `foo` carrying a `quote` Meta then a `debug` Meta (innermost first). `'(debug foo)` is `(debug foo)` carrying a single `quote` Meta. The two are distinct trees.
 
 6.4 **Visibility (the drawer).**
@@ -315,7 +325,7 @@ All mutations apply pointwise across the cursor set per §3.5. The descriptions 
 - `meta.cycle` — advance the outermost Meta through a configurable cycle of kinds (default cycle: `quote → unquote → off`).
 - `meta.foldToggle` — toggle drawer visibility for the focused node's Metas.
 
-6.7 **Navigation into Meta payloads.** Metas with structured payloads (`metadata`, wrapper Metas with arguments) are entered with `nav.intoMeta` (§5.1.9); the cursor descends into the payload, and `nav.out` returns to the host. Sigil and `ignore` Metas have no payload and reject this op.
+6.7 **Navigation into Meta payloads.** Metas with structured payloads (`metadata`, wrapper Metas with arguments) are entered with `nav.intoMeta` (§5.1.9); the cursor descends into the payload, and `nav.out` returns to the host. Sigil and `ignore` Metas have no payload and reject this op. (`nav.intoMeta` is currently deferred — see `core/nav.ts`; Meta payloads are not yet represented as addressable nodes.)
 
 ---
 

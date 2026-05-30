@@ -49,6 +49,34 @@ describe("appSettings", () => {
     expect("offsetSeconds" in normalized.visualisation).toBe(false);
   });
 
+  it("normalizes structure settings: defaults, valid overrides, and invalid coercion (structural-editing.md §5.2.9/§4.2/§7.2)", async () => {
+    const settingsModule = await import("./appSettings.ts");
+
+    // Defaults applied when absent.
+    const fromEmpty = settingsModule.normalizeUserSettings({});
+    expect(fromEmpty.structure.atomSlurpBehaviour).toBe("promote-to-vector");
+    expect(fromEmpty.structure.autoEnterInsertion).toBe(true);
+    expect(fromEmpty.structure.flashConsoleToasts).toBe(true);
+
+    // Valid overrides preserved.
+    const overridden = settingsModule.normalizeUserSettings({
+      structure: {
+        atomSlurpBehaviour: "promote-to-list",
+        autoEnterInsertion: false,
+        flashConsoleToasts: false,
+      },
+    });
+    expect(overridden.structure.atomSlurpBehaviour).toBe("promote-to-list");
+    expect(overridden.structure.autoEnterInsertion).toBe(false);
+    expect(overridden.structure.flashConsoleToasts).toBe(false);
+
+    // Invalid enum value falls back to the default.
+    const invalid = settingsModule.normalizeUserSettings({
+      structure: { atomSlurpBehaviour: "promote-to-banana" },
+    });
+    expect(invalid.structure.atomSlurpBehaviour).toBe("promote-to-vector");
+  });
+
   it("migrates legacy storage keys into canonical local storage once", async () => {
     const settingsModule = await import("./appSettings.ts");
     window.localStorage.setItem(

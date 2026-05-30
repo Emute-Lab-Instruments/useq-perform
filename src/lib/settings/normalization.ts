@@ -163,6 +163,20 @@ export function normalizeUserSettings(value: unknown): AppSettings {
         structure.foldAllWrappers == null
           ? defaults.structure.foldAllWrappers
           : structure.foldAllWrappers !== false,
+      atomSlurpBehaviour:
+        structure.atomSlurpBehaviour === "promote-to-vector" ||
+        structure.atomSlurpBehaviour === "promote-to-list" ||
+        structure.atomSlurpBehaviour === "no-op"
+          ? structure.atomSlurpBehaviour
+          : defaults.structure.atomSlurpBehaviour,
+      autoEnterInsertion:
+        structure.autoEnterInsertion == null
+          ? defaults.structure.autoEnterInsertion
+          : structure.autoEnterInsertion !== false,
+      flashConsoleToasts:
+        structure.flashConsoleToasts == null
+          ? defaults.structure.flashConsoleToasts
+          : structure.flashConsoleToasts !== false,
     },
     format: {
       ...defaults.format,

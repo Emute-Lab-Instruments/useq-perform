@@ -139,6 +139,21 @@ export interface WasmSettings {
 export interface StructureSettings {
   /** Whether wrappers and holes are folded to inline pills by default. */
   foldAllWrappers: boolean;
+  /**
+   * Promotion target when slurping onto a bare leaf (structural-editing.md
+   * §5.2.9). The leaf is first wrapped in a singleton compound of this kind.
+   */
+  atomSlurpBehaviour: "promote-to-vector" | "promote-to-list" | "no-op";
+  /**
+   * Whether typing a printable key while focused on an editable leaf enters
+   * insertion mode (structural-editing.md §4.2). Suppressed for gamepad input.
+   */
+  autoEnterInsertion: boolean;
+  /**
+   * Whether no-op rejections emit a console toast alongside the cursor flash
+   * (structural-editing.md §7.2). The halo flash always fires regardless.
+   */
+  flashConsoleToasts: boolean;
 }
 
 /** Auto-formatting policy (docs/specs/formatting.md). */
@@ -488,6 +503,9 @@ export const defaultUserSettings: AppSettings = {
   },
   structure: {
     foldAllWrappers: true,
+    atomSlurpBehaviour: "promote-to-vector",
+    autoEnterInsertion: true,
+    flashConsoleToasts: true,
   },
   format: {
     lineWidth: 60,
