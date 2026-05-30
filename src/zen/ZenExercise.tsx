@@ -7,6 +7,7 @@ import { bracketMatching } from "@codemirror/language";
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 import { baseKeymap } from "../editors/keymaps";
 import { editorBaseTheme, themes } from "../editors/themes";
+import { defaultTheme } from "../lib/editorDefaults";
 import { structuralCoreExtensions } from "../editors/extensions/structure/adapter/extension";
 import { getAppSettings } from "../runtime/appSettingsRepository";
 import { validateExercise } from "./validation";
@@ -306,7 +307,7 @@ function createZenEditor(
   container.innerHTML = "";
 
   const settings = getAppSettings();
-  const theme = themes[settings.editor?.theme] ?? themes["oneDark"];
+  const theme = themes[settings.editor?.theme] ?? themes[defaultTheme];
 
   const validationListener = EditorView.updateListener.of((update) => {
     if (!update.docChanged && !update.selectionSet) return;
@@ -356,7 +357,7 @@ function createTargetEditor(
   container.innerHTML = "";
 
   const settings = getAppSettings();
-  const theme = themes[settings.editor?.theme] ?? themes["oneDark"];
+  const theme = themes[settings.editor?.theme] ?? themes[defaultTheme];
 
   const editorState = EditorState.create({
     doc: ex.targetCode,

@@ -8,6 +8,7 @@ import {
   guideEditorExtensions,
 } from "../../editors/extensions.ts";
 import { themes } from "../../editors/themes.ts";
+import { defaultTheme } from "../../lib/editorDefaults.ts";
 import { settings } from "../../utils/settingsStore";
 
 interface CodeMirrorEditorProps {
@@ -34,11 +35,12 @@ export const CodeMirrorEditor: Component<CodeMirrorEditorProps> = (props) => {
   onMount(() => {
     if (!editorContainer) return;
 
-    const currentTheme = settings.editor?.theme || "oneDark";
+    const currentTheme = settings.editor?.theme || defaultTheme;
     // themes is imported from a legacy @ts-nocheck module with no exported type.
     // Treat it as a name-keyed record of CodeMirror Extension values.
     const themesRecord = themes as Record<string, Extension>;
-    const themeExtension = themesRecord[currentTheme] ?? themesRecord["oneDark"];
+    const themeExtension =
+      themesRecord[currentTheme] ?? themesRecord[defaultTheme];
 
     const base = props.readOnly
       ? props.enableProbes
