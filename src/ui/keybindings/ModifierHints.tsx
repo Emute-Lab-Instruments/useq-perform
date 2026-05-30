@@ -45,6 +45,11 @@ export function ModifierHints(): JSX.Element {
   const style = (): HintStyle =>
     (settings.keybindings?.modifierHintStyle as HintStyle) ?? "cursor";
 
+  // which-key.md §11.5: when the delay is 0 the popup is completely disabled —
+  // no timers, and no key handling for hint purposes.
+  const hintsDisabled = (): boolean =>
+    (settings.keybindings?.modifierHintDelay ?? 500) <= 0;
+
   const visible = () => hintState() !== "HIDDEN";
 
   const hints = (): HintEntry[] => {
@@ -159,6 +164,7 @@ export function ModifierHints(): JSX.Element {
   }
 
   function onKeyDown(e: KeyboardEvent): void {
+    if (hintsDisabled()) return;
     const modPrefix = MODIFIER_KEYS[e.key];
     if (modPrefix) {
       if (heldModifier() === null) {
@@ -181,6 +187,7 @@ export function ModifierHints(): JSX.Element {
   }
 
   function onKeyUp(e: KeyboardEvent): void {
+    if (hintsDisabled()) return;
     const modPrefix = MODIFIER_KEYS[e.key];
     if (modPrefix) {
       handleModifierRelease(modPrefix);

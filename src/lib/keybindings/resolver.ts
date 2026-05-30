@@ -18,7 +18,7 @@ import {
 } from "./defaults.ts";
 import { getHandler, type ActionHandler } from "./handlers.ts";
 import { isBrowserReserved, isOsReserved, type ReservedKey } from "./osReserved.ts";
-import { whenExpressionsOverlap } from "./contexts.ts";
+import { whenExpressionsOverlap, evaluateWhen } from "./contexts.ts";
 import { recordAction } from "./usageTracker.ts";
 import { announceAction } from "./announcer.ts";
 
@@ -47,7 +47,9 @@ export type RebindResult =
   | { status: "conflict"; displaced: ActionId; suggestions: RebindSuggestion[] };
 
 export type RebindSuggestion =
+  | { type: "context-split"; target: string }
   | { type: "swap"; target: string }
+  | { type: "chord"; target: string }
   | { type: "nearby"; target: string };
 
 export interface BindingResolver {
@@ -96,6 +98,25 @@ export function isChord(key: string): boolean {
 export function chordLeader(key: string): string | undefined {
   if (!isChord(key)) return undefined;
   return key.split(" ")[0];
+}
+
+/**
+ * Suggest a chord target for moving an action into a namespace under the
+ * requested key (keybindings.md §1.9, "chord" suggestion). Returns a
+ * `<requestedKey> <letter>` chord whose full key string is not already bound,
+ * or undefined when the requested key is itself a chord or no slot is free.
+ */
+export function suggestChordTarget(
+  requestedKey: string,
+  bindings: KeyBinding[],
+): string | undefined {
+  if (isChord(requestedKey)) return undefined;
+  const boundKeys = new Set(bindings.map((b) => b.key));
+  for (const letter of LETTERS) {
+    const candidate = `${requestedKey} ${letter}`;
+    if (!boundKeys.has(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 /**
@@ -295,12 +316,30 @@ export function createResolver(opts?: {
       );
 
       if (displaced) {
+        // Ranked suggestions per keybindings.md §1.9:
+        //   context-split (zero disruption) > swap > chord > nearby
         const suggestions: RebindSuggestion[] = [];
 
-        // Suggestion 1: swap — move displaced action to the old key
+        // Suggestion 1: context-split — if the two actions' when-clauses can be
+        // made non-overlapping, they could share the key with no displacement.
+        // We can only offer this when at least one side already carries a
+        // context predicate (otherwise there is nothing to split on).
+        const incomingWhen = bindings[idx].when;
+        if (incomingWhen !== undefined || displaced.when !== undefined) {
+          suggestions.push({ type: "context-split", target: newKey });
+        }
+
+        // Suggestion 2: swap — move displaced action to the old key
         suggestions.push({ type: "swap", target: oldKey });
 
-        // Suggestion 2: nearby — find closest free key
+        // Suggestion 3: chord — move into a namespace under the leader of the
+        // requested key (e.g. "Alt-e" → "Alt-e <free letter>").
+        const chordTarget = suggestChordTarget(newKey, bindings);
+        if (chordTarget) {
+          suggestions.push({ type: "chord", target: chordTarget });
+        }
+
+        // Suggestion 4: nearby — find closest free key
         const free = resolver.freeKeys();
         if (free.length > 0) {
           suggestions.push({ type: "nearby", target: free[0] });
@@ -355,20 +394,34 @@ export function createResolver(opts?: {
             : (originalHandler as () => boolean)();
         };
 
-        const cmBinding: CMKeyBinding = {
-          key: rb.key,
-          run: trackedRun,
-          preventDefault: rb.preventDefault,
-        };
-
         if (rb.when !== undefined) {
-          // TODO Phase 3: context evaluation — for now, conditional
-          // bindings are included as-is. The when-clause is not evaluated
-          // at the CodeMirror level; it will be handled by a wrapping
-          // dispatch layer in Phase 3.
-          conditionalCM.push(cmBinding);
+          // Context-sensitive binding (keybindings.md §1.7, input-dispatch.md
+          // §2.4): evaluate the when-clause at dispatch time. When the context
+          // is not active, return false so CodeMirror falls through to any
+          // lower-precedence binding on the same key (or to default handling).
+          const whenExpr = rb.when;
+          const conditionalRun = (view: any): boolean => {
+            if (!evaluateWhen(whenExpr)) return false;
+            return trackedRun(view);
+          };
+          // NB: preventDefault MUST be false here. CodeMirror merges every
+          // binding on a key into one entry whose `preventDefault` flag is OR'd
+          // and applied even when `run` returns false. With preventDefault:true
+          // an inactive-context binding would still swallow the key, blocking
+          // fall-through to lower-precedence bindings. When the context IS
+          // active, `run` returns true → the event is treated as handled (and
+          // prevented) regardless of this flag.
+          conditionalCM.push({
+            key: rb.key,
+            run: conditionalRun,
+            preventDefault: false,
+          });
         } else {
-          unconditionalCM.push(cmBinding);
+          unconditionalCM.push({
+            key: rb.key,
+            run: trackedRun,
+            preventDefault: rb.preventDefault,
+          });
         }
       }
 

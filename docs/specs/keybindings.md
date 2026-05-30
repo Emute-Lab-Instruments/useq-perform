@@ -13,8 +13,8 @@ layer: behavioural
 - `src/lib/keybindings/defaults.ts` — default key-to-action maps per profile
 - `src/lib/keybindings/handlers.ts` — action-to-implementation mapping, `executeEditorCommand()`
 - `src/lib/keybindings/resolver.ts` — merge defaults and overrides, conflict detection, context evaluation
-- `src/lib/keybindings/chords.ts` — chord sequence handling
-- `src/lib/keybindings/contexts.ts` — context-sensitive binding predicates
+- `src/lib/keybindings/profileRegistry.ts` — maps a profile ID to its base binding set
+- `src/lib/keybindings/contexts.ts` — context-sensitive binding predicates (chord state lives in `src/ui/keybindings/hintStateMachine.ts`)
 - `src/lib/keybindings/keyNotation.ts` — key notation parsing and normalisation
 - `src/lib/keybindings/stickyModifiers.ts` — sticky modifier latch logic
 - `src/lib/keybindings/osReserved.ts` — per-OS and browser-reserved key database
@@ -30,7 +30,7 @@ layer: behavioural
 
 1.1 **Action registry is the single source of truth.** Every bindable operation is named by an `ActionId` string. CodeMirror handlers, the help tab, the keyboard visualiser, the action palette, and gamepad bindings all reference the same `ActionId` strings. (see `src/lib/keybindings/actions.ts`)
 
-1.2 Action categories are: `core`, `editor`, `structure`, `probe`, `navigation`, `ui`, `transport`, `gamepad`, `menu`. Each action has a description, category, optional icon, optional `requiresEditor`/`repeatable`/`analogOnly` flags.
+1.2 Action categories are: `core`, `editor`, `structure`, `format`, `probe`, `navigation`, `ui`, `transport`, `gamepad`, `menu`. Each action has a description, category, optional icon, optional `requiresEditor`/`repeatable`/`analogOnly` flags.
 
 1.3 **Keybindings are profile-based.** A `profile` selects a set of default bindings; user `overrides` is a sparse map of `ActionId → key`. The active map is `profile defaults ⊕ overrides`. (see `src/lib/keybindings/defaults.ts`, `src/lib/keybindings/profiles.ts`)
 
@@ -42,7 +42,7 @@ layer: behavioural
 
 1.7 **Context-sensitive bindings.** A binding may carry a `when` predicate (e.g. `probe.active`, `!modal.open`, `editor.focused && probe.active`). Bindings with non-overlapping contexts may share the same key. (see `src/lib/keybindings/contexts.ts`)
 
-1.8 **Chord sequences.** A binding may be a chord (`Alt-s ]`): leader key opens a transient namespace, second key selects an action. The chord-completion window is `keybindings.chordTimeout` ms (default 1500). Within the window, the keyboard visualiser may dim non-completion keys to highlight available second strokes. (see `src/lib/keybindings/chords.ts`)
+1.8 **Chord sequences.** A binding may be a chord (`Alt-s ]`): leader key opens a transient namespace, second key selects an action. The chord-completion window is `keybindings.chordTimeout` ms (default 1500). Within the window, the keyboard visualiser may dim non-completion keys to highlight available second strokes. CodeMirror owns chord prefix-matching internally; the which-key popup mirrors the pending prefix via `src/ui/keybindings/hintStateMachine.ts`. (see [which-key.md §6](which-key.md))
 
 1.9 **Conflict detection.** The resolver detects key collisions and provides ranked rebinding suggestions: context-split (zero disruption) > swap (one displaced action moves) > chord (move into a namespace) > nearby (pick the closest free combo). (see `src/lib/keybindings/resolver.ts`)
 

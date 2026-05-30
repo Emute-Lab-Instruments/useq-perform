@@ -1,5 +1,4 @@
 import { createSignal, type Accessor } from "solid-js";
-import { setPendingChord } from "../../lib/keybindings/chords.ts";
 import { settings } from "../../utils/settingsStore.ts";
 import { isChordLeader } from "./hintData.ts";
 
@@ -39,7 +38,6 @@ function transitionToHidden(): void {
   setHintState("HIDDEN");
   setHeldModifier(null);
   setPendingChordPrefix(null);
-  setPendingChord(null);
   setExpandedNamespaces(new Set<string>());
   setSticky(false);
 }
@@ -68,7 +66,6 @@ function handleNonModifierKey(key: string): void {
       clearTimers();
       const prefix = mod + "-" + key;
       setPendingChordPrefix(prefix);
-      setPendingChord(prefix);
       setHintState("CHORD_PENDING");
       startChordTimeout();
     } else {
@@ -82,7 +79,6 @@ function handleNonModifierKey(key: string): void {
       clearTimers();
       const prefix = mod + "-" + key;
       setPendingChordPrefix(prefix);
-      setPendingChord(prefix);
       setHintState("CHORD_PENDING");
       startChordTimeout();
     } else {

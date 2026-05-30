@@ -18,6 +18,7 @@ import {
 import { actions, type ActionId, type ActionDef } from "../../lib/keybindings/actions.ts";
 import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
 import { getHandler } from "../../lib/keybindings/handlers.ts";
+import { isMac as detectIsMac } from "../../lib/keybindings/osReserved.ts";
 import { editor } from "../../lib/editorStore.ts";
 import { pushOverlay } from "../overlayManager.ts";
 
@@ -40,8 +41,8 @@ const keyLookup = buildKeyLookup();
 
 /** Format a CodeMirror key string for display (e.g. "Mod-Shift-p" -> "Ctrl+Shift+P"). */
 function formatKey(key: string): string {
-  const isMac =
-    typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform ?? "");
+  // OS detection via the shared `detectOs()` helper (keybindings.md §1.5).
+  const isMac = detectIsMac();
   return key
     .replace(/Mod/g, isMac ? "Cmd" : "Ctrl")
     .replace(/-/g, "+")
