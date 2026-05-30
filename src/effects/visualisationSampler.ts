@@ -107,10 +107,27 @@ const FUTURE_BOUNDARY_GAP_SAMPLE_MULTIPLIER = 4;
 // `temporalSampleRateMultiplier` is 1.0.
 let pastBufferSampleRate = ASSUMED_FRAME_RATE;
 
+// Spec visualisation.md §2.3: retain `windowDuration / 2 + historyHeadroom`
+// seconds of history, capped at `maxHistorySeconds`. Both headroom and cap
+// are configurable (`visualisation.historyHeadroom` / `.maxHistorySeconds`).
+function retainedHistorySeconds(): number {
+  const settings = visStore.settings;
+  const windowDuration = Number.isFinite(settings.windowDuration)
+    ? settings.windowDuration
+    : 10;
+  const headroom = Number.isFinite(settings.historyHeadroom)
+    ? settings.historyHeadroom
+    : DEFAULT_HISTORY_HEADROOM;
+  const cap = Number.isFinite(settings.maxHistorySeconds)
+    ? settings.maxHistorySeconds
+    : DEFAULT_MAX_HISTORY_SECONDS;
+  return Math.min(windowDuration / 2 + headroom, cap);
+}
+
 function pastBufferCapacity(): number {
   return Math.max(
     1,
-    Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * pastBufferSampleRate),
+    Math.ceil(retainedHistorySeconds() * pastBufferSampleRate),
   );
 }
 
@@ -246,6 +263,8 @@ function getDefaults(): VisSettings {
     extensionBatchSize: 4,
     temporalSampleRateMultiplier: 1,
     inputEpsilon: DEFAULT_INPUT_EPSILON,
+    historyHeadroom: DEFAULT_HISTORY_HEADROOM,
+    maxHistorySeconds: DEFAULT_MAX_HISTORY_SECONDS,
   };
 }
 
@@ -306,6 +325,14 @@ function clampSettings(raw: Partial<VisSettings> | null): VisSettings {
   safe.inputEpsilon = Number.isFinite(epsilonNumeric)
     ? Math.min(1, Math.max(0, epsilonNumeric))
     : defaults.inputEpsilon;
+  const headroomNumeric = Number(safe.historyHeadroom);
+  safe.historyHeadroom = Number.isFinite(headroomNumeric)
+    ? Math.max(0, headroomNumeric)
+    : defaults.historyHeadroom;
+  const maxHistoryNumeric = Number(safe.maxHistorySeconds);
+  safe.maxHistorySeconds = Number.isFinite(maxHistoryNumeric)
+    ? Math.max(1, maxHistoryNumeric)
+    : defaults.maxHistorySeconds;
   return safe;
 }
 

@@ -12,7 +12,7 @@ layer: behavioural
 
 - `src/editors/extensions/probes.ts` — probe CodeMirror extension, state field, widget, sampling dispatch, persistence
 - `src/editors/extensions/probeHelpers.ts` — `buildProbeExpression()`, recognised-operator set, wrapper-depth logic
-- `src/editors/extensions/inlineResults.ts` — inline result rendering surface for probe values
+- `src/ui/visualisation/webglLineRenderer.ts` — `drawProbeWaveformGL()` / `releaseProbeGLState()`: the per-probe WebGL waveform rendering surface
 - `src/editors/extensions/expressionEval.ts` — expression evaluation helpers used by probe sampling
 
 ## 1. Probes
@@ -57,11 +57,11 @@ layer: behavioural
 
 ### 1.7 Probe rendering
 
-1.7.1 Each probe renders on a WebGL-backed surface adjacent to the marked range. (see `src/editors/extensions/inlineResults.ts`) Default surface size is `DEFAULT_PROBE_CANVAS_WIDTH × DEFAULT_PROBE_CANVAS_HEIGHT`; per-probe size is adjustable at runtime.
+1.7.1 Each probe renders on a WebGL-backed surface adjacent to the marked range, drawn by `drawProbeWaveformGL()` (see `src/ui/visualisation/webglLineRenderer.ts`), wired from the probe widget in `src/editors/extensions/probes.ts`. Default surface size is `DEFAULT_PROBE_CANVAS_WIDTH × DEFAULT_PROBE_CANVAS_HEIGHT`; per-probe size is adjustable at runtime.
 
 1.7.2 Each probe has its own window duration (`windowDurationMs`). On creation it inherits from the global default (`visualisation.probeDefaultWindowDurationMs`, fallback to `DEFAULT_PROBE_WINDOW_DURATION_MS`). Once the user adjusts the per-probe window, that probe is **sticky**: it does not follow subsequent changes to the global default. Newly-created probes after a global change pick up the new default. The global default is independent of the vis-panel `visualisation.windowDuration` ([visualisation.md §1.3](visualisation.md)) — the panel and the probes are different surfaces with different time-scope intents.
 
-1.7.3 The rendered trace is centred on the current transport time: past samples on the left, future samples on the right (predicted by sampling at `t > now`), matching the global vis panel convention ([visualisation.md §1.2](visualisation.md)).
+1.7.3 The rendered trace covers a per-probe window ending at the current transport time: the probe samples `[now − windowDuration, now]` and draws the resulting waveform. Probes are **past/present-only** — they do not project the future to the right of `now`. Whether probes should adopt the main panel's faithful-past / projected-future split ([visualisation.md §1.2](visualisation.md)) is an open question deferred in [visualisation.md §9.4](visualisation.md): the per-probe surface is narrow and the benefit may not justify the complexity. Until that is resolved, the past-only window is the contract.
 
 1.7.4 Probe rendering must remain smooth across runtime transitions. A hardware connect/disconnect must not blank probe surfaces or lose in-flight traces.
 

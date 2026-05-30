@@ -36,8 +36,15 @@ export function normalizeVisualisationSettings(
     circularOffset: coerceNumber(raw.circularOffset, defaults.circularOffset),
     futureLeadSeconds: coerceNumber(raw.futureLeadSeconds, defaults.futureLeadSeconds),
     digitalLaneGap: coerceNumber(raw.digitalLaneGap, defaults.digitalLaneGap),
-    probeHighlightsEnabled:
-      raw.probeHighlightsEnabled == null ? defaults.probeHighlightsEnabled : raw.probeHighlightsEnabled !== false,
+    fromListHighlights:
+      raw.fromListHighlights == null ? defaults.fromListHighlights : raw.fromListHighlights !== false,
+    probeDefaultWindowDurationMs: coerceNumber(
+      raw.probeDefaultWindowDurationMs,
+      defaults.probeDefaultWindowDurationMs,
+    ),
+    historyHeadroom: coerceNumber(raw.historyHeadroom, defaults.historyHeadroom),
+    maxHistorySeconds: coerceNumber(raw.maxHistorySeconds, defaults.maxHistorySeconds),
+    inputEpsilon: coerceNumber(raw.inputEpsilon, defaults.inputEpsilon),
     readabilityBlurRadius: coerceNumber(raw.readabilityBlurRadius, defaults.readabilityBlurRadius),
     readabilityPadding: coerceNumber(raw.readabilityPadding, defaults.readabilityPadding),
     readabilityTintOpacity: coerceNumber(raw.readabilityTintOpacity, defaults.readabilityTintOpacity),
@@ -130,8 +137,27 @@ export function extractVisualisationPatch(
     patch.digitalLaneGap = coerceNumber(visualisation.digitalLaneGap, defaults.digitalLaneGap);
   }
 
-  if ("probeHighlightsEnabled" in visualisation) {
-    patch.probeHighlightsEnabled = visualisation.probeHighlightsEnabled !== false;
+  if ("fromListHighlights" in visualisation) {
+    patch.fromListHighlights = visualisation.fromListHighlights !== false;
+  }
+
+  if ("probeDefaultWindowDurationMs" in visualisation) {
+    patch.probeDefaultWindowDurationMs = coerceNumber(
+      visualisation.probeDefaultWindowDurationMs,
+      defaults.probeDefaultWindowDurationMs,
+    );
+  }
+
+  if ("historyHeadroom" in visualisation) {
+    patch.historyHeadroom = coerceNumber(visualisation.historyHeadroom, defaults.historyHeadroom);
+  }
+
+  if ("maxHistorySeconds" in visualisation) {
+    patch.maxHistorySeconds = coerceNumber(visualisation.maxHistorySeconds, defaults.maxHistorySeconds);
+  }
+
+  if ("inputEpsilon" in visualisation) {
+    patch.inputEpsilon = coerceNumber(visualisation.inputEpsilon, defaults.inputEpsilon);
   }
 
   if ("readabilityBlurRadius" in visualisation) {

@@ -67,7 +67,15 @@ export interface VisualisationSettings {
   futureLeadSeconds: number;
   digitalLaneGap: number;
   /** Whether from-list/seq element-cycling highlights are shown without active probes. */
-  probeHighlightsEnabled: boolean;
+  fromListHighlights: boolean;
+  /** Default per-probe window duration (ms) inherited by newly-created probes. */
+  probeDefaultWindowDurationMs: number;
+  /** Extra seconds of past samples retained beyond the visible window half. */
+  historyHeadroom: number;
+  /** Hard cap on total history depth per output (seconds). */
+  maxHistorySeconds: number;
+  /** Absolute change threshold for external inputs to trigger future re-projection. */
+  inputEpsilon: number;
   /** Blur radius (px) for the readability overlay behind code text. */
   readabilityBlurRadius: number;
   /** Extra padding (px) around each code line in the blur mask. */
@@ -321,7 +329,11 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   circularOffset: 0,
   futureLeadSeconds: 1,
   digitalLaneGap: 4,
-  probeHighlightsEnabled: true,
+  fromListHighlights: true,
+  probeDefaultWindowDurationMs: 1000,
+  historyHeadroom: 5,
+  maxHistorySeconds: 30,
+  inputEpsilon: 0.01,
   readabilityBlurRadius: 10,
   readabilityPadding: 3,
   readabilityTintOpacity: 0.5,

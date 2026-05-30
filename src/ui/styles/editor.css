@@ -182,6 +182,22 @@ body.gamepad-active, body.gamepad-active * {
   color: #ff9c9c;
 }
 
+/* Stale probe (spec §1.5.5): text at saved offsets changed since save. */
+.cm-probe-widget-text.is-stale {
+  color: #ffd27a;
+  cursor: help;
+}
+
+.cm-probe-widget-text.is-stale::before {
+  content: "⚠ ";
+}
+
+/* Disabled probe (spec §1.6.3): hardware-only mode, WASM unavailable. */
+.cm-probe-widget-text.is-disabled {
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+}
+
 .cm-probe-depth-overlay {
   display: flex;
   align-items: center;

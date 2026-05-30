@@ -47,6 +47,8 @@ export interface VisSettings {
   extensionBatchSize: number;
   temporalSampleRateMultiplier: number;
   inputEpsilon: number;
+  historyHeadroom: number;
+  maxHistorySeconds: number;
 }
 
 export interface SerialBufferSnapshot {
@@ -96,6 +98,8 @@ const DEFAULT_SETTINGS: VisSettings = {
   extensionBatchSize: 4,
   temporalSampleRateMultiplier: 1,
   inputEpsilon: 0.01,
+  historyHeadroom: 5,
+  maxHistorySeconds: 30,
 };
 
 const EMPTY_SERIAL_BUFFERS: SerialBufferSnapshot = {
