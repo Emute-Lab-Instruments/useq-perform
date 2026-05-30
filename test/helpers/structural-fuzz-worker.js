@@ -221,10 +221,18 @@ function chooseOperation(rng, view, context) {
   if (roll < 0.94) {
     return { kind: "deleteNode" };
   }
-  if (roll < 0.965) {
+  if (roll < 0.955) {
     return { kind: "adjustNumber", delta: pick(rng, [-10, -1, -0.1, 0.1, 1, 10]) };
   }
-  if (roll < 0.98) {
+  if (roll < 0.965) {
+    // §2.3: kind-dispatched atom adjust (number/symbol/keyword/boolean step).
+    return { kind: "atomAdjust", direction: pick(rng, [1, -1]) };
+  }
+  if (roll < 0.97) {
+    // §2.3: polarity flip on the focused atom.
+    return { kind: "atomFlipPolarity" };
+  }
+  if (roll < 0.985) {
     const anchor = docLength === 0 ? 0 : int(rng, docLength + 1);
     return { kind: "select", anchor };
   }
@@ -306,6 +314,17 @@ function applyOperation(view, operation, context) {
       return executeEditorCommand(view, {
         kind: "adjustNumber",
         delta: operation.delta,
+        source: "test",
+      });
+    case "atomAdjust":
+      return executeEditorCommand(view, {
+        kind: "atomAdjust",
+        direction: operation.direction,
+        source: "test",
+      });
+    case "atomFlipPolarity":
+      return executeEditorCommand(view, {
+        kind: "atomFlipPolarity",
         source: "test",
       });
     case "undo":

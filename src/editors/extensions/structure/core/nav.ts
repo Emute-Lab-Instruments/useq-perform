@@ -7,20 +7,24 @@
  * always identical (===) to the input on every nav op.
  *
  * Naming follows the spec exactly:
- *   - `nav.out` (§5.1.1) — to parent
- *   - `nav.in`  (§5.1.2) — to first child
- *   - `nav.up` / `nav.down`   (§5.1.10) — vertical spatial (line-based; lives
- *     in the adapter, not here, since it needs source positions)
- *   - `nav.left` / `nav.right` (§5.1.9)  — horizontal Euler-tour spatial
+ *   - `nav.right` / `nav.left` (§5.1.1) — horizontal Euler-tour spatial
  *     (pure; implemented here). Each compound is visited twice — once
  *     before its children (pre-order) and once after (post-order). The
  *     traversal phase is carried on the cursor as `NodeCursor.phase`. All
  *     non-spatial nav ops emit cursors without `phase`, which the spatial
  *     ops interpret as pre-order — that gives the spec's "phase resets
  *     when arriving via a non-spatial op" behaviour for free.
+ *   - `nav.up` / `nav.down`   (§5.1.2) — vertical spatial (line-based; lives
+ *     in the adapter, not here, since it needs source positions)
+ *   - `nav.out` (§5.1.3) — to parent
+ *   - `nav.in`  (§5.1.4) — to first child
  *
- * §5.1.7 (`nav.intoMeta`) is intentionally unimplemented — out of scope for
- * the probe per the task brief.
+ * `nav.intoMeta` (§5.1.9 / §6.7) is deferred: it descends into the *payload*
+ * of the host's outermost Meta, but Meta payloads are currently opaque
+ * (`Meta.payload: unknown`) and are not represented as addressable Nodes, so
+ * there is nothing for a cursor to land on. Implementing it requires lowering
+ * structured Meta payloads (metadata value, wrapper keyword-args) into the
+ * Node tree first. Tracked as a model-level change, out of scope here.
  */
 
 import { findHolesInOrder } from "./holes.ts";

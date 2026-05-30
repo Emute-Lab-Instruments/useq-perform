@@ -320,6 +320,83 @@ function tryWrapperRecognition(
 }
 
 /**
+ * Lezer node names that the clojure grammar emits for prefix-sigil reader
+ * macros, mapped to the structural `Meta.kind` printed by
+ * `printTree.wrapWithMetas`. Recognising these makes parse the inverse of
+ * print (§6.5 Meta preservation, §7.4(c) round-trip), so a `meta.add 'quote'`
+ * followed by a doc rebuild reparses with the quote Meta intact rather than
+ * collapsing into a bare symbol.
+ *
+ * Note on `ignore` (`#_`): the clojure grammar lists `Discard` in `@skip`, so
+ * ignore-forms are dropped from the parse tree entirely and cannot be
+ * recovered here. `printTree` still emits `#_`, but a round-trip through the
+ * parser loses the `ignore` Meta (and its host). This is a grammar limitation,
+ * not an omission; see the round-trip test for the recoverable kinds.
+ */
+const SIGIL_META_KINDS: Record<string, string> = {
+  Quote: "quote",
+  SyntaxQuote: "syntax-quote",
+  Unquote: "unquote",
+  UnquoteSplice: "unquote-splicing",
+  Deref: "deref",
+};
+
+/**
+ * Recognise a prefix-sigil reader macro (`'`, `` ` ``, `~`, `~@`, `@`) or a
+ * `^meta` metadata form and fold it into the host node with a corresponding
+ * Meta prepended (§6.2). Returns null when `node` is not a sigil/metadata node.
+ */
+function trySigilMeta(
+  node: SyntaxNode,
+  state: EditorState,
+  ids: IdGen,
+  idIndex: Map<NodeId, SourceRange>,
+  warnings: StructuralWarning[],
+): Node | null {
+  const name = node.type.name;
+
+  // `^X <host>` — metadata: the grammar emits a `Meta` node whose first
+  // logical child is `Metadata`/`ReaderMetadata` and second is the host.
+  if (name === "Meta") {
+    const logical = logicalChildren(node);
+    if (logical.length < 2) return null;
+    const metaPayloadNode = logical[0]!;
+    const hostNode = logical[1]!;
+    if (
+      metaPayloadNode.type.name !== "Metadata" &&
+      metaPayloadNode.type.name !== "ReaderMetadata"
+    ) {
+      return null;
+    }
+    const host = convert(hostNode, state, ids, idIndex, warnings);
+    if (!host) return null;
+    // Strip the leading `^` (and `#^` for reader metadata) sigil from the payload text.
+    const rawPayload = state.doc.sliceString(metaPayloadNode.from, metaPayloadNode.to);
+    const payloadText = rawPayload.replace(/^#?\^/, "");
+    const meta: Meta = { kind: "metadata", payload: payloadText };
+    const hostMetas = "metas" in host ? host.metas : [];
+    const withMeta = { ...host, metas: [meta, ...hostMetas] };
+    idIndex.set(withMeta.id, { from: node.from, to: node.to });
+    return withMeta;
+  }
+
+  const metaKind = SIGIL_META_KINDS[name];
+  if (metaKind === undefined) return null;
+
+  // Some sigil punctuation (`~@`, `@`) is emitted as a named leading token, so
+  // the host expression is the *last* logical child, not the first.
+  const logical = logicalChildren(node);
+  if (logical.length === 0) return null;
+  const host = convert(logical[logical.length - 1]!, state, ids, idIndex, warnings);
+  if (!host) return null;
+  const meta: Meta = { kind: metaKind, payload: undefined };
+  const hostMetas = "metas" in host ? host.metas : [];
+  const withMeta = { ...host, metas: [meta, ...hostMetas] };
+  idIndex.set(withMeta.id, { from: node.from, to: node.to });
+  return withMeta;
+}
+
+/**
  * Convert a Lezer SyntaxNode into a core Node, recursively. Returns null when
  * the lezer node is structural (skip it).
  */
@@ -333,6 +410,11 @@ function convert(
   if (isStructuralToken(node)) return null;
 
   const name = node.type.name;
+
+  // §6.2: prefix-sigil reader macros and `^` metadata fold into Meta-bearing
+  // hosts, the inverse of printTree.wrapWithMetas.
+  const sigilResult = trySigilMeta(node, state, ids, idIndex, warnings);
+  if (sigilResult !== null) return sigilResult;
 
   // Compounds: List / Vector / Map / Set
   if (name === "List" || name === "Vector" || name === "Map" || name === "Set") {

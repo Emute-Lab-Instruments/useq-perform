@@ -10,13 +10,19 @@ layer: behavioural
 
 ### Source files
 
+**Implemented:**
+
 - `src/editors/extensions/structure/core/atomOps.ts` — pure atom manipulation operations (adjust, cycle, flipPolarity)
 - `src/editors/extensions/structure/core/cycleGroups.ts` — symbol cycle group definitions
-- `src/editors/extensions/structure/adapter/atomController.ts` — CodeMirror integration (joystick float editing, widget lifecycle)
-- `src/ui/atoms/CycleWidget.tsx` — the inline cycling widget component
-- `src/ui/atoms/FloatScrubOverlay.tsx` — the joystick float editing overlay
-- `src/lib/gamepad/paradigms/modal-shift.ts` — paradigm bindings (atom layer)
-- `src/contracts/gamepadChannels.ts` — axis channels for float editing
+- `src/editors/commands/editorCommandRouter.ts` — `atomAdjust` / `atomFlipPolarity` command dispatch
+- `src/lib/gamepad/paradigms/modal-shift.ts` — paradigm bindings (atom layer: LB/RB adjust, left-stick-press flip)
+
+**Planned / not yet implemented** (see §3.7, §4, §6 status banners and §7 Open/Deferred):
+
+- `src/editors/extensions/structure/adapter/atomController.ts` — CodeMirror integration (joystick float editing, cycling-widget lifecycle)
+- `src/ui/atoms/CycleWidget.tsx` — the inline cycling widget component (§4)
+- `src/ui/atoms/FloatScrubOverlay.tsx` — the joystick float editing overlay (§6)
+- `src/contracts/gamepadChannels.ts` — `atom.rangeControl` / `atom.valueSelect` axis channels for float editing (§6); the file exists but these channels are not yet declared
 
 ---
 
@@ -46,11 +52,11 @@ When the structural cursor is on a leaf node (not a compound, not the document r
 | `number` (float) | +step (§2.2) | -step |
 | `symbol` | cycle next in group (§3) | cycle prev in group |
 | `keyword` | cycle next in known set (§3.8) | cycle prev |
-| `boolean` | toggle (`true` ↔ `false`) | toggle |
+| `boolean` (`true`/`false` symbol) | toggle (`true` ↔ `false`) | toggle |
 | `hole` | no-op flash | no-op flash |
 | `string` | no-op flash | no-op flash |
 
-2.1.1 The dispatch is based on the node's **core kind** per [structural-editing.md §2.2](structural-editing.md). Metas are transparent — adjusting a quoted symbol (`'foo`) adjusts the symbol; the Meta rides along.
+2.1.1 The dispatch is based on the node's **core kind** per [structural-editing.md §2.2](structural-editing.md). There is **no distinct `boolean` core kind** — `true` and `false` are `symbol` nodes in ModuLisp, so the `boolean` row above is a special case *inside* the `symbol` branch: the adjust handler checks for the literal symbols `true`/`false` and toggles them, otherwise it cycles within the symbol's group (§3). Metas are transparent — adjusting a quoted symbol (`'foo`) adjusts the symbol; the Meta rides along.
 
 ### 2.2 Number adjustment
 
@@ -133,6 +139,10 @@ Symbol cycling supports `held` repeat (same cadence as navigation: 300ms initial
 
 ### 3.7 Cycling widget (§4)
 
+> **Status: deferred / not yet implemented.** See §4 and §7. The cycle operation
+> currently produces the source-text change only; no widget is shown. The
+> intended behaviour below describes the target design.
+
 Every cycle operation (symbols and keywords) shows the cycling widget. Number adjust does **not** show the widget — the value change in the source text is sufficient feedback.
 
 ### 3.8 Keyword cycling
@@ -148,6 +158,13 @@ Keywords not in a known set produce a no-op flash.
 ---
 
 ## 4. Cycling Widget
+
+> **Status: deferred / not yet implemented.** No `CycleWidget` component exists
+> and `structure.cycleWidgetDismissMs` / `cycleWidgetNeighbours` /
+> `showCycleWidget` (§4.6) are not in the settings schema. `atomAdjustAtCursor`
+> in the command router consumes only the cycle result's `newText`; the
+> `groupId` / `index` / `members` returned by `atomOps` are discarded (no widget
+> event is emitted). This section specifies the target design.
 
 ### 4.1 Purpose
 
@@ -221,6 +238,14 @@ Polarity flip is reversible (undo restores the previous sign). It participates i
 ---
 
 ## 6. Joystick Float Editing
+
+> **Status: deferred / not yet implemented.** The `atom.rangeControl` /
+> `atom.valueSelect` axis channels are not declared in
+> `src/contracts/gamepadChannels.ts`, and the `atomController` /
+> `FloatScrubOverlay` surface and `floatEdit*` settings do not exist. The atom
+> layer in `modal-shift.ts` binds only the LB/RB tap-adjust and left-stick-press
+> polarity-flip gestures (§2, §5); the sticks are not rebound on float leaves.
+> This section specifies the target design.
 
 ### 6.1 Frame
 
