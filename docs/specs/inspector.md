@@ -12,7 +12,7 @@ layer: cross-cutting
 - `inspector/framework/scenario.ts` — `defineScenario()` types and helpers
 - `inspector/framework/registry.ts` — auto-discovery and indexing of scenarios via `import.meta.glob`
 - `inspector/framework/context.ts` — context bundle assembly + clipboard copy
-- `inspector/framework/approvals.ts` — read/write local `.approvals.json`
+- `inspector/framework/approvals.ts` — read/write approvals in `localStorage`
 - `inspector/app/Inspector.tsx` — root layout: nav tree + scenario viewport
 - `inspector/app/NavTree.tsx` — keyboard-navigable category tree
 - `inspector/app/ScenarioViewer.tsx` — lazy-loads and renders one live scenario
@@ -145,7 +145,7 @@ Categories and their contents are derived from scenario file metadata — the tr
 
 ### Approval Tracking
 
-A `.gitignore`'d JSON file (`inspector/.approvals.json`) maps scenario IDs to approval status (see `inspector/framework/approvals.ts`). This keeps approval state local and out of the repo:
+Approval state is stored in `localStorage` under the key `inspector-approvals` (see `inspector/framework/approvals.ts`). It maps scenario IDs to approval status. This keeps approval state local to the reviewer's browser and out of the repo:
 
 ```json
 {
@@ -168,7 +168,7 @@ Status is manually toggled — press Enter or click a button to approve. No auto
 
 ### Context Copying
 
-Each scenario has a "Copy Context" button (see `inspector/framework/context.ts`) that assembles a medium-depth context bundle to the clipboard:
+Each scenario has a "Copy Context" button (see `inspector/framework/context.ts`) that assembles a medium-depth context bundle to the clipboard. The bundle contains scenario metadata, source-file **paths** (not contents), the editor setup, greppable terms, and any settings overrides:
 
 ```markdown
 ## Scenario: Nested expression highlighting
@@ -179,25 +179,31 @@ Type: canary
 - `src/editors/extensions/structure.ts`
 - `src/editors/extensions/structure/decorations.ts`
 
-### Scenario Config
+### Editor Setup
 ```typescript
 {
-  editorContent: '(+ (* 2 3) (- 10 (/ 8 4)))',
-  settings: { 'editor.structureHighlights': true, 'editor.theme': 'dark' },
-  cursorPosition: 4,
+  "editorContent": "(+ (* 2 3) (- 10 (/ 8 4)))",
+  "cursorPosition": 4
 }
 ```
 
-### Relevant Source
-<contents of src/editors/extensions/structure.ts>
-<contents of src/editors/extensions/structure/decorations.ts>
+### Greppable Terms
+Use these to find the relevant code:
+- `structureHighlights`
+
+### Settings Overrides
+```json
+{ "editor.structureHighlights": true, "editor.theme": "dark" }
+```
 ```
 
-The bundle includes enough context for an AI agent to understand what component/feature is involved, find the relevant code, and reproduce the scenario.
+Source file **contents are deliberately not included** — the browser clipboard cannot read the filesystem. The bundle gives an AI agent enough to understand what feature is involved, grep to the relevant code, and reproduce the scenario.
 
-### Debug Overlays
+### Debug Overlays (deferred)
 
-Any scenario can toggle an inline debug overlay that shows reactive store snapshots:
+> **Not implemented.** Tracked under Future Enhancements ("Inline debug overlays") below. Described here for design intent only.
+
+The intended design: any scenario can toggle an inline debug overlay that shows reactive store snapshots:
 
 - SolidJS store state rendered as a collapsible JSON tree
 - Stores shown: settingsStore, visualisationStore, outputHealthStore, consoleStore (configurable per scenario)
@@ -216,8 +222,7 @@ inspector/
     scenario.ts           — defineScenario() + types
     registry.ts           — Auto-discovers and indexes scenarios
     context.ts            — Context bundle assembly + clipboard
-    approvals.ts          — Read/write approvals.json
-    debug-overlay.tsx      — Store snapshot overlay component
+    approvals.ts          — Read/write approvals in localStorage
   app/
     Inspector.tsx          — Root layout: nav tree + scenario viewport
     NavTree.tsx            — Keyboard-navigable tree component
@@ -239,7 +244,6 @@ inspector/
     visualisation/
       serial-vis-sine.ts
       ...
-  .approvals.json         — Local approval state (.gitignore'd)
   vite.config.ts          — Separate Vite config
 ```
 
@@ -279,7 +283,7 @@ The registry builds the nav tree from the `category` fields of all discovered sc
 - [ ] Keyboard navigation in nav tree (arrow keys)
 - [ ] Lazy scenario rendering with embedded app slices
 - [ ] Copy-context button with medium bundle
-- [ ] Approval tracking (green/unreviewed) with `.gitignore`'d local JSON
+- [ ] Approval tracking (green/unreviewed) in `localStorage`
 - [ ] Filter nav tree by approval status
 - [ ] 10 real scenarios covering key app aspects:
   1. Structure highlights — nested expressions
@@ -314,8 +318,8 @@ The registry builds the nav tree from the `category` fields of all discovered sc
 - **Scenario isolation**: Iframes for full style/script isolation. Each scenario gets its own mini-page.
 - **Scenario format**: TypeScript modules with `defineScenario()`. Type-safe, IDE-friendly.
 - **Nav tree**: Custom taxonomy derived from scenario `category` fields. Not mirroring source tree.
-- **Approval storage**: `.gitignore`'d local JSON (`inspector/.approvals.json`). No auto-invalidation in MVP.
-- **Context bundle**: Medium depth — file paths, source snippets, scenario config. No annotation UI.
+- **Approval storage**: browser `localStorage` under `inspector-approvals`. No auto-invalidation in MVP.
+- **Context bundle**: Medium depth — file paths, greppable terms, scenario config. No source contents (the browser clipboard cannot read the filesystem) and no annotation UI.
 
 ## Open Questions
 

@@ -37,6 +37,9 @@ export const defaultKeyBindings: KeyBinding[] = [
   // -- Action palette ---------------------------------------------------------
   { action: "palette.open", key: "Mod-Shift-p" },
 
+  // -- Zen mode -------------------------------------------------------------
+  { action: "view.zenMode", key: "Mod-Shift-z", preventDefault: true },
+
   // -- Panel toggles (from useq_keymap) -------------------------------------
   { action: "panel.help", key: "Alt-/", preventDefault: true },
   { action: "panel.vis", key: "Alt-g", preventDefault: true },

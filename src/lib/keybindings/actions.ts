@@ -85,6 +85,12 @@ export const actions = {
     reversible: false,
     icon: "camera",
   },
+  "view.zenMode": {
+    description: "Enter zen mode (structural editing practice)",
+    category: "ui",
+    reversible: false,
+    icon: "target",
+  },
 
   // -- Vis (expression-gutter.md §4.1) --------------------------------------
 

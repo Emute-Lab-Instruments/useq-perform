@@ -77,6 +77,7 @@ import {
 } from "../mainMenu/store.ts";
 import { resolveItems } from "../../ui/mainMenu/menuItems.ts";
 import { isMenuOpen, dispatchMenuInput } from "../menu/store.ts";
+import { ZEN_HASH_PREFIX } from "../../zen/routing.ts";
 
 // ---------------------------------------------------------------------------
 // Main-menu helpers (main-menu.md §1.4)
@@ -98,6 +99,17 @@ function closeActiveSubModes(view: EditorView): void {
     endGrab();
     view.dispatch({ effects: setGrabMode.of(false) });
   }
+}
+
+/**
+ * Enter zen mode. Zen is mounted at bootstrap when the URL hash starts with
+ * `#/zen` (see `src/main.ts`), so entering from the running app sets the hash
+ * and reloads to re-run bootstrap into the zen takeover.
+ */
+function enterZenMode(): void {
+  if (window.location.hash.startsWith(ZEN_HASH_PREFIX)) return;
+  window.location.hash = ZEN_HASH_PREFIX;
+  window.location.reload();
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +186,7 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "panel.help": toggleHelp,
   "panel.vis": toggleSerialVis,
   "vis.screenshot": () => { requestVisScreenshot(); return true; },
+  "view.zenMode": () => { enterZenMode(); return true; },
 
   // -- Vis (expression-gutter.md §4.1) ---------------------------------------
   "vis.toggleAtHalo": (view: EditorView) => handleToggleVisAtHalo(view),
