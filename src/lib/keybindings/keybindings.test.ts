@@ -259,6 +259,7 @@ describe("Default keyboard binding key snapshot", () => {
         "Enter",
         "Escape",
         "Escape",
+        "Escape",
         "Home",
         "Mod-Enter",
         "Mod-Shift-Enter",
