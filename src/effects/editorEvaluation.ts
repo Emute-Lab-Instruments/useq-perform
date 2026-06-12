@@ -29,12 +29,18 @@ const evalInUseqWasm = (
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import { rewriteCodeSliceForModule } from "../lib/manualControlState.ts";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
+import { evalRejectionForNoRuntime } from "./noneModeGate.ts";
 import { flashEvalHighlight } from "../editors/extensions/evalHighlight.ts";
 import { detectAndTrackExpressionEvaluation } from "../editors/extensions/expressionEval.ts";
 import { markOutputRunning } from "../utils/outputHealthStore.ts";
 import { dispatchInlineResult } from "../editors/extensions/inlineResults.ts";
 import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
 import { findHolePositions, findHoleEnd } from "../lib/holeDetection.ts";
+import {
+  bindingKeysInText,
+  markBindingsSoftPreview,
+  clearBindingsSoftPreview,
+} from "./hardwareBindingDispatcher.ts";
 
 // ---------------------------------------------------------------------------
 // Output assignment detection
@@ -277,6 +283,15 @@ function evalWasm(
 export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
   const state = view.state;
 
+  // runtime-modes.md §1.10: in `none` mode there is no runtime to evaluate
+  // against. The editor still accepts input, but eval is rejected with a
+  // user-visible warning — the app must never silently drop the eval.
+  const noRuntimeWarning = evalRejectionForNoRuntime();
+  if (noRuntimeWarning) {
+    post(noRuntimeWarning, "warn");
+    return false;
+  }
+
   switch (strategy) {
     case "expression": {
       // Try selection first
@@ -421,6 +436,18 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
       }
     });
 
+  // §4.4 binding wasm-preview lifecycle: a normal (non-soft) eval that reaches
+  // the module lifts any bindings in the form out of preview; in no-module
+  // mode the form stays WASM-only, so those bindings remain previews.
+  const bindingKeys = bindingKeysInText(rawCode);
+  if (bindingKeys.length > 0) {
+    if (noModuleMode) {
+      markBindingsSoftPreview(bindingKeys);
+    } else {
+      clearBindingsSoftPreview(bindingKeys);
+    }
+  }
+
   if (!noModuleMode) {
     sendTouSEQ(moduleCode);
   }
@@ -450,8 +477,16 @@ function evaluateSoft(ctx: EvalContext): boolean {
 
   const isImmediate = code.startsWith("@");
 
+  // §4.4: a soft eval registers bindings on WASM only — mark them as previews.
+  const bindingKeys = bindingKeysInText(code);
+  if (bindingKeys.length > 0) {
+    markBindingsSoftPreview(bindingKeys);
+  }
+
   if (hasView) {
-    detectAndTrackExpressionEvaluation(view);
+    // Soft eval must not move the rail-active state (expression-gutter.md §2.4):
+    // refresh already-visualised expressions but leave last-evaluated untouched.
+    detectAndTrackExpressionEvaluation(view, { isPreview: true });
     flashEvalHighlight(view, undefined, undefined, { isPreview: true });
   }
 

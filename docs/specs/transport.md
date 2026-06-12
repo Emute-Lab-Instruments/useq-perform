@@ -11,8 +11,9 @@ layer: behavioural
 
 - `src/machines/transport.machine.ts` — XState transport state machine (`playing`, `paused`, `stopped`)
 - `src/effects/transportOrchestrator.ts` — transport command dispatch to active runtimes
-- `src/effects/transportClock.ts` — clock policy: when to use internal vs hardware time
-- `src/effects/localClock.ts` — rAF-driven internal clock (`startLocalClock`, `stopLocalClock`)
+- `src/effects/transportClock.ts` — clock policy: when to use internal vs hardware time (`shouldUseLocalClock`, `applyClockPolicy`)
+- `src/effects/localClock.ts` — thin API shim (`startLocalClock`/`stopLocalClock`/`resumeLocalClock`/`resetLocalClock`) over `visualisationRuntime`
+- `src/effects/visualisationRuntime.ts` — single rAF loop owning local-time advancement and sampling/rendering
 - `src/runtime/runtimeTransportService.ts` — fan-out of shared transport commands to both runtimes
 - `src/transport/connector.ts` — serial port lifecycle, auto-reconnect, `connectedToModule`
 - `src/transport/json-protocol.ts` — JSON wire protocol driver (hello, ping, stream-config, eval)
@@ -22,26 +23,30 @@ layer: behavioural
 - `src/transport/upgradeCheck.ts` — firmware version upgrade check
 - `src/transport/types.ts` — transport type definitions
 - `src/contracts/useqRuntimeContract.ts` — shared transport command set constants
-- `src/ui/TransportToolbar.tsx` — transport toolbar UI (Play/Pause/Stop/Rewind buttons)
+- `src/ui/TransportToolbar.tsx` — transport toolbar UI (Play/Pause/Stop/Rewind/Clear buttons)
 - `src/ui/adapters/toolbars.tsx` — toolbar adapter wiring
 
 1.1 The transport has exactly **three states**: `playing`, `paused`, `stopped`. Boots in `paused` if a runtime is available, else in `stopped`. The user must explicitly start playback. (see `src/machines/transport.machine.ts`)
 
-1.2 The transport is driven by an XState machine with these transitions: (see `src/machines/transport.machine.ts`)
-- `playing` ←(PLAY)→ `paused` (PAUSE)
-- `playing` ←(PLAY)→ `stopped` (STOP)
-- `paused` ←(PLAY)→ `stopped` (STOP)
-- any → `stopped` on REWIND (with a runtime-emitted rewind side-effect)
+1.2 The transport is driven by an XState machine. Per-state event handlers (see `src/machines/transport.machine.ts`):
+- `playing`: `PAUSE` → `paused` (emit pause); `STOP` → `stopped` (emit stop); `REWIND` → `stopped` (emit rewind + stop). `PLAY` is **ignored** when already playing.
+- `paused`: `PLAY` → `playing` (emit play); `STOP` → `stopped` (emit stop); `REWIND` → `stopped` (emit rewind + stop). `PAUSE` is ignored.
+- `stopped`: `PLAY` → `playing` (emit play); `REWIND` stays `stopped` (emit rewind only, no stop). `PAUSE`/`STOP` are ignored.
+
+Global events handled in every state, used to keep the machine in sync without re-emitting transport commands or to track the runtime mode:
+- `SYNC` `{ state }` — runtime→machine sync (§1.3). Transitions to the given state and fires the corresponding `syncWasm*` action (which pushes the state into the WASM runtime); it never re-emits a transport command, so there is no hardware feedback loop.
+- `UPDATE_MODE` `{ mode }` — records the active runtime mode (`hardware`/`wasm`/`both`/`none`) in machine context without changing the transport state.
+- `CLEAR` — a mode-less side-effect that emits `(useq-clear)` to the active runtime(s); it fires the `emitClear` action and does **not** change the transport state.
 
 1.3 **State changes are bidirectional.** User-initiated transitions emit shared transport commands to the active runtime(s). Runtime-initiated transitions (e.g. firmware meta updates) sync the machine to match observed reality without re-emitting the command. (see `src/effects/transportOrchestrator.ts`, `src/runtime/runtimeTransportService.ts`)
 
-1.4 **Clock policy.** The **internal clock** (rAF-driven `performance.now`) is used as the time source iff WASM is the only authoritative runtime for time. This is not a "mock" — it is the computer's real clock, used whenever hardware is not providing time. When hardware is connected, hardware-streamed time wins and the internal clock stops. (see `src/effects/transportClock.ts`, `src/effects/localClock.ts`)
+1.4 **Clock policy.** The **internal clock** (rAF-driven `performance.now`) is used as the time source iff WASM is the only authoritative runtime for time (`shouldUseLocalClock()` = not connected to hardware **and** WASM enabled). This is not a "mock" — it is the computer's real clock, used whenever hardware is not providing time. When hardware is connected, hardware-streamed time wins and the internal clock stops. The rAF loop and local-time advancement now live in `src/effects/visualisationRuntime.ts` (a single loop driving both sampling and rendering); `src/effects/localClock.ts` is a thin API shim (`startLocalClock`/`stopLocalClock`/`resumeLocalClock`/`resetLocalClock`) over it, and `src/effects/transportClock.ts` holds the policy. (see `src/effects/transportClock.ts`, `src/effects/localClock.ts`, `src/effects/visualisationRuntime.ts`)
 
-1.5 In `wasm` or `none` mode, transport `stopped` resets the internal clock to zero, `paused` freezes it, `playing` resumes from frozen position. (see `src/effects/localClock.ts`)
+1.5 In `wasm` mode (the only mode where `shouldUseLocalClock()` is true — `none` mode has WASM disabled, so the internal clock never runs there), transport `stopped` resets the internal clock to zero, `paused` freezes it, `playing` resumes from frozen position. (see `src/effects/transportClock.ts`, `src/effects/localClock.ts`)
 
-1.6 In `hardware` or `both` mode, transport state changes do not directly drive the clock; after the JSON handshake completes, the editor sends a `stream-config` request that enables output streaming at the configured rate (default 30Hz). Once enabled, hardware streams time on channel 0 and output values on channels 1+; the app follows hardware time. Transport commands are sent to both runtimes in `both` mode, but WASM transport state is best-effort — hardware-streamed time overrides WASM's internal clock regardless. (see `src/effects/transportClock.ts`, `src/transport/stream-parser.ts`, `src/transport/json-protocol.ts` `sendDefaultStreamConfig()`)
+1.6 In `hardware` or `both` mode, transport state changes do not directly drive the clock; after the JSON handshake completes, the editor sends a `stream-config` request at the configured rate (`DEFAULT_STREAM_MAX_RATE_HZ`, default **100 Hz**). The default `stream-config` (`buildDefaultStreamConfig`) subscribes only the **input** channels (on-change); output channels (`s1`–`s8`) are **not** subscribed by default, and firmware always streams time regardless of subscription. On the wire, time arrives on **channel 1** (output index 1 in `IoConfig`) and is stored at internal buffer index 0; subscribed channels follow on their own wire channels. The app follows hardware time. Transport commands are sent to both runtimes in `both` mode, but WASM transport state is best-effort — hardware-streamed time overrides WASM's internal clock regardless. (see `src/effects/transportClock.ts`, `src/transport/stream-parser.ts`, `src/runtime/jsonProtocol.ts` `buildDefaultStreamConfig()`)
 
-1.7 The transport toolbar exposes Play/Pause/Stop/Rewind buttons; their enabled/disabled and visual state must reflect the current machine state and active runtime mode without lag. (see `src/ui/TransportToolbar.tsx`, `src/ui/adapters/toolbars.tsx`)
+1.7 The transport toolbar exposes five buttons: Play, Pause, Stop, Rewind, and Clear. Play/Pause/Stop/Rewind reflect transport state changes; Clear is a mode-less side-effect that sends `CLEAR` to the machine (emitting `(useq-clear)` to the runtime) without changing state (§1.2). Their enabled/disabled and visual state must reflect the current machine state and active runtime mode without lag; in `none` mode Rewind and Clear are disabled. (see `src/ui/TransportToolbar.tsx`, `src/ui/adapters/toolbars.tsx`, `src/contracts/useqRuntimeContract.ts`)
 
 1.8 **Connection indicator semantics** (see [runtime-modes.md](runtime-modes.md)): the transport surface visually distinguishes `none`, `wasm`, `hardware`, `both`. Hover/tooltip describes the precise state in plain language.
 

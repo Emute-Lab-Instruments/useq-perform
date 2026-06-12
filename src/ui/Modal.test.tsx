@@ -103,6 +103,26 @@ describe("Modal", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it("restores focus to the previously-focused element on close", () => {
+    const trigger = document.createElement("button");
+    trigger.textContent = "Open";
+    document.body.appendChild(trigger);
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+
+    const { unmount } = render(() => (
+      <Modal title="Test" onClose={() => {}}>
+        <button>Inside</button>
+      </Modal>
+    ));
+    // Modal moves focus to its first focusable element on mount.
+    expect(document.activeElement).not.toBe(trigger);
+
+    unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+
   it("has z-index above overlay", () => {
     const { container } = render(() => (
       <Modal title="Test" onClose={() => {}}>

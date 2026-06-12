@@ -38,6 +38,8 @@ const SPECIAL_KEYS: Record<string, string> = {
   PageDown: "PageDown",
 };
 
+import { isMac as detectIsMac } from "./osReserved.ts";
+
 /** Pure modifier keys -- not valid as a binding on their own. */
 const MODIFIER_ONLY = new Set([
   "Control",
@@ -47,9 +49,9 @@ const MODIFIER_ONLY = new Set([
   "OS",
 ]);
 
-const isMac =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+// OS detection follows the spec order (keybindings.md §1.5) via the single
+// `detectOs()` helper — userAgentData.platform → navigator.platform → userAgent.
+const isMac = detectIsMac();
 
 // ---------------------------------------------------------------------------
 // Public API

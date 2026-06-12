@@ -33,6 +33,7 @@ import type { LiveEditSlot } from "../../../contracts/liveEdit.ts";
 import { evaluate } from "../../../effects/editorEvaluation.ts";
 import { createVectorMarkController, type VectorMarkController } from "./vectorMarkController.ts";
 import { registerContext } from "../../../lib/keybindings/contexts.ts";
+import { getAppSettings } from "../../../runtime/appSettingsRepository.ts";
 
 // ── Singleton vector-mark controller ────────────────────────────────────
 
@@ -48,25 +49,43 @@ registerContext("vectorMark.active", () => vectorController.active);
 
 // ── ID generation (§3.2) ──────────────────────────────────────────────────
 
+/** Documented §10.2/§10.3 defaults; used as the fallback when settings are absent. */
 export const ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 export const ID_LENGTH = 4;
 
+/** Read the configured id alphabet/length (§10.2/§10.3), falling back to defaults. */
+function idGenConfig(): { alphabet: string; length: number } {
+  const liveEdit = getAppSettings().liveEdit;
+  const alphabet =
+    typeof liveEdit?.idAlphabet === "string" && liveEdit.idAlphabet.length > 0
+      ? liveEdit.idAlphabet
+      : ID_ALPHABET;
+  const length =
+    typeof liveEdit?.idLength === "number" && liveEdit.idLength > 0
+      ? Math.floor(liveEdit.idLength)
+      : ID_LENGTH;
+  return { alphabet, length };
+}
+
 /**
  * Generate a short random ID from a reduced-ambiguity alphabet.
- * Retries on collision with existing IDs in the document.
+ * Alphabet and length come from `liveEdit.idAlphabet`/`liveEdit.idLength`
+ * (§10.2/§10.3), defaulting to the module constants. Retries on collision;
+ * on exhaustion, falls back to a one-character-longer id (§10.3).
  */
 export function generateId(existingIds: Set<string>): string {
+  const { alphabet, length } = idGenConfig();
   for (let attempt = 0; attempt < 100; attempt++) {
     let id = "";
-    for (let i = 0; i < ID_LENGTH; i++) {
-      id += ID_ALPHABET[Math.floor(Math.random() * ID_ALPHABET.length)];
+    for (let i = 0; i < length; i++) {
+      id += alphabet[Math.floor(Math.random() * alphabet.length)];
     }
     if (!existingIds.has(id)) return id;
   }
-  // Extremely unlikely fallback: 5-char id
+  // Extremely unlikely fallback: one extra char.
   let id = "";
-  for (let i = 0; i < ID_LENGTH + 1; i++) {
-    id += ID_ALPHABET[Math.floor(Math.random() * ID_ALPHABET.length)];
+  for (let i = 0; i < length + 1; i++) {
+    id += alphabet[Math.floor(Math.random() * alphabet.length)];
   }
   return id;
 }

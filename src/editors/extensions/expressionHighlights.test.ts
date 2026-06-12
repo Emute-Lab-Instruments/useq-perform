@@ -28,6 +28,7 @@ import { default_extensions } from "@nextjournal/clojure-mode";
 
 import {
   createExpressionGutter,
+  createMarkersForRange,
   type GutterConfig,
   type ExpressionGutterMarker,
 } from "./expressionHighlights.ts";
@@ -47,6 +48,7 @@ function makeConfig(): GutterConfig {
     isLastTrackingEnabled: () => true,
     getExpressionColor: () => "#ff0000",
     isVisualised: () => false,
+    isFailing: () => false,
     reportColor: () => {},
     onPlayExpression: () => {},
     onExternalChange: () => () => {},
@@ -324,6 +326,40 @@ describe("expression gutter: nested edits keep markers anchored to top-level for
 // ---------------------------------------------------------------------------
 // Tests — gutter-disabled config short-circuits
 // ---------------------------------------------------------------------------
+
+describe("expression gutter: §2.5 failure pulse on the active rail", () => {
+  const docLineFn = (n: number) => ({ from: (n - 1) * 8 });
+
+  it("renders a red-pulse overlay element only when active AND failing", () => {
+    const range = { color: "#ff0000", from: 1, to: 1 };
+    const markers = createMarkersForRange(
+      range, /* isActive */ true, docLineFn, "a1",
+      () => false, () => false, /* isFailing */ true,
+    );
+    const dom = markers[0].marker.toDOM();
+    expect(dom.querySelector(".cm-expr-rail-failing")).not.toBeNull();
+  });
+
+  it("does not render the pulse when the rail is failing but inactive", () => {
+    const range = { color: "#ff0000", from: 1, to: 1 };
+    const markers = createMarkersForRange(
+      range, /* isActive */ false, docLineFn, "a1",
+      () => false, () => false, /* isFailing */ true,
+    );
+    const dom = markers[0].marker.toDOM();
+    expect(dom.querySelector(".cm-expr-rail-failing")).toBeNull();
+  });
+
+  it("does not render the pulse when active but healthy", () => {
+    const range = { color: "#ff0000", from: 1, to: 1 };
+    const markers = createMarkersForRange(
+      range, /* isActive */ true, docLineFn, "a1",
+      () => false, () => false, /* isFailing */ false,
+    );
+    const dom = markers[0].marker.toDOM();
+    expect(dom.querySelector(".cm-expr-rail-failing")).toBeNull();
+  });
+});
 
 describe("expression gutter: respects isGutterEnabled config flag", () => {
   it("returns no markers when the gutter is disabled, regardless of doc content", () => {

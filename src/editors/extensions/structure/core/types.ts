@@ -47,7 +47,8 @@ export function __resetIdCounterForTests(): void {
 
 /**
  * A Meta decorates a host node. Internal payload navigation is out of scope
- * for this probe (§5.1.7 deferred), so the payload type stays `unknown`.
+ * for this probe (§5.1.9 `nav.intoMeta` deferred), so the payload type stays
+ * `unknown`.
  *
  * Stack order matches the textual surface, innermost first (§6.1).
  */

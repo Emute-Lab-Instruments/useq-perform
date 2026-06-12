@@ -114,4 +114,15 @@ describe("exercise content validity", () => {
       expect(ex.actions.length, `${ex.id} has no actions`).toBeGreaterThan(0);
     }
   });
+
+  it("the Wrap category covers all four containers (list, vector, map, set)", () => {
+    // zen-mode.md §3.3: Wrap row exercises "Wrap in list, vector, map, set".
+    const wrapActions = new Set(
+      getExercisesByCategory("wrap").flatMap((e) => e.actions),
+    );
+    expect(wrapActions.has("edit.wrapList")).toBe(true);
+    expect(wrapActions.has("edit.wrapVector")).toBe(true);
+    expect(wrapActions.has("edit.wrapMap")).toBe(true);
+    expect(wrapActions.has("edit.wrapSet")).toBe(true);
+  });
 });

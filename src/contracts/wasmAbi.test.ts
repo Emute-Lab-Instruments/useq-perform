@@ -371,7 +371,7 @@ describe("assertWasmAbi", () => {
       expect.unreachable("should have thrown");
     } catch (e: any) {
       expect(e.message).toContain("src/contracts/wasmAbi.ts");
-      expect(e.message).toContain("docs/RUNTIME_CONTRACT.md");
+      expect(e.message).toContain("docs/specs/runtime-contract.md");
     }
   });
 

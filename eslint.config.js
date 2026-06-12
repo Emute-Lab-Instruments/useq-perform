@@ -185,6 +185,14 @@ export default tseslint.config(
     rules: { "import-x/no-restricted-paths": "off" },
   },
   {
+    // standaloneDiagnosticsRouter.ts imports pushDiagnostics from editors/ to
+    // route unsolicited device→editor diagnostics frames (wire §5.9) into the
+    // editor's inline annotation pipeline — the same editor-coupling rationale
+    // as editorEvaluation.ts.
+    files: ["src/effects/standaloneDiagnosticsRouter.ts"],
+    rules: { "import-x/no-restricted-paths": "off" },
+  },
+  {
     // liveEditRuntime.ts imports from editors/ for the widget store bridge.
     // This effect orchestrates live-edit slot discovery and the reactive
     // bridge between the store and the CodeMirror widgets.

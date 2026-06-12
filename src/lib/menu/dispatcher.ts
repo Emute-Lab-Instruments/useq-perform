@@ -103,6 +103,23 @@ export interface MenuDispatcher {
    * current stick position's character (§14.3).
    */
   numpadAppend(char: string): void;
+
+  /**
+   * Handle a raw shoulder (LB / RB) press or release edge. This is the freeze
+   * mechanic's input path (§3.3.2, §6.1): a press in the `picking` sub-phase
+   * latches a FrozenSnapshot; releasing all shoulders clears it. Freeze is not
+   * a user-visible action (§11.4) — it is intrinsic to the menu's input
+   * handling — so it flows through here rather than through `handleAction`.
+   *
+   * `side` is `'left'` (LB), `'right'` (RB), or `'both'` (coalesced
+   * near-simultaneous press/release per §6.2.5). `ts` is a
+   * `performance.now()`-style timestamp.
+   */
+  handleShoulder(
+    side: "left" | "right" | "both",
+    transition: "press" | "release",
+    ts: number,
+  ): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +286,15 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
       if (state.phase === "numpad") {
         deps.dispatchInput({ kind: "subModeAppend", char });
       }
+    },
+
+    handleShoulder(side, transition, ts): void {
+      // Only meaningful while the menu is open — the reducer drops shoulder
+      // edges in every other phase (§3.3, reduceClosed). Guarding here keeps
+      // the dispatcher from pushing redundant inputs when the menu is shut.
+      const state = deps.getMenuState();
+      if (state.phase !== "open") return;
+      deps.dispatchInput({ kind: "shoulderEdge", side, transition, ts });
     },
   };
 

@@ -35,6 +35,8 @@ import {
   isExpressionVisualised,
   reportExpressionColor,
 } from "../../effects/visualisationSampler.ts";
+import { outputHealth } from "../../utils/outputHealthStore.ts";
+import { createRoot, createEffect } from "solid-js";
 
 import {
   lastEvaluatedExpressionField,
@@ -63,6 +65,8 @@ export interface GutterConfig {
   getExpressionColor: (match: RegExpExecArray) => string;
   /** Check if an expression is currently being visualised */
   isVisualised: (exprType: string, position: { from: number; to: number }) => boolean;
+  /** Whether the given output is currently on its LKG (error/fallback) — drives the §2.5 failure pulse */
+  isFailing: (exprType: string) => boolean;
   /** Report the resolved color for an expression type (for external UI sync) */
   reportColor: (exprType: string, color: string | null) => void;
   /** Handle play button click on an expression */
@@ -105,6 +109,8 @@ export class ExpressionGutterMarker extends GutterMarker {
   exprType: string | null;
   showPlayButton: boolean;
   isVisualised: boolean;
+  /** Slow red pulse: the active rail's output is on its LKG (error/fallback). §2.5 */
+  isFailing: boolean;
 
   constructor(
     color: string,
@@ -115,6 +121,7 @@ export class ExpressionGutterMarker extends GutterMarker {
     exprType: string | null = null,
     showPlayButton = false,
     isVisualised = false,
+    isFailing = false,
   ) {
     super();
     this.color = color;
@@ -125,6 +132,7 @@ export class ExpressionGutterMarker extends GutterMarker {
     this.exprType = exprType;
     this.showPlayButton = showPlayButton;
     this.isVisualised = isVisualised;
+    this.isFailing = isFailing;
   }
 
   toDOM(): HTMLElement {
@@ -156,6 +164,16 @@ export class ExpressionGutterMarker extends GutterMarker {
       `;
       line.style.pointerEvents = "none";
       div.appendChild(line);
+
+      // §2.5 failure pulse: the active rail's output is running on its LKG
+      // (error/fallback). Overlay a slow red pulse via CSS keyframes so the
+      // user sees "the module is on this expression's LKG, not its intent".
+      if (this.isActive && this.isFailing) {
+        const pulse = document.createElement("div");
+        pulse.className = "cm-expr-rail-failing";
+        pulse.style.pointerEvents = "none";
+        div.appendChild(pulse);
+      }
     }
 
     if (this.showPlayButton && this.exprType) {
@@ -238,7 +256,8 @@ export class ExpressionGutterMarker extends GutterMarker {
       other.isActive === this.isActive &&
       other.exprType === this.exprType &&
       other.showPlayButton === this.showPlayButton &&
-      other.isVisualised === this.isVisualised
+      other.isVisualised === this.isVisualised &&
+      other.isFailing === this.isFailing
     );
   }
 }
@@ -255,6 +274,7 @@ export function createMarkersForRange(
   exprType: string,
   isClearButtonEnabled: () => boolean,
   isVisualisedFn: (exprType: string, position: { from: number; to: number }) => boolean,
+  isFailing = false,
 ): Array<{ pos: number; marker: ExpressionGutterMarker }> {
   const markers: Array<{ pos: number; marker: ExpressionGutterMarker }> = [];
   const midLine = Math.floor((range.from + range.to) / 2);
@@ -277,6 +297,7 @@ export function createMarkersForRange(
       exprType,
       showPlayButton,
       isVisualisedFn(exprType, position),
+      isFailing,
     );
     const lineObj = docLineFn(line);
     markers.push({ pos: lineObj.from, marker });
@@ -293,6 +314,7 @@ export function processExpressionRanges(
   reportColorFn: (exprType: string, color: string | null) => void,
   isClearButtonEnabled: () => boolean,
   isVisualisedFn: (exprType: string, position: { from: number; to: number }) => boolean,
+  isFailingFn: (exprType: string) => boolean = () => false,
 ): Array<{ pos: number; marker: ExpressionGutterMarker }> {
   const allMarkers: Array<{ pos: number; marker: ExpressionGutterMarker }> = [];
 
@@ -300,10 +322,11 @@ export function processExpressionRanges(
     const lastEval = lastEvaluatedMap.get(expressionType);
     const firstRange = ranges && ranges.length > 0 ? ranges[0] : null;
     reportColorFn(expressionType, firstRange ? firstRange.color : null);
+    const failing = isFailingFn(expressionType);
 
     for (const range of ranges) {
       const active = isRangeActive(range, lastEval);
-      const markers = createMarkersForRange(range, active, docLineFn, expressionType, isClearButtonEnabled, isVisualisedFn);
+      const markers = createMarkersForRange(range, active, docLineFn, expressionType, isClearButtonEnabled, isVisualisedFn, failing);
       allMarkers.push(...markers);
     }
   }
@@ -354,6 +377,7 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
         config.reportColor,
         config.isClearButtonEnabled,
         config.isVisualised,
+        config.isFailing,
       );
 
       for (const { pos, marker } of markers) {
@@ -467,12 +491,30 @@ export function createDefaultGutterConfig(): GutterConfig {
     isLastTrackingEnabled: () => ((getAppSettings()?.ui) as any)?.expressionLastTrackingEnabled !== false,
     getExpressionColor: (match: RegExpExecArray) => getMatchColor(match),
     isVisualised: (exprType, position) => isExpressionVisualised(exprType, position),
+    isFailing: (exprType) => {
+      const entry = outputHealth[exprType];
+      return entry?.health === "error" || entry?.health === "fallback";
+    },
     reportColor: (exprType, color) => reportExpressionColor(exprType, color),
     onPlayExpression: (view, exprType) => handlePlayExpression(view, exprType),
     onExternalChange: (callback) => {
       const unsub1 = subscribeAppSettings(callback);
       const unsub2 = visualisationSessionChannel.subscribe(callback);
-      return () => { unsub1(); unsub2(); };
+      // Rebuild the gutter when any output's health changes so the §2.5
+      // failure pulse appears/clears. Bridge the Solid store into the plain
+      // callback via a tracked effect inside its own reactive root.
+      let disposeHealth = () => {};
+      createRoot((dispose) => {
+        disposeHealth = dispose;
+        createEffect(() => {
+          // Track every entry's health field so add/change both re-run.
+          for (const name of Object.keys(outputHealth)) {
+            void outputHealth[name]?.health;
+          }
+          callback();
+        });
+      });
+      return () => { unsub1(); unsub2(); disposeHealth(); };
     },
   };
 }

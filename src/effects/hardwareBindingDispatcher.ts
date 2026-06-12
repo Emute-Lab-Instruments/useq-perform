@@ -204,6 +204,42 @@ const lastFireMs = new Map<string, number>();
 const lastPhase = new Map<string, "press" | "hold" | "release">();
 /** Last error per binding key — drives chip error state. */
 const lastError = new Map<string, string | undefined>();
+/**
+ * Binding keys (`${event}:${inputId}`) currently registered via a soft-eval
+ * and not yet lifted to hardware (§4.4). Drives the chip `wasm-preview` tone.
+ */
+const softPreview = new Set<string>();
+
+/**
+ * Mark a set of binding heads as soft-eval previews (§4.4). The editor's
+ * soft-eval path calls this with the bindings found in the soft-evaluated
+ * form; a subsequent normal eval over the same form calls
+ * {@link clearBindingsSoftPreview} to lift them to hardware.
+ *
+ * Keys are `${event}:${inputId}` (e.g. `on-press::sw1`).
+ */
+export function markBindingsSoftPreview(keys: Iterable<string>): void {
+  for (const k of keys) softPreview.add(k);
+}
+
+/** Lift the given binding heads out of the soft-eval preview window (§4.4). */
+export function clearBindingsSoftPreview(keys: Iterable<string>): void {
+  for (const k of keys) softPreview.delete(k);
+}
+
+/** Whether a `${event}:${inputId}` binding head is currently a WASM preview (§4.4). */
+export function isBindingSoftPreview(key: string): boolean {
+  return softPreview.has(key);
+}
+
+/**
+ * Compute the `${event}:${inputId}` keys for the binding forms contained in a
+ * source-text fragment (e.g. the soft-evaluated top-level form). Exposed so the
+ * eval path can mark/lift previews without duplicating the scan logic.
+ */
+export function bindingKeysInText(text: string): string[] {
+  return scanBindings(text).map((b) => queueKey(b.event, b.inputId));
+}
 
 /**
  * Evaluate a bound expression. Returns a promise that resolves when the
@@ -338,6 +374,7 @@ function buildChipData(bindings: ParsedBinding[]): BindingChip[] {
       lastPhase: lastPhase.get(key),
       error: lastError.get(key),
       disabled,
+      wasmPreview: softPreview.has(key),
     };
   });
 }
@@ -643,6 +680,7 @@ export function createHardwareBindingDispatcher(
       lastFireMs.clear();
       lastPhase.clear();
       lastError.clear();
+      softPreview.clear();
       virtualToggleLatch.clear();
     },
   };

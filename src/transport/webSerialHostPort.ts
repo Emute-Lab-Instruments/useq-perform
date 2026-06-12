@@ -14,7 +14,7 @@
  *     (`useq-perform-pcx`, Stream F's other bead) can layer in a virtual
  *     transport that speaks the same protocol.
  *
- * @see docs/RUNTIME_CONTRACT.md
+ * @see docs/specs/runtime-contract.md
  */
 
 import type { TransportState } from "../machines/transport.machine";

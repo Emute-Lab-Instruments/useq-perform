@@ -20,7 +20,7 @@
  *           edit.encloseList/Vector/Map/Set
  *
  * Reserved for future spatial implementations (not yet wired):
- *   nav.intoMeta (§5.1.7)
+ *   nav.intoMeta (§5.1.9)
  *
  * Other names log a warning and no-op. The mutation factory is created lazily
  * the first time we see a mutating action, with an id generator local to the
@@ -58,12 +58,18 @@ import { treeFromLezer } from "./treeFromLezer.ts";
 import { vectorController } from "../../liveEdit/markAction.ts";
 
 let _mutators: Mutators | null = null;
+let _mutatorsSlurpBehaviour: string | null = null;
 function getMutators(): Mutators {
-  if (_mutators === null) {
+  // §5.2.9: atom-slurp promotion target is a user setting. Rebuild the cached
+  // mutators when it changes so live settings edits take effect.
+  const atomSlurpBehaviour =
+    getAppSettings().structure?.atomSlurpBehaviour ?? "promote-to-vector";
+  if (_mutators === null || _mutatorsSlurpBehaviour !== atomSlurpBehaviour) {
     _mutators = makeMutators({
       ids: defaultIdGen("a"),
-      atomSlurpBehaviour: "promote-to-vector",
+      atomSlurpBehaviour,
     });
+    _mutatorsSlurpBehaviour = atomSlurpBehaviour;
   }
   return _mutators;
 }

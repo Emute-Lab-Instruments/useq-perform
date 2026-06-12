@@ -15,6 +15,7 @@ export type ActionCategory =
   | "probe"
   | "navigation"
   | "ui"
+  | "vis"
   | "transport"
   | "gamepad"
   | "menu";
@@ -84,6 +85,23 @@ export const actions = {
     reversible: false,
     icon: "camera",
   },
+  "view.zenMode": {
+    description: "Enter zen mode (structural editing practice)",
+    category: "ui",
+    reversible: false,
+    icon: "target",
+  },
+
+  // -- Vis (expression-gutter.md §4.1) --------------------------------------
+
+  "vis.toggleAtHalo": {
+    description:
+      "Toggle visualisation for the top-level form at the structural halo",
+    category: "vis",
+    reversible: true,
+    icon: "activity",
+    requiresEditor: true,
+  },
 
   // -- Editor ---------------------------------------------------------------
 
@@ -140,6 +158,12 @@ export const actions = {
   },
   "format.document": {
     description: "Reformat all top-level forms",
+    category: "format",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "format.indentToFixedPoint": {
+    description: "Re-indent the current top-level form to a fixed point",
     category: "format",
     reversible: true,
     requiresEditor: true,

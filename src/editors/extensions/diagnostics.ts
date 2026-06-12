@@ -50,6 +50,20 @@ export const diagnosticField = StateField.define<StoredDiagnostic[]>({
   create: () => [],
   update(stored, tr) {
     let result = stored;
+    // Position-map stored diagnostics through document edits so they move
+    // with the text (code-evaluation.md §1.6). A diagnostic whose entire
+    // range was deleted (mapped from === to) is dropped.
+    if (tr.docChanged) {
+      const mapped: StoredDiagnostic[] = [];
+      for (const d of result) {
+        const from = tr.changes.mapPos(d.from, 1);
+        const to = tr.changes.mapPos(d.to, -1);
+        if (to > from) {
+          mapped.push({ ...d, from, to });
+        }
+      }
+      result = mapped;
+    }
     for (const effect of tr.effects) {
       if (effect.is(clearAllEffect)) {
         result = [];

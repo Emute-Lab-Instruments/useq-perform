@@ -390,6 +390,45 @@ describe("gamepad → radial menu → verb → document mutation (e2e)", () => {
   });
 
   // -----------------------------------------------------------------------
+  // Test 2b: Freeze via real raw-shoulder pipeline (no direct injection)
+  //
+  // Regression for the bug where the gamepad pipeline never produced
+  // shoulderEdge inputs, so the freeze mechanic (and therefore all four verbs)
+  // was unreachable from a real controller. The pipeline now forwards raw
+  // LB/RB press/release edges to the dispatcher while the menu is open
+  // (radial-menu.md §3.3.2, §6.1, §11.4).
+  // -----------------------------------------------------------------------
+
+  describe("freeze via raw shoulder pipeline", () => {
+    it("hold RB → tap(A) commits the verb without injecting shoulderEdge", () => {
+      const rig = createRig("(a1 (sqr t))");
+      dispatchAction(rig.view, "nav.in");
+      dispatchAction(rig.view, "nav.in");
+      dispatchAction(rig.view, "nav.next");
+      dispatchAction(rig.view, "nav.in"); // cursor on sqr
+      const before = rig.view.state.doc.toString();
+
+      // Open the menu.
+      tap(rig, "X");
+      expect(isMenuOpen()).toBe(true);
+
+      // Hover a category + item (picking sub-phase).
+      rig.menuDispatcher.handleAxis("left", 0);
+      rig.menuDispatcher.handleAxis("right", 1);
+
+      // Hold RB across ticks (raw press → freeze latch) then tap A to commit.
+      // No direct shoulderEdge dispatch — the pipeline must generate it.
+      holdTap(rig, "RB", "A");
+
+      // Symbol item has no holes → menu closes after commit.
+      expect(isMenuOpen()).toBe(false);
+      expect(rig.view.state.doc.toString()).not.toBe(before);
+
+      rig.dispose();
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Test 3: Auto-chain on hole
   // -----------------------------------------------------------------------
 

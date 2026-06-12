@@ -4,9 +4,9 @@
  * These tests encode the contract defined in
  *   src-useq/docs/specs/wire-protocol.md
  *
- * Each test is initially skipped (`it.skip`) — it represents work the
- * editor-side implementation hasn't done yet, but must do to comply with
- * the spec. Implementing agents:
+ * Most tests are now active and assert real behaviour. A test may still be
+ * skipped (`it.skip`) when it represents editor-side work the implementation
+ * hasn't done yet. Implementing agents:
  *   1. Pick the bd issue for this delta (search "wire-protocol" labels).
  *   2. Remove `.skip` from the relevant test (or replace with `it`).
  *   3. Implement until the test passes.
@@ -348,6 +348,16 @@ describe("wire protocol contract — editor side", () => {
   // it routes diagnostics embedded in eval responses.
   it("T5 [§5.9] handles standalone diagnostics frames", async () => {
     const transport = await loadTransport();
+    // Import the channel from the SAME (reset) module graph as the transport
+    // so we observe the instance json-protocol.ts publishes to.
+    const { standaloneDiagnostics } = await import(
+      "../contracts/runtimeChannels.ts"
+    );
+    const received: Array<{ diagnostics: unknown[] }> = [];
+    const unsub = standaloneDiagnostics.subscribe((d: { diagnostics: unknown[] }) =>
+      received.push(d),
+    );
+
     const port = new SpecCompliantFakeDevice();
     await transport.connectToSerialPort(port as unknown as SerialPort);
     await flush();
@@ -365,15 +375,15 @@ describe("wire protocol contract — editor side", () => {
       ],
     });
     await flush();
+    unsub();
 
-    // Implementation: route to a diagnostics channel (new — does not exist yet).
-    // The agent implementing T5 should:
-    //   1. Add a `diagnostics` channel in src/contracts/runtimeChannels.ts.
-    //   2. Dispatch from json-protocol.ts:handleJsonMessage when type === "diagnostics".
-    //   3. Subscribe in src/effects/editorEvaluation.ts to apply runtime diagnostics
-    //      to the active editor view (or the relevant output's range).
-    // This assertion is a placeholder until the channel exists.
-    expect(true).toBe(true);
+    // The §5.9 frame must be dispatched on the standaloneDiagnostics channel
+    // exactly once, carrying the device-supplied diagnostics array verbatim.
+    expect(received.length).toBe(1);
+    expect(received[0].diagnostics).toHaveLength(1);
+    expect((received[0].diagnostics[0] as { message: string }).message).toContain(
+      "knob1",
+    );
   });
 
   // §5.7 — Editor parses `diagnostics` field from eval responses.

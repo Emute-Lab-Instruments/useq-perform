@@ -67,7 +67,15 @@ export interface VisualisationSettings {
   futureLeadSeconds: number;
   digitalLaneGap: number;
   /** Whether from-list/seq element-cycling highlights are shown without active probes. */
-  probeHighlightsEnabled: boolean;
+  fromListHighlights: boolean;
+  /** Default per-probe window duration (ms) inherited by newly-created probes. */
+  probeDefaultWindowDurationMs: number;
+  /** Extra seconds of past samples retained beyond the visible window half. */
+  historyHeadroom: number;
+  /** Hard cap on total history depth per output (seconds). */
+  maxHistorySeconds: number;
+  /** Absolute change threshold for external inputs to trigger future re-projection. */
+  inputEpsilon: number;
   /** Blur radius (px) for the readability overlay behind code text. */
   readabilityBlurRadius: number;
   /** Extra padding (px) around each code line in the blur mask. */
@@ -131,6 +139,21 @@ export interface WasmSettings {
 export interface StructureSettings {
   /** Whether wrappers and holes are folded to inline pills by default. */
   foldAllWrappers: boolean;
+  /**
+   * Promotion target when slurping onto a bare leaf (structural-editing.md
+   * §5.2.9). The leaf is first wrapped in a singleton compound of this kind.
+   */
+  atomSlurpBehaviour: "promote-to-vector" | "promote-to-list" | "no-op";
+  /**
+   * Whether typing a printable key while focused on an editable leaf enters
+   * insertion mode (structural-editing.md §4.2). Suppressed for gamepad input.
+   */
+  autoEnterInsertion: boolean;
+  /**
+   * Whether no-op rejections emit a console toast alongside the cursor flash
+   * (structural-editing.md §7.2). The halo flash always fires regardless.
+   */
+  flashConsoleToasts: boolean;
 }
 
 /** Auto-formatting policy (docs/specs/formatting.md). */
@@ -169,6 +192,70 @@ export interface HardwareSettings {
   bindingQueueDepth: number;
   /** UI tick rate in Hz for on-button :hold phase dispatch (§6.4). */
   holdTickHz: number;
+}
+
+/**
+ * Live-edit settings (docs/specs/live-edit.md §10).
+ *
+ * Only a subset of these are currently read by the implementation
+ * (`idAlphabet`/`idLength` by `markAction.ts`); the remainder are declared
+ * here so the documented configuration surface exists and persists. Each
+ * field maps 1:1 to a numbered §10 entry.
+ */
+export interface LiveEditSettings {
+  /** §10.1 — eval strategy used by `liveEdit.commit`. */
+  commitTriggersEval: "immediate" | "quantised";
+  /** §10.2 — URL-safe, low-ambiguity alphabet for generated `:id`s. */
+  idAlphabet: string;
+  /** §10.3 — generated `:id` length. */
+  idLength: number;
+  /** §10.4 — default scalar widget rendering. */
+  scalarWidget: "knob" | "slider";
+  /** §10.5 — time-to-live (hours) for orphaned persisted values. */
+  orphanGcHours: number;
+  /** §10.6 — initial preview-marker state in vector-mark sub-mode. */
+  vectorMarkDefault: "all" | "none";
+  /** §10.7 — idle delay (ms) before auto-eval; 0 disables auto-eval. */
+  idleEvalMs: number;
+  /** §10.8 — master switch for §6.6 idle auto-eval. */
+  autoEvalOnIdle: boolean;
+  /** §10.9 — UI tick rate (Hz) for value batching/sending. */
+  uiTickHz: number;
+  /** §10.10 — default dock position for the live-edit panel. */
+  panelDock: "right" | "bottom" | "left";
+  /** §10.11 — panel ordering strategy. */
+  panelOrder: "document" | "custom";
+  /** §10.13 — default MIDI channel-scope for new bindings. */
+  midiChannelScopeDefault: "specific" | "any";
+  /** §10.14 — focus-popover knob size (px). */
+  knobExpandPx: number;
+  /** §10.15 — Shift-held fine-drag step multiplier. */
+  fineDragRatio: number;
+}
+
+/**
+ * CV 1V/oct calibration settings (docs/specs/calibration.md §9).
+ *
+ * `sliderRangeCents`/`snapZeroToleranceCents`/`fineStepCents`/`coarseStepCents`
+ * are read by `CalibrationSlider`; `carryForwardOffset` gates the sequencer's
+ * carry-forward behaviour. `octaveRange`/`helperTextShown` are declared for the
+ * documented surface (§9.1/§9.6, §8.2).
+ */
+export interface CalibrationSettings {
+  /** §9.1 — octave point range. Reserved; not user-exposed in MVP. */
+  octaveRange: { from: number; to: number };
+  /** §9.2 — ±extent of the adjust slider in cents. */
+  sliderRangeCents: number;
+  /** §9.3 — soft-detent tolerance (cents) for the slider's zero snap. */
+  snapZeroToleranceCents: number;
+  /** §9.4 — step size for Shift+arrow / Shift+scroll. */
+  fineStepCents: number;
+  /** §9.5 — step size for Ctrl+arrow. */
+  coarseStepCents: number;
+  /** §9.6 — whether the slider helper text is shown. */
+  helperTextShown: boolean;
+  /** §9.7 — start the next octave at the previous octave's offset. */
+  carryForwardOffset: boolean;
 }
 
 /**
@@ -249,13 +336,15 @@ export interface AppSettings {
   structure: StructureSettings;
   format: FormatSettings;
   hardware: HardwareSettings;
+  liveEdit: LiveEditSettings;
+  calibration: CalibrationSettings;
   keybindings?: KeybindingsSettings;
   keymaps?: Record<string, string>;
   [key: string]: unknown;
 }
 
 export type AppSettingsPatch = Partial<
-  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "structure" | "format" | "hardware" | "keybindings">
+  Omit<AppSettings, "editor" | "storage" | "ui" | "visualisation" | "runtime" | "wasm" | "console" | "evalResults" | "structure" | "format" | "hardware" | "liveEdit" | "calibration" | "keybindings">
 > & {
   editor?: Partial<EditorSettings>;
   storage?: Partial<StorageSettings>;
@@ -268,6 +357,8 @@ export type AppSettingsPatch = Partial<
   structure?: Partial<StructureSettings>;
   format?: Partial<FormatSettings>;
   hardware?: Partial<HardwareSettings>;
+  liveEdit?: Partial<LiveEditSettings>;
+  calibration?: Partial<CalibrationSettings>;
   keybindings?: Partial<KeybindingsSettings>;
   keymaps?: Record<string, string>;
 };
@@ -321,7 +412,11 @@ const DEFAULT_VISUALISATION: VisualisationSettings = {
   circularOffset: 0,
   futureLeadSeconds: 1,
   digitalLaneGap: 4,
-  probeHighlightsEnabled: true,
+  fromListHighlights: true,
+  probeDefaultWindowDurationMs: 1000,
+  historyHeadroom: 5,
+  maxHistorySeconds: 30,
+  inputEpsilon: 0.01,
   readabilityBlurRadius: 10,
   readabilityPadding: 3,
   readabilityTintOpacity: 0.5,
@@ -408,6 +503,9 @@ export const defaultUserSettings: AppSettings = {
   },
   structure: {
     foldAllWrappers: true,
+    atomSlurpBehaviour: "promote-to-vector",
+    autoEnterInsertion: true,
+    flashConsoleToasts: true,
   },
   format: {
     lineWidth: 60,
@@ -421,6 +519,31 @@ export const defaultUserSettings: AppSettings = {
     bindingFoldDefault: true,
     bindingQueueDepth: 4,
     holdTickHz: 30,
+  },
+  liveEdit: {
+    commitTriggersEval: "immediate",
+    idAlphabet: "abcdefghjkmnpqrstuvwxyz23456789",
+    idLength: 4,
+    scalarWidget: "knob",
+    orphanGcHours: 24,
+    vectorMarkDefault: "all",
+    idleEvalMs: 1500,
+    autoEvalOnIdle: true,
+    uiTickHz: 60,
+    panelDock: "right",
+    panelOrder: "document",
+    midiChannelScopeDefault: "specific",
+    knobExpandPx: 112,
+    fineDragRatio: 0.1,
+  },
+  calibration: {
+    octaveRange: { from: 0, to: 4 },
+    sliderRangeCents: 50,
+    snapZeroToleranceCents: 0.3,
+    fineStepCents: 0.1,
+    coarseStepCents: 10,
+    helperTextShown: true,
+    carryForwardOffset: true,
   },
   keybindings: {
     profile: "default",
@@ -445,6 +568,11 @@ export function createDefaultUserSettings(): AppSettings {
     structure: { ...defaultUserSettings.structure },
     format: { ...defaultUserSettings.format },
     hardware: { ...defaultUserSettings.hardware },
+    liveEdit: { ...defaultUserSettings.liveEdit },
+    calibration: {
+      ...defaultUserSettings.calibration,
+      octaveRange: { ...defaultUserSettings.calibration.octaveRange },
+    },
     keybindings: defaultUserSettings.keybindings
       ? { ...defaultUserSettings.keybindings }
       : undefined,

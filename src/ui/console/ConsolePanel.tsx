@@ -22,6 +22,7 @@ import {
 import { settings as globalSettings } from "../../utils/settingsStore.ts";
 import { usePointerDrag } from "../panel-chrome/usePointerDrag.ts";
 import type { ConsoleSettings } from "../../lib/settings/schema.ts";
+import { advanceQueue, completeActive } from "./typewriterQueue.ts";
 import "./console.css";
 
 // ---------------------------------------------------------------------------
@@ -91,6 +92,12 @@ function ConsoleEntry(props: {
   settings: ConsoleSettings;
   /** ID of the message currently being typewritten (panel-level). */
   typewriterActiveId: () => number | null;
+  /**
+   * Highest message id that was flushed by the burst valve. Entries with
+   * `id <= flushedUpToId` render instantly (no typewriter); newer entries
+   * animate normally.
+   */
+  flushedUpToId: () => number;
   /** Called when this entry's typewriter finishes. */
   onTypewriterDone: (id: number) => void;
 }) {
@@ -98,13 +105,16 @@ function ConsoleEntry(props: {
   const msg = () => props.message;
   const isTypewriter = () => s().entryAnimation === "typewriter";
 
+  /** This entry was flushed by the burst valve — show full text instantly. */
+  const isFlushed = () => msg().id <= props.flushedUpToId();
+
   /** This entry is the one currently typing. */
   const isActiveTypewriter = () =>
-    isTypewriter() && props.typewriterActiveId() === msg().id;
+    isTypewriter() && !isFlushed() && props.typewriterActiveId() === msg().id;
 
   /** This entry is waiting for an earlier typewriter to finish. */
   const isPendingTypewriter = () => {
-    if (!isTypewriter()) return false;
+    if (!isTypewriter() || isFlushed()) return false;
     const activeId = props.typewriterActiveId();
     return activeId !== null && activeId < msg().id;
   };
@@ -220,6 +230,10 @@ export function ConsolePanel() {
   const [isAutoScrolling, setIsAutoScrolling] = createSignal(true);
   const [showScrollIndicator, setShowScrollIndicator] = createSignal(false);
   const [typewriterActiveId, setTypewriterActiveId] = createSignal<number | null>(null);
+  // Burst pressure valve: when the typewriter queue backs up, flush all
+  // pending entries instantly and resume one-at-a-time animation afterwards.
+  // Tracks the highest message id flushed so far; newer entries still animate.
+  const [flushedUpToId, setFlushedUpToId] = createSignal(0);
   let contentRef: HTMLDivElement | undefined;
   let prevMessageCount = 0;
 
@@ -231,14 +245,12 @@ export function ConsolePanel() {
       typewriterIntervalMs: 20,
     };
 
-  const onTypewriterDone = (_id: number) => {
-    const msgs = consoleStore.messages;
-    const currentIdx = msgs.findIndex((m) => m.id === _id);
-    if (currentIdx >= 0 && currentIdx < msgs.length - 1) {
-      setTypewriterActiveId(msgs[currentIdx + 1].id);
-    } else {
-      setTypewriterActiveId(null);
-    }
+  const onTypewriterDone = (id: number) => {
+    const next = completeActive(consoleStore.messages, id, {
+      activeId: typewriterActiveId(),
+      flushedUpToId: flushedUpToId(),
+    });
+    setTypewriterActiveId(next.activeId);
   };
 
   createEffect(() => {
@@ -252,9 +264,14 @@ export function ConsolePanel() {
           if (contentRef) contentRef.scrollTop = contentRef.scrollHeight;
         });
       }
-      if (consoleSettings().entryAnimation === "typewriter" && typewriterActiveId() === null) {
-        const firstNew = msgs[prevMessageCount];
-        if (firstNew) setTypewriterActiveId(firstNew.id);
+      if (consoleSettings().entryAnimation === "typewriter") {
+        // Advance the typewriter queue, applying the burst pressure valve.
+        const next = advanceQueue(msgs, {
+          activeId: typewriterActiveId(),
+          flushedUpToId: flushedUpToId(),
+        });
+        setTypewriterActiveId(next.activeId);
+        setFlushedUpToId(next.flushedUpToId);
       }
     }
     prevMessageCount = count;
@@ -347,6 +364,7 @@ export function ConsolePanel() {
                   message={msg}
                   settings={consoleSettings()}
                   typewriterActiveId={typewriterActiveId}
+                  flushedUpToId={flushedUpToId}
                   onTypewriterDone={onTypewriterDone}
                 />
               )}

@@ -139,7 +139,7 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 
 - Canonical source tree: `src/`
 - Entry point: `src/main.ts`
-- **Reactive data flow**: `docs/REACTIVE_FLOW.md` — stores, channels, signals, and data flow paths. Consult before tracing state or adding reactive plumbing.
+- **Reactive data flow**: `docs/specs/reactive-flow.md` — stores, channels, signals, and data flow paths. Consult before tracing state or adding reactive plumbing.
 
 ### Source Layout
 
@@ -181,7 +181,8 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 
 - `src/editors/extensions/diagnostics.ts` — CodeMirror state field that accumulates diagnostics across evals. Diagnostics persist per-range until that range is re-evaluated successfully. `pushDiagnostics()` adds diagnostics with document offset mapping; `clearDiagnosticsForRange()` removes diagnostics for a specific range.
 - `src/utils/outputHealthStore.ts` — SolidJS reactive store tracking per-output health (`idle`/`running`/`fallback`/`error`). Polled per animation frame via `useq_active_diagnostics()`. Success feedback with auto-fade.
-- `src/runtime/wasmInterpreter.ts` — `readLastDiagnostics()` and `readActiveDiagnostics()` parse JSON from WASM exports.
+- `src/runtime/wasmInterpreter.ts` — binds the optional `useq_last_diagnostics` / `useq_active_diagnostics` WASM export fns and stashes them on the `__useqWasmRuntime` global.
+- `src/runtime/wasmRuntimePort.ts` — `readLastDiagnosticsSync()` / `readActiveDiagnosticsSync()` read those fns back from the global and parse their JSON (active-diags reader memoizes on the raw string for cheap per-frame polling).
 - `src/effects/editorEvaluation.ts` — after each eval, reads diagnostics, pushes them to the editor with correct document offsets, shows error messages inline instead of `"{error}"`.
 - `src/contracts/wasmAbi.ts` — `useq_last_diagnostics` and `useq_active_diagnostics` as optional WASM exports.
 
@@ -224,5 +225,5 @@ Use these to locate the source file for any visible UI element. Plugin tests: `n
 - Submodule updates require separate commits in those repos.
 - For editor-facing firmware truth, treat the `src-useq/` submodule in this repo as authoritative.
 - Run `npm run src-useq:status` before firmware-sensitive audits, and cite that pinned commit in follow-up work.
-- Promotion and runtime-capability rules live in `docs/RUNTIME_CONTRACT.md`.
+- Promotion and runtime-capability rules live in `docs/specs/runtime-contract.md`.
 - The `src-useq/` submodule contains a WASM interpreter that mirrors the actual firmware interpreter. The frontend uses this WASM build — it must be rebuilt (`npm run build:assets`) when the interpreter source in `src-useq/` changes.

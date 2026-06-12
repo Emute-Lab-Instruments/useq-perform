@@ -2,7 +2,6 @@ import { Tabs, Tab } from "../Tabs";
 import { CodeSnippetsTab } from "./CodeSnippetsTab";
 import { GuideTab } from "./guide/GuideTab";
 import { ReferencePanel } from "./ReferencePanel";
-import { KeybindingsTab } from "./KeybindingsTab";
 import { helpTabSwitchChannel } from "./helpChannels";
 
 export interface HelpPanelProps {
@@ -26,11 +25,6 @@ function defaultTabs(): Tab[] {
       id: "panel-help-tab-snippets",
       name: "Code Snippets",
       content: () => <CodeSnippetsTab />,
-    },
-    {
-      id: "panel-help-tab-keybindings",
-      name: "Keybindings",
-      content: () => <KeybindingsTab />,
     },
   ];
 }

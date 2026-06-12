@@ -84,36 +84,17 @@ export function getDiagnosticsSnapshot(): RuntimeDiagnosticsSnapshot {
   };
 }
 
-/** @deprecated Use getDiagnosticsSnapshot(). Alias kept for migration. */
-export const getRuntimeDiagnostics = getDiagnosticsSnapshot;
-
 // ── Event emission ──────────────────────────────────────────────
 
 /**
  * Derive and publish the current diagnostics snapshot via the typed channel.
- * Replaces the old publishRuntimeDiagnostics() that accepted partial updates.
+ * Bootstrap-only fields are seeded via seedBootstrapDiagnostics(); everything
+ * else is derived from canonical state on each call.
  */
 export function publishDiagnosticsSnapshot(): RuntimeDiagnosticsSnapshot {
   const snapshot = getDiagnosticsSnapshot();
   runtimeDiagnosticsChannel.publish(snapshot);
   return snapshot;
-}
-
-/**
- * @deprecated Use seedBootstrapDiagnostics() + publishDiagnosticsSnapshot().
- * Thin compatibility shim: accepts partial updates, seeds what it can,
- * then derives and publishes.
- */
-export function publishRuntimeDiagnostics(
-  updates: Partial<RuntimeDiagnosticsSnapshot>,
-): RuntimeDiagnosticsSnapshot {
-  if (updates.startupMode !== undefined || updates.settingsSources !== undefined) {
-    seedBootstrapDiagnostics({
-      startupMode: updates.startupMode ?? bootstrapStartupMode,
-      settingsSources: updates.settingsSources ?? bootstrapSettingsSources,
-    });
-  }
-  return publishDiagnosticsSnapshot();
 }
 
 // ── Bootstrap failure tracking ──────────────────────────────────

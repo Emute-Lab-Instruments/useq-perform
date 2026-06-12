@@ -49,6 +49,34 @@ describe("appSettings", () => {
     expect("offsetSeconds" in normalized.visualisation).toBe(false);
   });
 
+  it("normalizes structure settings: defaults, valid overrides, and invalid coercion (structural-editing.md §5.2.9/§4.2/§7.2)", async () => {
+    const settingsModule = await import("./appSettings.ts");
+
+    // Defaults applied when absent.
+    const fromEmpty = settingsModule.normalizeUserSettings({});
+    expect(fromEmpty.structure.atomSlurpBehaviour).toBe("promote-to-vector");
+    expect(fromEmpty.structure.autoEnterInsertion).toBe(true);
+    expect(fromEmpty.structure.flashConsoleToasts).toBe(true);
+
+    // Valid overrides preserved.
+    const overridden = settingsModule.normalizeUserSettings({
+      structure: {
+        atomSlurpBehaviour: "promote-to-list",
+        autoEnterInsertion: false,
+        flashConsoleToasts: false,
+      },
+    });
+    expect(overridden.structure.atomSlurpBehaviour).toBe("promote-to-list");
+    expect(overridden.structure.autoEnterInsertion).toBe(false);
+    expect(overridden.structure.flashConsoleToasts).toBe(false);
+
+    // Invalid enum value falls back to the default.
+    const invalid = settingsModule.normalizeUserSettings({
+      structure: { atomSlurpBehaviour: "promote-to-banana" },
+    });
+    expect(invalid.structure.atomSlurpBehaviour).toBe("promote-to-vector");
+  });
+
   it("migrates legacy storage keys into canonical local storage once", async () => {
     const settingsModule = await import("./appSettings.ts");
     window.localStorage.setItem(
@@ -127,5 +155,86 @@ describe("appSettings", () => {
     expect(roundTripped.visualisation.probeSampleCount).toBe(48);
     expect(roundTripped.visualisation.probeLineWidth).toBe(2.25);
     expect(roundTripped.visualisation.probeRefreshIntervalMs).toBe(25);
+  });
+
+  it("provides liveEdit (§10) and calibration (§9) defaults", async () => {
+    const settingsModule = await import("./appSettings.ts");
+    const normalized = settingsModule.normalizeUserSettings({});
+
+    // live-edit.md §10 defaults.
+    expect(normalized.liveEdit.idAlphabet).toBe("abcdefghjkmnpqrstuvwxyz23456789");
+    expect(normalized.liveEdit.idLength).toBe(4);
+    expect(normalized.liveEdit.scalarWidget).toBe("knob");
+    expect(normalized.liveEdit.orphanGcHours).toBe(24);
+    expect(normalized.liveEdit.uiTickHz).toBe(60);
+    expect(normalized.liveEdit.commitTriggersEval).toBe("immediate");
+    expect(normalized.liveEdit.autoEvalOnIdle).toBe(true);
+
+    // calibration.md §9 defaults.
+    expect(normalized.calibration.sliderRangeCents).toBe(50);
+    expect(normalized.calibration.snapZeroToleranceCents).toBe(0.3);
+    expect(normalized.calibration.fineStepCents).toBe(0.1);
+    expect(normalized.calibration.coarseStepCents).toBe(10);
+    expect(normalized.calibration.carryForwardOffset).toBe(true);
+    expect(normalized.calibration.octaveRange).toEqual({ from: 0, to: 4 });
+  });
+
+  it("normalizes and clamps liveEdit/calibration overrides to valid shapes", async () => {
+    const settingsModule = await import("./appSettings.ts");
+    const normalized = settingsModule.normalizeUserSettings({
+      liveEdit: {
+        idLength: 6,
+        scalarWidget: "slider",
+        commitTriggersEval: "quantised",
+        autoEvalOnIdle: false,
+        panelDock: "bottom",
+        scalarWidgetBogus: "nope",
+      },
+      calibration: {
+        sliderRangeCents: 75,
+        carryForwardOffset: false,
+        octaveRange: { from: 1, to: 3 },
+        helperTextShown: false,
+      },
+    });
+
+    expect(normalized.liveEdit.idLength).toBe(6);
+    expect(normalized.liveEdit.scalarWidget).toBe("slider");
+    expect(normalized.liveEdit.commitTriggersEval).toBe("quantised");
+    expect(normalized.liveEdit.autoEvalOnIdle).toBe(false);
+    expect(normalized.liveEdit.panelDock).toBe("bottom");
+
+    expect(normalized.calibration.sliderRangeCents).toBe(75);
+    expect(normalized.calibration.carryForwardOffset).toBe(false);
+    expect(normalized.calibration.helperTextShown).toBe(false);
+    expect(normalized.calibration.octaveRange).toEqual({ from: 1, to: 3 });
+
+    // Invalid enum falls back to default.
+    const invalid = settingsModule.normalizeUserSettings({
+      liveEdit: { scalarWidget: "wibble", commitTriggersEval: "weird" },
+    });
+    expect(invalid.liveEdit.scalarWidget).toBe("knob");
+    expect(invalid.liveEdit.commitTriggersEval).toBe("immediate");
+  });
+
+  it("round-trips liveEdit/calibration through configuration documents", async () => {
+    const settingsModule = await import("./appSettings.ts");
+    const base = settingsModule.normalizeUserSettings({
+      liveEdit: { idLength: 5, uiTickHz: 30 },
+      calibration: { sliderRangeCents: 40, carryForwardOffset: false },
+    });
+    const document = settingsModule.createConfigurationDocument(base, {
+      includeCode: false,
+    });
+    const patch = settingsModule.settingsPatchFromConfiguration(document);
+    const roundTripped = settingsModule.mergeUserSettings(
+      settingsModule.createDefaultUserSettings(),
+      patch,
+    );
+
+    expect(roundTripped.liveEdit.idLength).toBe(5);
+    expect(roundTripped.liveEdit.uiTickHz).toBe(30);
+    expect(roundTripped.calibration.sliderRangeCents).toBe(40);
+    expect(roundTripped.calibration.carryForwardOffset).toBe(false);
   });
 });

@@ -177,6 +177,38 @@ describe("happy path -- full calibration of one output", () => {
   });
 });
 
+// ── carryForwardOffset gate (§9.7) ─────────────────────────────────────────────
+
+describe("carryForwardOffset setting (§9.7)", () => {
+  it("starts the next octave at zero when carryForwardOffset is false", async () => {
+    const transport = mockTransport();
+    const seq = createCalibrationSequencer(transport, {
+      carryForwardOffset: false,
+    });
+    seq.openPicker(OUTPUTS);
+    await seq.pickOutput("a1", "fresh");
+
+    await seq.adjust(5.5);
+    expect(seq.state.session!.offsetCents).toBeCloseTo(5.5);
+
+    await seq.saveAndNext();
+    // With carry-forward disabled the next octave resets to zero.
+    expect(seq.state.session!.step).toBe(1);
+    expect(seq.state.session!.offsetCents).toBe(0);
+  });
+
+  it("defaults to carrying the offset forward when no option is passed", async () => {
+    const transport = mockTransport();
+    const seq = createCalibrationSequencer(transport);
+    seq.openPicker(OUTPUTS);
+    await seq.pickOutput("a1", "fresh");
+
+    await seq.adjust(3.2);
+    await seq.saveAndNext();
+    expect(seq.state.session!.offsetCents).toBeCloseTo(3.2);
+  });
+});
+
 // ── Adjust ───────────────────────────────────────────────────────────────────
 
 describe("adjust", () => {

@@ -1,5 +1,6 @@
 import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
 import { actions, type ActionId, type ActionCategory } from "../../lib/keybindings/actions.ts";
+import { isMac as detectIsMac } from "../../lib/keybindings/osReserved.ts";
 
 export interface HintEntry {
   key: string;
@@ -56,9 +57,8 @@ function displayKey(key: string): string {
   return DISPLAY_KEY_MAP[key] ?? key;
 }
 
-const isMac =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+// OS detection via the shared `detectOs()` helper (keybindings.md §1.5).
+const isMac = detectIsMac();
 
 const MODIFIER_KEYS: Record<string, string> = {
   Control: "Ctrl",

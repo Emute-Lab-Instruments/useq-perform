@@ -119,6 +119,7 @@ export const extensionRegistry: Record<string, () => Promise<Extension | Extensi
       loadPersistedProbes: () => [],
       savePersistedProbes: () => {},
       removePersistedProbes: () => {},
+      isWasmEnabled: () => true,
     });
   },
   'inline-results': async () => {

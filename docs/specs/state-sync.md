@@ -69,9 +69,9 @@ The system has three layers:
 
 1.1 Drift detection is only active in `both` mode. The detector enables itself on `connectionChanged` events where `transportMode === "both"` and disables on any other mode.
 
-1.2 **Comparison source.** Hardware streams output values into `serialBuffers[]` at the rate configured by `stream-config` (typically 30Hz). WASM independently computes the same outputs during visualisation sampling. The drift detector compares the most recent hardware stream value for each output against the corresponding WASM tick value. No new data channels are needed.
+1.2 **Comparison source.** Hardware streams output values into `serialBuffers[]` at the rate configured by `stream-config` (typically 30Hz). The default stream-config (`buildDefaultStreamConfig` in `src/runtime/jsonProtocol.ts`) subscribes the serial output channels (`s1`-`s8`, `direction: "output"`) in addition to inputs — without an output subscription the output buffers never fill and every drift sample is dropped. WASM independently computes the same outputs during visualisation sampling. The drift detector compares the most recent hardware stream value for each output against the corresponding WASM tick value. No new data channels are needed.
 
-1.3 **Per-output scoring.** For each output `name`, the relative error is:
+1.3 **Per-output scoring.** Drift scoring is limited to the **streamed serial outputs** `s1`-`s8` — the only outputs the firmware streams into `serialBuffers[]` (see §1.2). Analog (`a1`-`a8`) and digital (`d1`-`d8`) outputs have no default stream channel, so the drift detector cannot score them (`outputNameToBufferIndex` in `src/effects/driftDetector.ts` returns `null` for non-`sN` names and the sample is skipped). Their source text still round-trips via the get-state snapshot (§2.2). For each scored output `name`, the relative error is:
 
 ```
 error = |hw_value - wasm_value| / max(|hw_value|, ε)
@@ -130,7 +130,7 @@ The aggregate is the mean of all per-output EMA scores.
 
 2.3 **Version gating.** If the firmware does not support `get-state`, the request times out (5s). The orchestrator handles this gracefully — it logs a warning and does not retry.
 
-2.4 **Firmware implementation status.** The `get-state` handler does not yet exist in the firmware (`src-useq/`). The editor-side protocol types, wire function, and port method are implemented and will resolve to `null` until the firmware adds the handler. This is by design — Layer 1 (drift detection) provides diagnostic value independently.
+2.4 **Firmware implementation status.** The `get-state` handler is implemented in the firmware (`src-useq/uSEQ/src/firmware/serial_protocol.cpp`, `handle_get_state`; pinned `src-useq` commit `f8b8b42`). It builds a full state-snapshot response (cells, outputs, state slots, live slots). The editor-side protocol types, wire function, and port method consume it directly. On firmware builds that predate this handler the request times out per §2.3 and `requestStateSnapshot()` resolves to `null`.
 
 ## §3 State Application (WASM ABI)
 
@@ -138,7 +138,9 @@ The aggregate is the mean of all per-output EMA scores.
 
 Takes a JSON-serialised `StateSnapshot` (§2.2 `.state` payload). Re-evaluates all cell definitions and output source text from the snapshot in the correct order (cells before outputs), then patches state slot values and live-edit slots to match. Returns `0` on success, non-zero on failure.
 
-3.2 **WASM implementation status.** The `useq_apply_state_snapshot` export does not yet exist in `src-useq/wasm/wasm_wrapper.cpp`. The editor probes it as an optional export (`src/contracts/wasmAbi.ts`) and degrades gracefully when it's absent — `applyStateSnapshot()` returns `false`.
+&nbsp;&nbsp;&nbsp;&nbsp;3.1.1 **Cells round-trip is not yet implemented.** The current export (`src-useq/wasm/wasm_wrapper.cpp:useq_apply_state_snapshot`, pinned `src-useq` commit `f8b8b42`) re-evaluates output source text and patches state/live slots, but does **not** yet re-evaluate the snapshot's `cells` field before outputs. Until the firmware/WASM side reinstates cell definitions, drift originating purely from a `define`/`defstate`/data-table divergence is left unfixed by a resync. Tracked for the `src-useq` side.
+
+3.2 **WASM implementation status.** The `useq_apply_state_snapshot` export is implemented in `src-useq/wasm/wasm_wrapper.cpp` and exported by `src-useq/scripts/build_wasm.sh` (`_useq_apply_state_snapshot`; pinned `src-useq` commit `f8b8b42`). The editor still probes it as an optional export (`src/contracts/wasmAbi.ts`) and degrades gracefully when a build omits it — `applyStateSnapshot()` returns `false`. See §3.1.1 for the cells caveat.
 
 3.3 **Projection invalidation.** After a successful snapshot apply, the orchestrator calls `invalidateFutureProjections()` to force a reset-fill of the visualisation's future projection buffers. This ensures the visualisation reflects the resynced state immediately.
 
@@ -158,7 +160,7 @@ Takes a JSON-serialised `StateSnapshot` (§2.2 `.state` payload). Re-evaluates a
 
 4.4 **User visibility.** Drift events and sync results are surfaced via the console store:
 
-- `"WASM state drifted from hardware on a1, d1 — resyncing…"` (on drift detect)
+- `"WASM state drifted from hardware on s1, s2 — resyncing…"` (on drift detect; only the streamed serial outputs `s1`-`s8` are ever named here — see §1.3)
 - `"WASM state resynced with hardware."` (on success)
 - `"State resync skipped — firmware does not support state snapshots yet."` (on null snapshot)
 - `"State resync failed — WASM apply_state_snapshot not available."` (on WASM export missing)
@@ -193,7 +195,7 @@ interface DriftDetectedDetail {
 
 6.2 **Revision-gated delta.** Cells already have a `revision` counter in the firmware. An incremental snapshot (`{ "since": { "cellRev": 7 } }`) could reduce payload size for large cell tables. Deferred — full snapshot is simple and correct.
 
-6.3 **Digital output drift scoring.** Digital outputs (d1–d8) flip between 0/1 and may show spurious drift due to aliasing between hardware and WASM sampling phases. A future refinement could weight analog outputs more heavily or use a different comparison metric for digital outputs.
+6.3 **Analog/digital output drift scoring.** Drift scoring currently covers only the streamed serial outputs `s1`-`s8` (§1.3). Extending it to analog (`a1`-`a8`) and digital (`d1`-`d8`) outputs would require (a) subscribing those outputs in the default stream-config and routing them into `serialBuffers[]`, and (b) a comparison metric tolerant of digital aliasing — digital outputs flip between 0/1 and may show spurious drift from sampling-phase aliasing between hardware and WASM. Deferred.
 
 6.4 **Automatic drift detection threshold tuning.** The current EMA alpha (0.15) and threshold (0.05) are empirically chosen starting points. May need tuning based on real-world usage with hardware.
 

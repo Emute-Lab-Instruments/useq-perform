@@ -15,7 +15,7 @@ layer: behavioural
 - `src/zen/ZenMode.tsx` — top-level zen mode component (paradigm dropdown, input detection)
 - `src/zen/ZenGrid.tsx` — grid home screen (category rows, exercise cards, Continue button)
 - `src/zen/ZenExercise.tsx` — exercise runner (editor + prompt + validation + hints)
-- `src/zen/exercises.ts` — exercise definitions (plain typed data with `<<>>` cursor DSL)
+- `src/zen/exercises.ts` — exercise definitions (plain typed data with `«»` guillemet cursor DSL)
 - `src/zen/validation.ts` — AST comparison and cursor matching
 - `src/zen/store.ts` — `zenStore` (current view, active exercise, action log, input device, paradigm)
 - `src/zen/progress.ts` — localStorage persistence for exercise progress
@@ -36,7 +36,7 @@ layer: behavioural
 
 1.4 Zen mode operates on a **temporary paradigm** — the user can select any gamepad binding paradigm from a dropdown without affecting their persisted settings. The selected paradigm determines button hints shown in exercises.
 
-1.5 Zen mode is a **separate route** (`#/zen`, with optional exercise params `#/zen/<category>/<index>`). Bookmarkable, deep-linkable, useful for automated testing (see `src/zen/index.tsx`).
+1.5 Zen mode is a **separate route** (`#/zen`, with an optional exercise id `#/zen/<exercise-id>`, e.g. `#/zen/nav-right-1`). IDs are the kebab-case strings defined in `exercises.ts`. Legacy slashed paths (`#/zen/nav/right/1`) are accepted by joining the segments with `-`. Bookmarkable, deep-linkable, useful for automated testing (see `src/zen/index.tsx`, `src/zen/routing.ts`).
 
 1.6 No audio. No haptics. Purely visual feedback.
 
@@ -45,12 +45,12 @@ layer: behavioural
 ## 2. Entry and exit
 
 2.1 **Entry points:**
-- Keyboard shortcut (configurable, default `Ctrl+Shift+Z`)
-- Menu item (in Help or toolbar)
-- Gamepad gesture (hold `Start`+`Back` for 1s)
-- Direct URL navigation (`#/zen`)
+- Keyboard shortcut — action `view.zenMode`, default `Ctrl+Shift+Z` (configurable via keybindings; handler sets `#/zen` and reloads — see `src/lib/keybindings/handlers.ts`). **Implemented.**
+- Direct URL navigation (`#/zen`). **Implemented.**
+- Menu item (in Help or toolbar). *Deferred — see §11.8.*
+- Gamepad gesture (hold `Start`+`Back` for 1s). *Deferred — see §11.8.*
 
-2.2 **First-launch nudge.** On the first gamepad connection event ever detected (per-browser, tracked in localStorage), a subtle toast appears: "Try zen mode to practice structural editing with your controller." Toast is dismissible, shows only once.
+2.2 **First-launch nudge.** *Deferred — see §11.8.* The intended behaviour: on the first gamepad connection event ever detected (per-browser, tracked in localStorage), a subtle dismissible toast appears once — "Try zen mode to practice structural editing with your controller."
 
 2.3 **Exit:**
 - `Esc` / gamepad `Back` from the grid home screen
@@ -95,7 +95,7 @@ layer: behavioural
 
 ### 4.1 Authoring format
 
-Exercises are authored using a TypeScript DSL with inline cursor markers (see `src/zen/exercises.ts`). The `<<>>` pair marks the structural cursor position in both start and target code:
+Exercises are authored using a TypeScript DSL with inline cursor markers (see `src/zen/exercises.ts`). The `«»` guillemet pair marks the structural cursor position in both start and target code:
 
 ```ts
 exercise('slurp-fwd-1', {
@@ -144,24 +144,22 @@ interface Exercise {
   category: CategoryId
   title: string
   startCode: string                   // markers stripped
-  startCursor: CursorSpec             // derived from «» in start
+  startCursorText: string             // text between «» in start
   targetCode: string                  // markers stripped
-  targetCursor: CursorSpec            // derived from «» in target
+  targetCursorText: string            // text between «» in target
   promptMode: PromptMode
-  optimalActions?: ActionId[]
+  actions: ActionId[]                 // the optimal action sequence
   hints?: string[]
 }
 
 type PromptMode = 'ghost' | 'spotlight' | 'beforeAfter' | 'puzzle'
-
-type CursorSpec =
-  | { kind: 'path'; path: number[] }  // tree path from root (computed from marker)
-  | { kind: 'text'; match: string }   // fallback: node whose text matches marker content
 ```
 
-4.2.1 **AST validation** uses `targetCode` — the system parses it at exercise load time and compares the tree structure (ignoring whitespace) against the editor's live parse tree. No hand-written `AstSpec` objects.
+The cursor is stored as the **literal text** between the `«»` markers rather than a structural path. At load time `placeCursor()` finds that text in the (markers-stripped) code and selects it; validation matches against the same text. Path-based cursor matching is a possible future refinement.
 
-4.2.2 **Cursor validation** uses `targetCursor` — derived from the `«»` position in the target string. The cursor must be on the correct node for the exercise to complete.
+4.2.1 **Code validation** uses `targetCode` — the editor's whitespace-normalised text is compared against the whitespace-normalised target after every action.
+
+4.2.2 **Cursor validation** uses `targetCursorText` — the text between the `«»` markers in the target string. For navigation exercises (where the code doesn't change) the cursor must land on/within that text for the exercise to complete.
 
 4.2 **Prompt modes** (each exercise picks one):
 
@@ -185,9 +183,9 @@ type CursorSpec =
 
 5.2 **During exercise**: User performs structural editing operations. The editor is fully functional within the structural editing algebra — all operations work, undo works freely.
 
-5.3 **Validation**: After every action, the system compares the current AST against `targetAst` (and `targetCursor` if specified) (see `src/zen/validation.ts`). If match -> exercise complete.
+5.3 **Validation**: After every action, the system compares the current editor text against `targetCode` (whitespace-insensitive), plus the cursor position against `targetCursorText` for navigation exercises (see `src/zen/validation.ts`). If both match -> exercise complete.
 
-5.4 **Gentle nudge** (see `src/zen/hints.ts`): After 3 wrong moves (moves that don't bring the AST closer to the target), show the first hint from the exercise's `hints[]` array. After 5 wrong moves, show the next hint. After 8 wrong moves, show the exact action needed (derived from `optimalActions`). Hints appear as a dim line below the top bar, not as a modal.
+5.4 **Gentle nudge** (the schedule lives in `src/zen/ZenExercise.tsx`; hint text comes from the exercise's `hints[]`): after **3** wrong moves show the first hint, then advance one hint every **2** further wrong moves (so 3 → hint 0, 5 → hint 1, 7 → hint 2…), clamped to the last hint. The exact optimal action is not surfaced as a text hint — **Guided** mode already renders the full ordered button sequence. Hints appear as a dim line below the top bar, not as a modal.
 
 5.5 **Completion**: Brief green glow on the editor border (200ms fade-in, 300ms hold, 200ms fade-out). After ~500ms total, auto-advance to the next exercise in the same category via card-slide animation. If the category is complete, return to the grid with the completed row visually updated.
 
@@ -199,22 +197,22 @@ type CursorSpec =
 
 ## 6. Validation system
 
-6.1 **Primary validation: AST comparison.** The system parses `targetCode` into an AST at exercise load time, then compares the editor's live parse tree against it after every action. Whitespace differences are ignored. Node types + content must match.
+6.1 **Primary validation: whitespace-insensitive code comparison.** After every action the editor's text is normalised (runs of whitespace collapsed to a single space, trimmed) and compared for equality against the identically-normalised `targetCode`. For the current exercise set — whose start/target differ only by structural rearrangements — this is equivalent to comparing the parse trees, while avoiding a dependency on the structural parser.
 
-6.2 **Comparison algorithm.** Walk both trees in parallel. At each node: kind must match, text content must match (for atoms), child count and order must match (for compounds). Whitespace tokens and comments are skipped. This is a structural equality check, not a string comparison.
+6.2 **Comparison algorithm.** Implemented as the string normalisation above (`normalizeCode` in `src/zen/validation.ts`). A future refinement may walk the structural parse trees in parallel (matching node kind, atom text, and child count/order, skipping whitespace and comments) for a true structural-equality check that also ignores comments; the current check does not skip comments.
 
-6.3 **Secondary tracking: action sequence.** If `optimalActions` is provided, the system records which `ActionId`s fired during the exercise. This is used for:
-- Hint generation ("try slurp instead of delete+re-type")
-- Performance stats (moves used vs optimal)
+6.3 **Secondary tracking: action sequence.** Each exercise carries a required `actions: ActionId[]` field — the optimal sequence. `src/zen/sequenceTracker.ts` records which `ActionId`s fire and drives:
+- Guided mode (the ordered button-sequence display)
+- Wrong-move detection (an action that diverges from the expected next step)
 - Developer test harness (assert specific pipeline output)
 
-6.4 **Cursor validation.** Completion requires both AST match AND cursor position match (cursor is always specified via the `«»` markers in `target`). This is important for navigation exercises where the tree doesn't change — only the cursor moves.
+6.4 **Cursor validation.** For navigation exercises (code unchanged) completion requires the cursor to land on/within `targetCursorText` (derived from the `«»` markers in `target`). For mutation exercises the cursor check is lenient — matching code is sufficient.
 
 6.5 **Test harness integration.** Exercise definitions are plain data (importable in tests). A test can:
-- Load an exercise's `startCode` + `startCursor`
+- Load an exercise's `startCode` + `startCursorText`
 - Feed synthetic `LogicalEvent[]` through the pipeline
-- Assert the resulting AST matches the parsed `targetCode`
-- Assert the action sequence matches `optimalActions`
+- Assert the resulting editor text matches `targetCode`
+- Assert the action sequence matches `actions`
 
 ---
 
@@ -270,7 +268,7 @@ interface ExerciseProgress {
 
 9.2 **Input detection**: The system watches for the most recent input event. If a gamepad gesture arrives, hints switch to gamepad buttons. If a keyboard event arrives, hints switch to keyboard chords. Debounce of 500ms prevents flicker during transition.
 
-9.3 **Hint derivation**: Given the exercise's target action (from `optimalActions[0]` or inferred from the operation), the system looks up which gesture/key produces that action in the active paradigm's layers. This is a reverse-lookup on the binding tables.
+9.3 **Hint derivation**: Given the exercise's target action(s) (from its `actions` array), the system looks up which gesture/key produces each action in the active paradigm's layers. This is a reverse-lookup on the binding tables (see `src/zen/hints.ts`).
 
 9.4 If no binding exists for the target action in the active paradigm (e.g. the paradigm doesn't bind `edit.splice` anywhere), the hint shows the operation name without a button badge, plus a dim note: "not bound in current paradigm."
 
@@ -298,20 +296,22 @@ interface ExerciseProgress {
 ```
 src/zen/
   index.tsx             // route component, mounts zen mode
+  ZenMode.tsx           // top-level zen component (input toggle, routing)
   ZenGrid.tsx           // grid home screen
-  ZenExercise.tsx       // exercise runner (editor + prompt + validation)
+  ZenExercise.tsx       // exercise runner (editor + prompt-mode layout + validation)
   exercises.ts          // exercise definitions (data)
-  validation.ts         // AST comparison, cursor matching
-  promptModes/
-    Ghost.tsx           // ghost overlay prompt mode
-    Spotlight.tsx       // spotlight/halo prompt mode
-    BeforeAfter.tsx     // split-view prompt mode
-    Puzzle.tsx          // target-only prompt mode
+  validation.ts         // whitespace-insensitive code + cursor matching
+  routing.ts            // #/zen hash <-> exercise id mapping
   store.ts              // zenStore
   progress.ts           // localStorage persistence
   hints.ts              // hint derivation + reverse binding lookup
-  zen.css               // styles
+  sequenceTracker.ts    // optimal-action sequence tracking
+  zen.css               // styles (incl. per-prompt-mode layout classes)
 ```
+
+Prompt modes are **not** separate components — `ZenExercise.tsx` branches on
+`activeExercise().promptMode` and applies a `zen-prompt-<mode>` class plus
+conditional rendering of the target editor / ghost overlay (see `zen.css`).
 
 ---
 
@@ -330,3 +330,5 @@ src/zen/
 11.6 **Integration with guide system.** Whether zen mode exercises can be embedded inline in the existing help guide chapters (as interactive "try it" blocks) or remain a separate surface. The existing `Playground` component could potentially mount individual zen exercises.
 
 11.7 **Accessibility.** Screen reader announcements for exercise state, completion, hints. Not in v1 but the architecture should not preclude it.
+
+11.8 **Additional entry points + nudge.** Beyond the keyboard shortcut and direct URL (§2.1), the following are not yet implemented: a Help/toolbar **menu item**, the **gamepad gesture** (hold `Start`+`Back` 1s — needs a hold recognizer wired into the gamepad pipeline), and the **first-launch nudge** toast (§2.2 — needs a one-shot toast surface keyed off the first-ever gamepad-connection event in localStorage). Tracked here until promoted.

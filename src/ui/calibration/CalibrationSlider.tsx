@@ -13,7 +13,10 @@
 import { onCleanup, onMount } from "solid-js";
 import { CALIBRATION_SLIDER_RANGE_CENTS } from "../../contracts/hardware";
 
-const SNAP_ZERO_TOLERANCE_CENTS = 0.3;
+/** §9 spec defaults — used when the parent does not pass settings-derived values. */
+const DEFAULT_SNAP_ZERO_TOLERANCE_CENTS = 0.3;
+const DEFAULT_FINE_STEP_CENTS = 0.1;
+const DEFAULT_COARSE_STEP_CENTS = 10;
 
 export interface CalibrationSliderProps {
   /** Cumulative offset in cents (from parent, single source of truth). */
@@ -22,6 +25,14 @@ export interface CalibrationSliderProps {
   onAdjust: (deltaCents: number) => void;
   /** Emitted when the slider crosses the snap-zero detent. */
   onSnapZero: () => void;
+  /** §9.2 — ±extent of the slider in cents. Defaults to the contract constant. */
+  rangeCents?: number;
+  /** §9.3 — soft-detent tolerance for the zero snap. */
+  snapToleranceCents?: number;
+  /** §9.4 — Shift+arrow / Shift+scroll step. */
+  fineStepCents?: number;
+  /** §9.5 — Ctrl+arrow step. */
+  coarseStepCents?: number;
 }
 
 export function CalibrationSlider(props: CalibrationSliderProps) {
@@ -30,9 +41,13 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
   let dragging = false;
   let dragLastClientX = 0;
 
-  const range = CALIBRATION_SLIDER_RANGE_CENTS;
+  const range = () => props.rangeCents ?? CALIBRATION_SLIDER_RANGE_CENTS;
+  const snapTolerance = () =>
+    props.snapToleranceCents ?? DEFAULT_SNAP_ZERO_TOLERANCE_CENTS;
+  const fineStep = () => props.fineStepCents ?? DEFAULT_FINE_STEP_CENTS;
+  const coarseStep = () => props.coarseStepCents ?? DEFAULT_COARSE_STEP_CENTS;
 
-  const inDetent = () => Math.abs(props.offsetCents) <= SNAP_ZERO_TOLERANCE_CENTS;
+  const inDetent = () => Math.abs(props.offsetCents) <= snapTolerance();
 
   /** Emit a delta and trigger snap-zero callback if we cross the detent. */
   const emitDelta = (delta: number) => {
@@ -41,8 +56,9 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
     const after = before + delta;
     props.onAdjust(delta);
     // Crossed into the detent on this gesture.
-    const wasOutside = Math.abs(before) > SNAP_ZERO_TOLERANCE_CENTS;
-    const nowInside = Math.abs(after) <= SNAP_ZERO_TOLERANCE_CENTS;
+    const tol = snapTolerance();
+    const wasOutside = Math.abs(before) > tol;
+    const nowInside = Math.abs(after) <= tol;
     if (wasOutside && nowInside) props.onSnapZero();
   };
 
@@ -52,7 +68,7 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
     const rect = trackRef.getBoundingClientRect();
     const ratio = (clientX - rect.left) / rect.width; // 0..1
     const clamped = Math.max(0, Math.min(1, ratio));
-    const targetCents = (clamped - 0.5) * 2 * range;
+    const targetCents = (clamped - 0.5) * 2 * range();
     const delta = targetCents - props.offsetCents;
     emitDelta(delta);
   };
@@ -84,7 +100,7 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
     const dir = e.deltaY > 0 ? -1 : 1; // wheel up = increase
-    const step = e.shiftKey ? 0.1 : 1;
+    const step = e.shiftKey ? fineStep() : 1;
     emitDelta(dir * step);
   };
 
@@ -92,10 +108,10 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
     let step = 0;
     switch (e.key) {
       case "ArrowLeft":
-        step = e.shiftKey ? -0.1 : e.ctrlKey ? -10 : -1;
+        step = e.shiftKey ? -fineStep() : e.ctrlKey ? -coarseStep() : -1;
         break;
       case "ArrowRight":
-        step = e.shiftKey ? 0.1 : e.ctrlKey ? 10 : 1;
+        step = e.shiftKey ? fineStep() : e.ctrlKey ? coarseStep() : 1;
         break;
       case "Home":
         // Snap-to-zero shortcut.
@@ -121,8 +137,9 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
 
   // Position of handle as 0..100% along the track.
   const handlePctX = () => {
-    const clamped = Math.max(-range, Math.min(range, props.offsetCents));
-    return ((clamped + range) / (2 * range)) * 100;
+    const r = range();
+    const clamped = Math.max(-r, Math.min(r, props.offsetCents));
+    return ((clamped + r) / (2 * r)) * 100;
   };
 
   return (
@@ -132,8 +149,8 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
       role="slider"
       tabIndex={0}
       aria-label="Calibration offset"
-      aria-valuemin={-range}
-      aria-valuemax={range}
+      aria-valuemin={-range()}
+      aria-valuemax={range()}
       aria-valuenow={Math.round(props.offsetCents * 10) / 10}
       aria-valuetext={`${props.offsetCents.toFixed(1)} cents`}
       data-gamepad-target="cal-slider"
@@ -152,7 +169,7 @@ export function CalibrationSlider(props: CalibrationSliderProps) {
           style={{ left: `${handlePctX()}%` }}
         />
       </div>
-      <div class="cal-slider-range-label">±{range}¢</div>
+      <div class="cal-slider-range-label">±{range()}¢</div>
     </div>
   );
 }

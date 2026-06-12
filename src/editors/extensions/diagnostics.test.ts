@@ -91,6 +91,45 @@ describe("diagnostics clear-scoping: per-output, not per-document", () => {
   });
 });
 
+describe("diagnostics position-mapping across edits (spec §1.6)", () => {
+  it("diagnostics move with the text when characters are inserted before them", () => {
+    const doc = "(a1 bad)";
+    const view = createView(doc);
+
+    const diag: UseqDiagnostic = { start: 4, end: 7, severity: "error", message: "bad" };
+    pushDiagnostics(view, [diag], 0, 0, doc.length);
+
+    const before = view.state.field(diagnosticField)[0];
+    expect(before).toBeTruthy();
+
+    // Insert 4 chars at the start of the document.
+    view.dispatch({ changes: { from: 0, insert: "xxxx" } });
+
+    const after = view.state.field(diagnosticField)[0];
+    expect(after.from).toBe(before.from + 4);
+    expect(after.to).toBe(before.to + 4);
+
+    view.destroy();
+  });
+
+  it("a diagnostic whose entire range is deleted is dropped", () => {
+    const doc = "(a1 bad)";
+    const view = createView(doc);
+
+    const diag: UseqDiagnostic = { start: 4, end: 7, severity: "error", message: "bad" };
+    pushDiagnostics(view, [diag], 0, 0, doc.length);
+    const stored = view.state.field(diagnosticField)[0];
+    expect(stored).toBeTruthy();
+
+    // Delete exactly the diagnostic's range.
+    view.dispatch({ changes: { from: stored.from, to: stored.to } });
+
+    expect(view.state.field(diagnosticField)).toHaveLength(0);
+
+    view.destroy();
+  });
+});
+
 describe("diagnostics additive merge across evals (spec §1.6)", () => {
   // §1.6: Diagnostics persist per-range until that range is re-evaluated
   // successfully. pushDiagnostics is additive across ranges — diagnostics for

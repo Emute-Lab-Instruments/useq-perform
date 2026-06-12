@@ -2,7 +2,15 @@ import { createActor } from "xstate";
 import { describe, it, expect, vi } from "vitest";
 import { transportMachine } from "./transport.machine";
 
-function createTestActor(overrides?: Record<string, () => void>) {
+/**
+ * Create a started transport actor. The machine boots in "paused" (spec §1.1);
+ * pass `start: "playing"` to drive it into the playing state before the test
+ * body runs (action mocks are cleared afterwards so PLAY isn't double-counted).
+ */
+function createTestActor(
+  overrides?: Record<string, () => void>,
+  opts?: { start?: "paused" | "playing" }
+) {
   const actions = {
     emitPlay: vi.fn(),
     emitPause: vi.fn(),
@@ -17,29 +25,33 @@ function createTestActor(overrides?: Record<string, () => void>) {
   const machine = transportMachine.provide({ actions });
   const actor = createActor(machine);
   actor.start();
+  if (opts?.start === "playing") {
+    actor.send({ type: "PLAY" });
+    actions.emitPlay.mockClear();
+  }
   return { actor, actions };
 }
 
 describe("transportMachine", () => {
   describe("initial state", () => {
-    it("starts in playing state with mode none", () => {
+    it("boots in paused state with mode none (spec §1.1)", () => {
       const { actor } = createTestActor();
       const snap = actor.getSnapshot();
-      expect(snap.value).toBe("playing");
+      expect(snap.value).toBe("paused");
       expect(snap.context.mode).toBe("none");
     });
   });
 
   describe("user-driven transitions", () => {
     it("playing -> paused via PAUSE", () => {
-      const { actor, actions } = createTestActor();
+      const { actor, actions } = createTestActor(undefined, { start: "playing" });
       actor.send({ type: "PAUSE" });
       expect(actor.getSnapshot().value).toBe("paused");
       expect(actions.emitPause).toHaveBeenCalledOnce();
     });
 
     it("playing -> stopped via STOP", () => {
-      const { actor, actions } = createTestActor();
+      const { actor, actions } = createTestActor(undefined, { start: "playing" });
       actor.send({ type: "STOP" });
       expect(actor.getSnapshot().value).toBe("stopped");
       expect(actions.emitStop).toHaveBeenCalledOnce();
@@ -47,7 +59,7 @@ describe("transportMachine", () => {
 
     it("paused -> playing via PLAY", () => {
       const { actor, actions } = createTestActor();
-      actor.send({ type: "PAUSE" });
+      // boots in paused
       actor.send({ type: "PLAY" });
       expect(actor.getSnapshot().value).toBe("playing");
       expect(actions.emitPlay).toHaveBeenCalledOnce();
@@ -62,7 +74,7 @@ describe("transportMachine", () => {
     });
 
     it("REWIND from playing goes to stopped and emits both rewind and stop", () => {
-      const { actor, actions } = createTestActor();
+      const { actor, actions } = createTestActor(undefined, { start: "playing" });
       actor.send({ type: "REWIND" });
       expect(actor.getSnapshot().value).toBe("stopped");
       expect(actions.emitRewind).toHaveBeenCalledOnce();
@@ -81,14 +93,14 @@ describe("transportMachine", () => {
     });
 
     it("CLEAR fires the emitClear action without changing state", () => {
-      const { actor, actions } = createTestActor();
+      const { actor, actions } = createTestActor(undefined, { start: "playing" });
       actor.send({ type: "CLEAR" });
       expect(actor.getSnapshot().value).toBe("playing");
       expect(actions.emitClear).toHaveBeenCalledOnce();
     });
 
     it("ignores PLAY when already playing", () => {
-      const { actor, actions } = createTestActor();
+      const { actor, actions } = createTestActor(undefined, { start: "playing" });
       actor.send({ type: "PLAY" });
       expect(actor.getSnapshot().value).toBe("playing");
       expect(actions.emitPlay).not.toHaveBeenCalled();
@@ -106,14 +118,14 @@ describe("transportMachine", () => {
 
   describe("SYNC (runtime sync from hardware)", () => {
     it("syncs from playing to stopped", () => {
-      const { actor } = createTestActor();
+      const { actor } = createTestActor(undefined, { start: "playing" });
       expect(actor.getSnapshot().value).toBe("playing");
       actor.send({ type: "SYNC", state: "stopped" });
       expect(actor.getSnapshot().value).toBe("stopped");
     });
 
     it("syncs from playing to paused", () => {
-      const { actor } = createTestActor();
+      const { actor } = createTestActor(undefined, { start: "playing" });
       actor.send({ type: "SYNC", state: "paused" });
       expect(actor.getSnapshot().value).toBe("paused");
     });
@@ -163,7 +175,7 @@ describe("transportMachine", () => {
     });
 
     it("SYNC to the same state is a no-op", () => {
-      const { actor } = createTestActor();
+      const { actor } = createTestActor(undefined, { start: "playing" });
       const snapBefore = actor.getSnapshot();
       actor.send({ type: "SYNC", state: "playing" });
       expect(actor.getSnapshot().value).toBe(snapBefore.value);
@@ -215,7 +227,7 @@ describe("transportMachine", () => {
     });
 
     it("UPDATE_MODE works from every transport state", () => {
-      const { actor } = createTestActor();
+      const { actor } = createTestActor(undefined, { start: "playing" });
 
       // From playing
       actor.send({ type: "UPDATE_MODE", mode: "wasm" });
@@ -241,7 +253,7 @@ describe("transportMachine", () => {
   // -----------------------------------------------------------------------
   describe("rapid event sequences", () => {
     it("PLAY → PAUSE → PLAY in quick succession settles in playing", () => {
-      const { actor, actions } = createTestActor();
+      const { actor, actions } = createTestActor(undefined, { start: "playing" });
       // Start in playing, pause, then play again
       actor.send({ type: "PAUSE" });
       actor.send({ type: "PLAY" });
@@ -262,7 +274,7 @@ describe("transportMachine", () => {
     });
 
     it("double-PAUSE from playing only fires once", () => {
-      const { actor, actions } = createTestActor();
+      const { actor, actions } = createTestActor(undefined, { start: "playing" });
       actor.send({ type: "PAUSE" });
       actor.send({ type: "PAUSE" }); // ignored — already paused, no PAUSE handler
       expect(actor.getSnapshot().value).toBe("paused");
@@ -295,7 +307,7 @@ describe("transportMachine", () => {
     });
 
     it("CLEAR can be interleaved with state changes without disruption", () => {
-      const { actor, actions } = createTestActor();
+      const { actor, actions } = createTestActor(undefined, { start: "playing" });
       actor.send({ type: "CLEAR" });
       actor.send({ type: "PAUSE" });
       actor.send({ type: "CLEAR" });
@@ -426,7 +438,7 @@ describe("transportMachine", () => {
     });
 
     it("PLAY is ignored in playing state", () => {
-      const { actor, actions } = createTestActor();
+      const { actor, actions } = createTestActor(undefined, { start: "playing" });
       actor.send({ type: "PLAY" });
       expect(actor.getSnapshot().value).toBe("playing");
       expect(actions.emitPlay).not.toHaveBeenCalled();

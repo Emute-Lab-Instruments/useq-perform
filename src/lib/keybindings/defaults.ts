@@ -37,6 +37,9 @@ export const defaultKeyBindings: KeyBinding[] = [
   // -- Action palette ---------------------------------------------------------
   { action: "palette.open", key: "Mod-Shift-p" },
 
+  // -- Zen mode -------------------------------------------------------------
+  { action: "view.zenMode", key: "Mod-Shift-z", preventDefault: true },
+
   // -- Panel toggles (from useq_keymap) -------------------------------------
   { action: "panel.help", key: "Alt-/", preventDefault: true },
   { action: "panel.vis", key: "Alt-g", preventDefault: true },
@@ -120,6 +123,23 @@ export const defaultKeyBindings: KeyBinding[] = [
   // -- Live-Edit vector-mark sub-mode (§3.7.3, §3.7.8) --------------------
   { action: "liveEdit.vectorConfirm", key: "Enter", when: "vectorMark.active" },
   { action: "liveEdit.vectorCancel", key: "Escape", when: "vectorMark.active" },
+
+  // -- Main menu (main-menu.md §2.1.2) --------------------------------------
+  // Escape opens the system/pause menu, but only when no sub-mode owns Escape:
+  // the conditional Escape bindings above (picker.cancel / vectorCancel) must
+  // win the cancel-first contract (§2.1.2). Expressing that as an explicit
+  // mutually-exclusive when-clause (rather than relying on keymap precedence)
+  // keeps the three Escape bindings provably non-overlapping — exactly one is
+  // ever active — which both `evaluateWhen` (fire-time) and
+  // `whenExpressionsOverlap` (conflict check) honour.
+  // Ctrl+Shift+P is NOT used — it is already palette.open (see above); §2.1.2
+  // lists it as a non-binding "secondary" suggestion, so Escape is the opener.
+  {
+    action: "mainMenu.open",
+    key: "Escape",
+    when: "!picker.open && !vectorMark.active",
+    preventDefault: false,
+  },
 ];
 
 // ---------------------------------------------------------------------------

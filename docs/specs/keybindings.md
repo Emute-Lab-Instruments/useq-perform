@@ -13,8 +13,8 @@ layer: behavioural
 - `src/lib/keybindings/defaults.ts` — default key-to-action maps per profile
 - `src/lib/keybindings/handlers.ts` — action-to-implementation mapping, `executeEditorCommand()`
 - `src/lib/keybindings/resolver.ts` — merge defaults and overrides, conflict detection, context evaluation
-- `src/lib/keybindings/chords.ts` — chord sequence handling
-- `src/lib/keybindings/contexts.ts` — context-sensitive binding predicates
+- `src/lib/keybindings/profileRegistry.ts` — maps a profile ID to its base binding set
+- `src/lib/keybindings/contexts.ts` — context-sensitive binding predicates (chord state lives in `src/ui/keybindings/hintStateMachine.ts`)
 - `src/lib/keybindings/keyNotation.ts` — key notation parsing and normalisation
 - `src/lib/keybindings/stickyModifiers.ts` — sticky modifier latch logic
 - `src/lib/keybindings/osReserved.ts` — per-OS and browser-reserved key database
@@ -30,7 +30,7 @@ layer: behavioural
 
 1.1 **Action registry is the single source of truth.** Every bindable operation is named by an `ActionId` string. CodeMirror handlers, the help tab, the keyboard visualiser, the action palette, and gamepad bindings all reference the same `ActionId` strings. (see `src/lib/keybindings/actions.ts`)
 
-1.2 Action categories are: `core`, `editor`, `structure`, `probe`, `navigation`, `ui`, `transport`, `gamepad`, `menu`. Each action has a description, category, optional icon, optional `requiresEditor`/`repeatable`/`analogOnly` flags.
+1.2 Action categories are: `core`, `editor`, `structure`, `format`, `probe`, `navigation`, `ui`, `vis`, `transport`, `gamepad`, `menu`. Each action has a description, category, optional icon, optional `requiresEditor`/`repeatable`/`analogOnly` flags.
 
 1.3 **Keybindings are profile-based.** A `profile` selects a set of default bindings; user `overrides` is a sparse map of `ActionId → key`. The active map is `profile defaults ⊕ overrides`. (see `src/lib/keybindings/defaults.ts`, `src/lib/keybindings/profiles.ts`)
 
@@ -42,7 +42,7 @@ layer: behavioural
 
 1.7 **Context-sensitive bindings.** A binding may carry a `when` predicate (e.g. `probe.active`, `!modal.open`, `editor.focused && probe.active`). Bindings with non-overlapping contexts may share the same key. (see `src/lib/keybindings/contexts.ts`)
 
-1.8 **Chord sequences.** A binding may be a chord (`Alt-s ]`): leader key opens a transient namespace, second key selects an action. The chord-completion window is `keybindings.chordTimeout` ms (default 1500). Within the window, the keyboard visualiser may dim non-completion keys to highlight available second strokes. (see `src/lib/keybindings/chords.ts`)
+1.8 **Chord sequences.** A binding may be a chord (`Alt-s ]`): leader key opens a transient namespace, second key selects an action. The chord-completion window is `keybindings.chordTimeout` ms (default 1500). Within the window, the keyboard visualiser may dim non-completion keys to highlight available second strokes. CodeMirror owns chord prefix-matching internally; the which-key popup mirrors the pending prefix via `src/ui/keybindings/hintStateMachine.ts`. (see [which-key.md §6](which-key.md))
 
 1.9 **Conflict detection.** The resolver detects key collisions and provides ranked rebinding suggestions: context-split (zero disruption) > swap (one displaced action moves) > chord (move into a namespace) > nearby (pick the closest free combo). (see `src/lib/keybindings/resolver.ts`)
 
@@ -52,7 +52,8 @@ layer: behavioural
 
 1.12 **Sticky modifiers** (`keybindings.stickyModifiers`, default false) latch a modifier for the next keypress. Visualisation indicates a stuck modifier. (see `src/lib/keybindings/stickyModifiers.ts`)
 
-1.13 **Profile import/export.** Profiles serialise to `{ version: 1, baseProfile, overrides, gamepadOverrides }`. Profiles may be imported via JSON file or `?keymap=base64...` URL parameter. (see `src/lib/keybindings/profiles.ts`)
+1.13 **Profile import/export.** Profiles serialise to `{ version: 1, baseProfile, overrides, gamepadOverrides }`. Profiles may be imported via JSON file or `?keymap=base64...` URL parameter; the URL profile is decoded at boot and merged into `settings.keybindings` (see `src/lib/keybindings/profiles.ts`, `src/runtime/applyKeymapFromUrl.ts`, called from `src/runtime/bootstrap.ts`).
+&nbsp;&nbsp;&nbsp;&nbsp;1.13.1 **Known gap:** persisted/imported `overrides` are written to settings but are *not* yet replayed into the live `resolver` (`src/editors/keymaps.ts`) at boot — the resolver is currently only mutated by interactive rebinds in the keybindings panel. Boot-time application of `settings.keybindings.overrides` to the resolver is unimplemented.
 
 1.14 **Backwards passthrough.** Bindings from third-party keymaps (`@nextjournal/clojure-mode`) that are not explicitly wrapped in the registry are passed through unmodified, with a startup warning logged for unrecognised actions. Passthrough bindings must not include keys where the command router enforces policy (Backspace, Delete, Enter, bracket keys) — see [input-dispatch.md](input-dispatch.md) §3.6 and §7.3. (see `src/editors/keymaps.ts`)
 
