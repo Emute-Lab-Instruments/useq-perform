@@ -13,7 +13,7 @@ Terminology source of truth: [docs/GLOSSARY.md](docs/GLOSSARY.md). Read [CLAUDE.
 - `harness/` — shared scenario harness (editor + extension registry) reused by Inspector and Storybook.
 - `stories/` — Storybook stories grouped by feature area.
 - `.storybook/` — Storybook config + Vitest browser-test setup.
-- `test/` — Mocha integration tests (`*.mjs`) plus structural YAML fixtures under `test/new_structural/`.
+- `test/` — Mocha integration tests (`*.mjs`) plus structural YAML fixtures under `test/new_structural/`. `test/helpers/` holds the css-noop node loader (registered via `.mocharc.yml`) and the structural-fuzz worker.
 - `public/` — static assets and build outputs (`public/solid-dist/bundle.js`, `public/wasm/useq.js`).
 - `assets/` — source markdown/JSON/font assets copied to `public/` by `scripts/build-assets.mjs`.
 - `scripts/` — build-assets pipeline, config-server (dev), `src-useq:status`, parse-tree printer.

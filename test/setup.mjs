@@ -161,8 +161,17 @@ console.log = () => { };
 console.warn = () => { };
 const originalConsoleError = console.error;
 console.error = (...args) => {
-  // Only show actual errors, not debug logs, and avoid recursion
-  if (args[0] && typeof args[0] === 'string' && args[0].includes('Error')) {
+  // Only swallow plain-string debug noise. Anything carrying an Error object,
+  // or mentioning Error/Exception (mocha's own "Exception during run:" load
+  // failures route through console.error), must reach the terminal — this
+  // filter once made every mocha load error exit 1 with zero output.
+  const first = args[0];
+  const isNoise =
+    typeof first === 'string' &&
+    !first.includes('Error') &&
+    !first.includes('Exception') &&
+    !args.some((a) => a instanceof Error);
+  if (!isNoise) {
     originalConsoleError(...args);
   }
 };

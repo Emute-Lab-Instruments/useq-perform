@@ -684,10 +684,13 @@
   actions: next
   expected: "'(a b c)"
 
-- name: "right from quoted list exits to parent"
+# Per structural-editing.md §6.3, '(a b c) is the list (a b c) carrying a
+# quote Meta — a normal enterable compound, so Euler-tour right descends.
+# (Pre-Meta-recognition semantics treated the quoted list as atomic.)
+- name: "right from quoted list enters it"
   code: "(def x «'(a b c)»)"
   actions: right
-  expected: "(def x '(a b c))"
+  expected: "a"
 
 # ── §22. Destructuring ──────────────────────────────────────────────────────
 

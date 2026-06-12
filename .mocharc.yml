@@ -1,5 +1,6 @@
 node-option:
   - import=tsx/esm
+  - import=./test/helpers/register-css-loader.mjs
 exit: true
 # Standalone CLI runner (self-executes + process.exit) — not a mocha spec.
 # Its scenarios are exercised inside the suite via structural-yaml.test.mjs.

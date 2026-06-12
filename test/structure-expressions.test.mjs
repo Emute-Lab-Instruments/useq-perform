@@ -4,10 +4,12 @@ import {
   findExpressionAtPosition,
   findExpressionRanges,
   isRangeActive,
+} from '../src/editors/extensions/expressionEvalState.ts';
+import {
   createMarkersForRange,
   processExpressionRanges,
-  ExpressionGutterMarker
-} from '../src/editors/extensions/structure.ts';
+  ExpressionGutterMarker,
+} from '../src/editors/extensions/expressionHighlights.ts';
 
 describe('Expression Detection & Processing', () => {
   // Mock data for testing
