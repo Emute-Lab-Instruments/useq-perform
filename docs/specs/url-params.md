@@ -55,6 +55,7 @@ These are internal tooling flags. They carry no stability promise and may move o
 | `disableWebSerial` | `true` | Force browser-local mode regardless of browser capability | `startupContext.ts` |
 | `noModuleMode` | `true` | Use the in-browser ModuLisp interpreter without hardware | `startupContext.ts` |
 | `virtualGamepad` | `true` | Mount an interactive virtual Xbox gamepad overlay for testing gamepad controls without hardware | `bootstrap.ts` |
+| `nativeBridge` / `wsPort` | *(presence)* or port number | Connect to a uSEQ engine running in a separate native process (e.g. the VCV Rack plugin) over a loopback WebSocket `ws://127.0.0.1:<port>` (default 17890), presented to the app as an ordinary serial port so it reports a hardware connection. Distinct from `noModuleMode`. See [runtime-modes.md](runtime-modes.md). | `bootstrap.ts` |
 | `calibrate` | `1` | *(Spec only — not yet implemented.)* Open calibration picker on hardware connection (see [calibration.md §2.1](calibration.md)) | — |
 
 3.1 Boolean flags use `=true` and are checked with strict equality, except `?nosave` which is a presence-only flag (`urlParams.has()`).

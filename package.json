@@ -80,7 +80,9 @@
     "inspector": "vite dev --config inspector/vite.config.ts",
     "inspector:validate": "vitest run inspector/scenarios.test.ts --project unit",
     "inspector:validate-runtime": "npx vite-node inspector/validate-runtime.ts",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "verify:native-bridge": "node scripts/dev/verify-ws-serialport.mjs",
+    "dev:stub-ws": "node scripts/dev/useq-stub-ws-server.mjs"
   },
   "resolutions": {
     "@codemirror/state": "latest"

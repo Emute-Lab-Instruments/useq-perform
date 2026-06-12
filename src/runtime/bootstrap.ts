@@ -316,5 +316,60 @@ export async function bootstrap(): Promise<BootstrapResult> {
   const app = createApp(appUI, environmentState, bootstrapPlan);
   await app.start();
 
+  // ── Step 7: optional native-bridge connection ──────────────────
+  // `?nativeBridge[=<port>]` connects to a uSEQ engine running in a separate
+  // native process (e.g. the VCV Rack plugin) over a loopback WebSocket,
+  // presenting it to the rest of the app as an ordinary serial port. Distinct
+  // from `noModuleMode` (which freezes WASM-only mode and is left false here so
+  // both eval and stream dispatch reach the native engine).
+  await maybeConnectNativeBridge(environmentState);
+
   return { app, appUI, environmentState, bootstrapPlan };
+}
+
+const DEFAULT_NATIVE_BRIDGE_PORT = 17890;
+
+/**
+ * Connect to a native uSEQ bridge over a loopback WebSocket when the
+ * `?nativeBridge` (or `?wsPort=`) URL param is present.
+ *
+ * Runs after `app.start()` so it composes with the normal startup plan rather
+ * than racing it: any saved-port auto-reconnect (`attemptHardwareReconnect`)
+ * targets `navigator.serial.getPorts()`, which can never contain the virtual
+ * port, so there is no conflict. The injected port flows through the same
+ * `connectToSerialPort()` entry as real hardware, so `hasHardwareConnection`
+ * flips true and the handshake proceeds identically (bead useq-perform-3zfc).
+ */
+async function maybeConnectNativeBridge(
+  environmentState: EnvironmentState,
+): Promise<void> {
+  const params = environmentState.startupFlags?.params ?? {};
+  const raw = params.nativeBridge ?? params.wsPort;
+  if (raw === undefined) return;
+
+  const parsed = Number.parseInt(raw, 10);
+  const wsPort =
+    Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_NATIVE_BRIDGE_PORT;
+  const url = `ws://127.0.0.1:${wsPort}`;
+
+  try {
+    const [{ WebSocketSerialPort }, { connectToSerialPort, disconnect }] =
+      await Promise.all([
+        import("../transport/webSocketSerialPort.ts"),
+        import("../transport/connector.ts"),
+      ]);
+    const serialPort = new WebSocketSerialPort({
+      url,
+      // Propagate socket close to connection-state teardown — a WS-backed port
+      // never emits a navigator.serial "disconnect" event (bead useq-perform-0lzs).
+      onClose: () => {
+        void disconnect(serialPort);
+      },
+    });
+    console.log(`[bootstrap] native bridge: connecting to ${url}`);
+    await connectToSerialPort(serialPort);
+  } catch (error) {
+    reportBootstrapFailure("native-bridge", error);
+    console.error(`[bootstrap] native bridge connect to ${url} failed:`, error);
+  }
 }

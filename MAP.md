@@ -56,6 +56,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `json-protocol.ts` — firmware ≥ 1.2.0 JSON driver (handshake, heartbeat, eval). See [src-useq/docs/specs/wire-protocol.md](src-useq/docs/specs/wire-protocol.md).
   - `stream-parser.ts` — byte-level parser, routes STREAM/JSON/TEXT, owns 9 `CircularBuffer`s.
   - `webSerialHostPort.ts` — adapter over `connector.ts` + `json-protocol.ts` implementing the `WebSerialHostPort` contract from `src/contracts/runtimePorts.ts`.
+  - `webSocketSerialPort.ts` — duck-typed Web Serial `SerialPort` over a loopback WebSocket (`?nativeBridge`); lets a native uSEQ engine (e.g. the VCV Rack plugin) appear as ordinary hardware. See [docs/specs/url-params.md](docs/specs/url-params.md).
   - `serial-utils.ts`, `upgradeCheck.ts`, `types.ts`, `index.ts`.
   - Tests: `serialComms.test.ts` (parser, framing, eval/meta routing) and `serialLifecycle.test.ts` (Web Serial event wiring, auto-reconnect, saved-port matching, bootloader handoff, firmware version gating, post-handshake flow). Both use the same fake-Serial harness pattern.
 - `src/runtime/` — bootstrap, lifecycle, runtime services. May import UI only from `bootstrap.ts` and `appLifecycle.ts` (eslint exceptions).
@@ -152,6 +153,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - `tsconfig.json` — TS settings (strict, no `@ts-nocheck` permitted).
 - `scripts/build-assets.mjs` — copies markdown/reference/wasm/fonts into `public/`.
 - `scripts/config-server.mjs` — local dev config-write endpoint (paired with `runtime/configManager.ts`).
+- `scripts/dev/` — native-bridge dev tooling: `useq-stub-ws-server.mjs` (loopback WS stub speaking the JSON `hello` protocol, run via `dev:stub-ws`) and `verify-ws-serialport.mjs` (bridge smoke check, run via `verify:native-bridge`).
 - `package.json` — see scripts: `dev`, `build`, `build:assets`, `build:wasm`, `test:mocha`, `test:unit`, `test:all`, `lint`, `typecheck`, `storybook`, `inspector`, `inspector:validate`, `src-useq:status`.
 
 ## Conventions
