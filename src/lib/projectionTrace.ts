@@ -402,7 +402,8 @@ export const projectionTrace = {
   diagnose,
 };
 
-if (import.meta.env.DEV && typeof window !== "undefined") {
+// `typeof` guard: loadable outside Vite (mocha under node + tsx has no import.meta.env).
+if (typeof import.meta.env !== "undefined" && import.meta.env.DEV && typeof window !== "undefined") {
   (window as unknown as { __useqProjectionTrace: unknown }).__useqProjectionTrace = {
     enable,
     disable,

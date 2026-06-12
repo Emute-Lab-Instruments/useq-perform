@@ -22,7 +22,7 @@ import { applyVerb } from "./verbs";
 import { nextChainStep } from "./chain";
 import { loadManifest, getCachedManifest, setCachedManifest, clearCachedManifest } from "./manifest";
 import type { ApplyTarget, Manifest, MenuItem, MenuState, Verb } from "./types";
-import manifestJson from "./manifest.json";
+import manifestJson from "./manifest.json" with { type: "json" };
 import { defaultIdGen } from "../../editors/extensions/structure/core/index";
 import type { IdGen, Tree, CursorSet, DocumentNode, Node } from "../../editors/extensions/structure/core/types";
 import { makeCompound, setChildren, findById } from "../../editors/extensions/structure/core/traversal";

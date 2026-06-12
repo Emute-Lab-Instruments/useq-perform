@@ -1,4 +1,4 @@
-import defaultConfig from "./default-config.json";
+import defaultConfig from "./default-config.json" with { type: "json" };
 import {
   clearPersistedUserSettings,
   createDefaultUserSettings,

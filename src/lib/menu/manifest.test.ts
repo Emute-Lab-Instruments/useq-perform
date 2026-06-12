@@ -581,7 +581,7 @@ describe("manifest cache", () => {
 // bd-69.13 — lint-failure cases + golden-parse
 // ---------------------------------------------------------------------------
 
-import stubManifestJson from "./manifest.json";
+import stubManifestJson from "./manifest.json" with { type: "json" };
 
 describe("bd-69.13: golden parse of C3 stub manifest", () => {
   it("manifest.json loads with Result.ok and zero lint errors", () => {

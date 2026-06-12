@@ -249,8 +249,10 @@ export const perf = {
 // Expose on window for DevTools access — DEV only.  In production
 // builds Vite substitutes `import.meta.env.DEV` with `false` and
 // Rollup eliminates this branch (and, when no other module statically
-// imports `perf`, the entire module).
-if (import.meta.env.DEV && typeof window !== "undefined") {
+// imports `perf`, the entire module). The `typeof` guard keeps the module
+// loadable outside Vite (mocha runs under plain node + tsx, where
+// `import.meta.env` is undefined).
+if (typeof import.meta.env !== "undefined" && import.meta.env.DEV && typeof window !== "undefined") {
   (window as unknown as { __useqPerf: unknown }).__useqPerf = {
     enable, disable, report, dump, snapshot, reset,
   };

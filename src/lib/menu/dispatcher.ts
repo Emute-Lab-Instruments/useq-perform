@@ -44,7 +44,7 @@ import {
   getCachedManifest,
   setCachedManifest,
 } from "./manifest";
-import manifestJson from "./manifest.json";
+import manifestJson from "./manifest.json" with { type: "json" };
 import type { CursorSet, HoleNode, IdGen, NodeId, Tree } from "../../editors/extensions/structure/core/types";
 import { defaultIdGen } from "../../editors/extensions/structure/core/index";
 import { findById } from "../../editors/extensions/structure/core/traversal";

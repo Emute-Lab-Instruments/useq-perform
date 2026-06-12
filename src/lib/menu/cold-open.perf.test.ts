@@ -19,7 +19,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { INITIAL_STATE, reduce } from "./state";
 import { loadManifest, getCachedManifest, setCachedManifest, clearCachedManifest } from "./manifest";
 import type { ApplyTarget, MenuState } from "./types";
-import manifestJson from "./manifest.json";
+import manifestJson from "./manifest.json" with { type: "json" };
 
 // ---------------------------------------------------------------------------
 // Helpers
