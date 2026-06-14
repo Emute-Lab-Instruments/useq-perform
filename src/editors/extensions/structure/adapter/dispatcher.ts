@@ -66,7 +66,7 @@ import { navDown, navUp } from "./spatialNav.ts";
 import { moveDown, moveUp } from "./spatialMove.ts";
 import { getAppSettings } from "../../../../runtime/appSettingsRepository.ts";
 import { setInsertionMode, setStructState, structField } from "./stateField.ts";
-import { pathsFromCursorSet } from "./cursorPath.ts";
+import { pathsFromCursorSet, rederiveCursors } from "./cursorPath.ts";
 import { treeFromLezer } from "./treeFromLezer.ts";
 import { vectorController } from "../../liveEdit/markAction.ts";
 
@@ -246,13 +246,21 @@ function formatTopLevel(view: EditorView): boolean {
     scrollIntoView: true,
   });
 
-  // After re-parse, preserve cursor by re-applying the current cursor paths.
+  // After re-parse, re-derive the cursor(s) onto the freshly-built tree.
+  // Formatting is presentation-only, but the re-parse mints fresh node ids,
+  // so `state.cursors` (old ids) no longer exist in the new tree
+  // (structural-editing.md §7.4(b): every cursor's target must exist in the
+  // post-tree). We serialise the old cursors to structural paths against the
+  // OLD tree (where their ids are valid) and resolve them back onto the new
+  // tree, exactly as applyOp's setCursorFromState does.
   const { tree, idIndex: newIdIndex } = treeFromLezer(view.state);
+  const intendedPaths = pathsFromCursorSet(state.cursors, state.tree);
+  const cursors = rederiveCursors(intendedPaths, tree);
   view.dispatch({
     effects: setStructState.of({
-      state: { tree, cursors: state.cursors },
+      state: { tree, cursors },
       idIndex: newIdIndex,
-      cursorPaths: pathsFromCursorSet(state.cursors, state.tree),
+      cursorPaths: pathsFromCursorSet(cursors, tree),
     }),
   });
 
@@ -300,13 +308,19 @@ function formatDocument(view: EditorView): boolean {
     scrollIntoView: true,
   });
 
-  // After re-parse, preserve cursor.
+  // After re-parse, re-derive the cursor(s) onto the freshly-built tree.
+  // The re-parse mints fresh node ids, so `state.cursors` (old ids) no longer
+  // exist in the new tree (structural-editing.md §7.4(b)). Serialise to paths
+  // against the OLD tree, then resolve onto the new tree (cf. applyOp's
+  // setCursorFromState).
   const { tree, idIndex: newIdIndex } = treeFromLezer(view.state);
+  const intendedPaths = pathsFromCursorSet(state.cursors, state.tree);
+  const cursors = rederiveCursors(intendedPaths, tree);
   view.dispatch({
     effects: setStructState.of({
-      state: { tree, cursors: state.cursors },
+      state: { tree, cursors },
       idIndex: newIdIndex,
-      cursorPaths: pathsFromCursorSet(state.cursors, state.tree),
+      cursorPaths: pathsFromCursorSet(cursors, tree),
     }),
   });
 
