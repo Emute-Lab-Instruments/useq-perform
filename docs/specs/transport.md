@@ -26,7 +26,7 @@ layer: behavioural
 - `src/ui/TransportToolbar.tsx` — transport toolbar UI (Play/Pause/Stop/Rewind/Clear buttons)
 - `src/ui/adapters/toolbars.tsx` — toolbar adapter wiring
 
-1.1 The transport has exactly **three states**: `playing`, `paused`, `stopped`. Boots in `paused` if a runtime is available, else in `stopped`. The user must explicitly start playback. (see `src/machines/transport.machine.ts`)
+1.1 The transport has exactly **three states**: `playing`, `paused`, `stopped`. The state machine boots in `paused` if a runtime is available, else in `stopped`. **Exception — browser-local (hardware-optional) startup auto-runs**: when the app starts on the WASM runtime, app lifecycle sends a `play` command to the WASM interpreter so the program runs immediately on load (instant feedback; the music-never-stops principle). The machine's *state value* still reads `paused` until a user transition — the auto-run only nudges the interpreter. With hardware attached, the user starts playback explicitly. (see `src/machines/transport.machine.ts`, `src/runtime/appLifecycle.ts`)
 
 1.2 The transport is driven by an XState machine. Per-state event handlers (see `src/machines/transport.machine.ts`):
 - `playing`: `PAUSE` → `paused` (emit pause); `STOP` → `stopped` (emit stop); `REWIND` → `stopped` (emit rewind + stop). `PLAY` is **ignored** when already playing.
