@@ -551,6 +551,30 @@ export const defaultUserSettings: AppSettings = {
   },
 };
 
+/**
+ * The full set of object-valued section keys in {@link AppSettings}, in a
+ * single shared list so the config writer and reader cannot silently desync.
+ * `keybindings`/`keymaps` are handled specially (custom normalisation /
+ * optionality) and are intentionally excluded here.
+ */
+export const APP_SETTINGS_SECTION_KEYS = [
+  "editor",
+  "storage",
+  "ui",
+  "visualisation",
+  "runtime",
+  "wasm",
+  "console",
+  "evalResults",
+  "structure",
+  "format",
+  "hardware",
+  "liveEdit",
+  "calibration",
+] as const satisfies readonly (keyof AppSettings)[];
+
+export type AppSettingsSectionKey = (typeof APP_SETTINGS_SECTION_KEYS)[number];
+
 export function createDefaultUserSettings(): AppSettings {
   return {
     ...defaultUserSettings,

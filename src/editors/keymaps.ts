@@ -39,7 +39,7 @@ registerDefaultContexts();
 //   profile defaults  ⊕  persisted user overrides  ⊕  ?keymap= URL overrides
 // ---------------------------------------------------------------------------
 
-function buildInitialResolver() {
+export function buildInitialResolver() {
   const kb = getAppSettings().keybindings;
 
   // ?keymap=base64... URL profile import (keybindings.md §1.13, url-params.md §2).

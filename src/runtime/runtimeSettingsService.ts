@@ -9,7 +9,18 @@ import {
   resetAppSettings as _resetAppSettings,
   loadAppSettings as _loadAppSettings,
   deletePersistedSettings as _deletePersistedSettings,
+  setSettingsDispatchHook,
 } from "./appSettingsRepository";
+import { updateRuntimeSettingsEffect } from "./runtimeSessionService";
+
+// Own the runtime-session side effect of a settings dispatch here, rather than
+// in the canonical holder (appSettingsRepository). This keeps the dependency
+// one-directional (service → repository) and breaks the former CF8 module
+// cycle (appSettingsRepository → runtimeService → runtimeSessionService →
+// appSettingsRepository). The repository invokes this hook on every dispatch.
+setSettingsDispatchHook((settings) => {
+  updateRuntimeSettingsEffect({ wasmEnabled: settings.wasm.enabled });
+});
 
 // ── Settings mutations (sole public surface) ────────────────────
 //
@@ -34,8 +45,11 @@ export function replaceSettings(
  * Merge a partial settings patch into active settings, persist, and dispatch.
  * This is the primary mutation path for incremental settings changes.
  */
-export function updateSettings(values: unknown): AppSettings {
-  const result = _updateAppSettings(values);
+export function updateSettings(
+  values: unknown,
+  options?: { persist?: boolean },
+): AppSettings {
+  const result = _updateAppSettings(values, options);
   settingsChangedChannel.publish(result);
   return result;
 }

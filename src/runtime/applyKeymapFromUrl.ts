@@ -29,7 +29,10 @@ export function applyKeymapFromUrl(url: string): boolean {
     return false;
   }
 
-  updateSettings({ keybindings: profileToSettings(result.profile) });
+  // Apply ephemerally — a shareable ?keymap link must NOT silently mutate
+  // persistent state (matches ?config/?txt/?gist). The keymap only becomes
+  // persistent if the user explicitly saves settings. (url-params.md §2.3)
+  updateSettings({ keybindings: profileToSettings(result.profile) }, { persist: false });
   dbg(`[keymap] applied profile from URL (base "${result.profile.baseProfile}")`);
   return true;
 }

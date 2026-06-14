@@ -7,7 +7,6 @@
  * Initialised via initProtocol(context) which encapsulates all mutable state.
  */
 
-import { Buffer } from "buffer";
 import { post } from "../utils/consoleStore.ts";
 import { dbg } from "../lib/debug.ts";
 import { upgradeCheck } from "./upgradeCheck.ts";
@@ -45,7 +44,6 @@ import {
   EDITOR_VERSION,
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
-  MESSAGE_START_MARKER,
   type TransportContext,
   type ProtocolState,
   type JsonResponse,
@@ -421,40 +419,6 @@ export async function sendStreamConfig(
     { type: "stream-config", maxRateHz, channels },
     { skipConsole: true, timeout: 5000 }
   );
-}
-
-// ── Send serial input stream value ───────────────────────────────────
-
-export async function sendSerialInputStreamValue(
-  channel: number,
-  value: number
-): Promise<void> {
-  const ch = Number(channel);
-  const val = Number(value);
-
-  if (!Number.isFinite(ch) || ch < 1 || ch > 255) {
-    return Promise.reject(new Error(`Invalid stream channel: ${channel}`));
-  }
-  if (!Number.isFinite(val)) {
-    return Promise.reject(new Error(`Invalid stream value: ${value}`));
-  }
-
-  const isDevMode = getStartupFlagsSnapshot().devmode;
-  const port = serialport();
-  if (isDevMode && !port) {
-    return Promise.resolve();
-  }
-
-  if (!port || !port.writable) {
-    return Promise.reject(new Error("Serial port is not writable"));
-  }
-
-  const packet = Buffer.alloc(10);
-  packet.writeUInt8(MESSAGE_START_MARKER, 0);
-  packet.writeUInt8(ch & 0xff, 1);
-  packet.writeDoubleLE(val, 2);
-
-  await serialWrite(port, packet);
 }
 
 // ── JSON eval ────────────────────────────────────────────────────────

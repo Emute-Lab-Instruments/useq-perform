@@ -49,7 +49,6 @@ export {
   isJsonProtocolActive,
   getIoConfig,
   sendStreamConfig,
-  sendSerialInputStreamValue,
   sendSetLiveInputs,
   sendCalibrateBegin,
   sendCalibrateSetTarget,

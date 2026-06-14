@@ -237,4 +237,157 @@ describe("appSettings", () => {
     expect(roundTripped.calibration.sliderRangeCents).toBe(40);
     expect(roundTripped.calibration.carryForwardOffset).toBe(false);
   });
+
+  // [T7] Config export/import must be symmetric and complete over the full
+  // AppSettings schema. Previously the writer dropped console/structure/format/
+  // hardware and the reader dropped console/structure/format, so non-default
+  // values in those sections silently vanished on round-trip (CF3).
+  it("round-trips a non-default value in EVERY schema section without dropping any", async () => {
+    const settingsModule = await import("./appSettings.ts");
+    const { APP_SETTINGS_SECTION_KEYS } = await import(
+      "./settings/schema.ts"
+    );
+
+    // A single, clearly-non-default override per section, with the assertion
+    // path used to read it back. Derived from the shared section-key list so a
+    // newly-added section that isn't wired up here will fail this test.
+    const overrides: Record<string, unknown> = {
+      editor: { fontSize: 19 },
+      storage: { autoSaveInterval: 7000 },
+      ui: { consoleLinesLimit: 222 },
+      visualisation: { windowDuration: 13 },
+      runtime: { autoReconnect: false },
+      wasm: { enabled: false },
+      console: { entryAnimation: "typewriter", typewriterIntervalMs: 99 },
+      evalResults: { mode: "console" },
+      structure: { atomSlurpBehaviour: "no-op" },
+      format: { lineWidth: 77 },
+      hardware: { bindingQueueDepth: 9 },
+      liveEdit: { idLength: 6 },
+      calibration: { sliderRangeCents: 41 },
+    };
+
+    const checks: Array<[string, (s: Record<string, any>) => unknown, unknown]> = [
+      ["editor", (s) => s.editor.fontSize, 19],
+      ["storage", (s) => s.storage.autoSaveInterval, 7000],
+      ["ui", (s) => s.ui.consoleLinesLimit, 222],
+      ["visualisation", (s) => s.visualisation.windowDuration, 13],
+      ["runtime", (s) => s.runtime.autoReconnect, false],
+      ["wasm", (s) => s.wasm.enabled, false],
+      ["console", (s) => s.console.entryAnimation, "typewriter"],
+      ["console", (s) => s.console.typewriterIntervalMs, 99],
+      ["evalResults", (s) => s.evalResults.mode, "console"],
+      ["structure", (s) => s.structure.atomSlurpBehaviour, "no-op"],
+      ["format", (s) => s.format.lineWidth, 77],
+      ["hardware", (s) => s.hardware.bindingQueueDepth, 9],
+      ["liveEdit", (s) => s.liveEdit.idLength, 6],
+      ["calibration", (s) => s.calibration.sliderRangeCents, 41],
+    ];
+
+    // Guard: every schema section must have an override + a check here, so a
+    // future section can't silently desync writer/reader without us noticing.
+    for (const key of APP_SETTINGS_SECTION_KEYS) {
+      expect(overrides, `missing override for section "${key}"`).toHaveProperty(
+        key as string,
+      );
+      expect(
+        checks.some(([section]) => section === key),
+        `missing round-trip check for section "${key}"`,
+      ).toBe(true);
+    }
+
+    const base = settingsModule.mergeUserSettings(
+      settingsModule.createDefaultUserSettings(),
+      overrides,
+    );
+    const document = settingsModule.createConfigurationDocument(base, {
+      includeCode: false,
+    });
+
+    // Writer must emit every section.
+    for (const key of APP_SETTINGS_SECTION_KEYS) {
+      expect(
+        (document.user as Record<string, unknown>)[key as string],
+        `writer dropped section "${key}"`,
+      ).toBeTruthy();
+    }
+
+    const patch = settingsModule.settingsPatchFromConfiguration(document);
+
+    // Reader must surface every section in the patch.
+    for (const key of APP_SETTINGS_SECTION_KEYS) {
+      expect(
+        (patch as Record<string, unknown>)[key as string],
+        `reader dropped section "${key}"`,
+      ).toBeTruthy();
+    }
+
+    const roundTripped = settingsModule.mergeUserSettings(
+      settingsModule.createDefaultUserSettings(),
+      patch,
+    ) as Record<string, any>;
+
+    for (const [section, read, expected] of checks) {
+      expect(read(roundTripped), `section "${section}" lost on round-trip`).toBe(
+        expected,
+      );
+    }
+  });
+
+  // [T8] settings.md §1.7: normalisation clamps out-of-range numerics and drops
+  // unknown fields (CF12 + SF6).
+  it("clamps out-of-range numerics and drops unknown top-level keys (settings.md §1.7)", async () => {
+    const settingsModule = await import("./appSettings.ts");
+
+    // fontSize out of range (8–32) is clamped, not passed through.
+    expect(
+      settingsModule.normalizeUserSettings({ editor: { fontSize: 200 } }).editor
+        .fontSize,
+    ).toBe(32);
+    expect(
+      settingsModule.normalizeUserSettings({ editor: { fontSize: 2 } }).editor
+        .fontSize,
+    ).toBe(8);
+
+    // autoSaveInterval below the 1000 floor is clamped up.
+    expect(
+      settingsModule.normalizeUserSettings({ storage: { autoSaveInterval: -50 } })
+        .storage.autoSaveInterval,
+    ).toBe(1000);
+
+    // windowDuration / sampleCount must be strictly positive.
+    const negVis = settingsModule.normalizeUserSettings({
+      visualisation: { windowDuration: -10, sampleCount: 0 },
+    });
+    expect(negVis.visualisation.windowDuration).toBeGreaterThan(0);
+    expect(negVis.visualisation.sampleCount).toBeGreaterThan(0);
+
+    // Non-finite / string inputs fall back to defaults and stay in range.
+    const defaults = settingsModule.createDefaultUserSettings();
+    const garbage = settingsModule.normalizeUserSettings({
+      editor: { fontSize: Number.POSITIVE_INFINITY },
+      storage: { autoSaveInterval: Number.NaN },
+      visualisation: { windowDuration: "lots", sampleCount: "nope" },
+    });
+    expect(garbage.editor.fontSize).toBe(defaults.editor.fontSize);
+    expect(garbage.storage.autoSaveInterval).toBe(
+      defaults.storage.autoSaveInterval,
+    );
+    expect(garbage.visualisation.windowDuration).toBe(
+      defaults.visualisation.windowDuration,
+    );
+    expect(garbage.visualisation.sampleCount).toBe(
+      defaults.visualisation.sampleCount,
+    );
+
+    // Unknown top-level keys are dropped, not retained verbatim.
+    const withJunk = settingsModule.normalizeUserSettings({
+      foo: 1,
+      bogusSection: { a: 2 },
+      editor: { fontSize: 16 },
+    }) as Record<string, unknown>;
+    expect(withJunk.foo).toBeUndefined();
+    expect(withJunk.bogusSection).toBeUndefined();
+    expect((withJunk.editor as Record<string, unknown>).fontSize).toBe(16);
+  });
 });

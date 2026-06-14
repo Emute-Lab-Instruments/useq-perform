@@ -270,6 +270,33 @@ function evalWasm(
 }
 
 // ---------------------------------------------------------------------------
+// Hardware diagnostics readback
+// ---------------------------------------------------------------------------
+//
+// diagnostics.md §5.3: the diagnostic data model is identical on both targets.
+// The hardware eval path (`sendTouSEQ` → `sendJsonEval`) returns a `JsonResponse`
+// carrying a §5.7 `diagnostics` array. Thread it into the editor with the SAME
+// offsets the WASM path uses so hardware-produced diagnostics (or diagnostics
+// when WASM is disabled) also drive inline lint. `pushDiagnostics` /
+// `addDiagnosticsEffect` dedupe per-range, so pushing on top of the WASM
+// shadow's diagnostics is safe; in `both` mode the hardware response arrives
+// authoritative and wins for its range.
+function applyHardwareDiagnostics(
+  view: EditorView | undefined,
+  response: unknown,
+  docOffset: number,
+  rangeFrom: number,
+  rangeTo: number,
+): void {
+  if (!view) return;
+  const diagnostics = (response as { diagnostics?: UseqDiagnostic[] } | null)
+    ?.diagnostics;
+  if (Array.isArray(diagnostics) && diagnostics.length > 0) {
+    pushDiagnostics(view, diagnostics, docOffset, rangeFrom, rangeTo);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main evaluate function
 // ---------------------------------------------------------------------------
 
@@ -325,7 +352,9 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
           }
         });
 
-        sendTouSEQ(code);
+        sendTouSEQ(code).then((response) => {
+          applyHardwareDiagnostics(view, response, sel.from, sel.from, sel.to);
+        });
         return true;
       }
       // Fall through to toplevel with @ prefix
@@ -449,7 +478,15 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
   }
 
   if (!noModuleMode) {
-    sendTouSEQ(moduleCode);
+    sendTouSEQ(moduleCode).then((response) => {
+      applyHardwareDiagnostics(
+        hasView ? view : undefined,
+        response,
+        range?.from ?? 0,
+        range?.from ?? 0,
+        range?.to ?? state.doc.length,
+      );
+    });
   }
 
   return true;

@@ -953,6 +953,95 @@ describe("visualisation sampling boundary", () => {
     });
   });
 
+  describe("legacy reset-fill frontier tracking (regression: requested vs actual edge)", () => {
+    // Restore the canonical all-finite batch mock so the per-test override
+    // below doesn't leak its truncating implementation into later tests.
+    afterEach(async () => {
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      vi.mocked(evalOutputsInTimeWindow).mockReset();
+      vi.mocked(evalOutputsInTimeWindow).mockImplementation(
+        (exprTypes: string[], start: number, end: number, count: number) => {
+          const result = new Map<
+            string,
+            Array<{ time: number; value: number }>
+          >();
+          const step = count > 1 ? (end - start) / (count - 1) : 0;
+          for (const expr of exprTypes) {
+            const samples: Array<{ time: number; value: number }> = [];
+            for (let i = 0; i < count; i++) {
+              samples.push({ time: start + step * i, value: 0.5 });
+            }
+            result.set(expr, samples);
+          }
+          return Promise.resolve(result);
+        },
+      );
+    });
+
+    it("advances the frontier to the actual max pushed time, not the requested futureEdge", async () => {
+      const { evalOutputsInTimeWindow } = await import(
+        "../runtime/wasmInterpreter.ts"
+      );
+      const sampler = await import("./visualisationSampler.ts");
+      const mockBatch = vi.mocked(evalOutputsInTimeWindow);
+
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+
+      const timeSeconds = 5.0;
+      // Capture the requested futureEdge the sampler asks for, and return a
+      // refill trace that TRUNCATES well before it: the WASM projection went
+      // non-finite partway (spec §6.4), so the real coverage ends early.
+      let requestedFutureEdge = 0;
+      let lastFiniteTime = 0;
+      mockBatch.mockImplementation(
+        (exprTypes: string[], start: number, end: number, count: number) => {
+          const result = new Map<
+            string,
+            Array<{ time: number; value: number }>
+          >();
+          const isRefill = start === timeSeconds && end > start && count > 1;
+          for (const expr of exprTypes) {
+            const samples: Array<{ time: number; value: number }> = [];
+            if (isRefill) {
+              requestedFutureEdge = end;
+              const step = (end - start) / (count - 1);
+              // Push finite samples only for the first ~third of the window,
+              // then go non-finite so the buffer/frontier must stop early.
+              const cutoff = Math.max(1, Math.floor(count / 3));
+              for (let i = 0; i < count; i++) {
+                const t = start + step * i;
+                if (i <= cutoff) {
+                  samples.push({ time: t, value: 0.5 });
+                  lastFiniteTime = t;
+                } else {
+                  samples.push({ time: t, value: Number.NaN });
+                }
+              }
+            } else {
+              const step = count > 1 ? (end - start) / (count - 1) : 0;
+              for (let i = 0; i < count; i++) {
+                samples.push({ time: start + step * i, value: 0.5 });
+              }
+            }
+            result.set(expr, samples);
+          }
+          return Promise.resolve(result);
+        },
+      );
+
+      await projectFutureAt(sampler, timeSeconds);
+
+      const frontier = sampler.getProjectionFrontier();
+      // The frontier must reflect the truncated coverage, not the optimistic
+      // requested edge — otherwise re-extension is suppressed and a gap opens.
+      expect(requestedFutureEdge).toBeGreaterThan(lastFiniteTime);
+      expect(frontier).toBeCloseTo(lastFiniteTime, 6);
+      expect(frontier).toBeLessThan(requestedFutureEdge);
+    });
+  });
+
   describe("adaptive quality lever 1: skip per-frame future edge push (spec: visualisation.md §1.7/§9.2)", () => {
     it("at pressure level 0, the per-frame far-edge call IS issued when coverage is sufficient", async () => {
       const adaptive = await import("./adaptiveQuality.ts");

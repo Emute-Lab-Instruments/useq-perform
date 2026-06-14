@@ -59,6 +59,7 @@ vi.mock("./appSettingsRepository", () => ({
   resetAppSettings: vi.fn(),
   loadAppSettings: vi.fn(),
   deletePersistedSettings: vi.fn(),
+  setSettingsDispatchHook: vi.fn(),
 }));
 
 // Import the mocked modules so we can configure them per-test

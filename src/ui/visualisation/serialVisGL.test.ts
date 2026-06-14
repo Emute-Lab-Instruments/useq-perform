@@ -19,6 +19,8 @@ const {
   scratch: getScratch,
   thickScratch: getThickScratch,
   THICK_FLOATS_PER_VERTEX,
+  computeLaneLayout,
+  isDigitalOutput,
 } = __serialVisGLInternals;
 
 interface Sample {
@@ -315,6 +317,137 @@ describe("sampleFingerprint", () => {
   it("null fingerprint always counts as changed", () => {
     const fp = sampleFingerprint(makeSamples([[1, 0]]));
     expect(fingerprintChanged(null, fp)).toBe(true);
+  });
+
+  // Contract guards for the upload-skip fast path: distinct waveforms must
+  // hash distinctly (else a real waveform change would be skipped, leaving a
+  // stale GPU buffer), and identical sample sets must hash identically (else
+  // every frame re-uploads). Includes a long, pixel-matched-length waveform
+  // — vis buffers routinely hold 100+ samples.
+  it("hashes identical sample sets identically (long waveform)", () => {
+    const pairs: [number, number][] = [];
+    for (let i = 0; i < 140; i++) {
+      pairs.push([i / 10, Math.abs(Math.sin(i * 0.37)) % 1]);
+    }
+    const a = sampleFingerprint(makeSamples(pairs));
+    const b = sampleFingerprint(makeSamples(pairs.map(([t, v]) => [t, v])));
+    expect(a.valueHash).toBe(b.valueHash);
+    expect(fingerprintChanged(a, b)).toBe(false);
+  });
+
+  it("hashes distinct long waveforms distinctly", () => {
+    const base: [number, number][] = [];
+    for (let i = 0; i < 140; i++) base.push([i / 10, (i % 7) / 7]);
+    const a = sampleFingerprint(makeSamples(base));
+    // Flip a single interior sample -> a genuinely different waveform.
+    const mutated = base.map(
+      ([t, v], i) => [t, i === 73 ? (v + 0.5) % 1 : v] as [number, number],
+    );
+    const b = sampleFingerprint(makeSamples(mutated));
+    expect(a.valueHash).not.toBe(b.valueHash);
+    expect(fingerprintChanged(a, b)).toBe(true);
+  });
+
+  it("a swap of two distinct values changes the hash (order-sensitive)", () => {
+    const a = sampleFingerprint(makeSamples([[1, 0.2], [2, 0.8], [3, 0.5]]));
+    const b = sampleFingerprint(makeSamples([[1, 0.8], [2, 0.2], [3, 0.5]]));
+    expect(a.valueHash).not.toBe(b.valueHash);
+  });
+});
+
+describe("isDigitalOutput", () => {
+  it("classifies d<n> and s<n> outputs as digital", () => {
+    for (const out of ["d1", "d2", "d8", "s1", "s3", "D4", "S2"]) {
+      expect(isDigitalOutput(out)).toBe(true);
+    }
+  });
+
+  it("classifies a<n> outputs (and unknowns) as analogue", () => {
+    for (const out of ["a1", "a4", "a8", "bar", "q0", "x"]) {
+      expect(isDigitalOutput(out)).toBe(false);
+    }
+  });
+});
+
+describe("computeLaneLayout", () => {
+  const geom = { height: 100, verticalPadding: 10, laneGap: 0 };
+  // drawableHeight = 100 - 2*10 = 80.
+
+  it("returns an empty layout for no active outputs", () => {
+    expect(computeLaneLayout([], geom).size).toBe(0);
+  });
+
+  it("derives digital lanes from the ACTIVE set, not a hardcoded list", () => {
+    // Only d2 and d5 are active — d5 is well outside the old d1/d2/d3 list
+    // and must still get a lane (no overlap, no dropped trace).
+    const layout = computeLaneLayout(["d2", "d5"], geom);
+    expect(layout.has("d2")).toBe(true);
+    expect(layout.has("d5")).toBe(true);
+    const a = layout.get("d2")!;
+    const b = layout.get("d5")!;
+    // Two stacked lanes of equal height filling the drawable area.
+    expect(a.yTop).toBe(10);
+    expect(a.yBottom).toBe(50);
+    expect(b.yTop).toBe(50);
+    expect(b.yBottom).toBe(90);
+    expect(a.yBottom).toBeLessThanOrEqual(b.yTop); // no overlap
+  });
+
+  it("stacks analogue lanes instead of overlapping them on full height", () => {
+    const layout = computeLaneLayout(["a1", "a2", "a3"], geom);
+    const lanes = ["a1", "a2", "a3"].map((k) => layout.get(k)!);
+    // Three non-overlapping, equal-height stacked lanes (allow 1 ULP of FP
+    // slack at the shared lane boundary; gap here is 0).
+    for (let i = 1; i < lanes.length; i++) {
+      expect(lanes[i].yTop).toBeGreaterThanOrEqual(lanes[i - 1].yBottom - 1e-6);
+      expect(lanes[i].yTop).toBeCloseTo(lanes[i - 1].yBottom, 6);
+    }
+    const h0 = lanes[0].yBottom - lanes[0].yTop;
+    for (const lane of lanes) {
+      expect(lane.yBottom - lane.yTop).toBeCloseTo(h0, 6);
+    }
+    // Distinct lanes — the old code gave every analogue trace the same box.
+    expect(lanes[0].yTop).not.toBe(lanes[1].yTop);
+    expect(lanes[1].yTop).not.toBe(lanes[2].yTop);
+  });
+
+  it("orders analogue lanes above digital lanes", () => {
+    const layout = computeLaneLayout(["d1", "a1"], geom);
+    expect(layout.get("a1")!.yTop).toBeLessThan(layout.get("d1")!.yTop);
+  });
+
+  it("does not place out-of-set outputs", () => {
+    const layout = computeLaneLayout(["a1", "d1"], geom);
+    expect(layout.get("a2")).toBeUndefined();
+    expect(layout.get("d7")).toBeUndefined();
+  });
+
+  it("de-duplicates repeated outputs into a single lane", () => {
+    const layout = computeLaneLayout(["a1", "a1", "d1"], geom);
+    expect(layout.size).toBe(2);
+  });
+
+  it("honours the lane gap between stacked lanes", () => {
+    const layout = computeLaneLayout(["a1", "a2"], {
+      height: 100,
+      verticalPadding: 10,
+      laneGap: 10,
+    });
+    const a = layout.get("a1")!;
+    const b = layout.get("a2")!;
+    // drawable 80, one 10px gap -> 70 split over 2 lanes = 35 each.
+    expect(a.yBottom - a.yTop).toBeCloseTo(35, 6);
+    expect(b.yTop - a.yBottom).toBeCloseTo(10, 6); // the gap
+  });
+
+  it("clamps lanes to the padded drawable area", () => {
+    const layout = computeLaneLayout(["a1", "a2", "d1"], geom);
+    for (const lane of layout.values()) {
+      expect(lane.yTop).toBeGreaterThanOrEqual(geom.verticalPadding - 1e-6);
+      expect(lane.yBottom).toBeLessThanOrEqual(
+        geom.height - geom.verticalPadding + 1e-6,
+      );
+    }
   });
 });
 

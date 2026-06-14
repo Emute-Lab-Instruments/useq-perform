@@ -779,8 +779,12 @@ function updateManualControlAxis(
 }
 
 function sendManualControlValue(slot: number, value: number): void {
+  // Manual control rewrites the bound number to `(ssin N)`, so the live value
+  // is pushed to the matching `ssinN` input id via the spec-sanctioned
+  // editor→device live-value path (set-live-inputs, wire-protocol.md §5.8 /
+  // §6.5 NOTE) — never the malformed type-byte-less binary frame.
   void import("../../transport/json-protocol.ts")
-    .then((mod) => mod.sendSerialInputStreamValue(slot, value))
+    .then((mod) => mod.sendSetLiveInputs({ [`ssin${slot}`]: value }))
     .catch(() => {});
 }
 

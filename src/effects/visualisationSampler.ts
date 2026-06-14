@@ -980,17 +980,26 @@ export async function tickAndProject(
         ])),
       });
     }
+    // M2 fix: advance the frontier only to the actual max time pushed,
+    // not the requested futureEdge. WASM may truncate the trace early
+    // (non-finite value, §6.4); claiming we reached futureEdge would
+    // suppress the re-extension that should refill the gap. Mirrors the
+    // combined-path handling above.
+    let actualFrontier = projectionFrontier;
     for (const [name, samples] of futureResults) {
-      applyResetFillSamples(
-        name,
-        samples,
-        resetApplyOutputs,
-        timeSeconds,
-        "legacy",
-        "reset-fill",
+      actualFrontier = Math.max(
+        actualFrontier,
+        applyResetFillSamples(
+          name,
+          samples,
+          resetApplyOutputs,
+          timeSeconds,
+          "legacy",
+          "reset-fill",
+        ),
       );
     }
-    projectionFrontier = futureEdge;
+    projectionFrontier = actualFrontier;
     return;
   }
 

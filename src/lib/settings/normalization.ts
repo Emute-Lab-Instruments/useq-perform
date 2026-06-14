@@ -28,7 +28,13 @@ import {
   defaultDevModeConfiguration,
   defaultUserSettings,
 } from "./schema.ts";
-import { isRecord, coerceNumber, detectOsFamily } from "./normalizationHelpers.ts";
+import {
+  isRecord,
+  coerceNumber,
+  coerceClampedNumber,
+  detectOsFamily,
+} from "./normalizationHelpers.ts";
+import { APP_SETTINGS_SECTION_KEYS } from "./schema.ts";
 import { normalizeKeybindingsSettings } from "./normalizeKeybindings.ts";
 import { normalizeVisualisationSettings, extractVisualisationPatch } from "./normalizeVisualisation.ts";
 import { normalizeEvalResultsSettings } from "./normalizeEvalResults.ts";
@@ -61,6 +67,7 @@ export function normalizeUserSettings(value: unknown): AppSettings {
   const ui = isRecord(raw.ui) ? raw.ui : {};
   const runtime = isRecord(raw.runtime) ? raw.runtime : {};
   const wasm = isRecord(raw.wasm) ? raw.wasm : {};
+  const consoleSettings = isRecord(raw.console) ? raw.console : {};
   const structure = isRecord(raw.structure) ? raw.structure : {};
   const format = isRecord(raw.format) ? raw.format : {};
   const hardware = isRecord(raw.hardware) ? raw.hardware : {};
@@ -74,7 +81,6 @@ export function normalizeUserSettings(value: unknown): AppSettings {
 
   return {
     ...defaults,
-    ...raw,
     name: typeof raw.name === "string" && raw.name.length > 0 ? raw.name : defaults.name,
     editor: {
       ...defaults.editor,
@@ -82,7 +88,7 @@ export function normalizeUserSettings(value: unknown): AppSettings {
       code:
         typeof editor.code === "string" ? editor.code : defaults.editor.code,
       theme: normalizeTheme(editor.theme),
-      fontSize: coerceNumber(editor.fontSize, defaults.editor.fontSize),
+      fontSize: coerceClampedNumber(editor.fontSize, defaults.editor.fontSize, 8, 32),
       preventBracketUnbalancing:
         editor.preventBracketUnbalancing == null
           ? defaults.editor.preventBracketUnbalancing
@@ -99,9 +105,11 @@ export function normalizeUserSettings(value: unknown): AppSettings {
         storage.autoSaveEnabled == null
           ? defaults.storage.autoSaveEnabled
           : storage.autoSaveEnabled !== false,
-      autoSaveInterval: coerceNumber(
+      autoSaveInterval: coerceClampedNumber(
         storage.autoSaveInterval,
         defaults.storage.autoSaveInterval,
+        1000,
+        Number.MAX_SAFE_INTEGER,
       ),
     },
     ui: {
@@ -155,6 +163,29 @@ export function normalizeUserSettings(value: unknown): AppSettings {
       ...defaults.wasm,
       ...wasm,
       enabled: wasm.enabled == null ? defaults.wasm.enabled : wasm.enabled !== false,
+    },
+    console: {
+      ...defaults.console,
+      ...consoleSettings,
+      showTimestamp:
+        consoleSettings.showTimestamp == null
+          ? defaults.console.showTimestamp
+          : consoleSettings.showTimestamp !== false,
+      showTypeBadge:
+        consoleSettings.showTypeBadge == null
+          ? defaults.console.showTypeBadge
+          : consoleSettings.showTypeBadge !== false,
+      entryAnimation:
+        consoleSettings.entryAnimation === "slide" ||
+        consoleSettings.entryAnimation === "fade" ||
+        consoleSettings.entryAnimation === "typewriter" ||
+        consoleSettings.entryAnimation === "none"
+          ? consoleSettings.entryAnimation
+          : defaults.console.entryAnimation,
+      typewriterIntervalMs: coerceNumber(
+        consoleSettings.typewriterIntervalMs,
+        defaults.console.typewriterIntervalMs,
+      ),
     },
     structure: {
       ...defaults.structure,
@@ -348,9 +379,15 @@ export function mergeUserSettings(
     wasm: isRecord(patch.wasm)
       ? { ...normalizedBase.wasm, ...patch.wasm }
       : normalizedBase.wasm,
+    console: isRecord(patch.console)
+      ? { ...normalizedBase.console, ...patch.console }
+      : normalizedBase.console,
     structure: isRecord(patch.structure)
       ? { ...normalizedBase.structure, ...patch.structure }
       : normalizedBase.structure,
+    format: isRecord(patch.format)
+      ? { ...normalizedBase.format, ...patch.format }
+      : normalizedBase.format,
     hardware: isRecord(patch.hardware)
       ? { ...normalizedBase.hardware, ...patch.hardware }
       : normalizedBase.hardware,
@@ -398,6 +435,37 @@ export function createConfigurationDocument(
   const includeCode = options.includeCode ?? false;
   const includeDevMode = options.includeDevMode ?? true;
 
+  // Write every section in the shared schema list so the writer and the
+  // reader (settingsPatchFromConfiguration) stay symmetric and a future
+  // section can't silently desync the two halves (settings.md §1.7).
+  const user: AppSettingsPatch = { name: normalized.name };
+  for (const key of APP_SETTINGS_SECTION_KEYS) {
+    (user as Record<string, unknown>)[key] = {
+      ...(normalized[key] as unknown as Record<string, unknown>),
+    };
+  }
+  // Section-local overrides for fields needing deep copies / conditional emit.
+  user.editor = {
+    theme: normalized.editor.theme,
+    fontSize: normalized.editor.fontSize,
+    preventBracketUnbalancing: normalized.editor.preventBracketUnbalancing,
+    ...(includeCode ? { code: normalized.editor.code } : {}),
+  };
+  user.ui = {
+    ...normalized.ui,
+    customThemes: [...normalized.ui.customThemes],
+  };
+  user.calibration = {
+    ...normalized.calibration,
+    octaveRange: { ...normalized.calibration.octaveRange },
+  };
+  if (normalized.keybindings) {
+    user.keybindings = { ...normalized.keybindings };
+  }
+  if (normalized.keymaps) {
+    user.keymaps = { ...normalized.keymaps };
+  }
+
   const document: AppConfigDocument = {
     version: CONFIG_VERSION,
     metadata: {
@@ -407,31 +475,7 @@ export function createConfigurationDocument(
         ? { description: options.metadataDescription }
         : {}),
     },
-    user: {
-      name: normalized.name,
-      editor: {
-        theme: normalized.editor.theme,
-        fontSize: normalized.editor.fontSize,
-        preventBracketUnbalancing: normalized.editor.preventBracketUnbalancing,
-        ...(includeCode ? { code: normalized.editor.code } : {}),
-      },
-      storage: { ...normalized.storage },
-      ui: {
-        ...normalized.ui,
-        customThemes: [...normalized.ui.customThemes],
-      },
-      visualisation: { ...normalized.visualisation },
-      evalResults: { ...normalized.evalResults },
-      runtime: { ...normalized.runtime },
-      wasm: { ...normalized.wasm },
-      liveEdit: { ...normalized.liveEdit },
-      calibration: {
-        ...normalized.calibration,
-        octaveRange: { ...normalized.calibration.octaveRange },
-      },
-      ...(normalized.keybindings ? { keybindings: { ...normalized.keybindings } } : {}),
-      ...(normalized.keymaps ? { keymaps: { ...normalized.keymaps } } : {}),
-    },
+    user,
     devMode: includeDevMode
       ? { ...defaultDevModeConfiguration, ...(options.devMode || {}) }
       : defaultDevModeConfiguration,
@@ -482,6 +526,18 @@ export function settingsPatchFromConfiguration(
 
   if (isRecord(user.wasm)) {
     patch.wasm = { ...user.wasm };
+  }
+
+  if (isRecord(user.console)) {
+    patch.console = { ...user.console };
+  }
+
+  if (isRecord(user.structure)) {
+    patch.structure = { ...user.structure };
+  }
+
+  if (isRecord(user.format)) {
+    patch.format = { ...user.format };
   }
 
   if (isRecord(user.hardware)) {

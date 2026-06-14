@@ -206,7 +206,12 @@ export function sampleFingerprint(samples: VisSampleLike[]): SampleFingerprint {
   if (samples.length === 0) return { len: 0, firstTime: 0, lastTime: 0, valueHash: 0 };
   let hash = 0;
   for (let i = 0; i < samples.length; i++) {
-    hash = (hash * 31 + (samples[i].value * 1e6) | 0) | 0;
+    // Truncate the scaled value to an int *before* mixing it in. The
+    // parentheses matter: `a + b | 0` parses as `(a + b) | 0` (| binds
+    // looser than +), which folds the raw float `value * 1e6` into the
+    // running sum and loses the per-sample integer contribution, letting
+    // distinct waveforms collide. Math.imul keeps the multiply in 32-bit.
+    hash = (Math.imul(hash, 31) + ((samples[i].value * 1e6) | 0)) | 0;
   }
   return {
     len: samples.length,
@@ -239,21 +244,31 @@ export function getScratch(): Float32Array {
  * In step mode, each pair (i, i+1) is split into two output points
  * (i, i+1.time/i.value) -- same shape as step mode rendering.
  * Returns the number of vertices written.
+ *
+ * `start`/`end` select a half-open `[start, end)` sub-range of `samples`
+ * so callers can flatten a slice of a shared scratch buffer without
+ * allocating an intermediate array (no per-frame alloc — spec §5.5).
+ * They default to the full array.
  */
 export function flattenSamples(
   samples: VisSampleLike[],
   stepMode: boolean,
+  start = 0,
+  end: number = samples.length,
 ): number {
-  if (samples.length === 0) return 0;
-  const maxFloats = samples.length * 2 * (stepMode ? 2 : 1);
+  const from = Math.max(0, start);
+  const to = Math.min(samples.length, end);
+  const count = to - from;
+  if (count <= 0) return 0;
+  const maxFloats = count * 2 * (stepMode ? 2 : 1);
   ensureScratch(maxFloats);
   let w = 0;
   let prevValue = NaN;
-  for (let i = 0; i < samples.length; i++) {
+  for (let i = from; i < to; i++) {
     const s = samples[i];
     const t = s.time;
     const v = s.value;
-    if (stepMode && i > 0 && prevValue !== v) {
+    if (stepMode && i > from && prevValue !== v) {
       scratch[w++] = t;
       scratch[w++] = prevValue;
     }

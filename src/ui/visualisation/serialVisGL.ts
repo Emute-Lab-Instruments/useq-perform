@@ -115,7 +115,80 @@ export function isVisPanelVisible(): boolean {
   return _panelVisibleCache;
 }
 
-const DIGITAL_CHANNELS = ["d1", "d2", "d3"] as const;
+// Digital outputs are `d<n>` / `s<n>` (binary step traces); analogue
+// outputs are `a<n>` (continuous). The channel set is dynamic (a1–a8,
+// d1–d8, s1–s8 per spec §1.5), so lane layout is derived from the ACTIVE
+// output set each frame, not a hardcoded channel list.
+const DIGITAL_OUTPUT_RE = /^[ds]\d+$/i;
+const VERTICAL_PADDING_FRACTION = 0.1;
+
+function isDigitalOutput(exprType: string): boolean {
+  return DIGITAL_OUTPUT_RE.test(exprType);
+}
+
+function verticalPaddingFallback(height: number): number {
+  return height * VERTICAL_PADDING_FRACTION;
+}
+
+export interface LaneBox {
+  yTop: number;
+  yBottom: number;
+}
+
+export interface LaneLayoutGeometry {
+  /** Full canvas pixel height. */
+  height: number;
+  /** Pixel padding reserved at top and bottom. */
+  verticalPadding: number;
+  /** Pixel gap between adjacent lanes. */
+  laneGap: number;
+}
+
+/**
+ * Derive per-output lane boxes from the ACTIVE output set (spec §1.5).
+ *
+ * Both analogue (`a<n>`) and digital (`d<n>`/`s<n>`) outputs are stacked
+ * into their own equal-height lanes within the drawable area — analogue
+ * lanes on top, digital below, each ordered by first appearance. Replaces
+ * the old behaviour that hardcoded digital lanes to `d1/d2/d3` and let
+ * every analogue trace overlap on the full height.
+ *
+ * Pure and DOM-free so it can be unit-tested in isolation.
+ */
+export function computeLaneLayout(
+  exprTypes: string[],
+  geometry: LaneLayoutGeometry,
+): Map<string, LaneBox> {
+  const layout = new Map<string, LaneBox>();
+  const { height, verticalPadding } = geometry;
+  const drawableHeight = Math.max(0, height - verticalPadding * 2);
+
+  // Stable, de-duplicated active set: analogue lanes first, then digital,
+  // each preserving first-seen order so a given output keeps its lane.
+  const seen = new Set<string>();
+  const analogue: string[] = [];
+  const digital: string[] = [];
+  for (const exprType of exprTypes) {
+    if (seen.has(exprType)) continue;
+    seen.add(exprType);
+    (isDigitalOutput(exprType) ? digital : analogue).push(exprType);
+  }
+  const ordered = [...analogue, ...digital];
+  const laneCount = ordered.length;
+  if (laneCount === 0 || drawableHeight <= 0) return layout;
+
+  const laneGap = Math.max(0, Math.min(drawableHeight, geometry.laneGap || 0));
+  const totalGapHeight = laneCount > 1 ? laneGap * (laneCount - 1) : 0;
+  const availableHeight = Math.max(0, drawableHeight - totalGapHeight);
+  const laneHeight = availableHeight / laneCount;
+
+  for (let idx = 0; idx < laneCount; idx++) {
+    const yTop = verticalPadding + idx * (laneHeight + laneGap);
+    layout.set(ordered[idx], { yTop, yBottom: yTop + laneHeight });
+  }
+  return layout;
+}
+
 const AXIS_COLOR = "rgba(255, 255, 255, 0.12)";
 const TEXT_COLOR = "rgba(255, 255, 255, 0.5)";
 const ACCENT_REFRESH_INTERVAL_MS = 250;
@@ -617,6 +690,8 @@ function uploadSegmentGeometry(
   vbo: WebGLBuffer,
   capacity: number,
   samples: VisSampleLike[],
+  segStart: number,
+  segEnd: number,
   stepMode: boolean,
   lineWidth: number,
   windowStart: number,
@@ -626,9 +701,9 @@ function uploadSegmentGeometry(
   viewportW: number,
   viewportH: number,
 ): { vertexCount: number; capacity: number } {
-  if (samples.length < 2) return { vertexCount: 0, capacity };
+  if (segEnd - segStart < 2) return { vertexCount: 0, capacity };
 
-  const flatVertexCount = flattenSamples(samples, stepMode);
+  const flatVertexCount = flattenSamples(samples, stepMode, segStart, segEnd);
   if (flatVertexCount < 2) return { vertexCount: 0, capacity };
 
   const halfWidth = Math.max(lineWidth, 1) / 2;
@@ -704,21 +779,21 @@ function uploadGeometry(
 
   if (import.meta.env.DEV) perf.begin("vis-gl-thick-upload");
 
-  // Past segment: samples[0..splitIndex)
-  const pastSamples = samples.slice(0, splitIndex);
+  // Past segment: samples[0..splitIndex). Pass offsets instead of
+  // slicing — the shared `combinedScratch` array is read synchronously
+  // here, so no per-frame array allocation on the hot path (spec §5.5).
   const pastResult = uploadSegmentGeometry(
     state.gl, buf.pastVbo, buf.pastCapacity,
-    pastSamples, stepMode, lineWidth,
+    samples, 0, splitIndex, stepMode, lineWidth,
     windowStart, windowEnd, yTop, yBottom, viewportW, viewportH,
   );
   buf.pastVertexCount = pastResult.vertexCount;
   buf.pastCapacity = pastResult.capacity;
 
   // Future segment: samples[splitIndex..end)
-  const futureSamples = samples.slice(splitIndex);
   const futureResult = uploadSegmentGeometry(
     state.gl, buf.futureVbo, buf.futureCapacity,
-    futureSamples, stepMode, lineWidth,
+    samples, splitIndex, samples.length, stepMode, lineWidth,
     windowStart, windowEnd, yTop, yBottom, viewportW, viewportH,
   );
   buf.futureVertexCount = futureResult.vertexCount;
@@ -883,33 +958,28 @@ export function drawSerialVisGL(input: VisRenderInput): void {
   const windowStart = showFuture ? currentTime - halfWindow : currentTime - totalWindow;
   const windowEnd = showFuture ? currentTime + halfWindow : currentTime;
 
-  const verticalPadding = h * 0.1;
-  const drawableHeight = h - verticalPadding * 2;
+  const verticalPadding = h * VERTICAL_PADDING_FRACTION;
 
-  const analogYTop = verticalPadding;
-  const analogYBottom = h - verticalPadding;
+  // Lane layout is derived from the ACTIVE output set (spec §1.5): both
+  // analogue and digital outputs are stacked into their own lanes. The
+  // hardcoded d1/d2/d3 list is gone — `d4`/`s1`/etc. now lane correctly,
+  // and analogue outputs no longer overlap on the full height.
+  const activeExprTypes = exprKeys.map((key) => expressions[key].exprType);
+  const laneLayout = computeLaneLayout(activeExprTypes, {
+    height: h,
+    verticalPadding,
+    laneGap: Number(settings.digitalLaneGap ?? 4) || 0,
+  });
 
-  // Digital lane geometry (mirrors serialVis).
-  const rawDigitalGap = settings.digitalLaneGap ?? 4;
-  const digitalLaneGap = Math.max(0, Math.min(drawableHeight, Number(rawDigitalGap) || 0));
-  const laneCount = DIGITAL_CHANNELS.length;
-  const totalGapHeight = laneCount > 1 ? digitalLaneGap * (laneCount - 1) : 0;
-  const availableDigitalHeight = Math.max(0, drawableHeight - totalGapHeight);
-  const digitalLaneHeight = laneCount > 0 ? availableDigitalHeight / laneCount : 0;
-
-  function digitalLaneY(exprType: string): { yTop: number; yBottom: number } | null {
-    const idx = (DIGITAL_CHANNELS as readonly string[]).indexOf(exprType);
-    if (idx < 0) return null;
-    const laneTop = verticalPadding + idx * (digitalLaneHeight + digitalLaneGap);
-    const laneBottom = laneTop + digitalLaneHeight;
-    return { yTop: laneTop, yBottom: laneBottom };
+  function laneY(exprType: string): { yTop: number; yBottom: number } | null {
+    return laneLayout.get(exprType) ?? null;
   }
 
   if (import.meta.env.DEV) perf.begin("vis-gl-draw-pass");
   drawExpressions(
     state, gl, w, h, exprKeys, expressions, currentTime,
     futureLineAlpha, lineWidth, windowStart, windowEnd,
-    analogYTop, analogYBottom, digitalLaneY,
+    laneY,
     getRenderData, showFuture, maxFutureBoundaryGap,
   );
   if (import.meta.env.DEV) perf.end("vis-gl-draw-pass");
@@ -948,9 +1018,7 @@ function drawExpressions(
   lineWidth: number,
   windowStart: number,
   windowEnd: number,
-  analogYTop: number,
-  analogYBottom: number,
-  digitalLaneY: (exprType: string) => { yTop: number; yBottom: number } | null,
+  laneY: (exprType: string) => { yTop: number; yBottom: number } | null,
   getRenderData: (exprType: string) => OutputRenderData | null,
   showFuture: boolean,
   maxFutureBoundaryGap: number,
@@ -980,11 +1048,14 @@ function drawExpressions(
     if (samples.length < 2) continue;
 
     const exprType = expression.exprType;
-    const isDigital = (DIGITAL_CHANNELS as readonly string[]).includes(exprType);
+    const isDigital = isDigitalOutput(exprType);
 
-    const lane = isDigital ? digitalLaneY(exprType) : null;
-    const yTop = lane ? lane.yTop : analogYTop;
-    const yBottom = lane ? lane.yBottom : analogYBottom;
+    // Both digital and analogue outputs get their own stacked lane. Fall
+    // back to the full padded height if the output isn't in the layout.
+    const lane = laneY(exprType);
+    const padding = verticalPaddingFallback(h);
+    const yTop = lane ? lane.yTop : padding;
+    const yBottom = lane ? lane.yBottom : h - padding;
 
     const buf = getOrCreateBuffer(state, key);
     uploadGeometry(
@@ -1088,4 +1159,6 @@ export const __serialVisGLInternals = {
   scratch: () => getScratch(),
   thickScratch: () => getThickScratch(),
   THICK_FLOATS_PER_VERTEX,
+  computeLaneLayout,
+  isDigitalOutput,
 };

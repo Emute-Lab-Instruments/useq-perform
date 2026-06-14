@@ -57,6 +57,7 @@ vi.mock("./appSettingsRepository", () => ({
   resetAppSettings: vi.fn(),
   loadAppSettings: vi.fn(),
   deletePersistedSettings: vi.fn(),
+  setSettingsDispatchHook: vi.fn(),
 }));
 
 import { sendRuntimeTransportCommand, resetRuntimeServiceForTests } from "./runtimeService";

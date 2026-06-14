@@ -6,7 +6,10 @@
 
 import type { VisualisationSettings } from "./schema.ts";
 import { defaultUserSettings } from "./schema.ts";
-import { isRecord, coerceNumber } from "./normalizationHelpers.ts";
+import { isRecord, coerceNumber, coerceClampedNumber } from "./normalizationHelpers.ts";
+
+/** Smallest positive value used to clamp strictly-positive numerics. */
+const POSITIVE_EPSILON = Number.MIN_VALUE;
 
 export function normalizeVisualisationSettings(
   value: unknown,
@@ -17,8 +20,18 @@ export function normalizeVisualisationSettings(
   return {
     showFutureProjection:
       raw.showFutureProjection == null ? defaults.showFutureProjection : raw.showFutureProjection !== false,
-    windowDuration: coerceNumber(raw.windowDuration, defaults.windowDuration),
-    sampleCount: coerceNumber(raw.sampleCount, defaults.sampleCount),
+    windowDuration: coerceClampedNumber(
+      raw.windowDuration,
+      defaults.windowDuration,
+      POSITIVE_EPSILON,
+      Number.MAX_SAFE_INTEGER,
+    ),
+    sampleCount: coerceClampedNumber(
+      raw.sampleCount,
+      defaults.sampleCount,
+      POSITIVE_EPSILON,
+      Number.MAX_SAFE_INTEGER,
+    ),
     lineWidth: coerceNumber(raw.lineWidth, defaults.lineWidth),
     probeSampleCount: coerceNumber(
       raw.probeSampleCount,
@@ -94,7 +107,12 @@ export function extractVisualisationPatch(
   }
 
   if ("sampleCount" in visualisation) {
-    patch.sampleCount = coerceNumber(visualisation.sampleCount, defaults.sampleCount);
+    patch.sampleCount = coerceClampedNumber(
+      visualisation.sampleCount,
+      defaults.sampleCount,
+      POSITIVE_EPSILON,
+      Number.MAX_SAFE_INTEGER,
+    );
   }
 
   if ("lineWidth" in visualisation) {
