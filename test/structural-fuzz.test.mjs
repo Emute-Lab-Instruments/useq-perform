@@ -24,7 +24,12 @@ function seedsFromEnv() {
 
 function runWorker(envOverrides, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [workerPath], {
+    // The worker imports app source modules (extensionless TS/ESM specifiers
+    // like `./runtimeSessionService`). The rest of the mocha suite resolves
+    // these via the tsx ESM loader (see .mocharc `node-option: import=tsx/esm`).
+    // The worker is a fresh `node` subprocess, so it must load tsx the same way
+    // or those imports throw ERR_MODULE_NOT_FOUND before any fuzzing runs.
+    const child = spawn(process.execPath, ['--import', 'tsx/esm', workerPath], {
       cwd: repoRoot,
       env: { ...process.env, ...envOverrides },
       stdio: ['ignore', 'pipe', 'pipe'],

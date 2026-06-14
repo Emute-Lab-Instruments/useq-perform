@@ -129,9 +129,9 @@ export function applyOp(
  * When the number of top-level forms changes (e.g. splice, raise, enclose),
  * gaps are handled as follows:
  *   - If there are fewer new forms than old, trailing gaps are dropped.
- *   - If there are more new forms than old (e.g. splice), the gap between the
- *     new sibling forms defaults to `\n\n` (single blank line, per §2.1
- *     exception).
+ *   - If there are more new forms than old (e.g. barf/splice), the gap before
+ *     each newly-created sibling form defaults to a single space — the sibling
+ *     is released into the same line context as its origin (per §5.2.3).
  *
  * The text before the first form and after the last form is always preserved
  * from the original document.
@@ -180,11 +180,21 @@ function buildDocWithPreservedGaps(
   const printed = newChildren.map(print);
 
   // Stitch: leading + form0 + gap0 + form1 + gap1 + … + formN + trailing.
-  const DEFAULT_GAP = "\n\n";
+  //
+  // When a mutation creates a NEW top-level sibling (more new forms than old —
+  // e.g. barf/splice/raise expelling a node to the top level) there is no
+  // recorded inter-node gap for it. Such a sibling is released into the same
+  // line context as its origin form, so the separator is a single space
+  // (matching `(a b) c`, per structural-editing.md §5.2.3). We must NOT use the
+  // double-newline default here, which would wrongly split a barfed node onto
+  // its own paragraph. Genuine pre-existing gaps between distinct top-level
+  // definitions are still preserved verbatim via `gaps[]`.
+  const NEW_SIBLING_GAP = " ";
   let result = leadingText + printed[0];
   for (let i = 1; i < printed.length; i++) {
-    // Use original gap when available; fall back to a single blank line.
-    const gap = i - 1 < gaps.length ? gaps[i - 1] : DEFAULT_GAP;
+    // Use original gap when available; fall back to a single space for
+    // newly-created siblings.
+    const gap = i - 1 < gaps.length ? gaps[i - 1] : NEW_SIBLING_GAP;
     result += gap + printed[i];
   }
   result += trailingText;

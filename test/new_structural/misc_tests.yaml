@@ -21,7 +21,9 @@
 # KEYBOARD ACTIONS:
 #   type "text"  — type text character by character (triggers auto-close, etc.)
 #   backspace    — backspace key (structural-aware)
-#   delete       — forward delete key (structural-aware)
+#   key.delete   — forward Delete key (bracket-protection / confirm-flash path)
+#                  NB: bare `delete` is the STRUCTURAL edit.delete action; the
+#                  literal keypress must be named `key.delete` (see testHarness).
 #   undo         — undo last action
 #   enter        — enter / newline key
 
@@ -38,7 +40,7 @@
     - action: undo
       expect_code: "()"
       new_selection: "()"
-    - action: delete
+    - action: key.delete
       expect_code: ""
   new_code: ""
 
@@ -166,9 +168,9 @@
   code: "(foo)"
   cursor: 4
   steps:
-    - action: delete
+    - action: key.delete
       expect_code: "(foo)"
-    - action: delete
+    - action: key.delete
       expect_code: ""
   new_code: ""
 
@@ -176,9 +178,9 @@
   code: "[1 2 3]"
   cursor: 6
   steps:
-    - action: delete
+    - action: key.delete
       expect_code: "[1 2 3]"
-    - action: delete
+    - action: key.delete
       expect_code: ""
   new_code: ""
 
@@ -186,9 +188,9 @@
   code: "{:a 1}"
   cursor: 5
   steps:
-    - action: delete
+    - action: key.delete
       expect_code: "{:a 1}"
-    - action: delete
+    - action: key.delete
       expect_code: ""
   new_code: ""
 
@@ -196,9 +198,9 @@
   code: '"hello"'
   cursor: 6
   steps:
-    - action: delete
+    - action: key.delete
       expect_code: '"hello"'
-    - action: delete
+    - action: key.delete
       expect_code: ""
   new_code: ""
 
@@ -208,9 +210,9 @@
   code: "(foo)"
   cursor: 0
   steps:
-    - action: delete
+    - action: key.delete
       expect_code: "(foo)"
-    - action: delete
+    - action: key.delete
       expect_code: ""
   new_code: ""
 
@@ -218,9 +220,9 @@
   code: "[1 2 3]"
   cursor: 0
   steps:
-    - action: delete
+    - action: key.delete
       expect_code: "[1 2 3]"
-    - action: delete
+    - action: key.delete
       expect_code: ""
   new_code: ""
 
@@ -228,9 +230,9 @@
   code: "{:a 1}"
   cursor: 0
   steps:
-    - action: delete
+    - action: key.delete
       expect_code: "{:a 1}"
-    - action: delete
+    - action: key.delete
       expect_code: ""
   new_code: ""
 
@@ -238,9 +240,9 @@
   code: '"hello"'
   cursor: 0
   steps:
-    - action: delete
+    - action: key.delete
       expect_code: '"hello"'
-    - action: delete
+    - action: key.delete
       expect_code: ""
   new_code: ""
 
@@ -262,9 +264,9 @@
   code: "(foo)"
   cursor: 0
   steps:
-    - action: delete
+    - action: key.delete
       expect_code: "(foo)"
-    - action: delete
+    - action: key.delete
       expect_code: ""
     - action: undo
       expect_code: "(foo)"

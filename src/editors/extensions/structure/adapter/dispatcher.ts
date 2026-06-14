@@ -18,6 +18,12 @@
  *           edit.raise, edit.splice,
  *           edit.transposeNext, edit.transposePrev, edit.delete,
  *           edit.encloseList/Vector/Map/Set
+ *   Spatial move: edit.moveRight, edit.moveLeft (aliases of transposeNext/Prev),
+ *           edit.moveUp, edit.moveDown (relocate focus to the adjacent source
+ *           line's enclosing compound — see spatialMove.ts)
+ *   Clipboard (§8.4): edit.cut, edit.copy, edit.paste, edit.pasteBefore,
+ *           edit.duplicate — single-node kill-ring; snapshots are structural
+ *           subtrees deep-cloned with fresh ids on each paste.
  *
  * Reserved for future spatial implementations (not yet wired):
  *   nav.intoMeta (§5.1.9)
@@ -35,6 +41,11 @@
 import type { EditorView } from "@codemirror/view";
 
 import {
+  type Clip,
+  clipboardCut,
+  clipboardDuplicate,
+  clipboardPaste,
+  clipboardPasteBefore,
   defaultIdGen,
   docDeleteAll,
   docSelectAll,
@@ -44,6 +55,7 @@ import {
   metaFoldToggle,
   metaRemove,
   nav,
+  snapshotFocused,
   type Mutators,
   type State,
 } from "../core/index.ts";
@@ -51,6 +63,7 @@ import { applyOp } from "./applyOp.ts";
 import { indentRangeToFixedPoint } from "./indentFixedPoint.ts";
 import { formatNode, printNode } from "./printTree.ts";
 import { navDown, navUp } from "./spatialNav.ts";
+import { moveDown, moveUp } from "./spatialMove.ts";
 import { getAppSettings } from "../../../../runtime/appSettingsRepository.ts";
 import { setInsertionMode, setStructState, structField } from "./stateField.ts";
 import { pathsFromCursorSet } from "./cursorPath.ts";
@@ -72,6 +85,21 @@ function getMutators(): Mutators {
     _mutatorsSlurpBehaviour = atomSlurpBehaviour;
   }
   return _mutators;
+}
+
+// ─── Structural kill-ring (§8.4) ─────────────────────────────────────────────
+//
+// cut/copy retain a structural snapshot here; paste/pasteBefore clone it back
+// into the tree. The ring holds a Node subtree (not text) so pastes round-trip
+// metas and holes. A single shared id generator freshens every clone so no two
+// live nodes ever alias an id.
+
+const _clipIds = defaultIdGen("c");
+let _killRing: Clip | null = null;
+
+/** Test hook: clear the kill-ring so module state doesn't leak across cases. */
+export function __resetClipboardForTests(): void {
+  _killRing = null;
 }
 
 type Op = (s: State) => import("../core/index.ts").OpResult;
@@ -371,6 +399,42 @@ function docCutAll(view: EditorView): boolean {
   return applyOp(view, docDeleteAll);
 }
 
+// ─── Single-node clipboard verbs (§8.4) ──────────────────────────────────────
+
+/** edit.copy: snapshot the focused node into the kill-ring. Tree unchanged. */
+function clipCopy(view: EditorView): boolean {
+  const value = view.state.field(structField, false);
+  if (!value) return false;
+  const clip = snapshotFocused(value.state, _clipIds);
+  if (clip === null) return false;
+  _killRing = clip;
+  return true;
+}
+
+/** edit.cut: snapshot the focused node, then remove it from the tree. */
+function clipCut(view: EditorView): boolean {
+  const value = view.state.field(structField, false);
+  if (!value) return false;
+  const clip = snapshotFocused(value.state, _clipIds);
+  if (clip === null) return false;
+  _killRing = clip;
+  return applyOp(view, clipboardCut);
+}
+
+/** edit.paste / edit.pasteBefore: clone the kill-ring beside the focus. */
+function clipPaste(view: EditorView, where: "after" | "before"): boolean {
+  const op: Op = (s) =>
+    where === "after"
+      ? clipboardPaste(s, _killRing, _clipIds)
+      : clipboardPasteBefore(s, _killRing, _clipIds);
+  return applyOp(view, op);
+}
+
+/** edit.duplicate: insert a fresh clone of the focus immediately after it. */
+function clipDuplicate(view: EditorView): boolean {
+  return applyOp(view, (s) => clipboardDuplicate(s, _clipIds));
+}
+
 /** Run the named action against the editor. Returns true on dispatch. */
 export function dispatchAction(view: EditorView, name: string): boolean {
   // ── Vector-mark sub-mode interception (live-edit.md §3.7.3) ──────────
@@ -413,6 +477,16 @@ export function dispatchAction(view: EditorView, name: string): boolean {
   if (name === "nav.left") return navHorizontalBounded(view, nav.left);
   if (name === "nav.right") return navHorizontalBounded(view, nav.right);
 
+  // Spatial *move* — relocate the focused node directionally.
+  // Horizontal moves are sibling transposes (move_right/left swap with the
+  // next/prev sibling — identical to edit.transposeNext/Prev). Vertical moves
+  // relocate the node onto the adjacent source line's enclosing compound and
+  // need source positions, so they take the view-direct path.
+  if (name === "edit.moveRight") return applyOp(view, (s) => getMutators().transposeNext(s));
+  if (name === "edit.moveLeft") return applyOp(view, (s) => getMutators().transposePrev(s));
+  if (name === "edit.moveUp") return moveUp(view);
+  if (name === "edit.moveDown") return moveDown(view);
+
   // Format actions operate directly on the editor without a tree mutation.
   if (name === "format.topLevel") return formatTopLevel(view);
   if (name === "format.document") return formatDocument(view);
@@ -423,6 +497,13 @@ export function dispatchAction(view: EditorView, name: string): boolean {
   if (name === "doc.selectAll") return applyOp(view, docSelectAll);
   if (name === "doc.copyAll") return docCopyAll(view);
   if (name === "doc.cutAll") return docCutAll(view);
+
+  // Single-node clipboard verbs (§8.4).
+  if (name === "edit.cut") return clipCut(view);
+  if (name === "edit.copy") return clipCopy(view);
+  if (name === "edit.paste") return clipPaste(view, "after");
+  if (name === "edit.pasteBefore") return clipPaste(view, "before");
+  if (name === "edit.duplicate") return clipDuplicate(view);
 
   const op = actionOp(name);
   if (op === null) {
@@ -457,6 +538,10 @@ export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   "edit.splice",
   "edit.transposeNext",
   "edit.transposePrev",
+  "edit.moveRight",
+  "edit.moveLeft",
+  "edit.moveUp",
+  "edit.moveDown",
   "edit.delete",
   "edit.encloseList",
   "edit.encloseVector",
@@ -469,6 +554,11 @@ export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
   "doc.cutAll",
   "doc.copyAll",
   "doc.selectAll",
+  "edit.cut",
+  "edit.copy",
+  "edit.paste",
+  "edit.pasteBefore",
+  "edit.duplicate",
   "meta.add",
   "meta.remove",
   "meta.cycle",

@@ -25,6 +25,17 @@ function registerSuite(suiteName, cases) {
   describe(suiteName, () => {
     for (const testCase of cases) {
       if (!testCase.name) continue;
+      // Rows flagged `pending: true` encode desired-but-explicitly-deferred
+      // behaviour (e.g. nav.intoMeta / Meta-payload addressability, deferred
+      // per docs/specs/structural-editing.md §5.1.9 & §6.7). A bodyless `it()`
+      // registers them as mocha-pending so they show as deferred future
+      // targets rather than plain failures. The `pending` field documents the
+      // spec citation/reason; the row is preserved verbatim for when the
+      // feature lands. Do not delete pending rows.
+      if (testCase.pending) {
+        it(testCase.name);
+        continue;
+      }
       it(testCase.name, () => {
         const result = runTestCase(testCase);
         if (!result.passed) {

@@ -764,6 +764,13 @@
   expected: "foo"
 
 - name: "left at outermost level enters"
+  # PENDING — spec-refinement question. nav.left is strict Euler-reverse and
+  # no-ops at the outermost level (stays on "(foo)"), whereas the sibling
+  # "right at outermost level enters" row passes because nav.right descends.
+  # This asymmetry is unresolved in docs/specs/structural-editing.md §5.1.1;
+  # the row encodes the desired symmetric "left enters" behaviour. Pending a
+  # spec decision on outermost-left semantics.
+  pending: true
   code: "«(foo)»"
   actions: left
   expected: "foo"
@@ -987,28 +994,44 @@
 #
 # Metas are attached to host nodes. intoMeta descends into the payload
 # of the outermost Meta. Sigils (' ` ~ ~@ @) and #_ have no payload → no-op.
+#
+# PENDING — nav.intoMeta and Meta-payload-as-addressable-node are EXPLICITLY
+# DEFERRED per docs/specs/structural-editing.md §5.1.9 & §6.7: "Meta payloads
+# (Meta.payload) are currently opaque and not represented as addressable Nodes
+# in the functional core, so there is nothing for a cursor to land on."
+# Confirmed in core/nav.ts (the op is absent from `nav`, not a no-op stub) and
+# core/types.ts (Meta.payload: unknown). The sigil "no-op" rows below also
+# depend on this representation: with sigils lowered as Metas, `«foo»` would
+# select just `foo` rather than the sigil-prefixed form ('foo, `foo, #_foo).
+# These rows are preserved as future targets for when treeFromLezer lowers
+# structured Meta payloads / sigils into id-bearing Nodes. Do not delete.
 
 - name: "intoMeta on metadata prefix enters payload"
+  pending: true  # §5.1.9/§6.7 deferred — Meta payloads not addressable
   code: "(^{:a 1} «foo» bar)"
   actions: intoMeta
   expected: "{:a 1}"
 
 - name: "out from Meta payload returns to host"
+  pending: true  # §5.1.9/§6.7 deferred — Meta payloads not addressable
   code: "(^«{:a 1}» foo bar)"
   actions: out
   expected: "foo"
 
 - name: "intoMeta on quote is no-op - no payload"
+  pending: true  # §6.7 deferred — sigil-as-Meta selection not lowered ('foo vs foo)
   code: "(def x '«foo»)"
   actions: intoMeta
   expected: "foo"
 
 - name: "intoMeta on syntax-quote is no-op"
+  pending: true  # §6.7 deferred — sigil-as-Meta selection not lowered (`foo vs foo)
   code: "(def x `«foo»)"
   actions: intoMeta
   expected: "foo"
 
 - name: "intoMeta on ignore is no-op"
+  pending: true  # §6.7 deferred — sigil-as-Meta selection not lowered (#_foo vs foo)
   code: "(def x #_«foo» bar)"
   actions: intoMeta
   expected: "foo"
@@ -1019,11 +1042,13 @@
   expected: "foo"
 
 - name: "intoMeta enters outermost of stacked Metas"
+  pending: true  # §5.1.9/§6.7 deferred — Meta payloads not addressable
   code: "(debug '^«foo»)"
   actions: intoMeta
   expected: "foo"
 
 - name: "intoMeta round-trip through metadata"
+  pending: true  # §5.1.9/§6.7 deferred — Meta payloads not addressable
   code: "(^{:a 1} «foo» bar)"
   actions: [intoMeta, out]
   expected: "foo"

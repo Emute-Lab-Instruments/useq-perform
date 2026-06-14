@@ -75,6 +75,15 @@ export { makeMutators } from "./mutate.ts";
 export type { Mutators } from "./mutate.ts";
 export { docDeleteAll, docSelectAll } from "./docOps.ts";
 export {
+  cloneWithFreshIds,
+  cut as clipboardCut,
+  duplicate as clipboardDuplicate,
+  paste as clipboardPaste,
+  pasteBefore as clipboardPasteBefore,
+  snapshotFocused,
+} from "./clipboard.ts";
+export type { Clip } from "./clipboard.ts";
+export {
   metaAdd,
   metaRemove,
   metaCycle,

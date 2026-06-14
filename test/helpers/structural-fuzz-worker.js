@@ -454,6 +454,22 @@ function formatReplay(seed, caseIndex, stepIndex, replay, docBefore, docAfter, c
 }
 
 export function runStructuralFuzz() {
+  // jsdom provides `navigator` but no `navigator.clipboard`. Structural actions
+  // routed through the real dispatcher (doc.copyAll / doc.cutAll) call
+  // `navigator.clipboard.writeText`; without a stub the fuzz run throws on the
+  // first such op. The worker tracks its own `context.clipboard` register for
+  // generating paste ops — this stub only keeps the dispatcher's async write
+  // from blowing up.
+  if (globalThis.navigator && !globalThis.navigator.clipboard) {
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () => Promise.resolve(),
+        readText: () => Promise.resolve(""),
+      },
+    });
+  }
+
   const seed = envSeed();
   const rng = mulberry32(seed);
   const cases = envInt("STRUCTURAL_FUZZ_CASES", 16);

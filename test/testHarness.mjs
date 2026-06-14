@@ -35,7 +35,9 @@ import { default_extensions } from '@nextjournal/clojure-mode';
 // `perfTrace.ts`, which references `import.meta.env.DEV` (a Vite construct)
 // and crashes outside Vite's loader. The harness only needs the state field
 // for cursor reads; visual decorations don't affect dispatcher behaviour.
-import { dispatchAction } from '../src/editors/extensions/structure/adapter/dispatcher.ts';
+import { dispatchAction, __resetClipboardForTests } from '../src/editors/extensions/structure/adapter/dispatcher.ts';
+import { applyVerb } from '../src/lib/menu/verbs.ts';
+import { defaultIdGen } from '../src/editors/extensions/structure/core/index.ts';
 import { executeEditorCommand } from '../src/editors/commands/editorCommandRouter.ts';
 import { structField, setStructState, grabModeField, setGrabMode } from '../src/editors/extensions/structure/adapter/stateField.ts';
 import {
@@ -112,6 +114,21 @@ const ACTION_MAP = {
   'barf_left': 'edit.barfBackward',
   'move_next': 'edit.transposeNext',
   'move_previous': 'edit.transposePrev',
+
+  // spatial move (test/new_structural/spatial_move_tests.yaml).
+  // Horizontal moves alias the sibling transposes; vertical moves relocate
+  // the focused node onto the adjacent source line's enclosing compound.
+  'move_right': 'edit.moveRight',
+  'move_left': 'edit.moveLeft',
+  'move_up': 'edit.moveUp',
+  'move_down': 'edit.moveDown',
+
+  // clipboard / kill-ring (§8.4)
+  'cut': 'edit.cut',
+  'copy': 'edit.copy',
+  'paste': 'edit.paste',
+  'paste_before': 'edit.pasteBefore',
+  'duplicate': 'edit.duplicate',
 };
 
 /**
@@ -128,14 +145,6 @@ const ACTION_MAP = {
  *       router command, a spec decision, or a YAML refinement)
  */
 const UNMAPPED_ACTIONS = new Set([
-  'cut',
-  'paste',
-  'paste_before',
-  'duplicate',
-  'move_right',
-  'move_left',
-  'move_up',
-  'move_down',
   'right_char',
 ]);
 
@@ -144,23 +153,177 @@ const UNMAPPED_ACTIONS = new Set([
 // router-backed yet. We swallow them without warning so the harness output
 // stays focused on rows that are actively mapped.
 const UNMAPPED_COMPOUND_TOKENS = new Set([
-  'insert',
-  'maths',
-  'apply',
-  'apply_pre',
-  'apply_call',
-  'apply_call_pre',
-  'apply_wrap',
   'let',
   'navigate_to_hole',
   'navigate_to_binding',
   'navigate_to_usage',
 ]);
 
+// ── Picker/Insert compound command (radial-menu.md §5) ──────────────────────
+//
+// The YAML vocabulary `insert <category> <symbol> <applyType>` simulates
+// choosing a noun from the radial menu and committing it with one of the
+// menu's apply verbs. We map each applyType onto the REAL verb implementations
+// in `src/lib/menu/verbs.ts` (the same code the live dispatcher runs):
+//
+//   apply          → SymbolItem,   verb insert,   hand right (sibling-after)
+//   apply_pre      → SymbolItem,   verb insert,   hand left  (sibling-before)
+//   apply_call     → FunctionItem(sig=[expr]), insert, right → (sym _) sibling
+//   apply_call_pre → FunctionItem(sig=[expr]), insert, left
+//   apply_wrap     → FunctionItem(sig=[a,b]),  wrapWith, left → (sym target _)
+//
+// Holes are rendered to source as the bare placeholder `_` (the form the
+// picker YAML uses), not the canonical `($ name :type)` surface syntax — the
+// YAML rows are written against the `_` convention. After re-parse `_` is a
+// plain symbol, which is exactly what the cursor/selection assertions expect.
+
+const PICKER_APPLY_TYPES = new Set([
+  'apply',
+  'apply_pre',
+  'apply_call',
+  'apply_call_pre',
+  'apply_wrap',
+]);
+
+const _pickerIds = defaultIdGen('p');
+
+/** Build a MenuItem + Verb for a given symbol text and applyType. */
+function pickerItemAndVerb(symbol, applyType) {
+  switch (applyType) {
+    case 'apply':
+      return {
+        item: { kind: 'symbol', id: 'pk', label: symbol, text: symbol },
+        verb: { kind: 'insert', hand: 'right' },
+      };
+    case 'apply_pre':
+      return {
+        item: { kind: 'symbol', id: 'pk', label: symbol, text: symbol },
+        verb: { kind: 'insert', hand: 'left' },
+      };
+    case 'apply_call':
+      return {
+        item: {
+          kind: 'function', id: 'pk', label: symbol, head: symbol,
+          signature: [{ name: '_', type: 'expr' }],
+        },
+        verb: { kind: 'insert', hand: 'right' },
+      };
+    case 'apply_call_pre':
+      return {
+        item: {
+          kind: 'function', id: 'pk', label: symbol, head: symbol,
+          signature: [{ name: '_', type: 'expr' }],
+        },
+        verb: { kind: 'insert', hand: 'left' },
+      };
+    case 'apply_wrap':
+      return {
+        item: {
+          kind: 'function', id: 'pk', label: symbol, head: symbol,
+          signature: [{ name: '_', type: 'expr' }, { name: '_', type: 'expr' }],
+        },
+        verb: { kind: 'wrapWith', hand: 'left' },
+      };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Flat printer that renders a core tree to source while recording each node's
+ * [from, to] range, so the caller can re-seed the structural cursor onto the
+ * verb's chosen target. Holes render as the bare `_` placeholder.
+ */
+function printTreeTracked(root) {
+  const ranges = new Map();
+  let buf = '';
+  const writeNode = (n) => {
+    const from = buf.length;
+    switch (n.kind) {
+      case 'document': {
+        for (let i = 0; i < n.children.length; i++) {
+          if (i > 0) buf += '\n';
+          writeNode(n.children[i]);
+        }
+        break;
+      }
+      case 'symbol':
+      case 'number':
+      case 'keyword':
+      case 'string':
+        buf += n.text;
+        break;
+      case 'hole':
+        buf += '_';
+        break;
+      case 'list':
+      case 'vector':
+      case 'map':
+      case 'set': {
+        const open = n.kind === 'list' ? '(' : n.kind === 'vector' ? '[' : n.kind === 'set' ? '#{' : '{';
+        const close = n.kind === 'vector' ? ']' : n.kind === 'list' ? ')' : '}';
+        buf += open;
+        for (let i = 0; i < n.children.length; i++) {
+          if (i > 0) buf += ' ';
+          writeNode(n.children[i]);
+        }
+        buf += close;
+        break;
+      }
+    }
+    ranges.set(n.id, { from, to: buf.length });
+  };
+  writeNode(root);
+  return { text: buf, ranges };
+}
+
+/**
+ * Execute one `insert <category> <symbol> <applyType>` command against the
+ * view by delegating to the real radial-menu verb implementations.
+ */
+function applyPickerInsert(view, symbol, applyType) {
+  const value = view.state.field(structField, false);
+  if (!value) return;
+  const spec = pickerItemAndVerb(symbol, applyType);
+  if (!spec) return;
+
+  const result = applyVerb({
+    tree: value.state.tree,
+    cursorSet: value.state.cursors,
+    item: spec.item,
+    verb: spec.verb,
+    ids: _pickerIds,
+  });
+  if (!result.ok) return;
+
+  // Render the new tree to source (holes → `_`) and replace the whole doc.
+  const { text } = printTreeTracked(result.tree.root);
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: text },
+    userEvent: 'menu.apply',
+    scrollIntoView: true,
+  });
+
+  // Re-parse and seed the structural cursor at the verb's chosen target by
+  // matching its source range in the freshly-printed tree.
+  const targetId = result.cursorSet.primary.kind === 'node'
+    ? result.cursorSet.primary.target
+    : result.cursorSet.primary.start;
+  const { ranges } = printTreeTracked(result.tree.root);
+  const targetRange = ranges.get(targetId);
+  if (targetRange) {
+    seedCursorAtRange(view, targetRange.from, targetRange.to);
+  }
+}
+
 const KEY_COMMANDS = {
   'backspace': { kind: 'key', key: 'Backspace', source: 'test' },
   'key.backspace': { kind: 'key', key: 'Backspace', source: 'test' },
-  'delete': { kind: 'key', key: 'Delete', source: 'test' },
+  // NOTE: the bare `delete` verb is a STRUCTURAL action (sibling of slurp/barf
+  // in ACTION_MAP → edit.delete: (foo bar baz)→(foo baz)). It must NOT shadow
+  // that mapping with a literal Delete keypress (which only flashes a confirm
+  // and no-ops via deleteConfirmFlash). The literal-key path stays reachable
+  // via `key.delete` for tests that want confirm-on-keypress behaviour.
   'key.delete': { kind: 'key', key: 'Delete', source: 'test' },
   'enter': { kind: 'key', key: 'Enter', source: 'test' },
   'key.enter': { kind: 'key', key: 'Enter', source: 'test' },
@@ -437,8 +600,15 @@ function applyAction(view, action) {
     for (let i = 0; i < action.length; i++) {
       const cur = action[i];
 
-      // Unmapped `insert <category> <symbol> <applyType>`: skip 3 tokens.
+      // `insert <category> <symbol> <applyType>`: route to the real radial-
+      // menu verb implementations. The category (`maths`, …) is presentational
+      // and ignored by the verb layer; the symbol + applyType drive the edit.
       if (cur === 'insert' && i + 3 < action.length) {
+        const symbol = String(action[i + 2] ?? '');
+        const applyType = String(action[i + 3] ?? '');
+        if (PICKER_APPLY_TYPES.has(applyType)) {
+          applyPickerInsert(view, symbol, applyType);
+        }
         i += 3;
         continue;
       }
@@ -591,6 +761,9 @@ function runTestCase(testCase) {
   let view = null;
   // Reset grab state between tests so module-level state doesn't leak.
   if (isGrabActive()) endGrab();
+  // Reset the structural kill-ring so a prior cut/copy doesn't bleed into
+  // a "paste without prior cut" case (editing_tests.yaml).
+  __resetClipboardForTests();
   try {
     // Detect format
     const guil = parseGuillemets(testCase.code);
