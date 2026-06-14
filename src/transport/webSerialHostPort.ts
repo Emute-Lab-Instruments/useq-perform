@@ -36,6 +36,7 @@ import {
   isConnectedToModule,
   toggleConnect,
 } from "./connector.ts";
+import { syncLiveSlotIndex } from "../lib/liveSlotIndex.ts";
 
 // ── State parsing ─────────────────────────────────────────────────────────
 
@@ -121,7 +122,13 @@ export const webSerialHostPort: WebSerialHostPort = {
     try {
       const response = await sendGetState();
       if (response.success && response.state && typeof response.state === "object") {
-        return response.state as StateSnapshot;
+        const snapshot = response.state as StateSnapshot;
+        // Re-sync the §6.5 id→slot_index map from declaration order so the
+        // binary INPUT_SET fast-path can address slots directly. Eval
+        // re-allocates the live-slot table, so this must run after every
+        // successful eval's state snapshot.
+        syncLiveSlotIndex(snapshot.liveSlots);
+        return snapshot;
       }
       return null;
     } catch {

@@ -52,6 +52,7 @@ import {
   type CaptureCallback,
 } from "./types.ts";
 import { serialBuffers, setSerialOutputBufferRouting } from "./stream-parser.ts";
+import { clearLiveSlotIndex } from "../lib/liveSlotIndex.ts";
 
 // ── Module state (set once by initProtocol) ──────────────────────────
 
@@ -135,6 +136,7 @@ export function resetProtocolState(): void {
   _handshakePromise = null;
   setSerialOutputBufferRouting({});
   for (const buf of serialBuffers) buf.clear();
+  clearLiveSlotIndex();
   stopHeartbeat();
   reportProtocolModeChanged(getProtocolMode());
 }
@@ -458,6 +460,72 @@ export function sendSetLiveInputs(
 
   const message = `${JSON.stringify(buildSetLiveInputsRequest(slots))}\n`;
   return serialWrite(port, encoder.encode(message));
+}
+
+// ── Binary INPUT_SET fast-path (wire-protocol.md §6.5) ──────────────
+
+/** §6.5 frame constants. */
+const INPUT_SET_MARKER = 0x1f; // message_begin_marker
+const INPUT_SET_TYPE = 0x01; // type = INPUT_SET
+
+/** One high-rate live-input value update, addressed by device slot index. */
+export interface BinaryInputSetEntry {
+  slotIndex: number;
+  value: number;
+}
+
+/**
+ * Build a conforming §6.5 binary `INPUT_SET` frame, little-endian throughout:
+ *
+ *   byte 0:     0x1F                  (message_begin_marker)
+ *   byte 1:     0x01                  (type = INPUT_SET)
+ *   bytes 2..3: count : u16-LE
+ *   then `count` × 10-byte entries:
+ *     bytes +0..+1: slot_index : u16-LE
+ *     bytes +2..+9: value      : f64-LE (IEEE-754 binary64)
+ *
+ * Total length = 4 + 10·count bytes. No terminator (length is self-describing).
+ * Unlike the old malformed `[0x1F][channel:u8][value:f64]` sender, this carries
+ * a real type byte and a count prefix.
+ */
+export function buildBinaryInputSetFrame(
+  entries: ReadonlyArray<BinaryInputSetEntry>,
+): Uint8Array {
+  const count = entries.length;
+  const buffer = new ArrayBuffer(4 + 10 * count);
+  const view = new DataView(buffer);
+  view.setUint8(0, INPUT_SET_MARKER);
+  view.setUint8(1, INPUT_SET_TYPE);
+  view.setUint16(2, count, /* littleEndian */ true);
+  let offset = 4;
+  for (const entry of entries) {
+    view.setUint16(offset, entry.slotIndex & 0xffff, true);
+    view.setFloat64(offset + 2, entry.value, true);
+    offset += 10;
+  }
+  return new Uint8Array(buffer);
+}
+
+/**
+ * Send a §6.5 binary `INPUT_SET` frame to the device — the low-latency,
+ * high-rate manual-control value path (joystick scrub, knob/slider, MIDI CC).
+ *
+ * Fire-and-forget: the device emits NO response, no `applied` count, and no
+ * diagnostics on this hot path (§6.5). Slots must already have been DECLARED
+ * via `set-live-inputs` (§5.8); this only pushes new values to those slots by
+ * their integer `slot_index`. Resolves as soon as the bytes are written.
+ *
+ * Callers MUST resolve `slotIndex` from a get-state-synced id→index map
+ * (`resolveLiveSlotIndex`); if unsynced, fall back to `sendSetLiveInputs`.
+ */
+export function sendBinaryInputSet(
+  entries: ReadonlyArray<BinaryInputSetEntry>,
+): Promise<void> {
+  const port = serialport();
+  if (!port || !port.writable) {
+    return Promise.reject(new Error("Serial port is not writable"));
+  }
+  return serialWrite(port, buildBinaryInputSetFrame(entries));
 }
 
 // ── Calibration senders (wire-protocol.md §5.11–§5.15) ──────────────

@@ -22,6 +22,7 @@ import {
   slotForStick,
   type ManualControlBinding,
 } from "../../lib/manualControlState.ts";
+import { resolveLiveSlotIndex } from "../../lib/liveSlotIndex.ts";
 import {
   findNodeAt,
   getTrimmedRange,
@@ -719,7 +720,9 @@ function toggleManualControl(view: EditorView, stick: "left" | "right"): boolean
     lastSentValue: NaN,
   };
   setManualControlBinding(stick, binding);
-  sendManualControlValue(slot, value);
+  // Activating a binding DECLARES the live input via set-live-inputs (§5.8) so
+  // the device allocates the slot. This also pushes the initial value.
+  declareManualControlSlot(slot, value);
   return true;
 }
 
@@ -774,17 +777,45 @@ function updateManualControlAxis(
   });
   binding.to = binding.from + text.length;
 
-  sendManualControlValue(binding.slot, nextValue);
+  pushManualControlValue(binding.slot, nextValue);
   return true;
 }
 
-function sendManualControlValue(slot: number, value: number): void {
-  // Manual control rewrites the bound number to `(ssin N)`, so the live value
-  // is pushed to the matching `ssinN` input id via the spec-sanctioned
-  // editor→device live-value path (set-live-inputs, wire-protocol.md §5.8 /
-  // §6.5 NOTE) — never the malformed type-byte-less binary frame.
+/** The live-input id a manual-control slot rewrites to: `(ssin N)` → `ssinN`. */
+function manualControlInputId(slot: number): string {
+  return `ssin${slot}`;
+}
+
+/**
+ * DECLARE a manual-control live input on the device (wire-protocol.md §5.8).
+ * Manual control rewrites the bound number to `(ssin N)`, so we register the
+ * matching `ssinN` slot via set-live-inputs. This is the registration step;
+ * high-rate scrub updates then go through the §6.5 binary fast-path.
+ */
+function declareManualControlSlot(slot: number, value: number): void {
   void import("../../transport/json-protocol.ts")
-    .then((mod) => mod.sendSetLiveInputs({ [`ssin${slot}`]: value }))
+    .then((mod) => mod.sendSetLiveInputs({ [manualControlInputId(slot)]: value }))
+    .catch(() => {});
+}
+
+/**
+ * Push a high-rate manual-control SCRUB value (wire-protocol.md §6.5).
+ *
+ * Prefers the compact binary INPUT_SET frame (low latency, no JSON per sample),
+ * addressing the slot by its synced `slot_index`. If the id→index map has not
+ * been synced yet (no get-state since the last eval), it falls back to the JSON
+ * set-live-inputs path until the map is rebuilt (§6.5 NOTE).
+ */
+function pushManualControlValue(slot: number, value: number): void {
+  const id = manualControlInputId(slot);
+  void import("../../transport/json-protocol.ts")
+    .then((mod) => {
+      const slotIndex = resolveLiveSlotIndex(id);
+      if (slotIndex !== null) {
+        return mod.sendBinaryInputSet([{ slotIndex, value }]);
+      }
+      return mod.sendSetLiveInputs({ [id]: value });
+    })
     .catch(() => {});
 }
 
