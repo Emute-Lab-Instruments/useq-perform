@@ -98,9 +98,14 @@ async function startBrowserLocalRuntime(options: {
     console.warn('Failed to start local clock:', error);
   }
 
-  // The transport machine starts in "playing" but emitPlay only fires on
-  // transitions, so the WASM interpreter never receives (useq-play) at
-  // startup. Sync it explicitly here.
+  // The transport machine boots "paused" (transport.machine.ts initial:'paused'),
+  // and emitPlay only fires on transitions. Browser-local startup wants the
+  // program to auto-run, so we send (useq-play) to the WASM interpreter
+  // explicitly here. This changes only the interpreter, not the machine's state.
+  // OPEN QUESTION: transport.md §1.1 says boot is "paused"; auto-running on
+  // first load may contradict that. Whether browser-local should auto-start or
+  // also boot paused (until the user hits play) is unresolved — see the
+  // ultracode report's open questions.
   try {
     await getActiveWasmRuntimePort().sendTransportCommand(SHARED_TRANSPORT_COMMANDS.play);
   } catch (_e) {

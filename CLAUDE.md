@@ -155,7 +155,7 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 - `src/ui/` - Solid UI components (settings, help, toolbar, modals)
 - `src/ui/adapters/` - imperative adapters via `createSolidAdapter()` utility
 - `src/ui/styles/` - application CSS stylesheets
-- `src/ui/visualisation/` - canvas visualisation renderer (`serialVis.ts`)
+- `src/ui/visualisation/` - WebGL visualisation renderer (`serialVisGL.ts` + `webglLineRenderer.ts`)
 - `src/utils/` - reactive stores (settings, console, visualisation, reference, snippets, output health)
 - `inspector/` - Inspector dev review tool (separate Vite app, see `inspector/CLAUDE.md`)
 
@@ -169,7 +169,7 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 
 **Gamepad Intent Architecture**: Gamepad emits typed intents via channels; separate subscribers handle editor navigation and menu bridging. Zero coupling to UI internals.
 
-**Visualisation Pipeline**: Stream parser → visualisationStore (direct). No controller class. Reactive data flow.
+**Visualisation Pipeline**: Stream parser → visualisationStore (direct, reactive). The per-frame loop is owned by `src/effects/visualisationRuntime.ts` — the rAF controller that drives time updates, drains the sampling queue, polls active diagnostics into `outputHealthStore`, and invokes the render hook (`serialVisGL.ts` WebGL renderer).
 
 **Import Boundaries**: Enforced via ESLint (`eslint.config.js`). `src/lib/` and `src/contracts/` must not import from higher layers.
 
