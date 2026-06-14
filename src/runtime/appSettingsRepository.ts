@@ -14,6 +14,7 @@ import {
 } from "../lib/appSettings.ts";
 import { defaultMainEditorStartingCode } from "../lib/editorDefaults.ts";
 import type { RuntimeSettingsSource } from "./runtimeDiagnostics.ts";
+import { updateRuntimeSettingsEffect } from "./runtimeService.ts";
 import { load, save, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 import {
   getStartupFlagsSnapshot,
@@ -41,19 +42,10 @@ function notifyListeners(): void {
   listeners.forEach((listener) => listener(snapshot));
 }
 
-// The runtime-session side effect (e.g. propagating wasm.enabled) is owned by
-// runtimeSettingsService, which registers a hook here at module load. Keeping
-// the call out of this canonical holder preserves a one-directional dependency
-// (service → repository); see docs CF8. The hook is invoked on every dispatch.
-type SettingsDispatchHook = (settings: AppSettings) => void;
-let settingsDispatchHook: SettingsDispatchHook | null = null;
-
-export function setSettingsDispatchHook(hook: SettingsDispatchHook | null): void {
-  settingsDispatchHook = hook;
-}
-
 function dispatchSettingsChanged(): void {
-  settingsDispatchHook?.(getAppSettings());
+  updateRuntimeSettingsEffect({
+    wasmEnabled: activeSettings.wasm.enabled,
+  });
   // Typed subscribers are notified via notifyListeners() at the call-site.
   // The previous window CustomEvent ("useq-settings-changed") has been
   // removed -- all internal consumers now use subscribeAppSettings().
