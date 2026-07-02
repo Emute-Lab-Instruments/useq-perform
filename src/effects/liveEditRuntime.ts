@@ -27,6 +27,8 @@ import type { LiveEditSlot, SlotKind } from "../contracts/liveEdit.ts";
 import type { LiveSlotMetadata } from "../contracts/runtimePorts.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 import { isConnectedToModule, isJsonProtocolActive, sendSetLiveInputs } from "../transport/index.ts";
+import { webSerialHostPort } from "../transport/webSerialHostPort.ts";
+import { clearLiveSlotIndex } from "../lib/liveSlotIndex.ts";
 
 // ─── Singleton instances ────────────────────────────────────────────────────
 
@@ -412,6 +414,40 @@ export async function discoverSlotsAfterEval(view: EditorView): Promise<void> {
 
   // Trigger reconciliation after successful eval (§7.3 trigger 1).
   triggerReconciliation(view);
+}
+
+// ─── Live-slot id→index re-sync after eval (wire-protocol.md §6.5, §11.1) ──
+
+/**
+ * Re-sync the §6.5 binary INPUT_SET id→slot_index map after a successful eval.
+ *
+ * Each successful eval RE-ALLOCATES the device's live-slot table in declaration
+ * order, so a map built from a previous eval's slot layout is now stale. Using a
+ * stale index would silently write knob/slider scrubs to the WRONG slot
+ * (INPUT_SET is fire-and-forget with only a range check — no id validation).
+ *
+ * wire-protocol.md §6.5/§11.1 mandate that the editor:
+ *   1. INVALIDATE the map immediately, so any manual-control push landing before
+ *      the re-sync completes falls back to the robust JSON set-live-inputs path
+ *      (`resolveLiveSlotIndex` returns `null`); AND
+ *   2. RE-SYNC the map from a fresh get-state so the binary fast-path stays hot.
+ *
+ * Only meaningful when connected to hardware over the JSON protocol; in
+ * WASM-only / no-module mode there is no binary fast-path and nothing to sync.
+ * `requestStateSnapshot()` repopulates the map via `syncLiveSlotIndex`.
+ */
+export function resyncLiveSlotIndexAfterEval(): void {
+  // Step 1: invalidate unconditionally. Even if we are not on hardware, a stale
+  // map from a prior connection must not leak into a later fast-path decision.
+  clearLiveSlotIndex();
+
+  // Step 2: re-sync from the device, but only if the binary path is reachable.
+  if (!isConnectedToModule() || !isJsonProtocolActive()) return;
+
+  // Fire-and-forget: requestStateSnapshot() calls get-state and repopulates the
+  // id→index map via syncLiveSlotIndex. Until it resolves, resolveLiveSlotIndex
+  // returns null and pushes take the safe set-live-inputs fallback.
+  void webSerialHostPort.requestStateSnapshot().catch(() => {});
 }
 
 // ─── Reconciliation triggers (§7.3) ──────────────────────────────────────

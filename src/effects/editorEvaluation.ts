@@ -13,7 +13,11 @@ import { top_level_string } from "@nextjournal/clojure-mode/extensions/eval-regi
 import { sendTouSEQ } from "../transport/json-protocol.ts";
 import { post } from "../utils/consoleStore.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
-import { discoverSlotsAfterEval, runBootReconciliation } from "./liveEditRuntime.ts";
+import {
+  discoverSlotsAfterEval,
+  runBootReconciliation,
+  resyncLiveSlotIndexAfterEval,
+} from "./liveEditRuntime.ts";
 
 // Editor eval and diagnostics readback are atomic on the active WASM
 // runtime port: `evalCodeWithDiagnostics` returns the eval's own
@@ -235,6 +239,11 @@ function evalWasm(
         // Fire-and-forget: slot discovery is non-blocking and non-critical.
         if (!hasErrors && opts.view) {
           discoverSlotsAfterEval(opts.view).catch(() => {});
+          // wire-protocol.md §6.5/§11.1: eval re-allocates the device live-slot
+          // table, so invalidate the §6.5 binary INPUT_SET id→index map and
+          // re-sync it from a fresh get-state. Without this, manual-control
+          // scrubs would silently write to a STALE slot on the hardware.
+          resyncLiveSlotIndexAfterEval();
           // §7.3 trigger 3: boot-time reconciliation after first successful eval.
           runBootReconciliation(opts.view);
         }
