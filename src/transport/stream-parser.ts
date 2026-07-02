@@ -114,7 +114,8 @@ async function processSerialDataLoop(
     const readResult = await reader.read();
     if (readResult.done) break;
 
-    const incoming = new Uint8Array(readResult.value!.buffer);
+    const v = readResult.value!;
+    const incoming = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
     chunkCount++;
     if (chunkCount <= 20) {
       const hex = Array.from(incoming.slice(0, 40)).map(b => b.toString(16).padStart(2, '0')).join(' ');

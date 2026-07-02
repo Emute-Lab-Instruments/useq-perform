@@ -211,7 +211,7 @@ function evalWasm(
         }
       }
 
-      if (trimmed.length > 0) {
+      if (trimmed.length > 0 && import.meta.env.DEV) {
         console.log(`[modulisp] ${wasmCode.trim()}  →  ${trimmed}`);
       }
 

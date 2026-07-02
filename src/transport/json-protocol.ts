@@ -9,7 +9,7 @@
 
 import { post } from "../utils/consoleStore.ts";
 import { dbg } from "../lib/debug.ts";
-import { upgradeCheck } from "./upgradeCheck.ts";
+import { upgradeCheck, meetsMinimumVersion, MIN_FIRMWARE_VERSION } from "./upgradeCheck.ts";
 import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
@@ -230,10 +230,39 @@ function dispatchProtocolReady(): void {
  * Resolves the shared signal so `sendHelloWithRetry` can exit cleanly.
  */
 function completeHandshake(response: JsonResponse): void {
-  console.log("[json-protocol] completeHandshake called with:", JSON.stringify(response).slice(0, 300));
+  if (import.meta.env.DEV) {
+    console.log("[json-protocol] completeHandshake called with:", JSON.stringify(response).slice(0, 300));
+  }
   if (response.success && response.mode === "json") {
+    // Enforce minimum firmware version floor before proceeding.
+    if (response.fw) {
+      // Parse the version string inline to check the floor before calling
+      // upgradeCheck (which posts the "connected" notice).
+      const versionPattern = /(\d+)\.(\d+)(?:\.(\d+))?/;
+      const groups = versionPattern.exec(String(response.fw));
+      if (groups) {
+        const parsed = {
+          major: Number.parseInt(groups[1], 10),
+          minor: Number.parseInt(groups[2], 10),
+          patch: Number.parseInt(groups[3] ?? "0", 10),
+          string: String(response.fw),
+        };
+        if (!meetsMinimumVersion(parsed)) {
+          const floor = `${MIN_FIRMWARE_VERSION.major}.${MIN_FIRMWARE_VERSION.minor}.${MIN_FIRMWARE_VERSION.patch}`;
+          post(
+            `Firmware too old (v${parsed.string}) — please update to v${floor} or later.`,
+            "error"
+          );
+          dispatchProtocolReady();
+          return;
+        }
+      }
+    }
+
     protocolState.mode = "json";
-    console.log("[json-protocol] Handshake SUCCESS — mode=json, fw=", response.fw);
+    if (import.meta.env.DEV) {
+      console.log("[json-protocol] Handshake SUCCESS — mode=json, fw=", response.fw);
+    }
     if (response.fw) {
       upgradeCheck(response.fw);
     }
@@ -379,7 +408,9 @@ export function writeJsonRequest(
   };
 
   const message = `${JSON.stringify(payload)}\n`;
-  console.log(`[json-protocol] TX → ${message.trim().slice(0, 200)}`);
+  if (import.meta.env.DEV && !options.skipConsole) {
+    console.log(`[json-protocol] TX → ${message.trim().slice(0, 200)}`);
+  }
 
   return new Promise<JsonResponse>((resolve, reject) => {
     pending.resolve = resolve;

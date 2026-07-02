@@ -274,7 +274,7 @@ async function evalBinding(
       sendTouSEQ("@" + code);
     }
 
-    if (result != null) {
+    if (result != null && import.meta.env.DEV) {
       const trimmed = (typeof result === "string" ? result : String(result)).trim();
       if (trimmed.length > 0) {
         console.log(`[hw-binding] ${inputId} → ${trimmed}`);

@@ -30,6 +30,12 @@ vi.mock("../utils/consoleStore.ts", () => ({
 vi.mock("./upgradeCheck.ts", () => ({
   currentVersion: { major: 1, minor: 2, patch: 0 },
   upgradeCheck: upgradeCheckMock,
+  MIN_FIRMWARE_VERSION: { major: 1, minor: 2, patch: 0 },
+  meetsMinimumVersion: (v: { major: number; minor: number; patch: number }) => {
+    if (v.major !== 1) return v.major > 1;
+    if (v.minor !== 2) return v.minor > 2;
+    return v.patch >= 0;
+  },
 }));
 
 vi.mock("../effects/visualisationRuntime.ts", () => ({

@@ -8,6 +8,8 @@ interface ConnectedFirmwareVersion {
   string: string;
 }
 
+export const MIN_FIRMWARE_VERSION = { major: 1, minor: 2, patch: 0 } as const;
+
 const VERSION_PATTERN = /(\d+)\.(\d+)(?:\.(\d+))?/;
 
 function parseVersion(versionString: unknown): ConnectedFirmwareVersion | null {
@@ -24,6 +26,15 @@ function parseVersion(versionString: unknown): ConnectedFirmwareVersion | null {
     patch: Number.parseInt(groups[3] ?? "0", 10),
     string: text,
   };
+}
+
+/**
+ * Returns true if `v` meets the minimum firmware version floor.
+ */
+export function meetsMinimumVersion(v: ConnectedFirmwareVersion): boolean {
+  if (v.major !== MIN_FIRMWARE_VERSION.major) return v.major > MIN_FIRMWARE_VERSION.major;
+  if (v.minor !== MIN_FIRMWARE_VERSION.minor) return v.minor > MIN_FIRMWARE_VERSION.minor;
+  return v.patch >= MIN_FIRMWARE_VERSION.patch;
 }
 
 export let currentVersion: ConnectedFirmwareVersion | null = null;

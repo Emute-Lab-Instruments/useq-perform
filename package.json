@@ -1,5 +1,6 @@
 {
   "name": "useq-perform",
+  "version": "1.2.0",
   "type": "module",
   "devDependencies": {
     "@chromatic-com/storybook": "^4.1.3",

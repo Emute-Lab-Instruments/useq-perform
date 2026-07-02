@@ -37,6 +37,12 @@ vi.mock("./upgradeCheck.ts", () => ({
   // populated by a probe — it should be set from the hello response.
   currentVersion: null,
   upgradeCheck: vi.fn(),
+  MIN_FIRMWARE_VERSION: { major: 1, minor: 2, patch: 0 },
+  meetsMinimumVersion: (v: { major: number; minor: number; patch: number }) => {
+    if (v.major !== 1) return v.major > 1;
+    if (v.minor !== 2) return v.minor > 2;
+    return v.patch >= 0;
+  },
 }));
 
 vi.mock("../effects/visualisationRuntime.ts", () => ({
@@ -492,5 +498,54 @@ describe("wire protocol contract — editor side", () => {
       type: "set-live-inputs",
       slots: { knob1: 0.5, toggle1: true, mode1: "forward" },
     });
+  });
+
+  // Firmware version floor — audit finding (protocol-coherence #2).
+  // If the device reports a firmware version below 1.2.0, the editor must NOT
+  // complete the handshake; it must surface a blocking "firmware too old" error
+  // to the console and leave protocol mode as "negotiating" (not "json").
+  it("T9 [version-floor] rejects firmware below 1.2.0 with a blocking notice", async () => {
+    const transport = await loadTransport();
+    // Use a device that reports an old firmware version in its hello response.
+    const port = new SpecCompliantFakeDevice();
+    // Override the hello response to report an old firmware version.
+    const originalHandle = (port as any).handleWrite.bind(port);
+    (port as any).handleWrite = (chunk: Uint8Array) => {
+      const text = decoder.decode(chunk);
+      if (text.startsWith("{") && text.includes('"type":"hello"')) {
+        const req = JSON.parse(text.trim());
+        setTimeout(() =>
+          port.pushJson({
+            type: "response",
+            requestId: req.requestId,
+            success: true,
+            mode: "json",
+            // Old firmware that doesn't meet the 1.2.0 floor.
+            fw: "1.1.3",
+            config: {
+              inputs: [],
+              outputs: [{ index: 1, name: "time" }],
+            },
+          }),
+        0);
+        return;
+      }
+      originalHandle(chunk);
+    };
+
+    await transport.connectToSerialPort(port as unknown as SerialPort);
+    await flush();
+
+    // The editor must post a "firmware too old" error to the console.
+    const errorCalls = postMock.mock.calls.filter(
+      (args: unknown[]) => typeof args[0] === "string" && args[0].includes("Firmware too old")
+    );
+    expect(errorCalls.length).toBeGreaterThan(0);
+    // The error post must carry the "error" severity argument.
+    expect(errorCalls[0][1]).toBe("error");
+
+    // The protocol must NOT advance to "json" mode when firmware is below floor.
+    const { protocolState } = await import("./json-protocol.ts");
+    expect(protocolState.mode).not.toBe("json");
   });
 });
