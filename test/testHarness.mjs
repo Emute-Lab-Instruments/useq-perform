@@ -242,7 +242,11 @@ function printTreeTracked(root) {
     switch (n.kind) {
       case 'document': {
         for (let i = 0; i < n.children.length; i++) {
-          if (i > 0) buf += '\n';
+          // Top-level forms are separated by a single space, matching the flat
+          // one-line source convention the picker YAML rows are written in
+          // (e.g. `(+ 1 2) (* 3 4)` after a barf-then-wrap). A `\n` here would
+          // spuriously line-break sibling top-level forms produced by an edit.
+          if (i > 0) buf += ' ';
           writeNode(n.children[i]);
         }
         break;
@@ -313,6 +317,16 @@ function applyPickerInsert(view, symbol, applyType) {
   const targetRange = ranges.get(targetId);
   if (targetRange) {
     seedCursorAtRange(view, targetRange.from, targetRange.to);
+    // Mirror the structural cursor into the CM text selection over the target
+    // node's source range. The whole-doc replace above leaves the CM caret at
+    // offset 0; without this a following `type` action (e.g. typing "10" over
+    // the `_` hole left by apply_wrap / apply_call) inserts at the doc origin
+    // instead of substituting into the hole. In the live app the two are kept
+    // in sync (the structural cursor is derived from the CM selection); here we
+    // seed the structural cursor directly, so we replicate that sync locally.
+    view.dispatch({
+      selection: { anchor: targetRange.from, head: targetRange.to },
+    });
   }
 }
 

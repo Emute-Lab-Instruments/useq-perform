@@ -38,6 +38,7 @@ import { findHolesInOrder, makeHole } from "../../editors/extensions/structure/c
 import {
   findById,
   indexOfChild,
+  isCompound,
   makeCompound,
   parentOf,
   replaceChildren,
@@ -180,6 +181,22 @@ export function applyInsert(
       ...tree.root.children,
       inserted,
     ]) as DocumentNode;
+    return successOnInserted(newRoot, inserted);
+  }
+
+  // Empty-compound special case: when the apply target is a compound with no
+  // children (e.g. the halo sits on `()` / `[]`), there is no sibling context
+  // to insert beside — the natural intent is to seed the empty form. Insert
+  // the picked item as its sole child so `()` + `+` → `(+)`. Mirrors the
+  // document-root append above (both are "insert into an empty container").
+  const targetNode = findById(tree.root, targetId);
+  if (
+    targetNode !== null &&
+    isCompound(targetNode) &&
+    targetNode.children.length === 0
+  ) {
+    const newChild = setChildren(targetNode, [inserted]) as Compound;
+    const newRoot = replaceNode(tree.root, targetId, newChild);
     return successOnInserted(newRoot, inserted);
   }
 

@@ -362,6 +362,42 @@ describe("applyInsert", () => {
     expect(r.tree.root.children[0].kind).toBe("symbol");
   });
 
+  // -- empty-compound target ------------------------------------------------
+
+  it("empty compound · symbol: inserts inside the empty form (() + x → (x))", () => {
+    // Halo on an empty list `()`; there is no sibling context, so Insert
+    // seeds the form rather than appending a top-level sibling.
+    const emptyList = list(ids);
+    const root = doc(ids, emptyList);
+    const r = assertOk(
+      applyInsert(asTree(root), cursorOn(emptyList.id), symItem("x"), "right", ids),
+    );
+    expect(r.tree.root.children).toHaveLength(1);
+    const outer = r.tree.root.children[0];
+    if (outer.kind !== "list") throw new Error("expected list");
+    expect(outer.children).toHaveLength(1);
+    expect(outer.children[0].kind).toBe("symbol");
+    // Cursor lands on the inserted symbol (no holes in a bare symbol).
+    expect(r.cursorSet.primary).toEqual({
+      kind: "node",
+      target: outer.children[0].id,
+    });
+  });
+
+  it("empty compound · left hand: still seeds inside (handedness moot when empty)", () => {
+    const emptyVec = list(ids); // list builder; kind is 'list' — shape parity
+    const root = doc(ids, emptyVec);
+    const r = assertOk(
+      applyInsert(asTree(root), cursorOn(emptyVec.id), symItem("y"), "left", ids),
+    );
+    const outer = r.tree.root.children[0];
+    if (outer.kind !== "list") throw new Error("expected list");
+    expect(outer.children).toHaveLength(1);
+    expect(outer.children[0].kind).toBe("symbol");
+    // No stray top-level sibling was appended.
+    expect(r.tree.root.children).toHaveLength(1);
+  });
+
   // -- hole target ----------------------------------------------------------
 
   it("hole target · symbol · left: inserts as sibling of the hole (does not fill it)", () => {
