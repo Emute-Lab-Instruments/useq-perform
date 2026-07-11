@@ -33,6 +33,13 @@ jobs:
       - name: Unit tests (jsdom browser environment)
         run: npm run test:unit
 
+      - name: Grammar Lab concept artifact
+        run: |
+          npm run typecheck:grammar-lab
+          npx eslint grammar-lab --no-warn-ignored
+          npm run test:grammar-lab
+          npm run build:grammar-lab
+
       - name: Install Playwright browsers (Chromium)
         run: npx playwright install chromium --with-deps
 

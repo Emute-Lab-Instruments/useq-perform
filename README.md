@@ -9,6 +9,8 @@ Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WAS
 - `npm run start` - serves `public/` on port `5000`.
 - `npm run storybook` - Storybook dev server.
 - `npm run build-storybook` - static Storybook build.
+- `npm run grammar-lab` - interactive motor-grammar research artifact on port `5566`.
+- `npm run build:grammar-lab` - build the portable Grammar Lab into `grammar-lab/dist/`.
 
 ## Tests and Typecheck
 
@@ -34,6 +36,7 @@ Testing styles:
 - `src/transport/` - serial port lifecycle, protocol drivers, stream parser.
 - `scripts/build-assets.mjs` - markdown/reference/wasm/font asset pipeline.
 - `src-useq/` - firmware submodule.
+- `grammar-lab/` - standalone interactive laboratory for comparing experimental keyboard/gamepad motor grammars without touching production state.
 
 `src-solid/`, `src/islands/`, and `src/legacy/` have been removed after migration consolidation.
 

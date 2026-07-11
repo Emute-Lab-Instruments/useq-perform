@@ -10,6 +10,7 @@ Terminology source of truth: [docs/GLOSSARY.md](docs/GLOSSARY.md). Read [CLAUDE.
 - `src-useq/` — firmware submodule. Authoritative for editor-facing firmware/WASM behaviour. Run `npm run src-useq:status` before firmware-sensitive work.
 - `deps/modulisp/` — ModuLisp language submodule.
 - `inspector/` — same-repo Vite dev tool for visually reviewing scenarios in isolation. See [inspector/CLAUDE.md](inspector/CLAUDE.md). Run `npm run inspector` (port 5555).
+- `grammar-lab/` — standalone Solid/Vite research instrument for comparing versioned keyboard/gamepad motor grammars against the same structural meaning. It is deliberately isolated from production settings, persistence, transport, and runtime state. Run `npm run grammar-lab` (port 5566).
 - `harness/` — shared scenario harness (editor + extension registry) reused by Inspector and Storybook.
 - `stories/` — Storybook stories grouped by feature area.
 - `.storybook/` — Storybook config + Vitest browser-test setup.

@@ -81,6 +81,10 @@
     "inspector": "vite dev --config inspector/vite.config.ts",
     "inspector:validate": "vitest run inspector/scenarios.test.ts --project unit",
     "inspector:validate-runtime": "npx vite-node inspector/validate-runtime.ts",
+    "grammar-lab": "vite dev --config grammar-lab/vite.config.ts",
+    "build:grammar-lab": "vite build --config grammar-lab/vite.config.ts",
+    "typecheck:grammar-lab": "tsc -p grammar-lab/tsconfig.json --noEmit",
+    "test:grammar-lab": "vitest run --project unit grammar-lab/model.test.ts grammar-lab/App.test.tsx",
     "build-storybook": "storybook build",
     "verify:native-bridge": "node scripts/dev/verify-ws-serialport.mjs",
     "dev:stub-ws": "node scripts/dev/useq-stub-ws-server.mjs"

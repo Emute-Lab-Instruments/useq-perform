@@ -33,6 +33,7 @@ CLAUDE.md
 __pycache__/
 
 inspector/dist/
+grammar-lab/dist/
 test-results/
 reports/
 

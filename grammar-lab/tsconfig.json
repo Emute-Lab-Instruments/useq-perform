@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "types": ["vite/client"]
+  },
+  "include": ["./main.tsx", "./App.tsx", "./model.ts"],
+  "exclude": ["./dist", "./**/*.test.ts"]
+}
