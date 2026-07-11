@@ -76,44 +76,118 @@ function semanticLabel(event: TraceEvent | undefined): string {
 
 function SignalStage(props: {
   liveSteps: readonly number[];
+  focus: number;
   holding: boolean;
   revision: number;
 }) {
+  const width = 640;
+  const height = 164;
   const path = () => waveformPath(props.liveSteps);
+  const focusedIndex = () =>
+    Math.min(Math.max(props.focus, 0), Math.max(props.liveSteps.length - 1, 0));
+  const cellWidth = () => (props.liveSteps.length > 0 ? width / props.liveSteps.length : width);
+  const focusX = () => focusedIndex() * cellWidth();
+  const focusedValue = () => props.liveSteps[focusedIndex()] ?? 0;
+  const focusY = () => 16 + (1 - focusedValue()) * (height - 32);
+  const focusSegment = () =>
+    `M ${focusX()} ${focusY()} H ${focusX() + cellWidth()}`;
 
   return (
-    <section class="signal-stage" aria-labelledby="signal-heading">
+    <section
+      class="signal-stage"
+      aria-labelledby="signal-heading"
+      data-focused-step={focusedIndex() + 1}
+    >
       <div class="panel-heading-row">
         <div>
           <p class="eyebrow">Live signal</p>
           <h2 id="signal-heading">A1 · CV · continuous</h2>
         </div>
-        <div classList={{ "runtime-state": true, "runtime-state-holding": props.holding }}>
-          <span class="runtime-dot" aria-hidden="true" />
-          {props.holding ? "holding last good" : `live · r${props.revision}`}
+        <div class="signal-status-cluster">
+          <div
+            classList={{ "runtime-state": true, "runtime-state-holding": props.holding }}
+          >
+            <span class="runtime-dot" aria-hidden="true" />
+            {props.holding ? "holding last good" : `live · r${props.revision}`}
+          </div>
+          <div
+            id="signal-focus-status"
+            classList={{
+              "signal-focus-readout": true,
+              "signal-focus-readout-holding": props.holding,
+            }}
+            aria-live="polite"
+          >
+            focus link · step {focusedIndex() + 1} · {props.holding ? "held" : "live"}{" "}
+            {focusedValue().toFixed(1)}
+          </div>
         </div>
       </div>
 
       <div class="wave-shell">
         <svg
+          id="signal-waveform"
           class="waveform"
           viewBox="0 0 640 164"
           role="img"
           aria-label={`Stepped CV signal with values ${props.liveSteps.join(", ")}`}
+          aria-describedby="signal-focus-status"
+          data-focused-step={focusedIndex() + 1}
           preserveAspectRatio="none"
         >
+          <rect
+            classList={{
+              "wave-focus-band": true,
+              "wave-focus-band-holding": props.holding,
+            }}
+            x={focusX()}
+            y="0"
+            width={cellWidth()}
+            height={height}
+            data-step={focusedIndex() + 1}
+          />
           <g class="wave-grid" aria-hidden="true">
             <path d="M0 16H640 M0 57H640 M0 98H640 M0 139H640" />
             <path d="M160 0V164 M320 0V164 M480 0V164" />
           </g>
           <path class="wave-glow" d={path()} />
           <path class="wave-line" d={path()} />
+          <path
+            classList={{
+              "wave-focus-glow": true,
+              "wave-focus-glow-holding": props.holding,
+            }}
+            d={focusSegment()}
+          />
+          <path
+            classList={{
+              "wave-focus-segment": true,
+              "wave-focus-segment-holding": props.holding,
+            }}
+            d={focusSegment()}
+          />
+          <circle
+            classList={{
+              "wave-focus-point": true,
+              "wave-focus-point-holding": props.holding,
+            }}
+            cx={focusX() + cellWidth() / 2}
+            cy={focusY()}
+            r="4"
+          />
           <rect class="wave-playhead" x="0" y="0" width="2" height="164" />
         </svg>
         <div class="beat-cells" aria-hidden="true">
           <For each={props.liveSteps}>
             {(value, index) => (
-              <div class="beat-cell">
+              <div
+                classList={{
+                  "beat-cell": true,
+                  "beat-cell-focused": focusedIndex() === index(),
+                  "beat-cell-focused-holding": props.holding && focusedIndex() === index(),
+                }}
+                data-step={index() + 1}
+              >
                 <span class="beat-index">{index() + 1}</span>
                 <span class="beat-bar" style={{ height: `${Math.max(8, value * 100)}%` }} />
                 <span class="beat-value">{value.toFixed(1)}</span>
@@ -527,6 +601,7 @@ export default function App() {
           <div class="instrument-column">
             <SignalStage
               liveSteps={lab().liveSteps}
+              focus={lab().focus}
               holding={holdingLastGood()}
               revision={lab().liveRevision}
             />
@@ -553,6 +628,8 @@ export default function App() {
                       }}
                       onClick={() => focusStep(index())}
                       aria-pressed={lab().focus === index()}
+                      aria-controls="signal-waveform"
+                      data-step={index() + 1}
                       aria-label={`Step ${index() + 1}, ${value === null ? "structural hole" : `value ${value.toFixed(1)}`}`}
                     >
                       {value === null ? "□" : value.toFixed(1)}

@@ -423,6 +423,32 @@ main {
   color: var(--amber);
 }
 
+.signal-status-cluster {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.signal-focus-readout {
+  padding: 4px 7px;
+  border: 1px solid rgba(102, 217, 239, 0.32);
+  border-radius: 999px;
+  background: rgba(102, 217, 239, 0.07);
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.signal-focus-readout-holding {
+  border-color: rgba(255, 196, 107, 0.38);
+  background: rgba(255, 196, 107, 0.07);
+  color: var(--amber);
+}
+
 .wave-shell {
   position: relative;
   overflow: hidden;
@@ -447,6 +473,19 @@ main {
   stroke-width: 1;
 }
 
+.wave-focus-band {
+  fill: rgba(102, 217, 239, 0.075);
+  stroke: rgba(102, 217, 239, 0.35);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.wave-focus-band-holding {
+  fill: rgba(255, 196, 107, 0.065);
+  stroke: rgba(255, 196, 107, 0.5);
+  stroke-dasharray: 5 4;
+}
+
 .wave-line,
 .wave-glow {
   fill: none;
@@ -463,6 +502,42 @@ main {
   stroke-width: 10;
   opacity: 0.12;
   filter: blur(4px);
+}
+
+.wave-focus-segment,
+.wave-focus-glow {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--cyan);
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.wave-focus-glow {
+  stroke-width: 14;
+  opacity: 0.22;
+  filter: blur(5px);
+}
+
+.wave-focus-segment {
+  stroke-width: 4;
+}
+
+.wave-focus-glow-holding,
+.wave-focus-segment-holding {
+  stroke: var(--amber);
+}
+
+.wave-focus-point {
+  fill: #090e13;
+  pointer-events: none;
+  stroke: var(--cyan);
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.wave-focus-point-holding {
+  stroke: var(--amber);
 }
 
 .wave-playhead {
@@ -494,6 +569,19 @@ main {
   justify-content: center;
   height: 100%;
   border-bottom: 1px solid rgba(102, 217, 239, 0.32);
+  border-radius: 4px 4px 0 0;
+}
+
+.beat-cell-focused {
+  border-bottom-color: var(--cyan);
+  background: rgba(102, 217, 239, 0.09);
+  box-shadow: inset 0 0 0 1px rgba(102, 217, 239, 0.28), 0 0 12px rgba(102, 217, 239, 0.08);
+}
+
+.beat-cell-focused-holding {
+  border-bottom-color: var(--amber);
+  background: rgba(255, 196, 107, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 196, 107, 0.32), 0 0 12px rgba(255, 196, 107, 0.08);
 }
 
 .beat-bar {
@@ -501,6 +589,17 @@ main {
   min-height: 5px;
   border-radius: 4px 4px 0 0;
   background: rgba(102, 217, 239, 0.38);
+}
+
+.beat-cell-focused .beat-bar {
+  width: 7px;
+  background: var(--cyan);
+  box-shadow: 0 0 10px rgba(102, 217, 239, 0.46);
+}
+
+.beat-cell-focused-holding .beat-bar {
+  background: var(--amber);
+  box-shadow: 0 0 10px rgba(255, 196, 107, 0.4);
 }
 
 .beat-index,
@@ -519,6 +618,10 @@ main {
   bottom: 3px;
   color: var(--cyan);
   transform: rotate(-90deg) translateX(9px);
+}
+
+.beat-cell-focused-holding .beat-value {
+  color: var(--amber);
 }
 
 .structure-stage {
@@ -1516,6 +1619,10 @@ footer {
   .section-intro {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .signal-status-cluster {
+    align-items: flex-start;
   }
 
   .input-controls {
