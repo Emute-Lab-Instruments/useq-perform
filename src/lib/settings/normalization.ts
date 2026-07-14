@@ -158,6 +158,10 @@ export function normalizeUserSettings(value: unknown): AppSettings {
         runtime.startLocallyWithoutHardware == null
           ? defaults.runtime.startLocallyWithoutHardware
           : runtime.startLocallyWithoutHardware !== false,
+      failureMode:
+        runtime.failureMode === "lkg" || runtime.failureMode === "zero"
+          ? runtime.failureMode
+          : defaults.runtime.failureMode,
     },
     wasm: {
       ...defaults.wasm,

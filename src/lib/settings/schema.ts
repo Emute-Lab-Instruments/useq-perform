@@ -122,9 +122,26 @@ export interface VisualisationSettings {
   snippetOscilloscopesEnabled: boolean;
 }
 
+/**
+ * Non-finite failure policy for the signal engine
+ * (src-useq/docs/specs/failure-model.md §3.2).
+ *
+ * - `"lkg"`  — default: a non-finite value at an output root falls back to the
+ *   output's last-known-good value and raises a runtime diagnostic.
+ * - `"zero"` — legacy: every non-finite node result is clamped to `0.0`,
+ *   no fallback, no diagnostic.
+ */
+export type FailureMode = "lkg" | "zero";
+
 export interface RuntimeSettings {
   autoReconnect: boolean;
   startLocallyWithoutHardware: boolean;
+  /**
+   * Engine-global non-finite failure policy, applied to BOTH runtimes:
+   * WASM (`useq_set_failure_mode`) and hardware (wire `set-failure-mode`,
+   * wire-protocol.md §5.18). Not persisted on the device — re-sent on connect.
+   */
+  failureMode: FailureMode;
 }
 
 export interface WasmSettings {
@@ -485,6 +502,7 @@ export const defaultUserSettings: AppSettings = {
   runtime: {
     autoReconnect: true,
     startLocallyWithoutHardware: true,
+    failureMode: "lkg",
   },
   wasm: {
     enabled: true,

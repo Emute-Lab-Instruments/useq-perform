@@ -50,6 +50,7 @@ export {
   getIoConfig,
   sendStreamConfig,
   sendSetLiveInputs,
+  sendSetFailureMode,
   sendCalibrateBegin,
   sendCalibrateSetTarget,
   sendCalibrateAdjust,

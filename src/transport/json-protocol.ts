@@ -38,6 +38,7 @@ import {
 import { hwInput as hwInputChannel } from "../contracts/hardwareChannels";
 import type { HwInputEvent } from "../contracts/hardware";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
+import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 import { cleanCode, isPortWritable } from "./serial-utils.ts";
 
 import {
@@ -272,6 +273,12 @@ function completeHandshake(response: JsonResponse): void {
       sendDefaultStreamConfig(response.config);
     }
     startHeartbeat();
+    // The device boots in "lkg" and does not persist the failure mode —
+    // re-send the configured policy on every connect (wire-protocol.md §5.18).
+    const failureMode = getAppSettings()?.runtime?.failureMode ?? "lkg";
+    sendSetFailureMode(failureMode).catch((error: Error) => {
+      dbg(`set-failure-mode on connect failed: ${error.message}`);
+    });
     resolveHandshakeSignal();
   } else {
     console.warn("[json-protocol] JSON negotiation FAILED:", response.text || "no details", response);
@@ -450,6 +457,26 @@ export async function sendStreamConfig(
 
   return writeJsonRequest(
     { type: "stream-config", maxRateHz, channels },
+    { skipConsole: true, timeout: 5000 }
+  );
+}
+
+// ── Send failure mode ────────────────────────────────────────────────
+
+/**
+ * Send a `set-failure-mode` request (wire-protocol.md §5.18) configuring the
+ * device's non-finite failure policy: `"lkg"` (default — output-root LKG
+ * fallback + runtime diagnostic) or `"zero"` (legacy per-node zero-squash).
+ * The device does not persist the mode; callers re-send it on connect.
+ */
+export async function sendSetFailureMode(
+  mode: "lkg" | "zero"
+): Promise<JsonResponse> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+  return writeJsonRequest(
+    { type: "set-failure-mode", mode },
     { skipConsole: true, timeout: 5000 }
   );
 }

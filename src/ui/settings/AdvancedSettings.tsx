@@ -1,7 +1,7 @@
 import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { Section, FormRow, Checkbox, Select } from "./FormControls";
 import type { AppSettings } from "../../lib/appSettings.ts";
-import type { FormatSettings } from "../../lib/settings/schema.ts";
+import type { FailureMode, FormatSettings } from "../../lib/settings/schema.ts";
 
 export interface AdvancedSettingsProps {
   settings?: AppSettings;
@@ -27,6 +27,15 @@ export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
       runtime: {
         ...s().runtime,
         startLocallyWithoutHardware,
+      },
+    });
+  };
+
+  const handleFailureModeChange = (failureMode: FailureMode) => {
+    update({
+      runtime: {
+        ...s().runtime,
+        failureMode,
       },
     });
   };
@@ -63,6 +72,16 @@ export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
         <Checkbox
           checked={s().runtime?.startLocallyWithoutHardware !== false}
           onChange={handleStartLocallyWithoutHardwareChange}
+        />
+      </FormRow>
+      <FormRow label="Non-finite failure policy">
+        <Select
+          value={s().runtime?.failureMode ?? "lkg"}
+          options={[
+            { value: "lkg", label: "Last-known-good fallback (default)" },
+            { value: "zero", label: "Zero-squash (legacy)" },
+          ]}
+          onChange={(v) => handleFailureModeChange(v as FailureMode)}
         />
       </FormRow>
       <FormRow label="Enable WASM Interpreter">

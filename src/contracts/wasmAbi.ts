@@ -195,6 +195,16 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     returnType: null,
     argTypes: ["number"],
   },
+  useq_set_failure_mode: {
+    symbol: "useq_set_failure_mode",
+    returnType: "number",
+    argTypes: ["number"],
+  },
+  useq_get_failure_mode: {
+    symbol: "useq_get_failure_mode",
+    returnType: "number",
+    argTypes: [],
+  },
 } as const satisfies Record<string, CwrapDescriptor>);
 
 export type OptionalWasmExport = keyof typeof OPTIONAL_WASM_EXPORTS;

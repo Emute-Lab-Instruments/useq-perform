@@ -295,6 +295,30 @@ function readActiveDiagnosticsSync(): RuntimeDiagnostic[] {
 }
 
 // ---------------------------------------------------------------------------
+// Non-finite failure mode (failure-model.md §3.2, settings.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Push the configured non-finite failure policy to the in-process WASM
+ * engine via `useq_set_failure_mode` (0 = lkg, 1 = zero). Returns `true`
+ * when the export is present and the engine accepted the mode; `false`
+ * when the WASM runtime is not loaded or lacks the export.
+ */
+export function setWasmFailureModeSync(mode: "lkg" | "zero"): boolean {
+  try {
+    const runtime = (globalThis as {
+      __useqWasmRuntime?: { useq_set_failure_mode?: (mode: number) => number };
+    }).__useqWasmRuntime;
+    if (!runtime?.useq_set_failure_mode) return false;
+    // The export returns the mode in effect, or -1 for an invalid argument.
+    const requested = mode === "zero" ? 1 : 0;
+    return runtime.useq_set_failure_mode(requested) === requested;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // State snapshot application (state-sync.md §3)
 // ---------------------------------------------------------------------------
 

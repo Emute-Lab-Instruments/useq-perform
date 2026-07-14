@@ -77,6 +77,30 @@ describe("appSettings", () => {
     expect(invalid.structure.atomSlurpBehaviour).toBe("promote-to-vector");
   });
 
+  it("normalizes runtime.failureMode: lkg default, valid overrides, invalid coercion (failure-model.md §3.2)", async () => {
+    const settingsModule = await import("./appSettings.ts");
+
+    // Default applied when absent.
+    expect(settingsModule.normalizeUserSettings({}).runtime.failureMode).toBe("lkg");
+
+    // Valid overrides preserved.
+    expect(
+      settingsModule.normalizeUserSettings({ runtime: { failureMode: "zero" } }).runtime
+        .failureMode,
+    ).toBe("zero");
+    expect(
+      settingsModule.normalizeUserSettings({ runtime: { failureMode: "lkg" } }).runtime
+        .failureMode,
+    ).toBe("lkg");
+
+    // Invalid enum value falls back to the default.
+    expect(
+      settingsModule.normalizeUserSettings({
+        runtime: { failureMode: "banana" as never },
+      }).runtime.failureMode,
+    ).toBe("lkg");
+  });
+
   it("migrates legacy storage keys into canonical local storage once", async () => {
     const settingsModule = await import("./appSettings.ts");
     window.localStorage.setItem(
@@ -135,6 +159,7 @@ describe("appSettings", () => {
     expect(document.user.runtime).toEqual({
       autoReconnect: false,
       startLocallyWithoutHardware: false,
+      failureMode: "lkg",
     });
     expect(document.user.wasm).toEqual({ enabled: false });
     expect(document.user.visualisation).toMatchObject({
@@ -148,6 +173,7 @@ describe("appSettings", () => {
     expect(roundTripped.runtime).toEqual({
       autoReconnect: false,
       startLocallyWithoutHardware: false,
+      failureMode: "lkg",
     });
     expect(roundTripped.wasm).toEqual({ enabled: false });
     expect(roundTripped.visualisation.windowDuration).toBe(12);

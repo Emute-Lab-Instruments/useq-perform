@@ -46,6 +46,8 @@ export interface UseqWasmRuntimeGlobal {
   useq_get_live_slots?: () => string;
   useq_apply_state_snapshot?: (json: string) => number;
   useq_set_input_value?: (channel: number, value: number) => void;
+  useq_set_failure_mode?: (mode: number) => number;
+  useq_get_failure_mode?: () => number;
 }
 
 // Emscripten module interface (minimal typing for what we use)
@@ -697,6 +699,10 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const probeSampleFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_sample) as ((slot: number, start: number, end: number, count: number, bufPtr: number, bufCap: number) => number) | null;
   const probeFreeFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_free) as ((slot: number) => void) | null;
 
+  // Bind non-finite failure-mode ABI exports (failure-model.md §3.2)
+  const setFailureModeFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_set_failure_mode) as ((mode: number) => number) | null;
+  const getFailureModeFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_get_failure_mode) as (() => number) | null;
+
   // Probe sample buffer — reuses same pattern as the batch evaluator
   let probeBufPtr = 0;
   let probeBufCap = 0;
@@ -736,9 +742,19 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     useq_get_live_slots: getLiveSlotsFn ?? undefined,
     useq_apply_state_snapshot: applyStateSnapshotFn ?? undefined,
     useq_set_input_value: setInputValueFn ?? undefined,
+    useq_set_failure_mode: setFailureModeFn ?? undefined,
+    useq_get_failure_mode: getFailureModeFn ?? undefined,
   };
 
   useq_init();
+
+  // Apply the user's configured non-finite failure policy at init so the
+  // fresh engine matches the setting (the engine boots in "lkg" by default;
+  // the setting may select the legacy zero-squash mode).
+  if (setFailureModeFn) {
+    const configuredMode = getAppSettings()?.runtime?.failureMode;
+    setFailureModeFn(configuredMode === "zero" ? 1 : 0);
+  }
   dbg("uSEQ WASM interpreter initialised");
   lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
   lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();

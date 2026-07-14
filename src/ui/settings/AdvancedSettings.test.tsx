@@ -10,6 +10,7 @@ vi.mock("../../utils/settingsStore", () => ({
     runtime: {
       autoReconnect: true,
       startLocallyWithoutHardware: true,
+      failureMode: "lkg",
     },
     wasm: { enabled: true },
   },
@@ -58,6 +59,7 @@ describe("AdvancedSettings", () => {
       runtime: {
         autoReconnect: false,
         startLocallyWithoutHardware: true,
+        failureMode: "lkg",
       },
     });
   });
@@ -71,6 +73,27 @@ describe("AdvancedSettings", () => {
       runtime: {
         autoReconnect: true,
         startLocallyWithoutHardware: false,
+        failureMode: "lkg",
+      },
+    });
+  });
+
+  it("renders the failure-mode select and updates runtime.failureMode", () => {
+    render(() => <AdvancedSettings />);
+    expandSections();
+    expect(screen.getByText("Non-finite failure policy")).toBeTruthy();
+    const selects = document.querySelectorAll<HTMLSelectElement>("select");
+    const failureSelect = Array.from(selects).find((el) =>
+      Array.from(el.options).some((o) => o.value === "zero"),
+    );
+    expect(failureSelect).toBeTruthy();
+    expect(failureSelect!.value).toBe("lkg");
+    fireEvent.change(failureSelect!, { target: { value: "zero" } });
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
+      runtime: {
+        autoReconnect: true,
+        startLocallyWithoutHardware: true,
+        failureMode: "zero",
       },
     });
   });

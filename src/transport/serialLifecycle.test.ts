@@ -216,7 +216,8 @@ class FakeSerialPort {
     if (
       requestType === "stream-config" ||
       requestType === "ping" ||
-      requestType === "eval"
+      requestType === "eval" ||
+      requestType === "set-failure-mode"
     ) {
       setTimeout(() =>
         this.enqueueJson({
@@ -718,6 +719,7 @@ describe("hardware transport lifecycle", () => {
       expect(port.jsonRequests.map((r) => r.type)).toEqual([
         "hello",
         "stream-config",
+        "set-failure-mode",
       ]);
       expect(transport.getProtocolMode()).toBe("json");
     });
@@ -745,6 +747,7 @@ describe("hardware transport lifecycle", () => {
       expect(port.jsonRequests.map((r) => r.type)).toEqual([
         "hello",
         "stream-config",
+        "set-failure-mode",
         "eval",
       ]);
     });

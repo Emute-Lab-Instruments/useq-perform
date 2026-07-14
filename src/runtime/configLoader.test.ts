@@ -172,6 +172,7 @@ describe("configLoader", () => {
     expect(config.runtime).toEqual({
       autoReconnect: false,
       startLocallyWithoutHardware: false,
+      failureMode: "lkg",
     });
     expect(config.wasm).toEqual({ enabled: false });
     expect(config.visualisation.windowDuration).toBe(14);

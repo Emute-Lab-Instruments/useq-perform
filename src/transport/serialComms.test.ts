@@ -178,7 +178,11 @@ class FakeSerialPort {
       return;
     }
 
-    if (requestType === "stream-config" || requestType === "ping") {
+    if (
+      requestType === "stream-config" ||
+      requestType === "ping" ||
+      requestType === "set-failure-mode"
+    ) {
       setTimeout(() =>
         this.enqueueJson({
           requestId: request.requestId,
@@ -272,6 +276,7 @@ describe("serialComms fake host harness", () => {
     expect(port.jsonRequests.map((request) => request.type)).toEqual([
       "hello",
       "stream-config",
+      "set-failure-mode",
     ]);
     expect(serialComms.getProtocolMode()).toBe("json");
     expect(protocolEvents).toContainEqual({ protocolMode: "json" });
@@ -449,6 +454,7 @@ describe("serialComms fake host harness", () => {
     expect(port2.jsonRequests.map((r) => r.type)).toEqual([
       "hello",
       "stream-config",
+      "set-failure-mode",
     ]);
 
     await serialComms.disconnect();
