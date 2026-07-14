@@ -41,3 +41,6 @@ reports/
 .worktrees/
 src-useq-i2c-expander/
 midi-cv.useq
+src-useq-test-coverage/
+droid-wiki/
+graphify-out/
