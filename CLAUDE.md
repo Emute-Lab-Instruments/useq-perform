@@ -53,6 +53,7 @@ Before working on a feature, find and read the relevant spec(s). Match by keywor
 | state sync, drift, WASM↔hardware, recalibration, mismatch, desync, diverge, reconcile, shadow | `docs/specs/state-sync.md` |
 | state identity, stateful expressions, anonymous state, IDs, stable ID, identity tracking, state slot, refactor state | `docs/specs/state-identity.md` |
 | runtime contract, WASM ABI, capability split, firmware contract, exports, imports, boundary, API surface, interface | `docs/specs/runtime-contract.md` |
+| synthesis, audio engine, sound, standalone, AudioWorklet, worklet, Faust, NodeDef, node card, patch graph, control transport, SAB, audio thread, DSP, voice, browser synth | `docs/specs/synthesis.md` |
 
 **Language/firmware specs** (in `src-useq/docs/specs/`):
 
@@ -81,6 +82,7 @@ Before working on a feature, find and read the relevant spec(s). Match by keywor
 | hardware I/O, pins, LED, variants, boot sequence, GPIO, PWM, DAC, ADC, physical | `src-useq/docs/specs/hardware-io.md` |
 | visualisation projection, WASM fork, future frontier, prediction, lookahead, speculative, future rendering | `src-useq/docs/specs/visualisation-projection.md` |
 | devtools, instrumentation, telemetry, tick profiling, debug, performance, metrics, tracing, observability | `src-useq/docs/specs/devtools.md` |
+| synth form, synth nodes, NodeDef, node instance, audio params, instantiate, patching, inline routing, vector voices, rate class, smoothing, fade | `src-useq/docs/specs/synth-nodes.md` |
 
 ## Build and Development
 

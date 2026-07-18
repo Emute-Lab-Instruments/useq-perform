@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>uSEQ Synthesis UI Playground</title>
+<style>
+  :root {
+    --bg: #12141a;
+    --panel: #1a1d26;
+    --panel-2: #20242f;
+    --edge: #2c3140;
+    --text: #d7dae2;
+    --dim: #8a90a0;
+    --dimmer: #565c6b;
+    --mono: "JetBrains Mono", "Fira Code", "SF Mono", Consolas, monospace;
+    --accent: #5ec8d8;
+    --accent-2: #c792ea;
+    --num: #f2b26b;
+    --str: #a5d68a;
+    --kw: #7fb4f0;
+    --paren: #5a6070;
+    --ok: #63cf82;
+    --warn: #e0b34f;
+    --err: #e06c60;
+    --ghost: #6b7183;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--edge);
+    padding: 14px 26px 0;
+  }
+  header h1 { margin: 0 0 2px; font-size: 17px; font-weight: 600; }
+  header p { margin: 0 0 10px; color: var(--dim); font-size: 12.5px; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button {
+    background: none; border: none; color: var(--dim); cursor: pointer;
+    font: inherit; font-size: 13px; padding: 8px 12px;
+    border-bottom: 2px solid transparent;
+  }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+  nav button:hover { color: var(--text); }
+  main { max-width: 980px; margin: 0 auto; padding: 26px; }
+  section.tab { display: none; }
+  section.tab.active { display: block; }
+  .note {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-left: 3px solid var(--accent); border-radius: var(--radius);
+    padding: 10px 14px; color: var(--dim); font-size: 13px; margin: 0 0 18px;
+  }
+  .note b { color: var(--text); font-weight: 600; }
+  .variants {
+    display: flex; gap: 6px; margin: 0 0 20px; flex-wrap: wrap;
+  }
+  .variants label {
+    border: 1px solid var(--edge); border-radius: 20px; padding: 5px 14px;
+    cursor: pointer; color: var(--dim); font-size: 12.5px; user-select: none;
+  }
+  .variants input { display: none; }
+  .variants label:has(input:checked) {
+    border-color: var(--accent); color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  .variant { display: none; }
+  .variant.show { display: block; }
+  .caption { color: var(--dimmer); font-size: 12px; margin: 6px 2px 26px; }
+
+  /* ---------- editor chrome ---------- */
+  .editor {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: var(--radius); padding: 18px 0; position: relative;
+  }
+  .code {
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.65;
+    white-space: pre; padding: 0 18px 0 46px; position: relative;
+  }
+  .ln { position: absolute; left: 0; width: 34px; text-align: right;
+        color: var(--dimmer); font-size: 11px; user-select: none; }
+  .p  { color: var(--paren); }
+  .kw { color: var(--kw); }
+  .s  { color: var(--str); }
+  .n  { color: var(--num); }
+  .fn { color: var(--accent-2); }
+  .cm { color: var(--dimmer); font-style: italic; }
+
+  /* health dots */
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+  .dot.ok   { background: var(--ok);   box-shadow: 0 0 6px color-mix(in srgb, var(--ok) 60%, transparent); }
+  .dot.warn { background: var(--warn); box-shadow: 0 0 6px color-mix(in srgb, var(--warn) 60%, transparent); }
+  .dot.err  { background: var(--err);  box-shadow: 0 0 6px color-mix(in srgb, var(--err) 60%, transparent); }
+  .dot.off  { background: var(--dimmer); }
+
+  /* ---------- Variant A: rail (text-first) ---------- */
+  .railform { position: relative; margin: 14px 0; }
+  .railform .rail {
+    position: absolute; left: 38px; top: 2px; bottom: 2px; width: 3px;
+    border-radius: 2px; background: var(--ok); opacity: .85;
+  }
+  .railform .rail.warn { background: var(--warn); }
+  .railform .rail.err  { background: var(--err); }
+  .railform .formhead {
+    display: flex; gap: 8px; align-items: center;
+    padding: 0 18px 2px 46px; font-size: 11px; color: var(--dim);
+  }
+  .chip {
+    border: 1px solid var(--edge); border-radius: 10px; padding: 1px 8px;
+    font-size: 10.5px; color: var(--dim); background: var(--panel-2);
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .chip .x { cursor: pointer; color: var(--dimmer); font-size: 12px; }
+  .chip .x:hover { color: var(--err); }
+  .ghostline {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ghost);
+    padding: 1px 18px 0 46px; font-style: italic; cursor: pointer;
+  }
+  .ghostline:hover { color: var(--dim); }
+  .ghostline .plus { color: var(--accent); font-style: normal; }
+
+  /* ---------- Variant B: card ---------- */
+  .card {
+    background: var(--panel-2); border: 1px solid var(--edge);
+    border-radius: var(--radius); margin: 14px 18px; overflow: hidden;
+  }
+  .cardhead {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; background: color-mix(in srgb, var(--panel-2) 60%, var(--bg));
+    border-bottom: 1px solid var(--edge); font-size: 12.5px;
+  }
+  .cardhead .def { color: var(--accent-2); font-family: var(--mono); }
+  .cardhead .iname { color: var(--text); font-family: var(--mono); font-weight: 600; }
+  .cardhead .anon { color: var(--dimmer); font-family: var(--mono); font-size: 11px; }
+  .cardhead .spacer { flex: 1; }
+  .cardhead .meter {
+    width: 54px; height: 6px; border-radius: 3px; background: var(--bg);
+    overflow: hidden;
+  }
+  .cardhead .meter i { display: block; height: 100%; width: 62%;
+    background: linear-gradient(90deg, var(--ok), var(--warn)); }
+  .cardhead .free {
+    cursor: pointer; color: var(--dimmer); font-size: 15px; line-height: 1;
+    padding: 0 2px;
+  }
+  .cardhead .free:hover { color: var(--err); }
+  .prow {
+    display: grid; grid-template-columns: 92px 1fr 90px;
+    gap: 10px; align-items: center; padding: 5px 12px;
+    border-bottom: 1px solid color-mix(in srgb, var(--edge) 50%, transparent);
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  .prow:last-child { border-bottom: none; }
+  .prow .pname { color: var(--kw); }
+  .prow .pexpr { color: var(--text); white-space: pre; overflow-x: auto; }
+  .prow .pexpr .p { color: var(--paren); }
+  .prow.ghost { opacity: .5; }
+  .prow.ghost .pexpr { color: var(--ghost); font-style: italic; }
+  .prow.ghost:hover { opacity: .8; background: color-mix(in srgb, var(--accent) 4%, transparent); cursor: pointer; }
+  .spark { width: 88px; height: 22px; }
+  .spark path { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: .9; }
+  .spark.gate path { stroke: var(--num); }
+  .spark.flat path { stroke: var(--dimmer); }
+  .pval { color: var(--dim); font-size: 11px; text-align: right; }
+
+  /* ---------- lifecycle / gutter ---------- */
+  .gutterbtn {
+    position: absolute; left: 8px; width: 16px; height: 16px;
+    border-radius: 4px; border: 1px solid var(--edge); background: var(--panel-2);
+    color: var(--dim); font-size: 9px; line-height: 14px; text-align: center;
+    cursor: pointer;
+  }
+  .toolbar {
+    display: flex; gap: 10px; align-items: center; padding: 10px 18px;
+    border-bottom: 1px solid var(--edge); font-size: 12.5px; color: var(--dim);
+  }
+  .btn {
+    border: 1px solid var(--edge); background: var(--panel-2); color: var(--text);
+    border-radius: 6px; padding: 5px 12px; cursor: pointer; font: inherit; font-size: 12.5px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.warn { border-color: color-mix(in srgb, var(--warn) 50%, var(--edge)); }
+  .btn .cnt {
+    background: var(--warn); color: #1a1400; border-radius: 8px;
+    font-size: 10px; padding: 0 6px; margin-left: 6px; font-weight: 700;
+  }
+  .ghostcard {
+    margin: 14px 18px; border: 1px dashed color-mix(in srgb, var(--warn) 55%, var(--edge));
+    border-radius: var(--radius); padding: 10px 14px;
+    background: repeating-linear-gradient(45deg, transparent, transparent 8px,
+      color-mix(in srgb, var(--warn) 3%, transparent) 8px, color-mix(in srgb, var(--warn) 3%, transparent) 16px);
+    display: flex; align-items: center; gap: 12px; font-size: 12.5px;
+  }
+  .ghostcard .glabel { color: var(--warn); font-weight: 600; }
+  .ghostcard .gname { font-family: var(--mono); color: var(--text); }
+  .ghostcard .gdesc { color: var(--dim); flex: 1; }
+  .minibtn {
+    border: 1px solid var(--edge); background: none; color: var(--dim);
+    border-radius: 5px; padding: 3px 9px; cursor: pointer; font-size: 11.5px;
+  }
+  .minibtn:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ---------- engine states ---------- */
+  .statebar { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  .estate {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid var(--edge); border-radius: 8px; padding: 8px 14px;
+    font-size: 12.5px; background: var(--panel);
+  }
+  .estate b { font-weight: 600; }
+  .banner {
+    display: flex; align-items: center; gap: 12px;
+    border-radius: var(--radius); padding: 12px 16px; margin: 10px 0;
+    font-size: 13px;
+  }
+  .banner.suspended {
+    background: color-mix(in srgb, var(--warn) 10%, var(--panel));
+    border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--edge));
+  }
+  .banner.error {
+    background: color-mix(in srgb, var(--err) 10%, var(--panel));
+    border: 1px solid color-mix(in srgb, var(--err) 45%, var(--edge));
+  }
+  .banner .icon { font-size: 17px; }
+  .banner .desc { flex: 1; color: var(--dim); }
+  .banner b { color: var(--text); }
+  .pulse { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+
+  /* ---------- widgets ---------- */
+  .widgetrow {
+    display: flex; align-items: center; gap: 18px; padding: 14px 18px;
+    border-bottom: 1px solid color-mix(in srgb, var(--edge) 50%, transparent);
+  }
+  .knob {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--panel-2), var(--bg));
+    border: 2px solid var(--edge); position: relative; flex: none; cursor: grab;
+  }
+  .knob::after {
+    content: ""; position: absolute; left: 50%; top: 3px; width: 2px; height: 12px;
+    background: var(--accent); transform-origin: 50% 17px;
+    transform: translateX(-50%) rotate(var(--rot, 40deg)); border-radius: 1px;
+  }
+  .knob.ghosty { opacity: .45; border-style: dashed; }
+  .knob.ghosty::after { background: var(--ghost); }
+  .hslider {
+    width: 130px; height: 6px; background: var(--bg); border-radius: 3px;
+    position: relative; flex: none; cursor: grab;
+  }
+  .hslider i {
+    position: absolute; left: 0; top: 0; bottom: 0; width: var(--fill, 60%);
+    background: var(--accent); border-radius: 3px; opacity: .6;
+  }
+  .hslider::after {
+    content: ""; position: absolute; top: 50%; left: var(--fill, 60%);
+    width: 14px; height: 14px; border-radius: 50%; background: var(--text);
+    transform: translate(-50%, -50%); box-shadow: 0 1px 4px #0008;
+  }
+  .dragnum {
+    font-family: var(--mono); font-size: 13px; color: var(--num);
+    border-bottom: 1px dashed color-mix(in srgb, var(--num) 50%, transparent);
+    cursor: ew-resize; padding: 0 2px;
+  }
+  .wlabel { width: 210px; font-size: 12.5px; color: var(--dim); }
+  .wlabel b { color: var(--text); display: block; font-weight: 600; }
+  .codetiny {
+    font-family: var(--mono); font-size: 12px; color: var(--dim);
+    background: var(--bg); border: 1px solid var(--edge); border-radius: 6px;
+    padding: 6px 10px; white-space: pre;
+  }
+  .arrow { color: var(--dimmer); font-size: 16px; }
+  .midichip {
+    border: 1px solid color-mix(in srgb, var(--accent-2) 50%, var(--edge));
+    color: var(--accent-2); border-radius: 10px; font-size: 10px; padding: 1px 8px;
+  }
+
+  /* ---------- graph ---------- */
+  .graphwrap {
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: var(--radius); padding: 8px;
+  }
+  .gnode { fill: var(--panel-2); stroke: var(--edge); rx: 8; }
+  .gnode.sel { stroke: var(--accent); }
+  .glabel-def { fill: var(--accent-2); font: 11px var(--mono); }
+  .glabel-name { fill: var(--text); font: 600 12px var(--mono); }
+  .glabel-anon { fill: var(--dimmer); font: 10px var(--mono); }
+  .cable { fill: none; stroke: var(--accent); stroke-width: 2; opacity: .75; }
+  .ctick { fill: var(--kw); }
+  .gport { fill: var(--bg); stroke: var(--dim); }
+  legend-ish { color: var(--dim); }
+  .glegend { display: flex; gap: 18px; padding: 8px 10px 4px; font-size: 11.5px; color: var(--dim); }
+  .glegend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 14px; height: 3px; border-radius: 2px; background: var(--accent); display: inline-block; }
+  .swatch.ctl { background: var(--kw); height: 6px; width: 6px; border-radius: 50%; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>uSEQ Synthesis — UI Playground</h1>
+  <p>Hardcoded HTML/CSS mockups of the synth-node editor surfaces. Use the variant pills to compare options. Companion to <code>docs/design/synthesis-ux-forks.md</code>.
+  <b>Decisions 2026-07-18:</b> cards → A (rail, + togglable per-param scopes off by default); ghosts → B (status strip, hover-expand with actions); autoplay → any interaction resumes, no dedicated action; widgets → knob+slider, Ctrl+click toggles, min/max/step/curve popover; graph → adds composite expand/contract. Normative text: <code>docs/specs/synthesis.md</code> §7.</p>
+  <nav>
+    <button data-tab="cards" class="active">1 · Node cards</button>
+    <button data-tab="lifecycle">2 · Lifecycle &amp; ghosts</button>
+    <button data-tab="engine">3 · Engine states</button>
+    <button data-tab="widgets">4 · Param widgets</button>
+    <button data-tab="graph">5 · Graph overview</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ============================================================ -->
+<section class="tab active" id="tab-cards">
+  <div class="note"><b>The core question:</b> how much chrome does a <code>(synth ...)</code> form earn?
+  Variant A keeps the text primary (uSEQ's current gutter philosophy). Variant B restructures the form
+  into rows (strongest for ghost defaults + per-param vis). Variant C is the minimal control.
+  All three render the same two hardcoded forms; note the health states: <span class="dot ok"></span> running,
+  <span class="dot warn"></span> fallback (a param holding last finite value), <span class="dot err"></span> error.</div>
+
+  <div class="variants" data-group="cards">
+    <label><input type="radio" name="v-cards" value="a" checked> A · Rail — text-first</label>
+    <label><input type="radio" name="v-cards" value="b"> B · Card — structured rows</label>
+    <label><input type="radio" name="v-cards" value="c"> C · Minimal — gutter only</label>
+  </div>
+
+  <!-- Variant A -->
+  <div class="variant show" data-v="cards-a">
+    <div class="editor">
+      <div class="railform">
+        <div class="rail"></div>
+        <div class="formhead">
+          <span class="dot ok"></span>
+          <span class="chip"><span style="color:var(--accent-2)">voice/fm</span> · <b>pad</b> <span class="x">×</span></span>
+          <span class="chip">3 voices</span>
+        </div>
+        <div class="code"><span class="ln">1</span><span class="p">(</span><span class="fn">synth</span> <span class="s">"voice/fm"</span> <span class="kw">:name</span> <span class="s">"pad"</span>
+<span class="ln">2</span>  <span class="kw">:freq</span> <span class="p">(</span><span class="fn">*</span> <span class="p">[</span><span class="n">110 165 220</span><span class="p">]</span> <span class="p">(</span><span class="fn">pow</span> <span class="n">2</span> <span class="p">(</span><span class="fn">floor</span> <span class="p">(</span><span class="fn">*</span> <span class="n">2</span> bar<span class="p">))))</span>
+<span class="ln">3</span>  <span class="kw">:amp</span>  <span class="p">(</span><span class="fn">*</span> <span class="n">0.3</span> <span class="p">(</span><span class="fn">sin</span> <span class="p">(</span><span class="fn">*</span> pi bar<span class="p">)))</span>
+<span class="ln">4</span>  <span class="kw">:gate</span> <span class="p">(</span><span class="fn">sqr</span> <span class="p">(</span><span class="fn">*</span> <span class="n">4</span> beat<span class="p">)))</span></div>
+        <div class="ghostline"><span class="plus">+</span> 4 defaults — mod-ratio 2 · mod-amt 100 · attack 0.01 · pan 0 <span style="opacity:.6">(click to expand)</span></div>
+      </div>
+
+      <div class="railform">
+        <div class="rail warn"></div>
+        <div class="formhead">
+          <span class="dot warn"></span>
+          <span class="chip"><span style="color:var(--accent-2)">filt/svf</span> · <b>bass</b> <span class="x">×</span></span>
+          <span class="chip" style="color:var(--warn)">cutoff: holding last finite value</span>
+        </div>
+        <div class="code"><span class="ln">6</span><span class="p">(</span><span class="fn">synth</span> <span class="s">"filt/svf"</span> <span class="kw">:name</span> <span class="s">"bass"</span>
+<span class="ln">7</span>  <span class="kw">:in</span>     <span class="p">(</span><span class="fn">synth</span> <span class="s">"osc/saw"</span> <span class="kw">:freq</span> <span class="p">(</span><span class="fn">*</span> <span class="n">55</span> <span class="p">(</span><span class="fn">pow</span> <span class="n">2</span> <span class="p">(</span><span class="fn">floor</span> <span class="p">(</span><span class="fn">*</span> <span class="n">4</span> bar<span class="p">)))))</span>
+<span class="ln">8</span>  <span class="kw">:cutoff</span> <span class="p">(</span><span class="fn">/</span> <span class="n">1500</span> <span class="p">(</span><span class="fn">-</span> bar bar<span class="p">))</span>  <span class="cm">; ← divides by zero: NaN substituted</span>
+<span class="ln">9</span>  <span class="kw">:res</span>    <span class="n">0.4</span><span class="p">)</span></div>
+        <div class="ghostline"><span class="plus">+</span> 2 defaults — drive 0 · pan 0</div>
+      </div>
+    </div>
+    <p class="caption">A: the code is untouched and fully editable; a coloured rail + floating chip row carry identity,
+    health, voices, and the free ×. Ghost defaults are one collapsed italic line. Cheapest to build on the existing gutter machinery.</p>
+  </div>
+
+  <!-- Variant B -->
+  <div class="variant" data-v="cards-b">
+    <div class="editor">
+      <div class="card">
+        <div class="cardhead">
+          <span class="dot ok"></span>
+          <span class="def">voice/fm</span><span class="iname">pad</span>
+          <span class="chip">3 voices</span>
+          <span class="spacer"></span>
+          <div class="meter"><i></i></div>
+          <span class="free" title="free node">×</span>
+        </div>
+        <div class="prow">
+          <span class="pname">:freq</span>
+          <span class="pexpr"><span class="p">(</span>* [110 165 220] <span class="p">(</span>pow 2 <span class="p">(</span>floor <span class="p">(</span>* 2 bar<span class="p">))))</span></span>
+          <svg class="spark" viewBox="0 0 88 22"><path d="M0,16 L14,16 L14,9 L30,9 L30,13 L46,13 L46,4 L62,4 L62,16 L88,16"/></svg>
+        </div>
+        <div class="prow">
+          <span class="pname">:amp</span>
+          <span class="pexpr"><span class="p">(</span>* 0.3 <span class="p">(</span>sin <span class="p">(</span>* pi bar<span class="p">)))</span></span>
+          <svg class="spark" viewBox="0 0 88 22"><path d="M0,18 C14,2 30,2 44,11 C58,20 74,20 88,5"/></svg>
+        </div>
+        <div class="prow">
+          <span class="pname">:gate</span>
+          <span class="pexpr"><span class="p">(</span>sqr <span class="p">(</span>* 4 beat<span class="p">))</span></span>
+          <svg class="spark gate" viewBox="0 0 88 22"><path d="M0,18 L0,4 L11,4 L11,18 L22,18 L22,4 L33,4 L33,18 L44,18 L44,4 L55,4 L55,18 L66,18 L66,4 L77,4 L77,18 L88,18"/></svg>
+        </div>
+        <div class="prow ghost">
+          <span class="pname">:mod-ratio</span>
+          <span class="pexpr">2 (default)</span>
+          <svg class="spark flat" viewBox="0 0 88 22"><path d="M0,11 L88,11"/></svg>
+        </div>
+        <div class="prow ghost">
+          <span class="pname">:mod-amt</span>
+          <span class="pexpr">100 (default)</span>
+          <svg class="spark flat" viewBox="0 0 88 22"><path d="M0,11 L88,11"/></svg>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardhead">
+          <span class="dot err"></span>
+          <span class="def">fx/delay</span><span class="anon">·anon·k3f2</span>
+          <span class="chip" style="color:var(--err)">DSP trap — muted</span>
+          <span class="spacer"></span>
+          <div class="meter"><i style="width:0"></i></div>
+          <span class="free">×</span>
+        </div>
+        <div class="prow">
+          <span class="pname">:in</span>
+          <span class="pexpr"><span class="p">(</span>node "pad"<span class="p">)</span></span>
+          <svg class="spark flat" viewBox="0 0 88 22"><path d="M0,11 L88,11"/></svg>
+        </div>
+        <div class="prow">
+          <span class="pname">:time</span>
+          <span class="pexpr"><span class="p">(</span>slew 0.375 0.2<span class="p">)</span></span>
+          <svg class="spark flat" viewBox="0 0 88 22"><path d="M0,11 L88,11"/></svg>
+        </div>
+      </div>
+    </div>
+    <p class="caption">B: the form becomes rows — one per bound param with inline scope + one dimmed row per omitted default
+    (hover invites claiming it). Strongest feedback density; but the raw text is now behind the card (edit-in-place vs
+    flip-to-text is a sub-decision). Second card shows an anonymous node (auto-ID) in the trap-contained error state.</p>
+  </div>
+
+  <!-- Variant C -->
+  <div class="variant" data-v="cards-c">
+    <div class="editor">
+      <div class="railform">
+        <div class="code"><span class="ln">1</span><span class="gutterbtn" style="top:2px" title="node running · click to free">●</span><span class="p">(</span><span class="fn">synth</span> <span class="s">"voice/fm"</span> <span class="kw">:name</span> <span class="s">"pad"</span>
+<span class="ln">2</span>  <span class="kw">:freq</span> <span class="p">(</span><span class="fn">*</span> <span class="p">[</span><span class="n">110 165 220</span><span class="p">]</span> <span class="p">(</span><span class="fn">pow</span> <span class="n">2</span> <span class="p">(</span><span class="fn">floor</span> <span class="p">(</span><span class="fn">*</span> <span class="n">2</span> bar<span class="p">))))</span>
+<span class="ln">3</span>  <span class="kw">:amp</span>  <span class="p">(</span><span class="fn">*</span> <span class="n">0.3</span> <span class="p">(</span><span class="fn">sin</span> <span class="p">(</span><span class="fn">*</span> pi bar<span class="p">)))</span>
+<span class="ln">4</span>  <span class="kw">:gate</span> <span class="p">(</span><span class="fn">sqr</span> <span class="p">(</span><span class="fn">*</span> <span class="n">4</span> beat<span class="p">)))</span></div>
+      </div>
+    </div>
+    <p class="caption">C: nothing but a gutter dot (health + free on click). Defaults invisible until you ask.
+    Maximum text purity, minimum learnability — probably right as a "zen" toggle state of A or B rather than the default.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="tab" id="tab-lifecycle">
+  <div class="note"><b>The upsert/doc-sync model made visible.</b> The pad's code was deleted from the buffer
+  but the node is still sounding. The question is how loudly the UI should carry that gap.
+  Also mocked: the document-sync action as the "make reality match the buffer" gesture.</div>
+
+  <div class="variants" data-group="life">
+    <label><input type="radio" name="v-life" value="a" checked> A · Ghost card at buffer end</label>
+    <label><input type="radio" name="v-life" value="b"> B · Status strip only</label>
+  </div>
+
+  <div class="variant show" data-v="life-a">
+    <div class="editor">
+      <div class="toolbar">
+        <button class="btn">▶ Eval form</button>
+        <button class="btn warn">⟳ Sync document <span class="cnt">2 will be freed</span></button>
+        <span style="flex:1"></span>
+        <span style="font-size:11.5px">5 nodes sounding · 3 in document</span>
+      </div>
+      <div class="railform" style="margin-top:14px">
+        <div class="rail"></div>
+        <div class="formhead"><span class="dot ok"></span>
+          <span class="chip"><span style="color:var(--accent-2)">filt/svf</span> · <b>bass</b> <span class="x">×</span></span></div>
+        <div class="code"><span class="ln">1</span><span class="p">(</span><span class="fn">synth</span> <span class="s">"filt/svf"</span> <span class="kw">:name</span> <span class="s">"bass"</span> <span class="kw">:in</span> <span class="p">(</span><span class="fn">synth</span> <span class="s">"osc/saw"</span> <span class="kw">:freq</span> <span class="n">55</span><span class="p">)</span> <span class="kw">:cutoff</span> <span class="n">1200</span><span class="p">)</span></div>
+      </div>
+      <div class="code" style="margin:10px 0"><span class="ln">3</span><span class="cm">;; pad code deleted two evals ago — still sounding ↓</span></div>
+
+      <div class="ghostcard">
+        <span class="glabel">👻 sounding, not in document</span>
+        <span class="gname">pad</span> <span style="color:var(--accent-2);font-family:var(--mono);font-size:11px">voice/fm</span>
+        <span class="gdesc">last evaluated 2m ago · 3 voices</span>
+        <button class="minibtn">restore code</button>
+        <button class="minibtn">fade out ×</button>
+      </div>
+      <div class="ghostcard" style="opacity:.8">
+        <span class="glabel">👻 sounding, not in document</span>
+        <span class="gname">·anon·b21c</span> <span style="color:var(--accent-2);font-family:var(--mono);font-size:11px">fx/delay</span>
+        <span class="gdesc">last evaluated 6m ago</span>
+        <button class="minibtn">restore code</button>
+        <button class="minibtn">fade out ×</button>
+      </div>
+    </div>
+    <p class="caption">A: ghosts are first-class citizens pinned after the buffer — impossible to forget, one click to
+    resolve either direction (bring the code back, or kill the sound). "Restore code" is the safety net that makes
+    aggressive screen-tidying feel safe. Sync-document button announces its blast radius before you press it.</p>
+  </div>
+
+  <div class="variant" data-v="life-b">
+    <div class="editor">
+      <div class="toolbar">
+        <button class="btn">▶ Eval form</button>
+        <button class="btn warn">⟳ Sync document <span class="cnt">2</span></button>
+        <span style="flex:1"></span>
+        <span style="font-size:11.5px"><span class="dot warn"></span>&nbsp; 5 sounding · <b style="color:var(--warn)">2 ghosts</b> · hover to list</span>
+      </div>
+      <div class="railform" style="margin-top:14px">
+        <div class="rail"></div>
+        <div class="formhead"><span class="dot ok"></span>
+          <span class="chip"><span style="color:var(--accent-2)">filt/svf</span> · <b>bass</b> <span class="x">×</span></span></div>
+        <div class="code"><span class="ln">1</span><span class="p">(</span><span class="fn">synth</span> <span class="s">"filt/svf"</span> <span class="kw">:name</span> <span class="s">"bass"</span> <span class="kw">:in</span> <span class="p">(</span><span class="fn">synth</span> <span class="s">"osc/saw"</span> <span class="kw">:freq</span> <span class="n">55</span><span class="p">)</span> <span class="kw">:cutoff</span> <span class="n">1200</span><span class="p">)</span></div>
+      </div>
+    </div>
+    <p class="caption">B: ghosts live only in a status count (expandable on hover). The buffer stays pristine —
+    but a performer in flow will not read a counter, and the first haunting will hurt. Probably the "expert mode"
+    of A, not a competitor.</p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="tab" id="tab-engine">
+  <div class="note"><b>The four engine states</b>, and the two that must be loud: <b>suspended</b>
+  (browser autoplay gate — especially the gamepad trap, where the performer's controller cannot grant audio permission)
+  and <b>error</b> (producer death → faded to silence, never a drone).</div>
+
+  <div class="statebar">
+    <span class="estate"><span class="dot off"></span> audio <b>off</b></span>
+    <span class="estate" style="border-color:color-mix(in srgb,var(--warn) 45%,var(--edge))"><span class="dot warn pulse"></span> audio <b>suspended</b></span>
+    <span class="estate" style="border-color:color-mix(in srgb,var(--ok) 40%,var(--edge))"><span class="dot ok"></span> audio <b>running</b> · 5 nodes · 31%</span>
+    <span class="estate" style="border-color:color-mix(in srgb,var(--err) 45%,var(--edge))"><span class="dot err pulse"></span> audio <b>error</b></span>
+  </div>
+
+  <div class="banner suspended">
+    <span class="icon">🔇</span>
+    <span class="desc"><b>Sound is ready but the browser needs a gesture.</b><br>
+    Press any key or click anywhere to enable audio. <i>(Gamepad input can't unlock sound — browser rule, not ours.)</i></span>
+    <button class="btn">Enable sound</button>
+  </div>
+
+  <div class="banner error">
+    <span class="icon">⛔</span>
+    <span class="desc"><b>Audio engine stopped — output faded to silence.</b><br>
+    The control producer stopped responding (WASM runtime crashed). Hardware outputs are unaffected.</span>
+    <button class="btn">Reinitialise</button>
+  </div>
+
+  <p class="caption">The running chip doubles as a load meter (audio-thread budget %). Suspended/error pulse;
+  off is inert grey. These states join the existing transport-mode indicator family
+  (transport-none / transport-wasm / transport-both / transport-hardware colour language).</p>
+</section>
+
+<!-- ============================================================ -->
+<section class="tab" id="tab-widgets">
+  <div class="note"><b>Claiming a default.</b> A ghost row can be touched three ways, escalating in commitment.
+  The key contract: the widget's value <b>is written into the source text</b> — the document stays the truth.
+  Drag/MIDI-learn escalates to the full <code>live-edit</code> wrapper (that's where slots, persistence and MIDI live).</div>
+
+  <div class="editor">
+    <div class="widgetrow">
+      <div class="wlabel"><b>1 · Ghost knob</b> hover a default row</div>
+      <div class="knob ghosty" style="--rot:-30deg"></div>
+      <span class="codetiny" style="opacity:.55; font-style:italic">:mod-amt 100 (default)</span>
+      <span class="arrow">— nothing in the text yet</span>
+    </div>
+    <div class="widgetrow">
+      <div class="wlabel"><b>2 · Click / type</b> materialises a literal</div>
+      <div class="knob" style="--rot:20deg"></div>
+      <span class="codetiny"><span style="color:var(--kw)">:mod-amt</span> <span class="dragnum">340</span></span>
+      <span class="arrow">→ plain literal written into the form</span>
+    </div>
+    <div class="widgetrow">
+      <div class="wlabel"><b>3 · Drag or MIDI-learn</b> escalates to live-edit</div>
+      <div class="knob" style="--rot:70deg"></div>
+      <span class="codetiny"><span style="color:var(--kw)">:mod-amt</span> (<span style="color:var(--accent-2)">live-edit</span> <span class="dragnum">340</span> <span style="color:var(--kw)">:id</span> <span style="color:var(--str)">"k3f"</span> <span style="color:var(--kw)">:min</span> 0 <span style="color:var(--kw)">:max</span> 2000)</span>
+      <span class="midichip">CC 74 · ch 1</span>
+    </div>
+    <div class="widgetrow" style="border-bottom:none">
+      <div class="wlabel"><b>Alt: slider style</b> same contract, horizontal</div>
+      <div class="hslider" style="--fill:35%"><i></i></div>
+      <span class="codetiny"><span style="color:var(--kw)">:cutoff</span> <span class="dragnum">1240</span></span>
+    </div>
+  </div>
+  <p class="caption">The escalation ladder means casual tweaks stay textually cheap (a bare number) and only
+  deliberate performance-mapping pays the wrapper's syntactic cost. Knob vs slider vs bare drag-number is pure
+  taste per param range — the def's declared range powers all three.</p>
+</section>
+
+<!-- ============================================================ -->
+<section class="tab" id="tab-graph">
+  <div class="note"><b>Read-only patch graph</b>, generated from the compiled program. Audio cables are drawn;
+  control bindings are dots on the node (each dot = one ModuLisp-driven param — hover would preview the expression).
+  Clicking a node would jump the editor to its form.</div>
+
+  <div class="graphwrap">
+    <svg viewBox="0 0 900 320" width="100%">
+      <!-- cables -->
+      <path class="cable" d="M 218 84 C 280 84, 280 130, 342 130"/>
+      <path class="cable" d="M 520 130 C 580 130, 580 180, 640 180"/>
+      <path class="cable" d="M 520 246 C 580 246, 580 196, 640 196"/>
+      <path class="cable" d="M 218 246 C 270 246, 280 246, 342 246"/>
+
+      <!-- osc/saw (anon) -->
+      <rect class="gnode" x="80" y="58" width="138" height="52" rx="8"/>
+      <text class="glabel-def" x="94" y="78">osc/saw</text>
+      <text class="glabel-anon" x="94" y="96">·anon·a4c1</text>
+      <circle class="ctick" cx="94" cy="104" r="3"><title>:freq ← (* 55 (pow 2 …))</title></circle>
+      <circle class="gport" cx="218" cy="84" r="5"/>
+
+      <!-- filt/svf bass -->
+      <rect class="gnode sel" x="342" y="104" width="178" height="52" rx="8"/>
+      <text class="glabel-def" x="356" y="124">filt/svf</text>
+      <text class="glabel-name" x="356" y="142">bass</text>
+      <circle class="ctick" cx="356" cy="150" r="3"><title>:cutoff ← (+ 1500 (* 1000 (sin …)))</title></circle>
+      <circle class="ctick" cx="366" cy="150" r="3"><title>:res ← 0.4</title></circle>
+      <circle class="gport" cx="342" cy="130" r="5"/>
+      <circle class="gport" cx="520" cy="130" r="5"/>
+
+      <!-- voice/fm pad -->
+      <rect class="gnode" x="342" y="220" width="178" height="52" rx="8"/>
+      <text class="glabel-def" x="356" y="240">voice/fm</text>
+      <text class="glabel-name" x="356" y="258">pad · 3 voices</text>
+      <circle class="ctick" cx="356" cy="266" r="3"><title>:freq ← (* [110 165 220] …)</title></circle>
+      <circle class="ctick" cx="366" cy="266" r="3"><title>:amp ← (* 0.3 (sin …))</title></circle>
+      <circle class="ctick" cx="376" cy="266" r="3"><title>:gate ← (sqr (* 4 beat))</title></circle>
+      <circle class="gport" cx="520" cy="246" r="5"/>
+
+      <!-- delay feeding pad? no: pad -> (shown as cable from left node) -->
+      <rect class="gnode" x="80" y="220" width="138" height="52" rx="8"/>
+      <text class="glabel-def" x="94" y="240">fx/delay</text>
+      <text class="glabel-anon" x="94" y="258">·anon·b21c 👻</text>
+      <circle class="ctick" cx="94" cy="266" r="3"><title>:time ← (slew 0.375 0.2)</title></circle>
+      <circle class="gport" cx="218" cy="246" r="5"/>
+
+      <!-- out/stereo -->
+      <rect class="gnode" x="640" y="154" width="150" height="52" rx="8"/>
+      <text class="glabel-def" x="654" y="174">out/stereo</text>
+      <text class="glabel-name" x="654" y="192">main</text>
+      <circle class="gport" cx="640" cy="180" r="5"/>
+      <circle class="gport" cx="640" cy="196" r="5"/>
+    </svg>
+    <div class="glegend">
+      <span><span class="swatch"></span> audio cable</span>
+      <span><span class="swatch ctl"></span> ModuLisp-driven param (hover for expression)</span>
+      <span>👻 sounding, not in document</span>
+      <span>outlined = form at cursor</span>
+    </div>
+  </div>
+  <p class="caption">Orientation surface, not an editing surface (v1): it answers "what is sounding and how is it wired"
+  at a glance — including ghosts, which show up here even when their code is gone. The outlined node tracks the editor
+  cursor, making the text ↔ graph mapping legible for free.</p>
+</section>
+
+</main>
+
+<script>
+  // tabs
+  document.querySelectorAll("nav button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll("section.tab").forEach(s => s.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    });
+  });
+  // variant switchers
+  document.querySelectorAll(".variants input").forEach(r => {
+    r.addEventListener("change", () => {
+      const group = r.closest(".variants").dataset.group;
+      const section = r.closest("section");
+      section.querySelectorAll(".variant").forEach(v => {
+        v.classList.toggle("show", v.dataset.v === group + "-" + r.value);
+      });
+    });
+  });
+</script>
+</body>
+</html>

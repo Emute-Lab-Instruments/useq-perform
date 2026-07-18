@@ -200,6 +200,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.30 [expression-gutter.md](expression-gutter.md) — gutter rails (which expression is currently running per output) and play buttons (per-output vis toggle); failure/stale pulses; implicit soft sampling of toggled-but-unevaluated variants; eval implicitly toggles vis on (soft eval excepted); persistence and hardware-connect reset; `vis.toggleAtHalo` action.
 
+6.31 [synthesis.md](synthesis.md) — (accepted v1) browser modular audio engine: NodeDef registry (Faust-authored DSP behind a source-agnostic contract), single-worklet host with shared-memory zones, Worker-hosted control producer over an epoch-tagged SAB ring (audio frame clock as master time), sample-accurate gate edges, upsert/document-sync eval lifecycle, resource limits and failure containment, audio as a WASM-requiring capability, phased editor integration (node cards, per-param vis, param widgets, graph overview). Language counterpart: `../../src-useq/docs/specs/synth-nodes.md`.
+
 ---
 
 ## 7. Cross-References
