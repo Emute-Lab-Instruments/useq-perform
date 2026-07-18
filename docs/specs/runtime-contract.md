@@ -155,5 +155,5 @@ When firmware work starts in a standalone `uSEQ` clone:
 1. Land and validate the firmware change in the standalone repo.
 2. Promote it by advancing the `src-useq/` submodule in `useq-perform`.
 3. Rebuild copied artifacts if the WASM bundle changed: `npm run build:wasm` and `npm run build:assets`.
-4. Cite the pinned `src-useq` commit in the `bd` issue, PR description, or release note for any editor change that depends on firmware behavior.
+4. Cite the pinned `src-useq` commit in the `ergo` task, PR description, or release note for any editor change that depends on firmware behavior.
 5. Audit the submodule state first during any cross-repo investigation; standalone repos are advisory until step 2 is complete.

@@ -1,9 +1,16 @@
 # Handoff: WASM Visualisation Performance Audit & Re-engineering
 
+> **ARCHIVAL HANDOFF — 2026-03-25.**
+> Retained for historical context. The Beads (`bd`) / Dolt tracker IDs below
+> are from the retired tracker and may not resolve in `ergo` (the current
+> task tracker that replaced `bd` on 2026-06-15). Treat this document as
+> historical evidence, not current guidance. Recreate any still-relevant work
+> as an `ergo` task if it is not already tracked there.
+
 **Date**: 2026-03-25
 **Branch**: `v1.2.0`
-**Epic**: `useq-perform-xtd`
-**Beads tracker**: `bd show useq-perform-xtd` for full issue graph
+**Epic**: `useq-perform-xtd` (historical Beads epic ID; archival)
+**Beads tracker** (historical): `bd show useq-perform-xtd` for full issue graph
 
 ---
 

@@ -1,88 +1,98 @@
-# Beads Dolt Backend
+# Beads/Dolt Backend (FROZEN — Historical Only)
 
-This repository uses the Dolt-backed `bd` backend.
+> **Status: FROZEN / ARCHIVAL.**
+> `bd` (Beads) and its Dolt backend were **retired on 2026-06-15** when the
+> task tracker was replaced by **`ergo`** (the coding-work CLI over the Holon
+> EAV substrate). The Beads/Dolt server is read-only during the soak period.
+>
+> **Do not set up, configure, push to, or sync against Beads or Dolt for
+> current work.** Use `ergo` instead. See `README.md`, `CLAUDE.md`, and
+> `/home/w1n5t0n/agents/skills/ergo/SKILL.md` for the live workflow.
+>
+> This document is retained **only as archival reference** for the historical
+> Beads/Dolt setup. None of the commands or paths below are part of the current
+> task-tracking workflow. A fresh clone or fresh agent must not follow them.
 
-## Chosen Repo Defaults
+## What was here historically
 
-- Runtime model: server-backed Dolt
-- Shared connection defaults: `.beads/config.yaml`
-- Local overrides: `.beads/metadata.json` or `BEADS_DOLT_*` environment variables
-- Primary issue transport: Dolt, not `sync-branch`
-- Git-carried JSONL: retained as an artifact/backup path, not the canonical sync mechanism
-- Canonical remote: VPS-hosted Dolt remotes API via local SSH tunnel
+The repository previously used a Dolt-backed `bd` backend with shared
+connection defaults in `.beads/config.yaml` and machine-local overrides in
+`.beads/metadata.json` or `BEADS_DOLT_*` environment variables. The historical
+setup pointed at a VPS-hosted Dolt remotes API through a local SSH tunnel.
 
-The shared defaults currently assume a local Dolt SQL server on `127.0.0.1:3307` using database `beads_useq-perform` and user `root`.
+Those paths and commands are **not** the current workflow. They are documented
+here only so historical context remains discoverable.
 
-Under `bd 0.59.x`, `.beads/dolt` is the managed Dolt server data directory, not the repository itself. The actual Dolt repository for this project lives at `.beads/dolt/beads_useq-perform`.
+## Current workflow (replaces everything below)
 
-## Backend Options
+- CLI: `ergo` (symlink at `/home/w1n5t0n/.local/bin/ergo`)
+- Authoritative skill: `/home/w1n5t0n/agents/skills/ergo/SKILL.md`
+- Environment (loaded for every shell via `~/.zshenv` sourcing `~/.secrets/env`):
+  `HOLON_TOKEN`, `HOLON_CORE_URL`, optional `HOLON_PRINCIPAL`.
+- Beads/Dolt and `.beads/` are frozen, read-only historical infrastructure.
 
-According to the Beads docs and current CLI behavior, the practical choices are:
+For the live verbs (`create`, `ready`, `list`, `claim`, `done`, `kill`,
+`reopen`, `prioritize`, `block`, `show`) and the bd → ergo translation table,
+read `/home/w1n5t0n/agents/skills/ergo/SKILL.md`.
 
-1. Local-only server-backed Dolt
-   Use this when one machine owns the tracker or while the team is still choosing a remote.
+---
 
-2. Dolt-native remote sync
-   Configure a real remote/store and use `bd dolt push` / `bd dolt pull`.
+## Archival Beads/Dolt setup (DO NOT USE for current work)
 
-3. Protected-branch workflow
-   Use a dedicated sync branch only if branch protection requires it. This is not the default setup for this repo.
+The remainder of this file preserves the historical Beads/Dolt configuration
+untouched for archival reference. It is explicitly **not** load-bearing.
 
-4. Belt-and-suspenders backup
-   Keep JSONL in git as a secondary backup, but do not treat it as the primary source of truth.
+- Runtime model (historical): server-backed Dolt
+- Shared connection defaults (historical): `.beads/config.yaml`
+- Local overrides (historical): `.beads/metadata.json` or `BEADS_DOLT_*`
+- Primary issue transport (historical): Dolt, not `sync-branch`
+- Git-carried JSONL (historical): backup artifact only
+- Canonical remote (historical): VPS-hosted Dolt remotes API via local SSH tunnel
 
-## Best Practices
+The historical shared defaults assumed a local Dolt SQL server on
+`127.0.0.1:3307` using database `beads_useq-perform` and user `root`.
 
-- Keep shared, repo-wide connection defaults in `.beads/config.yaml`.
-- Keep machine-specific overrides and credentials out of git.
-- Prefer `bd dolt set <key> <value> --update-config` for shared host/port/user/database defaults.
-- Set secrets through environment variables such as `BEADS_DOLT_PASSWORD`.
-- Do not rely on `bd sync`; in the current CLI it is deprecated in favor of `bd dolt push` / `bd dolt pull`.
-- Do not reintroduce `sync-branch` unless the team explicitly adopts the protected-branch workflow.
-- Run `bd config validate` after configuring the remote.
+Under `bd 0.59.x`, `.beads/dolt` was the managed Dolt server data directory,
+not the repository itself. The historical Dolt repository for this project
+lived at `.beads/dolt/beads_useq-perform`.
 
-## Remote Setup
+### Historical backend options
 
-This repo now points at the VPS-hosted Dolt remotes API through a local SSH tunnel.
+1. Local-only server-backed Dolt — used when one machine owned the tracker.
+2. Dolt-native remote sync via `bd dolt push` / `bd dolt pull`.
+3. Protected-branch workflow on a dedicated sync branch (not default).
+4. Belt-and-suspenders JSONL backup in git (not the primary source of truth).
 
-Working setup:
+### Historical best practices (DO NOT apply to current work)
+
+- Repo-wide connection defaults lived in `.beads/config.yaml`.
+- Machine-specific overrides and credentials stayed out of git.
+- `bd dolt set` configured shared defaults.
+- Secrets went through `BEADS_DOLT_PASSWORD` and similar environment variables.
+- `bd sync` was deprecated in favour of `bd dolt push` / `bd dolt pull`.
+- `sync-branch` was not reintroduced unless the team adopted the protected-branch workflow.
+- `bd config validate` ran after configuring the remote.
+
+### Historical remote setup (DO NOT USE)
+
+The historical repo pointed at the VPS-hosted Dolt remotes API through a local
+SSH tunnel:
 
 ```bash
+# ARCHIVAL — do not run for current work.
 ssh -f -N -L 15051:127.0.0.1:50051 w1n5t0n@lnfinitemonkeys.org
-```
-
-With that tunnel running:
-
-```bash
 cd .beads/dolt/beads_useq-perform
 DOLT_REMOTE_PASSWORD='' dolt push --user root --set-upstream origin main
 ```
 
-The remote URL used by this repo is:
+The historical remote URL was `http://127.0.0.1:15051/useqperform`.
 
-```text
-http://127.0.0.1:15051/useqperform
-```
+This tunnel-based HTTP setup existed because the VPS remotes API listened on
+localhost only, the installed local Dolt version (`1.59.x`) did not support
+the newer SSH-native remote path cleanly, and `bd dolt push` did not expose
+`--user`.
 
-This tunnel-based HTTP setup is required because:
-
-- the VPS remotes API listens on localhost only
-- the installed local Dolt version (`1.59.x`) does not support the newer SSH-native remote path cleanly enough for this workflow
-- `bd dolt push` does not currently expose `--user`, so first-push / explicit push workflows may need plain `dolt push --user root`
-
-## Other Remote Choices
-
-- `dolthub://org/repo` for a hosted DoltHub remote
-- `host:port/database` for a direct peer/server connection
-- `file:///path/to/repo` only for local testing
-
-If this remote ever changes, update the shared config with:
-
-```bash
-bd config set federation.remote <remote-url>
-```
-
-## Sources
+### Historical sources (archival links)
 
 - https://github.com/monkey-w1n5t0n/beads/blob/main/docs/DOLT.md
 - https://github.com/monkey-w1n5t0n/beads/blob/main/docs/CONFIG.md

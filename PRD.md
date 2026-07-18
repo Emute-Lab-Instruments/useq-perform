@@ -129,7 +129,7 @@ The work decomposes into four code phases plus a parallel content phase. Each ph
 ### Phase D — Integration
 
 1. Replace the existing picker layer in `gamepad.md §6.5` with the radial-layer bindings (sticks → axis channels for ring cursors; LB/RB tap → tab cycle, press → freeze; face buttons → verbs in frozen; Back → cancel).
-2. Enumerate and migrate every site that opens the old `DoubleRadialPicker`: snippet picker, function reference picker, `gamepadMenuBridge.ts`, the live-edit panel's gamepad bindings, and any other consumers found in audit. Each is its own bd issue.
+2. Enumerate and migrate every site that opens the old `DoubleRadialPicker`: snippet picker, function reference picker, `gamepadMenuBridge.ts`, the live-edit panel's gamepad bindings, and any other consumers found in audit. Each is its own `ergo` task.
 3. Wire the Zen-mode implementation to mount the radial-menu adapter in exercise contexts (so practising users can reach the menu).
 4. End-to-end browser test: a recorded gamepad timeline produces the expected document via the full pipeline.
 5. Delete the old `DoubleRadialPicker`, `RadialMenu.tsx`, `pickerMenuModel.ts` files and `gamepadMenuBridge.ts`.
@@ -151,7 +151,7 @@ Code phases ship with a stub of ~10 entries so the menu is testable from Phase B
 
 7.2 **Verb handedness for Wrap and Call.** Spec is committed (Wrap left/right swaps argument order; Call left/right is sibling-position). Real-world ergonomics may surprise; track in Phase D testing and refine the spec.
 
-7.3 **Picker layer migration scope.** Phase D enumerates each consumer of the old `DoubleRadialPicker` as a separate bd issue. Total surface is roughly: snippet picker, function reference picker, `gamepadMenuBridge.ts`, live-edit panel gamepad bindings. Audit during Phase D kickoff to confirm completeness.
+7.3 **Picker layer migration scope.** Phase D enumerates each consumer of the old `DoubleRadialPicker` as a separate `ergo` task. Total surface is roughly: snippet picker, function reference picker, `gamepadMenuBridge.ts`, live-edit panel gamepad bindings. Audit during Phase D kickoff to confirm completeness.
 
 7.4 **Manifest content size.** ~40–100 entries with signatures and templates compresses to a small file. Target: ≤ 50 kB compressed. If exceeded, code-split or load-on-first-menu-open.
 

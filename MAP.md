@@ -196,7 +196,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - [docs/specs/formatting.md](docs/specs/formatting.md) — auto-formatting policy: when, what "well-formatted" means, width/complexity thresholds, user-layout preservation.
 - [docs/specs/zen-mode.md](docs/specs/zen-mode.md) — distraction-free structural editing practice environment.
 - [docs/specs/gamepad-handoff.md](docs/specs/gamepad-handoff.md) — gamepad pipeline rebuild status (working document).
-- [docs/BEADS_BACKEND.md](docs/BEADS_BACKEND.md) — bd / Dolt backend setup.
+- [docs/BEADS_BACKEND.md](docs/BEADS_BACKEND.md) — **archival** Beads/Dolt backend setup (frozen historical infrastructure; use `ergo` instead).
 - [docs/adr/](docs/adr/) — architectural decisions (`0001` runtime surfaces, `0002` config-manager scope, `0003` archive boundaries).
 - [src-useq/docs/specs/diagnostics.md](src-useq/docs/specs/diagnostics.md) — diagnostic data shapes and ABI; see [src-useq/docs/specs/failure-model.md](src-useq/docs/specs/failure-model.md) for failure semantics.
 - [inspector/CLAUDE.md](inspector/CLAUDE.md) — Inspector agent guide.
@@ -212,7 +212,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - `src/runtime/jsonProtocol.ts` and `src/transport/json-protocol.ts` are different files — the transport one is the wire driver, the runtime one is in-runtime helpers.
 - `src/lib/appSettings.ts` is the sanctioned settings barrel; schema/normalisation/persistence live under `src/lib/settings/` (internal split — import via the barrel).
 - `scripts/documentation/` is archival (pre-current pipelines); ignored by ESLint and not part of the live build.
-- bd uses a Dolt-backed backend in this repo; sync via `bd dolt push`/`bd dolt pull`, not `bd sync`.
+- Durable task tracking uses `ergo` (the coding-work CLI over the Holon EAV substrate). Beads (`bd`) and Dolt are frozen read-only historical infrastructure; `docs/BEADS_BACKEND.md` is retained only as archival reference.
 
 ## Specs
 

@@ -2,7 +2,7 @@
 
 This file provides guidance to coding agents working in this repository.
 
-**Note**: Use `bd` for task tracking. Do not use markdown TODO tracking. See `AGENTS.md`.
+**Note**: Use `ergo` for task tracking. Do not use markdown TODO tracking. See `README.md` and `/home/w1n5t0n/agents/skills/ergo/SKILL.md`. (Beads/`bd` and Dolt are frozen read-only historical infrastructure.)
 
 ## Project Overview
 

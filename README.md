@@ -50,11 +50,31 @@ Product scope, stable core, compatibility cuts, and out-of-scope items live in `
 
 Editor-facing firmware and WASM capability rules live in `docs/specs/runtime-contract.md`. Read that before auditing `src-useq` behavior or promoting standalone firmware work into the submodule.
 
-## Beads Backend
+## Task Tracking (Ergo)
 
-This repo uses the Dolt-backed Beads backend. Shared connection defaults live in `.beads/config.yaml`, while machine-specific overrides should stay local in `.beads/metadata.json` or `BEADS_DOLT_*` environment variables.
+This repo uses **`ergo`** for all durable task tracking. `ergo` is the
+coding-work CLI over the Holon EAV substrate and replaced Beads (`bd`) on
+**2026-06-15**. Beads and its Dolt backend are **frozen read-only** historical
+infrastructure — do not set up or sync against them for current work.
 
-See `docs/BEADS_BACKEND.md` for the supported backend options, the repo's chosen defaults, and the remaining remote-sync setup step.
+The `ergo` CLI is installed at `/home/w1n5t0n/.local/bin/ergo`. The required
+environment (`HOLON_TOKEN`, `HOLON_CORE_URL`, optional `HOLON_PRINCIPAL`) is
+loaded for every shell by `~/.zshenv` sourcing `~/.secrets/env`.
+
+```bash
+ergo ready              # unblocked open work
+ergo ready --mine       # filtered to your principal
+ergo show <id>          # inspect a task
+ergo create "Title" --type task --priority 1 --body "..."
+ergo claim <id>         # mark in progress under your principal
+ergo done <id> --reason "..."   # close (--reason is mandatory)
+```
+
+Do **not** create Markdown TODO lists for durable work. The authoritative
+workflow lives in `/home/w1n5t0n/agents/skills/ergo/SKILL.md`.
+
+`docs/BEADS_BACKEND.md` is retained only as **explicitly archival** reference
+for the historical Beads/Dolt setup.
 
 ## Dev-Mode Component Labels
 

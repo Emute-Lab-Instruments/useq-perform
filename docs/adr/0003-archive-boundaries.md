@@ -14,7 +14,7 @@ The following surfaces are archive-only unless a task explicitly asks for them:
 - `history/`
 - `history/heartbeat-runs/`
 - `scripts/documentation/`
-- superseded issue snapshots or raw `.beads/issues.jsonl` entries used as historical evidence
+- superseded issue snapshots or raw `.beads/issues.jsonl` entries used as historical evidence (the `.beads/` paths are archival artifacts from the retired Beads/Dolt tracker; current work uses `ergo`)
 
 These surfaces may preserve useful context, but they are not canonical instructions for current product, runtime, or backend behavior.
 

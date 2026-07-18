@@ -117,7 +117,7 @@ After every generated operation, the worker MUST assert the invariants below.
 
 4.3 Fixes for command-router, focus, and tree-construction failures SHOULD include a focused regression test outside the random harness when the minimal repro is small and stable.
 
-4.4 If a failure is valid but too large to fix immediately, create a `bd` issue with the replay and seed details. Do not leave only console output or markdown notes as the tracker.
+4.4 If a failure is valid but too large to fix immediately, create an `ergo` task with the replay and seed details. Do not leave only console output or markdown notes as the tracker.
 
 ---
 

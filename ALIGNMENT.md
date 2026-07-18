@@ -3,7 +3,13 @@
 Opinionated, dated diagnosis of the gap between this repo and its best-possible
 future. Counterpart to `MAP.md` ("what is"); this file is "how good is what is,
 vs. what we need". Pruned ruthlessly. If an entry crystallises into "fix now",
-promote it to a bead and delete it from here.
+promote it to an `ergo` task and delete it from here.
+
+> **Note on historical task IDs:** entries below reference short IDs from the
+> retired Beads (`bd`) / Dolt tracker. Those IDs are archival and may not
+> resolve in `ergo` (the current tracker that replaced `bd` on 2026-06-15).
+> Treat the IDs as historical pointers only; recreate any still-relevant work
+> as an `ergo` task if it is not already tracked there.
 
 Last full pass: **2026-05-05**.
 

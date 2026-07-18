@@ -19,24 +19,37 @@ function setupApp() {
 
 Read `README.md` and `docs/REPO_MAP.md` before treating a file or directory as authoritative. Treat `history/` and `scripts/documentation/` as archival unless the task explicitly asks for them.
 
-## Issue Tracking with bd
+## Issue Tracking with ergo
 
-This project uses `bd` for all task tracking. Do not create markdown TODO lists.
+This project uses **`ergo`** for all task tracking. Do not create markdown TODO lists.
+
+`ergo` is the coding-work CLI over the Holon EAV substrate and replaced
+Beads (`bd`) on 2026-06-15. Beads and its Dolt backend are **frozen
+read-only** historical infrastructure; do not configure, push, or sync
+against them for current work.
+
+The CLI lives at `/home/w1n5t0n/.local/bin/ergo`. The required environment
+(`HOLON_TOKEN`, `HOLON_CORE_URL`, optional `HOLON_PRINCIPAL`) is loaded for
+every shell by `~/.zshenv` sourcing `~/.secrets/env`. The authoritative
+workflow is `/home/w1n5t0n/agents/skills/ergo/SKILL.md`.
 
 ```bash
-bd ready --json
-bd update <id> --status in_progress --json
-bd create "Follow-up title" --description "Context" -t task -p 1 --deps discovered-from:<id> --json
-bd close <id> --reason "Completed" --json
+ergo ready
+ergo ready --mine
+ergo show <id>
+ergo create "Follow-up title" --type task --priority 1 --body "Context" --discovered-from <id>
+ergo claim <id>
+ergo done <id> --reason "Completed"
 ```
 
-Backend notes:
+Notes:
 
-- The repo uses the Dolt-backed `bd` backend.
-- Shared defaults live in `.beads/config.yaml`.
-- Machine-local overrides belong in `.beads/metadata.json` or `BEADS_DOLT_*` environment variables.
-- `.beads/issues.jsonl` is a backup artifact, not the canonical source of truth.
-- Use the current backend workflow in `docs/BEADS_BACKEND.md`; do not rely on `bd sync`.
+- Beads/`bd` and Dolt are frozen, read-only historical infrastructure.
+- `.beads/` paths (`.beads/config.yaml`, `.beads/metadata.json`,
+  `.beads/issues.jsonl`, `.beads/dolt/`) are archival backup artifacts from
+  the retired tracker, not the canonical source of truth.
+- `docs/BEADS_BACKEND.md` is retained only as explicitly archival reference
+  for the historical Beads/Dolt setup.
 
 Runtime notes:
 
@@ -46,13 +59,17 @@ Runtime notes:
 
 ## CLI Help
 
-Run `bd <command> --help` to see all available flags for any command.
-For example: `bd create --help` shows `--parent`, `--deps`, `--assignee`, etc.
+Run `ergo <verb> --help` (or `ergo help <verb>`) to see available flags for
+each verb (`create`, `ready`, `list`, `claim`, `done`, `kill`, `reopen`,
+`prioritize`, `block`, `show`). For the full verb reference and the
+`bd` → `ergo` translation table, read
+`/home/w1n5t0n/agents/skills/ergo/SKILL.md`.
 
 ## Important Rules
 
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Run `bd <cmd> --help` to discover available flags
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT commit `.beads/beads.db` (JSONL only)
+- ✅ Use `ergo` for ALL task tracking
+- ✅ Always use `--json` with `ergo list`/`ergo ready` for programmatic use
+- ✅ Run `ergo help <verb>` to discover available flags
+- ❌ Do NOT create markdown TODO lists for durable work
+- ❌ Do NOT use `bd`, `.beads/`, or Dolt for current work (frozen historical)
+- ❌ Do NOT commit `.beads/beads.db` (JSONL is a backup artifact only)
