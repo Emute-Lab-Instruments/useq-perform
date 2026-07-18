@@ -193,6 +193,17 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
         wasm: { enabled: true },
       },
       urlParams: {},
+      audioCapabilities: {
+        schemaVersion: 1,
+        crossOriginIsolated: false,
+        sharedArrayBufferAvailable: false,
+        audioWorkletAvailable: false,
+        workerAvailable: false,
+        sharedWebAssemblyMemoryAvailable: false,
+        audioCapable: false,
+        reasons: [],
+        capturedAt: 0,
+      },
     });
     startApp.mockResolvedValue(undefined);
   });

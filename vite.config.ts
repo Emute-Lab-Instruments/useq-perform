@@ -7,6 +7,25 @@ import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import { playwright } from '@vitest/browser-playwright';
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Cross-origin isolation headers required for SharedArrayBuffer, which the
+ * synthesis engine needs for its audio control ring.
+ *
+ * Applied consistently to:
+ *   - Vite dev server (`server.headers`)
+ *   - Vite preview server (`preview.headers`)
+ *   - port-5000 static server (`public/serve.json`)
+ *
+ * `COEP: credentialless` (rather than `require-corp`) keeps `?gist`/`?txt`
+ * CORS-capable fetches working without forcing every cross-origin asset to
+ * ship CORP headers, matching the deterministic URL behaviour required by
+ * VAL-HOST-010.
+ */
+const CROSS_ORIGIN_ISOLATION_HEADERS = {
+  'Cross-Origin-Opener-Policy': 'same-site',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
+} as const;
+
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig(({ command }) => ({
   base: "./",
@@ -40,6 +59,12 @@ export default defineConfig(({ command }) => ({
   root: '.',
   publicDir: false // Don't copy public dir since we're building into it
   ,
+  server: {
+    headers: { ...CROSS_ORIGIN_ISOLATION_HEADERS },
+  },
+  preview: {
+    headers: { ...CROSS_ORIGIN_ISOLATION_HEADERS },
+  },
   test: {
     projects: [
       {

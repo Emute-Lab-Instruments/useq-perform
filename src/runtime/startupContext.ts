@@ -37,6 +37,16 @@ let currentEnvironmentCapabilities: EnvironmentCapabilities = {
   ...DEFAULT_ENVIRONMENT_CAPABILITIES,
 };
 
+/**
+ * Immutable audio-capability snapshot captured once during bootstrap.
+ *
+ * Remains `null` until {@link applyStartupContext} runs, then is replaced with
+ * a frozen {@link AudioCapabilitySnapshot}. Telemetry consumers must read it
+ * through {@link getAudioCapabilitySnapshot} and never mutate the returned
+ * object (VAL-HOST-005 / VAL-HOST-011).
+ */
+let currentAudioCapabilitySnapshot: AudioCapabilitySnapshot | null = null;
+
 /** True once applyStartupContext() has been called. */
 let frozen = false;
 
@@ -80,10 +90,20 @@ export function getEnvironmentCapabilitiesSnapshot(): EnvironmentCapabilities {
 export function applyStartupContext(input: {
   startupFlags: StartupFlags;
   capabilities: EnvironmentCapabilities;
+  /**
+   * Optional injected probe. Bootstrap passes nothing so the real
+   * browser-global probe runs; tests inject a controlled probe.
+   */
+  audioCapabilityProbe?: AudioCapabilityProbe;
 }): void {
   assertNotFrozen("applyStartupContext");
   currentStartupFlags = Object.freeze(cloneStartupFlags(input.startupFlags));
   currentEnvironmentCapabilities = Object.freeze({ ...input.capabilities });
+  // Capture the immutable audio-capability snapshot as part of the frozen
+  // bootstrap context (VAL-HOST-005). The snapshot itself is frozen by
+  // detectAudioCapabilities().
+  const probe = input.audioCapabilityProbe ?? probeAudioCapabilities();
+  currentAudioCapabilitySnapshot = detectAudioCapabilities(probe);
   frozen = true;
 }
 
@@ -108,6 +128,7 @@ export function withStartupContextOverride<T>(
 ): T {
   const prevFlags = currentStartupFlags;
   const prevCaps = currentEnvironmentCapabilities;
+  const prevAudioSnapshot = currentAudioCapabilitySnapshot;
   const wasFrozen = frozen;
 
   frozen = false;
@@ -125,6 +146,11 @@ export function withStartupContextOverride<T>(
     ...DEFAULT_ENVIRONMENT_CAPABILITIES,
     ...override.capabilities,
   });
+  // Capture a fresh snapshot for the override scope (uses the real probe
+  // since override tests do not typically need to fake audio capability).
+  currentAudioCapabilitySnapshot = detectAudioCapabilities(
+    probeAudioCapabilities(),
+  );
   frozen = true;
 
   try {
@@ -132,6 +158,7 @@ export function withStartupContextOverride<T>(
   } finally {
     currentStartupFlags = prevFlags;
     currentEnvironmentCapabilities = prevCaps;
+    currentAudioCapabilitySnapshot = prevAudioSnapshot;
     frozen = wasFrozen;
   }
 }
@@ -144,6 +171,27 @@ export function resetStartupContextForTests(): void {
   frozen = false;
   currentStartupFlags = cloneStartupFlags(DEFAULT_STARTUP_FLAGS);
   currentEnvironmentCapabilities = { ...DEFAULT_ENVIRONMENT_CAPABILITIES };
+  currentAudioCapabilitySnapshot = null;
+}
+
+// ── Audio capability snapshot (immutable bootstrap telemetry) ───────
+
+import {
+  detectAudioCapabilities,
+  type AudioCapabilityProbe,
+  type AudioCapabilitySnapshot,
+} from "../contracts/audioCapabilities";
+import { probeAudioCapabilities } from "./audioCapabilityProbe";
+
+/**
+ * Return the immutable audio-capability snapshot captured during bootstrap.
+ *
+ * Returns `null` before {@link applyStartupContext} runs so callers can
+ * distinguish "not yet captured" from "captured and audio-capable". The
+ * returned snapshot (when present) is frozen; callers must not mutate it.
+ */
+export function getAudioCapabilitySnapshot(): AudioCapabilitySnapshot | null {
+  return currentAudioCapabilitySnapshot;
 }
 
 // ── URL parameter parsing ───────────────────────────────────────────
@@ -233,6 +281,12 @@ export interface EnvironmentState extends EnvironmentCapabilities {
   startupFlags: StartupFlags;
   userSettings: AppSettings;
   urlParams: Readonly<Record<string, string>>;
+  /**
+   * Immutable audio-capability snapshot captured during bootstrap. Present
+   * once examineEnvironment() has run. Consumers must treat this object as
+   * read-only telemetry (VAL-HOST-005 / VAL-HOST-011).
+   */
+  audioCapabilities: AudioCapabilitySnapshot;
 }
 
 export async function examineEnvironment(
@@ -263,6 +317,15 @@ export async function examineEnvironment(
     },
   });
 
+  const audioCapabilities = getAudioCapabilitySnapshot();
+  if (audioCapabilities === null) {
+    // Defensive — applyStartupContext above must populate the snapshot. If
+    // this ever fires it indicates a logic regression in the freeze path.
+    throw new Error(
+      "startupContext: audio capability snapshot was not captured during applyStartupContext",
+    );
+  }
+
   return {
     areInBrowser,
     areInDesktopApp,
@@ -271,5 +334,6 @@ export async function examineEnvironment(
     startupFlags,
     userSettings,
     urlParams: startupFlags.params,
+    audioCapabilities,
   };
 }

@@ -289,6 +289,18 @@ export async function bootstrap(): Promise<BootstrapResult> {
 
   const { userSettings, startupFlags } = environmentState;
 
+  // ── Step 2b: expose immutable audio-capability telemetry (devmode only)
+  //
+  // VAL-HOST-005 / VAL-HOST-011: the bootstrap snapshot is read-only
+  // devmode telemetry. Outside devmode the global is never installed so
+  // production surfaces stay inert. The exposed value is the same frozen
+  // object held by startupContext, so attempts to mutate it throw in
+  // strict mode.
+  if (startupFlags.devmode && typeof window !== "undefined") {
+    (window as unknown as { __useqAudioCapabilities?: unknown }).__useqAudioCapabilities =
+      environmentState.audioCapabilities;
+  }
+
   // ── Step 3: derive bootstrap plan (single call site) ───────────
   const bootstrapPlan = resolveBootstrapPlan({
     noModuleMode: startupFlags.noModuleMode,
