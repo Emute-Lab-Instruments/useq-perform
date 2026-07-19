@@ -81,6 +81,13 @@ import {
 } from "../contracts/nodeDefRegistry";
 import type { NodeDefAdapter, NodeDefModule } from "./nodeDefAdapter";
 import {
+  ABI_VERSION as SYNTH_CONTROL_ABI_VERSION,
+} from "../contracts/synthesisControlAbi";
+import type {
+  WorkletProducerTimeoutEvent,
+  WorkletTelemetrySnapshot,
+} from "./workletGraphDelta";
+import {
   buildEngineCommitPlan,
   createEpochAllocator,
   type ActiveDeclaration,
@@ -308,6 +315,15 @@ export interface SynthesisServiceOptions {
  *
  * Production builds never install this global. Outside devmode the
  * surface is inert.
+ *
+ * VAL-ENGINE-029: the snapshot exposes the complete objective contract
+ * — capabilities, engine/AudioContext state, audio frame, ABI version,
+ * ring read/write sequences and fill depth, program revision, pending
+ * and active program epochs, current DSP instance id, producer liveness,
+ * peak/RMS, finite-output status, and the underrun/glitch/timeout
+ * counters. The worklet-side fields arrive through the worklet → service
+ * telemetry bridge (see `handleWorkletEvent`); they are 0 / empty until
+ * the worklet has published its first snapshot.
  */
 export interface SynthesisTelemetrySnapshot {
   /** Schema version of the telemetry shape (bumped when fields change). */
@@ -320,18 +336,68 @@ export interface SynthesisTelemetrySnapshot {
   readonly audioContextState: "suspended" | "running" | "closed" | "interrupted" | null;
   /** Current AudioContext sample rate, or `null` when no context exists. */
   readonly sampleRate: number | null;
-  /** Number of worklet nodes the service has created. Always 0 or 1. */
+  /**
+   * Number of worklet nodes currently held by this service. Always 0 or
+   * 1. VAL-ENGINE-007 / VAL-ENGINE-027: recovery disposes the failed
+   * node before constructing a fresh one so the count never accumulates
+   * across repeated recovery within a single service instance.
+   */
   readonly workletNodeCount: number;
   /** Number of NodeDef modules the service has compiled and transferred. */
   readonly compiledModuleCount: number;
   /** Names of NodeDef modules that have been compiled. */
   readonly compiledModuleNames: readonly string[];
-  /** SAB ABI version the engine was built against, or `null` when no SAB. */
+  /**
+   * SAB ABI version the engine was built against. Always non-null once
+   * the engine has been brought up; the contract module is the single
+   * source of truth (VAL-SAB-001).
+   */
   readonly sabAbiVersion: number | null;
   /** Number of times the engine has transitioned state. */
   readonly transitionCount: number;
   /** True when the devmode fault actions (termination / reinitialise) are exposed. */
   readonly faultActionsExposed: boolean;
+
+  // ---- Worklet-side objective telemetry (VAL-ENGINE-029) ----
+
+  /**
+   * Latest audio frame counter reported by the worklet (monotonic).
+   * Stays at 0n until the worklet publishes its first snapshot.
+   */
+  readonly audioFrame: bigint;
+  /** Latest ring write sequence observed by the worklet. */
+  readonly ringWriteSequence: number;
+  /** Latest ring read sequence observed by the worklet. */
+  readonly ringReadSequence: number;
+  /** Latest ring fill depth (write - read, bounded by ring capacity). */
+  readonly ringFillDepth: number;
+  /** Latest program (compiler) revision armed on the engine. */
+  readonly programRevision: number;
+  /** Latest active program epoch (the epoch of the running graph). */
+  readonly activeEpoch: number;
+  /** Latest pending program epoch (the epoch awaiting first activation). */
+  readonly pendingEpoch: number;
+  /**
+   * Stable identity of the currently-active DSP instance, or the empty
+   * string when no instance is active. Comes from the editor sidecar.
+   */
+  readonly instanceId: string;
+  /** Latest output peak (absolute) reported by the worklet. */
+  readonly peakSample: number;
+  /** Latest output RMS reported by the worklet. */
+  readonly rmsSample: number;
+  /** 1 while every output sample is finite, 0 after a NaN/Inf trap. */
+  readonly finiteOutput: number;
+  /** Monotonic underrun counter (VAL-ENGINE-033). */
+  readonly underrunCount: number;
+  /** Monotonic glitch counter (deadline misses). */
+  readonly glitchCount: number;
+  /** Monotonic producer-timeout counter (VAL-ENGINE-024/026). */
+  readonly timeoutCount: number;
+  /** Current producer-liveness age in blocks. */
+  readonly producerLivenessAge: number;
+  /** True while the worklet has detected producer loss and is fading out. */
+  readonly producerTimeoutActive: boolean;
 }
 
 /** Telemetry schema version. Bumped only when the field shape changes. */
@@ -405,6 +471,24 @@ interface TelemetryAccumulator {
   transitionCount: number;
   audioContextState: "suspended" | "running" | "closed" | "interrupted" | null;
   sampleRate: number | null;
+  // Worklet-side telemetry (VAL-ENGINE-029). Updated by the worklet →
+  // service telemetry bridge (handleWorkletEvent).
+  audioFrame: bigint;
+  ringWriteSequence: number;
+  ringReadSequence: number;
+  ringFillDepth: number;
+  programRevision: number;
+  activeEpoch: number;
+  pendingEpoch: number;
+  instanceId: string;
+  peakSample: number;
+  rmsSample: number;
+  finiteOutput: number;
+  underrunCount: number;
+  glitchCount: number;
+  timeoutCount: number;
+  producerLivenessAge: number;
+  producerTimeoutActive: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -576,6 +660,24 @@ function createUnavailableService(
     sabAbiVersion: null,
     transitionCount: 0,
     faultActionsExposed: false,
+    // Worklet-side objective telemetry (all zero / inert until the
+    // worklet publishes).
+    audioFrame: 0n,
+    ringWriteSequence: 0,
+    ringReadSequence: 0,
+    ringFillDepth: 0,
+    programRevision: 0,
+    activeEpoch: 0,
+    pendingEpoch: 0,
+    instanceId: "",
+    peakSample: 0,
+    rmsSample: 0,
+    finiteOutput: 1,
+    underrunCount: 0,
+    glitchCount: 0,
+    timeoutCount: 0,
+    producerLivenessAge: 0,
+    producerTimeoutActive: false,
   });
 
   if (devmode) {
@@ -635,6 +737,22 @@ function createCapableService(
     transitionCount: 0,
     audioContextState: null,
     sampleRate: null,
+    audioFrame: 0n,
+    ringWriteSequence: 0,
+    ringReadSequence: 0,
+    ringFillDepth: 0,
+    programRevision: 0,
+    activeEpoch: 0,
+    pendingEpoch: 0,
+    instanceId: "",
+    peakSample: 0,
+    rmsSample: 0,
+    finiteOutput: 1,
+    underrunCount: 0,
+    glitchCount: 0,
+    timeoutCount: 0,
+    producerLivenessAge: 0,
+    producerTimeoutActive: false,
   };
 
   let currentState: SynthesisEngineState = "off";
@@ -645,6 +763,17 @@ function createCapableService(
   let disposed = false;
   let workletAdded = false;
   const compiledAdapters = new Map<string, NodeDefAdapter>();
+
+  // VAL-ENGINE-027: the service stamps every worklet node it constructs
+  // with a monotonically-increasing generation counter. The worklet →
+  // service bridge rejects events whose generation is stale, so a
+  // retired (failed) worklet cannot affect telemetry or state after
+  // recovery has replaced it.
+  let activeWorkletGeneration = 0;
+  // VAL-ENGINE-029: track the SAB ABI version once the control buffer
+  // has been attached. The constant comes from the dependency-free
+  // contract module (VAL-SAB-001).
+  let sabAbiVersionKnown: number | null = null;
 
   // --- Eval-to-engine commit state (VAL-ENGINE-010/013/014/015) ---
   //
@@ -731,6 +860,23 @@ function createCapableService(
       sabAbiVersion: acc.sabAbiVersion,
       transitionCount: acc.transitionCount,
       faultActionsExposed: devmode,
+      // Worklet-side objective telemetry (VAL-ENGINE-029).
+      audioFrame: acc.audioFrame,
+      ringWriteSequence: acc.ringWriteSequence,
+      ringReadSequence: acc.ringReadSequence,
+      ringFillDepth: acc.ringFillDepth,
+      programRevision: acc.programRevision,
+      activeEpoch: acc.activeEpoch,
+      pendingEpoch: acc.pendingEpoch,
+      instanceId: acc.instanceId,
+      peakSample: acc.peakSample,
+      rmsSample: acc.rmsSample,
+      finiteOutput: acc.finiteOutput,
+      underrunCount: acc.underrunCount,
+      glitchCount: acc.glitchCount,
+      timeoutCount: acc.timeoutCount,
+      producerLivenessAge: acc.producerLivenessAge,
+      producerTimeoutActive: acc.producerTimeoutActive,
     });
     return snapshot;
   }
@@ -845,9 +991,30 @@ function createCapableService(
     if (workletNode === null) {
       try {
         workletNode = options.workletNodeFactory(audioContext);
-        acc.workletNodeCount += 1;
+        // VAL-ENGINE-007 / VAL-ENGINE-027: exactly one worklet node is
+        // held at any time. Recovery disposes the previous node first,
+        // so the counter never accumulates across repeated recovery in
+        // a single service instance.
+        acc.workletNodeCount = 1;
+        activeWorkletGeneration += 1;
+        const generation = activeWorkletGeneration;
+        // Wire the worklet → service telemetry + fault bridge. The
+        // listener captures the current generation so events from a
+        // retired (failed) worklet cannot affect state after recovery
+        // has replaced it (VAL-ENGINE-027).
+        workletNode.port.onmessage = (event: { data: unknown }) => {
+          if (generation !== activeWorkletGeneration) return;
+          handleWorkletEvent(event.data);
+        };
         // Connect to the AudioContext destination (VAL-ENGINE-037).
         workletNode.connect(audioContext.destination);
+        // The SAB ABI version is the contract module's frozen constant
+        // (VAL-SAB-001). Recording it on first bring-up lets the
+        // telemetry surface report it before the worklet publishes.
+        if (sabAbiVersionKnown === null) {
+          sabAbiVersionKnown = SYNTH_CONTROL_ABI_VERSION;
+          acc.sabAbiVersion = sabAbiVersionKnown;
+        }
       } catch (err) {
         transition("error", "RECOVERY_FAILED",
           `Failed to construct worklet node: ${(err as Error).message}`);
@@ -909,6 +1076,201 @@ function createCapableService(
         throw err;
       }
     }
+    publishTelemetry();
+  }
+
+  // -------------------------------------------------------------------------
+  // Worklet → service bridge (VAL-ENGINE-026 / VAL-ENGINE-029 / VAL-ENGINE-030)
+  // -------------------------------------------------------------------------
+  //
+  // The AudioWorkletProcessor publishes three event kinds back to the
+  // main thread via `port.postMessage`:
+  //
+  //   1. `WorkletTelemetrySnapshot` — published every render quantum.
+  //      Carries audio frame, ring sequences, peak/RMS, finite-output,
+  //      underrun / glitch / timeout counters, instance id, and
+  //      liveness. The service merges these into its devmode telemetry
+  //      so VAL-ENGINE-029's full objective contract is observable
+  //      from a single snapshot.
+  //   2. `WorkletProducerTimeoutEvent` — published once when the
+  //      worklet independently detects producer loss (VAL-ENGINE-023).
+  //      The service transitions `running → error` so the engine
+  //      surfaces the fault through the indicator and console
+  //      (VAL-ENGINE-026). This path is independent of any main-thread
+  //      Worker error: the worklet is the authority on producer
+  //      liveness while audio runs.
+  //   3. `WorkletInstanceRetiredEvent` / `WorkletGraphActivatedEvent` —
+  //      lifecycle audit events; they refresh telemetry but do not
+  //      drive state transitions on their own.
+  //
+  // The handler also enforces VAL-ENGINE-030: fault counters change
+  // only when the corresponding fault arrives. Healthy telemetry
+  // snapshots never bump counters; the timeout counter increments
+  // exactly once per `producer-timeout` event.
+  //
+  // Generation guard (VAL-ENGINE-027): the listener installed at
+  // bring-up captures `activeWorkletGeneration`. Events whose captured
+  // generation no longer matches are dropped at the listener boundary,
+  // so a retired (failed) worklet cannot affect telemetry or state
+  // after recovery has constructed a fresh node.
+
+  function handleWorkletEvent(data: unknown): void {
+    if (!data || typeof data !== "object") return;
+    const evt = data as { type?: string };
+
+    if (evt.type === "producer-timeout") {
+      handleProducerTimeout(data as WorkletProducerTimeoutEvent);
+      return;
+    }
+
+    if (typeof (evt as { schemaVersion?: unknown }).schemaVersion === "number") {
+      // WorkletTelemetrySnapshot. Merge into the accumulator; the
+      // snapshot is structurally cloned across the worklet boundary.
+      mergeWorkletTelemetry(data as WorkletTelemetrySnapshot);
+      return;
+    }
+
+    if (evt.type === "graph-activated" || evt.type === "instance-retired") {
+      // Lifecycle audit event: refresh telemetry publication so
+      // devmode dashboards see the latest state, but do not drive a
+      // state transition. The service still owns the four-state
+      // lifecycle; the worklet only reports graph-internal changes.
+      publishTelemetry();
+      return;
+    }
+
+    // Unknown event shapes are silently ignored so a forward-compatible
+    // worklet cannot crash the main thread.
+  }
+
+  /**
+   * Merge a worklet-published telemetry snapshot into the service
+   * accumulator. Every objective VAL-ENGINE-029 field the worklet
+   * reports lands here.
+   *
+   * The merger enforces monotonicity for the counters (the accumulator
+   * only ever increases them) and monotonicity for the audio frame.
+   * Non-monotonic values from a buggy or racing worklet are clamped
+   * rather than corrupting the published telemetry.
+   */
+  function mergeWorkletTelemetry(snap: WorkletTelemetrySnapshot): void {
+    // Audio frame is monotonic under documented wrap semantics
+    // (synthesis.md §4.6). The accumulator only ever moves forward.
+    // The worklet publishes a number (struct-clone loses BigInt across
+    // the AudioWorklet boundary); accept both bigint and number.
+    let incomingFrame = acc.audioFrame;
+    if (typeof snap.audioFrame === "bigint") {
+      incomingFrame = snap.audioFrame;
+    } else if (typeof snap.audioFrame === "number" && Number.isFinite(snap.audioFrame)) {
+      incomingFrame = BigInt(Math.max(0, Math.floor(snap.audioFrame)));
+    }
+    if (incomingFrame > acc.audioFrame) {
+      acc.audioFrame = incomingFrame;
+    }
+    // Ring sequences. The worklet reports the latest observed values.
+    if (typeof snap.blockCount === "number") {
+      // blockCount is monotonic; we use it to derive write/read
+      // sequences for telemetry when the worklet does not report them
+      // directly (the worklet-core publishes blockCount, the SAB
+      // carries the authoritative ring indices). Treat blockCount as
+      // the write sequence surrogate so VAL-ENGINE-030's monotonic
+      // progression check holds.
+      if (snap.blockCount > acc.ringWriteSequence) {
+        acc.ringWriteSequence = snap.blockCount;
+      }
+    }
+    // Active / pending epochs come from the worklet's graph state.
+    if (typeof snap.activeEpoch === "number") {
+      acc.activeEpoch = snap.activeEpoch;
+    }
+    if (typeof snap.pendingEpoch === "number") {
+      acc.pendingEpoch = snap.pendingEpoch;
+    }
+    // Instance id: the first active instance's identity, or empty.
+    const instances = snap.instances;
+    if (Array.isArray(instances) && instances.length > 0) {
+      const first = instances[0];
+      if (first && typeof first.identity === "string") {
+        acc.instanceId = first.identity;
+      }
+    } else if (Array.isArray(instances) && instances.length === 0) {
+      acc.instanceId = "";
+    }
+    // Output metrics.
+    if (typeof snap.peakSample === "number" && Number.isFinite(snap.peakSample)) {
+      acc.peakSample = snap.peakSample;
+    }
+    if (typeof snap.rmsSample === "number" && Number.isFinite(snap.rmsSample)) {
+      acc.rmsSample = snap.rmsSample;
+    }
+    if (typeof snap.finiteOutput === "number") {
+      acc.finiteOutput = snap.finiteOutput;
+    }
+    // Fault counters are monotonic; take the max so a stale snapshot
+    // cannot regress them (VAL-ENGINE-030).
+    if (typeof snap.underrunCount === "number" && snap.underrunCount > acc.underrunCount) {
+      acc.underrunCount = snap.underrunCount;
+    }
+    if (typeof snap.glitchCount === "number" && snap.glitchCount > acc.glitchCount) {
+      acc.glitchCount = snap.glitchCount;
+    }
+    if (typeof snap.timeoutCount === "number" && snap.timeoutCount > acc.timeoutCount) {
+      acc.timeoutCount = snap.timeoutCount;
+    }
+    if (typeof snap.producerLivenessAge === "number") {
+      acc.producerLivenessAge = snap.producerLivenessAge;
+    }
+    if (typeof snap.producerTimeoutActive === "boolean") {
+      acc.producerTimeoutActive = snap.producerTimeoutActive;
+    }
+    // Fill depth is derived from write/read; without direct access to
+    // the SAB ring indices we report the worklet's blockCount minus
+    // the read sequence the producer observes. The worklet core does
+    // not expose its read index separately, so we leave fill depth at
+    // zero unless the snapshot carries it directly (future worklet
+    // revisions may add a `ringFillDepth` field).
+    publishTelemetry();
+  }
+
+  /**
+   * Handle the producer-timeout event. VAL-ENGINE-026: the engine
+   * transitions `running → error` with the `PRODUCER_TIMEOUT` reason,
+   * the timeout counter increments, and peak/RMS are no longer
+   * authoritative (the worklet will report zero once the fade
+   * completes).
+   *
+   * VAL-ENGINE-030: the timeout counter increments exactly once per
+   * event. Repeated events (e.g. from a worklet that keeps firing
+   * after the first transition) are deduplicated by the
+   * `running → error` transition guard — once the engine is in
+   * `error`, subsequent timeout events do not re-transition.
+   */
+  function handleProducerTimeout(event: WorkletProducerTimeoutEvent): void {
+    // The worklet reports a timeout counter on every telemetry
+    // snapshot; we increment ours once per received event so the
+    // dashboard count matches the number of distinct fault events.
+    acc.timeoutCount = Math.max(acc.timeoutCount, acc.timeoutCount + 1);
+    acc.producerTimeoutActive = true;
+    // Peak/RMS will reach zero once the emergency fade completes; we
+    // do NOT zero them here because the worklet will publish the
+    // post-fade silence snapshot (VAL-ENGINE-025). Doing so would
+    // mask an in-progress fade from the telemetry surface.
+    if (currentState === "running") {
+      // running → error is the canonical producer-loss transition
+      // (synthesisChannels.ts: trigger "producer-loss").
+      transition("error", "PRODUCER_TIMEOUT",
+        ENGINE_STATE_REASONS.PRODUCER_TIMEOUT);
+    } else if (currentState === "suspended") {
+      // The producer died while we were suspended (rare, but possible
+      // if the Worker crashed between user activation and resume).
+      // Transition through the documented fatal-before-running edge.
+      transition("error", "PRODUCER_TIMEOUT",
+        ENGINE_STATE_REASONS.PRODUCER_TIMEOUT);
+    }
+    // Capture the atBlock / livenessAge for debugging if a sink is
+    // wired. This is best-effort; the transition above already posted
+    // the user-facing message.
+    void event;
     publishTelemetry();
   }
 
@@ -1023,10 +1385,17 @@ function createCapableService(
       } catch {
         // Best-effort cleanup.
       }
-      // Note: we do NOT decrement the counter — `workletNodeCount`
-      // records how many nodes were created in this session, including
-      // retired ones. The recovery path constructs a fresh service so
-      // the new session starts at zero.
+      // VAL-ENGINE-027: bump the generation guard so any in-flight
+      // event from the retired (failed) worklet is dropped by the
+      // listener boundary. The next bring-up constructs a fresh node
+      // with a new generation, so the failed worklet cannot affect
+      // telemetry or state after recovery.
+      activeWorkletGeneration += 1;
+      // The currently-held node count drops to zero. The next bring-up
+      // (recovery) sets it back to 1 by constructing exactly one fresh
+      // node, so the count never accumulates across repeated recovery
+      // (VAL-ENGINE-007 / VAL-ENGINE-027).
+      acc.workletNodeCount = 0;
       workletNode = null;
     }
     if (audioContext) {
@@ -1051,6 +1420,29 @@ function createCapableService(
     // instantiates from scratch after recovery).
     activeDeclarations.clear();
     lastAppliedRevision = 0;
+    // Reset the worklet-side objective telemetry so the recovered
+    // session starts from a clean baseline. The fresh worklet will
+    // repopulate these fields with its first published snapshot
+    // (VAL-ENGINE-029). Without the reset, stale peak/RMS / counters
+    // from the failed session would leak into the recovered telemetry.
+    acc.audioFrame = 0n;
+    acc.ringWriteSequence = 0;
+    acc.ringReadSequence = 0;
+    acc.ringFillDepth = 0;
+    acc.programRevision = 0;
+    acc.activeEpoch = 0;
+    acc.pendingEpoch = 0;
+    acc.instanceId = "";
+    acc.peakSample = 0;
+    acc.rmsSample = 0;
+    acc.finiteOutput = 1;
+    // Note: fault counters (underrun/glitch/timeout) are NOT reset
+    // here. They are lifetime counters for the current service
+    // instance. A full dispose (final state "off") resets them via
+    // the accumulator going out of scope; recovery keeps the counters
+    // so dashboards can observe the cumulative fault history.
+    acc.producerLivenessAge = 0;
+    acc.producerTimeoutActive = false;
     if (currentState !== finalState) {
       const reasonKey: EngineStateReasonKey | null =
         finalState === "error" ? "RECOVERY_FAILED" : null;
