@@ -602,4 +602,115 @@ describe("useqWasmInterpreter", () => {
     expect(afterUpdate.declarations).toHaveLength(1);
     expect(afterUpdate.declarations[0].identity).toBe("lead");
   });
+
+  it("publishes useq_synth_artifacts on __useqWasmRuntime (VAL-COMP-013)", async () => {
+    // The atomic Worker response reads synth artefacts from the
+    // __useqWasmRuntime global in the same handler that ran the eval. The
+    // global must expose useq_synth_artifacts after init.
+    installLoadedScriptTag();
+    window.createModule = vi.fn(async () =>
+      (await loadGeneratedBundleModule("../../public/wasm/useq.js")) as never,
+    );
+
+    const { ensureUseqWasmLoaded } = await import("./wasmInterpreter.ts");
+    await ensureUseqWasmLoaded();
+
+    const handle = (globalThis as {
+      __useqWasmRuntime?: { useq_synth_artifacts?: () => string };
+    }).__useqWasmRuntime;
+
+    expect(handle).toBeDefined();
+    expect(typeof handle?.useq_synth_artifacts).toBe("function");
+
+    // The initial payload must declare the canonical ABI version.
+    const initial = JSON.parse(handle!.useq_synth_artifacts!());
+    expect(initial.abi).toBe(1);
+    expect(initial.revision).toBe(0);
+    expect(Array.isArray(initial.declarations)).toBe(true);
+  });
+
+  it("versioned synth artefact payload rejects incompatible consumers (VAL-COMP-015)", async () => {
+    // The shipped bundle renders the synth artefact payload with an `abi`
+    // marker. A consumer built against a different ABI version must refuse
+    // to interpret the body bytes. Here we verify the bundle ALWAYS emits
+    // the canonical abi=1 marker so a consumer can rely on it.
+    const module = (await loadGeneratedBundleModule(
+      "../../public/wasm/useq.js",
+    )) as Record<string, any>;
+
+    const init = module.cwrap("useq_init", null, []);
+    const evalCode = module.cwrap("useq_eval", "string", ["string"]);
+    const synthArtifacts = module.cwrap("useq_synth_artifacts", "string", []);
+    init();
+
+    // Empty graph: still carries the abi marker.
+    const empty = JSON.parse(synthArtifacts());
+    expect(empty.abi).toBe(1);
+
+    // After a successful synth commit, the marker is unchanged.
+    expect(evalCode('(synth "osc/sine" :name "lead" :freq 440)')).toBe("ok");
+    const committed = JSON.parse(synthArtifacts());
+    expect(committed.abi).toBe(1);
+    expect(committed.declarations).toHaveLength(1);
+
+    // A consumer that does not see abi===1 MUST refuse the payload. We
+    // mirror the C++ synth_artifacts_supports_abi() contract here.
+    const { synthArtifactsSupportsAbi, SYNTH_ARTIFACT_ABI_VERSION } = await import(
+      "../contracts/runtimeTypes.ts"
+    );
+    expect(SYNTH_ARTIFACT_ABI_VERSION).toBe(1);
+    expect(synthArtifactsSupportsAbi(committed.abi)).toBe(true);
+    expect(synthArtifactsSupportsAbi(committed.abi + 1)).toBe(false);
+  });
+
+  it("evalCodeWithDiagnostics returns synth artefacts correlated to the exact eval (VAL-COMP-013/014)", async () => {
+    // End-to-end through the in-process port: a successful eval response
+    // carries diagnostics + synth artefacts at an advanced revision; a
+    // failed eval response carries error diagnostics and the artefacts
+    // retain the LAST successful revision (no engine commit).
+    installLoadedScriptTag();
+    window.createModule = vi.fn(async () =>
+      (await loadGeneratedBundleModule("../../public/wasm/useq.js")) as never,
+    );
+
+    const portModule = await import("./wasmRuntimePort.ts");
+    const port = portModule.wasmRuntimePort;
+    await port.ensureLoaded();
+
+    // Baseline: empty synth graph at revision 0.
+    const baseline = await port.evalCodeWithDiagnostics("(+ 1 1)");
+    expect(baseline.diagnostics).toEqual([]);
+    expect(baseline.synthArtifacts).not.toBeNull();
+    expect(baseline.synthArtifacts?.abi).toBe(1);
+    expect(baseline.synthArtifacts?.revision).toBe(0);
+    expect(baseline.synthArtifacts?.declarations).toEqual([]);
+
+    // Successful synth commit: artefacts advance to revision > 0 with one
+    // declaration. The response carries the artefacts of THIS eval (not a
+    // later racing eval).
+    const success = await port.evalCodeWithDiagnostics(
+      '(synth "osc/sine" :name "lead" :freq 440)',
+    );
+    expect(success.diagnostics).toEqual([]);
+    expect(success.synthArtifacts).not.toBeNull();
+    expect(success.synthArtifacts?.revision).toBeGreaterThan(0);
+    expect(success.synthArtifacts?.declarations).toHaveLength(1);
+    expect(success.synthArtifacts?.declarations[0].identity).toBe("lead");
+    const committedRevision = success.synthArtifacts!.revision;
+
+    // Failed eval: diagnostics include the error, and the synth artefacts
+    // retain the LAST successful revision (no engine commit).
+    const failed = await port.evalCodeWithDiagnostics(
+      '(synth "osc/unknown" :freq 110)',
+    );
+    expect(failed.diagnostics.length).toBeGreaterThan(0);
+    expect(
+      failed.diagnostics.some((d) => d.severity === "error"),
+    ).toBe(true);
+    expect(failed.synthArtifacts).not.toBeNull();
+    expect(failed.synthArtifacts?.revision).toBe(committedRevision);
+    expect(failed.synthArtifacts?.declarations).toEqual(
+      success.synthArtifacts?.declarations,
+    );
+  });
 });

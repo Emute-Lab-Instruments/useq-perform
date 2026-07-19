@@ -116,3 +116,97 @@ export interface RuntimeDiagnosticsSnapshot {
   runtimeSession: RuntimeSessionSnapshot;
   bootstrapFailures: RuntimeBootstrapFailure[];
 }
+
+// ── Synth artefact types (synth-nodes.md §7.2) ────────────────
+//
+// Versioned synth patch-graph and control-channel artefacts returned by
+// the existing WASM Worker handler alongside the exact-eval diagnostics.
+//
+// The schema mirrors the C++ `synth_artifacts_render_abi_wrapper` payload
+// byte-for-byte (VAL-COMP-016). Consumers MUST consult `abi` and reject
+// the payload when it does not equal the canonical
+// SYNTH_ARTIFACT_ABI_VERSION constant.
+
+/**
+ * Canonical ABI version the editor expects from the WASM bundle's synth
+ * artefact payload. Must match `sig::SYNTH_ARTIFACT_ABI_VERSION` in
+ * `src-useq/uSEQ/src/signal_engine/synth_graph.h`.
+ */
+export const SYNTH_ARTIFACT_ABI_VERSION = 1 as const;
+
+/** One declared synth node instance keyed by stable editor identity. */
+export interface SynthDeclarationArtefact {
+  identity: string;
+  def: string;
+  version: number;
+  audio_inputs: number;
+  audio_outputs: number;
+}
+
+/** One bound synth control channel (one row per declaration × param). */
+export interface SynthControlChannelArtefact {
+  identity: string;
+  param: string;
+  rate: "block" | "fast";
+  smoothing: "step" | "linear" | "slew" | "latch";
+}
+
+/**
+ * Versioned synth artefact payload returned atomically from the exact-eval
+ * Worker response. The `abi` marker lets consumers reject incompatible
+ * bundles up front (VAL-COMP-015).
+ *
+ * `revision` is the shared compiler revision that covers both the patch
+ * graph and the control table for this commit (VAL-COMP-009). `declarations`
+ * and `controls` are intentionally narrow public views: internal GC-remapped
+ * node indices are never exposed (VAL-COMP-012).
+ */
+export interface SynthArtifactsPayload {
+  abi: number;
+  revision: number;
+  declarations: SynthDeclarationArtefact[];
+  controls: SynthControlChannelArtefact[];
+}
+
+/**
+ * Minimal error envelope the WASM wrapper returns when a consumer built
+ * against an incompatible ABI version tries to read the synth artefact
+ * payload. Consumers MUST consult `synthArtifactsSupportsAbi()` before
+ * interpreting the body bytes.
+ */
+export interface SynthArtifactsAbiError {
+  abi: number;
+  abi_error: true;
+  engine_abi: number;
+  consumer_abi: number;
+}
+
+/**
+ * Return true iff a consumer built against `consumerAbiVersion` can safely
+ * read a payload produced by the engine's declared ABI version. Mirrors
+ * `sig::synth_artifacts_supports_abi` (VAL-COMP-015).
+ */
+export function synthArtifactsSupportsAbi(
+  consumerAbiVersion: number,
+): boolean {
+  return consumerAbiVersion === SYNTH_ARTIFACT_ABI_VERSION;
+}
+
+/**
+ * Type guard that narrows a parsed payload to the canonical
+ * {@link SynthArtifactsPayload} shape after the caller has confirmed
+ * `synthArtifactsSupportsAbi(payload.abi)` returns true.
+ */
+export function isSynthArtifactsPayload(
+  payload: unknown,
+): payload is SynthArtifactsPayload {
+  if (!payload || typeof payload !== "object") return false;
+  const p = payload as Record<string, unknown>;
+  return (
+    typeof p.abi === "number" &&
+    typeof p.revision === "number" &&
+    Array.isArray(p.declarations) &&
+    Array.isArray(p.controls) &&
+    p.abi_error !== true
+  );
+}

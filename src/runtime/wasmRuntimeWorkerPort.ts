@@ -238,8 +238,12 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
 
     async evalCodeWithDiagnostics(
       code: string,
-    ): Promise<{ result: string | null; diagnostics: RuntimeDiagnostic[] }> {
-      if (!isUseqWasmEnabled()) return { result: null, diagnostics: [] };
+    ): Promise<{
+      result: string | null;
+      diagnostics: RuntimeDiagnostic[];
+      synthArtifacts: import("../contracts/runtimeTypes").SynthArtifactsPayload | null;
+    }> {
+      if (!isUseqWasmEnabled()) return { result: null, diagnostics: [], synthArtifacts: null };
       await ensureLoadedInternal();
       const response = await send<
         Extract<WasmWorkerResponse, { type: "evalCodeWithDiagnostics-result" }>
@@ -252,7 +256,11 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       } catch (error) {
         dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
       }
-      return { result: response.result, diagnostics: response.diagnostics };
+      return {
+        result: response.result,
+        diagnostics: response.diagnostics,
+        synthArtifacts: response.synthArtifacts,
+      };
     },
 
     async updateTime(timeSeconds: number): Promise<void> {

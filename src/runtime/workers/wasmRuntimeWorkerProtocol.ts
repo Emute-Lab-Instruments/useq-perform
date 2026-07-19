@@ -23,6 +23,7 @@ import type { SharedTransportCommand } from "../../contracts/useqRuntimeContract
 import type {
   LiveSlotMetadata,
   RuntimeDiagnostic,
+  SynthArtifactsPayload,
   TickAndProjectResult,
   TimeSample,
 } from "../../contracts/runtimePorts";
@@ -220,6 +221,23 @@ export interface EvalCodeWithDiagnosticsResponse {
   /** Diagnostics emitted by *this* eval, read atomically inside the
    *  worker handler. */
   diagnostics: RuntimeDiagnostic[];
+  /**
+   * Versioned synth artefact payload read atomically inside the same
+   * worker handler that ran the eval (VAL-COMP-013). Carries the
+   * committed patch graph and control table so the main thread can
+   * correlate them to this exact eval without a racing second read.
+   *
+   * `null` only when the WASM bundle does not export
+   * `useq_synth_artifacts` (older bundles) or WASM is disabled.
+   *
+   * On a failed eval the payload still carries the LAST successful
+   * commit's artefacts (failed evals never advance the revision or
+   * mutate the published graph — VAL-COMP-010/014). The caller
+   * distinguishes success from failure by inspecting `diagnostics`
+   * for severity:"error"; the artefacts are intentionally retained
+   * so a later engine commit can key off the stable revision.
+   */
+  synthArtifacts: SynthArtifactsPayload | null;
 }
 
 export interface UpdateTimeResponse {

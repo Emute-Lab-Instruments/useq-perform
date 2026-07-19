@@ -48,6 +48,14 @@ export interface UseqWasmRuntimeGlobal {
   useq_set_input_value?: (channel: number, value: number) => void;
   useq_set_failure_mode?: (mode: number) => number;
   useq_get_failure_mode?: () => number;
+  /**
+   * Versioned synth artefact snapshot (synth-nodes.md §7.2 /
+   * VAL-COMP-009/012/015). Mirrors the `useq_synth_artifacts` WASM export.
+   * Returns a JSON object shaped
+   *   {"abi":N,"revision":R,"declarations":[...],"controls":[...]}
+   * that is stable until the next eval commits a new synth graph.
+   */
+  useq_synth_artifacts?: () => string;
 }
 
 // Emscripten module interface (minimal typing for what we use)
@@ -694,6 +702,11 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const classificationsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_classifications) as (() => string) | null;
   const dependenciesFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_dependencies) as ((idx: number) => number) | null;
 
+  // Bind synth artefact ABI export (synth-nodes.md §7.2 / VAL-COMP-015).
+  // The versioned payload is returned atomically from the exact-eval
+  // Worker response through the in-process port.
+  const synthArtifactsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_synth_artifacts) as (() => string) | null;
+
   // Bind probe slot ABI exports (probes.md §1.6 — compile-once, sample-many)
   const probeSetFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_set) as ((slot: number, code: string) => number) | null;
   const probeSampleFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_sample) as ((slot: number, start: number, end: number, count: number, bufPtr: number, bufCap: number) => number) | null;
@@ -744,6 +757,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     useq_set_input_value: setInputValueFn ?? undefined,
     useq_set_failure_mode: setFailureModeFn ?? undefined,
     useq_get_failure_mode: getFailureModeFn ?? undefined,
+    useq_synth_artifacts: synthArtifactsFn ?? undefined,
   };
 
   useq_init();

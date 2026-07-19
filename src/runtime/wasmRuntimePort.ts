@@ -30,6 +30,7 @@ import type {
   OutputClassification,
   RuntimeDiagnostic,
   SampleSeriesMap,
+  SynthArtifactsPayload,
   TickAndProjectResult,
   WasmRuntimeCapabilities,
   WasmRuntimePort,
@@ -163,21 +164,28 @@ export const wasmRuntimePort: WasmRuntimePort = {
 
   async evalCodeWithDiagnostics(
     code: string,
-  ): Promise<{ result: string | null; diagnostics: RuntimeDiagnostic[] }> {
+  ): Promise<{
+    result: string | null;
+    diagnostics: RuntimeDiagnostic[];
+    synthArtifacts: SynthArtifactsPayload | null;
+  }> {
     // In-process: we run on the JS main thread, so reading diagnostics
-    // synchronously after sendEval resolves is sufficient — no concurrent
-    // eval can run between the await and the diagnostics read.
+    // and the synth artefact payload synchronously after sendEval
+    // resolves is sufficient — no concurrent eval can run between the
+    // await and the diagnostics/synth reads. This mirrors the worker
+    // port's atomic evalCodeWithDiagnostics handler.
     //
     // Unlike `evalCode`, this method never throws — the caller distinguishes
     // success from failure by inspecting `diagnostics` for severity:"error".
     // That matches the worker port and avoids losing diagnostics in a catch.
     const response = await engine().sendEval(code);
     const diagnostics = readLastDiagnosticsSync();
+    const synthArtifacts = readSynthArtifactsSync();
     const result =
       response.success === false
         ? (response.text ?? null)
         : textFromResponse(response.text);
-    return { result, diagnostics };
+    return { result, diagnostics, synthArtifacts };
   },
 
   updateTime(timeSeconds: number): Promise<void> {
@@ -291,6 +299,30 @@ function readActiveDiagnosticsSync(): RuntimeDiagnostic[] {
     return _lastActiveDiagsResult;
   } catch {
     return _lastActiveDiagsResult;
+  }
+}
+
+/**
+ * Read the versioned synth artefact payload from the in-process WASM
+ * runtime global. Mirrors the worker port's atomic
+ * `evalCodeWithDiagnostics` synth-artefacts readback (VAL-COMP-013).
+ *
+ * Returns `null` when the export is unavailable (older bundle) or the
+ * payload does not parse. The returned object's `abi` field MUST be
+ * checked against {@link SYNTH_ARTIFACT_ABI_VERSION} before the body is
+ * interpreted (VAL-COMP-015).
+ */
+function readSynthArtifactsSync(): SynthArtifactsPayload | null {
+  try {
+    const runtime = (globalThis as {
+      __useqWasmRuntime?: { useq_synth_artifacts?: () => string };
+    }).__useqWasmRuntime;
+    if (!runtime?.useq_synth_artifacts) return null;
+    const json = runtime.useq_synth_artifacts();
+    if (!json) return null;
+    return JSON.parse(json) as SynthArtifactsPayload;
+  } catch {
+    return null;
   }
 }
 

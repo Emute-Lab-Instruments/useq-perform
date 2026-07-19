@@ -46,7 +46,12 @@
 
 import type { TransportState } from "../machines/transport.machine";
 import type { SharedTransportCommand } from "./useqRuntimeContract";
-import type { RuntimeDiagnostic, RuntimeProtocolMode, StateSnapshot } from "./runtimeTypes";
+import type {
+  RuntimeDiagnostic,
+  RuntimeProtocolMode,
+  StateSnapshot,
+  SynthArtifactsPayload,
+} from "./runtimeTypes";
 
 // ---------------------------------------------------------------------------
 // Shared transport surface — implemented by both ports
@@ -295,19 +300,34 @@ export interface WasmRuntimePort extends SharedRuntimePort {
   evalCodeSilently(code: string): Promise<string | null>;
 
   /**
-   * Eval + last-diagnostics in one round-trip. Returns the eval's own
-   * diagnostics (read in the same worker handler that ran the eval), so
+   * Eval + last-diagnostics + committed synth artefacts in one round-trip.
+   *
+   * Returns the eval's own diagnostics and the versioned synth artefact
+   * payload read inside the same worker handler that ran the eval, so
    * callers do not have to follow with a separate `readLastDiagnostics()`
-   * — which is racy when multiple evals overlap, because the diagnostics
-   * slot is global and the second eval clobbers it before the first eval
-   * gets a chance to read it.
+   * or `readSynthArtifacts()` — both of which are racy when multiple evals
+   * overlap, because the diagnostics and synth snapshot slots are global
+   * and a later eval clobbers them before the earlier eval gets a chance
+   * to read them.
    *
    * Used by the editor evaluation pipeline to attach inline diagnostics
-   * to the correct eval range.
+   * to the correct eval range AND to correlate the committed synth graph
+   * to the exact eval that produced it (VAL-COMP-013).
+   *
+   * The returned `synthArtifacts` reflects the LAST successful synth
+   * commit; a failed eval retains the previous snapshot (VAL-COMP-010)
+   * and the caller distinguishes success from failure by inspecting
+   * `diagnostics` for severity:"error". A failed eval response therefore
+   * cannot allocate a new engine commit (VAL-COMP-014): the artefacts
+   * carry the same revision as the prior successful response.
    */
   evalCodeWithDiagnostics(
     code: string,
-  ): Promise<{ result: string | null; diagnostics: RuntimeDiagnostic[] }>;
+  ): Promise<{
+    result: string | null;
+    diagnostics: RuntimeDiagnostic[];
+    synthArtifacts: SynthArtifactsPayload | null;
+  }>;
 
   /** Advance the WASM interpreter's wall-clock. */
   updateTime(timeSeconds: number): Promise<void>;
@@ -443,3 +463,4 @@ export interface WasmRuntimePort extends SharedRuntimePort {
 
 export type { UseqDiagnostic } from "./runtimeTypes";
 export type { RuntimeDiagnostic };
+export type { SynthArtifactsPayload };

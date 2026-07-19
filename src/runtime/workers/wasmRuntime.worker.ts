@@ -39,6 +39,7 @@ import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract"
 import type {
   LiveSlotMetadata,
   RuntimeDiagnostic,
+  SynthArtifactsPayload,
   TickAndProjectResult,
   TimeSample,
 } from "../../contracts/runtimePorts";
@@ -287,6 +288,10 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     module,
     OPTIONAL_WASM_EXPORTS.useq_apply_state_snapshot,
   ) as ((json: string) => number) | null;
+  const synthArtifactsFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_synth_artifacts,
+  ) as (() => string) | null;
   const probeSetFn = bindOptionalCwrap(
     module,
     OPTIONAL_WASM_EXPORTS.useq_probe_set,
@@ -332,6 +337,7 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
   (globalThis as { __useqWasmRuntime?: UseqRuntimeGlobal }).__useqWasmRuntime = {
     useq_last_diagnostics: lastDiagsFn ?? undefined,
     useq_active_diagnostics: activeDiagsFn ?? undefined,
+    useq_synth_artifacts: synthArtifactsFn ?? undefined,
   };
 
   useq_init();
@@ -597,6 +603,13 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
 interface UseqRuntimeGlobal {
   useq_last_diagnostics?: () => string;
   useq_active_diagnostics?: () => string;
+  /**
+   * Versioned synth artefact snapshot (synth-nodes.md §7.2 /
+   * VAL-COMP-009/012/015). Mirrors the `useq_synth_artifacts` WASM export.
+   * Read atomically inside the eval handler alongside the diagnostics so
+   * the response carries the exact-eval synth commit.
+   */
+  useq_synth_artifacts?: () => string;
 }
 
 function getUseqRuntimeGlobal(): UseqRuntimeGlobal | undefined {
@@ -630,6 +643,28 @@ function readActiveDiagnosticsLocal(): RuntimeDiagnostic[] {
     return _lastActiveDiagsResult;
   } catch {
     return _lastActiveDiagsResult;
+  }
+}
+
+/**
+ * Read the versioned synth artefact snapshot from the worker-local WASM
+ * global. Used by the `evalCodeWithDiagnostics` handler so the exact-eval
+ * Worker response carries the synth commit alongside diagnostics and the
+ * eval result (VAL-COMP-013).
+ *
+ * Returns `null` when the export is unavailable or the payload does not
+ * parse. Callers MUST consult `payload.abi` against
+ * `SYNTH_ARTIFACT_ABI_VERSION` before interpreting the body bytes.
+ */
+function readSynthArtifactsLocal(): SynthArtifactsPayload | null {
+  try {
+    const runtime = getUseqRuntimeGlobal();
+    if (!runtime?.useq_synth_artifacts) return null;
+    const json = runtime.useq_synth_artifacts();
+    if (!json) return null;
+    return JSON.parse(json) as SynthArtifactsPayload;
+  } catch {
+    return null;
   }
 }
 
@@ -683,20 +718,27 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
             id,
             result: null,
             diagnostics: [],
+            synthArtifacts: null,
           });
           return;
         }
         if (!interpreter) throw new Error("WASM worker: interpreter not loaded");
         const result = interpreter.evaluate(request.code);
-        // Read diagnostics in the same handler so they belong to this eval —
-        // any concurrent eval queued behind us has not run yet, so
-        // `useq_last_diagnostics` is still ours.
+        // Read diagnostics AND the synth artefact payload in the same
+        // handler so they belong to this eval — any concurrent eval queued
+        // behind us has not run yet, so `useq_last_diagnostics` and
+        // `useq_synth_artifacts` are still ours. The artefacts reflect the
+        // LAST successful synth commit; on a failed eval they retain the
+        // previous snapshot (VAL-COMP-010/014) and the caller distinguishes
+        // success from failure via the `diagnostics` array.
         const diagnostics = readLastDiagnosticsLocal();
+        const synthArtifacts = readSynthArtifactsLocal();
         postResponse({
           type: "evalCodeWithDiagnostics-result",
           id,
           result,
           diagnostics,
+          synthArtifacts,
         });
         return;
       }
