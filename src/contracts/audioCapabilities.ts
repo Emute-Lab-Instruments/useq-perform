@@ -38,7 +38,7 @@ export const AUDIO_CAPABILITY_SCHEMA_VERSION = 1 as const;
  */
 export const AUDIO_CAPABILITY_REASONS = Object.freeze({
   NOT_CROSS_ORIGIN_ISOLATED:
-    "Cross-origin isolation is unavailable. Serve the app with COOP=same-site and COEP=require-corp so SharedArrayBuffer is enabled.",
+    "Cross-origin isolation is unavailable. Serve the app with COOP=same-origin and COEP=credentialless (or require-corp) so SharedArrayBuffer is enabled.",
   NO_SHARED_ARRAY_BUFFER:
     "SharedArrayBuffer is unavailable. Cross-origin isolation is required for the synthesis control ring.",
   NO_AUDIO_WORKLET:

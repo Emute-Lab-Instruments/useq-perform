@@ -16,13 +16,18 @@ const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(file
  *   - Vite preview server (`preview.headers`)
  *   - port-5000 static server (`public/serve.json`)
  *
+ * `COOP: same-origin` is the standards-required value that enables
+ * `window.crossOriginIsolated === true`. `same-site` only relaxes same-site
+ * popup relationships and does NOT enable cross-origin isolation, leaving
+ * `SharedArrayBuffer` unavailable. Do not revert this to `same-site`.
+ *
  * `COEP: credentialless` (rather than `require-corp`) keeps `?gist`/`?txt`
  * CORS-capable fetches working without forcing every cross-origin asset to
  * ship CORP headers, matching the deterministic URL behaviour required by
  * VAL-HOST-010.
  */
 const CROSS_ORIGIN_ISOLATION_HEADERS = {
-  'Cross-Origin-Opener-Policy': 'same-site',
+  'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Embedder-Policy': 'credentialless',
 } as const;
 
