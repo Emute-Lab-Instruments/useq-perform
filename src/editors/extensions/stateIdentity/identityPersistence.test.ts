@@ -142,6 +142,36 @@ describe("VAL-ID-011 (pure): computeDocumentFingerprint", () => {
   it("is non-empty for an empty document", () => {
     expect(computeDocumentFingerprint("").length).toBeGreaterThan(0);
   });
+
+  // Bug f55bcf74 (scrutiny debt): the docstring documented a FNV-1a hash
+  // "over the UTF-8 bytes" but the implementation iterated JavaScript
+  // UTF-16 code units via `charCodeAt`. For ASCII source the two agree,
+  // but for any source containing non-BMP characters or characters whose
+  // UTF-8 encoding differs from the UTF-16 code-unit value (e.g. the
+  // degree sign °, the section sign §, or emoji in comments) the hash
+  // diverged from the documented contract. This test pins the
+  // implementation to the documented UTF-8 contract using a reference
+  // FNV-1a computation over the actual UTF-8 byte sequence, so the
+  // documentation and implementation remain aligned.
+  it("matches a reference FNV-1a over UTF-8 bytes for non-ASCII source", () => {
+    // Reference FNV-1a 32-bit over the UTF-8 bytes of `src`. Computed
+    // directly from the byte sequence so the test is self-contained.
+    function referenceFnv1aUtf8(text: string): string {
+      const bytes = new TextEncoder().encode(text);
+      let h = 0x811c9dc5;
+      for (const b of bytes) {
+        h ^= b;
+        h = Math.imul(h, 0x01000193);
+      }
+      return (h >>> 0).toString(16).padStart(8, "0");
+    }
+    const src = '(synth "osc/sine" :freq 440) ; pitch ±½¼°\n';
+    const actual = computeDocumentFingerprint(src);
+    const expected = referenceFnv1aUtf8(src);
+    expect(actual).toBe(expected);
+    // Sanity: the reference is non-trivial (the docstring algorithm).
+    expect(expected).not.toBe(referenceFnv1aUtf8("(a1 1)\n"));
+  });
 });
 
 describe("VAL-ID-009 (pure): buildIdentitySnapshot round-trips an IdentityMap", () => {
@@ -657,7 +687,14 @@ describe("VAL-ID-009 (e2e): editor with persistence restores identities on reloa
       save: (k, v) => persistenceSave(k, v),
       remove: (k) => persistenceRemove(k),
     });
-    const cfg = makeConfig(adapter);
+    // Bug f55bcf74: the prior call `makeConfig(adapter)` omitted the
+    // `prefix` argument. Because tests are excluded from the root
+    // tsconfig, the arity error was not caught at typecheck time and the
+    // helper received `undefined` as its prefix, producing ids of the
+    // form `undefined-0001`. Pass an explicit prefix so no undefined
+    // IDs are produced and any future arity regression in the helper is
+    // observable.
+    const cfg = makeConfig(adapter, "malformed");
     const field = buildIdentityField(cfg);
     const view = new EditorView({
       doc: '(synth "osc/sine" :freq 100)\n',
@@ -665,8 +702,13 @@ describe("VAL-ID-009 (e2e): editor with persistence restores identities on reloa
     });
     const entries = entriesOf(view.state.field(field).map);
     expect(entries).toHaveLength(1);
-    // IDs are unique.
-    expect(new Set(entries.map((e) => e.id)).size).toBe(1);
+    // IDs are unique and never contain the string "undefined".
+    const ids = entries.map((e) => e.id);
+    expect(new Set(ids).size).toBe(1);
+    for (const id of ids) {
+      expect(id).toMatch(/^malformed-\d+$/);
+      expect(id).not.toContain("undefined");
+    }
     view.destroy();
   });
 

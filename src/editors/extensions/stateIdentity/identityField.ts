@@ -233,12 +233,14 @@ export function buildIdentityField(config: IdentityConfig): StateField<IdentityF
         try {
           const snapshot = persistence.load();
           if (snapshot !== null) {
+            // recoverIdentityMap no longer takes unused ids/continuity
+            // parameters (Bug f55bcf74 scrutiny-debt cleanup). It mints
+            // restored entries with a local single-use ID generator and
+            // local continuity source instead.
             const recovered = recoverIdentityMap(
               snapshot,
               state,
               config.classifier,
-              config.ids,
-              continuity,
             );
             priorMap = recovered.map;
           }

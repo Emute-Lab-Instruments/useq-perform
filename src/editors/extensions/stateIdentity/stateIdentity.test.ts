@@ -320,12 +320,30 @@ describe("VAL-ID-007: copies fork identity", () => {
 });
 
 describe("VAL-ID-008: undo and redo restore exact identity", () => {
+  // The two cases immediately below cover the "minor-edit continuity"
+  // sub-path of VAL-ID-008: when an undo'd transaction is itself a
+  // minor edit that preserved identity through the FORWARD reconciler
+  // (same FormKey, overlapping ranges), the post-undo map equals the
+  // pre-edit map regardless of whether the `invertedEffects` companion
+  // is installed.
+  //
+  // They are intentionally distinct from the "history-snapshot
+  // restoration" sub-path covered by the adversarial
+  // `identityExtensionsWithField` cases further below (and by
+  // `productionWiring.test.ts`): those sub-paths only pass when the
+  // `invertedEffects` companion threads the prior map through undo.
+  //
+  // To remove the historical masking (Ergo bug f55bcf74) we still wire
+  // BOTH extensions through `identityExtensionsWithField` here, so the
+  // minor-edit continuity cases exercise the same extension set the
+  // running editor installs and any future regression that breaks the
+  // companion is caught by every history test in this file.
   it("undo restores the exact prior mapping after a parameter edit", () => {
     const config = makeConfig();
-    const field = buildIdentityField(config);
+    const { field, extensions: idExt } = identityExtensionsWithField(config);
     const view = new EditorView({
       doc: '(synth "osc/sine" :freq 440)\n',
-      extensions: [history(), ...clojureExtensions, field],
+      extensions: [history(), ...clojureExtensions, ...idExt],
     });
 
     const beforeMap = view.state.field(field).map;
@@ -348,10 +366,10 @@ describe("VAL-ID-008: undo and redo restore exact identity", () => {
 
   it("redo restores the exact post-edit mapping after undo+redo", () => {
     const config = makeConfig();
-    const field = buildIdentityField(config);
+    const { field, extensions: idExt } = identityExtensionsWithField(config);
     const view = new EditorView({
       doc: '(synth "osc/sine" :freq 440)\n',
-      extensions: [history(), ...clojureExtensions, field],
+      extensions: [history(), ...clojureExtensions, ...idExt],
     });
 
     const initialMap = view.state.field(field).map;

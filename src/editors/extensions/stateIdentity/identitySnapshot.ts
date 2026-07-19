@@ -80,10 +80,17 @@ export const IDENTITY_SNAPSHOT_SCHEMA_VERSION = 1;
  * dependency-free, and good enough to detect any single-character edit.
  */
 export function computeDocumentFingerprint(source: string): string {
-  // FNV-1a constants.
+  // FNV-1a 32-bit over the UTF-8 byte sequence. TextEncoder is the
+  // platform-standard, dependency-free way to obtain the UTF-8 bytes of a
+  // JS string. Bug f55bcf74: an earlier version iterated UTF-16 code units
+  // via `charCodeAt`, which silently diverged from the documented UTF-8
+  // contract for any non-ASCII source (the degree sign °, the section
+  // sign §, emoji in comments, etc.). The byte loop below matches the
+  // docstring exactly.
+  const bytes = new TextEncoder().encode(source);
   let hash = 0x811c9dc5;
-  for (let i = 0; i < source.length; i++) {
-    hash ^= source.charCodeAt(i);
+  for (let i = 0; i < bytes.length; i++) {
+    hash ^= bytes[i]!;
     // hash *= 0x01000193 (FNV prime), modulo 2^32 via Math.imul.
     hash = Math.imul(hash, 0x01000193);
   }
@@ -259,21 +266,20 @@ export interface RecoveryResult {
  *                 to validate raw input first).
  * @param state    Current CodeMirror EditorState.
  * @param classifier Stateful-form classifier (default: synth-only).
- * @param ids      Optional ID generator (unused on the restore path, but
- *                 accepted so this function fits naturally into the
- *                 extension's create-time flow).
- * @param continuity Optional continuity source (unused on restore path).
+ *
+ * Bug f55bcf74 (scrutiny debt): the prior signature accepted unused
+ * `ids?: IdGenerator` and `continuity?: ContinuitySource` parameters "to
+ * fit the extension's create-time flow" but never read them. The unused
+ * parameters were misleading (callers inferred ID/continuity flowed into
+ * recovery; they did not) and made it trivial to call `recoverIdentityMap`
+ * with the wrong arity. The single-use ID generator used internally to
+ * install restored IDs at known values is constructed locally instead.
  */
 export function recoverIdentityMap(
   snapshot: IdentitySnapshot,
   state: EditorState,
   classifier: StatefulFormClassifier,
-  ids?: IdGenerator,
-  continuity?: ContinuitySource,
 ): RecoveryResult {
-  void ids;
-  void continuity;
-
   const currentSource = state.doc.toString();
   const currentFingerprint = computeDocumentFingerprint(currentSource);
 
