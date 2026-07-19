@@ -334,9 +334,19 @@ export async function bootstrap(): Promise<BootstrapResult> {
           import("../audio/synthesisServiceBrowser.ts"),
           import("../utils/consoleStore.ts"),
         ]);
+      // VAL-ENGINE-010: the synthesis service arms the Worker producer's
+      // program epoch after every successful synth commit. The active
+      // WASM runtime port is the Worker-backed implementation; its
+      // `producerArmEpoch` method satisfies the SynthesisWorkerPort
+      // contract. We pass the same port the eval pipeline uses so
+      // there is exactly one Worker and one producer.
+      const { getActiveWasmRuntimePort } = await import(
+        "./activeWasmRuntimePort.ts"
+      );
       const synthesisService = createBrowserSynthesisService({
         capabilities: environmentState.audioCapabilities,
         devmode: startupFlags.devmode,
+        workerPort: getActiveWasmRuntimePort(),
         consoleMessageSink: (message, type) => {
           // The synthesis service emits plain strings; the console
           // store escapes and renders inline markdown. The sink types

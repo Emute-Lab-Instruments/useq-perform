@@ -35,6 +35,7 @@ import {
   type NodeDefModuleLoader,
   type SynthesisService,
   type SynthesisServiceOptions,
+  type SynthesisWorkerPort,
   type WorkletNodeContract,
   type SynthesisDevmodeSurface,
 } from "./synthesisService";
@@ -266,6 +267,15 @@ export interface BrowserSynthesisOptions {
    * posts no console messages.
    */
   readonly consoleMessageSink?: SynthesisServiceOptions["consoleMessageSink"];
+  /**
+   * Worker producer port used to arm the program epoch after a
+   * successful eval commit (VAL-ENGINE-010). Bootstrap wiring passes
+   * the active WASM runtime port (the Worker-backed implementation);
+   * it satisfies the {@link SynthesisWorkerPort} contract. Optional:
+   * when omitted, the service computes the diff and posts worklet
+   * messages but the producer does not tag blocks with the new epoch.
+   */
+  readonly workerPort?: SynthesisWorkerPort;
 }
 
 /**
@@ -346,6 +356,7 @@ export function createBrowserSynthesisService(
       w.__useqSynthesisTelemetry = snapshot;
     },
     consoleMessageSink: options.consoleMessageSink,
+    workerPort: options.workerPort,
   };
 
   const service = createSynthesisService(serviceOptions);

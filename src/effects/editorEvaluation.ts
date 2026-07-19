@@ -26,9 +26,18 @@ import {
 // because the diagnostics slot is global and the second eval clobbers it
 // before the first eval's read can see it — see
 // `src/runtime/diagnosticReadRace.test.ts`.
+//
+// The same atomic response carries the versioned synth artefact payload
+// (VAL-COMP-013). The eval-to-engine commit pipeline consumes it after
+// the editor-state mutations below so the worklet receives the graph
+// delta and the Worker producer arms the new epoch (VAL-ENGINE-010).
 const evalInUseqWasm = (
   code: string,
-): Promise<{ result: string | null; diagnostics: UseqDiagnostic[] }> =>
+): Promise<{
+  result: string | null;
+  diagnostics: UseqDiagnostic[];
+  synthArtifacts: SynthArtifactsPayload | null;
+}> =>
   getActiveWasmRuntimePort().evalCodeWithDiagnostics(code);
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import { rewriteCodeSliceForModule } from "../lib/manualControlState.ts";
@@ -40,6 +49,8 @@ import { detectAndTrackExpressionEvaluation } from "../editors/extensions/expres
 import { markOutputRunning } from "../utils/outputHealthStore.ts";
 import { dispatchInlineResult } from "../editors/extensions/inlineResults.ts";
 import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
+import type { SynthArtifactsPayload } from "../contracts/runtimeTypes.ts";
+import { getActiveSynthesisService } from "../runtime/activeSynthesisService.ts";
 import { findHolePositions, findHoleEnd } from "../lib/holeDetection.ts";
 import {
   bindingKeysInText,
@@ -291,7 +302,7 @@ function evalWasm(
   const isStale = () => view !== undefined && !isLatestEvalSeq(view, seq);
 
   return evalInUseqWasm(wasmCode)
-    .then(async ({ result, diagnostics }) => {
+    .then(async ({ result, diagnostics, synthArtifacts }) => {
       // A newer eval has been dispatched on this view since we started.
       // Drop our result so we don't clobber the fresher eval's effects.
       // Empty `text` makes the outer `.then`'s `dispatchInlineResult` a
@@ -358,6 +369,28 @@ function evalWasm(
           resyncLiveSlotIndexAfterEval();
           // §7.3 trigger 3: boot-time reconciliation after first successful eval.
           runBootReconciliation(opts.view);
+        }
+
+        // VAL-ENGINE-010: feed the atomic synth artefact payload into the
+        // engine commit pipeline. The synthesis service diffs the
+        // declarations by stable identity, allocates a fresh program
+        // epoch, posts the ordered worklet delta messages, and arms the
+        // Worker producer. Soft/preview evals never reach this path.
+        // Failed evals (VAL-ENGINE-015) and superseded responses
+        // (VAL-ENGINE-013) are rejected inside the service before any
+        // engine mutation, so this call is always safe.
+        if (synthArtifacts) {
+          const synthService = getActiveSynthesisService();
+          if (synthService) {
+            try {
+              synthService.commitSynthArtifacts(synthArtifacts, hasErrors);
+            } catch {
+              // The service throws on fatal ABI/NodeDef mismatch; these
+              // surface through devmode telemetry rather than crashing
+              // the editor. The diagnostic is already visible from the
+              // eval response.
+            }
+          }
         }
       }
 

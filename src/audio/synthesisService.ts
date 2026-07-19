@@ -80,6 +80,13 @@ import {
   findNodeDefDescriptor,
 } from "../contracts/nodeDefRegistry";
 import type { NodeDefAdapter, NodeDefModule } from "./nodeDefAdapter";
+import {
+  buildEngineCommitPlan,
+  createEpochAllocator,
+  type ActiveDeclaration,
+  type EngineCommitPlan,
+  type EpochAllocator,
+} from "./engineCommitCoordinator";
 
 // ---------------------------------------------------------------------------
 // Injected dependencies
@@ -170,6 +177,32 @@ export type NodeDefModuleLoader = (descriptor: NodeDefDescriptor) =>
   Promise<{ module: NodeDefModule; compiledWasm: WebAssembly.Module | null }>;
 
 // ---------------------------------------------------------------------------
+// Worker producer port (for revision arming, VAL-ENGINE-010)
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal subset of the WASM runtime worker port the synthesis service
+ * consumes to arm the producer's program epoch after a successful
+ * eval commit. The full {@link WasmRuntimePort} (see
+ * `src/contracts/runtimePorts.ts`) satisfies this contract; tests pass
+ * a fake.
+ *
+ * Only {@link producerArmEpoch} is required. The service never starts
+ * or stops the producer through this seam — bootstrap wiring owns
+ * producer lifecycle so the synthesis service stays focused on engine
+ * state, graph lifecycle, and the eval-to-epoch commit.
+ */
+export interface SynthesisWorkerPort {
+  /**
+   * Arm the producer's program epoch. After this call the producer
+   * tags every subsequently-published control block with the supplied
+   * epoch (VAL-SAB-015). The worklet activates the pending graph delta
+   * on the first matching-epoch block (VAL-ENGINE-011).
+   */
+  producerArmEpoch(epoch: number): Promise<number>;
+}
+
+// ---------------------------------------------------------------------------
 // Console message sink (VAL-ENGINE-022)
 // ---------------------------------------------------------------------------
 
@@ -254,6 +287,15 @@ export interface SynthesisServiceOptions {
    * output).
    */
   readonly consoleMessageSink?: ConsoleMessageSink;
+  /**
+   * Worker producer port used to arm the program epoch after a
+   * successful eval commit (VAL-ENGINE-010). Optional: when omitted,
+   * the service still computes the graph diff and posts worklet
+   * messages, but the producer does not tag blocks with the new epoch.
+   * Tests use the omission to verify the diff/prefill path in
+   * isolation; production wiring always supplies the live port.
+   */
+  readonly workerPort?: SynthesisWorkerPort;
 }
 
 // ---------------------------------------------------------------------------
@@ -294,6 +336,62 @@ export interface SynthesisTelemetrySnapshot {
 
 /** Telemetry schema version. Bumped only when the field shape changes. */
 export const SYNTHESIS_TELEMETRY_SCHEMA_VERSION = 1 as const;
+
+// ---------------------------------------------------------------------------
+// Engine commit result (VAL-ENGINE-010/013/014/015)
+// ---------------------------------------------------------------------------
+
+/**
+ * Outcome categories for {@link SynthesisService.commitSynthArtifacts}.
+ *
+ * The union is exhaustive so callers (the eval pipeline, tests) can
+ * distinguish a real commit from every documented no-op path.
+ */
+export type EngineCommitOutcome =
+  | "committed"
+  | "rejected-failed-eval"
+  | "rejected-superseded"
+  | "rejected-invalid-payload";
+
+/**
+ * Result of {@link SynthesisService.commitSynthArtifacts}.
+ *
+ * `outcome` is always present; the remaining fields are meaningful only
+ * when `outcome === "committed"`. The shape is structural-cloneable so
+ * devmode dashboards can post it across workers if needed.
+ */
+export interface EngineCommitResult {
+  /** The outcome category. */
+  readonly outcome: EngineCommitOutcome;
+  /**
+   * The committed program epoch, or zero when the call was a no-op.
+   * The worklet activates the pending graph on the first block
+   * carrying this epoch (VAL-ENGINE-011).
+   */
+  readonly epoch: number;
+  /**
+   * The committed compiler revision, or zero when the call was a
+   * no-op. Equals `payload.revision` on a real commit.
+   */
+  readonly revision: number;
+  /**
+   * The worklet delta messages the service posted. Empty when the
+   * call was a no-op. Order is retire → instantiate → update
+   * (VAL-ENGINE-010).
+   */
+  readonly workletDeltas: readonly EngineCommitPlan["workletDeltas"][number][];
+}
+
+/**
+ * Canonical no-op commit result. Returned by every rejection path so
+ * callers can reference-compare without unpacking the union.
+ */
+const NOOP_COMMIT_RESULT: EngineCommitResult = Object.freeze({
+  outcome: "rejected-invalid-payload",
+  epoch: 0,
+  revision: 0,
+  workletDeltas: Object.freeze([]),
+}) as EngineCommitResult;
 
 /**
  * Internal mutable telemetry accumulator. The service writes to this
@@ -372,6 +470,39 @@ export interface SynthesisService {
    *   - the recovery path before constructing a new service.
    */
   dispose(): Promise<void>;
+
+  /**
+   * Apply a successful exact-eval synth artefact payload to the engine.
+   *
+   * Implements the eval-to-engine commit pipeline
+   * (architecture.md §5.6; VAL-ENGINE-010):
+   *
+   *   1. Reject failed evals (`hasErrors === true`) before any engine
+   *      mutation — failed evals change diagnostics only
+   *      (VAL-ENGINE-015).
+   *   2. Reject superseded responses whose `revision` is older than
+   *      the latest committed revision — superseded responses are
+   *      no-ops (VAL-ENGINE-013).
+   *   3. Validate the ABI version (VAL-COMP-015) and NodeDef
+   *      references.
+   *   4. Build the identity-keyed graph diff.
+   *   5. Allocate a fresh program epoch.
+   *   6. Resolve prefill values from the NodeDef registry defaults.
+   *   7. Post the ordered worklet delta messages (retire → instantiate
+   *      → update) to the worklet so the worklet core stages the
+   *      pending graph for the first matching-epoch block
+   *      (VAL-ENGINE-011).
+   *   8. Arm the Worker producer for the new epoch so the next
+   *      produced block carries it.
+   *
+   * Returns the {@link EngineCommitResult}. The service records the
+   * incoming declarations as the new active set and the incoming
+   * revision as the latest committed revision on success.
+   */
+  commitSynthArtifacts(
+    payload: SynthArtifactsPayload,
+    hasErrors: boolean,
+  ): EngineCommitResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,6 +601,15 @@ function createUnavailableService(
       // No engine to reinitialise.
       return false;
     },
+    commitSynthArtifacts(
+      _payload: SynthArtifactsPayload,
+      _hasErrors: boolean,
+    ): EngineCommitResult {
+      // Audio capability is absent; the engine never activates. The
+      // eval pipeline still calls this method (so the editor can run
+      // synth forms without audio), but the commit is a no-op.
+      return NOOP_COMMIT_RESULT;
+    },
     async dispose() {
       // Nothing to dispose.
     },
@@ -505,6 +645,17 @@ function createCapableService(
   let disposed = false;
   let workletAdded = false;
   const compiledAdapters = new Map<string, NodeDefAdapter>();
+
+  // --- Eval-to-engine commit state (VAL-ENGINE-010/013/014/015) ---
+  //
+  // The active-declaration map is keyed by stable editor identity. The
+  // latest applied compiler revision guards against superseded
+  // responses (VAL-ENGINE-013). The epoch allocator issues fresh
+  // program epochs so the worklet activates each commit on the first
+  // matching-epoch block (VAL-ENGINE-011).
+  const activeDeclarations = new Map<string, ActiveDeclaration>();
+  let lastAppliedRevision = 0;
+  const epochAllocator: EpochAllocator = createEpochAllocator();
 
   // VAL-ENGINE-022 dedup state: the last (message, type) pair posted to
   // the console sink. Consecutive identical pairs are suppressed so
@@ -831,6 +982,13 @@ function createCapableService(
       return ok && currentState === "suspended";
     },
 
+    commitSynthArtifacts(
+      payload: SynthArtifactsPayload,
+      hasErrors: boolean,
+    ): EngineCommitResult {
+      return runEngineCommit(payload, hasErrors);
+    },
+
     async dispose() {
       if (disposed) return;
       // IMPORTANT: disposeResources() must run BEFORE we set disposed=true
@@ -887,6 +1045,12 @@ function createCapableService(
     acc.audioContextState = null;
     acc.sampleRate = null;
     compiledAdapters.clear();
+    // Reset the eval-to-engine commit state so the recovered session
+    // starts fresh. The active-declaration map is cleared so the next
+    // commit treats every declaration as added (the worklet re-
+    // instantiates from scratch after recovery).
+    activeDeclarations.clear();
+    lastAppliedRevision = 0;
     if (currentState !== finalState) {
       const reasonKey: EngineStateReasonKey | null =
         finalState === "error" ? "RECOVERY_FAILED" : null;
@@ -908,6 +1072,162 @@ function createCapableService(
       }
     }
     publishTelemetry();
+  }
+
+  // -----------------------------------------------------------------------
+  // Eval-to-engine commit (VAL-ENGINE-010/013/014/015)
+  // -----------------------------------------------------------------------
+  //
+  // Implements the canonical commit pipeline (architecture.md §5.6):
+  //   1. Reject failed evals before any mutation (VAL-ENGINE-015).
+  //   2. Reject superseded responses before any mutation (VAL-ENGINE-013).
+  //   3. Validate ABI + NodeDef references (VAL-COMP-015).
+  //   4. Build the identity-keyed graph diff.
+  //   5. Allocate a fresh program epoch.
+  //   6. Resolve prefill values from the registry defaults.
+  //   7. Post the ordered worklet delta messages.
+  //   8. Arm the Worker producer for the new epoch.
+  //
+  // The function is synchronous through step 7 (the worklet post is a
+  // non-blocking postMessage). Step 8 (producerArmEpoch) is async but
+  // the service does NOT await it before returning — the worklet
+  // activation is gated on the epoch tag the producer writes into the
+  // SAB, and the producer writes that tag on its next iteration. Awaiting
+  // the arm call would block the eval pipeline on the Worker's
+  // microtask queue, which is exactly the starvation pattern
+  // VAL-ENGINE-006 forbids. The arm call is fire-and-forget; failures
+  // surface through producer telemetry (the next produced block will
+  // not carry the new epoch, so the worklet will keep the prior graph).
+
+  function runEngineCommit(
+    payload: SynthArtifactsPayload,
+    hasErrors: boolean,
+  ): EngineCommitResult {
+    if (disposed) {
+      return NOOP_COMMIT_RESULT;
+    }
+
+    // Step 1: VAL-ENGINE-015 — failed evals change diagnostics only.
+    if (hasErrors) {
+      return {
+        outcome: "rejected-failed-eval",
+        epoch: 0,
+        revision: 0,
+        workletDeltas: Object.freeze([]),
+      };
+    }
+
+    // Step 2: VAL-ENGINE-013 — superseded responses are no-ops.
+    // The Worker handler returns the LAST successful synth artefact
+    // payload on a failed eval; the `revision` field lets us detect
+    // whether this response is older than the one we already committed.
+    // A strictly-older revision means a later eval already won. A
+    // zero revision response is a pre-commit Worker probe; once a real
+    // commit has landed (lastAppliedRevision > 0), the zero-revision
+    // response is stale and must not regress engine state.
+    if (payload.revision < lastAppliedRevision) {
+      return {
+        outcome: "rejected-superseded",
+        epoch: 0,
+        revision: 0,
+        workletDeltas: Object.freeze([]),
+      };
+    }
+
+    // Step 3: ABI + NodeDef validation.
+    if (!isSynthArtifactsPayload(payload)) {
+      return { ...NOOP_COMMIT_RESULT };
+    }
+    if (!synthArtifactsSupportsAbi(payload.abi)) {
+      throw new SynthesisServiceError(
+        `synth artefact ABI version ${payload.abi} does not match consumer ABI ${SYNTH_ARTIFACT_ABI_VERSION}`,
+      );
+    }
+    for (const decl of payload.declarations) {
+      if (!findNodeDefDescriptor(decl.def, decl.version)) {
+        throw new SynthesisServiceError(
+          `synth artefact references unknown NodeDef ${decl.def} v${decl.version}`,
+        );
+      }
+    }
+
+    // Steps 4–6: build the commit plan (diff, epoch, prefills, deltas).
+    const prior = Array.from(activeDeclarations.values());
+    const plan = buildEngineCommitPlan(prior, payload, epochAllocator);
+
+    // Step 7: post the ordered worklet delta messages. The worklet
+    // stages the pending graph for the first matching-epoch block
+    // (VAL-ENGINE-011). If the worklet has not been brought up yet
+    // (engine in 'off' or 'suspended'), the messages are still safe
+    // to post — the AudioWorkletProcessor queues them until its
+    // event loop runs.
+    if (workletNode) {
+      for (const delta of plan.workletDeltas) {
+        if (delta.type === "instantiate") {
+          // The worklet core allocates the state zone between quanta
+          // when statePointer/stateBytes are zero. The service does
+          // not preallocate (the host-owned shared memory lives inside
+          // the worklet global scope).
+          workletNode.port.postMessage({
+            type: "instantiate",
+            identity: delta.identity,
+            prefill: delta.prefill,
+            statePointer: 0,
+            stateBytes: 0,
+          });
+        } else {
+          // retire / update pass through unchanged.
+          workletNode.port.postMessage(delta);
+        }
+      }
+    }
+
+    // Step 8: arm the Worker producer for the new epoch. Fire-and-
+    // forget — see the rationale above. The producer writes the epoch
+    // into its pendingEpoch header field; the next produced block
+    // carries it; the worklet activates the pending graph on the
+    // first matching-epoch block (VAL-ENGINE-011).
+    const workerPort = options.workerPort;
+    if (workerPort && plan.epoch !== 0) {
+      // The producer arm is async but we deliberately do NOT await
+      // it: the eval pipeline must not block on Worker round-trips
+      // (VAL-ENGINE-006). Errors surface through producer telemetry.
+      void workerPort.producerArmEpoch(plan.epoch).then(
+        () => {
+          // Arm succeeded; the next produced block carries the epoch.
+        },
+        (err) => {
+          // Best-effort: log to the console sink if wired. The worklet
+          // will hold the pending graph until a matching block lands
+          // or the producer times out (VAL-ENGINE-024).
+          postConsoleMessage(
+            `Synthesis producer arm failed for epoch ${plan.epoch}: ${(err as Error).message}`,
+            "warn",
+          );
+        },
+      );
+    }
+
+    // Update the active-declaration map from the incoming payload. The
+    // map is the source of truth for the next diff; it is keyed by
+    // stable identity so update-in-place preserves instance and phase
+    // (VAL-ENGINE-014).
+    activeDeclarations.clear();
+    for (const decl of payload.declarations) {
+      activeDeclarations.set(decl.identity, {
+        identity: decl.identity,
+        def: decl.def,
+        version: decl.version,
+      });
+    }
+    lastAppliedRevision = payload.revision;
+
+    return {
+      outcome: "committed",
+      epoch: plan.epoch,
+      revision: payload.revision,
+      workletDeltas: plan.workletDeltas,
+    };
   }
 
   // Publish the initial `off` state (with capability present, so no reason).
@@ -981,23 +1301,27 @@ export function createSynthesisDevmodeSurface(
 }
 
 // ---------------------------------------------------------------------------
-// Synth artefact intake (VAL-COMP-013/014/015 plumbing)
+// Synth artefact intake — thin wrapper over SynthesisService.commitSynthArtifacts
 // ---------------------------------------------------------------------------
 
 /**
  * Apply a successful exact-eval synth artefact payload to the engine.
  *
- * The main-thread eval pipeline calls this with the artefacts returned by
- * the atomic Worker response. The service:
- *   - validates the ABI version (VAL-COMP-015);
- *   - rejects the payload when diagnostics contain a severity:"error"
- *     entry (VAL-COMP-014: failed evals must not mutate the engine);
- *   - otherwise records the declarations for the worklet's next graph
- *     delta (the actual epoch-prefill path is wired by a later feature).
+ * This is a thin wrapper over {@link SynthesisService.commitSynthArtifacts}
+ * preserved for backwards compatibility with callers that pass a raw
+ * payload of `unknown` type. New callers should call
+ * `service.commitSynthArtifacts(payload, hasErrors)` directly to inspect
+ * the structured {@link EngineCommitResult}.
  *
- * Returns `true` when the payload was accepted, `false` when it was
- * rejected as a no-op. Throws on ABI mismatch (a bundle-version slip is
- * a fatal programmer error, not a user-facing diagnostic).
+ * Returns `true` when the payload was committed, `false` when it was
+ * rejected as a no-op (failed eval, superseded response, or invalid
+ * payload). Throws on ABI mismatch (a bundle-version slip is a fatal
+ * programmer error, not a user-facing diagnostic).
+ *
+ * Implements VAL-COMP-013/014/015 (atomic Worker response, failed
+ * response has no engine commit, ABI versioned) and
+ * VAL-ENGINE-010/013/014/015 (epoch-coherent graph diff, superseded
+ * no-op, update-in-place, failed-eval no-op).
  */
 export function applySynthArtifacts(
   service: SynthesisService,
@@ -1014,30 +1338,11 @@ export function applySynthArtifacts(
     return false;
   }
 
-  // VAL-COMP-015: ABI version must match exactly.
-  if (!synthArtifactsSupportsAbi(payload.abi)) {
-    throw new SynthesisServiceError(
-      `synth artefact ABI version ${payload.abi} does not match consumer ABI ${SYNTH_ARTIFACT_ABI_VERSION}`,
-    );
-  }
-
-  // Validate every declaration against the static registry. Unknown defs
-  // cannot reach this path because the compiler rejects them, but the
-  // service still checks defensively so a future evaluator cannot slip
-  // an unknown def into the engine commit.
-  for (const decl of payload.declarations) {
-    if (!findNodeDefDescriptor(decl.def, decl.version)) {
-      throw new SynthesisServiceError(
-        `synth artefact references unknown NodeDef ${decl.def} v${decl.version}`,
-      );
-    }
-  }
-
-  // M1 does not yet wire the graph delta; the service records acceptance
-  // only. The actual worklet message is added by the eval-epoch-engine-
-  // commit feature, which owns the diff/prefill/activation sequence.
-  void service;
-  return true;
+  // Delegate to the service's structured commit pipeline. The result's
+  // `outcome` field carries the rejection reason for callers that need
+  // it; this wrapper preserves the legacy boolean contract.
+  const result = service.commitSynthArtifacts(payload, hasErrors);
+  return result.outcome === "committed";
 }
 
 /**
