@@ -87,6 +87,7 @@ import {
   createSynthesisControlBuffer,
 } from "../contracts/synthesisControlAbi";
 import type {
+  WorkletModuleTransferMessage,
   WorkletProducerTimeoutEvent,
   WorkletTelemetrySnapshot,
 } from "./workletGraphDelta";
@@ -183,8 +184,43 @@ export type WorkletNodeFactory = (context: AudioContextContract) => WorkletNodeC
  * In tests this loader is replaced by a fake that returns a
  * {@link NodeDefModule} built from a {@link FakeNodeDefModule}.
  */
+/**
+ * Loader that compiles a NodeDef module OFF the audio thread and returns
+ * the adapter the host will use to drive the def.
+ *
+ * The synthesis service owns the lifecycle: it calls the loader exactly
+ * once per registered def, on the main thread (or in a Worker pool), and
+ * hands the resulting module to the worklet via postMessage with a
+ * transferred `WebAssembly.Module`. The worklet reuses the supplied
+ * module without re-compiling (VAL-ENGINE-008).
+ *
+ * VAL-ENGINE-008 contract: the loader returns
+ *   - `module`: the host adapter shape (always present);
+ *   - `compiledWasm`: the real compiled `WebAssembly.Module` when the
+ *     host compiled one. Null when the loader intentionally omitted
+ *     compilation (e.g. a fake-loader test path, or when the host
+ *     wants to exercise the byte-fallback path);
+ *   - `wasmBytes`: the EXACT prevalidated bytes the loader compiled
+ *     from. Always present when the loader actually fetched bytes;
+ *     optional for legacy fake loaders.
+ *
+ * The synthesis service prefers the structured-cloned module path
+ * (`compiledWasm`) and falls back to shipping the exact bytes
+ * (`wasmBytes`) only when no compiled module is available.
+ */
 export type NodeDefModuleLoader = (descriptor: NodeDefDescriptor) =>
-  Promise<{ module: NodeDefModule; compiledWasm: WebAssembly.Module | null }>;
+  Promise<{
+    module: NodeDefModule;
+    compiledWasm: WebAssembly.Module | null;
+    /**
+     * EXACT prevalidated bytes the loader compiled from. The host
+     * ships these as the AudioWorklet MessagePort compatibility
+     * fallback when no compiled module is available. The worklet
+     * recompiles them ONCE in its message handler before graph
+     * activation (VAL-ENGINE-008).
+     */
+    wasmBytes?: Uint8Array;
+  }>;
 
 // ---------------------------------------------------------------------------
 // Worker producer port (for revision arming, VAL-ENGINE-010)
@@ -804,6 +840,11 @@ function createCapableService(
   let disposed = false;
   let workletAdded = false;
   const compiledAdapters = new Map<string, NodeDefAdapter>();
+  // VAL-ENGINE-008: track which NodeDef modules have already been
+  // shipped to the worklet so repeated resume / recovery paths send
+  // EXACTLY ONE installation payload per def. The set is cleared on
+  // dispose / recovery so the fresh worklet receives a fresh payload.
+  const installedWorkletModules = new Set<string>();
 
   // VAL-ENGINE-027: the service stamps every worklet node it constructs
   // with a monotonically-increasing generation counter. The worklet →
@@ -1216,8 +1257,15 @@ function createCapableService(
     for (const descriptor of descriptors) {
       const key = `${descriptor.name}@${descriptor.version}`;
       if (compiledAdapters.has(key)) continue;
+      // VAL-ENGINE-008: exactly one installation payload per def is
+      // sent before rendering or graph activation. Track the
+      // installation state on the service so repeated calls (recovery,
+      // repeated resume) cannot re-send the payload. The
+      // `compiledAdapters.has(key)` check above guards the host-side
+      // adapter cache; this guards the worklet-side transfer.
+      if (installedWorkletModules.has(key)) continue;
       try {
-        const { module, compiledWasm } = await options.nodeDefModuleLoader(descriptor);
+        const { module, compiledWasm, wasmBytes } = await options.nodeDefModuleLoader(descriptor);
         // Adapter validates descriptor equality before instantiation so a
         // stale bundle cannot slip past the asset pipeline.
         const adapter = await import("./nodeDefAdapter").then(({ createNodeDefAdapter }) =>
@@ -1226,30 +1274,25 @@ function createCapableService(
         compiledAdapters.set(key, adapter);
         acc.compiledModuleCount += 1;
         acc.compiledModuleNames.push(descriptor.name);
-        // Hand the compiled module to the worklet. WebAssembly.Module
-        // objects are structured-cloned across `postMessage` (they are
-        // shareable, not transferable), so the transfer list is empty.
-        // The worklet reuses the supplied module without recompiling
-        // (VAL-ENGINE-008) by instantiating it against its shared
-        // memory between quanta.
-        if (workletNode && compiledWasm) {
-          // Post the raw WASM bytes to the worklet. WebAssembly.Module
-          // is structured-cloneable per spec but some Chromium versions
-          // silently drop it across the AudioWorklet MessagePort. The
-          // bytes are always available (stashed on the compiled module
-          // by the loader) and let the worklet recompile reliably.
-          const moduleWithBytes = compiledWasm as WebAssembly.Module & { __sourceBytes?: Uint8Array };
-          const wasmBytes = moduleWithBytes.__sourceBytes ?? null;
-          workletNode.port.postMessage(
-            {
-              type: "nodedef-module",
-              descriptor: {
-                name: descriptor.name,
-                version: descriptor.version,
-              },
-              wasmBytes,
-            },
-          );
+        // VAL-ENGINE-008: ship exactly one installation payload to the
+        // worklet. The preferred path is a structured-cloned
+        // `WebAssembly.Module` — the spec lists it as cloneable and
+        // Chromium preserves it across most AudioWorklet ports. When
+        // the loader did not produce a compiled module (e.g. tests
+        // that inject only a fake adapter), or when the host elects
+        // the Chromium fallback explicitly, the payload carries the
+        // EXACT prevalidated bytes the main thread compiled from.
+        //
+        // The two fields are mutually exclusive: exactly one is set
+        // per {@link WorkletModuleTransferMessage} contract. The
+        // worklet refuses malformed payloads that carry both or
+        // neither.
+        if (workletNode) {
+          const payload = buildModuleTransferPayload(descriptor, compiledWasm, wasmBytes);
+          if (payload !== null) {
+            workletNode.port.postMessage(payload);
+            installedWorkletModules.add(key);
+          }
         }
       } catch (err) {
         // Module compilation failed. The worklet has not received the
@@ -1604,6 +1647,11 @@ function createCapableService(
     acc.audioContextState = null;
     acc.sampleRate = null;
     compiledAdapters.clear();
+    // VAL-ENGINE-008: clear the installed-module set so the recovered
+    // worklet receives a fresh installation payload on its next bring-
+    // up. Without this clear, the recovered worklet would never get a
+    // module transfer and instantiation would fail with "no adapter".
+    installedWorkletModules.clear();
     // Reset the eval-to-engine commit state so the recovered session
     // starts fresh. The active-declaration map is cleared so the next
     // commit treats every declaration as added (the worklet re-
@@ -1837,6 +1885,74 @@ function createCapableService(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Build the EXACT ONE installation payload for a NodeDef module transfer
+ * to the worklet (VAL-ENGINE-008).
+ *
+ * The contract is:
+ *
+ *   - When the loader produced a compiled `WebAssembly.Module`, the
+ *     payload carries it as `module` (the structured-cloned fast path).
+ *     The worklet instantiates the module against its shared memory
+ *     without recompiling.
+ *
+ *   - Otherwise (tests that inject only a fake adapter, or environments
+ *     where the loader deliberately omitted the compiled module to
+ *     exercise the fallback), the payload carries the EXACT
+ *     prevalidated bytes the loader returned. The worklet compiles
+ *     these ONCE in its message handler before graph activation.
+ *
+ * Returns `null` when neither path is available (e.g. the loader
+ * produced neither a compiled module nor stashed bytes). The caller
+ * MUST skip the transfer in that case — the worklet cannot install
+ * "nothing".
+ *
+ * The returned payload NEVER carries both `module` and `wasmBytes`;
+ * that would violate the EXACTLY ONE rule and the worklet would
+ * refuse installation.
+ *
+ * Exported for direct unit testing.
+ */
+export function buildModuleTransferPayload(
+  descriptor: NodeDefDescriptor,
+  compiledWasm: WebAssembly.Module | null,
+  wasmBytes?: Uint8Array,
+): WorkletModuleTransferMessage | null {
+  const header = {
+    type: "nodedef-module" as const,
+    descriptor: {
+      name: descriptor.name,
+      version: descriptor.version,
+    },
+  };
+
+  if (compiledWasm !== null) {
+    // Preferred path: structured-cloned compiled module. The host
+    // has already compiled and validated the bytes off-thread, so
+    // the worklet reuses the module without recompiling
+    // (VAL-ENGINE-008). WebAssembly.Module is structured-cloneable
+    // per the Web IDL spec; Chromium generally preserves it across
+    // AudioWorklet MessagePorts. The `wasmBytes` argument is
+    // INTENTIONALLY omitted here so the payload carries EXACTLY ONE
+    // of (module | bytes).
+    return { ...header, module: compiledWasm };
+  }
+
+  // Chromium compatibility fallback: the loader did not produce a
+  // compiled module (e.g. the browser-side loader's WebAssembly.compile
+  // threw, or a unit-test loader injected only a fake adapter). When
+  // the loader returned the EXACT prevalidated source bytes, ship
+  // them so the worklet can recompile once during installation. The
+  // worklet's compilation happens ONLY in the message handler,
+  // before graph activation, never inside process() or steady state.
+  if (typeof wasmBytes !== "undefined" && wasmBytes !== null) {
+    return { ...header, wasmBytes };
+  }
+
+  // Neither path available; caller must skip the transfer.
+  return null;
+}
 
 /**
  * Default NodeDef descriptors loaded on engine bring-up. The M1 vertical

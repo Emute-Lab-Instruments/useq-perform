@@ -96,9 +96,29 @@ export interface WorkletPrefillParam {
  * against the host-owned shared memory happens between render quanta
  * inside the message handler (synthesis.md §3.2).
  *
- * The `compiledModule` field is a transferable `WebAssembly.Module`.
- * The descriptor echoes the registry metadata so the worklet can
- * double-check equality before instantiation.
+ * VAL-ENGINE-008 contract: the main thread fetches the exact NodeDef
+ * bytes and compiles AND validates them BEFORE installation. Exactly
+ * ONE installation payload is sent per def before rendering or graph
+ * activation. The payload carries EITHER:
+ *
+ *   - `module` — a structured-cloned `WebAssembly.Module` the browser
+ *     has agreed to clone across the AudioWorklet MessagePort. This is
+ *     the preferred path (no recompilation on the audio side).
+ *
+ *   - `wasmBytes` — the EXACT prevalidated bytes the main thread
+ *     compiled from. This is the Chromium compatibility fallback for
+ *     versions that silently drop `WebAssembly.Module` across the
+ *     AudioWorklet MessagePort. The worklet compiles these bytes ONCE
+ *     in its message handler (before graph activation) and reuses the
+ *     resulting module for every subsequent instantiation.
+ *
+ * Setting BOTH fields is a contract violation; the worklet treats such
+ * a payload as malformed and refuses installation. Setting NEITHER is
+ * also a violation; the worklet cannot install "nothing". The
+ * `WorkletModuleTransferKind` discriminator exposes the choice in
+ * telemetry and tests.
+ *
+ * Compilation inside `process()` or any steady-state path is forbidden.
  */
 export interface WorkletModuleTransferMessage {
   readonly type: "nodedef-module";
@@ -106,7 +126,45 @@ export interface WorkletModuleTransferMessage {
     readonly name: string;
     readonly version: number;
   };
-  readonly module: WebAssembly.Module;
+  /**
+   * Compiled `WebAssembly.Module` for the structured-clone fast path.
+   * Mutually exclusive with {@link wasmBytes}.
+   */
+  readonly module?: WebAssembly.Module;
+  /**
+   * EXACT prevalidated bytes the main thread compiled from. Mutually
+   * exclusive with {@link module}. The worklet compiles these ONCE
+   * in its message handler and reuses the resulting module.
+   */
+  readonly wasmBytes?: Uint8Array;
+}
+
+/**
+ * Discriminator describing which installation path a
+ * {@link WorkletModuleTransferMessage} used. Exposed for tests and
+ * telemetry so the VAL-ENGINE-008 "exactly one" rule is observable.
+ *
+ *   - `"module"` — structured-cloned compiled module path (preferred).
+ *   - `"bytes"` — exact-byte fallback (Chromium compatibility).
+ *   - `"malformed"` — neither or both fields set; the worklet refuses
+ *     installation of malformed payloads.
+ */
+export type WorkletModuleTransferKind = "module" | "bytes" | "malformed";
+
+/**
+ * Inspect a {@link WorkletModuleTransferMessage}-shaped payload and
+ * report which installation path it represents. Used by the worklet
+ * shell and by tests to enforce the "exactly one of module OR
+ * wasmBytes" rule (VAL-ENGINE-008).
+ */
+export function classifyModuleTransfer(
+  payload: Pick<WorkletModuleTransferMessage, "module" | "wasmBytes">,
+): WorkletModuleTransferKind {
+  const hasModule = typeof payload.module !== "undefined" && payload.module !== null;
+  const hasBytes = typeof payload.wasmBytes !== "undefined" && payload.wasmBytes !== null;
+  if (hasModule && !hasBytes) return "module";
+  if (hasBytes && !hasModule) return "bytes";
+  return "malformed";
 }
 
 /**

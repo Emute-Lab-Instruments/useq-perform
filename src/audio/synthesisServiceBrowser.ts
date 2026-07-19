@@ -163,11 +163,18 @@ export function createBrowserNodeDefModuleLoader(
     const bytes = new Uint8Array(await response.arrayBuffer());
     const compiled = await WebAssembly.compile(bytes);
     const module = await buildNodeDefModuleFromCompiled(descriptor, compiled, bytes);
-    // Stash the source bytes on the compiled module so the synthesis
-    // service can forward them to the worklet alongside the module.
-    // Some Chromium versions reject structured-clone of
-    // WebAssembly.Module across the AudioWorklet MessagePort; the
-    // bytes let the worklet recompile as a fallback.
+    // VAL-ENGINE-008: return the EXACT prevalidated bytes alongside
+    // the compiled module. The synthesis service prefers the
+    // structured-cloned module path; if the browser drops the
+    // module across the AudioWorklet MessagePort, the host can
+    // re-issue the payload using the bytes (or, more commonly, the
+    // service transfers only one of the two per def). Returning the
+    // bytes here lets the contract helper
+    // (buildModuleTransferPayload) pick the right field without
+    // guessing. The bytes are ALSO stashed on the compiled module
+    // for any caller that still reads the legacy __sourceBytes
+    // field (no production caller after this change, but the stash
+    // keeps the field available for diagnostics).
     try {
       Object.defineProperty(compiled, "__sourceBytes", {
         value: bytes,
@@ -177,9 +184,9 @@ export function createBrowserNodeDefModuleLoader(
       });
     } catch {
       // defineProperty may fail on platform objects; ignore — the
-      // worklet will receive the module directly if cloning works.
+      // explicit wasmBytes return field carries the bytes regardless.
     }
-    return { module, compiledWasm: compiled };
+    return { module, compiledWasm: compiled, wasmBytes: bytes };
   };
 }
 

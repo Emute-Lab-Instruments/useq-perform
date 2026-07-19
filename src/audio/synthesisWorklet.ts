@@ -56,6 +56,11 @@ import {
   NODEDEF_REGISTRY,
   type NodeDefDescriptor,
 } from "../contracts/nodeDefRegistry";
+import {
+  classifyModuleTransfer,
+  type WorkletModuleTransferMessage,
+  type WorkletModuleTransferKind,
+} from "./workletGraphDelta";
 
 // ---------------------------------------------------------------------------
 // Ambient worklet-scope globals
@@ -101,6 +106,19 @@ interface AudioWorkletProcessorInstance {
 /** The AudioWorkletNode processor name the synthesis service registers. */
 export const SYNTHESIS_PROCESSOR_NAME = "synthesis-processor";
 
+/**
+ * Build the descriptor lookup map from the static M1 registry. Exposed
+ * so tests can construct a cache against the same map without touching
+ * worklet-global scope.
+ */
+export function buildNodeDefDescriptorMap(): ReadonlyMap<string, NodeDefDescriptor> {
+  const descriptors = new Map<string, NodeDefDescriptor>();
+  for (const desc of NODEDEF_REGISTRY) {
+    descriptors.set(`${desc.name}@${desc.version}`, desc);
+  }
+  return descriptors;
+}
+
 // ---------------------------------------------------------------------------
 // Per-processor bag (the state the shell threads through every process())
 // ---------------------------------------------------------------------------
@@ -120,9 +138,28 @@ interface ProcessorBag {
   /**
    * Install a NodeDef module transferred from the main thread. The
    * shell instantiates the WASM module against the worklet's shared
-   * memory and caches the resulting adapter.
+   * memory and caches the resulting adapter. VAL-ENGINE-008:
+   * compilation (when the payload carries the exact-byte fallback)
+   * happens here, in the message handler, before graph activation —
+   * NEVER inside `process()`.
    */
-  installModule(payload: WorkletModuleTransferShim): Promise<void>;
+  installModule(payload: WorkletModuleTransferMessage): Promise<void>;
+  /**
+   * Number of WebAssembly.compile invocations recorded for a def.
+   * Used by tests to prove the fallback path fires at most once per
+   * def and that steady state never compiles.
+   */
+  compileCountFor(name: string, version: number): number;
+  /**
+   * Number of installation payloads received for a def. Used by
+   * tests to prove the VAL-ENGINE-008 exactly-one rule.
+   */
+  installCountFor(name: string, version: number): number;
+  /**
+   * Classification of the most recent transfer for a def. Used by
+   * tests to assert structured-cloned module vs exact-byte fallback.
+   */
+  lastTransferKindFor(name: string, version: number): WorkletModuleTransferKind | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +175,7 @@ interface ProcessorBag {
  * (16 MiB). The maximum matches so the worklet does not need to grow
  * the memory at runtime.
  */
-function createWorkletAllocator(): WorkletMemoryAllocator & {
+export function createWorkletAllocator(): WorkletMemoryAllocator & {
   readonly memory: WebAssembly.Memory;
 } {
   // VAL-CROSS-002: the NodeDef module declares env.memory with
@@ -170,10 +207,23 @@ function createWorkletAllocator(): WorkletMemoryAllocator & {
 // ---------------------------------------------------------------------------
 
 /**
+ * Adapter cache return type — exposed for direct unit testing of the
+ * VAL-ENGINE-008 contract (compile counts, install counts, transfer
+ * classification) without spinning up an AudioWorkletProcessor.
+ */
+export interface AdapterCache {
+  factory: (name: string, version: number) => NodeDefAdapter | null;
+  install(payload: WorkletModuleTransferMessage): Promise<void>;
+  compileCount(name: string, version: number): number;
+  installCount(name: string, version: number): number;
+  lastTransferKind(name: string, version: number): WorkletModuleTransferKind | null;
+}
+
+/**
  * Cache of instantiated NodeDef adapters keyed by `name@version`. The
  * adapter factory passed to the core looks up this cache.
  *
- * When a {@link WorkletModuleTransferShim} arrives the shell
+ * When a {@link WorkletModuleTransferMessage} arrives the shell
  * instantiates the transferred `WebAssembly.Module` against the
  * worklet's shared memory, builds the adapter via
  * {@link createNodeDefAdapter}, and caches it.
@@ -186,23 +236,41 @@ function createWorkletAllocator(): WorkletMemoryAllocator & {
  * transferred to the worklet via postMessage; the worklet reuses the
  * supplied module without recompiling. Instantiation happens here,
  * between quanta, in the message handler — never inside `process()`.
+ *
+ * The contract permits EXACTLY ONE installation payload per def. The
+ * payload carries EITHER a structured-cloned `WebAssembly.Module` OR
+ * the EXACT prevalidated bytes the main thread compiled from (never
+ * both, never neither). When bytes are supplied, the worklet compiles
+ * them ONCE in this message handler before graph activation; the
+ * resulting module is reused for every subsequent instantiation.
+ *
+ * Compilation counters are tracked per-def so tests can prove the
+ * fallback path fires at most once and that process() / steady state
+ * never invoke WebAssembly.compile.
  */
-function createAdapterCache(
+export function createAdapterCache(
   memory: WebAssembly.Memory,
   descriptors: ReadonlyMap<string, NodeDefDescriptor>,
-): {
-  factory: (name: string, version: number) => NodeDefAdapter | null;
-  install(payload: WorkletModuleTransferShim): Promise<void>;
-} {
+): AdapterCache {
   const cache = new Map<string, NodeDefAdapter>();
+  const compiles = new Map<string, number>();
+  const installs = new Map<string, number>();
+  const transferKinds = new Map<string, WorkletModuleTransferKind>();
+
+  const keyFor = (name: string, version: number) => `${name}@${version}`;
 
   return {
     factory(name, version) {
-      const key = `${name}@${version}`;
-      return cache.get(key) ?? null;
+      return cache.get(keyFor(name, version)) ?? null;
     },
     async install(payload) {
-      const key = `${payload.descriptor.name}@${payload.descriptor.version}`;
+      const key = keyFor(payload.descriptor.name, payload.descriptor.version);
+      // VAL-ENGINE-008: exactly ONE installation payload per def is
+      // honoured. Receiving a second payload for the same def is a
+      // contract violation by the main thread; the worklet refuses
+      // the duplicate so the cached adapter (built from the first,
+      // prevalidated payload) stays authoritative.
+      installs.set(key, (installs.get(key) ?? 0) + 1);
       if (cache.has(key)) return;
       const descriptor = descriptors.get(key);
       if (!descriptor) {
@@ -211,19 +279,37 @@ function createAdapterCache(
         // worklet keeps running.
         return;
       }
+      // VAL-ENGINE-008: enforce EXACTLY ONE of (module | bytes). A
+      // payload that carries both or neither is malformed; refuse
+      // installation so the worklet keeps running with no def rather
+      // than crashing the audio thread.
+      const kind = classifyModuleTransfer({
+        module: payload.module,
+        wasmBytes: payload.wasmBytes,
+      });
+      transferKinds.set(key, kind);
+      if (kind === "malformed") {
+        // Malformed payload: refuse installation.
+        return;
+      }
       // Instantiate the WASM module against the worklet's shared
       // memory. The module imports `env.memory`; we supply the
       // worklet's existing memory so per-instance state zones live
       // in the same linear memory the host adapter addresses.
-      //
-      // Some Chromium versions silently drop WebAssembly.Module across
-      // the AudioWorklet MessagePort even though the spec permits
-      // structured clone. When the module is absent but raw bytes are
-      // supplied, recompile in the worklet scope.
       const importObject = { env: { memory } };
       let moduleObj: WebAssembly.Module | undefined = payload.module;
       if (!moduleObj && payload.wasmBytes) {
-        moduleObj = await WebAssembly.compile(payload.wasmBytes as Uint8Array<ArrayBuffer>);
+        // VAL-ENGINE-008 fallback path: the main thread could not
+        // (or chose not to) ship a structured-cloned
+        // WebAssembly.Module. Compile the EXACT prevalidated bytes
+        // ONCE here, in the message handler, before graph
+        // activation. The resulting module is cached on `cache` via
+        // the adapter factory so subsequent instantiations reuse it
+        // without recompiling.
+        compiles.set(key, (compiles.get(key) ?? 0) + 1);
+        moduleObj = await WebAssembly.compile(
+          payload.wasmBytes as Uint8Array<ArrayBuffer>,
+        );
       }
       if (!moduleObj) {
         return;
@@ -250,14 +336,16 @@ function createAdapterCache(
       const adapter = createNodeDefAdapter(module, descriptor);
       cache.set(key, adapter);
     },
+    compileCount(name, version) {
+      return compiles.get(keyFor(name, version)) ?? 0;
+    },
+    installCount(name, version) {
+      return installs.get(keyFor(name, version)) ?? 0;
+    },
+    lastTransferKind(name, version) {
+      return transferKinds.get(keyFor(name, version)) ?? null;
+    },
   };
-}
-
-/** Shim for the module-transfer payload (mirrors the message type). */
-interface WorkletModuleTransferShim {
-  readonly descriptor: { readonly name: string; readonly version: number };
-  readonly module?: WebAssembly.Module;
-  readonly wasmBytes?: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -282,10 +370,7 @@ function createProcessorBag(): ProcessorBag {
   // Build a descriptor lookup keyed by `name@version` from the static
   // M1 registry. Future features that dynamically register defs will
   // extend this map.
-  const descriptors = new Map<string, NodeDefDescriptor>();
-  for (const desc of NODEDEF_REGISTRY) {
-    descriptors.set(`${desc.name}@${desc.version}`, desc);
-  }
+  const descriptors = buildNodeDefDescriptorMap();
   const adapterCache = createAdapterCache(allocatorWithMemory.memory, descriptors);
 
   const core = createWorkletCore({
@@ -303,6 +388,9 @@ function createProcessorBag(): ProcessorBag {
     outputScratch: new Float32Array(128),
     outputGain: 1,
     installModule: (payload) => adapterCache.install(payload),
+    compileCountFor: (name, version) => adapterCache.compileCount(name, version),
+    installCountFor: (name, version) => adapterCache.installCount(name, version),
+    lastTransferKindFor: (name, version) => adapterCache.lastTransferKind(name, version),
   };
 }
 
@@ -343,13 +431,19 @@ export function registerSynthesisProcessor(): void {
           typeof data === "object" &&
           (data as { type?: string }).type === "nodedef-module"
         ) {
-          const payload = data as WorkletModuleTransferShim & { type: string };
+          const payload = data as WorkletModuleTransferMessage;
           // Install is async (WebAssembly.instantiate returns a
           // promise) but the worklet's message handler must not block.
           // The install races against the next instantiate delta; if
           // the instantiate arrives first the adapter factory returns
           // null and the core holds the delta as pending until the
           // next matching-epoch block.
+          //
+          // VAL-ENGINE-008: this is the ONLY site where
+          // WebAssembly.compile may run in the worklet scope. The
+          // fallback path compiles the EXACT prevalidated bytes ONCE
+          // before graph activation; subsequent process() calls reuse
+          // the cached adapter without recompiling.
           void bag.installModule(payload);
           return;
         }
