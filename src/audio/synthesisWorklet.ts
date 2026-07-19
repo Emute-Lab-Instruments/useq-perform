@@ -373,6 +373,45 @@ function createProcessorBag(): ProcessorBag {
   const descriptors = buildNodeDefDescriptorMap();
   const adapterCache = createAdapterCache(allocatorWithMemory.memory, descriptors);
 
+  // VAL-CROSS-002 integration: allocate the per-instance DSP and
+  // control scratch buffers INSIDE the host-owned WebAssembly.Memory.
+  // The WASM compute call receives these views' byte offsets as
+  // pointers; the adapter writes its output samples directly into the
+  // same memory the core reads from. Without this shared-memory link
+  // the adapter would write into WASM memory while the core read from
+  // a disconnected local buffer and the destination would stay silent.
+  //
+  // The DSP output region must hold a full render quantum of IEEE-754
+  // doubles (128 * 8 = 1024 bytes, 8-byte aligned). The osc/sine
+  // compute contract writes one double per output sample, NOT floats.
+  // The control regions hold a single Float64 (8 bytes each). All
+  // regions are 8-byte aligned; the allocator's bumpArena rounds up
+  // accordingly.
+  const DSP_SCRATCH_FRAMES = 128;
+  const instanceScratchPtr = allocatorWithMemory.allocate(
+    DSP_SCRATCH_FRAMES * 8,
+    8,
+  );
+  const freqControlScratchPtr = allocatorWithMemory.allocate(8, 8);
+  const ampControlScratchPtr = allocatorWithMemory.allocate(8, 8);
+  if (
+    instanceScratchPtr < 0 ||
+    freqControlScratchPtr < 0 ||
+    ampControlScratchPtr < 0
+  ) {
+    throw new Error(
+      "synthesisWorklet: failed to allocate DSP scratch regions in host WebAssembly.Memory",
+    );
+  }
+  const wasmBuffer = allocatorWithMemory.memory.buffer;
+  const instanceScratch = new Float64Array(
+    wasmBuffer,
+    instanceScratchPtr,
+    DSP_SCRATCH_FRAMES,
+  );
+  const freqControlScratch = new Float64Array(wasmBuffer, freqControlScratchPtr, 1);
+  const ampControlScratch = new Float64Array(wasmBuffer, ampControlScratchPtr, 1);
+
   const core = createWorkletCore({
     adapterFactory: (name, version) => adapterCache.factory(name, version),
     allocator: allocatorWithMemory,
@@ -381,6 +420,9 @@ function createProcessorBag(): ProcessorBag {
       // Publishing happens via the process() return value in the
       // shell; the core's publish callback is not needed here.
     },
+    instanceScratch,
+    freqControlScratch,
+    ampControlScratch,
   });
 
   return {

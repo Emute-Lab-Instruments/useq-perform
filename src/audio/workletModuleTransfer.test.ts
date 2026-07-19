@@ -96,7 +96,13 @@ function capableSnapshot() {
 // ---------------------------------------------------------------------------
 
 describe("buildModuleTransferPayload (VAL-ENGINE-008 exactly-one rule)", () => {
-  it("chooses the structured-cloned compiled module path when present", async () => {
+  it("prefers wasmBytes when both compiled module and bytes are present (VAL-CROSS-002 reliability)", async () => {
+    // Some Chromium/headless AudioWorklet implementations silently drop
+    // messages containing WebAssembly.Module objects. Preferring bytes
+    // when both are available is reliable across all implementations.
+    // The bytes are the EXACT prevalidated artefact the main thread
+    // already compiled from; the worklet recompiles once during
+    // installation (VAL-ENGINE-008 fallback path).
     const bytes = readOscSineWasmBytes();
     const compiled = await WebAssembly.compile(bytes);
     const payload = buildModuleTransferPayload(
@@ -107,9 +113,9 @@ describe("buildModuleTransferPayload (VAL-ENGINE-008 exactly-one rule)", () => {
     expect(payload).not.toBeNull();
     expect(payload!.type).toBe("nodedef-module");
     expect(payload!.descriptor).toEqual({ name: "osc/sine", version: 1 });
-    expect(payload!.module).toBe(compiled);
-    expect(payload!.wasmBytes).toBeUndefined();
-    expect(classifyModuleTransfer(payload!)).toBe("module");
+    expect(payload!.wasmBytes).toBe(bytes);
+    expect(payload!.module).toBeUndefined();
+    expect(classifyModuleTransfer(payload!)).toBe("bytes");
   });
 
   it("chooses the exact-byte fallback path when only stashed bytes are present", () => {
@@ -322,8 +328,10 @@ describe("synthesisService — VAL-ENGINE-008 exactly-one installation payload",
     const installMsgs = worklet.installMessages();
     expect(installMsgs).toHaveLength(1);
     expect(installMsgs[0].descriptor).toEqual({ name: "osc/sine", version: 1 });
-    // The preferred path is the structured-cloned compiled module.
-    expect(classifyModuleTransfer(installMsgs[0])).toBe("module");
+    // VAL-CROSS-002: bytes are preferred over compiled module for
+    // cross-browser reliability (some headless AudioWorklet ports
+    // silently drop WebAssembly.Module payloads).
+    expect(classifyModuleTransfer(installMsgs[0])).toBe("bytes");
     // Repeated resume attempts do NOT re-send the payload.
     await service.resumeOnUserActivation();
     await service.resumeOnUserActivation();

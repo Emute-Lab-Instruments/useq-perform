@@ -493,6 +493,18 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       return response.installed;
     },
 
+    async producerSetControlValues(values: Record<string, number>): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      await send<
+        Extract<WasmWorkerResponse, { type: "producerSetControlValues-result" }>
+      >(
+        { type: "producerSetControlValues", values },
+        "producerSetControlValues-result",
+      );
+      return true;
+    },
+
     async producerStart(options: {
       anchorFrame?: bigint;
       anchorTime?: number;

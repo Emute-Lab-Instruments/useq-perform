@@ -148,6 +148,8 @@ let producer: ProducerScheduler | null = null;
 let producerRunning = false;
 let producerLoopDriver: ProducerLoopDriver | null = null;
 let producerBlocksPublished = 0;
+let producerBlockRateChannels: readonly string[] = [];
+const producerControlValues = new Map<string, number>();
 const producerAudit: ProducedBlockAudit[] = [];
 
 /**
@@ -195,13 +197,21 @@ const producerExecutor: ProducerExecutor = {
       }
     }
     const out: Record<string, number> = {};
-    // For M1 we evaluate the canonical synth outputs. The channel-name
-    // list is supplied via `producerInstallSab`; we read the values
-    // from the SAB-bound slot table after the host has bound controls
-    // to synth declarations. Until the host wires the synth output
-    // channel mapping, the producer publishes zero-valued controls so
-    // the worklet can still activate on matching epochs.
-    void time;
+    // VAL-CROSS-002: for M1 the block-rate channels (freq, amp) are
+    // synth control parameters, not interpreter signal outputs. The
+    // interpreter's evaluateOutputAtTime evaluates ModuLisp
+    // expressions / named outputs (a1-a8, etc.), not synth node
+    // parameters. The service sends the current control values
+    // via producerSetControlValues; the producer publishes those
+    // values on every block so the worklet receives consistent
+    // controls. This is the "static control" model: values change
+    // only on re-eval, not per-block.
+    for (const channel of producerBlockRateChannels) {
+      const value = producerControlValues.get(channel);
+      if (typeof value === "number" && Number.isFinite(value)) {
+        out[channel] = value;
+      }
+    }
     return out;
   },
 };
@@ -1001,6 +1011,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         try {
           const view = attachSynthesisControlView(request.controlBuffer);
           controlView = view;
+          producerBlockRateChannels = request.blockRateChannels ?? [];
           // Reset the audit so devmode traces reflect this session only.
           producerAudit.length = 0;
           producerBlocksPublished = 0;
@@ -1018,6 +1029,23 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         }
         return;
       }
+      case "producerSetControlValues": {
+        // VAL-CROSS-002: the service sends the current synth control
+        // values (resolved from the NodeDef defaults and the user's
+        // synth form bindings). The producer publishes these on every
+        // block so the worklet receives consistent controls.
+        const values = request.values as Record<string, number> | undefined;
+        producerControlValues.clear();
+        if (values && typeof values === "object") {
+          for (const [name, value] of Object.entries(values)) {
+            if (typeof value === "number" && Number.isFinite(value)) {
+              producerControlValues.set(name, value);
+            }
+          }
+        }
+        postResponse({ type: "producerSetControlValues-result", id });
+        return;
+      }
       case "producerStart": {
         if (!controlView) {
           postResponse({ type: "producerStart-result", id, started: false });
@@ -1033,7 +1061,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           executor: producerExecutor,
           view: controlView,
           map: transportMap,
-          blockRateChannels: [], // populated by the host via synth declarations
+          blockRateChannels: producerBlockRateChannels,
           lookaheadBlocks:
             request.lookaheadBlocks ?? CONTROL_LOOKAHEAD_BLOCKS,
           renderQuantumFrames:

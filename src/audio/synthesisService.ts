@@ -268,6 +268,12 @@ export interface SynthesisWorkerPort {
     },
   ): Promise<boolean>;
   /**
+   * Set the current synth control values. The producer publishes these
+   * on every block so the worklet receives consistent controls.
+   * Called whenever the synth graph changes (VAL-CROSS-002).
+   */
+  producerSetControlValues?(values: Record<string, number>): Promise<boolean>;
+  /**
    * Start the producer loop. The producer publishes enough blocks to
    * refill the ring up to the configured lookahead, paced by the
    * worklet's audio-frame publication. Returns `true` when the
@@ -1838,6 +1844,29 @@ function createCapableService(
       );
     }
 
+    // VAL-CROSS-002: send the resolved control values to the producer.
+    // For M1 the block-rate channels (freq, amp) are static per-eval
+    // values resolved from the NodeDef registry defaults and the user's
+    // synth form bindings. The producer publishes these on every block
+    // so the worklet receives consistent controls. This is fire-and-
+    // forget like the epoch arm above.
+    if (workerPort && typeof workerPort.producerSetControlValues === "function") {
+      const controlValues: Record<string, number> = {};
+      for (const [, paramTable] of plan.prefills) {
+        for (const [paramName, value] of paramTable) {
+          // For M1 there is only one synth instance, so channel
+          // name collisions are impossible. Future features that
+          // support multiple simultaneous instances will need a
+          // namespaced channel scheme.
+          controlValues[paramName] = value;
+        }
+      }
+      void workerPort.producerSetControlValues(controlValues).then(
+        () => { /* control values updated */ },
+        () => { /* best-effort */ },
+      );
+    }
+
     // Update the active-declaration map from the incoming payload. The
     // map is the source of truth for the next diff; it is keyed by
     // stable identity so update-in-place preserves instance and phase
@@ -1927,27 +1956,25 @@ export function buildModuleTransferPayload(
     },
   };
 
-  if (compiledWasm !== null) {
-    // Preferred path: structured-cloned compiled module. The host
-    // has already compiled and validated the bytes off-thread, so
-    // the worklet reuses the module without recompiling
-    // (VAL-ENGINE-008). WebAssembly.Module is structured-cloneable
-    // per the Web IDL spec; Chromium generally preserves it across
-    // AudioWorklet MessagePorts. The `wasmBytes` argument is
-    // INTENTIONALLY omitted here so the payload carries EXACTLY ONE
-    // of (module | bytes).
-    return { ...header, module: compiledWasm };
-  }
-
-  // Chromium compatibility fallback: the loader did not produce a
-  // compiled module (e.g. the browser-side loader's WebAssembly.compile
-  // threw, or a unit-test loader injected only a fake adapter). When
-  // the loader returned the EXACT prevalidated source bytes, ship
-  // them so the worklet can recompile once during installation. The
-  // worklet's compilation happens ONLY in the message handler,
-  // before graph activation, never inside process() or steady state.
+  // VAL-CROSS-002 integration fix: prefer `wasmBytes` when available.
+  // While WebAssembly.Module is structured-cloneable per the Web IDL
+  // spec, some Chromium/headless AudioWorklet implementations silently
+  // drop messages whose payload includes a WebAssembly.Module object.
+  // Sending the EXACT prevalidated bytes lets the worklet compile them
+  // once in its own scope (VAL-ENGINE-008 fallback path), which is
+  // reliable across all browser implementations. The bytes are already
+  // validated by the main-thread compile; the worklet's compile is a
+  // pure re-compilation of the same artefact.
   if (typeof wasmBytes !== "undefined" && wasmBytes !== null) {
     return { ...header, wasmBytes };
+  }
+
+  if (compiledWasm !== null) {
+    // Structured-cloned compiled module path. Used only when the
+    // loader did not return source bytes (e.g. a test loader that
+    // injects only a compiled module). The worklet reuses the
+    // supplied module without recompiling (VAL-ENGINE-008).
+    return { ...header, module: compiledWasm };
   }
 
   // Neither path available; caller must skip the transfer.

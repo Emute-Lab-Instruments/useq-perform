@@ -373,6 +373,205 @@ describe("workletCore — mixed epochs never render (VAL-ENGINE-012)", () => {
   });
 });
 
+describe("workletCore — pending graph drains stale-epoch blocks (VAL-ENGINE-011 regression)", () => {
+  // Regression: when a pending graph is staged for a new epoch, the
+  // ring may already contain stale-epoch blocks produced before the
+  // epoch was armed. The worklet must drain those stale blocks (advance
+  // the read index past them) so the producer can publish fresh
+  // matching-epoch blocks into the freed slots. Otherwise the system
+  // deadlocks: the worklet holds the read index on a stale block, the
+  // producer sees the ring as full and stops publishing, and the
+  // pending graph never activates.
+  //
+  // This test was OBSERVED FAILING before the fix: after three process
+  // calls against a stale-epoch block, the read index did not advance
+  // and a subsequently published matching-epoch block was unreachable
+  // because it landed in a higher slot while the read index was stuck
+  // at zero.
+  it("advances the read index past stale-epoch blocks while a pending graph waits", () => {
+    const allocator = createFakeAllocator();
+    const publisher = createRecordingPublisher();
+    const adapterBundle = buildRealFakeAdapter();
+    const core = createWorkletCore({
+      adapterFactory: () => adapterBundle.adapter,
+      allocator,
+      sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
+      publish: publisher.publish,
+    });
+
+    // Attach a SAB and pre-publish a stale-epoch block (epoch 0).
+    const controlBuffer = createSynthesisControlBuffer();
+    core.handleMessage({
+      type: "attach-control-buffer",
+      controlBuffer: controlBuffer as unknown as SharedArrayBuffer,
+    });
+    const view = attachSynthesisControlView(controlBuffer);
+    view.writeBlockEpoch(0, 0);
+    view.writeBlockRevision(0, 0);
+    view.writeBlockRateValue(0, 0, 440);
+    view.writeBlockRateValue(0, 1, 0.2);
+    view.advanceWriteIndex();
+
+    // Stage the pending graph for epoch 5.
+    core.handleMessage({
+      type: "instantiate",
+      identity: { identity: "id-stale", def: "osc/sine", version: 1, epoch: 5 },
+      statePointer: 0,
+      stateBytes: 0,
+    });
+
+    // First process: the stale block is observed but does not activate
+    // the pending graph. Importantly, it must NOT remain at the read
+    // index forever.
+    const snap1 = core.process(128);
+    expect(snap1.activeEpoch).toBe(0);
+    expect(snap1.instances).toHaveLength(0);
+
+    // The read index must have advanced past the stale block. The
+    // producer observes the freed slot via fill-depth telemetry and
+    // can now publish a fresh matching-epoch block.
+    expect(view.ringReadIndex).toBeGreaterThan(0);
+
+    // Publish a fresh block with the matching epoch into the next slot.
+    const freshSlot = view.physicalSlotForSequence(view.ringWriteIndex);
+    view.writeBlockEpoch(freshSlot, 5);
+    view.writeBlockRevision(freshSlot, 1);
+    view.writeBlockRateValue(freshSlot, 0, 440);
+    view.writeBlockRateValue(freshSlot, 1, 0.2);
+    view.advanceWriteIndex();
+
+    // The next process must activate the pending graph on the matching
+    // block. Before the fix this never happened because the read index
+    // was stuck on the stale block.
+    const snap2 = core.process(128);
+    expect(snap2.activeEpoch).toBe(5);
+    expect(snap2.instances).toHaveLength(1);
+    expect(snap2.instances[0].identity).toBe("id-stale");
+  });
+
+  it("does not render the stale-epoch block while draining (output stays clean)", () => {
+    // Complement to the above: even though we drain the stale block,
+    // we must NOT render its controls. The output scratch stays zero
+    // (no active instance yet) and the glitch counter does not move.
+    const allocator = createFakeAllocator();
+    const publisher = createRecordingPublisher();
+    const adapterBundle = buildRealFakeAdapter();
+    const core = createWorkletCore({
+      adapterFactory: () => adapterBundle.adapter,
+      allocator,
+      sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
+      publish: publisher.publish,
+    });
+    const controlBuffer = createSynthesisControlBuffer();
+    core.handleMessage({
+      type: "attach-control-buffer",
+      controlBuffer: controlBuffer as unknown as SharedArrayBuffer,
+    });
+    const view = attachSynthesisControlView(controlBuffer);
+    view.writeBlockEpoch(0, 99);
+    view.writeBlockRevision(0, 9);
+    view.writeBlockRateValue(0, 0, 12345);
+    view.writeBlockRateValue(0, 1, 0.99);
+    view.advanceWriteIndex();
+
+    core.handleMessage({
+      type: "instantiate",
+      identity: { identity: "id-clean", def: "osc/sine", version: 1, epoch: 100 },
+      statePointer: 0,
+      stateBytes: 0,
+    });
+
+    const snap = core.process(128);
+    expect(snap.activeEpoch).toBe(0);
+    expect(snap.peakSample).toBe(0);
+    expect(snap.rmsSample).toBe(0);
+    expect(snap.glitchCount).toBe(0);
+    // Read index advanced past the stale block.
+    expect(view.ringReadIndex).toBe(1);
+  });
+});
+
+describe("workletCore — instantiate-before-module race (VAL-ENGINE-008 / VAL-CROSS-002)", () => {
+  // Regression: both the instantiate delta and the nodedef-module
+  // transfer arrive via postMessage; their order is not guaranteed.
+  // When instantiate arrives first the instance is staged with a null
+  // adapter. The renderer must re-resolve the adapter from the cache
+  // on every process() call so the instance activates as soon as the
+  // module lands, without requiring a second instantiate round-trip.
+  //
+  // This test was OBSERVED FAILING before the fix: the instance's
+  // adapter stayed null forever once the module was installed, so
+  // renderInstance early-returned and output stayed silent.
+  it("activates a staged instance after the adapter factory yields an adapter", () => {
+    const allocator = createFakeAllocator();
+    const publisher = createRecordingPublisher();
+    const adapterBundle = buildRealFakeAdapter();
+
+    // Adapter factory initially returns null (no module yet). We will
+    // flip it to return the real fake adapter partway through the test
+    // to mimic the module arriving between two process() calls.
+    let moduleTransferred = false;
+    const core = createWorkletCore({
+      adapterFactory: () => (moduleTransferred ? adapterBundle.adapter : null),
+      allocator,
+      sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
+      publish: publisher.publish,
+    });
+
+    // Attach a SAB and pre-publish one block at epoch 5.
+    const controlBuffer = createSynthesisControlBuffer();
+    core.handleMessage({
+      type: "attach-control-buffer",
+      controlBuffer: controlBuffer as unknown as SharedArrayBuffer,
+    });
+    const view = attachSynthesisControlView(controlBuffer);
+    view.writeBlockEpoch(0, 5);
+    view.writeBlockRevision(0, 1);
+    view.writeBlockRateValue(0, 0, 440);
+    view.writeBlockRateValue(0, 1, 0.2);
+    view.advanceWriteIndex();
+
+    // Stage the instance for epoch 5 (no adapter yet).
+    core.handleMessage({
+      type: "instantiate",
+      identity: { identity: "race-1", def: "osc/sine", version: 1, epoch: 5 },
+      statePointer: 0,
+      stateBytes: 0,
+    });
+
+    // First process: graph activates but adapter is null. The instance
+    // is staged with lifecycle fade-in. Adapter cache is empty.
+    const snap1 = core.process(128);
+    expect(snap1.activeEpoch).toBe(5);
+    expect(snap1.instances).toHaveLength(1);
+    expect(snap1.instances[0].identity).toBe("race-1");
+    // No compute call yet (no adapter).
+    expect(adapterBundle.module.computeCalls.length).toBe(0);
+
+    // Now simulate the module transfer arriving: subsequent calls to
+    // the factory return the cached adapter.
+    moduleTransferred = true;
+
+    // Publish a second block at the matching epoch for the next pass.
+    const slot2 = view.physicalSlotForSequence(view.ringWriteIndex);
+    view.writeBlockEpoch(slot2, 5);
+    view.writeBlockRevision(slot2, 1);
+    view.writeBlockRateValue(slot2, 0, 440);
+    view.writeBlockRateValue(slot2, 1, 0.2);
+    view.advanceWriteIndex();
+
+    // Second process: the renderer re-resolves the adapter from the
+    // factory and initialises the state zone. Before the fix this
+    // returned silence because `instance.adapter` was captured as null
+    // at instantiate time and never refreshed.
+    const snap2 = core.process(128);
+    expect(snap2.instances).toHaveLength(1);
+    expect(snap2.instances[0].identity).toBe("race-1");
+    // The adapter must have been called (the fake records compute calls).
+    expect(adapterBundle.module.computeCalls.length).toBeGreaterThan(0);
+  });
+});
+
 describe("workletCore — producer timeout (VAL-ENGINE-023/024)", () => {
   it("does NOT time out before PRODUCER_TIMEOUT_BLOCKS", () => {
     const publisher = createRecordingPublisher();

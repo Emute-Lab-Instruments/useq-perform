@@ -390,6 +390,27 @@ function evalWasm(
               // eval response.
             }
           }
+
+          // VAL-HOST-008/009: when audio capability is unavailable, a
+          // valid synth form still compiles, but the user needs a
+          // visible in-editor explanation that browser playback is
+          // disabled. Push exactly one informational diagnostic on the
+          // synth range. `pushDiagnostics` clears the range first then
+          // adds the new diagnostic set, so repeated successful evals
+          // deduplicate instead of accumulating duplicates. When audio
+          // is capable, no capability diagnostic is added and the
+          // clear-on-push behaviour removes any stale one from a prior
+          // incapable eval (e.g. after a hosting migration).
+          if (opts.view && !hasErrors) {
+            const synthServiceForCapability = synthService
+              ?? getActiveSynthesisService();
+            pushCapabilityInfoDiagnostic(
+              opts.view,
+              synthServiceForCapability,
+              rangeFrom,
+              rangeTo,
+            );
+          }
         }
       }
 
@@ -454,6 +475,73 @@ function applyHardwareDiagnostics(
       : diagnostics;
     pushDiagnostics(view, remapped, 0, rangeFrom, rangeTo);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Capability informational diagnostic (VAL-HOST-008/009)
+// ---------------------------------------------------------------------------
+
+/**
+ * Canonical capability-info diagnostic message used by the editor when a
+ * successful `synth` eval cannot reach the audio engine because the
+ * browser lacks a required audio capability. Surfaced as a single
+ * `info`-severity CodeMirror diagnostic on the synth range.
+ *
+ * Mirrors the actionable reason text published on the engine state
+ * channel (see `ENGINE_STATE_REASONS.NO_AUDIO_CAPABILITY`). When the
+ * reason changes (capability regained), the diagnostic is removed by
+ * the next pushDiagnostics call's clear-on-range behaviour.
+ */
+const SYNTH_AUDIO_UNAVAILABLE_DIAGNOSTIC_MESSAGE =
+  "Synth compiled successfully but browser audio playback is unavailable. See the engine indicator for the missing capability.";
+
+/**
+ * Push a single informational diagnostic on the synth range explaining
+ * that browser audio playback is unavailable (VAL-HOST-008).
+ *
+ * Behaviour:
+ *   - When `synthService` is `null` (no service constructed), no
+ *     diagnostic is added. The eval pipeline cannot make a reliable
+ *     capability claim without a service, and silent injection would
+ *     mislead the user.
+ *   - When `synthService.telemetry.capabilities.audioCapable === true`,
+ *     any previously-pushed capability diagnostic is cleared by the
+ *     `pushDiagnostics` clear-on-range step. No new diagnostic is
+ *     added. This lets the editor recover when the user crosses into a
+ *     capable hosting setup (e.g. moves from a non-isolated host to the
+ *     port-5000 static server with COOP/COEP).
+ *   - When `audioCapable === false`, exactly one `info` diagnostic is
+ *     pushed. Because `pushDiagnostics` clears the range first, repeated
+ *     successful synth evals do not accumulate duplicates (VAL-HOST-009).
+ *
+ * The diagnostic lives on the editor range that was just evaluated, so
+ * it moves with the form through subsequent edits and is removed when
+ * the form is deleted.
+ */
+function pushCapabilityInfoDiagnostic(
+  view: EditorView,
+  synthService: ReturnType<typeof getActiveSynthesisService>,
+  rangeFrom: number,
+  rangeTo: number,
+): void {
+  if (!synthService) return;
+  const capabilities = synthService.telemetry?.capabilities;
+  if (!capabilities) return;
+  if (capabilities.audioCapable) {
+    // Pushing an empty diagnostic set on the range clears any prior
+    // capability diagnostic (pushDiagnostics clears then adds).
+    pushDiagnostics(view, [], 0, rangeFrom, rangeTo);
+    return;
+  }
+  // Build the diagnostic with zero start/end so the diagnostics module
+  // maps it onto the full eval range (`pushDiagnostics` semantics).
+  const capabilityDiagnostic: UseqDiagnostic = {
+    start: 0,
+    end: 0,
+    severity: "info",
+    message: SYNTH_AUDIO_UNAVAILABLE_DIAGNOSTIC_MESSAGE,
+  };
+  pushDiagnostics(view, [capabilityDiagnostic], 0, rangeFrom, rangeTo);
 }
 
 // ---------------------------------------------------------------------------

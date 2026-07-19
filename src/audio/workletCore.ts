@@ -169,6 +169,41 @@ export interface WorkletCoreOptions {
    * `AudioContext.currentTime`-derived ticks. Tests pass a counter.
    */
   readonly now?: () => number;
+  /**
+   * Optional instance scratch buffer used as the DSP output target.
+   *
+   * In production the worklet shell passes a `Float64Array` view INTO
+   * the host-owned `WebAssembly.Memory` so the WASM compute call writes
+   * directly into the same buffer the core reads from. The byte offset
+   * of the view becomes the `outputPtr` passed to the adapter; the
+   * adapter's compute writes samples (as IEEE-754 doubles, matching
+   * the osc/sine contract) into shared memory at that offset, and the
+   * core reads them back through this view.
+   *
+   * In tests the fake adapter records the pointer without writing, so
+   * passing a plain `Float64Array` is fine (the output stays zero and
+   * tests inspect recorded compute calls instead).
+   *
+   * When omitted, the core allocates its own plain `Float64Array`. This
+   * is suitable for tests but NOT for production, where the WASM
+   * adapter writes into its imported memory and a disconnected scratch
+   * would silently produce zero output.
+   *
+   * Note: the scratch element type is `Float64Array` (not Float32)
+   * because the osc/sine compute contract writes IEEE-754 doubles.
+   * The render loop converts each double to a Float32 sample when
+   * copying into the output sink.
+   */
+  readonly instanceScratch?: Float64Array;
+  /**
+   * Optional frequency control scratch (single double). Same shared-
+   * memory rationale as {@link WorkletCoreOptions.instanceScratch}.
+   */
+  readonly freqControlScratch?: Float64Array;
+  /**
+   * Optional amplitude control scratch (single double).
+   */
+  readonly ampControlScratch?: Float64Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -306,11 +341,23 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   // state allocation carve-out — synthesis.md §3.2). Tests use a fixed
   // quantum so this never happens in the unit suite.
   let outputScratch = new Float32Array(renderQuantumFrames);
-  let instanceScratch = new Float32Array(renderQuantumFrames);
+  // VAL-CROSS-002 integration: when the shell supplies scratch buffers
+  // backed by the host-owned WebAssembly.Memory, the WASM adapter's
+  // compute call writes directly into these views (their byte offsets
+  // are the pointers the adapter receives). When the shell omits them
+  // (tests), the core allocates standalone buffers; the fake adapter
+  // never dereferences the pointer so the test still observes recorded
+  // compute calls without seeing DSP samples.
+  //
+  // instanceScratch is Float64Array because the osc/sine compute
+  // contract writes IEEE-754 doubles (one double per output sample).
+  // The render loop narrows each double to Float32 when copying into
+  // the output sink; Web Audio consumes Float32.
+  let instanceScratch = options.instanceScratch ?? new Float64Array(renderQuantumFrames);
   // Control-sample scratch (one double per block-rate channel). Doubles
   // are stored in a Float64Array view to preserve the WASM ABI.
-  let freqControlScratch = new Float64Array(1);
-  let ampControlScratch = new Float64Array(1);
+  let freqControlScratch = options.freqControlScratch ?? new Float64Array(1);
+  let ampControlScratch = options.ampControlScratch ?? new Float64Array(1);
 
   // --- Runtime state ---
   let controlView: SynthesisControlView | null = null;
@@ -621,7 +668,13 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // hands us a larger quantum than we sized for at construction.
     if (outputScratch.length < frameCount) {
       outputScratch = new Float32Array(frameCount);
-      instanceScratch = new Float32Array(frameCount);
+      // Growth path: this replacement breaks the shared-memory link
+      // for production shells that supplied a memory-backed scratch.
+      // Web Audio's render quantum is fixed at 128 in Chromium, so this
+      // branch only fires in unusual configurations. The worklet shell
+      // sizes its scratch at construction to cover the standard
+      // quantum; tests use the fake adapter which never dereferences.
+      instanceScratch = new Float64Array(frameCount);
     }
 
     // Zero the output scratch. The TypedArray fill is implementation-
@@ -632,6 +685,14 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     let consumedBlockEpoch = 0;
     let consumedBlockRevision = 0;
     let hasBlock = false;
+    // Tracks whether we acquired a block from the ring this quantum,
+    // independent of whether its epoch matched the pending graph. We
+    // need this distinction because a stale-epoch block must still be
+    // drained (read index advanced past it) so the producer can
+    // publish fresh matching-epoch blocks into the freed slot. Without
+    // the drain, the worklet deadlocks on the first stale block when
+    // a pending graph is staged (VAL-ENGINE-011 regression).
+    let acquiredBlock = false;
     let controlFreq = 440;
     let controlAmp = 0.2;
     let controlIsFinite = true;
@@ -681,6 +742,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         else if (controlFreq > nyquist) controlFreq = nyquist;
 
         hasBlock = true;
+        acquiredBlock = true;
         // Reset liveness: we observed a fresh publication.
         producerLivenessAge = 0;
         producerTimeoutActive = false;
@@ -749,11 +811,21 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       }
     }
 
-    // ---- Step 4: If a control block was consumed, advance the read index ----
-    if (controlView && hasBlock && !pendingInstance) {
-      // We only advance the read index for blocks we actually rendered.
-      // A mismatched-epoch block is left in the ring so the producer
-      // can observe our stall via fill-depth telemetry.
+    // ---- Step 4: If a control block was acquired, advance the read index ----
+    //
+    // We advance the read index for every block we acquired from the
+    // ring, including stale-epoch blocks that did not activate a
+    // pending graph. Without this drain, the worklet would sit on the
+    // first stale-epoch block forever while the producer (seeing the
+    // ring as full) stopped publishing fresh matching-epoch blocks.
+    // The result was a deadlock where a pending graph never activated
+    // even after the producer armed the new epoch.
+    //
+    // VAL-ENGINE-012 (mixed epochs never render) is preserved by step
+    // 3: a stale-epoch block sets `hasBlock = false` before reaching
+    // the renderer, so its controls are never applied. Only the read
+    // index advances.
+    if (controlView && acquiredBlock) {
       controlView.advanceReadIndex();
     }
 
@@ -883,7 +955,47 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     frameCount: number,
     out: Float32Array,
   ): void {
-    const adapter = instance.adapter;
+    let adapter = instance.adapter;
+    if (!adapter) {
+      // VAL-ENGINE-008 race: the instantiate delta may have arrived
+      // before the nodedef-module transfer completed (both are async
+      // postMessages). The worklet core's adapter cache may have been
+      // populated since the instance was staged. Re-resolve from the
+      // cache (and the factory) on every render so the instance
+      // activates as soon as the module lands, without a second
+      // instantiate round-trip.
+      const adapterKey = `${instance.def}@${instance.version}`;
+      adapter = adapters.get(adapterKey) ?? null;
+      if (!adapter) {
+        adapter = options.adapterFactory(instance.def, instance.version);
+        if (adapter) {
+          adapters.set(adapterKey, adapter);
+        }
+      }
+      if (adapter) {
+        instance.adapter = adapter;
+        // The instance was staged without an adapter; its state zone
+        // was not allocated at instantiate time. Allocate and
+        // initialise it now (between quanta) so the first render
+        // produces sound. Without this, statePointer stays at 0 and
+        // the WASM compute reads/writes the wrong memory region,
+        // producing silence or garbage.
+        if (instance.statePointer === 0 || instance.stateBytes === 0) {
+          instance.stateBytes = adapter.descriptor.stateBytes;
+          instance.statePointer = options.allocator.allocate(
+            instance.stateBytes,
+            adapter.descriptor.stateAlign,
+          );
+        }
+        if (instance.statePointer >= 0 && instance.stateBytes > 0) {
+          const initOk = adapter.init(instance.statePointer, instance.stateBytes);
+          if (!initOk) {
+            instance.lifecycle = "retired";
+            return;
+          }
+        }
+      }
+    }
     if (!adapter || instance.statePointer < 0) {
       // Module not yet transferred or layout invalid: output silence.
       return;
@@ -901,16 +1013,20 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // the instance scratch's underlying byte offset; the adapter fills
     // exactly frameCount doubles.
     //
-    // For tests we render through the adapter's compute call and then
-    // copy into the output scratch; for production the adapter writes
-    // directly into the shared memory the output sink observes.
+    // VAL-CROSS-002 integration: the osc/sine compute contract writes
+    // IEEE-754 doubles (one double per output sample). The instance
+    // scratch is a `Float64Array` view into the host-owned WebAssembly
+    // Memory so the WASM write and the JS read see the same bytes.
+    // For tests the fake adapter records the pointer without writing,
+    // so a plain Float64Array works; the output stays zero and tests
+    // inspect recorded compute calls instead.
     const ok = adapter.compute(
       instance.statePointer,
       // We pass pointers; in tests these are indexes into a Float64Array.
       // The fake adapter records them as opaque numbers.
       getPointerForFloat64(freqControlScratch),
       getPointerForFloat64(ampControlScratch),
-      getPointerForFloat32(instanceScratch),
+      getPointerForFloat64(instanceScratch),
       frameCount,
     );
     if (!ok) {
@@ -926,12 +1042,13 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
     // Sum the rendered samples into the output (mono for M1).
     // The adapter wrote doubles into the instance scratch via shared
-    // memory; for tests we have the fake adapter record calls without
-    // writing samples. We handle both: if the fake adapter wrote into
-    // our scratch, we copy and scale; if not, we leave the output at
-    // zero (the test inspects recorded compute calls instead).
+    // memory; for tests the fake adapter records calls without writing
+    // samples. We narrow each double to Float32 (Web Audio consumes
+    // Float32) and apply the fade gain when copying into the output
+    // sink. When the scratch is uninitialised (fake adapter), this
+    // copies zeros, which tests assert separately.
     for (let i = 0; i < frameCount; i++) {
-      const sample = instanceScratch[i] * fadeGain;
+      const sample = Number(instanceScratch[i]) * fadeGain;
       out[i] += sample;
     }
   }

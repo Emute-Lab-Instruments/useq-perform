@@ -480,6 +480,14 @@ export interface WasmRuntimePort extends SharedRuntimePort {
   ): Promise<boolean>;
 
   /**
+   * Update the static control values the producer publishes on every
+   * block. For M1 the block-rate channels (freq, amp) are resolved
+   * from the NodeDef defaults and the user's synth form bindings at
+   * eval time (VAL-CROSS-002).
+   */
+  producerSetControlValues?(values: Record<string, number>): Promise<boolean>;
+
+  /**
    * Start the producer. The producer loop runs between Worker message
    * iterations; each iteration publishes enough blocks to refill the
    * ring up to the configured lookahead. Returns `true` when the

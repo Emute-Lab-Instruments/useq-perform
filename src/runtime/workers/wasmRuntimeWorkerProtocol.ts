@@ -223,6 +223,19 @@ export interface ProducerStopRequest {
 }
 
 /**
+ * Update the static control values the producer publishes on every block.
+ * For M1 the block-rate channels (freq, amp) are resolved from the NodeDef
+ * defaults and the user's synth form bindings at eval time, not sampled
+ * from the interpreter's signal graph (VAL-CROSS-002).
+ */
+export interface ProducerSetControlValuesRequest {
+  type: "producerSetControlValues";
+  id: number;
+  /** Channel name to numeric value. */
+  values: Record<string, number>;
+}
+
+/**
  * Update transport state on the producer. Drives the pure transport frame
  * map and is deterministic across start, pause, resume, stop, and re-anchor
  * transitions (VAL-ENGINE-003 / VAL-ENGINE-032).
@@ -306,6 +319,7 @@ export type WasmWorkerRequest =
   | GetLiveSlotsRequest
   | ApplyStateSnapshotRequest
   | ProducerInstallSabRequest
+  | ProducerSetControlValuesRequest
   | ProducerStartRequest
   | ProducerStopRequest
   | ProducerTransportUpdateRequest
@@ -480,6 +494,11 @@ export interface ProducerStartResponse {
   started: boolean;
 }
 
+export interface ProducerSetControlValuesResponse {
+  type: "producerSetControlValues-result";
+  id: number;
+}
+
 export interface ProducerStopResponse {
   type: "producerStop-result";
   id: number;
@@ -575,6 +594,7 @@ export type WasmWorkerResponse =
   | GetLiveSlotsResponse
   | ApplyStateSnapshotResponse
   | ProducerInstallSabResponse
+  | ProducerSetControlValuesResponse
   | ProducerStartResponse
   | ProducerStopResponse
   | ProducerTransportUpdateResponse

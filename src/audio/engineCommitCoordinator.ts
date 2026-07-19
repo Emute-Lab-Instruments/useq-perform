@@ -269,10 +269,16 @@ export function resolvePrefillsForDeclarations(
       // Prefill every declared param from the registry default. The
       // producer's first matching block overwrites these with the live
       // sampled value, so a stale slot is never read.
-      if (boundParams.size === 0 || boundParams.has(param.name)) {
-        if (Number.isFinite(param.default)) {
-          paramTable.set(param.name, param.default);
-        }
+      //
+      // VAL-CROSS-002: include ALL descriptor params, not just the
+      // ones explicitly bound by the synth form. When the user writes
+      // `(synth "osc/sine" :freq 440)` the interpreter emits a freq
+      // control but not an amp control; the amp default (0.2) must
+      // still be prefilled so the worklet's first render produces
+      // non-silent output. The producer overwrites these with live
+      // values on subsequent blocks.
+      if (Number.isFinite(param.default)) {
+        paramTable.set(param.name, param.default);
       }
     }
     if (paramTable.size > 0) {
