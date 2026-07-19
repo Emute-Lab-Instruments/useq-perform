@@ -12,6 +12,7 @@
  * (the imports did not resolve). They pass after the component is in place.
  */
 import { render } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -164,6 +165,163 @@ describe("engineIndicator — VAL-ENGINE-021: props-based rendering", () => {
 
     const el = container.querySelector(".engine-indicator");
     expect(el?.getAttribute("data-transition-count")).toBe("7");
+  });
+});
+
+describe("engineIndicator — VAL-ENGINE-021: reactive class updates", () => {
+  // Regression coverage for Ergo bug 0bb65c33. The indicator previously
+  // combined a static `class` template-literal expression with a separate
+  // `classList` directive on the same button. When `props.state.state`
+  // changed, SolidJS reconciled the `class` attribute from the template
+  // literal first; that reconciliation reset the DOM classList, and the
+  // `classList` directive's reactive effect did not re-apply entries
+  // whose boolean value had not changed since the previous render
+  // (e.g. error -> suspended, both clickable). The user-visible result
+  // was an indicator whose clickable/disabled CSS classes went stale on
+  // certain state transitions, even though data-engine-state, tooltip,
+  // aria-pressed, and the click handler were already correct.
+  //
+  // These tests drive the indicator from a parent-owned Solid signal
+  // (mirroring the production adapter) and assert, after every
+  // transition in a real transition sequence, that the clickable /
+  // disabled CSS classes match the current snapshot state.
+  function makeSnap(
+    state: SynthesisEngineState,
+    overrides: Partial<EngineStateSnapshot> = {},
+  ): EngineStateSnapshot {
+    return {
+      state,
+      reasonKey: null,
+      reasonMessage: null,
+      transitionCount: 1,
+      transitionedAt: 0,
+      ...overrides,
+    };
+  }
+
+  it("preserves engine-indicator-clickable on error -> suspended transition", () => {
+    const [snap, setSnap] = createSignal<EngineStateSnapshot>(
+      makeSnap("suspended"),
+    );
+    const onResume = vi.fn();
+    const { container } = render(() => (
+      <EngineIndicator state={snap()} onResume={onResume} />
+    ));
+
+    const el = () => container.querySelector(".engine-indicator") as HTMLButtonElement;
+
+    // Start in suspended (clickable).
+    expect(el().classList.contains("engine-indicator-suspended")).toBe(true);
+    expect(el().classList.contains("engine-indicator-clickable")).toBe(true);
+
+    // Transition to running (disabled).
+    setSnap(makeSnap("running"));
+    expect(el().classList.contains("engine-indicator-running")).toBe(true);
+    expect(el().classList.contains("engine-indicator-disabled")).toBe(true);
+    expect(el().classList.contains("engine-indicator-clickable")).toBe(false);
+
+    // Transition to error (clickable again).
+    setSnap(makeSnap("error", { reasonMessage: "Producer timed out" }));
+    expect(el().classList.contains("engine-indicator-error")).toBe(true);
+    expect(el().classList.contains("engine-indicator-clickable")).toBe(true);
+    expect(el().classList.contains("engine-indicator-disabled")).toBe(false);
+
+    // The bug: error -> suspended kept clickable=true in the classList
+    // directive, but the template-literal `class` update reset the DOM
+    // classList and the directive did not re-add the class. The user
+    // saw an indicator that no longer looked clickable.
+    setSnap(makeSnap("suspended"));
+    expect(el().classList.contains("engine-indicator-suspended")).toBe(true);
+    expect(
+      el().classList.contains("engine-indicator-clickable"),
+      "clickable class must remain present after error -> suspended",
+    ).toBe(true);
+    expect(el().classList.contains("engine-indicator-disabled")).toBe(false);
+  });
+
+  it("cyclically transitions through all four states without stale classes", () => {
+    const [snap, setSnap] = createSignal<EngineStateSnapshot>(makeSnap("off"));
+    const onResume = vi.fn();
+    const { container } = render(() => (
+      <EngineIndicator state={snap()} onResume={onResume} />
+    ));
+
+    const el = () => container.querySelector(".engine-indicator") as HTMLButtonElement;
+    const allStates: SynthesisEngineState[] = ["off", "suspended", "running", "error"];
+    const seq: SynthesisEngineState[] = [
+      "off", "suspended", "running", "error",
+      "suspended", "running", "off", "error",
+      "running", "suspended", "off", "running",
+      "error", "suspended", "running", "off",
+    ];
+
+    for (const current of seq) {
+      setSnap(makeSnap(current));
+      const classes = el().classList;
+      const clickable = current === "suspended" || current === "error";
+
+      // The state-specific class is always correct.
+      expect(
+        classes.contains(`engine-indicator-${current}`),
+        `state ${current}: missing state class`,
+      ).toBe(true);
+      // No stale state classes from the previous render.
+      for (const other of allStates) {
+        if (other === current) continue;
+        expect(
+          classes.contains(`engine-indicator-${other}`),
+          `state ${current}: stale state class engine-indicator-${other}`,
+        ).toBe(false);
+      }
+      // The reactive classList entries match the current state.
+      expect(
+        classes.contains("engine-indicator-clickable"),
+        `state ${current}: clickable class stale`,
+      ).toBe(clickable);
+      expect(
+        classes.contains("engine-indicator-disabled"),
+        `state ${current}: disabled class stale`,
+      ).toBe(!clickable);
+    }
+  });
+
+  it("reactively updates aria-pressed, tooltip, data-state, and click handling", () => {
+    const onResume = vi.fn();
+    const [snap, setSnap] = createSignal<EngineStateSnapshot>(
+      makeSnap("suspended", {
+        reasonMessage: "click to resume",
+      }),
+    );
+    const { container } = render(() => (
+      <EngineIndicator state={snap()} onResume={onResume} />
+    ));
+
+    const el = () => container.querySelector(".engine-indicator") as HTMLButtonElement;
+
+    // Suspended: clickable, tooltip from reason, aria-pressed false.
+    expect(el().getAttribute("data-engine-state")).toBe("suspended");
+    expect(el().getAttribute("title")).toBe("click to resume");
+    expect(el().getAttribute("aria-pressed")).toBe("false");
+    expect(el().disabled).toBe(false);
+    el().click();
+    expect(onResume).toHaveBeenCalledTimes(1);
+
+    // Running: aria-pressed true, click suppressed.
+    setSnap(makeSnap("running"));
+    expect(el().getAttribute("data-engine-state")).toBe("running");
+    expect(el().getAttribute("aria-pressed")).toBe("true");
+    expect(el().disabled).toBe(true);
+    el().click();
+    expect(onResume).toHaveBeenCalledTimes(1);
+
+    // Error: tooltip from reason, clickable.
+    setSnap(makeSnap("error", { reasonMessage: "Producer timed out" }));
+    expect(el().getAttribute("data-engine-state")).toBe("error");
+    expect(el().getAttribute("title")).toBe("Producer timed out");
+    expect(el().getAttribute("aria-pressed")).toBe("false");
+    expect(el().disabled).toBe(false);
+    el().click();
+    expect(onResume).toHaveBeenCalledTimes(2);
   });
 });
 

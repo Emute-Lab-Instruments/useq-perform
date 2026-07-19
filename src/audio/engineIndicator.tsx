@@ -140,8 +140,20 @@ export function EngineIndicator(props: EngineIndicatorProps): JSX.Element {
     <Show when={!isHidden()}>
       <button
         type="button"
-        class={`engine-indicator ${engineIndicatorClass(props.state.state)}`}
+        // VAL-ENGINE-021 / Ergo bug 0bb65c33: all class application goes
+        // through a single `classList` directive. A previous version
+        // combined `class={\`engine-indicator ${engineIndicatorClass(...)}\`}`
+        // with a separate `classList` directive, which produced stale
+        // clickable / disabled CSS classes on certain transitions
+        // (notably error -> suspended, where clickable stayed true in
+        // the directive but the template-literal `class` reconciliation
+        // reset the DOM classList and the directive did not re-apply
+        // the unchanged boolean). SolidJS reliably tracks classList
+        // entries when they are the sole source of truth, so the state
+        // class lives here too.
         classList={{
+          "engine-indicator": true,
+          [engineIndicatorClass(props.state.state)]: true,
           "engine-indicator-clickable": isClickable(),
           "engine-indicator-disabled": !isClickable(),
         }}
