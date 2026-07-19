@@ -205,6 +205,25 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     returnType: "number",
     argTypes: [],
   },
+  /**
+   * Synth artefact snapshot (synth-nodes.md §7.2 / VAL-COMP-009/012).
+   *
+   * Returns a versioned JSON object describing the current patch graph
+   * (declarations keyed by stable identity) and the control channel
+   * table. Both share one compiler revision so consumers can detect
+   * coherent updates. Failed evals retain the previous snapshot and do
+   * not advance the revision (VAL-COMP-010).
+   *
+   * The schema declares an `abi` version field so future consumers can
+   * reject incompatible bundles explicitly (VAL-COMP-015). Public
+   * identifiers are stable identity strings supplied by the editor;
+   * internal GC-remapped node indices are never serialised.
+   */
+  useq_synth_artifacts: {
+    symbol: "useq_synth_artifacts",
+    returnType: "string",
+    argTypes: [],
+  },
 } as const satisfies Record<string, CwrapDescriptor>);
 
 export type OptionalWasmExport = keyof typeof OPTIONAL_WASM_EXPORTS;

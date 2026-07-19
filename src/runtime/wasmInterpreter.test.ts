@@ -503,4 +503,103 @@ describe("useqWasmInterpreter", () => {
     );
     consoleErrorSpy.mockRestore();
   });
+
+  it("exposes a synth artefact snapshot from the generated bundle (VAL-COMP-009/012/016)", async () => {
+    const module = (await loadGeneratedBundleModule(
+      "../../public/wasm/useq.js"
+    )) as Record<string, any>;
+
+    expect(typeof module.cwrap).toBe("function");
+    const init = module.cwrap("useq_init", null, []);
+    const evalCode = module.cwrap("useq_eval", "string", ["string"]);
+
+    // useq_synth_artifacts is an optional export — probe via cwrap. A stale
+    // bundle would not expose it; we want the test to surface that drift.
+    const synthArtifacts = module.cwrap("useq_synth_artifacts", "string", []);
+    expect(typeof synthArtifacts).toBe("function");
+
+    init();
+
+    // Before any synth eval: empty graph, abi marker present.
+    const before = JSON.parse(synthArtifacts());
+    expect(before.abi).toBe(1);
+    expect(before.revision).toBe(0);
+    expect(before.declarations).toEqual([]);
+    expect(before.controls).toEqual([]);
+
+    // Minimum form: publishes one identity-keyed declaration + one control.
+    expect(evalCode('(synth "osc/sine" :freq 440)')).toBe("ok");
+    const after = JSON.parse(synthArtifacts());
+    expect(after.revision).toBeGreaterThan(before.revision);
+    expect(after.declarations).toHaveLength(1);
+    expect(after.declarations[0].def).toBe("osc/sine");
+    expect(after.declarations[0].version).toBe(1);
+    expect(after.declarations[0].identity).toBeTruthy();
+    expect(after.controls).toHaveLength(1);
+    expect(after.controls[0].param).toBe("freq");
+    expect(after.controls[0].rate).toBe("block");
+
+    // Public schema never exposes internal GC-remapped node indices
+    // (VAL-COMP-012).
+    const snap = synthArtifacts();
+    expect(snap).not.toContain("node_index");
+    expect(snap).not.toContain("remapped");
+  });
+
+  it("rolls back synth artefacts on a failed eval (VAL-COMP-008/010)", async () => {
+    const module = (await loadGeneratedBundleModule(
+      "../../public/wasm/useq.js"
+    )) as Record<string, any>;
+
+    const init = module.cwrap("useq_init", null, []);
+    const evalCode = module.cwrap("useq_eval", "string", ["string"]);
+    const synthArtifacts = module.cwrap("useq_synth_artifacts", "string", []);
+    init();
+
+    // Establish a baseline successful synth declaration.
+    expect(evalCode('(synth "osc/sine" :name "lead" :freq 440)')).toBe("ok");
+    const baseline = JSON.parse(synthArtifacts());
+    expect(baseline.declarations).toHaveLength(1);
+    expect(baseline.declarations[0].identity).toBe("lead");
+
+    // A subsequent failed eval must not advance the revision or change the
+    // published artefact snapshot.
+    expect(evalCode('(synth "osc/unknown" :freq 110)')).toMatch(/Error:/);
+    const afterFail = JSON.parse(synthArtifacts());
+    expect(afterFail.revision).toBe(baseline.revision);
+    expect(afterFail.declarations).toEqual(baseline.declarations);
+    expect(afterFail.controls).toEqual(baseline.controls);
+  });
+
+  it("enforces M1 one-node capacity transactionally (VAL-COMP-019)", async () => {
+    const module = (await loadGeneratedBundleModule(
+      "../../public/wasm/useq.js"
+    )) as Record<string, any>;
+
+    const init = module.cwrap("useq_init", null, []);
+    const evalCode = module.cwrap("useq_eval", "string", ["string"]);
+    const synthArtifacts = module.cwrap("useq_synth_artifacts", "string", []);
+    init();
+
+    expect(evalCode('(synth "osc/sine" :name "lead" :freq 440)')).toBe("ok");
+    const baseline = JSON.parse(synthArtifacts());
+
+    // A second distinct identity must fail with a capacity diagnostic, and
+    // the baseline artefacts must be preserved.
+    const secondResult = evalCode('(synth "osc/sine" :name "bass" :freq 110)');
+    expect(secondResult).toMatch(/Error:/);
+    expect(secondResult).toMatch(/M1|one synth|capacity/i);
+
+    const afterFail = JSON.parse(synthArtifacts());
+    expect(afterFail.revision).toBe(baseline.revision);
+    expect(afterFail.declarations).toEqual(baseline.declarations);
+    expect(afterFail.controls).toEqual(baseline.controls);
+
+    // Same identity update-in-place must still succeed and advance revision.
+    expect(evalCode('(synth "osc/sine" :name "lead" :freq 660)')).toBe("ok");
+    const afterUpdate = JSON.parse(synthArtifacts());
+    expect(afterUpdate.revision).toBeGreaterThan(baseline.revision);
+    expect(afterUpdate.declarations).toHaveLength(1);
+    expect(afterUpdate.declarations[0].identity).toBe("lead");
+  });
 });

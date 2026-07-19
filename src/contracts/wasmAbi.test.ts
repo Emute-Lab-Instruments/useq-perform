@@ -215,6 +215,16 @@ describe("OPTIONAL_WASM_EXPORTS", () => {
     expect(desc.returnType).toBe("string");
     expect(desc.argTypes).toEqual([]);
   });
+
+  it("includes synth artefact snapshot helper (VAL-COMP-009/012)", () => {
+    expect(OPTIONAL_WASM_EXPORTS.useq_synth_artifacts).toBeDefined();
+  });
+
+  it("useq_synth_artifacts has correct signature", () => {
+    const desc = OPTIONAL_WASM_EXPORTS.useq_synth_artifacts;
+    expect(desc.returnType).toBe("string");
+    expect(desc.argTypes).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
