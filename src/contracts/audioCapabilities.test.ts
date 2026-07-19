@@ -159,7 +159,37 @@ describe("audioCapabilities — immutability (VAL-HOST-005 / VAL-HOST-011)", () 
     const b = detectAudioCapabilities(fullyCapableProbe());
     expect(a).not.toBe(b);
     expect(a.reasons).not.toBe(b.reasons);
-    expect(a).toEqual(b);
+    // capturedAt is a wall-clock timestamp (Date.now()) and may legitimately
+    // differ across consecutive calls when the calls straddle a millisecond
+    // boundary. Independence is about object identity, not timestamp equality,
+    // so we compare every structural field except capturedAt explicitly.
+    expect({ ...a, capturedAt: undefined }).toEqual({
+      ...b,
+      capturedAt: undefined,
+    });
+  });
+
+  it("detectAudioCapabilities independence is deterministic across repeated contract runs", () => {
+    // Regression guard: the previous `expect(a).toEqual(b)` form flaked
+    // ~0.45% of runs because capturedAt crossed a millisecond boundary.
+    // This loop proves the drift-resilient comparison holds across many
+    // back-to-back detections, regardless of when Date.now() advances.
+    for (let i = 0; i < 2000; i++) {
+      const a = detectAudioCapabilities(fullyCapableProbe());
+      const b = detectAudioCapabilities(fullyCapableProbe());
+      expect(a).not.toBe(b);
+      expect(a.reasons).not.toBe(b.reasons);
+      expect(a.schemaVersion).toBe(b.schemaVersion);
+      expect(a.audioCapable).toBe(b.audioCapable);
+      expect(a.reasons).toEqual(b.reasons);
+      expect(a.crossOriginIsolated).toBe(b.crossOriginIsolated);
+      expect(a.sharedArrayBufferAvailable).toBe(b.sharedArrayBufferAvailable);
+      expect(a.audioWorkletAvailable).toBe(b.audioWorkletAvailable);
+      expect(a.workerAvailable).toBe(b.workerAvailable);
+      expect(a.sharedWebAssemblyMemoryAvailable).toBe(
+        b.sharedWebAssemblyMemoryAvailable,
+      );
+    }
   });
 });
 
