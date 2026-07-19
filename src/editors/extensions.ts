@@ -23,6 +23,7 @@ import {
   createDefaultGutterConfig,
 } from "./extensions/expressionHighlights.ts";
 import { structuralCoreExtensions } from "./extensions/structure/adapter/extension.ts";
+import { createDefaultIdentityExtension } from "./extensions/stateIdentity/stateIdentity.ts";
 
 // Wire the default eval-integration config on module load (production wiring).
 // Tests/Inspector can override via `setEvalIntegrationConfig()`.
@@ -158,6 +159,11 @@ export const baseExtensions = [
   ...themeExtensions,
   ...default_clojure_extensions,
   ...structuralCoreExtensions(),
+  // State-identity sidecar: opaque hidden IDs for stateful top-level forms
+  // (synth today; future registrars extend via the classifier). Dependency-
+  // injected so tests/Inspector can render the editor without synthesis
+  // runtime singletons. Spec: docs/specs/state-identity.md.
+  ...createDefaultIdentityExtension(),
   lastEvaluatedExpressionField,
   ...createExpressionGutter(createDefaultGutterConfig()),
   ...probeExtensions,
