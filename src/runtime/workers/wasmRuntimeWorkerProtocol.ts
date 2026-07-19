@@ -165,6 +165,127 @@ export interface ApplyStateSnapshotRequest {
   snapshot: StateSnapshot;
 }
 
+// ─── Producer (audio-clocked future-control) requests ──────────────────────
+//
+// The producer turns the existing WASM runtime Worker into the audio-clocked
+// future-control producer (mission feature `m1-audio-clocked-worker-producer`).
+// The main thread installs the SAB, asks the Worker to arm the next program
+// epoch, and applies external inputs. The Worker runs the producer scheduler
+// between message-handler iterations so the regular Worker inbox stays
+// responsive (VAL-ENGINE-006).
+
+/**
+ * Install the SharedArrayBuffer that carries the control ring. The Worker
+ * attaches a typed {@link SynthesisControlView} and stores it for the
+ * producer scheduler. The buffer is transferred (not copied) so both sides
+ * share storage.
+ */
+export interface ProducerInstallSabRequest {
+  type: "producerInstallSab";
+  id: number;
+  /** The shared buffer carrying the synthesis control ABI. */
+  controlBuffer: SharedArrayBuffer;
+  /** Block-rate channel names in declared order. */
+  blockRateChannels: readonly string[];
+  /** Lookahead in blocks (default taken from the SAB header when omitted). */
+  lookaheadBlocks?: number;
+  /** Render quantum in frames per block (default 128). */
+  renderQuantumFrames?: number;
+}
+
+/**
+ * Start the producer. The producer loop runs between Worker message-handler
+ * iterations; each iteration publishes enough blocks to refill the ring up
+ * to the configured lookahead.
+ *
+ * VAL-ENGINE-001: starting the producer does NOT create a second
+ * interpreter. The producer drives the existing {@link InterpreterHandle}.
+ */
+export interface ProducerStartRequest {
+  type: "producerStart";
+  id: number;
+  /** Anchor frame to start transport at (defaults to current audio frame). */
+  anchorFrame?: bigint;
+  /** Anchor ModuLisp time (defaults to 0). */
+  anchorTime?: number;
+  /** Sample rate the audio context is running at. */
+  sampleRate: number;
+  /** Optional lookahead override (defaults to SAB header value). */
+  lookaheadBlocks?: number;
+  /** Optional render-quantum override (defaults to SAB header value). */
+  renderQuantumFrames?: number;
+}
+
+/** Stop the producer. Safe to call when the producer is already stopped. */
+export interface ProducerStopRequest {
+  type: "producerStop";
+  id: number;
+}
+
+/**
+ * Update transport state on the producer. Drives the pure transport frame
+ * map and is deterministic across start, pause, resume, stop, and re-anchor
+ * transitions (VAL-ENGINE-003 / VAL-ENGINE-032).
+ */
+export interface ProducerTransportUpdateRequest {
+  type: "producerTransportUpdate";
+  id: number;
+  /** Transport transition to apply. */
+  transition:
+    | "start"
+    | "pause"
+    | "resume"
+    | "stop"
+    | "reanchor";
+  /** Audio frame at which the transition takes effect. */
+  atFrame: bigint;
+  /** Optional ModuLisp time at the transition frame. */
+  atTime?: number;
+}
+
+/**
+ * Apply external inputs to the next produced block. Inputs never
+ * retroactively modify already-published blocks (VAL-ENGINE-005).
+ */
+export interface ProducerApplyInputsRequest {
+  type: "producerApplyInputs";
+  id: number;
+  /** Channel-name → value map applied to the next produced block. */
+  inputs: Record<string, number>;
+}
+
+/**
+ * Arm a program epoch. The producer tags every subsequently-produced block
+ * with the supplied epoch so the worklet activates pending graph deltas on
+ * the first matching block (VAL-SAB-015 / VAL-ENGINE-011).
+ */
+export interface ProducerArmEpochRequest {
+  type: "producerArmEpoch";
+  id: number;
+  /** New pending program epoch. */
+  epoch: number;
+}
+
+/**
+ * Devmode-only: terminate the producer from inside the Worker. The worklet
+ * independently detects producer loss via the SAB liveness age and applies
+ * the 10 ms emergency fade (VAL-ENGINE-023). Outside devmode this message
+ * is a no-op that returns `terminated: false`.
+ */
+export interface ProducerTerminateRequest {
+  type: "producerTerminate";
+  id: number;
+}
+
+/**
+ * Read a producer telemetry snapshot for devmode dashboards. Returns the
+ * current ring indices, audio frame, and pending/active epochs.
+ */
+export interface ProducerReadTelemetryRequest {
+  type: "producerReadTelemetry";
+  id: number;
+}
+
 export type WasmWorkerRequest =
   | LoadRequest
   | EvalCodeRequest
@@ -183,7 +304,15 @@ export type WasmWorkerRequest =
   | ProbeSampleRequest
   | ProbeFreeRequest
   | GetLiveSlotsRequest
-  | ApplyStateSnapshotRequest;
+  | ApplyStateSnapshotRequest
+  | ProducerInstallSabRequest
+  | ProducerStartRequest
+  | ProducerStopRequest
+  | ProducerTransportUpdateRequest
+  | ProducerApplyInputsRequest
+  | ProducerArmEpochRequest
+  | ProducerTerminateRequest
+  | ProducerReadTelemetryRequest;
 
 // ─── Response payloads ─────────────────────────────────────────────────────
 
@@ -335,6 +464,91 @@ export interface ApplyStateSnapshotResponse {
   success: boolean;
 }
 
+// ─── Producer responses ────────────────────────────────────────────────────
+
+export interface ProducerInstallSabResponse {
+  type: "producerInstallSab-result";
+  id: number;
+  /** True when the buffer passed ABI validation and was attached. */
+  installed: boolean;
+}
+
+export interface ProducerStartResponse {
+  type: "producerStart-result";
+  id: number;
+  /** True when the producer transitioned from stopped to running. */
+  started: boolean;
+}
+
+export interface ProducerStopResponse {
+  type: "producerStop-result";
+  id: number;
+  /** True when the producer transitioned from running to stopped. */
+  stopped: boolean;
+}
+
+export interface ProducerTransportUpdateResponse {
+  type: "producerTransportUpdate-result";
+  id: number;
+  /** Transport map revision after the transition. */
+  revision: number;
+}
+
+export interface ProducerApplyInputsResponse {
+  type: "producerApplyInputs-result";
+  id: number;
+  /** Number of input channels queued for the next produced block. */
+  queued: number;
+}
+
+export interface ProducerArmEpochResponse {
+  type: "producerArmEpoch-result";
+  id: number;
+  /** The pending epoch now tagged on every subsequently-produced block. */
+  armedEpoch: number;
+}
+
+export interface ProducerTerminateResponse {
+  type: "producerTerminate-result";
+  id: number;
+  /** True when the producer was running and is now terminated. */
+  terminated: boolean;
+}
+
+/**
+ * Telemetry snapshot returned by `producerReadTelemetry`. The shape mirrors
+ * the producer scheduler's view of the SAB so devmode dashboards and tests
+ * can validate the producer loop without a second side channel.
+ */
+export interface ProducerTelemetrySnapshot {
+  /** Whether the producer loop is currently running. */
+  running: boolean;
+  /** Audio frame last observed by the producer. */
+  audioFrame: bigint;
+  /** Number of blocks published since `producerStart`. */
+  blocksPublished: number;
+  /** Current ring write index (monotonic raw counter). */
+  ringWriteIndex: number;
+  /** Current ring read index (monotonic raw counter). */
+  ringReadIndex: number;
+  /** Ring fill depth (write − read, capped at capacity). */
+  ringFillDepth: number;
+  /** Pending program epoch. */
+  pendingEpoch: number;
+  /** Active program epoch. */
+  programEpoch: number;
+  /** Transport map revision. */
+  transportRevision: number;
+  /** Transport map state. */
+  transportState: "playing" | "paused" | "stopped";
+}
+
+export interface ProducerReadTelemetryResponse {
+  type: "producerReadTelemetry-result";
+  id: number;
+  telemetry: ProducerTelemetrySnapshot | null;
+}
+
 export interface ErrorResponse {
   type: "error";
   id: number;
@@ -360,4 +574,12 @@ export type WasmWorkerResponse =
   | ProbeFreeResponse
   | GetLiveSlotsResponse
   | ApplyStateSnapshotResponse
+  | ProducerInstallSabResponse
+  | ProducerStartResponse
+  | ProducerStopResponse
+  | ProducerTransportUpdateResponse
+  | ProducerApplyInputsResponse
+  | ProducerArmEpochResponse
+  | ProducerTerminateResponse
+  | ProducerReadTelemetryResponse
   | ErrorResponse;

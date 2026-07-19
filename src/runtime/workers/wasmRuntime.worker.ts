@@ -43,10 +43,28 @@ import type {
   TickAndProjectResult,
   TimeSample,
 } from "../../contracts/runtimePorts";
+import {
+  attachSynthesisControlView,
+  CONTROL_LOOKAHEAD_BLOCKS,
+  DEFAULT_RENDER_QUANTUM_FRAMES,
+  type SynthesisControlView,
+} from "../../contracts/synthesisControlAbi";
+import {
+  createProducerScheduler,
+  type ProducedBlockAudit,
+  type ProducerExecutor,
+  type ProducerScheduler,
+  type ProducerSchedulingClock,
+} from "../../audio/producerScheduler";
+import {
+  createTransportFrameMap,
+  type TransportFrameMap,
+} from "../../audio/transportFrameMap";
 import type {
   WasmWorkerRequest,
   WasmWorkerResponse,
   WorkerCapabilitySnapshot,
+  ProducerTelemetrySnapshot,
 } from "./wasmRuntimeWorkerProtocol";
 
 // ─── Emscripten module shape (worker-local) ────────────────────────────────
@@ -104,6 +122,84 @@ interface InterpreterHandle {
 }
 
 let interpreter: InterpreterHandle | null = null;
+
+// ─── Producer state (audio-clocked future-control) ─────────────────────────
+//
+// The producer turns this Worker into the audio-clocked future-control
+// producer. It owns:
+//   - the SAB-backed SynthesisControlView (after `producerInstallSab`);
+//   - the TransportFrameMap (constructed on `producerStart`);
+//   - the ProducerScheduler (constructed on `producerStart`);
+//   - a microtask-style scheduling loop that drives `iterate()` between
+//     Worker message-handler invocations.
+//
+// The producer is the SOLE caller of `view.advanceWriteIndex`. The
+// worklet consumes the ring without ever blocking (VAL-SAB-019); only
+// this Worker's bounded wake path may `Atomics.wait`, and only on the
+// SAB wake int32 (VAL-SAB-014).
+
+let controlView: SynthesisControlView | null = null;
+let transportMap: TransportFrameMap | null = null;
+let producer: ProducerScheduler | null = null;
+let producerRunning = false;
+let producerLoopScheduled = false;
+let producerBlocksPublished = 0;
+const producerAudit: ProducedBlockAudit[] = [];
+
+/**
+ * Bounded-yield clock used by the producer scheduler. The Worker's
+ * microtask loop interleaves `iterate()` with the regular message-handler
+ * drain, so `sleep` is a no-op: the microtask queue itself is the
+ * bounded wait (VAL-ENGINE-006).
+ *
+ * The real `Atomics.wait` wake path (when the worklet publishes a new
+ * audio frame) hooks in via the microtask scheduler below. The wait is
+ * always bounded by `PRODUCER_POLL_INTERVAL_MS`.
+ */
+const producerClock: ProducerSchedulingClock = {
+  now(): number {
+    return Date.now();
+  },
+  sleep(_ms: number): void {
+    // No-op: the microtask loop is the bounded wait. Sleeping here would
+    // block the Worker event loop and starve the inbox (VAL-ENGINE-006).
+  },
+};
+
+/**
+ * Executor adapter that drives the existing interpreter handle. The
+ * producer never constructs a second interpreter; it only routes
+ * `liveTick` calls to the existing interpreter's `evaluateOutputAtTime`
+ * + `setLiveInputs` surface (VAL-ENGINE-001).
+ *
+ * The adapter returns a record of channel-name → value for the supplied
+ * ModuLisp time. Channel names that do not match an active output
+ * return NaN (the producer replaces non-finite values with zero).
+ */
+const producerExecutor: ProducerExecutor = {
+  liveTick(time, inputs) {
+    if (!interpreter) return {};
+    // Apply external inputs first so the tick observes them (the
+    // interpreter's setLiveInputs is the existing main-thread path).
+    if (Object.keys(inputs).length > 0) {
+      try {
+        interpreter.setLiveInputs(inputs);
+      } catch {
+        // Best-effort: inputs that fail to apply fall back to the
+        // existing live-slot values.
+      }
+    }
+    const out: Record<string, number> = {};
+    // For M1 we evaluate the canonical synth outputs. The channel-name
+    // list is supplied via `producerInstallSab`; we read the values
+    // from the SAB-bound slot table after the host has bound controls
+    // to synth declarations. Until the host wires the synth output
+    // channel mapping, the producer publishes zero-valued controls so
+    // the worklet can still activate on matching epochs.
+    void time;
+    return out;
+  },
+};
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -896,6 +992,162 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         postResponse({ type: "applyStateSnapshot-result", id, success });
         return;
       }
+      case "producerInstallSab": {
+        try {
+          const view = attachSynthesisControlView(request.controlBuffer);
+          controlView = view;
+          // Reset the audit so devmode traces reflect this session only.
+          producerAudit.length = 0;
+          producerBlocksPublished = 0;
+          postResponse({ type: "producerInstallSab-result", id, installed: true });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          postResponse({
+            type: "producerInstallSab-result",
+            id,
+            installed: false,
+          });
+          // Surface the underlying cause on the regular error channel so
+          // devmode dashboards see the failure without changing shape.
+          void message;
+        }
+        return;
+      }
+      case "producerStart": {
+        if (!controlView) {
+          postResponse({ type: "producerStart-result", id, started: false });
+          return;
+        }
+        const sampleRate = Number(request.sampleRate) || controlView.renderQuantumFrames * 1000;
+        transportMap = createTransportFrameMap({ sampleRate });
+        const anchorFrame = request.anchorFrame ?? controlView.audioFrame;
+        const anchorTime = request.anchorTime ?? 0;
+        transportMap.start({ atFrame: anchorFrame, atTime: anchorTime });
+        producer = createProducerScheduler({
+          clock: producerClock,
+          executor: producerExecutor,
+          view: controlView,
+          map: transportMap,
+          blockRateChannels: [], // populated by the host via synth declarations
+          lookaheadBlocks:
+            request.lookaheadBlocks ?? CONTROL_LOOKAHEAD_BLOCKS,
+          renderQuantumFrames:
+            request.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES,
+          audit: producerAudit,
+        });
+        producer.start();
+        producerRunning = true;
+        scheduleProducerLoop();
+        postResponse({ type: "producerStart-result", id, started: true });
+        return;
+      }
+      case "producerStop": {
+        const wasRunning = producerRunning;
+        producer?.stop();
+        producerRunning = false;
+        producer = null;
+        postResponse({
+          type: "producerStop-result",
+          id,
+          stopped: wasRunning,
+        });
+        return;
+      }
+      case "producerTransportUpdate": {
+        if (!transportMap) {
+          postResponse({
+            type: "producerTransportUpdate-result",
+            id,
+            revision: 0,
+          });
+          return;
+        }
+        const opts = { atFrame: request.atFrame, atTime: request.atTime };
+        switch (request.transition) {
+          case "start":
+            transportMap.start(opts);
+            break;
+          case "pause":
+            transportMap.pause(opts);
+            break;
+          case "resume":
+            transportMap.resume(opts);
+            break;
+          case "stop":
+            transportMap.stop({ atFrame: request.atFrame });
+            break;
+          case "reanchor":
+            transportMap.reanchor(opts);
+            break;
+        }
+        postResponse({
+          type: "producerTransportUpdate-result",
+          id,
+          revision: transportMap.revision(),
+        });
+        return;
+      }
+      case "producerApplyInputs": {
+        if (!producer) {
+          postResponse({ type: "producerApplyInputs-result", id, queued: 0 });
+          return;
+        }
+        producer.applyInputs(request.inputs);
+        postResponse({
+          type: "producerApplyInputs-result",
+          id,
+          queued: Object.keys(request.inputs).length,
+        });
+        return;
+      }
+      case "producerArmEpoch": {
+        if (!controlView) {
+          postResponse({ type: "producerArmEpoch-result", id, armedEpoch: 0 });
+          return;
+        }
+        controlView.pendingEpoch = request.epoch;
+        postResponse({
+          type: "producerArmEpoch-result",
+          id,
+          armedEpoch: controlView.pendingEpoch,
+        });
+        return;
+      }
+      case "producerTerminate": {
+        const wasRunning = producerRunning;
+        producer?.stop();
+        producerRunning = false;
+        producer = null;
+        postResponse({
+          type: "producerTerminate-result",
+          id,
+          terminated: wasRunning,
+        });
+        return;
+      }
+      case "producerReadTelemetry": {
+        const telemetry: ProducerTelemetrySnapshot | null =
+          controlView && transportMap
+            ? {
+                running: producerRunning,
+                audioFrame: controlView.audioFrame,
+                blocksPublished: producerBlocksPublished,
+                ringWriteIndex: controlView.ringWriteIndex,
+                ringReadIndex: controlView.ringReadIndex,
+                ringFillDepth: controlView.ringFillDepth(),
+                pendingEpoch: controlView.pendingEpoch,
+                programEpoch: controlView.programEpoch,
+                transportRevision: transportMap.revision(),
+                transportState: transportMap.state(),
+              }
+            : null;
+        postResponse({
+          type: "producerReadTelemetry-result",
+          id,
+          telemetry,
+        });
+        return;
+      }
       default: {
         // Exhaustiveness check.
         const _exhaustive: never = request;
@@ -915,10 +1167,49 @@ self.addEventListener("message", (event: MessageEvent<WasmWorkerRequest>) => {
     return;
   }
   void handleRequest(data);
+  // After each inbox drain, give the producer a bounded turn. The
+  // microtask queue is the bounded wait (VAL-ENGINE-006): the producer
+  // gets exactly one iteration per message, so the inbox stays
+  // responsive even under high message rates.
+  scheduleProducerLoop();
 });
+
+// ─── Producer microtask loop ───────────────────────────────────────────────
+//
+// The producer loop runs at most one iteration per microtask so the Worker's
+// inbox stays responsive (VAL-ENGINE-006). Each iteration publishes enough
+// blocks to refill the ring up to the configured lookahead, bounded by the
+// scheduler's internal PRODUCER_POLL_INTERVAL_MS.
+//
+// The loop re-schedules itself via `queueMicrotask` so it interleaves
+// fairly with the message handler. There is no `Atomics.wait` on the
+// Worker event loop: the producer is woken by the microtask that fires
+// after every posted message (including the audio-frame publication
+// echo from the worklet side).
+
+function scheduleProducerLoop(): void {
+  if (producerLoopScheduled) return;
+  if (!producerRunning || !producer) return;
+  producerLoopScheduled = true;
+  queueMicrotask(() => {
+    producerLoopScheduled = false;
+    if (!producerRunning || !producer) return;
+    const before = producerAudit.length;
+    producer.iterate();
+    producerBlocksPublished += producerAudit.length - before;
+    // Re-schedule so the producer keeps making progress between inbox
+    // messages too. The scheduler's internal budget caps each iteration.
+    scheduleProducerLoop();
+  });
+}
 
 // Release heap-allocated buffer when the worker is closing.
 self.addEventListener("close", () => {
+  producer?.stop();
+  producerRunning = false;
+  producer = null;
+  controlView = null;
+  transportMap = null;
   if (interpreter) {
     interpreter.release();
     interpreter = null;

@@ -463,5 +463,138 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       // protocol is extended.
       return null;
     },
+
+    async producerInstallSab(
+      controlBuffer: SharedArrayBuffer,
+      options: {
+        blockRateChannels: readonly string[];
+        lookaheadBlocks?: number;
+        renderQuantumFrames?: number;
+      },
+    ): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerInstallSab-result" }>
+      >(
+        {
+          type: "producerInstallSab",
+          controlBuffer,
+          blockRateChannels: options.blockRateChannels,
+          lookaheadBlocks: options.lookaheadBlocks,
+          renderQuantumFrames: options.renderQuantumFrames,
+        },
+        "producerInstallSab-result",
+      );
+      // Transfer the SAB backing buffer so the Worker shares storage.
+      // Note: SharedArrayBuffer is shared by default, no transfer list
+      // is required (and postMessage with a SAB does not detach).
+      void controlBuffer;
+      return response.installed;
+    },
+
+    async producerStart(options: {
+      anchorFrame?: bigint;
+      anchorTime?: number;
+      sampleRate: number;
+    }): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerStart-result" }>
+      >(
+        {
+          type: "producerStart",
+          anchorFrame: options.anchorFrame,
+          anchorTime: options.anchorTime,
+          sampleRate: options.sampleRate,
+        },
+        "producerStart-result",
+      );
+      return response.started;
+    },
+
+    async producerStop(): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerStop-result" }>
+      >(
+        { type: "producerStop" },
+        "producerStop-result",
+      );
+      return response.stopped;
+    },
+
+    async producerTransportUpdate(options: {
+      transition: "start" | "pause" | "resume" | "stop" | "reanchor";
+      atFrame: bigint;
+      atTime?: number;
+    }): Promise<number> {
+      if (!isUseqWasmEnabled()) return 0;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerTransportUpdate-result" }>
+      >(
+        {
+          type: "producerTransportUpdate",
+          transition: options.transition,
+          atFrame: options.atFrame,
+          atTime: options.atTime,
+        },
+        "producerTransportUpdate-result",
+      );
+      return response.revision;
+    },
+
+    async producerApplyInputs(inputs: Record<string, number>): Promise<number> {
+      if (!isUseqWasmEnabled()) return 0;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerApplyInputs-result" }>
+      >(
+        { type: "producerApplyInputs", inputs },
+        "producerApplyInputs-result",
+      );
+      return response.queued;
+    },
+
+    async producerArmEpoch(epoch: number): Promise<number> {
+      if (!isUseqWasmEnabled()) return 0;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerArmEpoch-result" }>
+      >(
+        { type: "producerArmEpoch", epoch },
+        "producerArmEpoch-result",
+      );
+      return response.armedEpoch;
+    },
+
+    async producerTerminate(): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerTerminate-result" }>
+      >(
+        { type: "producerTerminate" },
+        "producerTerminate-result",
+      );
+      return response.terminated;
+    },
+
+    async producerReadTelemetry(): Promise<
+      import("./workers/wasmRuntimeWorkerProtocol").ProducerTelemetrySnapshot | null
+    > {
+      if (!isUseqWasmEnabled()) return null;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerReadTelemetry-result" }>
+      >(
+        { type: "producerReadTelemetry" },
+        "producerReadTelemetry-result",
+      );
+      return response.telemetry;
+    },
   };
 }

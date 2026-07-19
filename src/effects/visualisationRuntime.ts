@@ -38,6 +38,7 @@ import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 import { refreshOutputHealth } from "../utils/outputHealthStore.ts";
 import { recordTickElapsed } from "./adaptiveQuality.ts";
 import { projectionTrace } from "../lib/projectionTrace.ts";
+import { shouldAdvanceLocalTime } from "../audio/audioClockPolicy.ts";
 
 /**
  * Render hook supplied by a UI adapter — `effects/` is forbidden from
@@ -213,7 +214,12 @@ function tick(): void {
   if (import.meta.env.DEV) perf.begin("frame-tick");
   frameCount++;
 
-  if (localTimeActive) {
+  if (localTimeActive && shouldAdvanceLocalTime()) {
+    // VAL-ENGINE-002: while the synthesis engine is running or suspended,
+    // audio frames own ModuLisp time. rAF stays presentation-only — it
+    // still paints and polls diagnostics, but it never advances a second
+    // live timeline. `shouldAdvanceLocalTime()` reads the typed engine
+    // state store and returns false when audio is the master clock.
     localElapsedSeconds = (now - (localResetMs ?? 0)) / 1000;
     updateTime(localElapsedSeconds);
     setLastChangeKind("time", {

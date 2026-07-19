@@ -260,6 +260,39 @@ export const wasmRuntimePort: WasmRuntimePort = {
   async readOutputClassifications(): Promise<OutputClassification | null> {
     return readOutputClassificationsFromWasm();
   },
+
+  // ─── Audio-clocked producer stubs ──────────────────────────────────
+  //
+  // The in-process port never hosts the audio-clocked producer (the
+  // producer is a Worker-side concept). These stubs return safe defaults
+  // so callers that hold a `WasmRuntimePort` reference without checking
+  // the `kind` do not crash. The Worker port supplies the real
+  // implementations (VAL-ENGINE-001).
+
+  async producerInstallSab(): Promise<boolean> {
+    return false;
+  },
+  async producerStart(): Promise<boolean> {
+    return false;
+  },
+  async producerStop(): Promise<boolean> {
+    return false;
+  },
+  async producerTransportUpdate(): Promise<number> {
+    return 0;
+  },
+  async producerApplyInputs(): Promise<number> {
+    return 0;
+  },
+  async producerArmEpoch(): Promise<number> {
+    return 0;
+  },
+  async producerTerminate(): Promise<boolean> {
+    return false;
+  },
+  async producerReadTelemetry(): Promise<null> {
+    return null;
+  },
 };
 
 // ---------------------------------------------------------------------------

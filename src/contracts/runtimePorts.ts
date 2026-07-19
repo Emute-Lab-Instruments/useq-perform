@@ -455,6 +455,83 @@ export interface WasmRuntimePort extends SharedRuntimePort {
    * conservative invalidation).
    */
   readOutputClassifications(): Promise<OutputClassification | null>;
+
+  // ─── Audio-clocked producer surface ────────────────────────────────
+  //
+  // The producer turns the existing WASM Worker into the sole audio-clocked
+  // future-control producer (mission feature `m1-audio-clocked-worker-producer`).
+  // The main thread installs the SAB, starts/stops the producer, drives
+  // transport transitions, applies external inputs, arms epochs, and reads
+  // telemetry. The Worker never creates a second interpreter; it only
+  // schedules the existing one on the audio clock (VAL-ENGINE-001).
+
+  /**
+   * Install the SharedArrayBuffer that carries the synthesis control ring.
+   * The Worker attaches a typed view and stores it for the producer loop.
+   * Returns `true` when the buffer passed ABI validation.
+   */
+  producerInstallSab(
+    controlBuffer: SharedArrayBuffer,
+    options: {
+      blockRateChannels: readonly string[];
+      lookaheadBlocks?: number;
+      renderQuantumFrames?: number;
+    },
+  ): Promise<boolean>;
+
+  /**
+   * Start the producer. The producer loop runs between Worker message
+   * iterations; each iteration publishes enough blocks to refill the
+   * ring up to the configured lookahead. Returns `true` when the
+   * producer transitioned from stopped to running.
+   */
+  producerStart(options: {
+    anchorFrame?: bigint;
+    anchorTime?: number;
+    sampleRate: number;
+  }): Promise<boolean>;
+
+  /** Stop the producer. Returns `true` when the producer was running. */
+  producerStop(): Promise<boolean>;
+
+  /**
+   * Update the transport state on the producer. Drives the pure
+   * transport frame map (VAL-ENGINE-003 / VAL-ENGINE-032). Returns the
+   * transport map revision after the transition.
+   */
+  producerTransportUpdate(options: {
+    transition: "start" | "pause" | "resume" | "stop" | "reanchor";
+    atFrame: bigint;
+    atTime?: number;
+  }): Promise<number>;
+
+  /**
+   * Apply external inputs to the next produced block. Inputs never
+   * retroactively modify already-published blocks (VAL-ENGINE-005).
+   * Returns the number of input channels queued.
+   */
+  producerApplyInputs(inputs: Record<string, number>): Promise<number>;
+
+  /**
+   * Arm a program epoch. The producer tags every subsequently-produced
+   * block with the supplied epoch (VAL-SAB-015 / VAL-ENGINE-011).
+   * Returns the armed epoch.
+   */
+  producerArmEpoch(epoch: number): Promise<number>;
+
+  /**
+   * Devmode-only: terminate the producer from inside the Worker.
+   * Returns `true` when the producer was running and is now terminated.
+   */
+  producerTerminate(): Promise<boolean>;
+
+  /**
+   * Read a producer telemetry snapshot. Returns `null` when the
+   * producer has not been started.
+   */
+  producerReadTelemetry(): Promise<
+    import("../runtime/workers/wasmRuntimeWorkerProtocol").ProducerTelemetrySnapshot | null
+  >;
 }
 
 // ---------------------------------------------------------------------------
