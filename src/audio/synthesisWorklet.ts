@@ -48,7 +48,14 @@ import {
   type WorkletCore,
   type WorkletMemoryAllocator,
 } from "./workletCore";
-import type { NodeDefAdapter } from "./nodeDefAdapter";
+import {
+  createNodeDefAdapter,
+  type NodeDefAdapter,
+} from "./nodeDefAdapter";
+import {
+  NODEDEF_REGISTRY,
+  type NodeDefDescriptor,
+} from "../contracts/nodeDefRegistry";
 
 // ---------------------------------------------------------------------------
 // Ambient worklet-scope globals
@@ -110,6 +117,12 @@ interface ProcessorBag {
   readonly core: WorkletCore;
   readonly outputScratch: Float32Array;
   outputGain: number;
+  /**
+   * Install a NodeDef module transferred from the main thread. The
+   * shell instantiates the WASM module against the worklet's shared
+   * memory and caches the resulting adapter.
+   */
+  installModule(payload: WorkletModuleTransferShim): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,14 +131,22 @@ interface ProcessorBag {
 
 /**
  * Create a bump allocator over a fresh `WebAssembly.Memory`. M1 has
- * exactly one osc/sine instance (32-byte state zone), so a single
- * page (64 KiB) is more than sufficient. The allocator is the only
- * allocation surface the core uses between quanta.
+ * exactly one osc/sine instance (24-byte state zone), so the state
+ * allocation itself is tiny. The memory's initial page count must
+ * satisfy the NodeDef WASM module's imported `env.memory` limits
+ * descriptor, which for osc/sine declares 256 initial pages
+ * (16 MiB). The maximum matches so the worklet does not need to grow
+ * the memory at runtime.
  */
 function createWorkletAllocator(): WorkletMemoryAllocator & {
   readonly memory: WebAssembly.Memory;
 } {
-  const memory = new WebAssembly.Memory({ initial: 1, maximum: 1 });
+  // VAL-CROSS-002: the NodeDef module declares env.memory with
+  // initial=256 pages. A smaller memory fails instantiation with
+  // "memory import has N pages which is smaller than the declared
+  // initial of 256".
+  const initialPages = 256;
+  const memory = new WebAssembly.Memory({ initial: initialPages, maximum: initialPages });
   let offset = 0;
   return {
     memory,
@@ -152,15 +173,26 @@ function createWorkletAllocator(): WorkletMemoryAllocator & {
  * Cache of instantiated NodeDef adapters keyed by `name@version`. The
  * adapter factory passed to the core looks up this cache.
  *
- * When a {@link WorkletModuleTransferMessage} arrives the shell
+ * When a {@link WorkletModuleTransferShim} arrives the shell
  * instantiates the transferred `WebAssembly.Module` against the
- * worklet's shared memory, builds the adapter, and caches it.
+ * worklet's shared memory, builds the adapter via
+ * {@link createNodeDefAdapter}, and caches it.
+ *
+ * VAL-CROSS-002 integration: this bridge was stubbed in the worklet
+ * host feature. The integration worker wires it end-to-end so the
+ * `(synth "osc/sine" :freq 440)` form actually drives DSP output.
+ *
+ * VAL-ENGINE-008: the WASM module is compiled on the main thread and
+ * transferred to the worklet via postMessage; the worklet reuses the
+ * supplied module without recompiling. Instantiation happens here,
+ * between quanta, in the message handler — never inside `process()`.
  */
 function createAdapterCache(
   memory: WebAssembly.Memory,
+  descriptors: ReadonlyMap<string, NodeDefDescriptor>,
 ): {
   factory: (name: string, version: number) => NodeDefAdapter | null;
-  install(payload: WorkletModuleTransferShim): void;
+  install(payload: WorkletModuleTransferShim): Promise<void>;
 } {
   const cache = new Map<string, NodeDefAdapter>();
 
@@ -169,21 +201,54 @@ function createAdapterCache(
       const key = `${name}@${version}`;
       return cache.get(key) ?? null;
     },
-    install(payload) {
+    async install(payload) {
       const key = `${payload.descriptor.name}@${payload.descriptor.version}`;
-      // The full adapter construction requires the NodeDef adapter
-      // factory. For the M1 worklet shell we defer to the core which
-      // resolves the adapter via the factory; the install step caches
-      // the descriptor so the factory can resolve it.
+      if (cache.has(key)) return;
+      const descriptor = descriptors.get(key);
+      if (!descriptor) {
+        // Unknown def. The main thread should not have transferred a
+        // module the registry does not know about; ignore it so the
+        // worklet keeps running.
+        return;
+      }
+      // Instantiate the WASM module against the worklet's shared
+      // memory. The module imports `env.memory`; we supply the
+      // worklet's existing memory so per-instance state zones live
+      // in the same linear memory the host adapter addresses.
       //
-      // The real adapter wiring (instantiating the WASM module against
-      // the shared memory) is owned by the producer/recovery feature
-      // which manages the full NodeDef module lifecycle. This shell
-      // exposes the hook so that feature can plug in without changing
-      // the core or the processor wiring.
-      void memory;
-      void payload;
-      void key;
+      // Some Chromium versions silently drop WebAssembly.Module across
+      // the AudioWorklet MessagePort even though the spec permits
+      // structured clone. When the module is absent but raw bytes are
+      // supplied, recompile in the worklet scope.
+      const importObject = { env: { memory } };
+      let moduleObj: WebAssembly.Module | undefined = payload.module;
+      if (!moduleObj && payload.wasmBytes) {
+        moduleObj = await WebAssembly.compile(payload.wasmBytes as Uint8Array<ArrayBuffer>);
+      }
+      if (!moduleObj) {
+        return;
+      }
+      const instance = await WebAssembly.instantiate(moduleObj, importObject);
+      const exports = instance.exports as Record<string, WebAssembly.ExportValue>;
+      const defPrefix = `${descriptor.name.replace("/", "_")}_`;
+      const lookup = (name: string): ((...args: number[]) => number) | undefined => {
+        const prefixed = exports[`${defPrefix}${name}`];
+        if (typeof prefixed === "function") {
+          return prefixed as (...args: number[]) => number;
+        }
+        const direct = exports[name];
+        if (typeof direct === "function") {
+          return direct as (...args: number[]) => number;
+        }
+        const underscored = exports[`_${name}`];
+        if (typeof underscored === "function") {
+          return underscored as (...args: number[]) => number;
+        }
+        return undefined;
+      };
+      const module = { lookup, runtimeDescriptor: descriptor };
+      const adapter = createNodeDefAdapter(module, descriptor);
+      cache.set(key, adapter);
     },
   };
 }
@@ -191,7 +256,8 @@ function createAdapterCache(
 /** Shim for the module-transfer payload (mirrors the message type). */
 interface WorkletModuleTransferShim {
   readonly descriptor: { readonly name: string; readonly version: number };
-  readonly module: WebAssembly.Module;
+  readonly module?: WebAssembly.Module;
+  readonly wasmBytes?: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,15 +267,30 @@ interface WorkletModuleTransferShim {
 /**
  * Construct the per-processor bag. Called once from the processor
  * constructor (between quanta). Allocates the core, the output scratch,
- * and the shared-memory allocator.
+ * the shared-memory allocator, and the NodeDef adapter cache.
+ *
+ * The adapter cache is wired to the core's `adapterFactory`. When the
+ * main thread posts a `nodedef-module` message the shell instantiates
+ * the WASM module against the worklet's shared memory, builds an
+ * adapter via {@link createNodeDefAdapter}, and caches it so the
+ * adapter factory can resolve it on the next instantiate delta.
  */
 function createProcessorBag(): ProcessorBag {
-  const allocator = createWorkletAllocator();
+  const allocatorWithMemory = createWorkletAllocator();
   const rate = typeof sampleRate === "number" ? sampleRate : 48000;
 
+  // Build a descriptor lookup keyed by `name@version` from the static
+  // M1 registry. Future features that dynamically register defs will
+  // extend this map.
+  const descriptors = new Map<string, NodeDefDescriptor>();
+  for (const desc of NODEDEF_REGISTRY) {
+    descriptors.set(`${desc.name}@${desc.version}`, desc);
+  }
+  const adapterCache = createAdapterCache(allocatorWithMemory.memory, descriptors);
+
   const core = createWorkletCore({
-    adapterFactory: (_name, _version) => null, // wired by module-transfer
-    allocator,
+    adapterFactory: (name, version) => adapterCache.factory(name, version),
+    allocator: allocatorWithMemory,
     sampleRate: rate,
     publish: () => {
       // Publishing happens via the process() return value in the
@@ -221,6 +302,7 @@ function createProcessorBag(): ProcessorBag {
     core,
     outputScratch: new Float32Array(128),
     outputGain: 1,
+    installModule: (payload) => adapterCache.install(payload),
   };
 }
 
@@ -249,7 +331,29 @@ export function registerSynthesisProcessor(): void {
       this.port.onmessage = (event: { data: unknown }) => {
         const bag = this.bag;
         if (!bag) return;
-        bag.core.handleMessage(event.data);
+        const data = event.data;
+        // Intercept NodeDef module transfers. The main thread posts
+        // these after compiling the WASM off-thread (VAL-ENGINE-008);
+        // the shell instantiates the module against the worklet's
+        // shared memory and caches the resulting adapter. The core's
+        // adapter factory resolves the cache on the next instantiate
+        // delta. Other messages flow through to the core unchanged.
+        if (
+          data &&
+          typeof data === "object" &&
+          (data as { type?: string }).type === "nodedef-module"
+        ) {
+          const payload = data as WorkletModuleTransferShim & { type: string };
+          // Install is async (WebAssembly.instantiate returns a
+          // promise) but the worklet's message handler must not block.
+          // The install races against the next instantiate delta; if
+          // the instantiate arrives first the adapter factory returns
+          // null and the core holds the delta as pending until the
+          // next matching-epoch block.
+          void bag.installModule(payload);
+          return;
+        }
+        bag.core.handleMessage(data);
       };
     }
 
@@ -269,33 +373,26 @@ export function registerSynthesisProcessor(): void {
       const frameCount = channel.length;
       const snapshot = bag.core.process(frameCount);
 
-      // Copy the core's internal output into the Web Audio channel.
-      // The core's process() writes into its own scratch; we access
-      // it through a small read-back helper to avoid exposing the
-      // core's internal buffer to the shell.
+      // VAL-ENGINE-037: copy the core's rendered output into the Web
+      // Audio channel that connects to `AudioContext.destination`. The
+      // core writes its DSP output into an internal scratch buffer; the
+      // shell reads it back through `readOutput()` and copies the
+      // samples into the Web Audio output channel.
       //
-      // For the M1 worklet the output path is: core renders → core
-      // scratch → shell copies into the Web Audio channel → Web Audio
-      // routes to AudioContext.destination (VAL-ENGINE-037).
-      //
-      // The shell reads the telemetry snapshot's peakSample to decide
-      // whether to copy samples. When the snapshot reports peak 0
-      // (post-fade silence, timeout, or no active instance) the shell
-      // can skip the copy entirely, keeping the channel at its default
-      // zero-filled state.
-      if (snapshot.peakSample > 0 || snapshot.rmsSample > 0) {
-        // For the M1 shell we emit a deterministic sine at the
-        // snapshot's reported peak so the destination receives finite
-        // non-zero output when the engine is running. The full DSP
-        // output wiring (real WASM compute output copying) is owned
-        // by the producer/recovery feature which controls the shared
-        // memory layout.
-        //
-        // This keeps VAL-ENGINE-037 (output reaches destination)
-        // satisfied: the destination receives finite non-zero output
-        // while the engine is running, and exact zero after timeout.
+      // Web Audio zero-fills the channel before each process() call, so
+      // when the core produces silence (no active instance, post-fade,
+      // or producer timeout) the destination receives exact zero
+      // without any special handling.
+      const coreOutput = bag.core.readOutput();
+      const gain = bag.outputGain;
+      if (gain === 1) {
+        // Fast path: straight copy, no per-sample multiply.
         for (let i = 0; i < frameCount; i++) {
-          channel[i] = bag.outputScratch[i] * bag.outputGain;
+          channel[i] = coreOutput[i];
+        }
+      } else {
+        for (let i = 0; i < frameCount; i++) {
+          channel[i] = coreOutput[i] * gain;
         }
       }
 

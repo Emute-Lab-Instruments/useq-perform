@@ -181,7 +181,7 @@ export const OSC_SINE_NODEDEF_DESCRIPTOR: NodeDefDescriptor = Object.freeze({
   ]),
   fadeInMs: 10,
   fadeOutMs: 30,
-  stateBytes: 32,
+  stateBytes: 24,
   stateAlign: 8,
   controlStrideBytes: 8,
   outputStrideBytes: 8,

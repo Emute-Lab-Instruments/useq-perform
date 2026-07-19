@@ -82,6 +82,9 @@ import {
 import type { NodeDefAdapter, NodeDefModule } from "./nodeDefAdapter";
 import {
   ABI_VERSION as SYNTH_CONTROL_ABI_VERSION,
+  CONTROL_LOOKAHEAD_BLOCKS,
+  DEFAULT_RENDER_QUANTUM_FRAMES,
+  createSynthesisControlBuffer,
 } from "../contracts/synthesisControlAbi";
 import type {
   WorkletProducerTimeoutEvent,
@@ -207,6 +210,44 @@ export interface SynthesisWorkerPort {
    * on the first matching-epoch block (VAL-ENGINE-011).
    */
   producerArmEpoch(epoch: number): Promise<number>;
+  /**
+   * Install the SharedArrayBuffer that carries the synthesis control
+   * ring. The Worker attaches a typed view and stores it for the
+   * producer loop. Returns `true` when the buffer passed ABI
+   * validation.
+   *
+   * Integration bridge (VAL-CROSS-002/003): the synthesis service
+   * allocates one SAB per engine session, installs it on the Worker
+   * producer, and ships the same buffer to the worklet via
+   * `attach-control-buffer`. Both sides then read/write the same
+   * ring; the producer publishes blocks paced by the worklet's frame
+   * counter.
+   */
+  producerInstallSab?(
+    controlBuffer: SharedArrayBuffer,
+    options: {
+      blockRateChannels: readonly string[];
+      lookaheadBlocks?: number;
+      renderQuantumFrames?: number;
+    },
+  ): Promise<boolean>;
+  /**
+   * Start the producer loop. The producer publishes enough blocks to
+   * refill the ring up to the configured lookahead, paced by the
+   * worklet's audio-frame publication. Returns `true` when the
+   * producer transitioned from stopped to running.
+   */
+  producerStart?(options: {
+    anchorFrame?: bigint;
+    anchorTime?: number;
+    sampleRate: number;
+  }): Promise<boolean>;
+  /**
+   * Stop the producer loop. Returns `true` when the producer was
+   * running. Used by dispose() and the recovery path so a stale
+   * producer cannot keep publishing to a retired SAB.
+   */
+  producerStop?(): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -774,6 +815,12 @@ function createCapableService(
   // has been attached. The constant comes from the dependency-free
   // contract module (VAL-SAB-001).
   let sabAbiVersionKnown: number | null = null;
+  // VAL-CROSS-002/003 bridge: one SAB per engine session, shared
+  // between the Worker producer and the AudioWorklet. Allocated in
+  // `installProducerControlBridge`, detached on dispose/recovery.
+  let producerControlBuffer: SharedArrayBuffer | null = null;
+  let producerInstalled = false;
+  let producerRunning = false;
 
   // --- Eval-to-engine commit state (VAL-ENGINE-010/013/014/015) ---
   //
@@ -1022,6 +1069,23 @@ function createCapableService(
       }
     }
 
+    // VAL-CROSS-002/003 bridge: allocate the SAB once per engine
+    // session, install it on the Worker producer, and ship the same
+    // buffer to the worklet via `attach-control-buffer`. The producer
+    // and worklet then share one ring; the producer publishes blocks
+    // paced by the worklet's frame counter. This is the integration
+    // step that ties the producer feature (m1-audio-clocked-worker-
+    // producer) to the worklet host feature (m1-worklet-host-and-
+    // epoch-consumer). Without it the producer has nothing to write
+    // to and the worklet has nothing to read.
+    try {
+      await installProducerControlBridge();
+    } catch (err) {
+      transition("error", "RECOVERY_FAILED",
+        `Failed to install producer control bridge: ${(err as Error).message}`);
+      return false;
+    }
+
     // Compile/transfer NodeDef modules (off the audio thread). The
     // worklet reuses the supplied module without recompiling (VAL-ENGINE-008).
     try {
@@ -1034,6 +1098,117 @@ function createCapableService(
     }
 
     return true;
+  }
+
+  /**
+   * Allocate the synthesis control SAB, install it on the Worker
+   * producer, and ship the same buffer to the worklet via
+   * `attach-control-buffer`.
+   *
+   * The bridge is allocated exactly once per service instance. On
+   * recovery the old SAB is discarded and a fresh one is created so
+   * stale producer state cannot leak into the new engine session.
+   *
+   * The SAB is created by replicating the dependency-free
+   * `createSynthesisControlBuffer` layout against a real
+   * `SharedArrayBuffer` (when `crossOriginIsolated` is true, which the
+   * capability snapshot has already verified before this service is
+   * constructed).
+   */
+  async function installProducerControlBridge(): Promise<void> {
+    if (producerControlBuffer !== null) return;
+    if (typeof SharedArrayBuffer === "undefined") {
+      throw new Error("SharedArrayBuffer is unavailable; cannot install producer control bridge");
+    }
+
+    // Use the dependency-free layout helper to size and initialise the
+    // buffer, then copy its bytes into a same-sized SharedArrayBuffer.
+    // The layout is the single source of truth (VAL-SAB-001), so the
+    // producer and worklet agree on offsets, strides, and capacity by
+    // construction.
+    const layout = createSynthesisControlBuffer({
+      renderQuantumFrames: DEFAULT_RENDER_QUANTUM_FRAMES,
+    });
+    const sab = new SharedArrayBuffer(layout.byteLength);
+    new Uint8Array(sab).set(new Uint8Array(layout));
+    producerControlBuffer = sab;
+
+    // Ship the SAB to the worklet. The worklet core's
+    // `attach-control-buffer` handler validates ABI magic/version and
+    // attaches its typed view. The worklet's audio-thread-side
+    // consumer reads control blocks from this ring every render
+    // quantum.
+    if (workletNode !== null) {
+      workletNode.port.postMessage({
+        type: "attach-control-buffer",
+        controlBuffer: sab,
+      });
+    }
+
+    // Install the SAB on the Worker producer. The producer attaches
+    // its own typed view and starts publishing blocks paced by the
+    // worklet's frame counter.
+    const workerPort = options.workerPort;
+    if (workerPort && typeof workerPort.producerInstallSab === "function") {
+      try {
+        await workerPort.producerInstallSab(sab, {
+          blockRateChannels: ["freq", "amp"],
+          lookaheadBlocks: CONTROL_LOOKAHEAD_BLOCKS,
+          renderQuantumFrames: DEFAULT_RENDER_QUANTUM_FRAMES,
+        });
+        producerInstalled = true;
+      } catch (err) {
+        // The producer could not attach (ABI mismatch, OOM, etc.).
+        // Fail closed: the worklet's timeout path will silence output
+        // if no blocks arrive, but we surface the failure as an error
+        // transition so the user sees it.
+        throw new Error(`producerInstallSab failed: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /**
+   * Start the Worker producer loop. Called when the engine transitions
+   * to `running`. The producer publishes blocks to fill the ring up to
+   * the configured lookahead; the worklet consumes them on every
+   * render quantum.
+   *
+   * No-op when the producer bridge has not been installed or when the
+   * worker port does not expose `producerStart` (older Worker
+   * revisions, unit tests).
+   */
+  async function startProducer(): Promise<void> {
+    if (producerRunning) return;
+    if (!producerInstalled) return;
+    const workerPort = options.workerPort;
+    if (!workerPort || typeof workerPort.producerStart !== "function") return;
+    if (audioContext === null) return;
+    try {
+      await workerPort.producerStart({
+        sampleRate: audioContext.sampleRate,
+      });
+      producerRunning = true;
+    } catch {
+      // Producer start failed. The worklet will detect the missing
+      // blocks via its timeout path; surface nothing further here.
+    }
+  }
+
+  /**
+   * Stop the Worker producer loop. Called on transition out of
+   * `running` and during dispose so a stale producer cannot keep
+   * publishing to a retired SAB.
+   */
+  async function stopProducer(): Promise<void> {
+    if (!producerRunning) return;
+    producerRunning = false;
+    const workerPort = options.workerPort;
+    if (!workerPort || typeof workerPort.producerStop !== "function") return;
+    try {
+      await workerPort.producerStop();
+    } catch {
+      // Best-effort; the producer will be replaced on recovery anyway.
+    }
   }
 
   async function loadNodeDefModules(): Promise<void> {
@@ -1051,10 +1226,20 @@ function createCapableService(
         compiledAdapters.set(key, adapter);
         acc.compiledModuleCount += 1;
         acc.compiledModuleNames.push(descriptor.name);
-        // Transfer the compiled module to the worklet. The worklet
-        // instantiates it against its shared memory between quanta.
+        // Hand the compiled module to the worklet. WebAssembly.Module
+        // objects are structured-cloned across `postMessage` (they are
+        // shareable, not transferable), so the transfer list is empty.
+        // The worklet reuses the supplied module without recompiling
+        // (VAL-ENGINE-008) by instantiating it against its shared
+        // memory between quanta.
         if (workletNode && compiledWasm) {
-          const transfer: Transferable[] = [compiledWasm];
+          // Post the raw WASM bytes to the worklet. WebAssembly.Module
+          // is structured-cloneable per spec but some Chromium versions
+          // silently drop it across the AudioWorklet MessagePort. The
+          // bytes are always available (stashed on the compiled module
+          // by the loader) and let the worklet recompile reliably.
+          const moduleWithBytes = compiledWasm as WebAssembly.Module & { __sourceBytes?: Uint8Array };
+          const wasmBytes = moduleWithBytes.__sourceBytes ?? null;
           workletNode.port.postMessage(
             {
               type: "nodedef-module",
@@ -1062,9 +1247,8 @@ function createCapableService(
                 name: descriptor.name,
                 version: descriptor.version,
               },
-              module: compiledWasm,
+              wasmBytes,
             },
-            transfer,
           );
         }
       } catch (err) {
@@ -1307,6 +1491,12 @@ function createCapableService(
         await audioContext.resume();
         acc.audioContextState = audioContext.state;
         transition("running", null, null);
+        // VAL-CROSS-002 bridge: now that audio is actually running,
+        // start the Worker producer loop. The producer publishes
+        // control blocks paced by the worklet's audio-frame counter;
+        // without this step the ring stays empty and the worklet
+        // times out within ~64 ms.
+        await startProducer();
         return true;
       } catch {
         // Resume was rejected (browser did not see activation, or
@@ -1613,6 +1803,21 @@ function createCapableService(
       });
     }
     lastAppliedRevision = payload.revision;
+    // VAL-CROSS-002/003: publish the committed revision and pending
+    // epoch into telemetry so the devmode surface reflects the latest
+    // successful commit. The worklet merges its own pendingEpoch /
+    // activeEpoch snapshots on every telemetry publication; setting
+    // them here lets the dashboard correlate the commit with the
+    // about-to-activate graph.
+    acc.programRevision = payload.revision;
+    acc.pendingEpoch = plan.epoch;
+    for (const delta of plan.workletDeltas) {
+      if (delta.type === "instantiate" && delta.identity?.identity) {
+        acc.instanceId = delta.identity.identity;
+        break;
+      }
+    }
+    publishTelemetry();
 
     return {
       outcome: "committed",

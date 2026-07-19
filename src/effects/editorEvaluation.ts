@@ -302,8 +302,7 @@ function evalWasm(
   const isStale = () => view !== undefined && !isLatestEvalSeq(view, seq);
 
   return evalInUseqWasm(wasmCode)
-    .then(async ({ result, diagnostics, synthArtifacts }) => {
-      // A newer eval has been dispatched on this view since we started.
+    .then(async ({ result, diagnostics, synthArtifacts }) => {      // A newer eval has been dispatched on this view since we started.
       // Drop our result so we don't clobber the fresher eval's effects.
       // Empty `text` makes the outer `.then`'s `dispatchInlineResult` a
       // no-op, and we skip every editor-state mutation below.

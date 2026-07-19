@@ -243,6 +243,22 @@ export interface WorkletCore {
   process(frameCount: number): WorkletTelemetrySnapshot;
 
   /**
+   * Read the latest rendered output samples. The returned `Float32Array`
+   * is a reference to the core's internal scratch buffer; the caller
+   * (the AudioWorkletProcessor shell) copies the samples into the Web
+   * Audio output channel.
+   *
+   * The view is valid until the next {@link process} call. The shell
+   * reads it immediately after `process()` returns, before the next
+   * block, so no locking is required.
+   *
+   * VAL-ENGINE-037 (output reaches destination): the shell uses this
+   * accessor to copy the core's rendered output into the Web Audio
+   * channel that connects to `AudioContext.destination`.
+   */
+  readOutput(): Float32Array;
+
+  /**
    * Handle a main-thread message. Graph mutation happens here, between
    * render quanta. The handler defers heavy work (adapter resolution,
    * memory allocation, instance construction) to this call so
@@ -1024,6 +1040,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
   const core: WorkletCore = {
     process,
+    readOutput: () => outputScratch,
     handleMessage,
     reset,
     get telemetry() {
