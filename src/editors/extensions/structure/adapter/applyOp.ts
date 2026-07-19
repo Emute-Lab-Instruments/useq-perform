@@ -201,6 +201,241 @@ function buildDocWithPreservedGaps(
   return result;
 }
 
+/**
+ * Structural alignment between the old top-level forms and the printed new
+ * top-level forms, used by {@link buildSurgicalChanges} to emit identity-
+ * preserving surgical CodeMirror changes instead of a wholesale document
+ * replacement.
+ */
+interface SegmentAlignment {
+  /** Original source ranges of the OLD top-level forms, in order. */
+  readonly oldRanges: ReadonlyArray<{ from: number; to: number }>;
+  /** OLD top-level form node ids, aligned with {@link oldRanges}. */
+  readonly oldNodeIds: ReadonlyArray<string>;
+  /** NEW top-level form node ids, aligned with {@link printed}. */
+  readonly newNodeIds: ReadonlyArray<string>;
+  /** Printed text of each NEW top-level form, in order. */
+  readonly printed: ReadonlyArray<string>;
+  /** Original source text before the first old form. */
+  readonly leadingText: string;
+  /**
+   * Original source text between consecutive old top-level forms
+   * (inter-top-level whitespace; spec §2.1 — sacred).
+   */
+  readonly gaps: ReadonlyArray<string>;
+  /** Original source text after the last old form. */
+  readonly trailingText: string;
+}
+
+/**
+ * Build a list of surgical CodeMirror `ChangeSpec`s that, applied together,
+ * reproduce the same final document as a single wholesale replace would —
+ * but emit a change for each surviving top-level form so the state-identity
+ * sidecar can preserve stateful-form identity through range continuity
+ * (state-identity.md §7.2 / VAL-ID-004 / VAL-ID-005).
+ *
+ * **Alignment model.** Each old top-level form carries a stable structural
+ * node id (see `core/types.ts` — `withChildren` and other in-place mutators
+ * preserve node ids across mutations). We align each new top-level form
+ * with the old form carrying the same node id. Aligned forms are surviving
+ * forms: they get a per-form surgical change so their identity is preserved.
+ * Unaligned forms (new forms with no matching old id, or old forms whose
+ * id vanished) live in the "divergent middle" and are consolidated into one
+ * wholesale change. Only the divergent middle loses range continuity; that
+ * is correct because those forms were structurally destroyed or replaced.
+ *
+ * **Identity preservation mechanism.** A surgical change
+ * `{from: oldRange.from, to: oldRange.to, insert: printed[i]}` maps the
+ * prior identity entry's range through the ChangeSet to a range whose `from`
+ * stays at `oldRange.from` (the start of the form is preserved). The
+ * reconciler's overlap check then sees a non-zero overlap with the new
+ * form's range, so preserve semantics fire (identityReconcile.ts §2).
+ *
+ * Returns `null` when the alignment is degenerate (no old ranges, or no new
+ * forms, or no old node ids available), in which case the caller falls back
+ * to a single whole-document change.
+ */
+function buildSurgicalChanges(
+  seg: SegmentAlignment,
+): ChangeSpec[] | null {
+  const { oldRanges, oldNodeIds, newNodeIds, printed, gaps } = seg;
+  if (oldRanges.length === 0 || printed.length === 0) return null;
+  if (oldNodeIds.length !== oldRanges.length) return null;
+
+  // Build a position-aligned plan: for each new form, decide whether it is
+  // "aligned" with the old form at the same structural position (same node
+  // id), "shifted" (same node id but at a different position), or "new"
+  // (no matching old id).
+  //
+  // We use a single linear pass that mirrors how the structural core
+  // mutates the tree: most operations change top-level form count by ±1
+  // near a single boundary, leaving the rest of the list intact. So we
+  // align a common prefix and a common suffix by node id, and consolidate
+  // the divergent middle.
+
+  // Longest common prefix by node id.
+  let prefixLen = 0;
+  const maxPrefix = Math.min(oldNodeIds.length, newNodeIds.length);
+  while (
+    prefixLen < maxPrefix &&
+    oldNodeIds[prefixLen] === newNodeIds[prefixLen]
+  ) {
+    prefixLen++;
+  }
+
+  // Longest common suffix by node id, not overlapping the prefix.
+  let suffixLen = 0;
+  const maxSuffix = Math.min(
+    oldNodeIds.length - prefixLen,
+    newNodeIds.length - prefixLen,
+  );
+  while (
+    suffixLen < maxSuffix &&
+    oldNodeIds[oldNodeIds.length - 1 - suffixLen] ===
+      newNodeIds[newNodeIds.length - 1 - suffixLen]
+  ) {
+    suffixLen++;
+  }
+
+  // Edge case: every form aligned (no divergence). Emit one change per
+  // surviving form whose printed text differs from its old source. If
+  // nothing changed, return an empty array (the caller short-circuits).
+  if (
+    prefixLen === oldNodeIds.length &&
+    prefixLen === newNodeIds.length
+  ) {
+    return perFormChangesForSurvivors(seg, prefixLen, 0);
+  }
+
+  // Prefix forms: per-form surgical changes for those whose text changed.
+  // Suffix forms: same. Middle forms: consolidated wholesale change.
+  const changes: ChangeSpec[] = [];
+  // Prefix surviving forms.
+  changes.push(...perFormChangesForSurvivors(seg, prefixLen, 0));
+
+  // Middle: one consolidated change covering every divergent old form's
+  // range, with the printed text of every divergent new form joined by
+  // inter-form gaps.
+  const middleOldStart = prefixLen;
+  const middleOldEnd = oldRanges.length - suffixLen;
+  const middleNewStart = prefixLen;
+  const middleNewEnd = printed.length - suffixLen;
+  const middleOldCount = middleOldEnd - middleOldStart;
+  const middleNewCount = middleNewEnd - middleNewStart;
+  if (middleOldCount > 0 || middleNewCount > 0) {
+    // The change must cover the span from the start of the first old form
+    // in the middle (or, when the old middle is empty, the boundary
+    // BETWEEN the prefix and suffix old forms) through the end of the last
+    // old form in the middle (or that same boundary).
+    //
+    // When the old middle is empty (e.g. a brand-new top-level form was
+    // inserted between prefix and suffix), `from === to` and CodeMirror
+    // treats it as an insertion at that position. The insertion point is
+    // the end of the last prefix form (`oldRanges[prefixLen-1].to`), or
+    // the start of the first suffix form (`oldRanges[oldRanges.length -
+    // suffixLen].from`), whichever exists. When both prefix and suffix
+    // are empty (the whole document changed), we use position 0.
+    //
+    // When the new middle is empty (e.g. prefix+suffix collapsed onto each
+    // other after a deletion), the change is a deletion of [from, to).
+    let from: number;
+    let to: number;
+    if (middleOldCount > 0) {
+      from = oldRanges[middleOldStart]!.from;
+      to = oldRanges[middleOldEnd - 1]!.to;
+    } else if (prefixLen > 0) {
+      // Insertion immediately after the last prefix form.
+      from = oldRanges[prefixLen - 1]!.to;
+      to = from;
+    } else if (suffixLen > 0) {
+      // Insertion immediately before the first suffix form.
+      from = oldRanges[oldRanges.length - suffixLen]!.from;
+      to = from;
+    } else {
+      // No prefix, no suffix, no old middle → entire doc replaced.
+      from = 0;
+      to = oldRanges[oldRanges.length - 1]!.to;
+    }
+    const middleParts: string[] = [];
+    for (let i = middleNewStart; i < middleNewEnd; i++) {
+      middleParts.push(printed[i]!);
+      if (i + 1 < middleNewEnd) {
+        // Inside the middle span, prefer the original inter-form gap
+        // when one is recorded at this index; otherwise default to a
+        // single space (NEW_SIBLING_GAP semantics from §5.2.3).
+        middleParts.push(i < gaps.length ? gaps[i]! : " ");
+      }
+    }
+    changes.push({ from, to, insert: middleParts.join("") });
+  }
+
+  // Suffix surviving forms. Their old source ranges are at the END of the
+  // old doc; we emit per-form changes so their identity is preserved.
+  changes.push(...perFormChangesForSuffix(seg, suffixLen));
+
+  return changes;
+}
+
+/**
+ * Emit per-form surgical changes for the prefix forms whose printed text
+ * differs from their old source slice. Forms whose printed text matches
+ * their old source emit no change (they're already correct in the doc).
+ */
+function perFormChangesForSurvivors(
+  seg: SegmentAlignment,
+  count: number,
+  _offsetUnused: number,
+): ChangeSpec[] {
+  const { oldRanges, printed } = seg;
+  const out: ChangeSpec[] = [];
+  for (let i = 0; i < count; i++) {
+    const range = oldRanges[i]!;
+    const original = originalSlice(range);
+    const next = printed[i]!;
+    if (original !== next) {
+      out.push({ from: range.from, to: range.to, insert: next });
+    }
+  }
+  return out;
+}
+
+/**
+ * Emit per-form surgical changes for the suffix forms (the last `count`
+ * top-level forms). Same preserve-identity semantics as the prefix.
+ */
+function perFormChangesForSuffix(
+  seg: SegmentAlignment,
+  count: number,
+): ChangeSpec[] {
+  const { oldRanges, printed } = seg;
+  const out: ChangeSpec[] = [];
+  for (let i = 0; i < count; i++) {
+    const oldIdx = oldRanges.length - 1 - i;
+    const newIdx = printed.length - 1 - i;
+    const range = oldRanges[oldIdx]!;
+    const original = originalSlice(range);
+    const next = printed[newIdx]!;
+    if (original !== next) {
+      out.push({ from: range.from, to: range.to, insert: next });
+    }
+  }
+  return out;
+}
+
+/**
+ * Mutable reference to the original document text captured per
+ * `dispatchWholeDocReplace` call. `buildSurgicalChanges` reads the original
+ * source slice of each form via this closure to decide whether a surviving
+ * form's printed text actually changed.
+ */
+let _originalDocText = "";
+function _setOriginalDoc(s: string): void {
+  _originalDocText = s;
+}
+function originalSlice(range: { from: number; to: number }): string {
+  return _originalDocText.slice(range.from, range.to);
+}
+
 function dispatchWholeDocReplace(
   view: EditorView,
   before: State,
@@ -210,14 +445,76 @@ function dispatchWholeDocReplace(
   strategy: AutoFormatStrategy,
 ): boolean {
   const docText = view.state.doc.toString();
+  // Install the original doc so buildSurgicalChanges can compare printed
+  // text against the original source slice of each form.
+  _setOriginalDoc(docText);
   const text = buildDocWithPreservedGaps(docText, before, beforeIdIndex, after, print);
-  const change: ChangeSpec = {
-    from: 0,
-    to: view.state.doc.length,
-    insert: text,
+
+  // Build the structural alignment between old and new top-level forms.
+  // We use node ids (preserved by the structural core across in-place
+  // mutations) to recognise which forms survived. This is the basis for
+  // emitting surgical per-form changes instead of a wholesale replace.
+  const oldChildren = before.tree.root.children;
+  const newChildren = after.tree.root.children;
+  const oldRanges: Array<{ from: number; to: number }> = [];
+  const oldNodeIds: string[] = [];
+  for (const child of oldChildren) {
+    const range = beforeIdIndex.get(child.id);
+    if (range) {
+      oldRanges.push(range);
+      oldNodeIds.push(child.id);
+    }
+  }
+  const newNodeIds = newChildren.map((c) => c.id);
+  const printed = newChildren.map(print);
+  // Recompute gaps/leading/trailing from the alignment so the surgical
+  // builder has everything it needs in one place.
+  const leadingText =
+    oldRanges.length > 0 ? docText.slice(0, oldRanges[0]!.from) : "";
+  const gaps: string[] = [];
+  for (let i = 0; i + 1 < oldRanges.length; i++) {
+    gaps.push(docText.slice(oldRanges[i]!.to, oldRanges[i + 1]!.from));
+  }
+  const trailingText =
+    oldRanges.length > 0
+      ? docText.slice(oldRanges[oldRanges.length - 1]!.to)
+      : "";
+
+  const seg: SegmentAlignment = {
+    oldRanges,
+    oldNodeIds,
+    newNodeIds,
+    printed,
+    leadingText,
+    gaps,
+    trailingText,
   };
+
+  // Try to emit surgical per-form changes so the state-identity sidecar
+  // can preserve stateful-form identity through range continuity
+  // (VAL-ID-004 / VAL-ID-005). Falls back to a single whole-doc change
+  // when the alignment is degenerate.
+  const surgical = buildSurgicalChanges(seg);
+  const changeSpec: ChangeSpec =
+    surgical !== null && surgical.length > 0
+      ? surgical
+      : { from: 0, to: view.state.doc.length, insert: text };
+
+  // Surgical analysis produced zero changes AND the doc text is unchanged:
+  // short-circuit (the structural state may still need to be updated via
+  // setCursorFromState below — that's handled outside).
+  if (surgical !== null && surgical.length === 0 && text === docText) {
+    setCursorFromState(view, after);
+    if (strategy === "indent-fixed-point") {
+      indentRangeToFixedPoint(view, 0, view.state.doc.length);
+      setCursorFromState(view, after);
+    }
+    scrollPrimaryIntoView(view);
+    return true;
+  }
+
   view.dispatch({
-    changes: change,
+    changes: changeSpec,
     userEvent: "structure.mutate",
     scrollIntoView: true,
   });
