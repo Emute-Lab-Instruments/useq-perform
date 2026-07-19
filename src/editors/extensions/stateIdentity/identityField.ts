@@ -51,8 +51,12 @@ import {
   emptyIdentityMap,
   type FormKey,
   type IdentityMap,
-  type IdentitySnapshot,
 } from "./identityTypes.ts";
+import type { IdentityPersistence } from "./identityPersistence.ts";
+import {
+  buildIdentitySnapshot,
+  recoverIdentityMap,
+} from "./identitySnapshot.ts";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -77,6 +81,19 @@ export interface IdentityConfig {
    * to assert exact post-undo equality.
    */
   readonly continuity?: ContinuitySource;
+  /**
+   * Optional persistence adapter. When present, the field reads any
+   * stored snapshot at `create` time and restores safely-correlated
+   * identities; on every map-changing transaction it writes the new
+   * snapshot through the adapter. The default wiring
+   * ({@link createDefaultIdentityConfig}) supplies the central
+   * persistence service.
+   *
+   * Spec: state-identity.md §7.3, persistence.md. The adapter must not
+   * access localStorage directly; it must route through the central
+   * persistence service (VAL-ID-024).
+   */
+  readonly persistence?: IdentityPersistence;
   /**
    * Optional logger. Defaults to no-op. Used to surface reconciliation
    * decisions in devtools without affecting user-visible surfaces.
@@ -196,21 +213,84 @@ function applyCutStamps(map: IdentityMap, tr: Transaction): IdentityMap {
 export function buildIdentityField(config: IdentityConfig): StateField<IdentityFieldValue> {
   const continuity = config.continuity ?? makeContinuitySource(0);
   const log = config.log ?? (() => {});
+  const persistence = config.persistence;
 
   return StateField.define<IdentityFieldValue>({
     create(state: EditorState): IdentityFieldValue {
-      // On editor creation, classify the initial document and assign
-      // fresh IDs to every stateful form. There is no prior map.
+      // 1. Try to restore a persisted snapshot. The persistence adapter
+      //    validates the payload; a null return means no safe restoration
+      //    (empty storage, malformed JSON, unsupported version, wrong
+      //    document fingerprint, etc.). state-identity.md §7.3.
+      let priorMap: IdentityMap = emptyIdentityMap;
+      if (persistence !== undefined) {
+        try {
+          const snapshot = persistence.load();
+          if (snapshot !== null) {
+            const recovered = recoverIdentityMap(
+              snapshot,
+              state,
+              config.classifier,
+              config.ids,
+              continuity,
+            );
+            priorMap = recovered.map;
+          }
+        } catch {
+          // Persistence must never crash the editor.
+        }
+      }
+
+      // 2. Classify the initial document.
       const recognised = recogniseStatefulForms(state, config.classifier);
-      const result = reconcileIdentity(
-        emptyIdentityMap,
-        recognised,
-        emptySignals,
-        IDENTITY_MAPPER,
-        config.ids,
-        continuity,
-      );
-      for (const id of result.debug.forked) log({ kind: "fork", id });
+
+      // 3. If the recovered map covers every recognised form by FormKey,
+      //    it is the authoritative restored map. Otherwise reconcile:
+      //    recovered entries act as the prior, and freshly-classified
+      //    forms without a matching recovered entry fork new identities
+      //    (conservative partial recovery, VAL-ID-012).
+      let result;
+      if (priorMap.entries.size === 0) {
+        // No restoration: standard first-classification path.
+        result = reconcileIdentity(
+          emptyIdentityMap,
+          recognised,
+          emptySignals,
+          IDENTITY_MAPPER,
+          config.ids,
+          continuity,
+        );
+        for (const id of result.debug.forked) log({ kind: "fork", id });
+      } else {
+        // Recovered entries seed the prior. The reconciler preserves
+        // identity for forms whose range overlaps a recovered entry and
+        // forks new identities for everything else. Because we pass an
+        // identity-mapping changes object, ranges line up directly with
+        // the recovered entries' ranges (which the recoverer filled in).
+        result = reconcileIdentity(
+          priorMap,
+          recognised,
+          emptySignals,
+          IDENTITY_MAPPER,
+          config.ids,
+          continuity,
+        );
+        for (const id of result.debug.preserved) log({ kind: "preserve", id });
+        for (const id of result.debug.forked) log({ kind: "fork", id });
+        for (const id of result.debug.dropped) log({ kind: "drop", id });
+      }
+
+      // 4. Persist the initial snapshot (no-op under nosave or when no
+      //    persistence adapter is configured).
+      if (persistence !== undefined) {
+        try {
+          persistence.save(
+            buildIdentitySnapshot(result.map, state.doc.toString()),
+          );
+        } catch {
+          // Persistence failures must never crash the editor.
+        }
+      }
+
       return { map: result.map, continuity };
     },
 
@@ -219,7 +299,17 @@ export function buildIdentityField(config: IdentityConfig): StateField<IdentityF
       for (const e of tr.effects) {
         if (e.is(setIdentitySnapshotEffect)) {
           log({ kind: "restore" });
-          return { map: e.value, continuity: value.continuity };
+          const next = { map: e.value, continuity: value.continuity };
+          if (persistence !== undefined) {
+            try {
+              persistence.save(
+                buildIdentitySnapshot(next.map, tr.state.doc.toString()),
+              );
+            } catch {
+              // ignore
+            }
+          }
+          return next;
         }
       }
 
@@ -257,7 +347,22 @@ export function buildIdentityField(config: IdentityConfig): StateField<IdentityF
       for (const id of result.debug.moved) log({ kind: "move", id });
       for (const id of result.debug.dropped) log({ kind: "drop", id });
 
-      return { map: result.map, continuity: value.continuity };
+      const next = { map: result.map, continuity: value.continuity };
+
+      // 6. Persist the updated snapshot through the central service. The
+      //    service applies `?nosave`; we save unconditionally so a future
+      //    toggle-on persists immediately on the next change.
+      if (persistence !== undefined && tr.docChanged) {
+        try {
+          persistence.save(
+            buildIdentitySnapshot(next.map, tr.state.doc.toString()),
+          );
+        } catch {
+          // Persistence failures must never crash the editor.
+        }
+      }
+
+      return next;
     },
   });
 }

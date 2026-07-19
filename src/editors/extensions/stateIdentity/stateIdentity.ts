@@ -78,3 +78,18 @@ export {
 } from "./identityReconcile.ts";
 export { defaultIdGenerator, deterministicIdGenerator } from "./identityGenerator.ts";
 export type { IdGenerator, IdGeneratorFactory } from "./identityGenerator.ts";
+export {
+  buildIdentitySnapshot,
+  computeDocumentFingerprint,
+  recoverIdentityMap,
+  safeLoadIdentitySnapshot,
+  IDENTITY_SNAPSHOT_SCHEMA_VERSION,
+  type RecoveryResult,
+  type SafeSnapshot,
+} from "./identitySnapshot.ts";
+export {
+  createIdentityPersistence,
+  type IdentityPersistence,
+  type IdentityPersistenceBackend,
+  type PersistenceCall,
+} from "./identityPersistence.ts";

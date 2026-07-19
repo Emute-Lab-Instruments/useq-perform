@@ -25,6 +25,7 @@ layer: behavioural
 - `useq:zen:progress` (zen-mode lesson progress — see [zen-mode.md §8.1](zen-mode.md))
 - `uSEQ-Perform-Editor-Probes` (probe state)
 - `uSEQ-Perform-Editor-LiveEdits` (live-edit values, orphan state, MIDI bindings, panel state)
+- `uSEQ-Perform-Editor-Identity` (state-identity sidecar: schema-versioned hidden IDs for anonymous stateful forms — see [state-identity.md §7.3](state-identity.md); carries its own `schemaVersion` per §1.6)
 - `uSEQ-Perform-DevMode-State` (devmode toggle)
 
 1.4 **JSON parse errors must never crash.** A corrupt persisted value is logged as a warning and replaced by the schema default; the user keeps a working app and loses only that one piece of state.

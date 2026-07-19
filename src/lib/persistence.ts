@@ -29,6 +29,8 @@ export const PERSISTENCE_KEYS = {
 
   // Editor autosave
   editorProbes: "uSEQ-Perform-Editor-Probes",
+  // Editor state-identity sidecar (anonymous stateful-form IDs)
+  editorIdentity: "uSEQ-Perform-Editor-Identity",
 
   // Reference panel
   referenceStarred: "moduLispReference:starredFunctions",
