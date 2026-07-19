@@ -290,6 +290,18 @@ export interface SynthesisWorkerPort {
    * producer cannot keep publishing to a retired SAB.
    */
   producerStop?(): Promise<boolean>;
+  /**
+   * Devmode-only: terminate the producer from inside the Worker so
+   * the ring stops receiving fresh publications. Used by
+   * `devmodeTerminateProducer()` (VAL-HOST-012) so the simulated
+   * fault actually reproduces producer loss at the worklet boundary.
+   * Without this, the Worker keeps publishing blocks and the
+   * worklet's `producerTerminated` flag is reset by every fresh
+   * block — exactly the noisy pattern that prevented the post-
+   * recovery audio-output regression (Ergo bug c7edc263) from being
+   * observed in real headless Chromium.
+   */
+  producerTerminate?(): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1454,7 +1466,26 @@ function createCapableService(
       acc.producerLivenessAge = snap.producerLivenessAge;
     }
     if (typeof snap.producerTimeoutActive === "boolean") {
+      // VAL-ENGINE-026 / Ergo bug c7edc263: detect the worklet's
+      // false→true producerTimeoutActive transition here so the
+      // running→error transition fires even when the worklet shell
+      // does not forward the discrete `producer-timeout` event. The
+      // production AudioWorklet shell (synthesisWorklet.ts) only
+      // posts telemetry snapshots per render quantum; its `publish`
+      // callback is a no-op for discrete events. Without this
+      // snapshot-driven detection the engine never reached `error`
+      // after real producer loss in headless Chromium, which is the
+      // root cause c7edc263 captured (engineState=running,
+      // audioFrame=0 after recovery because the recovery path was
+      // never triggered).
+      const wasActive = acc.producerTimeoutActive;
       acc.producerTimeoutActive = snap.producerTimeoutActive;
+      if (!wasActive && snap.producerTimeoutActive) {
+        // Drive the same transition handleProducerTimeout would.
+        // Reuse the helper so the transition matrix, console
+        // messaging, and dedup stay authoritative.
+        handleProducerTimeoutFromSnapshot(snap);
+      }
     }
     // Fill depth is derived from write/read; without direct access to
     // the SAB ring indices we report the worklet's blockCount minus
@@ -1504,6 +1535,45 @@ function createCapableService(
     // wired. This is best-effort; the transition above already posted
     // the user-facing message.
     void event;
+    publishTelemetry();
+  }
+
+  /**
+   * Snapshot-driven producer-loss detection. The production
+   * AudioWorklet shell only posts per-quantum telemetry snapshots;
+   * discrete `producer-timeout` events from the worklet core are
+   * dropped by the shell's no-op `publish` callback. To keep VAL-
+   * ENGINE-026 provable in real Chromium we ALSO drive the
+   * running→error transition from the false→true edge of the
+   * worklet's `producerTimeoutActive` field in the telemetry
+   * snapshot.
+   *
+   * The transition is idempotent: the `running → error` matrix guard
+   * deduplicates, and `acc.producerTimeoutActive` is set before this
+   * helper runs so a re-entrant snapshot cannot double-fire.
+   */
+  function handleProducerTimeoutFromSnapshot(
+    snap: WorkletTelemetrySnapshot,
+  ): void {
+    // The timeout counter is merged from the worklet's local counter
+    // (already authoritative). Do NOT increment again here — that
+    // would double-count every snapshot-driven transition.
+    //
+    // Only transition out of `running`. The `suspended` state is
+    // excluded here (unlike the discrete-event handler) because the
+    // worklet publishes producerTimeoutActive=true whenever it has
+    // been processing for ~64 ms without a producer block — including
+    // the legitimate window between recovery (suspended) and the
+    // user's trusted activation that starts the producer. Treating
+    // that window as producer loss would make every recovery land in
+    // `error` before the user could resume, defeating the recovery
+    // affordance. The discrete-event handler remains authoritative
+    // for the rare suspended-before-runtime producer crash.
+    if (currentState === "running") {
+      transition("error", "PRODUCER_TIMEOUT",
+        ENGINE_STATE_REASONS.PRODUCER_TIMEOUT);
+    }
+    void snap;
     publishTelemetry();
   }
 
@@ -1561,9 +1631,34 @@ function createCapableService(
     devmodeTerminateProducer() {
       if (!devmode) return false;
       if (currentState !== "running") return false;
-      // Simulate producer loss by posting the controlled-fault message
-      // to the worklet. The worklet independently enforces the timeout
-      // at the next block boundary and fades to silence.
+      // Simulate producer loss. VAL-HOST-012 requires the devmode
+      // fault action to reproduce real producer loss end to end:
+      //   1. Terminate the Worker producer so it stops publishing
+      //      fresh control blocks to the SAB.
+      //   2. Arm the worklet-side liveness observer so the next
+      //      process() call observes producer loss, fades to exact
+      //      silence over 10 ms, and publishes `producer-timeout`.
+      // Pre-fix, only step 2 fired, so the Worker kept publishing
+      // blocks. Each fresh block reset the worklet's liveness age
+      // and `producerTimeoutActive` flag, causing the timeout event
+      // to re-fire on every block. The engine never stabilised in
+      // `error`, which masked the post-recovery audio-output bug
+      // (Ergo bug c7edc263).
+      const workerPort = options.workerPort;
+      if (workerPort && typeof workerPort.producerTerminate === "function") {
+        // Fire-and-forget: the Worker-side termination is bounded
+        // (wasmRuntime.worker.ts: `producer?.stop()` and
+        // `producerLoopDriver?.stop()` are synchronous), and the
+        // error transition arrives through the worklet-side timeout
+        // path on the next process() call. Awaiting here would add
+        // no safety and would block the devmode action's return.
+        void workerPort.producerTerminate().catch(() => {
+          // Best-effort: the worklet-side timeout will still fire.
+        });
+        // The producer is no longer running; mark it locally so
+        // post-recovery `startProducer()` actually restarts it.
+        producerRunning = false;
+      }
       if (workletNode) {
         workletNode.port.postMessage({ type: "devmode-terminate-producer" });
       }
@@ -1615,6 +1710,16 @@ function createCapableService(
   }
 
   async function disposeResources(finalState: SynthesisEngineState): Promise<void> {
+    // VAL-ENGINE-027 / Ergo bug c7edc263: stop the Worker producer
+    // FIRST so it stops publishing to the SAB we are about to retire.
+    // Without this stop, the dead producer kept "running" against the
+    // retired SAB and the post-recovery `startProducer()` no-op'd
+    // because `producerRunning` was still `true`. The fresh worklet
+    // never received an `attach-control-buffer` because the SAB
+    // pointer was never cleared, so its `controlView` stayed null and
+    // the published `audioFrame` stayed at 0 — exactly the
+    // `engineState=running, audioFrame=0` signature c7edc263 captured.
+    await stopProducer();
     // Disconnect the worklet first so no further graph mutations are
     // applied to a dying context.
     if (workletNode) {
@@ -1680,6 +1785,18 @@ function createCapableService(
     acc.peakSample = 0;
     acc.rmsSample = 0;
     acc.finiteOutput = 1;
+    // VAL-ENGINE-027 / Ergo bug c7edc263: clear the producer bridge
+    // state so the next bring-up re-installs a FRESH SAB on the
+    // Worker producer AND ships `attach-control-buffer` to the new
+    // worklet. Pre-fix, `producerControlBuffer` stayed non-null after
+    // recovery, so `installProducerControlBridge()` early-returned
+    // and the new worklet never received an SAB. With `controlView`
+    // null in the worklet core, `audioFrame` was hard-coded to 0 in
+    // every published telemetry snapshot — exactly the
+    // `engineState=running, audioFrame=0` signature c7edc263 reports.
+    producerControlBuffer = null;
+    producerInstalled = false;
+    producerRunning = false;
     // Note: fault counters (underrun/glitch/timeout) are NOT reset
     // here. They are lifetime counters for the current service
     // instance. A full dispose (final state "off") resets them via

@@ -60,6 +60,7 @@ import {
   classifyModuleTransfer,
   type WorkletModuleTransferMessage,
   type WorkletModuleTransferKind,
+  type WorkletOutboundEvent,
 } from "./workletGraphDelta";
 
 // ---------------------------------------------------------------------------
@@ -135,6 +136,24 @@ interface ProcessorBag {
   readonly core: WorkletCore;
   readonly outputScratch: Float32Array;
   outputGain: number;
+  /**
+   * Outbound discrete-event queue. The worklet core publishes events
+   * (e.g. `producer-timeout`, `graph-activated`, `instance-retired`)
+   * via its `publish` callback. The shell accumulates them here and
+   * drains the queue on every `process()` call alongside the
+   * telemetry snapshot, so the main-thread synthesis service receives
+   * the same evidence in real Chromium that the simulated worklet
+   * core delivers in tests.
+   *
+   * VAL-ENGINE-026 / Ergo bug c7edc263: pre-fix the shell's publish
+   * callback was a no-op, so the discrete `producer-timeout` event
+   * never reached the main thread and the engine never transitioned
+   * to `error` in real headless Chromium. The snapshot-driven
+   * detection added to `synthesisService.ts` makes the transition
+   * provable without depending on this queue, but forwarding the
+   * events preserves the documented audit trail for dashboards.
+   */
+  pendingEvents: WorkletOutboundEvent[];
   /**
    * Install a NodeDef module transferred from the main thread. The
    * shell instantiates the WASM module against the worklet's shared
@@ -412,13 +431,31 @@ function createProcessorBag(): ProcessorBag {
   const freqControlScratch = new Float64Array(wasmBuffer, freqControlScratchPtr, 1);
   const ampControlScratch = new Float64Array(wasmBuffer, ampControlScratchPtr, 1);
 
+  // Outbound discrete-event queue. The worklet core publishes events
+  // via its `publish` callback; the shell drains the queue on every
+  // process() call alongside the telemetry snapshot. The queue is
+  // declared before the core so the closure captures the same
+  // reference the bag returns.
+  const pendingEvents: WorkletOutboundEvent[] = [];
+
   const core = createWorkletCore({
     adapterFactory: (name, version) => adapterCache.factory(name, version),
     allocator: allocatorWithMemory,
     sampleRate: rate,
-    publish: () => {
-      // Publishing happens via the process() return value in the
-      // shell; the core's publish callback is not needed here.
+    publish: (msg) => {
+      // Per-quantum telemetry snapshots are posted by process() via
+      // its return value (the shell reads `core.telemetry`). Discrete
+      // events (producer-timeout, graph-activated, instance-retired)
+      // land here and are queued for the next process() drain so the
+      // main-thread service receives the same evidence in real
+      // Chromium that the simulated worklet core delivers in tests.
+      //
+      // VAL-ENGINE-026 / Ergo bug c7edc263: pre-fix this callback was
+      // a no-op, so producer-loss events never reached the main
+      // thread in production. Forwarding them here preserves the
+      // audit trail even though the snapshot-driven transition in
+      // synthesisService.ts is the authoritative source.
+      pendingEvents.push(msg as WorkletOutboundEvent);
     },
     instanceScratch,
     freqControlScratch,
@@ -429,6 +466,7 @@ function createProcessorBag(): ProcessorBag {
     core,
     outputScratch: new Float32Array(128),
     outputGain: 1,
+    pendingEvents,
     installModule: (payload) => adapterCache.install(payload),
     compileCountFor: (name, version) => adapterCache.compileCount(name, version),
     installCountFor: (name, version) => adapterCache.installCount(name, version),
@@ -536,6 +574,28 @@ export function registerSynthesisProcessor(): void {
       // is the one permitted per-block allocation; future work can
       // gate this on a "subscribers present" flag.
       this.port.postMessage(snapshot);
+
+      // Drain discrete events (producer-timeout, graph-activated,
+      // instance-retired) that the core queued via its `publish`
+      // callback since the last process(). Posting them here keeps
+      // the audio-thread allocation pattern unchanged (one
+      // postMessage per event, batched with the telemetry post) and
+      // gives the main-thread service the same evidence the
+      // simulated worklet core delivers in tests. The queue length
+      // is bounded by the worklet core's own dedup guards.
+      //
+      // VAL-ENGINE-026 / Ergo bug c7edc263: pre-fix the shell dropped
+      // these events, so producer-loss never reached the main thread
+      // in real Chromium. The snapshot-driven transition in
+      // synthesisService.ts is the authoritative source, but
+      // forwarding the events preserves the audit trail.
+      if (bag.pendingEvents.length > 0) {
+        const drained = bag.pendingEvents;
+        bag.pendingEvents = [];
+        for (const evt of drained) {
+          this.port.postMessage(evt);
+        }
+      }
       return true;
     }
   }
