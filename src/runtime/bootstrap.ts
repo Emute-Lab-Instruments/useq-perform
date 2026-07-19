@@ -35,6 +35,7 @@ import {
   type RuntimeSettingsSource,
 } from './runtimeDiagnostics.ts';
 import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
+import { setActiveSynthesisService } from './activeSynthesisService.ts';
 import { applyKeymapFromUrl } from './applyKeymapFromUrl.ts';
 import {
   getActiveWasmRuntimePort,
@@ -159,6 +160,10 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     // Mount toolbars first (they replace the static HTML toolbar elements)
     toolbars.mountTransportToolbar();
     toolbars.mountMainToolbar();
+    // VAL-ENGINE-020/021: the synthesis engine indicator is a
+    // transport-family member. Mount it after the transport toolbar
+    // so the indicator's root can attach inside the toolbar area.
+    toolbars.mountEngineIndicator();
     toolbars.mountOnboardingBanner();
     mountModal();
     mountRadialMenu();
@@ -301,7 +306,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
       environmentState.audioCapabilities;
   }
 
-  // ── Step 2c: construct the synthesis service (VAL-ENGINE-021/036).
+  // ── Step 2c: construct the synthesis service (VAL-ENGINE-017..022).
   //
   // The service owns AudioContext, worklet node, NodeDef module
   // compilation, engine state, and graph lifecycle. Construction is
@@ -313,18 +318,42 @@ export async function bootstrap(): Promise<BootstrapResult> {
   // controlled fault actions (producer termination, reinitialise) are
   // exposed on `window.__useqSynthesisDev`. Outside devmode neither
   // surface exists (VAL-HOST-011 / VAL-HOST-012).
+  //
+  // VAL-ENGINE-017/018/019: a global capture-phase keydown/pointerdown
+  // listener is installed after the service is registered. Only trusted
+  // events reach the resume path; programmatic and non-user triggers
+  // (timers, synthetic events, gamepad intents, restored code, idle
+  // auto-eval) cannot grant activation.
+  //
+  // VAL-ENGINE-022: suspended and error transitions post one clear
+  // non-flooding console message through the central console store.
   if (environmentState.audioCapabilities.audioCapable) {
     try {
-      const { createBrowserSynthesisService } = await import(
-        "../audio/synthesisServiceBrowser.ts"
-      );
-      createBrowserSynthesisService({
+      const [{ createBrowserSynthesisService }, { addConsoleMessage }] =
+        await Promise.all([
+          import("../audio/synthesisServiceBrowser.ts"),
+          import("../utils/consoleStore.ts"),
+        ]);
+      const synthesisService = createBrowserSynthesisService({
         capabilities: environmentState.audioCapabilities,
         devmode: startupFlags.devmode,
+        consoleMessageSink: (message, type) => {
+          // The synthesis service emits plain strings; the console
+          // store escapes and renders inline markdown. The sink types
+          // map directly: error → error, otherwise log.
+          addConsoleMessage(message, type === "error" ? "error" : "log");
+        },
       });
-      // The service publishes engine state through the typed channel;
-      // UI adapters subscribe in `adapters/toolbars.tsx` (wired by a
-      // later feature that adds the engine indicator mount).
+      // Register the service so the autoplay listener and the engine
+      // indicator adapter can reach it through the accessor.
+      setActiveSynthesisService(synthesisService);
+      // Install the global autoplay resume listener. The listener
+      // filters on event.isTrusted so only real user input reaches
+      // the service's resume path.
+      const { installEngineAutoplayListener } = await import(
+        "../effects/engineAutoplayListener.ts"
+      );
+      installEngineAutoplayListener();
     } catch (error) {
       reportBootstrapFailure("synthesis-service", error);
     }

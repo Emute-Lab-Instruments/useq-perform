@@ -1,8 +1,9 @@
 /**
  * Synthesis engine service — main-thread lifecycle and coordination.
  *
- * Fulfils (partial — see mission feature
- * `m1-synthesis-service-and-devmode-contract`):
+ * Fulfils (partial — see mission features
+ * `m1-synthesis-service-and-devmode-contract` and
+ * `m1-autoplay-indicator-and-console`):
  *   VAL-HOST-011 — capability and engine telemetry snapshots are immutable
  *                  and read-only in devmode, absent or inert outside.
  *   VAL-HOST-012 — controlled producer termination and engine
@@ -14,8 +15,15 @@
  *                    transfer to the worklet.
  *   VAL-ENGINE-016 — lifecycle transitions are finite and exact (the
  *                    matrix lives in `synthesisChannels.ts`).
+ *   VAL-ENGINE-020 — there is no permanent Enable Sound command. The
+ *                    only public recovery affordance is
+ *                    `resumeOnUserActivation()`, wired to the suspended
+ *                    indicator and the autoplay listener.
  *   VAL-ENGINE-021 — indicator and engine state flow through props via
  *                    the typed channel/store, not singletons.
+ *   VAL-ENGINE-022 — suspended and error transitions post one clear
+ *                    non-flooding console message through the injected
+ *                    sink (deduplicated on consecutive identical pairs).
  *   VAL-ENGINE-036 — no main-thread executor or editor-to-worklet control
  *                    path is introduced.
  *
@@ -28,9 +36,11 @@
  *   (VAL-ENGINE-036).
  *
  * - All side-effecting dependencies are injected. `AudioContextContract`,
- *   `WorkletNodeContract`, and `NodeDefModuleLoader` are tiny interfaces
- *   the service consumes; the real implementations live in
- *   `synthesisServiceBrowser.ts` (wired by bootstrap). Tests pass fakes.
+ *   `WorkletNodeContract`, `NodeDefModuleLoader`, and `ConsoleMessageSink`
+ *   are tiny interfaces the service consumes; the real implementations
+ *   live in `synthesisServiceBrowser.ts` (wired by bootstrap). Tests pass
+ *   fakes. The console sink bridges to `utils/consoleStore.ts` so the
+ *   audio layer never imports the UI utility directly.
  *
  * - The service is created exactly once per engine session. On
  *   reinitialisation (after producer loss), the old service is disposed
@@ -160,6 +170,23 @@ export type NodeDefModuleLoader = (descriptor: NodeDefDescriptor) =>
   Promise<{ module: NodeDefModule; compiledWasm: WebAssembly.Module | null }>;
 
 // ---------------------------------------------------------------------------
+// Console message sink (VAL-ENGINE-022)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sink the service calls when a state transition should surface a
+ * console message (synthesis.md §6.4). The browser wiring bridges this
+ * to `utils/consoleStore.ts`; tests pass a recorder.
+ *
+ * The sink receives a plain string and a severity hint. The service
+ * deduplicates: consecutive calls with the same `(message, type)` pair
+ * are suppressed, so repeated suspended self-loops or recovery-failed
+ * self-loops do NOT flood the console (VAL-ENGINE-022:
+ * "non-flooding").
+ */
+export type ConsoleMessageSink = (message: string, type: "log" | "warn" | "error") => void;
+
+// ---------------------------------------------------------------------------
 // Engine session options
 // ---------------------------------------------------------------------------
 
@@ -217,6 +244,16 @@ export interface SynthesisServiceOptions {
    * is `true`, and only with frozen (immutable) snapshots.
    */
   readonly installTelemetryGlobal?: (snapshot: SynthesisTelemetrySnapshot) => void;
+  /**
+   * Console message sink called on suspended/error transitions. The
+   * browser wiring passes a function that bridges to
+   * `utils/consoleStore.ts`. The service deduplicates consecutive
+   * identical messages so state self-loops do not flood the console
+   * (VAL-ENGINE-022). Optional: when omitted, no console messages are
+   * emitted (useful for unit tests that do not assert on console
+   * output).
+   */
+  readonly consoleMessageSink?: ConsoleMessageSink;
 }
 
 // ---------------------------------------------------------------------------
@@ -469,6 +506,67 @@ function createCapableService(
   let workletAdded = false;
   const compiledAdapters = new Map<string, NodeDefAdapter>();
 
+  // VAL-ENGINE-022 dedup state: the last (message, type) pair posted to
+  // the console sink. Consecutive identical pairs are suppressed so
+  // state self-loops (suspended → suspended via failed resume, or
+  // error → error via failed recovery) cannot flood the console.
+  let lastConsoleMessage: { message: string; type: "log" | "warn" | "error" } | null = null;
+
+  function postConsoleMessage(message: string, type: "log" | "warn" | "error"): void {
+    const sink = options.consoleMessageSink;
+    if (!sink) return;
+    if (
+      lastConsoleMessage !== null &&
+      lastConsoleMessage.message === message &&
+      lastConsoleMessage.type === type
+    ) {
+      // Dedup: consecutive identical pairs are suppressed.
+      return;
+    }
+    lastConsoleMessage = { message, type };
+    try {
+      sink(message, type);
+    } catch {
+      // The console sink is best-effort; never let it propagate.
+      // Reset dedup so a subsequent different message can post.
+      lastConsoleMessage = null;
+    }
+  }
+
+  /**
+   * Map a transition into the console message it should post, if any.
+   *
+   * VAL-ENGINE-022: `suspended` and `error` transitions post one clear
+   * state-appropriate message. `off` (capability-absent or dispose) and
+   * `running` (silent success) post nothing. The dedup logic in
+   * {@link postConsoleMessage} suppresses consecutive identical pairs.
+   */
+  function consoleMessageForTransition(
+    nextState: SynthesisEngineState,
+    reasonKey: EngineStateReasonKey | null,
+    reasonMessage: string | null,
+  ): { message: string; type: "log" | "warn" | "error" } | null {
+    if (nextState === "suspended") {
+      // The suspended indicator is clickable; the message points the
+      // user at it (and gamepad-only sessions at any key/click).
+      const message =
+        reasonMessage ??
+        ENGINE_STATE_REASONS.AWAITING_USER_ACTIVATION;
+      return {
+        message: `Audio suspended: ${message}`,
+        type: "log",
+      };
+    }
+    if (nextState === "error") {
+      const message = reasonMessage ?? ENGINE_STATE_REASONS.RECOVERY_FAILED;
+      return {
+        message: `Synthesis engine error: ${message}`,
+        type: "error",
+      };
+    }
+    return null;
+  }
+
   function snapshotTelemetry(): SynthesisTelemetrySnapshot {
     const snapshot: SynthesisTelemetrySnapshot = Object.freeze({
       schemaVersion: SYNTHESIS_TELEMETRY_SCHEMA_VERSION,
@@ -540,6 +638,13 @@ function createCapableService(
     currentReasonMessage = reasonMessage;
     acc.transitionCount += 1;
     publishCurrentState();
+    // VAL-ENGINE-022: post a clear non-flooding console message on the
+    // suspended and error transitions. Dedup happens inside
+    // postConsoleMessage so consecutive identical pairs are suppressed.
+    const consoleMessage = consoleMessageForTransition(next, reasonKey, reasonMessage);
+    if (consoleMessage !== null) {
+      postConsoleMessage(consoleMessage.message, consoleMessage.type);
+    }
     engineLifecycle.publish({
       transitionCount: acc.transitionCount,
       from,

@@ -259,6 +259,13 @@ export interface BrowserSynthesisOptions {
    * has one mono output; future graphs may declare more.
    */
   readonly workletOutputChannelCount?: number;
+  /**
+   * Console message sink called on suspended/error transitions
+   * (VAL-ENGINE-022). Bootstrap wiring passes a function that bridges
+   * to `utils/consoleStore.ts`. Optional: when omitted, the service
+   * posts no console messages.
+   */
+  readonly consoleMessageSink?: SynthesisServiceOptions["consoleMessageSink"];
 }
 
 /**
@@ -338,6 +345,7 @@ export function createBrowserSynthesisService(
       };
       w.__useqSynthesisTelemetry = snapshot;
     },
+    consoleMessageSink: options.consoleMessageSink,
   };
 
   const service = createSynthesisService(serviceOptions);
