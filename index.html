@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!--
+  Root entry for the Vite DEVELOPMENT server.
+
+  This file exists ONLY so `vite` (and `vite preview` with the
+  viteFullAppHosting plugin) can serve a real SPA entry on port 5000,
+  fulfilling VAL-HOST-001 and closing Ergo bug ab2f2d33. The production
+  static server continues to use `public/index.html` which loads the
+  built `solid-dist/bundle.js`.
+
+  Why a separate file:
+    - Vite dev defaults to `<root>/index.html` and there is no such
+      file at the repo root (the canonical copy lives in `public/`,
+      which is unreachable when `publicDir: false`).
+    - This dev entry loads `/src/main.ts` directly so HMR, source
+      maps, and the full editor experience work during development.
+    - The mount points and stylesheet link mirror `public/index.html`
+      so the Solid components mount at the same DOM ids.
+
+  Do NOT delete `public/index.html`. Both files are required: this one
+  for Vite dev, the public one for the static port-5000 server and for
+  `vite preview` (which serves it via the viteFullAppHosting plugin).
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>uSEQ Perform (dev)</title>
+
+    <!--
+      Client-side rerouting for /preview — mirrors public/index.html so
+      the dev server has the same deep-link behaviour.
+    -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        if (window.location.pathname === "/preview") {
+          window.location.href = "/preview/index.html";
+        }
+      });
+    </script>
+
+    <!--
+      Dev-only styles. The built bundle.css is generated into
+      public/solid-dist/bundle.css and is loaded via the public/ static
+      middleware from viteFullAppHosting, but we also pull in the dev
+      stylesheet through Vite's CSS pipeline by importing it from
+      src/main.ts (see the `import './ui/styles/index.css'` line there).
+    -->
+  </head>
+  <body>
+    <!-- Toolbar mount points (replaced by Solid components) -->
+    <div id="panel-top-toolbar"></div>
+    <div id="panel-toolbar"></div>
+
+    <!-- Main editor panel -->
+    <div id="panel-main-editor"></div>
+
+    <!-- Visualisation panel — canvases are created lazily by the WebGL renderer -->
+    <div id="panel-vis"></div>
+
+    <!--
+      Vite dev entry — loads the TypeScript source directly so HMR,
+      source maps, and the full editor experience work during
+      development. The production build continues to emit a single
+      solid-dist/bundle.js consumed by public/index.html.
+    -->
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

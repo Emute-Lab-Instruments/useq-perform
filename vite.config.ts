@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import { playwright } from '@vitest/browser-playwright';
+import { viteFullAppHosting } from './scripts/viteFullAppHosting.mjs';
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 
 /**
@@ -44,6 +45,13 @@ export default defineConfig(({ command }) => ({
         },
       }),
     }),
+    // Serves the complete application entry and every runtime asset
+    // (wasm/useq.js, wasm/useq.wasm, wasm/synthesisWorklet.js,
+    // wasm/osc_sine.wasm, assets/**, solid-dist/bundle.{js,css}) under
+    // the Vite dev and preview servers on port 5000 despite
+    // publicDir:false. See scripts/viteFullAppHosting.mjs and Ergo
+    // bug ab2f2d33. Required for VAL-HOST-001 and VAL-HOST-002.
+    viteFullAppHosting(),
   ],
   build: {
     target: "es2020",
