@@ -36,6 +36,7 @@ import type { EditorState } from "@codemirror/state";
 import {
   emptyIdentityMap,
   type FormKey,
+  type IdentityEntry,
   type IdentityMap,
   type IdentitySnapshot,
   type StateId,
@@ -238,9 +239,21 @@ export interface RecoveryResult {
  * attach stored ids to fresh forms when the documents differ, because the
  * structural meaning of a formKey is only stable within one document.
  *
- * **Collision safety.** Only one id may attach to any form. If the snapshot
- * contains two entries mapping to the same formKey, the first one wins.
- * The result map is always collision-free (every id appears at most once).
+ * **Collision safety (Bug 15513d48).** Recovery enforces a one-to-one
+ * FormKey/StateId invariant:
+ *   - Only one id may attach to any form. If the snapshot contains two
+ *     entries mapping to the same formKey, the first one wins.
+ *   - Each recognised form can receive at most one restored id per
+ *     recovery pass; the recovered map is built one entry at a time and
+ *     every insertion goes through the central `withEntry` helper that
+ *     rejects duplicate StateIds and clears stale byId aliases.
+ *
+ * **Real current ranges.** Each restored entry is installed with the
+ * recognised form's current `[from, to]` range, NOT a placeholder. This
+ * is what lets the editor's `create()` use the recovered map as the
+ * reconciler's prior and have the range-continuity matching preserve
+ * the restored ids (rather than forking fresh ids because the placeholder
+ * ranges did not overlap any recognised form).
  *
  * @param snapshot Validated snapshot (use {@link safeLoadIdentitySnapshot}
  *                 to validate raw input first).
@@ -269,19 +282,28 @@ export function recoverIdentityMap(
     return { map: emptyIdentityMap, restoredCount: 0, droppedCount: snapshot.entries.length };
   }
 
-  // Index the recognised forms by canonical key.
+  // Index the recognised forms by canonical key so we can install each
+  // restored entry with the recognised form's CURRENT range.
   const recognised = recogniseStatefulForms(state, classifier);
-  const recognisedByKey = new Map<string, { kind: StatefulFormKind; formKey: FormKey }>();
+  const recognisedByKey = new Map<
+    string,
+    { kind: StatefulFormKind; formKey: FormKey; range: { from: number; to: number } }
+  >();
   for (const r of recognised) {
     const ckey = formKeyToString(r.formKey);
     // Only the first recognised form at a given key is used; duplicates
     // cannot occur because formKeys are unique per parse.
     if (!recognisedByKey.has(ckey)) {
-      recognisedByKey.set(ckey, { kind: r.kind, formKey: r.formKey });
+      recognisedByKey.set(ckey, {
+        kind: r.kind,
+        formKey: r.formKey,
+        range: { from: r.range.from, to: r.range.to },
+      });
     }
   }
 
   const usedIds = new Set<StateId>();
+  const usedCanonicalKeys = new Set<string>();
   let restoredCount = 0;
   let droppedCount = 0;
   let map: IdentityMap = emptyIdentityMap;
@@ -302,11 +324,26 @@ export function recoverIdentityMap(
       droppedCount++;
       continue;
     }
+    // Collision safety: never attach two ids to the same form. The first
+    // entry targeting a form wins; subsequent entries are dropped.
+    if (usedCanonicalKeys.has(ckey)) {
+      droppedCount++;
+      continue;
+    }
     usedIds.add(entry.id);
-    // Use forkEntry to build an entry with a specific id. forkEntry mints
-    // its own id, so we instead build the entry by hand and merge through
-    // the same canonical map the core uses.
-    map = mergeRestoredEntry(map, target.formKey, entry.id, target.kind, localContinuity);
+    usedCanonicalKeys.add(ckey);
+    // Install the restored entry with the recognised form's CURRENT range
+    // (Bug 15513d48): the prior path used a {0, 0} placeholder, which
+    // caused the editor's create() reconciler to fork fresh ids because
+    // the placeholder did not overlap any recognised form's range.
+    map = mergeRestoredEntry(
+      map,
+      target.formKey,
+      target.range,
+      entry.id,
+      target.kind,
+      localContinuity,
+    );
     restoredCount++;
   }
 
@@ -314,47 +351,60 @@ export function recoverIdentityMap(
 }
 
 /**
- * Internal: insert a restored entry into the map with a specific id and
- * kind, minting a fresh continuity token from the supplied source.
+ * Internal: insert a restored entry into the map with a specific id,
+ * kind, and range, minting a fresh continuity token from the supplied
+ * source.
  *
  * This bypasses the public forkEntry (which mints a new id) because
- * recovery needs to install a *known* id from the snapshot.
+ * recovery needs to install a *known* id from the snapshot. The range
+ * passed in is the recognised form's current range so that downstream
+ * range-continuity matching in the editor's create() preserves the
+ * restored id rather than forking.
  */
 function mergeRestoredEntry(
   map: IdentityMap,
   formKey: FormKey,
+  range: { from: number; to: number },
   id: StateId,
   kind: StatefulFormKind,
   continuity: ContinuitySource,
 ): IdentityMap {
-  // Build a minimal entry with the known id. We do not need a precise
-  // range here because the extension's create() re-classifies and the
-  // reconciler will refresh ranges on the next parse. Use a placeholder
-  // range that the caller can rely on being non-empty.
-  const placeholderRange = { from: 0, to: 0 };
-  // forkEntry mints a fresh id; we then post-process to overwrite with
-  // the restored id.
+  // forkEntry mints a fresh id via its generator. We supply a single-use
+  // generator that emits the restored id exactly once; withEntry then
+  // installs the entry. After forkEntry returns we still need to
+  // overwrite the freshly-minted id with the restored id. We do this
+  // with a direct map rebuild that:
+  //   1. Clears the byId alias of the freshly-minted id.
+  //   2. If an entry already occupied this FormKey, also clears that
+  //      entry's id alias (defensive — forkEntry normally inserts at a
+  //      fresh key during recovery).
+  //   3. Sets entries[ckey] to an entry whose id is the restored id and
+  //      whose range is the recognised form's range.
   const intermediate = forkEntry(
     map,
     formKey,
     kind,
-    placeholderRange,
-    // ID generator that emits the restored id exactly once, then errors
-    // (we only call it once per entry).
+    range,
     singleUseIdGenerator(id),
     continuity,
   );
-  // Walk the resulting map and replace the just-minted id with the
-  // restored id at the canonical key for `formKey`.
   const ckey = formKeyToString(formKey);
   const entries = new Map(intermediate.entries);
   const byId = new Map(intermediate.byId);
   const existing = entries.get(ckey);
   if (existing !== undefined && existing.id !== id) {
+    // Clear the alias of whatever id was just minted/installed.
     byId.delete(existing.id);
-    const fixed = { ...existing, id };
+    const fixed: IdentityEntry = { ...existing, id, range };
     entries.set(ckey, fixed);
     byId.set(id, ckey);
+  } else if (existing !== undefined && existing.id === id) {
+    // forkEntry already installed the right id (e.g. the single-use
+    // generator returned the restored id and there was no prior entry
+    // at this key). Just refresh the range to the recognised range in
+    // case forkEntry stored a different one.
+    const fixed: IdentityEntry = { ...existing, range };
+    entries.set(ckey, fixed);
   }
   return { entries, byId };
 }

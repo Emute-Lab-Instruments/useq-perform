@@ -210,6 +210,119 @@ describe("reconcileIdentity: fork + ID collision safety", () => {
   });
 });
 
+// ─── Bug 15513d48: one-to-one FormKey/StateId invariant ────────────────────
+
+describe("Bug 15513d48: IdentityMap stays collision-free under FormKey overwrite", () => {
+  /**
+   * Bug 15513d48: withEntry did not remove the stale byId alias of the
+   * previous entry at a FormKey when overwriting it. When recovery (or
+   * any path) called forkEntry at a key already occupied by a different
+   * id, the byId map kept the old id → ckey mapping while entries[ckey].id
+   * pointed at the new id. getById(oldId) would then return the new
+   * entry, silently attaching one id to multiple forms. This is the
+   * "stale byId alias" half of VAL-ID-011.
+   */
+
+  it("withEntry removes the prior entry's stale byId alias on FormKey overwrite", () => {
+    // Mint id-A at key [0].
+    const idsA = deterministicIdGenerator();
+    const cont = newContinuity();
+    let map: IdentityMap = forkEntry(
+      emptyIdentityMap,
+      [0],
+      "synth",
+      { from: 0, to: 10 },
+      idsA,
+      cont,
+    );
+    const idA = entriesOf(map)[0]!.id;
+
+    // Mint id-B at the SAME key [0] using a different generator so the
+    // ids differ. forkEntry must (a) succeed, and (b) leave byId
+    // consistent: byId[idA] must be gone.
+    const idsB = ((): {
+      next(): string;
+    } => {
+      let n = 100;
+      return { next: () => `id-fresh-${n++}` as never };
+    })();
+    map = forkEntry(map, [0], "synth", { from: 0, to: 20 }, idsB, cont);
+
+    // The new entry at [0] has a distinct id.
+    const newEntry = map.entries.get("fk:0");
+    expect(newEntry).toBeDefined();
+    expect(newEntry!.id).not.toBe(idA);
+
+    // byId invariant 1: byId[idA] is gone (no stale alias).
+    expect(map.byId.has(idA as never)).toBe(false);
+
+    // byId invariant 2: for every (id → ckey), entries[ckey].id === id.
+    for (const [id, ckey] of map.byId) {
+      const e = map.entries.get(ckey);
+      expect(e).toBeDefined();
+      expect(e!.id).toBe(id);
+    }
+
+    // getById(idA) returns undefined (the alias was cleared).
+    const lookup = map.byId.has(idA as never)
+      ? map.entries.get(map.byId.get(idA as never)!)
+      : undefined;
+    expect(lookup).toBeUndefined();
+
+    // The map remains a function: every ckey maps to exactly one entry,
+    // every id maps to exactly one ckey.
+    const ckeySeen = new Set<string>();
+    for (const ckey of map.entries.keys()) {
+      expect(ckeySeen.has(ckey)).toBe(false);
+      ckeySeen.add(ckey);
+    }
+    const idSeen = new Set<string>();
+    for (const id of map.byId.keys()) {
+      expect(idSeen.has(id as string)).toBe(false);
+      idSeen.add(id as string);
+    }
+  });
+
+  it("mergeRestoredEntry replacing an existing entry leaves no stale alias", () => {
+    // Reproduces the recovery overwrite path: an entry already exists at
+    // formKey [0] with id "old". Recovery wants to install id "restored"
+    // at the same formKey. The resulting map must have exactly one entry
+    // at [0] with id "restored" and no alias for "old".
+    const ids = deterministicIdGenerator();
+    const cont = newContinuity();
+    let map: IdentityMap = forkEntry(
+      emptyIdentityMap,
+      [0],
+      "synth",
+      { from: 0, to: 10 },
+      ids,
+      cont,
+    );
+    const oldId = entriesOf(map)[0]!.id;
+
+    // Simulate the recovery path: build an entry at the same key with a
+    // brand-new id.
+    const genRestored = ((): { next(): string } => {
+      let done = false;
+      return {
+        next() {
+          if (done) throw new Error("single-use");
+          done = true;
+          return "id-restored-001" as never;
+        },
+      };
+    })();
+    map = forkEntry(map, [0], "synth", { from: 0, to: 10 }, genRestored, cont);
+
+    // byId has no alias for the old id.
+    expect(map.byId.has(oldId as never)).toBe(false);
+    // byId DOES have the restored id pointing at fk:0.
+    expect(map.byId.get("id-restored-001" as never)).toBe("fk:0");
+    // entries[fk:0].id is the restored id.
+    expect(map.entries.get("fk:0")!.id).toBe("id-restored-001");
+  });
+});
+
 describe("staging key", () => {
   it("is uniquely addressable per paste token and never collides with real keys", () => {
     const k1 = stagingKeyFor("tok-A");

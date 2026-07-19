@@ -584,9 +584,21 @@ describe("VAL-ID-010: nosave gates writes through the central service", () => {
 // ─── End-to-end: extension with injected persistence restores on reload ────
 
 describe("VAL-ID-009 (e2e): editor with persistence restores identities on reload", () => {
-  function makeConfig(persistence: IdentityPersistence): IdentityConfig {
+  /**
+   * Bug 15513d48: the previous version of this test used
+   * `deterministicIdGenerator()` for both sessions, which emits the same
+   * `id-test0000001/2/...` sequence regardless of session. As a result
+   * the test passed whether the recovery path actually restored the
+   * persisted IDs or silently forked fresh IDs. We now drive each
+   * session with a distinct prefix generator (AAA vs BBB) so any silent
+   * fork-regeneration is observably different from the persisted IDs.
+   */
+  function makeConfig(
+    persistence: IdentityPersistence,
+    prefix: string,
+  ): IdentityConfig {
     return {
-      ids: deterministicIdGenerator(),
+      ids: prefixedIdGenerator(prefix),
       classifier: defaultStatefulFormClassifier,
       continuity: makeContinuitySource(0),
       persistence,
@@ -602,8 +614,8 @@ describe("VAL-ID-009 (e2e): editor with persistence restores identities on reloa
 
     const src = '(synth "osc/sine" :freq 100)\n(synth "osc/sine" :freq 200)\n';
 
-    // Session 1: create editor, capture IDs, persist.
-    const cfg1 = makeConfig(adapter);
+    // Session 1: prefix "AAA". Persist.
+    const cfg1 = makeConfig(adapter, "AAA");
     const field1 = buildIdentityField(cfg1);
     const view1 = new EditorView({
       doc: src,
@@ -612,14 +624,19 @@ describe("VAL-ID-009 (e2e): editor with persistence restores identities on reloa
     const idsBefore = entriesOf(view1.state.field(field1).map)
       .map((e) => e.id)
       .sort();
+    // Every id carries the AAA prefix; this is what makes any silent
+    // fork-regeneration in session 2 observable.
+    expect(idsBefore.every((id) => id.startsWith("AAA-"))).toBe(true);
     // Simulate the autosave hook firing.
     cfg1.persistence!.save(
       buildIdentitySnapshot(view1.state.field(field1).map, src),
     );
     view1.destroy();
 
-    // Session 2: fresh editor with the same source loads from persistence.
-    const cfg2 = makeConfig(adapter);
+    // Session 2: prefix "BBB". Restoration must keep the AAA-* ids; if
+    // the recovery path silently forks, the BBB generator would mint
+    // BBB-* ids and the equality assertion would fail.
+    const cfg2 = makeConfig(adapter, "BBB");
     const field2 = buildIdentityField(cfg2);
     const view2 = new EditorView({
       doc: src,
@@ -629,6 +646,7 @@ describe("VAL-ID-009 (e2e): editor with persistence restores identities on reloa
       .map((e) => e.id)
       .sort();
     expect(idsAfter).toEqual(idsBefore);
+    expect(idsAfter.every((id) => id.startsWith("AAA-"))).toBe(true);
     view2.destroy();
   });
 
@@ -921,6 +939,183 @@ describe("VAL-ID-009: maps equal by identity after a full save/load/restore cycl
       expect(getById(restored.map, e.id)).toBeDefined();
     }
     view.destroy();
+  });
+});
+
+// ─── Bug 15513d48: distinct-generator reload restoration (VAL-ID-009) ───────
+
+describe("VAL-ID-009 (15513d48): reload restores persisted identities with distinct generators", () => {
+  /**
+   * Bug 15513d48: the prior recovery path installed restored entries with
+   * a placeholder range {0, 0}. When the editor's create() then ran the
+   * reconciler with the recovered map as prior, the placeholder ranges
+   * did not overlap any recognised form's range, so every form forked a
+   * fresh ID and the persisted IDs were silently lost. The existing test
+   * hid the bug by using deterministicIdGenerator() in both sessions,
+   * which always emits the same sequence and therefore passes whether
+   * restoration worked or not.
+   *
+   * Fix: recoverIdentityMap installs each restored entry at the
+   * recognised form's current range so the reconciler's range-continuity
+   * matching preserves the restored IDs. The reload tests now use
+   * distinct generator prefixes (e.g. "AAA" vs "BBB") so a fork-regenerated
+   * ID is observably different from the restored ID.
+   */
+
+  function makeConfig(
+    persistence: IdentityPersistence,
+    prefix: string,
+  ): IdentityConfig {
+    return {
+      ids: prefixedIdGenerator(prefix),
+      classifier: defaultStatefulFormClassifier,
+      continuity: makeContinuitySource(0),
+      persistence,
+    };
+  }
+
+  it("restores persisted IDs into a fresh editor (distinct session prefixes)", () => {
+    const adapter = createIdentityPersistence({
+      load: (k, fb) => persistenceLoad(k, fb),
+      save: (k, v) => persistenceSave(k, v),
+      remove: (k) => persistenceRemove(k),
+    });
+
+    const src =
+      '(synth "osc/sine" :freq 100)\n(synth "osc/sine" :freq 200)\n';
+
+    // Session 1: prefix "AAA". Persist.
+    const field1 = buildIdentityField(makeConfig(adapter, "AAA"));
+    const view1 = new EditorView({
+      doc: src,
+      extensions: [...clojureExtensions, field1],
+    });
+    const idsBefore = entriesOf(view1.state.field(field1).map)
+      .map((e) => e.id)
+      .sort();
+    // Every ID must carry the AAA prefix; this is what makes any silent
+    // fork-regeneration observable in session 2.
+    expect(idsBefore.every((id) => id.startsWith("AAA-"))).toBe(true);
+    view1.destroy();
+
+    // Session 2: prefix "BBB". If restoration works, IDs remain "AAA-*".
+    // If restoration silently fails, the reconciler forks and IDs become
+    // "BBB-*".
+    const field2 = buildIdentityField(makeConfig(adapter, "BBB"));
+    const view2 = new EditorView({
+      doc: src,
+      extensions: [...clojureExtensions, field2],
+    });
+    const idsAfter = entriesOf(view2.state.field(field2).map)
+      .map((e) => e.id)
+      .sort();
+    expect(idsAfter).toEqual(idsBefore);
+    // Belt-and-suspenders: every restored id still carries the AAA prefix,
+    // proving the BBB generator was never invoked.
+    expect(idsAfter.every((id) => id.startsWith("AAA-"))).toBe(true);
+    view2.destroy();
+  });
+
+  it("recovered entries carry the recognised form's current range", () => {
+    // Direct check on recoverIdentityMap: the recovered entry's range
+    // must equal the recognised form's range, not a placeholder. The
+    // first form legitimately starts at offset 0, so we additionally
+    // verify that the second form's range extends past the first form's
+    // end (a placeholder {0, 0} would fail this).
+    const src = '(a1 1)\n(synth "osc/sine" :freq 100)\n(synth "osc/sine" :freq 200)\n';
+    const field = buildIdentityField({
+      ids: prefixedIdGenerator("XYZ"),
+      classifier: defaultStatefulFormClassifier,
+      continuity: makeContinuitySource(0),
+    });
+    const view = new EditorView({
+      doc: src,
+      extensions: [...clojureExtensions, field],
+    });
+    const map = view.state.field(field).map;
+    const snap = buildIdentitySnapshot(map, src);
+
+    const recovered = recoverIdentityMap(
+      snap,
+      view.state,
+      defaultStatefulFormClassifier,
+    );
+    // Pair up by id and assert range equality against the live map.
+    const originalById = new Map(entriesOf(map).map((e) => [e.id, e]));
+    expect(entriesOf(recovered.map).length).toBe(entriesOf(map).length);
+    let maxOriginalTo = 0;
+    for (const r of entriesOf(recovered.map)) {
+      const orig = originalById.get(r.id);
+      expect(orig).toBeDefined();
+      expect(r.range.from).toBe(orig!.range.from);
+      expect(r.range.to).toBe(orig!.range.to);
+      maxOriginalTo = Math.max(maxOriginalTo, orig!.range.to);
+    }
+    // Sanity: at least one recovered range extends past the start of the
+    // document (i.e. is not the {0, 0} placeholder for every entry).
+    const maxRecoveredTo = entriesOf(recovered.map).reduce(
+      (m, e) => Math.max(m, e.range.to),
+      0,
+    );
+    expect(maxRecoveredTo).toBe(maxOriginalTo);
+    expect(maxRecoveredTo).toBeGreaterThan(0);
+    view.destroy();
+  });
+
+  it("partial-document reload (one extra form) preserves correlated IDs and forks the new form", () => {
+    const adapter = createIdentityPersistence({
+      load: (k, fb) => persistenceLoad(k, fb),
+      save: (k, v) => persistenceSave(k, v),
+      remove: (k) => persistenceRemove(k),
+    });
+
+    // Session 1: two forms, prefix "AAA".
+    const src1 =
+      '(synth "osc/sine" :freq 100)\n(synth "osc/sine" :freq 200)\n';
+    const field1 = buildIdentityField(makeConfig(adapter, "AAA"));
+    const view1 = new EditorView({
+      doc: src1,
+      extensions: [...clojureExtensions, field1],
+    });
+    const idsBefore = new Set(
+      entriesOf(view1.state.field(field1).map).map((e) => e.id),
+    );
+    view1.destroy();
+
+    // Session 2: SAME source (so fingerprint matches and recovery runs),
+    // but a NEW third form is also present. Generator prefix "BBB" so the
+    // new form's forked id is observably distinct.
+    //
+    // The fingerprint of session 2 differs from session 1 because the
+    // source text differs, so recovery returns nothing and every form
+    // forks. To exercise partial recovery with overlap we instead build
+    // session 2 with the SAME source as session 1 first, then add a new
+    // form via dispatch and observe the third form forks.
+    const field2 = buildIdentityField(makeConfig(adapter, "BBB"));
+    const view2 = new EditorView({
+      doc: src1,
+      extensions: [...clojureExtensions, field2],
+    });
+    // After create(), the two original IDs are restored (AAA-*), proving
+    // recovery worked even with the BBB generator available.
+    const idsAfterCreate = new Set(
+      entriesOf(view2.state.field(field2).map).map((e) => e.id),
+    );
+    expect(idsAfterCreate).toEqual(idsBefore);
+
+    // Add a third form. The third form must fork with a BBB-* id.
+    view2.dispatch({
+      changes: {
+        from: view2.state.doc.length,
+        insert: '(synth "osc/sine" :freq 300)\n',
+      },
+    });
+    const afterAdd = entriesOf(view2.state.field(field2).map);
+    expect(afterAdd).toHaveLength(3);
+    const newEntry = afterAdd.find((e) => !idsBefore.has(e.id));
+    expect(newEntry).toBeDefined();
+    expect(newEntry!.id.startsWith("BBB-")).toBe(true);
+    view2.destroy();
   });
 });
 

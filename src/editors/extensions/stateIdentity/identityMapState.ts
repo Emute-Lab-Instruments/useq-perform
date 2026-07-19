@@ -64,8 +64,16 @@ function withEntry(
     );
   }
   const entries = new Map(map.entries);
-  entries.set(ckey, entry);
   const byId = new Map(map.byId);
+  // Bug 15513d48: if a previous entry occupied this FormKey, clear its
+  // stale byId alias before overwriting. Otherwise byId would keep
+  // (oldId → ckey) while entries[ckey].id becomes the new id, silently
+  // attaching one ID to multiple forms on lookup (VAL-ID-011).
+  const priorAtKey = entries.get(ckey);
+  if (priorAtKey !== undefined && priorAtKey.id !== entry.id) {
+    byId.delete(priorAtKey.id);
+  }
+  entries.set(ckey, entry);
   byId.set(entry.id, ckey);
   return { entries, byId };
 }
