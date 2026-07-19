@@ -21,6 +21,8 @@
   "include": [
     "src/transport/**/*.ts",
     "src/contracts/**/*.ts",
+    "src/audio/**/*.ts",
+    "src/audio/**/*.tsx",
     "src/editors/**/*.ts",
     "src/effects/**/*.ts",
     "src/lib/**/*.ts",

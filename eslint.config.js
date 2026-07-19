@@ -127,6 +127,36 @@ export default tseslint.config(
               "src/effects/ must not import from src/editors/ (effects are framework-agnostic)"
             ),
 
+            // ── src/audio/ boundary (VAL-ENGINE-036) ───────────────
+            // The synthesis service is the SINGLE main-thread owner of
+            // AudioContext, worklet, NodeDef module compilation, and
+            // engine state. No editor, effect, or transport module
+            // reaches into the audio layer directly; UI adapters are
+            // the only bridge, and they subscribe to the typed engine-
+            // state channel rather than touching the service.
+            zone(
+              `${srcDir}/audio/`,
+              `${srcDir}/ui/`,
+              "src/audio/ must not import from src/ui/ (audio layer stays framework-agnostic)"
+            ),
+            zone(
+              `${srcDir}/audio/`,
+              `${srcDir}/editors/`,
+              "src/audio/ must not import from src/editors/ (VAL-ENGINE-036: no editor-to-worklet control path)"
+            ),
+            zone(
+              `${srcDir}/audio/`,
+              `${srcDir}/transport/`,
+              "src/audio/ must not import from src/transport/ (audio layer is independent of serial transport)"
+            ),
+
+            // ── editors/ cannot reach into audio/ (VAL-ENGINE-036) ──
+            zone(
+              `${srcDir}/editors/`,
+              `${srcDir}/audio/`,
+              "src/editors/ must not import from src/audio/ (VAL-ENGINE-036: engine state flows through typed channels, not editor-to-worklet shortcuts)"
+            ),
+
             // ── src/runtime/ boundary ──────────────────────────────
             zone(
               `${srcDir}/runtime/`,

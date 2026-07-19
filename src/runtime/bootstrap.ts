@@ -301,6 +301,35 @@ export async function bootstrap(): Promise<BootstrapResult> {
       environmentState.audioCapabilities;
   }
 
+  // ── Step 2c: construct the synthesis service (VAL-ENGINE-021/036).
+  //
+  // The service owns AudioContext, worklet node, NodeDef module
+  // compilation, engine state, and graph lifecycle. Construction is
+  // lazy: the AudioContext is NOT created here — the service waits for
+  // the first `resumeOnUserActivation()` call, which respects the
+  // browser autoplay contract (synthesis.md §6.5).
+  //
+  // In devmode the read-only telemetry global is installed and the
+  // controlled fault actions (producer termination, reinitialise) are
+  // exposed on `window.__useqSynthesisDev`. Outside devmode neither
+  // surface exists (VAL-HOST-011 / VAL-HOST-012).
+  if (environmentState.audioCapabilities.audioCapable) {
+    try {
+      const { createBrowserSynthesisService } = await import(
+        "../audio/synthesisServiceBrowser.ts"
+      );
+      createBrowserSynthesisService({
+        capabilities: environmentState.audioCapabilities,
+        devmode: startupFlags.devmode,
+      });
+      // The service publishes engine state through the typed channel;
+      // UI adapters subscribe in `adapters/toolbars.tsx` (wired by a
+      // later feature that adds the engine indicator mount).
+    } catch (error) {
+      reportBootstrapFailure("synthesis-service", error);
+    }
+  }
+
   // ── Step 3: derive bootstrap plan (single call site) ───────────
   const bootstrapPlan = resolveBootstrapPlan({
     noModuleMode: startupFlags.noModuleMode,
