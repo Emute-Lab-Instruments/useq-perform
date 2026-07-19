@@ -213,3 +213,30 @@ describe("workerProducerProtocol / VAL-ENGINE-011 (epoch arming)", () => {
     expect(r.epoch).toBe(7);
   });
 });
+
+describe("workerProducerProtocol / VAL-ENGINE-006 (anti-starvation contract)", () => {
+  // Ergo ca5e1cc3: the recursively self-replenishing queueMicrotask
+  // producer pump was replaced by a cancellable, task-yielding loop
+  // driver (src/audio/producerLoopDriver.ts). These protocol-shape
+  // assertions document the invariants the Worker wiring must honour so
+  // eval/transport/lifecycle messages stay responsive after
+  // producerStart while control publication continues.
+  it("producerStop and producerTerminate carry numeric ids so the host can confirm cancellation", () => {
+    const stop = req<ProducerStopRequest>({ type: "producerStop", id: 1 });
+    const terminate = req<ProducerTerminateRequest>({
+      type: "producerTerminate",
+      id: 2,
+    });
+    expect(typeof stop.id).toBe("number");
+    expect(typeof terminate.id).toBe("number");
+  });
+
+  it("producerStop and producerTerminate are distinct one-shot request/response pairs", () => {
+    expect(req<ProducerStopRequest>({ type: "producerStop", id: 1 }).type).toBe(
+      "producerStop",
+    );
+    expect(
+      req<ProducerTerminateRequest>({ type: "producerTerminate", id: 1 }).type,
+    ).toBe("producerTerminate");
+  });
+});

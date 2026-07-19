@@ -57,6 +57,10 @@ import {
   type ProducerSchedulingClock,
 } from "../../audio/producerScheduler";
 import {
+  createProducerLoopDriver,
+  type ProducerLoopDriver,
+} from "../../audio/producerLoopDriver";
+import {
   createTransportFrameMap,
   type TransportFrameMap,
 } from "../../audio/transportFrameMap";
@@ -142,19 +146,20 @@ let controlView: SynthesisControlView | null = null;
 let transportMap: TransportFrameMap | null = null;
 let producer: ProducerScheduler | null = null;
 let producerRunning = false;
-let producerLoopScheduled = false;
+let producerLoopDriver: ProducerLoopDriver | null = null;
 let producerBlocksPublished = 0;
 const producerAudit: ProducedBlockAudit[] = [];
 
 /**
- * Bounded-yield clock used by the producer scheduler. The Worker's
- * microtask loop interleaves `iterate()` with the regular message-handler
- * drain, so `sleep` is a no-op: the microtask queue itself is the
+ * Bounded-yield clock used by the producer scheduler. The driver loop
+ * interleaves `iterate()` with the regular message-handler drain via
+ * `setTimeout(0)` (a real macrotask that yields to the Worker inbox),
+ * so `sleep` is a no-op inside the scheduler — the host yield is the
  * bounded wait (VAL-ENGINE-006).
  *
  * The real `Atomics.wait` wake path (when the worklet publishes a new
- * audio frame) hooks in via the microtask scheduler below. The wait is
- * always bounded by `PRODUCER_POLL_INTERVAL_MS`.
+ * audio frame) hooks in via the driver's macrotask scheduler below.
+ * The wait is always bounded by `PRODUCER_POLL_INTERVAL_MS`.
  */
 const producerClock: ProducerSchedulingClock = {
   now(): number {
@@ -1037,7 +1042,25 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         });
         producer.start();
         producerRunning = true;
-        scheduleProducerLoop();
+        // Replace any previously-terminated driver so cancellation
+        // generation is reset. The driver schedules the first turn via
+        // setTimeout(0), which yields to the Worker inbox between
+        // iterations (VAL-ENGINE-006 / Ergo ca5e1cc3).
+        producerLoopDriver = createProducerLoopDriver({
+          iterate: () => {
+            if (!producerRunning || !producer) return;
+            const before = producerAudit.length;
+            producer.iterate();
+            producerBlocksPublished += producerAudit.length - before;
+          },
+          yieldToQueue: (runNext) => {
+            // setTimeout(0) is a macrotask: postMessage dispatch
+            // runs between iterations, so eval/transport/lifecycle
+            // messages stay responsive while publication continues.
+            setTimeout(runNext, 0);
+          },
+        });
+        producerLoopDriver.start();
         postResponse({ type: "producerStart-result", id, started: true });
         return;
       }
@@ -1046,6 +1069,11 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         producer?.stop();
         producerRunning = false;
         producer = null;
+        // Cancel every future producer callback. The driver's generation
+        // counter bumps so any already-queued setTimeout callback becomes
+        // a no-op when it fires (VAL-ENGINE-006 / Ergo ca5e1cc3).
+        producerLoopDriver?.stop();
+        producerLoopDriver = null;
         postResponse({
           type: "producerStop-result",
           id,
@@ -1118,6 +1146,11 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         producer?.stop();
         producerRunning = false;
         producer = null;
+        // Cancellation must reach every already-queued setTimeout
+        // callback so the devmode fault path guarantees no further
+        // producer callbacks fire (VAL-ENGINE-006 / Ergo ca5e1cc3).
+        producerLoopDriver?.stop();
+        producerLoopDriver = null;
         postResponse({
           type: "producerTerminate-result",
           id,
@@ -1167,45 +1200,38 @@ self.addEventListener("message", (event: MessageEvent<WasmWorkerRequest>) => {
     return;
   }
   void handleRequest(data);
-  // After each inbox drain, give the producer a bounded turn. The
-  // microtask queue is the bounded wait (VAL-ENGINE-006): the producer
-  // gets exactly one iteration per message, so the inbox stays
-  // responsive even under high message rates.
-  scheduleProducerLoop();
+  // The producer loop is driven by `producerLoopDriver`, which yields to
+  // the Worker task queue between iterations via setTimeout(0). Messages
+  // dispatched here therefore interleave fairly with producer turns
+  // (VAL-ENGINE-006 / Ergo ca5e1cc3). No recursive queueMicrotask pump
+  // is permitted: that would starve the inbox.
 });
 
-// ─── Producer microtask loop ───────────────────────────────────────────────
+// ─── Producer task-yielding loop (Ergo ca5e1cc3) ───────────────────────────
 //
-// The producer loop runs at most one iteration per microtask so the Worker's
-// inbox stays responsive (VAL-ENGINE-006). Each iteration publishes enough
-// blocks to refill the ring up to the configured lookahead, bounded by the
-// scheduler's internal PRODUCER_POLL_INTERVAL_MS.
+// The producer loop is driven by `producerLoopDriver` (see
+// `src/audio/producerLoopDriver.ts`). The driver schedules each
+// iteration via `setTimeout(0)` — a macrotask — so `postMessage`
+// events dispatched to the handler above run between iterations.
 //
-// The loop re-schedules itself via `queueMicrotask` so it interleaves
-// fairly with the message handler. There is no `Atomics.wait` on the
-// Worker event loop: the producer is woken by the microtask that fires
-// after every posted message (including the audio-frame publication
-// echo from the worklet side).
-
-function scheduleProducerLoop(): void {
-  if (producerLoopScheduled) return;
-  if (!producerRunning || !producer) return;
-  producerLoopScheduled = true;
-  queueMicrotask(() => {
-    producerLoopScheduled = false;
-    if (!producerRunning || !producer) return;
-    const before = producerAudit.length;
-    producer.iterate();
-    producerBlocksPublished += producerAudit.length - before;
-    // Re-schedule so the producer keeps making progress between inbox
-    // messages too. The scheduler's internal budget caps each iteration.
-    scheduleProducerLoop();
-  });
-}
+// Anti-starvation property (VAL-ENGINE-006): every iteration yields to
+// the Worker task queue before the next iteration is scheduled. The
+// recursive `queueMicrotask` pump that used to live here ran
+// indefinitely between macrotask dispatches and starved every queued
+// eval/transport/lifecycle request after `producerStart`. The driver
+// fixes that by construction: microtask self-replenishment is
+// impossible because the only scheduling primitive is the host's
+// `yieldToQueue` hook, which the Worker wires to setTimeout.
+//
+// Cancellation (producerStop / producerTerminate) flips the driver's
+// `running` flag and bumps its generation counter, so any
+// already-queued setTimeout callback becomes a no-op when it fires.
 
 // Release heap-allocated buffer when the worker is closing.
 self.addEventListener("close", () => {
   producer?.stop();
+  producerLoopDriver?.stop();
+  producerLoopDriver = null;
   producerRunning = false;
   producer = null;
   controlView = null;
