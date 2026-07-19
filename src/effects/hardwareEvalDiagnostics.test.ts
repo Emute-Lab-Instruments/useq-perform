@@ -82,6 +82,8 @@ vi.mock("../editors/extensions/diagnostics.ts", () => ({
 
 vi.mock("../lib/manualControlState.ts", () => ({
   rewriteCodeSliceForModule: (code: string) => code,
+  getAllManualControlBindings: () => [],
+  mapManualControlBindingsThroughChanges: vi.fn(),
 }));
 
 vi.mock("../editors/extensions/evalHighlight.ts", () => ({
@@ -167,23 +169,41 @@ describe("[CF2] hardware eval diagnostics drive inline lint", () => {
 
     await flushMicrotasks();
 
-    // The hardware diagnostics must have reached pushDiagnostics.
+    // The hardware diagnostics must have reached pushDiagnostics. With the
+    // unified payload builder installed, diagnostics are remapped through
+    // the source map (state-identity.md §7.5) so they carry the same
+    // visible offsets but are a fresh array (not the raw module response).
+    // Match by message content rather than by reference.
     const hwCall = mockPushDiagnostics.mock.calls.find(
-      (c) => c[1] === sendResponseRef.current.diagnostics,
+      (c) =>
+        Array.isArray(c[1]) &&
+        c[1].some(
+          (d: unknown) =>
+            (d as { message?: string }).message === "hardware: unknown symbol",
+        ),
     );
     expect(hwCall, "hardware diagnostics never reached pushDiagnostics").toBeTruthy();
 
-    // ...with the SAME offsets the WASM path uses. The WASM shadow returned
-    // [] this eval, so it called clearDiagnosticsForRange(view, from, to)
-    // with the canonical (rangeFrom, rangeTo) — assert the hardware push
-    // reused exactly those offsets. This is the §5.3 "identical on both
-    // targets" contract.
+    // The remapped diagnostic should carry the SAME visible offsets the
+    // WASM path uses (rangeFrom, rangeTo). Because this test has no
+    // stateful forms, the source map degenerates to an identity map and
+    // runtime offsets equal visible offsets plus sliceFrom (=0).
+    const hwDiags: UseqDiagnostic[] = hwCall![1] as UseqDiagnostic[];
+    expect(hwDiags).toHaveLength(1);
+    expect(hwDiags[0]!.start).toBe(4);
+    expect(hwDiags[0]!.end).toBe(7);
+
+    // The WASM shadow returned [] this eval, so it called
+    // clearDiagnosticsForRange(view, from, to) with the canonical
+    // (rangeFrom, rangeTo). Assert the hardware push used exactly those
+    // same (rangeFrom, rangeTo) bounds. This is the §5.3 "identical on
+    // both targets" contract.
     expect(mockClearDiagnosticsForRange).toHaveBeenCalled();
     const [, wasmFrom, wasmTo] = mockClearDiagnosticsForRange.mock.calls[0];
-    // args: (view, diagnostics, docOffset, rangeFrom, rangeTo)
-    expect(hwCall![2]).toBe(wasmFrom); // docOffset == WASM rangeFrom
-    expect(hwCall![3]).toBe(wasmFrom); // rangeFrom
-    expect(hwCall![4]).toBe(wasmTo); // rangeTo
+    // args: (view, diagnostics, docOffset=0 [already remapped], rangeFrom, rangeTo)
+    expect(hwCall![2]).toBe(0); // docOffset: remap already incorporated sliceFrom
+    expect(hwCall![3]).toBe(wasmFrom); // rangeFrom matches WASM
+    expect(hwCall![4]).toBe(wasmTo); // rangeTo matches WASM
   });
 
   it("does not push when the module response carries no diagnostics", async () => {

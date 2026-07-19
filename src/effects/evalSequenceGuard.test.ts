@@ -101,6 +101,8 @@ vi.mock("../editors/extensions/diagnostics.ts", () => ({
 
 vi.mock("../lib/manualControlState.ts", () => ({
   rewriteCodeSliceForModule: (code: string) => code,
+  getAllManualControlBindings: () => [],
+  mapManualControlBindingsThroughChanges: vi.fn(),
 }));
 
 vi.mock("../editors/extensions/evalHighlight.ts", () => ({

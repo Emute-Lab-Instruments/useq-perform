@@ -23,7 +23,15 @@ import {
   createDefaultGutterConfig,
 } from "./extensions/expressionHighlights.ts";
 import { structuralCoreExtensions } from "./extensions/structure/adapter/extension.ts";
-import { createDefaultIdentityExtension } from "./extensions/stateIdentity/stateIdentity.ts";
+// State-identity sidecar: opaque hidden IDs for stateful top-level forms
+// (synth today; future registrars extend via the classifier). Dependency-
+// injected so tests/Inspector can render the editor without synthesis
+// runtime singletons. Spec: docs/specs/state-identity.md.
+//
+// Production uses the singleton field exposed by identityFieldExport so
+// editorEvaluation.ts can read the live identity map from the same field
+// instance (CodeMirror StateFields compare by reference).
+import { defaultIdentityExtension } from "./extensions/stateIdentity/identityFieldExport.ts";
 
 // Wire the default eval-integration config on module load (production wiring).
 // Tests/Inspector can override via `setEvalIntegrationConfig()`.
@@ -163,7 +171,7 @@ export const baseExtensions = [
   // (synth today; future registrars extend via the classifier). Dependency-
   // injected so tests/Inspector can render the editor without synthesis
   // runtime singletons. Spec: docs/specs/state-identity.md.
-  ...createDefaultIdentityExtension(),
+  ...defaultIdentityExtension(),
   lastEvaluatedExpressionField,
   ...createExpressionGutter(createDefaultGutterConfig()),
   ...probeExtensions,

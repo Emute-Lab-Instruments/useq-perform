@@ -32,6 +32,7 @@ const evalInUseqWasm = (
   getActiveWasmRuntimePort().evalCodeWithDiagnostics(code);
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import { rewriteCodeSliceForModule } from "../lib/manualControlState.ts";
+import { getAllManualControlBindings } from "../lib/manualControlState.ts";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 import { evalRejectionForNoRuntime } from "./noneModeGate.ts";
 import { flashEvalHighlight } from "../editors/extensions/evalHighlight.ts";
@@ -45,6 +46,13 @@ import {
   markBindingsSoftPreview,
   clearBindingsSoftPreview,
 } from "./hardwareBindingDispatcher.ts";
+import {
+  buildEvalPayload,
+  remapDiagnostics,
+  type EvalPayload,
+  type ManualControlBinding,
+} from "../editors/extensions/stateIdentity/evalPayload.ts";
+import { identityField } from "../editors/extensions/stateIdentity/identityFieldExport.ts";
 
 // ---------------------------------------------------------------------------
 // Output assignment detection
@@ -121,19 +129,104 @@ function getSelectionRange(
   return { from: main.from, to: main.to, text: state.doc.sliceString(main.from, main.to) };
 }
 
-function getToplevelCode(state: EditorState): {
-  code: string;
-  moduleCode: string;
-  range: { from: number; to: number } | null;
-} {
+function getToplevelPayload(
+  state: EditorState,
+  view: EditorView | undefined,
+  source: EvalPayload["source"] = "toplevel",
+): { payload: EvalPayload; range: { from: number; to: number } | null } {
   const range = getTopLevelFormRange(state);
-  const slice = range
-    ? state.doc.sliceString(range.from, range.to)
+  // Only trust the tree-derived range if it is non-empty; otherwise fall
+  // back to top_level_string (the legacy behaviour).
+  const effectiveRange = range && range.to > range.from ? range : null;
+  const sliceFrom = effectiveRange?.from ?? 0;
+  const slice = effectiveRange
+    ? state.doc.sliceString(effectiveRange.from, effectiveRange.to)
     : (top_level_string(state) ?? "");
-  const moduleSlice = range
-    ? rewriteCodeSliceForModule(slice, range.from, range.to)
-    : slice;
-  return { code: slice, moduleCode: moduleSlice, range };
+  const payload = buildPayloadFromState(state, view, slice, sliceFrom, source);
+  return { payload, range: effectiveRange };
+}
+
+/**
+ * Build a unified visible-to-runtime payload from a code slice using the
+ * state-identity sidecar installed on the view. The payload's
+ * `runtimeCode` carries composed hidden identity injection and
+ * manual-control substitution; its `sourceMap` is consumed by
+ * {@link evalWasm} and the hardware path to remap diagnostics back to
+ * the visible source (VAL-ID-013..022).
+ *
+ * If the identity field is not installed on the view (e.g. read-only
+ * snippet editors), the payload degenerates to the legacy
+ * manual-control-only rewrite via {@link rewriteCodeSliceForModule}.
+ */
+function buildPayloadFromState(
+  state: EditorState,
+  view: EditorView | undefined,
+  visibleSlice: string,
+  sliceFrom: number,
+  source: EvalPayload["source"],
+): EvalPayload {
+  // Read the live identity map from the state-identity sidecar, if it
+  // is installed. The field reference comes from the production
+  // singleton (extensions.ts installs the same instance).
+  let identityMap = null;
+  if (view) {
+    try {
+      identityMap = view.state.field(identityField()).map;
+    } catch {
+      identityMap = null;
+    }
+  }
+  if (identityMap === null) {
+    try {
+      identityMap = state.field(identityField()).map;
+    } catch {
+      identityMap = null;
+    }
+  }
+
+  if (identityMap === null) {
+    // Identity sidecar not installed — degenerate to legacy behaviour.
+    const runtimeCode = rewriteCodeSliceForModule(
+      visibleSlice,
+      sliceFrom,
+      sliceFrom + visibleSlice.length,
+    );
+    return {
+      visibleSlice,
+      runtimeCode,
+      sourceMap: [
+        {
+          visible: { from: 0, to: visibleSlice.length },
+          runtime: { from: 0, to: runtimeCode.length },
+          generated: runtimeCode !== visibleSlice,
+        },
+      ],
+      sliceFrom,
+      source,
+    };
+  }
+
+  // Convert the global manual-control bindings to the payload-builder
+  // shape (document coordinates).
+  const manualBindings: ManualControlBinding[] = getAllManualControlBindings().map((b) => ({
+    stick: b.stick,
+    slot: b.slot,
+    from: b.from,
+    to: b.to,
+    value: b.value,
+    originalText: b.originalText,
+    lastSentAt: b.lastSentAt,
+    lastSentValue: b.lastSentValue,
+  }));
+
+  return buildEvalPayload({
+    visibleSlice,
+    sliceFrom,
+    identityMap,
+    state,
+    manualBindings,
+    source,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +272,13 @@ function evalWasm(
     docOffset?: number;
     /** Range in the document that this eval covers */
     range?: { from: number; to: number };
+    /**
+     * Source map from the unified payload builder. When provided,
+     * runtime-coordinate diagnostics are remapped back to visible-slice
+     * coordinates before being pushed to the editor (state-identity.md
+     * §7.5, §12.4; VAL-ID-017, VAL-ID-018, VAL-ID-019).
+     */
+    sourceMap?: EvalPayload["sourceMap"];
   },
 ): Promise<{ text: string; isError: boolean; pos: number }> {
   const wasmCode = opts.isImmediate ? code.slice(1) : code;
@@ -202,9 +302,21 @@ function evalWasm(
       const output = typeof result === "string" ? result : String(result ?? "");
       const trimmed = output.trim();
 
+      // Remap runtime-coordinate diagnostics back to visible-slice
+      // coordinates through the unified source map (state-identity.md
+      // §7.5, §12.4). When no source map is supplied (legacy paths or
+      // identity sidecar not installed), diagnostics pass through
+      // unchanged at runtime offsets.
+      const remappedDiagnostics: UseqDiagnostic[] = opts.sourceMap
+        ? remapDiagnostics(diagnostics, opts.sourceMap, docOffset) as UseqDiagnostic[]
+        : diagnostics;
+
       if (opts.view) {
-        if (diagnostics.length > 0) {
-          pushDiagnostics(opts.view, diagnostics, docOffset, rangeFrom, rangeTo);
+        if (remappedDiagnostics.length > 0) {
+          // `pushDiagnostics` adds `docOffset` to each diagnostic's
+          // start/end. We already incorporated the offset via
+          // `remapDiagnostics(..., docOffset)`, so pass 0 here.
+          pushDiagnostics(opts.view, remappedDiagnostics, 0, rangeFrom, rangeTo);
         } else {
           // Only clear diagnostics for the range we just eval'd successfully
           clearDiagnosticsForRange(opts.view, rangeFrom, rangeTo);
@@ -216,14 +328,14 @@ function evalWasm(
       }
 
       // Check if diagnostics indicate an error
-      const hasErrors = diagnostics.some(
+      const hasErrors = remappedDiagnostics.some(
         (d) => d.severity === "error",
       );
 
       // Show first error message inline instead of "{error}"
       const displayText =
-        hasErrors && diagnostics.length > 0
-          ? diagnostics[0].message
+        hasErrors && remappedDiagnostics.length > 0
+          ? remappedDiagnostics[0].message
           : trimmed;
       const isError = hasErrors || trimmed === "{error}";
 
@@ -296,12 +408,19 @@ function applyHardwareDiagnostics(
   docOffset: number,
   rangeFrom: number,
   rangeTo: number,
+  sourceMap?: EvalPayload["sourceMap"],
 ): void {
   if (!view) return;
   const diagnostics = (response as { diagnostics?: UseqDiagnostic[] } | null)
     ?.diagnostics;
   if (Array.isArray(diagnostics) && diagnostics.length > 0) {
-    pushDiagnostics(view, diagnostics, docOffset, rangeFrom, rangeTo);
+    // Remap hardware diagnostics through the same source map the WASM
+    // path uses so both targets anchor to visible ranges
+    // (state-identity.md §7.5; VAL-ID-017, VAL-ID-018).
+    const remapped: UseqDiagnostic[] = sourceMap
+      ? remapDiagnostics(diagnostics, sourceMap, docOffset) as UseqDiagnostic[]
+      : diagnostics;
+    pushDiagnostics(view, remapped, 0, rangeFrom, rangeTo);
   }
 }
 
@@ -341,8 +460,18 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
           return true;
         }
 
-        const rewritten = rewriteCodeSliceForModule(sel.text, sel.from, sel.to);
-        const code = "@" + rewritten;
+        // Unified payload builder: composes identity injection + manual
+        // control substitution through one source map (VAL-ID-013,
+        // VAL-ID-015, VAL-ID-016). The same runtimeCode reaches WASM
+        // and hardware; diagnostics are remapped through sourceMap.
+        const payload = buildPayloadFromState(
+          state,
+          view,
+          sel.text,
+          sel.from,
+          "expression",
+        );
+        const code = "@" + payload.runtimeCode;
         if (!code.trim()) return false;
 
         flashEvalHighlight(view, sel.from, sel.to);
@@ -355,6 +484,7 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
           view,
           docOffset: sel.from,
           range: { from: sel.from, to: sel.to },
+          sourceMap: payload.sourceMap,
         }).then((result) => {
           if (result.text) {
             dispatchInlineResult(view, result.text, sel.to, result.isError);
@@ -362,7 +492,14 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
         });
 
         sendTouSEQ(code).then((response) => {
-          applyHardwareDiagnostics(view, response, sel.from, sel.from, sel.to);
+          applyHardwareDiagnostics(
+            view,
+            response,
+            sel.from,
+            sel.from,
+            sel.to,
+            payload.sourceMap,
+          );
         });
         return true;
       }
@@ -423,10 +560,16 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
   const { view, state } = ctx;
   const startupFlags = getStartupFlagsSnapshot();
   const noModuleMode = startupFlags.noModuleMode;
-  const { code: rawCode, moduleCode: rawModuleCode, range } = getToplevelCode(state);
+  // Unified payload: composes identity injection + manual control through
+  // one source map (VAL-ID-013, VAL-ID-015). The same runtimeCode feeds
+  // both WASM and hardware paths; diagnostics are remapped through
+  // payload.sourceMap so visible, generated, and overlapping ranges
+  // anchor meaningfully (VAL-ID-017, VAL-ID-018).
+  const { payload, range } = getToplevelPayload(state, view, "toplevel");
+  const rawCode = payload.visibleSlice;
+  const rawRuntimeCode = payload.runtimeCode;
 
-  const code = prefix + rawCode;
-  const moduleCode = prefix + rawModuleCode;
+  const code = prefix + rawRuntimeCode;
   const isImmediate = code.startsWith("@");
 
   const hasView = view && typeof view.dispatch === "function";
@@ -468,6 +611,7 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
     view,
     docOffset: range?.from ?? 0,
     range: range ?? undefined,
+    sourceMap: payload.sourceMap,
   }).then((result) => {
       if (hasView && result.text) {
         dispatchInlineResult(view, result.text, evalPos, result.isError);
@@ -487,13 +631,14 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
   }
 
   if (!noModuleMode) {
-    sendTouSEQ(moduleCode).then((response) => {
+    sendTouSEQ(code).then((response) => {
       applyHardwareDiagnostics(
         hasView ? view : undefined,
         response,
         range?.from ?? 0,
         range?.from ?? 0,
         range?.to ?? state.doc.length,
+        payload.sourceMap,
       );
     });
   }
@@ -503,28 +648,38 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
 
 function evaluateSoft(ctx: EvalContext): boolean {
   const { view, state } = ctx;
-  const code = top_level_string(state) ?? "";
+  // Soft eval uses the top-level form at cursor (or top_level_string
+  // fallback) and reuses the unified payload so the same identity
+  // injection + manual-control composition applies (VAL-ID-016:
+  // every entry point produces equivalent payloads).
+  const range = getTopLevelFormRange(state);
+  const visibleSlice = range && range.to > range.from
+    ? state.doc.sliceString(range.from, range.to)
+    : (top_level_string(state) ?? "");
 
-  if (!code || !code.trim()) return false;
+  if (!visibleSlice || !visibleSlice.trim()) return false;
 
   // Per-form eval gate: block forms containing holes even for soft eval
   const hasView = view && typeof view.dispatch === "function";
   if (hasView) {
-    const holePositions = findHolePositions(code);
+    const holePositions = findHolePositions(visibleSlice);
     if (holePositions.length > 0) {
       // For soft eval, get the range for proper diagnostic positioning
-      const range = getTopLevelFormRange(state);
+      const holeRange = range ?? { from: 0, to: visibleSlice.length };
       if (range) {
-        gateFormWithHoles(view, code, range.from, range);
+        gateFormWithHoles(view, visibleSlice, range.from, holeRange);
       }
       return true;
     }
   }
 
-  const isImmediate = code.startsWith("@");
+  const sliceFrom = range?.from ?? 0;
+  const payload = buildPayloadFromState(state, view, visibleSlice, sliceFrom, "soft");
+
+  const isImmediate = visibleSlice.startsWith("@");
 
   // §4.4: a soft eval registers bindings on WASM only — mark them as previews.
-  const bindingKeys = bindingKeysInText(code);
+  const bindingKeys = bindingKeysInText(visibleSlice);
   if (bindingKeys.length > 0) {
     markBindingsSoftPreview(bindingKeys);
   }
@@ -538,7 +693,15 @@ function evaluateSoft(ctx: EvalContext): boolean {
 
   const evalPos = state.selection.main.from;
 
-  evalWasm(code, { isImmediate, noModuleMode: true, isPreview: true, view })
+  evalWasm(payload.runtimeCode, {
+    isImmediate,
+    noModuleMode: true,
+    isPreview: true,
+    view,
+    docOffset: sliceFrom,
+    range: range ?? undefined,
+    sourceMap: payload.sourceMap,
+  })
     .then((result) => {
       if (hasView && result.text) {
         dispatchInlineResult(view, result.text, evalPos, result.isError);
