@@ -19,12 +19,13 @@
 
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { history, undo } from "@codemirror/commands";
+import { history, undo, redo, isolateHistory } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 
 import {
   buildIdentityField,
+  identityExtensionsWithField,
   declareMoveEffect,
   markCutEffect,
   newPasteToken,
@@ -33,6 +34,7 @@ import {
 import { makeContinuitySource, entriesOf, mapsEqualByIdentity } from "./identityMapState.ts";
 import { defaultStatefulFormClassifier } from "./identityClassify.ts";
 import { deterministicIdGenerator } from "./identityGenerator.ts";
+import type { StateId } from "./identityTypes.ts";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -362,12 +364,300 @@ describe("VAL-ID-008: undo and redo restore exact identity", () => {
 
     // Undo then redo.
     undo(view);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { redo } = require("@codemirror/commands");
     redo(view);
 
     // Post-redo map equals the post-edit map exactly.
     expect(mapsEqualByIdentity(afterEditMap, view.state.field(field).map)).toBe(true);
+
+    view.destroy();
+  });
+});
+
+// VAL-ID-008 — adversarial history-restoration cases.
+//
+// These tests prove that identity is *restored* through history, not
+// deterministically regenerated. They use adversarial ID generators
+// whose next-token output depends on how many times the generator has
+// been invoked, so a regenerated ID after delete/undo is guaranteed to
+// differ from the original. A passing assertion therefore proves the
+// implementation is reading the history snapshot rather than minting a
+// fresh ID that happens to match.
+//
+// Covered scenarios:
+//   - full-form delete then undo restores the exact original identity
+//   - full-form delete, undo, then redo re-drops the identity exactly
+//   - add a form, undo the add, then redo restores the exact added
+//     identity (not a regenerated one)
+//   - repeated undo/redo cycles keep restoring the exact snapshots
+//   - independent recreation still forks even when undo/redo is wired
+//     (already covered in VAL-ID-023; here we re-assert in a history
+//     context to prove the snapshot path does not subvert forking)
+//
+// Bug: Ergo `fe2dd786` — CodeMirror's history plugin does not replay
+// the original transaction; it dispatches an inverted transaction whose
+// StateField `update` runs the forward reconciler against a prior map
+// that no longer contains the entry, producing a forked ID. The fix
+// uses `invertedEffects` to thread a history-aware snapshot effect.
+
+/**
+ * Adversarial ID generator whose output is deterministic and depends on
+ * call count. If the implementation regenerates IDs instead of restoring
+ * them from a snapshot, the second mint emits `id-probe-2` rather than
+ * the original `id-probe-1`, so equality assertions fail loudly.
+ */
+function adversarialIdGenerator(prefix: string = "probe"): { next: () => StateId; count: () => number } {
+  let n = 0;
+  return {
+    next() {
+      n += 1;
+      return `id-${prefix}-${n}` as StateId;
+    },
+    count() {
+      return n;
+    },
+  };
+}
+
+describe("VAL-ID-008: full-form delete/undo restores exact identity (adversarial)", () => {
+  it("deleting a full stateful form then undoing restores its exact original ID and token", () => {
+    const ids = adversarialIdGenerator();
+    const config: IdentityConfig = {
+      ids,
+      classifier: defaultStatefulFormClassifier,
+      continuity: makeContinuitySource(0),
+    };
+    const { field, extensions: idExt } = identityExtensionsWithField(config);
+    const view = new EditorView({
+      doc: '(synth "osc/sine" :freq 440)\n',
+      extensions: [history(), ...clojureExtensions, ...idExt],
+    });
+
+    const beforeMap = view.state.field(field).map;
+    const beforeEntry = entriesOf(beforeMap)[0]!;
+    const beforeId = beforeEntry.id;
+    const beforeToken = beforeEntry.continuityToken;
+    // Capture the mint count after create. A passing assertion must not
+    // depend on this exact value because CodeMirror's transactionFilter
+    // mechanism (used by the clojure formatter) may legitimately cause
+    // a transient duplicate state computation that we discard.
+    const mintsBeforeDelete = ids.count();
+
+    const doc = view.state.doc.toString();
+    const original = '(synth "osc/sine" :freq 440)';
+    const start = doc.indexOf(original);
+    // Delete the entire synth form and its trailing newline.
+    view.dispatch({ changes: { from: start, to: start + original.length + 1 } });
+    // After delete, no synth entry remains.
+    expect(entriesOf(view.state.field(field).map)).toHaveLength(0);
+
+    // Undo: must restore the exact original identity, NOT regenerate.
+    undo(view);
+    const restored = entriesOf(view.state.field(field).map);
+    expect(view.state.doc.toString()).toBe('(synth "osc/sine" :freq 440)\n');
+    expect(restored).toHaveLength(1);
+    expect(restored[0]!.id).toBe(beforeId);
+    expect(restored[0]!.continuityToken).toBe(beforeToken);
+    // The ID generator must NOT have been called between delete and undo
+    // — that proves we restored the snapshot rather than regenerated. The
+    // mint count is unchanged from just before the delete.
+    expect(ids.count()).toBe(mintsBeforeDelete);
+    expect(mapsEqualByIdentity(beforeMap, view.state.field(field).map)).toBe(true);
+
+    view.destroy();
+  });
+
+  it("delete, undo, redo re-drops the form and the post-delete (empty) map is restored exactly", () => {
+    const ids = adversarialIdGenerator();
+    const config: IdentityConfig = {
+      ids,
+      classifier: defaultStatefulFormClassifier,
+      continuity: makeContinuitySource(0),
+    };
+    const { field, extensions: idExt } = identityExtensionsWithField(config);
+    const view = new EditorView({
+      doc: '(synth "osc/sine" :freq 440)\n',
+      extensions: [history(), ...clojureExtensions, ...idExt],
+    });
+
+    const original = '(synth "osc/sine" :freq 440)';
+    const start = view.state.doc.toString().indexOf(original);
+    view.dispatch({ changes: { from: start, to: start + original.length + 1 } });
+    const afterDeleteMap = view.state.field(field).map;
+    expect(entriesOf(afterDeleteMap)).toHaveLength(0);
+    const mintsAfterDelete = ids.count();
+
+    // Undo then redo.
+    undo(view);
+    redo(view);
+
+    // After redo, the document is back to empty and the map matches the
+    // post-delete (empty) snapshot exactly.
+    expect(view.state.doc.toString()).toBe("");
+    expect(mapsEqualByIdentity(afterDeleteMap, view.state.field(field).map)).toBe(true);
+    // No new IDs minted by the undo+redo path.
+    expect(ids.count()).toBe(mintsAfterDelete);
+
+    view.destroy();
+  });
+
+  it("repeated delete/undo cycles keep restoring the exact original snapshot", () => {
+    const ids = adversarialIdGenerator();
+    const config: IdentityConfig = {
+      ids,
+      classifier: defaultStatefulFormClassifier,
+      continuity: makeContinuitySource(0),
+    };
+    const { field, extensions: idExt } = identityExtensionsWithField(config);
+    const view = new EditorView({
+      doc: '(synth "osc/sine" :freq 440)\n',
+      extensions: [history(), ...clojureExtensions, ...idExt],
+    });
+
+    const beforeId = entriesOf(view.state.field(field).map)[0]!.id;
+    const original = '(synth "osc/sine" :freq 440)';
+    const mintsBeforeCycles = ids.count();
+
+    for (let i = 0; i < 3; i++) {
+      const doc = view.state.doc.toString();
+      const start = doc.indexOf(original);
+      view.dispatch({ changes: { from: start, to: start + original.length + 1 } });
+      expect(entriesOf(view.state.field(field).map)).toHaveLength(0);
+      undo(view);
+      const restored = entriesOf(view.state.field(field).map);
+      expect(restored).toHaveLength(1);
+      expect(restored[0]!.id).toBe(beforeId);
+    }
+    // No matter how many cycles, only the create-time mints remain; the
+    // undo path never regenerates.
+    expect(ids.count()).toBe(mintsBeforeCycles);
+
+    view.destroy();
+  });
+});
+
+describe("VAL-ID-008: add/undo/redo restores exact identity (adversarial)", () => {
+  it("adding a form then undoing and redoing restores the exact added identity", () => {
+    const ids = adversarialIdGenerator();
+    const config: IdentityConfig = {
+      ids,
+      classifier: defaultStatefulFormClassifier,
+      continuity: makeContinuitySource(0),
+    };
+    const { field, extensions: idExt } = identityExtensionsWithField(config);
+    const view = new EditorView({
+      doc: '(a1 1)\n',
+      extensions: [history(), ...clojureExtensions, ...idExt],
+    });
+
+    // Add a synth form below.
+    view.dispatch({
+      changes: { from: view.state.doc.length, insert: '(synth "osc/sine" :freq 440)\n' },
+    });
+    const afterAddMap = view.state.field(field).map;
+    const addedEntry = entriesOf(afterAddMap).find((e) => e.kind === "synth")!;
+    const mintsAfterAdd = ids.count();
+
+    // Undo the addition: form disappears.
+    undo(view);
+    expect(view.state.doc.toString()).toBe("(a1 1)\n");
+    const synthAfterUndo = entriesOf(view.state.field(field).map).filter((e) => e.kind === "synth");
+    expect(synthAfterUndo).toHaveLength(0);
+
+    // Redo the addition: must restore the exact added ID and token, not
+    // regenerate (which would have produced a brand-new adversarial id).
+    redo(view);
+    const restored = entriesOf(view.state.field(field).map).filter((e) => e.kind === "synth");
+    expect(restored).toHaveLength(1);
+    expect(restored[0]!.id).toBe(addedEntry.id);
+    expect(restored[0]!.continuityToken).toBe(addedEntry.continuityToken);
+    // The ID generator must NOT have minted again on redo.
+    expect(ids.count()).toBe(mintsAfterAdd);
+
+    view.destroy();
+  });
+
+  it("repeated add/undo/redo cycles keep restoring the exact added snapshot", () => {
+    const ids = adversarialIdGenerator();
+    const config: IdentityConfig = {
+      ids,
+      classifier: defaultStatefulFormClassifier,
+      continuity: makeContinuitySource(0),
+    };
+    const { field, extensions: idExt } = identityExtensionsWithField(config);
+    const view = new EditorView({
+      doc: '(a1 1)\n',
+      extensions: [history(), ...clojureExtensions, ...idExt],
+    });
+
+    view.dispatch({
+      changes: { from: view.state.doc.length, insert: '(synth "osc/sine" :freq 440)\n' },
+    });
+    const addedId = entriesOf(view.state.field(field).map).find((e) => e.kind === "synth")!.id;
+    const mintsAfterAdd = ids.count();
+
+    for (let i = 0; i < 3; i++) {
+      undo(view);
+      const synthAfterUndo = entriesOf(view.state.field(field).map).filter((e) => e.kind === "synth");
+      expect(synthAfterUndo).toHaveLength(0);
+      redo(view);
+      const restored = entriesOf(view.state.field(field).map).filter((e) => e.kind === "synth");
+      expect(restored).toHaveLength(1);
+      expect(restored[0]!.id).toBe(addedId);
+    }
+    expect(ids.count()).toBe(mintsAfterAdd);
+
+    view.destroy();
+  });
+});
+
+describe("VAL-ID-008 + VAL-ID-023: independent recreation still forks with history wired", () => {
+  it("deleting a form, then independently recreating equivalent source, forks identity", () => {
+    const ids = adversarialIdGenerator();
+    const config: IdentityConfig = {
+      ids,
+      classifier: defaultStatefulFormClassifier,
+      continuity: makeContinuitySource(0),
+    };
+    const { field, extensions: idExt } = identityExtensionsWithField(config);
+    const view = new EditorView({
+      doc: '(synth "osc/sine" :freq 440)\n',
+      extensions: [history(), ...clojureExtensions, ...idExt],
+    });
+    const initialId = entriesOf(view.state.field(field).map)[0]!.id;
+    const mintsAfterCreate = ids.count();
+
+    const original = '(synth "osc/sine" :freq 440)';
+    const start = view.state.doc.toString().indexOf(original);
+    // Delete the form (no markCut → no recognised move on the next insert).
+    // Isolate history so the delete is its own undo entry, distinct from
+    // the independent re-type below. This models the user's intent: the
+    // delete is one logical action, the re-type is a separate action.
+    view.dispatch({
+      changes: { from: start, to: start + original.length + 1 },
+      annotations: isolateHistory.of("full"),
+    });
+    expect(entriesOf(view.state.field(field).map)).toHaveLength(0);
+
+    // Independently re-type the same source as a NEW history entry.
+    view.dispatch({
+      changes: { from: 0, insert: original + "\n" },
+      annotations: isolateHistory.of("full"),
+    });
+
+    const recreated = entriesOf(view.state.field(field).map);
+    expect(recreated).toHaveLength(1);
+    expect(recreated[0]!.id).not.toBe(initialId);
+    // A fork must have minted at least one new ID beyond the create.
+    expect(ids.count()).toBeGreaterThan(mintsAfterCreate);
+
+    // Undoing the re-type restores the post-delete (empty) snapshot.
+    undo(view);
+    expect(entriesOf(view.state.field(field).map)).toHaveLength(0);
+    // Undoing the delete restores the original synth with its original ID.
+    undo(view);
+    const restored = entriesOf(view.state.field(field).map);
+    expect(restored).toHaveLength(1);
+    expect(restored[0]!.id).toBe(initialId);
 
     view.destroy();
   });

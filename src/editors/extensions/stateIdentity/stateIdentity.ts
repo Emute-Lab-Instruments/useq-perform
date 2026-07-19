@@ -20,7 +20,7 @@
 import { identityExtensions, buildIdentityField, type IdentityConfig } from "./identityField.ts";
 import { createDefaultIdentityConfig } from "./createDefaultIdentityConfig.ts";
 
-export { identityExtensions, buildIdentityField } from "./identityField.ts";
+export { identityExtensions, identityExtensionsWithField, buildIdentityField } from "./identityField.ts";
 export type { IdentityConfig, IdentityFieldValue, IdentityLogEvent } from "./identityField.ts";
 export {
   declareMoveEffect,

@@ -32,6 +32,13 @@
 import { StateEffect, StateField, type Transaction } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import type { EditorState } from "@codemirror/state";
+// `invertedEffects` is the official CodeMirror mechanism for threading
+// history-aware sidecar state through undo/redo (VAL-ID-008). The facet
+// lives in the `commands` package alongside `history()`. Importing it
+// here does NOT couple this extension to the editor's command surface:
+// `invertedEffects` is a passive facet that only fires when `history()`
+// is also installed, and is a no-op otherwise.
+import { invertedEffects } from "@codemirror/commands";
 
 import type { IdGenerator } from "./identityGenerator.ts";
 import type { StatefulFormClassifier } from "./identityClassify.ts";
@@ -295,22 +302,36 @@ export function buildIdentityField(config: IdentityConfig): StateField<IdentityF
     },
 
     update(value: IdentityFieldValue, tr: Transaction): IdentityFieldValue {
-      // 1. Snapshot restore: explicit effect wins outright.
+      // 1. Snapshot restore: explicit effect wins outright. When the
+      //    history plugin replays a merged event (multiple transactions
+      //    composed into one history entry), it concatenates the
+      //    per-transaction snapshots in reverse-chronological order:
+      //    the FIRST effect in the array is the snapshot of the most
+      //    recent transaction's start state, and the LAST effect is the
+      //    snapshot of the earliest transaction's start state. Undo
+      //    restores the document to the earliest state, so the LAST
+      //    snapshot is the one that matches the final document
+      //    coordinates. We therefore pick the last snapshot in the
+      //    transaction's effects (VAL-ID-008).
+      let snapshot: IdentityMap | undefined;
       for (const e of tr.effects) {
         if (e.is(setIdentitySnapshotEffect)) {
-          log({ kind: "restore" });
-          const next = { map: e.value, continuity: value.continuity };
-          if (persistence !== undefined) {
-            try {
-              persistence.save(
-                buildIdentitySnapshot(next.map, tr.state.doc.toString()),
-              );
-            } catch {
-              // ignore
-            }
-          }
-          return next;
+          snapshot = e.value;
         }
+      }
+      if (snapshot !== undefined) {
+        log({ kind: "restore" });
+        const next = { map: snapshot, continuity: value.continuity };
+        if (persistence !== undefined) {
+          try {
+            persistence.save(
+              buildIdentitySnapshot(next.map, tr.state.doc.toString()),
+            );
+          } catch {
+            // ignore
+          }
+        }
+        return next;
       }
 
       // 2. Apply cut stamps first, so reconciliation can see them.
@@ -370,9 +391,67 @@ export function buildIdentityField(config: IdentityConfig): StateField<IdentityF
 /**
  * Build the identity extension set. Returns an array so the caller can
  * combine it with other extensions idiomatically.
+ *
+ * The returned set installs:
+ *
+ *   1. The identity {@link StateField} itself.
+ *   2. An `invertedEffects` facet registration that captures the field's
+ *      value at `tr.startState` for every history-stored transaction.
+ *      When CodeMirror's history plugin later inverts that transaction
+ *      (on undo or redo), the captured snapshot is replayed as a
+ *      {@link setIdentitySnapshotEffect}, and the field's `update`
+ *      restores the exact prior mapping.
+ *
+ *      This is the official CodeMirror mechanism for threading
+ *      history-aware sidecar state through undo/redo (see
+ *      `@codemirror/commands` `invertedEffects`). Without it, the field
+ *      sees an undo transaction as a fresh forward edit whose prior
+ *      map is the post-edit map, so every "restored" form receives a
+ *      freshly-minted forked ID instead of the exact original
+ *      (VAL-ID-008, Ergo bug fe2dd786).
  */
 export function identityExtensions(config: IdentityConfig): Extension[] {
-  return [buildIdentityField(config)];
+  return identityExtensionsWithField(config).extensions;
+}
+
+/**
+ * Same as {@link identityExtensions} but also returns the built
+ * {@link StateField} instance. CodeMirror compares StateFields by
+ * reference, so callers that want to read the field back from
+ * `view.state.field(field)` must use the SAME reference that was
+ * installed in the extension set. This helper makes that ergonomic
+ * for tests and for production wiring that needs to share the field
+ * reference with downstream consumers.
+ */
+export function identityExtensionsWithField(config: IdentityConfig): {
+  readonly field: StateField<IdentityFieldValue>;
+  readonly extensions: Extension[];
+} {
+  const field = buildIdentityField(config);
+  const extensions: Extension[] = [
+    field,
+    // Register an invertedEffects callback that captures the identity
+    // map BEFORE every history-stored transaction. The history plugin
+    // replays this snapshot as an effect when the transaction is later
+    // inverted by undo or redo, so the field restores the exact prior
+    // mapping instead of regenerating IDs through the forward
+    // reconciler (VAL-ID-008).
+    invertedEffects.of((tr: Transaction): readonly StateEffect<unknown>[] => {
+      // Read the field value off the start state. Use `field(field, false)`
+      // so we tolerate (very unusual) configs where the field is not yet
+      // installed on the start state; in that case there is nothing to
+      // capture.
+      let prior: IdentityFieldValue | undefined;
+      try {
+        prior = tr.startState.field(field, false);
+      } catch {
+        prior = undefined;
+      }
+      if (prior === undefined) return [];
+      return [setIdentitySnapshotEffect.of(prior.map) as StateEffect<unknown>];
+    }),
+  ];
+  return { field, extensions };
 }
 
 /**
