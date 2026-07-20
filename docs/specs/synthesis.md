@@ -26,7 +26,23 @@ layer: behavioural
 
 Accepted (v1), hardened by adversarial review 2026-07. Decisions fixed
 in the July 2026 design pass; source-file references will be added as
-the implementation lands. Known required amendments to other specs:
+the implementation lands.
+
+Source references (M2.1, 2026-07-20): the host-owned zone arena of §2.3
+and the resource bounds of §3.5 are implemented by
+`src/audio/workletZoneAllocator.ts`; the multi-instance topological
+block execution, port-offset wiring, and silence-zone retirement
+semantics of §3.1 by `src/audio/workletCore.ts` (worklet shell:
+`src/audio/synthesisWorklet.ts`); eval-commit fan-out and the
+`MAX_SYNTH_NODES` commit-time check by
+`src/audio/engineCommitCoordinator.ts` + `src/audio/synthesisService.ts`.
+Until the compiler-derived control channel table lands (epic M2.2),
+per-node block-rate controls use an interim fixed window
+(`INTERIM_BLOCK_RATE_CHANNELS_PER_NODE` in
+`src/contracts/synthesisControlAbi.ts`) — an internal transport detail
+under §4.8, not a contract change.
+
+Known required amendments to other specs:
 [runtime-modes.md](runtime-modes.md) §1.5.2 (sampling-degradation carve-out,
 §4.9 here), [MAIN.md](MAIN.md) §2.10 (WASM crash recovery while WASM is the
 audio control producer, §5.5 here).

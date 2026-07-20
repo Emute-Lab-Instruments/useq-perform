@@ -84,6 +84,7 @@ import {
   ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS,
   CONTROL_LOOKAHEAD_BLOCKS,
   DEFAULT_RENDER_QUANTUM_FRAMES,
+  MAX_SYNTH_NODES,
   PRODUCER_FIRST_PUBLISH_DEADLINE_MS,
   attachSynthesisControlView,
   createSynthesisControlBuffer,
@@ -1534,6 +1535,20 @@ function createCapableService(
       publishTelemetry();
       return;
     }
+    if (evt.type === "graph-diagnostic") {
+      // Host resource-limit / capability diagnostic (synthesis.md
+      // §3.5, epic M2.1): zone exhaustion, node limit, or a wiring
+      // capability gap. The graph keeps running; the diagnostic is
+      // surfaced on the console like a compile-style warning.
+      const diag = evt as { code?: unknown; identity?: unknown };
+      const code = typeof diag.code === "string" ? diag.code : "unknown";
+      const identity = typeof diag.identity === "string" ? diag.identity : "?";
+      postConsoleMessage(
+        `Synthesis engine diagnostic (${code}) for node ${identity}`,
+        "warn",
+      );
+      return;
+    }
 
     // Unknown event shapes are silently ignored so a forward-compatible
     // worklet cannot crash the main thread.
@@ -1950,6 +1965,14 @@ function createCapableService(
         );
       }
     }
+    // Resource limit (synthesis.md §3.5): checked at eval-commit with a
+    // compile-style diagnostic on breach; the eval is rejected before
+    // any worklet delta or producer arm is issued — never a glitch.
+    if (payload.declarations.length > MAX_SYNTH_NODES) {
+      throw new SynthesisServiceError(
+        `synth program declares ${payload.declarations.length} nodes, exceeding MAX_SYNTH_NODES (${MAX_SYNTH_NODES})`,
+      );
+    }
 
     // Steps 4–6: build the commit plan (diff, epoch, prefills, deltas).
     const prior = Array.from(activeDeclarations.values());
@@ -1967,13 +1990,18 @@ function createCapableService(
           // The worklet core allocates the state zone between quanta
           // when statePointer/stateBytes are zero. The service does
           // not preallocate (the host-owned shared memory lives inside
-          // the worklet global scope).
+          // the worklet global scope). The M2.1 graph fields (control
+          // window, port counts, audio-input wiring) pass through to
+          // the worklet unchanged.
           workletNode.port.postMessage({
             type: "instantiate",
             identity: delta.identity,
             prefill: delta.prefill,
             statePointer: 0,
             stateBytes: 0,
+            controlChannelBase: delta.controlChannelBase,
+            audioOutputs: delta.audioOutputs,
+            audioInputs: delta.audioInputs,
           });
         } else {
           // retire / update pass through unchanged.

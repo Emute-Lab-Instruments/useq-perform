@@ -50,6 +50,7 @@ import type {
   SynthDeclarationArtefact,
   SynthControlChannelArtefact,
 } from "../contracts/runtimeTypes";
+import { INTERIM_BLOCK_RATE_CHANNELS_PER_NODE } from "../contracts/synthesisControlAbi";
 import { findNodeDefDescriptor } from "../contracts/nodeDefRegistry";
 import type {
   WorkletIdentityTuple,
@@ -305,6 +306,43 @@ function buildPrefillArray(
 }
 
 // ---------------------------------------------------------------------------
+// Control-channel layout (interim, synthesis epic M2.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-commit control/port layout derived from the incoming payload.
+ * Until the compiler-derived channel table lands (M2.2), each
+ * declaration receives a fixed window of
+ * `INTERIM_BLOCK_RATE_CHANNELS_PER_NODE` block-rate channels assigned
+ * sequentially in declaration order, plus the artefact's audio port
+ * counts. Update-in-place deltas carry the (possibly re-based) window
+ * so a reordering commit keeps every instance reading its own controls.
+ */
+export interface CommitControlLayout {
+  /** Identity → first block-rate channel index. */
+  readonly channelBases: ReadonlyMap<string, number>;
+  /** Identity → audio output port count from the artefact. */
+  readonly audioOutputs: ReadonlyMap<string, number>;
+}
+
+/**
+ * Derive the interim control-channel layout from the incoming
+ * declarations (declaration order is the payload's order — stable
+ * across the plan and the producer arm for one commit).
+ */
+export function buildCommitControlLayout(
+  declarations: readonly SynthDeclarationArtefact[],
+): CommitControlLayout {
+  const channelBases = new Map<string, number>();
+  const audioOutputs = new Map<string, number>();
+  declarations.forEach((decl, index) => {
+    channelBases.set(decl.identity, index * INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
+    audioOutputs.set(decl.identity, decl.audio_outputs);
+  });
+  return { channelBases, audioOutputs };
+}
+
+// ---------------------------------------------------------------------------
 // Worklet delta construction
 // ---------------------------------------------------------------------------
 
@@ -328,6 +366,7 @@ export function buildWorkletDeltasFromDiff(
   diff: GraphDiff,
   epoch: number,
   prefills: Map<string, Map<string, number>>,
+  layout?: CommitControlLayout,
 ): WorkletDeltaMessage[] {
   const deltas: WorkletDeltaMessage[] = [];
 
@@ -346,7 +385,8 @@ export function buildWorkletDeltasFromDiff(
     deltas.push(message);
   }
 
-  // 2. Instantiate messages.
+  // 2. Instantiate messages (with the interim control window + port
+  //    counts, synthesis epic M2.1).
   for (const added of diff.added) {
     const identity: WorkletIdentityTuple = {
       identity: added.identity,
@@ -358,11 +398,15 @@ export function buildWorkletDeltasFromDiff(
       type: "instantiate",
       identity,
       prefill: buildPrefillArray(prefills.get(added.identity)),
+      controlChannelBase: layout?.channelBases.get(added.identity),
+      audioOutputs: layout?.audioOutputs.get(added.identity),
     };
     deltas.push(message);
   }
 
   // 3. Update messages (same def/version → preserve DSP instance/phase).
+  //    A reordering commit moves an instance's channel window, so the
+  //    (re-based) window travels with the update.
   for (const updated of diff.updatedInPlace) {
     const identity: WorkletIdentityTuple = {
       identity: updated.identity,
@@ -374,6 +418,7 @@ export function buildWorkletDeltasFromDiff(
       type: "update",
       identity,
       prefill: buildPrefillArray(prefills.get(updated.identity)),
+      controlChannelBase: layout?.channelBases.get(updated.identity),
     };
     deltas.push(message);
   }
@@ -427,6 +472,7 @@ export function buildEngineCommitPlan(
     incoming.controls,
   );
   const epoch = allocator.next();
-  const workletDeltas = buildWorkletDeltasFromDiff(diff, epoch, prefills);
+  const layout = buildCommitControlLayout(incoming.declarations);
+  const workletDeltas = buildWorkletDeltasFromDiff(diff, epoch, prefills, layout);
   return { diff, epoch, prefills, workletDeltas };
 }

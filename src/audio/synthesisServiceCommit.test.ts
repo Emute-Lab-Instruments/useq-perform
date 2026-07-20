@@ -19,6 +19,10 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 import {
   resetEngineStateStoreForTests,
 } from "../contracts/synthesisChannels";
+import {
+  INTERIM_BLOCK_RATE_CHANNELS_PER_NODE,
+  MAX_SYNTH_NODES,
+} from "../contracts/synthesisControlAbi";
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
 import {
   createSynthesisService,
@@ -629,3 +633,80 @@ describe("synthesisService.commitSynthArtifacts — dispose safety", () => {
 });
 
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Multi-node commits (synthesis epic M2.1, ergo 9a9370af)
+// ---------------------------------------------------------------------------
+
+describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.1)", () => {
+  beforeEach(() => {
+    resetEngineStateStoreForTests();
+  });
+
+  it("posts one instantiate per declaration with sequential control windows", async () => {
+    const bundle = buildBundle();
+    const service = createSynthesisService(bundle.options);
+    await resumeService(service);
+
+    const result = service.commitSynthArtifacts(
+      buildPayload(1, [oscSineDeclaration("lead"), oscSineDeclaration("bass")]),
+      false,
+    );
+    expect(result.outcome).toBe("committed");
+
+    const instantiates = bundle.worklet.postedMessages.filter(
+      (m) => (m as { type: string }).type === "instantiate",
+    ) as Array<{
+      identity: { identity: string };
+      controlChannelBase?: number;
+      audioOutputs?: number;
+    }>;
+    expect(instantiates).toHaveLength(2);
+    const lead = instantiates.find((m) => m.identity.identity === "lead");
+    const bass = instantiates.find((m) => m.identity.identity === "bass");
+    expect(lead?.controlChannelBase).toBe(0);
+    expect(bass?.controlChannelBase).toBe(INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
+    expect(lead?.audioOutputs).toBe(1);
+    expect(bass?.audioOutputs).toBe(1);
+
+    await service.dispose();
+  });
+
+  it("rejects a commit exceeding MAX_SYNTH_NODES with a compile-style diagnostic", async () => {
+    const bundle = buildBundle();
+    const service = createSynthesisService(bundle.options);
+    await resumeService(service);
+
+    const declarations = Array.from({ length: MAX_SYNTH_NODES + 1 }, (_, i) =>
+      oscSineDeclaration(`node-${i}`),
+    );
+    expect(() =>
+      service.commitSynthArtifacts(buildPayload(1, declarations), false),
+    ).toThrow(/MAX_SYNTH_NODES|64/);
+
+    // The breach never reached the worklet: no instantiate was posted.
+    const instantiates = bundle.worklet.postedMessages.filter(
+      (m) => (m as { type: string }).type === "instantiate",
+    );
+    expect(instantiates).toHaveLength(0);
+
+    await service.dispose();
+  });
+
+  it("accepts a commit at exactly MAX_SYNTH_NODES declarations", async () => {
+    const bundle = buildBundle();
+    const service = createSynthesisService(bundle.options);
+    await resumeService(service);
+
+    const declarations = Array.from({ length: MAX_SYNTH_NODES }, (_, i) =>
+      oscSineDeclaration(`node-${i}`),
+    );
+    const result = service.commitSynthArtifacts(
+      buildPayload(1, declarations),
+      false,
+    );
+    expect(result.outcome).toBe("committed");
+
+    await service.dispose();
+  });
+});

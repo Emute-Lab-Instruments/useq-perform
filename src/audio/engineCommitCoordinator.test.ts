@@ -19,12 +19,14 @@ import { describe, expect, it, beforeEach } from "vitest";
 
 import {
   allocateEpoch,
+  buildEngineCommitPlan,
   buildGraphDiff,
   buildWorkletDeltasFromDiff,
   createEpochAllocator,
   resolvePrefillsForDeclarations,
   type ActiveDeclaration,
 } from "./engineCommitCoordinator";
+import { INTERIM_BLOCK_RATE_CHANNELS_PER_NODE } from "../contracts/synthesisControlAbi";
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
 import type {
   SynthArtifactsPayload,
@@ -303,5 +305,74 @@ describe("engineCommitCoordinator — failed eval no-op (VAL-ENGINE-015)", () =>
     expect(before).toBe(0);
     allocator.next();
     expect(allocator.lastIssued()).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Multi-node delta fan-out (synthesis epic M2.1, ergo 9a9370af)
+// ---------------------------------------------------------------------------
+
+describe("engineCommitCoordinator — multi-node deltas (M2.1)", () => {
+  it("assigns sequential controlChannelBase values in declaration order", () => {
+    const payload = buildPayload(1, [
+      oscSineDeclaration("id-a"),
+      oscSineDeclaration("id-b"),
+      oscSineDeclaration("id-c"),
+    ]);
+    const plan = buildEngineCommitPlan([], payload, createEpochAllocator());
+    const instantiates = plan.workletDeltas.filter(
+      (d): d is Extract<typeof d, { type: "instantiate" }> =>
+        d.type === "instantiate",
+    );
+    expect(instantiates).toHaveLength(3);
+    const baseFor = (identity: string) =>
+      instantiates.find((d) => d.identity.identity === identity)?.controlChannelBase;
+    expect(baseFor("id-a")).toBe(0);
+    expect(baseFor("id-b")).toBe(INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
+    expect(baseFor("id-c")).toBe(2 * INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
+  });
+
+  it("carries the artefact's audio port counts on instantiate deltas", () => {
+    const decl = { ...oscSineDeclaration("id-a"), audio_outputs: 2 };
+    const payload = buildPayload(1, [decl]);
+    const plan = buildEngineCommitPlan([], payload, createEpochAllocator());
+    const inst = plan.workletDeltas.find((d) => d.type === "instantiate");
+    expect(inst).toBeDefined();
+    expect((inst as { audioOutputs?: number }).audioOutputs).toBe(2);
+  });
+
+  it("re-bases update-in-place deltas when declaration order changes", () => {
+    const prior: ActiveDeclaration[] = [
+      { identity: "id-a", def: "osc/sine", version: 1 },
+      { identity: "id-b", def: "osc/sine", version: 1 },
+    ];
+    // id-b now comes first: its channel window moves to base 0.
+    const payload = buildPayload(2, [
+      oscSineDeclaration("id-b"),
+      oscSineDeclaration("id-a"),
+    ]);
+    const plan = buildEngineCommitPlan(prior, payload, createEpochAllocator());
+    const updates = plan.workletDeltas.filter(
+      (d): d is Extract<typeof d, { type: "update" }> => d.type === "update",
+    );
+    expect(updates).toHaveLength(2);
+    const baseFor = (identity: string) =>
+      updates.find((d) => d.identity.identity === identity)?.controlChannelBase;
+    expect(baseFor("id-b")).toBe(0);
+    expect(baseFor("id-a")).toBe(INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
+  });
+
+  it("fans out a full multi-declaration payload (no single-node assumption)", () => {
+    const prior: ActiveDeclaration[] = [
+      { identity: "id-old", def: "osc/sine", version: 1 },
+    ];
+    const payload = buildPayload(3, [
+      oscSineDeclaration("id-a"),
+      oscSineDeclaration("id-b"),
+    ]);
+    const plan = buildEngineCommitPlan(prior, payload, createEpochAllocator());
+    const kinds = plan.workletDeltas.map((d) => d.type);
+    // Retire the outgoing identity first, then instantiate both new ones.
+    expect(kinds).toEqual(["retire", "instantiate", "instantiate"]);
   });
 });
