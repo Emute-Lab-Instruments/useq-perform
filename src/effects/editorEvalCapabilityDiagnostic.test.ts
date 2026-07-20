@@ -124,6 +124,46 @@ vi.mock("../lib/manualControlState.ts", () => ({
   getAllManualControlBindings: () => [],
   mapManualControlBindingsThroughChanges: vi.fn(),
 }));
+/**
+ * When bootstrap detects that audio is incapable, the synthesis service
+ * is NEVER constructed (`bootstrap.ts` §2c gates construction on
+ * `audioCapable === true`). The capability diagnostic must still appear
+ * in that degraded profile (VAL-HOST-008). The eval pipeline falls back
+ * to the bootstrap `getAudioCapabilitySnapshot()` when no service is
+ * registered. These tests exercise that fallback path: the active
+ * service is `null` AND the bootstrap probe reports incapable.
+ */
+const mockBootstrapCapabilitiesIncapable = vi.hoisted(() => ({
+  schemaVersion: 1,
+  crossOriginIsolated: false,
+  sharedArrayBufferAvailable: false,
+  audioWorkletAvailable: true,
+  workerAvailable: true,
+  sharedWebAssemblyMemoryAvailable: true,
+  audioCapable: false,
+  reasons: [
+    "Cross-origin isolation is unavailable.",
+    "SharedArrayBuffer is unavailable.",
+  ],
+  capturedAt: 0,
+}));
+
+const mockBootstrapCapabilitiesCapable = vi.hoisted(() => ({
+  schemaVersion: 1,
+  crossOriginIsolated: true,
+  sharedArrayBufferAvailable: true,
+  audioWorkletAvailable: true,
+  workerAvailable: true,
+  sharedWebAssemblyMemoryAvailable: true,
+  audioCapable: true,
+  reasons: [],
+  capturedAt: 0,
+}));
+
+const mockGetAudioCapabilitySnapshot = vi.hoisted(() =>
+  vi.fn((): typeof mockBootstrapCapabilitiesIncapable | null => null),
+);
+
 vi.mock("../runtime/startupContext.ts", () => ({
   getStartupFlagsSnapshot: () => ({
     debug: false,
@@ -133,6 +173,7 @@ vi.mock("../runtime/startupContext.ts", () => ({
     nosave: false,
     params: {},
   }),
+  getAudioCapabilitySnapshot: () => mockGetAudioCapabilitySnapshot(),
 }));
 vi.mock("./liveEditRuntime.ts", () => ({
   discoverSlotsAfterEval: vi.fn(() => Promise.resolve()),
@@ -357,6 +398,85 @@ describe("editorEvaluation → capability informational diagnostic (VAL-HOST-008
     evaluate(view, "toplevel");
     await flushOneEval(oscSinePayload(2));
     diags = view.state.field(diagnosticField);
+    expect(diags.length).toBe(0);
+  });
+
+  // -------------------------------------------------------------------
+  // Bootstrap-fallback path (no synthesis service constructed)
+  // -------------------------------------------------------------------
+
+  it("falls back to bootstrap capabilities and pushes the diagnostic when no service is registered (VAL-HOST-008 degraded profile)", async () => {
+    // No synthesis service: this mirrors the real degraded-profile
+    // bootstrap where audio is incapable so the service is never
+    // constructed.
+    mockGetActiveSynthesisService.mockReturnValue(null);
+    // Bootstrap probe is present and reports incapable.
+    mockGetAudioCapabilitySnapshot.mockReturnValue(
+      mockBootstrapCapabilitiesIncapable,
+    );
+
+    evaluate(view, "toplevel");
+    await flushOneEval(oscSinePayload(1));
+
+    const diags = view.state.field(diagnosticField);
+    expect(diags.length).toBe(1);
+    expect(diags[0].severity).toBe("info");
+    expect(diags[0].message.toLowerCase()).toMatch(
+      /audio|playback|capability|browser/,
+    );
+    expect(diags[0].message.toLowerCase()).toMatch(/unavailable|disabled/);
+  });
+
+  it("does not duplicate the diagnostic across repeated evals in the degraded profile (VAL-HOST-009 bootstrap fallback)", async () => {
+    mockGetActiveSynthesisService.mockReturnValue(null);
+    mockGetAudioCapabilitySnapshot.mockReturnValue(
+      mockBootstrapCapabilitiesIncapable,
+    );
+
+    evaluate(view, "toplevel");
+    await flushOneEval(oscSinePayload(1));
+    let diags = view.state.field(diagnosticField);
+    expect(diags.length).toBe(1);
+
+    capturedEvals.length = 0;
+    evaluate(view, "toplevel");
+    await flushOneEval(oscSinePayload(2));
+    diags = view.state.field(diagnosticField);
+    expect(diags.length).toBe(1);
+
+    capturedEvals.length = 0;
+    evaluate(view, "toplevel");
+    await flushOneEval(oscSinePayload(3));
+    diags = view.state.field(diagnosticField);
+    expect(diags.length).toBe(1);
+  });
+
+  it("does not push the diagnostic when the bootstrap probe reports capable and no service exists", async () => {
+    // No service, but bootstrap says capable. The diagnostic must not
+    // appear (and any prior diagnostic must be cleared by the
+    // clear-on-range behaviour of pushDiagnostics).
+    mockGetActiveSynthesisService.mockReturnValue(null);
+    mockGetAudioCapabilitySnapshot.mockReturnValue(
+      mockBootstrapCapabilitiesCapable,
+    );
+
+    evaluate(view, "toplevel");
+    await flushOneEval(oscSinePayload(1));
+
+    const diags = view.state.field(diagnosticField);
+    expect(diags.length).toBe(0);
+  });
+
+  it("does not push the diagnostic when neither service nor bootstrap probe is available", async () => {
+    // No service AND no bootstrap probe: the eval pipeline cannot make
+    // a reliable capability claim, so it must remain silent.
+    mockGetActiveSynthesisService.mockReturnValue(null);
+    mockGetAudioCapabilitySnapshot.mockReturnValue(null);
+
+    evaluate(view, "toplevel");
+    await flushOneEval(oscSinePayload(1));
+
+    const diags = view.state.field(diagnosticField);
     expect(diags.length).toBe(0);
   });
 });

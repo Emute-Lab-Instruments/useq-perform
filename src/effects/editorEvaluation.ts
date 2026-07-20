@@ -51,6 +51,8 @@ import { dispatchInlineResult } from "../editors/extensions/inlineResults.ts";
 import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
 import type { SynthArtifactsPayload } from "../contracts/runtimeTypes.ts";
 import { getActiveSynthesisService } from "../runtime/activeSynthesisService.ts";
+import { getAudioCapabilitySnapshot } from "../runtime/startupContext.ts";
+import type { AudioCapabilitySnapshot } from "../contracts/audioCapabilities.ts";
 import { findHolePositions, findHoleEnd } from "../lib/holeDetection.ts";
 import {
   bindingKeysInText,
@@ -401,12 +403,27 @@ function evalWasm(
           // is capable, no capability diagnostic is added and the
           // clear-on-push behaviour removes any stale one from a prior
           // incapable eval (e.g. after a hosting migration).
+          //
+          // The capability source preference is: the active synthesis
+          // service's telemetry snapshot (most up-to-date, includes any
+          // runtime fallbacks) → the bootstrap audio-capability
+          // snapshot exposed by `startupContext` (always available in
+          // devmode and in any page that ran `examineEnvironment`). The
+          // fallback is required because the synthesis service is NOT
+          // constructed when `audioCapable === false` (see
+          // `bootstrap.ts` §2c), so without it the diagnostic would
+          // never appear in exactly the degraded profile VAL-HOST-008
+          // requires it to appear in.
           if (opts.view && !hasErrors) {
-            const synthServiceForCapability = synthService
-              ?? getActiveSynthesisService();
+            const synthServiceForCapability =
+              synthService ?? getActiveSynthesisService();
+            const bootstrapCapabilities =
+              synthServiceForCapability?.telemetry?.capabilities ??
+              getAudioCapabilitySnapshot();
             pushCapabilityInfoDiagnostic(
               opts.view,
               synthServiceForCapability,
+              bootstrapCapabilities,
               rangeFrom,
               rangeTo,
             );
@@ -500,19 +517,26 @@ const SYNTH_AUDIO_UNAVAILABLE_DIAGNOSTIC_MESSAGE =
  * that browser audio playback is unavailable (VAL-HOST-008).
  *
  * Behaviour:
- *   - When `synthService` is `null` (no service constructed), no
- *     diagnostic is added. The eval pipeline cannot make a reliable
- *     capability claim without a service, and silent injection would
- *     mislead the user.
- *   - When `synthService.telemetry.capabilities.audioCapable === true`,
- *     any previously-pushed capability diagnostic is cleared by the
+ *   - The capability source is `bootstrapCapabilities` (passed in by
+ *     the caller, who prefers the active synthesis service's telemetry
+ *     snapshot when one exists and falls back to the bootstrap
+ *     `getAudioCapabilitySnapshot()` when no service has been
+ *     constructed). This is required because the synthesis service is
+ *     NOT constructed when `audioCapable === false`, so without the
+ *     fallback the diagnostic would never appear in the exact degraded
+ *     profile VAL-HOST-008 describes.
+ *   - When `bootstrapCapabilities` is `null` (bootstrap probe did not
+ *     run, e.g. very early in init), no diagnostic is added.
+ *   - When `bootstrapCapabilities.audioCapable === true`, any
+ *     previously-pushed capability diagnostic is cleared by the
  *     `pushDiagnostics` clear-on-range step. No new diagnostic is
  *     added. This lets the editor recover when the user crosses into a
  *     capable hosting setup (e.g. moves from a non-isolated host to the
  *     port-5000 static server with COOP/COEP).
  *   - When `audioCapable === false`, exactly one `info` diagnostic is
- *     pushed. Because `pushDiagnostics` clears the range first, repeated
- *     successful synth evals do not accumulate duplicates (VAL-HOST-009).
+ *     pushed. Because `pushDiagnostics` clears the range first,
+ *     repeated successful synth evals do not accumulate duplicates
+ *     (VAL-HOST-009).
  *
  * The diagnostic lives on the editor range that was just evaluated, so
  * it moves with the form through subsequent edits and is removed when
@@ -521,11 +545,16 @@ const SYNTH_AUDIO_UNAVAILABLE_DIAGNOSTIC_MESSAGE =
 function pushCapabilityInfoDiagnostic(
   view: EditorView,
   synthService: ReturnType<typeof getActiveSynthesisService>,
+  bootstrapCapabilities: AudioCapabilitySnapshot | null,
   rangeFrom: number,
   rangeTo: number,
 ): void {
-  if (!synthService) return;
-  const capabilities = synthService.telemetry?.capabilities;
+  // Prefer the live service's telemetry snapshot when one exists; it
+  // reflects any runtime capability regain/loss since bootstrap. Fall
+  // back to the bootstrap probe so the diagnostic still appears when
+  // the service was never constructed (the degraded profile).
+  const capabilities =
+    synthService?.telemetry?.capabilities ?? bootstrapCapabilities;
   if (!capabilities) return;
   if (capabilities.audioCapable) {
     // Pushing an empty diagnostic set on the range clears any prior
