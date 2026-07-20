@@ -44,8 +44,9 @@ export interface EngineIndicatorProps {
   readonly state: EngineStateSnapshot;
   /**
    * Click handler for the recovery affordance. The adapter wires this to
-   * `synthesisService.resumeOnUserActivation()`. The indicator calls it
-   * only on a trusted user click (pointerdown on the indicator itself).
+   * The adapter routes suspended clicks to resume and error clicks to
+   * reinitialisation followed by resume. The indicator calls it only on a
+   * trusted user click.
    */
   readonly onResume: () => void;
   /**

@@ -300,7 +300,10 @@ thing making sound is indistinguishable from a bug). On successful
 reinit the app re-evaluates the LKG program, rebuilds the patch graph at
 a fresh epoch, and the engine fades back in; on failure it remains in
 `error` with a console diagnostic and, in `both` mode, hardware
-operation continues unaffected.
+operation continues unaffected. In production, the explicit `error`
+indicator click is the recovery trigger: it performs that reinitialisation
+and then attempts user-activated resume in the same gesture; ambient
+autoplay interactions MUST NOT trigger recovery.
 
 ---
 
@@ -332,7 +335,10 @@ current no-audio behaviour with a clear capability diagnostic.
 `off` / `suspended` / `running` / `error`. Concretely testable
 requirements: `suspended` and `error` each render a distinct indicator
 state, post a console message, and expose a one-click affordance
-(resume / reinitialise).
+(resume / reinitialise). Clicking `error` in production MUST dispose the
+failed producer resources, construct fresh engine resources, and leave the
+engine in `suspended`; the same gesture MUST then attempt normal resume.
+Repeated clicks during recovery MUST share one rebuild.
 
 6.5 **Activation and resume.** `AudioContext.resume()` requires
 transient user activation. Keyboard and pointer events grant it;

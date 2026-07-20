@@ -276,6 +276,12 @@ function WiredEngineIndicator() {
     // there is no second activation surface here.
     const service = getActiveSynthesisService();
     if (service === null) return;
+    if (snapshot().state === "error") {
+      void service.recoverFromError().then((recovered) => {
+        if (recovered) void service.resumeOnUserActivation();
+      });
+      return;
+    }
     void service.resumeOnUserActivation();
   };
 
