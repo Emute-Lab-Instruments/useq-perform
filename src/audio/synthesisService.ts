@@ -302,6 +302,17 @@ export interface SynthesisWorkerPort {
    * observed in real headless Chromium.
    */
   producerTerminate?(): Promise<boolean>;
+  /**
+   * Clear the WASM compiler's synth declarations so the next synth
+   * eval after recovery is not rejected as an over-capacity second
+   * declaration. The WASM engine persists across service recovery
+   * (the Worker is not recreated), so without this clear the stale
+   * synth declaration would trigger the M1 single-node capacity
+   * diagnostic on the first post-recovery eval, causing the commit
+   * pipeline to reject the response as a failed eval
+   * (VAL-CROSS-009 post-recovery eval-pipeline fix).
+   */
+  clearSynthDeclarations?(): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1720,6 +1731,25 @@ function createCapableService(
     // the published `audioFrame` stayed at 0 — exactly the
     // `engineState=running, audioFrame=0` signature c7edc263 captured.
     await stopProducer();
+    // VAL-CROSS-009 post-recovery eval-pipeline fix: clear the WASM
+    // compiler's synth declarations so the next synth eval after
+    // recovery is not rejected as an over-capacity second declaration.
+    // The WASM engine persists across service recovery (the Worker is
+    // not recreated), so without this clear the stale synth declaration
+    // triggers the M1 single-node capacity diagnostic on the first
+    // post-recovery eval, causing the commit pipeline to reject the
+    // response as a failed eval. This is the root cause of the
+    // "post-recovery eval-pipeline gap" that prior evidence masked.
+    const workerPortForClear = options.workerPort;
+    if (workerPortForClear && typeof workerPortForClear.clearSynthDeclarations === "function") {
+      try {
+        await workerPortForClear.clearSynthDeclarations();
+      } catch {
+        // Best-effort: if the clear fails, the user will see a
+        // capacity diagnostic on the next eval, which they can clear
+        // manually with (useq-clear).
+      }
+    }
     // Disconnect the worklet first so no further graph mutations are
     // applied to a dying context.
     if (workletNode) {

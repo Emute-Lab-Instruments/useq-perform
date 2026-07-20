@@ -299,6 +299,16 @@ export interface ProducerReadTelemetryRequest {
   id: number;
 }
 
+/**
+ * Clear the WASM compiler's synth declarations by evaluating `(useq-clear)`.
+ * Used during service recovery so the first post-recovery synth eval is not
+ * rejected as an over-capacity second declaration (VAL-CROSS-009).
+ */
+export interface ClearSynthDeclarationsRequest {
+  type: "clearSynthDeclarations";
+  id: number;
+}
+
 export type WasmWorkerRequest =
   | LoadRequest
   | EvalCodeRequest
@@ -326,7 +336,8 @@ export type WasmWorkerRequest =
   | ProducerApplyInputsRequest
   | ProducerArmEpochRequest
   | ProducerTerminateRequest
-  | ProducerReadTelemetryRequest;
+  | ProducerReadTelemetryRequest
+  | ClearSynthDeclarationsRequest;
 
 // ─── Response payloads ─────────────────────────────────────────────────────
 
@@ -568,6 +579,13 @@ export interface ProducerReadTelemetryResponse {
   telemetry: ProducerTelemetrySnapshot | null;
 }
 
+export interface ClearSynthDeclarationsResponse {
+  type: "clearSynthDeclarations-result";
+  id: number;
+  /** True when the WASM engine's synth declarations were cleared. */
+  cleared: boolean;
+}
+
 export interface ErrorResponse {
   type: "error";
   id: number;
@@ -602,4 +620,5 @@ export type WasmWorkerResponse =
   | ProducerArmEpochResponse
   | ProducerTerminateResponse
   | ProducerReadTelemetryResponse
+  | ClearSynthDeclarationsResponse
   | ErrorResponse;

@@ -608,5 +608,17 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       );
       return response.telemetry;
     },
+
+    async clearSynthDeclarations(): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "clearSynthDeclarations-result" }>
+      >(
+        { type: "clearSynthDeclarations" },
+        "clearSynthDeclarations-result",
+      );
+      return response.cleared;
+    },
   };
 }

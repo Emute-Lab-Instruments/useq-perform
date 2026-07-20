@@ -314,6 +314,14 @@ export interface WorkletCore {
   readonly producerTimeoutActive: boolean;
 
   /**
+   * Test-only accessor: the current producer liveness age (number of
+   * consecutive process() calls without a fresh control block).
+   * Production code never reads this directly; tests use it to assert
+   * the bring-up window does not advance liveness.
+   */
+  readonly producerLivenessAge: number;
+
+  /**
    * Test-only accessor: the active program epoch. Production code never
    * reads this directly; tests use it to assert epoch coherence.
    */
@@ -375,6 +383,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   let producerLivenessAge = 0;
   let producerTimeoutActive = false;
   let producerTerminated = false;
+  // VAL-CROSS-009 recovery race: track whether the SAB has ever been
+  // attached AND whether the producer has ever published a block. The
+  // service creates the worklet node (which starts processing render
+  // quanta) BEFORE it installs the producer control bridge, and starts
+  // the producer AFTER resuming the AudioContext. During that whole
+  // window the worklet has no fresh blocks but the producer is not
+  // dead — it has not started yet. Advancing liveness here would
+  // spuriously time out the fresh worklet before recovery finishes.
+  // Once the producer publishes its first block, the liveness watchdog
+  // activates; any subsequent underrun is a real producer loss.
+  let sabEverAttached = false;
+  let producerEverPublished = false;
   let peakSample = 0;
   let rmsSample = 0;
   let finiteOutput = 1;
@@ -483,6 +503,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     try {
       controlView = attachSynthesisControlView(buffer);
       controlBuffer = buffer;
+      // VAL-CROSS-009 recovery race: close the bring-up window. The
+      // service has finished installing the producer control bridge,
+      // so producer-loss detection can activate on the next process().
+      sabEverAttached = true;
     } catch {
       controlView = null;
       controlBuffer = null;
@@ -492,6 +516,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   function handleDetachControlBuffer(): void {
     controlView = null;
     controlBuffer = null;
+    // VAL-CROSS-009 recovery race: reset the bring-up window flags so
+    // the next attach cycle (recovery) starts fresh. Without this a
+    // detach/reattach pair would skip the bring-up window entirely.
+    sabEverAttached = false;
+    producerEverPublished = false;
     // Retire the active instance immediately (no fade): the SAB is gone,
     // so further rendering is impossible. The processor shell disconnects
     // the node so no further process() calls land.
@@ -743,20 +772,39 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
         hasBlock = true;
         acquiredBlock = true;
+        // VAL-CROSS-009 recovery race: the producer just published its
+        // first (or a subsequent) block. Close the bring-up window and
+        // activate the liveness watchdog — any future underrun is a
+        // real producer loss.
+        producerEverPublished = true;
         // Reset liveness: we observed a fresh publication.
         producerLivenessAge = 0;
         producerTimeoutActive = false;
       } else {
         // Underrun: no fresh block. Hold last values; do NOT reuse a
         // stale slot (VAL-ENGINE-033). The producer liveness age
-        // advances; if it reaches the timeout boundary, the emergency
-        // fade fires.
-        producerLivenessAge += 1;
-        underrunCount += 1;
+        // advances ONLY if the producer has ever published (otherwise
+        // we are still in the bring-up window between SAB attach and
+        // producer start, and the underrun is not a real producer
+        // loss). When the liveness age reaches the timeout boundary,
+        // the emergency fade fires.
+        if (producerEverPublished) {
+          producerLivenessAge += 1;
+          underrunCount += 1;
+        }
       }
     } else {
-      // No SAB attached. Liveness advances so timeout still fires.
-      producerLivenessAge += 1;
+      // No SAB attached. Two cases:
+      //  - Bring-up / recovery window (sabEverAttached === false): the
+      //    service has not yet installed the producer control bridge.
+      //    We MUST NOT advance liveness here, or the fresh worklet
+      //    would spuriously time out before the SAB arrives
+      //    (VAL-CROSS-009 recovery race).
+      //  - SAB was previously attached but was detached/lost: advance
+      //    liveness so the producer-loss timeout still fires.
+      if (sabEverAttached) {
+        producerLivenessAge += 1;
+      }
     }
 
     // ---- Step 2: Producer timeout detection (VAL-ENGINE-023/024) ----
@@ -1145,6 +1193,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     producerLivenessAge = 0;
     producerTimeoutActive = false;
     producerTerminated = false;
+    // VAL-CROSS-009 recovery race: reset the bring-up window flags so
+    // the next attach cycle starts fresh.
+    sabEverAttached = false;
+    producerEverPublished = false;
     peakSample = 0;
     rmsSample = 0;
     finiteOutput = 1;
@@ -1165,6 +1217,9 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     },
     get producerTimeoutActive() {
       return producerTimeoutActive;
+    },
+    get producerLivenessAge() {
+      return producerLivenessAge;
     },
     get activeEpoch() {
       return activeEpoch;

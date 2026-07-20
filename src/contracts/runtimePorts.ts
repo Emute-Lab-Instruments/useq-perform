@@ -540,6 +540,13 @@ export interface WasmRuntimePort extends SharedRuntimePort {
   producerReadTelemetry(): Promise<
     import("../runtime/workers/wasmRuntimeWorkerProtocol").ProducerTelemetrySnapshot | null
   >;
+
+  /**
+   * Clear the WASM compiler's synth declarations by evaluating `(useq-clear)`.
+   * Used during service recovery so the first post-recovery synth eval is
+   * not rejected as an over-capacity second declaration (VAL-CROSS-009).
+   */
+  clearSynthDeclarations?(): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------

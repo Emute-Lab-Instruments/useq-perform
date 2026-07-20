@@ -1186,6 +1186,37 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         });
         return;
       }
+      case "clearSynthDeclarations": {
+        // VAL-CROSS-009 post-recovery eval-pipeline fix: clear the
+        // WASM compiler's synth declarations by evaluating (useq-clear).
+        // The synth declarations persist across service recovery (the
+        // Worker is not recreated); without this clear the stale
+        // declaration triggers the M1 single-node capacity diagnostic
+        // on the first post-recovery eval.
+        if (!wasmEnabled || !interpreter) {
+          postResponse({
+            type: "clearSynthDeclarations-result",
+            id,
+            cleared: false,
+          });
+          return;
+        }
+        try {
+          interpreter.evaluate("(useq-clear)");
+          postResponse({
+            type: "clearSynthDeclarations-result",
+            id,
+            cleared: true,
+          });
+        } catch {
+          postResponse({
+            type: "clearSynthDeclarations-result",
+            id,
+            cleared: false,
+          });
+        }
+        return;
+      }
       case "producerReadTelemetry": {
         const telemetry: ProducerTelemetrySnapshot | null =
           controlView && transportMap

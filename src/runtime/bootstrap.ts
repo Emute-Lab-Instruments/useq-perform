@@ -38,6 +38,9 @@ import { preloadHelpContent } from '../lib/helpContentPreloader.ts';
 import { setActiveSynthesisService } from './activeSynthesisService.ts';
 import { applyKeymapFromUrl } from './applyKeymapFromUrl.ts';
 import {
+  installBrowserEvalSurface,
+} from './browserEvalSurface.ts';
+import {
   getActiveWasmRuntimePort,
   setActiveWasmRuntimePort,
 } from './activeWasmRuntimePort.ts';
@@ -304,6 +307,15 @@ export async function bootstrap(): Promise<BootstrapResult> {
   if (startupFlags.devmode && typeof window !== "undefined") {
     (window as unknown as { __useqAudioCapabilities?: unknown }).__useqAudioCapabilities =
       environmentState.audioCapabilities;
+    // VAL-CROSS-013 (verified browser eval route): install a tiny
+    // devmode-only surface that routes agent-browser eval through the
+    // production `evaluate(view, "toplevel")` function. Prior evidence
+    // used an unverified synthetic `KeyboardEvent` dispatched via
+    // `dispatchEvent`, which silently failed in several journey steps
+    // and could not prove the synth committed. The surface reads the
+    // editor and telemetry at call time so it stays correct across
+    // hot-reload and recovery.
+    installBrowserEvalSurface(window);
   }
 
   // ── Step 2c: construct the synthesis service (VAL-ENGINE-017..022).

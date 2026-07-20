@@ -573,6 +573,30 @@ describe("workletCore — instantiate-before-module race (VAL-ENGINE-008 / VAL-C
 });
 
 describe("workletCore — producer timeout (VAL-ENGINE-023/024)", () => {
+  /**
+   * Helper: attach an SAB and publish ONE block so the liveness
+   * watchdog activates. Tests then stop publishing to simulate real
+   * producer loss. Without the first publication, the worklet stays in
+   * the bring-up window (VAL-CROSS-009 recovery race fix) and never
+   * advances liveness.
+   */
+  function primeProducerAndAttachSAB(core: WorkletCore) {
+    const buffer = createSynthesisControlBuffer({ renderQuantumFrames: 128 });
+    core.handleMessage({
+      type: "attach-control-buffer",
+      controlBuffer: buffer as unknown as SharedArrayBuffer,
+    });
+    const view = attachSynthesisControlView(buffer as unknown as ArrayBuffer);
+    view.writeBlockEpoch(0, 1);
+    view.writeBlockRevision(0, 1);
+    view.writeBlockRateValue(0, 0, 440);
+    view.writeBlockRateValue(0, 1, 0.2);
+    view.advanceWriteIndex();
+    // Process once to consume the priming block — this activates the
+    // liveness watchdog.
+    core.process(128);
+  }
+
   it("does NOT time out before PRODUCER_TIMEOUT_BLOCKS", () => {
     const publisher = createRecordingPublisher();
     const core = createWorkletCore({
@@ -581,9 +605,9 @@ describe("workletCore — producer timeout (VAL-ENGINE-023/024)", () => {
       sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
       publish: publisher.publish,
     });
-    // No SAB attached: every process() call advances the liveness age.
+    primeProducerAndAttachSAB(core);
 
-    // Run up to PRODUCER_TIMEOUT_BLOCKS - 1 calls.
+    // Run up to PRODUCER_TIMEOUT_BLOCKS - 1 calls with no new block.
     for (let i = 0; i < PRODUCER_TIMEOUT_BLOCKS - 1; i++) {
       core.process(128);
     }
@@ -599,6 +623,7 @@ describe("workletCore — producer timeout (VAL-ENGINE-023/024)", () => {
       sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
       publish: publisher.publish,
     });
+    primeProducerAndAttachSAB(core);
 
     for (let i = 0; i < PRODUCER_TIMEOUT_BLOCKS; i++) {
       core.process(128);
@@ -619,8 +644,8 @@ describe("workletCore — producer timeout (VAL-ENGINE-023/024)", () => {
       sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
       publish: publisher.publish,
     });
-    // No SAB attached, no external notifications. After 24 blocks the
-    // core MUST have fired the timeout.
+    primeProducerAndAttachSAB(core);
+
     for (let i = 0; i < PRODUCER_TIMEOUT_BLOCKS; i++) {
       core.process(128);
     }
@@ -635,10 +660,80 @@ describe("workletCore — producer timeout (VAL-ENGINE-023/024)", () => {
       sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
       publish: publisher.publish,
     });
+    primeProducerAndAttachSAB(core);
     core.handleMessage({ type: "devmode-terminate-producer" });
     expect(publisher.producerTimeouts()).toHaveLength(0);
     core.process(128);
     expect(publisher.producerTimeouts()).toHaveLength(1);
+  });
+
+  // -----------------------------------------------------------------
+  // VAL-CROSS-009 recovery race fix: a freshly constructed worklet
+  // that has NEVER had an SAB attached is in the bring-up window. It
+  // must NOT declare a producer timeout while it is still waiting for
+  // the initial attach-control-buffer message, because the service
+  // creates the worklet node (which starts processing render quanta)
+  // BEFORE it installs the producer control bridge. Without this fix,
+  // every recovery cycle re-entered `error` before the SAB arrived,
+  // which cascaded into a zero-output post-recovery state.
+  // -----------------------------------------------------------------
+  it("does NOT time out before the SAB is first attached (bring-up window)", () => {
+    const publisher = createRecordingPublisher();
+    const core = createWorkletCore({
+      adapterFactory: () => null,
+      allocator: createFakeAllocator(),
+      sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
+      publish: publisher.publish,
+    });
+    // No SAB attached yet — simulate the bring-up / recovery window
+    // where the worklet is constructed and connected to destination
+    // before the service has installed the control bridge. Run well
+    // past PRODUCER_TIMEOUT_BLOCKS; the worklet MUST stay quiet and
+    // liveness MUST stay at 0.
+    for (let i = 0; i < PRODUCER_TIMEOUT_BLOCKS * 4; i++) {
+      core.process(128);
+    }
+    expect(publisher.producerTimeouts()).toHaveLength(0);
+    expect(core.producerTimeoutActive).toBe(false);
+    expect(core.producerLivenessAge).toBe(0);
+  });
+
+  it("resumes producer-loss detection after the SAB is first attached", () => {
+    // After the bring-up window closes (SAB attached + producer
+    // published once), producer-loss detection must work normally:
+    // 24 blocks with no new publication must fire the timeout.
+    const publisher = createRecordingPublisher();
+    const core = createWorkletCore({
+      adapterFactory: () => null,
+      allocator: createFakeAllocator(),
+      sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
+      publish: publisher.publish,
+    });
+    // Run many blocks in the bring-up window — no timeout.
+    for (let i = 0; i < PRODUCER_TIMEOUT_BLOCKS * 3; i++) {
+      core.process(128);
+    }
+    expect(publisher.producerTimeouts()).toHaveLength(0);
+    // Attach the SAB and publish one priming block — producer-loss
+    // detection now activates.
+    const buffer = createSynthesisControlBuffer({ renderQuantumFrames: 128 });
+    core.handleMessage({
+      type: "attach-control-buffer",
+      controlBuffer: buffer as unknown as SharedArrayBuffer,
+    });
+    const view = attachSynthesisControlView(buffer as unknown as ArrayBuffer);
+    view.writeBlockEpoch(0, 1);
+    view.writeBlockRevision(0, 1);
+    view.writeBlockRateValue(0, 0, 440);
+    view.writeBlockRateValue(0, 1, 0.2);
+    view.advanceWriteIndex();
+    core.process(128); // consume the priming block
+    // Run PRODUCER_TIMEOUT_BLOCKS with no new publication — timeout.
+    for (let i = 0; i < PRODUCER_TIMEOUT_BLOCKS; i++) {
+      core.process(128);
+    }
+    expect(publisher.producerTimeouts()).toHaveLength(1);
+    expect(core.producerTimeoutActive).toBe(true);
   });
 });
 
@@ -700,6 +795,29 @@ describe("workletCore — emergency fade to silence (VAL-ENGINE-025)", () => {
 });
 
 describe("workletCore — underrun handling (VAL-ENGINE-033)", () => {
+  /**
+   * Helper: attach an SAB, publish one priming block, and consume it.
+   * This activates the liveness watchdog and underrun counting. Without
+   * the priming block, the worklet stays in the bring-up window
+   * (VAL-CROSS-009 recovery race fix) and neither liveness nor underrun
+   * counters advance.
+   */
+  function attachAndPrime(core: WorkletCore) {
+    const buffer = createSynthesisControlBuffer();
+    core.handleMessage({
+      type: "attach-control-buffer",
+      controlBuffer: buffer as unknown as SharedArrayBuffer,
+    });
+    const view = attachSynthesisControlView(buffer);
+    view.writeBlockEpoch(0, 1);
+    view.writeBlockRevision(0, 1);
+    view.writeBlockRateValue(0, 0, 440);
+    view.writeBlockRateValue(0, 1, 0.2);
+    view.advanceWriteIndex();
+    core.process(128); // consume the priming block
+    return buffer;
+  }
+
   it("increments underrun telemetry when the ring is empty", () => {
     const publisher = createRecordingPublisher();
     const core = createWorkletCore({
@@ -708,12 +826,7 @@ describe("workletCore — underrun handling (VAL-ENGINE-033)", () => {
       sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
       publish: publisher.publish,
     });
-    // Attach an EMPTY SAB (no published blocks).
-    const buffer = createSynthesisControlBuffer();
-    core.handleMessage({
-      type: "attach-control-buffer",
-      controlBuffer: buffer as unknown as SharedArrayBuffer,
-    });
+    attachAndPrime(core);
 
     const snap = core.process(128);
     expect(snap.underrunCount).toBe(1);
@@ -729,11 +842,7 @@ describe("workletCore — underrun handling (VAL-ENGINE-033)", () => {
       sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
       publish: publisher.publish,
     });
-    const buffer = createSynthesisControlBuffer();
-    core.handleMessage({
-      type: "attach-control-buffer",
-      controlBuffer: buffer as unknown as SharedArrayBuffer,
-    });
+    const buffer = attachAndPrime(core);
 
     // Two underruns.
     core.process(128);
