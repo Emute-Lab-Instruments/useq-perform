@@ -571,7 +571,7 @@ describe("useqWasmInterpreter", () => {
     expect(afterFail.controls).toEqual(baseline.controls);
   });
 
-  it("enforces M1 one-node capacity transactionally (VAL-COMP-019)", async () => {
+  it("hosts multiple declarations; update-in-place advances the revision (M2.2, VAL-COMP-019)", async () => {
     const module = (await loadGeneratedBundleModule(
       "../../public/wasm/useq.js"
     )) as Record<string, any>;
@@ -584,23 +584,24 @@ describe("useqWasmInterpreter", () => {
     expect(evalCode('(synth "osc/sine" :name "lead" :freq 440)')).toBe("ok");
     const baseline = JSON.parse(synthArtifacts());
 
-    // A second distinct identity must fail with a capacity diagnostic, and
-    // the baseline artefacts must be preserved.
-    const secondResult = evalCode('(synth "osc/sine" :name "bass" :freq 110)');
-    expect(secondResult).toMatch(/Error:/);
-    expect(secondResult).toMatch(/M1|one synth|capacity/i);
+    // M2.2 lifts the M1 single-node cap: a second distinct identity
+    // coexists (capacity is SYNTH_MAX_NODES, exercised natively in
+    // src-useq test_synth_compiler.cpp).
+    expect(evalCode('(synth "osc/sine" :name "bass" :freq 110)')).toBe("ok");
+    const afterSecond = JSON.parse(synthArtifacts());
+    expect(afterSecond.revision).toBeGreaterThan(baseline.revision);
+    expect(afterSecond.declarations).toHaveLength(2);
 
-    const afterFail = JSON.parse(synthArtifacts());
-    expect(afterFail.revision).toBe(baseline.revision);
-    expect(afterFail.declarations).toEqual(baseline.declarations);
-    expect(afterFail.controls).toEqual(baseline.controls);
-
-    // Same identity update-in-place must still succeed and advance revision.
+    // Same identity update-in-place must still succeed, advance the
+    // revision, and leave the sibling untouched.
     expect(evalCode('(synth "osc/sine" :name "lead" :freq 660)')).toBe("ok");
     const afterUpdate = JSON.parse(synthArtifacts());
-    expect(afterUpdate.revision).toBeGreaterThan(baseline.revision);
-    expect(afterUpdate.declarations).toHaveLength(1);
-    expect(afterUpdate.declarations[0].identity).toBe("lead");
+    expect(afterUpdate.revision).toBeGreaterThan(afterSecond.revision);
+    expect(afterUpdate.declarations).toHaveLength(2);
+    const identities = afterUpdate.declarations
+      .map((d: { identity: string }) => d.identity)
+      .sort();
+    expect(identities).toEqual(["bass", "lead"]);
   });
 
   it("publishes useq_synth_artifacts on __useqWasmRuntime (VAL-COMP-013)", async () => {

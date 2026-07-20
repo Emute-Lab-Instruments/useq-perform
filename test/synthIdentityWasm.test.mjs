@@ -61,11 +61,31 @@ describe("synth identity through real WASM (ergo e58f128f)", () => {
     expect(snap.declarations[0].identity).to.equal("lead");
   });
 
-  it("still rejects a second distinct identity while one is active (M1 capacity)", () => {
+  it("lets distinct identities coexist (M2.2 multi-node; M1 cap lifted)", () => {
     expect(evalOk('(with-state-id "sid-a" (synth "osc/sine" :freq 440))')).to.equal(true);
-    expect(evalOk('(with-state-id "sid-b" (synth "osc/sine" :freq 220))')).to.equal(false);
+    expect(evalOk('(with-state-id "sid-b" (synth "osc/sine" :freq 220))')).to.equal(true);
     const snap = artifacts();
-    expect(snap.declarations).to.have.length(1);
-    expect(snap.declarations[0].identity).to.equal("sid-a");
+    expect(snap.declarations).to.have.length(2);
+    const ids = snap.declarations.map((d) => d.identity).sort();
+    expect(ids).to.deep.equal(["sid-a", "sid-b"]);
+  });
+
+  it("binds the wrapper id to the outermost form; nested anonymous take ordinals", () => {
+    // synth-nodes.md §5.1.1/§5.1.3: identity resolves in pre-order, so
+    // the wrapper id lands on the outer form and the nested anonymous
+    // child takes the first per-eval ordinal — stably across re-evals.
+    for (const freq of [2, 3]) {
+      const result = evalResult(
+        `(with-state-id "sid-n" (synth "osc/sine" :freq 440 :fm (synth "osc/sine" :freq ${freq})))`,
+      );
+      expect(result.startsWith("Error"), result).to.equal(false);
+      const snap = artifacts();
+      expect(snap.declarations).to.have.length(2);
+      const ids = snap.declarations.map((d) => d.identity).sort();
+      expect(ids).to.deep.equal(["::anon-0", "sid-n"]);
+      expect(snap.connections).to.deep.equal([
+        { from: "::anon-0", to: "sid-n", port: "fm", port_index: 0 },
+      ]);
+    }
   });
 });

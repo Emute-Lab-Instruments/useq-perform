@@ -152,6 +152,20 @@ export interface SynthControlChannelArtefact {
 }
 
 /**
+ * One audio-port connection: the node whose output (`from`) feeds an
+ * audio-input port (`port`, at `port_index` within the destination def's
+ * declared input ports) on the destination node (`to`). Only committed,
+ * validated edges appear — the compiler rejects unresolved sources and
+ * cycles at eval commit (synth-nodes.md §4.4/§4.5, §7.2.1).
+ */
+export interface SynthConnectionArtefact {
+  from: string;
+  to: string;
+  port: string;
+  port_index: number;
+}
+
+/**
  * Versioned synth artefact payload returned atomically from the exact-eval
  * Worker response. The `abi` marker lets consumers reject incompatible
  * bundles up front (VAL-COMP-015).
@@ -160,12 +174,17 @@ export interface SynthControlChannelArtefact {
  * graph and the control table for this commit (VAL-COMP-009). `declarations`
  * and `controls` are intentionally narrow public views: internal GC-remapped
  * node indices are never exposed (VAL-COMP-012).
+ *
+ * `connections` joined the schema additively within ABI version 1 (M2.2,
+ * synth-nodes.md §7.2.2): payloads from older engine bundles may omit it,
+ * which consumers treat as an empty edge set.
  */
 export interface SynthArtifactsPayload {
   abi: number;
   revision: number;
   declarations: SynthDeclarationArtefact[];
   controls: SynthControlChannelArtefact[];
+  connections?: SynthConnectionArtefact[];
 }
 
 /**
