@@ -195,6 +195,34 @@ export const MAX_VOICE_WIDTH = 16 as const;
 export const SYNTH_MEMORY_MAX_BYTES = 64 * 1024 * 1024;
 
 /**
+ * Bytes reserved at the bottom of the host-owned shared-memory arena so
+ * the zone allocator never hands out pointer 0. Graph-delta messages use
+ * `statePointer === 0` as the "worklet allocates on my behalf" sentinel
+ * (see `WorkletInstantiateMessage`), so a real zone at offset 0 would be
+ * indistinguishable from "not allocated". `synthesis.md` §2.3.
+ */
+export const SYNTH_ARENA_NULL_GUARD_BYTES = 64 as const;
+
+/**
+ * Default number of audio output ports a node exposes when the delta
+ * message does not carry an explicit `audioOutputs` count (mono, matching
+ * the M1 osc/sine shape).
+ */
+export const DEFAULT_AUDIO_OUTPUT_PORTS = 1 as const;
+
+/**
+ * INTERIM per-node block-rate channel stride. Until the compiler-derived
+ * control channel table ships (synthesis epic M2.2), every node instance
+ * reads its block-rate controls from a fixed two-channel window
+ * (`freq` at `base + 0`, `amp` at `base + 1`) and the engine-commit
+ * coordinator assigns bases sequentially in declaration order.
+ *
+ * Removal condition: M2.2 replaces this with the per-(node, param)
+ * channel table from `synth-nodes.md` §7.2; delete this constant then.
+ */
+export const INTERIM_BLOCK_RATE_CHANNELS_PER_NODE = 2 as const;
+
+/**
  * Worklet-facing helpers documented as non-blocking. Every name listed here
  * is part of the public {@link SynthesisControlView} API and is guaranteed
  * NOT to call `Atomics.wait`, `Atomics.notify`, or any other blocking
