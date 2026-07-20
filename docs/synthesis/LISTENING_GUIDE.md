@@ -315,8 +315,9 @@ brief 10 ms fade to silence followed by no further sound.
 
 ### Expected subjective observations
 
-- The tone **fades to silence over ~10 ms** (the sample-rate-derived
-  `SYNTH_FADE_OUT`-equivalent emergency-fade interval) and then stays
+- The tone **fades to silence over ~10 ms** (the separate
+  `EMERGENCY_FADE_MS = 10` emergency-fade constant, distinct from
+  `SYNTH_FADE_OUT_MS = 30` for instance-retirement fades) and then stays
   silent. No indefinite drone.
 - The transport-family synthesis indicator transitions from
   `Running` to **Error**, and a console message is posted:

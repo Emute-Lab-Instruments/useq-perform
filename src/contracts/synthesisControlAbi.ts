@@ -26,13 +26,14 @@
  *   VAL-SAB-018 — header mismatch fails closed
  *   VAL-SAB-019 — worklet-facing ABI never waits
  *
- * Memory model (normative, see `synthesis.md` §4.8):
- *   - The producer writes a complete payload, then release-stores the write
- *     index. The consumer acquire-loads the write index before reading any
- *     payload. This is index-publication with Atomics.
+ * Memory model (normative target, see `synthesis.md` §4.8):
+ *   - Ring publication uses the existing atomic index helpers. Audio-frame
+ *     publication is currently a plain aligned 64-bit write on the SAB view;
+ *     it has no `Atomics.notify` pairing yet (ergo task
+ *     019f8086-8a25, "Atomics.wait producer pacing absent").
  *   - The worklet-facing helpers expose NO `Atomics.wait`, `Atomics.notify`,
- *     or any blocking primitive. Only the Worker scheduling path may use a
- *     bounded `Atomics.wait` to be woken by `publishAudioFrame`.
+ *     or any blocking primitive. The Worker currently remains on its
+ *     unconditional macrotask polling loop.
  *   - Payload values do not require atomic floating-point writes: a torn
  *     Float32 word is impossible to observe because the consumer never reads
  *     payload outside the published window.
@@ -148,6 +149,14 @@ export const SYNTH_FADE_IN_MS = 10 as const;
 
 /** Default release fade duration in milliseconds on node free. */
 export const SYNTH_FADE_OUT_MS = 30 as const;
+
+/**
+ * Consecutive missed render deadlines before the engine enters overload
+ * protection. The overload-fade behavior itself lands in M2
+ * (`synthesis.md` §3.6); this constant is defined here per the epic's
+ * one-contract-module rule.
+ */
+export const OVERLOAD_BLOCKS = 8 as const;
 
 /**
  * Resource limits (from `synthesis.md` §3.5). Declared in the contract so
@@ -1178,13 +1187,13 @@ export function attachSynthesisControlView(
           `audio frame ${options.frame} is not monotonic (current ${current})`,
         );
       }
-      // Payload writes first, then release-store the frame.
+      // These are plain aligned SAB-view writes. The release-store / wake
+      // pairing described by synthesis.md §4.8 is not implemented yet
+      // (ergo task 019f8086-8a25, "Atomics.wait producer pacing absent").
       dv.setUint32(HEADER_OFFSETS.producerLivenessBlock, options.blockFrameOffset, true);
       bi64[0] = options.frame;
-      // Wake sequence is the monotonic signal the Worker wait path observes.
-      // We update the full 64-bit value via the typed array so the consumer
-      // reads a consistent 64-bit counter. The Worker's `Atomics.wait` uses
-      // the low 32 bits via `Atomics.load` on `i32`, which is monotonic too.
+      // Keep the aligned 64-bit wake sequence available for the eventual
+      // Atomics pairing; no `Atomics.notify` is issued here yet.
       bi64Wake[0] = bi64Wake[0] + 1n;
     },
   };

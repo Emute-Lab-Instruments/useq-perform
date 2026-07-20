@@ -27,6 +27,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Build app bundle
+        run: npm run build
+
       - name: Runtime contract tests
         run: npm run test:contracts
 
@@ -45,9 +48,6 @@ jobs:
 
       - name: Storybook browser smoke tests (Chromium)
         run: npx vitest run --project storybook
-
-      - name: Build app bundle
-        run: npm run build
 
       - name: Build Storybook
         run: npm run build-storybook

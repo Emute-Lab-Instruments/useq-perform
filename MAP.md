@@ -52,6 +52,19 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `liveEdit.ts` — live-edit slot/widget/vector-mark types ([docs/specs/live-edit.md](docs/specs/live-edit.md)).
   - `midi.ts` — Web MIDI input types: device descriptor, parsed messages, learn state, source/binding model ([docs/specs/live-edit.md §5.6+](docs/specs/live-edit.md)).
   - `hardware.ts` — hardware binding chip + CV calibration session types ([docs/specs/hardware-bindings.md](docs/specs/hardware-bindings.md), [docs/specs/calibration.md](docs/specs/calibration.md)).
+  - `synthesisControlAbi.ts` — versioned SharedArrayBuffer control-transport ABI (header layout, ring records, publication helpers) **and** the single named-export home for engine constants (`SYNTH_FADE_IN/OUT_MS`, `CONTROL_LOOKAHEAD_BLOCKS`, `PRODUCER_TIMEOUT_BLOCKS`, `MAX_SYNTH_*`, …) per [docs/specs/synthesis.md §4](docs/specs/synthesis.md).
+  - `synthesisChannels.ts` — typed channels + engine-state transition table for the synthesis engine (off/suspended/running/error).
+  - `nodeDefRegistry.ts` — NodeDef descriptor schema/validation; carries the `osc/sine` v1 registry entry ([src-useq/docs/specs/synth-nodes.md §2](src-useq/docs/specs/synth-nodes.md)).
+  - `audioCapabilities.ts` — bootstrap `crossOriginIsolated`/SAB capability snapshot feeding the degraded no-audio diagnostic ([docs/specs/synthesis.md §6.3](docs/specs/synthesis.md)).
+- `src/audio/` — browser synthesis engine (M0/M1 of [docs/design/synthesis-epic.md](docs/design/synthesis-epic.md); spec [docs/specs/synthesis.md](docs/specs/synthesis.md)).
+  - `synthesisService.ts` — main-thread engine owner: state machine, worklet bring-up, producer bridge, eval-commit pipeline, telemetry. Accessed via `src/runtime/activeSynthesisService.ts`.
+  - `synthesisServiceBrowser.ts` — real-browser wiring (AudioContext construction, NodeDef WASM fetch/instantiation).
+  - `engineCommitCoordinator.ts` — pure eval→engine diff/plan builder (retire/instantiate/update deltas, epoch arming).
+  - `workletCore.ts` + `synthesisWorklet.ts` — AudioWorkletProcessor logic (framework-free core + thin worklet shell); bundled by `scripts/build-assets.mjs` into `public/wasm/synthesisWorklet.js`.
+  - `producerScheduler.ts` + `producerLoopDriver.ts` — Worker-side block production pacing and cancellable loop. **Deviation**: `setTimeout(0)` polling, not the ADR-0003 `Atomics.wait` (see ADR-0003 revisit note).
+  - `transportFrameMap.ts`, `audioClockPolicy.ts` — pure audio-frame↔transport-time mapping.
+  - `workletGraphDelta.ts`, `nodeDefAdapter.ts` — graph delta application and source-agnostic NodeDef module adapter.
+  - `engineIndicator.tsx` — engine state chip (props-based; wired in `src/ui/adapters/toolbars.tsx`).
 - `src/transport/` — Web Serial lifecycle and protocol. No UI/editor imports.
   - `connector.ts` — port open/close/reconnect, Web Serial events.
   - `json-protocol.ts` — firmware ≥ 1.2.0 JSON driver (handshake, heartbeat, eval). See [src-useq/docs/specs/wire-protocol.md](src-useq/docs/specs/wire-protocol.md).
@@ -73,6 +86,8 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `wasmJsonHandlers.ts` — pure WASM-side request handlers for the JSON protocol. Dispatches `hello` / `ping` / `stream-config` / `eval` against an injected `WasmJsonBackend`.
   - `wasmRuntimeWorkerPort.ts` — default `WasmRuntimePort` in browsers with Web Worker support; proxies every method to a dedicated classic Worker hosting the WASM interpreter. The in-process port is the fallback when Workers are unavailable or fail to construct. Diagnostics readback is piped through worker request/response messages.
   - `activeWasmRuntimePort.ts` — read-through accessor returning the active `WasmRuntimePort` (worker-backed by default, in-process fallback). Bootstrap is the only writer.
+  - `activeSynthesisService.ts` — same accessor pattern for the synthesis engine service; bootstrap is the only writer.
+  - `browserEvalSurface.ts` — devmode `window`-exposed eval surface used by the first-sound listening guide ([docs/synthesis/LISTENING_GUIDE.md](docs/synthesis/LISTENING_GUIDE.md)).
   - `workers/wasmRuntime.worker.ts` + `workers/wasmRuntimeWorkerProtocol.ts` — classic Web Worker hosting the WASM interpreter and the discriminated-union request/response protocol it speaks.
   - `runtimeDiagnostics.ts` — startup/environment diagnostics surface.
   - `startupContext.ts` — URL flag parsing and bootstrap context (incorporates the former `urlParams.ts`).
@@ -97,6 +112,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `driftDetector.ts` — per-output EMA drift scoring comparing hardware stream values against WASM tick values. Publishes `driftDetected` channel when aggregate exceeds threshold ([docs/specs/state-sync.md](docs/specs/state-sync.md)).
   - `stateSyncOrchestrator.ts` — subscribes to `driftDetected`, requests hardware state snapshot, applies to WASM. Manages cooldown, in-flight state, console feedback ([docs/specs/state-sync.md](docs/specs/state-sync.md)).
   - `hardwareConnectPrompt.ts` — on a `wasm` → `both` transition (fresh hardware connect), prompts "send current program to device?" and sends the editor program on confirm ([docs/specs/runtime-modes.md §1.7](docs/specs/runtime-modes.md)).
+  - `engineAutoplayListener.ts` — global any-interaction autoplay resume for the synthesis engine (capture-phase, trusted-events-only; [docs/specs/synthesis.md §6.5](docs/specs/synthesis.md)).
   - `mockControlInputs.ts`, `perfBenchmark.ts` (DEV-only — `window.__useqBench.run(channelCount)` exercises the vis pipeline at scale).
 - `src/editors/` — CodeMirror layer. Imports lib/contracts/effects/transport.
   - `extensions.ts` — extension barrel.
@@ -198,6 +214,9 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - [docs/specs/gamepad-handoff.md](docs/specs/gamepad-handoff.md) — gamepad pipeline rebuild status (working document).
 - [docs/BEADS_BACKEND.md](docs/BEADS_BACKEND.md) — **archival** Beads/Dolt backend setup (frozen historical infrastructure; use `ergo` instead).
 - [docs/adr/](docs/adr/) — architectural decisions (`0001` runtime surfaces, `0002` config-manager scope, `0003` archive boundaries).
+- [docs/design/synthesis-epic.md](docs/design/synthesis-epic.md) — synthesis engine roadmap + v1 epic; [docs/design/adr/](docs/design/adr/) holds the 8 synthesis ADRs (ADR-0003 carries the recorded Atomics.wait pacing deviation).
+- [docs/specs/synthesis.md](docs/specs/synthesis.md) — app-side synthesis engine contract; language-side counterpart [src-useq/docs/specs/synth-nodes.md](src-useq/docs/specs/synth-nodes.md).
+- [docs/synthesis/LISTENING_GUIDE.md](docs/synthesis/LISTENING_GUIDE.md) — user-run first-sound manual validation procedure (audibility is not automated; this guide is the residual manual surface).
 - [src-useq/docs/specs/diagnostics.md](src-useq/docs/specs/diagnostics.md) — diagnostic data shapes and ABI; see [src-useq/docs/specs/failure-model.md](src-useq/docs/specs/failure-model.md) for failure semantics.
 - [inspector/CLAUDE.md](inspector/CLAUDE.md) — Inspector agent guide.
 

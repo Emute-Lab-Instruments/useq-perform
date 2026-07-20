@@ -555,15 +555,17 @@ export interface EngineCommitResult {
 }
 
 /**
- * Canonical no-op commit result. Returned by every rejection path so
- * callers can reference-compare without unpacking the union.
+ * Canonical invalid-payload commit result, frozen and returned by
+ * reference so callers can reference-compare without unpacking the
+ * union. Other rejection outcomes (failed eval, superseded revision)
+ * carry per-commit epoch/revision data and are constructed per call.
  */
-const NOOP_COMMIT_RESULT: EngineCommitResult = Object.freeze({
+const NOOP_COMMIT_RESULT = Object.freeze({
   outcome: "rejected-invalid-payload",
   epoch: 0,
   revision: 0,
   workletDeltas: Object.freeze([]),
-}) as EngineCommitResult;
+}) satisfies EngineCommitResult;
 
 /**
  * Internal mutable telemetry accumulator. The service writes to this
@@ -1524,7 +1526,7 @@ function createCapableService(
     // The worklet reports a timeout counter on every telemetry
     // snapshot; we increment ours once per received event so the
     // dashboard count matches the number of distinct fault events.
-    acc.timeoutCount = Math.max(acc.timeoutCount, acc.timeoutCount + 1);
+    acc.timeoutCount += 1;
     acc.producerTimeoutActive = true;
     // Peak/RMS will reach zero once the emergency fade completes; we
     // do NOT zero them here because the worklet will publish the
@@ -1919,7 +1921,7 @@ function createCapableService(
 
     // Step 3: ABI + NodeDef validation.
     if (!isSynthArtifactsPayload(payload)) {
-      return { ...NOOP_COMMIT_RESULT };
+      return NOOP_COMMIT_RESULT;
     }
     if (!synthArtifactsSupportsAbi(payload.abi)) {
       throw new SynthesisServiceError(
@@ -2185,51 +2187,6 @@ export function createSynthesisDevmodeSurface(
       return service.devmodeReinitialise();
     },
   });
-}
-
-// ---------------------------------------------------------------------------
-// Synth artefact intake — thin wrapper over SynthesisService.commitSynthArtifacts
-// ---------------------------------------------------------------------------
-
-/**
- * Apply a successful exact-eval synth artefact payload to the engine.
- *
- * This is a thin wrapper over {@link SynthesisService.commitSynthArtifacts}
- * preserved for backwards compatibility with callers that pass a raw
- * payload of `unknown` type. New callers should call
- * `service.commitSynthArtifacts(payload, hasErrors)` directly to inspect
- * the structured {@link EngineCommitResult}.
- *
- * Returns `true` when the payload was committed, `false` when it was
- * rejected as a no-op (failed eval, superseded response, or invalid
- * payload). Throws on ABI mismatch (a bundle-version slip is a fatal
- * programmer error, not a user-facing diagnostic).
- *
- * Implements VAL-COMP-013/014/015 (atomic Worker response, failed
- * response has no engine commit, ABI versioned) and
- * VAL-ENGINE-010/013/014/015 (epoch-coherent graph diff, superseded
- * no-op, update-in-place, failed-eval no-op).
- */
-export function applySynthArtifacts(
-  service: SynthesisService,
-  payload: unknown,
-  hasErrors: boolean,
-): boolean {
-  // VAL-COMP-014: failed eval responses cannot commit.
-  if (hasErrors) return false;
-
-  if (!isSynthArtifactsPayload(payload)) {
-    // The payload shape failed validation. This is a programmer error in
-    // practice (the Worker handler always returns the canonical shape);
-    // surface it loudly.
-    return false;
-  }
-
-  // Delegate to the service's structured commit pipeline. The result's
-  // `outcome` field carries the rejection reason for callers that need
-  // it; this wrapper preserves the legacy boolean contract.
-  const result = service.commitSynthArtifacts(payload, hasErrors);
-  return result.outcome === "committed";
 }
 
 /**

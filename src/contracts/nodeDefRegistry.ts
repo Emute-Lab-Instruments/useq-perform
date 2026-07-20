@@ -40,6 +40,11 @@
  * from the worklet bundle without violating ESLint layering.
  */
 
+import {
+  SYNTH_FADE_IN_MS,
+  SYNTH_FADE_OUT_MS,
+} from "./synthesisControlAbi";
+
 // ---------------------------------------------------------------------------
 // Param rate / smoothing classes (mirror synth-nodes.md §2.3–2.5)
 // ---------------------------------------------------------------------------
@@ -179,8 +184,8 @@ export const OSC_SINE_NODEDEF_DESCRIPTOR: NodeDefDescriptor = Object.freeze({
       smoothing: "linear",
     }),
   ]),
-  fadeInMs: 10,
-  fadeOutMs: 30,
+  fadeInMs: SYNTH_FADE_IN_MS,
+  fadeOutMs: SYNTH_FADE_OUT_MS,
   stateBytes: 24,
   stateAlign: 8,
   controlStrideBytes: 8,

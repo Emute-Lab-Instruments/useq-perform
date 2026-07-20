@@ -33,7 +33,6 @@ import {
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
 import {
   SYNTHESIS_TELEMETRY_SCHEMA_VERSION,
-  applySynthArtifacts,
   createSynthesisDevmodeSurface,
   createSynthesisService,
   SynthesisServiceError,
@@ -565,11 +564,10 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
     resetEngineStateStoreForTests();
   });
 
-  it("applySynthArtifacts accepts a well-formed payload without errors", async () => {
+  it("commitSynthArtifacts accepts a well-formed payload without errors", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
-    const accepted = applySynthArtifacts(
-      service,
+    const result = service.commitSynthArtifacts(
       {
         abi: 1,
         revision: 1,
@@ -588,15 +586,14 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
       },
       false,
     );
-    expect(accepted).toBe(true);
+    expect(result.outcome).toBe("committed");
     await service.dispose();
   });
 
-  it("applySynthArtifacts rejects payloads with diagnostics errors (VAL-COMP-014)", async () => {
+  it("commitSynthArtifacts rejects payloads with diagnostics errors (VAL-COMP-014)", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
-    const accepted = applySynthArtifacts(
-      service,
+    const result = service.commitSynthArtifacts(
       {
         abi: 1,
         revision: 1,
@@ -605,16 +602,15 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
       },
       true,
     );
-    expect(accepted).toBe(false);
+    expect(result.outcome).toBe("rejected-failed-eval");
     await service.dispose();
   });
 
-  it("applySynthArtifacts throws on ABI version mismatch (VAL-COMP-015)", async () => {
+  it("commitSynthArtifacts throws on ABI version mismatch (VAL-COMP-015)", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
     expect(() =>
-      applySynthArtifacts(
-        service,
+      service.commitSynthArtifacts(
         {
           abi: 99,
           revision: 1,
@@ -627,12 +623,11 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
     await service.dispose();
   });
 
-  it("applySynthArtifacts throws on unknown NodeDef references", async () => {
+  it("commitSynthArtifacts throws on unknown NodeDef references", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
     expect(() =>
-      applySynthArtifacts(
-        service,
+      service.commitSynthArtifacts(
         {
           abi: 1,
           revision: 1,

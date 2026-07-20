@@ -46,3 +46,17 @@ executor was rejected earlier (WASM↔WASM state-sync problem).
 
 `postMessage` fallback transport is rejected, not deferred. Revisit
 lookahead depth once real producer timing exists.
+
+**Implementation deviation (recorded 2026-07-20, post-M1 review).** The
+M1 producer is *not* paced by `Atomics.wait` on the worklet-published
+frame index as decided above. The shipped Worker loop is an unconditional
+`setTimeout(0)` macrotask poll budgeted by `PRODUCER_POLL_INTERVAL_MS`
+(4 ms), and `publishAudioFrame` performs plain (non-Atomics) 64-bit SAB
+writes with no paired `Atomics.notify`. This is the same *class* of
+pacing this ADR's context section argues against, mitigated only by the
+tighter poll budget and the 6-block lookahead margin; it also burns CPU
+polling while fully caught up. Tracked as ergo `019f8086-8a25` ("Atomics.wait
+producer pacing absent"): either implement the decided wait/notify
+pacing, or — if the poll loop proves sufficient under measurement
+(`synthesis.md` §8 targets) — amend this ADR's Decision section
+explicitly rather than leaving the deviation implicit.

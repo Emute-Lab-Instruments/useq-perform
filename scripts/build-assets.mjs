@@ -247,6 +247,17 @@ function buildAll() {
 function watchMode() {
   buildAll();
 
+  let synthesisWorkletBuildTimer = null;
+  const scheduleSynthesisWorkletBundle = () => {
+    if (synthesisWorkletBuildTimer !== null) {
+      clearTimeout(synthesisWorkletBuildTimer);
+    }
+    synthesisWorkletBuildTimer = setTimeout(() => {
+      synthesisWorkletBuildTimer = null;
+      bundleSynthesisWorklet();
+    }, 50);
+  };
+
   // Watch markdown & reference data
   if (fs.existsSync(markdownConfig.inputDir)) {
     fs.watch(markdownConfig.inputDir, (_eventType, filename) => {
@@ -277,6 +288,31 @@ function watchMode() {
       }
     });
     console.log(`Watching ${wasmDir}/ for WASM bundle changes...`);
+  }
+
+  // Watch every source imported by the self-contained synthesis worklet
+  // bundle. fs.watch can emit several events for one save, so coalesce them
+  // before invoking esbuild.
+  const synthesisAudioDir = path.dirname(synthesisWorkletFile.src);
+  if (fs.existsSync(synthesisAudioDir)) {
+    fs.watch(synthesisAudioDir, (_eventType, filename) => {
+      if (!filename) return;
+      scheduleSynthesisWorkletBundle();
+    });
+    console.log(`Watching ${synthesisAudioDir}/ for synthesis worklet changes...`);
+  }
+
+  const synthesisContractFiles = [
+    path.join('src', 'contracts', 'synthesisControlAbi.ts'),
+    path.join('src', 'contracts', 'nodeDefRegistry.ts'),
+  ];
+  for (const sourceFile of synthesisContractFiles) {
+    if (!fs.existsSync(sourceFile)) continue;
+    fs.watch(sourceFile, (_eventType, filename) => {
+      if (!filename) return;
+      scheduleSynthesisWorkletBundle();
+    });
+    console.log(`Watching ${sourceFile} for synthesis worklet changes...`);
   }
 }
 

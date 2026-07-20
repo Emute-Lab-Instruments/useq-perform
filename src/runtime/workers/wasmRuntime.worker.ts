@@ -134,13 +134,15 @@ let interpreter: InterpreterHandle | null = null;
 //   - the SAB-backed SynthesisControlView (after `producerInstallSab`);
 //   - the TransportFrameMap (constructed on `producerStart`);
 //   - the ProducerScheduler (constructed on `producerStart`);
-//   - a microtask-style scheduling loop that drives `iterate()` between
-//     Worker message-handler invocations.
+//   - a task-yielding scheduling loop that drives `iterate()` between Worker
+//     message-handler invocations.
 //
 // The producer is the SOLE caller of `view.advanceWriteIndex`. The
-// worklet consumes the ring without ever blocking (VAL-SAB-019); only
-// this Worker's bounded wake path may `Atomics.wait`, and only on the
-// SAB wake int32 (VAL-SAB-014).
+// worklet consumes the ring without ever blocking (VAL-SAB-019). Producer
+// pacing currently uses an unconditional `setTimeout(0)` macrotask loop,
+// budgeted by `PRODUCER_POLL_INTERVAL_MS`; the Atomics.wait wake path is an
+// interim deviation from synthesis.md §4.1 (ergo task
+// 019f8086-8a25, "Atomics.wait producer pacing absent").
 
 let controlView: SynthesisControlView | null = null;
 let transportMap: TransportFrameMap | null = null;
@@ -153,23 +155,20 @@ const producerControlValues = new Map<string, number>();
 const producerAudit: ProducedBlockAudit[] = [];
 
 /**
- * Bounded-yield clock used by the producer scheduler. The driver loop
- * interleaves `iterate()` with the regular message-handler drain via
- * `setTimeout(0)` (a real macrotask that yields to the Worker inbox),
- * so `sleep` is a no-op inside the scheduler — the host yield is the
- * bounded wait (VAL-ENGINE-006).
- *
- * The real `Atomics.wait` wake path (when the worklet publishes a new
- * audio frame) hooks in via the driver's macrotask scheduler below.
- * The wait is always bounded by `PRODUCER_POLL_INTERVAL_MS`.
+ * Producer pacing clock. The scheduler's `sleep` hook is intentionally a
+ * no-op because the driver unconditionally yields with `setTimeout(0)` — a
+ * macrotask that lets the Worker inbox run. Each `iterate()` remains bounded
+ * by `PRODUCER_POLL_INTERVAL_MS`. This is an interim deviation from
+ * synthesis.md §4.1; the Atomics.wait wake path is tracked in ergo task
+ * 019f8086-8a25 ("Atomics.wait producer pacing absent").
  */
 const producerClock: ProducerSchedulingClock = {
   now(): number {
     return Date.now();
   },
   sleep(_ms: number): void {
-    // No-op: the microtask loop is the bounded wait. Sleeping here would
-    // block the Worker event loop and starve the inbox (VAL-ENGINE-006).
+    // No-op: the unconditional setTimeout(0) macrotask loop below supplies
+    // the yield; blocking here would starve the Worker inbox.
   },
 };
 
@@ -1071,9 +1070,11 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         producer.start();
         producerRunning = true;
         // Replace any previously-terminated driver so cancellation
-        // generation is reset. The driver schedules the first turn via
-        // setTimeout(0), which yields to the Worker inbox between
-        // iterations (VAL-ENGINE-006 / Ergo ca5e1cc3).
+        // generation is reset. The driver schedules every turn via
+        // unconditional setTimeout(0), which yields to the Worker inbox
+        // between iterations. This interim pacing deviation from
+        // synthesis.md §4.1 is tracked in ergo task 019f8086-8a25
+        // ("Atomics.wait producer pacing absent").
         producerLoopDriver = createProducerLoopDriver({
           iterate: () => {
             if (!producerRunning || !producer) return;
@@ -1082,9 +1083,11 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
             producerBlocksPublished += producerAudit.length - before;
           },
           yieldToQueue: (runNext) => {
-            // setTimeout(0) is a macrotask: postMessage dispatch
-            // runs between iterations, so eval/transport/lifecycle
-            // messages stay responsive while publication continues.
+            // setTimeout(0) is the unconditional macrotask loop budget;
+            // postMessage dispatch runs between iterations, so
+            // eval/transport/lifecycle messages stay responsive while
+            // each scheduler iteration remains bounded by
+            // PRODUCER_POLL_INTERVAL_MS.
             setTimeout(runNext, 0);
           },
         });
