@@ -82,14 +82,16 @@ import {
 import type { NodeDefAdapter, NodeDefModule } from "./nodeDefAdapter";
 import {
   ABI_VERSION as SYNTH_CONTROL_ABI_VERSION,
+  ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS,
   CONTROL_LOOKAHEAD_BLOCKS,
   DEFAULT_RENDER_QUANTUM_FRAMES,
   PRODUCER_FIRST_PUBLISH_DEADLINE_MS,
-  ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS,
   attachSynthesisControlView,
   createSynthesisControlBuffer,
+  type SynthesisControlView,
 } from "../contracts/synthesisControlAbi";
 import type {
+  WorkletControlAttachAckEvent,
   WorkletModuleTransferMessage,
   WorkletProducerTimeoutEvent,
   WorkletTelemetrySnapshot,
@@ -894,10 +896,33 @@ function createCapableService(
   // between the Worker producer and the AudioWorklet. Allocated in
   // `installProducerControlBridge`, detached on dispose/recovery.
   let producerControlBuffer: SharedArrayBuffer | null = null;
+  // Service-side view over the control SAB, attached once per engine
+  // session (b3895dbe). Telemetry reads go through this view; it is
+  // replaced on recovery together with the buffer it wraps.
+  let sabView: SynthesisControlView | null = null;
   let producerInstalled = false;
   let producerRunning = false;
   let firstPublishTimer: ReturnType<typeof setTimeout> | null = null;
   let attachAckTimer: ReturnType<typeof setTimeout> | null = null;
+  // Lifetime fault-counter bases (VAL-ENGINE-030). The SAB header
+  // counters are per-engine-session (a recovery allocates a fresh
+  // zeroed buffer), while the published counters are lifetime for this
+  // service instance. Each new bridge records the lifetime totals at
+  // session start; published counter = base + current header value.
+  let underrunCountBase = 0;
+  let glitchCountBase = 0;
+  let timeoutCountBase = 0;
+
+  function clearProducerTimers(): void {
+    if (firstPublishTimer) {
+      clearTimeout(firstPublishTimer);
+      firstPublishTimer = null;
+    }
+    if (attachAckTimer) {
+      clearTimeout(attachAckTimer);
+      attachAckTimer = null;
+    }
+  }
 
   // --- Eval-to-engine commit state (VAL-ENGINE-010/013/014/015) ---
   //
@@ -972,17 +997,25 @@ function createCapableService(
   }
 
   function snapshotTelemetry(): SynthesisTelemetrySnapshot {
-    if (producerControlBuffer) {
-      const view = attachSynthesisControlView(producerControlBuffer);
-      acc.audioFrame = view.audioFrame;
-      acc.peakSample = view.peakSample;
-      acc.rmsSample = view.rmsSample;
-      acc.underrunCount = view.underrunCount;
-      acc.glitchCount = view.glitchCount;
-      acc.timeoutCount = view.timeoutCount;
-      acc.producerLivenessAge = view.producerLivenessAge;
-      acc.activeEpoch = view.programEpoch;
-      if (view.ringWriteIndex > 0 && firstPublishTimer) {
+    // Steady-state telemetry comes straight from the SAB header the
+    // worklet writes every block (b3895dbe); the view is attached once
+    // per engine session in `installProducerControlBridge`. Discrete
+    // events (producer-timeout, graph-activated, attach ack) still
+    // arrive via the port and are merged elsewhere.
+    if (sabView) {
+      acc.audioFrame = sabView.audioFrame;
+      acc.peakSample = sabView.peakSample;
+      acc.rmsSample = sabView.rmsSample;
+      acc.finiteOutput = sabView.finiteOutput;
+      acc.underrunCount = underrunCountBase + sabView.underrunCount;
+      acc.glitchCount = glitchCountBase + sabView.glitchCount;
+      acc.timeoutCount = timeoutCountBase + sabView.timeoutCount;
+      acc.producerLivenessAge = sabView.producerLivenessAge;
+      acc.activeEpoch = sabView.programEpoch;
+      acc.ringWriteSequence = sabView.ringWriteIndex;
+      acc.ringReadSequence = sabView.ringReadIndex;
+      acc.ringFillDepth = sabView.ringFillDepth();
+      if (sabView.ringWriteIndex > 0 && firstPublishTimer) {
         clearTimeout(firstPublishTimer);
         firstPublishTimer = null;
       }
@@ -1224,6 +1257,12 @@ function createCapableService(
     const sab = new SharedArrayBuffer(layout.byteLength);
     new Uint8Array(sab).set(new Uint8Array(layout));
     producerControlBuffer = sab;
+    sabView = attachSynthesisControlView(sab);
+    // Fresh session: bank the lifetime fault totals so the zeroed
+    // header continues the count instead of regressing it.
+    underrunCountBase = acc.underrunCount;
+    glitchCountBase = acc.glitchCount;
+    timeoutCountBase = acc.timeoutCount;
 
     // Ship the SAB to the worklet. The worklet core's
     // `attach-control-buffer` handler validates ABI magic/version and
@@ -1235,8 +1274,17 @@ function createCapableService(
         type: "attach-control-buffer",
         controlBuffer: sab,
       });
+      // Fail closed if the worklet never acks the attach (synthesis.md
+      // §4.8): without the ack the worklet's controlView stays null and
+      // its liveness timeout is gated off, so silence would otherwise
+      // be indefinite and undiagnosed (c84c125f). The attach happens
+      // during bring-up while the engine is `suspended`, so the guard
+      // is "not already terminal", NOT "running".
       attachAckTimer = setTimeout(() => {
-        if (currentState === "running") transition("error", "WORKLET_CONTROL_ATTACH_FAILED", ENGINE_STATE_REASONS.WORKLET_CONTROL_ATTACH_FAILED);
+        attachAckTimer = null;
+        if (disposed || currentState === "error") return;
+        transition("error", "WORKLET_CONTROL_ATTACH_FAILED",
+          ENGINE_STATE_REASONS.WORKLET_CONTROL_ATTACH_FAILED);
       }, ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS);
     }
 
@@ -1283,14 +1331,37 @@ function createCapableService(
         sampleRate: audioContext.sampleRate,
       });
       producerRunning = true;
-      firstPublishTimer = setTimeout(() => {
-        if (producerRunning && producerControlBuffer && attachSynthesisControlView(producerControlBuffer).ringWriteIndex === 0 && currentState === "running") {
-          transition("error", "PRODUCER_FIRST_PUBLISH_TIMEOUT", ENGINE_STATE_REASONS.PRODUCER_FIRST_PUBLISH_TIMEOUT);
-        }
-      }, PRODUCER_FIRST_PUBLISH_DEADLINE_MS);
+      armFirstPublishDeadline();
     } catch (err) {
-      transition("error", "PRODUCER_FIRST_PUBLISH_TIMEOUT", `${ENGINE_STATE_REASONS.PRODUCER_FIRST_PUBLISH_TIMEOUT} ${(err as Error).message}`);
+      // A producerStart throw was previously swallowed with a comment
+      // claiming the worklet timeout path covers it — it does not: the
+      // worklet only ages liveness after a first publish (5f4de6d8).
+      transition("error", "PRODUCER_FIRST_PUBLISH_TIMEOUT",
+        `The control producer failed to start: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * Deadline for the producer's FIRST ring publication (5f4de6d8). The
+   * worklet's liveness timeout only ages once `producerEverPublished`,
+   * so a producer that starts but never publishes would otherwise leave
+   * the engine `running` over eternal silence. While the engine is not
+   * `running` the worklet publishes no frames to pace against, so the
+   * deadline re-arms instead of firing a false positive.
+   */
+  function armFirstPublishDeadline(): void {
+    if (firstPublishTimer) clearTimeout(firstPublishTimer);
+    firstPublishTimer = setTimeout(() => {
+      firstPublishTimer = null;
+      if (disposed || !producerRunning || sabView === null) return;
+      if (sabView.ringWriteIndex > 0) return;
+      if (currentState !== "running") {
+        armFirstPublishDeadline();
+        return;
+      }
+      transition("error", "PRODUCER_FIRST_PUBLISH_TIMEOUT",
+        ENGINE_STATE_REASONS.PRODUCER_FIRST_PUBLISH_TIMEOUT);
+    }, PRODUCER_FIRST_PUBLISH_DEADLINE_MS);
   }
 
   /**
@@ -1301,6 +1372,10 @@ function createCapableService(
   async function stopProducer(): Promise<void> {
     if (!producerRunning) return;
     producerRunning = false;
+    if (firstPublishTimer) {
+      clearTimeout(firstPublishTimer);
+      firstPublishTimer = null;
+    }
     const workerPort = options.workerPort;
     if (!workerPort || typeof workerPort.producerStop !== "function") return;
     try {
@@ -1410,22 +1485,42 @@ function createCapableService(
     if (evt.type === "attach-control-buffer-ack") {
       if (attachAckTimer) clearTimeout(attachAckTimer);
       attachAckTimer = null;
-      if ((evt as { ok?: boolean }).ok === false && currentState === "running") transition("error", "WORKLET_CONTROL_ATTACH_FAILED", ENGINE_STATE_REASONS.WORKLET_CONTROL_ATTACH_FAILED);
+      const ack = evt as WorkletControlAttachAckEvent;
+      if (!ack.ok && !disposed && currentState !== "error") {
+        // Negative ack: the worklet rejected the SAB header (ABI
+        // mismatch — typically a stale cached worklet bundle after an
+        // ABI bump). Fatal startup error per synthesis.md §4.8.
+        const detail = ack.reason ? ` (${ack.reason})` : "";
+        transition("error", "WORKLET_CONTROL_ATTACH_FAILED",
+          `${ENGINE_STATE_REASONS.WORKLET_CONTROL_ATTACH_FAILED}${detail}`);
+      }
       return;
     }
 
     if (typeof (evt as { schemaVersion?: unknown }).schemaVersion === "number") {
-      // WorkletTelemetrySnapshot. Merge into the accumulator; the
-      // snapshot is structurally cloned across the worklet boundary.
-      mergeWorkletTelemetry(data as WorkletTelemetrySnapshot);
+      // Legacy WorkletTelemetrySnapshot. Steady-state telemetry is
+      // SAB-header-authoritative (b3895dbe); the production worklet no
+      // longer posts snapshots and any that arrive are ignored.
       return;
     }
 
-    if (evt.type === "graph-activated" || evt.type === "instance-retired") {
-      // Lifecycle audit event: refresh telemetry publication so
-      // devmode dashboards see the latest state, but do not drive a
-      // state transition. The service still owns the four-state
-      // lifecycle; the worklet only reports graph-internal changes.
+    if (evt.type === "graph-activated") {
+      // Lifecycle audit event (no state transition — the service owns
+      // the four-state lifecycle). With per-quantum snapshots gone,
+      // this event is also the authoritative source for the active
+      // instance identity the devmode telemetry exposes.
+      const activated = evt as { identity?: unknown };
+      if (typeof activated.identity === "string") {
+        acc.instanceId = activated.identity;
+      }
+      publishTelemetry();
+      return;
+    }
+    if (evt.type === "instance-retired") {
+      const retired = evt as { identity?: unknown };
+      if (typeof retired.identity === "string" && retired.identity === acc.instanceId) {
+        acc.instanceId = "";
+      }
       publishTelemetry();
       return;
     }
@@ -1444,104 +1539,6 @@ function createCapableService(
    * Non-monotonic values from a buggy or racing worklet are clamped
    * rather than corrupting the published telemetry.
    */
-  function mergeWorkletTelemetry(snap: WorkletTelemetrySnapshot): void {
-    // Audio frame is monotonic under documented wrap semantics
-    // (synthesis.md §4.6). The accumulator only ever moves forward.
-    // The worklet publishes a number (struct-clone loses BigInt across
-    // the AudioWorklet boundary); accept both bigint and number.
-    let incomingFrame = acc.audioFrame;
-    if (typeof snap.audioFrame === "bigint") {
-      incomingFrame = snap.audioFrame;
-    } else if (typeof snap.audioFrame === "number" && Number.isFinite(snap.audioFrame)) {
-      incomingFrame = BigInt(Math.max(0, Math.floor(snap.audioFrame)));
-    }
-    if (incomingFrame > acc.audioFrame) {
-      acc.audioFrame = incomingFrame;
-    }
-    // Ring sequences. The worklet reports the latest observed values.
-    if (typeof snap.blockCount === "number") {
-      // blockCount is monotonic; we use it to derive write/read
-      // sequences for telemetry when the worklet does not report them
-      // directly (the worklet-core publishes blockCount, the SAB
-      // carries the authoritative ring indices). Treat blockCount as
-      // the write sequence surrogate so VAL-ENGINE-030's monotonic
-      // progression check holds.
-      if (snap.blockCount > acc.ringWriteSequence) {
-        acc.ringWriteSequence = snap.blockCount;
-      }
-    }
-    // Active / pending epochs come from the worklet's graph state.
-    if (typeof snap.activeEpoch === "number") {
-      acc.activeEpoch = snap.activeEpoch;
-    }
-    if (typeof snap.pendingEpoch === "number") {
-      acc.pendingEpoch = snap.pendingEpoch;
-    }
-    // Instance id: the first active instance's identity, or empty.
-    const instances = snap.instances;
-    if (Array.isArray(instances) && instances.length > 0) {
-      const first = instances[0];
-      if (first && typeof first.identity === "string") {
-        acc.instanceId = first.identity;
-      }
-    } else if (Array.isArray(instances) && instances.length === 0) {
-      acc.instanceId = "";
-    }
-    // Output metrics.
-    if (typeof snap.peakSample === "number" && Number.isFinite(snap.peakSample)) {
-      acc.peakSample = snap.peakSample;
-    }
-    if (typeof snap.rmsSample === "number" && Number.isFinite(snap.rmsSample)) {
-      acc.rmsSample = snap.rmsSample;
-    }
-    if (typeof snap.finiteOutput === "number") {
-      acc.finiteOutput = snap.finiteOutput;
-    }
-    // Fault counters are monotonic; take the max so a stale snapshot
-    // cannot regress them (VAL-ENGINE-030).
-    if (typeof snap.underrunCount === "number" && snap.underrunCount > acc.underrunCount) {
-      acc.underrunCount = snap.underrunCount;
-    }
-    if (typeof snap.glitchCount === "number" && snap.glitchCount > acc.glitchCount) {
-      acc.glitchCount = snap.glitchCount;
-    }
-    if (typeof snap.timeoutCount === "number" && snap.timeoutCount > acc.timeoutCount) {
-      acc.timeoutCount = snap.timeoutCount;
-    }
-    if (typeof snap.producerLivenessAge === "number") {
-      acc.producerLivenessAge = snap.producerLivenessAge;
-    }
-    if (typeof snap.producerTimeoutActive === "boolean") {
-      // VAL-ENGINE-026 / Ergo bug c7edc263: detect the worklet's
-      // false→true producerTimeoutActive transition here so the
-      // running→error transition fires even when the worklet shell
-      // does not forward the discrete `producer-timeout` event. The
-      // production AudioWorklet shell (synthesisWorklet.ts) only
-      // posts telemetry snapshots per render quantum; its `publish`
-      // callback is a no-op for discrete events. Without this
-      // snapshot-driven detection the engine never reached `error`
-      // after real producer loss in headless Chromium, which is the
-      // root cause c7edc263 captured (engineState=running,
-      // audioFrame=0 after recovery because the recovery path was
-      // never triggered).
-      const wasActive = acc.producerTimeoutActive;
-      acc.producerTimeoutActive = snap.producerTimeoutActive;
-      if (!wasActive && snap.producerTimeoutActive) {
-        // Drive the same transition handleProducerTimeout would.
-        // Reuse the helper so the transition matrix, console
-        // messaging, and dedup stay authoritative.
-        handleProducerTimeoutFromSnapshot(snap);
-      }
-    }
-    // Fill depth is derived from write/read; without direct access to
-    // the SAB ring indices we report the worklet's blockCount minus
-    // the read sequence the producer observes. The worklet core does
-    // not expose its read index separately, so we leave fill depth at
-    // zero unless the snapshot carries it directly (future worklet
-    // revisions may add a `ringFillDepth` field).
-    publishTelemetry();
-  }
-
   /**
    * Handle the producer-timeout event. VAL-ENGINE-026: the engine
    * transitions `running → error` with the `PRODUCER_TIMEOUT` reason,
@@ -1556,10 +1553,10 @@ function createCapableService(
    * `error`, subsequent timeout events do not re-transition.
    */
   function handleProducerTimeout(event: WorkletProducerTimeoutEvent): void {
-    // The worklet reports a timeout counter on every telemetry
-    // snapshot; we increment ours once per received event so the
-    // dashboard count matches the number of distinct fault events.
-    acc.timeoutCount += 1;
+    // The timeout COUNTER is SAB-authoritative: the worklet core
+    // increments its header counter when it detects the loss, and
+    // `snapshotTelemetry` publishes base + header. This handler only
+    // owns the state transition and the timeout-active flag.
     acc.producerTimeoutActive = true;
     // Peak/RMS will reach zero once the emergency fade completes; we
     // do NOT zero them here because the worklet will publish the
@@ -1581,45 +1578,6 @@ function createCapableService(
     // wired. This is best-effort; the transition above already posted
     // the user-facing message.
     void event;
-    publishTelemetry();
-  }
-
-  /**
-   * Snapshot-driven producer-loss detection. The production
-   * AudioWorklet shell only posts per-quantum telemetry snapshots;
-   * discrete `producer-timeout` events from the worklet core are
-   * dropped by the shell's no-op `publish` callback. To keep VAL-
-   * ENGINE-026 provable in real Chromium we ALSO drive the
-   * running→error transition from the false→true edge of the
-   * worklet's `producerTimeoutActive` field in the telemetry
-   * snapshot.
-   *
-   * The transition is idempotent: the `running → error` matrix guard
-   * deduplicates, and `acc.producerTimeoutActive` is set before this
-   * helper runs so a re-entrant snapshot cannot double-fire.
-   */
-  function handleProducerTimeoutFromSnapshot(
-    snap: WorkletTelemetrySnapshot,
-  ): void {
-    // The timeout counter is merged from the worklet's local counter
-    // (already authoritative). Do NOT increment again here — that
-    // would double-count every snapshot-driven transition.
-    //
-    // Only transition out of `running`. The `suspended` state is
-    // excluded here (unlike the discrete-event handler) because the
-    // worklet publishes producerTimeoutActive=true whenever it has
-    // been processing for ~64 ms without a producer block — including
-    // the legitimate window between recovery (suspended) and the
-    // user's trusted activation that starts the producer. Treating
-    // that window as producer loss would make every recovery land in
-    // `error` before the user could resume, defeating the recovery
-    // affordance. The discrete-event handler remains authoritative
-    // for the rare suspended-before-runtime producer crash.
-    if (currentState === "running") {
-      transition("error", "PRODUCER_TIMEOUT",
-        ENGINE_STATE_REASONS.PRODUCER_TIMEOUT);
-    }
-    void snap;
     publishTelemetry();
   }
 
@@ -1860,8 +1818,13 @@ function createCapableService(
     // every published telemetry snapshot — exactly the
     // `engineState=running, audioFrame=0` signature c7edc263 reports.
     producerControlBuffer = null;
+    sabView = null;
     producerInstalled = false;
     producerRunning = false;
+    // Pending deadline/ack timers belong to the session being torn
+    // down; a late firing against the fresh session would be a
+    // spurious error transition.
+    clearProducerTimers();
     // Note: fault counters (underrun/glitch/timeout) are NOT reset
     // here. They are lifetime counters for the current service
     // instance. A full dispose (final state "off") resets them via

@@ -66,6 +66,7 @@ import type {
   WorkletIdentityTuple,
   WorkletInstantiateMessage,
   WorkletInstanceRetiredEvent,
+  WorkletInstanceTelemetry,
   WorkletModuleTransferMessage,
   WorkletOutboundEvent,
   WorkletPrefillParam,
@@ -415,35 +416,69 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   // the Web Audio output channel. This keeps the core allocation-free
   // and avoids a vtable dispatch on the hot path.
 
-  function publishTelemetry(): WorkletTelemetrySnapshot {
-    const snapshot: WorkletTelemetrySnapshot = {
-      schemaVersion: WORKLET_TELEMETRY_SCHEMA_VERSION,
-      audioFrame: controlView ? Number(controlView.audioFrame) : 0,
-      activeEpoch,
-      pendingEpoch,
-      blockCount,
-      instances: activeInstance
-        ? [
-            {
-              identity: activeInstance.identity,
-              def: activeInstance.def,
-              version: activeInstance.version,
-              statePointer: activeInstance.statePointer,
-              lifecycle: activeInstance.lifecycle,
-            },
-          ]
-        : [],
-      peakSample,
-      rmsSample,
-      finiteOutput,
-      underrunCount,
-      glitchCount,
-      timeoutCount,
-      producerLivenessAge,
-      producerTimeoutActive,
-    };
-    options.publish(snapshot);
-    return snapshot;
+  // Retained telemetry struct, mutated in place on every read. Steady-
+  // state telemetry lives in the SAB header (written in process() step
+  // 8); this object only serves the `telemetry` getter / process()
+  // return value for tests and the simulated (non-SAB) worklet core, so
+  // the audio thread never allocates for telemetry (b3895dbe). Callers
+  // must copy fields they want to hold across blocks.
+  type MutableInstanceTelemetry = {
+    -readonly [K in keyof WorkletInstanceTelemetry]: WorkletInstanceTelemetry[K];
+  };
+  type MutableTelemetry = {
+    -readonly [K in keyof Omit<WorkletTelemetrySnapshot, "instances">]:
+      WorkletTelemetrySnapshot[K];
+  } & { instances: MutableInstanceTelemetry[] };
+  const retainedInstanceTelemetry: MutableInstanceTelemetry = {
+    identity: "",
+    def: "",
+    version: 0,
+    statePointer: 0,
+    lifecycle: "fade-in",
+  };
+  const retainedTelemetry: MutableTelemetry = {
+    schemaVersion: WORKLET_TELEMETRY_SCHEMA_VERSION,
+    audioFrame: 0,
+    activeEpoch: 0,
+    pendingEpoch: 0,
+    blockCount: 0,
+    instances: [],
+    peakSample: 0,
+    rmsSample: 0,
+    finiteOutput: 1,
+    underrunCount: 0,
+    glitchCount: 0,
+    timeoutCount: 0,
+    producerLivenessAge: 0,
+    producerTimeoutActive: false,
+  };
+
+  function refreshTelemetry(): WorkletTelemetrySnapshot {
+    const t = retainedTelemetry;
+    t.audioFrame = controlView ? Number(controlView.audioFrame) : 0;
+    t.activeEpoch = activeEpoch;
+    t.pendingEpoch = pendingEpoch;
+    t.blockCount = blockCount;
+    if (activeInstance) {
+      const i = retainedInstanceTelemetry;
+      i.identity = activeInstance.identity;
+      i.def = activeInstance.def;
+      i.version = activeInstance.version;
+      i.statePointer = activeInstance.statePointer;
+      i.lifecycle = activeInstance.lifecycle;
+      if (t.instances.length === 0) t.instances.push(i);
+    } else if (t.instances.length !== 0) {
+      t.instances.length = 0;
+    }
+    t.peakSample = peakSample;
+    t.rmsSample = rmsSample;
+    t.finiteOutput = finiteOutput;
+    t.underrunCount = underrunCount;
+    t.glitchCount = glitchCount;
+    t.timeoutCount = timeoutCount;
+    t.producerLivenessAge = producerLivenessAge;
+    t.producerTimeoutActive = producerTimeoutActive;
+    return t;
   }
 
   function publishEvent(event: WorkletOutboundEvent): void {
@@ -498,8 +533,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
   function handleAttachControlBuffer(message: WorkletAttachControlBufferMessage): void {
     const buffer = message.controlBuffer;
-    // The view throws on header mismatch (VAL-SAB-018). We catch and
-    // ignore — a malformed buffer cannot be consumed.
+    // The view throws on header mismatch (VAL-SAB-018). Either way the
+    // service gets an explicit ack (`synthesis.md` §4.8): a negative
+    // ack — or no ack before its timeout — is a fatal startup error on
+    // the service side, never indefinite silence.
     try {
       controlView = attachSynthesisControlView(buffer);
       controlBuffer = buffer;
@@ -507,13 +544,17 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       // service has finished installing the producer control bridge,
       // so producer-loss detection can activate on the next process().
       sabEverAttached = true;
-    } catch {
+    } catch (err) {
       controlView = null;
       controlBuffer = null;
-      options.publish({ type: "attach-control-buffer-ack", ok: false } as unknown as WorkletOutboundEvent);
+      options.publish({
+        type: "attach-control-buffer-ack",
+        ok: false,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       return;
     }
-    options.publish({ type: "attach-control-buffer-ack", ok: true } as unknown as WorkletOutboundEvent);
+    options.publish({ type: "attach-control-buffer-ack", ok: true });
   }
 
   function handleDetachControlBuffer(): void {
@@ -1004,7 +1045,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       releaseInstanceState(retired);
     }
 
-    return publishTelemetry();
+    return refreshTelemetry();
   }
 
   function renderInstance(
@@ -1224,7 +1265,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     handleMessage,
     reset,
     get telemetry() {
-      return publishTelemetry();
+      return refreshTelemetry();
     },
     get producerTimeoutActive() {
       return producerTimeoutActive;

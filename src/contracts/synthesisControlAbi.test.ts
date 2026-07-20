@@ -53,6 +53,7 @@ import {
   assertAbiLayoutInvariants,
   attachSynthesisControlView,
   computeByteLength,
+  createProducerPacingWaiter,
   createSynthesisControlBuffer,
   isSynthesisControlBuffer,
   type SynthesisControlView,
@@ -793,5 +794,45 @@ describe("synthesisControlAbi — lookahead and timing constants", () => {
     expect(EMERGENCY_FADE_MS).toBe(10);
     expect(SYNTH_FADE_IN_MS).toBe(10);
     expect(SYNTH_FADE_OUT_MS).toBe(30);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Producer pacing waiter (099d7bfb, synthesis.md §4.1)
+// ---------------------------------------------------------------------------
+
+describe("synthesisControlAbi — createProducerPacingWaiter", () => {
+  function sharedFreshBuffer(): SharedArrayBuffer {
+    const layout = createSynthesisControlBuffer();
+    const sab = new SharedArrayBuffer(layout.byteLength);
+    new Uint8Array(sab).set(new Uint8Array(layout));
+    return sab;
+  }
+
+  it("bounds each wait by PRODUCER_WAKE_WAIT_CAP_MS even for large requests", () => {
+    const wait = createProducerPacingWaiter(sharedFreshBuffer());
+    const start = Date.now();
+    // Nothing ever notifies this buffer; the wait must time out at the
+    // cap, never at the caller-requested 500 ms.
+    wait(500);
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeLessThan(100);
+  });
+
+  it("wakes on the wake-word bump publishAudioFrame performs", () => {
+    const sab = sharedFreshBuffer();
+    const view = attachSynthesisControlView(sab);
+    const wake = new BigInt64Array(sab, HEADER_OFFSETS.wakeSequence, 1);
+    const before = Atomics.load(wake, 0);
+    view.publishAudioFrame({ frame: 128n, blockFrameOffset: 128 });
+    // The publish bumped the wake word and issued the notify a blocked
+    // producer would wake on.
+    expect(Atomics.load(wake, 0)).toBe(before + 1n);
+    // A waiter attached now observes the already-advanced word and
+    // returns without blocking for the full cap.
+    const wait = createProducerPacingWaiter(sab);
+    const start = Date.now();
+    wait(500);
+    expect(Date.now() - start).toBeLessThan(100);
   });
 });
