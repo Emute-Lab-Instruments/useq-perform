@@ -20,6 +20,7 @@ import {
   type EngineStateSnapshot,
 } from "../../contracts/synthesisChannels";
 import { getActiveSynthesisService } from "../../runtime/activeSynthesisService";
+import { createEngineIndicatorResumeHandler } from "./engineIndicatorRecovery";
 import {
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
@@ -269,21 +270,7 @@ function WiredEngineIndicator() {
     });
   });
 
-  const onResume = () => {
-    // VAL-ENGINE-018: clicking the suspended indicator is a real user
-    // pointer interaction. The browser honours it for AudioContext
-    // activation. The synthesis service owns the actual resume call so
-    // there is no second activation surface here.
-    const service = getActiveSynthesisService();
-    if (service === null) return;
-    if (snapshot().state === "error") {
-      void service.recoverFromError().then((recovered) => {
-        if (recovered) void service.resumeOnUserActivation();
-      });
-      return;
-    }
-    void service.resumeOnUserActivation();
-  };
+  const onResume = createEngineIndicatorResumeHandler(snapshot, getActiveSynthesisService);
 
   return <EngineIndicator state={snapshot()} onResume={onResume} />;
 }
