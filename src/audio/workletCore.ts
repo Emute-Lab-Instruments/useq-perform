@@ -82,6 +82,7 @@ import type { NodeDefAdapter } from "./nodeDefAdapter";
 import type {
   WorkletAttachControlBufferMessage,
   WorkletAudioInputWiring,
+  WorkletControlChannel,
   WorkletGraphActivatedEvent,
   WorkletInstantiateMessage,
   WorkletInstanceRetiredEvent,
@@ -287,8 +288,12 @@ interface InstanceState {
   isTerminal: boolean;
   /** Staged terminal flag, swapped in at epoch activation. */
   pendingIsTerminal: boolean;
-  /** First block-rate SAB channel for this instance's controls. */
-  controlChannelBase: number;
+  /**
+   * Per-(node, param) block-rate SAB channel assignments (compiler
+   * channel table, M2.2). Params without an entry are unbound: the
+   * instance holds its prefill/default value for them.
+   */
+  controlChannels: ReadonlyMap<string, number>;
   /** One-shot guard for the missing-input-support diagnostic. */
   inputSupportWarned: boolean;
   /** True once the retire-sweep released this instance's zones. */
@@ -759,8 +764,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     ) {
       live.epoch = id.epoch;
       live.prefill = buildPrefillMap(message.prefill);
-      if (typeof message.controlChannelBase === "number") {
-        live.controlChannelBase = message.controlChannelBase;
+      if (message.controlChannels) {
+        live.controlChannels = buildControlChannelMap(message.controlChannels);
       }
       if (message.audioInputs) {
         live.inputWiring = message.audioInputs;
@@ -898,10 +903,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       outputView,
       isTerminal: true,
       pendingIsTerminal: true,
-      controlChannelBase:
-        typeof message.controlChannelBase === "number" && message.controlChannelBase >= 0
-          ? message.controlChannelBase
-          : 0,
+      controlChannels: buildControlChannelMap(message.controlChannels),
       inputSupportWarned: false,
       released: false,
       telemetryEntry: {
@@ -963,8 +965,12 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // we never call `reset_phase` here (VAL-DSP-010).
     live.epoch = id.epoch;
     live.prefill = buildPrefillMap(message.prefill);
-    if (typeof message.controlChannelBase === "number") {
-      live.controlChannelBase = message.controlChannelBase;
+    if (message.controlChannels) {
+      live.controlChannels = buildControlChannelMap(message.controlChannels);
+    }
+    if (message.audioInputs) {
+      live.inputWiring = message.audioInputs;
+      rebuildGraphPlan();
     }
     pendingEpoch = id.epoch;
   }
@@ -1433,36 +1439,38 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       return;
     }
 
-    // --- Per-instance block-rate controls (interim freq/amp window) ---
+    // --- Per-instance block-rate controls (compiler channel table) ---
+    // Each bound param reads its own SAB channel (per-(node, param)
+    // assignment, synth-nodes.md §7.2). Unbound params never touch the
+    // SAB: the instance holds its prefill/default value (§3.3).
     if (hasBlock && controlView) {
-      const base = instance.controlChannelBase;
-      let controlFreq =
-        controlView.blockRateCount > base
-          ? controlView.readBlockRateValue(physicalSlot, base)
-          : DEFAULT_FREQ;
-      let controlAmp =
-        controlView.blockRateCount > base + 1
-          ? controlView.readBlockRateValue(physicalSlot, base + 1)
-          : DEFAULT_AMP;
-      // Validate the controls. Non-finite values are clamped to the
-      // registry defaults; the glitch counter increments.
-      if (!Number.isFinite(controlFreq)) {
-        controlFreq = DEFAULT_FREQ;
-        glitchCount += 1;
+      const freqChannel = instance.controlChannels.get("freq");
+      if (freqChannel !== undefined && freqChannel < controlView.blockRateCount) {
+        let controlFreq = controlView.readBlockRateValue(physicalSlot, freqChannel);
+        // Validate: non-finite values clamp to the registry default and
+        // increment the glitch counter.
+        if (!Number.isFinite(controlFreq)) {
+          controlFreq = DEFAULT_FREQ;
+          glitchCount += 1;
+        }
+        // Clamp frequency to [0, sampleRate/2].
+        const nyquist = sampleRate / 2;
+        if (controlFreq < 0) controlFreq = 0;
+        else if (controlFreq > nyquist) controlFreq = nyquist;
+        instance.currentFreq = controlFreq;
       }
-      if (!Number.isFinite(controlAmp)) {
-        controlAmp = DEFAULT_AMP;
-        glitchCount += 1;
+      const ampChannel = instance.controlChannels.get("amp");
+      if (ampChannel !== undefined && ampChannel < controlView.blockRateCount) {
+        let controlAmp = controlView.readBlockRateValue(physicalSlot, ampChannel);
+        if (!Number.isFinite(controlAmp)) {
+          controlAmp = DEFAULT_AMP;
+          glitchCount += 1;
+        }
+        // Clamp amplitude to [0, 1].
+        if (controlAmp < 0) controlAmp = 0;
+        else if (controlAmp > 1) controlAmp = 1;
+        instance.currentAmp = controlAmp;
       }
-      // Clamp amplitude to [0, 1].
-      if (controlAmp < 0) controlAmp = 0;
-      else if (controlAmp > 1) controlAmp = 1;
-      // Clamp frequency to [0, sampleRate/2].
-      const nyquist = sampleRate / 2;
-      if (controlFreq < 0) controlFreq = 0;
-      else if (controlFreq > nyquist) controlFreq = nyquist;
-      instance.currentFreq = controlFreq;
-      instance.currentAmp = controlAmp;
     }
     // One-shot prefill: supersedes the SAB values on the instance's
     // matching-epoch block only (synthesis.md §4.4 — a new node never
@@ -1712,6 +1720,25 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 /** Shared empty wiring/pointer singletons (never mutated). */
 const EMPTY_WIRING: readonly WorkletAudioInputWiring[] = Object.freeze([]);
 const EMPTY_PTRS: number[] = [];
+const EMPTY_CONTROL_CHANNELS: ReadonlyMap<string, number> = new Map();
+
+/**
+ * Build the per-(node, param) channel map from a delta message's
+ * `controlChannels` array. Absent/empty arrays yield the shared empty
+ * map (every param unbound — prefill/default values hold).
+ */
+function buildControlChannelMap(
+  channels: readonly WorkletControlChannel[] | undefined,
+): ReadonlyMap<string, number> {
+  if (!channels || channels.length === 0) return EMPTY_CONTROL_CHANNELS;
+  const map = new Map<string, number>();
+  for (const entry of channels) {
+    if (Number.isInteger(entry.channel) && entry.channel >= 0) {
+      map.set(entry.param, entry.channel);
+    }
+  }
+  return map;
+}
 
 /**
  * Build a prefill map. Returns null when the prefill is empty so the

@@ -50,9 +50,10 @@ import type {
   SynthDeclarationArtefact,
   SynthControlChannelArtefact,
 } from "../contracts/runtimeTypes";
-import { INTERIM_BLOCK_RATE_CHANNELS_PER_NODE } from "../contracts/synthesisControlAbi";
 import { findNodeDefDescriptor } from "../contracts/nodeDefRegistry";
 import type {
+  WorkletAudioInputWiring,
+  WorkletControlChannel,
   WorkletIdentityTuple,
   WorkletInstantiateMessage,
   WorkletPrefillParam,
@@ -306,40 +307,103 @@ function buildPrefillArray(
 }
 
 // ---------------------------------------------------------------------------
-// Control-channel layout (interim, synthesis epic M2.1)
+// Control-channel layout (compiler channel table, synthesis epic M2.2)
 // ---------------------------------------------------------------------------
 
 /**
- * Per-commit control/port layout derived from the incoming payload.
- * Until the compiler-derived channel table lands (M2.2), each
- * declaration receives a fixed window of
- * `INTERIM_BLOCK_RATE_CHANNELS_PER_NODE` block-rate channels assigned
- * sequentially in declaration order, plus the artefact's audio port
- * counts. Update-in-place deltas carry the (possibly re-based) window
- * so a reordering commit keeps every instance reading its own controls.
+ * One assigned per-(node, param) block-rate channel. `channel` equals the
+ * entry's index in {@link CommitControlLayout.channels}, so a producer
+ * armed with the channel list in order writes each value at the SAB index
+ * the worklet reads it from.
  */
-export interface CommitControlLayout {
-  /** Identity → first block-rate channel index. */
-  readonly channelBases: ReadonlyMap<string, number>;
-  /** Identity → audio output port count from the artefact. */
-  readonly audioOutputs: ReadonlyMap<string, number>;
+export interface CommitControlChannel {
+  readonly identity: string;
+  readonly param: string;
+  readonly channel: number;
 }
 
 /**
- * Derive the interim control-channel layout from the incoming
- * declarations (declaration order is the payload's order — stable
- * across the plan and the producer arm for one commit).
+ * Per-commit control/port layout derived from the compiler artefact
+ * (`synth-nodes.md` §7.2): the per-(node, param) block-rate channel
+ * table, the audio-input wiring resolved from the artefact's
+ * `connections`, and the audio output port counts. Update-in-place
+ * deltas carry the (re-derived) channel assignments and wiring so a
+ * re-laid-out commit keeps every instance reading its own controls and
+ * ports.
+ */
+export interface CommitControlLayout {
+  /**
+   * Ordered channel table: entry `i` owns SAB block-rate channel `i`.
+   * Derived from the artefact's `controls` rows with `rate === "block"`,
+   * grouped in declaration order.
+   */
+  readonly channels: readonly CommitControlChannel[];
+  /** Identity → this node's channel assignments (subset of `channels`). */
+  readonly channelsByIdentity: ReadonlyMap<
+    string,
+    readonly WorkletControlChannel[]
+  >;
+  /** Identity → audio output port count from the artefact. */
+  readonly audioOutputs: ReadonlyMap<string, number>;
+  /**
+   * Identity → audio-input wiring (patch-graph edges terminating at that
+   * node), resolved from the artefact's `connections`. Identities with
+   * no incoming edges are absent.
+   */
+  readonly audioInputs: ReadonlyMap<
+    string,
+    readonly WorkletAudioInputWiring[]
+  >;
+}
+
+/**
+ * Derive the commit layout from the incoming artefact payload.
+ *
+ * Channel assignment iterates declarations in payload order and, per
+ * declaration, its block-rate control rows in payload order — so the
+ * table is grouped by node and stable for one commit across the worklet
+ * deltas and the producer arm. Fast-rate rows are excluded (no fast-class
+ * def exists yet; the fast pool is laid out when one ships).
  */
 export function buildCommitControlLayout(
-  declarations: readonly SynthDeclarationArtefact[],
+  payload: Pick<
+    SynthArtifactsPayload,
+    "declarations" | "controls" | "connections"
+  >,
 ): CommitControlLayout {
-  const channelBases = new Map<string, number>();
+  const channels: CommitControlChannel[] = [];
+  const channelsByIdentity = new Map<string, readonly WorkletControlChannel[]>();
   const audioOutputs = new Map<string, number>();
-  declarations.forEach((decl, index) => {
-    channelBases.set(decl.identity, index * INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
+
+  for (const decl of payload.declarations) {
     audioOutputs.set(decl.identity, decl.audio_outputs);
-  });
-  return { channelBases, audioOutputs };
+    const own: WorkletControlChannel[] = [];
+    for (const ctl of payload.controls) {
+      if (ctl.identity !== decl.identity || ctl.rate !== "block") continue;
+      const channel = channels.length;
+      channels.push({ identity: decl.identity, param: ctl.param, channel });
+      own.push({ param: ctl.param, channel });
+    }
+    if (own.length > 0) {
+      channelsByIdentity.set(decl.identity, own);
+    }
+  }
+
+  const audioInputs = new Map<string, WorkletAudioInputWiring[]>();
+  for (const conn of payload.connections ?? []) {
+    const wiring = audioInputs.get(conn.to) ?? [];
+    wiring.push({
+      port: conn.port_index,
+      sourceIdentity: conn.from,
+      // The compiler's v1 routing surface references a node's (single)
+      // audio output; multi-output source selection is a deferred
+      // routing surface (synth-nodes.md §4.6).
+      sourcePort: 0,
+    });
+    audioInputs.set(conn.to, wiring);
+  }
+
+  return { channels, channelsByIdentity, audioOutputs, audioInputs };
 }
 
 // ---------------------------------------------------------------------------
@@ -385,8 +449,9 @@ export function buildWorkletDeltasFromDiff(
     deltas.push(message);
   }
 
-  // 2. Instantiate messages (with the interim control window + port
-  //    counts, synthesis epic M2.1).
+  // 2. Instantiate messages, carrying the compiler-derived per-(node,
+  //    param) channel assignments, the artefact's audio-input wiring,
+  //    and the audio output port counts (synthesis epic M2.2).
   for (const added of diff.added) {
     const identity: WorkletIdentityTuple = {
       identity: added.identity,
@@ -398,15 +463,18 @@ export function buildWorkletDeltasFromDiff(
       type: "instantiate",
       identity,
       prefill: buildPrefillArray(prefills.get(added.identity)),
-      controlChannelBase: layout?.channelBases.get(added.identity),
+      controlChannels: layout?.channelsByIdentity.get(added.identity),
+      audioInputs: layout?.audioInputs.get(added.identity),
       audioOutputs: layout?.audioOutputs.get(added.identity),
     };
     deltas.push(message);
   }
 
   // 3. Update messages (same def/version → preserve DSP instance/phase).
-  //    A reordering commit moves an instance's channel window, so the
-  //    (re-based) window travels with the update.
+  //    A commit re-derives the whole channel table and wiring, so the
+  //    fresh assignments travel with the update. Wiring is always sent
+  //    (empty array = explicit disconnect) so a re-declared node that
+  //    dropped an input binding repoints to silence.
   for (const updated of diff.updatedInPlace) {
     const identity: WorkletIdentityTuple = {
       identity: updated.identity,
@@ -418,13 +486,19 @@ export function buildWorkletDeltasFromDiff(
       type: "update",
       identity,
       prefill: buildPrefillArray(prefills.get(updated.identity)),
-      controlChannelBase: layout?.channelBases.get(updated.identity),
+      controlChannels: layout?.channelsByIdentity.get(updated.identity),
+      audioInputs: layout
+        ? layout.audioInputs.get(updated.identity) ?? EMPTY_UPDATE_WIRING
+        : undefined,
     };
     deltas.push(message);
   }
 
   return deltas;
 }
+
+const EMPTY_UPDATE_WIRING: readonly WorkletAudioInputWiring[] =
+  Object.freeze([]);
 
 // ---------------------------------------------------------------------------
 // Top-level commit plan
@@ -444,6 +518,14 @@ export interface EngineCommitPlan {
   readonly prefills: Map<string, Map<string, number>>;
   /** Ordered worklet delta messages (retire → instantiate → update). */
   readonly workletDeltas: readonly WorkletDeltaMessage[];
+  /**
+   * The commit's control/port layout (compiler channel table + wiring).
+   * The service arms the Worker producer with
+   * {@link CommitControlLayout.channels} in order — the producer's array
+   * index is the SAB channel index — and checks the table length against
+   * the SAB's block-rate pool before committing.
+   */
+  readonly layout: CommitControlLayout;
 }
 
 /**
@@ -472,7 +554,7 @@ export function buildEngineCommitPlan(
     incoming.controls,
   );
   const epoch = allocator.next();
-  const layout = buildCommitControlLayout(incoming.declarations);
+  const layout = buildCommitControlLayout(incoming);
   const workletDeltas = buildWorkletDeltasFromDiff(diff, epoch, prefills, layout);
-  return { diff, epoch, prefills, workletDeltas };
+  return { diff, epoch, prefills, workletDeltas, layout };
 }

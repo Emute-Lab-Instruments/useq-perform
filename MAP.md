@@ -56,10 +56,10 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `synthesisChannels.ts` — typed channels + engine-state transition table for the synthesis engine (off/suspended/running/error).
   - `nodeDefRegistry.ts` — NodeDef descriptor schema/validation; carries the `osc/sine` v1 registry entry ([src-useq/docs/specs/synth-nodes.md §2](src-useq/docs/specs/synth-nodes.md)).
   - `audioCapabilities.ts` — bootstrap `crossOriginIsolated`/SAB capability snapshot feeding the degraded no-audio diagnostic ([docs/specs/synthesis.md §6.3](docs/specs/synthesis.md)).
-- `src/audio/` — browser synthesis engine (M0–M2.1 of [docs/design/synthesis-epic.md](docs/design/synthesis-epic.md); spec [docs/specs/synthesis.md](docs/specs/synthesis.md)).
-  - `synthesisService.ts` — main-thread engine owner: state machine, worklet bring-up, producer bridge, eval-commit pipeline (incl. `MAX_SYNTH_NODES` limit check), telemetry. Accessed via `src/runtime/activeSynthesisService.ts`.
+- `src/audio/` — browser synthesis engine (M0–M2.2 of [docs/design/synthesis-epic.md](docs/design/synthesis-epic.md); spec [docs/specs/synthesis.md](docs/specs/synthesis.md)).
+  - `synthesisService.ts` — main-thread engine owner: state machine, worklet bring-up, producer bridge, eval-commit pipeline (incl. `MAX_SYNTH_NODES` + block-rate channel-pool limit checks), telemetry. Accessed via `src/runtime/activeSynthesisService.ts`.
   - `synthesisServiceBrowser.ts` — real-browser wiring (AudioContext construction, NodeDef WASM fetch/instantiation).
-  - `engineCommitCoordinator.ts` — pure eval→engine diff/plan builder (retire/instantiate/update deltas, epoch arming, interim per-node control-channel windows).
+  - `engineCommitCoordinator.ts` — pure eval→engine diff/plan builder (retire/instantiate/update deltas, epoch arming, compiler-derived per-(node,param) control-channel table + audio-input wiring from artefact `connections`).
   - `workletCore.ts` + `synthesisWorklet.ts` — AudioWorkletProcessor logic (framework-free core + thin worklet shell); multi-node topological graph host with per-instance shared-memory zones (synthesis.md §3.1); bundled by `scripts/build-assets.mjs` into `public/wasm/synthesisWorklet.js`.
   - `workletZoneAllocator.ts` — first-fit coalescing zone allocator over the host-owned `WebAssembly.Memory` arena (synthesis.md §2.3/§3.5; bounded by `SYNTH_MEMORY_MAX_BYTES`).
   - `producerScheduler.ts` + `producerLoopDriver.ts` — Worker-side block production pacing and cancellable loop. **Deviation**: `setTimeout(0)` polling, not the ADR-0003 `Atomics.wait` (see ADR-0003 revisit note).

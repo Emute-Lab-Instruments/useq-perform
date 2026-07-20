@@ -20,7 +20,6 @@ import {
   resetEngineStateStoreForTests,
 } from "../contracts/synthesisChannels";
 import {
-  INTERIM_BLOCK_RATE_CHANNELS_PER_NODE,
   MAX_SYNTH_NODES,
 } from "../contracts/synthesisControlAbi";
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
@@ -638,12 +637,12 @@ describe("synthesisService.commitSynthArtifacts — dispose safety", () => {
 // Multi-node commits (synthesis epic M2.1, ergo 9a9370af)
 // ---------------------------------------------------------------------------
 
-describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.1)", () => {
+describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.2)", () => {
   beforeEach(() => {
     resetEngineStateStoreForTests();
   });
 
-  it("posts one instantiate per declaration with sequential control windows", async () => {
+  it("posts one instantiate per declaration with per-(node, param) channels", async () => {
     const bundle = buildBundle();
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
@@ -658,16 +657,57 @@ describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.1)", 
       (m) => (m as { type: string }).type === "instantiate",
     ) as Array<{
       identity: { identity: string };
-      controlChannelBase?: number;
+      controlChannels?: Array<{ param: string; channel: number }>;
       audioOutputs?: number;
     }>;
     expect(instantiates).toHaveLength(2);
     const lead = instantiates.find((m) => m.identity.identity === "lead");
     const bass = instantiates.find((m) => m.identity.identity === "bass");
-    expect(lead?.controlChannelBase).toBe(0);
-    expect(bass?.controlChannelBase).toBe(INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
+    expect(lead?.controlChannels).toEqual([
+      { param: "freq", channel: 0 },
+      { param: "amp", channel: 1 },
+    ]);
+    expect(bass?.controlChannels).toEqual([
+      { param: "freq", channel: 2 },
+      { param: "amp", channel: 3 },
+    ]);
     expect(lead?.audioOutputs).toBe(1);
     expect(bass?.audioOutputs).toBe(1);
+
+    await service.dispose();
+  });
+
+  it("passes artefact connections through as audio-input wiring", async () => {
+    const bundle = buildBundle();
+    const service = createSynthesisService(bundle.options);
+    await resumeService(service);
+
+    const result = service.commitSynthArtifacts(
+      {
+        ...buildPayload(1, [
+          oscSineDeclaration("lfo"),
+          oscSineDeclaration("car"),
+        ]),
+        connections: [{ from: "lfo", to: "car", port: "fm", port_index: 0 }],
+      },
+      false,
+    );
+    expect(result.outcome).toBe("committed");
+
+    const instantiates = bundle.worklet.postedMessages.filter(
+      (m) => (m as { type: string }).type === "instantiate",
+    ) as Array<{
+      identity: { identity: string };
+      audioInputs?: Array<{
+        port: number;
+        sourceIdentity: string;
+        sourcePort: number;
+      }>;
+    }>;
+    const car = instantiates.find((m) => m.identity.identity === "car");
+    expect(car?.audioInputs).toEqual([
+      { port: 0, sourceIdentity: "lfo", sourcePort: 0 },
+    ]);
 
     await service.dispose();
   });

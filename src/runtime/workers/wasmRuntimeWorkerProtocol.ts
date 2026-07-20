@@ -224,15 +224,25 @@ export interface ProducerStopRequest {
 
 /**
  * Update the static control values the producer publishes on every block.
- * For M1 the block-rate channels (freq, amp) are resolved from the NodeDef
- * defaults and the user's synth form bindings at eval time, not sampled
- * from the interpreter's signal graph (VAL-CROSS-002).
+ * Values are resolved at eval-commit time, not sampled per block from the
+ * interpreter's signal graph (VAL-CROSS-002 static-control model).
+ *
+ * Since M2.2 the channel namespace is per-(node, param): keys are the
+ * composite `controlChannelKey(identity, param)` strings and the optional
+ * `blockRateChannels` field re-arms the producer's channel list (in
+ * commit-plan order, so the producer's array index equals the SAB channel
+ * index) in the same message that delivers the values.
  */
 export interface ProducerSetControlValuesRequest {
   type: "producerSetControlValues";
   id: number;
-  /** Channel name to numeric value. */
+  /** Composite channel key (`controlChannelKey`) to numeric value. */
   values: Record<string, number>;
+  /**
+   * Re-armed per-(node, param) channel list in commit-plan order.
+   * Omitted: the producer keeps its current list.
+   */
+  blockRateChannels?: readonly string[];
 }
 
 /**

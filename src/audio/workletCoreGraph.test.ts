@@ -24,7 +24,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_RENDER_QUANTUM_FRAMES,
-  INTERIM_BLOCK_RATE_CHANNELS_PER_NODE,
   MAX_SYNTH_NODES,
   SYNTH_ARENA_NULL_GUARD_BYTES,
   SYNTH_FADE_IN_MS,
@@ -156,7 +155,7 @@ function createGainAdapter(
 
 /**
  * Adapter that echoes its block-rate `freq` control into its output —
- * proves per-node control-channel routing (`controlChannelBase`).
+ * proves per-(node, param) control-channel routing.
  */
 function createControlEchoAdapter(
   arena: ArrayBuffer,
@@ -411,7 +410,7 @@ describe("workletCore graph — topological execution and port wiring", () => {
     expect(out[64]).toBeCloseTo(1.0, 6);
   });
 
-  it("routes per-node block-rate controls via controlChannelBase", () => {
+  it("routes per-node block-rate controls via the per-(node, param) table", () => {
     const arena = new ArrayBuffer(1024 * 1024);
     const callOrder: string[] = [];
     const h = buildGraphHarness({
@@ -422,15 +421,51 @@ describe("workletCore graph — topological execution and port wiring", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/echo-a", 1, { controlChannelBase: 0 });
+    instantiate(h.core, "id-a", "src/echo-a", 1, {
+      controlChannels: [
+        { param: "freq", channel: 0 },
+        { param: "amp", channel: 1 },
+      ],
+    });
     instantiate(h.core, "id-b", "src/echo-b", 1, {
-      controlChannelBase: INTERIM_BLOCK_RATE_CHANNELS_PER_NODE,
+      controlChannels: [
+        { param: "freq", channel: 2 },
+        { param: "amp", channel: 3 },
+      ],
     });
     // Channels: node A freq=100 amp=1, node B freq=200 amp=1.
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1, [100, 1, 200, 1]);
 
     const out = h.core.readOutput();
     expect(out[0]).toBeCloseTo(300, 4);
+  });
+
+  it("holds prefill values for params without a channel (sparse binding)", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: {
+        "src/echo-a": createControlEchoAdapter(arena, "src/echo-a", callOrder),
+      },
+      arena,
+      callOrder,
+    });
+    // Only amp is bound to a channel; freq is unbound and must hold its
+    // prefill value even while the SAB carries junk in channel 0 (which
+    // the interim per-node window would have read as freq).
+    instantiate(h.core, "id-a", "src/echo-a", 1, {
+      controlChannels: [{ param: "amp", channel: 1 }],
+      prefill: [
+        { name: "freq", value: 150 },
+        { name: "amp", value: 0.5 },
+      ],
+    });
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1, [999, 1, 0, 0]);
+
+    // The echo adapter outputs its freq control: the prefilled 150 must
+    // hold — the 999 in channel 0 must never reach the unbound freq.
+    const out = h.core.readOutput();
+    expect(out[0]).toBeCloseTo(150, 4);
   });
 });
 

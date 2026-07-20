@@ -28,19 +28,25 @@ Accepted (v1), hardened by adversarial review 2026-07. Decisions fixed
 in the July 2026 design pass; source-file references will be added as
 the implementation lands.
 
-Source references (M2.1, 2026-07-20): the host-owned zone arena of §2.3
+Source references (M2.2, 2026-07-20): the host-owned zone arena of §2.3
 and the resource bounds of §3.5 are implemented by
 `src/audio/workletZoneAllocator.ts`; the multi-instance topological
 block execution, port-offset wiring, and silence-zone retirement
 semantics of §3.1 by `src/audio/workletCore.ts` (worklet shell:
 `src/audio/synthesisWorklet.ts`); eval-commit fan-out and the
-`MAX_SYNTH_NODES` commit-time check by
+`MAX_SYNTH_NODES` + channel-pool commit-time checks by
 `src/audio/engineCommitCoordinator.ts` + `src/audio/synthesisService.ts`.
-Until the compiler-derived control channel table lands (epic M2.2),
-per-node block-rate controls use an interim fixed window
-(`INTERIM_BLOCK_RATE_CHANNELS_PER_NODE` in
-`src/contracts/synthesisControlAbi.ts`) — an internal transport detail
-under §4.8, not a contract change.
+Routing (epic M2.2) is live: the coordinator derives per-(node, param)
+block-rate channels and audio-input wiring from the compiler artefact's
+control table and `connections` (`synth-nodes.md` §7.2.1); the Worker
+producer publishes the per-(node, param) channel set (composite
+`controlChannelKey` names, commit-plan order = SAB channel index); the
+worklet consumes named per-node channel assignments. The M2.1 interim
+fixed window (`INTERIM_BLOCK_RATE_CHANNELS_PER_NODE`) is deleted per its
+recorded removal condition. Producer control values still follow the
+static-control model (resolved at eval commit from registry defaults,
+republished per block — VAL-CROSS-002); live per-block sampling of param
+expressions requires a WASM control-sampling export and remains open.
 
 Known required amendments to other specs:
 [runtime-modes.md](runtime-modes.md) §1.5.2 (sampling-degradation carve-out,

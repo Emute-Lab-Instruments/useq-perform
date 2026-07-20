@@ -108,6 +108,26 @@ export interface WorkletAudioInputWiring {
 }
 
 // ---------------------------------------------------------------------------
+// Per-(node, param) control channels (compiler channel table, M2.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * One per-(node, param) block-rate control channel assignment, derived by
+ * the engine-commit coordinator from the compiler's control channel table
+ * (`synth-nodes.md` §7.2). `channel` is the absolute SAB block-rate
+ * channel index the instance reads this param from. Params without an
+ * entry are unbound: the instance holds its prefill/default value and
+ * never reads the SAB for them (a defaulted parameter costs nothing on
+ * the control transport, `synth-nodes.md` §3.3).
+ */
+export interface WorkletControlChannel {
+  /** NodeDef param name (e.g. `"freq"`). */
+  readonly param: string;
+  /** Absolute block-rate SAB channel index. */
+  readonly channel: number;
+}
+
+// ---------------------------------------------------------------------------
 // Inbound messages (main thread → worklet)
 // ---------------------------------------------------------------------------
 
@@ -220,17 +240,17 @@ export interface WorkletInstantiateMessage {
   readonly audioOutputs?: number;
   /**
    * Audio input wiring (patch-graph edges terminating at this node).
-   * Optional (additive, M2.1); absent means a source node.
+   * Optional (additive, M2.1); absent means a source node. Since M2.2
+   * the engine-commit coordinator populates this from the compiler
+   * artefact's `connections`.
    */
   readonly audioInputs?: readonly WorkletAudioInputWiring[];
   /**
-   * First block-rate SAB channel this instance reads its controls from
-   * (`freq` at `base + 0`, `amp` at `base + 1` under the interim
-   * per-node stride, `INTERIM_BLOCK_RATE_CHANNELS_PER_NODE`). Optional
-   * (additive, M2.1); defaults to 0, preserving the M1 single-node
-   * layout. Replaced by the compiler-derived channel table in M2.2.
+   * Per-(node, param) block-rate control channel assignments from the
+   * compiler channel table (M2.2, `synth-nodes.md` §7.2). Absent or
+   * empty means every param holds its prefill/default value.
    */
-  readonly controlChannelBase?: number;
+  readonly controlChannels?: readonly WorkletControlChannel[];
 }
 
 /**
@@ -244,12 +264,18 @@ export interface WorkletUpdateMessage {
   readonly identity: WorkletIdentityTuple;
   readonly prefill?: readonly WorkletPrefillParam[];
   /**
-   * Optional re-based control channel window (see
-   * {@link WorkletInstantiateMessage.controlChannelBase}). Sent when a
-   * commit reorders declarations; absent leaves the instance's base
-   * unchanged.
+   * Re-derived per-(node, param) channel assignments (see
+   * {@link WorkletInstantiateMessage.controlChannels}). Sent when a
+   * commit re-lays-out the channel table; absent leaves the instance's
+   * assignments unchanged.
    */
-  readonly controlChannelBase?: number;
+  readonly controlChannels?: readonly WorkletControlChannel[];
+  /**
+   * Re-derived audio-input wiring for this instance. Absent leaves the
+   * instance's wiring unchanged; an empty array explicitly disconnects
+   * every input port (they repoint to the shared silence zone).
+   */
+  readonly audioInputs?: readonly WorkletAudioInputWiring[];
 }
 
 /**

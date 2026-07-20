@@ -99,11 +99,14 @@ export const RING_CAPACITY_BLOCKS = 64 as const;
 
 /**
  * Number of block-rate control channels. Block-rate channels are sampled
- * once per render quantum. The osc/sine NodeDef ships two block-rate
- * parameters (`freq`, `amp`); the contract reserves a few extra channels for
- * future defs without forcing an ABI bump.
+ * once per render quantum and assigned per-(node, param) by the
+ * engine-commit coordinator from the compiler's control channel table
+ * (`synth-nodes.md` §7.2). Sized for realistic multi-node programs
+ * (64 nodes × ~2 bound params); a commit whose channel table exceeds the
+ * pool is rejected at eval commit with a compile-style diagnostic
+ * (mirroring the `MAX_SYNTH_NODES` check) rather than silently truncated.
  */
-export const DEFAULT_BLOCK_RATE_COUNT = 16 as const;
+export const DEFAULT_BLOCK_RATE_COUNT = 128 as const;
 
 /**
  * Number of fast-rate control channels. Fast-rate channels deliver a
@@ -211,16 +214,17 @@ export const SYNTH_ARENA_NULL_GUARD_BYTES = 64 as const;
 export const DEFAULT_AUDIO_OUTPUT_PORTS = 1 as const;
 
 /**
- * INTERIM per-node block-rate channel stride. Until the compiler-derived
- * control channel table ships (synthesis epic M2.2), every node instance
- * reads its block-rate controls from a fixed two-channel window
- * (`freq` at `base + 0`, `amp` at `base + 1`) and the engine-commit
- * coordinator assigns bases sequentially in declaration order.
- *
- * Removal condition: M2.2 replaces this with the per-(node, param)
- * channel table from `synth-nodes.md` §7.2; delete this constant then.
+ * Composite producer-channel key for a per-(node, param) control channel.
+ * The Worker producer's channel list and control-value map are keyed by
+ * this string; the NUL separator cannot occur inside an identity (the
+ * compiler's artefact serialiser strips control characters) so the key is
+ * collision-free. The service arms the producer with keys in commit-plan
+ * channel order, making the producer's array index equal the SAB channel
+ * index.
  */
-export const INTERIM_BLOCK_RATE_CHANNELS_PER_NODE = 2 as const;
+export function controlChannelKey(identity: string, param: string): string {
+  return `${identity}\u0000${param}`;
+}
 
 /**
  * Worklet-facing helpers documented as non-blocking. Every name listed here

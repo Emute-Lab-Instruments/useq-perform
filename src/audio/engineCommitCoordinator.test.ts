@@ -26,7 +26,6 @@ import {
   resolvePrefillsForDeclarations,
   type ActiveDeclaration,
 } from "./engineCommitCoordinator";
-import { INTERIM_BLOCK_RATE_CHANNELS_PER_NODE } from "../contracts/synthesisControlAbi";
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
 import type {
   SynthArtifactsPayload,
@@ -312,8 +311,8 @@ describe("engineCommitCoordinator — failed eval no-op (VAL-ENGINE-015)", () =>
 // Multi-node delta fan-out (synthesis epic M2.1, ergo 9a9370af)
 // ---------------------------------------------------------------------------
 
-describe("engineCommitCoordinator — multi-node deltas (M2.1)", () => {
-  it("assigns sequential controlChannelBase values in declaration order", () => {
+describe("engineCommitCoordinator — multi-node deltas (M2.2)", () => {
+  it("assigns per-(node, param) channels from the artefact control table", () => {
     const payload = buildPayload(1, [
       oscSineDeclaration("id-a"),
       oscSineDeclaration("id-b"),
@@ -325,11 +324,49 @@ describe("engineCommitCoordinator — multi-node deltas (M2.1)", () => {
         d.type === "instantiate",
     );
     expect(instantiates).toHaveLength(3);
-    const baseFor = (identity: string) =>
-      instantiates.find((d) => d.identity.identity === identity)?.controlChannelBase;
-    expect(baseFor("id-a")).toBe(0);
-    expect(baseFor("id-b")).toBe(INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
-    expect(baseFor("id-c")).toBe(2 * INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
+    // Each declaration binds freq+amp; channels assign sequentially,
+    // grouped per node in declaration order, and the layout table's
+    // entry index equals its channel index.
+    const channelsFor = (identity: string) =>
+      instantiates.find((d) => d.identity.identity === identity)?.controlChannels;
+    expect(channelsFor("id-a")).toEqual([
+      { param: "freq", channel: 0 },
+      { param: "amp", channel: 1 },
+    ]);
+    expect(channelsFor("id-b")).toEqual([
+      { param: "freq", channel: 2 },
+      { param: "amp", channel: 3 },
+    ]);
+    expect(channelsFor("id-c")).toEqual([
+      { param: "freq", channel: 4 },
+      { param: "amp", channel: 5 },
+    ]);
+    plan.layout.channels.forEach((entry, index) => {
+      expect(entry.channel).toBe(index);
+    });
+  });
+
+  it("only bound params receive channels (sparse binding)", () => {
+    // id-a binds only freq; id-b binds freq+amp. amp on id-a stays
+    // unbound: no channel entry (the instance holds its prefill).
+    const payload = buildPayload(
+      1,
+      [oscSineDeclaration("id-a"), oscSineDeclaration("id-b")],
+      [
+        { identity: "id-a", param: "freq", rate: "block", smoothing: "step" },
+        { identity: "id-b", param: "freq", rate: "block", smoothing: "step" },
+        { identity: "id-b", param: "amp", rate: "block", smoothing: "linear" },
+      ],
+    );
+    const plan = buildEngineCommitPlan([], payload, createEpochAllocator());
+    expect(plan.layout.channels).toEqual([
+      { identity: "id-a", param: "freq", channel: 0 },
+      { identity: "id-b", param: "freq", channel: 1 },
+      { identity: "id-b", param: "amp", channel: 2 },
+    ]);
+    expect(plan.layout.channelsByIdentity.get("id-a")).toEqual([
+      { param: "freq", channel: 0 },
+    ]);
   });
 
   it("carries the artefact's audio port counts on instantiate deltas", () => {
@@ -341,25 +378,69 @@ describe("engineCommitCoordinator — multi-node deltas (M2.1)", () => {
     expect((inst as { audioOutputs?: number }).audioOutputs).toBe(2);
   });
 
-  it("re-bases update-in-place deltas when declaration order changes", () => {
+  it("resolves artefact connections into audio-input wiring", () => {
+    const payload: SynthArtifactsPayload = {
+      ...buildPayload(1, [
+        oscSineDeclaration("lfo"),
+        oscSineDeclaration("car"),
+      ]),
+      connections: [
+        { from: "lfo", to: "car", port: "fm", port_index: 0 },
+      ],
+    };
+    const plan = buildEngineCommitPlan([], payload, createEpochAllocator());
+    const car = plan.workletDeltas.find(
+      (d): d is Extract<typeof d, { type: "instantiate" }> =>
+        d.type === "instantiate" && d.identity.identity === "car",
+    );
+    expect(car?.audioInputs).toEqual([
+      { port: 0, sourceIdentity: "lfo", sourcePort: 0 },
+    ]);
+    const lfo = plan.workletDeltas.find(
+      (d): d is Extract<typeof d, { type: "instantiate" }> =>
+        d.type === "instantiate" && d.identity.identity === "lfo",
+    );
+    expect(lfo?.audioInputs).toBeUndefined();
+  });
+
+  it("re-derives channels and wiring on update-in-place deltas", () => {
     const prior: ActiveDeclaration[] = [
       { identity: "id-a", def: "osc/sine", version: 1 },
       { identity: "id-b", def: "osc/sine", version: 1 },
     ];
-    // id-b now comes first: its channel window moves to base 0.
-    const payload = buildPayload(2, [
-      oscSineDeclaration("id-b"),
-      oscSineDeclaration("id-a"),
-    ]);
+    // id-b now comes first: its channels move to the front of the table.
+    const payload: SynthArtifactsPayload = {
+      ...buildPayload(2, [
+        oscSineDeclaration("id-b"),
+        oscSineDeclaration("id-a"),
+      ]),
+      connections: [
+        { from: "id-b", to: "id-a", port: "fm", port_index: 0 },
+      ],
+    };
     const plan = buildEngineCommitPlan(prior, payload, createEpochAllocator());
     const updates = plan.workletDeltas.filter(
       (d): d is Extract<typeof d, { type: "update" }> => d.type === "update",
     );
     expect(updates).toHaveLength(2);
-    const baseFor = (identity: string) =>
-      updates.find((d) => d.identity.identity === identity)?.controlChannelBase;
-    expect(baseFor("id-b")).toBe(0);
-    expect(baseFor("id-a")).toBe(INTERIM_BLOCK_RATE_CHANNELS_PER_NODE);
+    const channelsFor = (identity: string) =>
+      updates.find((d) => d.identity.identity === identity)?.controlChannels;
+    expect(channelsFor("id-b")).toEqual([
+      { param: "freq", channel: 0 },
+      { param: "amp", channel: 1 },
+    ]);
+    expect(channelsFor("id-a")).toEqual([
+      { param: "freq", channel: 2 },
+      { param: "amp", channel: 3 },
+    ]);
+    // Wiring travels with the update: id-a gains its edge; id-b, with
+    // no incoming edges, receives an explicit empty array (disconnect).
+    const wiringFor = (identity: string) =>
+      updates.find((d) => d.identity.identity === identity)?.audioInputs;
+    expect(wiringFor("id-a")).toEqual([
+      { port: 0, sourceIdentity: "id-b", sourcePort: 0 },
+    ]);
+    expect(wiringFor("id-b")).toEqual([]);
   });
 
   it("fans out a full multi-declaration payload (no single-node assumption)", () => {

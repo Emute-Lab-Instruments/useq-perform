@@ -493,13 +493,16 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       return response.installed;
     },
 
-    async producerSetControlValues(values: Record<string, number>): Promise<boolean> {
+    async producerSetControlValues(
+      values: Record<string, number>,
+      blockRateChannels?: readonly string[],
+    ): Promise<boolean> {
       if (!isUseqWasmEnabled()) return false;
       await ensureLoadedInternal();
       await send<
         Extract<WasmWorkerResponse, { type: "producerSetControlValues-result" }>
       >(
-        { type: "producerSetControlValues", values },
+        { type: "producerSetControlValues", values, blockRateChannels },
         "producerSetControlValues-result",
       );
       return true;

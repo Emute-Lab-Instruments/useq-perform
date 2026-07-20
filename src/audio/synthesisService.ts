@@ -83,10 +83,12 @@ import {
   ABI_VERSION as SYNTH_CONTROL_ABI_VERSION,
   ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS,
   CONTROL_LOOKAHEAD_BLOCKS,
+  DEFAULT_BLOCK_RATE_COUNT,
   DEFAULT_RENDER_QUANTUM_FRAMES,
   MAX_SYNTH_NODES,
   PRODUCER_FIRST_PUBLISH_DEADLINE_MS,
   attachSynthesisControlView,
+  controlChannelKey,
   createSynthesisControlBuffer,
   type SynthesisControlView,
 } from "../contracts/synthesisControlAbi";
@@ -273,11 +275,17 @@ export interface SynthesisWorkerPort {
     },
   ): Promise<boolean>;
   /**
-   * Set the current synth control values. The producer publishes these
-   * on every block so the worklet receives consistent controls.
-   * Called whenever the synth graph changes (VAL-CROSS-002).
+   * Set the current synth control values (keys are per-(node, param)
+   * composite `controlChannelKey` strings since M2.2), optionally
+   * re-arming the producer's channel list in the same message so list
+   * and values switch atomically. The producer publishes these on
+   * every block so the worklet receives consistent controls. Called
+   * whenever the synth graph changes (VAL-CROSS-002).
    */
-  producerSetControlValues?(values: Record<string, number>): Promise<boolean>;
+  producerSetControlValues?(
+    values: Record<string, number>,
+    blockRateChannels?: readonly string[],
+  ): Promise<boolean>;
   /**
    * Start the producer loop. The producer publishes enough blocks to
    * refill the ring up to the configured lookahead, paced by the
@@ -1306,7 +1314,10 @@ function createCapableService(
     if (workerPort && typeof workerPort.producerInstallSab === "function") {
       try {
         await workerPort.producerInstallSab(sab, {
-          blockRateChannels: ["freq", "amp"],
+          // The per-(node, param) channel list is armed per commit via
+          // producerSetControlValues (M2.2 channel table); a fresh
+          // session starts with no program and no channels.
+          blockRateChannels: [],
           lookaheadBlocks: CONTROL_LOOKAHEAD_BLOCKS,
           renderQuantumFrames: DEFAULT_RENDER_QUANTUM_FRAMES,
         });
@@ -1978,6 +1989,18 @@ function createCapableService(
     const prior = Array.from(activeDeclarations.values());
     const plan = buildEngineCommitPlan(prior, payload, epochAllocator);
 
+    // Channel-pool limit: the per-(node, param) channel table must fit
+    // the SAB's block-rate pool. Checked at eval commit with a
+    // compile-style diagnostic on breach (mirroring the MAX_SYNTH_NODES
+    // check above) — the eval is rejected before any worklet delta or
+    // producer arm is issued, never silently truncated.
+    const blockRatePool = sabView?.blockRateCount ?? DEFAULT_BLOCK_RATE_COUNT;
+    if (plan.layout.channels.length > blockRatePool) {
+      throw new SynthesisServiceError(
+        `synth program binds ${plan.layout.channels.length} block-rate control channels, exceeding the SAB pool (${blockRatePool})`,
+      );
+    }
+
     // Step 7: post the ordered worklet delta messages. The worklet
     // stages the pending graph for the first matching-epoch block
     // (VAL-ENGINE-011). If the worklet has not been brought up yet
@@ -1990,16 +2013,16 @@ function createCapableService(
           // The worklet core allocates the state zone between quanta
           // when statePointer/stateBytes are zero. The service does
           // not preallocate (the host-owned shared memory lives inside
-          // the worklet global scope). The M2.1 graph fields (control
-          // window, port counts, audio-input wiring) pass through to
-          // the worklet unchanged.
+          // the worklet global scope). The graph fields (per-(node,
+          // param) control channels, port counts, audio-input wiring)
+          // pass through to the worklet unchanged.
           workletNode.port.postMessage({
             type: "instantiate",
             identity: delta.identity,
             prefill: delta.prefill,
             statePointer: 0,
             stateBytes: 0,
-            controlChannelBase: delta.controlChannelBase,
+            controlChannels: delta.controlChannels,
             audioOutputs: delta.audioOutputs,
             audioInputs: delta.audioInputs,
           });
@@ -2036,24 +2059,27 @@ function createCapableService(
       );
     }
 
-    // VAL-CROSS-002: send the resolved control values to the producer.
-    // For M1 the block-rate channels (freq, amp) are static per-eval
-    // values resolved from the NodeDef registry defaults and the user's
-    // synth form bindings. The producer publishes these on every block
-    // so the worklet receives consistent controls. This is fire-and-
-    // forget like the epoch arm above.
+    // VAL-CROSS-002: send the resolved control values to the producer
+    // and re-arm its per-(node, param) channel list in the same message
+    // (list and values switch atomically inside one Worker handler
+    // turn). Values follow the static-control model: resolved from the
+    // NodeDef registry defaults at eval commit, republished on every
+    // block. Keys are composite `controlChannelKey(identity, param)`
+    // strings; the channel list is the commit plan's table in order, so
+    // the producer's array index equals the SAB channel index the
+    // worklet reads. This is fire-and-forget like the epoch arm above.
     if (workerPort && typeof workerPort.producerSetControlValues === "function") {
+      const channelKeys = plan.layout.channels.map((entry) =>
+        controlChannelKey(entry.identity, entry.param),
+      );
       const controlValues: Record<string, number> = {};
-      for (const [, paramTable] of plan.prefills) {
-        for (const [paramName, value] of paramTable) {
-          // For M1 there is only one synth instance, so channel
-          // name collisions are impossible. Future features that
-          // support multiple simultaneous instances will need a
-          // namespaced channel scheme.
-          controlValues[paramName] = value;
+      for (const entry of plan.layout.channels) {
+        const value = plan.prefills.get(entry.identity)?.get(entry.param);
+        if (typeof value === "number" && Number.isFinite(value)) {
+          controlValues[controlChannelKey(entry.identity, entry.param)] = value;
         }
       }
-      void workerPort.producerSetControlValues(controlValues).then(
+      void workerPort.producerSetControlValues(controlValues, channelKeys).then(
         () => { /* control values updated */ },
         () => { /* best-effort */ },
       );

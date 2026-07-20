@@ -153,8 +153,20 @@ let producer: ProducerScheduler | null = null;
 let producerRunning = false;
 let producerLoopDriver: ProducerLoopDriver | null = null;
 let producerBlocksPublished = 0;
-let producerBlockRateChannels: readonly string[] = [];
+// Per-(node, param) channel list in commit-plan order — the array index
+// equals the SAB block-rate channel index (M2.2 channel table). Mutated
+// IN PLACE (never reassigned): the running producer scheduler captures
+// the array reference at construction, so an in-place refill re-arms a
+// live producer without a stop/start cycle.
+const producerBlockRateChannels: string[] = [];
 const producerControlValues = new Map<string, number>();
+
+function rearmProducerChannels(channels: readonly string[]): void {
+  producerBlockRateChannels.length = 0;
+  for (const channel of channels) {
+    producerBlockRateChannels.push(channel);
+  }
+}
 const producerAudit: ProducedBlockAudit[] = [];
 
 /**
@@ -1013,7 +1025,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           const view = attachSynthesisControlView(request.controlBuffer);
           controlView = view;
           pacingWaiter = createProducerPacingWaiter(request.controlBuffer);
-          producerBlockRateChannels = request.blockRateChannels ?? [];
+          rearmProducerChannels(request.blockRateChannels ?? []);
           // Reset the audit so devmode traces reflect this session only.
           producerAudit.length = 0;
           producerBlocksPublished = 0;
@@ -1033,9 +1045,15 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
       }
       case "producerSetControlValues": {
         // VAL-CROSS-002: the service sends the current synth control
-        // values (resolved from the NodeDef defaults and the user's
-        // synth form bindings). The producer publishes these on every
-        // block so the worklet receives consistent controls.
+        // values (static-control model — resolved at eval commit, not
+        // sampled per block). The producer publishes these on every
+        // block so the worklet receives consistent controls. Since
+        // M2.2 keys are per-(node, param) composite channel keys, and
+        // the same message may re-arm the channel list so the list and
+        // its values switch atomically within one handler turn.
+        if (request.blockRateChannels) {
+          rearmProducerChannels(request.blockRateChannels);
+        }
         const values = request.values as Record<string, number> | undefined;
         producerControlValues.clear();
         if (values && typeof values === "object") {
