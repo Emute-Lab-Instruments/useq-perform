@@ -6,6 +6,8 @@ on:
     branches:
       - main
       - codex/**
+      - feat/synth-engine
+      - synth/**
 
 jobs:
   runtime-contracts:
@@ -55,6 +57,11 @@ jobs:
       - name: Install native test deps
         run: sudo apt-get update && sudo apt-get install -y meson ninja-build
 
+      # The pinned src-useq checkout exposes the JSON protocol test below, but
+      # this repository has no runnable native DSP/synth suite or npm script.
+      # Wiring those suites requires adding them to src-useq (or this repo),
+      # which is outside this CI-only change; do not pretend the browser tests
+      # cover the native DSP implementation.
       - name: Build src-useq JSON protocol test
         working-directory: src-useq
         run: |
