@@ -160,6 +160,30 @@ export interface NodeDefAdapter {
     frameCount: number,
   ): boolean;
 
+  /**
+   * Optional graph-capable compute for defs with audio inputs
+   * (synthesis epic M2.1). `inputPtrs` carries one byte-offset pointer
+   * per declared audio input port — each pointing at an upstream
+   * node's output zone (or the shared silence zone) inside the
+   * host-owned memory. The vector is preallocated per instance at
+   * graph-mutation time and mutated in place, so the steady-state call
+   * allocates nothing.
+   *
+   * M1's osc/sine (zero inputs) does not implement this; the host
+   * calls {@link compute} for input-less defs. Real WASM-backed
+   * adapters gain this entry point in M2.2/M3 when the first def with
+   * audio inputs ships (the Faust `compute(count, inputs, outputs)`
+   * shape maps directly onto it).
+   */
+  computeWithInputs?(
+    statePtr: number,
+    inputPtrs: readonly number[],
+    freqPtr: number,
+    ampPtr: number,
+    outputPtr: number,
+    frameCount: number,
+  ): boolean;
+
   /** Read back the per-instance phase. Used by conformance tests only. */
   getPhase(statePtr: number): number;
 

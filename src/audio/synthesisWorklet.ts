@@ -48,6 +48,8 @@ import {
   type WorkletCore,
   type WorkletMemoryAllocator,
 } from "./workletCore";
+import { createZoneAllocator } from "./workletZoneAllocator";
+import { SYNTH_MEMORY_MAX_BYTES } from "../contracts/synthesisControlAbi";
 import {
   createNodeDefAdapter,
   type NodeDefAdapter,
@@ -201,17 +203,21 @@ interface ProcessorBag {
 }
 
 // ---------------------------------------------------------------------------
-// Allocator (host-owned bump arena inside a WebAssembly.Memory)
+// Allocator (host-owned zone arena inside a WebAssembly.Memory)
 // ---------------------------------------------------------------------------
 
 /**
- * Create a bump allocator over a fresh `WebAssembly.Memory`. M1 has
- * exactly one osc/sine instance (24-byte state zone), so the state
- * allocation itself is tiny. The memory's initial page count must
- * satisfy the NodeDef WASM module's imported `env.memory` limits
- * descriptor, which for osc/sine declares 256 initial pages
- * (16 MiB). The maximum matches so the worklet does not need to grow
- * the memory at runtime.
+ * Create the host-owned zone allocator over a fresh `WebAssembly.Memory`
+ * (synthesis epic M2.1; `synthesis.md` §2.3, §3.5). Per-instance state
+ * and output zones are allocated on instantiate and released by the
+ * retire-sweep; freed zones coalesce and are reused, and the arena is
+ * bounded by `SYNTH_MEMORY_MAX_BYTES` — exhaustion yields a diagnostic,
+ * never unbounded growth.
+ *
+ * The memory's initial page count must satisfy the NodeDef WASM
+ * module's imported `env.memory` limits descriptor, which for osc/sine
+ * declares 256 initial pages (16 MiB). The maximum matches so the
+ * worklet does not need to grow the memory at runtime.
  */
 export function createWorkletAllocator(): WorkletMemoryAllocator & {
   readonly memory: WebAssembly.Memory;
@@ -222,21 +228,13 @@ export function createWorkletAllocator(): WorkletMemoryAllocator & {
   // initial of 256".
   const initialPages = 256;
   const memory = new WebAssembly.Memory({ initial: initialPages, maximum: initialPages });
-  let offset = 0;
+  const zones = createZoneAllocator({
+    limitBytes: Math.min(memory.buffer.byteLength, SYNTH_MEMORY_MAX_BYTES),
+  });
   return {
     memory,
-    allocate(bytes: number, align: number) {
-      const mask = align - 1;
-      const aligned = (offset + mask) & ~mask;
-      if (aligned + bytes > memory.buffer.byteLength) return -1;
-      offset = aligned + bytes;
-      return aligned;
-    },
-    release(_pointer: number) {
-      // Bump arena: release is a no-op for M1. Real zone allocators
-      // return memory to a free list; the single long-lived instance
-      // does not need reclamation in steady state.
-    },
+    allocate: (bytes: number, align: number) => zones.allocate(bytes, align),
+    release: (pointer: number) => zones.release(pointer),
   };
 }
 
@@ -411,42 +409,24 @@ function createProcessorBag(): ProcessorBag {
   const descriptors = buildNodeDefDescriptorMap();
   const adapterCache = createAdapterCache(allocatorWithMemory.memory, descriptors);
 
-  // VAL-CROSS-002 integration: allocate the per-instance DSP and
-  // control scratch buffers INSIDE the host-owned WebAssembly.Memory.
-  // The WASM compute call receives these views' byte offsets as
-  // pointers; the adapter writes its output samples directly into the
-  // same memory the core reads from. Without this shared-memory link
-  // the adapter would write into WASM memory while the core read from
-  // a disconnected local buffer and the destination would stay silent.
+  // VAL-CROSS-002 integration: control scratch buffers live INSIDE the
+  // host-owned WebAssembly.Memory. The WASM compute call receives these
+  // views' byte offsets as pointers; the adapter reads the control
+  // doubles directly from the same memory the core writes into.
   //
-  // The DSP output region must hold a full render quantum of IEEE-754
-  // doubles (128 * 8 = 1024 bytes, 8-byte aligned). The osc/sine
-  // compute contract writes one double per output sample, NOT floats.
-  // The control regions hold a single Float64 (8 bytes each). All
-  // regions are 8-byte aligned; the allocator's bumpArena rounds up
-  // accordingly.
-  const DSP_SCRATCH_FRAMES = 128;
-  const instanceScratchPtr = allocatorWithMemory.allocate(
-    DSP_SCRATCH_FRAMES * 8,
-    8,
-  );
+  // Per-instance DSP output zones are allocated by the worklet core
+  // itself through the zone allocator (synthesis epic M2.1) and viewed
+  // through `createArenaView` below — the core owns zone sizing, growth
+  // (ergo 10271a1d), and release; the shell no longer preallocates a
+  // fixed single-instance scratch.
   const freqControlScratchPtr = allocatorWithMemory.allocate(8, 8);
   const ampControlScratchPtr = allocatorWithMemory.allocate(8, 8);
-  if (
-    instanceScratchPtr < 0 ||
-    freqControlScratchPtr < 0 ||
-    ampControlScratchPtr < 0
-  ) {
+  if (freqControlScratchPtr < 0 || ampControlScratchPtr < 0) {
     throw new Error(
-      "synthesisWorklet: failed to allocate DSP scratch regions in host WebAssembly.Memory",
+      "synthesisWorklet: failed to allocate control scratch regions in host WebAssembly.Memory",
     );
   }
   const wasmBuffer = allocatorWithMemory.memory.buffer;
-  const instanceScratch = new Float64Array(
-    wasmBuffer,
-    instanceScratchPtr,
-    DSP_SCRATCH_FRAMES,
-  );
   const freqControlScratch = new Float64Array(wasmBuffer, freqControlScratchPtr, 1);
   const ampControlScratch = new Float64Array(wasmBuffer, ampControlScratchPtr, 1);
 
@@ -476,7 +456,8 @@ function createProcessorBag(): ProcessorBag {
       // synthesisService.ts is the authoritative source.
       pendingEvents.push(msg as WorkletOutboundEvent);
     },
-    instanceScratch,
+    createArenaView: (byteOffset, lengthDoubles) =>
+      new Float64Array(allocatorWithMemory.memory.buffer, byteOffset, lengthDoubles),
     freqControlScratch,
     ampControlScratch,
   });

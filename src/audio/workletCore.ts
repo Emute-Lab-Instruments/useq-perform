@@ -1,7 +1,8 @@
 /**
  * Testable AudioWorklet core — allocation-free SAB consumer and graph host.
  *
- * Fulfils (see mission feature `m1-worklet-host-and-epoch-consumer`):
+ * Fulfils (see mission feature `m1-worklet-host-and-epoch-consumer` and
+ * synthesis epic M2.1, ergo 9a9370af / 10271a1d):
  *   VAL-SAB-016     — mismatched epochs are not consumed.
  *   VAL-DSP-010     — phase continuous across blocks and same-def updates.
  *   VAL-ENGINE-009  — graph changes happen at block boundaries.
@@ -15,42 +16,62 @@
  *   VAL-ENGINE-034  — steady-state process path allocates and blocks nothing.
  *   VAL-ENGINE-035  — graph retirement is bounded, no orphan rendering.
  *
- * Design contract (normative, synthesis.md §3.1–§3.3, §4.4, §4.7):
+ * Design contract (normative, synthesis.md §2.3, §3.1–§3.3, §4.4, §4.7):
  *
  *   1. The core is browser-global-free. It accepts injected dependencies
- *      for the DSP module adapter, the output sink, and the telemetry
- *      publisher. The {@link AudioWorkletProcessor} shell in
- *      `synthesisWorklet.ts` is the only place that touches the Web Audio
- *      globals.
+ *      for the DSP module adapter, the shared-memory allocator, the
+ *      arena view factory, and the telemetry publisher. The
+ *      {@link AudioWorkletProcessor} shell in `synthesisWorklet.ts` is
+ *      the only place that touches the Web Audio globals.
  *
  *   2. The steady-state process path performs zero allocations. Every
- *      per-block buffer (output, fade envelope, accumulator) is allocated
- *      ONCE during {@link createWorkletCore} and reused on every
- *      {@link WorkletCore.process} call.
+ *      per-block buffer (output scratch, per-instance zones, input
+ *      pointer vectors, telemetry entries) is allocated at graph-
+ *      mutation boundaries and reused on every {@link WorkletCore.process}
+ *      call.
  *
  *   3. The core NEVER calls `Atomics.wait` or `Atomics.notify`. The
  *      SAB helpers it consumes are documented non-blocking
  *      (VAL-SAB-019).
  *
  *   4. Graph mutation happens between render quanta. {@link WorkletCore.handleMessage}
- *      stages a pending delta; {@link WorkletCore.process} activates it
- *      on the first matching block boundary (VAL-ENGINE-009/011).
+ *      stages pending deltas; {@link WorkletCore.process} activates the
+ *      staged set on the first matching block boundary (VAL-ENGINE-009/011).
  *
- *   5. Producer loss is detected independently. The worklet core tracks
+ *   5. Multi-node execution (synthesis.md §3.1): the core hosts N live
+ *      instances and executes them in TOPOLOGICAL order of the patch
+ *      graph per block. Each instance owns an output zone in the
+ *      host-owned shared memory; downstream nodes receive upstream
+ *      zones as input-port pointers (pointer wiring, never copying);
+ *      terminal instances (no downstream consumer) sum into the output
+ *      scratch. A consumer whose source retires reads the shared
+ *      silence zone, never a dangling pointer.
+ *
+ *   6. Producer loss is detected independently. The worklet core tracks
  *      the producer-liveness age on every block; when it reaches
  *      {@link PRODUCER_TIMEOUT_BLOCKS} (24) the core enters the emergency
  *      fade path (VAL-ENGINE-023/024).
  *
- *   6. Retirement is bounded. When an instance is retired the core fades
+ *   7. Retirement is bounded. When an instance is retired the core fades
  *      it out over {@link SYNTH_FADE_OUT_MS}; once the fade completes
- *      the instance is removed from the active set (VAL-ENGINE-035).
+ *      the instance is removed from the active set and its zones are
+ *      released back to the arena (VAL-ENGINE-035).
+ *
+ *   8. Render-quantum growth (synthesis.md §1.4, ergo 10271a1d): when
+ *      the runtime reports a larger quantum than the zones were sized
+ *      for, the core re-derives every zone THROUGH the allocator and
+ *      the arena view factory — it never replaces a shared-memory view
+ *      with a disconnected local array.
  */
 
 import {
   ABI_VERSION,
   CONTROL_LOOKAHEAD_BLOCKS,
+  DEFAULT_AUDIO_OUTPUT_PORTS,
   DEFAULT_RENDER_QUANTUM_FRAMES,
   EMERGENCY_FADE_MS,
+  MAX_RENDER_QUANTUM_FRAMES,
+  MAX_SYNTH_NODES,
   PRODUCER_TIMEOUT_BLOCKS,
   SYNTH_FADE_IN_MS,
   SYNTH_FADE_OUT_MS,
@@ -60,10 +81,8 @@ import {
 import type { NodeDefAdapter } from "./nodeDefAdapter";
 import type {
   WorkletAttachControlBufferMessage,
-  WorkletDevmodeTerminateProducerMessage,
-  WorkletDetachControlBufferMessage,
+  WorkletAudioInputWiring,
   WorkletGraphActivatedEvent,
-  WorkletIdentityTuple,
   WorkletInstantiateMessage,
   WorkletInstanceRetiredEvent,
   WorkletInstanceTelemetry,
@@ -87,6 +106,13 @@ import { WORKLET_TELEMETRY_SCHEMA_VERSION } from "./workletGraphDelta";
  */
 export const DEFAULT_WORKLET_SAMPLE_RATE = 48000 as const;
 
+const BYTES_PER_DOUBLE = Float64Array.BYTES_PER_ELEMENT;
+const DOUBLE_ALIGN = Float64Array.BYTES_PER_ELEMENT;
+
+/** Registry defaults used when a control channel is absent or invalid. */
+const DEFAULT_FREQ = 440;
+const DEFAULT_AMP = 0.2;
+
 // ---------------------------------------------------------------------------
 // Injected dependencies
 // ---------------------------------------------------------------------------
@@ -107,12 +133,14 @@ export type WorkletAdapterFactory = (
 
 /**
  * Allocator for the host-owned shared WASM memory the NodeDef adapter
- * consumes. The core uses this to allocate per-instance state zones
- * between render quanta only. It is NOT called inside {@link WorkletCore.process}.
+ * consumes. The core uses this to allocate per-instance state and
+ * output zones between render quanta only. It is NOT called inside the
+ * steady-state {@link WorkletCore.process} path.
  *
- * The processor shell supplies a real allocator backed by a
- * `WebAssembly.Memory`; tests supply a fake that returns offsets into a
- * `Float64Array`.
+ * The processor shell supplies the real zone allocator
+ * (`workletZoneAllocator.ts`) backed by a `WebAssembly.Memory`; tests
+ * supply the same allocator over a plain `ArrayBuffer` or a fake that
+ * returns opaque offsets.
  */
 export interface WorkletMemoryAllocator {
   /**
@@ -131,9 +159,6 @@ export interface WorkletMemoryAllocator {
  * Sink the core writes its output samples into. The processor shell
  * passes the `Float32Array` backed by the Web Audio output channel;
  * tests pass a plain `Float32Array`.
- *
- * The sink exposes the mono-summed output of every active instance.
- * M1 has exactly one instance; future graphs sum per output channel.
  */
 export interface WorkletOutputSink {
   /**
@@ -171,34 +196,23 @@ export interface WorkletCoreOptions {
    */
   readonly now?: () => number;
   /**
-   * Optional instance scratch buffer used as the DSP output target.
+   * Factory for `Float64Array` views over the host-owned arena. The
+   * allocator hands out byte offsets; this factory turns an offset into
+   * a live view so the core can read back the doubles the WASM compute
+   * wrote (and zero zones at mutation boundaries).
    *
-   * In production the worklet shell passes a `Float64Array` view INTO
-   * the host-owned `WebAssembly.Memory` so the WASM compute call writes
-   * directly into the same buffer the core reads from. The byte offset
-   * of the view becomes the `outputPtr` passed to the adapter; the
-   * adapter's compute writes samples (as IEEE-754 doubles, matching
-   * the osc/sine contract) into shared memory at that offset, and the
-   * core reads them back through this view.
-   *
-   * In tests the fake adapter records the pointer without writing, so
-   * passing a plain `Float64Array` is fine (the output stays zero and
-   * tests inspect recorded compute calls instead).
-   *
-   * When omitted, the core allocates its own plain `Float64Array`. This
-   * is suitable for tests but NOT for production, where the WASM
-   * adapter writes into its imported memory and a disconnected scratch
-   * would silently produce zero output.
-   *
-   * Note: the scratch element type is `Float64Array` (not Float32)
-   * because the osc/sine compute contract writes IEEE-754 doubles.
-   * The render loop converts each double to a Float32 sample when
-   * copying into the output sink.
+   * In production the worklet shell supplies
+   * `(offset, len) => new Float64Array(memory.buffer, offset, len)`.
+   * When omitted (adapter-recording unit tests), the core falls back to
+   * standalone `Float64Array`s — the fake adapters never dereference
+   * their pointers, so tests observe recorded compute calls instead of
+   * samples.
    */
-  readonly instanceScratch?: Float64Array;
+  readonly createArenaView?: (byteOffset: number, lengthDoubles: number) => Float64Array;
   /**
-   * Optional frequency control scratch (single double). Same shared-
-   * memory rationale as {@link WorkletCoreOptions.instanceScratch}.
+   * Optional frequency control scratch (single double). In production
+   * this is a view INTO the host-owned memory so the WASM compute call
+   * reads the same bytes the core writes.
    */
   readonly freqControlScratch?: Float64Array;
   /**
@@ -211,8 +225,12 @@ export interface WorkletCoreOptions {
 // Per-instance state
 // ---------------------------------------------------------------------------
 
+type MutableInstanceTelemetry = {
+  -readonly [K in keyof WorkletInstanceTelemetry]: WorkletInstanceTelemetry[K];
+};
+
 /**
- * Per-instance runtime state. Allocated ONCE at instantiate time (between
+ * Per-instance runtime state. Allocated at instantiate time (between
  * render quanta); reused on every block until the instance retires.
  */
 interface InstanceState {
@@ -237,16 +255,46 @@ interface InstanceState {
   fadeGainStart: number;
   /** Ending fade gain (for fade-in this is 1; for fade-out this is 0). */
   fadeGainEnd: number;
-  /** Most recently applied frequency (param `freq`). */
+  /** Most recently applied frequency (param `freq`). Held on underrun. */
   currentFreq: number;
-  /** Most recently applied amplitude (param `amp`). */
+  /** Most recently applied amplitude (param `amp`). Held on underrun. */
   currentAmp: number;
   /**
-   * Prefilled param values that apply only to the first block. The core
-   * clears this field after the first matching block to keep the steady-
-   * state path allocation-free.
+   * Prefilled param values that apply to the first matching-epoch
+   * block only. Cleared after application so the steady-state path
+   * skips the lookup.
    */
   prefill: ReadonlyMap<string, number> | null;
+  /** Audio output port count. */
+  audioOutputs: number;
+  /** Declared audio-input wiring (patch-graph edges into this node). */
+  inputWiring: readonly WorkletAudioInputWiring[];
+  /**
+   * Resolved input-port pointers (byte offsets into the arena), one
+   * per input port. Preallocated at graph-mutation time; mutated in
+   * place (silence repointing) — never reallocated on the hot path.
+   */
+  inputPtrs: number[];
+  /** Staged input pointers, swapped in at epoch activation. */
+  pendingInputPtrs: number[] | null;
+  /** Output zone pointer (all ports), or -1 when allocation failed. */
+  outputZonePtr: number;
+  /** Output zone byte length. */
+  outputZoneBytes: number;
+  /** View over the output zone (audioOutputs × zoneFrames doubles). */
+  outputView: Float64Array | null;
+  /** True when no other instance consumes this instance's output. */
+  isTerminal: boolean;
+  /** Staged terminal flag, swapped in at epoch activation. */
+  pendingIsTerminal: boolean;
+  /** First block-rate SAB channel for this instance's controls. */
+  controlChannelBase: number;
+  /** One-shot guard for the missing-input-support diagnostic. */
+  inputSupportWarned: boolean;
+  /** True once the retire-sweep released this instance's zones. */
+  released: boolean;
+  /** Pooled telemetry entry (mutated in place every block). */
+  telemetryEntry: MutableInstanceTelemetry;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,14 +312,14 @@ interface InstanceState {
  */
 export interface WorkletCore {
   /**
-   * Process one render quantum. Reads the SAB, applies the pending graph
-   * delta on the first matching epoch block, renders the active
-   * instance(s) into the output sink, updates telemetry, and detects
-   * producer timeout.
+   * Process one render quantum. Reads the SAB, activates the staged
+   * graph delta on the first matching epoch block, renders the live
+   * instances in topological order into the output scratch, updates
+   * telemetry, and detects producer timeout.
    *
    * STEADY-STATE INVARIANT: this method performs no allocation. Every
-   * scratch buffer is allocated once at construction. The SAB view is
-   * read through acquire-loads only (never `Atomics.wait`).
+   * scratch buffer is allocated at graph-mutation boundaries. The SAB
+   * view is read through acquire-loads only (never `Atomics.wait`).
    *
    * Returns the snapshot published for this block (also forwarded to
    * the telemetry publisher).
@@ -297,8 +345,8 @@ export interface WorkletCore {
   /**
    * Handle a main-thread message. Graph mutation happens here, between
    * render quanta. The handler defers heavy work (adapter resolution,
-   * memory allocation, instance construction) to this call so
-   * {@link process} stays allocation-free.
+   * memory allocation, instance construction, topological planning) to
+   * this call so {@link process} stays allocation-free.
    */
   handleMessage(message: unknown): void;
 
@@ -335,46 +383,73 @@ export interface WorkletCore {
 
 /**
  * Construct a new worklet core. Allocates the steady-state scratch
- * buffers ONCE; subsequent {@link WorkletCore.process} calls reuse them.
+ * buffers up front; subsequent {@link WorkletCore.process} calls reuse
+ * them.
  */
 export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   const sampleRate = options.sampleRate > 0 ? options.sampleRate : DEFAULT_WORKLET_SAMPLE_RATE;
   const renderQuantumFrames =
     options.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES;
 
-  // --- Steady-state scratch buffers (allocated ONCE) ---
+  /**
+   * Per-port zone capacity in frames. Grows (only) when the runtime
+   * reports a larger render quantum; growth re-derives every zone
+   * through the allocator + arena view factory (ergo 10271a1d).
+   */
+  let zoneFrames = renderQuantumFrames;
+
+  // Final mono output (Float32, core-local — Web Audio consumes Float32).
+  let outputScratch = new Float32Array(zoneFrames);
+
+  const arenaMode = typeof options.createArenaView === "function";
+  const arenaView =
+    options.createArenaView ?? ((_byteOffset: number, lengthDoubles: number) => new Float64Array(lengthDoubles));
+
+  // Control-sample scratch (one double per block-rate channel). In
+  // production these are views into the host-owned memory; the render
+  // loop writes each instance's controls into them immediately before
+  // that instance's compute call (execution is sequential, so one pair
+  // serves every instance).
+  const freqControlScratch = options.freqControlScratch ?? new Float64Array(1);
+  const ampControlScratch = options.ampControlScratch ?? new Float64Array(1);
+
+  // --- Shared silence zone -------------------------------------------------
   //
-  // These Float32Arrays are reused on every process() call. The sizes
-  // are derived from the render quantum; if the runtime reports a
-  // larger quantum the buffers are grown (the only permitted steady-
-  // state allocation carve-out — synthesis.md §3.2). Tests use a fixed
-  // quantum so this never happens in the unit suite.
-  let outputScratch = new Float32Array(renderQuantumFrames);
-  // VAL-CROSS-002 integration: when the shell supplies scratch buffers
-  // backed by the host-owned WebAssembly.Memory, the WASM adapter's
-  // compute call writes directly into these views (their byte offsets
-  // are the pointers the adapter receives). When the shell omits them
-  // (tests), the core allocates standalone buffers; the fake adapter
-  // never dereferences the pointer so the test still observes recorded
-  // compute calls without seeing DSP samples.
-  //
-  // instanceScratch is Float64Array because the osc/sine compute
-  // contract writes IEEE-754 doubles (one double per output sample).
-  // The render loop narrows each double to Float32 when copying into
-  // the output sink; Web Audio consumes Float32.
-  let instanceScratch = options.instanceScratch ?? new Float64Array(renderQuantumFrames);
-  // Control-sample scratch (one double per block-rate channel). Doubles
-  // are stored in a Float64Array view to preserve the WASM ABI.
-  let freqControlScratch = options.freqControlScratch ?? new Float64Array(1);
-  let ampControlScratch = options.ampControlScratch ?? new Float64Array(1);
+  // Input ports whose source is absent or retired point here. The zone
+  // is zero-filled at allocation and never written, so a dangling
+  // consumer reads silence — never freed memory (synthesis.md §3.1).
+  let silencePtr = 0;
+  let silenceView: Float64Array | null = null;
+
+  function ensureSilenceZone(): void {
+    if (silenceView) return;
+    const bytes = zoneFrames * BYTES_PER_DOUBLE;
+    const ptr = options.allocator.allocate(bytes, DOUBLE_ALIGN);
+    if (ptr >= 0) {
+      silencePtr = ptr;
+      silenceView = arenaView(ptr, zoneFrames);
+    } else {
+      silencePtr = 0;
+      silenceView = new Float64Array(zoneFrames);
+    }
+    silenceView.fill(0);
+  }
 
   // --- Runtime state ---
   let controlView: SynthesisControlView | null = null;
   let controlBuffer: SharedArrayBuffer | null = null;
   const adapters = new Map<string, NodeDefAdapter>();
-  let activeInstance: InstanceState | null = null;
-  let pendingInstance: InstanceState | null = null;
-  let pendingRetire: InstanceState | null = null;
+  /**
+   * Live rendering set in topological execution order. Includes
+   * fading-out retirees until the sweep removes them.
+   */
+  let executionOrder: InstanceState[] = [];
+  /** Newest instance per identity (fading def-change ancestors excluded). */
+  const liveByIdentity = new Map<string, InstanceState>();
+  /** Staged instances awaiting their epoch block (not rendering yet). */
+  const staged = new Map<string, InstanceState>();
+  /** Precomputed post-activation execution order (swap at activation). */
+  let stagedOrder: InstanceState[] | null = null;
   let activeEpoch = 0;
   let pendingEpoch = 0;
   let blockCount = 0;
@@ -399,7 +474,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   let peakSample = 0;
   let rmsSample = 0;
   let finiteOutput = 1;
-  let lastFiniteOutput = 1;
 
   // --- Precomputed fade frame counts (sample-rate derived) ---
   const fadeInFrames = Math.max(1, Math.round((SYNTH_FADE_IN_MS * sampleRate) / 1000));
@@ -409,33 +483,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   // --- Emergency fade state ---
   let emergencyFadeFramesRemaining = 0;
 
-  // --- Output sink (wired by the processor shell) ---
-  //
-  // We do not need a separate sink abstraction: the core writes its
-  // final samples into `outputScratch` and the shell copies them into
-  // the Web Audio output channel. This keeps the core allocation-free
-  // and avoids a vtable dispatch on the hot path.
-
   // Retained telemetry struct, mutated in place on every read. Steady-
   // state telemetry lives in the SAB header (written in process() step
   // 8); this object only serves the `telemetry` getter / process()
   // return value for tests and the simulated (non-SAB) worklet core, so
   // the audio thread never allocates for telemetry (b3895dbe). Callers
-  // must copy fields they want to hold across blocks.
-  type MutableInstanceTelemetry = {
-    -readonly [K in keyof WorkletInstanceTelemetry]: WorkletInstanceTelemetry[K];
-  };
+  // must copy fields they want to hold across blocks. Per-instance
+  // entries are pooled on the InstanceState (allocated at instantiate,
+  // a mutation boundary).
   type MutableTelemetry = {
     -readonly [K in keyof Omit<WorkletTelemetrySnapshot, "instances">]:
       WorkletTelemetrySnapshot[K];
   } & { instances: MutableInstanceTelemetry[] };
-  const retainedInstanceTelemetry: MutableInstanceTelemetry = {
-    identity: "",
-    def: "",
-    version: 0,
-    statePointer: 0,
-    lifecycle: "fade-in",
-  };
   const retainedTelemetry: MutableTelemetry = {
     schemaVersion: WORKLET_TELEMETRY_SCHEMA_VERSION,
     audioFrame: 0,
@@ -459,16 +518,15 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     t.activeEpoch = activeEpoch;
     t.pendingEpoch = pendingEpoch;
     t.blockCount = blockCount;
-    if (activeInstance) {
-      const i = retainedInstanceTelemetry;
-      i.identity = activeInstance.identity;
-      i.def = activeInstance.def;
-      i.version = activeInstance.version;
-      i.statePointer = activeInstance.statePointer;
-      i.lifecycle = activeInstance.lifecycle;
-      if (t.instances.length === 0) t.instances.push(i);
-    } else if (t.instances.length !== 0) {
-      t.instances.length = 0;
+    t.instances.length = 0;
+    for (const inst of executionOrder) {
+      const e = inst.telemetryEntry;
+      e.identity = inst.identity;
+      e.def = inst.def;
+      e.version = inst.version;
+      e.statePointer = inst.statePointer;
+      e.lifecycle = inst.lifecycle;
+      t.instances.push(e);
     }
     t.peakSample = peakSample;
     t.rmsSample = rmsSample;
@@ -483,6 +541,108 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
   function publishEvent(event: WorkletOutboundEvent): void {
     options.publish(event);
+  }
+
+  // -----------------------------------------------------------------------
+  // Graph planning (between quanta only)
+  // -----------------------------------------------------------------------
+
+  /** Resolve the instance an identity refers to for wiring purposes. */
+  function resolveSource(identity: string): InstanceState | null {
+    return staged.get(identity) ?? liveByIdentity.get(identity) ?? null;
+  }
+
+  /**
+   * Rebuild the pending graph plan: topological execution order over
+   * (live ∪ staged), per-instance input-port pointers, and terminal
+   * flags. Runs in the message handler (between quanta) so activation
+   * inside process() is a pure pointer/array swap.
+   *
+   * When nothing is staged, the plan applies immediately (still between
+   * quanta — a block boundary per VAL-ENGINE-009).
+   */
+  function rebuildGraphPlan(): void {
+    const union: InstanceState[] = [];
+    for (const inst of executionOrder) union.push(inst);
+    for (const inst of staged.values()) union.push(inst);
+
+    // --- Topological order (Kahn, stable) ---
+    const indexOf = new Map<InstanceState, number>();
+    for (let i = 0; i < union.length; i++) indexOf.set(union[i], i);
+    const indegree = new Array<number>(union.length).fill(0);
+    const adjacency: number[][] = union.map(() => []);
+    for (const inst of union) {
+      for (const w of inst.inputWiring) {
+        const src = resolveSource(w.sourceIdentity);
+        if (src && src !== inst && indexOf.has(src)) {
+          adjacency[indexOf.get(src)!].push(indexOf.get(inst)!);
+          indegree[indexOf.get(inst)!] += 1;
+        }
+      }
+    }
+    const order: InstanceState[] = [];
+    const visited = new Array<boolean>(union.length).fill(false);
+    const ready: number[] = [];
+    for (let i = 0; i < union.length; i++) {
+      if (indegree[i] === 0) ready.push(i);
+    }
+    while (ready.length > 0) {
+      const i = ready.shift()!;
+      visited[i] = true;
+      order.push(union[i]);
+      for (const j of adjacency[i]) {
+        indegree[j] -= 1;
+        if (indegree[j] === 0) ready.push(j);
+      }
+    }
+    // Cycle remainder: append in insertion order. Compiler-side cycle
+    // detection is M2.2; host-side a cycle degrades to one-block
+    // feedback delay (zones hold the previous block's samples), never
+    // a crash.
+    for (let i = 0; i < union.length; i++) {
+      if (!visited[i]) order.push(union[i]);
+    }
+
+    // --- Input pointers + terminal flags ---
+    const consumed = new Set<InstanceState>();
+    for (const inst of union) {
+      let maxPort = -1;
+      for (const w of inst.inputWiring) {
+        if (w.port > maxPort) maxPort = w.port;
+      }
+      const ptrs = new Array<number>(maxPort + 1).fill(silencePtr);
+      for (const w of inst.inputWiring) {
+        const src = resolveSource(w.sourceIdentity);
+        if (src && src !== inst && src.outputZonePtr >= 0) {
+          ptrs[w.port] =
+            src.outputZonePtr + w.sourcePort * zoneFrames * BYTES_PER_DOUBLE;
+          consumed.add(src);
+        }
+      }
+      inst.pendingInputPtrs = ptrs;
+    }
+    for (const inst of union) {
+      inst.pendingIsTerminal = !consumed.has(inst);
+    }
+
+    if (staged.size > 0) {
+      stagedOrder = order;
+    } else {
+      stagedOrder = null;
+      executionOrder = order;
+      applyPendingWiring();
+    }
+  }
+
+  /** Swap staged wiring into the live set (allocation-free). */
+  function applyPendingWiring(): void {
+    for (const inst of executionOrder) {
+      if (inst.pendingInputPtrs) {
+        inst.inputPtrs = inst.pendingInputPtrs;
+        inst.pendingInputPtrs = null;
+      }
+      inst.isTerminal = inst.pendingIsTerminal;
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -565,67 +725,90 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // detach/reattach pair would skip the bring-up window entirely.
     sabEverAttached = false;
     producerEverPublished = false;
-    // Retire the active instance immediately (no fade): the SAB is gone,
-    // so further rendering is impossible. The processor shell disconnects
-    // the node so no further process() calls land.
-    if (activeInstance) {
-      retireImmediately(activeInstance);
-      activeInstance = null;
+    // Retire every instance immediately (no fade): the SAB is gone, so
+    // further rendering is impossible. The processor shell disconnects
+    // the node so no further process() calls land. Zones are released
+    // silently (no instance-retired events on teardown).
+    for (const inst of executionOrder) {
+      retireImmediately(inst);
+      releaseInstanceZones(inst);
     }
-    if (pendingInstance) {
-      pendingInstance = null;
+    executionOrder.length = 0;
+    for (const inst of staged.values()) {
+      releaseInstanceZones(inst);
     }
-    if (pendingRetire) {
-      pendingRetire = null;
-    }
+    staged.clear();
+    stagedOrder = null;
+    liveByIdentity.clear();
     activeEpoch = 0;
     pendingEpoch = 0;
   }
 
   function handleInstantiate(message: WorkletInstantiateMessage): void {
     const id = message.identity;
-    // If a previous instance exists under the same identity with the same
-    // def/version, this is an update-in-place: we keep the DSP instance
-    // and phase (VAL-DSP-010) and just refresh the prefill.
+    const live = liveByIdentity.get(id.identity);
+
+    // Same identity + same def/version on a live instance and no staged
+    // replacement: update-in-place. We keep the DSP instance and phase
+    // (VAL-DSP-010) and just refresh epoch/prefill/controls/wiring.
     if (
-      activeInstance &&
-      activeInstance.identity === id.identity &&
-      activeInstance.def === id.def &&
-      activeInstance.version === id.version
+      live &&
+      live.def === id.def &&
+      live.version === id.version &&
+      !staged.has(id.identity)
     ) {
-      activeInstance.epoch = id.epoch;
-      activeInstance.prefill = buildPrefillMap(message.prefill);
+      live.epoch = id.epoch;
+      live.prefill = buildPrefillMap(message.prefill);
+      if (typeof message.controlChannelBase === "number") {
+        live.controlChannelBase = message.controlChannelBase;
+      }
+      if (message.audioInputs) {
+        live.inputWiring = message.audioInputs;
+        rebuildGraphPlan();
+      }
       pendingEpoch = id.epoch;
       return;
     }
 
-    // If a previous instance exists under the same identity with a
-    // DIFFERENT def/version, retire the old one with a release fade and
-    // stage the new one (VAL-ENGINE-035). The old instance keeps rendering
-    // until its fade completes; the new instance activates on the next
-    // matching epoch block.
+    // Same identity with a DIFFERENT def/version: retire the old
+    // instance with a release fade (VAL-ENGINE-035). It keeps rendering
+    // in the execution order until its fade completes; the incoming
+    // instance is staged and activates on the next matching epoch
+    // block (overlapping fades per synth-nodes.md §5.7).
+    if (live && (live.def !== id.def || live.version !== id.version)) {
+      startFadeOut(live, fadeOutFrames);
+      liveByIdentity.delete(id.identity);
+    }
+
+    // A staged set armed for a DIFFERENT epoch is superseded by this
+    // delta (a newer commit won the race, VAL-ENGINE-013). Drop it and
+    // reclaim its zones before staging the new set.
+    if (staged.size > 0 && pendingEpoch !== 0 && id.epoch !== pendingEpoch) {
+      for (const inst of staged.values()) {
+        releaseInstanceZones(inst);
+      }
+      staged.clear();
+    }
+
+    // Resource limit (synthesis.md §3.5): live + staged instances are
+    // bounded by MAX_SYNTH_NODES. Breach is a diagnostic, never a
+    // glitch — the delta is refused and the running graph continues.
     if (
-      activeInstance &&
-      activeInstance.identity === id.identity &&
-      (activeInstance.def !== id.def || activeInstance.version !== id.version)
+      !staged.has(id.identity) &&
+      executionOrder.length + staged.size >= MAX_SYNTH_NODES
     ) {
-      // Move the old instance into the retire lane with a release fade.
-      startFadeOut(activeInstance, fadeOutFrames);
-      pendingRetire = activeInstance;
-      activeInstance = null;
-    } else if (activeInstance) {
-      // A different identity is active. For M1 (single-node capacity)
-      // we retire the previous identity; the M2 multi-instance host
-      // will instead keep both and route output.
-      startFadeOut(activeInstance, fadeOutFrames);
-      pendingRetire = activeInstance;
-      activeInstance = null;
+      publishEvent({
+        type: "graph-diagnostic",
+        code: "node-limit",
+        identity: id.identity,
+      });
+      return;
     }
 
     // Resolve the adapter. First check the cache (populated by
     // {@link WorkletModuleTransferMessage}); if not cached, fall back
     // to the injected factory. If neither yields an adapter the
-    // instance stays staged but inactive until the module arrives.
+    // instance stays staged but silent until the module arrives.
     const adapterKey = `${id.def}@${id.version}`;
     let adapter = adapters.get(adapterKey) ?? null;
     if (!adapter) {
@@ -635,21 +818,60 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       }
     }
 
+    ensureSilenceZone();
+
     // Allocate the state zone between quanta only.
     let statePointer = message.statePointer;
     let stateBytes = message.stateBytes;
+    let stateAllocatedHere = false;
     if (statePointer === 0 || stateBytes === 0) {
       // The host did not preallocate; allocate on its behalf using the
-      // adapter's declared state size. This is the between-quantum carve-
-      // out (synthesis.md §3.2).
+      // adapter's declared state size. This is the between-quantum
+      // carve-out (synthesis.md §3.2).
       if (adapter) {
         stateBytes = adapter.descriptor.stateBytes;
         statePointer = options.allocator.allocate(
           stateBytes,
           adapter.descriptor.stateAlign,
         );
+        stateAllocatedHere = statePointer >= 0;
+        if (statePointer < 0) {
+          publishEvent({
+            type: "graph-diagnostic",
+            code: "zone-exhausted",
+            identity: id.identity,
+          });
+          return;
+        }
       }
     }
+
+    // Allocate the output zone (all ports). Zone exhaustion fails the
+    // delta closed with a diagnostic; the rest of the graph continues
+    // (synthesis.md §3.5).
+    const audioOutputs =
+      typeof message.audioOutputs === "number" && message.audioOutputs > 0
+        ? message.audioOutputs
+        : DEFAULT_AUDIO_OUTPUT_PORTS;
+    const outputZoneBytes = audioOutputs * zoneFrames * BYTES_PER_DOUBLE;
+    const outputZonePtr = options.allocator.allocate(outputZoneBytes, DOUBLE_ALIGN);
+    if (outputZonePtr < 0) {
+      if (stateAllocatedHere) {
+        try {
+          options.allocator.release(statePointer);
+        } catch {
+          // Best-effort cleanup.
+        }
+      }
+      publishEvent({
+        type: "graph-diagnostic",
+        code: "zone-exhausted",
+        identity: id.identity,
+      });
+      return;
+    }
+    const outputView = arenaView(outputZonePtr, audioOutputs * zoneFrames);
+    outputView.fill(0);
 
     const instance: InstanceState = {
       identity: id.identity,
@@ -664,61 +886,105 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       fadeFramesTotal: fadeInFrames,
       fadeGainStart: 0,
       fadeGainEnd: 1,
-      currentFreq: 440,
-      currentAmp: 0.2,
+      currentFreq: DEFAULT_FREQ,
+      currentAmp: DEFAULT_AMP,
       prefill: buildPrefillMap(message.prefill),
+      audioOutputs,
+      inputWiring: message.audioInputs ?? EMPTY_WIRING,
+      inputPtrs: EMPTY_PTRS,
+      pendingInputPtrs: null,
+      outputZonePtr,
+      outputZoneBytes,
+      outputView,
+      isTerminal: true,
+      pendingIsTerminal: true,
+      controlChannelBase:
+        typeof message.controlChannelBase === "number" && message.controlChannelBase >= 0
+          ? message.controlChannelBase
+          : 0,
+      inputSupportWarned: false,
+      released: false,
+      telemetryEntry: {
+        identity: id.identity,
+        def: id.def,
+        version: id.version,
+        statePointer,
+        lifecycle: "fade-in",
+      },
     };
 
     // Initialise the DSP state zone between quanta. The adapter calls
     // `init` against the host-owned memory; failure fails closed (the
     // instance stays in `retired` and never renders).
-    if (adapter && statePointer >= 0) {
+    if (adapter && statePointer >= 0 && stateBytes > 0) {
       const ok = adapter.init(statePointer, stateBytes);
       if (!ok) {
         instance.lifecycle = "retired";
       }
     } else if (!adapter) {
       // Module not yet transferred; keep the instance staged but mark
-      // lifecycle as fade-in (it will activate once the adapter arrives).
+      // lifecycle as fade-in (it will activate once the adapter arrives
+      // — the renderer re-resolves per block, VAL-ENGINE-008).
       instance.lifecycle = "fade-in";
     } else {
       instance.lifecycle = "retired";
     }
 
-    pendingInstance = instance;
+    // Warn once when the delta wires inputs into a def whose adapter
+    // has no input-capable compute entry point. The instance degrades
+    // to its input-less compute (typically silence), never a crash.
+    if (
+      adapter &&
+      instance.inputWiring.length > 0 &&
+      typeof adapter.computeWithInputs !== "function"
+    ) {
+      instance.inputSupportWarned = true;
+      publishEvent({
+        type: "graph-diagnostic",
+        code: "missing-input-support",
+        identity: id.identity,
+      });
+    }
+
+    staged.set(id.identity, instance);
     pendingEpoch = id.epoch;
+    rebuildGraphPlan();
   }
 
   function handleUpdate(message: WorkletUpdateMessage): void {
     const id = message.identity;
-    if (
-      !activeInstance ||
-      activeInstance.identity !== id.identity ||
-      activeInstance.def !== id.def ||
-      activeInstance.version !== id.version
-    ) {
+    const live = liveByIdentity.get(id.identity);
+    if (!live || live.def !== id.def || live.version !== id.version) {
       // No matching active instance. Late update from a superseded eval
       // is a no-op (VAL-ENGINE-013).
       return;
     }
     // Same def/version → update in place. Phase is preserved because
     // we never call `reset_phase` here (VAL-DSP-010).
-    activeInstance.epoch = id.epoch;
-    activeInstance.prefill = buildPrefillMap(message.prefill);
+    live.epoch = id.epoch;
+    live.prefill = buildPrefillMap(message.prefill);
+    if (typeof message.controlChannelBase === "number") {
+      live.controlChannelBase = message.controlChannelBase;
+    }
     pendingEpoch = id.epoch;
   }
 
   function handleRetire(message: WorkletRetireMessage): void {
     const target = message.identity;
-    if (activeInstance && activeInstance.identity === target.identity) {
-      // Begin the release fade at the next matching epoch boundary.
-      // For retirement the pending epoch is the retire message's epoch.
-      startFadeOut(activeInstance, fadeOutFrames);
-      // Keep the instance active so its fade renders; the post-fade
-      // sweep retires it fully.
-    } else if (pendingInstance && pendingInstance.identity === target.identity) {
-      // The pending instance never reached activation; drop it.
-      pendingInstance = null;
+    const live = liveByIdentity.get(target.identity);
+    if (live) {
+      // Begin the release fade; the post-fade sweep retires it fully
+      // and releases its zones (VAL-ENGINE-035).
+      startFadeOut(live, fadeOutFrames);
+      return;
+    }
+    const stagedInstance = staged.get(target.identity);
+    if (stagedInstance) {
+      // The staged instance never reached activation; drop it and
+      // reclaim its zones.
+      staged.delete(target.identity);
+      releaseInstanceZones(stagedInstance);
+      rebuildGraphPlan();
     }
   }
 
@@ -730,24 +996,111 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   }
 
   // -----------------------------------------------------------------------
+  // Zone growth (ergo 10271a1d — graph-mutation boundary, not steady state)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Re-derive every zone for a larger render quantum. This is a graph-
+   * mutation boundary (synthesis.md §3.2's allocation carve-out): the
+   * zones are re-allocated THROUGH the arena allocator and re-viewed
+   * THROUGH the arena view factory, so the WASM compute calls and the
+   * core keep reading/writing the same shared bytes. The pre-fix code
+   * replaced the scratch with a disconnected local array, permanently
+   * silencing production output (ergo 10271a1d).
+   */
+  function growZones(newFrames: number): void {
+    zoneFrames = newFrames;
+
+    // Release everything first so the coalesced arena can satisfy the
+    // larger zones without fragmentation pressure.
+    if (silenceView && silencePtr > 0) {
+      options.allocator.release(silencePtr);
+    }
+    const hadSilence = silenceView !== null;
+    silenceView = null;
+    silencePtr = 0;
+    forEachInstance((inst) => {
+      if (inst.outputZonePtr > 0) {
+        options.allocator.release(inst.outputZonePtr);
+      }
+    });
+
+    if (hadSilence) {
+      ensureSilenceZone();
+    }
+
+    forEachInstance((inst) => {
+      if (inst.released || !inst.outputView) {
+        return;
+      }
+      const bytes = inst.audioOutputs * zoneFrames * BYTES_PER_DOUBLE;
+      const ptr = options.allocator.allocate(bytes, DOUBLE_ALIGN);
+      if (ptr < 0) {
+        inst.outputZonePtr = -1;
+        inst.outputZoneBytes = 0;
+        inst.outputView = null;
+        publishEvent({
+          type: "graph-diagnostic",
+          code: "zone-exhausted",
+          identity: inst.identity,
+        });
+        return;
+      }
+      inst.outputZonePtr = ptr;
+      inst.outputZoneBytes = bytes;
+      inst.outputView = arenaView(ptr, inst.audioOutputs * zoneFrames);
+      inst.outputView.fill(0);
+    });
+
+    // Re-resolve current input pointers against the moved zones.
+    forEachInstance((inst) => {
+      for (let i = 0; i < inst.inputPtrs.length; i++) {
+        inst.inputPtrs[i] = silencePtr;
+      }
+      for (const w of inst.inputWiring) {
+        const src = liveByIdentity.get(w.sourceIdentity);
+        if (src && src !== inst && src.outputZonePtr >= 0) {
+          inst.inputPtrs[w.port] =
+            src.outputZonePtr + w.sourcePort * zoneFrames * BYTES_PER_DOUBLE;
+        }
+      }
+    });
+
+    // Staged wiring (if any) was computed against the old zones.
+    if (staged.size > 0) {
+      rebuildGraphPlan();
+    }
+  }
+
+  function forEachInstance(fn: (inst: InstanceState) => void): void {
+    for (const inst of executionOrder) fn(inst);
+    for (const inst of staged.values()) fn(inst);
+  }
+
+  // -----------------------------------------------------------------------
   // Process (per render quantum)
   // -----------------------------------------------------------------------
 
-  function process(frameCount: number): WorkletTelemetrySnapshot {
+  function process(requestedFrameCount: number): WorkletTelemetrySnapshot {
     blockCount += 1;
 
-    // Ensure scratch buffers are large enough. This is the only
-    // permitted steady-state allocation, and only fires when the runtime
-    // hands us a larger quantum than we sized for at construction.
+    // Bound the quantum by the ABI's validation ceiling so zone sizes
+    // stay finite even against a misbehaving runtime.
+    let frameCount = requestedFrameCount;
+    if (frameCount > MAX_RENDER_QUANTUM_FRAMES) {
+      frameCount = MAX_RENDER_QUANTUM_FRAMES;
+      glitchCount += 1;
+    }
+
+    // Render-quantum growth (synthesis.md §1.4): re-derive the shared
+    // zones through the allocator. This is the only allocation path
+    // reachable from process(), and it is a graph-mutation boundary,
+    // not steady state (ergo 10271a1d).
+    if (frameCount > zoneFrames) {
+      growZones(frameCount);
+    }
     if (outputScratch.length < frameCount) {
       outputScratch = new Float32Array(frameCount);
-      // Growth path: this replacement breaks the shared-memory link
-      // for production shells that supplied a memory-backed scratch.
-      // Web Audio's render quantum is fixed at 128 in Chromium, so this
-      // branch only fires in unusual configurations. The worklet shell
-      // sizes its scratch at construction to cover the standard
-      // quantum; tests use the fake adapter which never dereferences.
-      instanceScratch = new Float64Array(frameCount);
     }
 
     // Zero the output scratch. The TypedArray fill is implementation-
@@ -756,7 +1109,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
     // ---- Step 1: Read the SAB (acquire-only, never blocking) ----
     let consumedBlockEpoch = 0;
-    let consumedBlockRevision = 0;
     let hasBlock = false;
     // Tracks whether we acquired a block from the ring this quantum,
     // independent of whether its epoch matched the pending graph. We
@@ -766,9 +1118,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // the drain, the worklet deadlocks on the first stale block when
     // a pending graph is staged (VAL-ENGINE-011 regression).
     let acquiredBlock = false;
-    let controlFreq = 440;
-    let controlAmp = 0.2;
-    let controlIsFinite = true;
+    let physicalSlot = 0;
 
     if (controlView) {
       const available = controlView.consumerAvailableBlocks();
@@ -777,42 +1127,12 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         // (VAL-SAB-012). The view's helper already does this; we just
         // read the slot at the read index.
         const readIndex = controlView.ringReadIndex;
-        const physicalSlot = controlView.physicalSlotForSequence(readIndex);
+        physicalSlot = controlView.physicalSlotForSequence(readIndex);
 
         // Read the epoch BEFORE touching any payload. The producer
         // release-publishes the write index only after the payload is
         // complete, so a successful acquire means the epoch is stable.
         consumedBlockEpoch = controlView.readBlockEpoch(physicalSlot);
-        consumedBlockRevision = controlView.readBlockRevision(physicalSlot);
-
-        // Read block-rate control values. For osc/sine we expect freq
-        // at channel 0 and amp at channel 1 (matches the registry's
-        // param ordering).
-        if (controlView.blockRateCount >= 1) {
-          controlFreq = controlView.readBlockRateValue(physicalSlot, 0);
-        }
-        if (controlView.blockRateCount >= 2) {
-          controlAmp = controlView.readBlockRateValue(physicalSlot, 1);
-        }
-        // Validate the controls. Non-finite values are clamped to the
-        // last finite value; the glitch counter increments.
-        if (!Number.isFinite(controlFreq)) {
-          controlFreq = 440;
-          glitchCount += 1;
-          controlIsFinite = false;
-        }
-        if (!Number.isFinite(controlAmp)) {
-          controlAmp = 0.2;
-          glitchCount += 1;
-          controlIsFinite = false;
-        }
-        // Clamp amplitude to [0, 1].
-        if (controlAmp < 0) controlAmp = 0;
-        else if (controlAmp > 1) controlAmp = 1;
-        // Clamp frequency to [0, sampleRate/2].
-        const nyquist = sampleRate / 2;
-        if (controlFreq < 0) controlFreq = 0;
-        else if (controlFreq > nyquist) controlFreq = nyquist;
 
         hasBlock = true;
         acquiredBlock = true;
@@ -869,33 +1189,31 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
     // ---- Step 3: Graph activation (block boundary, VAL-ENGINE-009/011) ----
     //
-    // Activate the pending graph on the first block whose epoch matches.
+    // Activate the staged set on the first block whose epoch matches.
     // Mixed graph/control epochs never render: if the block epoch does
     // not match the pending epoch, we skip the block entirely (hold
-    // last values) rather than render mismatched controls.
-    if (pendingInstance && hasBlock) {
+    // last values) rather than render mismatched controls
+    // (VAL-ENGINE-012). Activation is a prebuilt-array swap: the
+    // topological plan was computed in the message handler.
+    if (staged.size > 0 && hasBlock) {
       if (consumedBlockEpoch === pendingEpoch && pendingEpoch !== 0) {
-        // Epoch match: activate the pending graph.
-        const activated = pendingInstance;
-        pendingInstance = null;
-        activeInstance = activated;
-        activeEpoch = pendingEpoch;
-        // Apply prefill values for the first block (these supersede the
-        // SAB values for the activation block only).
-        if (activated.prefill) {
-          const freq = activated.prefill.get("freq");
-          const amp = activated.prefill.get("amp");
-          if (typeof freq === "number" && Number.isFinite(freq)) controlFreq = freq;
-          if (typeof amp === "number" && Number.isFinite(amp)) controlAmp = amp;
-          activated.prefill = null; // Single-shot; steady-state reads SAB.
+        if (stagedOrder) {
+          executionOrder = stagedOrder;
+          stagedOrder = null;
         }
-        const activatedEvent: WorkletGraphActivatedEvent = {
-          type: "graph-activated",
-          identity: activated.identity,
-          epoch: pendingEpoch,
-          atBlock: blockCount,
-        };
-        publishEvent(activatedEvent);
+        applyPendingWiring();
+        for (const inst of staged.values()) {
+          liveByIdentity.set(inst.identity, inst);
+          const activatedEvent: WorkletGraphActivatedEvent = {
+            type: "graph-activated",
+            identity: inst.identity,
+            epoch: pendingEpoch,
+            atBlock: blockCount,
+          };
+          publishEvent(activatedEvent);
+        }
+        staged.clear();
+        activeEpoch = pendingEpoch;
       } else if (consumedBlockEpoch !== 0 && consumedBlockEpoch !== pendingEpoch) {
         // Stale or mismatched block: do not render (VAL-ENGINE-012).
         // We hold the last values and let the producer catch up.
@@ -910,8 +1228,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // pending graph. Without this drain, the worklet would sit on the
     // first stale-epoch block forever while the producer (seeing the
     // ring as full) stopped publishing fresh matching-epoch blocks.
-    // The result was a deadlock where a pending graph never activated
-    // even after the producer armed the new epoch.
     //
     // VAL-ENGINE-012 (mixed epochs never render) is preserved by step
     // 3: a stale-epoch block sets `hasBlock = false` before reaching
@@ -921,29 +1237,26 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       controlView.advanceReadIndex();
     }
 
-    // ---- Step 5: Render the active instance (if any) ----
-    if (activeInstance && activeInstance.lifecycle !== "retired") {
-      renderInstance(
-        activeInstance,
-        controlFreq,
-        controlAmp,
-        frameCount,
-        /*out*/ outputScratch,
-      );
+    // ---- Step 5: Render the live graph in topological order ----
+    //
+    // Each instance computes into its own output zone; fades scale the
+    // zone in place so downstream consumers hear them; terminal
+    // instances sum into the output scratch afterwards (synthesis.md
+    // §3.1).
+    for (const inst of executionOrder) {
+      if (inst.lifecycle === "retired") continue;
+      renderInstance(inst, hasBlock, physicalSlot, consumedBlockEpoch, frameCount);
     }
-
-    // ---- Step 5b: Render a pending retiree's release fade ----
-    if (pendingRetire && pendingRetire.lifecycle !== "retired") {
-      renderInstance(
-        pendingRetire,
-        pendingRetire.currentFreq,
-        pendingRetire.currentAmp,
-        frameCount,
-        /*out*/ outputScratch,
-      );
-      // The retiree accumulates INTO the output (sum) so the listener
-      // hears a smooth crossfade. M1 has a single node so this is the
-      // def-change overlap path only.
+    for (const inst of executionOrder) {
+      if (inst.lifecycle === "retired" || !inst.isTerminal) continue;
+      const view = inst.outputView;
+      if (!view) continue;
+      for (let p = 0; p < inst.audioOutputs; p++) {
+        const base = p * zoneFrames;
+        for (let i = 0; i < frameCount; i++) {
+          outputScratch[i] += Number(view[base + i]);
+        }
+      }
     }
 
     // ---- Step 6: Apply emergency fade if producer has timed out ----
@@ -987,7 +1300,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     }
     peakSample = peak;
     rmsSample = Math.sqrt(sumSq / frameCount);
-    lastFiniteOutput = finiteOutput;
     if (!allFinite) {
       finiteOutput = 0;
       glitchCount += 1;
@@ -1024,36 +1336,52 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
     // ---- Step 9: Sweep fully-retired instances ----
     //
-    // Two retirement paths reach this sweep:
-    //   (a) pendingRetire — a def-change retire-and-replace moved the
-    //       old instance here to fade out while the new instance
-    //       activated. When its fade completes, release its state zone.
-    //   (b) activeInstance — a direct retire message on the currently
-    //       active instance. The instance fades out while still in the
-    //       `activeInstance` slot; when its fade completes, release
-    //       its state zone and clear the slot so no orphan rendering
-    //       continues (VAL-ENGINE-035).
-    if (pendingRetire && pendingRetire.lifecycle === "retired") {
-      const retired = pendingRetire;
-      pendingRetire = null;
-      releaseInstanceState(retired);
+    // Every instance whose fade completed (or that failed closed) is
+    // removed from the execution order, its zones are released back to
+    // the arena, and any consumer still pointing at its output zone is
+    // repointed to the silence zone — no orphan rendering, no dangling
+    // reads (VAL-ENGINE-035).
+    let write = 0;
+    for (let read = 0; read < executionOrder.length; read++) {
+      const inst = executionOrder[read];
+      if (inst.lifecycle === "retired") {
+        if (!inst.released) {
+          repointConsumersToSilence(inst);
+          releaseInstanceZones(inst);
+          const retiredEvent: WorkletInstanceRetiredEvent = {
+            type: "instance-retired",
+            identity: inst.identity,
+          };
+          publishEvent(retiredEvent);
+        }
+        if (liveByIdentity.get(inst.identity) === inst) {
+          liveByIdentity.delete(inst.identity);
+        }
+        continue;
+      }
+      executionOrder[write] = inst;
+      write += 1;
     }
-    if (activeInstance && activeInstance.lifecycle === "retired") {
-      const retired = activeInstance;
-      activeInstance = null;
+    executionOrder.length = write;
+    if (executionOrder.length === 0 && staged.size === 0) {
       activeEpoch = 0;
-      releaseInstanceState(retired);
     }
 
     return refreshTelemetry();
   }
 
+  /**
+   * Render one instance for this block: read its block-rate controls
+   * (per-instance channel window), apply one-shot prefill on its
+   * matching-epoch block, compute into its output zone, and scale the
+   * zone by the fade envelope so downstream consumers hear the fade.
+   */
   function renderInstance(
     instance: InstanceState,
-    controlFreq: number,
-    controlAmp: number,
+    hasBlock: boolean,
+    physicalSlot: number,
+    consumedBlockEpoch: number,
     frameCount: number,
-    out: Float32Array,
   ): void {
     let adapter = instance.adapter;
     if (!adapter) {
@@ -1076,9 +1404,9 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         instance.adapter = adapter;
         // The instance was staged without an adapter; its state zone
         // was not allocated at instantiate time. Allocate and
-        // initialise it now (between quanta) so the first render
-        // produces sound. Without this, statePointer stays at 0 and
-        // the WASM compute reads/writes the wrong memory region,
+        // initialise it now (a graph-mutation boundary) so the first
+        // render produces sound. Without this, statePointer stays at 0
+        // and the WASM compute reads/writes the wrong memory region,
         // producing silence or garbage.
         if (instance.statePointer === 0 || instance.stateBytes === 0) {
           instance.stateBytes = adapter.descriptor.stateBytes;
@@ -1096,60 +1424,114 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         }
       }
     }
-    if (!adapter || instance.statePointer < 0) {
-      // Module not yet transferred or layout invalid: output silence.
+    if (!adapter || instance.statePointer < 0 || !instance.outputView || instance.outputZonePtr < 0) {
+      // Module not yet transferred or zone invalid: hold silence in the
+      // zone so downstream consumers never read stale samples.
+      if (instance.outputView) {
+        instance.outputView.fill(0);
+      }
       return;
     }
 
-    // Cache the latest control values for retiree rendering.
-    instance.currentFreq = controlFreq;
-    instance.currentAmp = controlAmp;
+    // --- Per-instance block-rate controls (interim freq/amp window) ---
+    if (hasBlock && controlView) {
+      const base = instance.controlChannelBase;
+      let controlFreq =
+        controlView.blockRateCount > base
+          ? controlView.readBlockRateValue(physicalSlot, base)
+          : DEFAULT_FREQ;
+      let controlAmp =
+        controlView.blockRateCount > base + 1
+          ? controlView.readBlockRateValue(physicalSlot, base + 1)
+          : DEFAULT_AMP;
+      // Validate the controls. Non-finite values are clamped to the
+      // registry defaults; the glitch counter increments.
+      if (!Number.isFinite(controlFreq)) {
+        controlFreq = DEFAULT_FREQ;
+        glitchCount += 1;
+      }
+      if (!Number.isFinite(controlAmp)) {
+        controlAmp = DEFAULT_AMP;
+        glitchCount += 1;
+      }
+      // Clamp amplitude to [0, 1].
+      if (controlAmp < 0) controlAmp = 0;
+      else if (controlAmp > 1) controlAmp = 1;
+      // Clamp frequency to [0, sampleRate/2].
+      const nyquist = sampleRate / 2;
+      if (controlFreq < 0) controlFreq = 0;
+      else if (controlFreq > nyquist) controlFreq = nyquist;
+      instance.currentFreq = controlFreq;
+      instance.currentAmp = controlAmp;
+    }
+    // One-shot prefill: supersedes the SAB values on the instance's
+    // matching-epoch block only (synthesis.md §4.4 — a new node never
+    // reads stale or undefined slots).
+    if (instance.prefill && consumedBlockEpoch === instance.epoch && consumedBlockEpoch !== 0) {
+      const freq = instance.prefill.get("freq");
+      const amp = instance.prefill.get("amp");
+      if (typeof freq === "number" && Number.isFinite(freq)) instance.currentFreq = freq;
+      if (typeof amp === "number" && Number.isFinite(amp)) instance.currentAmp = amp;
+      instance.prefill = null; // Single-shot; steady-state reads SAB.
+    }
 
     // Write the control samples into the scratch doubles.
-    freqControlScratch[0] = controlFreq;
-    ampControlScratch[0] = controlAmp;
+    freqControlScratch[0] = instance.currentFreq;
+    ampControlScratch[0] = instance.currentAmp;
 
-    // The adapter writes into host-owned memory at `outputPtr`. We pass
-    // the instance scratch's underlying byte offset; the adapter fills
-    // exactly frameCount doubles.
-    //
-    // VAL-CROSS-002 integration: the osc/sine compute contract writes
-    // IEEE-754 doubles (one double per output sample). The instance
-    // scratch is a `Float64Array` view into the host-owned WebAssembly
-    // Memory so the WASM write and the JS read see the same bytes.
-    // For tests the fake adapter records the pointer without writing,
-    // so a plain Float64Array works; the output stays zero and tests
-    // inspect recorded compute calls instead.
-    const ok = adapter.compute(
-      instance.statePointer,
-      // We pass pointers; in tests these are indexes into a Float64Array.
-      // The fake adapter records them as opaque numbers.
-      getPointerForFloat64(freqControlScratch),
-      getPointerForFloat64(ampControlScratch),
-      getPointerForFloat64(instanceScratch),
-      frameCount,
-    );
+    // The adapter writes into host-owned memory at the output zone
+    // pointer; the core reads the doubles back through the arena view
+    // (VAL-CROSS-002 shared-memory link).
+    const freqPtr = getPointerForFloat64(freqControlScratch);
+    const ampPtr = getPointerForFloat64(ampControlScratch);
+    let ok: boolean;
+    if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
+      ok = adapter.computeWithInputs(
+        instance.statePointer,
+        instance.inputPtrs,
+        freqPtr,
+        ampPtr,
+        instance.outputZonePtr,
+        frameCount,
+      );
+    } else {
+      if (instance.inputPtrs.length > 0 && !instance.inputSupportWarned) {
+        instance.inputSupportWarned = true;
+        publishEvent({
+          type: "graph-diagnostic",
+          code: "missing-input-support",
+          identity: instance.identity,
+        });
+      }
+      ok = adapter.compute(
+        instance.statePointer,
+        freqPtr,
+        ampPtr,
+        instance.outputZonePtr,
+        frameCount,
+      );
+    }
     if (!ok) {
-      // Compute failed (invalid frame count or trap). Mark the instance
-      // as retired (synthesis.md §3.6 trap containment).
+      // Compute failed (invalid frame count or trap). Mute the node and
+      // mark it retired (synthesis.md §3.6 trap containment); the rest
+      // of the graph continues.
       instance.lifecycle = "retired";
       glitchCount += 1;
+      instance.outputView.fill(0);
       return;
     }
 
-    // Apply the fade envelope for this block (if any).
+    // Apply the fade envelope in place on the zone so downstream
+    // consumers (and the terminal sum) both hear it.
     const fadeGain = computeFadeGain(instance, frameCount);
-
-    // Sum the rendered samples into the output (mono for M1).
-    // The adapter wrote doubles into the instance scratch via shared
-    // memory; for tests the fake adapter records calls without writing
-    // samples. We narrow each double to Float32 (Web Audio consumes
-    // Float32) and apply the fade gain when copying into the output
-    // sink. When the scratch is uninitialised (fake adapter), this
-    // copies zeros, which tests assert separately.
-    for (let i = 0; i < frameCount; i++) {
-      const sample = Number(instanceScratch[i]) * fadeGain;
-      out[i] += sample;
+    if (fadeGain !== 1) {
+      const view = instance.outputView;
+      for (let p = 0; p < instance.audioOutputs; p++) {
+        const base = p * zoneFrames;
+        for (let i = 0; i < frameCount; i++) {
+          view[base + i] = Number(view[base + i]) * fadeGain;
+        }
+      }
     }
   }
 
@@ -1210,32 +1592,69 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   }
 
   /**
-   * Release a fully-retired instance's state zone and publish the
-   * retirement event. Called from the process() sweep only after the
-   * instance's fade-out has completed (VAL-ENGINE-035).
+   * Repoint every consumer whose input pointer targets the retiring
+   * instance's output zone at the silence zone. Runs in the sweep,
+   * BEFORE the zone is released, so no consumer ever dereferences a
+   * freed zone.
    */
-  function releaseInstanceState(instance: InstanceState): void {
-    if (instance.statePointer >= 0) {
+  function repointConsumersToSilence(retiring: InstanceState): void {
+    if (retiring.outputZonePtr < 0 || retiring.outputZoneBytes <= 0) return;
+    const lo = retiring.outputZonePtr;
+    const hi = lo + retiring.outputZoneBytes;
+    forEachInstance((other) => {
+      if (other === retiring) return;
+      for (let i = 0; i < other.inputPtrs.length; i++) {
+        if (other.inputPtrs[i] >= lo && other.inputPtrs[i] < hi) {
+          other.inputPtrs[i] = silencePtr;
+        }
+      }
+      if (other.pendingInputPtrs) {
+        for (let i = 0; i < other.pendingInputPtrs.length; i++) {
+          if (other.pendingInputPtrs[i] >= lo && other.pendingInputPtrs[i] < hi) {
+            other.pendingInputPtrs[i] = silencePtr;
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Release an instance's state and output zones back to the arena.
+   * Guarded by the `released` flag so the sweep and teardown paths
+   * never double-release.
+   */
+  function releaseInstanceZones(instance: InstanceState): void {
+    if (instance.released) return;
+    instance.released = true;
+    if (instance.statePointer > 0) {
       try {
         options.allocator.release(instance.statePointer);
       } catch {
         // Best-effort cleanup.
       }
     }
-    const retiredEvent: WorkletInstanceRetiredEvent = {
-      type: "instance-retired",
-      identity: instance.identity,
-    };
-    publishEvent(retiredEvent);
+    if (instance.outputZonePtr > 0) {
+      try {
+        options.allocator.release(instance.outputZonePtr);
+      } catch {
+        // Best-effort cleanup.
+      }
+    }
+    instance.outputZonePtr = -1;
+    instance.outputZoneBytes = 0;
+    instance.outputView = null;
   }
 
   function reset(): void {
     controlView = null;
     controlBuffer = null;
     adapters.clear();
-    activeInstance = null;
-    pendingInstance = null;
-    pendingRetire = null;
+    executionOrder = [];
+    liveByIdentity.clear();
+    staged.clear();
+    stagedOrder = null;
+    silenceView = null;
+    silencePtr = 0;
     activeEpoch = 0;
     pendingEpoch = 0;
     blockCount = 0;
@@ -1278,12 +1697,21 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     },
   };
 
+  // Silence unused-variable lint for retained fields consumed only via
+  // closure lifetime (the buffer keeps the SAB alive for the view).
+  void controlBuffer;
+  void arenaMode;
+
   return core;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Shared empty wiring/pointer singletons (never mutated). */
+const EMPTY_WIRING: readonly WorkletAudioInputWiring[] = Object.freeze([]);
+const EMPTY_PTRS: number[] = [];
 
 /**
  * Build a prefill map. Returns null when the prefill is empty so the
@@ -1306,19 +1734,11 @@ function buildPrefillMap(
  * Resolve a stable "pointer" for a Float64Array scratch buffer. In
  * production this is the byte offset into the shared WebAssembly memory;
  * in tests it is a sentinel the fake adapter records without dereferencing.
- *
- * The pointer is stable for the lifetime of the core because the scratch
- * buffers are allocated once at construction and never replaced (except
- * for the rare quantum-growth case, which only fires between quanta).
  */
 function getPointerForFloat64(view: Float64Array): number {
   // We use the byte offset as a stable handle. The real WASM adapter
   // receives a byte offset into its imported memory; the fake adapter
   // receives the same number and records it without dereferencing.
-  return view.byteOffset;
-}
-
-function getPointerForFloat32(view: Float32Array): number {
   return view.byteOffset;
 }
 

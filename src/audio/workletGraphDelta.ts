@@ -87,6 +87,27 @@ export interface WorkletPrefillParam {
 }
 
 // ---------------------------------------------------------------------------
+// Audio-port wiring (patch graph, synthesis.md §3.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * One audio-input connection for an instantiated node. The worklet
+ * resolves `sourceIdentity`'s output zone and passes its byte offset
+ * (plus the `sourcePort` stride) as the input-port pointer — patch-graph
+ * stitching is pointer wiring, never per-block copying (`synthesis.md`
+ * §2.3). A connection whose source is absent (or later retires) reads
+ * the shared silence zone, never a dangling pointer.
+ */
+export interface WorkletAudioInputWiring {
+  /** This node's audio input port index (0-based). */
+  readonly port: number;
+  /** Identity of the upstream node whose output feeds this port. */
+  readonly sourceIdentity: string;
+  /** Output port index on the upstream node (0-based). */
+  readonly sourcePort: number;
+}
+
+// ---------------------------------------------------------------------------
 // Inbound messages (main thread → worklet)
 // ---------------------------------------------------------------------------
 
@@ -191,6 +212,25 @@ export interface WorkletInstantiateMessage {
   readonly statePointer: number;
   /** Allocated state-zone byte length (must satisfy `validate_layout`). */
   readonly stateBytes: number;
+  /**
+   * Audio output port count. Optional (additive, M2.1); defaults to
+   * `DEFAULT_AUDIO_OUTPUT_PORTS` (1, the M1 mono shape). The worklet
+   * allocates one output zone spanning all ports.
+   */
+  readonly audioOutputs?: number;
+  /**
+   * Audio input wiring (patch-graph edges terminating at this node).
+   * Optional (additive, M2.1); absent means a source node.
+   */
+  readonly audioInputs?: readonly WorkletAudioInputWiring[];
+  /**
+   * First block-rate SAB channel this instance reads its controls from
+   * (`freq` at `base + 0`, `amp` at `base + 1` under the interim
+   * per-node stride, `INTERIM_BLOCK_RATE_CHANNELS_PER_NODE`). Optional
+   * (additive, M2.1); defaults to 0, preserving the M1 single-node
+   * layout. Replaced by the compiler-derived channel table in M2.2.
+   */
+  readonly controlChannelBase?: number;
 }
 
 /**
@@ -203,6 +243,13 @@ export interface WorkletUpdateMessage {
   readonly type: "update";
   readonly identity: WorkletIdentityTuple;
   readonly prefill?: readonly WorkletPrefillParam[];
+  /**
+   * Optional re-based control channel window (see
+   * {@link WorkletInstantiateMessage.controlChannelBase}). Sent when a
+   * commit reorders declarations; absent leaves the instance's base
+   * unchanged.
+   */
+  readonly controlChannelBase?: number;
 }
 
 /**
@@ -370,9 +417,29 @@ export interface WorkletControlAttachAckEvent {
   readonly reason?: string;
 }
 
+/**
+ * Diagnostic event the core publishes when a graph delta cannot be
+ * honoured within the host's resource limits (`synthesis.md` §3.5) or
+ * capabilities. The rest of the graph continues rendering — a limit
+ * breach is a diagnostic, never a glitch.
+ *
+ *   - `"zone-exhausted"`  — the shared-memory arena could not satisfy a
+ *     state/output zone allocation (`SYNTH_MEMORY_MAX_BYTES` bound).
+ *   - `"node-limit"`      — the instantiate would exceed `MAX_SYNTH_NODES`.
+ *   - `"missing-input-support"` — the delta wires audio inputs into a
+ *     def whose adapter exposes no input-capable compute entry point.
+ */
+export interface WorkletGraphDiagnosticEvent {
+  readonly type: "graph-diagnostic";
+  readonly code: "zone-exhausted" | "node-limit" | "missing-input-support";
+  /** Identity of the node the diagnostic concerns. */
+  readonly identity: string;
+}
+
 export type WorkletOutboundEvent =
   | WorkletTelemetrySnapshot
   | WorkletProducerTimeoutEvent
   | WorkletInstanceRetiredEvent
   | WorkletGraphActivatedEvent
-  | WorkletControlAttachAckEvent;
+  | WorkletControlAttachAckEvent
+  | WorkletGraphDiagnosticEvent;

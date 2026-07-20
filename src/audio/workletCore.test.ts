@@ -1044,10 +1044,37 @@ describe("workletCore — def-change retire-and-replace (VAL-ENGINE-035)", () =>
       controlBuffer: buffer as unknown as SharedArrayBuffer,
     });
     const snap = core.process(128);
-    // The new instance is active under the same identity.
-    expect(snap.instances).toHaveLength(1);
-    expect(snap.instances[0].identity).toBe("id-x");
-    expect(snap.instances[0].def).toBe("osc/saw");
+    // During the crossfade BOTH instances render: the old def fades
+    // out while the new def fades in (overlapping fades per
+    // synth-nodes.md §5.7). M2.1 telemetry reports every rendering
+    // instance, so the retiring ancestor is visible until its release
+    // fade completes.
+    expect(snap.instances).toHaveLength(2);
+    const oldInstance = snap.instances.find((i) => i.def === "osc/sine");
+    const newInstance = snap.instances.find((i) => i.def === "osc/saw");
+    expect(oldInstance?.identity).toBe("id-x");
+    expect(oldInstance?.lifecycle).toBe("fade-out");
+    expect(newInstance?.identity).toBe("id-x");
+    expect(newInstance?.lifecycle).toBe("fade-in");
+
+    // After the release fade completes, only the new instance remains.
+    const fadeBlocks = Math.ceil(
+      (SYNTH_FADE_OUT_MS * DEFAULT_WORKLET_SAMPLE_RATE) / 1000 / 128,
+    );
+    for (let i = 0; i < fadeBlocks + 2; i++) {
+      const b = createSynthesisControlBuffer();
+      const v = attachSynthesisControlView(b);
+      v.writeBlockEpoch(0, 2);
+      v.advanceWriteIndex();
+      core.handleMessage({
+        type: "attach-control-buffer",
+        controlBuffer: b as unknown as SharedArrayBuffer,
+      });
+      core.process(128);
+    }
+    const settled = core.telemetry;
+    expect(settled.instances).toHaveLength(1);
+    expect(settled.instances[0].def).toBe("osc/saw");
   });
 });
 
