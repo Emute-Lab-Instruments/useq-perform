@@ -145,6 +145,7 @@ let interpreter: InterpreterHandle | null = null;
 // 019f8086-8a25, "Atomics.wait producer pacing absent").
 
 let controlView: SynthesisControlView | null = null;
+let pacingBuffer: SharedArrayBuffer | null = null;
 let transportMap: TransportFrameMap | null = null;
 let producer: ProducerScheduler | null = null;
 let producerRunning = false;
@@ -166,9 +167,11 @@ const producerClock: ProducerSchedulingClock = {
   now(): number {
     return Date.now();
   },
-  sleep(_ms: number): void {
-    // No-op: the unconditional setTimeout(0) macrotask loop below supplies
-    // the yield; blocking here would starve the Worker inbox.
+  sleep(ms: number): void {
+    if (!pacingBuffer) return;
+    const wake = new BigInt64Array(pacingBuffer, 136, 1);
+    const expected = Atomics.load(wake, 0);
+    Atomics.wait(wake, 0, expected, Math.min(ms, 4));
   },
 };
 
@@ -1010,6 +1013,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         try {
           const view = attachSynthesisControlView(request.controlBuffer);
           controlView = view;
+          pacingBuffer = request.controlBuffer;
           producerBlockRateChannels = request.blockRateChannels ?? [];
           // Reset the audit so devmode traces reflect this session only.
           producerAudit.length = 0;

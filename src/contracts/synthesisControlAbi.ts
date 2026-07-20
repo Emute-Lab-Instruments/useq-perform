@@ -140,6 +140,8 @@ export const MAX_CONTROL_LOOKAHEAD_BLOCKS = 8 as const;
  * to silence.
  */
 export const PRODUCER_TIMEOUT_BLOCKS = 24 as const;
+export const PRODUCER_FIRST_PUBLISH_DEADLINE_MS = 250 as const;
+export const ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS = 500 as const;
 
 /** Emergency fade length in milliseconds after producer-loss detection. */
 export const EMERGENCY_FADE_MS = 10 as const;
@@ -1191,10 +1193,11 @@ export function attachSynthesisControlView(
       // pairing described by synthesis.md §4.8 is not implemented yet
       // (ergo task 019f8086-8a25, "Atomics.wait producer pacing absent").
       dv.setUint32(HEADER_OFFSETS.producerLivenessBlock, options.blockFrameOffset, true);
-      bi64[0] = options.frame;
+      Atomics.store(bi64, 0, options.frame);
       // Keep the aligned 64-bit wake sequence available for the eventual
       // Atomics pairing; no `Atomics.notify` is issued here yet.
-      bi64Wake[0] = bi64Wake[0] + 1n;
+      Atomics.add(bi64Wake, 0, 1n);
+      Atomics.notify(bi64Wake, 0);
     },
   };
 

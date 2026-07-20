@@ -84,6 +84,9 @@ import {
   ABI_VERSION as SYNTH_CONTROL_ABI_VERSION,
   CONTROL_LOOKAHEAD_BLOCKS,
   DEFAULT_RENDER_QUANTUM_FRAMES,
+  PRODUCER_FIRST_PUBLISH_DEADLINE_MS,
+  ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS,
+  attachSynthesisControlView,
   createSynthesisControlBuffer,
 } from "../contracts/synthesisControlAbi";
 import type {
@@ -893,6 +896,8 @@ function createCapableService(
   let producerControlBuffer: SharedArrayBuffer | null = null;
   let producerInstalled = false;
   let producerRunning = false;
+  let firstPublishTimer: ReturnType<typeof setTimeout> | null = null;
+  let attachAckTimer: ReturnType<typeof setTimeout> | null = null;
 
   // --- Eval-to-engine commit state (VAL-ENGINE-010/013/014/015) ---
   //
@@ -967,6 +972,21 @@ function createCapableService(
   }
 
   function snapshotTelemetry(): SynthesisTelemetrySnapshot {
+    if (producerControlBuffer) {
+      const view = attachSynthesisControlView(producerControlBuffer);
+      acc.audioFrame = view.audioFrame;
+      acc.peakSample = view.peakSample;
+      acc.rmsSample = view.rmsSample;
+      acc.underrunCount = view.underrunCount;
+      acc.glitchCount = view.glitchCount;
+      acc.timeoutCount = view.timeoutCount;
+      acc.producerLivenessAge = view.producerLivenessAge;
+      acc.activeEpoch = view.programEpoch;
+      if (view.ringWriteIndex > 0 && firstPublishTimer) {
+        clearTimeout(firstPublishTimer);
+        firstPublishTimer = null;
+      }
+    }
     const snapshot: SynthesisTelemetrySnapshot = Object.freeze({
       schemaVersion: SYNTHESIS_TELEMETRY_SCHEMA_VERSION,
       capabilities: options.capabilities,
@@ -1215,6 +1235,9 @@ function createCapableService(
         type: "attach-control-buffer",
         controlBuffer: sab,
       });
+      attachAckTimer = setTimeout(() => {
+        if (currentState === "running") transition("error", "WORKLET_CONTROL_ATTACH_FAILED", ENGINE_STATE_REASONS.WORKLET_CONTROL_ATTACH_FAILED);
+      }, ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS);
     }
 
     // Install the SAB on the Worker producer. The producer attaches
@@ -1260,9 +1283,13 @@ function createCapableService(
         sampleRate: audioContext.sampleRate,
       });
       producerRunning = true;
-    } catch {
-      // Producer start failed. The worklet will detect the missing
-      // blocks via its timeout path; surface nothing further here.
+      firstPublishTimer = setTimeout(() => {
+        if (producerRunning && producerControlBuffer && attachSynthesisControlView(producerControlBuffer).ringWriteIndex === 0 && currentState === "running") {
+          transition("error", "PRODUCER_FIRST_PUBLISH_TIMEOUT", ENGINE_STATE_REASONS.PRODUCER_FIRST_PUBLISH_TIMEOUT);
+        }
+      }, PRODUCER_FIRST_PUBLISH_DEADLINE_MS);
+    } catch (err) {
+      transition("error", "PRODUCER_FIRST_PUBLISH_TIMEOUT", `${ENGINE_STATE_REASONS.PRODUCER_FIRST_PUBLISH_TIMEOUT} ${(err as Error).message}`);
     }
   }
 
@@ -1378,6 +1405,12 @@ function createCapableService(
 
     if (evt.type === "producer-timeout") {
       handleProducerTimeout(data as WorkletProducerTimeoutEvent);
+      return;
+    }
+    if (evt.type === "attach-control-buffer-ack") {
+      if (attachAckTimer) clearTimeout(attachAckTimer);
+      attachAckTimer = null;
+      if ((evt as { ok?: boolean }).ok === false && currentState === "running") transition("error", "WORKLET_CONTROL_ATTACH_FAILED", ENGINE_STATE_REASONS.WORKLET_CONTROL_ATTACH_FAILED);
       return;
     }
 

@@ -510,7 +510,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     } catch {
       controlView = null;
       controlBuffer = null;
+      options.publish({ type: "attach-control-buffer-ack", ok: false } as unknown as WorkletOutboundEvent);
+      return;
     }
+    options.publish({ type: "attach-control-buffer-ack", ok: true } as unknown as WorkletOutboundEvent);
   }
 
   function handleDetachControlBuffer(): void {
@@ -955,6 +958,14 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
     // ---- Step 8: Publish the audio frame to the SAB (wake the producer) ----
     if (controlView) {
+      controlView.peakSample = peakSample;
+      controlView.rmsSample = rmsSample;
+      controlView.underrunCount = underrunCount;
+      controlView.glitchCount = glitchCount;
+      controlView.timeoutCount = timeoutCount;
+      controlView.producerLivenessAge = producerLivenessAge;
+      controlView.programEpoch = activeEpoch;
+      controlView.finiteOutput = finiteOutput;
       // Compute the absolute frame at the start of this block. The
       // producer samples ahead of this by CONTROL_LOOKAHEAD_BLOCKS.
       const blockFrameOffset = blockCount * frameCount;

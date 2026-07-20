@@ -573,7 +573,8 @@ export function registerSynthesisProcessor(): void {
       // Post telemetry back to the main thread. The struct-clone cost
       // is the one permitted per-block allocation; future work can
       // gate this on a "subscribers present" flag.
-      this.port.postMessage(snapshot);
+      // Steady-state telemetry is written into the shared control header;
+      // only discrete events cross the port.
 
       // Drain discrete events (producer-timeout, graph-activated,
       // instance-retired) that the core queued via its `publish`
