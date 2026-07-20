@@ -357,8 +357,22 @@ export interface WorkletGraphActivatedEvent {
   readonly atBlock: number;
 }
 
+/**
+ * Ack the core publishes after handling `attach-control-buffer`
+ * (`synthesis.md` §4.8). `ok: false` means the SAB failed validation
+ * (ABI magic/version mismatch — typically a stale cached worklet
+ * bundle) and the service must fail closed into `error`; the service
+ * also treats a missing ack (timeout) as fatal.
+ */
+export interface WorkletControlAttachAckEvent {
+  readonly type: "attach-control-buffer-ack";
+  readonly ok: boolean;
+  readonly reason?: string;
+}
+
 export type WorkletOutboundEvent =
   | WorkletTelemetrySnapshot
   | WorkletProducerTimeoutEvent
   | WorkletInstanceRetiredEvent
-  | WorkletGraphActivatedEvent;
+  | WorkletGraphActivatedEvent
+  | WorkletControlAttachAckEvent;

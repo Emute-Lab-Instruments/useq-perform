@@ -108,6 +108,25 @@ interface AudioWorkletProcessorInstance {
 export const SYNTHESIS_PROCESSOR_NAME = "synthesis-processor";
 
 /**
+ * Drain the pending outbound-event queue by posting each event and
+ * truncating IN PLACE. The worklet core's `publish` closure captures
+ * the exact array instance, so replacing the array (`bag.pendingEvents
+ * = []`) would silently orphan every event published after the first
+ * drain — producer-timeout would never reach the service (the c7edc263
+ * class of bug). Exported so tests can pin the in-place semantics.
+ */
+export function drainPendingEvents(
+  pending: WorkletOutboundEvent[],
+  post: (event: WorkletOutboundEvent) => void,
+): void {
+  if (pending.length === 0) return;
+  for (const evt of pending) {
+    post(evt);
+  }
+  pending.length = 0;
+}
+
+/**
  * Build the descriptor lookup map from the static M1 registry. Exposed
  * so tests can construct a cache against the same map without touching
  * worklet-global scope.
@@ -528,6 +547,15 @@ export function registerSynthesisProcessor(): void {
           return;
         }
         bag.core.handleMessage(data);
+        // Flush events the handler just published (notably the
+        // `attach-control-buffer-ack`, synthesis.md §4.8) immediately.
+        // Waiting for the next process() drain would deadlock the ack
+        // against a suspended AudioContext: attach happens during
+        // bring-up, before any render quantum runs, and the service
+        // fails closed into `error` when the ack misses its deadline.
+        // This runs between quanta, so posting here does not touch the
+        // steady-state render path.
+        drainPendingEvents(bag.pendingEvents, (evt) => this.port.postMessage(evt));
       };
     }
 
@@ -545,7 +573,7 @@ export function registerSynthesisProcessor(): void {
       if (!channel) return true;
 
       const frameCount = channel.length;
-      const snapshot = bag.core.process(frameCount);
+      bag.core.process(frameCount);
 
       // VAL-ENGINE-037: copy the core's rendered output into the Web
       // Audio channel that connects to `AudioContext.destination`. The
@@ -570,32 +598,22 @@ export function registerSynthesisProcessor(): void {
         }
       }
 
-      // Post telemetry back to the main thread. The struct-clone cost
-      // is the one permitted per-block allocation; future work can
-      // gate this on a "subscribers present" flag.
-      this.port.postMessage(snapshot);
+      // Steady-state telemetry is written into the shared control
+      // header by the core (process() step 8) and read by the service
+      // via `attachSynthesisControlView`; no per-quantum snapshot is
+      // allocated or posted here (b3895dbe). Only discrete events
+      // cross the port.
 
       // Drain discrete events (producer-timeout, graph-activated,
       // instance-retired) that the core queued via its `publish`
-      // callback since the last process(). Posting them here keeps
-      // the audio-thread allocation pattern unchanged (one
-      // postMessage per event, batched with the telemetry post) and
-      // gives the main-thread service the same evidence the
-      // simulated worklet core delivers in tests. The queue length
-      // is bounded by the worklet core's own dedup guards.
+      // callback since the last process(). The queue length is bounded
+      // by the worklet core's own dedup guards.
       //
       // VAL-ENGINE-026 / Ergo bug c7edc263: pre-fix the shell dropped
       // these events, so producer-loss never reached the main thread
-      // in real Chromium. The snapshot-driven transition in
-      // synthesisService.ts is the authoritative source, but
-      // forwarding the events preserves the audit trail.
-      if (bag.pendingEvents.length > 0) {
-        const drained = bag.pendingEvents;
-        bag.pendingEvents = [];
-        for (const evt of drained) {
-          this.port.postMessage(evt);
-        }
-      }
+      // in real Chromium. With per-quantum snapshots gone (b3895dbe)
+      // this event path IS the service's producer-loss signal.
+      drainPendingEvents(bag.pendingEvents, (evt) => this.port.postMessage(evt));
       return true;
     }
   }

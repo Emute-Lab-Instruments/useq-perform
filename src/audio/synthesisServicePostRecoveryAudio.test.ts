@@ -33,13 +33,14 @@
  * edit that resets producer bridge state in `disposeResources()` and
  * stops the producer on the failure path.
  */
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
 import {
   detectAudioCapabilities,
   type AudioCapabilitySnapshot,
 } from "../contracts/audioCapabilities";
 import {
+  engineStateStore,
   resetEngineStateStoreForTests,
 } from "../contracts/synthesisChannels";
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
@@ -58,6 +59,11 @@ import type {
   WorkletTelemetrySnapshot,
 } from "./workletGraphDelta";
 import { WORKLET_TELEMETRY_SCHEMA_VERSION } from "./workletGraphDelta";
+import {
+  ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS,
+  PRODUCER_FIRST_PUBLISH_DEADLINE_MS,
+  attachSynthesisControlView,
+} from "../contracts/synthesisControlAbi";
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -395,9 +401,12 @@ describe("synthesisService — post-recovery producer bridge is rebuilt (VAL-ENG
     const bundle = buildOptions({ devmode: true });
     const service = createSynthesisService(bundle.options);
     await service.resumeOnUserActivation();
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({ audioFrame: 128n, peakSample: 0.5, rmsSample: 0.3 }),
+    const firstSessionView = attachSynthesisControlView(
+      bundle.workerPort.installSabCalls[0],
     );
+    firstSessionView.publishAudioFrame({ frame: 128n, blockFrameOffset: 128 });
+    firstSessionView.peakSample = 0.5;
+    firstSessionView.rmsSample = 0.3;
 
     // Failure.
     bundle.workletNode.deliverFromWorklet({
@@ -424,19 +433,24 @@ describe("synthesisService — post-recovery producer bridge is rebuilt (VAL-ENG
     // The fresh producer was installed against a fresh SAB.
     expect(bundle.workerPort.installSabCalls.length).toBeGreaterThanOrEqual(2);
 
-    // The fresh worklet publishes an advancing audio frame.
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({ audioFrame: 256n, peakSample: 0.4, rmsSample: 0.28 }),
+    // The fresh worklet writes an advancing audio frame into the NEW
+    // session's header (SAB-authoritative telemetry, b3895dbe).
+    const freshView = attachSynthesisControlView(
+      bundle.workerPort.installSabCalls[bundle.workerPort.installSabCalls.length - 1],
     );
+    freshView.publishAudioFrame({ frame: 256n, blockFrameOffset: 256 });
+    freshView.peakSample = 0.4;
+    freshView.rmsSample = 0.28;
+    freshView.finiteOutput = 1;
     expect(service.telemetry.audioFrame).toBe(256n);
     expect(service.telemetry.peakSample).toBeCloseTo(0.4, 6);
     expect(service.telemetry.rmsSample).toBeCloseTo(0.28, 6);
     expect(service.telemetry.finiteOutput).toBe(1);
 
-    // The next snapshot advances monotonically.
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({ audioFrame: 384n, peakSample: 0.42, rmsSample: 0.29 }),
-    );
+    // The next block advances monotonically.
+    freshView.publishAudioFrame({ frame: 384n, blockFrameOffset: 384 });
+    freshView.peakSample = 0.42;
+    freshView.rmsSample = 0.29;
     expect(service.telemetry.audioFrame).toBe(384n);
     await service.dispose();
   });
@@ -472,68 +486,128 @@ describe("synthesisService — post-recovery producer bridge is rebuilt (VAL-ENG
 });
 
 // ---------------------------------------------------------------------------
-// Tests — snapshot-driven producer-loss transition (VAL-ENGINE-026)
+// Tests — attach ack and first-publish deadlines (c84c125f, 5f4de6d8)
 // ---------------------------------------------------------------------------
 
-describe("synthesisService — snapshot-driven producer-loss transition (VAL-ENGINE-026, bug c7edc263)", () => {
+describe("synthesisService — attach ack and first-publish deadlines", () => {
   beforeEach(() => {
     resetEngineStateStoreForTests();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  it("transitions to error when the worklet snapshot first reports producerTimeoutActive=true", async () => {
-    // The production AudioWorklet shell only posts telemetry snapshots;
-    // discrete `producer-timeout` events are queued and drained per
-    // process(). If the queue path is bypassed (or in tests that
-    // deliver only snapshots), the service MUST still detect the
-    // false→true producerTimeoutActive edge and drive running→error.
-    // Without this snapshot-driven detection, real headless Chromium
-    // never reached `error` after producer loss, which was the
-    // c7edc263 root cause.
+  it("producer that never publishes fails closed at the first-publish deadline", async () => {
     const bundle = buildOptions({ devmode: true });
     const service = createSynthesisService(bundle.options);
     await service.resumeOnUserActivation();
     expect(service.state).toBe("running");
 
-    // Deliver a snapshot that flips producerTimeoutActive from false
-    // to true. Do NOT deliver a discrete producer-timeout event.
+    // The fake producer started but never writes a block into the ring.
+    vi.advanceTimersByTime(PRODUCER_FIRST_PUBLISH_DEADLINE_MS);
+    expect(service.state).toBe("error");
+    expect(engineStateStore.current.reasonKey).toBe("PRODUCER_FIRST_PUBLISH_TIMEOUT");
+    await service.dispose();
+  });
+
+  it("a worklet that never acks the control-buffer attach fails closed", async () => {
+    const bundle = buildOptions({ devmode: true });
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+
+    // Satisfy the first-publish deadline so only the missing ack can
+    // fire: the producer published its first ring block.
+    const view = attachSynthesisControlView(bundle.workerPort.installSabCalls[0]);
+    view.ringWriteIndex = 1;
+
+    vi.advanceTimersByTime(ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS);
+    expect(service.state).toBe("error");
+    expect(engineStateStore.current.reasonKey).toBe("WORKLET_CONTROL_ATTACH_FAILED");
+    await service.dispose();
+  });
+
+  it("a negative attach ack fails closed immediately", async () => {
+    const bundle = buildOptions({ devmode: true });
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+
+    bundle.workletNode.deliverFromWorklet({
+      type: "attach-control-buffer-ack",
+      ok: false,
+      reason: "ABI magic mismatch at offset 0",
+    });
+    expect(service.state).toBe("error");
+    expect(engineStateStore.current.reasonKey).toBe("WORKLET_CONTROL_ATTACH_FAILED");
+    await service.dispose();
+  });
+
+  it("positive ack plus first publish keeps the engine running past both deadlines", async () => {
+    const bundle = buildOptions({ devmode: true });
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+
+    bundle.workletNode.deliverFromWorklet({
+      type: "attach-control-buffer-ack",
+      ok: true,
+    });
+    const view = attachSynthesisControlView(bundle.workerPort.installSabCalls[0]);
+    view.ringWriteIndex = 1;
+    // Reading telemetry clears the armed first-publish deadline early;
+    // either way the deadline check observes ringWriteIndex > 0.
+    expect(service.telemetry.ringWriteSequence).toBe(1);
+
+    vi.advanceTimersByTime(
+      ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS + PRODUCER_FIRST_PUBLISH_DEADLINE_MS,
+    );
+    expect(service.state).toBe("running");
+    await service.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — legacy snapshots are inert (VAL-ENGINE-026, bug c7edc263)
+// ---------------------------------------------------------------------------
+
+describe("synthesisService — legacy telemetry snapshots are inert", () => {
+  beforeEach(() => {
+    resetEngineStateStoreForTests();
+  });
+
+  it("ignores posted snapshots: no state transition, no telemetry merge", async () => {
+    // Historically the service ALSO detected producer loss from the
+    // false→true producerTimeoutActive edge in per-quantum telemetry
+    // snapshots (the c7edc263 era, when the shell dropped discrete
+    // events). Steady-state telemetry is now SAB-header-authoritative
+    // (b3895dbe) and the shell's event drain is the producer-loss
+    // signal, so posted snapshots must be ignored entirely — a second
+    // detection path would be a competing design.
+    const bundle = buildOptions({ devmode: true });
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+    expect(service.state).toBe("running");
+
     bundle.workletNode.deliverFromWorklet(
       buildWorkletSnapshot({
         audioFrame: 128n,
         producerTimeoutActive: true,
         producerLivenessAge: 24,
-        peakSample: 0,
-        rmsSample: 0,
+        peakSample: 0.77,
       }),
     );
 
+    expect(service.state).toBe("running");
+    expect(service.telemetry.producerTimeoutActive).toBe(false);
+    expect(service.telemetry.peakSample).toBe(0);
+
+    // The discrete producer-timeout event remains the loss signal.
+    bundle.workletNode.deliverFromWorklet({
+      type: "producer-timeout",
+      atBlock: 24,
+      livenessAge: 24,
+    });
     expect(service.state).toBe("error");
     expect(service.telemetry.producerTimeoutActive).toBe(true);
-    await service.dispose();
-  });
-
-  it("does not double-transition when subsequent snapshots keep producerTimeoutActive=true", async () => {
-    const bundle = buildOptions({ devmode: true });
-    const service = createSynthesisService(bundle.options);
-    await service.resumeOnUserActivation();
-
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({ audioFrame: 128n, producerTimeoutActive: true }),
-    );
-    expect(service.state).toBe("error");
-    const transitionsAfterFirst = service.telemetry.transitionCount;
-
-    // Subsequent snapshots with producerTimeoutActive still true must
-    // not re-trigger the transition (idempotent edge detection).
-    for (let i = 2; i <= 5; i++) {
-      bundle.workletNode.deliverFromWorklet(
-        buildWorkletSnapshot({
-          audioFrame: BigInt(i * 128),
-          producerTimeoutActive: true,
-        }),
-      );
-    }
-    expect(service.state).toBe("error");
-    expect(service.telemetry.transitionCount).toBe(transitionsAfterFirst);
     await service.dispose();
   });
 });

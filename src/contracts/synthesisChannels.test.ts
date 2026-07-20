@@ -50,8 +50,10 @@ describe("synthesisChannels — schema", () => {
       "AWAITING_USER_ACTIVATION",
       "NO_AUDIO_CAPABILITY",
       "OVERLOAD",
+      "PRODUCER_FIRST_PUBLISH_TIMEOUT",
       "PRODUCER_TIMEOUT",
       "RECOVERY_FAILED",
+      "WORKLET_CONTROL_ATTACH_FAILED",
       "WORKLET_TRAP",
     ]);
     for (const value of Object.values(ENGINE_STATE_REASONS)) {

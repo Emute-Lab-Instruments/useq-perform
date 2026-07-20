@@ -141,6 +141,32 @@ export const MAX_CONTROL_LOOKAHEAD_BLOCKS = 8 as const;
  */
 export const PRODUCER_TIMEOUT_BLOCKS = 24 as const;
 
+/**
+ * Service-side deadline for the producer's FIRST ring publication after
+ * `producerStart` resolves (`synthesis.md` §4.7). The worklet-side
+ * liveness timeout only ages once the producer has published at least
+ * one block, so a producer that dies before its first publish would
+ * otherwise leave the engine reporting `running` over eternal silence.
+ */
+export const PRODUCER_FIRST_PUBLISH_DEADLINE_MS = 250 as const;
+
+/**
+ * Service-side deadline for the worklet's `attach-control-buffer-ack`
+ * (`synthesis.md` §4.8). A missing or negative ack means the worklet
+ * rejected the SAB (typically an ABI mismatch from a stale cached
+ * worklet bundle) and must surface as a fatal startup error rather
+ * than indefinite silence.
+ */
+export const ATTACH_CONTROL_BUFFER_ACK_TIMEOUT_MS = 500 as const;
+
+/**
+ * Upper bound for a single producer pacing wait (`synthesis.md` §4.1).
+ * The producer blocks on the wake word for at most this long per
+ * iteration so the Worker inbox (eval requests, stop messages) is
+ * serviced promptly even if the worklet stops publishing.
+ */
+export const PRODUCER_WAKE_WAIT_CAP_MS = 4 as const;
+
 /** Emergency fade length in milliseconds after producer-loss detection. */
 export const EMERGENCY_FADE_MS = 10 as const;
 
@@ -1187,18 +1213,39 @@ export function attachSynthesisControlView(
           `audio frame ${options.frame} is not monotonic (current ${current})`,
         );
       }
-      // These are plain aligned SAB-view writes. The release-store / wake
-      // pairing described by synthesis.md §4.8 is not implemented yet
-      // (ergo task 019f8086-8a25, "Atomics.wait producer pacing absent").
+      // Release-store / wake pairing per synthesis.md §4.8: the frame
+      // index is Atomics-stored, then the wake word is bumped and
+      // notified so a producer blocked in `createProducerPacingWaiter`
+      // wakes for the next block window.
       dv.setUint32(HEADER_OFFSETS.producerLivenessBlock, options.blockFrameOffset, true);
-      bi64[0] = options.frame;
-      // Keep the aligned 64-bit wake sequence available for the eventual
-      // Atomics pairing; no `Atomics.notify` is issued here yet.
-      bi64Wake[0] = bi64Wake[0] + 1n;
+      Atomics.store(bi64, 0, options.frame);
+      Atomics.add(bi64Wake, 0, 1n);
+      Atomics.notify(bi64Wake, 0);
     },
   };
 
   return view;
+}
+
+/**
+ * Producer-side pacing waiter over the header wake word
+ * (`synthesis.md` §4.1). Each call blocks until the worklet's next
+ * `publishAudioFrame` notify — or until the cap expires — so the
+ * producer runs one iteration per render block instead of spinning.
+ *
+ * Only call this from a Worker: `Atomics.wait` throws on the main
+ * thread. The wait is bounded by `PRODUCER_WAKE_WAIT_CAP_MS` (never
+ * the caller's `maxWaitMs` alone) so the Worker inbox stays live even
+ * when the worklet stops publishing.
+ */
+export function createProducerPacingWaiter(
+  buffer: SharedArrayBuffer,
+): (maxWaitMs: number) => void {
+  const wake = new BigInt64Array(buffer, HEADER_OFFSETS.wakeSequence, 1);
+  return (maxWaitMs: number): void => {
+    const expected = Atomics.load(wake, 0);
+    Atomics.wait(wake, 0, expected, Math.min(maxWaitMs, PRODUCER_WAKE_WAIT_CAP_MS));
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -61,6 +61,10 @@ import type {
   WorkletProducerTimeoutEvent,
 } from "./workletGraphDelta";
 import { WORKLET_TELEMETRY_SCHEMA_VERSION } from "./workletGraphDelta";
+import {
+  attachSynthesisControlView,
+  type SynthesisControlView,
+} from "../contracts/synthesisControlAbi";
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -250,6 +254,27 @@ interface OptionsBundle {
   readonly telemetry: ReturnType<typeof createFakeTelemetryInstaller>;
 }
 
+/**
+ * Attach a view over the control SAB the service shipped to the given
+ * worklet node. Steady-state telemetry is SAB-header-authoritative
+ * (b3895dbe): tests simulate the real worklet by writing header fields
+ * directly, exactly as workletCore's process() step 8 does in Chromium.
+ */
+function sabViewShippedTo(node: SimulatedWorkletNode): SynthesisControlView {
+  // Latest attach wins: a node reused across recovery sessions receives
+  // one attach-control-buffer message per session, and only the newest
+  // buffer is live.
+  const attaches = node.postedMessages.filter(
+    (m): m is { type: string; controlBuffer: SharedArrayBuffer } =>
+      typeof m === "object" &&
+      m !== null &&
+      (m as { type?: unknown }).type === "attach-control-buffer",
+  );
+  const attach = attaches[attaches.length - 1];
+  if (!attach) throw new Error("service never posted attach-control-buffer");
+  return attachSynthesisControlView(attach.controlBuffer);
+}
+
 function buildOptions(overrides?: Partial<SynthesisServiceOptions>): OptionsBundle {
   const audioContext = createFakeAudioContext();
   const workletNode = createSimulatedWorkletNode();
@@ -311,32 +336,24 @@ describe("synthesisService — telemetry bridge (VAL-ENGINE-029)", () => {
     await service.dispose();
   });
 
-  it("merges worklet-published telemetry snapshots into the service snapshot", async () => {
+  it("reads worklet-written SAB header telemetry into the service snapshot", async () => {
     const bundle = buildOptions({ devmode: true });
     const service = createSynthesisService(bundle.options);
     await service.resumeOnUserActivation();
 
-    // The worklet publishes a snapshot after a block. Simulate that.
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({
-        audioFrame: 128,
-        blockCount: 1,
-        peakSample: 0.42,
-        rmsSample: 0.31,
-        instances: [
-          {
-            identity: "abc",
-            def: "osc/sine",
-            version: 1,
-            statePointer: 1024,
-            lifecycle: "active",
-          },
-        ],
-        activeEpoch: 7,
-        underrunCount: 0,
-        glitchCount: 0,
-      }),
-    );
+    // The worklet writes the header after a block (process() step 8)
+    // and reports the instance identity via the graph-activated event.
+    const view = sabViewShippedTo(bundle.workletNode);
+    view.audioFrame = 128n;
+    view.peakSample = 0.42;
+    view.rmsSample = 0.31;
+    view.programEpoch = 7;
+    bundle.workletNode.deliverFromWorklet({
+      type: "graph-activated",
+      identity: "abc",
+      epoch: 7,
+      atBlock: 1,
+    });
 
     const t = service.telemetry;
     expect(t.audioFrame).toBe(128n);
@@ -392,23 +409,23 @@ describe("synthesisService — telemetry coherence (VAL-ENGINE-030)", () => {
     const service = createSynthesisService(bundle.options);
     await service.resumeOnUserActivation();
 
+    const view = sabViewShippedTo(bundle.workletNode);
     const frames: bigint[] = [];
     const writes: number[] = [];
-    const reads: number[] = [];
     for (let i = 1; i <= 5; i++) {
-      const snap = buildWorkletSnapshot({
-        audioFrame: BigInt(i * 128),
-        blockCount: i,
+      view.publishAudioFrame({
+        frame: BigInt(i * 128),
+        blockFrameOffset: i * 128,
       });
-      bundle.workletNode.deliverFromWorklet(snap);
+      view.ringWriteIndex = i;
       const t = service.telemetry;
       frames.push(t.audioFrame);
       writes.push(t.ringWriteSequence);
-      reads.push(t.ringReadSequence);
     }
-    // Monotonic non-decreasing audio frame.
+    // Monotonic non-decreasing audio frame and write sequence.
     for (let i = 1; i < frames.length; i++) {
       expect(frames[i]).toBeGreaterThan(frames[i - 1]);
+      expect(writes[i]).toBeGreaterThan(writes[i - 1]);
     }
     await service.dispose();
   });
@@ -418,29 +435,22 @@ describe("synthesisService — telemetry coherence (VAL-ENGINE-030)", () => {
     const service = createSynthesisService(bundle.options);
     await service.resumeOnUserActivation();
 
-    // Publish several healthy snapshots. Counters must stay at zero.
+    // Several healthy header blocks. Counters must stay at zero.
+    const view = sabViewShippedTo(bundle.workletNode);
     for (let i = 1; i <= 4; i++) {
-      bundle.workletNode.deliverFromWorklet(
-        buildWorkletSnapshot({
-          audioFrame: BigInt(i * 128),
-          blockCount: i,
-          peakSample: 0.1 * i,
-        }),
-      );
+      view.publishAudioFrame({
+        frame: BigInt(i * 128),
+        blockFrameOffset: i * 128,
+      });
+      view.peakSample = 0.1 * i;
     }
     const before = service.telemetry;
     expect(before.underrunCount).toBe(0);
     expect(before.glitchCount).toBe(0);
     expect(before.timeoutCount).toBe(0);
 
-    // Deliver a snapshot that reports an underrun.
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({
-        audioFrame: 640n,
-        underrunCount: 1,
-        blockCount: 5,
-      }),
-    );
+    // The worklet records an underrun in the header.
+    view.underrunCount = 1;
     expect(service.telemetry.underrunCount).toBe(1);
     expect(service.telemetry.glitchCount).toBe(0);
     expect(service.telemetry.timeoutCount).toBe(0);
@@ -452,13 +462,15 @@ describe("synthesisService — telemetry coherence (VAL-ENGINE-030)", () => {
     const service = createSynthesisService(bundle.options);
     await service.resumeOnUserActivation();
 
-    // Healthy telemetry: no timeout counter.
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({ audioFrame: 128n, producerTimeoutActive: false }),
-    );
+    // Healthy header: no timeout counter.
+    const view = sabViewShippedTo(bundle.workletNode);
+    view.publishAudioFrame({ frame: 128n, blockFrameOffset: 128 });
     expect(service.telemetry.timeoutCount).toBe(0);
 
-    // Worklet raises producer-timeout.
+    // Worklet detects producer loss: it increments its header counter
+    // AND posts the discrete event (the event drives the state
+    // transition; the counter is header-authoritative).
+    view.timeoutCount = 1;
     const event: WorkletProducerTimeoutEvent = {
       type: "producer-timeout",
       atBlock: 24,
@@ -485,7 +497,8 @@ describe("synthesisService — producer loss exposes error (VAL-ENGINE-026)", ()
     await service.resumeOnUserActivation();
     expect(service.state).toBe("running");
 
-    // Worklet detects producer loss and publishes the timeout event.
+    // Worklet detects producer loss: header counter + timeout event.
+    sabViewShippedTo(bundle.workletNode).timeoutCount = 1;
     const event: WorkletProducerTimeoutEvent = {
       type: "producer-timeout",
       atBlock: 24,
@@ -528,26 +541,22 @@ describe("synthesisService — producer loss exposes error (VAL-ENGINE-026)", ()
     await service.resumeOnUserActivation();
 
     // Engine producing non-zero output.
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({ audioFrame: 128n, peakSample: 0.5, rmsSample: 0.35 }),
-    );
+    const view = sabViewShippedTo(bundle.workletNode);
+    view.publishAudioFrame({ frame: 128n, blockFrameOffset: 128 });
+    view.peakSample = 0.5;
+    view.rmsSample = 0.35;
     expect(service.telemetry.peakSample).toBeCloseTo(0.5, 6);
 
-    // Producer timeout fires; the worklet fades to silence and reports
-    // the post-fade zero peak.
+    // Producer timeout fires; the worklet fades to silence and writes
+    // the post-fade zero peak into the header.
     bundle.workletNode.deliverFromWorklet({
       type: "producer-timeout",
       atBlock: 24,
       livenessAge: 24,
     });
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({
-        audioFrame: 256n,
-        peakSample: 0,
-        rmsSample: 0,
-        producerTimeoutActive: true,
-      }),
-    );
+    view.publishAudioFrame({ frame: 256n, blockFrameOffset: 256 });
+    view.peakSample = 0;
+    view.rmsSample = 0;
     expect(service.telemetry.peakSample).toBe(0);
     expect(service.telemetry.rmsSample).toBe(0);
     expect(service.state).toBe("error");
@@ -566,16 +575,13 @@ describe("synthesisService — producer loss exposes error (VAL-ENGINE-026)", ()
     });
     expect(service.state).toBe("error");
 
-    // A subsequent telemetry snapshot with non-zero peak must NOT
+    // Subsequent header activity with non-zero peak must NOT
     // transition the engine back to running on its own. Recovery is
     // the only way out of `error`.
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({
-        audioFrame: 512n,
-        peakSample: 0.9,
-        producerTimeoutActive: false,
-      }),
-    );
+    const view = sabViewShippedTo(bundle.workletNode);
+    view.publishAudioFrame({ frame: 512n, blockFrameOffset: 512 });
+    view.peakSample = 0.9;
+    expect(service.telemetry.peakSample).toBeCloseTo(0.9, 6);
     expect(service.state).toBe("error");
     await service.dispose();
   });
@@ -641,11 +647,14 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
     const service = createSynthesisService(bundle.options);
     await service.resumeOnUserActivation();
 
-    // Stale publication from the failed node BEFORE recovery.
-    firstNode.deliverFromWorklet(buildWorkletSnapshot({ audioFrame: 128n, peakSample: 0.5 }));
+    // Header writes from the (about to fail) first session's SAB.
+    const staleView = sabViewShippedTo(firstNode);
+    staleView.publishAudioFrame({ frame: 128n, blockFrameOffset: 128 });
+    staleView.peakSample = 0.5;
     expect(service.telemetry.audioFrame).toBe(128n);
 
-    // Failure + recovery.
+    // Failure + recovery. Recovery discards the failed session's SAB
+    // and ships a FRESH buffer to the new worklet node.
     firstNode.deliverFromWorklet({
       type: "producer-timeout",
       atBlock: 24,
@@ -653,11 +662,17 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
     });
     await service.devmodeReinitialise();
 
-    // Fresh publication from the new node.
-    secondNode.deliverFromWorklet(buildWorkletSnapshot({ audioFrame: 256n, peakSample: 0.2 }));
+    // Fresh header writes from the new session's SAB.
+    const freshView = sabViewShippedTo(secondNode);
+    freshView.publishAudioFrame({ frame: 256n, blockFrameOffset: 256 });
+    freshView.peakSample = 0.2;
     expect(service.telemetry.audioFrame).toBe(256n);
 
-    // Stale publication from the FAILED node must NOT affect the service.
+    // Writes into the RETIRED buffer must NOT affect the service, and
+    // stale events from the failed node are dropped by the generation
+    // guard.
+    staleView.publishAudioFrame({ frame: 9999n, blockFrameOffset: 9999 });
+    staleView.peakSample = 0.99;
     firstNode.deliverFromWorklet(buildWorkletSnapshot({ audioFrame: 9999n, peakSample: 0.99 }));
     expect(service.telemetry.audioFrame).toBe(256n);
     expect(service.telemetry.peakSample).toBeCloseTo(0.2, 6);
@@ -710,9 +725,9 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
     const bundle = buildOptions({ devmode: true });
     const service = createSynthesisService(bundle.options);
     await service.resumeOnUserActivation();
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({ audioFrame: 128n, peakSample: 0.5 }),
-    );
+    const view = sabViewShippedTo(bundle.workletNode);
+    view.publishAudioFrame({ frame: 128n, blockFrameOffset: 128 });
+    view.peakSample = 0.5;
 
     // Failure.
     bundle.workletNode.deliverFromWorklet({
@@ -730,10 +745,13 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
     expect(resumed).toBe(true);
     expect(service.state).toBe("running");
 
-    // The fresh worklet reports finite non-zero output.
-    bundle.workletNode.deliverFromWorklet(
-      buildWorkletSnapshot({ audioFrame: 256n, peakSample: 0.4 }),
-    );
+    // The fresh worklet writes finite non-zero output into the NEW
+    // session's header (the same node factory is reused, so the fresh
+    // attach message is the latest one posted to this node).
+    const freshView = sabViewShippedTo(bundle.workletNode);
+    freshView.publishAudioFrame({ frame: 256n, blockFrameOffset: 256 });
+    freshView.peakSample = 0.4;
+    freshView.finiteOutput = 1;
     expect(service.telemetry.peakSample).toBeCloseTo(0.4, 6);
     expect(service.telemetry.finiteOutput).toBe(1);
     await service.dispose();

@@ -72,6 +72,10 @@ export const ENGINE_STATE_REASONS = Object.freeze({
     "Audio is suspended. Click the indicator or press any key to enable sound.",
   PRODUCER_TIMEOUT:
     "The control producer stopped responding. Output has been faded to silence.",
+  PRODUCER_FIRST_PUBLISH_TIMEOUT:
+    "The control producer failed to publish its first block. Output is unavailable.",
+  WORKLET_CONTROL_ATTACH_FAILED:
+    "The audio worklet rejected the control buffer. Reload to refresh the worklet bundle.",
   WORKLET_TRAP:
     "The audio worklet reported a trap. Output has been faded to silence.",
   OVERLOAD:

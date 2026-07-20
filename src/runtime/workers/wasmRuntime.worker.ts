@@ -46,6 +46,7 @@ import type {
 import {
   attachSynthesisControlView,
   CONTROL_LOOKAHEAD_BLOCKS,
+  createProducerPacingWaiter,
   DEFAULT_RENDER_QUANTUM_FRAMES,
   type SynthesisControlView,
 } from "../../contracts/synthesisControlAbi";
@@ -138,13 +139,15 @@ let interpreter: InterpreterHandle | null = null;
 //     message-handler invocations.
 //
 // The producer is the SOLE caller of `view.advanceWriteIndex`. The
-// worklet consumes the ring without ever blocking (VAL-SAB-019). Producer
-// pacing currently uses an unconditional `setTimeout(0)` macrotask loop,
-// budgeted by `PRODUCER_POLL_INTERVAL_MS`; the Atomics.wait wake path is an
-// interim deviation from synthesis.md §4.1 (ergo task
-// 019f8086-8a25, "Atomics.wait producer pacing absent").
+// worklet consumes the ring without ever blocking (VAL-SAB-019).
+// Producer pacing follows synthesis.md §4.1: between iterations the
+// scheduler blocks on the SAB wake word via `createProducerPacingWaiter`
+// until the worklet's next `publishAudioFrame` notify (bounded by
+// `PRODUCER_WAKE_WAIT_CAP_MS` so the Worker inbox stays live), with the
+// `setTimeout(0)` macrotask yield preserved so message handling runs.
 
 let controlView: SynthesisControlView | null = null;
+let pacingWaiter: ((maxWaitMs: number) => void) | null = null;
 let transportMap: TransportFrameMap | null = null;
 let producer: ProducerScheduler | null = null;
 let producerRunning = false;
@@ -155,20 +158,19 @@ const producerControlValues = new Map<string, number>();
 const producerAudit: ProducedBlockAudit[] = [];
 
 /**
- * Producer pacing clock. The scheduler's `sleep` hook is intentionally a
- * no-op because the driver unconditionally yields with `setTimeout(0)` — a
- * macrotask that lets the Worker inbox run. Each `iterate()` remains bounded
- * by `PRODUCER_POLL_INTERVAL_MS`. This is an interim deviation from
- * synthesis.md §4.1; the Atomics.wait wake path is tracked in ergo task
- * 019f8086-8a25 ("Atomics.wait producer pacing absent").
+ * Producer pacing clock. `sleep` blocks on the SAB wake word so each
+ * scheduler iteration lines up with a worklet block publication rather
+ * than free-running (synthesis.md §4.1). The wait is bounded (see
+ * `createProducerPacingWaiter`), and the loop driver's `setTimeout(0)`
+ * macrotask yield still runs between iterations so the Worker inbox
+ * (eval requests, producer-stop) is never starved.
  */
 const producerClock: ProducerSchedulingClock = {
   now(): number {
     return Date.now();
   },
-  sleep(_ms: number): void {
-    // No-op: the unconditional setTimeout(0) macrotask loop below supplies
-    // the yield; blocking here would starve the Worker inbox.
+  sleep(ms: number): void {
+    pacingWaiter?.(ms);
   },
 };
 
@@ -1010,6 +1012,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         try {
           const view = attachSynthesisControlView(request.controlBuffer);
           controlView = view;
+          pacingWaiter = createProducerPacingWaiter(request.controlBuffer);
           producerBlockRateChannels = request.blockRateChannels ?? [];
           // Reset the audit so devmode traces reflect this session only.
           producerAudit.length = 0;
@@ -1297,6 +1300,7 @@ self.addEventListener("close", () => {
   producerRunning = false;
   producer = null;
   controlView = null;
+  pacingWaiter = null;
   transportMap = null;
   if (interpreter) {
     interpreter.release();

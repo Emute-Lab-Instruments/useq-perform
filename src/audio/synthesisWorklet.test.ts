@@ -14,7 +14,55 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { SYNTHESIS_PROCESSOR_NAME, registerSynthesisProcessor } from "./synthesisWorklet";
+import {
+  SYNTHESIS_PROCESSOR_NAME,
+  drainPendingEvents,
+  registerSynthesisProcessor,
+} from "./synthesisWorklet";
+import type { WorkletOutboundEvent } from "./workletGraphDelta";
+
+describe("drainPendingEvents — in-place queue truncation", () => {
+  const timeoutEvent: WorkletOutboundEvent = {
+    type: "producer-timeout",
+    atBlock: 24,
+    livenessAge: 24,
+  };
+  const retiredEvent: WorkletOutboundEvent = {
+    type: "instance-retired",
+    identity: "abc",
+  };
+
+  it("posts every queued event and empties the queue", () => {
+    const pending: WorkletOutboundEvent[] = [timeoutEvent, retiredEvent];
+    const posted: WorkletOutboundEvent[] = [];
+    drainPendingEvents(pending, (e) => posted.push(e));
+    expect(posted).toEqual([timeoutEvent, retiredEvent]);
+    expect(pending).toHaveLength(0);
+  });
+
+  it("events published into the SAME array after a drain are still delivered", () => {
+    // Regression: the core's publish closure captures the array
+    // instance. A drain that REPLACED the array would orphan every
+    // later publish — producer-timeout would never reach the service.
+    const pending: WorkletOutboundEvent[] = [];
+    const publish = (e: WorkletOutboundEvent) => pending.push(e); // core's closure
+    const posted: WorkletOutboundEvent[] = [];
+
+    publish(retiredEvent);
+    drainPendingEvents(pending, (e) => posted.push(e));
+    publish(timeoutEvent); // published AFTER the first drain
+    drainPendingEvents(pending, (e) => posted.push(e));
+
+    expect(posted).toEqual([retiredEvent, timeoutEvent]);
+    expect(pending).toHaveLength(0);
+  });
+
+  it("is a no-op on an empty queue", () => {
+    const posted: WorkletOutboundEvent[] = [];
+    drainPendingEvents([], (e) => posted.push(e));
+    expect(posted).toHaveLength(0);
+  });
+});
 
 describe("synthesisWorklet shell", () => {
   it("exports the canonical processor name", () => {
