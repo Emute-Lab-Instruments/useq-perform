@@ -632,6 +632,77 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
     await service.dispose();
   });
 
+  it("recoverFromError rebuilds an error-state engine and leaves it suspended", async () => {
+    const bundle = buildOptions({ devmode: true });
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+    bundle.workletNode.deliverFromWorklet({ type: "producer-timeout", atBlock: 24, livenessAge: 24 });
+    expect(service.state).toBe("error");
+
+    const freshContext = createFakeAudioContext();
+    bundle.options.audioContextFactory = () => freshContext;
+    const recovered = await service.recoverFromError();
+
+    expect(recovered).toBe(true);
+    expect(service.state).toBe("suspended");
+    expect(bundle.workletNode.disconnectCallCount).toBe(1);
+    await service.dispose();
+  });
+
+  it("concurrent recoveries share one dispose and bring-up", async () => {
+    const firstNode = createSimulatedWorkletNode();
+    const secondNode = createSimulatedWorkletNode();
+    let nodeIndex = 0;
+    let releaseBringUp!: () => void;
+    const bringUpReleased = new Promise<void>((resolve) => {
+      releaseBringUp = resolve;
+    });
+    const initialContext = createFakeAudioContext();
+    const freshContext = createFakeAudioContext();
+    freshContext.audioWorklet.addModule = async () => bringUpReleased;
+    const bundle = buildOptions({
+      audioContextFactory: () => (nodeIndex === 0 ? initialContext : freshContext),
+      workletNodeFactory: () => (nodeIndex++ === 0 ? firstNode : secondNode),
+    });
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+    firstNode.deliverFromWorklet({ type: "producer-timeout", atBlock: 24, livenessAge: 24 });
+    expect(service.state).toBe("error");
+
+    const first = service.recoverFromError();
+    const second = service.recoverFromError();
+    releaseBringUp();
+    const results = await Promise.all([first, second]);
+
+    expect(results).toEqual([true, true]);
+    expect(first).toBe(second);
+    expect(firstNode.disconnectCallCount).toBe(1);
+    expect(nodeIndex).toBe(2);
+    expect(service.state).toBe("suspended");
+    await service.dispose();
+  });
+
+  it("recoverFromError is inert outside error and constructs nothing", async () => {
+    let contexts = 0;
+    let nodes = 0;
+    const bundle = buildOptions({
+      audioContextFactory: () => {
+        contexts += 1;
+        return createFakeAudioContext();
+      },
+      workletNodeFactory: () => {
+        nodes += 1;
+        return createSimulatedWorkletNode();
+      },
+    });
+    const service = createSynthesisService(bundle.options);
+
+    expect(await service.recoverFromError()).toBe(false);
+    expect(contexts).toBe(0);
+    expect(nodes).toBe(0);
+    await service.dispose();
+  });
+
   it("recovery prevents the failed node from publishing further telemetry", async () => {
     const firstNode = createSimulatedWorkletNode();
     const secondNode = createSimulatedWorkletNode();

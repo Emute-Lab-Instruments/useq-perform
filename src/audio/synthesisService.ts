@@ -16,9 +16,8 @@
  *   VAL-ENGINE-016 — lifecycle transitions are finite and exact (the
  *                    matrix lives in `synthesisChannels.ts`).
  *   VAL-ENGINE-020 — there is no permanent Enable Sound command. The
- *                    only public recovery affordance is
- *                    `resumeOnUserActivation()`, wired to the suspended
- *                    indicator and the autoplay listener.
+ *                    suspended indicator uses `resumeOnUserActivation()`;
+ *                    the error indicator uses the explicit recovery seam.
  *   VAL-ENGINE-021 — indicator and engine state flow through props via
  *                    the typed channel/store, not singletons.
  *   VAL-ENGINE-022 — suspended and error transitions post one clear
@@ -635,6 +634,13 @@ export interface SynthesisService {
   resumeOnUserActivation(): Promise<boolean>;
 
   /**
+   * Rebuild failed engine resources and leave the engine suspended.
+   * This is the explicit error-indicator action; unlike autoplay, it is
+   * never invoked by ambient interactions. Calls are single-flight.
+   */
+  recoverFromError(): Promise<boolean>;
+
+  /**
    * Devmode-only: terminate the producer to exercise the worklet-side
    * timeout path. Outside devmode this is a no-op that returns `false`.
    *
@@ -808,6 +814,9 @@ function createUnavailableService(
       // Audio is unavailable; resume is a no-op.
       return false;
     },
+    async recoverFromError() {
+      return false;
+    },
     devmodeTerminateProducer() {
       // No producer exists; nothing to terminate.
       return false;
@@ -874,6 +883,7 @@ function createCapableService(
   let audioContext: AudioContextContract | null = null;
   let workletNode: WorkletNodeContract | null = null;
   let disposed = false;
+  let recoveryPromise: Promise<boolean> | null = null;
   let workletAdded = false;
   const compiledAdapters = new Map<string, NodeDefAdapter>();
   // VAL-ENGINE-008: track which NodeDef modules have already been
@@ -1673,13 +1683,22 @@ function createCapableService(
       return true;
     },
 
+    recoverFromError() {
+      if (currentState !== "error") return Promise.resolve(false);
+      if (recoveryPromise !== null) return recoveryPromise;
+      recoveryPromise = (async () => {
+        await disposeResources("error");
+        const ok = await bringUpAudio();
+        return ok && readState() === "suspended";
+      })().finally(() => {
+        recoveryPromise = null;
+      });
+      return recoveryPromise;
+    },
+
     async devmodeReinitialise() {
       if (!devmode) return false;
-      // Recovery: dispose failed resources and bring the engine back up
-      // in `suspended` so autoplay can resume on the next trusted input.
-      await disposeResources("error");
-      const ok = await bringUpAudio();
-      return ok && currentState === "suspended";
+      return service.recoverFromError();
     },
 
     commitSynthArtifacts(
