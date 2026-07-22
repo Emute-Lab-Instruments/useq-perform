@@ -40,6 +40,7 @@ import { EditorSelection } from "@codemirror/state";
 import { editorSession } from "../lib/editorStore.ts";
 import { evaluate } from "../effects/editorEvaluation.ts";
 import { getActiveSynthesisService } from "./activeSynthesisService.ts";
+import { getActiveWasmRuntimePort } from "./activeWasmRuntimePort.ts";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -90,6 +91,14 @@ export interface BrowserEvalSurface {
    * throws — failures are reported as `{ ok: false, error }`.
    */
   evalToplevelNow(): BrowserEvalResult;
+
+  /**
+   * Observe a compiled output through the active production WASM port.
+   * This is deliberately read-only: browser E2E tests use it to prove that
+   * trusted user input reached the worker-backed virtual firmware without
+   * installing a second test runtime or mutating interpreter state.
+   */
+  sampleOutputAtTime(outputName: string, timeSeconds: number): Promise<number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +166,10 @@ function buildSurface(): BrowserEvalSurface {
         const msg = error instanceof Error ? error.message : String(error);
         return { ok: false, error: msg };
       }
+    },
+
+    sampleOutputAtTime(outputName: string, timeSeconds: number): Promise<number> {
+      return getActiveWasmRuntimePort().evalOutputAtTime(outputName, timeSeconds);
     },
   });
 }

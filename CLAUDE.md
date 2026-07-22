@@ -106,6 +106,7 @@ Both are first-class tests; there is no legacy/non-legacy split.
 
 - `npm run test:mocha` - Mocha/Chai JavaScript integration tests in `test/**/*.mjs`, including the structural YAML runner.
 - `npm run test:unit` - Vitest unit/component tests.
+- `npm run test:e2e` - Playwright trusted-input browser journeys (`e2e/`) against the full app + worker-backed WASM runtime; rebuilds WASM/assets/bundle first. Serves `public/` via route interception on `http://localhost` (origin must stay trustworthy or COOP/COEP is ignored and `crossOriginIsolated` breaks).
 - `npm run test:contracts` - Vitest contract tests (runtime, UI, transport)
 - `npm run test:all` / `npm test` - all suites
 - `npm run typecheck` - TypeScript type checking

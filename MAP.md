@@ -15,12 +15,14 @@ Terminology source of truth: [docs/GLOSSARY.md](docs/GLOSSARY.md). Read [CLAUDE.
 - `stories/` — Storybook stories grouped by feature area.
 - `.storybook/` — Storybook config + Vitest browser-test setup.
 - `test/` — Mocha integration tests (`*.mjs`) plus structural YAML fixtures under `test/new_structural/`. `test/helpers/` holds the css-noop node loader (registered via `.mocharc.yml`) and the structural-fuzz worker.
+- `e2e/` — Playwright full-app journeys driven by trusted browser input against the worker-backed WASM runtime. Run `npm run test:e2e`.
 - `public/` — static assets and build outputs (`public/solid-dist/bundle.js`, `public/wasm/useq.js`).
 - `assets/` — source markdown/JSON/font assets copied to `public/` by `scripts/build-assets.mjs`.
 - `scripts/` — build-assets pipeline, config-server (dev), `src-useq:status`, parse-tree printer.
 - `plugins/` — `babel-solid-label.cjs` (dev-mode `data-component`/`data-source` annotations).
 - `patches/` — patch-package patches for npm deps.
 - `docs/` — architecture and contract docs (see index below).
+  - `docs/reports/ux-and-e2e-audit-2026-07-22.md` — UX, test-meaningfulness, and cross-stack E2E audit for the app plus pinned firmware.
 - `history/` — dated planning notes and audit artifacts. Archival, not authoritative.
 - `ai/` — agent feature/prompt scratch. Archival.
 

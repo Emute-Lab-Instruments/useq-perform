@@ -36,6 +36,8 @@ inspector/dist/
 grammar-lab/dist/
 test-results/
 reports/
+!docs/reports/
+!docs/reports/ux-and-e2e-audit-2026-07-22.md
 
 # Stray nested checkouts / scratch — never part of this repo
 .worktrees/

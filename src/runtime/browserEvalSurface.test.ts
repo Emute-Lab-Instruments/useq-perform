@@ -26,10 +26,12 @@ const {
   evaluateMock,
   editorAccessorMock,
   telemetryAccessorMock,
+  sampleOutputAtTimeMock,
 } = vi.hoisted(() => ({
   evaluateMock: vi.fn((_view: unknown, _strategy: string) => true),
   editorAccessorMock: vi.fn<[], unknown>(() => null),
   telemetryAccessorMock: vi.fn<[], unknown>(() => null),
+  sampleOutputAtTimeMock: vi.fn(async (_name: string, _time: number) => 0),
 }));
 
 vi.mock("../effects/editorEvaluation", () => ({
@@ -44,6 +46,12 @@ vi.mock("../lib/editorStore", () => ({
 // Stub activeSynthesisService so tests can inject telemetry.
 vi.mock("../runtime/activeSynthesisService", () => ({
   getActiveSynthesisService: () => telemetryAccessorMock(),
+}));
+
+vi.mock("../runtime/activeWasmRuntimePort", () => ({
+  getActiveWasmRuntimePort: () => ({
+    evalOutputAtTime: sampleOutputAtTimeMock,
+  }),
 }));
 
 import {
@@ -72,6 +80,8 @@ describe("browserEvalSurface (devmode-only verified eval route)", () => {
     editorAccessorMock.mockReturnValue(null);
     telemetryAccessorMock.mockReset();
     telemetryAccessorMock.mockReturnValue(null);
+    sampleOutputAtTimeMock.mockReset();
+    sampleOutputAtTimeMock.mockResolvedValue(0);
   });
 
   afterEach(() => {
@@ -84,12 +94,26 @@ describe("browserEvalSurface (devmode-only verified eval route)", () => {
       installBrowserEvalSurface(w);
       expect(w.__useqBrowserEval).toBeDefined();
       expect(typeof w.__useqBrowserEval?.evalToplevelNow).toBe("function");
+      expect(typeof w.__useqBrowserEval?.sampleOutputAtTime).toBe("function");
     });
 
     it("does not install the surface when window is undefined (SSR safety)", () => {
       // Passing undefined simulates a non-browser environment.
       // Should not throw.
       expect(() => installBrowserEvalSurface(undefined as unknown as TestWindow)).not.toThrow();
+    });
+  });
+
+  describe("sampleOutputAtTime", () => {
+    it("observes output through the active production WASM port", async () => {
+      const w = freshWindow();
+      installBrowserEvalSurface(w);
+      sampleOutputAtTimeMock.mockResolvedValue(0.375);
+
+      await expect(
+        w.__useqBrowserEval!.sampleOutputAtTime("a1", 1.25),
+      ).resolves.toBe(0.375);
+      expect(sampleOutputAtTimeMock).toHaveBeenCalledWith("a1", 1.25);
     });
   });
 
