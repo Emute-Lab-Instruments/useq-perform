@@ -5,7 +5,9 @@ Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WAS
 ## Build and Run
 
 - `npm run dev` - starts config server, static server, and watch builds.
-- `npm run build` - copies non-code assets and builds Vite bundles to `public/solid-dist/`.
+- `npm run build` - builds the interpreter and osc/sine NodeDef WASM artefacts, copies non-code assets, and builds Vite bundles to `public/solid-dist/`.
+- `npm run build:wasm` - requires Emscripten (`emcc`) and generates both `src-useq/wasm/useq.{js,wasm}` and `src-useq/wasm/osc_sine.wasm`.
+- `npm run build:assets` - copies the generated WASM artefacts and other non-code assets; it fails if a required WASM source is missing.
 - `npm run start` - serves `public/` on port `5000`.
 - `npm run storybook` - Storybook dev server.
 - `npm run build-storybook` - static Storybook build.

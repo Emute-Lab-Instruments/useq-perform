@@ -237,9 +237,10 @@ pass — that pairing *is* the source-agnosticism test (ADR-0002).
   the ADR's "revisit" section.
 - New code TS/TSX under `src/`; typed channels, persistence service,
   runtimeService mutations, import boundaries (`npm run lint`).
-- Firmware/WASM interpreter changes live in the `src-useq` submodule
-  (separate commits; rebuild via `npm run build:assets`; check
-  `npm run src-useq:status` first).
+- Firmware/WASM interpreter and NodeDef changes live in the `src-useq` submodule
+  (separate commits; check `npm run src-useq:status` first). Rebuild both browser
+  WASM targets with `npm run build:wasm`, then copy them with
+  `npm run build:assets` before the app build.
 - Engine-side constants (`SYNTH_FADE_IN/OUT`, `CONTROL_LOOKAHEAD`,
   `PRODUCER_TIMEOUT_BLOCKS`, `MAX_SYNTH_*`, `SYNTH_MEMORY_MAX`,
   `OVERLOAD_BLOCKS`) are named exports in one contract module — specs

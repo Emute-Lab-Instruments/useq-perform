@@ -64,12 +64,28 @@ const fontFiles = [
   dest: path.join('public', 'assets', 'fonts', 'ibm-plex-mono', file),
 }));
 
-let warnedMissingWasmBundle = false;
-
 // --- Helpers ---
 
 function ensureDirectoryExists(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function copyRequiredArtifact({ src, dest, label, command }) {
+  if (!fs.existsSync(src)) {
+    throw new Error(
+      `Required ${label} not found at ${src}. ` +
+        `Run ${command} before building app assets.`,
+    );
+  }
+
+  ensureDirectoryExists(path.dirname(dest));
+  fs.copyFileSync(src, dest);
+
+  if (!fs.existsSync(dest) || fs.statSync(dest).size === 0) {
+    throw new Error(`Required ${label} was not copied to ${dest}.`);
+  }
+
+  console.log(`Copied ${src} -> ${dest}`);
 }
 
 // --- Build Tasks ---
@@ -128,54 +144,29 @@ function copyReferenceData() {
 }
 
 function copyUseqWasmBundle() {
-  if (!fs.existsSync(wasmBundleFile.src)) {
-    if (!warnedMissingWasmBundle) {
-      console.warn(
-        `uSEQ WASM bundle not found at ${wasmBundleFile.src}. ` +
-          'Run src-useq/scripts/build_wasm.sh to generate it.'
-      );
-      warnedMissingWasmBundle = true;
-    }
-    return;
-  }
+  // These are all mandatory runtime artifacts. Keep each check independent:
+  // the NodeDef is a separate build target and must not be hidden behind the
+  // interpreter bundle check.
+  copyRequiredArtifact({
+    src: wasmBundleFile.src,
+    dest: wasmBundleFile.dest,
+    label: 'uSEQ WASM JavaScript loader',
+    command: 'npm run build:wasm',
+  });
 
-  warnedMissingWasmBundle = false;
+  copyRequiredArtifact({
+    src: wasmBinaryFile.src,
+    dest: wasmBinaryFile.dest,
+    label: 'uSEQ WASM binary',
+    command: 'npm run build:wasm',
+  });
 
-  try {
-    ensureDirectoryExists(path.dirname(wasmBundleFile.dest));
-    fs.copyFileSync(wasmBundleFile.src, wasmBundleFile.dest);
-    console.log(`Copied ${wasmBundleFile.src} -> ${wasmBundleFile.dest}`);
-  } catch (error) {
-    console.error(`Failed to copy ${wasmBundleFile.src}:`, error.message);
-  }
-
-  // Copy separate .wasm binary (SINGLE_FILE=0 build)
-  if (fs.existsSync(wasmBinaryFile.src)) {
-    try {
-      fs.copyFileSync(wasmBinaryFile.src, wasmBinaryFile.dest);
-      console.log(`Copied ${wasmBinaryFile.src} -> ${wasmBinaryFile.dest}`);
-    } catch (error) {
-      console.error(`Failed to copy ${wasmBinaryFile.src}:`, error.message);
-    }
-  }
-
-  // Copy the osc/sine NodeDef WASM artefact (VAL-DSP-015). This is a
-  // separate build target from the interpreter; its absence does not
-  // block the editor but prevents the synthesis engine from rendering.
-  if (fs.existsSync(oscSineNodedefFile.src)) {
-    try {
-      ensureDirectoryExists(path.dirname(oscSineNodedefFile.dest));
-      fs.copyFileSync(oscSineNodedefFile.src, oscSineNodedefFile.dest);
-      console.log(`Copied ${oscSineNodedefFile.src} -> ${oscSineNodedefFile.dest}`);
-    } catch (error) {
-      console.error(`Failed to copy ${oscSineNodedefFile.src}:`, error.message);
-    }
-  } else {
-    console.warn(
-      `osc/sine NodeDef WASM not found at ${oscSineNodedefFile.src}. ` +
-        'Run src-useq/nodedef/build_osc_sine_wasm.sh to generate it.'
-    );
-  }
+  copyRequiredArtifact({
+    src: oscSineNodedefFile.src,
+    dest: oscSineNodedefFile.dest,
+    label: 'osc/sine NodeDef WASM artefact',
+    command: 'npm run build:wasm',
+  });
 }
 
 function copyFonts() {

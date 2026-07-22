@@ -271,6 +271,19 @@ describe("VAL-DSP-015: osc/sine NodeDef is a separate build artefact", () => {
     // copy it into public/wasm/ alongside the interpreter bundle.
     expect(buildAssets).toContain("osc_sine.wasm");
     expect(buildAssets).toContain("oscSineNodedefFile");
+    expect(buildAssets).toContain("copyRequiredArtifact");
+    expect(buildAssets).toContain("Required ${label}");
+  });
+
+  it("production build generates the interpreter and NodeDef artefacts", () => {
+    const packageJson = JSON.parse(readRepoFile("package.json")) as {
+      scripts?: Record<string, string>;
+    };
+    expect(packageJson.scripts?.build).toContain("build:wasm");
+    expect(packageJson.scripts?.watch).toContain("build:wasm");
+    expect(packageJson.scripts?.["build:wasm"]).toContain(
+      "./nodedef/build_osc_sine_wasm.sh",
+    );
   });
 
   it("NodeDef WASM binary contains the osc_sine_compute export", () => {

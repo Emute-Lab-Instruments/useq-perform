@@ -87,9 +87,20 @@ async function loadRealWasm(): Promise<WasmModule> {
     throw new Error(`Generated WASM bundle did not expose createModule(): ${WASM_JS}`);
   }
   const dir = path.dirname(WASM_JS);
-  const wasmBinary = readFileSync(WASM_BIN).buffer;
+  const wasmBytes = new Uint8Array(readFileSync(WASM_BIN));
   return createModule({
-    wasmBinary,
+    // The generated bundle does not accept `wasmBinary` through its incoming
+    // Module API. Instantiate explicitly so Node never attempts fetch() on a
+    // filesystem path.
+    instantiateWasm: (
+      imports: WebAssembly.Imports,
+      receiveInstance: (instance: WebAssembly.Instance) => void,
+    ) => {
+      void WebAssembly.instantiate(wasmBytes, imports).then(({ instance }) =>
+        receiveInstance(instance),
+      );
+      return {};
+    },
     locateFile: (f: string) => path.resolve(dir, f),
   });
 }

@@ -26,6 +26,11 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.69
+
       - name: Typecheck
         run: npm run typecheck
 

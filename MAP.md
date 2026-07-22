@@ -224,7 +224,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 ## Local gotchas
 
 - `src-useq/` and `deps/modulisp/` are git submodules; commits there go through their own repos. Run `npm run src-useq:status` to see the pinned commit.
-- The browser WASM bundle (`public/wasm/useq.js`) is built from `src-useq/` via `npm run build:wasm` and copied by `npm run build:assets`. Rebuild both after touching the interpreter source.
+- Browser WASM artefacts (`public/wasm/useq.{js,wasm}` and `public/wasm/osc_sine.wasm`) are generated from `src-useq/` by `npm run build:wasm` and copied by `npm run build:assets`; the copy step fails when a required artefact is missing.
 - `appSettingsRepository` (canonical) and `settingsStore` (reactive Solid mirror) are separate. UI reads the store; mutations go through `runtimeService`.
 - `serialBuffers` in `transport/stream-parser.ts` are imperative `CircularBuffer`s, not part of the Solid store.
 - `?nosave` URL param fully bypasses persistence; useful in tests.
