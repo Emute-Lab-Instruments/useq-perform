@@ -15,7 +15,7 @@ Terminology source of truth: [docs/GLOSSARY.md](docs/GLOSSARY.md). Read [CLAUDE.
 - `stories/` — Storybook stories grouped by feature area.
 - `.storybook/` — Storybook config + Vitest browser-test setup.
 - `test/` — Mocha integration tests (`*.mjs`) plus structural YAML fixtures under `test/new_structural/`. `test/helpers/` holds the css-noop node loader (registered via `.mocharc.yml`) and the structural-fuzz worker.
-- `e2e/` — Playwright full-app journeys driven by trusted browser input against the worker-backed WASM runtime. Run `npm run test:e2e`.
+- `e2e/` — Playwright full-app journeys driven by trusted browser input against the worker-backed WASM runtime. Shared fixtures in `helpers.ts`; per-area specs (boot contract, eval feedback, LKG isolation, input dispatch, original journeys). Run `npm run test:e2e` (full rebuild) or `npx playwright test` (against existing `public/`).
 - `public/` — static assets and build outputs (`public/solid-dist/bundle.js`, `public/wasm/useq.js`).
 - `assets/` — source markdown/JSON/font assets copied to `public/` by `scripts/build-assets.mjs`.
 - `scripts/` — build-assets pipeline, config-server (dev), `src-useq:status`, parse-tree printer.
