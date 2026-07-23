@@ -352,6 +352,25 @@ function evalWasm(
       const isError = hasErrors || trimmed === "{error}";
 
       if (!opts.isPreview) {
+        // MAIN §2.1: a failed eval must surface BOTH an inline diagnostic
+        // and a console message; the inline path above shows the diagnostic
+        // in-editor, so mirror the first error onto the console — the
+        // canonical chronological surface for eval errors (console.md §1.7).
+        // §2.7: the console line carries plain-language message + suggestion
+        // (+ example), matching the inline lint text (diagnostics.ts
+        // formatMessage). Only the resolved path runs here; the `.catch`
+        // path posts on its own and stale evals returned early above, so no
+        // single eval double-posts.
+        if (hasErrors) {
+          const firstError =
+            remappedDiagnostics.find((d) => d.severity === "error") ??
+            remappedDiagnostics[0];
+          const parts = [firstError.message];
+          if (firstError.suggestion) parts.push(firstError.suggestion);
+          if (firstError.example) parts.push(`Example: ${firstError.example}`);
+          post(parts.join("\n"), "error");
+        }
+
         const assignedOutputs = detectOutputAssignments(wasmCode);
         for (const outputName of assignedOutputs) {
           if (!hasErrors) {
