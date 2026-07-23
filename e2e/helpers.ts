@@ -245,6 +245,10 @@ export const SEL = {
   transportPause: '#panel-top-toolbar button[aria-label="Pause"]',
   transportStop: '#panel-top-toolbar button[aria-label="Stop"]',
   consoleEntry: ".console-entry",
+  transportRewind: '#panel-top-toolbar button[aria-label="Rewind"]',
+  transportClear: '#panel-top-toolbar button[aria-label="Clear"]',
+  progressBar: "#toolbar-bar-progress",
+  editorRoot: "#panel-main-editor .cm-editor",
 } as const;
 
 export const PROGRAMS = {
@@ -257,3 +261,104 @@ export const PROGRAMS = {
    */
   overflowA1: "(a1 (* (* t 1e308) 1e308))",
 } as const;
+
+// ==========================================================================
+// M2 additions (additive — do not modify anything above this line)
+// ==========================================================================
+
+/**
+ * Readiness wait WITHOUT navigation — for use after page.reload() (which keeps
+ * the same context, route interception, and URL, so no goto is needed).
+ * Mirrors the waits inside bootApp/bootBrowserLocalApp.
+ */
+export async function awaitAppReady(page: Page): Promise<void> {
+  await page.waitForFunction(async () => {
+    await window.__useqReady;
+    return typeof window.__useqBrowserEval?.sampleOutputAtTime === "function";
+  });
+  await expect(page.locator("#panel-main-editor .cm-content")).toBeVisible();
+}
+
+/**
+ * Click a transport control by aria-label. Only ENABLED buttons are clickable;
+ * Playwright throws on a disabled target, which correctly encodes the transport
+ * machine's ignored transitions (transport.md §1.2). See M2-GT#8.
+ */
+export async function clickTransport(
+  page: Page,
+  control: "play" | "pause" | "stop" | "rewind" | "clear",
+): Promise<void> {
+  const label = { play: "Play", pause: "Pause", stop: "Stop", rewind: "Rewind", clear: "Clear" }[control];
+  await page.locator(`#panel-top-toolbar button[aria-label="${label}"]`).click();
+}
+
+/**
+ * Read the transport progress-bar scaleX in [0,1]. #toolbar-bar-progress renders
+ * visStore.bar as `transform: scaleX(n)` (ProgressBar.tsx); the computed transform
+ * is matrix(a,b,c,d,e,f) whose `a` component is scaleX. In wasm mode this is the
+ * local-clock bar phase (transport §1.4-1.5) — a runtime/clock-sourced observation.
+ * Identity (scaleX=1) computes to "none"; treat that as 1.
+ */
+export async function readProgressScaleX(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const el = document.getElementById("toolbar-bar-progress");
+    if (!el) return Number.NaN;
+    const t = getComputedStyle(el).transform;
+    if (!t || t === "none") return 1;
+    const m = t.match(/matrix\(([^)]+)\)/);
+    if (!m) return Number.NaN;
+    return parseFloat(m[1].split(",")[0]);
+  });
+}
+
+/**
+ * Assert the structural cursor halo is / isn't rendered. The halo has no
+ * dedicated class; nodeOverlays toggles `useq-hide-bracket-match` on `.cm-editor`
+ * precisely when a highlight polygon is drawn (nodeOverlays.ts:755) — the
+ * sanctioned DOM projection of "a structural node is focused", i.e. the production
+ * cursorFromSelection path the YAML corpus never runs (M2-GT#3/#6). Measurement is
+ * rAF-debounced; the web-first assertion auto-retries.
+ */
+export async function expectStructuralHalo(page: Page, active: boolean): Promise<void> {
+  const editor = page.locator("#panel-main-editor .cm-editor");
+  if (active) await expect(editor).toHaveClass(/useq-hide-bracket-match/);
+  else await expect(editor).not.toHaveClass(/useq-hide-bracket-match/);
+}
+
+/**
+ * Place the caret `presses` positions left of the document end. Click focuses the
+ * editor and fires a selectionSet (waking cursorFromSelection); Control+End then
+ * normalises to the true end regardless of where the click landed; ArrowLeft×presses
+ * lands a deterministic character offset. For the single-form docs the structural
+ * tests use, this makes the cursorFromSelection snap target unambiguous (M2-GT#7).
+ */
+export async function placeCaretLeftFromDocEnd(page: Page, presses: number): Promise<void> {
+  const editor = page.locator("#panel-main-editor .cm-content");
+  await editor.click();
+  await page.keyboard.press("Control+End");
+  for (let i = 0; i < presses; i++) await page.keyboard.press("ArrowLeft");
+}
+
+/**
+ * Seed a deliberately corrupt (non-JSON) value under a storage key so the boot-time
+ * persistence.load hits its catch path (persistence.ts:120). Thin wrapper over
+ * seedLocalStorage. Applies on navigation via addInitScript — do NOT use with
+ * page.reload() (it re-seeds every load; M2-GT#10 Consequence B).
+ */
+export async function seedCorruptStorage(
+  context: BrowserContext,
+  key: string,
+  rawValue: string,
+): Promise<void> {
+  await seedLocalStorage(context, { [key]: rawValue });
+}
+
+/**
+ * Begin capturing browser console messages. Attach BEFORE the navigation that
+ * should emit them. Returns a live array of "type: text" strings.
+ */
+export function startConsoleCapture(page: Page): string[] {
+  const messages: string[] = [];
+  page.on("console", (msg) => messages.push(`${msg.type()}: ${msg.text()}`));
+  return messages;
+}
