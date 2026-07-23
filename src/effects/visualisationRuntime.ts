@@ -149,6 +149,15 @@ export function resetLocalTime(): void {
   localElapsedSeconds = 0;
   lastLocalSampleTime = null;
   lastCompletedSampleTime = null;
+  // transport §1.5: Stop resets the clock — project t=0 into the vis store
+  // even while the clock is inactive, otherwise the progress display stays
+  // frozen at its last value and Stop is indistinguishable from Pause.
+  updateTime(0);
+  setLastChangeKind("time", {
+    currentTimeSeconds: 0,
+    displayTimeSeconds: 0,
+  });
+  if (running) requestSampleAt(0, { replace: true, projectFuture: true });
 }
 
 export function isLocalTimeActive(): boolean {
