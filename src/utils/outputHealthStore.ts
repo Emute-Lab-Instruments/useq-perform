@@ -5,11 +5,11 @@
  * d1-d8, s1-s4, etc.). UI components can subscribe to this store to
  * render per-output health indicators.
  *
- * Health states:
+ * Health states (failure-model.md §5.1):
  * - `idle`     — no recent activity
  * - `running`  — output was recently evaluated successfully
- * - `fallback` — output fell back to a simpler evaluation path
- * - `error`    — output has active diagnostics (warnings/errors)
+ * - `fallback` — active program errored; output is running its LKG program
+ * - `error`    — no LKG available; output holds its last valid sample
  */
 
 import { createStore } from "solid-js/store";
@@ -44,12 +44,22 @@ export { outputHealth, setOutputHealth };
 // ---------------------------------------------------------------------------
 
 /**
+ * Active-diagnostic wire entries (`useq_active_diagnostics()`, see
+ * `src-useq/wasm/wasm_wrapper.cpp`) carry per-output attribution beyond the
+ * declared {@link UseqDiagnostic} span fields: `output` names the affected
+ * output and `state` is the engine's reported health (`"fallback"` when the
+ * LKG value was substituted, `"error"` when no LKG is available —
+ * failure-model.md §5.1).
+ */
+type ActiveDiagnostic = UseqDiagnostic & { output?: string; state?: string };
+
+/**
  * Refresh output health from active diagnostics returned by the WASM
  * interpreter. Call this once per animation frame.
  *
- * Outputs with diagnostics are marked as `error`; outputs that previously
- * had errors but no longer appear in the diagnostics map are cleared back
- * to `idle`.
+ * Outputs named by active diagnostics are marked per the engine's reported
+ * state (`fallback`/`error`); outputs that no longer appear are cleared back
+ * to `idle` (failure-model.md §3.3 — fallback tracking is per-pass).
  */
 let _prevDiagsRef: UseqDiagnostic[] | null = null;
 
@@ -62,21 +72,44 @@ export function refreshOutputHealth(
   _prevDiagsRef = diagnostics;
 
   const hasDiags = Array.isArray(diagnostics) && diagnostics.length > 0;
-  const hasErrorEntries = Object.values(outputHealth).some(e => e.health === "error");
-  if (!hasDiags && !hasErrorEntries) return;
+  const hasFailingEntries = Object.values(outputHealth).some(
+    e => e.health === "error" || e.health === "fallback",
+  );
+  if (!hasDiags && !hasFailingEntries) return;
 
   const now = Date.now();
 
-  // Clear previously errored outputs when no diagnostics are active
-  if (!hasDiags) {
-    for (const [name, entry] of Object.entries(outputHealth)) {
-      if (entry.health === "error") {
-        setOutputHealth(name, {
-          health: "idle",
-          message: undefined,
-          lastUpdated: now,
-        });
+  // Project active diagnostics onto per-output health. Presence in the
+  // active set means the engine substituted LKG on the most recent pass, so
+  // default to `fallback` unless the engine explicitly reports `error`.
+  const failing = new Set<string>();
+  if (hasDiags) {
+    for (const diag of diagnostics as ActiveDiagnostic[]) {
+      const { output, state, message } = diag;
+      if (!output) continue;
+      failing.add(output);
+      const health: OutputHealth = state === "error" ? "error" : "fallback";
+      const current = outputHealth[output];
+      // Only write on a real transition — every write retriggers the
+      // gutter's reactive redraw.
+      if (current?.health !== health || current.message !== message) {
+        setOutputHealth(output, { health, message, lastUpdated: now });
       }
+    }
+  }
+
+  // Recovery: previously failing outputs absent from the active set return
+  // to idle.
+  for (const [name, entry] of Object.entries(outputHealth)) {
+    if (
+      (entry.health === "error" || entry.health === "fallback") &&
+      !failing.has(name)
+    ) {
+      setOutputHealth(name, {
+        health: "idle",
+        message: undefined,
+        lastUpdated: now,
+      });
     }
   }
 }
