@@ -118,6 +118,13 @@ export interface EngineAutoplayListenerDependencies {
       }
     | null;
   /**
+   * Return whether the current editor program contains a synth form. Audio
+   * bring-up is gated by this predicate so ordinary output visualisation
+   * (for example `(a1 bar)`) does not create a suspended AudioContext or
+   * steal the local visualisation clock.
+   */
+  readonly shouldAttemptResume?: () => boolean;
+  /**
    * EventTarget to register the capture-phase listeners on. Defaults
    * to `document` in browser environments. Tests pass a fake.
    */
@@ -153,12 +160,14 @@ let installed: InstalledListeners | null = null;
  *   4. Calls `resumeOnUserActivation()` on `suspended` services.
  */
 function makeListener(
-  deps: Required<Pick<EngineAutoplayListenerDependencies, "getActiveSynthesisService">>,
+  deps: Required<Pick<EngineAutoplayListenerDependencies, "getActiveSynthesisService">> &
+    Pick<EngineAutoplayListenerDependencies, "shouldAttemptResume">,
   _eventName: "keydown" | "pointerdown",
 ): (event: TrustedEventLike) => void {
   return (event: TrustedEventLike) => {
     // VAL-ENGINE-019: synthetic events cannot grant activation.
     if (!event.isTrusted) return;
+    if (deps.shouldAttemptResume && !deps.shouldAttemptResume()) return;
     const service = deps.getActiveSynthesisService();
     if (service === null) return;
     // Only the `suspended` state can transition to `running` via
@@ -200,13 +209,18 @@ export function installEngineAutoplayListener(
     return;
   }
   const getActive = deps.getActiveSynthesisService ?? getActiveSynthesisService;
+  const shouldAttemptResume = deps.shouldAttemptResume;
   const target = deps.eventTarget ?? getDefaultEventTarget();
   if (target === null) {
     // Non-browser environment with no injected target: nothing to do.
     return;
   }
-  const keydownListener = makeListener({ getActiveSynthesisService: getActive }, "keydown");
-  const pointerdownListener = makeListener({ getActiveSynthesisService: getActive }, "pointerdown");
+  const listenerDeps = {
+    getActiveSynthesisService: getActive,
+    shouldAttemptResume,
+  };
+  const keydownListener = makeListener(listenerDeps, "keydown");
+  const pointerdownListener = makeListener(listenerDeps, "pointerdown");
   // Capture phase: see events before any other handler can re-dispatch
   // or swallow them. The capture flag is part of the VAL-ENGINE-017/018
   // contract ("real capture-phase keydown/pointerdown").

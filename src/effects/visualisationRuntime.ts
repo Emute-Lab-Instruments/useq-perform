@@ -107,7 +107,7 @@ let lastCompletedSampleTime: number | null = null;
 //     because it measures actual render load, not ModuLisp time —
 //     freezing it would make adaptive quality hallucinate 0ms frames
 //     while frozen and one giant frame on resume.
-//   - When the synthesis engine owns time (VAL-ENGINE-002), the
+//   - When the running synthesis engine owns time (VAL-ENGINE-002), the
 //     local-time branch in `tick` is skipped entirely and the seam is
 //     inert; the hook layer refuses to freeze/step in that state.
 
@@ -277,11 +277,12 @@ function tick(): void {
   frameCount++;
 
   if (localTimeActive && shouldAdvanceLocalTime()) {
-    // VAL-ENGINE-002: while the synthesis engine is running or suspended,
-    // audio frames own ModuLisp time. rAF stays presentation-only — it
-    // still paints and polls diagnostics, but it never advances a second
-    // live timeline. `shouldAdvanceLocalTime()` reads the typed engine
-    // state store and returns false when audio is the master clock.
+    // VAL-ENGINE-002: while the synthesis engine is running, audio frames
+    // own ModuLisp time. A suspended engine has no advancing audio frame,
+    // so rAF continues to drive the local visualisation clock until sound
+    // is actually running. Outside this branch rAF still paints and polls
+    // diagnostics, but it never advances a second live timeline while
+    // `shouldAdvanceLocalTime()` reports that audio owns the clock.
     //
     // Local time reads through the deterministic clock seam (`nowMs`),
     // so a frozen test clock holds this branch still while the rAF loop

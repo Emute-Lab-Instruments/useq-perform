@@ -191,11 +191,13 @@ underrun would be structural. Visualisation and probe sampling read from
 the same producer/SAB, so there is exactly **one** live executor
 instance and no WASM↔WASM [state-sync](state-sync.md) problem.
 
-4.2 **Clock domain — audio is master.** While the engine runs, the audio
+4.2 **Clock domain — audio is master.** While the engine is `running`, the audio
 frame counter is the master timeline: transport time is a function of
 audio frame (`t = f(currentFrame)`, the frame→beat map owned by the
 transport machine, [transport.md](transport.md)). The internal rAF clock
-([MAIN.md](MAIN.md)) drives time only when the engine is off. This
+([MAIN.md](MAIN.md)) drives time whenever the audio producer is not running
+(including `off`, `suspended`, and `error`). A suspended AudioContext has
+not started producing frames, so it cannot own the timeline. This
 removes `AudioContext.currentTime` vs `performance.now()` drift by
 construction.
 
@@ -376,7 +378,9 @@ opportunistically until it succeeds). On rejection the engine stays
 chiefly for gamepad-only sessions (gamepad input cannot grant
 activation), that any click or keypress will enable sound. A restored
 program never auto-resumes on load; it resumes on the first
-interaction.
+interaction. Output-only programs such as `(a1 bar)` do not create an
+AudioContext merely because the editor receives a click; their
+visualisation stays on the browser-local clock.
 
 ---
 

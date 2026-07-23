@@ -227,6 +227,17 @@ describe("engineAutoplayListener — VAL-ENGINE-019: programmatic triggers canno
     expect(service.resumeOnUserActivation).not.toHaveBeenCalled();
   });
 
+  it("does NOT bring up audio for an ordinary output-only program", () => {
+    teardownEngineAutoplayListener();
+    installEngineAutoplayListener({
+      ...buildDependencies(service, target),
+      shouldAttemptResume: () => false,
+    });
+    service.state = "off";
+    target.dispatchEvent(createTrustedEvent("pointerdown", true));
+    expect(service.resumeOnUserActivation).not.toHaveBeenCalled();
+  });
+
   it("does NOT resume when the engine is off (capability absent)", () => {
     // When audio capability is absent, no service is constructed; the
     // accessor returns null and the listener no-ops before calling resume.

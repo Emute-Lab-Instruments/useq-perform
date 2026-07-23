@@ -8,9 +8,9 @@
  *                    nor advances a second timeline.
  *
  * The tests exercise every engine state and confirm that:
- *   - rAF's local-time mode is allowed when audio is `off` or `error`;
- *   - rAF's local-time mode is forbidden when audio is `running` or
- *     `suspended` (audio owns the timeline);
+ *   - rAF's local-time mode is allowed when audio is `off`, `suspended`,
+ *     or `error`;
+ *   - rAF's local-time mode is forbidden only when audio is `running`;
  *   - the helper reads the typed engine state store, so it tracks
  *     engine transitions deterministically.
  */
@@ -57,10 +57,13 @@ describe("audioClockPolicy / VAL-ENGINE-002", () => {
     expect(audioIsMasterClock()).toBe(true);
   });
 
-  it("forbids local-time advancement when engine is suspended", () => {
+  it("keeps local-time advancement while engine is suspended", () => {
     publish("suspended");
-    expect(shouldAdvanceLocalTime()).toBe(false);
-    expect(audioIsMasterClock()).toBe(true);
+    // AudioContext creation puts the engine in suspended before a trusted
+    // activation can start the producer. There is no audio frame clock yet,
+    // so a visualisation already running on rAF must keep moving.
+    expect(shouldAdvanceLocalTime()).toBe(true);
+    expect(audioIsMasterClock()).toBe(false);
   });
 
   it("allows local-time advancement when engine is in error", () => {
@@ -76,7 +79,7 @@ describe("audioClockPolicy / VAL-ENGINE-002", () => {
     publish("off");
     expect(shouldAdvanceLocalTime()).toBe(true);
     publish("suspended");
-    expect(shouldAdvanceLocalTime()).toBe(false);
+    expect(shouldAdvanceLocalTime()).toBe(true);
     publish("running");
     expect(shouldAdvanceLocalTime()).toBe(false);
     publish("error");

@@ -15,7 +15,8 @@
 import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
 import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepository.ts';
-import { initEditorPanel, setEditor } from '../lib/editorStore.ts';
+import { editorSession, initEditorPanel, setEditor } from '../lib/editorStore.ts';
+import { recogniseStatefulForms } from '../editors/extensions/stateIdentity/identityClassify.ts';
 import { attachBridgeToEditor, installPageLifecycleHandlers } from '../effects/liveEditRuntime.ts';
 import { createGamepadPipeline } from '../lib/gamepad/index.ts';
 import { bindGamepadNavigation, hideSystemCursor } from '../editors/gamepadNavigation.ts';
@@ -65,6 +66,20 @@ export interface BootstrapPlan {
   seedDefaultNoModuleExpressions: boolean;
   attemptHardwareReconnect: boolean;
   showUnsupportedBrowserWarning: boolean;
+}
+
+/**
+ * Audio activation is only relevant once the editor contains a real synth
+ * form. Use the same tree-aware classifier as the editor's state-identity
+ * sidecar so `(synth ...)` inside a comment/string or a malformed partial
+ * form cannot create a suspended AudioContext on an ordinary editor click.
+ */
+function editorContainsSynthForm(): boolean {
+  const view = editorSession.view;
+  return (
+    view !== null &&
+    recogniseStatefulForms(view.state).some(({ kind }) => kind === "synth")
+  );
 }
 
 export function resolveBootstrapPlan(
@@ -375,7 +390,13 @@ export async function bootstrap(): Promise<BootstrapResult> {
       const { installEngineAutoplayListener } = await import(
         "../effects/engineAutoplayListener.ts"
       );
-      installEngineAutoplayListener();
+      installEngineAutoplayListener({
+        // Autoplay recovery is for the synthesis engine only. Ordinary
+        // output expressions use the browser-local rAF clock and must not
+        // create a suspended AudioContext merely because the editor was
+        // clicked.
+        shouldAttemptResume: editorContainsSynthForm,
+      });
     } catch (error) {
       reportBootstrapFailure("synthesis-service", error);
     }

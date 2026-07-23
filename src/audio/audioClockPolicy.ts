@@ -37,14 +37,16 @@ import { engineStateStore } from "../contracts/synthesisChannels";
  *
  * The policy is:
  *
- *   - When the synthesis engine is `running` or `suspended`, audio
- *     frames own the timeline. Local-time mode must NOT advance a
- *     second timeline. Returns `false`.
+ *   - When the synthesis engine is `running`, audio frames own the
+ *     timeline. Local-time mode must NOT advance a second timeline.
+ *     Returns `false`.
  *
- *   - When the synthesis engine is `off` (audio capability absent or
- *     AudioContext never created) or `error` (engine failed; the
- *     producer is no longer advancing time), local-time mode is the
- *     only clock and may advance. Returns `true`.
+ *   - When the synthesis engine is `off`, `suspended`, or `error`, the
+ *     audio producer is not advancing the timeline, so local-time mode
+ *     is the only clock and may advance. `suspended` is especially
+ *     important during autoplay bring-up: creating an AudioContext
+ *     must not freeze an already-running visualisation before the user
+ *     has activated sound.
  *
  * The `error` case allows local-time mode to keep the visualisation
  * sampler responsive for diagnostics after a producer failure, while
@@ -54,7 +56,7 @@ import { engineStateStore } from "../contracts/synthesisChannels";
  */
 export function shouldAdvanceLocalTime(): boolean {
   const state = engineStateStore.current.state;
-  return state === "off" || state === "error";
+  return state !== "running";
 }
 
 /**
@@ -66,5 +68,5 @@ export function shouldAdvanceLocalTime(): boolean {
  */
 export function audioIsMasterClock(): boolean {
   const state = engineStateStore.current.state;
-  return state === "running" || state === "suspended";
+  return state === "running";
 }

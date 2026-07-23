@@ -75,6 +75,68 @@
   opacity: 0.7;
 }
 
+/* Synthesis engine state chip. It belongs to the transport family and must
+ * remain a real pointer target even though the toolbar backdrop lets clicks
+ * fall through to the editor. */
+#panel-top-toolbar #engine-indicator-root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  z-index: 1;
+}
+
+#panel-top-toolbar .engine-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  min-height: 1.8em;
+  padding: 0.25em 0.6em;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-border-radius);
+  background: var(--panel-control-bg);
+  color: var(--text-primary);
+  font-family: var(--code-font);
+  font-size: 0.78em;
+  line-height: 1;
+  pointer-events: auto;
+  user-select: none;
+}
+
+#panel-top-toolbar .engine-indicator-clickable {
+  cursor: pointer;
+}
+
+#panel-top-toolbar .engine-indicator-clickable:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+#panel-top-toolbar .engine-indicator-disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+#panel-top-toolbar .engine-indicator-dot {
+  width: 0.65em;
+  height: 0.65em;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0.45em currentColor;
+}
+
+#panel-top-toolbar .engine-indicator-suspended {
+  color: #ffd54f;
+}
+
+#panel-top-toolbar .engine-indicator-running {
+  color: #69f0ae;
+}
+
+#panel-top-toolbar .engine-indicator-error {
+  color: #ff8a80;
+}
+
 .toolbar-row {
     display: flex;
     gap: 5px;

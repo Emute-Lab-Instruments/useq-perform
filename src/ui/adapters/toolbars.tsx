@@ -17,6 +17,7 @@ import {
 } from "../../contracts/runtimeChannels";
 import {
   engineStateChanged,
+  engineStateStore,
   type EngineStateSnapshot,
 } from "../../contracts/synthesisChannels";
 import { getActiveSynthesisService } from "../../runtime/activeSynthesisService";
@@ -237,9 +238,10 @@ function ensureEngineIndicatorRoot(): HTMLElement {
   if (existing) return existing;
   const el = document.createElement("div");
   el.id = ENGINE_INDICATOR_ROOT_ID;
-  // Mount inside the transport toolbar area when it exists so the
-  // indicator sits visually with the transport-family controls.
-  const transport = document.getElementById(TRANSPORT_ROOT_ID);
+  // Mount inside the actual fixed toolbar, not its normal-flow mount root,
+  // so the chip stays with the transport controls and is not hidden behind
+  // the editor. `toolbar.css` re-enables pointer events for this child.
+  const transport = document.getElementById("panel-top-toolbar");
   if (transport) {
     transport.appendChild(el);
   } else {
@@ -258,7 +260,7 @@ const INITIAL_ENGINE_SNAPSHOT: EngineStateSnapshot = Object.freeze({
 
 function WiredEngineIndicator() {
   const [snapshot, setSnapshot] = createSignal<EngineStateSnapshot>(
-    INITIAL_ENGINE_SNAPSHOT,
+    engineStateStore.current ?? INITIAL_ENGINE_SNAPSHOT,
   );
 
   onMount(() => {
