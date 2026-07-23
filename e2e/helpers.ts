@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,6 +38,11 @@ const ISOLATION_HEADERS = {
 
 type BrowserEvalSurface = {
   sampleOutputAtTime(outputName: string, timeSeconds: number): Promise<number>;
+  // Deterministic clock control (A1 hook — src/runtime/browserEvalSurface.ts).
+  freezeClock(): void;
+  stepClock(stepMs: number): Promise<void>;
+  resumeClock(): void;
+  isClockFrozen(): boolean;
 };
 
 declare global {
@@ -361,4 +367,107 @@ export function startConsoleCapture(page: Page): string[] {
   const messages: string[] = [];
   page.on("console", (msg) => messages.push(`${msg.type()}: ${msg.text()}`));
   return messages;
+}
+
+// ==========================================================================
+// A3 additions — deterministic clock control + stale-build precheck
+// (additive — do not modify anything above this line)
+// ==========================================================================
+
+/**
+ * Pin ModuLisp local time at its current value via the A1 devmode hook
+ * (`src/runtime/browserEvalSurface.ts` freezeClock). The rAF loop keeps
+ * painting/polling; only the local-time branch reads a constant. Idempotent.
+ * Throws in-page (surfaced by page.evaluate) if the synthesis engine owns the
+ * timeline (VAL-ENGINE-002) — journeys must keep audio off to use the seam.
+ */
+export async function freezeClock(page: Page): Promise<void> {
+  await page.evaluate(() => window.__useqBrowserEval!.freezeClock());
+}
+
+/**
+ * Advance frozen local time by `stepMs`. The A1 hook resolves only after the
+ * production rAF tick has observed the new time AND the sampling queue has
+ * drained, so the caller may assert immediately with no wall-clock wait.
+ * `stepMs === 0` pumps two frames + a drain without advancing time — a clean
+ * way to settle any in-flight sample before a hold assertion.
+ */
+export async function stepClock(page: Page, stepMs: number): Promise<void> {
+  await page.evaluate((ms) => window.__useqBrowserEval!.stepClock(ms), stepMs);
+}
+
+/**
+ * Restore the real `performance.now` source. The seam re-anchors so local time
+ * continues from the frozen value with no jump. No-op when not frozen.
+ */
+export async function resumeClock(page: Page): Promise<void> {
+  await page.evaluate(() => window.__useqBrowserEval!.resumeClock());
+}
+
+/** Read the current deterministic-clock freeze state (A1 hook). */
+export function isClockFrozen(page: Page): Promise<boolean> {
+  return page.evaluate(() => window.__useqBrowserEval!.isClockFrozen());
+}
+
+/**
+ * Artifact-freshness precheck for the classic stale-bundle trap. The E2E suite
+ * serves the prebuilt `public/` tree (no webServer that rebuilds), so if the
+ * app bundle predates a source edit the journeys silently exercise stale code.
+ * `npm run test:e2e` rebuilds first; a bare `npx playwright test` does NOT — so
+ * specs that depend on freshly-built behaviour guard themselves with this.
+ *
+ * Pure fs mtime comparison (no page) so it can run in a `beforeAll`: fails fast
+ * with an actionable message when `public/solid-dist/bundle.js` is older than
+ * the newest file under `src/`.
+ *
+ * NOT wired into the shared boot helpers: other agents actively edit `src/`, so
+ * a stale bundle is the *expected* state during parallel dev, and gating the
+ * whole suite on it would turn every existing journey red for an unrelated
+ * reason. It belongs only in specs whose assertions require the fresh build.
+ */
+export function assertFreshBuild(): void {
+  const bundlePath = path.resolve(PUBLIC_ROOT, "solid-dist/bundle.js");
+  const srcRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../src",
+  );
+
+  let bundleMtimeMs: number;
+  try {
+    bundleMtimeMs = statSync(bundlePath).mtimeMs;
+  } catch {
+    throw new Error(
+      `assertFreshBuild: ${bundlePath} does not exist. Build the app before ` +
+        "running E2E: `npm run build:assets && npx vite build` (or `npm run test:e2e`).",
+    );
+  }
+
+  let newestSrcMtimeMs = 0;
+  let newestSrcPath = "";
+  const stack: string[] = [srcRoot];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile()) {
+        const m = statSync(full).mtimeMs;
+        if (m > newestSrcMtimeMs) {
+          newestSrcMtimeMs = m;
+          newestSrcPath = full;
+        }
+      }
+    }
+  }
+
+  if (bundleMtimeMs < newestSrcMtimeMs) {
+    throw new Error(
+      "assertFreshBuild: the app bundle is STALE. " +
+        `${newestSrcPath} (${new Date(newestSrcMtimeMs).toISOString()}) is newer ` +
+        `than public/solid-dist/bundle.js (${new Date(bundleMtimeMs).toISOString()}). ` +
+        "Rebuild before running these journeys: " +
+        "`npm run build:assets && npx vite build` (or run via `npm run test:e2e`).",
+    );
+  }
 }
