@@ -146,7 +146,10 @@ function migrateLegacySettings(): AppSettingsPatch {
 export function readPersistedUserSettings(options: {
   bypassLocalStorage?: boolean;
 } = {}): AppSettings | null {
-  if (typeof window === "undefined" || shouldBypassLocalStorage(options)) {
+  // persistence.md §1.7: ?nosave is a write gate only. Reads must still return
+  // pre-existing persisted state, so the bypass flag does NOT short-circuit here
+  // — it is threaded to the write-back below, which is where it must no-op.
+  if (typeof window === "undefined") {
     return null;
   }
 
@@ -182,7 +185,7 @@ export function readPersistedUserSettings(options: {
   }
 
   const normalized = normalizeUserSettings(loaded);
-  writePersistedUserSettings(normalized);
+  writePersistedUserSettings(normalized, options);
   return normalized;
 }
 

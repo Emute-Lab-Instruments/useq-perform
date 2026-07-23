@@ -87,12 +87,13 @@ describe("configLoader", () => {
 
     expect(result.settingsSources).toEqual([
       "defaults",
+      "local-storage",
       "url-code",
       "nosave",
     ]);
   });
 
-  it("skips local storage and disables persistence when ?nosave is present", async () => {
+  it("reads persisted state but disables persistence when ?nosave is present", async () => {
     const settingsModule = await import("../lib/appSettings.ts");
     window.localStorage.setItem(
       settingsModule.settingsStorageKey,
@@ -104,8 +105,9 @@ describe("configLoader", () => {
     const { loadConfiguration } = await import("./appSettingsRepository.ts");
     const config = await loadConfiguration();
 
-    expect(config.editor.fontSize).toBe(31);
-    expect(config.editor.code).toBe(defaultMainEditorStartingCode);
+    // persistence.md §1.7: nosave gates writes only — persisted state is still read
+    expect(config.editor.fontSize).toBe(12);
+    expect(config.editor.code).toBe("(local-only)");
     expect(config.storage.saveCodeLocally).toBe(false);
   });
 
