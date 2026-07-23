@@ -24,6 +24,10 @@
  *      synthesis service is active) so the caller can assert revision,
  *      epoch, instanceId, peak/RMS changes before advancing. When audio
  *      capability is absent the telemetry is `null` (degraded profile).
+ *   5. Exposes deterministic clock control (freezeClock / stepClock /
+ *      resumeClock / isClockFrozen — e2e axe item A1) over the single
+ *      time-source seam in `src/effects/visualisationRuntime.ts`, so
+ *      browser journeys never need wall-clock waits.
  *
  * Outside devmode this module is inert: `installBrowserEvalSurface` is
  * only called from bootstrap when `devmode === true`, and production
@@ -39,6 +43,11 @@ import { EditorSelection } from "@codemirror/state";
 
 import { editorSession } from "../lib/editorStore.ts";
 import { evaluate } from "../effects/editorEvaluation.ts";
+import {
+  setVisualisationNowSource,
+  _drainForTests as drainVisualisationSampling,
+} from "../effects/visualisationRuntime.ts";
+import { audioIsMasterClock } from "../audio/audioClockPolicy.ts";
 import { getActiveSynthesisService } from "./activeSynthesisService.ts";
 import { getActiveWasmRuntimePort } from "./activeWasmRuntimePort.ts";
 
@@ -99,6 +108,61 @@ export interface BrowserEvalSurface {
    * installing a second test runtime or mutating interpreter state.
    */
   sampleOutputAtTime(outputName: string, timeSeconds: number): Promise<number>;
+
+  // ── Deterministic clock control (e2e axe item A1) ─────────────────
+  //
+  // These hooks drive the single time-source seam in
+  // `src/effects/visualisationRuntime.ts` (`setVisualisationNowSource`)
+  // so browser journeys never need wall-clock waits for time-driven
+  // behaviour. Semantics:
+  //
+  //   - Freezing pins ModuLisp *local* time at its current value. The
+  //     rAF loop keeps running — it still paints, polls diagnostics,
+  //     and drains the sampling queue — but the local-time branch reads
+  //     a constant, so `visStore.currentTime` holds.
+  //   - Stepping advances the frozen time source; the *production* rAF
+  //     tick then observes the new time and runs `updateTime` +
+  //     `requestLocalSamplesThrough` exactly as if real frames had
+  //     elapsed. There is no parallel stepping implementation.
+  //   - Transport interplay: Stop under a frozen clock re-pins t=0
+  //     (resetLocalTime reads the frozen source); Play/Pause re-anchor
+  //     against it. All transport clock semantics (transport.md §1.5)
+  //     hold under frozen time.
+  //   - Audio arbitration (VAL-ENGINE-002): while the synthesis engine
+  //     owns the timeline (`running`/`suspended`), freeze/step THROW.
+  //     The worklet clock cannot be frozen from the main thread, and a
+  //     silently non-authoritative frozen clock would let journeys
+  //     assert against the wrong timeline.
+
+  /**
+   * Pin ModuLisp local time at its current value. Idempotent when
+   * already frozen. Throws if the synthesis engine owns the timeline.
+   */
+  freezeClock(): void;
+
+  /**
+   * Advance frozen local time by `stepMs` milliseconds. Resolves after
+   * the production rAF tick has observed the new time and the sampling
+   * queue has fully drained, so callers can assert immediately.
+   *
+   * Whether ModuLisp time actually advances follows production rules:
+   * with transport stopped/paused (local-time mode inactive) the step
+   * is timeline-neutral, exactly like real wall time passing.
+   *
+   * Throws if the clock is not frozen, `stepMs` is not a finite
+   * non-negative number, or the synthesis engine owns the timeline.
+   */
+  stepClock(stepMs: number): Promise<void>;
+
+  /**
+   * Restore the real `performance.now` source. The seam re-anchors so
+   * local time continues from its frozen value without a jump — wall
+   * time that passed while frozen is invisible. No-op when not frozen.
+   */
+  resumeClock(): void;
+
+  /** Whether the deterministic clock is currently frozen. */
+  isClockFrozen(): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +187,35 @@ function placeCursorInsideFirstForm(view: EditorView): void {
     selection: EditorSelection.single(head),
     scrollIntoView: false,
   });
+}
+
+// ── Deterministic clock state ──
+//
+// Module-level so repeated install/teardown cycles (dev hot-reload)
+// share one view of whether the runtime seam currently holds a frozen
+// source. `null` = real time.
+let frozenNowMs: number | null = null;
+
+/**
+ * Resolve on the next animation frame. The visualisation runtime's
+ * pending tick was registered before this callback, so by the time two
+ * of these have resolved the production tick has run at least once
+ * with the current frozen time regardless of rAF registration order.
+ */
+function nextAnimationFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
+function assertClockNotAudioOwned(hook: string): void {
+  if (audioIsMasterClock()) {
+    throw new Error(
+      `${hook}: the synthesis engine owns the timeline (VAL-ENGINE-002) — ` +
+        "the worklet clock cannot be frozen from the main thread, and a " +
+        "non-authoritative frozen rAF clock would assert against the wrong timeline",
+    );
+  }
 }
 
 function buildSurface(): BrowserEvalSurface {
@@ -171,6 +264,50 @@ function buildSurface(): BrowserEvalSurface {
     sampleOutputAtTime(outputName: string, timeSeconds: number): Promise<number> {
       return getActiveWasmRuntimePort().evalOutputAtTime(outputName, timeSeconds);
     },
+
+    freezeClock(): void {
+      if (frozenNowMs !== null) return; // idempotent
+      assertClockNotAudioOwned("freezeClock");
+      frozenNowMs = performance.now();
+      // The installed source reads the mutable `frozenNowMs` so
+      // `stepClock` advances it without re-installing (re-installing
+      // would re-anchor and lose the step).
+      setVisualisationNowSource(() => frozenNowMs ?? performance.now());
+    },
+
+    async stepClock(stepMs: number): Promise<void> {
+      if (typeof stepMs !== "number" || !Number.isFinite(stepMs) || stepMs < 0) {
+        throw new Error(
+          `stepClock: step must be a finite non-negative number of ms, got ${String(stepMs)}`,
+        );
+      }
+      if (frozenNowMs === null) {
+        throw new Error("stepClock: clock is not frozen — call freezeClock() first");
+      }
+      assertClockNotAudioOwned("stepClock");
+      frozenNowMs += stepMs;
+      // Let the running production tick observe the new frozen time —
+      // it advances local time, publishes it via `updateTime`, and
+      // queues catch-up samples through `requestLocalSamplesThrough`,
+      // the exact real-frame code path. Two frames guarantee at least
+      // one committed tick regardless of rAF registration order; the
+      // drain then guarantees every queued sample has been processed.
+      await nextAnimationFrame();
+      await nextAnimationFrame();
+      await drainVisualisationSampling();
+    },
+
+    resumeClock(): void {
+      if (frozenNowMs === null) return; // no-op
+      frozenNowMs = null;
+      // Restoring the default source re-anchors inside the seam, so
+      // local time continues from the frozen value without a jump.
+      setVisualisationNowSource(null);
+    },
+
+    isClockFrozen(): boolean {
+      return frozenNowMs !== null;
+    },
   });
 }
 
@@ -202,4 +339,10 @@ export function teardownBrowserEvalSurface(target: unknown): void {
   if (!target || typeof target !== "object") return;
   const w = target as { __useqBrowserEval?: unknown };
   delete w.__useqBrowserEval;
+  // Never leave a frozen clock behind without its controlling surface
+  // (dev hot-reload replaces the surface; the runtime seam outlives it).
+  if (frozenNowMs !== null) {
+    frozenNowMs = null;
+    setVisualisationNowSource(null);
+  }
 }

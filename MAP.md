@@ -90,7 +90,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `wasmRuntimeWorkerPort.ts` — default `WasmRuntimePort` in browsers with Web Worker support; proxies every method to a dedicated classic Worker hosting the WASM interpreter. The in-process port is the fallback when Workers are unavailable or fail to construct. Diagnostics readback is piped through worker request/response messages.
   - `activeWasmRuntimePort.ts` — read-through accessor returning the active `WasmRuntimePort` (worker-backed by default, in-process fallback). Bootstrap is the only writer.
   - `activeSynthesisService.ts` — same accessor pattern for the synthesis engine service; bootstrap is the only writer.
-  - `browserEvalSurface.ts` — devmode `window`-exposed eval surface used by the first-sound listening guide ([docs/synthesis/LISTENING_GUIDE.md](docs/synthesis/LISTENING_GUIDE.md)).
+  - `browserEvalSurface.ts` — devmode `window.__useqBrowserEval` surface: verified eval route + `sampleOutputAtTime` + deterministic clock hooks (`freezeClock`/`stepClock`/`resumeClock`/`isClockFrozen`) over the visualisationRuntime time-source seam; used by the first-sound listening guide ([docs/synthesis/LISTENING_GUIDE.md](docs/synthesis/LISTENING_GUIDE.md)) and the e2e journeys.
   - `workers/wasmRuntime.worker.ts` + `workers/wasmRuntimeWorkerProtocol.ts` — classic Web Worker hosting the WASM interpreter and the discriminated-union request/response protocol it speaks.
   - `runtimeDiagnostics.ts` — startup/environment diagnostics surface.
   - `startupContext.ts` — URL flag parsing and bootstrap context (incorporates the former `urlParams.ts`).
@@ -99,7 +99,8 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `jsonProtocol.ts` — lightweight in-runtime helpers (distinct from `transport/json-protocol.ts`).
 - `src/effects/` — composable side-effect modules. Framework-agnostic where possible.
   - `transportOrchestrator.ts`, `transportClock.ts` — XState-driven transport state and clock policy.
-  - `localClock.ts` — rAF-driven internal clock when no hardware.
+  - `localClock.ts` — thin API shim over `visualisationRuntime.ts` (internal clock when no hardware).
+  - `visualisationRuntime.ts` — single rAF loop owning render + sampling + local time; all ModuLisp local-time reads go through one injectable time source (`setVisualisationNowSource`, default `performance.now`) — the deterministic clock seam for e2e.
   - `editor.ts`, `editorEvaluation.ts` — editor-side eval orchestration (eslint exception: imports editors).
   - `noneModeGate.ts` — `none`-mode eval gate (rejects eval with the §1.10 "no runtime available" warning) ([docs/specs/runtime-modes.md §1.10](docs/specs/runtime-modes.md)).
   - `standaloneDiagnosticsRouter.ts` — routes unsolicited device→editor `diagnostics` frames (wire §5.9) from `standaloneDiagnostics` channel into the editor inline-diagnostics pipeline via `pushDiagnostics` (eslint exception: imports editors). Initialised once in `appLifecycle.createApp().start()`.

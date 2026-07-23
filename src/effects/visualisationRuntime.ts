@@ -20,6 +20,7 @@
  *   - setLocalTimeMode / resetLocalTime / isLocalTimeActive / getLocalTime
  *   - notifyExternalTimeUpdate (hardware path)
  *   - requestVisualisationRender / pauseVisualisationRender
+ *   - setVisualisationNowSource (deterministic clock seam — see below)
  */
 
 import { dbg } from "../lib/debug.ts";
@@ -88,6 +89,56 @@ let lastLocalSampleTime: number | null = null;
 // drain rather than grow unboundedly.
 let lastCompletedSampleTime: number | null = null;
 
+// ── Deterministic clock seam (e2e axe item A1) ──────────────────────
+//
+// Every ModuLisp *local-time* read in this module goes through this one
+// time-source function. The default is real `performance.now`, so
+// production behaviour is unchanged. Tests may swap in a frozen/stepped
+// source via `setVisualisationNowSource`; the devmode browser-eval
+// surface (`src/runtime/browserEvalSurface.ts`) builds its
+// freezeClock/stepClock/resumeClock hooks on top of exactly this
+// setter. The seam is deliberately a single function so deterministic
+// time cannot diverge from production timing semantics — every
+// local-time consumer (tick advance, mode re-anchor, reset) shares it.
+//
+// Scope decisions (normative for the seam):
+//   - The seam claims ONLY the rAF-local timeline. Frame-pressure
+//     telemetry (`recordTickElapsed`) stays on real `performance.now`
+//     because it measures actual render load, not ModuLisp time —
+//     freezing it would make adaptive quality hallucinate 0ms frames
+//     while frozen and one giant frame on resume.
+//   - When the synthesis engine owns time (VAL-ENGINE-002), the
+//     local-time branch in `tick` is skipped entirely and the seam is
+//     inert; the hook layer refuses to freeze/step in that state.
+
+export type VisualisationNowSource = () => number;
+
+const defaultNowSource: VisualisationNowSource = () => performance.now();
+let nowSource: VisualisationNowSource = defaultNowSource;
+
+function nowMs(): number {
+  return nowSource();
+}
+
+/**
+ * Install (or, with `null`, restore the default) local-time source.
+ *
+ * Swapping sources re-anchors `localResetMs` so the derived elapsed
+ * time (`now - localResetMs`) is identical under the old and new
+ * sources at the moment of the swap. This means resuming real time
+ * after a freeze never jumps: wall-clock time that passed while frozen
+ * is invisible to ModuLisp local time.
+ */
+export function setVisualisationNowSource(
+  source: VisualisationNowSource | null,
+): void {
+  const previousNow = nowMs();
+  nowSource = source ?? defaultNowSource;
+  if (localResetMs !== null) {
+    localResetMs = nowMs() - (previousNow - localResetMs);
+  }
+}
+
 // ── Sampling coalescing ─────────────────────────────────────────────
 
 interface SampleRequest {
@@ -133,10 +184,10 @@ export function setLocalTimeMode(active: boolean): void {
   localTimeActive = active;
   if (active) {
     if (localResetMs === null) {
-      localResetMs = performance.now();
+      localResetMs = nowMs();
       localElapsedSeconds = 0;
     } else {
-      localResetMs = performance.now() - localElapsedSeconds * 1000;
+      localResetMs = nowMs() - localElapsedSeconds * 1000;
     }
     lastLocalSampleTime = null;
     lastCompletedSampleTime = null;
@@ -145,7 +196,7 @@ export function setLocalTimeMode(active: boolean): void {
 }
 
 export function resetLocalTime(): void {
-  localResetMs = localTimeActive ? performance.now() : null;
+  localResetMs = localTimeActive ? nowMs() : null;
   localElapsedSeconds = 0;
   lastLocalSampleTime = null;
   lastCompletedSampleTime = null;
@@ -209,16 +260,18 @@ function tick(): void {
   if (!running) return;
   scheduleNextTick();
 
-  const now = performance.now();
-  // Measure the elapsed time *between* committed ticks (i.e. the
-  // realised frame interval) and feed the pressure detector. We do this
+  // Frame-pressure telemetry deliberately bypasses the deterministic
+  // clock seam: it measures the realised wall-clock frame interval
+  // (actual render load), which stays true even while ModuLisp local
+  // time is frozen by a test. We measure *between* committed ticks
   // before updating `lastTickMs` so we have access to the previous
   // committed timestamp. Skip the very first committed tick (when
   // `lastTickMs` is 0 from startup).
+  const wallNow = performance.now();
   if (lastTickMs > 0) {
-    recordTickElapsed(now - lastTickMs);
+    recordTickElapsed(wallNow - lastTickMs);
   }
-  lastTickMs = now;
+  lastTickMs = wallNow;
 
   if (import.meta.env.DEV) perf.begin("frame-tick");
   frameCount++;
@@ -229,7 +282,12 @@ function tick(): void {
     // still paints and polls diagnostics, but it never advances a second
     // live timeline. `shouldAdvanceLocalTime()` reads the typed engine
     // state store and returns false when audio is the master clock.
-    localElapsedSeconds = (now - (localResetMs ?? 0)) / 1000;
+    //
+    // Local time reads through the deterministic clock seam (`nowMs`),
+    // so a frozen test clock holds this branch still while the rAF loop
+    // keeps painting and polling, and a stepped clock drives it through
+    // this exact production path.
+    localElapsedSeconds = (nowMs() - (localResetMs ?? 0)) / 1000;
     updateTime(localElapsedSeconds);
     setLastChangeKind("time", {
       currentTimeSeconds: localElapsedSeconds,
@@ -467,6 +525,7 @@ export async function _drainForTests(): Promise<void> {
 
 export function _resetForTests(): void {
   stopVisualisationRuntime();
+  nowSource = defaultNowSource;
   localTimeActive = false;
   localResetMs = null;
   localElapsedSeconds = 0;
