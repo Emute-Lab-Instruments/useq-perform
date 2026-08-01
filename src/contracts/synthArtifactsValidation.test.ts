@@ -15,12 +15,13 @@ const ROUTER: NodeDefDescriptor = Object.freeze({
   ...OSC_SINE_NODEDEF_DESCRIPTOR,
   name: "test/router",
   audioInputs: 2,
+  audioInputNames: Object.freeze(["in", "sidechain"]),
   params: Object.freeze([]),
 });
 
 const descriptors = new Map<string, NodeDefDescriptor>([
-  ["osc/sine\u00001", OSC_SINE_NODEDEF_DESCRIPTOR],
-  ["test/router\u00001", ROUTER],
+  [`osc/sine\u0000${OSC_SINE_NODEDEF_DESCRIPTOR.version}`, OSC_SINE_NODEDEF_DESCRIPTOR],
+  [`test/router\u0000${ROUTER.version}`, ROUTER],
 ]);
 
 function findDescriptor(name: string, version: number): NodeDefDescriptor | null {
@@ -31,8 +32,8 @@ function osc(identity: string) {
   return {
     identity,
     def: "osc/sine",
-    version: 1,
-    audio_inputs: 0,
+    version: OSC_SINE_NODEDEF_DESCRIPTOR.version,
+    audio_inputs: OSC_SINE_NODEDEF_DESCRIPTOR.audioInputs,
     audio_outputs: 1,
   } as const;
 }
@@ -41,7 +42,7 @@ function router(identity: string) {
   return {
     identity,
     def: "test/router",
-    version: 1,
+    version: ROUTER.version,
     audio_inputs: 2,
     audio_outputs: 1,
   } as const;
@@ -56,6 +57,7 @@ function validPayload(): SynthArtifactsPayload {
       { identity: "lead", param: "freq", rate: "block", smoothing: "step" },
       { identity: "lead", param: "amp", rate: "block", smoothing: "linear" },
     ],
+    connections: [],
   };
 }
 
@@ -64,7 +66,7 @@ function validate(payload: unknown) {
 }
 
 describe("synth artefact boundary validation", () => {
-  it("accepts the current ABI-1 osc/sine payload", () => {
+  it("accepts the current ABI-2 osc/sine payload", () => {
     const payload = validPayload();
     expect(validate(payload)).toEqual({ ok: true, payload });
     expect(isSynthArtifactsPayload(payload)).toBe(true);
@@ -95,7 +97,7 @@ describe("synth artefact boundary validation", () => {
       "forged declaration ports",
       {
         ...validPayload(),
-        declarations: [{ ...osc("lead"), audio_inputs: 1 }],
+        declarations: [{ ...osc("lead"), audio_inputs: 0 }],
       },
     ],
     [
@@ -148,10 +150,11 @@ describe("synth artefact boundary validation", () => {
 
   it("rejects unknown endpoints, out-of-range ports, and multiply-driven inputs", () => {
     const base = {
-      abi: 1,
+      abi: SYNTH_ARTIFACT_ABI_VERSION,
       revision: 1,
       declarations: [osc("source"), osc("other"), router("sink")],
       controls: [],
+      connections: [],
     } satisfies SynthArtifactsPayload;
 
     expect(
@@ -185,7 +188,7 @@ describe("synth artefact boundary validation", () => {
 
   it("accepts acyclic routing and rejects direct and indirect cycles", () => {
     const acyclic = {
-      abi: 1,
+      abi: SYNTH_ARTIFACT_ABI_VERSION,
       revision: 2,
       declarations: [osc("source"), router("middle"), router("sink")],
       controls: [],

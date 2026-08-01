@@ -97,6 +97,8 @@ These helpers are defined in `wasm_wrapper.cpp` and the current build script exp
 | `useq_eval_outputs_time_window` | `"string"` | `["string", "number", "number", "number"]` | Batch evaluate (JSON bridge) |
 | `useq_eval_outputs_time_window_into` | `"number"` | `["string", "number", "number", "number", "number", "number"]` | Batch evaluate (typed buffer) |
 | `useq_tick_and_project` | `"number"` | evolving; see [visualisation.md §7.2](visualisation.md) | Combined live tick + visualisation projection-fork operation |
+| `useq_synth_artifacts` | `"string"` | `[]` | Read the versioned compiler patch/control snapshot |
+| `useq_tick_synth_controls` | `"number"` | `["number", "number", "number"]` | Advance the live VM once and write controls in exact artefact-table order |
 | `useq_last_error` | `"string"` | `[]` | Read last error message |
 | `useq_last_diagnostics` | `"string"` | `[]` | Read diagnostics from the most recent eval |
 | `useq_active_diagnostics` | `"string"` | `[]` | Read currently active per-output diagnostics |
@@ -119,6 +121,13 @@ without mutating live state. See
 [visualisation.md](visualisation.md) and
 `../../src-useq/docs/specs/visualisation-projection.md`.
 
+When browser audio is running, `useq_tick_synth_controls` is the sole live
+advancement operation. The Worker refuses `useq_tick_and_project` during that
+ownership window; visualisation uses read-only time-window evaluation instead.
+The generic runtime may probe the synth-control export, but an audio commit
+fails preparation when it is absent or returns a count different from the
+validated ABI-2 `controls` table.
+
 ### ABI validation
 
 `assertWasmAbi()` from `src/contracts/wasmAbi.ts` is called immediately after `createModule()` resolves and BEFORE `useq_init()`. It throws a descriptive error if any required export is missing, catching ABI drift at instantiation time rather than at first use. (see `src/contracts/wasmAbi.ts` for assertion, `src/runtime/wasmInterpreter.ts` for call site)
@@ -140,7 +149,8 @@ Both `src/effects/transportOrchestrator.ts` and `src/runtime/wasmInterpreter.ts`
 
 The following checks are the minimum guardrail against contract drift:
 
-- `src/contracts/wasmAbi.test.ts` verifies the ABI contract constants match the build script export list, tests ABI validation against mock modules, and ensures required/runtime-probed export sets are disjoint.
+- `src/contracts/wasmAbi.test.ts` verifies ABI contract consistency, tests validation against mock modules, and ensures required/runtime-probed export sets are disjoint. The pinned compiler's tracked build profile and generated capability manifest are the executable export inventory.
+- `src/contracts/generatedAssetPipeline.test.ts` verifies the compiler manifest names the exact clean gitlink and binds the exact built and served interpreter JS/WASM hashes and sizes. It explicitly does not attribute NodeDef provenance to that compiler manifest.
 - `src/runtime/wasmInterpreter.test.ts` instantiates the generated `public/wasm/useq.js` bundle and verifies the batch helper raw exports are actually present.
 - `src/contracts/useqRuntimeContract.test.ts` verifies the shared command set and the hardware-only/WASM-only split.
 - `src-useq/test/hardware/test_json_protocol.cpp` verifies the `hello` I/O contract, `stream-config` output enablement/rate parsing, and that `hello`, `ping`, and `stream-config` parse without `code` while malformed eval requests still fail.
@@ -154,6 +164,6 @@ When firmware work starts in a standalone `uSEQ` clone:
 
 1. Land and validate the firmware change in the standalone repo.
 2. Promote it by advancing the `src-useq/` submodule in `useq-perform`.
-3. Rebuild both generated WASM targets and copy their artefacts: `npm run build:wasm` (Emscripten/emcc; interpreter plus the separate `osc/sine` NodeDef) followed by `npm run build:assets`. The asset copy step fails if any mandatory source artefact is missing.
+3. Rebuild both generated WASM targets and copy their artefacts: `npm run build:wasm` (Emscripten/emcc; interpreter capability manifest plus the separate `osc/sine` NodeDef) followed by `npm run build:assets`. The copy step fails unless the clean pinned compiler commit and exact source/served interpreter bytes match the manifest. The NodeDef remains a separately validated provenance domain.
 4. Cite the pinned `src-useq` commit in the `ergo` task, PR description, or release note for any editor change that depends on firmware behavior.
 5. Audit the submodule state first during any cross-repo investigation; standalone repos are advisory until step 2 is complete.

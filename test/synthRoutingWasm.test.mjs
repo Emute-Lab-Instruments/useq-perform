@@ -20,7 +20,13 @@ async function loadInterpreter() {
   const wasmBinary = readFileSync(resolve(root, "public/wasm/useq.wasm"));
   const glueSource = readFileSync(resolve(root, "public/wasm/useq.js"), "utf8");
   const createModule = new Function(`${glueSource}; return createModule;`)();
-  const mod = await createModule({ wasmBinary });
+  const mod = await createModule({
+    instantiateWasm(imports, receiveInstance) {
+      WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) =>
+        receiveInstance(instance));
+      return {};
+    },
+  });
   mod.ccall("useq_init", null, [], []);
   return mod;
 }
@@ -41,7 +47,7 @@ describe("synth routing through real WASM (M2.2)", () => {
     expect(evalOk('(synth "osc/sine" :name "car" :freq 440 :fm (node "lfo"))')).to.equal(true);
 
     const snap = artifacts();
-    expect(snap.abi).to.equal(1);
+    expect(snap.abi).to.equal(2);
     expect(snap.declarations).to.have.length(2);
     expect(snap.connections).to.deep.equal([
       { from: "lfo", to: "car", port: "fm", port_index: 0 },
@@ -63,6 +69,41 @@ describe("synth routing through real WASM (M2.2)", () => {
     expect(rows).to.deep.equal(["car:freq", "lfo:amp", "lfo:freq"]);
     for (const c of snap.controls) {
       expect(c.rate).to.equal("block");
+    }
+  });
+
+  it("ticks values in exact compiler control-table order", () => {
+    expect(
+      evalOk(
+        '(do (synth "osc/sine" :name "lfo" :freq 2 :amp 0.5) ' +
+          '    (synth "osc/sine" :name "car" :freq 440 :fm (node "lfo")))',
+      ),
+    ).to.equal(true);
+
+    const snap = artifacts();
+    const ptr = mod._malloc(snap.controls.length * Float64Array.BYTES_PER_ELEMENT);
+    try {
+      const written = mod.ccall(
+        "useq_tick_synth_controls",
+        "number",
+        ["number", "number", "number"],
+        [0.25, ptr, snap.controls.length],
+      );
+      expect(written).to.equal(snap.controls.length);
+      const values = Array.from(
+        mod.HEAPF64.subarray(ptr / 8, ptr / 8 + written),
+      );
+      const expectedByControl = new Map([
+        ["lfo:freq", 2],
+        ["lfo:amp", 0.5],
+        ["car:freq", 440],
+      ]);
+      expect(values).to.deep.equal(
+        snap.controls.map((control) =>
+          expectedByControl.get(`${control.identity}:${control.param}`)),
+      );
+    } finally {
+      mod._free(ptr);
     }
   });
 

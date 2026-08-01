@@ -27,7 +27,10 @@ import type {
   TickAndProjectResult,
   TimeSample,
 } from "../../contracts/runtimePorts";
-import type { StateSnapshot } from "../../contracts/runtimeTypes";
+import type {
+  StateSnapshot,
+  SynthProducerControlBinding,
+} from "../../contracts/runtimeTypes";
 
 // ─── Request payloads ──────────────────────────────────────────────────────
 
@@ -185,8 +188,6 @@ export interface ProducerInstallSabRequest {
   id: number;
   /** The shared buffer carrying the synthesis control ABI. */
   controlBuffer: SharedArrayBuffer;
-  /** Block-rate channel names in declared order. */
-  blockRateChannels: readonly string[];
   /** Lookahead in blocks (default taken from the SAB header when omitted). */
   lookaheadBlocks?: number;
   /** Render quantum in frames per block (default 128). */
@@ -222,36 +223,15 @@ export interface ProducerStopRequest {
   id: number;
 }
 
-/**
- * Update the static control values the producer publishes on every block.
- * Values are resolved at eval-commit time, not sampled per block from the
- * interpreter's signal graph (VAL-CROSS-002 static-control model).
- *
- * Since M2.2 the channel namespace is per-(node, param): keys are the
- * composite `controlChannelKey(identity, param)` strings and the optional
- * `blockRateChannels` field re-arms the producer's channel list (in
- * commit-plan order, so the producer's array index equals the SAB channel
- * index) in the same message that delivers the values.
- */
-export interface ProducerSetControlValuesRequest {
-  type: "producerSetControlValues";
-  id: number;
-  /** Composite channel key (`controlChannelKey`) to numeric value. */
-  values: Record<string, number>;
-  /**
-   * Re-armed per-(node, param) channel list in commit-plan order.
-   * Omitted: the producer keeps its current list.
-   */
-  blockRateChannels?: readonly string[];
-}
-
-/** Reserve a control layout/value set for an epoch without publishing it. */
+/** Reserve a compiler-to-SAB control mapping for an epoch. */
 export interface ProducerPrepareCommitRequest {
   type: "producerPrepareCommit";
   id: number;
   epoch: number;
-  values: Record<string, number>;
-  blockRateChannels: readonly string[];
+  /** Exact length of the compiler artefact's ordered `controls` table. */
+  compilerControlCount: number;
+  /** Block-rate rows in compiler-relative order, carrying original indices. */
+  controlBindings: readonly SynthProducerControlBinding[];
 }
 
 /** Drop a prepared producer candidate. Active controls remain unchanged. */
@@ -355,7 +335,6 @@ export type WasmWorkerRequest =
   | GetLiveSlotsRequest
   | ApplyStateSnapshotRequest
   | ProducerInstallSabRequest
-  | ProducerSetControlValuesRequest
   | ProducerPrepareCommitRequest
   | ProducerAbortCommitRequest
   | ProducerStartRequest
@@ -533,11 +512,6 @@ export interface ProducerStartResponse {
   started: boolean;
 }
 
-export interface ProducerSetControlValuesResponse {
-  type: "producerSetControlValues-result";
-  id: number;
-}
-
 export interface ProducerPrepareCommitResponse {
   type: "producerPrepareCommit-result";
   id: number;
@@ -652,7 +626,6 @@ export type WasmWorkerResponse =
   | GetLiveSlotsResponse
   | ApplyStateSnapshotResponse
   | ProducerInstallSabResponse
-  | ProducerSetControlValuesResponse
   | ProducerPrepareCommitResponse
   | ProducerAbortCommitResponse
   | ProducerStartResponse

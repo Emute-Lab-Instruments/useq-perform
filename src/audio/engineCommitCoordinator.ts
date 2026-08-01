@@ -319,6 +319,8 @@ function buildPrefillArray(
 export interface CommitControlChannel {
   readonly identity: string;
   readonly param: string;
+  /** Position in the compiler artefact and tick-control result buffer. */
+  readonly compilerControlIndex: number;
   readonly channel: number;
 }
 
@@ -335,7 +337,7 @@ export interface CommitControlLayout {
   /**
    * Ordered channel table: entry `i` owns SAB block-rate channel `i`.
    * Derived from the artefact's `controls` rows with `rate === "block"`,
-   * grouped in declaration order.
+   * in compiler control-table order.
    */
   readonly channels: readonly CommitControlChannel[];
   /** Identity → this node's channel assignments (subset of `channels`). */
@@ -359,11 +361,10 @@ export interface CommitControlLayout {
 /**
  * Derive the commit layout from the incoming artefact payload.
  *
- * Channel assignment iterates declarations in payload order and, per
- * declaration, its block-rate control rows in payload order — so the
- * table is grouped by node and stable for one commit across the worklet
- * deltas and the producer arm. Fast-rate rows are excluded (no fast-class
- * def exists yet; the fast pool is laid out when one ships).
+ * Channel assignment iterates the compiler control table once, preserving
+ * its order exactly while filtering out fast-rate rows. Each retained row
+ * keeps its original compiler index so samples returned by
+ * `useq_tick_synth_controls` cannot be confused with SAB channel indices.
  */
 export function buildCommitControlLayout(
   payload: Pick<
@@ -377,20 +378,30 @@ export function buildCommitControlLayout(
 
   for (const decl of payload.declarations) {
     audioOutputs.set(decl.identity, decl.audio_outputs);
-    const own: WorkletControlChannel[] = [];
-    for (const ctl of payload.controls) {
-      if (ctl.identity !== decl.identity || ctl.rate !== "block") continue;
-      const channel = channels.length;
-      channels.push({ identity: decl.identity, param: ctl.param, channel });
-      own.push({ param: ctl.param, channel });
-    }
-    if (own.length > 0) {
-      channelsByIdentity.set(decl.identity, own);
-    }
+  }
+  const mutableChannelsByIdentity = new Map<string, WorkletControlChannel[]>();
+  for (let compilerControlIndex = 0;
+    compilerControlIndex < payload.controls.length;
+    compilerControlIndex += 1) {
+    const ctl = payload.controls[compilerControlIndex];
+    if (ctl.rate !== "block") continue;
+    const channel = channels.length;
+    channels.push({
+      identity: ctl.identity,
+      param: ctl.param,
+      compilerControlIndex,
+      channel,
+    });
+    const own = mutableChannelsByIdentity.get(ctl.identity) ?? [];
+    own.push({ param: ctl.param, channel });
+    mutableChannelsByIdentity.set(ctl.identity, own);
+  }
+  for (const [identity, own] of mutableChannelsByIdentity) {
+    channelsByIdentity.set(identity, own);
   }
 
   const audioInputs = new Map<string, WorkletAudioInputWiring[]>();
-  for (const conn of payload.connections ?? []) {
+  for (const conn of payload.connections) {
     const wiring = audioInputs.get(conn.to) ?? [];
     wiring.push({
       port: conn.port_index,

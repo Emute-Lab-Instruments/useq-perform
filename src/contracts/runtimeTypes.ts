@@ -141,7 +141,7 @@ export interface RuntimeDiagnosticsSnapshot {
  * artefact payload. Must match `sig::SYNTH_ARTIFACT_ABI_VERSION` in
  * `src-useq/uSEQ/src/signal_engine/synth_graph.h`.
  */
-export const SYNTH_ARTIFACT_ABI_VERSION = 1 as const;
+export const SYNTH_ARTIFACT_ABI_VERSION = 2 as const;
 
 /** One declared synth node instance keyed by stable editor identity. */
 export interface SynthDeclarationArtefact {
@@ -158,6 +158,20 @@ export interface SynthControlChannelArtefact {
   param: string;
   rate: "block" | "fast";
   smoothing: "step" | "linear" | "slew" | "latch";
+}
+
+/**
+ * One explicit bridge from the compiler's ordered control table to the
+ * block-rate SAB layout. `compilerControlIndex` addresses the sample returned
+ * by `useq_tick_synth_controls`; array order addresses the SAB channel.
+ * Keeping both positions explicit prevents a declaration-grouping or
+ * fast-rate filter from silently permuting live controls.
+ */
+export interface SynthProducerControlBinding {
+  identity: string;
+  param: string;
+  channelKey: string;
+  compilerControlIndex: number;
 }
 
 /**
@@ -184,16 +198,16 @@ export interface SynthConnectionArtefact {
  * and `controls` are intentionally narrow public views: internal GC-remapped
  * node indices are never exposed (VAL-COMP-012).
  *
- * `connections` joined the schema additively within ABI version 1 (M2.2,
- * synth-nodes.md §7.2.2): payloads from older engine bundles may omit it,
- * which consumers treat as an empty edge set.
+ * ABI version 2 requires `connections`, including an empty array for an
+ * unrouted graph. This prevents an older consumer from silently discarding
+ * audio routing and rendering a semantically different patch.
  */
 export interface SynthArtifactsPayload {
   abi: number;
   revision: number;
   declarations: SynthDeclarationArtefact[];
   controls: SynthControlChannelArtefact[];
-  connections?: SynthConnectionArtefact[];
+  connections: SynthConnectionArtefact[];
 }
 
 /**
@@ -347,13 +361,10 @@ export function validateSynthArtifactsPayload(
   if (!Array.isArray(payload.controls)) {
     return invalidSynthArtifacts("invalid-field", "controls must be an array");
   }
-  if (
-    payload.connections !== undefined &&
-    !Array.isArray(payload.connections)
-  ) {
+  if (!Array.isArray(payload.connections)) {
     return invalidSynthArtifacts(
       "invalid-field",
-      "connections must be an array when present",
+      "connections must be an array in synth artefact ABI 2",
     );
   }
 
@@ -531,7 +542,7 @@ export function validateSynthArtifactsPayload(
     }
   }
 
-  const connections = payload.connections ?? [];
+  const connections = payload.connections;
   if (connections.length > totalAudioInputs) {
     return invalidSynthArtifacts(
       "resource-limit",
@@ -577,7 +588,8 @@ export function validateSynthArtifactsPayload(
     }
     if (
       source.descriptor.audioOutputs < 1 ||
-      value.port_index >= destination.descriptor.audioInputs
+      value.port_index >= destination.descriptor.audioInputs ||
+      destination.descriptor.audioInputNames[value.port_index] !== value.port
     ) {
       return invalidSynthArtifacts(
         "invalid-connection-port",

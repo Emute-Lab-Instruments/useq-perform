@@ -215,12 +215,11 @@ export const DEFAULT_AUDIO_OUTPUT_PORTS = 1 as const;
 
 /**
  * Composite producer-channel key for a per-(node, param) control channel.
- * The Worker producer's channel list and control-value map are keyed by
- * this string; the NUL separator cannot occur inside an identity (the
- * compiler's artefact serialiser strips control characters) so the key is
- * collision-free. The service arms the producer with keys in commit-plan
- * channel order, making the producer's array index equal the SAB channel
- * index.
+ * The Worker producer's compiler-index mapping is keyed by this string; the
+ * NUL separator cannot occur inside an identity (the compiler's artefact
+ * serialiser strips control characters) so the key is collision-free. The
+ * service arms keys in compiler-table order after filtering non-block rows,
+ * making the mapping's array index equal the SAB channel index.
  */
 export function controlChannelKey(identity: string, param: string): string {
   return `${identity}\u0000${param}`;

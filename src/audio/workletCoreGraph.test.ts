@@ -66,6 +66,7 @@ function makeDescriptor(
     ...OSC_SINE_NODEDEF_DESCRIPTOR,
     name,
     audioInputs,
+    audioInputNames: audioInputs === 0 ? Object.freeze([]) : Object.freeze(["in"]),
   });
 }
 
@@ -634,7 +635,11 @@ describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
     h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
     h.core.handleMessage({ type: "commit-graph", transactionId: 2 });
     h.core.handleMessage({ type: "activate-graph", transactionId: 2 });
+    // Gate acceptance is not activation: acknowledgement waits for the
+    // matching epoch to swap at the audio block boundary.
+    expect(transactionAck(h, 2, "activate")).toBeUndefined();
     h.step(2);
+    expect(transactionAck(h, 2, "activate")?.ok).toBe(true);
     h.step(2);
 
     expect(h.core.telemetry.instances.map((instance) => instance.identity).sort()).toEqual([
@@ -645,6 +650,93 @@ describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
       "type" in event && event.type === "graph-activated" && event.epoch === 2
     );
     expect(activations).toHaveLength(1);
+  });
+});
+
+describe("workletCore graph — per-instance trap containment", () => {
+  it("rejects an init-trapping candidate and keeps the old graph audible", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const bad = createConstAdapter(arena, "src/bad-init", 0.75, callOrder);
+    (bad as { init: NodeDefAdapter["init"] }).init = () => {
+      throw new WebAssembly.RuntimeError("synthetic init trap");
+    };
+    const h = buildGraphHarness({
+      adapters: {
+        "src/good": createConstAdapter(arena, "src/good", 0.25, callOrder),
+        "src/bad-init": bad,
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "old", "src/good", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+
+    expect(() => h.core.handleMessage({
+      type: "prepare-graph",
+      transactionId: 2,
+      epoch: 2,
+      deltas: [{
+        type: "instantiate",
+        identity: {
+          identity: "candidate",
+          def: "src/bad-init",
+          version: 1,
+          epoch: 2,
+        },
+        statePointer: 0,
+        stateBytes: 0,
+        audioOutputs: 1,
+      }],
+    })).not.toThrow();
+    h.step(1);
+
+    expect(h.diagnostics()).toContainEqual({
+      type: "graph-diagnostic",
+      code: "nodedef-trap",
+      identity: "candidate",
+    });
+    expect(h.events).toContainEqual(expect.objectContaining({
+      type: "graph-transaction-ack",
+      transactionId: 2,
+      phase: "prepare",
+      ok: false,
+    }));
+    expect(h.core.telemetry.instances.map((instance) => instance.identity))
+      .toEqual(["old"]);
+    expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
+  });
+
+  it("quarantines a throwing NodeDef while sibling instances keep rendering", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const bad = createConstAdapter(arena, "src/bad", 0.75, callOrder);
+    (bad as { compute: NodeDefAdapter["compute"] }).compute = () => {
+      callOrder.push("src/bad");
+      throw new WebAssembly.RuntimeError("synthetic trap");
+    };
+    const h = buildGraphHarness({
+      adapters: {
+        "src/bad": bad,
+        "src/good": createConstAdapter(arena, "src/good", 0.25, callOrder),
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "bad", "src/bad", 1);
+    instantiate(h.core, "good", "src/good", 1);
+
+    expect(() => h.step(1)).not.toThrow();
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+
+    expect(h.diagnostics()).toContainEqual({
+      type: "graph-diagnostic",
+      code: "nodedef-trap",
+      identity: "bad",
+    });
+    expect(h.core.telemetry.instances.map((instance) => instance.identity))
+      .toEqual(["good"]);
+    expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
   });
 });
 

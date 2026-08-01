@@ -588,20 +588,21 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
     await service.resumeOnUserActivation();
     const result = await service.commitSynthArtifacts(
       {
-        abi: 1,
+        abi: 2,
         revision: 1,
         declarations: [
           {
             identity: "lead",
             def: "osc/sine",
-            version: 1,
-            audio_inputs: 0,
+            version: 2,
+            audio_inputs: 1,
             audio_outputs: 1,
           },
         ],
         controls: [
           { identity: "lead", param: "freq", rate: "block", smoothing: "step" },
         ],
+        connections: [],
       },
       false,
     );
@@ -614,10 +615,11 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
     const service = createSynthesisService(bundle.options);
     const result = await service.commitSynthArtifacts(
       {
-        abi: 1,
+        abi: 2,
         revision: 1,
         declarations: [],
         controls: [],
+        connections: [],
       },
       true,
     );
@@ -635,6 +637,7 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
           revision: 1,
           declarations: [],
           controls: [],
+          connections: [],
         },
         false,
       ),
@@ -648,7 +651,7 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
     await expect(
       service.commitSynthArtifacts(
         {
-          abi: 1,
+          abi: 2,
           revision: 1,
           declarations: [
             {
@@ -660,6 +663,7 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
             },
           ],
           controls: [],
+          connections: [],
         },
         false,
       ),

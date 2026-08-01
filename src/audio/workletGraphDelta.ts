@@ -490,15 +490,25 @@ export interface WorkletControlAttachAckEvent {
  *   - `"node-limit"`      — the instantiate would exceed `MAX_SYNTH_NODES`.
  *   - `"missing-input-support"` — the delta wires audio inputs into a
  *     def whose adapter exposes no input-capable compute entry point.
+ *   - `"nodedef-trap"` — one NodeDef call threw; that instance was muted and
+ *     quarantined while the remainder of the graph continued.
  */
 export interface WorkletGraphDiagnosticEvent {
   readonly type: "graph-diagnostic";
-  readonly code: "zone-exhausted" | "node-limit" | "missing-input-support";
+  readonly code:
+    | "zone-exhausted"
+    | "node-limit"
+    | "missing-input-support"
+    | "nodedef-trap";
   /** Identity of the node the diagnostic concerns. */
   readonly identity: string;
 }
 
-/** Immediate acknowledgement for the prepare/commit transaction protocol. */
+/**
+ * Transaction acknowledgement. `activate` is emitted only after the matching
+ * epoch has been swapped at an audio block boundary, not when the gate message
+ * is merely accepted.
+ */
 export interface WorkletGraphTransactionAckEvent {
   readonly type: "graph-transaction-ack";
   readonly transactionId: number;

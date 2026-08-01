@@ -40,9 +40,13 @@ import type {
   LiveSlotMetadata,
   RuntimeDiagnostic,
   SynthArtifactsPayload,
+  SynthProducerControlBinding,
   TickAndProjectResult,
   TimeSample,
 } from "../../contracts/runtimePorts";
+import { isSynthArtifactsPayload } from "../../contracts/runtimeTypes";
+import { validateSynthProducerControlBindingsAgainstControls } from
+  "../../contracts/synthProducerControlMapping";
 import {
   attachSynthesisControlView,
   CONTROL_LOOKAHEAD_BLOCKS,
@@ -115,6 +119,11 @@ interface InterpreterHandle {
   ) => TickAndProjectResult | null;
   supportsTimeWindow: () => boolean;
   supportsTickAndProject: () => boolean;
+  supportsSynthControlTick: () => boolean;
+  tickSynthControls: (
+    time: number,
+    expectedControlCount: number,
+  ) => Float64Array | null;
   supportsLiveInputs: () => boolean;
   setLiveInputs: (values: Record<string, number>) => number;
   setHwInputValue: (index: number, value: number) => void;
@@ -159,14 +168,15 @@ let producerBlocksPublished = 0;
 // the array reference at construction, so an in-place refill re-arms a
 // live producer without a stop/start cycle.
 const producerBlockRateChannels: string[] = [];
-const producerControlValues = new Map<string, number>();
+const producerControlBindings: SynthProducerControlBinding[] = [];
+let producerCompilerControlCount = 0;
 interface PreparedProducerCommit {
   epoch: number;
-  channels: string[];
-  values: Map<string, number>;
+  compilerControlCount: number;
+  controlBindings: SynthProducerControlBinding[];
   previousEpoch: number;
-  previousChannels: string[];
-  previousValues: Map<string, number>;
+  previousCompilerControlCount: number;
+  previousControlBindings: SynthProducerControlBinding[];
 }
 let preparedProducerCommit: PreparedProducerCommit | null = null;
 let lastArmedProducerCommit: PreparedProducerCommit | null = null;
@@ -176,6 +186,16 @@ function rearmProducerChannels(channels: readonly string[]): void {
   for (const channel of channels) {
     producerBlockRateChannels.push(channel);
   }
+}
+
+function rearmProducerControlMapping(
+  compilerControlCount: number,
+  bindings: readonly SynthProducerControlBinding[],
+): void {
+  producerCompilerControlCount = compilerControlCount;
+  producerControlBindings.length = 0;
+  for (const binding of bindings) producerControlBindings.push({ ...binding });
+  rearmProducerChannels(bindings.map((binding) => binding.channelKey));
 }
 const producerAudit: ProducedBlockAudit[] = [];
 
@@ -199,8 +219,8 @@ const producerClock: ProducerSchedulingClock = {
 /**
  * Executor adapter that drives the existing interpreter handle. The
  * producer never constructs a second interpreter; it only routes
- * `liveTick` calls to the existing interpreter's `evaluateOutputAtTime`
- * + `setLiveInputs` surface (VAL-ENGINE-001).
+ * `liveTick` calls to the compiler's single live tick/control export plus
+ * the existing `setLiveInputs` surface (VAL-ENGINE-001).
  *
  * The adapter returns a record of channel-name → value for the supplied
  * ModuLisp time. Channel names that do not match an active output
@@ -220,20 +240,18 @@ const producerExecutor: ProducerExecutor = {
       }
     }
     const out: Record<string, number> = {};
-    // VAL-CROSS-002: for M1 the block-rate channels (freq, amp) are
-    // synth control parameters, not interpreter signal outputs. The
-    // interpreter's evaluateOutputAtTime evaluates ModuLisp
-    // expressions / named outputs (a1-a8, etc.), not synth node
-    // parameters. The service sends the current control values
-    // via producerSetControlValues; the producer publishes those
-    // values on every block so the worklet receives consistent
-    // controls. This is the "static control" model: values change
-    // only on re-eval, not per-block.
-    for (const channel of producerBlockRateChannels) {
-      const value = producerControlValues.get(channel);
-      if (typeof value === "number" && Number.isFinite(value)) {
-        out[channel] = value;
-      }
+    // The compiler returns one sample per artefact control row in exact
+    // compiler order. The validated mapping retains original indices while
+    // filtering to the SAB's block-rate rows, so signal expressions are
+    // sampled every block instead of replaced with commit-time defaults.
+    const samples = interpreter.tickSynthControls(
+      time,
+      producerCompilerControlCount,
+    );
+    if (!samples) return out;
+    for (const binding of producerControlBindings) {
+      const value = samples[binding.compilerControlIndex];
+      if (typeof value === "number") out[binding.channelKey] = value;
     }
     return out;
   },
@@ -426,6 +444,10 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     module,
     OPTIONAL_WASM_EXPORTS.useq_synth_artifacts,
   ) as (() => string) | null;
+  let tickSynthControlsFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_tick_synth_controls,
+  ) as ((time: number, bufferPtr: number, bufferLength: number) => number) | null;
   const probeSetFn = bindOptionalCwrap(
     module,
     OPTIONAL_WASM_EXPORTS.useq_probe_set,
@@ -660,6 +682,34 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     tickAndProject,
     supportsTimeWindow: (): boolean => typedEval !== null || legacyEval !== null,
     supportsTickAndProject: (): boolean => tickAndProjectEval !== null,
+    supportsSynthControlTick: (): boolean => tickSynthControlsFn !== null,
+    tickSynthControls: (
+      time: number,
+      expectedControlCount: number,
+    ): Float64Array | null => {
+      if (
+        !tickSynthControlsFn ||
+        !Number.isFinite(time) ||
+        !Number.isSafeInteger(expectedControlCount) ||
+        expectedControlCount < 0
+      ) return null;
+      try {
+        if (expectedControlCount > 0) ensureBuffer(expectedControlCount);
+        const written = tickSynthControlsFn(
+          time,
+          expectedControlCount > 0 ? bufferPointer : 0,
+          expectedControlCount,
+        );
+        if (written !== expectedControlCount) return null;
+        const start = bufferPointer / Float64Array.BYTES_PER_ELEMENT;
+        return expectedControlCount === 0
+          ? new Float64Array(0)
+          : module.HEAPF64.subarray(start, start + expectedControlCount);
+      } catch (error) {
+        if (isBrokenOptionalExportError(error)) tickSynthControlsFn = null;
+        return null;
+      }
+    },
     supportsLiveInputs: (): boolean => setLiveInputsFn !== null,
     setLiveInputs: (values: Record<string, number>): number => {
       if (!setLiveInputsFn) return 0;
@@ -811,7 +861,8 @@ function snapshotCapabilities(): WorkerCapabilitySnapshot {
     supportsTimeWindow:
       wasmEnabled && interpreter !== null && interpreter.supportsTimeWindow(),
     supportsTickAndProject:
-      wasmEnabled && interpreter !== null && interpreter.supportsTickAndProject(),
+      wasmEnabled && interpreter !== null && !producerRunning &&
+      interpreter.supportsTickAndProject(),
     supportsLiveInputs:
       wasmEnabled && interpreter !== null && interpreter.supportsLiveInputs(),
   };
@@ -920,7 +971,10 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         return;
       }
       case "tickAndProject": {
-        if (!wasmEnabled || !interpreter) {
+        if (!wasmEnabled || !interpreter || producerRunning) {
+          // `useq_tick_synth_controls` is the sole live-VM advancement path
+          // while audio is running. Visualisation falls back to the read-only
+          // time-window evaluator rather than double-ticking stateful graphs.
           postResponse({
             type: "tickAndProject-result",
             id,
@@ -941,7 +995,8 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           type: "tickAndProject-result",
           id,
           result,
-          supportsTickAndProject: interpreter.supportsTickAndProject(),
+          supportsTickAndProject:
+            !producerRunning && interpreter.supportsTickAndProject(),
         });
         return;
       }
@@ -1037,7 +1092,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           pacingWaiter = createProducerPacingWaiter(request.controlBuffer);
           preparedProducerCommit = null;
           lastArmedProducerCommit = null;
-          rearmProducerChannels(request.blockRateChannels ?? []);
+          rearmProducerControlMapping(0, []);
           // Reset the audit so devmode traces reflect this session only.
           producerAudit.length = 0;
           producerBlocksPublished = 0;
@@ -1055,59 +1110,40 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         }
         return;
       }
-      case "producerSetControlValues": {
-        // VAL-CROSS-002: the service sends the current synth control
-        // values (static-control model — resolved at eval commit, not
-        // sampled per block). The producer publishes these on every
-        // block so the worklet receives consistent controls. Since
-        // M2.2 keys are per-(node, param) composite channel keys, and
-        // the same message may re-arm the channel list so the list and
-        // its values switch atomically within one handler turn.
-        if (request.blockRateChannels) {
-          rearmProducerChannels(request.blockRateChannels);
-        }
-        const values = request.values as Record<string, number> | undefined;
-        producerControlValues.clear();
-        if (values && typeof values === "object") {
-          for (const [name, value] of Object.entries(values)) {
-            if (typeof value === "number" && Number.isFinite(value)) {
-              producerControlValues.set(name, value);
-            }
-          }
-        }
-        postResponse({ type: "producerSetControlValues-result", id });
-        return;
-      }
       case "producerPrepareCommit": {
-        if (!controlView || !Number.isSafeInteger(request.epoch) || request.epoch <= 0) {
+        if (
+          !controlView ||
+          !interpreter?.supportsSynthControlTick() ||
+          !Number.isSafeInteger(request.epoch) ||
+          request.epoch <= 0
+        ) {
           postResponse({ type: "producerPrepareCommit-result", id, prepared: false });
           return;
         }
-        if (request.blockRateChannels.length > controlView.blockRateCount) {
+        const compilerArtifacts = readSynthArtifactsLocal();
+        if (
+          !isSynthArtifactsPayload(compilerArtifacts) ||
+          compilerArtifacts.controls.length !== request.compilerControlCount
+        ) {
           postResponse({ type: "producerPrepareCommit-result", id, prepared: false });
           return;
         }
-        const values = new Map<string, number>();
-        let valid = true;
-        for (const channel of request.blockRateChannels) {
-          const value = request.values[channel];
-          if (typeof channel !== "string" || typeof value !== "number" || !Number.isFinite(value)) {
-            valid = false;
-            break;
-          }
-          values.set(channel, value);
-        }
-        if (!valid) {
+        const mapping = validateSynthProducerControlBindingsAgainstControls(
+          compilerArtifacts.controls,
+          request.controlBindings,
+          controlView.blockRateCount,
+        );
+        if (!mapping.ok) {
           postResponse({ type: "producerPrepareCommit-result", id, prepared: false });
           return;
         }
         preparedProducerCommit = {
           epoch: request.epoch,
-          channels: [...request.blockRateChannels],
-          values,
+          compilerControlCount: request.compilerControlCount,
+          controlBindings: request.controlBindings.map((binding) => ({ ...binding })),
           previousEpoch: controlView.pendingEpoch,
-          previousChannels: [...producerBlockRateChannels],
-          previousValues: new Map(producerControlValues),
+          previousCompilerControlCount: producerCompilerControlCount,
+          previousControlBindings: producerControlBindings.map((binding) => ({ ...binding })),
         };
         postResponse({ type: "producerPrepareCommit-result", id, prepared: true });
         return;
@@ -1119,11 +1155,10 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           aborted = true;
         }
         if (lastArmedProducerCommit?.epoch === request.epoch && controlView) {
-          rearmProducerChannels(lastArmedProducerCommit.previousChannels);
-          producerControlValues.clear();
-          for (const [name, value] of lastArmedProducerCommit.previousValues) {
-            producerControlValues.set(name, value);
-          }
+          rearmProducerControlMapping(
+            lastArmedProducerCommit.previousCompilerControlCount,
+            lastArmedProducerCommit.previousControlBindings,
+          );
           controlView.pendingEpoch = lastArmedProducerCommit.previousEpoch;
           // Candidate blocks may already be queued even though the worklet's
           // final activation gate failed. Drop the whole lookahead window so
@@ -1251,24 +1286,21 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         return;
       }
       case "producerArmEpoch": {
-        if (!controlView) {
+        if (!controlView || !preparedProducerCommit) {
           postResponse({ type: "producerArmEpoch-result", id, armedEpoch: 0 });
           return;
         }
-        if (preparedProducerCommit) {
-          if (preparedProducerCommit.epoch !== request.epoch) {
-            postResponse({ type: "producerArmEpoch-result", id, armedEpoch: 0 });
-            return;
-          }
-          const armed = preparedProducerCommit;
-          rearmProducerChannels(armed.channels);
-          producerControlValues.clear();
-          for (const [name, value] of armed.values) {
-            producerControlValues.set(name, value);
-          }
-          lastArmedProducerCommit = armed;
-          preparedProducerCommit = null;
+        if (preparedProducerCommit.epoch !== request.epoch) {
+          postResponse({ type: "producerArmEpoch-result", id, armedEpoch: 0 });
+          return;
         }
+        const armed = preparedProducerCommit;
+        rearmProducerControlMapping(
+          armed.compilerControlCount,
+          armed.controlBindings,
+        );
+        lastArmedProducerCommit = armed;
+        preparedProducerCommit = null;
         controlView.pendingEpoch = request.epoch;
         postResponse({
           type: "producerArmEpoch-result",

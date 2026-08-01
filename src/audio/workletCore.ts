@@ -740,7 +740,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   /** Allocate and initialise one candidate instance without touching live state. */
   function prepareInstance(message: WorkletInstantiateMessage): InstanceState | string {
     const id = message.identity;
-    const adapter = options.adapterFactory(id.def, id.version);
+    let adapter: NodeDefAdapter | null = null;
+    try {
+      adapter = options.adapterFactory(id.def, id.version);
+    } catch {
+      publishEvent({
+        type: "graph-diagnostic",
+        code: "nodedef-trap",
+        identity: id.identity,
+      });
+      glitchCount += 1;
+      return `NodeDef ${id.def}@${id.version} trapped during adapter creation`;
+    }
     if (!adapter) return `NodeDef ${id.def}@${id.version} is not installed`;
     if (message.audioInputs?.length && typeof adapter.computeWithInputs !== "function") {
       return `NodeDef ${id.def}@${id.version} cannot accept audio inputs`;
@@ -759,7 +770,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       options.allocator.release(statePointer);
       return "zone-exhausted";
     }
-    if (!adapter.init(statePointer, stateBytes)) {
+    let initOk = false;
+    try {
+      initOk = adapter.init(statePointer, stateBytes);
+    } catch {
+      publishEvent({
+        type: "graph-diagnostic",
+        code: "nodedef-trap",
+        identity: id.identity,
+      });
+      glitchCount += 1;
+    }
+    if (!initOk) {
       options.allocator.release(outputZonePtr);
       options.allocator.release(statePointer);
       return `NodeDef ${id.def}@${id.version} rejected its state layout`;
@@ -953,12 +975,14 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   function handleActivateGraph(message: WorkletActivateGraphMessage): void {
     const ok = committedCandidate?.transactionId === message.transactionId;
     if (ok) committedCandidateEligible = true;
-    transactionAck(
-      message.transactionId,
-      "activate",
-      ok,
-      ok ? undefined : "candidate is not committed",
-    );
+    if (!ok) {
+      transactionAck(
+        message.transactionId,
+        "activate",
+        false,
+        "candidate is not committed",
+      );
+    }
   }
 
   function handleAbortGraph(message: WorkletAbortGraphMessage): void {
@@ -1114,7 +1138,17 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     const adapterKey = `${id.def}@${id.version}`;
     let adapter = adapters.get(adapterKey) ?? null;
     if (!adapter) {
-      adapter = options.adapterFactory(id.def, id.version);
+      try {
+        adapter = options.adapterFactory(id.def, id.version);
+      } catch {
+        publishEvent({
+          type: "graph-diagnostic",
+          code: "nodedef-trap",
+          identity: id.identity,
+        });
+        glitchCount += 1;
+        return;
+      }
       if (adapter) {
         adapters.set(adapterKey, adapter);
       }
@@ -1216,7 +1250,17 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // `init` against the host-owned memory; failure fails closed (the
     // instance stays in `retired` and never renders).
     if (adapter && statePointer >= 0 && stateBytes > 0) {
-      const ok = adapter.init(statePointer, stateBytes);
+      let ok = false;
+      try {
+        ok = adapter.init(statePointer, stateBytes);
+      } catch {
+        publishEvent({
+          type: "graph-diagnostic",
+          code: "nodedef-trap",
+          identity: id.identity,
+        });
+        glitchCount += 1;
+      }
       if (!ok) {
         instance.lifecycle = "retired";
       }
@@ -1545,6 +1589,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         pendingEpoch = 0;
         committedCandidate = null;
         committedCandidateEligible = false;
+        transactionAck(candidate.transactionId, "activate", true);
       } else if (consumedBlockEpoch !== 0) {
         hasBlock = false;
       }
@@ -1748,7 +1793,19 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       const adapterKey = `${instance.def}@${instance.version}`;
       adapter = adapters.get(adapterKey) ?? null;
       if (!adapter) {
-        adapter = options.adapterFactory(instance.def, instance.version);
+        try {
+          adapter = options.adapterFactory(instance.def, instance.version);
+        } catch {
+          publishEvent({
+            type: "graph-diagnostic",
+            code: "nodedef-trap",
+            identity: instance.identity,
+          });
+          glitchCount += 1;
+          instance.lifecycle = "retired";
+          instance.outputView?.fill(0);
+          return;
+        }
         if (adapter) {
           adapters.set(adapterKey, adapter);
         }
@@ -1769,7 +1826,17 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
           );
         }
         if (instance.statePointer >= 0 && instance.stateBytes > 0) {
-          const initOk = adapter.init(instance.statePointer, instance.stateBytes);
+          let initOk = false;
+          try {
+            initOk = adapter.init(instance.statePointer, instance.stateBytes);
+          } catch {
+            publishEvent({
+              type: "graph-diagnostic",
+              code: "nodedef-trap",
+              identity: instance.identity,
+            });
+            glitchCount += 1;
+          }
           if (!initOk) {
             instance.lifecycle = "retired";
             return;
@@ -1839,32 +1906,40 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // (VAL-CROSS-002 shared-memory link).
     const freqPtr = getPointerForFloat64(freqControlScratch);
     const ampPtr = getPointerForFloat64(ampControlScratch);
-    let ok: boolean;
-    if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
-      ok = adapter.computeWithInputs(
-        instance.statePointer,
-        instance.inputPtrs,
-        freqPtr,
-        ampPtr,
-        instance.outputZonePtr,
-        frameCount,
-      );
-    } else {
-      if (instance.inputPtrs.length > 0 && !instance.inputSupportWarned) {
-        instance.inputSupportWarned = true;
-        publishEvent({
-          type: "graph-diagnostic",
-          code: "missing-input-support",
-          identity: instance.identity,
-        });
+    let ok = false;
+    try {
+      if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
+        ok = adapter.computeWithInputs(
+          instance.statePointer,
+          instance.inputPtrs,
+          freqPtr,
+          ampPtr,
+          instance.outputZonePtr,
+          frameCount,
+        );
+      } else {
+        if (instance.inputPtrs.length > 0 && !instance.inputSupportWarned) {
+          instance.inputSupportWarned = true;
+          publishEvent({
+            type: "graph-diagnostic",
+            code: "missing-input-support",
+            identity: instance.identity,
+          });
+        }
+        ok = adapter.compute(
+          instance.statePointer,
+          freqPtr,
+          ampPtr,
+          instance.outputZonePtr,
+          frameCount,
+        );
       }
-      ok = adapter.compute(
-        instance.statePointer,
-        freqPtr,
-        ampPtr,
-        instance.outputZonePtr,
-        frameCount,
-      );
+    } catch {
+      publishEvent({
+        type: "graph-diagnostic",
+        code: "nodedef-trap",
+        identity: instance.identity,
+      });
     }
     if (!ok) {
       // Compute failed (invalid frame count or trap). Mute the node and

@@ -21,10 +21,16 @@ async function loadInterpreter() {
   const glueSource = readFileSync(resolve(root, "public/wasm/useq.js"), "utf8");
   // The emscripten glue is built with ENVIRONMENT='web' and MODULARIZE=1
   // but does not export; evaluate it in a function scope and return the
-  // factory. Passing wasmBinary bypasses the web fetch path so the glue
-  // runs fine under Node.
+  // factory. The generated bundle deliberately excludes `wasmBinary` from
+  // its incoming Module API, so instantiate explicitly under Node.
   const createModule = new Function(`${glueSource}; return createModule;`)();
-  const mod = await createModule({ wasmBinary });
+  const mod = await createModule({
+    instantiateWasm(imports, receiveInstance) {
+      WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) =>
+        receiveInstance(instance));
+      return {};
+    },
+  });
   mod.ccall("useq_init", null, [], []);
   return mod;
 }

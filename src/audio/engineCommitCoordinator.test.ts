@@ -41,8 +41,8 @@ function oscSineDeclaration(identity: string): SynthDeclarationArtefact {
   return {
     identity,
     def: "osc/sine",
-    version: 1,
-    audio_inputs: 0,
+    version: OSC_SINE_NODEDEF_DESCRIPTOR.version,
+    audio_inputs: OSC_SINE_NODEDEF_DESCRIPTOR.audioInputs,
     audio_outputs: 1,
   };
 }
@@ -62,10 +62,11 @@ function buildPayload(
   ),
 ): SynthArtifactsPayload {
   return {
-    abi: 1,
+    abi: 2,
     revision,
     declarations,
     controls,
+    connections: [],
   };
 }
 
@@ -87,7 +88,7 @@ describe("engineCommitCoordinator — graph diff (VAL-ENGINE-010)", () => {
       {
         identity: "lead",
         def: "osc/sine",
-        version: 1,
+        version: 2,
       },
     ];
     const diff = buildGraphDiff(prior, [oscSineDeclaration("lead")]);
@@ -110,7 +111,7 @@ describe("engineCommitCoordinator — graph diff (VAL-ENGINE-010)", () => {
 
   it("classifies an identity that disappeared as retired", () => {
     const prior: ActiveDeclaration[] = [
-      { identity: "lead", def: "osc/sine", version: 1 },
+      { identity: "lead", def: "osc/sine", version: 2 },
     ];
     const diff = buildGraphDiff(prior, []);
     expect(diff.retired).toHaveLength(1);
@@ -121,7 +122,7 @@ describe("engineCommitCoordinator — graph diff (VAL-ENGINE-010)", () => {
   it("preserves identity keys through the diff (stable identity, not text)", () => {
     // Two distinct identities with the same def — both survive.
     const prior: ActiveDeclaration[] = [
-      { identity: "lead", def: "osc/sine", version: 1 },
+      { identity: "lead", def: "osc/sine", version: 2 },
     ];
     const incoming = [
       oscSineDeclaration("lead"),
@@ -234,7 +235,7 @@ describe("engineCommitCoordinator — worklet delta ordering (VAL-ENGINE-010)", 
 
   it("emits update messages (not instantiate) for updated-in-place identities", () => {
     const prior: ActiveDeclaration[] = [
-      { identity: "lead", def: "osc/sine", version: 1 },
+      { identity: "lead", def: "osc/sine", version: 2 },
     ];
     const diff = buildGraphDiff(prior, [oscSineDeclaration("lead")]);
     const prefills = resolvePrefillsForDeclarations(
@@ -248,7 +249,7 @@ describe("engineCommitCoordinator — worklet delta ordering (VAL-ENGINE-010)", 
 
   it("includes prefill values on instantiate and update messages", () => {
     const prior: ActiveDeclaration[] = [
-      { identity: "lead", def: "osc/sine", version: 1 },
+      { identity: "lead", def: "osc/sine", version: 2 },
     ];
     const diff = buildGraphDiff(
       prior,
@@ -274,7 +275,7 @@ describe("engineCommitCoordinator — worklet delta ordering (VAL-ENGINE-010)", 
 
   it("emits no deltas for an empty diff (no-op)", () => {
     const prior: ActiveDeclaration[] = [
-      { identity: "lead", def: "osc/sine", version: 1 },
+      { identity: "lead", def: "osc/sine", version: 2 },
     ];
     const diff = buildGraphDiff(prior, [oscSineDeclaration("lead")]);
     // Update-in-place is represented; force empty by filtering.
@@ -343,6 +344,7 @@ describe("engineCommitCoordinator — multi-node deltas (M2.2)", () => {
     ]);
     plan.layout.channels.forEach((entry, index) => {
       expect(entry.channel).toBe(index);
+      expect(entry.compilerControlIndex).toBe(index);
     });
   });
 
@@ -360,12 +362,41 @@ describe("engineCommitCoordinator — multi-node deltas (M2.2)", () => {
     );
     const plan = buildEngineCommitPlan([], payload, createEpochAllocator());
     expect(plan.layout.channels).toEqual([
-      { identity: "id-a", param: "freq", channel: 0 },
-      { identity: "id-b", param: "freq", channel: 1 },
-      { identity: "id-b", param: "amp", channel: 2 },
+      { identity: "id-a", param: "freq", compilerControlIndex: 0, channel: 0 },
+      { identity: "id-b", param: "freq", compilerControlIndex: 1, channel: 1 },
+      { identity: "id-b", param: "amp", compilerControlIndex: 2, channel: 2 },
     ]);
     expect(plan.layout.channelsByIdentity.get("id-a")).toEqual([
       { param: "freq", channel: 0 },
+    ]);
+  });
+
+  it("does not regroup an interleaved compiler table by declaration", () => {
+    const payload = buildPayload(
+      1,
+      [oscSineDeclaration("id-a"), oscSineDeclaration("id-b")],
+      [
+        { identity: "id-b", param: "freq", rate: "block", smoothing: "step" },
+        { identity: "id-a", param: "freq", rate: "block", smoothing: "step" },
+        { identity: "id-b", param: "amp", rate: "block", smoothing: "linear" },
+        { identity: "id-a", param: "amp", rate: "block", smoothing: "linear" },
+      ],
+    );
+
+    const plan = buildEngineCommitPlan([], payload, createEpochAllocator());
+    expect(plan.layout.channels.map(({ identity, param, compilerControlIndex }) => ({
+      identity,
+      param,
+      compilerControlIndex,
+    }))).toEqual([
+      { identity: "id-b", param: "freq", compilerControlIndex: 0 },
+      { identity: "id-a", param: "freq", compilerControlIndex: 1 },
+      { identity: "id-b", param: "amp", compilerControlIndex: 2 },
+      { identity: "id-a", param: "amp", compilerControlIndex: 3 },
+    ]);
+    expect(plan.layout.channelsByIdentity.get("id-a")).toEqual([
+      { param: "freq", channel: 1 },
+      { param: "amp", channel: 3 },
     ]);
   });
 
@@ -405,8 +436,8 @@ describe("engineCommitCoordinator — multi-node deltas (M2.2)", () => {
 
   it("re-derives channels and wiring on update-in-place deltas", () => {
     const prior: ActiveDeclaration[] = [
-      { identity: "id-a", def: "osc/sine", version: 1 },
-      { identity: "id-b", def: "osc/sine", version: 1 },
+      { identity: "id-a", def: "osc/sine", version: 2 },
+      { identity: "id-b", def: "osc/sine", version: 2 },
     ];
     // id-b now comes first: its channels move to the front of the table.
     const payload: SynthArtifactsPayload = {
@@ -445,7 +476,7 @@ describe("engineCommitCoordinator — multi-node deltas (M2.2)", () => {
 
   it("fans out a full multi-declaration payload (no single-node assumption)", () => {
     const prior: ActiveDeclaration[] = [
-      { identity: "id-old", def: "osc/sine", version: 1 },
+      { identity: "id-old", def: "osc/sine", version: 2 },
     ];
     const payload = buildPayload(3, [
       oscSineDeclaration("id-a"),

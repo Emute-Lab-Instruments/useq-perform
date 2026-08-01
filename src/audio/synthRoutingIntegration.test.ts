@@ -68,7 +68,17 @@ async function loadInterpreter(): Promise<InterpreterModule> {
   const createModule = new Function(`${glueSource}; return createModule;`)() as (
     options: Record<string, unknown>,
   ) => Promise<InterpreterModule>;
-  const mod = await createModule({ wasmBinary });
+  const mod = await createModule({
+    instantiateWasm: (
+      imports: WebAssembly.Imports,
+      receiveInstance: (instance: WebAssembly.Instance) => void,
+    ) => {
+      void WebAssembly.instantiate(wasmBinary, imports).then(({ instance }) =>
+        receiveInstance(instance),
+      );
+      return {};
+    },
+  });
   mod.ccall("useq_init", null, [], []);
   return mod;
 }
@@ -215,9 +225,9 @@ describe("M2.2 routing integration — real artefact drives the engine", () => {
     // per-(node, param) channel table come from the compiler.
     const plan = buildEngineCommitPlan([], payload, createEpochAllocator());
     expect(plan.layout.channels).toEqual([
-      { identity: "lfo", param: "freq", channel: 0 },
-      { identity: "lfo", param: "amp", channel: 1 },
-      { identity: "car", param: "freq", channel: 2 },
+      { identity: "lfo", param: "freq", compilerControlIndex: 0, channel: 0 },
+      { identity: "lfo", param: "amp", compilerControlIndex: 1, channel: 1 },
+      { identity: "car", param: "freq", compilerControlIndex: 2, channel: 2 },
     ]);
     expect(plan.layout.audioInputs.get("car")).toEqual([
       { port: 0, sourceIdentity: "lfo", sourcePort: 0 },

@@ -73,7 +73,12 @@ import {
   synthArtifactsSupportsAbi,
   validateSynthArtifactsPayload,
   type SynthArtifactsPayload,
+  type SynthProducerControlBinding,
 } from "../contracts/runtimeTypes";
+import {
+  buildSynthProducerControlBindings,
+  validateSynthProducerControlBindingsAgainstControls,
+} from "../contracts/synthProducerControlMapping";
 import type { NodeDefDescriptor } from "../contracts/nodeDefRegistry";
 import {
   findNodeDefDescriptor,
@@ -270,27 +275,14 @@ export interface SynthesisWorkerPort {
   producerInstallSab?(
     controlBuffer: SharedArrayBuffer,
     options: {
-      blockRateChannels: readonly string[];
       lookaheadBlocks?: number;
       renderQuantumFrames?: number;
     },
   ): Promise<boolean>;
-  /**
-   * Set the current synth control values (keys are per-(node, param)
-   * composite `controlChannelKey` strings since M2.2), optionally
-   * re-arming the producer's channel list in the same message so list
-   * and values switch atomically. The producer publishes these on
-   * every block so the worklet receives consistent controls. Called
-   * whenever the synth graph changes (VAL-CROSS-002).
-   */
-  producerSetControlValues?(
-    values: Record<string, number>,
-    blockRateChannels?: readonly string[],
-  ): Promise<boolean>;
   producerPrepareCommit?(
     epoch: number,
-    values: Record<string, number>,
-    blockRateChannels: readonly string[],
+    compilerControlCount: number,
+    controlBindings: readonly SynthProducerControlBinding[],
   ): Promise<boolean>;
   producerAbortCommit?(epoch: number): Promise<boolean>;
   /**
@@ -971,9 +963,17 @@ function createCapableService(
   let commitQueue: Promise<unknown> = Promise.resolve();
   const pendingGraphAcks = new Map<
     string,
-    { resolve: (ok: boolean) => void; timer: ReturnType<typeof setTimeout> }
+    {
+      resolve: (outcome: GraphTransactionAckOutcome) => void;
+      timer: ReturnType<typeof setTimeout> | null;
+    }
   >();
   const GRAPH_TRANSACTION_ACK_TIMEOUT_MS = 1000;
+  type GraphTransactionAckOutcome =
+    | "ack"
+    | "nack"
+    | "timeout"
+    | "post-failed";
 
   // VAL-ENGINE-022 dedup state: the last (message, type) pair posted to
   // the console sink. Consecutive identical pairs are suppressed so
@@ -1335,10 +1335,6 @@ function createCapableService(
     if (workerPort && typeof workerPort.producerInstallSab === "function") {
       try {
         await workerPort.producerInstallSab(sab, {
-          // The per-(node, param) channel list is armed per commit via
-          // producerSetControlValues (M2.2 channel table); a fresh
-          // session starts with no program and no channels.
-          blockRateChannels: [],
           lookaheadBlocks: CONTROL_LOOKAHEAD_BLOCKS,
           renderQuantumFrames: DEFAULT_RENDER_QUANTUM_FRAMES,
         });
@@ -1585,9 +1581,9 @@ function createCapableService(
       const key = `${ack.transactionId}:${ack.phase}`;
       const pending = pendingGraphAcks.get(key);
       if (pending) {
-        clearTimeout(pending.timer);
+        if (pending.timer) clearTimeout(pending.timer);
         pendingGraphAcks.delete(key);
-        pending.resolve(ack.ok);
+        pending.resolve(ack.ok ? "ack" : "nack");
       }
       return;
     }
@@ -1904,8 +1900,8 @@ function createCapableService(
     // spurious error transition.
     clearProducerTimers();
     for (const pending of pendingGraphAcks.values()) {
-      clearTimeout(pending.timer);
-      pending.resolve(false);
+      if (pending.timer) clearTimeout(pending.timer);
+      pending.resolve("post-failed");
     }
     pendingGraphAcks.clear();
     // Note: fault counters (underrun/glitch/timeout) are NOT reset
@@ -1956,37 +1952,39 @@ function createCapableService(
   // audio thread: it is a sequence of message acknowledgements. The old graph
   // remains the sole live graph until every participant is prepared.
 
-  function postGraphTransaction(
+  function postGraphTransactionOutcome(
     transactionId: number,
-    phase: "prepare" | "commit",
+    phase: "prepare" | "commit" | "activate",
     message: unknown,
-  ): Promise<boolean> {
-    if (!workletNode) return Promise.resolve(false);
+  ): Promise<GraphTransactionAckOutcome> {
+    if (!workletNode) return Promise.resolve("post-failed");
     const key = `${transactionId}:${phase}`;
-    return new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => {
+    return new Promise<GraphTransactionAckOutcome>((resolve) => {
+      // Preparation can time out safely because neither participant is live.
+      // Activation cannot: once its gate is posted the worklet may swap at any
+      // quantum, so releasing the serial queue before the actual ack would let
+      // a rapid next revision collide with a committed candidate.
+      const timer = phase === "activate" ? null : setTimeout(() => {
         pendingGraphAcks.delete(key);
-        resolve(false);
+        resolve("timeout");
       }, GRAPH_TRANSACTION_ACK_TIMEOUT_MS);
       pendingGraphAcks.set(key, { resolve, timer });
       try {
         workletNode!.port.postMessage(message);
       } catch {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         pendingGraphAcks.delete(key);
-        resolve(false);
+        resolve("post-failed");
       }
     });
   }
 
-  function openGraphActivationGate(transactionId: number): boolean {
-    if (!workletNode) return false;
-    try {
-      workletNode.port.postMessage({ type: "activate-graph", transactionId });
-      return true;
-    } catch {
-      return false;
-    }
+  async function postGraphTransaction(
+    transactionId: number,
+    phase: "prepare" | "commit",
+    message: unknown,
+  ): Promise<boolean> {
+    return await postGraphTransactionOutcome(transactionId, phase, message) === "ack";
   }
 
   async function abortCandidate(
@@ -2159,22 +2157,37 @@ function createCapableService(
       };
     }
 
-    const channelKeys = plan.layout.channels.map((entry) =>
-      controlChannelKey(entry.identity, entry.param),
+    const controlBindings = buildSynthProducerControlBindings(payload.controls);
+    const mappingValidation = validateSynthProducerControlBindingsAgainstControls(
+      payload.controls,
+      controlBindings,
+      blockRatePool,
     );
-    const controlValues: Record<string, number> = {};
-    for (const entry of plan.layout.channels) {
-      const value = plan.prefills.get(entry.identity)?.get(entry.param);
-      if (typeof value === "number" && Number.isFinite(value)) {
-        controlValues[controlChannelKey(entry.identity, entry.param)] = value;
-      }
+    const layoutMatchesCompiler =
+      controlBindings.length === plan.layout.channels.length &&
+      controlBindings.every((binding, index) => {
+        const layout = plan.layout.channels[index];
+        return layout !== undefined &&
+          layout.identity === binding.identity &&
+          layout.param === binding.param &&
+          layout.compilerControlIndex === binding.compilerControlIndex &&
+          layout.channel === index;
+      });
+    if (!mappingValidation.ok || !layoutMatchesCompiler) {
+      await abortCandidate(transactionId, plan.epoch);
+      return {
+        outcome: "rejected-preparation-failed",
+        epoch: 0,
+        revision: 0,
+        workletDeltas: Object.freeze([]),
+      };
     }
     let producerPrepared = false;
     try {
       producerPrepared = await workerPort.producerPrepareCommit(
         plan.epoch,
-        controlValues,
-        channelKeys,
+        payload.controls.length,
+        controlBindings,
       );
     } catch {
       producerPrepared = false;
@@ -2220,11 +2233,16 @@ function createCapableService(
     }
 
     // This is the final one-way decision after both participants have
-    // acknowledged preparation and the producer arm. Waiting for an ack here
-    // would introduce an unsafe uncertainty window: the worklet could activate
-    // at a quantum boundary while a lost ack made the service attempt rollback.
-    const graphActivated = openGraphActivationGate(transactionId);
-    if (!graphActivated) {
+    // acknowledged preparation and the producer arm. The acknowledgement is
+    // deliberately deferred by the worklet until the matching block boundary,
+    // so the serial commit queue cannot prepare a second candidate in between
+    // the gate and the actual swap.
+    const activationOutcome = await postGraphTransactionOutcome(
+      transactionId,
+      "activate",
+      { type: "activate-graph", transactionId },
+    );
+    if (activationOutcome === "post-failed" || activationOutcome === "nack") {
       await abortCandidate(transactionId, plan.epoch, true);
       return {
         outcome: "rejected-preparation-failed",
@@ -2233,6 +2251,10 @@ function createCapableService(
         workletDeltas: Object.freeze([]),
       };
     }
+    // A successfully-posted activation gate is the transaction's one-way
+    // decision. Its wait deliberately has no ordinary timeout: only the real
+    // block-boundary acknowledgement (or service disposal) releases the serial
+    // queue, so a rapid next eval cannot collide with a committed candidate.
 
     // Update the active-declaration map from the incoming payload. The
     // map is the source of truth for the next diff; it is keyed by
@@ -2353,10 +2375,10 @@ export function buildModuleTransferPayload(
  * slice loads only `osc/sine`; future features extend the static registry.
  */
 function defaultNodeDefDescriptors(): readonly NodeDefDescriptor[] {
-  const oscSine = findNodeDefDescriptor("osc/sine", 1);
+  const oscSine = findNodeDefDescriptor("osc/sine", 2);
   if (oscSine === null) {
     throw new SynthesisServiceError(
-      "osc/sine v1 is missing from the NodeDef registry",
+      "osc/sine v2 is missing from the NodeDef registry",
     );
   }
   return [oscSine];

@@ -30,10 +30,11 @@ import {
 } from "../audio/nodeDefAdapter";
 
 describe("nodeDefRegistry — schema", () => {
-  it("exposes osc/sine v1 with the canonical defaults", () => {
+  it("exposes osc/sine v2 with the canonical FM input and defaults", () => {
     expect(OSC_SINE_NODEDEF_DESCRIPTOR.name).toBe("osc/sine");
-    expect(OSC_SINE_NODEDEF_DESCRIPTOR.version).toBe(1);
-    expect(OSC_SINE_NODEDEF_DESCRIPTOR.audioInputs).toBe(0);
+    expect(OSC_SINE_NODEDEF_DESCRIPTOR.version).toBe(2);
+    expect(OSC_SINE_NODEDEF_DESCRIPTOR.audioInputs).toBe(1);
+    expect(OSC_SINE_NODEDEF_DESCRIPTOR.audioInputNames).toEqual(["fm"]);
     expect(OSC_SINE_NODEDEF_DESCRIPTOR.audioOutputs).toBe(1);
     expect(OSC_SINE_NODEDEF_DESCRIPTOR.voiceFanout).toBe(false);
     expect(OSC_SINE_NODEDEF_DESCRIPTOR.fadeInMs).toBe(10);
@@ -51,8 +52,8 @@ describe("nodeDefRegistry — schema", () => {
   });
 
   it("findNodeDefDescriptor returns the descriptor by (name, version)", () => {
-    expect(findNodeDefDescriptor("osc/sine", 1)).toBe(OSC_SINE_NODEDEF_DESCRIPTOR);
-    expect(findNodeDefDescriptor("osc/sine", 2)).toBeNull();
+    expect(findNodeDefDescriptor("osc/sine", 2)).toBe(OSC_SINE_NODEDEF_DESCRIPTOR);
+    expect(findNodeDefDescriptor("osc/sine", 1)).toBeNull();
     expect(findNodeDefDescriptor("osc/saw", 1)).toBeNull();
   });
 
@@ -81,6 +82,11 @@ describe("nodeDefRegistry — validation", () => {
         params: "nope",
       }),
     ).toBe(false);
+    expect(isNodeDefDescriptor({
+      ...OSC_SINE_NODEDEF_DESCRIPTOR,
+      audioInputs: 2,
+      audioInputNames: ["fm", "fm"],
+    })).toBe(false);
   });
 
   it("isNodeDefDescriptor rejects params with invalid rate or smoothing", () => {
@@ -108,7 +114,12 @@ describe("nodeDefRegistry — validation", () => {
     // Different version.
     expect(nodeDefDescriptorsEqual(
       OSC_SINE_NODEDEF_DESCRIPTOR,
-      { ...OSC_SINE_NODEDEF_DESCRIPTOR, version: 2 },
+      { ...OSC_SINE_NODEDEF_DESCRIPTOR, version: 1 },
+    )).toBe(false);
+
+    expect(nodeDefDescriptorsEqual(
+      OSC_SINE_NODEDEF_DESCRIPTOR,
+      { ...OSC_SINE_NODEDEF_DESCRIPTOR, audioInputNames: ["pitch"] },
     )).toBe(false);
 
     // Different default.
@@ -283,6 +294,36 @@ describe("nodeDefAdapter — VAL-DSP-006: source-agnostic instantiation", () => 
     expect(fake.computeCalls).toEqual([
       [STATE_PTR, FREQ_PTR, AMP_PTR, OUT_PTR, FRAMES],
     ]);
+  });
+
+  it("routes the named FM input through the v2 input-capable compute ABI", () => {
+    const fake = createFakeNodeDefModule(OSC_SINE_NODEDEF_DESCRIPTOR);
+    const adapter = createNodeDefAdapter(
+      fake,
+      OSC_SINE_NODEDEF_DESCRIPTOR,
+      96000,
+    );
+
+    expect(adapter.computeWithInputs).toBeTypeOf("function");
+    expect(adapter.computeWithInputs!(1024, [4096], 2048, 2056, 8192, 128))
+      .toBe(true);
+    expect(fake.computeCalls).toEqual([[1024, 2048, 2056, 8192, 128]]);
+    expect(fake.computeSampleRateCalls).toEqual([96000]);
+    expect(adapter.computeWithInputs!(1024, [], 2048, 2056, 8192, 128))
+      .toBe(false);
+  });
+
+  it("rejects a v2 audio-input module missing either FM compute export", () => {
+    const fake = createFakeNodeDefModule(OSC_SINE_NODEDEF_DESCRIPTOR);
+    const incomplete = {
+      runtimeDescriptor: fake.runtimeDescriptor,
+      lookup(name: string) {
+        if (name === "compute_fm" || name === "_compute_fm") return undefined;
+        return fake.lookup(name);
+      },
+    };
+    expect(() => createNodeDefAdapter(incomplete, OSC_SINE_NODEDEF_DESCRIPTOR))
+      .toThrow(/missing the v2 FM compute exports/);
   });
 
   it("surfaces validate_layout failures so the host can reject the zone", () => {

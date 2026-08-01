@@ -73,6 +73,7 @@ const OSC_SINE_WASM_PATH = resolvePath(
   __dirname,
   "../../src-useq/wasm/osc_sine.wasm",
 );
+const OSC_SINE_VERSION = OSC_SINE_NODEDEF_DESCRIPTOR.version;
 
 function readOscSineWasmBytes(): Uint8Array {
   // The path resolves under src/audio; the wasm lives under
@@ -112,7 +113,7 @@ describe("buildModuleTransferPayload (VAL-ENGINE-008 exactly-one rule)", () => {
     );
     expect(payload).not.toBeNull();
     expect(payload!.type).toBe("nodedef-module");
-    expect(payload!.descriptor).toEqual({ name: "osc/sine", version: 1 });
+    expect(payload!.descriptor).toEqual({ name: "osc/sine", version: OSC_SINE_VERSION });
     expect(payload!.wasmBytes).toBe(bytes);
     expect(payload!.module).toBeUndefined();
     expect(classifyModuleTransfer(payload!)).toBe("bytes");
@@ -130,7 +131,7 @@ describe("buildModuleTransferPayload (VAL-ENGINE-008 exactly-one rule)", () => {
     );
     expect(payload).not.toBeNull();
     expect(payload!.type).toBe("nodedef-module");
-    expect(payload!.descriptor).toEqual({ name: "osc/sine", version: 1 });
+    expect(payload!.descriptor).toEqual({ name: "osc/sine", version: OSC_SINE_VERSION });
     expect(payload!.module).toBeUndefined();
     expect(payload!.wasmBytes).toBe(bytes);
     expect(classifyModuleTransfer(payload!)).toBe("bytes");
@@ -327,7 +328,10 @@ describe("synthesisService — VAL-ENGINE-008 exactly-one installation payload",
 
     const installMsgs = worklet.installMessages();
     expect(installMsgs).toHaveLength(1);
-    expect(installMsgs[0].descriptor).toEqual({ name: "osc/sine", version: 1 });
+    expect(installMsgs[0].descriptor).toEqual({
+      name: "osc/sine",
+      version: OSC_SINE_VERSION,
+    });
     // VAL-CROSS-002: bytes are preferred over compiled module for
     // cross-browser reliability (some headless AudioWorklet ports
     // silently drop WebAssembly.Module payloads).
@@ -355,7 +359,10 @@ describe("synthesisService — VAL-ENGINE-008 exactly-one installation payload",
 
     const installMsgs = worklet.installMessages();
     expect(installMsgs).toHaveLength(1);
-    expect(installMsgs[0].descriptor).toEqual({ name: "osc/sine", version: 1 });
+    expect(installMsgs[0].descriptor).toEqual({
+      name: "osc/sine",
+      version: OSC_SINE_VERSION,
+    });
     // The fallback path uses the exact prevalidated bytes.
     expect(classifyModuleTransfer(installMsgs[0])).toBe("bytes");
     expect(installMsgs[0].wasmBytes).toBeInstanceOf(Uint8Array);
@@ -522,11 +529,11 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
       );
       await cache.install({
         type: "nodedef-module",
-        descriptor: { name: "osc/sine", version: 1 },
+        descriptor: { name: "osc/sine", version: OSC_SINE_VERSION },
         wasmBytes: readOscSineWasmBytes(),
       });
 
-      const adapter = cache.factory("osc/sine", 1);
+      const adapter = cache.factory("osc/sine", OSC_SINE_VERSION);
       expect(adapter).not.toBeNull();
       expect(adapter!.sampleRate).toBe(renderSampleRate);
 
@@ -548,6 +555,48 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
     },
   );
 
+  it("executes the real osc/sine v2 FM input instead of ignoring it", async () => {
+    const renderSampleRate = 48000;
+    const allocator = createWorkletAllocator();
+    const cache = createAdapterCache(
+      allocator.memory,
+      buildNodeDefDescriptorMap(),
+      renderSampleRate,
+    );
+    await cache.install({
+      type: "nodedef-module",
+      descriptor: { name: "osc/sine", version: OSC_SINE_VERSION },
+      wasmBytes: readOscSineWasmBytes(),
+    });
+
+    const adapter = cache.factory("osc/sine", OSC_SINE_VERSION);
+    expect(adapter?.computeWithInputs).toBeTypeOf("function");
+    const statePtr = 64;
+    const freqPtr = 0;
+    const ampPtr = 8;
+    const fmPtr = 16 * 1024;
+    const outputPtr = 32 * 1024;
+    const frames = 128;
+    const heap = new Float64Array(allocator.memory.buffer);
+    heap[freqPtr / 8] = 440;
+    heap[ampPtr / 8] = 1;
+    heap.subarray(fmPtr / 8, fmPtr / 8 + frames).fill(100);
+
+    expect(adapter!.init(statePtr, adapter!.descriptor.stateBytes)).toBe(true);
+    expect(adapter!.computeWithInputs!(
+      statePtr,
+      [fmPtr],
+      freqPtr,
+      ampPtr,
+      outputPtr,
+      frames,
+    )).toBe(true);
+    expect(adapter!.getPhase(statePtr)).toBeCloseTo(
+      (540 * frames / renderSampleRate) % 1,
+      12,
+    );
+  });
+
   it("compiles the exact-byte fallback ONCE per def in the install handler", async () => {
     const allocator = createWorkletAllocator();
     const descriptors = buildNodeDefDescriptorMap();
@@ -556,15 +605,15 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
     const bytes = readOscSineWasmBytes();
     const payload: WorkletModuleTransferMessage = {
       type: "nodedef-module",
-      descriptor: { name: "osc/sine", version: 1 },
+      descriptor: { name: "osc/sine", version: OSC_SINE_VERSION },
       wasmBytes: bytes,
     };
     await cache.install(payload);
-    expect(cache.compileCount("osc/sine", 1)).toBe(1);
-    expect(cache.installCount("osc/sine", 1)).toBe(1);
-    expect(cache.lastTransferKind("osc/sine", 1)).toBe("bytes");
+    expect(cache.compileCount("osc/sine", OSC_SINE_VERSION)).toBe(1);
+    expect(cache.installCount("osc/sine", OSC_SINE_VERSION)).toBe(1);
+    expect(cache.lastTransferKind("osc/sine", OSC_SINE_VERSION)).toBe("bytes");
     // The adapter is now available for instantiation.
-    const adapter = cache.factory("osc/sine", 1);
+    const adapter = cache.factory("osc/sine", OSC_SINE_VERSION);
     expect(adapter).not.toBeNull();
     expect(adapter!.descriptor.name).toBe("osc/sine");
     expect(adapter!.descriptor.stateBytes).toBe(24);
@@ -579,15 +628,15 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
     const compiled = await WebAssembly.compile(bytes);
     const payload: WorkletModuleTransferMessage = {
       type: "nodedef-module",
-      descriptor: { name: "osc/sine", version: 1 },
+      descriptor: { name: "osc/sine", version: OSC_SINE_VERSION },
       module: compiled,
     };
     await cache.install(payload);
-    expect(cache.compileCount("osc/sine", 1)).toBe(0);
-    expect(cache.installCount("osc/sine", 1)).toBe(1);
-    expect(cache.lastTransferKind("osc/sine", 1)).toBe("module");
+    expect(cache.compileCount("osc/sine", OSC_SINE_VERSION)).toBe(0);
+    expect(cache.installCount("osc/sine", OSC_SINE_VERSION)).toBe(1);
+    expect(cache.lastTransferKind("osc/sine", OSC_SINE_VERSION)).toBe("module");
     // The adapter is available.
-    expect(cache.factory("osc/sine", 1)).not.toBeNull();
+    expect(cache.factory("osc/sine", OSC_SINE_VERSION)).not.toBeNull();
   });
 
   it("does NOT recompile when a second install payload arrives for the same def", async () => {
@@ -598,21 +647,21 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
     const bytes = readOscSineWasmBytes();
     const payload: WorkletModuleTransferMessage = {
       type: "nodedef-module",
-      descriptor: { name: "osc/sine", version: 1 },
+      descriptor: { name: "osc/sine", version: OSC_SINE_VERSION },
       wasmBytes: bytes,
     };
     await cache.install(payload);
-    expect(cache.compileCount("osc/sine", 1)).toBe(1);
-    expect(cache.installCount("osc/sine", 1)).toBe(1);
+    expect(cache.compileCount("osc/sine", OSC_SINE_VERSION)).toBe(1);
+    expect(cache.installCount("osc/sine", OSC_SINE_VERSION)).toBe(1);
 
     // A second install payload arrives (e.g. the service incorrectly
     // posted twice). The cache must NOT recompile or replace the
     // adapter; the first installation wins.
     await cache.install(payload);
-    expect(cache.compileCount("osc/sine", 1)).toBe(1);
-    expect(cache.installCount("osc/sine", 1)).toBe(2);
+    expect(cache.compileCount("osc/sine", OSC_SINE_VERSION)).toBe(1);
+    expect(cache.installCount("osc/sine", OSC_SINE_VERSION)).toBe(2);
     // Adapter identity preserved.
-    const a1 = cache.factory("osc/sine", 1);
+    const a1 = cache.factory("osc/sine", OSC_SINE_VERSION);
     expect(a1).not.toBeNull();
   });
 
@@ -625,16 +674,16 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
     const compiled = await WebAssembly.compile(bytes);
     const malformed: WorkletModuleTransferMessage = {
       type: "nodedef-module",
-      descriptor: { name: "osc/sine", version: 1 },
+      descriptor: { name: "osc/sine", version: OSC_SINE_VERSION },
       module: compiled,
       wasmBytes: bytes,
     };
     await cache.install(malformed);
     // The cache recorded the receipt but no adapter was installed.
-    expect(cache.installCount("osc/sine", 1)).toBe(1);
-    expect(cache.compileCount("osc/sine", 1)).toBe(0);
-    expect(cache.lastTransferKind("osc/sine", 1)).toBe("malformed");
-    expect(cache.factory("osc/sine", 1)).toBeNull();
+    expect(cache.installCount("osc/sine", OSC_SINE_VERSION)).toBe(1);
+    expect(cache.compileCount("osc/sine", OSC_SINE_VERSION)).toBe(0);
+    expect(cache.lastTransferKind("osc/sine", OSC_SINE_VERSION)).toBe("malformed");
+    expect(cache.factory("osc/sine", OSC_SINE_VERSION)).toBeNull();
   });
 
   it("refuses a malformed payload (neither module nor wasmBytes set)", async () => {
@@ -644,11 +693,11 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
 
     const empty: WorkletModuleTransferMessage = {
       type: "nodedef-module",
-      descriptor: { name: "osc/sine", version: 1 },
+      descriptor: { name: "osc/sine", version: OSC_SINE_VERSION },
     };
     await cache.install(empty);
-    expect(cache.lastTransferKind("osc/sine", 1)).toBe("malformed");
-    expect(cache.factory("osc/sine", 1)).toBeNull();
+    expect(cache.lastTransferKind("osc/sine", OSC_SINE_VERSION)).toBe("malformed");
+    expect(cache.factory("osc/sine", OSC_SINE_VERSION)).toBeNull();
   });
 
   it("the install handler is the ONLY site where WebAssembly.compile runs (static contract)", () => {

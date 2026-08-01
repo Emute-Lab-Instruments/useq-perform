@@ -177,6 +177,7 @@ function normaliseNodeDefRegistryJson(raw: unknown): Record<string, unknown> | n
     name: pick("name"),
     version: pick("version"),
     audioInputs: pick("audio_inputs", "audioInputs"),
+    audioInputNames: pick("audio_input_names", "audioInputNames"),
     audioOutputs: pick("audio_outputs", "audioOutputs"),
     voiceFanout: pick("voice_fanout", "voiceFanout"),
     params,
@@ -375,6 +376,8 @@ export function createNodeDefAdapter(
   // NodeDef state zones and avoids mutable configuration in shared memory.
   const sampleRateAbiVersionFn = optionalSymbol("sample_rate_abi_version");
   const computeAtSampleRateFn = optionalSymbol("compute_at_sample_rate");
+  const computeFmFn = optionalSymbol("compute_fm");
+  const computeFmAtSampleRateFn = optionalSymbol("compute_fm_at_sample_rate");
   if (
     (sampleRateAbiVersionFn === undefined) !==
     (computeAtSampleRateFn === undefined)
@@ -394,6 +397,20 @@ export function createNodeDefAdapter(
     throw new NodeDefAdapterError(
       `NodeDef module is fixed at ${moduleDeclaredSampleRate} Hz and cannot render at ${renderSampleRate} Hz`,
     );
+  }
+
+  if (editorDescriptor.audioInputs > 0) {
+    if (editorDescriptor.audioInputs !== 1 ||
+        editorDescriptor.audioInputNames[0] !== "fm") {
+      throw new NodeDefAdapterError(
+        `unsupported executable audio-input contract for ${editorDescriptor.name} v${editorDescriptor.version}`,
+      );
+    }
+    if (!computeFmFn || !computeFmAtSampleRateFn) {
+      throw new NodeDefAdapterError(
+        "NodeDef module is missing the v2 FM compute exports",
+      );
+    }
   }
 
   const validateLayoutFn = requireSymbol("validate_layout");
@@ -435,6 +452,30 @@ export function createNodeDefAdapter(
       }
       return computeFn(statePtr, freqPtr, ampPtr, outputPtr, frameCount) !== 0;
     },
+
+    ...(editorDescriptor.audioInputs > 0 ? {
+      computeWithInputs(
+        statePtr: number,
+        inputPtrs: readonly number[],
+        freqPtr: number,
+        ampPtr: number,
+        outputPtr: number,
+        frameCount: number,
+      ): boolean {
+        if (inputPtrs.length !== editorDescriptor.audioInputs) return false;
+        const fmPtr = inputPtrs[0];
+        if (!Number.isSafeInteger(fmPtr) || fmPtr < 0) return false;
+        if (computeFmAtSampleRateFn) {
+          return computeFmAtSampleRateFn(
+            statePtr, freqPtr, ampPtr, fmPtr, outputPtr, frameCount,
+            renderSampleRate,
+          ) !== 0;
+        }
+        return computeFmFn!(
+          statePtr, freqPtr, ampPtr, fmPtr, outputPtr, frameCount,
+        ) !== 0;
+      },
+    } : {}),
 
     getPhase(statePtr: number): number {
       return getPhaseFn(statePtr);
@@ -556,6 +597,38 @@ export function createFakeNodeDefModule(
           statePtr: number,
           freqPtr: number,
           ampPtr: number,
+          outputPtr: number,
+          frameCount: number,
+          sampleRate: number,
+        ) => {
+          computeCalls.push(
+            [statePtr, freqPtr, ampPtr, outputPtr, frameCount] as const,
+          );
+          computeSampleRateCalls.push(sampleRate);
+          return computeResult ? 1 : 0;
+        };
+      case "compute_fm":
+      case "_compute_fm":
+        return (
+          statePtr: number,
+          freqPtr: number,
+          ampPtr: number,
+          _fmPtr: number,
+          outputPtr: number,
+          frameCount: number,
+        ) => {
+          computeCalls.push(
+            [statePtr, freqPtr, ampPtr, outputPtr, frameCount] as const,
+          );
+          return computeResult ? 1 : 0;
+        };
+      case "compute_fm_at_sample_rate":
+      case "_compute_fm_at_sample_rate":
+        return (
+          statePtr: number,
+          freqPtr: number,
+          ampPtr: number,
+          _fmPtr: number,
           outputPtr: number,
           frameCount: number,
           sampleRate: number,

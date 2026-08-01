@@ -35,7 +35,10 @@ import type {
   WasmRuntimeCapabilities,
   WasmRuntimePort,
 } from "../contracts/runtimePorts";
-import type { StateSnapshot } from "../contracts/runtimeTypes";
+import type {
+  StateSnapshot,
+  SynthProducerControlBinding,
+} from "../contracts/runtimeTypes";
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
 import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
@@ -467,7 +470,6 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
     async producerInstallSab(
       controlBuffer: SharedArrayBuffer,
       options: {
-        blockRateChannels: readonly string[];
         lookaheadBlocks?: number;
         renderQuantumFrames?: number;
       },
@@ -480,7 +482,6 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
         {
           type: "producerInstallSab",
           controlBuffer,
-          blockRateChannels: options.blockRateChannels,
           lookaheadBlocks: options.lookaheadBlocks,
           renderQuantumFrames: options.renderQuantumFrames,
         },
@@ -493,32 +494,22 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       return response.installed;
     },
 
-    async producerSetControlValues(
-      values: Record<string, number>,
-      blockRateChannels?: readonly string[],
-    ): Promise<boolean> {
-      if (!isUseqWasmEnabled()) return false;
-      await ensureLoadedInternal();
-      await send<
-        Extract<WasmWorkerResponse, { type: "producerSetControlValues-result" }>
-      >(
-        { type: "producerSetControlValues", values, blockRateChannels },
-        "producerSetControlValues-result",
-      );
-      return true;
-    },
-
     async producerPrepareCommit(
       epoch: number,
-      values: Record<string, number>,
-      blockRateChannels: readonly string[],
+      compilerControlCount: number,
+      controlBindings: readonly SynthProducerControlBinding[],
     ): Promise<boolean> {
       if (!isUseqWasmEnabled()) return false;
       await ensureLoadedInternal();
       const response = await send<
         Extract<WasmWorkerResponse, { type: "producerPrepareCommit-result" }>
       >(
-        { type: "producerPrepareCommit", epoch, values, blockRateChannels },
+        {
+          type: "producerPrepareCommit",
+          epoch,
+          compilerControlCount,
+          controlBindings,
+        },
         "producerPrepareCommit-result",
       );
       return response.prepared;

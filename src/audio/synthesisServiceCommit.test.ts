@@ -41,7 +41,9 @@ import type {
   SynthArtifactsPayload,
   SynthDeclarationArtefact,
   SynthControlChannelArtefact,
+  SynthProducerControlBinding,
 } from "../contracts/runtimeTypes";
+import { SYNTH_ARTIFACT_ABI_VERSION } from "../contracts/runtimeTypes";
 import type { AudioCapabilitySnapshot } from "../contracts/audioCapabilities";
 import { detectAudioCapabilities } from "../contracts/audioCapabilities";
 
@@ -137,17 +139,28 @@ function fakeModuleLoader(): NodeDefModuleLoader {
 
 interface FakeWorkerPort extends SynthesisWorkerPort {
   readonly armCalls: readonly number[];
+  readonly prepareCalls: ReadonlyArray<{
+    epoch: number;
+    compilerControlCount: number;
+    controlBindings: readonly SynthProducerControlBinding[];
+  }>;
   reset(): void;
 }
 
 function createFakeWorkerPort(): FakeWorkerPort {
   const calls: number[] = [];
+  const prepareCalls: Array<{
+    epoch: number;
+    compilerControlCount: number;
+    controlBindings: readonly SynthProducerControlBinding[];
+  }> = [];
   return {
     async producerArmEpoch(epoch: number) {
       calls.push(epoch);
       return epoch;
     },
-    async producerPrepareCommit() {
+    async producerPrepareCommit(epoch, compilerControlCount, controlBindings) {
+      prepareCalls.push({ epoch, compilerControlCount, controlBindings });
       return true;
     },
     async producerAbortCommit() {
@@ -156,8 +169,12 @@ function createFakeWorkerPort(): FakeWorkerPort {
     get armCalls() {
       return calls;
     },
+    get prepareCalls() {
+      return prepareCalls;
+    },
     reset() {
       calls.length = 0;
+      prepareCalls.length = 0;
     },
   };
 }
@@ -170,8 +187,8 @@ function oscSineDeclaration(identity: string): SynthDeclarationArtefact {
   return {
     identity,
     def: "osc/sine",
-    version: 1,
-    audio_inputs: 0,
+    version: OSC_SINE_NODEDEF_DESCRIPTOR.version,
+    audio_inputs: OSC_SINE_NODEDEF_DESCRIPTOR.audioInputs,
     audio_outputs: 1,
   };
 }
@@ -191,10 +208,11 @@ function buildPayload(
   ),
 ): SynthArtifactsPayload {
   return {
-    abi: 1,
+    abi: SYNTH_ARTIFACT_ABI_VERSION,
     revision,
     declarations,
     controls,
+    connections: [],
   };
 }
 
@@ -202,6 +220,7 @@ const ROUTING_NODEDEF_DESCRIPTOR: NodeDefDescriptor = Object.freeze({
   ...OSC_SINE_NODEDEF_DESCRIPTOR,
   name: "test/router",
   audioInputs: 2,
+  audioInputNames: Object.freeze(["fm", "sidechain"]),
   params: Object.freeze([]),
 });
 
@@ -306,7 +325,7 @@ describe("synthesisService.commitSynthArtifacts — ordering (VAL-ENGINE-010)", 
     expect(instantiate).toBeDefined();
     expect(instantiate?.identity.identity).toBe("lead");
     expect(instantiate?.identity.def).toBe("osc/sine");
-    expect(instantiate?.identity.version).toBe(1);
+    expect(instantiate?.identity.version).toBe(2);
     expect(instantiate?.identity.epoch).toBeGreaterThan(0);
     // Prefill values come from the osc/sine registry defaults.
     const freq = instantiate?.prefill?.find((p) => p.name === "freq")?.value;
@@ -337,6 +356,24 @@ describe("synthesisService.commitSynthArtifacts — ordering (VAL-ENGINE-010)", 
 
     expect(bundle.workerPort.armCalls.length).toBe(1);
     expect(bundle.workerPort.armCalls[0]).toBe(result.epoch);
+    expect(bundle.workerPort.prepareCalls).toEqual([{
+      epoch: result.epoch,
+      compilerControlCount: 2,
+      controlBindings: [
+        {
+          identity: "lead",
+          param: "freq",
+          channelKey: "lead\u0000freq",
+          compilerControlIndex: 0,
+        },
+        {
+          identity: "lead",
+          param: "amp",
+          channelKey: "lead\u0000amp",
+          compilerControlIndex: 1,
+        },
+      ],
+    }]);
 
     await service.dispose();
   });
@@ -612,7 +649,7 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
     await expect(
       service.commitSynthArtifacts(
         {
-          abi: 1,
+          abi: SYNTH_ARTIFACT_ABI_VERSION,
           revision: 1,
           declarations: [
             {
@@ -624,6 +661,7 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
             },
           ],
           controls: [],
+          connections: [],
         },
         false,
       ),
@@ -667,13 +705,13 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
     const messagesBefore = bundle.worklet.postedMessages.length;
 
     const cyclic = {
-      abi: 1,
+      abi: SYNTH_ARTIFACT_ABI_VERSION,
       revision: 1,
       declarations: [routingDeclaration("a"), routingDeclaration("b")],
       controls: [],
       connections: [
-        { from: "a", to: "b", port: "in", port_index: 0 },
-        { from: "b", to: "a", port: "in", port_index: 0 },
+        { from: "a", to: "b", port: "fm", port_index: 0 },
+        { from: "b", to: "a", port: "fm", port_index: 0 },
       ],
     } satisfies SynthArtifactsPayload;
 
@@ -742,6 +780,7 @@ describe("synthesisService.commitSynthArtifacts — atomic preparation boundarie
   function boundaryBundle(options: {
     failWorkletPhase?: "prepare" | "commit" | "activate";
     failProducerPhase?: "prepare" | "arm";
+    deferActivation?: boolean;
   }) {
     const audioContext = createFakeAudioContext();
     const posted: unknown[] = [];
@@ -759,7 +798,11 @@ describe("synthesisService.commitSynthArtifacts — atomic preparation boundarie
         if (phase === "activate" && options.failWorkletPhase === "activate") {
           throw new Error("activation port closed");
         }
-        if (phase && typeof tx.transactionId === "number") {
+        if (
+          phase &&
+          typeof tx.transactionId === "number" &&
+          !(phase === "activate" && options.deferActivation)
+        ) {
           queueMicrotask(() => port.onmessage?.({ data: {
             type: "graph-transaction-ack",
             transactionId: tx.transactionId,
@@ -799,7 +842,7 @@ describe("synthesisService.commitSynthArtifacts — atomic preparation boundarie
       nodeDefDescriptors: [OSC_SINE_NODEDEF_DESCRIPTOR],
       workerPort,
     });
-    return { service, posted, producerCalls };
+    return { service, posted, producerCalls, port };
   }
 
   it.each([
@@ -842,6 +885,51 @@ describe("synthesisService.commitSynthArtifacts — atomic preparation boundarie
       "commit-graph",
       "activate-graph",
     ]);
+    await bundle.service.dispose();
+  });
+
+  it("keeps a rapid next revision queued until actual block-boundary activation", async () => {
+    const bundle = boundaryBundle({ deferActivation: true });
+    await bundle.service.resumeOnUserActivation();
+
+    const first = bundle.service.commitSynthArtifacts(
+      buildPayload(1, [oscSineDeclaration("lead")]),
+      false,
+    );
+    await vi.waitFor(() => {
+      expect(bundle.posted.filter((message) =>
+        (message as { type?: string }).type === "activate-graph"
+      )).toHaveLength(1);
+    });
+
+    const second = bundle.service.commitSynthArtifacts(
+      buildPayload(2, [oscSineDeclaration("lead")]),
+      false,
+    );
+    await Promise.resolve();
+    expect(bundle.posted.filter((message) =>
+      (message as { type?: string }).type === "prepare-graph"
+    )).toHaveLength(1);
+
+    const activationMessages = () => bundle.posted.filter((message) =>
+      (message as { type?: string }).type === "activate-graph"
+    ) as Array<{ transactionId: number }>;
+    bundle.port.onmessage?.({ data: {
+      type: "graph-transaction-ack",
+      transactionId: activationMessages()[0].transactionId,
+      phase: "activate",
+      ok: true,
+    } });
+    expect((await first).outcome).toBe("committed");
+
+    await vi.waitFor(() => expect(activationMessages()).toHaveLength(2));
+    bundle.port.onmessage?.({ data: {
+      type: "graph-transaction-ack",
+      transactionId: activationMessages()[1].transactionId,
+      phase: "activate",
+      ok: true,
+    } });
+    expect((await second).outcome).toBe("committed");
     await bundle.service.dispose();
   });
 });
