@@ -7,7 +7,9 @@
  *                   application; the compiler capability manifest binds the
  *                   exact built and served interpreter bytes to the pinned
  *                   clean compiler commit; ABI versions match; and the
- *                   tracked-versus-ignored asset policy is respected.
+ *                   tracked-versus-ignored asset policy is respected. The
+ *                   app-level unsigned manifest additionally binds all served
+ *                   compiler, NodeDef, and worklet bytes into one identity.
  *   VAL-DSP-015   - the osc/sine NodeDef module is built separately from the
  *                   ModuLisp interpreter, loaded through the root asset
  *                   pipeline, and its import/export table proves it is a
@@ -26,13 +28,27 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, statSync, existsSync } from "node:fs";
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 import { SYNTH_ARTIFACT_ABI_VERSION } from "./runtimeTypes";
+import {
+  verifyServedBundleManifest,
+  writeServedBundleManifest,
+} from "../../scripts/served-bundle-manifest.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -94,6 +110,36 @@ function compilerManifest(base: string): CompilerCapabilityManifest {
   )) as CompilerCapabilityManifest;
 }
 
+interface ServedBundleManifest {
+  readonly schema: string;
+  readonly trust: {
+    readonly authenticated: boolean;
+    readonly scope: string;
+  };
+  readonly compiler: {
+    readonly capability_manifest_artifact: string;
+    readonly capability_manifest_schema: string;
+    readonly source_git_commit: string;
+  };
+  readonly artifacts: Readonly<Record<string, {
+    readonly bytes: number;
+    readonly sha256: string;
+  }>>;
+  readonly node_defs: readonly [{
+    readonly artifact: string;
+    readonly identity: string;
+    readonly descriptor: { readonly name: string; readonly version: number };
+    readonly descriptor_sha256: string;
+  }];
+}
+
+function servedBundleManifest(base: string): ServedBundleManifest {
+  return JSON.parse(readFileSync(
+    path.join(base, "useq-served-bundle.json"),
+    "utf8",
+  )) as ServedBundleManifest;
+}
+
 // ---------------------------------------------------------------------------
 // VAL-CROSS-011: built/copy artefacts exist on both sides of the pipeline
 // ---------------------------------------------------------------------------
@@ -115,6 +161,7 @@ describe("VAL-CROSS-011: generated asset pipeline produces every served artefact
       servedJs,
       servedWasm,
       servedManifest,
+      path.join(PUBLIC_WASM, "useq-served-bundle.json"),
     ]) {
       expect(existsSync(p), `${p} should exist`).toBe(true);
     }
@@ -192,6 +239,92 @@ describe("VAL-CROSS-011: checksums link built and served bytes", () => {
     const served = path.join(PUBLIC_WASM, "osc_sine.wasm");
     expect(sha256(built)).toBe(sha256(served));
   });
+
+  it("unsigned app manifest binds compiler, NodeDef, and worklet served bytes", () => {
+    const manifest = servedBundleManifest(PUBLIC_WASM);
+    expect(manifest.schema).toBe("useq.served-bundle/v1");
+    expect(manifest.trust).toMatchObject({
+      authenticated: false,
+      scope: "exact-byte-identity-only",
+    });
+    expect(manifest.compiler).toMatchObject({
+      capability_manifest_artifact: "wasm/useq-capabilities.json",
+      capability_manifest_schema: "useq.compiler-capabilities/v1",
+      source_git_commit: compilerManifest(PUBLIC_WASM).source.git_commit,
+    });
+    for (const filename of [
+      "useq-capabilities.json",
+      "useq.js",
+      "useq.wasm",
+      "osc_sine.wasm",
+      "synthesisWorklet.js",
+    ]) {
+      const record = manifest.artifacts[`wasm/${filename}`];
+      const file = path.join(PUBLIC_WASM, filename);
+      expect(record, `${filename} must be bound`).toBeDefined();
+      expect(record.bytes).toBe(statSync(file).size);
+      expect(record.sha256).toBe(sha256(file));
+    }
+    expect(manifest.node_defs[0]).toMatchObject({
+      artifact: "wasm/osc_sine.wasm",
+      identity: "osc/sine@2",
+      descriptor: { name: "osc/sine", version: 2 },
+    });
+    expect(manifest.node_defs[0].descriptor_sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("recomputes and verifies the complete served-bundle identity", () => {
+    expect(() => verifyServedBundleManifest({
+      manifestPath: path.join(PUBLIC_WASM, "useq-served-bundle.json"),
+      compilerManifestPath: path.join(PUBLIC_WASM, "useq-capabilities.json"),
+      jsPath: path.join(PUBLIC_WASM, "useq.js"),
+      wasmPath: path.join(PUBLIC_WASM, "useq.wasm"),
+      nodeDefPath: path.join(PUBLIC_WASM, "osc_sine.wasm"),
+      workletPath: path.join(PUBLIC_WASM, "synthesisWorklet.js"),
+    })).not.toThrow();
+  });
+
+  it("rejects tampered served bytes and descriptor-identity mismatch", () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), "useq-served-bundle-"));
+    try {
+      for (const filename of [
+        "useq-capabilities.json",
+        "useq.js",
+        "useq.wasm",
+        "osc_sine.wasm",
+        "synthesisWorklet.js",
+      ]) {
+        copyFileSync(path.join(PUBLIC_WASM, filename), path.join(scratch, filename));
+      }
+      const inputs = {
+        compilerManifestPath: path.join(scratch, "useq-capabilities.json"),
+        jsPath: path.join(scratch, "useq.js"),
+        wasmPath: path.join(scratch, "useq.wasm"),
+        nodeDefPath: path.join(scratch, "osc_sine.wasm"),
+        workletPath: path.join(scratch, "synthesisWorklet.js"),
+      };
+      const manifestPath = path.join(scratch, "useq-served-bundle.json");
+      writeServedBundleManifest({ outputPath: manifestPath, ...inputs });
+
+      appendFileSync(inputs.workletPath, "\n/* tampered */\n");
+      expect(() => verifyServedBundleManifest({ manifestPath, ...inputs }))
+        .toThrow(/does not match the current served bytes/);
+
+      copyFileSync(
+        path.join(PUBLIC_WASM, "synthesisWorklet.js"),
+        inputs.workletPath,
+      );
+      const mismatched = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+        node_defs: Array<{ identity: string }>;
+      };
+      mismatched.node_defs[0].identity = "osc/sine@999";
+      writeFileSync(manifestPath, JSON.stringify(mismatched));
+      expect(() => verifyServedBundleManifest({ manifestPath, ...inputs }))
+        .toThrow(/descriptor identity/);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -261,6 +394,7 @@ describe("VAL-CROSS-011: generated-asset policy is declared and respected", () =
       "public/wasm/useq.js",
       "public/wasm/useq.wasm",
       "public/wasm/useq-capabilities.json",
+      "public/wasm/useq-served-bundle.json",
       "public/wasm/osc_sine.wasm",
       "public/wasm/synthesisWorklet.js",
     ];

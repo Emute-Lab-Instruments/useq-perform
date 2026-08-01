@@ -177,7 +177,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - `vite.config.ts` — single bundle from `src/main.ts` to `public/solid-dist/`; defines Vitest `unit` + `storybook` projects.
 - `eslint.config.js` — import-boundary zones with documented per-file exceptions.
 - `tsconfig.json` — TS settings (strict, no `@ts-nocheck` permitted).
-- `scripts/build-assets.mjs` + `scripts/compiler-capability-manifest.mjs` — copy application assets and fail closed unless the compiler manifest binds the exact clean pinned source and shipped interpreter JS/WASM bytes; NodeDef provenance remains separate.
+- `scripts/build-assets.mjs` + `scripts/compiler-capability-manifest.mjs` + `scripts/served-bundle-manifest.mjs` — copy application assets; fail closed unless the compiler manifest binds the exact clean pinned source and shipped interpreter bytes; then emit and reverify one deterministic, explicitly unsigned identity over the compiler manifest, interpreter, module-owned NodeDef descriptor/bytes, and synthesis worklet. NodeDef source provenance remains separate.
 - `scripts/config-server.mjs` — local dev config-write endpoint (paired with `runtime/configManager.ts`).
 - `scripts/dev/` — native-bridge dev tooling: `useq-stub-ws-server.mjs` (loopback WS stub speaking the JSON `hello` protocol, run via `dev:stub-ws`) and `verify-ws-serialport.mjs` (bridge smoke check, run via `verify:native-bridge`).
 - `package.json` — see scripts: `dev`, `build`, `build:assets`, `build:wasm`, `test:mocha`, `test:unit`, `test:all`, `lint`, `typecheck`, `storybook`, `inspector`, `inspector:validate`, `src-useq:status`.
@@ -228,7 +228,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 ## Local gotchas
 
 - `src-useq/` and `deps/modulisp/` are git submodules; commits there go through their own repos. Run `npm run src-useq:status` to see the pinned commit.
-- Browser compiler artefacts (`public/wasm/useq.{js,wasm}` plus `useq-capabilities.json`) are generated from the pinned clean `src-useq/` by `npm run build:wasm`; `npm run build:assets` verifies the manifest against both source and served bytes. `osc_sine.wasm` is copied byte-for-byte but is a separate NodeDef provenance domain not authenticated by the compiler manifest.
+- Browser compiler artefacts (`public/wasm/useq.{js,wasm}` plus `useq-capabilities.json`) are generated from the pinned clean `src-useq/` by `npm run build:wasm`; `npm run build:assets` verifies the compiler manifest against both source and served bytes, then generates `public/wasm/useq-served-bundle.json` over those files, `osc_sine.wasm` + its module-emitted descriptor, and `synthesisWorklet.js`. The composite is deterministic but unsigned; NodeDef source provenance remains a separate domain not authenticated by either manifest.
 - `appSettingsRepository` (canonical) and `settingsStore` (reactive Solid mirror) are separate. UI reads the store; mutations go through `runtimeService`.
 - `serialBuffers` in `transport/stream-parser.ts` are imperative `CircularBuffer`s, not part of the Solid store.
 - `?nosave` URL param fully bypasses persistence; useful in tests.
