@@ -70,8 +70,8 @@ import type {
 } from "../contracts/audioCapabilities";
 import {
   SYNTH_ARTIFACT_ABI_VERSION,
-  isSynthArtifactsPayload,
   synthArtifactsSupportsAbi,
+  validateSynthArtifactsPayload,
   type SynthArtifactsPayload,
 } from "../contracts/runtimeTypes";
 import type { NodeDefDescriptor } from "../contracts/nodeDefRegistry";
@@ -858,6 +858,16 @@ function createCapableService(
   now: () => number,
   devmode: boolean,
 ): SynthesisService {
+  const configuredNodeDefDescriptors =
+    options.nodeDefDescriptors ?? defaultNodeDefDescriptors();
+  const configuredNodeDefs = new Map<string, NodeDefDescriptor>();
+  for (const descriptor of configuredNodeDefDescriptors) {
+    configuredNodeDefs.set(
+      `${descriptor.name}\u0000${descriptor.version}`,
+      descriptor,
+    );
+  }
+
   // The accumulator is the mutable internal state. Reads against it go
   // through frozen snapshots published via {@link publishTelemetry}.
   const acc: TelemetryAccumulator = {
@@ -1408,8 +1418,7 @@ function createCapableService(
   }
 
   async function loadNodeDefModules(): Promise<void> {
-    const descriptors = options.nodeDefDescriptors ?? defaultNodeDefDescriptors();
-    for (const descriptor of descriptors) {
+    for (const descriptor of configuredNodeDefDescriptors) {
       const key = `${descriptor.name}@${descriptor.version}`;
       if (compiledAdapters.has(key)) continue;
       // VAL-ENGINE-008: exactly one installation payload per def is
@@ -1943,7 +1952,38 @@ function createCapableService(
       };
     }
 
-    // Step 2: VAL-ENGINE-013 — superseded responses are no-ops.
+    // Step 2: validate the complete untrusted Worker payload before reading
+    // revision semantics, allocating an epoch/commit plan, or posting any
+    // worklet/Worker message. The configured descriptor set is the engine
+    // instance's actual authority (tests and future registries may inject
+    // descriptors beyond the static M1 default).
+    const blockRatePool = sabView?.blockRateCount ?? DEFAULT_BLOCK_RATE_COUNT;
+    const validation = validateSynthArtifactsPayload(payload, {
+      expectedAbi: SYNTH_ARTIFACT_ABI_VERSION,
+      findDescriptor(name, version) {
+        return configuredNodeDefs.get(`${name}\u0000${version}`) ?? null;
+      },
+      maxDeclarations: MAX_SYNTH_NODES,
+      maxBlockRateControls: blockRatePool,
+    });
+    if (!validation.ok) {
+      if (
+        validation.code === "abi-mismatch" &&
+        payload !== null &&
+        typeof payload === "object" &&
+        "abi" in payload
+      ) {
+        throw new SynthesisServiceError(
+          `synth artefact ABI version ${(payload as { abi: unknown }).abi} does not match consumer ABI ${SYNTH_ARTIFACT_ABI_VERSION}`,
+        );
+      }
+      throw new SynthesisServiceError(
+        `invalid synth artefact payload: ${validation.reason}`,
+      );
+    }
+    payload = validation.payload;
+
+    // Step 3: VAL-ENGINE-013 — superseded responses are no-ops.
     // The Worker handler returns the LAST successful synth artefact
     // payload on a failed eval; the `revision` field lets us detect
     // whether this response is older than the one we already committed.
@@ -1960,32 +2000,15 @@ function createCapableService(
       };
     }
 
-    // Step 3: ABI + NodeDef validation.
-    if (!isSynthArtifactsPayload(payload)) {
-      return NOOP_COMMIT_RESULT;
-    }
+    // Step 4: the exhaustive validator above already checked ABI, NodeDef
+    // ownership, declaration metadata, controls, ports, and graph topology.
+    // Keep this explicit invariant assertion beside the commit path.
     if (!synthArtifactsSupportsAbi(payload.abi)) {
       throw new SynthesisServiceError(
         `synth artefact ABI version ${payload.abi} does not match consumer ABI ${SYNTH_ARTIFACT_ABI_VERSION}`,
       );
     }
-    for (const decl of payload.declarations) {
-      if (!findNodeDefDescriptor(decl.def, decl.version)) {
-        throw new SynthesisServiceError(
-          `synth artefact references unknown NodeDef ${decl.def} v${decl.version}`,
-        );
-      }
-    }
-    // Resource limit (synthesis.md §3.5): checked at eval-commit with a
-    // compile-style diagnostic on breach; the eval is rejected before
-    // any worklet delta or producer arm is issued — never a glitch.
-    if (payload.declarations.length > MAX_SYNTH_NODES) {
-      throw new SynthesisServiceError(
-        `synth program declares ${payload.declarations.length} nodes, exceeding MAX_SYNTH_NODES (${MAX_SYNTH_NODES})`,
-      );
-    }
-
-    // Steps 4–6: build the commit plan (diff, epoch, prefills, deltas).
+    // Steps 5–7: build the commit plan (diff, epoch, prefills, deltas).
     const prior = Array.from(activeDeclarations.values());
     const plan = buildEngineCommitPlan(prior, payload, epochAllocator);
 
@@ -1994,7 +2017,6 @@ function createCapableService(
     // compile-style diagnostic on breach (mirroring the MAX_SYNTH_NODES
     // check above) — the eval is rejected before any worklet delta or
     // producer arm is issued, never silently truncated.
-    const blockRatePool = sabView?.blockRateCount ?? DEFAULT_BLOCK_RATE_COUNT;
     if (plan.layout.channels.length > blockRatePool) {
       throw new SynthesisServiceError(
         `synth program binds ${plan.layout.channels.length} block-rate control channels, exceeding the SAB pool (${blockRatePool})`,

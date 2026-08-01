@@ -99,6 +99,7 @@ function createChainAdapter(arena: ArrayBuffer): ChainAdapter {
   return {
     descriptor,
     params: buildNodeDefParamTable(descriptor),
+    sampleRate: descriptor.sampleRate,
     validateLayout: () => true,
     init: () => true,
     compute(_statePtr, freqPtr, _ampPtr, outputPtr, frameCount) {

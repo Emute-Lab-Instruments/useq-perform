@@ -50,7 +50,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `useqRuntimeContract.ts` — shared transport command set and capability split. See [docs/specs/runtime-contract.md](docs/specs/runtime-contract.md).
   - `wasmAbi.ts` — required + runtime-probed WASM exports, `assertWasmAbi()` validator.
   - `runtimePorts.ts` — typed `WebSerialHostPort` / `WasmRuntimePort` interfaces over the shared transport surface. The runtime layer talks to ports, not transport modules directly. `WasmRuntimePort` is shaped to be the postMessage boundary for the upcoming worker move.
-  - `runtimeEvents.ts`, `runtimeTypes.ts`, `visualisationEvents.ts`.
+  - `runtimeEvents.ts`, `runtimeTypes.ts`, `visualisationEvents.ts` — runtime payload types; `runtimeTypes.ts` also owns exhaustive, reason-bearing synth-artifact validation before audio commit.
   - `liveEdit.ts` — live-edit slot/widget/vector-mark types ([docs/specs/live-edit.md](docs/specs/live-edit.md)).
   - `midi.ts` — Web MIDI input types: device descriptor, parsed messages, learn state, source/binding model ([docs/specs/live-edit.md §5.6+](docs/specs/live-edit.md)).
   - `hardware.ts` — hardware binding chip + CV calibration session types ([docs/specs/hardware-bindings.md](docs/specs/hardware-bindings.md), [docs/specs/calibration.md](docs/specs/calibration.md)).
@@ -60,13 +60,13 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `audioCapabilities.ts` — bootstrap `crossOriginIsolated`/SAB capability snapshot feeding the degraded no-audio diagnostic ([docs/specs/synthesis.md §6.3](docs/specs/synthesis.md)).
 - `src/audio/` — browser synthesis engine (M0–M2.2 of [docs/design/synthesis-epic.md](docs/design/synthesis-epic.md); spec [docs/specs/synthesis.md](docs/specs/synthesis.md)).
   - `synthesisService.ts` — main-thread engine owner: state machine, worklet bring-up, producer bridge, eval-commit pipeline (incl. `MAX_SYNTH_NODES` + block-rate channel-pool limit checks), telemetry. Accessed via `src/runtime/activeSynthesisService.ts`.
-  - `synthesisServiceBrowser.ts` — real-browser wiring (AudioContext construction, NodeDef WASM fetch/instantiation).
+  - `synthesisServiceBrowser.ts` — real-browser wiring (AudioContext construction, NodeDef WASM fetch/instantiation, fail-closed module-owned registry decoding).
   - `engineCommitCoordinator.ts` — pure eval→engine diff/plan builder (retire/instantiate/update deltas, epoch arming, compiler-derived per-(node,param) control-channel table + audio-input wiring from artefact `connections`).
   - `workletCore.ts` + `synthesisWorklet.ts` — AudioWorkletProcessor logic (framework-free core + thin worklet shell); multi-node topological graph host with per-instance shared-memory zones (synthesis.md §3.1); bundled by `scripts/build-assets.mjs` into `public/wasm/synthesisWorklet.js`.
   - `workletZoneAllocator.ts` — first-fit coalescing zone allocator over the host-owned `WebAssembly.Memory` arena (synthesis.md §2.3/§3.5; bounded by `SYNTH_MEMORY_MAX_BYTES`).
   - `producerScheduler.ts` + `producerLoopDriver.ts` — Worker-side block production pacing and cancellable loop. **Deviation**: `setTimeout(0)` polling, not the ADR-0003 `Atomics.wait` (see ADR-0003 revisit note).
   - `transportFrameMap.ts`, `audioClockPolicy.ts` — pure audio-frame↔transport-time mapping.
-  - `workletGraphDelta.ts`, `nodeDefAdapter.ts` — graph delta application and source-agnostic NodeDef module adapter.
+  - `workletGraphDelta.ts`, `nodeDefAdapter.ts` — graph delta application and source-agnostic NodeDef module adapter, including module-metadata validation and the versioned actual-sample-rate compute capability.
   - `engineIndicator.tsx` — engine state chip (props-based; wired in `src/ui/adapters/toolbars.tsx`).
 - `src/transport/` — Web Serial lifecycle and protocol. No UI/editor imports.
   - `connector.ts` — port open/close/reconnect, Web Serial events.

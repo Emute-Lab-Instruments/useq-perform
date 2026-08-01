@@ -92,6 +92,7 @@ function createConstAdapter(
   return {
     descriptor,
     params: buildNodeDefParamTable(descriptor),
+    sampleRate: descriptor.sampleRate,
     validateLayout: () => true,
     init: () => true,
     compute(_statePtr, _freqPtr, _ampPtr, outputPtr, frameCount) {
@@ -125,6 +126,7 @@ function createGainAdapter(
   return {
     descriptor,
     params: buildNodeDefParamTable(descriptor),
+    sampleRate: descriptor.sampleRate,
     validateLayout: () => true,
     init: () => true,
     compute(_statePtr, _freqPtr, _ampPtr, outputPtr, frameCount) {
@@ -168,6 +170,7 @@ function createControlEchoAdapter(
   return {
     descriptor,
     params: buildNodeDefParamTable(descriptor),
+    sampleRate: descriptor.sampleRate,
     validateLayout: () => true,
     init: () => true,
     compute(_statePtr, freqPtr, _ampPtr, outputPtr, frameCount) {

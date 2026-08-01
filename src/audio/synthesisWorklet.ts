@@ -52,6 +52,7 @@ import { createZoneAllocator } from "./workletZoneAllocator";
 import { SYNTH_MEMORY_MAX_BYTES } from "../contracts/synthesisControlAbi";
 import {
   createNodeDefAdapter,
+  readNodeDefRuntimeDescriptor,
   type NodeDefAdapter,
 } from "./nodeDefAdapter";
 import {
@@ -287,6 +288,7 @@ export interface AdapterCache {
 export function createAdapterCache(
   memory: WebAssembly.Memory,
   descriptors: ReadonlyMap<string, NodeDefDescriptor>,
+  renderSampleRate: number,
 ): AdapterCache {
   const cache = new Map<string, NodeDefAdapter>();
   const compiles = new Map<string, number>();
@@ -368,8 +370,12 @@ export function createAdapterCache(
         }
         return undefined;
       };
-      const module = { lookup, runtimeDescriptor: descriptor };
-      const adapter = createNodeDefAdapter(module, descriptor);
+      // Re-read the exact transferred module's own descriptor inside this
+      // WebAssembly.Instance. The static registry selects the expected def;
+      // it is not a fallback for missing or malformed module metadata.
+      const runtimeDescriptor = readNodeDefRuntimeDescriptor(memory, lookup);
+      const module = { lookup, runtimeDescriptor };
+      const adapter = createNodeDefAdapter(module, descriptor, renderSampleRate);
       cache.set(key, adapter);
     },
     compileCount(name, version) {
@@ -407,7 +413,11 @@ function createProcessorBag(): ProcessorBag {
   // M1 registry. Future features that dynamically register defs will
   // extend this map.
   const descriptors = buildNodeDefDescriptorMap();
-  const adapterCache = createAdapterCache(allocatorWithMemory.memory, descriptors);
+  const adapterCache = createAdapterCache(
+    allocatorWithMemory.memory,
+    descriptors,
+    rate,
+  );
 
   // VAL-CROSS-002 integration: control scratch buffers live INSIDE the
   // host-owned WebAssembly.Memory. The WASM compute call receives these

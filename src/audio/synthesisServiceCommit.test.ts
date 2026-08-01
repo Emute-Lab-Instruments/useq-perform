@@ -22,7 +22,10 @@ import {
 import {
   MAX_SYNTH_NODES,
 } from "../contracts/synthesisControlAbi";
-import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
+import {
+  OSC_SINE_NODEDEF_DESCRIPTOR,
+  type NodeDefDescriptor,
+} from "../contracts/nodeDefRegistry";
 import {
   createSynthesisService,
   type AudioContextContract,
@@ -167,6 +170,23 @@ function buildPayload(
     revision,
     declarations,
     controls,
+  };
+}
+
+const ROUTING_NODEDEF_DESCRIPTOR: NodeDefDescriptor = Object.freeze({
+  ...OSC_SINE_NODEDEF_DESCRIPTOR,
+  name: "test/router",
+  audioInputs: 2,
+  params: Object.freeze([]),
+});
+
+function routingDeclaration(identity: string): SynthDeclarationArtefact {
+  return {
+    identity,
+    def: ROUTING_NODEDEF_DESCRIPTOR.name,
+    version: ROUTING_NODEDEF_DESCRIPTOR.version,
+    audio_inputs: ROUTING_NODEDEF_DESCRIPTOR.audioInputs,
+    audio_outputs: ROUTING_NODEDEF_DESCRIPTOR.audioOutputs,
   };
 }
 
@@ -582,6 +602,60 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
 
     await service.dispose();
   });
+
+  it("rejects malformed nested rows before graph messages or epoch allocation", async () => {
+    const bundle = buildBundle();
+    const service = createSynthesisService(bundle.options);
+    await resumeService(service);
+    const messagesBefore = bundle.worklet.postedMessages.length;
+
+    const malformed = {
+      ...buildPayload(1, [oscSineDeclaration("lead")]),
+      controls: [
+        ...oscSineControls("lead"),
+        { identity: "lead", param: "freq", rate: "block", smoothing: "step" },
+      ],
+    } as SynthArtifactsPayload;
+
+    expect(() => service.commitSynthArtifacts(malformed, false)).toThrow(
+      /duplicate control key/,
+    );
+    expect(bundle.worklet.postedMessages).toHaveLength(messagesBefore);
+    expect(bundle.workerPort.armCalls).toHaveLength(0);
+
+    await service.dispose();
+  });
+
+  it("rejects cyclic routing before graph messages or epoch allocation", async () => {
+    const bundle = buildBundle({
+      nodeDefDescriptors: [
+        OSC_SINE_NODEDEF_DESCRIPTOR,
+        ROUTING_NODEDEF_DESCRIPTOR,
+      ],
+    });
+    const service = createSynthesisService(bundle.options);
+    await resumeService(service);
+    const messagesBefore = bundle.worklet.postedMessages.length;
+
+    const cyclic = {
+      abi: 1,
+      revision: 1,
+      declarations: [routingDeclaration("a"), routingDeclaration("b")],
+      controls: [],
+      connections: [
+        { from: "a", to: "b", port: "in", port_index: 0 },
+        { from: "b", to: "a", port: "in", port_index: 0 },
+      ],
+    } satisfies SynthArtifactsPayload;
+
+    expect(() => service.commitSynthArtifacts(cyclic, false)).toThrow(
+      /cycle/,
+    );
+    expect(bundle.worklet.postedMessages).toHaveLength(messagesBefore);
+    expect(bundle.workerPort.armCalls).toHaveLength(0);
+
+    await service.dispose();
+  });
 });
 
 describe("synthesisService.commitSynthArtifacts — workerPort optional", () => {
@@ -678,7 +752,12 @@ describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.2)", 
   });
 
   it("passes artefact connections through as audio-input wiring", async () => {
-    const bundle = buildBundle();
+    const bundle = buildBundle({
+      nodeDefDescriptors: [
+        OSC_SINE_NODEDEF_DESCRIPTOR,
+        ROUTING_NODEDEF_DESCRIPTOR,
+      ],
+    });
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
@@ -686,8 +765,8 @@ describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.2)", 
       {
         ...buildPayload(1, [
           oscSineDeclaration("lfo"),
-          oscSineDeclaration("car"),
-        ]),
+          routingDeclaration("car"),
+        ], oscSineControls("lfo")),
         connections: [{ from: "lfo", to: "car", port: "fm", port_index: 0 }],
       },
       false,

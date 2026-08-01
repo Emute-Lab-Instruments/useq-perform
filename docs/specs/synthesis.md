@@ -115,6 +115,21 @@ regardless of source):
 - params that must be audio-rate modulatable declared as audio inputs,
   not params.
 
+2.3.1 **Module-owned metadata.** Each executable module exports its complete
+registry JSON. Browser preflight and worklet installation decode that exact
+module descriptor and compare it with the editor registry entry. Missing,
+unterminated, malformed, incomplete, or mismatched metadata rejects the
+module; the editor descriptor is never substituted as a fallback.
+
+2.3.2 **Actual render sample rate.** A fixed-rate legacy module is admissible
+only when `AudioContext.sampleRate` equals its exported nominal rate. A
+rate-dependent module may instead export the paired, versioned capability
+`sample_rate_abi_version = 1` plus `compute_at_sample_rate`; the worklet then
+passes the actual context rate on every compute call. Missing halves, unknown
+versions, zero/invalid rates, and metadata/export disagreement fail closed.
+Per-call delivery is instance-safe and avoids mutable configuration in shared
+linear memory.
+
 2.4 **v1 library — minimal proof set** (~6–8 defs proving both ends of
 the low/high split before scaling): `osc/sine`, `osc/saw` (antialiased),
 `filt/svf`, `amp/vca`, `noise/white`, `fx/delay`, `voice/fm` (curated
@@ -283,6 +298,15 @@ disconnect in `both + audio`).
 whole-truth action, explicit free, per-identity diff cases, racing
 fades, failed-eval no-op — are owned by `synth-nodes.md` §5 and not
 restated here. This section specifies app mechanics.
+
+5.1.1 The app accepts compiler artifacts only after exhaustive structural
+validation against ABI 1 and the configured NodeDef registry: integer/string
+bounds, unique declaration identities and control keys, descriptor metadata,
+control ownership/rate/smoothing contracts, connection endpoints and port
+indices, single-driver inputs, and acyclic routing. Validation runs before
+stale-revision handling, epoch allocation, planning, worklet/producer
+messages, or audio activation. Rejection returns a reason-bearing error and
+has no engine-side effect.
 
 5.2 On eval commit, the app diffs the declared identities against the
 running graph and ships an epoch-tagged delta (§4.4):

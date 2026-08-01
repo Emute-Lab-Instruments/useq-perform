@@ -96,6 +96,110 @@ export interface NodeDefModule {
   readonly runtimeDescriptor: NodeDefDescriptor;
 }
 
+/**
+ * Read and validate the registry descriptor emitted by the module itself.
+ * Missing exports, wild pointers, malformed JSON, and incomplete schemas all
+ * fail closed; callers must never substitute editor registry metadata for a
+ * module that could not describe its own ABI.
+ */
+export function readNodeDefRuntimeDescriptor(
+  memory: WebAssembly.Memory,
+  lookup: NodeDefSymbolLookup,
+): NodeDefDescriptor {
+  const registryJsonFn = lookup("registry_json") ?? lookup("_registry_json");
+  if (typeof registryJsonFn !== "function") {
+    throw new NodeDefAdapterError(
+      'NodeDef module is missing required export "registry_json"',
+    );
+  }
+
+  const ptr = registryJsonFn();
+  if (!Number.isSafeInteger(ptr) || ptr < 0 || ptr >= memory.buffer.byteLength) {
+    throw new NodeDefAdapterError(
+      `NodeDef module returned invalid registry_json pointer ${ptr}`,
+    );
+  }
+  const maxBytes = Math.min(64 * 1024, memory.buffer.byteLength - ptr);
+  const view = new Uint8Array(memory.buffer, ptr, maxBytes);
+  let end = 0;
+  while (end < view.length && view[end] !== 0) end += 1;
+  if (end === 0 || end === view.length) {
+    throw new NodeDefAdapterError(
+      "NodeDef module returned an empty or unterminated registry_json payload",
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder("utf-8").decode(view.subarray(0, end)));
+  } catch {
+    throw new NodeDefAdapterError(
+      "NodeDef module returned malformed registry_json",
+    );
+  }
+  const normalised = normaliseNodeDefRegistryJson(parsed);
+  if (!isNodeDefDescriptor(normalised)) {
+    throw new NodeDefAdapterError(
+      "NodeDef module registry_json failed schema validation",
+    );
+  }
+  return normalised;
+}
+
+function normaliseNodeDefRegistryJson(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const src = raw as Record<string, unknown>;
+  const pick = (...keys: string[]): unknown => {
+    for (const key of keys) {
+      if (key in src) return src[key];
+    }
+    return undefined;
+  };
+  const paramsRaw = Array.isArray(src.params) ? src.params : [];
+  const params = paramsRaw.map((value: unknown): Record<string, unknown> => {
+    if (!value || typeof value !== "object") return {};
+    const param = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    if (typeof param.name === "string") out.name = param.name;
+    if (typeof param.default === "number") out.default = param.default;
+    if (typeof param.rate === "string") out.rate = param.rate;
+    if (typeof param.smoothing === "string") out.smoothing = param.smoothing;
+    if (typeof param.points_per_block === "number") {
+      out.pointsPerBlock = param.points_per_block;
+    } else if (typeof param.pointsPerBlock === "number") {
+      out.pointsPerBlock = param.pointsPerBlock;
+    }
+    if (typeof param.min === "number") out.min = param.min;
+    if (typeof param.max === "number") out.max = param.max;
+    return out;
+  });
+  return {
+    name: pick("name"),
+    version: pick("version"),
+    audioInputs: pick("audio_inputs", "audioInputs"),
+    audioOutputs: pick("audio_outputs", "audioOutputs"),
+    voiceFanout: pick("voice_fanout", "voiceFanout"),
+    params,
+    fadeInMs: pick("fade_in_ms", "fadeInMs"),
+    fadeOutMs: pick("fade_out_ms", "fadeOutMs"),
+    stateBytes: pick("state_bytes", "stateBytes"),
+    stateAlign: pick("state_align", "stateAlign"),
+    controlStrideBytes: pick(
+      "control_stride",
+      "controlStrideBytes",
+      "control_stride_bytes",
+    ),
+    outputStrideBytes: pick(
+      "output_stride",
+      "outputStrideBytes",
+      "output_stride_bytes",
+    ),
+    minQuantum: pick("min_quantum", "minQuantum"),
+    maxQuantum: pick("max_quantum", "maxQuantum"),
+    sampleRate: pick("sample_rate", "sampleRate"),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------
@@ -117,6 +221,8 @@ export interface NodeDefAdapter {
   readonly descriptor: NodeDefDescriptor;
   /** Parameter table for fast channel routing. */
   readonly params: NodeDefParamTable;
+  /** Render sample rate verified against the module's own exports. */
+  readonly sampleRate: number;
 
   /**
    * Validate that a host-allocated zone is large enough and correctly
@@ -211,6 +317,7 @@ export interface NodeDefAdapter {
 export function createNodeDefAdapter(
   module: NodeDefModule,
   editorDescriptor: NodeDefDescriptor,
+  renderSampleRate: number = editorDescriptor.sampleRate,
 ): NodeDefAdapter {
   if (!isNodeDefDescriptor(module.runtimeDescriptor)) {
     throw new NodeDefAdapterError(
@@ -235,6 +342,59 @@ export function createNodeDefAdapter(
     }
     return fn;
   };
+  const optionalSymbol = (name: string): ((...args: number[]) => number) | undefined =>
+    module.lookup(name) ?? module.lookup(`_${name}`);
+
+  if (
+    !Number.isSafeInteger(renderSampleRate) ||
+    renderSampleRate <= 0 ||
+    renderSampleRate > 0xffff_ffff
+  ) {
+    throw new NodeDefAdapterError(
+      `invalid render sample rate ${renderSampleRate}`,
+    );
+  }
+
+  // `sample_rate` is module-owned metadata. Never substitute the registry's
+  // value when the export is missing or incompatible: that would make a stale
+  // module appear valid while its phase increment still used another rate.
+  const sampleRateFn = requireSymbol("sample_rate");
+  const moduleDeclaredSampleRate = sampleRateFn();
+  if (
+    !Number.isSafeInteger(moduleDeclaredSampleRate) ||
+    moduleDeclaredSampleRate <= 0 ||
+    moduleDeclaredSampleRate !== editorDescriptor.sampleRate
+  ) {
+    throw new NodeDefAdapterError(
+      `NodeDef module reports sample rate ${moduleDeclaredSampleRate}, expected descriptor rate ${editorDescriptor.sampleRate}`,
+    );
+  }
+
+  // Optional, paired capability. Version 1 passes the AudioContext rate into
+  // every compute call. This stays safe when a WebAssembly.Instance hosts many
+  // NodeDef state zones and avoids mutable configuration in shared memory.
+  const sampleRateAbiVersionFn = optionalSymbol("sample_rate_abi_version");
+  const computeAtSampleRateFn = optionalSymbol("compute_at_sample_rate");
+  if (
+    (sampleRateAbiVersionFn === undefined) !==
+    (computeAtSampleRateFn === undefined)
+  ) {
+    throw new NodeDefAdapterError(
+      "NodeDef module exposes an incomplete sample-rate capability; sample_rate_abi_version and compute_at_sample_rate must appear together",
+    );
+  }
+  if (sampleRateAbiVersionFn && computeAtSampleRateFn) {
+    const version = sampleRateAbiVersionFn();
+    if (version !== NODEDEF_SAMPLE_RATE_ABI_VERSION) {
+      throw new NodeDefAdapterError(
+        `unsupported NodeDef sample-rate ABI version ${version}; expected ${NODEDEF_SAMPLE_RATE_ABI_VERSION}`,
+      );
+    }
+  } else if (renderSampleRate !== moduleDeclaredSampleRate) {
+    throw new NodeDefAdapterError(
+      `NodeDef module is fixed at ${moduleDeclaredSampleRate} Hz and cannot render at ${renderSampleRate} Hz`,
+    );
+  }
 
   const validateLayoutFn = requireSymbol("validate_layout");
   const initFn = requireSymbol("init");
@@ -246,6 +406,7 @@ export function createNodeDefAdapter(
   const adapter: NodeDefAdapter = {
     descriptor: editorDescriptor,
     params: buildNodeDefParamTable(editorDescriptor),
+    sampleRate: renderSampleRate,
 
     validateLayout(statePtr: number, stateBytes: number): boolean {
       return validateLayoutFn(statePtr, stateBytes) !== 0;
@@ -262,6 +423,16 @@ export function createNodeDefAdapter(
       outputPtr: number,
       frameCount: number,
     ): boolean {
+      if (computeAtSampleRateFn) {
+        return computeAtSampleRateFn(
+          statePtr,
+          freqPtr,
+          ampPtr,
+          outputPtr,
+          frameCount,
+          renderSampleRate,
+        ) !== 0;
+      }
       return computeFn(statePtr, freqPtr, ampPtr, outputPtr, frameCount) !== 0;
     },
 
@@ -293,6 +464,9 @@ export class NodeDefAdapterError extends Error {
   }
 }
 
+/** Version of the optional per-module-instance sample-rate capability. */
+export const NODEDEF_SAMPLE_RATE_ABI_VERSION = 1;
+
 // ---------------------------------------------------------------------------
 // Fake module — for unit tests
 // ---------------------------------------------------------------------------
@@ -306,6 +480,8 @@ export class NodeDefAdapterError extends Error {
  * module shape in the synthesis service.
  */
 export interface FakeNodeDefModule extends NodeDefModule {
+  /** Sample rates passed through the optional version-1 compute capability. */
+  readonly computeSampleRateCalls: ReadonlyArray<number>;
   /** Recorded calls to `init`. */
   readonly initCalls: ReadonlyArray<readonly [statePtr: number, stateBytes: number]>;
   /** Recorded calls to `compute`. */
@@ -338,6 +514,7 @@ export function createFakeNodeDefModule(
 ): FakeNodeDefModule {
   const initCalls: Array<readonly [number, number]> = [];
   const computeCalls: Array<readonly [number, number, number, number, number]> = [];
+  const computeSampleRateCalls: number[] = [];
   let validateLayoutResult = true;
   let initResult = true;
   let computeResult = true;
@@ -347,6 +524,12 @@ export function createFakeNodeDefModule(
       case "validate_layout":
       case "_validate_layout":
         return () => (validateLayoutResult ? 1 : 0);
+      case "sample_rate":
+      case "_sample_rate":
+        return () => descriptor.sampleRate;
+      case "sample_rate_abi_version":
+      case "_sample_rate_abi_version":
+        return () => NODEDEF_SAMPLE_RATE_ABI_VERSION;
       case "init":
       case "_init":
         return (statePtr: number, stateBytes: number) => {
@@ -365,6 +548,22 @@ export function createFakeNodeDefModule(
           computeCalls.push(
             [statePtr, freqPtr, ampPtr, outputPtr, frameCount] as const,
           );
+          return computeResult ? 1 : 0;
+        };
+      case "compute_at_sample_rate":
+      case "_compute_at_sample_rate":
+        return (
+          statePtr: number,
+          freqPtr: number,
+          ampPtr: number,
+          outputPtr: number,
+          frameCount: number,
+          sampleRate: number,
+        ) => {
+          computeCalls.push(
+            [statePtr, freqPtr, ampPtr, outputPtr, frameCount] as const,
+          );
+          computeSampleRateCalls.push(sampleRate);
           return computeResult ? 1 : 0;
         };
       case "get_phase":
@@ -389,6 +588,9 @@ export function createFakeNodeDefModule(
     },
     get computeCalls() {
       return computeCalls;
+    },
+    get computeSampleRateCalls() {
+      return computeSampleRateCalls;
     },
     setValidateLayoutResult(value: boolean) {
       validateLayoutResult = value;

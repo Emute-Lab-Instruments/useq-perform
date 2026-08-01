@@ -22,9 +22,11 @@ import {
 } from "./nodeDefRegistry";
 
 import {
+  NODEDEF_SAMPLE_RATE_ABI_VERSION,
   NodeDefAdapterError,
   createFakeNodeDefModule,
   createNodeDefAdapter,
+  readNodeDefRuntimeDescriptor,
 } from "../audio/nodeDefAdapter";
 
 describe("nodeDefRegistry — schema", () => {
@@ -125,6 +127,21 @@ describe("nodeDefRegistry — validation", () => {
 });
 
 describe("nodeDefAdapter — VAL-DSP-006: source-agnostic instantiation", () => {
+  it("fails closed instead of substituting registry metadata for a module", () => {
+    const memory = new WebAssembly.Memory({ initial: 1 });
+    expect(() => readNodeDefRuntimeDescriptor(memory, () => undefined))
+      .toThrow(/missing required export "registry_json"/);
+
+    new Uint8Array(memory.buffer).set(
+      new TextEncoder().encode("{malformed\u0000"),
+      0,
+    );
+    expect(() => readNodeDefRuntimeDescriptor(
+      memory,
+      (name) => name === "registry_json" ? () => 0 : undefined,
+    )).toThrow(/malformed registry_json/);
+  });
+
   it("constructs an adapter against a matching module", () => {
     const fake = createFakeNodeDefModule(OSC_SINE_NODEDEF_DESCRIPTOR);
     const adapter = createNodeDefAdapter(fake, OSC_SINE_NODEDEF_DESCRIPTOR);
@@ -132,6 +149,113 @@ describe("nodeDefAdapter — VAL-DSP-006: source-agnostic instantiation", () => 
     expect(adapter.descriptor).toBe(OSC_SINE_NODEDEF_DESCRIPTOR);
     expect(adapter.params.size).toBe(2);
     expect(adapter.params.get("freq")?.default).toBe(440);
+    expect(adapter.sampleRate).toBe(48000);
+  });
+
+  it.each([44100, 48000, 96000])(
+    "routes %i Hz through the versioned sample-rate compute ABI",
+    (renderSampleRate) => {
+      const fake = createFakeNodeDefModule(OSC_SINE_NODEDEF_DESCRIPTOR);
+      const adapter = createNodeDefAdapter(
+        fake,
+        OSC_SINE_NODEDEF_DESCRIPTOR,
+        renderSampleRate,
+      );
+
+      expect(NODEDEF_SAMPLE_RATE_ABI_VERSION).toBe(1);
+      expect(adapter.sampleRate).toBe(renderSampleRate);
+      expect(adapter.compute(0, 0, 0, 0, 128)).toBe(true);
+      expect(fake.computeSampleRateCalls).toEqual([renderSampleRate]);
+    },
+  );
+
+  it("admits a legacy fixed-rate module only at its own exported rate", () => {
+    const fake = createFakeNodeDefModule(OSC_SINE_NODEDEF_DESCRIPTOR);
+    const legacy = {
+      runtimeDescriptor: fake.runtimeDescriptor,
+      lookup(name: string) {
+        if (
+          name === "sample_rate_abi_version" ||
+          name === "_sample_rate_abi_version" ||
+          name === "compute_at_sample_rate" ||
+          name === "_compute_at_sample_rate"
+        ) {
+          return undefined;
+        }
+        return fake.lookup(name);
+      },
+    };
+
+    expect(createNodeDefAdapter(
+      legacy,
+      OSC_SINE_NODEDEF_DESCRIPTOR,
+      48000,
+    ).sampleRate).toBe(48000);
+    expect(() => createNodeDefAdapter(
+      legacy,
+      OSC_SINE_NODEDEF_DESCRIPTOR,
+      44100,
+    )).toThrow(/fixed at 48000 Hz/);
+  });
+
+  it("fails closed on incomplete or incompatible sample-rate metadata", () => {
+    const fake = createFakeNodeDefModule(OSC_SINE_NODEDEF_DESCRIPTOR);
+    const incomplete = {
+      runtimeDescriptor: fake.runtimeDescriptor,
+      lookup(name: string) {
+        if (
+          name === "compute_at_sample_rate" ||
+          name === "_compute_at_sample_rate"
+        ) {
+          return undefined;
+        }
+        return fake.lookup(name);
+      },
+    };
+    expect(() => createNodeDefAdapter(
+      incomplete,
+      OSC_SINE_NODEDEF_DESCRIPTOR,
+      44100,
+    )).toThrow(/incomplete sample-rate capability/);
+
+    const incompatible = {
+      runtimeDescriptor: fake.runtimeDescriptor,
+      lookup(name: string) {
+        if (name === "sample_rate_abi_version" || name === "_sample_rate_abi_version") {
+          return () => 2;
+        }
+        return fake.lookup(name);
+      },
+    };
+    expect(() => createNodeDefAdapter(
+      incompatible,
+      OSC_SINE_NODEDEF_DESCRIPTOR,
+      44100,
+    )).toThrow(/unsupported NodeDef sample-rate ABI version 2/);
+
+    const wrongMetadata = {
+      runtimeDescriptor: fake.runtimeDescriptor,
+      lookup(name: string) {
+        if (name === "sample_rate" || name === "_sample_rate") {
+          return () => 44100;
+        }
+        return fake.lookup(name);
+      },
+    };
+    expect(() => createNodeDefAdapter(
+      wrongMetadata,
+      OSC_SINE_NODEDEF_DESCRIPTOR,
+      48000,
+    )).toThrow(/reports sample rate 44100, expected descriptor rate 48000/);
+  });
+
+  it("fails closed on an invalid render sample rate", () => {
+    const fake = createFakeNodeDefModule(OSC_SINE_NODEDEF_DESCRIPTOR);
+    expect(() => createNodeDefAdapter(
+      fake,
+      OSC_SINE_NODEDEF_DESCRIPTOR,
+      0,
+    )).toThrow(/invalid render sample rate 0/);
   });
 
   it("init and compute route through the module's symbols without def-specific knowledge", () => {

@@ -510,10 +510,48 @@ describe("regression guards — fixed host memory and osc/sine state size", () =
 // ---------------------------------------------------------------------------
 
 describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)", () => {
+  it.each([44100, 48000, 96000])(
+    "configures the real osc/sine module and preserves 440 Hz phase at %i Hz",
+    async (renderSampleRate) => {
+      const allocator = createWorkletAllocator();
+      const descriptors = buildNodeDefDescriptorMap();
+      const cache: AdapterCache = createAdapterCache(
+        allocator.memory,
+        descriptors,
+        renderSampleRate,
+      );
+      await cache.install({
+        type: "nodedef-module",
+        descriptor: { name: "osc/sine", version: 1 },
+        wasmBytes: readOscSineWasmBytes(),
+      });
+
+      const adapter = cache.factory("osc/sine", 1);
+      expect(adapter).not.toBeNull();
+      expect(adapter!.sampleRate).toBe(renderSampleRate);
+
+      const statePtr = 64;
+      const freqPtr = 0;
+      const ampPtr = 8;
+      const outputPtr = 32 * 1024;
+      const frames = 1000;
+      const heap = new Float64Array(allocator.memory.buffer);
+      heap[freqPtr / 8] = 440;
+      heap[ampPtr / 8] = 0.2;
+
+      expect(adapter!.validateLayout(statePtr, adapter!.descriptor.stateBytes)).toBe(true);
+      expect(adapter!.init(statePtr, adapter!.descriptor.stateBytes)).toBe(true);
+      expect(adapter!.compute(statePtr, freqPtr, ampPtr, outputPtr, frames)).toBe(true);
+
+      const expectedPhase = (440 * frames / renderSampleRate) % 1;
+      expect(adapter!.getPhase(statePtr)).toBeCloseTo(expectedPhase, 12);
+    },
+  );
+
   it("compiles the exact-byte fallback ONCE per def in the install handler", async () => {
     const allocator = createWorkletAllocator();
     const descriptors = buildNodeDefDescriptorMap();
-    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors);
+    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors, 48000);
 
     const bytes = readOscSineWasmBytes();
     const payload: WorkletModuleTransferMessage = {
@@ -535,7 +573,7 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
   it("does NOT compile when a structured-cloned module is supplied (preferred path)", async () => {
     const allocator = createWorkletAllocator();
     const descriptors = buildNodeDefDescriptorMap();
-    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors);
+    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors, 48000);
 
     const bytes = readOscSineWasmBytes();
     const compiled = await WebAssembly.compile(bytes);
@@ -555,7 +593,7 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
   it("does NOT recompile when a second install payload arrives for the same def", async () => {
     const allocator = createWorkletAllocator();
     const descriptors = buildNodeDefDescriptorMap();
-    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors);
+    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors, 48000);
 
     const bytes = readOscSineWasmBytes();
     const payload: WorkletModuleTransferMessage = {
@@ -581,7 +619,7 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
   it("refuses a malformed payload (both module and wasmBytes set)", async () => {
     const allocator = createWorkletAllocator();
     const descriptors = buildNodeDefDescriptorMap();
-    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors);
+    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors, 48000);
 
     const bytes = readOscSineWasmBytes();
     const compiled = await WebAssembly.compile(bytes);
@@ -602,7 +640,7 @@ describe("worklet adapter cache — VAL-ENGINE-008 (compile-once, install-once)"
   it("refuses a malformed payload (neither module nor wasmBytes set)", async () => {
     const allocator = createWorkletAllocator();
     const descriptors = buildNodeDefDescriptorMap();
-    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors);
+    const cache: AdapterCache = createAdapterCache(allocator.memory, descriptors, 48000);
 
     const empty: WorkletModuleTransferMessage = {
       type: "nodedef-module",
