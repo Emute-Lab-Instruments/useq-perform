@@ -179,6 +179,16 @@ eval-commit with a compile-style diagnostic on breach): `MAX_SYNTH_NODES`
 zone arena is bounded (`SYNTH_MEMORY_MAX`, default 64 MiB); zone
 exhaustion rejects the eval, never grows unboundedly.
 
+3.5.1 **Candidate ownership is transactional.** A graph candidate is
+prepared off-live: every referenced NodeDef is installed, every new
+state/output zone is reserved and initialised, and the complete
+topological/wiring plan validates before the worklet acknowledges
+preparation. Failure releases all candidate zones. Commit only arms the
+accepted candidate; it cannot mutate the live layout. An explicit activation
+gate, followed by the first matching-epoch block, performs the one
+block-boundary swap. Abort before that boundary releases the candidate and
+leaves the prior graph and its zones authoritative.
+
 3.6 **Trap containment.** A WASM trap inside one instance's compute call
 mutes that node (hard gain 0 within the same block), marks it `error`
 (`synth-nodes.md` §5.9), and emits a console diagnostic naming the node
@@ -234,6 +244,15 @@ its epoch; before arming a switch, the producer must pre-fill ≥ 1 block
 of new-program samples, with NodeDef defaults for any channel not yet
 sampled — a newly instantiated node never reads stale or undefined
 slots.
+
+4.4.1 **Failure-atomic epoch switch.** The Worker first reserves a candidate
+channel list and finite value map without changing the running producer.
+Only after the worklet accepts and commits the complete graph candidate may
+`producerArmEpoch` atomically publish that control layout and epoch. The
+worklet still cannot activate until the service opens its explicit activation
+gate. Any rejection or missing acknowledgement aborts both participants: the
+Worker restores its prior epoch/layout/values and the worklet releases
+candidate zones. No partial delta or mismatched control layout becomes live.
 
 4.5 **Lookahead and latency.** Lookahead is `CONTROL_LOOKAHEAD` blocks
 (default 6, permitted range 4–8). Stated consequence: control latency =
@@ -307,6 +326,18 @@ indices, single-driver inputs, and acyclic routing. Validation runs before
 stale-revision handling, epoch allocation, planning, worklet/producer
 messages, or audio activation. Rejection returns a reason-bearing error and
 has no engine-side effect.
+
+5.1.2 A current, valid artefact enters a serial prepare/commit transaction.
+The service waits for: complete worklet preparation, producer control-layout
+reservation, worklet commit acknowledgement, an exact matching producer arm,
+and successful delivery of the worklet activation gate, in that order. The service
+publishes the new revision/declaration set only after all five succeed.
+Timeout, negative acknowledgement, thrown port operation, disposal, or a
+newer winning revision aborts the candidate and returns
+`rejected-preparation-failed` (or `rejected-superseded` for the revision
+race). The prior running graph remains live. Commit intake never constructs
+or resumes an `AudioContext`; it requires the already-prepared engine session,
+so lifecycle activation and graph publication cannot be conflated.
 
 5.2 On eval commit, the app diffs the declared identities against the
 running graph and ships an epoch-tagged delta (§4.4):

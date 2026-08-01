@@ -403,7 +403,11 @@ function evalWasm(
           const synthService = getActiveSynthesisService();
           if (synthService) {
             try {
-              synthService.commitSynthArtifacts(synthArtifacts, hasErrors);
+              void synthService.commitSynthArtifacts(synthArtifacts, hasErrors).catch(() => {
+                // Fatal contract failures are already represented in eval
+                // diagnostics/engine telemetry; never surface an unhandled
+                // rejection from the asynchronous prepare transaction.
+              });
             } catch {
               // The service throws on fatal ABI/NodeDef mismatch; these
               // surface through devmode telemetry rather than crashing

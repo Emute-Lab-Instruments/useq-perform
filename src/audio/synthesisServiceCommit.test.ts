@@ -91,16 +91,35 @@ interface FakeWorklet extends WorkletNodeContract {
 
 function createFakeWorklet(): FakeWorklet {
   const posted: unknown[] = [];
+  const port: FakeWorklet["port"] = {
+    postMessage(message: unknown) {
+      posted.push(message);
+      const tx = message as {
+        type?: string;
+        transactionId?: number;
+        deltas?: readonly unknown[];
+      };
+      if (tx.type === "prepare-graph" && tx.deltas) posted.push(...tx.deltas);
+      const phase =
+        tx.type === "prepare-graph" ? "prepare" :
+        tx.type === "commit-graph" ? "commit" :
+        tx.type === "activate-graph" ? "activate" : null;
+      if (phase && typeof tx.transactionId === "number") {
+        queueMicrotask(() => port.onmessage?.({ data: {
+          type: "graph-transaction-ack",
+          transactionId: tx.transactionId,
+          phase,
+          ok: true,
+        } }));
+      }
+    },
+    onmessage: null,
+    close() {},
+  };
   return {
     numberOfInputs: 0,
     numberOfOutputs: 1,
-    port: {
-      postMessage(message: unknown) {
-        posted.push(message);
-      },
-      onmessage: null,
-      close() {},
-    },
+    port,
     connect() {},
     disconnect() {},
     get postedMessages() {
@@ -127,6 +146,12 @@ function createFakeWorkerPort(): FakeWorkerPort {
     async producerArmEpoch(epoch: number) {
       calls.push(epoch);
       return epoch;
+    },
+    async producerPrepareCommit() {
+      return true;
+    },
+    async producerAbortCommit() {
+      return true;
     },
     get armCalls() {
       return calls;
@@ -235,7 +260,7 @@ describe("synthesisService.commitSynthArtifacts — ordering (VAL-ENGINE-010)", 
     // First commit: one osc/sine declaration (with a fake prior def to
     // force retire-and-replace, we use a synthetic active set).
     // Step 1: commit a brand-new identity to populate active state.
-    const r1 = service.commitSynthArtifacts(
+    const r1 = await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead")]),
       false,
     );
@@ -262,7 +287,7 @@ describe("synthesisService.commitSynthArtifacts — ordering (VAL-ENGINE-010)", 
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    service.commitSynthArtifacts(
+    await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead")]),
       false,
     );
@@ -301,7 +326,7 @@ describe("synthesisService.commitSynthArtifacts — ordering (VAL-ENGINE-010)", 
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead")]),
       false,
     );
@@ -321,11 +346,11 @@ describe("synthesisService.commitSynthArtifacts — ordering (VAL-ENGINE-010)", 
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    const r1 = service.commitSynthArtifacts(
+    const r1 = await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead")]),
       false,
     );
-    const r2 = service.commitSynthArtifacts(
+    const r2 = await service.commitSynthArtifacts(
       buildPayload(2, [oscSineDeclaration("lead")]),
       false,
     );
@@ -345,19 +370,21 @@ describe("synthesisService.commitSynthArtifacts — same-def update-in-place (VA
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    service.commitSynthArtifacts(
+    await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead")]),
       false,
     );
     const afterFirst = bundle.worklet.postedMessages.length;
 
-    service.commitSynthArtifacts(
+    await service.commitSynthArtifacts(
       buildPayload(2, [oscSineDeclaration("lead")]),
       false,
     );
 
     // After the second commit: exactly one new message, an update.
-    const newMessages = bundle.worklet.postedMessages.slice(afterFirst);
+    const newMessages = bundle.worklet.postedMessages
+      .slice(afterFirst)
+      .filter((message) => (message as { type?: string }).type === "update");
     expect(newMessages).toHaveLength(1);
     expect((newMessages[0] as { type: string }).type).toBe("update");
     const update = newMessages[0] as {
@@ -378,7 +405,7 @@ describe("synthesisService.commitSynthArtifacts — same-def update-in-place (VA
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(42, [oscSineDeclaration("lead")]),
       false,
     );
@@ -414,7 +441,7 @@ describe("synthesisService.commitSynthArtifacts — failed eval no-op (VAL-ENGIN
     await resumeService(service);
 
     const beforeMessages = bundle.worklet.postedMessages.length;
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead")]),
       true, // hasErrors
     );
@@ -438,7 +465,7 @@ describe("synthesisService.commitSynthArtifacts — failed eval no-op (VAL-ENGIN
     await resumeService(service);
 
     // First, a successful commit populates active state.
-    service.commitSynthArtifacts(
+    await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead")]),
       false,
     );
@@ -446,17 +473,19 @@ describe("synthesisService.commitSynthArtifacts — failed eval no-op (VAL-ENGIN
     // A subsequent failed eval must not change active state. We assert
     // this by observing that the NEXT successful commit of the same
     // identity is treated as update-in-place (not added).
-    service.commitSynthArtifacts(
+    await service.commitSynthArtifacts(
       buildPayload(2, [oscSineDeclaration("lead")]),
       true,
     );
 
     const afterFailed = bundle.worklet.postedMessages.length;
-    service.commitSynthArtifacts(
+    await service.commitSynthArtifacts(
       buildPayload(3, [oscSineDeclaration("lead")]),
       false,
     );
-    const newMessages = bundle.worklet.postedMessages.slice(afterFailed);
+    const newMessages = bundle.worklet.postedMessages
+      .slice(afterFailed)
+      .filter((message) => (message as { type?: string }).type === "update");
     expect(newMessages).toHaveLength(1);
     // update, NOT instantiate — the failed eval did not clear active.
     expect((newMessages[0] as { type: string }).type).toBe("update");
@@ -476,7 +505,7 @@ describe("synthesisService.commitSynthArtifacts — superseded responses (VAL-EN
     await resumeService(service);
 
     // Commit revision 5.
-    service.commitSynthArtifacts(
+    await service.commitSynthArtifacts(
       buildPayload(5, [oscSineDeclaration("lead")]),
       false,
     );
@@ -486,7 +515,7 @@ describe("synthesisService.commitSynthArtifacts — superseded responses (VAL-EN
     const armCallsAfterFirst = bundle.workerPort.armCalls.length;
 
     // A stale revision-3 response arrives (out-of-order Worker completion).
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(3, [oscSineDeclaration("lead")]),
       false,
     );
@@ -510,11 +539,11 @@ describe("synthesisService.commitSynthArtifacts — superseded responses (VAL-EN
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    service.commitSynthArtifacts(
+    await service.commitSynthArtifacts(
       buildPayload(7, [oscSineDeclaration("lead")]),
       false,
     );
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(7, [oscSineDeclaration("lead")]),
       false,
     );
@@ -534,12 +563,12 @@ describe("synthesisService.commitSynthArtifacts — superseded responses (VAL-EN
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    service.commitSynthArtifacts(
+    await service.commitSynthArtifacts(
       buildPayload(4, [oscSineDeclaration("lead")]),
       false,
     );
 
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(0, [oscSineDeclaration("lead")]),
       false,
     );
@@ -560,7 +589,7 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    expect(() =>
+    await expect(
       service.commitSynthArtifacts(
         {
           abi: 99,
@@ -570,7 +599,7 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
         },
         false,
       ),
-    ).toThrow();
+    ).rejects.toThrow();
 
     await service.dispose();
   });
@@ -580,7 +609,7 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    expect(() =>
+    await expect(
       service.commitSynthArtifacts(
         {
           abi: 1,
@@ -598,7 +627,7 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
         },
         false,
       ),
-    ).toThrow();
+    ).rejects.toThrow();
 
     await service.dispose();
   });
@@ -617,7 +646,7 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
       ],
     } as SynthArtifactsPayload;
 
-    expect(() => service.commitSynthArtifacts(malformed, false)).toThrow(
+    await expect(service.commitSynthArtifacts(malformed, false)).rejects.toThrow(
       /duplicate control key/,
     );
     expect(bundle.worklet.postedMessages).toHaveLength(messagesBefore);
@@ -648,7 +677,7 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
       ],
     } satisfies SynthArtifactsPayload;
 
-    expect(() => service.commitSynthArtifacts(cyclic, false)).toThrow(
+    await expect(service.commitSynthArtifacts(cyclic, false)).rejects.toThrow(
       /cycle/,
     );
     expect(bundle.worklet.postedMessages).toHaveLength(messagesBefore);
@@ -663,22 +692,22 @@ describe("synthesisService.commitSynthArtifacts — workerPort optional", () => 
     resetEngineStateStoreForTests();
   });
 
-  it("commits without a workerPort (tests / isolated diff path)", async () => {
+  it("rejects without an atomic producer transaction port", async () => {
     const bundle = buildBundle({ workerPort: undefined });
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead")]),
       false,
     );
 
-    expect(result.outcome).toBe("committed");
-    // The worklet message still posted.
+    expect(result.outcome).toBe("rejected-preparation-failed");
+    // Preparation never reached the worklet.
     const instantiate = bundle.worklet.postedMessages.find(
       (m) => (m as { type: string }).type === "instantiate",
     );
-    expect(instantiate).toBeDefined();
+    expect(instantiate).toBeUndefined();
 
     await service.dispose();
   });
@@ -695,13 +724,125 @@ describe("synthesisService.commitSynthArtifacts — dispose safety", () => {
     await resumeService(service);
     await service.dispose();
 
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead")]),
       false,
     );
 
     expect(result.outcome).not.toBe("committed");
     expect(result.epoch).toBe(0);
+  });
+});
+
+describe("synthesisService.commitSynthArtifacts — atomic preparation boundaries", () => {
+  beforeEach(() => {
+    resetEngineStateStoreForTests();
+  });
+
+  function boundaryBundle(options: {
+    failWorkletPhase?: "prepare" | "commit" | "activate";
+    failProducerPhase?: "prepare" | "arm";
+  }) {
+    const audioContext = createFakeAudioContext();
+    const posted: unknown[] = [];
+    const producerCalls: string[] = [];
+    const port: WorkletNodeContract["port"] = {
+      onmessage: null,
+      close() {},
+      postMessage(message: unknown) {
+        posted.push(message);
+        const tx = message as { type?: string; transactionId?: number };
+        const phase =
+          tx.type === "prepare-graph" ? "prepare" :
+          tx.type === "commit-graph" ? "commit" :
+          tx.type === "activate-graph" ? "activate" : null;
+        if (phase === "activate" && options.failWorkletPhase === "activate") {
+          throw new Error("activation port closed");
+        }
+        if (phase && typeof tx.transactionId === "number") {
+          queueMicrotask(() => port.onmessage?.({ data: {
+            type: "graph-transaction-ack",
+            transactionId: tx.transactionId,
+            phase,
+            ok: options.failWorkletPhase !== phase,
+          } }));
+        }
+      },
+    };
+    const worklet: WorkletNodeContract = {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      port,
+      connect() {},
+      disconnect() {},
+    };
+    const workerPort: SynthesisWorkerPort = {
+      async producerPrepareCommit() {
+        producerCalls.push("prepare");
+        return options.failProducerPhase !== "prepare";
+      },
+      async producerArmEpoch(epoch) {
+        producerCalls.push("arm");
+        return options.failProducerPhase === "arm" ? 0 : epoch;
+      },
+      async producerAbortCommit() {
+        producerCalls.push("abort");
+        return true;
+      },
+    };
+    const service = createSynthesisService({
+      capabilities: capableSnapshot(),
+      audioContextFactory: () => audioContext,
+      workletScriptUrl: "fake-worklet.js",
+      workletNodeFactory: () => worklet,
+      nodeDefModuleLoader: fakeModuleLoader(),
+      nodeDefDescriptors: [OSC_SINE_NODEDEF_DESCRIPTOR],
+      workerPort,
+    });
+    return { service, posted, producerCalls };
+  }
+
+  it.each([
+    ["worklet prepare", { failWorkletPhase: "prepare" as const }, ["abort"]],
+    ["producer prepare", { failProducerPhase: "prepare" as const }, ["prepare", "abort"]],
+    ["worklet commit", { failWorkletPhase: "commit" as const }, ["prepare", "abort"]],
+    ["producer arm", { failProducerPhase: "arm" as const }, ["prepare", "arm", "abort"]],
+    ["activation gate", { failWorkletPhase: "activate" as const }, ["prepare", "arm", "abort"]],
+  ])("aborts cleanly when %s fails", async (_label, failures, expectedProducerCalls) => {
+    const bundle = boundaryBundle(failures);
+    await bundle.service.resumeOnUserActivation();
+    const result = await bundle.service.commitSynthArtifacts(
+      buildPayload(1, [oscSineDeclaration("lead")]),
+      false,
+    );
+    expect(result.outcome).toBe("rejected-preparation-failed");
+    expect(result.epoch).toBe(0);
+    expect(bundle.producerCalls).toEqual(expectedProducerCalls);
+    expect(bundle.posted.some((message) =>
+      (message as { type?: string }).type === "abort-graph"
+    )).toBe(true);
+    await bundle.service.dispose();
+  });
+
+  it("publishes one commit only after graph, producer, and activation acknowledgements", async () => {
+    const bundle = boundaryBundle({});
+    await bundle.service.resumeOnUserActivation();
+    const result = await bundle.service.commitSynthArtifacts(
+      buildPayload(9, [oscSineDeclaration("lead")]),
+      false,
+    );
+    expect(result.outcome).toBe("committed");
+    expect(bundle.producerCalls).toEqual(["prepare", "arm"]);
+    expect(bundle.posted.filter((message) =>
+      ["prepare-graph", "commit-graph", "activate-graph"].includes(
+        (message as { type?: string }).type ?? "",
+      )
+    ).map((message) => (message as { type: string }).type)).toEqual([
+      "prepare-graph",
+      "commit-graph",
+      "activate-graph",
+    ]);
+    await bundle.service.dispose();
   });
 });
 
@@ -721,7 +862,7 @@ describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.2)", 
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(1, [oscSineDeclaration("lead"), oscSineDeclaration("bass")]),
       false,
     );
@@ -761,7 +902,7 @@ describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.2)", 
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
 
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       {
         ...buildPayload(1, [
           oscSineDeclaration("lfo"),
@@ -799,9 +940,9 @@ describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.2)", 
     const declarations = Array.from({ length: MAX_SYNTH_NODES + 1 }, (_, i) =>
       oscSineDeclaration(`node-${i}`),
     );
-    expect(() =>
+    await expect(
       service.commitSynthArtifacts(buildPayload(1, declarations), false),
-    ).toThrow(/MAX_SYNTH_NODES|64/);
+    ).rejects.toThrow(/MAX_SYNTH_NODES|64/);
 
     // The breach never reached the worklet: no instantiate was posted.
     const instantiates = bundle.worklet.postedMessages.filter(
@@ -820,7 +961,7 @@ describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.2)", 
     const declarations = Array.from({ length: MAX_SYNTH_NODES }, (_, i) =>
       oscSineDeclaration(`node-${i}`),
     );
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       buildPayload(1, declarations),
       false,
     );

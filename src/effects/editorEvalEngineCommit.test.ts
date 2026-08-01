@@ -31,7 +31,7 @@ const commitCalls: Array<{
 const mockCommitSynthArtifacts = vi.hoisted(() =>
   vi.fn((payload: unknown, hasErrors: boolean) => {
     commitCalls.push({ payload, hasErrors });
-    return { outcome: "committed", epoch: 1, revision: 1, workletDeltas: [] };
+    return Promise.resolve({ outcome: "committed", epoch: 1, revision: 1, workletDeltas: [] });
   }),
 );
 

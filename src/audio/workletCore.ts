@@ -84,6 +84,9 @@ import type {
   WorkletAudioInputWiring,
   WorkletControlChannel,
   WorkletGraphActivatedEvent,
+  WorkletAbortGraphMessage,
+  WorkletActivateGraphMessage,
+  WorkletCommitGraphMessage,
   WorkletInstantiateMessage,
   WorkletInstanceRetiredEvent,
   WorkletInstanceTelemetry,
@@ -91,6 +94,7 @@ import type {
   WorkletOutboundEvent,
   WorkletPrefillParam,
   WorkletProducerTimeoutEvent,
+  WorkletPrepareGraphMessage,
   WorkletRetireMessage,
   WorkletTelemetrySnapshot,
   WorkletUpdateMessage,
@@ -302,6 +306,17 @@ interface InstanceState {
   telemetryEntry: MutableInstanceTelemetry;
 }
 
+interface PreparedGraphCandidate {
+  readonly transactionId: number;
+  readonly epoch: number;
+  readonly newInstances: Map<string, InstanceState>;
+  readonly updates: Map<string, WorkletUpdateMessage>;
+  readonly retireIdentities: Set<string>;
+  readonly order: InstanceState[];
+  readonly inputPointers: Map<InstanceState, number[]>;
+  readonly terminal: Map<InstanceState, boolean>;
+}
+
 // ---------------------------------------------------------------------------
 // Core
 // ---------------------------------------------------------------------------
@@ -455,6 +470,9 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   const staged = new Map<string, InstanceState>();
   /** Precomputed post-activation execution order (swap at activation). */
   let stagedOrder: InstanceState[] | null = null;
+  let preparedCandidate: PreparedGraphCandidate | null = null;
+  let committedCandidate: PreparedGraphCandidate | null = null;
+  let committedCandidateEligible = false;
   let activeEpoch = 0;
   let pendingEpoch = 0;
   let blockCount = 0;
@@ -677,6 +695,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       case "retire":
         handleRetire(msg as unknown as WorkletRetireMessage);
         break;
+      case "prepare-graph":
+        handlePrepareGraph(msg as unknown as WorkletPrepareGraphMessage);
+        break;
+      case "commit-graph":
+        handleCommitGraph(msg as unknown as WorkletCommitGraphMessage);
+        break;
+      case "abort-graph":
+        handleAbortGraph(msg as unknown as WorkletAbortGraphMessage);
+        break;
+      case "activate-graph":
+        handleActivateGraph(msg as unknown as WorkletActivateGraphMessage);
+        break;
       case "devmode-terminate-producer":
         handleDevmodeTerminateProducer();
         break;
@@ -684,6 +714,268 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         // Unknown message type: no-op (forward compatibility).
         break;
     }
+  }
+
+  function releaseCandidate(candidate: PreparedGraphCandidate): void {
+    for (const instance of candidate.newInstances.values()) {
+      releaseInstanceZones(instance);
+    }
+  }
+
+  function transactionAck(
+    transactionId: number,
+    phase: "prepare" | "commit" | "activate" | "abort",
+    ok: boolean,
+    reason?: string,
+  ): void {
+    publishEvent({
+      type: "graph-transaction-ack",
+      transactionId,
+      phase,
+      ok,
+      ...(reason ? { reason } : {}),
+    });
+  }
+
+  /** Allocate and initialise one candidate instance without touching live state. */
+  function prepareInstance(message: WorkletInstantiateMessage): InstanceState | string {
+    const id = message.identity;
+    const adapter = options.adapterFactory(id.def, id.version);
+    if (!adapter) return `NodeDef ${id.def}@${id.version} is not installed`;
+    if (message.audioInputs?.length && typeof adapter.computeWithInputs !== "function") {
+      return `NodeDef ${id.def}@${id.version} cannot accept audio inputs`;
+    }
+    ensureSilenceZone();
+    const stateBytes = adapter.descriptor.stateBytes;
+    const statePointer = options.allocator.allocate(stateBytes, adapter.descriptor.stateAlign);
+    if (statePointer < 0) return "zone-exhausted";
+    const audioOutputs =
+      typeof message.audioOutputs === "number" && message.audioOutputs > 0
+        ? message.audioOutputs
+        : DEFAULT_AUDIO_OUTPUT_PORTS;
+    const outputZoneBytes = audioOutputs * zoneFrames * BYTES_PER_DOUBLE;
+    const outputZonePtr = options.allocator.allocate(outputZoneBytes, DOUBLE_ALIGN);
+    if (outputZonePtr < 0) {
+      options.allocator.release(statePointer);
+      return "zone-exhausted";
+    }
+    if (!adapter.init(statePointer, stateBytes)) {
+      options.allocator.release(outputZonePtr);
+      options.allocator.release(statePointer);
+      return `NodeDef ${id.def}@${id.version} rejected its state layout`;
+    }
+    const outputView = arenaView(outputZonePtr, audioOutputs * zoneFrames);
+    outputView.fill(0);
+    return {
+      identity: id.identity,
+      def: id.def,
+      version: id.version,
+      statePointer,
+      stateBytes,
+      adapter,
+      epoch: id.epoch,
+      lifecycle: "fade-in",
+      fadeFramesRemaining: fadeInFrames,
+      fadeFramesTotal: fadeInFrames,
+      fadeGainStart: 0,
+      fadeGainEnd: 1,
+      currentFreq: DEFAULT_FREQ,
+      currentAmp: DEFAULT_AMP,
+      prefill: buildPrefillMap(message.prefill),
+      audioOutputs,
+      inputWiring: message.audioInputs ?? EMPTY_WIRING,
+      inputPtrs: EMPTY_PTRS,
+      pendingInputPtrs: null,
+      outputZonePtr,
+      outputZoneBytes,
+      outputView,
+      isTerminal: true,
+      pendingIsTerminal: true,
+      controlChannels: buildControlChannelMap(message.controlChannels),
+      inputSupportWarned: false,
+      released: false,
+      telemetryEntry: {
+        identity: id.identity,
+        def: id.def,
+        version: id.version,
+        statePointer,
+        lifecycle: "fade-in",
+      },
+    };
+  }
+
+  function handlePrepareGraph(message: WorkletPrepareGraphMessage): void {
+    if (
+      !Number.isSafeInteger(message.transactionId) || message.transactionId <= 0 ||
+      !Number.isSafeInteger(message.epoch) || message.epoch <= 0 ||
+      !Array.isArray(message.deltas)
+    ) {
+      transactionAck(message.transactionId, "prepare", false, "malformed transaction");
+      return;
+    }
+    if (committedCandidate) {
+      transactionAck(message.transactionId, "prepare", false, "a prior candidate awaits activation");
+      return;
+    }
+    if (preparedCandidate) {
+      releaseCandidate(preparedCandidate);
+      preparedCandidate = null;
+    }
+
+    const newInstances = new Map<string, InstanceState>();
+    const updates = new Map<string, WorkletUpdateMessage>();
+    const retireIdentities = new Set<string>();
+    const fail = (reason: string) => {
+      for (const instance of newInstances.values()) releaseInstanceZones(instance);
+      transactionAck(message.transactionId, "prepare", false, reason);
+    };
+    for (const delta of message.deltas) {
+      if (delta.type === "instantiate") {
+        const prepared = prepareInstance(delta);
+        if (typeof prepared === "string") {
+          fail(prepared);
+          return;
+        }
+        newInstances.set(delta.identity.identity, prepared);
+      } else if (delta.type === "update") {
+        const live = liveByIdentity.get(delta.identity.identity);
+        if (!live || live.def !== delta.identity.def || live.version !== delta.identity.version) {
+          fail(`no live instance matches update ${delta.identity.identity}`);
+          return;
+        }
+        updates.set(delta.identity.identity, delta);
+      } else if (delta.type === "retire") {
+        retireIdentities.add(delta.identity.identity);
+      } else {
+        fail("unknown graph delta");
+        return;
+      }
+    }
+
+    const targetByIdentity = new Map<string, InstanceState>();
+    for (const [identity, instance] of liveByIdentity) {
+      if (!retireIdentities.has(identity)) targetByIdentity.set(identity, instance);
+    }
+    for (const [identity, instance] of newInstances) targetByIdentity.set(identity, instance);
+    if (targetByIdentity.size > MAX_SYNTH_NODES) {
+      fail("node-limit");
+      return;
+    }
+
+    // Keep fading ancestors in the render order, then topologically order the
+    // candidate active set. Pointer plans live in the candidate, never in the
+    // current instances, until the matching epoch activates.
+    const order: InstanceState[] = executionOrder.filter((instance) =>
+      !targetByIdentity.has(instance.identity) ||
+      (retireIdentities.has(instance.identity) && newInstances.has(instance.identity)),
+    );
+    const target = Array.from(targetByIdentity.values());
+    const indegree = new Map<InstanceState, number>();
+    const adjacency = new Map<InstanceState, InstanceState[]>();
+    const wiringFor = (instance: InstanceState) =>
+      updates.get(instance.identity)?.audioInputs ?? instance.inputWiring;
+    for (const instance of target) {
+      indegree.set(instance, 0);
+      adjacency.set(instance, []);
+    }
+    for (const instance of target) {
+      for (const wire of wiringFor(instance)) {
+        const source = targetByIdentity.get(wire.sourceIdentity);
+        if (source && source !== instance) {
+          adjacency.get(source)!.push(instance);
+          indegree.set(instance, indegree.get(instance)! + 1);
+        }
+      }
+    }
+    const ready = target.filter((instance) => indegree.get(instance) === 0);
+    while (ready.length > 0) {
+      const instance = ready.shift()!;
+      order.push(instance);
+      for (const next of adjacency.get(instance)!) {
+        indegree.set(next, indegree.get(next)! - 1);
+        if (indegree.get(next) === 0) ready.push(next);
+      }
+    }
+    const retiringAncestorCount = executionOrder.filter((instance) =>
+      !targetByIdentity.has(instance.identity) ||
+      (retireIdentities.has(instance.identity) && newInstances.has(instance.identity)),
+    ).length;
+    if (order.length !== retiringAncestorCount + target.length) {
+      fail("candidate graph contains a cycle");
+      return;
+    }
+
+    const inputPointers = new Map<InstanceState, number[]>();
+    const consumed = new Set<InstanceState>();
+    for (const instance of target) {
+      const wiring = wiringFor(instance);
+      let maxPort = -1;
+      for (const wire of wiring) maxPort = Math.max(maxPort, wire.port);
+      const pointers = new Array<number>(maxPort + 1).fill(silencePtr);
+      for (const wire of wiring) {
+        const source = targetByIdentity.get(wire.sourceIdentity);
+        if (source) {
+          pointers[wire.port] =
+            source.outputZonePtr + wire.sourcePort * zoneFrames * BYTES_PER_DOUBLE;
+          consumed.add(source);
+        }
+      }
+      inputPointers.set(instance, pointers);
+    }
+    const terminal = new Map<InstanceState, boolean>();
+    for (const instance of target) terminal.set(instance, !consumed.has(instance));
+
+    preparedCandidate = {
+      transactionId: message.transactionId,
+      epoch: message.epoch,
+      newInstances,
+      updates,
+      retireIdentities,
+      order,
+      inputPointers,
+      terminal,
+    };
+    transactionAck(message.transactionId, "prepare", true);
+  }
+
+  function handleCommitGraph(message: WorkletCommitGraphMessage): void {
+    if (!preparedCandidate || preparedCandidate.transactionId !== message.transactionId) {
+      transactionAck(message.transactionId, "commit", false, "candidate is not prepared");
+      return;
+    }
+    committedCandidate = preparedCandidate;
+    preparedCandidate = null;
+    committedCandidateEligible = false;
+    pendingEpoch = committedCandidate.epoch;
+    transactionAck(message.transactionId, "commit", true);
+  }
+
+  function handleActivateGraph(message: WorkletActivateGraphMessage): void {
+    const ok = committedCandidate?.transactionId === message.transactionId;
+    if (ok) committedCandidateEligible = true;
+    transactionAck(
+      message.transactionId,
+      "activate",
+      ok,
+      ok ? undefined : "candidate is not committed",
+    );
+  }
+
+  function handleAbortGraph(message: WorkletAbortGraphMessage): void {
+    let aborted = false;
+    if (preparedCandidate?.transactionId === message.transactionId) {
+      releaseCandidate(preparedCandidate);
+      preparedCandidate = null;
+      aborted = true;
+    }
+    if (committedCandidate?.transactionId === message.transactionId) {
+      releaseCandidate(committedCandidate);
+      committedCandidate = null;
+      committedCandidateEligible = false;
+      pendingEpoch = staged.size > 0 ? pendingEpoch : 0;
+      aborted = true;
+    }
+    transactionAck(message.transactionId, "abort", aborted, aborted ? undefined : "candidate not found");
   }
 
   function handleModuleTransfer(message: WorkletModuleTransferMessage): void {
@@ -744,6 +1036,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     }
     staged.clear();
     stagedOrder = null;
+    if (preparedCandidate) releaseCandidate(preparedCandidate);
+    if (committedCandidate) releaseCandidate(committedCandidate);
+    preparedCandidate = null;
+    committedCandidate = null;
+    committedCandidateEligible = false;
     liveByIdentity.clear();
     activeEpoch = 0;
     pendingEpoch = 0;
@@ -1201,7 +1498,57 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // last values) rather than render mismatched controls
     // (VAL-ENGINE-012). Activation is a prebuilt-array swap: the
     // topological plan was computed in the message handler.
-    if (staged.size > 0 && hasBlock) {
+    if (committedCandidate && hasBlock) {
+      if (!committedCandidateEligible) {
+        // The producer may have armed while the service is still waiting for
+        // the final activation acknowledgement. Candidate-layout blocks are
+        // drained but never exposed to the prior graph during this window.
+        if (consumedBlockEpoch === committedCandidate.epoch) hasBlock = false;
+      } else if (consumedBlockEpoch === committedCandidate.epoch) {
+        const candidate = committedCandidate;
+        for (const identity of candidate.retireIdentities) {
+          const live = liveByIdentity.get(identity);
+          if (live) {
+            startFadeOut(live, fadeOutFrames);
+            liveByIdentity.delete(identity);
+          }
+        }
+        for (const [identity, update] of candidate.updates) {
+          const live = liveByIdentity.get(identity);
+          if (!live) continue;
+          live.epoch = candidate.epoch;
+          live.prefill = buildPrefillMap(update.prefill);
+          if (update.controlChannels) {
+            live.controlChannels = buildControlChannelMap(update.controlChannels);
+          }
+          if (update.audioInputs) live.inputWiring = update.audioInputs;
+        }
+        for (const [identity, instance] of candidate.newInstances) {
+          liveByIdentity.set(identity, instance);
+        }
+        executionOrder = candidate.order;
+        for (const [instance, pointers] of candidate.inputPointers) {
+          instance.inputPtrs = pointers;
+        }
+        for (const [instance, terminal] of candidate.terminal) {
+          instance.isTerminal = terminal;
+        }
+        for (const instance of candidate.newInstances.values()) {
+          publishEvent({
+            type: "graph-activated",
+            identity: instance.identity,
+            epoch: candidate.epoch,
+            atBlock: blockCount,
+          });
+        }
+        activeEpoch = candidate.epoch;
+        pendingEpoch = 0;
+        committedCandidate = null;
+        committedCandidateEligible = false;
+      } else if (consumedBlockEpoch !== 0) {
+        hasBlock = false;
+      }
+    } else if (staged.size > 0 && hasBlock) {
       if (consumedBlockEpoch === pendingEpoch && pendingEpoch !== 0) {
         if (stagedOrder) {
           executionOrder = stagedOrder;
@@ -1661,6 +2008,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     liveByIdentity.clear();
     staged.clear();
     stagedOrder = null;
+    if (preparedCandidate) releaseCandidate(preparedCandidate);
+    if (committedCandidate) releaseCandidate(committedCandidate);
+    preparedCandidate = null;
+    committedCandidate = null;
+    committedCandidateEligible = false;
     silenceView = null;
     silencePtr = 0;
     activeEpoch = 0;

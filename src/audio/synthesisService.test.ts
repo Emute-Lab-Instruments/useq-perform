@@ -148,6 +148,19 @@ function createFakeWorkletNode(): FakeWorkletNode {
     port: {
       postMessage(message: unknown) {
         posted.push(message);
+        const tx = message as { type?: string; transactionId?: number };
+        const phase =
+          tx.type === "prepare-graph" ? "prepare" :
+          tx.type === "commit-graph" ? "commit" :
+          tx.type === "activate-graph" ? "activate" : null;
+        if (phase && typeof tx.transactionId === "number") {
+          queueMicrotask(() => node.port.onmessage?.({ data: {
+            type: "graph-transaction-ack",
+            transactionId: tx.transactionId,
+            phase,
+            ok: true,
+          } }));
+        }
       },
       onmessage: null,
       close() {
@@ -237,6 +250,11 @@ function buildOptions(
     workletNodeFactory: () => workletNode,
     nodeDefModuleLoader: loader,
     nodeDefDescriptors: [OSC_SINE_NODEDEF_DESCRIPTOR],
+    workerPort: {
+      async producerPrepareCommit() { return true; },
+      async producerAbortCommit() { return true; },
+      async producerArmEpoch(epoch: number) { return epoch; },
+    },
     installTelemetryGlobal: telemetry,
     ...overrides,
   };
@@ -567,7 +585,8 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
   it("commitSynthArtifacts accepts a well-formed payload without errors", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
-    const result = service.commitSynthArtifacts(
+    await service.resumeOnUserActivation();
+    const result = await service.commitSynthArtifacts(
       {
         abi: 1,
         revision: 1,
@@ -593,7 +612,7 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
   it("commitSynthArtifacts rejects payloads with diagnostics errors (VAL-COMP-014)", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
-    const result = service.commitSynthArtifacts(
+    const result = await service.commitSynthArtifacts(
       {
         abi: 1,
         revision: 1,
@@ -609,7 +628,7 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
   it("commitSynthArtifacts throws on ABI version mismatch (VAL-COMP-015)", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
-    expect(() =>
+    await expect(
       service.commitSynthArtifacts(
         {
           abi: 99,
@@ -619,14 +638,14 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
         },
         false,
       ),
-    ).toThrowError(SynthesisServiceError);
+    ).rejects.toThrowError(SynthesisServiceError);
     await service.dispose();
   });
 
   it("commitSynthArtifacts throws on unknown NodeDef references", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
-    expect(() =>
+    await expect(
       service.commitSynthArtifacts(
         {
           abi: 1,
@@ -644,7 +663,7 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
         },
         false,
       ),
-    ).toThrowError(SynthesisServiceError);
+    ).rejects.toThrowError(SynthesisServiceError);
     await service.dispose();
   });
 });

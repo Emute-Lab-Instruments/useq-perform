@@ -508,6 +508,34 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       return true;
     },
 
+    async producerPrepareCommit(
+      epoch: number,
+      values: Record<string, number>,
+      blockRateChannels: readonly string[],
+    ): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerPrepareCommit-result" }>
+      >(
+        { type: "producerPrepareCommit", epoch, values, blockRateChannels },
+        "producerPrepareCommit-result",
+      );
+      return response.prepared;
+    },
+
+    async producerAbortCommit(epoch: number): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "producerAbortCommit-result" }>
+      >(
+        { type: "producerAbortCommit", epoch },
+        "producerAbortCommit-result",
+      );
+      return response.aborted;
+    },
+
     async producerStart(options: {
       anchorFrame?: bigint;
       anchorTime?: number;

@@ -32,7 +32,7 @@ import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mo
 // ---------------------------------------------------------------------------
 
 const mockCommitSynthArtifacts = vi.hoisted(() =>
-  vi.fn((_payload: unknown, _hasErrors: boolean) => ({
+  vi.fn((_payload: unknown, _hasErrors: boolean) => Promise.resolve({
     outcome: "rejected-invalid-payload" as const,
     epoch: 0,
     revision: 0,

@@ -94,6 +94,7 @@ import {
 } from "../contracts/synthesisControlAbi";
 import type {
   WorkletControlAttachAckEvent,
+  WorkletGraphTransactionAckEvent,
   WorkletModuleTransferMessage,
   WorkletProducerTimeoutEvent,
   WorkletTelemetrySnapshot,
@@ -286,6 +287,12 @@ export interface SynthesisWorkerPort {
     values: Record<string, number>,
     blockRateChannels?: readonly string[],
   ): Promise<boolean>;
+  producerPrepareCommit?(
+    epoch: number,
+    values: Record<string, number>,
+    blockRateChannels: readonly string[],
+  ): Promise<boolean>;
+  producerAbortCommit?(epoch: number): Promise<boolean>;
   /**
    * Start the producer loop. The producer publishes enough blocks to
    * refill the ring up to the configured lookahead, paced by the
@@ -536,7 +543,8 @@ export type EngineCommitOutcome =
   | "committed"
   | "rejected-failed-eval"
   | "rejected-superseded"
-  | "rejected-invalid-payload";
+  | "rejected-invalid-payload"
+  | "rejected-preparation-failed";
 
 /**
  * Result of {@link SynthesisService.commitSynthArtifacts}.
@@ -700,21 +708,18 @@ export interface SynthesisService {
    *   4. Build the identity-keyed graph diff.
    *   5. Allocate a fresh program epoch.
    *   6. Resolve prefill values from the NodeDef registry defaults.
-   *   7. Post the ordered worklet delta messages (retire → instantiate
-   *      → update) to the worklet so the worklet core stages the
-   *      pending graph for the first matching-epoch block
-   *      (VAL-ENGINE-011).
-   *   8. Arm the Worker producer for the new epoch so the next
-   *      produced block carries it.
+   *   7. Prepare the complete graph and producer control layout off-live.
+   *   8. Commit the accepted worklet candidate, atomically arm the producer,
+   *      then open the worklet activation gate.
    *
-   * Returns the {@link EngineCommitResult}. The service records the
+   * Resolves to the {@link EngineCommitResult}. The service records the
    * incoming declarations as the new active set and the incoming
    * revision as the latest committed revision on success.
    */
   commitSynthArtifacts(
     payload: SynthArtifactsPayload,
     hasErrors: boolean,
-  ): EngineCommitResult;
+  ): Promise<EngineCommitResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -834,10 +839,10 @@ function createUnavailableService(
       // No engine to reinitialise.
       return false;
     },
-    commitSynthArtifacts(
+    async commitSynthArtifacts(
       _payload: SynthArtifactsPayload,
       _hasErrors: boolean,
-    ): EngineCommitResult {
+    ): Promise<EngineCommitResult> {
       // Audio capability is absent; the engine never activates. The
       // eval pipeline still calls this method (so the editor can run
       // synth forms without audio), but the commit is a no-op.
@@ -963,6 +968,12 @@ function createCapableService(
   const activeDeclarations = new Map<string, ActiveDeclaration>();
   let lastAppliedRevision = 0;
   const epochAllocator: EpochAllocator = createEpochAllocator();
+  let commitQueue: Promise<unknown> = Promise.resolve();
+  const pendingGraphAcks = new Map<
+    string,
+    { resolve: (ok: boolean) => void; timer: ReturnType<typeof setTimeout> }
+  >();
+  const GRAPH_TRANSACTION_ACK_TIMEOUT_MS = 1000;
 
   // VAL-ENGINE-022 dedup state: the last (message, type) pair posted to
   // the console sink. Consecutive identical pairs are suppressed so
@@ -1569,6 +1580,17 @@ function createCapableService(
       );
       return;
     }
+    if (evt.type === "graph-transaction-ack") {
+      const ack = evt as WorkletGraphTransactionAckEvent;
+      const key = `${ack.transactionId}:${ack.phase}`;
+      const pending = pendingGraphAcks.get(key);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingGraphAcks.delete(key);
+        pending.resolve(ack.ok);
+      }
+      return;
+    }
 
     // Unknown event shapes are silently ignored so a forward-compatible
     // worklet cannot crash the main thread.
@@ -1739,8 +1761,10 @@ function createCapableService(
     commitSynthArtifacts(
       payload: SynthArtifactsPayload,
       hasErrors: boolean,
-    ): EngineCommitResult {
-      return runEngineCommit(payload, hasErrors);
+    ): Promise<EngineCommitResult> {
+      const operation = commitQueue.then(() => runEngineCommit(payload, hasErrors));
+      commitQueue = operation.then(() => undefined, () => undefined);
+      return operation;
     },
 
     async dispose() {
@@ -1879,6 +1903,11 @@ function createCapableService(
     // down; a late firing against the fresh session would be a
     // spurious error transition.
     clearProducerTimers();
+    for (const pending of pendingGraphAcks.values()) {
+      clearTimeout(pending.timer);
+      pending.resolve(false);
+    }
+    pendingGraphAcks.clear();
     // Note: fault counters (underrun/glitch/timeout) are NOT reset
     // here. They are lifetime counters for the current service
     // instance. A full dispose (final state "off") resets them via
@@ -1920,24 +1949,83 @@ function createCapableService(
   //   4. Build the identity-keyed graph diff.
   //   5. Allocate a fresh program epoch.
   //   6. Resolve prefill values from the registry defaults.
-  //   7. Post the ordered worklet delta messages.
-  //   8. Arm the Worker producer for the new epoch.
+  //   7. Prepare and acknowledge the complete worklet/producer candidate.
+  //   8. Commit, arm, and gate activation; abort every reservation on failure.
   //
-  // The function is synchronous through step 7 (the worklet post is a
-  // non-blocking postMessage). Step 8 (producerArmEpoch) is async but
-  // the service does NOT await it before returning — the worklet
-  // activation is gated on the epoch tag the producer writes into the
-  // SAB, and the producer writes that tag on its next iteration. Awaiting
-  // the arm call would block the eval pipeline on the Worker's
-  // microtask queue, which is exactly the starvation pattern
-  // VAL-ENGINE-006 forbids. The arm call is fire-and-forget; failures
-  // surface through producer telemetry (the next produced block will
-  // not carry the new epoch, so the worklet will keep the prior graph).
+  // Preparation is asynchronous but does not block the Worker producer or
+  // audio thread: it is a sequence of message acknowledgements. The old graph
+  // remains the sole live graph until every participant is prepared.
 
-  function runEngineCommit(
+  function postGraphTransaction(
+    transactionId: number,
+    phase: "prepare" | "commit",
+    message: unknown,
+  ): Promise<boolean> {
+    if (!workletNode) return Promise.resolve(false);
+    const key = `${transactionId}:${phase}`;
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingGraphAcks.delete(key);
+        resolve(false);
+      }, GRAPH_TRANSACTION_ACK_TIMEOUT_MS);
+      pendingGraphAcks.set(key, { resolve, timer });
+      try {
+        workletNode!.port.postMessage(message);
+      } catch {
+        clearTimeout(timer);
+        pendingGraphAcks.delete(key);
+        resolve(false);
+      }
+    });
+  }
+
+  function openGraphActivationGate(transactionId: number): boolean {
+    if (!workletNode) return false;
+    try {
+      workletNode.port.postMessage({ type: "activate-graph", transactionId });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function abortCandidate(
+    transactionId: number,
+    epoch: number,
+    requireProducerRollback = false,
+  ): Promise<void> {
+    let producerRolledBack = false;
+    try {
+      producerRolledBack = await options.workerPort?.producerAbortCommit?.(epoch) === true;
+    } catch {
+      producerRolledBack = false;
+    }
+    // After arm, an uncertain producer must remain paired with the committed,
+    // ineligible worklet candidate. Dropping that gate would let candidate-
+    // layout blocks reach the prior graph. Recovery replaces both resources.
+    if (requireProducerRollback && !producerRolledBack) {
+      if (!disposed && currentState !== "error") {
+        transition(
+          "error",
+          "RECOVERY_FAILED",
+          "Synth candidate rollback could not be confirmed; engine recovery is required",
+        );
+      }
+      return;
+    }
+    if (workletNode) {
+      try {
+        workletNode.port.postMessage({ type: "abort-graph", transactionId });
+      } catch {
+        // A dead port is replaced by the existing recovery path.
+      }
+    }
+  }
+
+  async function runEngineCommit(
     payload: SynthArtifactsPayload,
     hasErrors: boolean,
-  ): EngineCommitResult {
+  ): Promise<EngineCommitResult> {
     if (disposed) {
       return NOOP_COMMIT_RESULT;
     }
@@ -2023,23 +2111,26 @@ function createCapableService(
       );
     }
 
-    // Step 7: post the ordered worklet delta messages. The worklet
-    // stages the pending graph for the first matching-epoch block
-    // (VAL-ENGINE-011). If the worklet has not been brought up yet
-    // (engine in 'off' or 'suspended'), the messages are still safe
-    // to post — the AudioWorkletProcessor queues them until its
-    // event loop runs.
-    if (workletNode) {
-      for (const delta of plan.workletDeltas) {
-        if (delta.type === "instantiate") {
-          // The worklet core allocates the state zone between quanta
-          // when statePointer/stateBytes are zero. The service does
-          // not preallocate (the host-owned shared memory lives inside
-          // the worklet global scope). The graph fields (per-(node,
-          // param) control channels, port counts, audio-input wiring)
-          // pass through to the worklet unchanged.
-          workletNode.port.postMessage({
-            type: "instantiate",
+    const workerPort = options.workerPort;
+    if (
+      !workletNode ||
+      !workerPort ||
+      typeof workerPort.producerPrepareCommit !== "function" ||
+      typeof workerPort.producerAbortCommit !== "function"
+    ) {
+      return {
+        outcome: "rejected-preparation-failed",
+        epoch: 0,
+        revision: 0,
+        workletDeltas: Object.freeze([]),
+      };
+    }
+
+    const transactionId = plan.epoch;
+    const graphDeltas = plan.workletDeltas.map((delta) =>
+      delta.type === "instantiate"
+        ? {
+            type: "instantiate" as const,
             identity: delta.identity,
             prefill: delta.prefill,
             statePointer: 0,
@@ -2047,64 +2138,100 @@ function createCapableService(
             controlChannels: delta.controlChannels,
             audioOutputs: delta.audioOutputs,
             audioInputs: delta.audioInputs,
-          });
-        } else {
-          // retire / update pass through unchanged.
-          workletNode.port.postMessage(delta);
-        }
-      }
+          }
+        : delta,
+    );
+    const graphPrepared = await postGraphTransaction(transactionId, "prepare", {
+      type: "prepare-graph",
+      transactionId,
+      epoch: plan.epoch,
+      deltas: graphDeltas,
+    });
+    if (!graphPrepared || disposed || payload.revision < lastAppliedRevision) {
+      await abortCandidate(transactionId, plan.epoch);
+      return {
+        outcome: payload.revision < lastAppliedRevision
+          ? "rejected-superseded"
+          : "rejected-preparation-failed",
+        epoch: 0,
+        revision: 0,
+        workletDeltas: Object.freeze([]),
+      };
     }
 
-    // Step 8: arm the Worker producer for the new epoch. Fire-and-
-    // forget — see the rationale above. The producer writes the epoch
-    // into its pendingEpoch header field; the next produced block
-    // carries it; the worklet activates the pending graph on the
-    // first matching-epoch block (VAL-ENGINE-011).
-    const workerPort = options.workerPort;
-    if (workerPort && plan.epoch !== 0) {
-      // The producer arm is async but we deliberately do NOT await
-      // it: the eval pipeline must not block on Worker round-trips
-      // (VAL-ENGINE-006). Errors surface through producer telemetry.
-      void workerPort.producerArmEpoch(plan.epoch).then(
-        () => {
-          // Arm succeeded; the next produced block carries the epoch.
-        },
-        (err) => {
-          // Best-effort: log to the console sink if wired. The worklet
-          // will hold the pending graph until a matching block lands
-          // or the producer times out (VAL-ENGINE-024).
-          postConsoleMessage(
-            `Synthesis producer arm failed for epoch ${plan.epoch}: ${(err as Error).message}`,
-            "warn",
-          );
-        },
+    const channelKeys = plan.layout.channels.map((entry) =>
+      controlChannelKey(entry.identity, entry.param),
+    );
+    const controlValues: Record<string, number> = {};
+    for (const entry of plan.layout.channels) {
+      const value = plan.prefills.get(entry.identity)?.get(entry.param);
+      if (typeof value === "number" && Number.isFinite(value)) {
+        controlValues[controlChannelKey(entry.identity, entry.param)] = value;
+      }
+    }
+    let producerPrepared = false;
+    try {
+      producerPrepared = await workerPort.producerPrepareCommit(
+        plan.epoch,
+        controlValues,
+        channelKeys,
       );
+    } catch {
+      producerPrepared = false;
+    }
+    if (!producerPrepared) {
+      await abortCandidate(transactionId, plan.epoch);
+      return {
+        outcome: "rejected-preparation-failed",
+        epoch: 0,
+        revision: 0,
+        workletDeltas: Object.freeze([]),
+      };
     }
 
-    // VAL-CROSS-002: send the resolved control values to the producer
-    // and re-arm its per-(node, param) channel list in the same message
-    // (list and values switch atomically inside one Worker handler
-    // turn). Values follow the static-control model: resolved from the
-    // NodeDef registry defaults at eval commit, republished on every
-    // block. Keys are composite `controlChannelKey(identity, param)`
-    // strings; the channel list is the commit plan's table in order, so
-    // the producer's array index equals the SAB channel index the
-    // worklet reads. This is fire-and-forget like the epoch arm above.
-    if (workerPort && typeof workerPort.producerSetControlValues === "function") {
-      const channelKeys = plan.layout.channels.map((entry) =>
-        controlChannelKey(entry.identity, entry.param),
-      );
-      const controlValues: Record<string, number> = {};
-      for (const entry of plan.layout.channels) {
-        const value = plan.prefills.get(entry.identity)?.get(entry.param);
-        if (typeof value === "number" && Number.isFinite(value)) {
-          controlValues[controlChannelKey(entry.identity, entry.param)] = value;
-        }
-      }
-      void workerPort.producerSetControlValues(controlValues, channelKeys).then(
-        () => { /* control values updated */ },
-        () => { /* best-effort */ },
-      );
+    const graphCommitted = await postGraphTransaction(transactionId, "commit", {
+      type: "commit-graph",
+      transactionId,
+    });
+    if (!graphCommitted) {
+      await abortCandidate(transactionId, plan.epoch);
+      return {
+        outcome: "rejected-preparation-failed",
+        epoch: 0,
+        revision: 0,
+        workletDeltas: Object.freeze([]),
+      };
+    }
+
+    let armedEpoch = 0;
+    try {
+      armedEpoch = await workerPort.producerArmEpoch(plan.epoch);
+    } catch {
+      armedEpoch = 0;
+    }
+    if (armedEpoch !== plan.epoch) {
+      await abortCandidate(transactionId, plan.epoch, true);
+      return {
+        outcome: "rejected-preparation-failed",
+        epoch: 0,
+        revision: 0,
+        workletDeltas: Object.freeze([]),
+      };
+    }
+
+    // This is the final one-way decision after both participants have
+    // acknowledged preparation and the producer arm. Waiting for an ack here
+    // would introduce an unsafe uncertainty window: the worklet could activate
+    // at a quantum boundary while a lost ack made the service attempt rollback.
+    const graphActivated = openGraphActivationGate(transactionId);
+    if (!graphActivated) {
+      await abortCandidate(transactionId, plan.epoch, true);
+      return {
+        outcome: "rejected-preparation-failed",
+        epoch: 0,
+        revision: 0,
+        workletDeltas: Object.freeze([]),
+      };
     }
 
     // Update the active-declaration map from the incoming payload. The

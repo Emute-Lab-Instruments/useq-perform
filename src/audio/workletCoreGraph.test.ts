@@ -534,6 +534,120 @@ describe("workletCore graph — multi-node retirement (VAL-ENGINE-035)", () => {
   });
 });
 
+describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
+  function transactionAck(h: GraphHarness, transactionId: number, phase: string) {
+    return h.events.find((event) =>
+      "type" in event &&
+      event.type === "graph-transaction-ack" &&
+      event.transactionId === transactionId &&
+      event.phase === phase
+    ) as Extract<WorkletOutboundEvent, { type: "graph-transaction-ack" }> | undefined;
+  }
+
+  function prepareAdd(identity: string, def: string, epoch: number) {
+    return {
+      type: "prepare-graph" as const,
+      transactionId: epoch,
+      epoch,
+      deltas: [{
+        type: "instantiate" as const,
+        identity: { identity, def, version: 1, epoch },
+        statePointer: 0,
+        stateBytes: 0,
+        audioOutputs: 1,
+      }],
+    };
+  }
+
+  it("reclaims a partially allocated candidate and keeps the old graph live", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const limitBytes =
+      SYNTH_ARENA_NULL_GUARD_BYTES +
+      128 * BYTES_PER_DOUBLE +
+      2 * BYTES_PER_DOUBLE +
+      24 +
+      128 * BYTES_PER_DOUBLE +
+      24 +
+      64;
+    const h = buildGraphHarness({
+      adapters: {
+        "src/a": createConstAdapter(arena, "src/a", 0.25, callOrder),
+        "src/b": createConstAdapter(arena, "src/b", 0.5, callOrder),
+      },
+      arena,
+      callOrder,
+      limitBytes,
+    });
+    instantiate(h.core, "old", "src/a", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    const releasesBefore = h.releaseCount();
+
+    h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
+    expect(transactionAck(h, 2, "prepare")?.ok).toBe(false);
+    expect(h.releaseCount()).toBeGreaterThan(releasesBefore);
+    h.step(1);
+    expect(h.core.telemetry.instances.map((instance) => instance.identity)).toEqual(["old"]);
+    expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
+  });
+
+  it("does not expose a committed candidate before the explicit activation gate", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: {
+        "src/a": createConstAdapter(arena, "src/a", 0.25, callOrder),
+        "src/b": createConstAdapter(arena, "src/b", 0.5, callOrder),
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "old", "src/a", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+
+    h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
+    h.core.handleMessage({ type: "commit-graph", transactionId: 2 });
+    h.step(2);
+    expect(h.core.telemetry.instances.map((instance) => instance.identity)).toEqual(["old"]);
+    expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
+
+    const releasesBefore = h.releaseCount();
+    h.core.handleMessage({ type: "abort-graph", transactionId: 2 });
+    expect(h.releaseCount()).toBeGreaterThan(releasesBefore);
+    expect(transactionAck(h, 2, "abort")?.ok).toBe(true);
+  });
+
+  it("activates the complete candidate exactly once on its matching epoch", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: {
+        "src/a": createConstAdapter(arena, "src/a", 0.25, callOrder),
+        "src/b": createConstAdapter(arena, "src/b", 0.5, callOrder),
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "old", "src/a", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+
+    h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
+    h.core.handleMessage({ type: "commit-graph", transactionId: 2 });
+    h.core.handleMessage({ type: "activate-graph", transactionId: 2 });
+    h.step(2);
+    h.step(2);
+
+    expect(h.core.telemetry.instances.map((instance) => instance.identity).sort()).toEqual([
+      "candidate",
+      "old",
+    ]);
+    const activations = h.events.filter((event) =>
+      "type" in event && event.type === "graph-activated" && event.epoch === 2
+    );
+    expect(activations).toHaveLength(1);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Resource limits and diagnostics
 // ---------------------------------------------------------------------------

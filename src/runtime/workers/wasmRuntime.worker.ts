@@ -160,6 +160,16 @@ let producerBlocksPublished = 0;
 // live producer without a stop/start cycle.
 const producerBlockRateChannels: string[] = [];
 const producerControlValues = new Map<string, number>();
+interface PreparedProducerCommit {
+  epoch: number;
+  channels: string[];
+  values: Map<string, number>;
+  previousEpoch: number;
+  previousChannels: string[];
+  previousValues: Map<string, number>;
+}
+let preparedProducerCommit: PreparedProducerCommit | null = null;
+let lastArmedProducerCommit: PreparedProducerCommit | null = null;
 
 function rearmProducerChannels(channels: readonly string[]): void {
   producerBlockRateChannels.length = 0;
@@ -1025,6 +1035,8 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           const view = attachSynthesisControlView(request.controlBuffer);
           controlView = view;
           pacingWaiter = createProducerPacingWaiter(request.controlBuffer);
+          preparedProducerCommit = null;
+          lastArmedProducerCommit = null;
           rearmProducerChannels(request.blockRateChannels ?? []);
           // Reset the audit so devmode traces reflect this session only.
           producerAudit.length = 0;
@@ -1064,6 +1076,64 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           }
         }
         postResponse({ type: "producerSetControlValues-result", id });
+        return;
+      }
+      case "producerPrepareCommit": {
+        if (!controlView || !Number.isSafeInteger(request.epoch) || request.epoch <= 0) {
+          postResponse({ type: "producerPrepareCommit-result", id, prepared: false });
+          return;
+        }
+        if (request.blockRateChannels.length > controlView.blockRateCount) {
+          postResponse({ type: "producerPrepareCommit-result", id, prepared: false });
+          return;
+        }
+        const values = new Map<string, number>();
+        let valid = true;
+        for (const channel of request.blockRateChannels) {
+          const value = request.values[channel];
+          if (typeof channel !== "string" || typeof value !== "number" || !Number.isFinite(value)) {
+            valid = false;
+            break;
+          }
+          values.set(channel, value);
+        }
+        if (!valid) {
+          postResponse({ type: "producerPrepareCommit-result", id, prepared: false });
+          return;
+        }
+        preparedProducerCommit = {
+          epoch: request.epoch,
+          channels: [...request.blockRateChannels],
+          values,
+          previousEpoch: controlView.pendingEpoch,
+          previousChannels: [...producerBlockRateChannels],
+          previousValues: new Map(producerControlValues),
+        };
+        postResponse({ type: "producerPrepareCommit-result", id, prepared: true });
+        return;
+      }
+      case "producerAbortCommit": {
+        let aborted = false;
+        if (preparedProducerCommit?.epoch === request.epoch) {
+          preparedProducerCommit = null;
+          aborted = true;
+        }
+        if (lastArmedProducerCommit?.epoch === request.epoch && controlView) {
+          rearmProducerChannels(lastArmedProducerCommit.previousChannels);
+          producerControlValues.clear();
+          for (const [name, value] of lastArmedProducerCommit.previousValues) {
+            producerControlValues.set(name, value);
+          }
+          controlView.pendingEpoch = lastArmedProducerCommit.previousEpoch;
+          // Candidate blocks may already be queued even though the worklet's
+          // final activation gate failed. Drop the whole lookahead window so
+          // the prior graph can never consume candidate-layout values; the
+          // running producer immediately refills it from the restored layout.
+          controlView.ringReadIndex = controlView.ringWriteIndex;
+          lastArmedProducerCommit = null;
+          aborted = true;
+        }
+        postResponse({ type: "producerAbortCommit-result", id, aborted });
         return;
       }
       case "producerStart": {
@@ -1184,6 +1254,20 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         if (!controlView) {
           postResponse({ type: "producerArmEpoch-result", id, armedEpoch: 0 });
           return;
+        }
+        if (preparedProducerCommit) {
+          if (preparedProducerCommit.epoch !== request.epoch) {
+            postResponse({ type: "producerArmEpoch-result", id, armedEpoch: 0 });
+            return;
+          }
+          const armed = preparedProducerCommit;
+          rearmProducerChannels(armed.channels);
+          producerControlValues.clear();
+          for (const [name, value] of armed.values) {
+            producerControlValues.set(name, value);
+          }
+          lastArmedProducerCommit = armed;
+          preparedProducerCommit = null;
         }
         controlView.pendingEpoch = request.epoch;
         postResponse({

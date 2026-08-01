@@ -290,6 +290,38 @@ export interface WorkletRetireMessage {
 }
 
 /**
+ * Failure-atomic graph transaction. `prepare-graph` asks the worklet to
+ * validate the complete candidate and reserve/initialise every zone without
+ * changing the live graph. `commit-graph` only makes an accepted candidate
+ * eligible for its matching epoch; `abort-graph` releases every reservation.
+ */
+export interface WorkletPrepareGraphMessage {
+  readonly type: "prepare-graph";
+  readonly transactionId: number;
+  readonly epoch: number;
+  readonly deltas: readonly (
+    | WorkletInstantiateMessage
+    | WorkletUpdateMessage
+    | WorkletRetireMessage
+  )[];
+}
+
+export interface WorkletCommitGraphMessage {
+  readonly type: "commit-graph";
+  readonly transactionId: number;
+}
+
+export interface WorkletAbortGraphMessage {
+  readonly type: "abort-graph";
+  readonly transactionId: number;
+}
+
+export interface WorkletActivateGraphMessage {
+  readonly type: "activate-graph";
+  readonly transactionId: number;
+}
+
+/**
  * Devmode-only controlled fault: simulate producer loss. The worklet
  * core immediately stops observing fresh producer activity and enters
  * the timeout fade path (VAL-ENGINE-023, VAL-ENGINE-024).
@@ -331,6 +363,10 @@ export type WorkletInboundMessage =
   | WorkletInstantiateMessage
   | WorkletUpdateMessage
   | WorkletRetireMessage
+  | WorkletPrepareGraphMessage
+  | WorkletCommitGraphMessage
+  | WorkletAbortGraphMessage
+  | WorkletActivateGraphMessage
   | WorkletDevmodeTerminateProducerMessage
   | WorkletAttachControlBufferMessage
   | WorkletDetachControlBufferMessage;
@@ -462,10 +498,20 @@ export interface WorkletGraphDiagnosticEvent {
   readonly identity: string;
 }
 
+/** Immediate acknowledgement for the prepare/commit transaction protocol. */
+export interface WorkletGraphTransactionAckEvent {
+  readonly type: "graph-transaction-ack";
+  readonly transactionId: number;
+  readonly phase: "prepare" | "commit" | "activate" | "abort";
+  readonly ok: boolean;
+  readonly reason?: string;
+}
+
 export type WorkletOutboundEvent =
   | WorkletTelemetrySnapshot
   | WorkletProducerTimeoutEvent
   | WorkletInstanceRetiredEvent
   | WorkletGraphActivatedEvent
   | WorkletControlAttachAckEvent
-  | WorkletGraphDiagnosticEvent;
+  | WorkletGraphDiagnosticEvent
+  | WorkletGraphTransactionAckEvent;

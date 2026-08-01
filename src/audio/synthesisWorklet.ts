@@ -501,6 +501,7 @@ export function registerSynthesisProcessor(): void {
 
   class SynthesisProcessor extends AudioWorkletProcessor {
     private bag: ProcessorBag | null;
+    private moduleInstallChain: Promise<void> = Promise.resolve();
 
     constructor(options?: AudioWorkletNodeOptions) {
       super(options);
@@ -534,7 +535,23 @@ export function registerSynthesisProcessor(): void {
           // fallback path compiles the EXACT prevalidated bytes ONCE
           // before graph activation; subsequent process() calls reuse
           // the cached adapter without recompiling.
-          void bag.installModule(payload);
+          this.moduleInstallChain = this.moduleInstallChain.then(() => bag.installModule(payload));
+          return;
+        }
+        if (
+          data &&
+          typeof data === "object" &&
+          (data as { type?: string }).type === "prepare-graph"
+        ) {
+          // A prepare acknowledgement is meaningful only after every earlier
+          // module transfer is installed. Serialising here closes the async
+          // module-transfer race without ever compiling in process().
+          void this.moduleInstallChain.then(() => {
+            const currentBag = this.bag;
+            if (!currentBag) return;
+            currentBag.core.handleMessage(data);
+            drainPendingEvents(currentBag.pendingEvents, (evt) => this.port.postMessage(evt));
+          });
           return;
         }
         bag.core.handleMessage(data);

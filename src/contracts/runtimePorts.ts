@@ -485,7 +485,20 @@ export interface WasmRuntimePort extends SharedRuntimePort {
    * from the NodeDef defaults and the user's synth form bindings at
    * eval time (VAL-CROSS-002).
    */
-  producerSetControlValues?(values: Record<string, number>): Promise<boolean>;
+  producerSetControlValues?(
+    values: Record<string, number>,
+    blockRateChannels?: readonly string[],
+  ): Promise<boolean>;
+
+  /** Reserve controls for an epoch without changing the live producer. */
+  producerPrepareCommit?(
+    epoch: number,
+    values: Record<string, number>,
+    blockRateChannels: readonly string[],
+  ): Promise<boolean>;
+
+  /** Discard a reserved producer candidate. */
+  producerAbortCommit?(epoch: number): Promise<boolean>;
 
   /**
    * Start the producer. The producer loop runs between Worker message

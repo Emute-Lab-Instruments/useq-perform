@@ -245,6 +245,22 @@ export interface ProducerSetControlValuesRequest {
   blockRateChannels?: readonly string[];
 }
 
+/** Reserve a control layout/value set for an epoch without publishing it. */
+export interface ProducerPrepareCommitRequest {
+  type: "producerPrepareCommit";
+  id: number;
+  epoch: number;
+  values: Record<string, number>;
+  blockRateChannels: readonly string[];
+}
+
+/** Drop a prepared producer candidate. Active controls remain unchanged. */
+export interface ProducerAbortCommitRequest {
+  type: "producerAbortCommit";
+  id: number;
+  epoch: number;
+}
+
 /**
  * Update transport state on the producer. Drives the pure transport frame
  * map and is deterministic across start, pause, resume, stop, and re-anchor
@@ -340,6 +356,8 @@ export type WasmWorkerRequest =
   | ApplyStateSnapshotRequest
   | ProducerInstallSabRequest
   | ProducerSetControlValuesRequest
+  | ProducerPrepareCommitRequest
+  | ProducerAbortCommitRequest
   | ProducerStartRequest
   | ProducerStopRequest
   | ProducerTransportUpdateRequest
@@ -520,6 +538,18 @@ export interface ProducerSetControlValuesResponse {
   id: number;
 }
 
+export interface ProducerPrepareCommitResponse {
+  type: "producerPrepareCommit-result";
+  id: number;
+  prepared: boolean;
+}
+
+export interface ProducerAbortCommitResponse {
+  type: "producerAbortCommit-result";
+  id: number;
+  aborted: boolean;
+}
+
 export interface ProducerStopResponse {
   type: "producerStop-result";
   id: number;
@@ -623,6 +653,8 @@ export type WasmWorkerResponse =
   | ApplyStateSnapshotResponse
   | ProducerInstallSabResponse
   | ProducerSetControlValuesResponse
+  | ProducerPrepareCommitResponse
+  | ProducerAbortCommitResponse
   | ProducerStartResponse
   | ProducerStopResponse
   | ProducerTransportUpdateResponse
