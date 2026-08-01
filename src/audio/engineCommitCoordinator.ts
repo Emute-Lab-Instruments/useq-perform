@@ -32,10 +32,12 @@
  *      Retire-before-instantiate preserves the crossfade order so the
  *      listener hears outgoing-then-incoming rather than an overlap.
  *
- *   3. Epoch allocation is a monotonic counter owned by the caller (the
- *      synthesis service). This module exposes {@link createEpochAllocator}
- *      so the service can allocate one per engine session; tests can
- *      construct a fresh allocator per case.
+ *   3. Epoch allocation is a uint32-domain monotonic counter owned by the
+ *      caller (the synthesis service). Zero is reserved. After issuing
+ *      0xffffffff it becomes terminally exhausted and throws before reuse.
+ *      This module exposes {@link createEpochAllocator} so the service can
+ *      allocate one per engine session; tests can construct a fresh allocator
+ *      per case.
  *
  *   4. Prefill values come from the NodeDef registry's static defaults.
  *      The producer's first matching block lands after the worklet
@@ -51,6 +53,11 @@ import type {
   SynthControlChannelArtefact,
 } from "../contracts/runtimeTypes";
 import { findNodeDefDescriptor } from "../contracts/nodeDefRegistry";
+import {
+  MAX_ACTIVATION_EPOCH,
+  MIN_ACTIVATION_EPOCH,
+  NO_ACTIVATION_EPOCH,
+} from "../contracts/synthesisControlAbi";
 import type {
   WorkletAudioInputWiring,
   WorkletControlChannel,
@@ -198,7 +205,8 @@ export function buildGraphDiff(
 export interface EpochAllocator {
   /**
    * Issue the next program epoch. Epochs are strictly monotonic and
-   * never zero.
+   * never zero. Throws {@link EpochExhaustedError} permanently after the
+   * uint32 maximum has been issued.
    */
   next(): number;
   /**
@@ -207,21 +215,61 @@ export interface EpochAllocator {
    * should use {@link next} to issue a fresh epoch.
    */
   lastIssued(): number;
+  /** True once no further uint32 epoch can be issued in this session. */
+  exhausted(): boolean;
+}
+
+/** Stable terminal error raised before an activation epoch could wrap/reuse. */
+export class EpochExhaustedError extends Error {
+  readonly code = "activation-epoch-exhausted" as const;
+  readonly terminal = true as const;
+
+  constructor() {
+    super(
+      `Activation epoch domain exhausted at ${MAX_ACTIVATION_EPOCH}; ` +
+        "the engine session must be replaced before another commit",
+    );
+    this.name = "EpochExhaustedError";
+  }
+}
+
+export interface EpochAllocatorOptions {
+  /**
+   * Previously issued value when restoring allocator state. Omit for a fresh
+   * session. This is validated so tests/restoration cannot seed wraparound.
+   */
+  readonly initialLastIssued?: number;
 }
 
 /**
  * Create a fresh epoch allocator. The first call to {@link EpochAllocator.next}
  * returns 1 (zero is reserved as the "no program" sentinel).
  */
-export function createEpochAllocator(): EpochAllocator {
-  let last = 0;
+export function createEpochAllocator(
+  options: EpochAllocatorOptions = {},
+): EpochAllocator {
+  const initial = options.initialLastIssued ?? NO_ACTIVATION_EPOCH;
+  if (!Number.isSafeInteger(initial) ||
+      initial < NO_ACTIVATION_EPOCH || initial > MAX_ACTIVATION_EPOCH) {
+    throw new RangeError(
+      `initialLastIssued must be an integer in ` +
+        `[${NO_ACTIVATION_EPOCH}, ${MAX_ACTIVATION_EPOCH}]`,
+    );
+  }
+  let last = initial;
   return {
     next() {
-      last += 1;
+      if (last >= MAX_ACTIVATION_EPOCH) {
+        throw new EpochExhaustedError();
+      }
+      last = last === NO_ACTIVATION_EPOCH ? MIN_ACTIVATION_EPOCH : last + 1;
       return last;
     },
     lastIssued() {
       return last;
+    },
+    exhausted() {
+      return last === MAX_ACTIVATION_EPOCH;
     },
   };
 }

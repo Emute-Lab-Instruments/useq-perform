@@ -46,6 +46,11 @@ import { describe, expect, it } from "vitest";
 
 import { SYNTH_ARTIFACT_ABI_VERSION } from "./runtimeTypes";
 import {
+  MAX_ACTIVATION_EPOCH,
+  MIN_ACTIVATION_EPOCH,
+  NO_ACTIVATION_EPOCH,
+} from "./synthesisControlAbi";
+import {
   verifyServedBundleManifest,
   writeServedBundleManifest,
 } from "../../scripts/served-bundle-manifest.mjs";
@@ -95,6 +100,16 @@ interface CompilerCapabilityManifest {
     readonly bytes: number;
     readonly sha256: string;
   }>>;
+  readonly runtime_contract: {
+    readonly activation_epoch: {
+      readonly encoding: string;
+      readonly field_width_bits: number;
+      readonly reserved_values: readonly number[];
+      readonly minimum_issued: number;
+      readonly maximum_issued: number;
+      readonly exhaustion: string;
+    };
+  };
   readonly capabilities: {
     readonly hard_limits: {
       readonly synth_artifact_abi_version: number;
@@ -252,6 +267,14 @@ describe("VAL-CROSS-011: checksums link built and served bytes", () => {
       capability_manifest_schema: "useq.compiler-capabilities/v1",
       source_git_commit: compilerManifest(PUBLIC_WASM).source.git_commit,
     });
+    expect(manifest.runtime_contract.activation_epoch).toEqual({
+      encoding: "uint32-le",
+      field_width_bits: 32,
+      reserved_values: [NO_ACTIVATION_EPOCH],
+      minimum_issued: MIN_ACTIVATION_EPOCH,
+      maximum_issued: MAX_ACTIVATION_EPOCH,
+      exhaustion: "terminal-error-before-reuse",
+    });
     for (const filename of [
       "useq-capabilities.json",
       "useq.js",
@@ -321,6 +344,16 @@ describe("VAL-CROSS-011: checksums link built and served bytes", () => {
       writeFileSync(manifestPath, JSON.stringify(mismatched));
       expect(() => verifyServedBundleManifest({ manifestPath, ...inputs }))
         .toThrow(/descriptor identity/);
+
+      writeServedBundleManifest({ outputPath: manifestPath, ...inputs });
+      const falseCapability = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+        runtime_contract: { activation_epoch: { maximum_issued: number } };
+      };
+      falseCapability.runtime_contract.activation_epoch.maximum_issued =
+        Number.MAX_SAFE_INTEGER;
+      writeFileSync(manifestPath, JSON.stringify(falseCapability));
+      expect(() => verifyServedBundleManifest({ manifestPath, ...inputs }))
+        .toThrow(/runtime contract/);
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }

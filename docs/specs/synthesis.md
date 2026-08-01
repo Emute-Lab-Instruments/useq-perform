@@ -269,7 +269,13 @@ a **program epoch**. A delta activates at the first ring block bearing
 its epoch; before arming a switch, the producer must pre-fill ≥ 1 block
 of new-program samples, with NodeDef defaults for any channel not yet
 sampled — a newly instantiated node never reads stale or undefined
-slots.
+slots. Epochs use the SAB field's exact unsigned-32-bit domain: `0` is
+reserved for “no program/candidate”, and `1..0xffffffff` are issued strictly
+monotonically without reuse. After issuing `0xffffffff`, the allocator enters
+a terminal exhausted state and every later commit fails before any graph or
+producer message; it must never wrap or normalise an out-of-domain value.
+`useq.served-bundle/v1` records this field width, domain, reservation, and
+exhaustion policy as a machine-readable runtime capability.
 
 4.4.1 **Failure-atomic epoch switch.** The Worker first reserves a candidate
 compiler-to-SAB mapping without changing the running producer. Each block-rate

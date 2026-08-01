@@ -23,10 +23,16 @@ import {
   buildGraphDiff,
   buildWorkletDeltasFromDiff,
   createEpochAllocator,
+  EpochExhaustedError,
   resolvePrefillsForDeclarations,
   type ActiveDeclaration,
 } from "./engineCommitCoordinator";
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
+import {
+  MAX_ACTIVATION_EPOCH,
+  MIN_ACTIVATION_EPOCH,
+  NO_ACTIVATION_EPOCH,
+} from "../contracts/synthesisControlAbi";
 import type {
   SynthArtifactsPayload,
   SynthDeclarationArtefact,
@@ -160,6 +166,60 @@ describe("engineCommitCoordinator — epoch allocation (VAL-ENGINE-010)", () => 
     const allocator = createEpochAllocator();
     expect(allocateEpoch(allocator)).toBe(allocator.lastIssued());
     expect(allocateEpoch(allocator)).toBeGreaterThan(0);
+  });
+
+  it("defines the exact uint32 domain with zero reserved", () => {
+    expect(NO_ACTIVATION_EPOCH).toBe(0);
+    expect(MIN_ACTIVATION_EPOCH).toBe(1);
+    expect(MAX_ACTIVATION_EPOCH).toBe(0xffff_ffff);
+    const allocator = createEpochAllocator();
+    expect(allocator.next()).toBe(MIN_ACTIVATION_EPOCH);
+  });
+
+  it("issues uint32 max once, then remains terminally exhausted", () => {
+    const allocator = createEpochAllocator({
+      initialLastIssued: MAX_ACTIVATION_EPOCH - 1,
+    });
+    expect(allocator.exhausted()).toBe(false);
+    expect(allocator.next()).toBe(MAX_ACTIVATION_EPOCH);
+    expect(allocator.exhausted()).toBe(true);
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect(() => allocator.next()).toThrowError(EpochExhaustedError);
+      try {
+        allocator.next();
+      } catch (error) {
+        expect(error).toMatchObject({
+          code: "activation-epoch-exhausted",
+          terminal: true,
+        });
+      }
+      expect(allocator.lastIssued()).toBe(MAX_ACTIVATION_EPOCH);
+    }
+  });
+
+  it("rejects invalid restored allocator state instead of normalising it", () => {
+    for (const initialLastIssued of [
+      -1,
+      0.5,
+      Number.NaN,
+      MAX_ACTIVATION_EPOCH + 1,
+      Number.MAX_SAFE_INTEGER,
+    ]) {
+      expect(() => createEpochAllocator({ initialLastIssued })).toThrow(RangeError);
+    }
+  });
+
+  it("fails plan construction before producing a reused epoch", () => {
+    const allocator = createEpochAllocator({
+      initialLastIssued: MAX_ACTIVATION_EPOCH,
+    });
+    expect(() => buildEngineCommitPlan(
+      [],
+      buildPayload(1, [oscSineDeclaration("lead")]),
+      allocator,
+    )).toThrowError(EpochExhaustedError);
+    expect(allocator.lastIssued()).toBe(MAX_ACTIVATION_EPOCH);
   });
 });
 

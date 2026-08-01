@@ -90,6 +90,18 @@ export const MIN_RENDER_QUANTUM_FRAMES = 1 as const;
 /** Maximum supported render quantum. Larger values are rejected. */
 export const MAX_RENDER_QUANTUM_FRAMES = 8192 as const;
 
+/** Reserved activation-epoch sentinel: no program/candidate is active. */
+export const NO_ACTIVATION_EPOCH = 0 as const;
+
+/** First issuable activation epoch. */
+export const MIN_ACTIVATION_EPOCH = 1 as const;
+
+/**
+ * Last issuable activation epoch. Epochs cross the Worker/worklet boundary in
+ * uint32 SAB fields, so the allocator must exhaust here before reuse/wrap.
+ */
+export const MAX_ACTIVATION_EPOCH = 0xffff_ffff as const;
+
 /**
  * Ring capacity in blocks. Must be a power of two so the slot index wraps
  * with a bitmask instead of a modulo that could overflow. The producer and
@@ -862,6 +874,16 @@ export function attachSynthesisControlView(
     }
   }
 
+  function requireActivationEpoch(epoch: number): void {
+    if (!Number.isSafeInteger(epoch) ||
+        epoch < NO_ACTIVATION_EPOCH || epoch > MAX_ACTIVATION_EPOCH) {
+      throw new RangeError(
+        `Activation epoch ${String(epoch)} is out of uint32 range ` +
+          `[${NO_ACTIVATION_EPOCH}, ${MAX_ACTIVATION_EPOCH}]`,
+      );
+    }
+  }
+
   function requireChannelIndex(channel: number, count: number, label: string): void {
     if (!Number.isInteger(channel) || channel < 0 || channel >= count) {
       throw new RangeError(
@@ -942,12 +964,14 @@ export function attachSynthesisControlView(
       return dv.getUint32(HEADER_OFFSETS.programEpoch, true);
     },
     set programEpoch(value: number) {
+      requireActivationEpoch(value);
       dv.setUint32(HEADER_OFFSETS.programEpoch, value, true);
     },
     get pendingEpoch(): number {
       return dv.getUint32(HEADER_OFFSETS.pendingEpoch, true);
     },
     set pendingEpoch(value: number) {
+      requireActivationEpoch(value);
       dv.setUint32(HEADER_OFFSETS.pendingEpoch, value, true);
     },
     get controlRevision(): number {
@@ -1155,6 +1179,7 @@ export function attachSynthesisControlView(
     },
     writeBlockEpoch(block, epoch): void {
       requireBlockIndex(block);
+      requireActivationEpoch(epoch);
       dv.setUint32(slotByteOffset(block) + fieldOffsets.blockEpoch, epoch, true);
     },
     readBlockRevision(block): number {

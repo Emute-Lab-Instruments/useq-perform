@@ -117,6 +117,16 @@ export function buildServedBundleManifest({
       capability_manifest_schema: compilerManifest.schema,
       source_git_commit: compilerManifest.source.git_commit,
     },
+    runtime_contract: {
+      activation_epoch: {
+        encoding: 'uint32-le',
+        field_width_bits: 32,
+        reserved_values: [0],
+        minimum_issued: 1,
+        maximum_issued: 0xffff_ffff,
+        exhaustion: 'terminal-error-before-reuse',
+      },
+    },
     artifacts: {
       'wasm/useq-capabilities.json': artifactRecord(compilerManifestPath),
       'wasm/useq.js': artifactRecord(jsPath),
@@ -156,7 +166,10 @@ export function verifyServedBundleManifest({ manifestPath, ...inputs }) {
   }
   const expected = buildServedBundleManifest(inputs);
   if (canonicalJson(actual) !== canonicalJson(expected)) {
-    fail('record does not match the current served bytes and descriptor identity');
+    fail(
+      'record does not match the current served bytes, descriptor identity, ' +
+        'or runtime contract',
+    );
   }
   return actual;
 }

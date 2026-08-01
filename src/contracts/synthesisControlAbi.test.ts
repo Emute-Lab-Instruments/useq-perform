@@ -41,8 +41,10 @@ import {
   EMERGENCY_FADE_MS,
   HEADER_ALIGN_BYTES,
   HEADER_OFFSETS,
+  MAX_ACTIVATION_EPOCH,
   MAX_CONTROL_LOOKAHEAD_BLOCKS,
   MAX_RENDER_QUANTUM_FRAMES,
+  NO_ACTIVATION_EPOCH,
   MIN_CONTROL_LOOKAHEAD_BLOCKS,
   MIN_RENDER_QUANTUM_FRAMES,
   PRODUCER_TIMEOUT_BLOCKS,
@@ -655,6 +657,33 @@ describe("synthesisControlAbi — epoch and revision per block (VAL-SAB-015)", (
     // Slot 0 must still hold its tagged values.
     expect(view.readBlockEpoch(0)).toBe(0xabc);
     expect(view.readBlockRevision(0)).toBe(0xdef);
+  });
+
+  it("round-trips both reserved zero and uint32 max without truncation", () => {
+    const { view } = rawBytes(freshBuffer());
+    view.initialise();
+    view.programEpoch = MAX_ACTIVATION_EPOCH;
+    view.pendingEpoch = NO_ACTIVATION_EPOCH;
+    view.writeBlockEpoch(0, MAX_ACTIVATION_EPOCH);
+    expect(view.programEpoch).toBe(MAX_ACTIVATION_EPOCH);
+    expect(view.pendingEpoch).toBe(NO_ACTIVATION_EPOCH);
+    expect(view.readBlockEpoch(0)).toBe(MAX_ACTIVATION_EPOCH);
+  });
+
+  it("rejects epoch values that DataView.setUint32 would otherwise wrap", () => {
+    const { view } = rawBytes(freshBuffer());
+    view.initialise();
+    for (const invalid of [
+      -1,
+      0.5,
+      Number.NaN,
+      MAX_ACTIVATION_EPOCH + 1,
+      Number.MAX_SAFE_INTEGER,
+    ]) {
+      expect(() => { view.programEpoch = invalid; }).toThrow(RangeError);
+      expect(() => { view.pendingEpoch = invalid; }).toThrow(RangeError);
+      expect(() => view.writeBlockEpoch(0, invalid)).toThrow(RangeError);
+    }
   });
 });
 
