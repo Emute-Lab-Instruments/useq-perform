@@ -165,6 +165,8 @@ function buildHost(): Host {
     publish: (e) => events.push(e),
     createArenaView: (byteOffset, lengthDoubles) =>
       new Float64Array(arena, byteOffset, lengthDoubles),
+    createArenaByteView: (byteOffset, lengthBytes) =>
+      new Uint8Array(arena, byteOffset, lengthBytes),
     freqControlScratch: new Float64Array(arena, freqPtr, 1),
     ampControlScratch: new Float64Array(arena, ampPtr, 1),
   });

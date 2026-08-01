@@ -387,6 +387,8 @@ export interface WorkletInstanceTelemetry {
   readonly statePointer: number;
   /** True while the instance is fading in, active, or fading out. */
   readonly lifecycle: "fade-in" | "active" | "fade-out" | "retired";
+  /** Most recent block-compute outcome; failed nodes remain live and retry. */
+  readonly health: "ok" | "error";
 }
 
 /**
@@ -425,7 +427,7 @@ export interface WorkletTelemetrySnapshot {
 }
 
 /** Telemetry schema version. Bumped only when the snapshot shape changes. */
-export const WORKLET_TELEMETRY_SCHEMA_VERSION = 1 as const;
+export const WORKLET_TELEMETRY_SCHEMA_VERSION = 2 as const;
 
 // ---------------------------------------------------------------------------
 // Outbound state-transition event (worklet → main thread)
@@ -490,8 +492,10 @@ export interface WorkletControlAttachAckEvent {
  *   - `"node-limit"`      — the instantiate would exceed `MAX_SYNTH_NODES`.
  *   - `"missing-input-support"` — the delta wires audio inputs into a
  *     def whose adapter exposes no input-capable compute entry point.
- *   - `"nodedef-trap"` — one NodeDef call threw; that instance was muted and
- *     quarantined while the remainder of the graph continued.
+ *   - `"nodedef-trap"` — one NodeDef call threw; that block was rolled back
+ *     and muted while the live instance remained eligible to retry.
+ *   - `"nodedef-compute-rejected"` — compute returned false; same rollback.
+ *   - `"nodedef-nonfinite-output"` — compute returned NaN/Inf; same rollback.
  */
 export interface WorkletGraphDiagnosticEvent {
   readonly type: "graph-diagnostic";
@@ -499,7 +503,9 @@ export interface WorkletGraphDiagnosticEvent {
     | "zone-exhausted"
     | "node-limit"
     | "missing-input-support"
-    | "nodedef-trap";
+    | "nodedef-trap"
+    | "nodedef-compute-rejected"
+    | "nodedef-nonfinite-output";
   /** Identity of the node the diagnostic concerns. */
   readonly identity: string;
 }

@@ -468,6 +468,8 @@ function createProcessorBag(): ProcessorBag {
     },
     createArenaView: (byteOffset, lengthDoubles) =>
       new Float64Array(allocatorWithMemory.memory.buffer, byteOffset, lengthDoubles),
+    createArenaByteView: (byteOffset, lengthBytes) =>
+      new Uint8Array(allocatorWithMemory.memory.buffer, byteOffset, lengthBytes),
     freqControlScratch,
     ampControlScratch,
   });

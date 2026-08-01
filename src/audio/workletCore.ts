@@ -62,6 +62,14 @@
  *      for, the core re-derives every zone THROUGH the allocator and
  *      the arena view factory — it never replaces a shared-memory view
  *      with a disconnected local array.
+ *
+ *   9. A live NodeDef compute is failure-atomic. The core snapshots its
+ *      state before the call; trap, rejection, or non-finite output restores
+ *      the state, zeros the complete output zone, marks the instance errored,
+ *      and retries it on the next block. Sibling instances keep rendering.
+ *
+ *  10. Terminal ports accumulate in binary64. The emergency envelope is
+ *      applied there, then each final sample is converted to binary32 once.
  */
 
 import {
@@ -215,6 +223,12 @@ export interface WorkletCoreOptions {
    */
   readonly createArenaView?: (byteOffset: number, lengthDoubles: number) => Float64Array;
   /**
+   * Factory for byte views over state zones. The core uses a preallocated
+   * byte-for-byte snapshot to make live compute calls failure-atomic without
+   * allocating in the steady-state render path.
+   */
+  readonly createArenaByteView?: (byteOffset: number, lengthBytes: number) => Uint8Array;
+  /**
    * Optional frequency control scratch (single double). In production
    * this is a view INTO the host-owned memory so the WASM compute call
    * reads the same bytes the core writes.
@@ -246,12 +260,20 @@ interface InstanceState {
   statePointer: number;
   /** Allocated state-zone byte length. */
   stateBytes: number;
+  /** Live byte view over the state zone. */
+  stateView: Uint8Array | null;
+  /** Preallocated rollback image for one compute call. */
+  stateSnapshot: Uint8Array;
   /** Adapter resolved at instantiate time. Cached for the hot path. */
   adapter: NodeDefAdapter | null;
   /** Active program epoch. Blocks whose epoch does not match are ignored. */
   epoch: number;
   /** Current fade stage. */
   lifecycle: "fade-in" | "active" | "fade-out" | "retired";
+  /** Most recent block-compute outcome. Failed nodes retry next block. */
+  health: "ok" | "error";
+  /** Fade-out reached its last sample; sweep after this block is mixed. */
+  retireAfterBlock: boolean;
   /** Frames remaining in the current fade (0 when steady). */
   fadeFramesRemaining: number;
   /** Total frames in the current fade (used to compute the envelope). */
@@ -418,12 +440,16 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
    */
   let zoneFrames = renderQuantumFrames;
 
-  // Final mono output (Float32, core-local — Web Audio consumes Float32).
-  let outputScratch = new Float32Array(zoneFrames);
+  // Terminal ports and the emergency envelope accumulate in binary64;
+  // Web Audio receives one final binary32 conversion per sample.
+  const outputMixScratch = new Float64Array(MAX_RENDER_QUANTUM_FRAMES);
+  const outputScratch = new Float32Array(MAX_RENDER_QUANTUM_FRAMES);
 
   const arenaMode = typeof options.createArenaView === "function";
   const arenaView =
     options.createArenaView ?? ((_byteOffset: number, lengthDoubles: number) => new Float64Array(lengthDoubles));
+  const arenaByteView =
+    options.createArenaByteView ?? ((_byteOffset: number, lengthBytes: number) => new Uint8Array(lengthBytes));
 
   // Control-sample scratch (one double per block-rate channel). In
   // production these are views into the host-owned memory; the render
@@ -549,6 +575,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       e.version = inst.version;
       e.statePointer = inst.statePointer;
       e.lifecycle = inst.lifecycle;
+      e.health = inst.health;
       t.instances.push(e);
     }
     t.peakSample = peakSample;
@@ -788,15 +815,20 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     }
     const outputView = arenaView(outputZonePtr, audioOutputs * zoneFrames);
     outputView.fill(0);
+    const stateView = arenaByteView(statePointer, stateBytes);
     return {
       identity: id.identity,
       def: id.def,
       version: id.version,
       statePointer,
       stateBytes,
+      stateView,
+      stateSnapshot: new Uint8Array(stateBytes),
       adapter,
       epoch: id.epoch,
       lifecycle: "fade-in",
+      health: "ok",
+      retireAfterBlock: false,
       fadeFramesRemaining: fadeInFrames,
       fadeFramesTotal: fadeInFrames,
       fadeGainStart: 0,
@@ -822,6 +854,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         version: id.version,
         statePointer,
         lifecycle: "fade-in",
+        health: "ok",
       },
     };
   }
@@ -1208,6 +1241,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     }
     const outputView = arenaView(outputZonePtr, audioOutputs * zoneFrames);
     outputView.fill(0);
+    const stateView =
+      statePointer >= 0 && stateBytes > 0 ? arenaByteView(statePointer, stateBytes) : null;
 
     const instance: InstanceState = {
       identity: id.identity,
@@ -1215,9 +1250,13 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       version: id.version,
       statePointer,
       stateBytes,
+      stateView,
+      stateSnapshot: new Uint8Array(Math.max(0, stateBytes)),
       adapter,
       epoch: id.epoch,
       lifecycle: "fade-in",
+      health: "ok",
+      retireAfterBlock: false,
       fadeFramesRemaining: fadeInFrames,
       fadeFramesTotal: fadeInFrames,
       fadeGainStart: 0,
@@ -1243,6 +1282,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         version: id.version,
         statePointer,
         lifecycle: "fade-in",
+        health: "ok",
       },
     };
 
@@ -1446,13 +1486,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     if (frameCount > zoneFrames) {
       growZones(frameCount);
     }
-    if (outputScratch.length < frameCount) {
-      outputScratch = new Float32Array(frameCount);
-    }
-
-    // Zero the output scratch. The TypedArray fill is implementation-
-    // optimised (typically a single memset) and does not allocate.
+    // Both scratch arrays are preallocated to MAX_RENDER_QUANTUM_FRAMES,
+    // so even a first-time quantum increase cannot allocate here.
     outputScratch.fill(0);
+    outputMixScratch.fill(0);
 
     // ---- Step 1: Read the SAB (acquire-only, never blocking) ----
     let consumedBlockEpoch = 0;
@@ -1652,7 +1689,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       for (let p = 0; p < inst.audioOutputs; p++) {
         const base = p * zoneFrames;
         for (let i = 0; i < frameCount; i++) {
-          outputScratch[i] += Number(view[base + i]);
+          outputMixScratch[i] += Number(view[base + i]);
         }
       }
     }
@@ -1667,18 +1704,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       for (let i = 0; i < frameCount; i++) {
         const t = i / frameCount;
         const gain = fadeStart + (fadeEnd - fadeStart) * t;
-        outputScratch[i] *= Math.max(0, gain);
+        outputMixScratch[i] *= Math.max(0, gain);
       }
       emergencyFadeFramesRemaining = Math.max(0, emergencyFadeFramesRemaining - frameCount);
       if (emergencyFadeFramesRemaining === 0) {
         // Exact silence (VAL-ENGINE-025).
         for (let i = 0; i < frameCount; i++) {
-          outputScratch[i] = 0;
+          outputMixScratch[i] = 0;
         }
       }
     } else if (producerTimeoutActive) {
       // Past the fade: hard zero.
-      outputScratch.fill(0);
+      outputMixScratch.fill(0);
     }
 
     // ---- Step 7: Compute peak / RMS / finite telemetry ----
@@ -1686,6 +1723,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     let sumSq = 0;
     let allFinite = true;
     for (let i = 0; i < frameCount; i++) {
+      outputScratch[i] = outputMixScratch[i];
       const s = outputScratch[i];
       if (!Number.isFinite(s)) {
         allFinite = false;
@@ -1742,6 +1780,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     let write = 0;
     for (let read = 0; read < executionOrder.length; read++) {
       const inst = executionOrder[read];
+      if (inst.retireAfterBlock) {
+        inst.retireAfterBlock = false;
+        inst.lifecycle = "retired";
+      }
       if (inst.lifecycle === "retired") {
         if (!inst.released) {
           repointConsumersToSilence(inst);
@@ -1841,6 +1883,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
             instance.lifecycle = "retired";
             return;
           }
+          instance.stateView = arenaByteView(instance.statePointer, instance.stateBytes);
+          instance.stateSnapshot = new Uint8Array(instance.stateBytes);
         }
       }
     }
@@ -1906,7 +1950,20 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // (VAL-CROSS-002 shared-memory link).
     const freqPtr = getPointerForFloat64(freqControlScratch);
     const ampPtr = getPointerForFloat64(ampControlScratch);
+    const stateView = instance.stateView;
+    if (!stateView || stateView.byteLength !== instance.stateBytes) {
+      instance.health = "error";
+      instance.outputView.fill(0);
+      return;
+    }
+    instance.stateSnapshot.set(stateView);
+    // Erase stale samples before giving the module its direct output view.
+    // A short write therefore cannot leak bytes from a prior successful block.
+    instance.outputView.fill(0);
+
     let ok = false;
+    let failureCode: "nodedef-trap" | "nodedef-compute-rejected" | "nodedef-nonfinite-output" =
+      "nodedef-compute-rejected";
     try {
       if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
         ok = adapter.computeWithInputs(
@@ -1935,80 +1992,98 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         );
       }
     } catch {
-      publishEvent({
-        type: "graph-diagnostic",
-        code: "nodedef-trap",
-        identity: instance.identity,
-      });
+      failureCode = "nodedef-trap";
     }
-    if (!ok) {
-      // Compute failed (invalid frame count or trap). Mute the node and
-      // mark it retired (synthesis.md §3.6 trap containment); the rest
-      // of the graph continues.
-      instance.lifecycle = "retired";
-      glitchCount += 1;
-      instance.outputView.fill(0);
-      return;
-    }
-
-    // Apply the fade envelope in place on the zone so downstream
-    // consumers (and the terminal sum) both hear it.
-    const fadeGain = computeFadeGain(instance, frameCount);
-    if (fadeGain !== 1) {
+    if (ok) {
       const view = instance.outputView;
-      for (let p = 0; p < instance.audioOutputs; p++) {
+      outer: for (let p = 0; p < instance.audioOutputs; p++) {
         const base = p * zoneFrames;
         for (let i = 0; i < frameCount; i++) {
-          view[base + i] = Number(view[base + i]) * fadeGain;
+          if (!Number.isFinite(view[base + i])) {
+            ok = false;
+            failureCode = "nodedef-nonfinite-output";
+            break outer;
+          }
         }
       }
     }
+    if (!ok) {
+      // Failure-atomic block semantics: no partial state/output commits.
+      // Keep the node live so a transient module failure can recover on
+      // the next block without rebuilding the graph.
+      stateView.set(instance.stateSnapshot);
+      instance.health = "error";
+      glitchCount += 1;
+      instance.outputView.fill(0);
+      publishEvent({
+        type: "graph-diagnostic",
+        code: failureCode,
+        identity: instance.identity,
+      });
+      applyFadeEnvelope(instance, frameCount);
+      return;
+    }
+    instance.health = "ok";
+
+    // Apply the fade envelope in place on the zone so downstream
+    // consumers (and the terminal sum) both hear it.
+    applyFadeEnvelope(instance, frameCount);
   }
 
-  function computeFadeGain(instance: InstanceState, frameCount: number): number {
-    if (instance.lifecycle === "active") return 1;
-    if (instance.lifecycle === "retired") return 0;
+  /**
+   * Apply the instance envelope sample by sample. Gain is a pure function of
+   * the absolute fade-frame index, so splitting the same frame stream into
+   * different render quanta produces identical samples. Both endpoints are
+   * represented exactly: the first fade sample uses `fadeGainStart` and the
+   * last uses `fadeGainEnd`.
+   */
+  function applyFadeEnvelope(instance: InstanceState, frameCount: number): void {
+    if (instance.lifecycle === "active" || instance.lifecycle === "retired") return;
     if (instance.fadeFramesRemaining <= 0) {
-      // Fade complete: transition lifecycle.
       if (instance.lifecycle === "fade-in") {
         instance.lifecycle = "active";
-        instance.fadeFramesRemaining = 0;
-        return 1;
-      } else if (instance.lifecycle === "fade-out") {
-        instance.lifecycle = "retired";
-        instance.fadeFramesRemaining = 0;
-        return 0;
+      } else {
+        instance.retireAfterBlock = true;
       }
-      return 1;
+      return;
     }
+
     const remaining = instance.fadeFramesRemaining;
     const total = instance.fadeFramesTotal;
-    // Compute the gain at the START of this block. The fade continues
-    // across blocks so we advance the remaining counter after computing
-    // the per-sample envelope.
-    const startProgress = 1 - remaining / total;
-    const endProgress = 1 - Math.max(0, remaining - frameCount) / total;
-    const startGain = instance.fadeGainStart + (instance.fadeGainEnd - instance.fadeGainStart) * startProgress;
-    const endGain = instance.fadeGainStart + (instance.fadeGainEnd - instance.fadeGainStart) * endProgress;
-    // Advance the remaining counter. We cannot apply a per-sample envelope
-    // here without allocating; instead we apply the block-average gain
-    // (the midpoint). This is acceptable for 10 ms / 30 ms fades at 128-
-    // sample blocks: the worst-case envelope error is well below human
-    // perception and the fade endpoints are exact.
+    const elapsed = total - remaining;
+    const delta = instance.fadeGainEnd - instance.fadeGainStart;
+    const denominator = Math.max(1, total - 1);
+    const fadeSamples = Math.min(frameCount, remaining);
+    const view = instance.outputView;
+    if (view) {
+      for (let p = 0; p < instance.audioOutputs; p++) {
+        const base = p * zoneFrames;
+        for (let i = 0; i < fadeSamples; i++) {
+          const progress = total <= 1 ? 1 : (elapsed + i) / denominator;
+          const gain = instance.fadeGainStart + delta * progress;
+          view[base + i] = Number(view[base + i]) * gain;
+        }
+        for (let i = fadeSamples; i < frameCount; i++) {
+          view[base + i] = Number(view[base + i]) * instance.fadeGainEnd;
+        }
+      }
+    }
+
     instance.fadeFramesRemaining = Math.max(0, remaining - frameCount);
     if (instance.fadeFramesRemaining === 0) {
       if (instance.lifecycle === "fade-in") {
         instance.lifecycle = "active";
       } else if (instance.lifecycle === "fade-out") {
-        instance.lifecycle = "retired";
+        // The final zero-gain sample still belongs to this block. Defer
+        // retirement until terminal mixing has consumed the block.
+        instance.retireAfterBlock = true;
       }
     }
-    // Use the average of start and end gain.
-    return (startGain + endGain) / 2;
   }
 
   function startFadeOut(instance: InstanceState, frames: number): void {
     instance.lifecycle = "fade-out";
+    instance.retireAfterBlock = false;
     instance.fadeFramesRemaining = frames;
     instance.fadeFramesTotal = frames;
     instance.fadeGainStart = 1;
@@ -2017,6 +2092,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
   function retireImmediately(instance: InstanceState): void {
     instance.lifecycle = "retired";
+    instance.retireAfterBlock = false;
     instance.fadeFramesRemaining = 0;
     instance.fadeFramesTotal = 0;
   }
@@ -2073,6 +2149,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     instance.outputZonePtr = -1;
     instance.outputZoneBytes = 0;
     instance.outputView = null;
+    instance.stateView = null;
   }
 
   function reset(): void {

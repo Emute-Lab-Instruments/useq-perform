@@ -8,8 +8,11 @@
  *   - node ports are offsets into the host-owned shared memory: each
  *     node's output zone feeds downstream nodes' input ports (pointer
  *     wiring, never per-block copying);
- *   - terminal nodes (no downstream consumer) sum into the output
- *     scratch;
+ *   - terminal nodes (no downstream consumer) sum in binary64 before
+ *     one final binary32 conversion;
+ *   - compute failure restores state, mutes the whole node block, and
+ *     retries without disturbing siblings;
+ *   - sample-indexed fades are invariant to render-quantum partitioning;
  *   - zone exhaustion and the node limit produce diagnostics, never
  *     glitches;
  *   - the actual render quantum may vary (`renderSizeHint`); growth
@@ -101,6 +104,50 @@ function createConstAdapter(
       outputPtrs.push(outputPtr);
       const out = new Float64Array(arena, outputPtr, frameCount);
       out.fill(value);
+      return true;
+    },
+    getPhase: () => 0,
+    getSmoothedAmp: () => 0,
+    resetPhase: () => undefined,
+    outputPtrs,
+    inputPtrVectors,
+  };
+}
+
+type FaultMode = "success" | "trap" | "reject" | "nonfinite";
+
+/** Stateful adversarial adapter used to witness block-level rollback. */
+function createFaultAdapter(
+  arena: ArrayBuffer,
+  name: string,
+  value: number,
+  callOrder: string[],
+  mode: { current: FaultMode },
+): FakeGraphAdapter {
+  const descriptor = makeDescriptor(name, 0);
+  const outputPtrs: number[] = [];
+  const inputPtrVectors: number[][] = [];
+  return {
+    descriptor,
+    params: buildNodeDefParamTable(descriptor),
+    sampleRate: descriptor.sampleRate,
+    validateLayout: () => true,
+    init(statePtr) {
+      new Uint8Array(arena, statePtr, descriptor.stateBytes).fill(0);
+      return true;
+    },
+    compute(statePtr, _freqPtr, _ampPtr, outputPtr, frameCount) {
+      callOrder.push(name);
+      outputPtrs.push(outputPtr);
+      const state = new Uint8Array(arena, statePtr, descriptor.stateBytes);
+      state[0] = (state[0] + 1) & 0xff;
+      const output = new Float64Array(arena, outputPtr, frameCount);
+      output.fill(value);
+      if (mode.current === "trap") {
+        throw new WebAssembly.RuntimeError("synthetic compute trap");
+      }
+      if (mode.current === "reject") return false;
+      if (mode.current === "nonfinite") output[Math.floor(frameCount / 2)] = Number.NaN;
       return true;
     },
     getPhase: () => 0,
@@ -247,6 +294,8 @@ function buildGraphHarness(opts: {
     publish: (e) => events.push(e),
     createArenaView: (byteOffset, lengthDoubles) =>
       new Float64Array(arena, byteOffset, lengthDoubles),
+    createArenaByteView: (byteOffset, lengthBytes) =>
+      new Uint8Array(arena, byteOffset, lengthBytes),
     freqControlScratch,
     ampControlScratch,
   });
@@ -355,6 +404,31 @@ describe("workletCore graph — multiple live instances (synthesis.md §3.1)", (
     expect(h.core.telemetry.instances).toHaveLength(2);
     expect(h.callOrder).toContain("src/a");
     expect(h.callOrder).toContain("src/b");
+  });
+
+  it("rounds the terminal sum to binary32 exactly once", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const tiny = 2 ** -25;
+    const h = buildGraphHarness({
+      adapters: {
+        "src/one": createConstAdapter(arena, "src/one", 1, callOrder),
+        "src/tiny-a": createConstAdapter(arena, "src/tiny-a", tiny, callOrder),
+        "src/tiny-b": createConstAdapter(arena, "src/tiny-b", tiny, callOrder),
+        "src/tiny-c": createConstAdapter(arena, "src/tiny-c", tiny, callOrder),
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "one", "src/one", 1);
+    instantiate(h.core, "tiny-a", "src/tiny-a", 1);
+    instantiate(h.core, "tiny-b", "src/tiny-b", 1);
+    instantiate(h.core, "tiny-c", "src/tiny-c", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+
+    const expected = Math.fround(1 + 3 * tiny);
+    expect(expected).not.toBe(1);
+    expect(h.core.readOutput()[0]).toBe(expected);
   });
 });
 
@@ -707,14 +781,11 @@ describe("workletCore graph — per-instance trap containment", () => {
     expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
   });
 
-  it("quarantines a throwing NodeDef while sibling instances keep rendering", () => {
+  it("rolls back trap/reject/nonfinite blocks, keeps siblings audible, and recovers", () => {
     const arena = new ArrayBuffer(1024 * 1024);
     const callOrder: string[] = [];
-    const bad = createConstAdapter(arena, "src/bad", 0.75, callOrder);
-    (bad as { compute: NodeDefAdapter["compute"] }).compute = () => {
-      callOrder.push("src/bad");
-      throw new WebAssembly.RuntimeError("synthetic trap");
-    };
+    const mode: { current: FaultMode } = { current: "success" };
+    const bad = createFaultAdapter(arena, "src/bad", 0.75, callOrder, mode);
     const h = buildGraphHarness({
       adapters: {
         "src/bad": bad,
@@ -725,18 +796,102 @@ describe("workletCore graph — per-instance trap containment", () => {
     });
     instantiate(h.core, "bad", "src/bad", 1);
     instantiate(h.core, "good", "src/good", 1);
-
-    expect(() => h.step(1)).not.toThrow();
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    const statePointer = h.core.telemetry.instances.find((instance) => instance.identity === "bad")!
+      .statePointer;
+    const state = new Uint8Array(arena, statePointer, bad.descriptor.stateBytes);
 
-    expect(h.diagnostics()).toContainEqual({
-      type: "graph-diagnostic",
-      code: "nodedef-trap",
-      identity: "bad",
-    });
+    const cases: Array<{
+      mode: Exclude<FaultMode, "success">;
+      code: "nodedef-trap" | "nodedef-compute-rejected" | "nodedef-nonfinite-output";
+    }> = [
+      { mode: "trap", code: "nodedef-trap" },
+      { mode: "reject", code: "nodedef-compute-rejected" },
+      { mode: "nonfinite", code: "nodedef-nonfinite-output" },
+    ];
+
+    for (const fault of cases) {
+      const before = state[0];
+      mode.current = fault.mode;
+      expect(() => h.step(1)).not.toThrow();
+      expect(state[0]).toBe(before);
+      expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
+      expect(h.core.telemetry.instances.find((instance) => instance.identity === "bad"))
+        .toMatchObject({ health: "error" });
+      expect(h.diagnostics()).toContainEqual({
+        type: "graph-diagnostic",
+        code: fault.code,
+        identity: "bad",
+      });
+
+      mode.current = "success";
+      h.step(1);
+      expect(state[0]).toBe((before + 1) & 0xff);
+      expect(h.core.readOutput()[0]).toBeCloseTo(1, 6);
+      expect(h.core.telemetry.instances.find((instance) => instance.identity === "bad"))
+        .toMatchObject({ health: "ok" });
+    }
+
     expect(h.core.telemetry.instances.map((instance) => instance.identity))
-      .toEqual(["good"]);
-    expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
+      .toEqual(["bad", "good"]);
+  });
+});
+
+describe("workletCore graph — sample-indexed fade invariance", () => {
+  function renderFadeIn(partitions: readonly number[]): number[] {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: { "src/unit": createConstAdapter(arena, "src/unit", 1, callOrder) },
+      arena,
+      callOrder,
+      renderQuantumFrames: 256,
+    });
+    instantiate(h.core, "unit", "src/unit", 1);
+    const samples: number[] = [];
+    for (const frames of partitions) {
+      h.step(1, undefined, frames);
+      samples.push(...h.core.readOutput().slice(0, frames));
+    }
+    return samples;
+  }
+
+  function renderFadeOut(partitions: readonly number[]): number[] {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: { "src/unit": createConstAdapter(arena, "src/unit", 1, callOrder) },
+      arena,
+      callOrder,
+      renderQuantumFrames: 256,
+    });
+    instantiate(h.core, "unit", "src/unit", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    h.core.handleMessage({ type: "retire", identity: { identity: "unit", epoch: 1 } });
+    const samples: number[] = [];
+    for (const frames of partitions) {
+      h.step(1, undefined, frames);
+      samples.push(...h.core.readOutput().slice(0, frames));
+    }
+    return samples;
+  }
+
+  it("makes fade-in samples invariant to render-quantum partitioning", () => {
+    const by128 = renderFadeIn([128, 128, 128, 96]);
+    const mixed = renderFadeIn([64, 192, 160, 64]);
+    expect(mixed).toEqual(by128);
+    expect(by128).toHaveLength(480);
+    expect(by128[0]).toBe(0);
+    expect(by128[479]).toBe(1);
+  });
+
+  it("makes fade-out samples invariant to render-quantum partitioning", () => {
+    const by128 = renderFadeOut([...Array(11).fill(128), 32]);
+    const mixed = renderFadeOut([...Array(5).fill(256), 160]);
+    expect(mixed).toEqual(by128);
+    expect(by128).toHaveLength(1440);
+    expect(by128[0]).toBe(1);
+    expect(by128[1439]).toBe(0);
   });
 });
 

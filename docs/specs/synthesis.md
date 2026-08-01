@@ -157,7 +157,9 @@ version the host lacks produces a compile-time capability diagnostic
 node instance is a WASM instantiation of its def's module, with state
 and I/O in the shared host memory (§2.3). The host executes the graph in
 topological order per block. (One processor, many instances — not one
-AudioWorkletNode per node.)
+AudioWorkletNode per node.) Terminal ports accumulate in binary64; the
+emergency envelope is applied to that sum, and each final sample is converted
+to Web Audio's binary32 format exactly once.
 
 3.2 **Instantiation happens on the audio thread.** `WebAssembly.Module`
 objects are compiled/validated off-thread and transferred once via the
@@ -173,7 +175,9 @@ fade-in on instantiate (`SYNTH_FADE_IN`, default 10 ms linear), update
 in place without DSP-state reset, release fade on free
 (`SYNTH_FADE_OUT`, default 30 ms), overlapping fades on def change,
 fade-cancellation semantics for racing evals (`synth-nodes.md` §5.7).
-Graph mutations apply at block boundaries only.
+Graph mutations apply at block boundaries only. Instance fades use a
+sample-indexed linear envelope with exact first/last gains; the rendered sample
+sequence is invariant to how the browser partitions it into render quanta.
 
 3.4 Vector-valued params fan out to per-voice zones inside the host;
 voice add/remove on width change is itself faded; voice outputs are
@@ -200,11 +204,18 @@ prior graph and its zones authoritative; after a successfully delivered gate,
 a missing acknowledgement is uncertain and must never trigger rollback or
 release the serial commit queue. Disposal is the only host-side cancellation.
 
-3.6 **Trap containment.** A WASM trap during one instance's adapter creation,
-initialisation, or compute call fails that candidate or mutes and retires the
-live node (hard gain 0 within the same block), and emits a console diagnostic
-naming the node identity; the rest of the graph continues. The host must
-survive any single-instance trap. **Overload rule:** if the block deadline is missed
+3.6 **Failure-atomic NodeDef calls.** A WASM trap during candidate adapter
+creation or initialisation rejects that candidate and releases its zones. For
+every live compute call, the host copies the state zone into a preallocated
+rollback image and clears the output zone before entering WASM. A trap, a
+`false` return, or any non-finite produced sample restores the prior state,
+zeros the complete output zone in the same block, marks the instance health
+`error`, increments the glitch counter, and emits a diagnostic naming the node
+identity and failure class. Siblings and downstream nodes continue (the latter
+read silence from the failed node). The instance remains live and retries on
+the next block; its first later successful finite block commits state/output
+and returns health to `ok`. Snapshot storage is allocated only at graph-mutation
+boundaries. **Overload rule:** if the block deadline is missed
 for `OVERLOAD_BLOCKS` consecutive blocks (default 8), the engine fades
 all output to silence and enters the `error` engine state (§6.4) — never
 sustained glitching.
