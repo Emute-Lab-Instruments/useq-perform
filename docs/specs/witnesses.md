@@ -157,7 +157,7 @@ from the case (either edited), the resolution test or the badge catches it.
 ## 5. Open / Deferred
 
 5.1 Extending the in-app runner beyond `eval`/`sample`. On the pinned corpus
-this is what the 30 `unsupported` witnesses need (84 total, 54 currently
+this is what the 30 `unsupported` witnesses need (85 total, 55 currently
 `pass`):
 
 - `expect_diagnostic` (11 witnesses) — needs `useq_last_diagnostics` category

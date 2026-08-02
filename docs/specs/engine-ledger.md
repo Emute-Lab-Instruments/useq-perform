@@ -131,10 +131,10 @@ the external deep-link entry point that §2.2.1 also blocks on.
 native runner's verdicts on the same pinned submodule (spot-checked in tests
 against a fixture subset).
 
-5.2.1 Met as of M1: 13 files / 84 witnesses harvest cleanly with no
+5.2.1 As of 2026-08-02, 13 files / 85 witnesses harvest cleanly with no
 validation warnings, and every clause the corpus cites resolves to a clause
 the spec corpus actually defines (asserted in `harvest.test.ts`). A
-whole-corpus run against the bundled engine gives **54 pass, 0 fail, 30
+whole-corpus run against the bundled engine gives **55 pass, 0 fail, 30
 unsupported, 0 error** — the 30 being the step kinds inventoried in
 witnesses.md §5.1. Zero failures means the shipped engine agrees with the
 spec everywhere the in-app runner can check, matching the native runner.

@@ -73,7 +73,7 @@ describe.runIf(corpusAvailable)("witness harvest", () => {
 
   it("finds every corpus file and case", () => {
     expect(index.fileCount).toBe(13);
-    expect(index.witnessCount).toBe(84);
+    expect(index.witnessCount).toBe(85);
     expect(index.witnesses).toHaveLength(index.witnessCount);
   });
 
