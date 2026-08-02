@@ -59,7 +59,7 @@ export interface UseqWasmRuntimeGlobal {
 }
 
 // Emscripten module interface (minimal typing for what we use)
-interface EmscriptenModule {
+export interface EmscriptenModule {
   cwrap(symbol: string, returnType: string | null, argTypes: string[]): (...args: any[]) => any;
   _malloc(size: number): number;
   _free(pointer: number): void;
@@ -848,6 +848,33 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
       if (probeBufPtr) { module._free(probeBufPtr); probeBufPtr = 0; }
     }
   };
+}
+
+/**
+ * Instantiate a **fresh, unregistered** WASM module.
+ *
+ * Every call runs `createModule()` again, so the returned module has its own
+ * linear memory and its own `SignalEngine`. It is deliberately not memoised,
+ * not stored in `runtimePromise`, and never published to
+ * `globalThis.__useqWasmRuntime` — nothing the live session reads can observe
+ * it. This is the isolation seam the conformance-witness runner requires
+ * (`docs/specs/witnesses.md` §2.3); the live engine must never evaluate
+ * witness code, even with cleanup afterwards.
+ *
+ * The caller owns the module: it must call `useq_init()` before use and drop
+ * the reference when finished.
+ */
+export async function createIsolatedWasmModule(): Promise<EmscriptenModule> {
+  await loadWasmScript();
+
+  const factory = window.createModule;
+  if (typeof factory !== "function") {
+    throw new Error("uSEQ WASM bundle did not expose createModule()");
+  }
+
+  const module = await factory();
+  assertWasmAbi(module);
+  return module;
 }
 
 export function ensureUseqWasmLoaded(): Promise<UseqRuntime> {
