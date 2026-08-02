@@ -16,12 +16,11 @@ layer: behavioural
 
 ### Source files
 
-(To be created)
-
-- `src/ui/help/machine/MachinePanel.tsx` — the schematic surface (guide-embedded and standalone)
-- `src/ui/help/machine/machineModel.ts` — schematic layout model (regions, flows, states)
+- `src/ui/help/machine/MachinePanel.tsx` — the schematic surface (`MachinePanel` pure view + `WiredMachinePanel`; guide-embedded and standalone)
+- `src/ui/help/machine/machineModel.ts` — schematic layout model (regions, the six ideas, row/spark derivations)
 - `src/ui/help/machine/machineEvents.ts` — subscriptions wiring real stores/channels to schematic animation
 - `src/ui/help/guide/chapters/ch0-machine.ts` — "How uSEQ thinks" opening guide chapter
+- `src/ui/styles/machine.css` — schematic styling, in theme variables
 - Existing: `src/ui/help/guide/` (GuideTab, Playground, LiveProbe, contentBlocks), `src/utils/outputHealthStore.ts`, `src/contracts/*Channels.ts`, visualisation store/transport clock
 
 ## 1. Frame
@@ -135,6 +134,48 @@ bundled engine.
 
 6.4 `npm run typecheck`, `npm run lint`, `npm run test:unit` green; no new
 import-boundary violations.
+
+## 6a. Implementation notes (M1, 2026-08-02)
+
+Deviations and clarifications recorded at implementation time. These are notes
+on how M1 landed, not amendments to the intent above.
+
+6a.1 **`witnessRef` lives on `Playground`, not on `PlaygroundBlock`.** §4.1 and
+witnesses.md §4.1 say "playground block". The field went on the `Playground`
+payload (`guideTypes.ts`) because that is where `code` lives — the ref must
+travel with the thing that must match the case. `PlaygroundBlock` is a thin
+wrapper around it, so nothing is lost.
+
+6a.2 **Jack sparks read the sampler's past buffers, not
+`VisExpression.samples`.** The `samples` field on the visualisation store is
+always `[]` in production (`visualisationSampler.ts` writes it only for DEV
+tracing); the real per-output history lives in the sampler's `PastBuffer`s,
+reachable via `getRenderData()`. The schematic reads those, re-derived
+whenever `visStore.currentTime` changes — i.e. once per real sampler frame.
+
+6a.3 **Two test seams, and why.** Component tests drive the real transport
+machine, the real `codeEvaluated` channel, the real `outputHealthStore` and
+the real visualisation store. Two things are injected rather than driven,
+because both would otherwise require a booted WASM engine with no public
+seam to push through: the per-output `SampleWindow` (a real `PastBuffer`, the
+exact object the sampler hands over) and the runtime-liveness predicate. The
+code path under test is the production one in both cases.
+
+6a.4 **The schematic never creates the transport orchestrator.** Per §1.3 it
+reads it through a new `peekTransportOrchestrator()` accessor, which returns
+`null` rather than constructing the singleton (construction subscribes to the
+runtime service and starts applying clock policy). No transport running is
+rendered as "stopped", not as invented motion.
+
+6a.5 **Standalone chrome (§2.4)** is an ordinary chrome panel in
+`src/ui/adapters/panels.tsx` (`toggleMachinePanel()`), so it joins the LIFO
+overlay stack and inherits Escape dismissal and reference-counted scroll lock
+(overlays.md §1.1–1.2) without introducing a new surface kind.
+
+6a.6 **Chapter opening block.** `Chapter` gained an optional `intro:
+ContentBlock[]` rendered above the (collapsed-by-default) sections, so the
+schematic is genuinely the chapter's opening block rather than hidden inside
+a collapsed section. A new `machine` content-block type renders it.
 
 ## 7. Open / Deferred
 

@@ -9,6 +9,7 @@ import {
 } from "solid-js";
 import type { Chapter, GuideDomain } from "./guideTypes";
 import { GuideSection } from "./GuideSection";
+import { renderContentBlock } from "./contentBlocks";
 import { loadRaw, saveRaw } from "../../../lib/persistence";
 
 import { chapters } from "./guideData";
@@ -254,6 +255,15 @@ export const GuideTab: Component = () => {
                           {allExpanded() ? "Collapse All" : "Expand All"}
                         </button>
                       </div>
+                      <Show when={chapter.intro}>
+                        {(intro) => (
+                          <div class="guide-chapter-intro">
+                            <For each={intro()}>
+                              {(block) => renderContentBlock(block)}
+                            </For>
+                          </div>
+                        )}
+                      </Show>
                       <For each={chapter.sections}>
                         {(section) => (
                           <GuideSection

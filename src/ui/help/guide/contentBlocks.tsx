@@ -1,5 +1,6 @@
 import { Component, For, Show, createSignal } from "solid-js";
 import type { ContentBlock, ReferenceRow } from "./guideTypes";
+import { WiredMachinePanel } from "../machine/MachinePanel";
 
 // ---------------------------------------------------------------------------
 // Inline text parsing (backtick `code` and *italic*)
@@ -147,5 +148,7 @@ export function renderContentBlock(block: ContentBlock) {
       return <TipBlock text={block.text} />;
     case "reference-table":
       return <ReferenceTableBlock rows={block.rows} />;
+    case "machine":
+      return <WiredMachinePanel showPlaygrounds={block.showPlaygrounds ?? false} />;
   }
 }

@@ -4,14 +4,22 @@
  */
 
 import type { Chapter, GuideDomain } from "./guideTypes";
+import { chapter0 } from "./chapters/ch0-machine";
 import { chapter1 } from "./chapters/ch1-language";
 import { chapter2 } from "./chapters/ch2-algebra";
 import { chapter3 } from "./chapters/ch3-modulation";
 import { chapter4 } from "./chapters/ch4-rhythm";
 import { chapter5 } from "./chapters/ch5-editor";
 
-/** All guide chapters in reading order. */
+/**
+ * All guide chapters in reading order.
+ *
+ * Chapter 0 ("How uSEQ Thinks", the-machine.md §3.1) opens the Language
+ * domain; the existing chapters follow unchanged — their renumbering is
+ * presentational only.
+ */
 export const chapters: Chapter[] = [
+  chapter0,
   chapter1,
   chapter2,
   chapter3,
