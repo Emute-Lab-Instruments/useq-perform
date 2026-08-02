@@ -300,6 +300,23 @@ interface ProbeRenderUpdate {
   render: ProbeRenderData;
 }
 
+function highlightsEqual(
+  left: readonly FromListHighlight[],
+  right: readonly FromListHighlight[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((highlight, index) => {
+      const other = right[index];
+      return (
+        other?.from === highlight.from &&
+        other.to === highlight.to &&
+        other.mode === highlight.mode
+      );
+    })
+  );
+}
+
 const toggleProbeEffect = StateEffect.define<PersistedProbeSpec>();
 const removeProbeEffect = StateEffect.define<{ id: string }>();
 const setProbeDepthEffect = StateEffect.define<{ id: string; delta: number }>();
@@ -1200,13 +1217,22 @@ async function evalPhasorIndex(
   code: string,
   elementCount: number,
 ): Promise<number | null> {
+  // The visualisation sampler already evaluates `bar` as part of its
+  // authoritative tick and publishes that value synchronously. Re-evaluating
+  // bare `bar` through the async silent-eval path can observe a different
+  // runtime tick, making the decoration alternate or skip an element.
+  if (code.trim() === "bar" && visStore.lastChangeKind === "data") {
+    return computeFromListIndex(elementCount, visStore.bar);
+  }
+
   const currentTime = _config.getCurrentTime();
   const timedCode = buildEvalAtTimeExpression(code, currentTime);
   const result = await evaluateProbeCode(timedCode);
   if (isErrorResult(result)) return null;
+  if (!result.trim()) return null;
   const numeric = Number(result);
-  const phasor = Number.isFinite(numeric) ? numeric : 0;
-  return computeFromListIndex(elementCount, phasor);
+  if (!Number.isFinite(numeric)) return null;
+  return computeFromListIndex(elementCount, numeric);
 }
 
 // Try fresh code; on failure, fall back to the cached LKG code (which is
@@ -1217,12 +1243,14 @@ async function resolvePhasorHighlight(
   cacheKey: string,
   elementCount: number,
   lkg: Map<string, string>,
+  indexLKG: Map<string, number>,
 ): Promise<number | null> {
   if (freshCode) {
     try {
       const index = await evalPhasorIndex(freshCode, elementCount);
       if (index != null) {
         lkg.set(cacheKey, freshCode);
+        indexLKG.set(cacheKey, index);
         return index;
       }
     } catch (error) {
@@ -1232,11 +1260,18 @@ async function resolvePhasorHighlight(
   const cached = lkg.get(cacheKey);
   if (!cached) return null;
   try {
-    return await evalPhasorIndex(cached, elementCount);
+    const index = await evalPhasorIndex(cached, elementCount);
+    if (index != null) {
+      indexLKG.set(cacheKey, index);
+      return index;
+    }
   } catch (error) {
     dbg(`probe: cached phasor eval failed (${error})`);
-    return null;
   }
+  // A silent runtime failure must not make the current mark blink off (or
+  // accidentally select element zero through Number(null/"")). Keep the
+  // last valid index until a later tick produces a valid result.
+  return indexLKG.get(cacheKey) ?? null;
 }
 
 async function computeHighlights(
@@ -1244,6 +1279,7 @@ async function computeHighlights(
   forms: IndexedFormTarget[],
   probes: PersistedProbeSpec[],
   lkg: Map<string, string>,
+  indexLKG: Map<string, number>,
 ): Promise<FromListHighlight[]> {
   if (import.meta.env.DEV) {
     perf.begin("probe-highlights");
@@ -1268,6 +1304,7 @@ async function computeHighlights(
       contextualKey,
       form.elementRanges.length,
       lkg,
+      indexLKG,
     );
     if (import.meta.env.DEV) perf.end("probe-highlights-eval");
     if (contextualIndex != null) {
@@ -1305,6 +1342,7 @@ async function computeHighlights(
       rawKey,
       form.elementRanges.length,
       lkg,
+      indexLKG,
     );
     if (import.meta.env.DEV) perf.end("probe-highlights-eval");
     if (rawIndex != null) {
@@ -1313,7 +1351,13 @@ async function computeHighlights(
   }
 
   for (const key of [...lkg.keys()]) {
-    if (!validKeys.has(key)) lkg.delete(key);
+    if (!validKeys.has(key)) {
+      lkg.delete(key);
+      indexLKG.delete(key);
+    }
+  }
+  for (const key of [...indexLKG.keys()]) {
+    if (!validKeys.has(key)) indexLKG.delete(key);
   }
 
   if (import.meta.env.DEV) perf.end("probe-highlights");
@@ -1329,6 +1373,7 @@ class ProbePlugin {
   /** True when the rAF tick loop should run (probes or visible indexed forms). */
   private tickLoopActive = false;
   private highlightLKG: Map<string, string> = new Map();
+  private highlightIndexLKG: Map<string, number> = new Map();
   private contextLineCanvas: HTMLCanvasElement | null = null;
   private onScroll: () => void;
   private onWindowResize: () => void;
@@ -1704,8 +1749,18 @@ class ProbePlugin {
             this.visibleForms,
             snapshot.probes,
             this.highlightLKG,
+            this.highlightIndexLKG,
           )
         : [];
+
+      // Do not rebuild an identical decoration set on every sampling tick.
+      // Replacing the mark even when the active element has not changed can
+      // make the current from-list decoration visibly flicker; it also does
+      // needless DOM work for the common case between index transitions.
+      if (updates.length === 0 && highlightsEqual(snapshot.highlights, highlights)) {
+        this.drawContextLines();
+        return;
+      }
 
       this.view.dispatch({
         effects: updateProbeRenderEffect.of({ updates, highlights }),

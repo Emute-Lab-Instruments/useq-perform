@@ -92,7 +92,7 @@ layer: behavioural
 
 2.2 **Form shape.** A recognised form's first argument is a phasor expression in `[0, 1]`; remaining arguments are list elements. The active element is `floor(elementCount × clamp(phasor, 0, 1))`, clamped to a valid index.
 
-2.3 **Visual contract.** When a recognised form's phasor resolves to a valid value, the active list element is highlighted in-place in the source. Highlights are editor decorations on the marked element's range; they do not modify the document.
+2.3 **Visual contract.** When a recognised form's phasor resolves to a valid value, the active list element is highlighted in-place in the source. Highlights are editor decorations on the marked element's range; they do not modify the document. If the active range and highlight class are unchanged between sampling ticks, the existing decoration remains mounted rather than being replaced.
 
 2.4 **Always on.** From-list highlights are a syntactic editor affordance independent of probe activity — they teach the language by showing which list element is active right now. Highlights are computed for every recognised form in the visible document regardless of whether any probes exist. Probes and from-list highlights are **orthogonal features** that happen to share an extension and a sampler.
 &nbsp;&nbsp;&nbsp;&nbsp;2.4.1 The setting **`visualisation.fromListHighlights`** (boolean, default true) globally disables highlight computation. When false, no highlights are computed or rendered regardless of recognised forms. Intended for users on weak hardware.
@@ -105,9 +105,9 @@ layer: behavioural
 
 2.5.3 A single recognised form may produce both a contextual and a raw highlight simultaneously (different active indices when wrappers shift the phasor). Both are rendered.
 
-2.6 **Refresh cadence.** From-list highlights refresh on the same `visualisation.probeRefreshIntervalMs` schedule as probe sampling, sharing the same batch dispatch. They are not independently paced. With zero probes and recognised forms present, the batch contains only highlight computations.
+2.6 **Refresh cadence.** From-list highlights refresh on the same `visualisation.probeRefreshIntervalMs` schedule as probe sampling, sharing the same batch dispatch. They are not independently paced. With zero probes and recognised forms present, the batch contains only highlight computations. A bare `bar` phasor uses the authoritative `bar` value published by the visualisation sampler for the current data tick; it is not evaluated again through the asynchronous silent-eval path.
 
-2.7 **Failure modes.** If the phasor expression evaluates to an error or non-finite value, **no highlight is produced for that form on that tick**. Prior highlights are cleared, not retained. This is intentional: a stale highlight on a broken form would mislead. Failure must not throw or interrupt other forms' highlight computation.
+2.7 **Failure modes.** An empty, erroneous, or non-finite phasor result is not coerced to element zero. If the same recognised form has a last valid index, a transient evaluation failure retains that index until a later valid result arrives; if no valid index exists, no highlight is produced. Cached indices are discarded when the corresponding form is no longer present. Failure must not throw or interrupt other forms' highlight computation.
 
 2.8 **Nested and composed forms** (`(seq … (from-list …))`, `(slow 4 (from-list …))`) are recognised independently per nesting level. Each recognised form computes its own highlight from its own phasor.
 

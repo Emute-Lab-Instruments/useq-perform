@@ -671,6 +671,67 @@ describe("probe commands", () => {
     view.destroy();
   });
 
+  it("keeps an unchanged from-list decoration mounted while the index stays put", async () => {
+    evalInUseqWasmSilently.mockResolvedValue("0.5");
+
+    const source = "(a1 (from-list [0.1 0.2 0.3] bar))";
+    const { probeExtensions } = await loadProbeModule();
+    const view = createView(source, probeExtensions, { anchor: anchorOf(source, "bar") });
+
+    await runNextFrame(1000);
+    const first = view.dom.querySelector(".cm-probe-indexed-item");
+    expect(first?.textContent).toBe("0.2");
+
+    await runNextFrame(1040);
+    const second = view.dom.querySelector(".cm-probe-indexed-item");
+    expect(second).toBe(first);
+
+    view.destroy();
+  });
+
+  it("holds the last valid index across a transient invalid phasor result", async () => {
+    let highlightCalls = 0;
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => {
+      if (code.includes("eval-at-time")) {
+        highlightCalls++;
+        return highlightCalls === 1 ? "0.5" : "";
+      }
+      return "0.5";
+    });
+
+    const source = "(a1 (from-list [0.1 0.2 0.3] bar))";
+    const { probeExtensions } = await loadProbeModule();
+    const view = createView(source, probeExtensions, { anchor: anchorOf(source, "bar") });
+
+    await runNextFrame(1000);
+    const first = view.dom.querySelector(".cm-probe-indexed-item");
+    expect(first?.textContent).toBe("0.2");
+
+    await runNextFrame(1040);
+    const second = view.dom.querySelector(".cm-probe-indexed-item");
+    expect(second?.textContent).toBe("0.2");
+    expect(second).toBe(first);
+
+    view.destroy();
+  });
+
+  it("uses the authoritative sampled bar value instead of re-evaluating bare bar", async () => {
+    const { setVisStore } = await import("../../utils/visualisationStore.ts");
+    setVisStore("bar", 0.75);
+    setVisStore("lastChangeKind", "data");
+    evalInUseqWasmSilently.mockResolvedValue("0.0");
+
+    const source = "(a1 (from-list [0.1 0.2 0.3] bar))";
+    const { probeExtensions } = await loadProbeModule();
+    const view = createView(source, probeExtensions, { anchor: anchorOf(source, "bar") });
+
+    await runNextFrame(1000);
+    expect(view.dom.querySelector(".cm-probe-indexed-item")?.textContent).toBe("0.3");
+    expect(evalInUseqWasmSilently).not.toHaveBeenCalled();
+
+    view.destroy();
+  });
+
   it("only adds raw indexed highlights when the indexed form itself has a raw probe", async () => {
     evalInUseqWasmSilently.mockImplementation(async (code: string) => {
       if (code === "barDur") return "1";
