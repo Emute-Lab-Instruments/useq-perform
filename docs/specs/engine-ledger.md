@@ -17,14 +17,15 @@ layer: behavioural
 
 ### Source files
 
-(To be created)
-
 - `src/ui/help/ledger/LedgerTab.tsx` — devmode Help tab: spec index + document view
 - `src/ui/help/ledger/SpecDocument.tsx` — rendered spec markdown with clause anchors and witness badges
 - `src/ui/help/ledger/ClauseBadge.tsx` — per-clause witness status chip
 - `src/ui/help/ledger/WitnessDetail.tsx` — expandable steps / expected-vs-actual view
+- `src/ui/help/ledger/ledgerStore.ts` — session-scoped run state (§3.3); never persisted
+- `src/ui/styles/ledger.css` — Ledger styling, including the §3.1 verdict colours
 - `src/lib/witness/` — shared runner + types ([witnesses.md](witnesses.md))
 - `scripts/harvest-specs.mjs` — build-time copy of `src-useq/docs/specs/*.md` into a bundled asset
+- `public/assets/spec-corpus.json` — (generated) the bundled spec corpus
 
 ## 1. Frame
 
@@ -54,10 +55,27 @@ compilation.md §1.3. External deep links (`?spec=compilation.md&clause=1.3`
 style, exact param design left to implementation) open Help → Ledger → that
 clause.
 
+2.2.1 M1 implements the in-Ledger half: clause anchors, scroll-and-highlight,
+and navigation from intra-corpus links (§2.3). The **external URL deep link
+is not implemented** — a new query parameter has to be registered in
+[url-params.md](url-params.md) first, and that was outside the M1 change
+scope. Also note that numbered section headings (`## 3. Sugars`) are
+addressable in their own right, so a whole-section citation like
+`failure-model.md §7` badges correctly.
+
 2.3 Markdown rendering must preserve: intra-corpus links (rewritten to
 in-Ledger navigation), code fences with ModuLisp highlighting (read-only
 secondary editors per [editor.md](editor.md) §1.14 — no probe registration),
 and tables.
+
+2.3.1 Markdown is tokenised **at build time** by `scripts/harvest-specs.mjs`
+into a block model (`heading` / `prose` / `code` / `table` / `rule`, each
+tagged with the clause it belongs to), so the app needs no runtime markdown
+parser and clause tagging cannot drift between renders. Links are rewritten
+during the harvest: intra-corpus targets become `data-ledger-spec` /
+`data-ledger-clause` attributes the document view turns into navigation;
+targets outside the language corpus (e.g. `../../../docs/specs/synthesis.md`)
+are defused so they cannot navigate the SPA away.
 
 2.4 Each clause that has witnesses (per the harvest aggregation,
 witnesses.md §3.3) shows a **clause badge**: witness count plus aggregate
@@ -77,6 +95,11 @@ background running on app start; a document view may auto-run its own
 witnesses when opened if the engine is idle (implementation choice, but must
 be interruptible and must not contend with live evaluation).
 
+3.2.1 M1 takes the conservative option: nothing auto-runs, including on
+opening a document. Every run is user-initiated and cancellable. Because the
+runner drives its own isolated engine (witnesses.md §2.3.1) it never contends
+with live evaluation for engine state, only for the main thread.
+
 3.3 Run results are session-scoped state (not persisted). The Ledger index
 shows a per-spec-file summary of the latest session results.
 
@@ -95,6 +118,10 @@ concern — [the-machine.md](the-machine.md) §5.)
 category; enriching the WASM diagnostic payload with explicit clause refs is
 deferred (§6.2).
 
+4.3 **Not implemented.** The Ledger landed without §4: no diagnostic in the
+main editor yet offers a Ledger link. It needs a category → clause map plus
+the external deep-link entry point that §2.2.1 also blocks on.
+
 ## 5. Acceptance (M1)
 
 5.1 Devmode on → Help shows the Ledger tab; devmode off → no trace of it.
@@ -103,6 +130,16 @@ deferred (§6.2).
 `eval`/`sample` steps runs in-app; the aggregate whole-corpus run matches the
 native runner's verdicts on the same pinned submodule (spot-checked in tests
 against a fixture subset).
+
+5.2.1 Met as of M1: 13 files / 84 witnesses harvest cleanly with no
+validation warnings, and every clause the corpus cites resolves to a clause
+the spec corpus actually defines (asserted in `harvest.test.ts`). A
+whole-corpus run against the bundled engine gives **54 pass, 0 fail, 30
+unsupported, 0 error** — the 30 being the step kinds inventoried in
+witnesses.md §5.1. Zero failures means the shipped engine agrees with the
+spec everywhere the in-app runner can check, matching the native runner.
+`src/lib/witness/realEngine.test.ts` asserts this against the real WASM
+artefact.
 
 5.3 Running the full corpus from the Ledger leaves the live session
 observably untouched (outputs, cells, transport, probes).
@@ -125,3 +162,11 @@ the submodule; explicitly out of M1.
 
 6.4 Ledger rendering of the app-side spec corpus (`docs/specs/*.md`) in
 addition to the language corpus.
+
+6.5 External deep links into a clause (§2.2.1) — blocked on registering the
+query parameter in [url-params.md](url-params.md).
+
+6.6 Cheaper whole-corpus runs. Each witness currently costs a full WASM
+module instantiation (witnesses.md §2.3.1). It is fast enough today
+(sub-second for the whole corpus) but scales linearly with corpus size; a
+`useq_clear` export would remove it.
