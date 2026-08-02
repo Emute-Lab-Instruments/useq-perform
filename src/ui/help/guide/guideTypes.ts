@@ -57,6 +57,19 @@ export interface Playground {
    * for multi-bar windows phase 0→1 maps to 0→bars.
    */
   bars?: number;
+  /**
+   * Name of the conformance case in `src-useq/test/conformance/**\/*.yaml`
+   * that backs this example (witnesses.md §4.1).
+   *
+   * The pedagogical contract (witnesses.md §4.2): a playground carrying a
+   * `witnessRef` teaches *exactly* the behaviour the referenced case asserts,
+   * so the guide cannot teach behaviour the engine does not have.
+   * `witnessRefs.test.ts` asserts every ref resolves to a real corpus case.
+   *
+   * Absent means the example is not (yet) corpus-backed — allowed by
+   * witnesses.md §4.2 / §5.3, never silently presented as canonical.
+   */
+  witnessRef?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +121,21 @@ export interface ReferenceTableBlock {
   rows: ReferenceRow[];
 }
 
+/**
+ * The live schematic of how uSEQ thinks (docs/specs/the-machine.md §2).
+ * Renders `WiredMachinePanel` — a real read of the running app, never a
+ * canned animation.
+ */
+export interface MachineBlock {
+  type: "machine";
+  /**
+   * Show the playgrounds embedded in the schematic's region detail.
+   * Defaults to false inside the guide, where the chapter's own sections
+   * already carry the same examples.
+   */
+  showPlaygrounds?: boolean;
+}
+
 /** Union of all content block types that can appear inside a section. */
 export type ContentBlock =
   | ProseBlock
@@ -115,7 +143,8 @@ export type ContentBlock =
   | DeepDiveBlock
   | TryItBlock
   | TipBlock
-  | ReferenceTableBlock;
+  | ReferenceTableBlock
+  | MachineBlock;
 
 // ---------------------------------------------------------------------------
 // Section & Chapter
@@ -143,6 +172,12 @@ export interface Chapter {
   summary: string;
   /** Which domain this chapter belongs to. */
   domain: GuideDomain;
+  /**
+   * Content rendered above the sections and always visible — the chapter's
+   * opening block. Chapter 0 uses it for the live schematic
+   * (the-machine.md §2.4).
+   */
+  intro?: ContentBlock[];
   /** Sections within this chapter. */
   sections: Section[];
 }

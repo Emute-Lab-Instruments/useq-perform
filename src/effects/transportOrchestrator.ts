@@ -214,6 +214,19 @@ export function getTransportOrchestrator(): TransportOrchestrator {
 }
 
 /**
+ * Read the singleton **without creating it**.
+ *
+ * Read-only observers (the Machine schematic, the-machine.md §1.3: "never
+ * causes engine activity") must not bring the orchestrator into existence as
+ * a side effect of being rendered — creating it subscribes to the runtime
+ * service and starts applying clock policy. `null` means transport has not
+ * been started yet, which observers render as "no transport".
+ */
+export function peekTransportOrchestrator(): TransportOrchestrator | null {
+  return _instance;
+}
+
+/**
  * Tear down the singleton (useful for tests or hot-module replacement).
  */
 export function disposeTransportOrchestrator(): void {

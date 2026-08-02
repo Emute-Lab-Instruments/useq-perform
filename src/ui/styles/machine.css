@@ -1,0 +1,278 @@
+/**
+ * The Machine — live schematic of how uSEQ thinks.
+ * Spec: docs/specs/the-machine.md §2.
+ *
+ * Everything here is expressed in the app's theme variables so the schematic
+ * follows the active theme (themes.md) rather than carrying its own palette.
+ */
+
+.machine {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-border-radius, 4px);
+  background-color: var(--panel-section-bg);
+  color: var(--text-primary);
+  font-family: var(--code-font, monospace);
+  font-size: 12px;
+}
+
+/* ── Scene ─────────────────────────────────────────────────────── */
+
+.machine-scene {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.machine-flow {
+  align-self: center;
+  opacity: 0.35;
+  font-size: 14px;
+}
+
+.machine-region {
+  flex: 1 1 0;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--item-border-radius, 4px);
+  background-color: var(--panel-control-bg);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.machine-region:hover {
+  background-color: var(--panel-item-hover-bg);
+}
+
+.machine-region--selected {
+  border-color: var(--accent-color);
+  background-color: var(--panel-item-active-bg);
+}
+
+.machine-region--flash {
+  border-color: var(--code-eval-highlight-color, var(--accent-color));
+}
+
+.machine-region-title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.machine-region-caption {
+  font-size: 10px;
+  opacity: 0.5;
+}
+
+/* ── Clock ─────────────────────────────────────────────────────── */
+
+.machine-dial {
+  width: 56px;
+  height: 56px;
+}
+
+.machine-dial-face {
+  stroke: var(--panel-border);
+  stroke-width: 1.5;
+}
+
+.machine-dial-hand {
+  stroke: var(--accent-color);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.machine-dial[data-clock-state="stopped"] .machine-dial-hand,
+.machine-dial[data-clock-state="paused"] .machine-dial-hand {
+  stroke: var(--text-secondary, rgba(255, 255, 255, 0.45));
+}
+
+.machine-clock-state {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* ── Program rows ──────────────────────────────────────────────── */
+
+.machine-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  min-height: 40px;
+}
+
+.machine-rows-empty,
+.machine-jacks-empty {
+  font-size: 10px;
+  opacity: 0.4;
+}
+
+.machine-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 1px 4px;
+  border-left: 2px solid transparent;
+  border-radius: 2px;
+  background-color: var(--panel-groove, rgba(255, 255, 255, 0.06));
+}
+
+.machine-row[data-state="running"] {
+  border-left-color: var(--accent-color);
+}
+
+.machine-row[data-state="fallback"] {
+  /* LKG: broken, but still sounding — must read as distinct from both a
+     healthy row and a dead one (the-machine.md §2.2). */
+  border-left-color: #ffb020;
+  border-left-style: dashed;
+}
+
+.machine-row[data-state="error"] {
+  border-left-color: #ff4444;
+}
+
+.machine-row-output {
+  font-weight: 600;
+  min-width: 2em;
+}
+
+.machine-row-expr {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.machine-row-state {
+  font-size: 10px;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+.machine-row[data-lkg="true"] .machine-row-state {
+  opacity: 0.9;
+  color: #ffb020;
+}
+
+/* ── Jacks ─────────────────────────────────────────────────────── */
+
+.machine-jacks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  min-height: 40px;
+}
+
+.machine-jack {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.machine-jack-ring {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--panel-border);
+  flex: 0 0 auto;
+}
+
+.machine-jack[data-state="running"] .machine-jack-ring {
+  border-color: var(--accent-color);
+}
+
+.machine-jack[data-state="fallback"] .machine-jack-ring {
+  border-color: #ffb020;
+}
+
+.machine-jack[data-state="error"] .machine-jack-ring {
+  border-color: #ff4444;
+}
+
+.machine-spark {
+  width: 56px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--accent-color);
+}
+
+.machine-spark-line {
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+.machine-jack-label {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* ── Quiescent state (the-machine.md §1.2, §6.3) ───────────────── */
+
+.machine--quiescent .machine-scene {
+  opacity: 0.45;
+}
+
+.machine-quiescent-note {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* ── Idea detail ───────────────────────────────────────────────── */
+
+.machine-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--section-separator, rgba(255, 255, 255, 0.08));
+  padding-top: 10px;
+}
+
+.machine-idea-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.machine-idea-ordinal {
+  display: inline-block;
+  min-width: 1.4em;
+  text-align: center;
+  border-radius: 2px;
+  background-color: var(--panel-item-active-bg);
+  color: var(--accent-color);
+  font-size: 10px;
+}
+
+.machine-idea-explanation {
+  margin: 0 0 8px;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+/* ── Standalone panel ──────────────────────────────────────────── */
+
+.machine-standalone {
+  padding: 12px;
+  overflow-y: auto;
+}

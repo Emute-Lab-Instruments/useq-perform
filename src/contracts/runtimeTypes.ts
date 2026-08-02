@@ -34,6 +34,16 @@ export interface UseqDiagnostic {
   message: string;
   suggestion?: string;
   example?: string;
+  /**
+   * Wire category (`src-useq/docs/specs/diagnostics.md` §2.3), e.g.
+   * `"undefinedName"`, `"arity"`, `"type"`. Emitted by
+   * `wasm_wrapper.cpp` on every diagnostic; declared optional because the
+   * hardware path does not ship it yet.
+   *
+   * Consumed by the diagnostics → guide deep-link
+   * (`src/lib/diagnosticGuideLinks.ts`, the-machine.md §5.1).
+   */
+  category?: string;
 }
 
 /**

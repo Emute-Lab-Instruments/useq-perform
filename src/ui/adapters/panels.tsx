@@ -12,7 +12,12 @@ import { PanelChrome } from "../panel-chrome/PanelChrome";
 import { DesignSelector } from "../panel-chrome/DesignSelector";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import { HelpPanel } from "../help/HelpPanel";
+import { WiredMachinePanel } from "../help/machine/MachinePanel";
 import { ConsolePanel } from "../console/ConsolePanel";
+// Side-effect import: registers the diagnostic → guide deep-link bridge
+// (the-machine.md §5.1). panels.tsx is loaded from bootstrap, so the bridge
+// is live before any diagnostic can be rendered.
+import "../help/guideNavigation";
 import { pushOverlay } from "../overlayManager";
 import { createSolidAdapter } from "./createSolidAdapter";
 import "../panel-chrome/panel-chrome.css";
@@ -21,18 +26,21 @@ import "../panel-chrome/panel-chrome.css";
 
 const [settingsVisible, setSettingsVisible] = createSignal(false);
 const [helpVisible, setHelpVisible] = createSignal(false);
+const [machineVisible, setMachineVisible] = createSignal(false);
 const [consoleVisible, setConsoleVisible] = createSignal(true);
 
 /** Map of panelId -> setter for extensibility. */
 const visibilitySetters: Record<string, (v: boolean) => void> = {
   settings: (v) => setSettingsVisible(v),
   help: (v) => setHelpVisible(v),
+  machine: (v) => setMachineVisible(v),
   console: (v) => setConsoleVisible(v),
 };
 
 const visibilityGetters: Record<string, () => boolean> = {
   settings: settingsVisible,
   help: helpVisible,
+  machine: machineVisible,
   console: consoleVisible,
 };
 
@@ -146,6 +154,25 @@ const panelRootAdapter = createSolidAdapter({
         </ManagedPanel>
       </Show>
 
+      {/* the-machine.md §2.4: the schematic's standalone surface. The
+          lightest chrome consistent with overlays.md is an ordinary chrome
+          panel — it joins the LIFO overlay stack via ManagedPanel, so it
+          dismisses on Escape and participates in scroll-lock counting
+          (overlays.md §1.1, §1.2) without inventing a new surface kind. */}
+      <Show when={machineVisible()}>
+        <ManagedPanel panelId="machine" onClose={() => setMachineVisible(false)}>
+          <PanelChrome
+            panelId="machine"
+            title="How uSEQ thinks"
+            onClose={() => setMachineVisible(false)}
+          >
+            <div class="panel machine-standalone">
+              <WiredMachinePanel />
+            </div>
+          </PanelChrome>
+        </ManagedPanel>
+      </Show>
+
       <Show when={consoleVisible()}>
         <ConsolePanel />
       </Show>
@@ -167,6 +194,14 @@ export function mountSettingsPanel(_elementId?: string) {
  */
 export function mountHelpPanel(_elementId?: string) {
   panelRootAdapter.mount();
+}
+
+/**
+ * Toggle the standalone Machine schematic panel (the-machine.md §2.4).
+ */
+export function toggleMachinePanel(): void {
+  panelRootAdapter.mount();
+  togglePanelVisibility("machine");
 }
 
 // ---- Design selector ----
