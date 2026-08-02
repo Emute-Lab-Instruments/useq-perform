@@ -14,6 +14,10 @@ import { SettingsPanel } from "../settings/SettingsPanel";
 import { HelpPanel } from "../help/HelpPanel";
 import { WiredMachinePanel } from "../help/machine/MachinePanel";
 import { ConsolePanel } from "../console/ConsolePanel";
+// Side-effect import: registers the diagnostic → guide deep-link bridge
+// (the-machine.md §5.1). panels.tsx is loaded from bootstrap, so the bridge
+// is live before any diagnostic can be rendered.
+import "../help/guideNavigation";
 import { pushOverlay } from "../overlayManager";
 import { createSolidAdapter } from "./createSolidAdapter";
 import "../panel-chrome/panel-chrome.css";

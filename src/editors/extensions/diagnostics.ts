@@ -12,7 +12,9 @@
 import { type Diagnostic, setDiagnostics } from "@codemirror/lint";
 import { StateEffect, StateField } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { guideSectionRequestChannel } from "../../contracts/guideChannels";
 import type { UseqDiagnostic } from "../../contracts/runtimeTypes";
+import { guideLinkForCategory } from "../../lib/diagnosticGuideLinks";
 
 /** Maximum number of diagnostics to display per evaluation. */
 const MAX_DIAGNOSTICS_PER_EVAL = 5;
@@ -43,6 +45,14 @@ interface StoredDiagnostic {
   to: number;
   severity: Diagnostic["severity"];
   message: string;
+  /**
+   * Guide section this diagnostic's category points at, when one exists
+   * (the-machine.md §5.1). Undefined for categories with no useful section,
+   * and for diagnostics that carry no category at all.
+   */
+  guideSectionId?: string;
+  /** Label for the deep-link action. */
+  guideLinkLabel?: string;
 }
 
 /** State field that accumulates diagnostics across evals. */
@@ -92,11 +102,14 @@ export const diagnosticField = StateField.define<StoredDiagnostic[]>({
               d.start === 0 && d.end === 0
                 ? rangeTo
                 : Math.min(Math.max(d.end + docOffset, 0), docLength);
+            const guideLink = guideLinkForCategory(d.category);
             return {
               from,
               to: Math.max(to, from + 1), // ensure non-zero width
               severity: mapSeverity(d.severity),
               message: formatMessage(d),
+              guideSectionId: guideLink?.sectionId,
+              guideLinkLabel: guideLink?.label,
             };
           });
         result = [...result, ...newDiags];
@@ -185,6 +198,24 @@ function syncToLintLayer(view: EditorView): void {
     to: d.to,
     severity: d.severity,
     message: d.message,
+    // the-machine.md §5.1: the affordance to open the guide at the idea this
+    // diagnostic violated. Publishing on the contract channel keeps
+    // src/editors/ from importing src/ui/ — the help panel subscribes.
+    ...(d.guideSectionId
+      ? {
+          actions: [
+            {
+              name: d.guideLinkLabel ?? "Open guide",
+              apply: () => {
+                guideSectionRequestChannel.publish({
+                  sectionId: d.guideSectionId!,
+                  source: "diagnostic",
+                });
+              },
+            },
+          ],
+        }
+      : {}),
   }));
   view.dispatch(setDiagnostics(view.state, cmDiags));
 }

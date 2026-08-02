@@ -20,6 +20,9 @@ layer: behavioural
 - `src/ui/help/machine/machineModel.ts` — schematic layout model (regions, the six ideas, row/spark derivations)
 - `src/ui/help/machine/machineEvents.ts` — subscriptions wiring real stores/channels to schematic animation
 - `src/ui/help/guide/chapters/ch0-machine.ts` — "How uSEQ thinks" opening guide chapter
+- `src/lib/diagnosticGuideLinks.ts` — diagnostic-category → guide-section map (§5.1)
+- `src/contracts/guideChannels.ts` — `guideSectionRequestChannel` (§5.1)
+- `src/ui/help/guideNavigation.ts` — opens the help panel at a guide section (§5.1)
 - `src/ui/styles/machine.css` — schematic styling, in theme variables
 - Existing: `src/ui/help/guide/` (GuideTab, Playground, LiveProbe, contentBlocks), `src/utils/outputHealthStore.ts`, `src/contracts/*Channels.ts`, visualisation store/transport clock
 
@@ -176,6 +179,19 @@ overlay stack and inherits Escape dismissal and reference-counted scroll lock
 ContentBlock[]` rendered above the (collapsed-by-default) sections, so the
 schematic is genuinely the chapter's opening block rather than hidden inside
 a collapsed section. A new `machine` content-block type renders it.
+
+6a.7 **Diagnostic category spelling.** The map in §5.1 keys off
+`"undefinedName"` — what `category_to_cstr()` in
+`src-useq/uSEQ/src/signal_engine/diagnostics.cpp` actually emits and what the
+conformance corpus matches — while `src-useq/docs/specs/diagnostics.md` §2.3
+documents `"undefined_name"`. Both spellings resolve, so the link survives
+whichever side is corrected. The firmware/spec disagreement itself is
+untouched here (submodule is read-only in this lane) and is follow-up work.
+
+6a.8 **`UseqDiagnostic.category`** was added as an optional field in
+`src/contracts/runtimeTypes.ts`. It was already on the wire
+(`wasm_wrapper.cpp` emits it on every diagnostic) and already surviving the
+port's `JSON.parse`; the type simply did not declare it.
 
 ## 7. Open / Deferred
 

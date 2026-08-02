@@ -10,6 +10,7 @@ import {
 import type { Chapter, GuideDomain } from "./guideTypes";
 import { GuideSection } from "./GuideSection";
 import { renderContentBlock } from "./contentBlocks";
+import { guideSectionRequestChannel } from "../../../contracts/guideChannels";
 import { loadRaw, saveRaw } from "../../../lib/persistence";
 
 import { chapters } from "./guideData";
@@ -170,6 +171,19 @@ export const GuideTab: Component = () => {
       });
     }
   }
+
+  // Diagnostics deep-link (the-machine.md §5.1): a rendered diagnostic can
+  // ask the guide to open at the section that explains its category. The
+  // request may arrive before or after this tab mounts; `guideNavigation.ts`
+  // opens the panel, and this subscription does the expand + scroll.
+  onMount(() => {
+    const unsub = guideSectionRequestChannel.subscribe(({ sectionId }) => {
+      // Defer one frame so the request survives a tab switch that is still
+      // committing when it arrives.
+      queueMicrotask(() => scrollToSection(sectionId));
+    });
+    onCleanup(unsub);
+  });
 
   let chapterCounter = 0;
 

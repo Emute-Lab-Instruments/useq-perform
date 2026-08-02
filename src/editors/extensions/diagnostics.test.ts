@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { linter } from "@codemirror/lint";
+import {
+  linter,
+  forEachDiagnostic,
+  type Diagnostic as CmDiagnostic,
+} from "@codemirror/lint";
 import { diagnosticField, pushDiagnostics, clearDiagnosticsForRange } from "./diagnostics.ts";
+import { guideSectionRequestChannel } from "../../contracts/guideChannels.ts";
+import { guideLinkForCategory } from "../../lib/diagnosticGuideLinks.ts";
 import type { UseqDiagnostic } from "../../contracts/runtimeTypes.ts";
 
 function createView(doc: string): EditorView {
@@ -236,6 +242,102 @@ describe("diagnostics additive merge across evals (spec §1.6)", () => {
     expect(messages).toContain("range A error");
     expect(messages).toContain("range B error");
     expect(messages).toContain("range C warning");
+
+    view.destroy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Diagnostics → guide deep-link (docs/specs/the-machine.md §5.1)
+// ---------------------------------------------------------------------------
+
+describe("diagnosticGuideLinks map (the-machine.md §5.1)", () => {
+  it("resolves the category string the engine actually emits", () => {
+    // category_to_cstr() in src-useq/uSEQ/src/signal_engine/diagnostics.cpp
+    expect(guideLinkForCategory("undefinedName")?.sectionId).toBe(
+      "machine-outputs",
+    );
+    expect(guideLinkForCategory("arithmetic")?.sectionId).toBe(
+      "machine-failure",
+    );
+  });
+
+  it("also accepts the spelling documented in diagnostics.md §2.3", () => {
+    expect(guideLinkForCategory("undefined_name")?.sectionId).toBe(
+      "machine-outputs",
+    );
+  });
+
+  it("returns null rather than a catch-all for unknown or absent categories", () => {
+    expect(guideLinkForCategory(undefined)).toBeNull();
+    expect(guideLinkForCategory("")).toBeNull();
+    expect(guideLinkForCategory("not-a-category")).toBeNull();
+  });
+});
+
+describe("editor diagnostics carry the guide affordance", () => {
+  function lintDiagnostics(view: EditorView): CmDiagnostic[] {
+    const out: CmDiagnostic[] = [];
+    forEachDiagnostic(view.state, (d) => out.push(d));
+    return out;
+  }
+
+  it("stores the guide section for a categorised diagnostic", () => {
+    const view = createView("(a1 (nope 1))");
+    pushDiagnostics(view, [
+      {
+        start: 5,
+        end: 9,
+        severity: "error",
+        message: "undefined name: nope",
+        category: "undefinedName",
+      },
+    ]);
+
+    const stored = view.state.field(diagnosticField);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].guideSectionId).toBe("machine-outputs");
+    expect(stored[0].guideLinkLabel).toMatch(/guide/i);
+
+    view.destroy();
+  });
+
+  it("offers a lint action that asks the guide to open at that section", () => {
+    const view = createView("(a1 (nope 1))");
+    pushDiagnostics(view, [
+      {
+        start: 5,
+        end: 9,
+        severity: "error",
+        message: "undefined name: nope",
+        category: "undefinedName",
+      },
+    ]);
+
+    const [diag] = lintDiagnostics(view);
+    expect(diag.actions).toHaveLength(1);
+
+    const requests: string[] = [];
+    const unsub = guideSectionRequestChannel.subscribe((req) => {
+      requests.push(`${req.source}:${req.sectionId}`);
+    });
+    diag.actions![0].apply(view, diag.from, diag.to);
+    unsub();
+
+    expect(requests).toEqual(["diagnostic:machine-outputs"]);
+
+    view.destroy();
+  });
+
+  it("adds no action when the diagnostic has no category", () => {
+    const view = createView("(a1 1)");
+    pushDiagnostics(view, [
+      { start: 0, end: 3, severity: "warning", message: "hmm" },
+    ]);
+
+    const [diag] = lintDiagnostics(view);
+    expect(diag.actions).toBeUndefined();
+    expect(view.state.field(diagnosticField)[0].guideSectionId).toBeUndefined();
 
     view.destroy();
   });
