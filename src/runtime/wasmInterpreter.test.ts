@@ -142,22 +142,23 @@ describe("useqWasmInterpreter", () => {
   });
 
   it("matches the pinned src-useq build's required export floor", () => {
-    const buildScript = readFileSync(
+    const profile = JSON.parse(readFileSync(
       path.resolve(
         path.dirname(fileURLToPath(import.meta.url)),
-        "../../src-useq/scripts/build_wasm.sh"
+        "../../src-useq/scripts/wasm_build_profile.json"
       ),
       "utf8"
-    );
+    )) as { public_function_exports?: readonly string[] };
+    const exports = profile.public_function_exports ?? [];
 
-    expect(buildScript).toContain('\\"_useq_init\\"');
-    expect(buildScript).toContain('\\"_useq_eval\\"');
-    expect(buildScript).toContain('\\"_useq_update_time\\"');
-    expect(buildScript).toContain('\\"_useq_eval_output\\"');
-    expect(buildScript).toContain('\\"_free\\"');
-    expect(buildScript).toContain('\\"_useq_eval_outputs_time_window\\"');
-    expect(buildScript).toContain('\\"_useq_eval_outputs_time_window_into\\"');
-    expect(buildScript).toContain('\\"_useq_last_error\\"');
+    expect(exports).toContain("useq_init");
+    expect(exports).toContain("useq_eval");
+    expect(exports).toContain("useq_update_time");
+    expect(exports).toContain("useq_eval_output");
+    expect(exports).toContain("free");
+    expect(exports).toContain("useq_eval_outputs_time_window");
+    expect(exports).toContain("useq_eval_outputs_time_window_into");
+    expect(exports).toContain("useq_last_error");
   });
 
   it("ships a generated bundle with callable raw batch exports", async () => {
@@ -538,7 +539,7 @@ describe("useqWasmInterpreter", () => {
 
     // Before any synth eval: empty graph, abi marker present.
     const before = JSON.parse(synthArtifacts());
-    expect(before.abi).toBe(1);
+    expect(before.abi).toBe(2);
     expect(before.revision).toBe(0);
     expect(before.declarations).toEqual([]);
     expect(before.controls).toEqual([]);
@@ -549,7 +550,7 @@ describe("useqWasmInterpreter", () => {
     expect(after.revision).toBeGreaterThan(before.revision);
     expect(after.declarations).toHaveLength(1);
     expect(after.declarations[0].def).toBe("osc/sine");
-    expect(after.declarations[0].version).toBe(1);
+    expect(after.declarations[0].version).toBe(2);
     expect(after.declarations[0].identity).toBeTruthy();
     expect(after.controls).toHaveLength(1);
     expect(after.controls[0].param).toBe("freq");
@@ -641,7 +642,7 @@ describe("useqWasmInterpreter", () => {
 
     // The initial payload must declare the canonical ABI version.
     const initial = JSON.parse(handle!.useq_synth_artifacts!());
-    expect(initial.abi).toBe(1);
+    expect(initial.abi).toBe(2);
     expect(initial.revision).toBe(0);
     expect(Array.isArray(initial.declarations)).toBe(true);
   });
@@ -650,7 +651,7 @@ describe("useqWasmInterpreter", () => {
     // The shipped bundle renders the synth artefact payload with an `abi`
     // marker. A consumer built against a different ABI version must refuse
     // to interpret the body bytes. Here we verify the bundle ALWAYS emits
-    // the canonical abi=1 marker so a consumer can rely on it.
+    // the canonical abi=2 marker so a consumer can rely on it.
     const module = (await loadGeneratedBundleModule(
       "../../public/wasm/useq.js",
     )) as Record<string, any>;
@@ -662,20 +663,20 @@ describe("useqWasmInterpreter", () => {
 
     // Empty graph: still carries the abi marker.
     const empty = JSON.parse(synthArtifacts());
-    expect(empty.abi).toBe(1);
+    expect(empty.abi).toBe(2);
 
     // After a successful synth commit, the marker is unchanged.
     expect(evalCode('(synth "osc/sine" :name "lead" :freq 440)')).toBe("ok");
     const committed = JSON.parse(synthArtifacts());
-    expect(committed.abi).toBe(1);
+    expect(committed.abi).toBe(2);
     expect(committed.declarations).toHaveLength(1);
 
-    // A consumer that does not see abi===1 MUST refuse the payload. We
+    // A consumer that does not see abi===2 MUST refuse the payload. We
     // mirror the C++ synth_artifacts_supports_abi() contract here.
     const { synthArtifactsSupportsAbi, SYNTH_ARTIFACT_ABI_VERSION } = await import(
       "../contracts/runtimeTypes.ts"
     );
-    expect(SYNTH_ARTIFACT_ABI_VERSION).toBe(1);
+    expect(SYNTH_ARTIFACT_ABI_VERSION).toBe(2);
     expect(synthArtifactsSupportsAbi(committed.abi)).toBe(true);
     expect(synthArtifactsSupportsAbi(committed.abi + 1)).toBe(false);
   });
@@ -698,7 +699,7 @@ describe("useqWasmInterpreter", () => {
     const baseline = await port.evalCodeWithDiagnostics("(+ 1 1)");
     expect(baseline.diagnostics).toEqual([]);
     expect(baseline.synthArtifacts).not.toBeNull();
-    expect(baseline.synthArtifacts?.abi).toBe(1);
+    expect(baseline.synthArtifacts?.abi).toBe(2);
     expect(baseline.synthArtifacts?.revision).toBe(0);
     expect(baseline.synthArtifacts?.declarations).toEqual([]);
 

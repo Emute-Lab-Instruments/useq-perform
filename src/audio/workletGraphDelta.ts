@@ -290,6 +290,38 @@ export interface WorkletRetireMessage {
 }
 
 /**
+ * Failure-atomic graph transaction. `prepare-graph` asks the worklet to
+ * validate the complete candidate and reserve/initialise every zone without
+ * changing the live graph. `commit-graph` only makes an accepted candidate
+ * eligible for its matching epoch; `abort-graph` releases every reservation.
+ */
+export interface WorkletPrepareGraphMessage {
+  readonly type: "prepare-graph";
+  readonly transactionId: number;
+  readonly epoch: number;
+  readonly deltas: readonly (
+    | WorkletInstantiateMessage
+    | WorkletUpdateMessage
+    | WorkletRetireMessage
+  )[];
+}
+
+export interface WorkletCommitGraphMessage {
+  readonly type: "commit-graph";
+  readonly transactionId: number;
+}
+
+export interface WorkletAbortGraphMessage {
+  readonly type: "abort-graph";
+  readonly transactionId: number;
+}
+
+export interface WorkletActivateGraphMessage {
+  readonly type: "activate-graph";
+  readonly transactionId: number;
+}
+
+/**
  * Devmode-only controlled fault: simulate producer loss. The worklet
  * core immediately stops observing fresh producer activity and enters
  * the timeout fade path (VAL-ENGINE-023, VAL-ENGINE-024).
@@ -331,6 +363,10 @@ export type WorkletInboundMessage =
   | WorkletInstantiateMessage
   | WorkletUpdateMessage
   | WorkletRetireMessage
+  | WorkletPrepareGraphMessage
+  | WorkletCommitGraphMessage
+  | WorkletAbortGraphMessage
+  | WorkletActivateGraphMessage
   | WorkletDevmodeTerminateProducerMessage
   | WorkletAttachControlBufferMessage
   | WorkletDetachControlBufferMessage;
@@ -351,6 +387,8 @@ export interface WorkletInstanceTelemetry {
   readonly statePointer: number;
   /** True while the instance is fading in, active, or fading out. */
   readonly lifecycle: "fade-in" | "active" | "fade-out" | "retired";
+  /** Most recent block-compute outcome; failed nodes remain live and retry. */
+  readonly health: "ok" | "error";
 }
 
 /**
@@ -389,7 +427,7 @@ export interface WorkletTelemetrySnapshot {
 }
 
 /** Telemetry schema version. Bumped only when the snapshot shape changes. */
-export const WORKLET_TELEMETRY_SCHEMA_VERSION = 1 as const;
+export const WORKLET_TELEMETRY_SCHEMA_VERSION = 2 as const;
 
 // ---------------------------------------------------------------------------
 // Outbound state-transition event (worklet → main thread)
@@ -454,12 +492,35 @@ export interface WorkletControlAttachAckEvent {
  *   - `"node-limit"`      — the instantiate would exceed `MAX_SYNTH_NODES`.
  *   - `"missing-input-support"` — the delta wires audio inputs into a
  *     def whose adapter exposes no input-capable compute entry point.
+ *   - `"nodedef-trap"` — one NodeDef call threw; that block was rolled back
+ *     and muted while the live instance remained eligible to retry.
+ *   - `"nodedef-compute-rejected"` — compute returned false; same rollback.
+ *   - `"nodedef-nonfinite-output"` — compute returned NaN/Inf; same rollback.
  */
 export interface WorkletGraphDiagnosticEvent {
   readonly type: "graph-diagnostic";
-  readonly code: "zone-exhausted" | "node-limit" | "missing-input-support";
+  readonly code:
+    | "zone-exhausted"
+    | "node-limit"
+    | "missing-input-support"
+    | "nodedef-trap"
+    | "nodedef-compute-rejected"
+    | "nodedef-nonfinite-output";
   /** Identity of the node the diagnostic concerns. */
   readonly identity: string;
+}
+
+/**
+ * Transaction acknowledgement. `activate` is emitted only after the matching
+ * epoch has been swapped at an audio block boundary, not when the gate message
+ * is merely accepted.
+ */
+export interface WorkletGraphTransactionAckEvent {
+  readonly type: "graph-transaction-ack";
+  readonly transactionId: number;
+  readonly phase: "prepare" | "commit" | "activate" | "abort";
+  readonly ok: boolean;
+  readonly reason?: string;
 }
 
 export type WorkletOutboundEvent =
@@ -468,4 +529,5 @@ export type WorkletOutboundEvent =
   | WorkletInstanceRetiredEvent
   | WorkletGraphActivatedEvent
   | WorkletControlAttachAckEvent
-  | WorkletGraphDiagnosticEvent;
+  | WorkletGraphDiagnosticEvent
+  | WorkletGraphTransactionAckEvent;

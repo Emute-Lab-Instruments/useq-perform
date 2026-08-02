@@ -60,8 +60,8 @@ describe("synthesis first-sound contract (VAL-CROSS-001..009/013)", () => {
         {
           identity: "::anon-0",
           def: "osc/sine",
-          version: 1,
-          audio_inputs: 0,
+          version: OSC_SINE_NODEDEF_DESCRIPTOR.version,
+          audio_inputs: OSC_SINE_NODEDEF_DESCRIPTOR.audioInputs,
           audio_outputs: 1,
         },
       ];
@@ -98,21 +98,21 @@ describe("synthesis first-sound contract (VAL-CROSS-001..009/013)", () => {
     });
   });
 
-  describe("producer control-values pipeline (VAL-CROSS-002)", () => {
-    it("wasmRuntime worker stores and publishes control values", async () => {
+  describe("producer compiler-control pipeline (VAL-CROSS-002)", () => {
+    it("wasmRuntime worker samples compiler controls with explicit mapping", async () => {
       const { readFileSync } = await import("node:fs");
       const workerSource = readFileSync("src/runtime/workers/wasmRuntime.worker.ts", "utf8");
 
-      expect(workerSource).to.include("producerControlValues");
-      expect(workerSource).to.include("producerSetControlValues");
+      expect(workerSource).to.include("tickSynthControls");
+      expect(workerSource).to.include("producerControlBindings");
       expect(workerSource).to.include("producerBlockRateChannels");
     });
 
-    it("synthesis service sends control values on commit", async () => {
+    it("synthesis service sends the validated compiler mapping on commit", async () => {
       const { readFileSync } = await import("node:fs");
       const serviceSource = readFileSync("src/audio/synthesisService.ts", "utf8");
 
-      expect(serviceSource).to.include("producerSetControlValues");
+      expect(serviceSource).to.include("buildSynthProducerControlBindings");
     });
   });
 

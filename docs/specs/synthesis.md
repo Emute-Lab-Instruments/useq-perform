@@ -24,7 +24,7 @@ layer: behavioural
 
 ### Status
 
-Accepted (v1), hardened by adversarial review 2026-07. Decisions fixed
+Accepted (v1), revised through systematic review in 2026-07. Decisions fixed
 in the July 2026 design pass; source-file references will be added as
 the implementation lands.
 
@@ -40,13 +40,13 @@ Routing (epic M2.2) is live: the coordinator derives per-(node, param)
 block-rate channels and audio-input wiring from the compiler artefact's
 control table and `connections` (`synth-nodes.md` §7.2.1); the Worker
 producer publishes the per-(node, param) channel set (composite
-`controlChannelKey` names, commit-plan order = SAB channel index); the
-worklet consumes named per-node channel assignments. The M2.1 interim
+`controlChannelKey` names plus original compiler indices, compiler table
+order = SAB channel order after rate filtering); the worklet consumes named
+per-node channel assignments. The M2.1 interim
 fixed window (`INTERIM_BLOCK_RATE_CHANNELS_PER_NODE`) is deleted per its
-recorded removal condition. Producer control values still follow the
-static-control model (resolved at eval commit from registry defaults,
-republished per block — VAL-CROSS-002); live per-block sampling of param
-expressions requires a WASM control-sampling export and remains open.
+recorded removal condition. `useq_tick_synth_controls` now advances the live
+VM once per produced block and returns values in exact compiler control-table
+order; commit-time defaults are prefill only, never the steady-state source.
 
 Known required amendments to other specs:
 [runtime-modes.md](runtime-modes.md) §1.5.2 (sampling-degradation carve-out,
@@ -115,6 +115,28 @@ regardless of source):
 - params that must be audio-rate modulatable declared as audio inputs,
   not params.
 
+2.3.1 **Module-owned metadata.** Each executable module exports its complete
+registry JSON. Browser preflight and worklet installation decode that exact
+module descriptor and compare it with the editor registry entry. Missing,
+unterminated, malformed, incomplete, or mismatched metadata rejects the
+module; the editor descriptor is never substituted as a fallback.
+
+2.3.2 **Actual render sample rate.** A fixed-rate legacy module is admissible
+only when `AudioContext.sampleRate` equals its exported nominal rate. A
+rate-dependent module may instead export the paired, versioned capability
+`sample_rate_abi_version = 1` plus `compute_at_sample_rate`; the worklet then
+passes the actual context rate on every compute call. Missing halves, unknown
+versions, zero/invalid rates, and metadata/export disagreement fail closed.
+Per-call delivery is instance-safe and avoids mutable configuration in shared
+linear memory.
+
+2.3.3 **Executable audio-input ABI.** Input port names and order are part of
+the module descriptor. `osc/sine` version 2 declares one input named `fm` and
+exports `compute_fm` plus `compute_fm_at_sample_rate`; the adapter rejects a
+missing export, a renamed/reordered port, or an input vector of the wrong
+width. The worklet passes the routed source-zone pointer directly, so FM is
+computed by the NodeDef rather than documented but ignored.
+
 2.4 **v1 library — minimal proof set** (~6–8 defs proving both ends of
 the low/high split before scaling): `osc/sine`, `osc/saw` (antialiased),
 `filt/svf`, `amp/vca`, `noise/white`, `fx/delay`, `voice/fm` (curated
@@ -135,7 +157,9 @@ version the host lacks produces a compile-time capability diagnostic
 node instance is a WASM instantiation of its def's module, with state
 and I/O in the shared host memory (§2.3). The host executes the graph in
 topological order per block. (One processor, many instances — not one
-AudioWorkletNode per node.)
+AudioWorkletNode per node.) Terminal ports accumulate in binary64; the
+emergency envelope is applied to that sum, and each final sample is converted
+to Web Audio's binary32 format exactly once.
 
 3.2 **Instantiation happens on the audio thread.** `WebAssembly.Module`
 objects are compiled/validated off-thread and transferred once via the
@@ -151,7 +175,9 @@ fade-in on instantiate (`SYNTH_FADE_IN`, default 10 ms linear), update
 in place without DSP-state reset, release fade on free
 (`SYNTH_FADE_OUT`, default 30 ms), overlapping fades on def change,
 fade-cancellation semantics for racing evals (`synth-nodes.md` §5.7).
-Graph mutations apply at block boundaries only.
+Graph mutations apply at block boundaries only. Instance fades use a
+sample-indexed linear envelope with exact first/last gains; the rendered sample
+sequence is invariant to how the browser partitions it into render quanta.
 
 3.4 Vector-valued params fan out to per-voice zones inside the host;
 voice add/remove on width change is itself faded; voice outputs are
@@ -164,11 +190,32 @@ eval-commit with a compile-style diagnostic on breach): `MAX_SYNTH_NODES`
 zone arena is bounded (`SYNTH_MEMORY_MAX`, default 64 MiB); zone
 exhaustion rejects the eval, never grows unboundedly.
 
-3.6 **Trap containment.** A WASM trap inside one instance's compute call
-mutes that node (hard gain 0 within the same block), marks it `error`
-(`synth-nodes.md` §5.9), and emits a console diagnostic naming the node
-identity; the rest of the graph continues. The host must survive any
-single-instance trap. **Overload rule:** if the block deadline is missed
+3.5.1 **Candidate ownership is transactional.** A graph candidate is
+prepared off-live: every referenced NodeDef is installed, every new
+state/output zone is reserved and initialised, and the complete
+topological/wiring plan validates before the worklet acknowledges
+preparation. Failure releases all candidate zones. Commit only arms the
+accepted candidate; it cannot mutate the live layout. An explicit activation
+gate, followed by the first matching-epoch block, performs the one
+block-boundary swap. The worklet acknowledges activation only after that
+swap, keeping a queued revision from colliding with a committed-but-not-yet-
+active candidate. Abort before the gate releases the candidate and leaves the
+prior graph and its zones authoritative; after a successfully delivered gate,
+a missing acknowledgement is uncertain and must never trigger rollback or
+release the serial commit queue. Disposal is the only host-side cancellation.
+
+3.6 **Failure-atomic NodeDef calls.** A WASM trap during candidate adapter
+creation or initialisation rejects that candidate and releases its zones. For
+every live compute call, the host copies the state zone into a preallocated
+rollback image and clears the output zone before entering WASM. A trap, a
+`false` return, or any non-finite produced sample restores the prior state,
+zeros the complete output zone in the same block, marks the instance health
+`error`, increments the glitch counter, and emits a diagnostic naming the node
+identity and failure class. Siblings and downstream nodes continue (the latter
+read silence from the failed node). The instance remains live and retries on
+the next block; its first later successful finite block commits state/output
+and returns health to `ok`. Snapshot storage is allocated only at graph-mutation
+boundaries. **Overload rule:** if the block deadline is missed
 for `OVERLOAD_BLOCKS` consecutive blocks (default 8), the engine fades
 all output to silence and enters the `error` engine state (§6.4) — never
 sustained glitching.
@@ -187,9 +234,10 @@ control samples. It is paced by the consumer: the worklet publishes its
 via `Atomics.wait` on that index. Rationale (normative, not incidental):
 a main-thread producer is rAF-paced (~16.7 ms, unbounded under jank,
 halted in background tabs), which exceeds any reasonable lookahead —
-underrun would be structural. Visualisation and probe sampling read from
-the same producer/SAB, so there is exactly **one** live executor
-instance and no WASM↔WASM [state-sync](state-sync.md) problem.
+underrun would be structural. There is exactly **one** live executor
+instance and no WASM↔WASM [state-sync](state-sync.md) problem; while audio
+owns advancement, visualisation/probes may observe through read-only sampling
+but may not issue a second live tick.
 
 4.2 **Clock domain — audio is master.** While the engine is `running`, the audio
 frame counter is the master timeline: transport time is a function of
@@ -206,7 +254,10 @@ ticks** of the executor at upcoming audio-frame times — because audio
 frames *are* the master clock, producing ahead is not speculation about
 a different timeline but simply running the live state forward of the
 DAC head by the lookahead distance. No projection fork is involved in
-the audio path; external inputs (hardware, MIDI, live-edit values)
+the audio path. While this producer owns live advancement,
+`useq_tick_and_project` is disabled and visualisation falls back to read-only
+time-window sampling, so two app consumers cannot advance the same stateful
+VM. External inputs (hardware, MIDI, live-edit values)
 sampled by the executor take effect at the next *produced* block, i.e.
 with worst-case latency of one lookahead window (§4.5). Visualisation's
 future-rendering continues to use the projection fork
@@ -218,7 +269,27 @@ a **program epoch**. A delta activates at the first ring block bearing
 its epoch; before arming a switch, the producer must pre-fill ≥ 1 block
 of new-program samples, with NodeDef defaults for any channel not yet
 sampled — a newly instantiated node never reads stale or undefined
-slots.
+slots. Epochs use the SAB field's exact unsigned-32-bit domain: `0` is
+reserved for “no program/candidate”, and `1..0xffffffff` are issued strictly
+monotonically without reuse. After issuing `0xffffffff`, the allocator enters
+a terminal exhausted state and every later commit fails before any graph or
+producer message; it must never wrap or normalise an out-of-domain value.
+`useq.served-bundle/v1` records this field width, domain, reservation, and
+exhaustion policy as a machine-readable runtime capability.
+
+4.4.1 **Failure-atomic epoch switch.** The Worker first reserves a candidate
+compiler-to-SAB mapping without changing the running producer. Each block-rate
+row carries its exact compiler control index and collision-free channel key;
+indices must be in range, unique, and strictly increasing after rate filtering.
+Only after the worklet accepts and commits the complete graph candidate may
+`producerArmEpoch` atomically publish that control layout and epoch. The
+worklet still cannot activate until the service opens its explicit activation
+gate. Any rejection or missing acknowledgement before that gate aborts both
+participants: the Worker restores its prior epoch/layout/mapping and the
+worklet releases candidate zones. After a successfully posted gate, the host
+waits without an ordinary timeout for the block-boundary acknowledgement; an
+uncertain commit is neither rolled back nor followed by another preparation.
+No partial delta or mismatched control layout becomes live.
 
 4.5 **Lookahead and latency.** Lookahead is `CONTROL_LOOKAHEAD` blocks
 (default 6, permitted range 4–8). Stated consequence: control latency =
@@ -283,6 +354,49 @@ disconnect in `both + audio`).
 whole-truth action, explicit free, per-identity diff cases, racing
 fades, failed-eval no-op — are owned by `synth-nodes.md` §5 and not
 restated here. This section specifies app mechanics.
+
+5.1.1 **Compiler bundle provenance.** Before publishing browser assets, the
+app requires `useq.compiler-capabilities/v1` from the clean checked-out
+`src-useq` commit. Its source commit must equal the submodule HEAD, its synth
+ABI must equal 2, and its byte counts and SHA-256 records must match both the
+built and served `useq.js`/`useq.wasm`. The served manifest is an exact copy.
+The compiler manifest does not authenticate `osc_sine.wasm`: NodeDefs are
+separate build/provenance domains, copied byte-for-byte and admitted by their
+own module-owned metadata and export validation at load time. After bundling,
+the app deterministically emits `useq.served-bundle/v1`, which binds the exact
+application source revision/state, compiler-manifest, interpreter JS/WASM,
+NodeDef WASM plus its module-emitted descriptor and sample-rate/render-quantum
+contract, activation-counter domain, and synthesis-worklet bytes. The compiler
+and application records explicitly assign non-applicable fields to the owning
+profile; target firmware artifacts/resources remain a separate target-build
+record. These records are explicitly unsigned (`authenticated: false`): they
+detect stale/mixed local outputs and give experiments complete profile-owned
+identities, but do not prove a publisher, source repository, or supply-chain
+authority.
+
+5.1.2 The app accepts compiler artifacts only after exhaustive structural
+validation against ABI 2 and the configured NodeDef registry: integer/string
+bounds, unique declaration identities and control keys, descriptor metadata,
+control ownership/rate/smoothing contracts, connection endpoints and port
+indices, single-driver inputs, and acyclic routing. Validation runs before
+stale-revision handling, epoch allocation, planning, worklet/producer
+messages, or audio activation. Rejection returns a reason-bearing error and
+has no engine-side effect.
+
+5.1.3 A current, valid artefact enters a serial prepare/commit transaction.
+The service waits for: complete worklet preparation, producer control-layout
+reservation, worklet commit acknowledgement, an exact matching producer arm,
+and the worklet's matching block-boundary activation acknowledgement, in that
+order. The service publishes the new revision/declaration set only after all
+five acknowledgements. Before the activation gate, timeout, negative
+acknowledgement, thrown port operation, disposal, or a newer winning revision
+aborts the candidate and returns
+`rejected-preparation-failed` (or `rejected-superseded` for the revision
+race). After the gate, there is no ordinary timeout: disposal may end the wait,
+but the service neither rolls back nor admits another commit while activation
+is uncertain. The prior running graph remains live. Commit intake never constructs
+or resumes an `AudioContext`; it requires the already-prepared engine session,
+so lifecycle activation and graph publication cannot be conflated.
 
 5.2 On eval commit, the app diffs the declared identities against the
 running graph and ships an epoch-tagged delta (§4.4):

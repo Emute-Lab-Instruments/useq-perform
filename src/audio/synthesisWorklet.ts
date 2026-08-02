@@ -52,6 +52,7 @@ import { createZoneAllocator } from "./workletZoneAllocator";
 import { SYNTH_MEMORY_MAX_BYTES } from "../contracts/synthesisControlAbi";
 import {
   createNodeDefAdapter,
+  readNodeDefRuntimeDescriptor,
   type NodeDefAdapter,
 } from "./nodeDefAdapter";
 import {
@@ -287,6 +288,7 @@ export interface AdapterCache {
 export function createAdapterCache(
   memory: WebAssembly.Memory,
   descriptors: ReadonlyMap<string, NodeDefDescriptor>,
+  renderSampleRate: number,
 ): AdapterCache {
   const cache = new Map<string, NodeDefAdapter>();
   const compiles = new Map<string, number>();
@@ -368,8 +370,12 @@ export function createAdapterCache(
         }
         return undefined;
       };
-      const module = { lookup, runtimeDescriptor: descriptor };
-      const adapter = createNodeDefAdapter(module, descriptor);
+      // Re-read the exact transferred module's own descriptor inside this
+      // WebAssembly.Instance. The static registry selects the expected def;
+      // it is not a fallback for missing or malformed module metadata.
+      const runtimeDescriptor = readNodeDefRuntimeDescriptor(memory, lookup);
+      const module = { lookup, runtimeDescriptor };
+      const adapter = createNodeDefAdapter(module, descriptor, renderSampleRate);
       cache.set(key, adapter);
     },
     compileCount(name, version) {
@@ -407,7 +413,11 @@ function createProcessorBag(): ProcessorBag {
   // M1 registry. Future features that dynamically register defs will
   // extend this map.
   const descriptors = buildNodeDefDescriptorMap();
-  const adapterCache = createAdapterCache(allocatorWithMemory.memory, descriptors);
+  const adapterCache = createAdapterCache(
+    allocatorWithMemory.memory,
+    descriptors,
+    rate,
+  );
 
   // VAL-CROSS-002 integration: control scratch buffers live INSIDE the
   // host-owned WebAssembly.Memory. The WASM compute call receives these
@@ -458,6 +468,8 @@ function createProcessorBag(): ProcessorBag {
     },
     createArenaView: (byteOffset, lengthDoubles) =>
       new Float64Array(allocatorWithMemory.memory.buffer, byteOffset, lengthDoubles),
+    createArenaByteView: (byteOffset, lengthBytes) =>
+      new Uint8Array(allocatorWithMemory.memory.buffer, byteOffset, lengthBytes),
     freqControlScratch,
     ampControlScratch,
   });
@@ -491,6 +503,7 @@ export function registerSynthesisProcessor(): void {
 
   class SynthesisProcessor extends AudioWorkletProcessor {
     private bag: ProcessorBag | null;
+    private moduleInstallChain: Promise<void> = Promise.resolve();
 
     constructor(options?: AudioWorkletNodeOptions) {
       super(options);
@@ -524,7 +537,23 @@ export function registerSynthesisProcessor(): void {
           // fallback path compiles the EXACT prevalidated bytes ONCE
           // before graph activation; subsequent process() calls reuse
           // the cached adapter without recompiling.
-          void bag.installModule(payload);
+          this.moduleInstallChain = this.moduleInstallChain.then(() => bag.installModule(payload));
+          return;
+        }
+        if (
+          data &&
+          typeof data === "object" &&
+          (data as { type?: string }).type === "prepare-graph"
+        ) {
+          // A prepare acknowledgement is meaningful only after every earlier
+          // module transfer is installed. Serialising here closes the async
+          // module-transfer race without ever compiling in process().
+          void this.moduleInstallChain.then(() => {
+            const currentBag = this.bag;
+            if (!currentBag) return;
+            currentBag.core.handleMessage(data);
+            drainPendingEvents(currentBag.pendingEvents, (evt) => this.port.postMessage(evt));
+          });
           return;
         }
         bag.core.handleMessage(data);

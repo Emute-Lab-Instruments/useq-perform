@@ -224,6 +224,15 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     returnType: "string",
     argTypes: [],
   },
+  /**
+   * Advance the live VM once and write one Float64 sample per entry in the
+   * current synth artefact's `controls` array, in that exact order.
+   */
+  useq_tick_synth_controls: {
+    symbol: "useq_tick_synth_controls",
+    returnType: "number",
+    argTypes: ["number", "number", "number"],
+  },
 } as const satisfies Record<string, CwrapDescriptor>);
 
 export type OptionalWasmExport = keyof typeof OPTIONAL_WASM_EXPORTS;

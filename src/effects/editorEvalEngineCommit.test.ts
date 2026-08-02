@@ -31,7 +31,7 @@ const commitCalls: Array<{
 const mockCommitSynthArtifacts = vi.hoisted(() =>
   vi.fn((payload: unknown, hasErrors: boolean) => {
     commitCalls.push({ payload, hasErrors });
-    return { outcome: "committed", epoch: 1, revision: 1, workletDeltas: [] };
+    return Promise.resolve({ outcome: "committed", epoch: 1, revision: 1, workletDeltas: [] });
   }),
 );
 
@@ -159,14 +159,14 @@ function newView(doc: string): EditorView {
 
 function oscSinePayload(revision: number) {
   return {
-    abi: 1,
+    abi: 2,
     revision,
     declarations: [
       {
         identity: "lead",
         def: "osc/sine",
-        version: 1,
-        audio_inputs: 0,
+        version: 2,
+        audio_inputs: 1,
         audio_outputs: 1,
       },
     ],
@@ -174,6 +174,7 @@ function oscSinePayload(revision: number) {
       { identity: "lead", param: "freq", rate: "block", smoothing: "step" },
       { identity: "lead", param: "amp", rate: "block", smoothing: "linear" },
     ],
+    connections: [],
   };
 }
 

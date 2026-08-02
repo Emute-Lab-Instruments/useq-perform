@@ -18,7 +18,7 @@ Terminology source of truth: [docs/GLOSSARY.md](docs/GLOSSARY.md). Read [CLAUDE.
 - `e2e/` — Playwright full-app journeys driven by trusted browser input against the worker-backed WASM runtime. Shared fixtures in `helpers.ts`; per-area specs (boot contract, eval feedback, LKG isolation, input dispatch, original journeys). Run `npm run test:e2e` (full rebuild) or `npx playwright test` (against existing `public/`).
 - `public/` — static assets and build outputs (`public/solid-dist/bundle.js`, `public/wasm/useq.js`).
 - `assets/` — source markdown/JSON/font assets copied to `public/` by `scripts/build-assets.mjs`.
-- `scripts/` — build-assets pipeline, config-server (dev), `src-useq:status`, parse-tree printer.
+- `scripts/` — build-assets pipeline and compiler capability-manifest verifier, config-server (dev), `src-useq:status`, parse-tree printer.
 - `plugins/` — `babel-solid-label.cjs` (dev-mode `data-component`/`data-source` annotations).
 - `patches/` — patch-package patches for npm deps.
 - `docs/` — architecture and contract docs (see index below).
@@ -51,24 +51,25 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `runtimeChannels.ts`, `visualisationChannels.ts`, `gamepadChannels.ts`, `hardwareChannels.ts`, `editorChannels.ts`, `guideChannels.ts` — channel registries. `guideChannels.ts` carries user-guide navigation requests, so a diagnostic rendered by `src/editors/` can deep-link into the guide without that layer importing `src/ui/` ([docs/specs/the-machine.md](docs/specs/the-machine.md) §5.1). `hardwareChannels.ts` carries discrete hardware input events (button presses, toggle flips, gate edges). `editorChannels.ts` carries structural navigation/mutation events consumed by radial menu and keyboard hints.
   - `useqRuntimeContract.ts` — shared transport command set and capability split. See [docs/specs/runtime-contract.md](docs/specs/runtime-contract.md).
   - `wasmAbi.ts` — required + runtime-probed WASM exports, `assertWasmAbi()` validator.
-  - `runtimePorts.ts` — typed `WebSerialHostPort` / `WasmRuntimePort` interfaces over the shared transport surface. The runtime layer talks to ports, not transport modules directly. `WasmRuntimePort` is shaped to be the postMessage boundary for the upcoming worker move.
-  - `runtimeEvents.ts`, `runtimeTypes.ts`, `visualisationEvents.ts`.
+  - `runtimePorts.ts` — typed `WebSerialHostPort` / `WasmRuntimePort` interfaces over the shared transport surface, including failure-atomic producer candidate prepare/abort. The runtime layer talks to ports, not transport modules directly.
+  - `runtimeEvents.ts`, `runtimeTypes.ts`, `visualisationEvents.ts` — runtime payload types; `runtimeTypes.ts` also owns exhaustive, reason-bearing synth-artifact validation before audio commit.
+  - `synthProducerControlMapping.ts` — pure compiler-control-index → block-rate SAB mapping and structured-clone boundary validation.
   - `liveEdit.ts` — live-edit slot/widget/vector-mark types ([docs/specs/live-edit.md](docs/specs/live-edit.md)).
   - `midi.ts` — Web MIDI input types: device descriptor, parsed messages, learn state, source/binding model ([docs/specs/live-edit.md §5.6+](docs/specs/live-edit.md)).
   - `hardware.ts` — hardware binding chip + CV calibration session types ([docs/specs/hardware-bindings.md](docs/specs/hardware-bindings.md), [docs/specs/calibration.md](docs/specs/calibration.md)).
   - `synthesisControlAbi.ts` — versioned SharedArrayBuffer control-transport ABI (header layout, ring records, publication helpers) **and** the single named-export home for engine constants (`SYNTH_FADE_IN/OUT_MS`, `CONTROL_LOOKAHEAD_BLOCKS`, `PRODUCER_TIMEOUT_BLOCKS`, `MAX_SYNTH_*`, …) per [docs/specs/synthesis.md §4](docs/specs/synthesis.md).
   - `synthesisChannels.ts` — typed channels + engine-state transition table for the synthesis engine (off/suspended/running/error).
-  - `nodeDefRegistry.ts` — NodeDef descriptor schema/validation; carries the `osc/sine` v1 registry entry ([src-useq/docs/specs/synth-nodes.md §2](src-useq/docs/specs/synth-nodes.md)).
+  - `nodeDefRegistry.ts` — NodeDef descriptor schema/validation; carries the routed `osc/sine` v2 entry with named `fm` input ([src-useq/docs/specs/synth-nodes.md §2](src-useq/docs/specs/synth-nodes.md)).
   - `audioCapabilities.ts` — bootstrap `crossOriginIsolated`/SAB capability snapshot feeding the degraded no-audio diagnostic ([docs/specs/synthesis.md §6.3](docs/specs/synthesis.md)).
 - `src/audio/` — browser synthesis engine (M0–M2.2 of [docs/design/synthesis-epic.md](docs/design/synthesis-epic.md); spec [docs/specs/synthesis.md](docs/specs/synthesis.md)).
-  - `synthesisService.ts` — main-thread engine owner: state machine, worklet bring-up, producer bridge, eval-commit pipeline (incl. `MAX_SYNTH_NODES` + block-rate channel-pool limit checks), telemetry. Accessed via `src/runtime/activeSynthesisService.ts`.
-  - `synthesisServiceBrowser.ts` — real-browser wiring (AudioContext construction, NodeDef WASM fetch/instantiation).
-  - `engineCommitCoordinator.ts` — pure eval→engine diff/plan builder (retire/instantiate/update deltas, epoch arming, compiler-derived per-(node,param) control-channel table + audio-input wiring from artefact `connections`).
-  - `workletCore.ts` + `synthesisWorklet.ts` — AudioWorkletProcessor logic (framework-free core + thin worklet shell); multi-node topological graph host with per-instance shared-memory zones (synthesis.md §3.1); bundled by `scripts/build-assets.mjs` into `public/wasm/synthesisWorklet.js`.
+  - `synthesisService.ts` — main-thread engine owner: state machine, worklet bring-up, producer bridge, serial failure-atomic prepare/commit/activate pipeline (incl. `MAX_SYNTH_NODES` + block-rate channel-pool checks), telemetry. Accessed via `src/runtime/activeSynthesisService.ts`.
+  - `synthesisServiceBrowser.ts` — real-browser wiring (AudioContext construction, NodeDef WASM fetch/instantiation, fail-closed module-owned registry decoding).
+  - `engineCommitCoordinator.ts` — pure eval→engine diff/plan builder (retire/instantiate/update deltas, compiler-order-preserving per-(node,param) controls with original indices, terminally exhaustible uint32 activation-epoch allocation, and audio-input wiring from required ABI-2 `connections`).
+  - `workletCore.ts` + `synthesisWorklet.ts` — AudioWorkletProcessor logic (framework-free core + thin worklet shell); multi-node topological graph host with transaction-owned candidate zones, acknowledged block-boundary activation, retryable failure-atomic NodeDef blocks (preallocated state rollback + whole-zone mute), sample-indexed partition-invariant fades, and binary64 terminal mixing with one final binary32 conversion (synthesis.md §3.1/§3.3/§3.5.1/§3.6); bundled by `scripts/build-assets.mjs` into `public/wasm/synthesisWorklet.js`.
   - `workletZoneAllocator.ts` — first-fit coalescing zone allocator over the host-owned `WebAssembly.Memory` arena (synthesis.md §2.3/§3.5; bounded by `SYNTH_MEMORY_MAX_BYTES`).
   - `producerScheduler.ts` + `producerLoopDriver.ts` — Worker-side block production pacing and cancellable loop. **Deviation**: `setTimeout(0)` polling, not the ADR-0003 `Atomics.wait` (see ADR-0003 revisit note).
   - `transportFrameMap.ts`, `audioClockPolicy.ts` — pure audio-frame↔transport-time mapping.
-  - `workletGraphDelta.ts`, `nodeDefAdapter.ts` — graph delta application and source-agnostic NodeDef module adapter.
+  - `workletGraphDelta.ts`, `nodeDefAdapter.ts` — graph delta application and source-agnostic NodeDef module adapter, including module-metadata validation, named audio-input execution, and the versioned actual-sample-rate compute capability.
   - `engineIndicator.tsx` — engine state chip (props-based; wired in `src/ui/adapters/toolbars.tsx`).
 - `src/transport/` — Web Serial lifecycle and protocol. No UI/editor imports.
   - `connector.ts` — port open/close/reconnect, Web Serial events.
@@ -181,9 +182,10 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - `vite.config.ts` — single bundle from `src/main.ts` to `public/solid-dist/`; defines Vitest `unit` + `storybook` projects.
 - `eslint.config.js` — import-boundary zones with documented per-file exceptions.
 - `tsconfig.json` — TS settings (strict, no `@ts-nocheck` permitted).
-- `scripts/build-assets.mjs` — copies markdown/reference/wasm/fonts into `public/`; also runs the two Engine Ledger harvests below (and watches their source dirs in `--watch` mode).
+- `scripts/build-assets.mjs` — copies markdown/reference/WASM/fonts into `public/`, verifies the compiler record and exact served bytes, generates the application served-bundle record, and runs the two Engine Ledger harvests below. Watch mode observes all of these source domains.
 - `scripts/harvest-witnesses.mjs` — parses `src-useq/test/conformance/**/*.yaml` into `public/assets/witness-index.json`, including the per-spec-file clause→witness aggregation ([docs/specs/witnesses.md §3](docs/specs/witnesses.md)). Parse errors, duplicate case names and malformed `spec:` refs fail the build; a missing `spec:` warns. Standalone: `npm run harvest:witnesses`.
 - `scripts/harvest-specs.mjs` — copies `src-useq/docs/specs/*.md` into `public/assets/spec-corpus.json`, pre-tokenised into a block model with `N.N` clause anchors, raw code fences, and intra-corpus links rewritten for in-Ledger navigation. Index order mirrors the corpus `MAIN.md` §6. Standalone: `npm run harvest:specs`.
+- `scripts/compiler-capability-manifest.mjs` + `scripts/served-bundle-manifest.mjs` — verify the compiler profile and emit/reverify one deterministic, explicitly unsigned application-profile record over app source identity, the compiler record/interpreter, module-owned NodeDef descriptor/bytes and sample-rate/render-quantum contract, activation domain, and synthesis worklet. Compiler, application, and target-build fields have explicit profile ownership.
 - `scripts/config-server.mjs` — local dev config-write endpoint (paired with `runtime/configManager.ts`).
 - `scripts/dev/` — native-bridge dev tooling: `useq-stub-ws-server.mjs` (loopback WS stub speaking the JSON `hello` protocol, run via `dev:stub-ws`) and `verify-ws-serialport.mjs` (bridge smoke check, run via `verify:native-bridge`).
 - `package.json` — see scripts: `dev`, `build`, `build:assets`, `build:wasm`, `harvest:witnesses`, `harvest:specs`, `test:mocha`, `test:unit`, `test:all`, `lint`, `typecheck`, `storybook`, `inspector`, `inspector:validate`, `src-useq:status`.
@@ -234,7 +236,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 ## Local gotchas
 
 - `src-useq/` and `deps/modulisp/` are git submodules; commits there go through their own repos. Run `npm run src-useq:status` to see the pinned commit.
-- Browser WASM artefacts (`public/wasm/useq.{js,wasm}` and `public/wasm/osc_sine.wasm`) are generated from `src-useq/` by `npm run build:wasm` and copied by `npm run build:assets`; the copy step fails when a required artefact is missing.
+- Browser compiler artefacts (`public/wasm/useq.{js,wasm}` plus `useq-capabilities.json`) are generated from the pinned clean `src-useq/` by `npm run build:wasm`; `npm run build:assets` verifies the compiler manifest against both source and served bytes, then generates `public/wasm/useq-served-bundle.json` over the app source identity, those files, `osc_sine.wasm` + its module-emitted descriptor/clock contract, and `synthesisWorklet.js`. The records are deterministic but unsigned; each names its profile-owned and not-applicable fields.
 - `appSettingsRepository` (canonical) and `settingsStore` (reactive Solid mirror) are separate. UI reads the store; mutations go through `runtimeService`.
 - `serialBuffers` in `transport/stream-parser.ts` are imperative `CircularBuffer`s, not part of the Solid store.
 - `?nosave` URL param fully bypasses persistence; useful in tests.

@@ -13,10 +13,16 @@
 
 import fs from 'fs';
 import path from 'path';
+import { execFileSync } from 'node:child_process';
 import { Marked } from 'marked';
 import * as esbuild from 'esbuild';
 import { buildWitnessIndex, CORPUS_DIR } from './harvest-witnesses.mjs';
 import { buildSpecCorpus, SPECS_DIR } from './harvest-specs.mjs';
+import { verifyCompilerCapabilityManifest } from './compiler-capability-manifest.mjs';
+import {
+  verifyServedBundleManifest,
+  writeServedBundleManifest,
+} from './served-bundle-manifest.mjs';
 
 // --- Configuration ---
 
@@ -48,6 +54,15 @@ const synthesisWorkletFile = {
 const wasmBinaryFile = {
   src: path.join('src-useq', 'wasm', 'useq.wasm'),
   dest: path.join('public', 'wasm', 'useq.wasm'),
+};
+
+const compilerCapabilityManifestFile = {
+  src: path.join('src-useq', 'wasm', 'useq-capabilities.json'),
+  dest: path.join('public', 'wasm', 'useq-capabilities.json'),
+};
+
+const servedBundleManifestFile = {
+  dest: path.join('public', 'wasm', 'useq-served-bundle.json'),
 };
 
 // osc/sine NodeDef WASM — a SEPARATE build target from the interpreter
@@ -89,6 +104,41 @@ function copyRequiredArtifact({ src, dest, label, command }) {
   }
 
   console.log(`Copied ${src} -> ${dest}`);
+}
+
+function checkedOutCompilerCommit() {
+  return execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: 'src-useq',
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function assertCompilerCheckoutClean() {
+  const status = execFileSync(
+    'git',
+    ['status', '--porcelain=v1', '--untracked-files=all'],
+    {
+      cwd: 'src-useq',
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  ).trim();
+  if (status !== '') {
+    throw new Error(
+      'Refusing to publish compiler artifacts from a dirty src-useq checkout:\n' +
+        status,
+    );
+  }
+}
+
+function verifyCompilerBundle({ manifest, js, wasm, expectedGitCommit }) {
+  return verifyCompilerCapabilityManifest({
+    manifestPath: manifest,
+    jsPath: js,
+    wasmPath: wasm,
+    expectedGitCommit,
+  });
 }
 
 // --- Build Tasks ---
@@ -147,9 +197,19 @@ function copyReferenceData() {
 }
 
 function copyUseqWasmBundle() {
-  // These are all mandatory runtime artifacts. Keep each check independent:
-  // the NodeDef is a separate build target and must not be hidden behind the
-  // interpreter bundle check.
+  // Verify the complete source-side compiler bundle before publishing any
+  // byte. The capability manifest binds the exact interpreter JS/WASM bytes
+  // to the checked-out clean compiler commit and ABI/resource profile.
+  // It intentionally does NOT bind the separately built NodeDef below.
+  assertCompilerCheckoutClean();
+  const compilerCommit = checkedOutCompilerCommit();
+  verifyCompilerBundle({
+    manifest: compilerCapabilityManifestFile.src,
+    js: wasmBundleFile.src,
+    wasm: wasmBinaryFile.src,
+    expectedGitCommit: compilerCommit,
+  });
+
   copyRequiredArtifact({
     src: wasmBundleFile.src,
     dest: wasmBundleFile.dest,
@@ -164,6 +224,26 @@ function copyUseqWasmBundle() {
     command: 'npm run build:wasm',
   });
 
+  copyRequiredArtifact({
+    src: compilerCapabilityManifestFile.src,
+    dest: compilerCapabilityManifestFile.dest,
+    label: 'uSEQ compiler capability manifest',
+    command: 'npm run build:wasm',
+  });
+
+  // Re-verify the served paths against the copied manifest. This makes the
+  // build fail if the public bundle does not contain exactly the attested
+  // compiler bytes, even when stale output already existed in public/wasm.
+  verifyCompilerBundle({
+    manifest: compilerCapabilityManifestFile.dest,
+    js: wasmBundleFile.dest,
+    wasm: wasmBinaryFile.dest,
+    expectedGitCommit: compilerCommit,
+  });
+
+  // Separate provenance boundary: osc/sine is a NodeDef module, not part of
+  // the compiler capability manifest. Its own module metadata is validated
+  // by the NodeDef loader; this copy check only prevents stale served bytes.
   copyRequiredArtifact({
     src: oscSineNodedefFile.src,
     dest: oscSineNodedefFile.dest,
@@ -188,11 +268,10 @@ function copyFonts() {
 
 async function bundleSynthesisWorklet() {
   if (!fs.existsSync(synthesisWorkletFile.src)) {
-    console.warn(
+    throw new Error(
       `Synthesis worklet source not found at ${synthesisWorkletFile.src}. ` +
         'The synthesis engine will not be able to start audio.'
     );
-    return;
   }
 
   try {
@@ -222,8 +301,27 @@ async function bundleSynthesisWorklet() {
     fs.writeFileSync(synthesisWorkletFile.dest, output.text);
     console.log(`Bundled ${synthesisWorkletFile.src} -> ${synthesisWorkletFile.dest}`);
   } catch (error) {
-    console.error(`Failed to bundle ${synthesisWorkletFile.src}:`, error.message);
+    throw new Error(`Failed to bundle ${synthesisWorkletFile.src}: ${error.message}`);
   }
+}
+
+function buildServedBundleManifest() {
+  const inputs = {
+    compilerManifestPath: compilerCapabilityManifestFile.dest,
+    jsPath: wasmBundleFile.dest,
+    wasmPath: wasmBinaryFile.dest,
+    nodeDefPath: oscSineNodedefFile.dest,
+    workletPath: synthesisWorkletFile.dest,
+  };
+  writeServedBundleManifest({
+    outputPath: servedBundleManifestFile.dest,
+    ...inputs,
+  });
+  verifyServedBundleManifest({
+    manifestPath: servedBundleManifestFile.dest,
+    ...inputs,
+  });
+  console.log(`Generated and verified ${servedBundleManifestFile.dest}`);
 }
 
 function buildAll() {
@@ -240,11 +338,11 @@ function buildAll() {
   // The worklet bundle is async. buildAll returns a Promise that the
   // Vite build waits on via `npm run build:assets && vite build`.
   console.log('Assets build complete.');
-  return bundleSynthesisWorklet();
+  return bundleSynthesisWorklet().then(buildServedBundleManifest);
 }
 
 function watchMode() {
-  buildAll();
+  void buildAll().catch((error) => console.error(error.message));
 
   let synthesisWorkletBuildTimer = null;
   const scheduleSynthesisWorkletBundle = () => {
@@ -253,7 +351,9 @@ function watchMode() {
     }
     synthesisWorkletBuildTimer = setTimeout(() => {
       synthesisWorkletBuildTimer = null;
-      bundleSynthesisWorklet();
+      void bundleSynthesisWorklet()
+        .then(buildServedBundleManifest)
+        .catch((error) => console.error(error.message));
     }, 50);
   };
 
@@ -282,8 +382,14 @@ function watchMode() {
   if (fs.existsSync(wasmDir)) {
     fs.watch(wasmDir, (_eventType, filename) => {
       if (!filename) return;
-      if (filename === path.basename(wasmBundleFile.src)) {
+      if (new Set([
+        path.basename(wasmBundleFile.src),
+        path.basename(wasmBinaryFile.src),
+        path.basename(compilerCapabilityManifestFile.src),
+        path.basename(oscSineNodedefFile.src),
+      ]).has(filename)) {
         copyUseqWasmBundle();
+        if (fs.existsSync(synthesisWorkletFile.dest)) buildServedBundleManifest();
       }
     });
     console.log(`Watching ${wasmDir}/ for WASM bundle changes...`);

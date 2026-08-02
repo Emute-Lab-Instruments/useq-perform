@@ -199,13 +199,11 @@ interface FakeWorkerPort extends SynthesisWorkerPort {
   readonly installSabCalls: ReadonlyArray<SharedArrayBuffer>;
   readonly startCallCount: number;
   readonly stopCallCount: number;
-  readonly setControlValuesCalls: ReadonlyArray<Record<string, number>>;
   reset(): void;
 }
 
 function createFakeWorkerPort(): FakeWorkerPort {
   const installSabCalls: SharedArrayBuffer[] = [];
-  const setControlValuesCalls: Record<string, number>[] = [];
   let startCalls = 0;
   let stopCalls = 0;
   return {
@@ -214,10 +212,6 @@ function createFakeWorkerPort(): FakeWorkerPort {
     },
     async producerInstallSab(controlBuffer: SharedArrayBuffer): Promise<boolean> {
       installSabCalls.push(controlBuffer);
-      return true;
-    },
-    async producerSetControlValues(values: Record<string, number>): Promise<boolean> {
-      setControlValuesCalls.push(values);
       return true;
     },
     async producerStart(): Promise<boolean> {
@@ -237,12 +231,8 @@ function createFakeWorkerPort(): FakeWorkerPort {
     get stopCallCount() {
       return stopCalls;
     },
-    get setControlValuesCalls() {
-      return setControlValuesCalls;
-    },
     reset() {
       installSabCalls.length = 0;
-      setControlValuesCalls.length = 0;
       startCalls = 0;
       stopCalls = 0;
     },
@@ -611,4 +601,3 @@ describe("synthesisService — legacy telemetry snapshots are inert", () => {
     await service.dispose();
   });
 });
-

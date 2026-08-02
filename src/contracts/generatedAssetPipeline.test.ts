@@ -4,10 +4,12 @@
  * Covers:
  *   VAL-CROSS-011 - stale-output-free root and submodule builds produce the
  *                   interpreter and separate NodeDef artefacts served by the
- *                   application; checksums link built and served bytes, ABI
- *                   versions match, src-useq is clean and committed, the root
- *                   gitlink exactly matches that submodule HEAD, and the
- *                   tracked-versus-ignored asset policy is respected.
+ *                   application; the compiler capability manifest binds the
+ *                   exact built and served interpreter bytes to the pinned
+ *                   clean compiler commit; ABI versions match; and the
+ *                   tracked-versus-ignored asset policy is respected. The
+ *                   app-level unsigned manifest additionally binds all served
+ *                   compiler, NodeDef, and worklet bytes into one identity.
  *   VAL-DSP-015   - the osc/sine NodeDef module is built separately from the
  *                   ModuLisp interpreter, loaded through the root asset
  *                   pipeline, and its import/export table proves it is a
@@ -21,19 +23,37 @@
  *   - The interpreter and NodeDef build targets pass their own conformance
  *     suites (those run separately in `src-useq/scripts/test.sh` and
  *     `inspect_osc_sine_wasm.sh`).
- *   - The served bytes were produced by a stale-output-free build. The
- *     checksum equality between src-useq/wasm/* and public/wasm/* is exactly
- *     that proof: any stale output diverges and fails the assertion.
+ *   - The NodeDef remains a separate provenance domain. Its source/build
+ *     authenticity is not asserted by the compiler capability manifest.
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, statSync, existsSync } from "node:fs";
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
 import { SYNTH_ARTIFACT_ABI_VERSION } from "./runtimeTypes";
+import {
+  MAX_ACTIVATION_EPOCH,
+  MIN_ACTIVATION_EPOCH,
+  NO_ACTIVATION_EPOCH,
+} from "./synthesisControlAbi";
+import {
+  verifyServedBundleManifest,
+  writeServedBundleManifest,
+} from "../../scripts/served-bundle-manifest.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -69,6 +89,107 @@ function readRepoFile(relativePath: string): string {
   return readFileSync(path.resolve(REPO_ROOT, relativePath), "utf8");
 }
 
+interface CompilerCapabilityManifest {
+  readonly schema: string;
+  readonly profile_ownership: {
+    readonly profile: string;
+    readonly field_dispositions: Readonly<Record<string, {
+      readonly status: string;
+      readonly owner_profile: string;
+    }>>;
+  };
+  readonly source: {
+    readonly git_commit: string;
+    readonly git_dirty: boolean;
+    readonly git_dirty_entries: readonly string[];
+  };
+  readonly artifacts: Readonly<Record<string, {
+    readonly bytes: number;
+    readonly sha256: string;
+  }>>;
+  readonly runtime_contract: {
+    readonly activation_epoch: {
+      readonly encoding: string;
+      readonly field_width_bits: number;
+      readonly reserved_values: readonly number[];
+      readonly minimum_issued: number;
+      readonly maximum_issued: number;
+      readonly exhaustion: string;
+    };
+  };
+  readonly capabilities: {
+    readonly hard_limits: {
+      readonly synth_artifact_abi_version: number;
+    };
+    readonly public_function_exports?: readonly string[];
+  };
+}
+
+function compilerManifest(base: string): CompilerCapabilityManifest {
+  return JSON.parse(readFileSync(
+    path.join(base, "useq-capabilities.json"),
+    "utf8",
+  )) as CompilerCapabilityManifest;
+}
+
+interface ServedBundleManifest {
+  readonly schema: string;
+  readonly profile_ownership: {
+    readonly profile: string;
+    readonly field_dispositions: Readonly<Record<string, {
+      readonly status: string;
+      readonly owner_profile: string;
+    }>>;
+  };
+  readonly application: {
+    readonly git_commit: string;
+    readonly git_dirty: boolean;
+    readonly git_dirty_entries: readonly string[];
+  };
+  readonly trust: {
+    readonly authenticated: boolean;
+    readonly scope: string;
+  };
+  readonly compiler: {
+    readonly capability_manifest_artifact: string;
+    readonly capability_manifest_schema: string;
+    readonly source_git_commit: string;
+  };
+  readonly artifacts: Readonly<Record<string, {
+    readonly bytes: number;
+    readonly sha256: string;
+  }>>;
+  readonly node_defs: readonly [{
+    readonly artifact: string;
+    readonly identity: string;
+    readonly descriptor: {
+      readonly name: string;
+      readonly version: number;
+      readonly sample_rate: number;
+      readonly min_quantum: number;
+      readonly max_quantum: number;
+    };
+    readonly descriptor_sha256: string;
+  }];
+  readonly runtime_contract: {
+    readonly activation_epoch: {
+      readonly encoding: string;
+      readonly field_width_bits: number;
+      readonly reserved_values: readonly number[];
+      readonly minimum_issued: number;
+      readonly maximum_issued: number;
+      readonly exhaustion: string;
+    };
+  };
+}
+
+function servedBundleManifest(base: string): ServedBundleManifest {
+  return JSON.parse(readFileSync(
+    path.join(base, "useq-served-bundle.json"),
+    "utf8",
+  )) as ServedBundleManifest;
+}
+
 // ---------------------------------------------------------------------------
 // VAL-CROSS-011: built/copy artefacts exist on both sides of the pipeline
 // ---------------------------------------------------------------------------
@@ -80,7 +201,18 @@ describe("VAL-CROSS-011: generated asset pipeline produces every served artefact
     const servedJs = path.join(PUBLIC_WASM, "useq.js");
     const servedWasm = path.join(PUBLIC_WASM, "useq.wasm");
 
-    for (const p of [builtJs, builtWasm, servedJs, servedWasm]) {
+    const builtManifest = path.join(SUBMODULE_WASM, "useq-capabilities.json");
+    const servedManifest = path.join(PUBLIC_WASM, "useq-capabilities.json");
+
+    for (const p of [
+      builtJs,
+      builtWasm,
+      builtManifest,
+      servedJs,
+      servedWasm,
+      servedManifest,
+      path.join(PUBLIC_WASM, "useq-served-bundle.json"),
+    ]) {
       expect(existsSync(p), `${p} should exist`).toBe(true);
     }
   });
@@ -111,6 +243,35 @@ describe("VAL-CROSS-011: generated asset pipeline produces every served artefact
 // ---------------------------------------------------------------------------
 
 describe("VAL-CROSS-011: checksums link built and served bytes", () => {
+  it("compiler capability manifest built bytes === served bytes", () => {
+    const built = path.join(SUBMODULE_WASM, "useq-capabilities.json");
+    const served = path.join(PUBLIC_WASM, "useq-capabilities.json");
+    expect(sha256(built)).toBe(sha256(served));
+  });
+
+  it("compiler manifest binds exact built and served JS/WASM bytes", () => {
+    const builtManifest = compilerManifest(SUBMODULE_WASM);
+    const servedManifest = compilerManifest(PUBLIC_WASM);
+    expect(servedManifest).toEqual(builtManifest);
+    expect(builtManifest.schema).toBe("useq.compiler-capabilities/v1");
+    expect(
+      builtManifest.capabilities.hard_limits.synth_artifact_abi_version,
+    ).toBe(SYNTH_ARTIFACT_ABI_VERSION);
+
+    for (const [key, filename] of [
+      ["wasm/useq.js", "useq.js"],
+      ["wasm/useq.wasm", "useq.wasm"],
+    ] as const) {
+      const record = builtManifest.artifacts[key];
+      expect(record, `${key} must be attested`).toBeDefined();
+      for (const base of [SUBMODULE_WASM, PUBLIC_WASM]) {
+        const file = path.join(base, filename);
+        expect(statSync(file).size).toBe(record.bytes);
+        expect(sha256(file)).toBe(record.sha256);
+      }
+    }
+  });
+
   it("interpreter useq.js built bytes === served bytes (no stale output)", () => {
     const built = path.join(SUBMODULE_WASM, "useq.js");
     const served = path.join(PUBLIC_WASM, "useq.js");
@@ -127,6 +288,137 @@ describe("VAL-CROSS-011: checksums link built and served bytes", () => {
     const built = path.join(SUBMODULE_WASM, "osc_sine.wasm");
     const served = path.join(PUBLIC_WASM, "osc_sine.wasm");
     expect(sha256(built)).toBe(sha256(served));
+  });
+
+  it("unsigned app manifest binds compiler, NodeDef, and worklet served bytes", () => {
+    const manifest = servedBundleManifest(PUBLIC_WASM);
+    expect(manifest.schema).toBe("useq.served-bundle/v1");
+    expect(manifest.trust).toMatchObject({
+      authenticated: false,
+      scope: "exact-byte-identity-only",
+    });
+    expect(manifest.profile_ownership).toMatchObject({
+      profile: "application-served-bundle",
+      field_dispositions: {
+        compiler_source_build_and_capabilities: {
+          status: "not-applicable",
+          owner_profile: "compiler-interpreter",
+        },
+        target_firmware_artifacts_and_resources: {
+          status: "not-applicable",
+          owner_profile: "firmware-build",
+        },
+      },
+    });
+    const appDirtyEntries = git([
+      "status", "--porcelain", "--untracked-files=no",
+    ]).split("\n").filter(Boolean).sort();
+    expect(manifest.application).toEqual({
+      git_commit: git(["rev-parse", "HEAD"]),
+      git_dirty: appDirtyEntries.length > 0,
+      git_dirty_entries: appDirtyEntries,
+    });
+    expect(manifest.compiler).toMatchObject({
+      capability_manifest_artifact: "wasm/useq-capabilities.json",
+      capability_manifest_schema: "useq.compiler-capabilities/v1",
+      source_git_commit: compilerManifest(PUBLIC_WASM).source.git_commit,
+    });
+    expect(manifest.runtime_contract.activation_epoch).toEqual({
+      encoding: "uint32-le",
+      field_width_bits: 32,
+      reserved_values: [NO_ACTIVATION_EPOCH],
+      minimum_issued: MIN_ACTIVATION_EPOCH,
+      maximum_issued: MAX_ACTIVATION_EPOCH,
+      exhaustion: "terminal-error-before-reuse",
+    });
+    for (const filename of [
+      "useq-capabilities.json",
+      "useq.js",
+      "useq.wasm",
+      "osc_sine.wasm",
+      "synthesisWorklet.js",
+    ]) {
+      const record = manifest.artifacts[`wasm/${filename}`];
+      const file = path.join(PUBLIC_WASM, filename);
+      expect(record, `${filename} must be bound`).toBeDefined();
+      expect(record.bytes).toBe(statSync(file).size);
+      expect(record.sha256).toBe(sha256(file));
+    }
+    expect(manifest.node_defs[0]).toMatchObject({
+      artifact: "wasm/osc_sine.wasm",
+      identity: "osc/sine@2",
+      descriptor: {
+        name: "osc/sine",
+        version: 2,
+        sample_rate: 48_000,
+        min_quantum: 1,
+        max_quantum: 8_192,
+      },
+    });
+    expect(manifest.node_defs[0].descriptor_sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("recomputes and verifies the complete served-bundle identity", () => {
+    expect(() => verifyServedBundleManifest({
+      manifestPath: path.join(PUBLIC_WASM, "useq-served-bundle.json"),
+      compilerManifestPath: path.join(PUBLIC_WASM, "useq-capabilities.json"),
+      jsPath: path.join(PUBLIC_WASM, "useq.js"),
+      wasmPath: path.join(PUBLIC_WASM, "useq.wasm"),
+      nodeDefPath: path.join(PUBLIC_WASM, "osc_sine.wasm"),
+      workletPath: path.join(PUBLIC_WASM, "synthesisWorklet.js"),
+    })).not.toThrow();
+  });
+
+  it("rejects tampered served bytes and descriptor-identity mismatch", () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), "useq-served-bundle-"));
+    try {
+      for (const filename of [
+        "useq-capabilities.json",
+        "useq.js",
+        "useq.wasm",
+        "osc_sine.wasm",
+        "synthesisWorklet.js",
+      ]) {
+        copyFileSync(path.join(PUBLIC_WASM, filename), path.join(scratch, filename));
+      }
+      const inputs = {
+        compilerManifestPath: path.join(scratch, "useq-capabilities.json"),
+        jsPath: path.join(scratch, "useq.js"),
+        wasmPath: path.join(scratch, "useq.wasm"),
+        nodeDefPath: path.join(scratch, "osc_sine.wasm"),
+        workletPath: path.join(scratch, "synthesisWorklet.js"),
+      };
+      const manifestPath = path.join(scratch, "useq-served-bundle.json");
+      writeServedBundleManifest({ outputPath: manifestPath, ...inputs });
+
+      appendFileSync(inputs.workletPath, "\n/* tampered */\n");
+      expect(() => verifyServedBundleManifest({ manifestPath, ...inputs }))
+        .toThrow(/does not match the current served bytes/);
+
+      copyFileSync(
+        path.join(PUBLIC_WASM, "synthesisWorklet.js"),
+        inputs.workletPath,
+      );
+      const mismatched = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+        node_defs: Array<{ identity: string }>;
+      };
+      mismatched.node_defs[0].identity = "osc/sine@999";
+      writeFileSync(manifestPath, JSON.stringify(mismatched));
+      expect(() => verifyServedBundleManifest({ manifestPath, ...inputs }))
+        .toThrow(/descriptor identity/);
+
+      writeServedBundleManifest({ outputPath: manifestPath, ...inputs });
+      const falseCapability = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+        runtime_contract: { activation_epoch: { maximum_issued: number } };
+      };
+      falseCapability.runtime_contract.activation_epoch.maximum_issued =
+        Number.MAX_SAFE_INTEGER;
+      writeFileSync(manifestPath, JSON.stringify(falseCapability));
+      expect(() => verifyServedBundleManifest({ manifestPath, ...inputs }))
+        .toThrow(/runtime contract/);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 });
 
@@ -150,6 +442,14 @@ describe("VAL-CROSS-011: submodule pin coherence", () => {
     const submoduleHead = git(["rev-parse", "HEAD"], SUBMODULE);
     expect(gitlink).toBe(submoduleHead);
   });
+
+  it("compiler manifest names the exact clean gitlink commit", () => {
+    const manifest = compilerManifest(PUBLIC_WASM);
+    const submoduleHead = git(["rev-parse", "HEAD"], SUBMODULE);
+    expect(manifest.source.git_commit).toBe(submoduleHead);
+    expect(manifest.source.git_dirty).toBe(false);
+    expect(manifest.source.git_dirty_entries).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -169,6 +469,7 @@ describe("VAL-CROSS-011: generated-asset policy is declared and respected", () =
     const sub = readFileSync(path.join(SUBMODULE_WASM, ".gitignore"), "utf8");
     expect(sub).toMatch(/^useq\.js$/m);
     expect(sub).toMatch(/^useq\.wasm$/m);
+    expect(sub).toMatch(/^useq-capabilities\.json$/m);
     expect(sub).toMatch(/^osc_sine\.wasm$/m);
     expect(sub).toMatch(/^osc_sine\.wat$/m);
   });
@@ -187,12 +488,15 @@ describe("VAL-CROSS-011: generated-asset policy is declared and respected", () =
     const rootPaths = [
       "public/wasm/useq.js",
       "public/wasm/useq.wasm",
+      "public/wasm/useq-capabilities.json",
+      "public/wasm/useq-served-bundle.json",
       "public/wasm/osc_sine.wasm",
       "public/wasm/synthesisWorklet.js",
     ];
     const submodulePaths = [
       "wasm/useq.js",
       "wasm/useq.wasm",
+      "wasm/useq-capabilities.json",
       "wasm/osc_sine.wasm",
     ];
     const checkIgnored = (rel: string, cwd: string): boolean => {
@@ -224,14 +528,16 @@ describe("VAL-CROSS-011: generated-asset policy is declared and respected", () =
 // ---------------------------------------------------------------------------
 
 describe("VAL-CROSS-011: interpreter WASM exposes the synth artefact ABI", () => {
-  it("build_wasm.sh lists useq_synth_artifacts in EXPORTED_FUNCTIONS", () => {
-    const buildScript = readFileSync(
-      path.join(SUBMODULE, "scripts", "build_wasm.sh"),
+  it("tracked build profile and generated manifest export the synth ABI", () => {
+    const profile = JSON.parse(readFileSync(
+      path.join(SUBMODULE, "scripts", "wasm_build_profile.json"),
       "utf8",
-    );
-    // The script embeds EXPORTED_FUNCTIONS as a JSON array literal inside
-    // a shell string, so each symbol appears as `\"_name\"`.
-    expect(buildScript).toContain('\\"_useq_synth_artifacts\\"');
+    )) as { public_function_exports?: readonly string[] };
+    const manifest = compilerManifest(PUBLIC_WASM);
+    expect(profile.public_function_exports).toContain("useq_synth_artifacts");
+    expect(profile.public_function_exports).toContain("useq_tick_synth_controls");
+    expect(manifest.capabilities.public_function_exports)
+      .toEqual(profile.public_function_exports);
   });
 
   it("rebuilt interpreter WASM is non-empty and within the documented ceiling", () => {
@@ -249,6 +555,20 @@ describe("VAL-CROSS-011: interpreter WASM exposes the synth artefact ABI", () =>
 // ---------------------------------------------------------------------------
 
 describe("VAL-DSP-015: osc/sine NodeDef is a separate build artefact", () => {
+  it("compiler capability manifest makes no NodeDef provenance claim", () => {
+    const manifest = compilerManifest(PUBLIC_WASM);
+    expect(manifest.artifacts["wasm/osc_sine.wasm"]).toBeUndefined();
+    expect(manifest.profile_ownership).toMatchObject({
+      profile: "compiler-interpreter",
+      field_dispositions: {
+        node_def_descriptors: {
+          status: "not-applicable",
+          owner_profile: "application-served-bundle",
+        },
+      },
+    });
+  });
+
   it("NodeDef and interpreter WASM are distinct artefacts (different bytes)", () => {
     const nodedef = path.join(SUBMODULE_WASM, "osc_sine.wasm");
     const interpreter = path.join(SUBMODULE_WASM, "useq.wasm");
@@ -303,10 +623,10 @@ describe("VAL-DSP-015: osc/sine NodeDef is a separate build artefact", () => {
 // ---------------------------------------------------------------------------
 
 describe("VAL-CROSS-011: synth artefact ABI version is pinned", () => {
-  it("runtime ABI version constant is 1", () => {
+  it("runtime ABI version constant is 2", () => {
     // Pinned to the C++ `sig::SYNTH_ARTIFACT_ABI_VERSION` in
     // src-useq/uSEQ/src/signal_engine/synth_graph.h. The versioned
     // payload is what the rebuilt interpreter WASM returns.
-    expect(SYNTH_ARTIFACT_ABI_VERSION).toBe(1);
+    expect(SYNTH_ARTIFACT_ABI_VERSION).toBe(2);
   });
 });

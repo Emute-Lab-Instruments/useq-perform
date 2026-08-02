@@ -27,6 +27,7 @@ import type {
   ProducerTerminateRequest,
   ProducerReadTelemetryRequest,
   ProducerTelemetrySnapshot,
+  ProducerPrepareCommitRequest,
 } from "../runtime/workers/wasmRuntimeWorkerProtocol";
 import {
   ABI_VERSION,
@@ -52,6 +53,17 @@ describe("workerProducerProtocol / VAL-ENGINE-001 (sole executor)", () => {
     ];
     expect(producerRequests).not.toContain("createInterpreter");
     expect(producerRequests).not.toContain("spawnExecutor");
+  });
+
+  it("disables tickAndProject while the producer owns live VM advancement", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const source = readFileSync(
+      resolve("src/runtime/workers/wasmRuntime.worker.ts"),
+      "utf8",
+    );
+    expect(source).toContain("!wasmEnabled || !interpreter || producerRunning");
+    expect(source).toContain("interpreter.tickSynthControls");
   });
 });
 
@@ -138,16 +150,15 @@ describe("workerProducerProtocol / VAL-SAB-012 (publication helpers)", () => {
     expect(view.abiVersion).toBe(ABI_VERSION);
   });
 
-  it("producerInstallSab carries the block-rate channel names", () => {
+  it("producerInstallSab carries no parallel control-layout authority", () => {
     const r = req<ProducerInstallSabRequest>({
       type: "producerInstallSab",
       id: 1,
       controlBuffer: new SharedArrayBuffer(
         createSynthesisControlBuffer().byteLength,
       ),
-      blockRateChannels: ["freq", "amp"],
     });
-    expect(r.blockRateChannels).toEqual(["freq", "amp"]);
+    expect("blockRateChannels" in r).toBe(false);
   });
 });
 
@@ -175,7 +186,7 @@ describe("workerProducerProtocol / telemetry snapshot shape", () => {
 describe("workerProducerProtocol / VAL-ENGINE-006 (no starvation)", () => {
   it("every producer request carries a numeric id so it can be matched", () => {
     const rs: WasmWorkerRequest[] = [
-      { type: "producerInstallSab", id: 1, controlBuffer: new SharedArrayBuffer(256), blockRateChannels: [] },
+      { type: "producerInstallSab", id: 1, controlBuffer: new SharedArrayBuffer(256) },
       { type: "producerStart", id: 2, sampleRate: 48000 },
       { type: "producerStop", id: 3 },
       { type: "producerTransportUpdate", id: 4, transition: "pause", atFrame: 0n },
@@ -211,6 +222,24 @@ describe("workerProducerProtocol / VAL-ENGINE-011 (epoch arming)", () => {
       epoch: 7,
     });
     expect(r.epoch).toBe(7);
+  });
+
+  it("prepare carries explicit compiler indices instead of placeholder values", () => {
+    const r = req<ProducerPrepareCommitRequest>({
+      type: "producerPrepareCommit",
+      id: 1,
+      epoch: 7,
+      compilerControlCount: 3,
+      controlBindings: [{
+        identity: "lead",
+        param: "amp",
+        channelKey: "lead\u0000amp",
+        compilerControlIndex: 2,
+      }],
+    });
+    expect(r.compilerControlCount).toBe(3);
+    expect(r.controlBindings[0].compilerControlIndex).toBe(2);
+    expect(r).not.toHaveProperty("values");
   });
 });
 

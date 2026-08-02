@@ -51,6 +51,7 @@ import type {
   RuntimeProtocolMode,
   StateSnapshot,
   SynthArtifactsPayload,
+  SynthProducerControlBinding,
 } from "./runtimeTypes";
 
 // ---------------------------------------------------------------------------
@@ -473,19 +474,20 @@ export interface WasmRuntimePort extends SharedRuntimePort {
   producerInstallSab(
     controlBuffer: SharedArrayBuffer,
     options: {
-      blockRateChannels: readonly string[];
       lookaheadBlocks?: number;
       renderQuantumFrames?: number;
     },
   ): Promise<boolean>;
 
-  /**
-   * Update the static control values the producer publishes on every
-   * block. For M1 the block-rate channels (freq, amp) are resolved
-   * from the NodeDef defaults and the user's synth form bindings at
-   * eval time (VAL-CROSS-002).
-   */
-  producerSetControlValues?(values: Record<string, number>): Promise<boolean>;
+  /** Reserve the compiler-to-SAB mapping without changing the live producer. */
+  producerPrepareCommit?(
+    epoch: number,
+    compilerControlCount: number,
+    controlBindings: readonly SynthProducerControlBinding[],
+  ): Promise<boolean>;
+
+  /** Discard a reserved producer candidate. */
+  producerAbortCommit?(epoch: number): Promise<boolean>;
 
   /**
    * Start the producer. The producer loop runs between Worker message
@@ -555,4 +557,4 @@ export interface WasmRuntimePort extends SharedRuntimePort {
 
 export type { UseqDiagnostic } from "./runtimeTypes";
 export type { RuntimeDiagnostic };
-export type { SynthArtifactsPayload };
+export type { SynthArtifactsPayload, SynthProducerControlBinding };

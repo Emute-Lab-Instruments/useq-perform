@@ -45,24 +45,31 @@ describe("VAL-COMP-013: synth artefacts in published WASM ABI", () => {
     expect(OPTIONAL_WASM_EXPORTS.useq_synth_artifacts.argTypes).toEqual([]);
   });
 
-  it("useq_synth_artifacts is listed in the build script's EXPORTED_FUNCTIONS", async () => {
+  it("useq_tick_synth_controls declares the ordered Float64 buffer ABI", () => {
+    expect(OPTIONAL_WASM_EXPORTS.useq_tick_synth_controls).toEqual({
+      symbol: "useq_tick_synth_controls",
+      returnType: "number",
+      argTypes: ["number", "number", "number"],
+    });
+  });
+
+  it("useq_synth_artifacts is listed in the tracked WASM build profile", async () => {
     const { readFileSync } = await import("node:fs");
     const { fileURLToPath } = await import("node:url");
     const path = await import("node:path");
-    const buildScript = readFileSync(
+    const profile = JSON.parse(readFileSync(
       path.resolve(
         path.dirname(fileURLToPath(import.meta.url)),
-        "../../src-useq/scripts/build_wasm.sh",
+        "../../src-useq/scripts/wasm_build_profile.json",
       ),
       "utf8",
-    );
-    // The build script lists EXPORTED_FUNCTIONS as a JSON array literal
-    // inside a shell string, so each symbol appears as `\"_name\"`. The
-    // atomic Worker response needs this export to be live in the bundle.
-    expect(buildScript).toContain('\\"_useq_synth_artifacts\\"');
+    )) as { public_function_exports?: readonly string[] };
+    const exports = profile.public_function_exports ?? [];
+    expect(exports).toContain("useq_synth_artifacts");
+    expect(exports).toContain("useq_tick_synth_controls");
     // Sanity: the required eval/diagnostics surface is still listed.
     for (const required of REQUIRED_WASM_EXPORT_NAMES) {
-      expect(buildScript).toContain(`\\"_${required}\\"`);
+      expect(exports).toContain(required);
     }
   });
 });
@@ -101,8 +108,8 @@ describe("VAL-COMP-014: failed eval response shape contract", () => {
           {
             identity: "lead",
             def: "osc/sine",
-            version: 1,
-            audio_inputs: 0,
+            version: 2,
+            audio_inputs: 1,
             audio_outputs: 1,
           },
         ],
@@ -114,6 +121,7 @@ describe("VAL-COMP-014: failed eval response shape contract", () => {
             smoothing: "step",
           },
         ],
+        connections: [],
       },
     };
 
@@ -147,8 +155,8 @@ describe("VAL-COMP-014: failed eval response shape contract", () => {
           {
             identity: "lead",
             def: "osc/sine",
-            version: 1,
-            audio_inputs: 0,
+            version: 2,
+            audio_inputs: 1,
             audio_outputs: 1,
           },
         ],
@@ -160,6 +168,7 @@ describe("VAL-COMP-014: failed eval response shape contract", () => {
             smoothing: "step",
           },
         ],
+        connections: [],
       },
     };
 
@@ -204,6 +213,7 @@ describe("VAL-COMP-015: versioned synth artefact ABI", () => {
       revision: 1,
       declarations: [],
       controls: [],
+      connections: [],
     };
     expect(isSynthArtifactsPayload(wellFormed)).toBe(true);
 

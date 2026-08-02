@@ -8,8 +8,11 @@
  *   - node ports are offsets into the host-owned shared memory: each
  *     node's output zone feeds downstream nodes' input ports (pointer
  *     wiring, never per-block copying);
- *   - terminal nodes (no downstream consumer) sum into the output
- *     scratch;
+ *   - terminal nodes (no downstream consumer) sum in binary64 before
+ *     one final binary32 conversion;
+ *   - compute failure restores state, mutes the whole node block, and
+ *     retries without disturbing siblings;
+ *   - sample-indexed fades are invariant to render-quantum partitioning;
  *   - zone exhaustion and the node limit produce diagnostics, never
  *     glitches;
  *   - the actual render quantum may vary (`renderSizeHint`); growth
@@ -66,6 +69,7 @@ function makeDescriptor(
     ...OSC_SINE_NODEDEF_DESCRIPTOR,
     name,
     audioInputs,
+    audioInputNames: audioInputs === 0 ? Object.freeze([]) : Object.freeze(["in"]),
   });
 }
 
@@ -92,6 +96,7 @@ function createConstAdapter(
   return {
     descriptor,
     params: buildNodeDefParamTable(descriptor),
+    sampleRate: descriptor.sampleRate,
     validateLayout: () => true,
     init: () => true,
     compute(_statePtr, _freqPtr, _ampPtr, outputPtr, frameCount) {
@@ -99,6 +104,50 @@ function createConstAdapter(
       outputPtrs.push(outputPtr);
       const out = new Float64Array(arena, outputPtr, frameCount);
       out.fill(value);
+      return true;
+    },
+    getPhase: () => 0,
+    getSmoothedAmp: () => 0,
+    resetPhase: () => undefined,
+    outputPtrs,
+    inputPtrVectors,
+  };
+}
+
+type FaultMode = "success" | "trap" | "reject" | "nonfinite";
+
+/** Stateful adversarial adapter used to witness block-level rollback. */
+function createFaultAdapter(
+  arena: ArrayBuffer,
+  name: string,
+  value: number,
+  callOrder: string[],
+  mode: { current: FaultMode },
+): FakeGraphAdapter {
+  const descriptor = makeDescriptor(name, 0);
+  const outputPtrs: number[] = [];
+  const inputPtrVectors: number[][] = [];
+  return {
+    descriptor,
+    params: buildNodeDefParamTable(descriptor),
+    sampleRate: descriptor.sampleRate,
+    validateLayout: () => true,
+    init(statePtr) {
+      new Uint8Array(arena, statePtr, descriptor.stateBytes).fill(0);
+      return true;
+    },
+    compute(statePtr, _freqPtr, _ampPtr, outputPtr, frameCount) {
+      callOrder.push(name);
+      outputPtrs.push(outputPtr);
+      const state = new Uint8Array(arena, statePtr, descriptor.stateBytes);
+      state[0] = (state[0] + 1) & 0xff;
+      const output = new Float64Array(arena, outputPtr, frameCount);
+      output.fill(value);
+      if (mode.current === "trap") {
+        throw new WebAssembly.RuntimeError("synthetic compute trap");
+      }
+      if (mode.current === "reject") return false;
+      if (mode.current === "nonfinite") output[Math.floor(frameCount / 2)] = Number.NaN;
       return true;
     },
     getPhase: () => 0,
@@ -125,6 +174,7 @@ function createGainAdapter(
   return {
     descriptor,
     params: buildNodeDefParamTable(descriptor),
+    sampleRate: descriptor.sampleRate,
     validateLayout: () => true,
     init: () => true,
     compute(_statePtr, _freqPtr, _ampPtr, outputPtr, frameCount) {
@@ -168,6 +218,7 @@ function createControlEchoAdapter(
   return {
     descriptor,
     params: buildNodeDefParamTable(descriptor),
+    sampleRate: descriptor.sampleRate,
     validateLayout: () => true,
     init: () => true,
     compute(_statePtr, freqPtr, _ampPtr, outputPtr, frameCount) {
@@ -243,6 +294,8 @@ function buildGraphHarness(opts: {
     publish: (e) => events.push(e),
     createArenaView: (byteOffset, lengthDoubles) =>
       new Float64Array(arena, byteOffset, lengthDoubles),
+    createArenaByteView: (byteOffset, lengthBytes) =>
+      new Uint8Array(arena, byteOffset, lengthBytes),
     freqControlScratch,
     ampControlScratch,
   });
@@ -351,6 +404,31 @@ describe("workletCore graph — multiple live instances (synthesis.md §3.1)", (
     expect(h.core.telemetry.instances).toHaveLength(2);
     expect(h.callOrder).toContain("src/a");
     expect(h.callOrder).toContain("src/b");
+  });
+
+  it("rounds the terminal sum to binary32 exactly once", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const tiny = 2 ** -25;
+    const h = buildGraphHarness({
+      adapters: {
+        "src/one": createConstAdapter(arena, "src/one", 1, callOrder),
+        "src/tiny-a": createConstAdapter(arena, "src/tiny-a", tiny, callOrder),
+        "src/tiny-b": createConstAdapter(arena, "src/tiny-b", tiny, callOrder),
+        "src/tiny-c": createConstAdapter(arena, "src/tiny-c", tiny, callOrder),
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "one", "src/one", 1);
+    instantiate(h.core, "tiny-a", "src/tiny-a", 1);
+    instantiate(h.core, "tiny-b", "src/tiny-b", 1);
+    instantiate(h.core, "tiny-c", "src/tiny-c", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+
+    const expected = Math.fround(1 + 3 * tiny);
+    expect(expected).not.toBe(1);
+    expect(h.core.readOutput()[0]).toBe(expected);
   });
 });
 
@@ -528,6 +606,292 @@ describe("workletCore graph — multi-node retirement (VAL-ENGINE-035)", () => {
     expect(h.core.telemetry.instances).toHaveLength(1);
     expect(h.core.telemetry.instances[0].identity).toBe("id-b");
     expect(h.core.readOutput()[0]).toBeCloseTo(0, 6);
+  });
+});
+
+describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
+  function transactionAck(h: GraphHarness, transactionId: number, phase: string) {
+    return h.events.find((event) =>
+      "type" in event &&
+      event.type === "graph-transaction-ack" &&
+      event.transactionId === transactionId &&
+      event.phase === phase
+    ) as Extract<WorkletOutboundEvent, { type: "graph-transaction-ack" }> | undefined;
+  }
+
+  function prepareAdd(identity: string, def: string, epoch: number) {
+    return {
+      type: "prepare-graph" as const,
+      transactionId: epoch,
+      epoch,
+      deltas: [{
+        type: "instantiate" as const,
+        identity: { identity, def, version: 1, epoch },
+        statePointer: 0,
+        stateBytes: 0,
+        audioOutputs: 1,
+      }],
+    };
+  }
+
+  it("reclaims a partially allocated candidate and keeps the old graph live", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const limitBytes =
+      SYNTH_ARENA_NULL_GUARD_BYTES +
+      128 * BYTES_PER_DOUBLE +
+      2 * BYTES_PER_DOUBLE +
+      24 +
+      128 * BYTES_PER_DOUBLE +
+      24 +
+      64;
+    const h = buildGraphHarness({
+      adapters: {
+        "src/a": createConstAdapter(arena, "src/a", 0.25, callOrder),
+        "src/b": createConstAdapter(arena, "src/b", 0.5, callOrder),
+      },
+      arena,
+      callOrder,
+      limitBytes,
+    });
+    instantiate(h.core, "old", "src/a", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    const releasesBefore = h.releaseCount();
+
+    h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
+    expect(transactionAck(h, 2, "prepare")?.ok).toBe(false);
+    expect(h.releaseCount()).toBeGreaterThan(releasesBefore);
+    h.step(1);
+    expect(h.core.telemetry.instances.map((instance) => instance.identity)).toEqual(["old"]);
+    expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
+  });
+
+  it("does not expose a committed candidate before the explicit activation gate", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: {
+        "src/a": createConstAdapter(arena, "src/a", 0.25, callOrder),
+        "src/b": createConstAdapter(arena, "src/b", 0.5, callOrder),
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "old", "src/a", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+
+    h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
+    h.core.handleMessage({ type: "commit-graph", transactionId: 2 });
+    h.step(2);
+    expect(h.core.telemetry.instances.map((instance) => instance.identity)).toEqual(["old"]);
+    expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
+
+    const releasesBefore = h.releaseCount();
+    h.core.handleMessage({ type: "abort-graph", transactionId: 2 });
+    expect(h.releaseCount()).toBeGreaterThan(releasesBefore);
+    expect(transactionAck(h, 2, "abort")?.ok).toBe(true);
+  });
+
+  it("activates the complete candidate exactly once on its matching epoch", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: {
+        "src/a": createConstAdapter(arena, "src/a", 0.25, callOrder),
+        "src/b": createConstAdapter(arena, "src/b", 0.5, callOrder),
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "old", "src/a", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+
+    h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
+    h.core.handleMessage({ type: "commit-graph", transactionId: 2 });
+    h.core.handleMessage({ type: "activate-graph", transactionId: 2 });
+    // Gate acceptance is not activation: acknowledgement waits for the
+    // matching epoch to swap at the audio block boundary.
+    expect(transactionAck(h, 2, "activate")).toBeUndefined();
+    h.step(2);
+    expect(transactionAck(h, 2, "activate")?.ok).toBe(true);
+    h.step(2);
+
+    expect(h.core.telemetry.instances.map((instance) => instance.identity).sort()).toEqual([
+      "candidate",
+      "old",
+    ]);
+    const activations = h.events.filter((event) =>
+      "type" in event && event.type === "graph-activated" && event.epoch === 2
+    );
+    expect(activations).toHaveLength(1);
+  });
+});
+
+describe("workletCore graph — per-instance trap containment", () => {
+  it("rejects an init-trapping candidate and keeps the old graph audible", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const bad = createConstAdapter(arena, "src/bad-init", 0.75, callOrder);
+    (bad as { init: NodeDefAdapter["init"] }).init = () => {
+      throw new WebAssembly.RuntimeError("synthetic init trap");
+    };
+    const h = buildGraphHarness({
+      adapters: {
+        "src/good": createConstAdapter(arena, "src/good", 0.25, callOrder),
+        "src/bad-init": bad,
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "old", "src/good", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+
+    expect(() => h.core.handleMessage({
+      type: "prepare-graph",
+      transactionId: 2,
+      epoch: 2,
+      deltas: [{
+        type: "instantiate",
+        identity: {
+          identity: "candidate",
+          def: "src/bad-init",
+          version: 1,
+          epoch: 2,
+        },
+        statePointer: 0,
+        stateBytes: 0,
+        audioOutputs: 1,
+      }],
+    })).not.toThrow();
+    h.step(1);
+
+    expect(h.diagnostics()).toContainEqual({
+      type: "graph-diagnostic",
+      code: "nodedef-trap",
+      identity: "candidate",
+    });
+    expect(h.events).toContainEqual(expect.objectContaining({
+      type: "graph-transaction-ack",
+      transactionId: 2,
+      phase: "prepare",
+      ok: false,
+    }));
+    expect(h.core.telemetry.instances.map((instance) => instance.identity))
+      .toEqual(["old"]);
+    expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
+  });
+
+  it("rolls back trap/reject/nonfinite blocks, keeps siblings audible, and recovers", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const mode: { current: FaultMode } = { current: "success" };
+    const bad = createFaultAdapter(arena, "src/bad", 0.75, callOrder, mode);
+    const h = buildGraphHarness({
+      adapters: {
+        "src/bad": bad,
+        "src/good": createConstAdapter(arena, "src/good", 0.25, callOrder),
+      },
+      arena,
+      callOrder,
+    });
+    instantiate(h.core, "bad", "src/bad", 1);
+    instantiate(h.core, "good", "src/good", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    const statePointer = h.core.telemetry.instances.find((instance) => instance.identity === "bad")!
+      .statePointer;
+    const state = new Uint8Array(arena, statePointer, bad.descriptor.stateBytes);
+
+    const cases: Array<{
+      mode: Exclude<FaultMode, "success">;
+      code: "nodedef-trap" | "nodedef-compute-rejected" | "nodedef-nonfinite-output";
+    }> = [
+      { mode: "trap", code: "nodedef-trap" },
+      { mode: "reject", code: "nodedef-compute-rejected" },
+      { mode: "nonfinite", code: "nodedef-nonfinite-output" },
+    ];
+
+    for (const fault of cases) {
+      const before = state[0];
+      mode.current = fault.mode;
+      expect(() => h.step(1)).not.toThrow();
+      expect(state[0]).toBe(before);
+      expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
+      expect(h.core.telemetry.instances.find((instance) => instance.identity === "bad"))
+        .toMatchObject({ health: "error" });
+      expect(h.diagnostics()).toContainEqual({
+        type: "graph-diagnostic",
+        code: fault.code,
+        identity: "bad",
+      });
+
+      mode.current = "success";
+      h.step(1);
+      expect(state[0]).toBe((before + 1) & 0xff);
+      expect(h.core.readOutput()[0]).toBeCloseTo(1, 6);
+      expect(h.core.telemetry.instances.find((instance) => instance.identity === "bad"))
+        .toMatchObject({ health: "ok" });
+    }
+
+    expect(h.core.telemetry.instances.map((instance) => instance.identity))
+      .toEqual(["bad", "good"]);
+  });
+});
+
+describe("workletCore graph — sample-indexed fade invariance", () => {
+  function renderFadeIn(partitions: readonly number[]): number[] {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: { "src/unit": createConstAdapter(arena, "src/unit", 1, callOrder) },
+      arena,
+      callOrder,
+      renderQuantumFrames: 256,
+    });
+    instantiate(h.core, "unit", "src/unit", 1);
+    const samples: number[] = [];
+    for (const frames of partitions) {
+      h.step(1, undefined, frames);
+      samples.push(...h.core.readOutput().slice(0, frames));
+    }
+    return samples;
+  }
+
+  function renderFadeOut(partitions: readonly number[]): number[] {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: { "src/unit": createConstAdapter(arena, "src/unit", 1, callOrder) },
+      arena,
+      callOrder,
+      renderQuantumFrames: 256,
+    });
+    instantiate(h.core, "unit", "src/unit", 1);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    h.core.handleMessage({ type: "retire", identity: { identity: "unit", epoch: 1 } });
+    const samples: number[] = [];
+    for (const frames of partitions) {
+      h.step(1, undefined, frames);
+      samples.push(...h.core.readOutput().slice(0, frames));
+    }
+    return samples;
+  }
+
+  it("makes fade-in samples invariant to render-quantum partitioning", () => {
+    const by128 = renderFadeIn([128, 128, 128, 96]);
+    const mixed = renderFadeIn([64, 192, 160, 64]);
+    expect(mixed).toEqual(by128);
+    expect(by128).toHaveLength(480);
+    expect(by128[0]).toBe(0);
+    expect(by128[479]).toBe(1);
+  });
+
+  it("makes fade-out samples invariant to render-quantum partitioning", () => {
+    const by128 = renderFadeOut([...Array(11).fill(128), 32]);
+    const mixed = renderFadeOut([...Array(5).fill(256), 160]);
+    expect(mixed).toEqual(by128);
+    expect(by128).toHaveLength(1440);
+    expect(by128[0]).toBe(1);
+    expect(by128[1439]).toBe(0);
   });
 });
 

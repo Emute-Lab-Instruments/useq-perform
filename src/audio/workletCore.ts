@@ -62,6 +62,14 @@
  *      for, the core re-derives every zone THROUGH the allocator and
  *      the arena view factory — it never replaces a shared-memory view
  *      with a disconnected local array.
+ *
+ *   9. A live NodeDef compute is failure-atomic. The core snapshots its
+ *      state before the call; trap, rejection, or non-finite output restores
+ *      the state, zeros the complete output zone, marks the instance errored,
+ *      and retries it on the next block. Sibling instances keep rendering.
+ *
+ *  10. Terminal ports accumulate in binary64. The emergency envelope is
+ *      applied there, then each final sample is converted to binary32 once.
  */
 
 import {
@@ -84,6 +92,9 @@ import type {
   WorkletAudioInputWiring,
   WorkletControlChannel,
   WorkletGraphActivatedEvent,
+  WorkletAbortGraphMessage,
+  WorkletActivateGraphMessage,
+  WorkletCommitGraphMessage,
   WorkletInstantiateMessage,
   WorkletInstanceRetiredEvent,
   WorkletInstanceTelemetry,
@@ -91,6 +102,7 @@ import type {
   WorkletOutboundEvent,
   WorkletPrefillParam,
   WorkletProducerTimeoutEvent,
+  WorkletPrepareGraphMessage,
   WorkletRetireMessage,
   WorkletTelemetrySnapshot,
   WorkletUpdateMessage,
@@ -211,6 +223,12 @@ export interface WorkletCoreOptions {
    */
   readonly createArenaView?: (byteOffset: number, lengthDoubles: number) => Float64Array;
   /**
+   * Factory for byte views over state zones. The core uses a preallocated
+   * byte-for-byte snapshot to make live compute calls failure-atomic without
+   * allocating in the steady-state render path.
+   */
+  readonly createArenaByteView?: (byteOffset: number, lengthBytes: number) => Uint8Array;
+  /**
    * Optional frequency control scratch (single double). In production
    * this is a view INTO the host-owned memory so the WASM compute call
    * reads the same bytes the core writes.
@@ -242,12 +260,20 @@ interface InstanceState {
   statePointer: number;
   /** Allocated state-zone byte length. */
   stateBytes: number;
+  /** Live byte view over the state zone. */
+  stateView: Uint8Array | null;
+  /** Preallocated rollback image for one compute call. */
+  stateSnapshot: Uint8Array;
   /** Adapter resolved at instantiate time. Cached for the hot path. */
   adapter: NodeDefAdapter | null;
   /** Active program epoch. Blocks whose epoch does not match are ignored. */
   epoch: number;
   /** Current fade stage. */
   lifecycle: "fade-in" | "active" | "fade-out" | "retired";
+  /** Most recent block-compute outcome. Failed nodes retry next block. */
+  health: "ok" | "error";
+  /** Fade-out reached its last sample; sweep after this block is mixed. */
+  retireAfterBlock: boolean;
   /** Frames remaining in the current fade (0 when steady). */
   fadeFramesRemaining: number;
   /** Total frames in the current fade (used to compute the envelope). */
@@ -300,6 +326,17 @@ interface InstanceState {
   released: boolean;
   /** Pooled telemetry entry (mutated in place every block). */
   telemetryEntry: MutableInstanceTelemetry;
+}
+
+interface PreparedGraphCandidate {
+  readonly transactionId: number;
+  readonly epoch: number;
+  readonly newInstances: Map<string, InstanceState>;
+  readonly updates: Map<string, WorkletUpdateMessage>;
+  readonly retireIdentities: Set<string>;
+  readonly order: InstanceState[];
+  readonly inputPointers: Map<InstanceState, number[]>;
+  readonly terminal: Map<InstanceState, boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -403,12 +440,16 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
    */
   let zoneFrames = renderQuantumFrames;
 
-  // Final mono output (Float32, core-local — Web Audio consumes Float32).
-  let outputScratch = new Float32Array(zoneFrames);
+  // Terminal ports and the emergency envelope accumulate in binary64;
+  // Web Audio receives one final binary32 conversion per sample.
+  const outputMixScratch = new Float64Array(MAX_RENDER_QUANTUM_FRAMES);
+  const outputScratch = new Float32Array(MAX_RENDER_QUANTUM_FRAMES);
 
   const arenaMode = typeof options.createArenaView === "function";
   const arenaView =
     options.createArenaView ?? ((_byteOffset: number, lengthDoubles: number) => new Float64Array(lengthDoubles));
+  const arenaByteView =
+    options.createArenaByteView ?? ((_byteOffset: number, lengthBytes: number) => new Uint8Array(lengthBytes));
 
   // Control-sample scratch (one double per block-rate channel). In
   // production these are views into the host-owned memory; the render
@@ -455,6 +496,9 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   const staged = new Map<string, InstanceState>();
   /** Precomputed post-activation execution order (swap at activation). */
   let stagedOrder: InstanceState[] | null = null;
+  let preparedCandidate: PreparedGraphCandidate | null = null;
+  let committedCandidate: PreparedGraphCandidate | null = null;
+  let committedCandidateEligible = false;
   let activeEpoch = 0;
   let pendingEpoch = 0;
   let blockCount = 0;
@@ -531,6 +575,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       e.version = inst.version;
       e.statePointer = inst.statePointer;
       e.lifecycle = inst.lifecycle;
+      e.health = inst.health;
       t.instances.push(e);
     }
     t.peakSample = peakSample;
@@ -677,6 +722,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       case "retire":
         handleRetire(msg as unknown as WorkletRetireMessage);
         break;
+      case "prepare-graph":
+        handlePrepareGraph(msg as unknown as WorkletPrepareGraphMessage);
+        break;
+      case "commit-graph":
+        handleCommitGraph(msg as unknown as WorkletCommitGraphMessage);
+        break;
+      case "abort-graph":
+        handleAbortGraph(msg as unknown as WorkletAbortGraphMessage);
+        break;
+      case "activate-graph":
+        handleActivateGraph(msg as unknown as WorkletActivateGraphMessage);
+        break;
       case "devmode-terminate-producer":
         handleDevmodeTerminateProducer();
         break;
@@ -684,6 +741,298 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         // Unknown message type: no-op (forward compatibility).
         break;
     }
+  }
+
+  function releaseCandidate(candidate: PreparedGraphCandidate): void {
+    for (const instance of candidate.newInstances.values()) {
+      releaseInstanceZones(instance);
+    }
+  }
+
+  function transactionAck(
+    transactionId: number,
+    phase: "prepare" | "commit" | "activate" | "abort",
+    ok: boolean,
+    reason?: string,
+  ): void {
+    publishEvent({
+      type: "graph-transaction-ack",
+      transactionId,
+      phase,
+      ok,
+      ...(reason ? { reason } : {}),
+    });
+  }
+
+  /** Allocate and initialise one candidate instance without touching live state. */
+  function prepareInstance(message: WorkletInstantiateMessage): InstanceState | string {
+    const id = message.identity;
+    let adapter: NodeDefAdapter | null = null;
+    try {
+      adapter = options.adapterFactory(id.def, id.version);
+    } catch {
+      publishEvent({
+        type: "graph-diagnostic",
+        code: "nodedef-trap",
+        identity: id.identity,
+      });
+      glitchCount += 1;
+      return `NodeDef ${id.def}@${id.version} trapped during adapter creation`;
+    }
+    if (!adapter) return `NodeDef ${id.def}@${id.version} is not installed`;
+    if (message.audioInputs?.length && typeof adapter.computeWithInputs !== "function") {
+      return `NodeDef ${id.def}@${id.version} cannot accept audio inputs`;
+    }
+    ensureSilenceZone();
+    const stateBytes = adapter.descriptor.stateBytes;
+    const statePointer = options.allocator.allocate(stateBytes, adapter.descriptor.stateAlign);
+    if (statePointer < 0) return "zone-exhausted";
+    const audioOutputs =
+      typeof message.audioOutputs === "number" && message.audioOutputs > 0
+        ? message.audioOutputs
+        : DEFAULT_AUDIO_OUTPUT_PORTS;
+    const outputZoneBytes = audioOutputs * zoneFrames * BYTES_PER_DOUBLE;
+    const outputZonePtr = options.allocator.allocate(outputZoneBytes, DOUBLE_ALIGN);
+    if (outputZonePtr < 0) {
+      options.allocator.release(statePointer);
+      return "zone-exhausted";
+    }
+    let initOk = false;
+    try {
+      initOk = adapter.init(statePointer, stateBytes);
+    } catch {
+      publishEvent({
+        type: "graph-diagnostic",
+        code: "nodedef-trap",
+        identity: id.identity,
+      });
+      glitchCount += 1;
+    }
+    if (!initOk) {
+      options.allocator.release(outputZonePtr);
+      options.allocator.release(statePointer);
+      return `NodeDef ${id.def}@${id.version} rejected its state layout`;
+    }
+    const outputView = arenaView(outputZonePtr, audioOutputs * zoneFrames);
+    outputView.fill(0);
+    const stateView = arenaByteView(statePointer, stateBytes);
+    return {
+      identity: id.identity,
+      def: id.def,
+      version: id.version,
+      statePointer,
+      stateBytes,
+      stateView,
+      stateSnapshot: new Uint8Array(stateBytes),
+      adapter,
+      epoch: id.epoch,
+      lifecycle: "fade-in",
+      health: "ok",
+      retireAfterBlock: false,
+      fadeFramesRemaining: fadeInFrames,
+      fadeFramesTotal: fadeInFrames,
+      fadeGainStart: 0,
+      fadeGainEnd: 1,
+      currentFreq: DEFAULT_FREQ,
+      currentAmp: DEFAULT_AMP,
+      prefill: buildPrefillMap(message.prefill),
+      audioOutputs,
+      inputWiring: message.audioInputs ?? EMPTY_WIRING,
+      inputPtrs: EMPTY_PTRS,
+      pendingInputPtrs: null,
+      outputZonePtr,
+      outputZoneBytes,
+      outputView,
+      isTerminal: true,
+      pendingIsTerminal: true,
+      controlChannels: buildControlChannelMap(message.controlChannels),
+      inputSupportWarned: false,
+      released: false,
+      telemetryEntry: {
+        identity: id.identity,
+        def: id.def,
+        version: id.version,
+        statePointer,
+        lifecycle: "fade-in",
+        health: "ok",
+      },
+    };
+  }
+
+  function handlePrepareGraph(message: WorkletPrepareGraphMessage): void {
+    if (
+      !Number.isSafeInteger(message.transactionId) || message.transactionId <= 0 ||
+      !Number.isSafeInteger(message.epoch) || message.epoch <= 0 ||
+      !Array.isArray(message.deltas)
+    ) {
+      transactionAck(message.transactionId, "prepare", false, "malformed transaction");
+      return;
+    }
+    if (committedCandidate) {
+      transactionAck(message.transactionId, "prepare", false, "a prior candidate awaits activation");
+      return;
+    }
+    if (preparedCandidate) {
+      releaseCandidate(preparedCandidate);
+      preparedCandidate = null;
+    }
+
+    const newInstances = new Map<string, InstanceState>();
+    const updates = new Map<string, WorkletUpdateMessage>();
+    const retireIdentities = new Set<string>();
+    const fail = (reason: string) => {
+      for (const instance of newInstances.values()) releaseInstanceZones(instance);
+      transactionAck(message.transactionId, "prepare", false, reason);
+    };
+    for (const delta of message.deltas) {
+      if (delta.type === "instantiate") {
+        const prepared = prepareInstance(delta);
+        if (typeof prepared === "string") {
+          fail(prepared);
+          return;
+        }
+        newInstances.set(delta.identity.identity, prepared);
+      } else if (delta.type === "update") {
+        const live = liveByIdentity.get(delta.identity.identity);
+        if (!live || live.def !== delta.identity.def || live.version !== delta.identity.version) {
+          fail(`no live instance matches update ${delta.identity.identity}`);
+          return;
+        }
+        updates.set(delta.identity.identity, delta);
+      } else if (delta.type === "retire") {
+        retireIdentities.add(delta.identity.identity);
+      } else {
+        fail("unknown graph delta");
+        return;
+      }
+    }
+
+    const targetByIdentity = new Map<string, InstanceState>();
+    for (const [identity, instance] of liveByIdentity) {
+      if (!retireIdentities.has(identity)) targetByIdentity.set(identity, instance);
+    }
+    for (const [identity, instance] of newInstances) targetByIdentity.set(identity, instance);
+    if (targetByIdentity.size > MAX_SYNTH_NODES) {
+      fail("node-limit");
+      return;
+    }
+
+    // Keep fading ancestors in the render order, then topologically order the
+    // candidate active set. Pointer plans live in the candidate, never in the
+    // current instances, until the matching epoch activates.
+    const order: InstanceState[] = executionOrder.filter((instance) =>
+      !targetByIdentity.has(instance.identity) ||
+      (retireIdentities.has(instance.identity) && newInstances.has(instance.identity)),
+    );
+    const target = Array.from(targetByIdentity.values());
+    const indegree = new Map<InstanceState, number>();
+    const adjacency = new Map<InstanceState, InstanceState[]>();
+    const wiringFor = (instance: InstanceState) =>
+      updates.get(instance.identity)?.audioInputs ?? instance.inputWiring;
+    for (const instance of target) {
+      indegree.set(instance, 0);
+      adjacency.set(instance, []);
+    }
+    for (const instance of target) {
+      for (const wire of wiringFor(instance)) {
+        const source = targetByIdentity.get(wire.sourceIdentity);
+        if (source && source !== instance) {
+          adjacency.get(source)!.push(instance);
+          indegree.set(instance, indegree.get(instance)! + 1);
+        }
+      }
+    }
+    const ready = target.filter((instance) => indegree.get(instance) === 0);
+    while (ready.length > 0) {
+      const instance = ready.shift()!;
+      order.push(instance);
+      for (const next of adjacency.get(instance)!) {
+        indegree.set(next, indegree.get(next)! - 1);
+        if (indegree.get(next) === 0) ready.push(next);
+      }
+    }
+    const retiringAncestorCount = executionOrder.filter((instance) =>
+      !targetByIdentity.has(instance.identity) ||
+      (retireIdentities.has(instance.identity) && newInstances.has(instance.identity)),
+    ).length;
+    if (order.length !== retiringAncestorCount + target.length) {
+      fail("candidate graph contains a cycle");
+      return;
+    }
+
+    const inputPointers = new Map<InstanceState, number[]>();
+    const consumed = new Set<InstanceState>();
+    for (const instance of target) {
+      const wiring = wiringFor(instance);
+      let maxPort = -1;
+      for (const wire of wiring) maxPort = Math.max(maxPort, wire.port);
+      const pointers = new Array<number>(maxPort + 1).fill(silencePtr);
+      for (const wire of wiring) {
+        const source = targetByIdentity.get(wire.sourceIdentity);
+        if (source) {
+          pointers[wire.port] =
+            source.outputZonePtr + wire.sourcePort * zoneFrames * BYTES_PER_DOUBLE;
+          consumed.add(source);
+        }
+      }
+      inputPointers.set(instance, pointers);
+    }
+    const terminal = new Map<InstanceState, boolean>();
+    for (const instance of target) terminal.set(instance, !consumed.has(instance));
+
+    preparedCandidate = {
+      transactionId: message.transactionId,
+      epoch: message.epoch,
+      newInstances,
+      updates,
+      retireIdentities,
+      order,
+      inputPointers,
+      terminal,
+    };
+    transactionAck(message.transactionId, "prepare", true);
+  }
+
+  function handleCommitGraph(message: WorkletCommitGraphMessage): void {
+    if (!preparedCandidate || preparedCandidate.transactionId !== message.transactionId) {
+      transactionAck(message.transactionId, "commit", false, "candidate is not prepared");
+      return;
+    }
+    committedCandidate = preparedCandidate;
+    preparedCandidate = null;
+    committedCandidateEligible = false;
+    pendingEpoch = committedCandidate.epoch;
+    transactionAck(message.transactionId, "commit", true);
+  }
+
+  function handleActivateGraph(message: WorkletActivateGraphMessage): void {
+    const ok = committedCandidate?.transactionId === message.transactionId;
+    if (ok) committedCandidateEligible = true;
+    if (!ok) {
+      transactionAck(
+        message.transactionId,
+        "activate",
+        false,
+        "candidate is not committed",
+      );
+    }
+  }
+
+  function handleAbortGraph(message: WorkletAbortGraphMessage): void {
+    let aborted = false;
+    if (preparedCandidate?.transactionId === message.transactionId) {
+      releaseCandidate(preparedCandidate);
+      preparedCandidate = null;
+      aborted = true;
+    }
+    if (committedCandidate?.transactionId === message.transactionId) {
+      releaseCandidate(committedCandidate);
+      committedCandidate = null;
+      committedCandidateEligible = false;
+      pendingEpoch = staged.size > 0 ? pendingEpoch : 0;
+      aborted = true;
+    }
+    transactionAck(message.transactionId, "abort", aborted, aborted ? undefined : "candidate not found");
   }
 
   function handleModuleTransfer(message: WorkletModuleTransferMessage): void {
@@ -744,6 +1093,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     }
     staged.clear();
     stagedOrder = null;
+    if (preparedCandidate) releaseCandidate(preparedCandidate);
+    if (committedCandidate) releaseCandidate(committedCandidate);
+    preparedCandidate = null;
+    committedCandidate = null;
+    committedCandidateEligible = false;
     liveByIdentity.clear();
     activeEpoch = 0;
     pendingEpoch = 0;
@@ -817,7 +1171,17 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     const adapterKey = `${id.def}@${id.version}`;
     let adapter = adapters.get(adapterKey) ?? null;
     if (!adapter) {
-      adapter = options.adapterFactory(id.def, id.version);
+      try {
+        adapter = options.adapterFactory(id.def, id.version);
+      } catch {
+        publishEvent({
+          type: "graph-diagnostic",
+          code: "nodedef-trap",
+          identity: id.identity,
+        });
+        glitchCount += 1;
+        return;
+      }
       if (adapter) {
         adapters.set(adapterKey, adapter);
       }
@@ -877,6 +1241,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     }
     const outputView = arenaView(outputZonePtr, audioOutputs * zoneFrames);
     outputView.fill(0);
+    const stateView =
+      statePointer >= 0 && stateBytes > 0 ? arenaByteView(statePointer, stateBytes) : null;
 
     const instance: InstanceState = {
       identity: id.identity,
@@ -884,9 +1250,13 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       version: id.version,
       statePointer,
       stateBytes,
+      stateView,
+      stateSnapshot: new Uint8Array(Math.max(0, stateBytes)),
       adapter,
       epoch: id.epoch,
       lifecycle: "fade-in",
+      health: "ok",
+      retireAfterBlock: false,
       fadeFramesRemaining: fadeInFrames,
       fadeFramesTotal: fadeInFrames,
       fadeGainStart: 0,
@@ -912,6 +1282,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         version: id.version,
         statePointer,
         lifecycle: "fade-in",
+        health: "ok",
       },
     };
 
@@ -919,7 +1290,17 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // `init` against the host-owned memory; failure fails closed (the
     // instance stays in `retired` and never renders).
     if (adapter && statePointer >= 0 && stateBytes > 0) {
-      const ok = adapter.init(statePointer, stateBytes);
+      let ok = false;
+      try {
+        ok = adapter.init(statePointer, stateBytes);
+      } catch {
+        publishEvent({
+          type: "graph-diagnostic",
+          code: "nodedef-trap",
+          identity: id.identity,
+        });
+        glitchCount += 1;
+      }
       if (!ok) {
         instance.lifecycle = "retired";
       }
@@ -1105,13 +1486,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     if (frameCount > zoneFrames) {
       growZones(frameCount);
     }
-    if (outputScratch.length < frameCount) {
-      outputScratch = new Float32Array(frameCount);
-    }
-
-    // Zero the output scratch. The TypedArray fill is implementation-
-    // optimised (typically a single memset) and does not allocate.
+    // Both scratch arrays are preallocated to MAX_RENDER_QUANTUM_FRAMES,
+    // so even a first-time quantum increase cannot allocate here.
     outputScratch.fill(0);
+    outputMixScratch.fill(0);
 
     // ---- Step 1: Read the SAB (acquire-only, never blocking) ----
     let consumedBlockEpoch = 0;
@@ -1201,7 +1579,58 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // last values) rather than render mismatched controls
     // (VAL-ENGINE-012). Activation is a prebuilt-array swap: the
     // topological plan was computed in the message handler.
-    if (staged.size > 0 && hasBlock) {
+    if (committedCandidate && hasBlock) {
+      if (!committedCandidateEligible) {
+        // The producer may have armed while the service is still waiting for
+        // the final activation acknowledgement. Candidate-layout blocks are
+        // drained but never exposed to the prior graph during this window.
+        if (consumedBlockEpoch === committedCandidate.epoch) hasBlock = false;
+      } else if (consumedBlockEpoch === committedCandidate.epoch) {
+        const candidate = committedCandidate;
+        for (const identity of candidate.retireIdentities) {
+          const live = liveByIdentity.get(identity);
+          if (live) {
+            startFadeOut(live, fadeOutFrames);
+            liveByIdentity.delete(identity);
+          }
+        }
+        for (const [identity, update] of candidate.updates) {
+          const live = liveByIdentity.get(identity);
+          if (!live) continue;
+          live.epoch = candidate.epoch;
+          live.prefill = buildPrefillMap(update.prefill);
+          if (update.controlChannels) {
+            live.controlChannels = buildControlChannelMap(update.controlChannels);
+          }
+          if (update.audioInputs) live.inputWiring = update.audioInputs;
+        }
+        for (const [identity, instance] of candidate.newInstances) {
+          liveByIdentity.set(identity, instance);
+        }
+        executionOrder = candidate.order;
+        for (const [instance, pointers] of candidate.inputPointers) {
+          instance.inputPtrs = pointers;
+        }
+        for (const [instance, terminal] of candidate.terminal) {
+          instance.isTerminal = terminal;
+        }
+        for (const instance of candidate.newInstances.values()) {
+          publishEvent({
+            type: "graph-activated",
+            identity: instance.identity,
+            epoch: candidate.epoch,
+            atBlock: blockCount,
+          });
+        }
+        activeEpoch = candidate.epoch;
+        pendingEpoch = 0;
+        committedCandidate = null;
+        committedCandidateEligible = false;
+        transactionAck(candidate.transactionId, "activate", true);
+      } else if (consumedBlockEpoch !== 0) {
+        hasBlock = false;
+      }
+    } else if (staged.size > 0 && hasBlock) {
       if (consumedBlockEpoch === pendingEpoch && pendingEpoch !== 0) {
         if (stagedOrder) {
           executionOrder = stagedOrder;
@@ -1260,7 +1689,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       for (let p = 0; p < inst.audioOutputs; p++) {
         const base = p * zoneFrames;
         for (let i = 0; i < frameCount; i++) {
-          outputScratch[i] += Number(view[base + i]);
+          outputMixScratch[i] += Number(view[base + i]);
         }
       }
     }
@@ -1275,18 +1704,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       for (let i = 0; i < frameCount; i++) {
         const t = i / frameCount;
         const gain = fadeStart + (fadeEnd - fadeStart) * t;
-        outputScratch[i] *= Math.max(0, gain);
+        outputMixScratch[i] *= Math.max(0, gain);
       }
       emergencyFadeFramesRemaining = Math.max(0, emergencyFadeFramesRemaining - frameCount);
       if (emergencyFadeFramesRemaining === 0) {
         // Exact silence (VAL-ENGINE-025).
         for (let i = 0; i < frameCount; i++) {
-          outputScratch[i] = 0;
+          outputMixScratch[i] = 0;
         }
       }
     } else if (producerTimeoutActive) {
       // Past the fade: hard zero.
-      outputScratch.fill(0);
+      outputMixScratch.fill(0);
     }
 
     // ---- Step 7: Compute peak / RMS / finite telemetry ----
@@ -1294,6 +1723,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     let sumSq = 0;
     let allFinite = true;
     for (let i = 0; i < frameCount; i++) {
+      outputScratch[i] = outputMixScratch[i];
       const s = outputScratch[i];
       if (!Number.isFinite(s)) {
         allFinite = false;
@@ -1350,6 +1780,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     let write = 0;
     for (let read = 0; read < executionOrder.length; read++) {
       const inst = executionOrder[read];
+      if (inst.retireAfterBlock) {
+        inst.retireAfterBlock = false;
+        inst.lifecycle = "retired";
+      }
       if (inst.lifecycle === "retired") {
         if (!inst.released) {
           repointConsumersToSilence(inst);
@@ -1401,7 +1835,19 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       const adapterKey = `${instance.def}@${instance.version}`;
       adapter = adapters.get(adapterKey) ?? null;
       if (!adapter) {
-        adapter = options.adapterFactory(instance.def, instance.version);
+        try {
+          adapter = options.adapterFactory(instance.def, instance.version);
+        } catch {
+          publishEvent({
+            type: "graph-diagnostic",
+            code: "nodedef-trap",
+            identity: instance.identity,
+          });
+          glitchCount += 1;
+          instance.lifecycle = "retired";
+          instance.outputView?.fill(0);
+          return;
+        }
         if (adapter) {
           adapters.set(adapterKey, adapter);
         }
@@ -1422,11 +1868,23 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
           );
         }
         if (instance.statePointer >= 0 && instance.stateBytes > 0) {
-          const initOk = adapter.init(instance.statePointer, instance.stateBytes);
+          let initOk = false;
+          try {
+            initOk = adapter.init(instance.statePointer, instance.stateBytes);
+          } catch {
+            publishEvent({
+              type: "graph-diagnostic",
+              code: "nodedef-trap",
+              identity: instance.identity,
+            });
+            glitchCount += 1;
+          }
           if (!initOk) {
             instance.lifecycle = "retired";
             return;
           }
+          instance.stateView = arenaByteView(instance.statePointer, instance.stateBytes);
+          instance.stateSnapshot = new Uint8Array(instance.stateBytes);
         }
       }
     }
@@ -1492,101 +1950,140 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // (VAL-CROSS-002 shared-memory link).
     const freqPtr = getPointerForFloat64(freqControlScratch);
     const ampPtr = getPointerForFloat64(ampControlScratch);
-    let ok: boolean;
-    if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
-      ok = adapter.computeWithInputs(
-        instance.statePointer,
-        instance.inputPtrs,
-        freqPtr,
-        ampPtr,
-        instance.outputZonePtr,
-        frameCount,
-      );
-    } else {
-      if (instance.inputPtrs.length > 0 && !instance.inputSupportWarned) {
-        instance.inputSupportWarned = true;
-        publishEvent({
-          type: "graph-diagnostic",
-          code: "missing-input-support",
-          identity: instance.identity,
-        });
-      }
-      ok = adapter.compute(
-        instance.statePointer,
-        freqPtr,
-        ampPtr,
-        instance.outputZonePtr,
-        frameCount,
-      );
-    }
-    if (!ok) {
-      // Compute failed (invalid frame count or trap). Mute the node and
-      // mark it retired (synthesis.md §3.6 trap containment); the rest
-      // of the graph continues.
-      instance.lifecycle = "retired";
-      glitchCount += 1;
+    const stateView = instance.stateView;
+    if (!stateView || stateView.byteLength !== instance.stateBytes) {
+      instance.health = "error";
       instance.outputView.fill(0);
       return;
     }
+    instance.stateSnapshot.set(stateView);
+    // Erase stale samples before giving the module its direct output view.
+    // A short write therefore cannot leak bytes from a prior successful block.
+    instance.outputView.fill(0);
 
-    // Apply the fade envelope in place on the zone so downstream
-    // consumers (and the terminal sum) both hear it.
-    const fadeGain = computeFadeGain(instance, frameCount);
-    if (fadeGain !== 1) {
+    let ok = false;
+    let failureCode: "nodedef-trap" | "nodedef-compute-rejected" | "nodedef-nonfinite-output" =
+      "nodedef-compute-rejected";
+    try {
+      if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
+        ok = adapter.computeWithInputs(
+          instance.statePointer,
+          instance.inputPtrs,
+          freqPtr,
+          ampPtr,
+          instance.outputZonePtr,
+          frameCount,
+        );
+      } else {
+        if (instance.inputPtrs.length > 0 && !instance.inputSupportWarned) {
+          instance.inputSupportWarned = true;
+          publishEvent({
+            type: "graph-diagnostic",
+            code: "missing-input-support",
+            identity: instance.identity,
+          });
+        }
+        ok = adapter.compute(
+          instance.statePointer,
+          freqPtr,
+          ampPtr,
+          instance.outputZonePtr,
+          frameCount,
+        );
+      }
+    } catch {
+      failureCode = "nodedef-trap";
+    }
+    if (ok) {
       const view = instance.outputView;
-      for (let p = 0; p < instance.audioOutputs; p++) {
+      outer: for (let p = 0; p < instance.audioOutputs; p++) {
         const base = p * zoneFrames;
         for (let i = 0; i < frameCount; i++) {
-          view[base + i] = Number(view[base + i]) * fadeGain;
+          if (!Number.isFinite(view[base + i])) {
+            ok = false;
+            failureCode = "nodedef-nonfinite-output";
+            break outer;
+          }
         }
       }
     }
+    if (!ok) {
+      // Failure-atomic block semantics: no partial state/output commits.
+      // Keep the node live so a transient module failure can recover on
+      // the next block without rebuilding the graph.
+      stateView.set(instance.stateSnapshot);
+      instance.health = "error";
+      glitchCount += 1;
+      instance.outputView.fill(0);
+      publishEvent({
+        type: "graph-diagnostic",
+        code: failureCode,
+        identity: instance.identity,
+      });
+      applyFadeEnvelope(instance, frameCount);
+      return;
+    }
+    instance.health = "ok";
+
+    // Apply the fade envelope in place on the zone so downstream
+    // consumers (and the terminal sum) both hear it.
+    applyFadeEnvelope(instance, frameCount);
   }
 
-  function computeFadeGain(instance: InstanceState, frameCount: number): number {
-    if (instance.lifecycle === "active") return 1;
-    if (instance.lifecycle === "retired") return 0;
+  /**
+   * Apply the instance envelope sample by sample. Gain is a pure function of
+   * the absolute fade-frame index, so splitting the same frame stream into
+   * different render quanta produces identical samples. Both endpoints are
+   * represented exactly: the first fade sample uses `fadeGainStart` and the
+   * last uses `fadeGainEnd`.
+   */
+  function applyFadeEnvelope(instance: InstanceState, frameCount: number): void {
+    if (instance.lifecycle === "active" || instance.lifecycle === "retired") return;
     if (instance.fadeFramesRemaining <= 0) {
-      // Fade complete: transition lifecycle.
       if (instance.lifecycle === "fade-in") {
         instance.lifecycle = "active";
-        instance.fadeFramesRemaining = 0;
-        return 1;
-      } else if (instance.lifecycle === "fade-out") {
-        instance.lifecycle = "retired";
-        instance.fadeFramesRemaining = 0;
-        return 0;
+      } else {
+        instance.retireAfterBlock = true;
       }
-      return 1;
+      return;
     }
+
     const remaining = instance.fadeFramesRemaining;
     const total = instance.fadeFramesTotal;
-    // Compute the gain at the START of this block. The fade continues
-    // across blocks so we advance the remaining counter after computing
-    // the per-sample envelope.
-    const startProgress = 1 - remaining / total;
-    const endProgress = 1 - Math.max(0, remaining - frameCount) / total;
-    const startGain = instance.fadeGainStart + (instance.fadeGainEnd - instance.fadeGainStart) * startProgress;
-    const endGain = instance.fadeGainStart + (instance.fadeGainEnd - instance.fadeGainStart) * endProgress;
-    // Advance the remaining counter. We cannot apply a per-sample envelope
-    // here without allocating; instead we apply the block-average gain
-    // (the midpoint). This is acceptable for 10 ms / 30 ms fades at 128-
-    // sample blocks: the worst-case envelope error is well below human
-    // perception and the fade endpoints are exact.
+    const elapsed = total - remaining;
+    const delta = instance.fadeGainEnd - instance.fadeGainStart;
+    const denominator = Math.max(1, total - 1);
+    const fadeSamples = Math.min(frameCount, remaining);
+    const view = instance.outputView;
+    if (view) {
+      for (let p = 0; p < instance.audioOutputs; p++) {
+        const base = p * zoneFrames;
+        for (let i = 0; i < fadeSamples; i++) {
+          const progress = total <= 1 ? 1 : (elapsed + i) / denominator;
+          const gain = instance.fadeGainStart + delta * progress;
+          view[base + i] = Number(view[base + i]) * gain;
+        }
+        for (let i = fadeSamples; i < frameCount; i++) {
+          view[base + i] = Number(view[base + i]) * instance.fadeGainEnd;
+        }
+      }
+    }
+
     instance.fadeFramesRemaining = Math.max(0, remaining - frameCount);
     if (instance.fadeFramesRemaining === 0) {
       if (instance.lifecycle === "fade-in") {
         instance.lifecycle = "active";
       } else if (instance.lifecycle === "fade-out") {
-        instance.lifecycle = "retired";
+        // The final zero-gain sample still belongs to this block. Defer
+        // retirement until terminal mixing has consumed the block.
+        instance.retireAfterBlock = true;
       }
     }
-    // Use the average of start and end gain.
-    return (startGain + endGain) / 2;
   }
 
   function startFadeOut(instance: InstanceState, frames: number): void {
     instance.lifecycle = "fade-out";
+    instance.retireAfterBlock = false;
     instance.fadeFramesRemaining = frames;
     instance.fadeFramesTotal = frames;
     instance.fadeGainStart = 1;
@@ -1595,6 +2092,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
   function retireImmediately(instance: InstanceState): void {
     instance.lifecycle = "retired";
+    instance.retireAfterBlock = false;
     instance.fadeFramesRemaining = 0;
     instance.fadeFramesTotal = 0;
   }
@@ -1651,6 +2149,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     instance.outputZonePtr = -1;
     instance.outputZoneBytes = 0;
     instance.outputView = null;
+    instance.stateView = null;
   }
 
   function reset(): void {
@@ -1661,6 +2160,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     liveByIdentity.clear();
     staged.clear();
     stagedOrder = null;
+    if (preparedCandidate) releaseCandidate(preparedCandidate);
+    if (committedCandidate) releaseCandidate(committedCandidate);
+    preparedCandidate = null;
+    committedCandidate = null;
+    committedCandidateEligible = false;
     silenceView = null;
     silencePtr = 0;
     activeEpoch = 0;

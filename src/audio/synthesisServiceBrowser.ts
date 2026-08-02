@@ -41,7 +41,10 @@ import {
 } from "./synthesisService";
 import type { NodeDefDescriptor } from "../contracts/nodeDefRegistry";
 import type { AudioCapabilitySnapshot } from "../contracts/audioCapabilities";
-import type { NodeDefModule } from "./nodeDefAdapter";
+import {
+  readNodeDefRuntimeDescriptor,
+  type NodeDefModule,
+} from "./nodeDefAdapter";
 
 // Minimal browser-global types. The real DOM lib types are available at
 // runtime; these aliases keep TypeScript happy without depending on the
@@ -430,128 +433,12 @@ async function buildNodeDefModuleFromCompiled(
     return undefined;
   };
 
-  // Read the registry JSON the module emits via `<def>_registry_json`.
-  // The export returns a pointer to a null-terminated UTF-8 string in
-  // the module's linear memory; we decode it by walking from the
-  // returned pointer until we hit a zero byte, then UTF-8 decode the
-  // slice. The JSON is bounded by the registry metadata size (a few
-  // hundred bytes for M1 defs).
-  const registryJsonFn = lookup("registry_json");
-  let runtimeDescriptor: NodeDefDescriptor;
-  if (typeof registryJsonFn !== "function") {
-    // The module did not export registry_json; fall back to the editor-
-    // side descriptor. The adapter still asserts equality, so this is
-    // safe — the editor descriptor and the runtime descriptor must match.
-    runtimeDescriptor = descriptor;
-  } else {
-    try {
-      const ptr = registryJsonFn();
-      runtimeDescriptor = decodeRegistryJsonAt(memory, ptr, descriptor);
-    } catch {
-      // Pointer read or JSON parse failed; fall back to the editor
-      // descriptor. The adapter still validates equality.
-      runtimeDescriptor = descriptor;
-    }
-  }
+  // Registry metadata is owned by the module. Missing/malformed metadata
+  // fails closed here; substituting the editor descriptor would validate a
+  // stale or incompatible artefact against itself.
+  const runtimeDescriptor = readNodeDefRuntimeDescriptor(memory, lookup);
 
   return { lookup, runtimeDescriptor };
-}
-
-/**
- * Decode the null-terminated UTF-8 registry JSON string the
- * `<def>_registry_json` export points at, and parse it as a
- * {@link NodeDefDescriptor}.
- *
- * Bounds the read at 64 KiB so a buggy module returning a wild pointer
- * cannot cause the host to scan gigabytes of zeros.
- *
- * Returns the parsed descriptor when the JSON is valid and the schema
- * check passes; otherwise returns the supplied `fallback` editor
- * descriptor (the adapter still asserts equality before use).
- */
-function decodeRegistryJsonAt(
-  memory: WebAssembly.Memory,
-  ptr: number,
-  fallback: NodeDefDescriptor,
-): NodeDefDescriptor {
-  if (!Number.isFinite(ptr) || ptr < 0) return fallback;
-  const view = new Uint8Array(memory.buffer, ptr, 64 * 1024);
-  // Find the null terminator.
-  let end = 0;
-  while (end < view.length && view[end] !== 0) end += 1;
-  if (end === 0 || end >= view.length) return fallback;
-  const bytes = view.subarray(0, end);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(new TextDecoder("utf-8").decode(bytes));
-  } catch {
-    return fallback;
-  }
-  // The C-side `<def>_registry_json()` emits snake_case keys
-  // (`audio_inputs`, `voice_fanout`, `fade_in_ms`, etc.); the host
-  // adapter consumes camelCase keys per `NodeDefDescriptor`. Normalise
-  // before schema validation.
-  const normalised = normaliseRegistryJson(parsed);
-  if (
-    normalised &&
-    typeof normalised === "object" &&
-    (normalised as { name?: unknown }).name === fallback.name &&
-    (normalised as { version?: unknown }).version === fallback.version
-  ) {
-    return normalised as unknown as NodeDefDescriptor;
-  }
-  return fallback;
-}
-
-/**
- * Convert a snake_case-keyed registry JSON payload (the C-side shape
- * emitted by `<def>_registry_json()`) into the camelCase
- * {@link NodeDefDescriptor} shape the host adapter consumes.
- *
- * Unknown keys are passed through unchanged; missing keys are left
- * undefined so the schema validator can reject the descriptor.
- */
-function normaliseRegistryJson(raw: unknown): Record<string, unknown> | null {
-  if (!raw || typeof raw !== "object") return null;
-  const src = raw as Record<string, unknown>;
-  const pick = (...keys: string[]): unknown => {
-    for (const k of keys) {
-      if (k in src) return src[k];
-    }
-    return undefined;
-  };
-  const paramsRaw = Array.isArray(src.params) ? src.params : [];
-  const params = paramsRaw.map((p: unknown): Record<string, unknown> => {
-    if (!p || typeof p !== "object") return {};
-    const pr = p as Record<string, unknown>;
-    const out: Record<string, unknown> = {};
-    if (typeof pr.name === "string") out.name = pr.name;
-    if (typeof pr.default === "number") out.default = pr.default;
-    if (typeof pr.rate === "string") out.rate = pr.rate;
-    if (typeof pr.smoothing === "string") out.smoothing = pr.smoothing;
-    if (typeof pr.points_per_block === "number") out.pointsPerBlock = pr.points_per_block;
-    else if (typeof pr.pointsPerBlock === "number") out.pointsPerBlock = pr.pointsPerBlock;
-    if (typeof pr.min === "number") out.min = pr.min;
-    if (typeof pr.max === "number") out.max = pr.max;
-    return out;
-  });
-  return {
-    name: pick("name"),
-    version: pick("version"),
-    audioInputs: pick("audio_inputs", "audioInputs"),
-    audioOutputs: pick("audio_outputs", "audioOutputs"),
-    voiceFanout: pick("voice_fanout", "voiceFanout"),
-    params,
-    fadeInMs: pick("fade_in_ms", "fadeInMs"),
-    fadeOutMs: pick("fade_out_ms", "fadeOutMs"),
-    stateBytes: pick("state_bytes", "stateBytes"),
-    stateAlign: pick("state_align", "stateAlign"),
-    controlStrideBytes: pick("control_stride", "controlStrideBytes", "control_stride_bytes"),
-    outputStrideBytes: pick("output_stride", "outputStrideBytes", "output_stride_bytes"),
-    minQuantum: pick("min_quantum", "minQuantum"),
-    maxQuantum: pick("max_quantum", "maxQuantum"),
-    sampleRate: pick("sample_rate", "sampleRate"),
-  };
 }
 
 // ---------------------------------------------------------------------------

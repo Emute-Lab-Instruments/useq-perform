@@ -115,6 +115,8 @@ export interface NodeDefDescriptor {
   readonly version: number;
   /** Audio input channel count. */
   readonly audioInputs: number;
+  /** Stable input-port names in numerical port order. */
+  readonly audioInputNames: readonly string[];
   /** Audio output channel count. */
   readonly audioOutputs: number;
   /** True when the def supports vector fan-out (synth-nodes.md §5.6). */
@@ -147,14 +149,14 @@ export interface NodeDefDescriptor {
 export type NodeDefParamTable = ReadonlyMap<string, NodeDefParamDescriptor>;
 
 // ---------------------------------------------------------------------------
-// Canonical registry — v1 minimal proof set (synth-nodes.md §2.4)
+// Canonical registry — v2 routed proof set (synth-nodes.md §2.4)
 // ---------------------------------------------------------------------------
 
 /**
- * The descriptor for the canonical `osc/sine` v1 NodeDef.
+ * The descriptor for the canonical `osc/sine` v2 NodeDef.
  *
  * Mirrors `osc_sine_registry_json()` in `src-useq/nodedef/osc_sine.h`:
- * zero audio inputs, one mono audio output, `freq`/`amp` block-rate
+ * one named `fm` audio input, one mono audio output, `freq`/`amp` block-rate
  * controls, FTZ, 10 ms / 30 ms fade defaults. Kept inline as the
  * `src/contracts` source of truth so the host adapter, the eval-to-engine
  * commit, and the worklet host all share one descriptor for the M1
@@ -166,8 +168,9 @@ export type NodeDefParamTable = ReadonlyMap<string, NodeDefParamDescriptor>;
  */
 export const OSC_SINE_NODEDEF_DESCRIPTOR: NodeDefDescriptor = Object.freeze({
   name: "osc/sine",
-  version: 1,
-  audioInputs: 0,
+  version: 2,
+  audioInputs: 1,
+  audioInputNames: Object.freeze(["fm"]),
   audioOutputs: 1,
   voiceFanout: false,
   params: Object.freeze([
@@ -263,6 +266,10 @@ export function isNodeDefDescriptor(value: unknown): value is NodeDefDescriptor 
     typeof v.name === "string" && v.name.length > 0 &&
     typeof v.version === "number" && Number.isInteger(v.version) && v.version > 0 &&
     typeof v.audioInputs === "number" && Number.isInteger(v.audioInputs) && v.audioInputs >= 0 &&
+    Array.isArray(v.audioInputNames) &&
+      v.audioInputNames.length === v.audioInputs &&
+      v.audioInputNames.every((name) => typeof name === "string" && name.length > 0) &&
+      new Set(v.audioInputNames).size === v.audioInputNames.length &&
     typeof v.audioOutputs === "number" && Number.isInteger(v.audioOutputs) && v.audioOutputs >= 0 &&
     typeof v.voiceFanout === "boolean" &&
     Array.isArray(v.params) && v.params.every(isNodeDefParamDescriptor) &&
@@ -310,6 +317,10 @@ export function nodeDefDescriptorsEqual(
   if (a.name !== b.name) return false;
   if (a.version !== b.version) return false;
   if (a.audioInputs !== b.audioInputs) return false;
+  if (a.audioInputNames.length !== b.audioInputNames.length) return false;
+  for (let i = 0; i < a.audioInputNames.length; i++) {
+    if (a.audioInputNames[i] !== b.audioInputNames[i]) return false;
+  }
   if (a.audioOutputs !== b.audioOutputs) return false;
   if (a.voiceFanout !== b.voiceFanout) return false;
   if (a.fadeInMs !== b.fadeInMs) return false;
