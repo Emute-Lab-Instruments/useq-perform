@@ -150,7 +150,7 @@ Both `src/effects/transportOrchestrator.ts` and `src/runtime/wasmInterpreter.ts`
 The following checks are the minimum guardrail against contract drift:
 
 - `src/contracts/wasmAbi.test.ts` verifies ABI contract consistency, tests validation against mock modules, and ensures required/runtime-probed export sets are disjoint. The pinned compiler's tracked build profile and generated capability manifest are the executable export inventory.
-- `src/contracts/generatedAssetPipeline.test.ts` verifies the compiler manifest names the exact clean gitlink and binds the exact built and served interpreter JS/WASM hashes and sizes. It explicitly does not attribute NodeDef provenance to that compiler manifest.
+- `src/contracts/generatedAssetPipeline.test.ts` verifies the compiler manifest names the exact clean gitlink and binds the exact built and served interpreter JS/WASM hashes and sizes. It also verifies compiler/application profile ownership, application source identity, and the served NodeDef clock contract without attributing NodeDef provenance to the compiler record.
 - `src/runtime/wasmInterpreter.test.ts` instantiates the generated `public/wasm/useq.js` bundle and verifies the batch helper raw exports are actually present.
 - `src/contracts/useqRuntimeContract.test.ts` verifies the shared command set and the hardware-only/WASM-only split.
 - `src-useq/test/hardware/test_json_protocol.cpp` verifies the `hello` I/O contract, `stream-config` output enablement/rate parsing, and that `hello`, `ping`, and `stream-config` parse without `code` while malformed eval requests still fail.
@@ -164,6 +164,6 @@ When firmware work starts in a standalone `uSEQ` clone:
 
 1. Land and validate the firmware change in the standalone repo.
 2. Promote it by advancing the `src-useq/` submodule in `useq-perform`.
-3. Rebuild both generated WASM targets and copy their artefacts: `npm run build:wasm` (Emscripten/emcc; interpreter capability manifest plus the separate `osc/sine` NodeDef) followed by `npm run build:assets`. The copy step fails unless the clean pinned compiler commit and exact source/served interpreter bytes match the manifest. The NodeDef remains a separately validated provenance domain.
+3. Rebuild both generated WASM targets and copy their artefacts: `npm run build:wasm` (Emscripten/emcc; interpreter capability manifest plus the separate `osc/sine` NodeDef) followed by `npm run build:assets`. The copy step fails unless the clean pinned compiler commit and exact source/served interpreter bytes match the compiler record; the application record then binds its own source state, the compiler record, NodeDef descriptor/clock contract, and worklet. Target-build evidence remains a separate profile.
 4. Cite the pinned `src-useq` commit in the `ergo` task, PR description, or release note for any editor change that depends on firmware behavior.
 5. Audit the submodule state first during any cross-repo investigation; standalone repos are advisory until step 2 is complete.

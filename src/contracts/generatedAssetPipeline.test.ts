@@ -91,6 +91,13 @@ function readRepoFile(relativePath: string): string {
 
 interface CompilerCapabilityManifest {
   readonly schema: string;
+  readonly profile_ownership: {
+    readonly profile: string;
+    readonly field_dispositions: Readonly<Record<string, {
+      readonly status: string;
+      readonly owner_profile: string;
+    }>>;
+  };
   readonly source: {
     readonly git_commit: string;
     readonly git_dirty: boolean;
@@ -127,6 +134,18 @@ function compilerManifest(base: string): CompilerCapabilityManifest {
 
 interface ServedBundleManifest {
   readonly schema: string;
+  readonly profile_ownership: {
+    readonly profile: string;
+    readonly field_dispositions: Readonly<Record<string, {
+      readonly status: string;
+      readonly owner_profile: string;
+    }>>;
+  };
+  readonly application: {
+    readonly git_commit: string;
+    readonly git_dirty: boolean;
+    readonly git_dirty_entries: readonly string[];
+  };
   readonly trust: {
     readonly authenticated: boolean;
     readonly scope: string;
@@ -143,9 +162,25 @@ interface ServedBundleManifest {
   readonly node_defs: readonly [{
     readonly artifact: string;
     readonly identity: string;
-    readonly descriptor: { readonly name: string; readonly version: number };
+    readonly descriptor: {
+      readonly name: string;
+      readonly version: number;
+      readonly sample_rate: number;
+      readonly min_quantum: number;
+      readonly max_quantum: number;
+    };
     readonly descriptor_sha256: string;
   }];
+  readonly runtime_contract: {
+    readonly activation_epoch: {
+      readonly encoding: string;
+      readonly field_width_bits: number;
+      readonly reserved_values: readonly number[];
+      readonly minimum_issued: number;
+      readonly maximum_issued: number;
+      readonly exhaustion: string;
+    };
+  };
 }
 
 function servedBundleManifest(base: string): ServedBundleManifest {
@@ -262,6 +297,27 @@ describe("VAL-CROSS-011: checksums link built and served bytes", () => {
       authenticated: false,
       scope: "exact-byte-identity-only",
     });
+    expect(manifest.profile_ownership).toMatchObject({
+      profile: "application-served-bundle",
+      field_dispositions: {
+        compiler_source_build_and_capabilities: {
+          status: "not-applicable",
+          owner_profile: "compiler-interpreter",
+        },
+        target_firmware_artifacts_and_resources: {
+          status: "not-applicable",
+          owner_profile: "firmware-build",
+        },
+      },
+    });
+    const appDirtyEntries = git([
+      "status", "--porcelain", "--untracked-files=no",
+    ]).split("\n").filter(Boolean).sort();
+    expect(manifest.application).toEqual({
+      git_commit: git(["rev-parse", "HEAD"]),
+      git_dirty: appDirtyEntries.length > 0,
+      git_dirty_entries: appDirtyEntries,
+    });
     expect(manifest.compiler).toMatchObject({
       capability_manifest_artifact: "wasm/useq-capabilities.json",
       capability_manifest_schema: "useq.compiler-capabilities/v1",
@@ -291,7 +347,13 @@ describe("VAL-CROSS-011: checksums link built and served bytes", () => {
     expect(manifest.node_defs[0]).toMatchObject({
       artifact: "wasm/osc_sine.wasm",
       identity: "osc/sine@2",
-      descriptor: { name: "osc/sine", version: 2 },
+      descriptor: {
+        name: "osc/sine",
+        version: 2,
+        sample_rate: 48_000,
+        min_quantum: 1,
+        max_quantum: 8_192,
+      },
     });
     expect(manifest.node_defs[0].descriptor_sha256).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -496,6 +558,15 @@ describe("VAL-DSP-015: osc/sine NodeDef is a separate build artefact", () => {
   it("compiler capability manifest makes no NodeDef provenance claim", () => {
     const manifest = compilerManifest(PUBLIC_WASM);
     expect(manifest.artifacts["wasm/osc_sine.wasm"]).toBeUndefined();
+    expect(manifest.profile_ownership).toMatchObject({
+      profile: "compiler-interpreter",
+      field_dispositions: {
+        node_def_descriptors: {
+          status: "not-applicable",
+          owner_profile: "application-served-bundle",
+        },
+      },
+    });
   });
 
   it("NodeDef and interpreter WASM are distinct artefacts (different bytes)", () => {

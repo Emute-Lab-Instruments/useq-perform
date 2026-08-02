@@ -1,7 +1,11 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const SERVED_BUNDLE_MANIFEST_SCHEMA = 'useq.served-bundle/v1';
+const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function fail(message) {
   throw new Error(`Invalid uSEQ served-bundle manifest: ${message}`);
@@ -38,6 +42,21 @@ function artifactRecord(filePath) {
     bytes: bytes.byteLength,
     sha256: sha256Bytes(bytes),
   });
+}
+
+function applicationSourceState() {
+  const runGit = (args) => execFileSync('git', ['-C', APP_ROOT, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+  const dirtyEntries = runGit([
+    'status', '--porcelain', '--untracked-files=no',
+  ]).split('\n').filter(Boolean).sort();
+  return {
+    git_commit: runGit(['rev-parse', 'HEAD']),
+    git_dirty: dirtyEntries.length > 0,
+    git_dirty_entries: dirtyEntries,
+  };
 }
 
 /** Read the module-owned NodeDef descriptor directly from its WASM bytes. */
@@ -107,11 +126,33 @@ export function buildServedBundleManifest({
   const identity = `${descriptor.name}@${descriptor.version}`;
   return {
     schema: SERVED_BUNDLE_MANIFEST_SCHEMA,
+    profile_ownership: {
+      profile: 'application-served-bundle',
+      owns: [
+        'application_source_identity',
+        'compiler_manifest_binding',
+        'interpreter_served_artifacts',
+        'node_def_descriptors_and_artifacts',
+        'sample_rate_and_render_quantum',
+        'audio_activation_and_worklet',
+      ],
+      field_dispositions: {
+        compiler_source_build_and_capabilities: {
+          status: 'not-applicable',
+          owner_profile: 'compiler-interpreter',
+        },
+        target_firmware_artifacts_and_resources: {
+          status: 'not-applicable',
+          owner_profile: 'firmware-build',
+        },
+      },
+    },
     trust: {
       authenticated: false,
       scope: 'exact-byte-identity-only',
       warning: 'Unsigned build record; it does not prove publisher or source authenticity.',
     },
+    application: applicationSourceState(),
     compiler: {
       capability_manifest_artifact: 'wasm/useq-capabilities.json',
       capability_manifest_schema: compilerManifest.schema,

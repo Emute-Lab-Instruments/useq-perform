@@ -364,11 +364,15 @@ The compiler manifest does not authenticate `osc_sine.wasm`: NodeDefs are
 separate build/provenance domains, copied byte-for-byte and admitted by their
 own module-owned metadata and export validation at load time. After bundling,
 the app deterministically emits `useq.served-bundle/v1`, which binds the exact
-compiler-manifest, interpreter JS/WASM, NodeDef WASM plus its module-emitted
-descriptor identity, and synthesis-worklet bytes. This record is explicitly
-unsigned (`authenticated: false`): it detects stale/mixed local outputs and
-gives experiments one complete served-bundle identity, but does not prove a
-publisher, source repository, or supply-chain authority.
+application source revision/state, compiler-manifest, interpreter JS/WASM,
+NodeDef WASM plus its module-emitted descriptor and sample-rate/render-quantum
+contract, activation-counter domain, and synthesis-worklet bytes. The compiler
+and application records explicitly assign non-applicable fields to the owning
+profile; target firmware artifacts/resources remain a separate target-build
+record. These records are explicitly unsigned (`authenticated: false`): they
+detect stale/mixed local outputs and give experiments complete profile-owned
+identities, but do not prove a publisher, source repository, or supply-chain
+authority.
 
 5.1.2 The app accepts compiler artifacts only after exhaustive structural
 validation against ABI 2 and the configured NodeDef registry: integer/string
