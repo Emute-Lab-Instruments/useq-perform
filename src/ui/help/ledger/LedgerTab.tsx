@@ -37,7 +37,7 @@ import {
 } from "../../../lib/witness/loader.ts";
 import type { ClauseVerdict, Witness, WitnessIndex } from "../../../lib/witness/types.ts";
 
-interface LedgerAssets {
+export interface LedgerAssets {
   corpus: SpecCorpus;
   index: WitnessIndex;
 }
@@ -49,14 +49,38 @@ async function loadAssets(): Promise<LedgerAssets> {
   return { corpus, index };
 }
 
-export function LedgerTab() {
-  const [assets] = createResource(loadAssets);
+export interface LedgerTabProps {
+  /** Asset loader override. Test/Inspector seam; defaults to the bundled assets. */
+  loadAssets?: () => Promise<LedgerAssets>;
+}
+
+export function LedgerTab(props: LedgerTabProps = {}) {
+  // Resolve the load failure into data rather than letting the resource
+  // reject: the Ledger renders the reason inline (a missing asset means
+  // `npm run build:assets` was not run), and an unread rejected resource
+  // would surface as an unhandled rejection.
+  const [assets] = createResource(
+    (): Promise<{ ok: LedgerAssets } | { error: string }> =>
+      (props.loadAssets ?? loadAssets)().then(
+        (ok) => ({ ok }),
+        (e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }),
+      ),
+  );
+
+  const loaded = () => {
+    const a = assets();
+    return a && "ok" in a ? a.ok : undefined;
+  };
+  const loadError = () => {
+    const a = assets();
+    return a && "error" in a ? a.error : undefined;
+  };
   const [view, setView] = createSignal<View>({ kind: "index" });
   // Witness list surfaced under a document, when a clause badge is inspected.
   const [inspectedClause, setInspectedClause] = createSignal<string | null>(null);
 
-  const index = () => assets()?.index;
-  const corpus = () => assets()?.corpus;
+  const index = () => loaded()?.index;
+  const corpus = () => loaded()?.corpus;
 
   const witnessByName = createMemo(() => {
     const idx = index();
@@ -282,14 +306,14 @@ export function LedgerTab() {
   return (
     <div class="ledger-tab">
       <Show
-        when={assets()}
+        when={loaded()}
         fallback={
           <Show
-            when={assets.error}
+            when={loadError()}
             fallback={<p class="ledger-loading">Loading the Engine Ledger…</p>}
           >
             <p class="ledger-error">
-              Could not load the Ledger assets: {String(assets.error)}. Run{" "}
+              Could not load the Ledger assets: {loadError()}. Run{" "}
               <code>npm run build:assets</code>.
             </p>
           </Show>
