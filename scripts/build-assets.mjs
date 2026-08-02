@@ -4,6 +4,7 @@
  *   - Reference data copy
  *   - WASM bundle copy
  *   - Synthesis AudioWorklet processor bundle (synthesisWorklet.ts → JS)
+ *   - Engine Ledger assets: conformance-witness index + language spec corpus
  *
  * Usage:
  *   node scripts/build-assets.mjs           # One-shot build
@@ -14,6 +15,8 @@ import fs from 'fs';
 import path from 'path';
 import { Marked } from 'marked';
 import * as esbuild from 'esbuild';
+import { buildWitnessIndex, CORPUS_DIR } from './harvest-witnesses.mjs';
+import { buildSpecCorpus, SPECS_DIR } from './harvest-specs.mjs';
 
 // --- Configuration ---
 
@@ -229,6 +232,11 @@ function buildAll() {
   copyReferenceData();
   copyUseqWasmBundle();
   copyFonts();
+  // Engine Ledger assets (witnesses.md §3, engine-ledger.md §2). A witness
+  // that cannot be indexed is drift by definition, so these throw on
+  // validation failure rather than degrading silently.
+  buildWitnessIndex();
+  buildSpecCorpus();
   // The worklet bundle is async. buildAll returns a Promise that the
   // Vite build waits on via `npm run build:assets && vite build`.
   console.log('Assets build complete.');
@@ -291,6 +299,24 @@ function watchMode() {
       scheduleSynthesisWorkletBundle();
     });
     console.log(`Watching ${synthesisAudioDir}/ for synthesis worklet changes...`);
+  }
+
+  // Watch the language spec corpus and the conformance corpus so the Engine
+  // Ledger assets stay in step with the submodule during development.
+  for (const [dir, rebuild, label] of [
+    [SPECS_DIR, buildSpecCorpus, 'language spec corpus'],
+    [CORPUS_DIR, buildWitnessIndex, 'conformance corpus'],
+  ]) {
+    if (!fs.existsSync(dir)) continue;
+    fs.watch(dir, { recursive: true }, (_eventType, filename) => {
+      if (!filename) return;
+      try {
+        rebuild();
+      } catch (error) {
+        console.error(`Failed to rebuild ${label}:`, error.message);
+      }
+    });
+    console.log(`Watching ${dir}/ for ${label} changes...`);
   }
 
   const synthesisContractFiles = [
