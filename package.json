@@ -62,6 +62,8 @@
   "scripts": {
     "build": "npm run build:wasm && npm run build:assets && vite build",
     "build:assets": "node scripts/build-assets.mjs",
+    "harvest:witnesses": "node scripts/harvest-witnesses.mjs",
+    "harvest:specs": "node scripts/harvest-specs.mjs",
     "build:wasm": "cd src-useq && ./scripts/build_wasm.sh && ./nodedef/build_osc_sine_wasm.sh",
     "src-useq:status": "node scripts/src-useq-status.mjs",
     "watch": "npm run build:wasm && npm-run-all --parallel watch:assets watch:vite",
