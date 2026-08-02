@@ -54,6 +54,9 @@ Before working on a feature, find and read the relevant spec(s). Match by keywor
 | state identity, stateful expressions, anonymous state, IDs, stable ID, identity tracking, state slot, refactor state | `docs/specs/state-identity.md` |
 | runtime contract, WASM ABI, capability split, firmware contract, exports, imports, boundary, API surface, interface | `docs/specs/runtime-contract.md` |
 | synthesis, audio engine, sound, standalone, AudioWorklet, worklet, Faust, NodeDef, node card, patch graph, control transport, SAB, audio thread, DSP, voice, browser synth | `docs/specs/synthesis.md` |
+| witness, conformance corpus, clause mapping, witness runner, harvest, witnessRef, drift badge | `docs/specs/witnesses.md` |
+| engine ledger, living spec, spec tab, clause badge, spec drift, glass compiler, explain trace | `docs/specs/engine-ledger.md` |
+| the machine, machine schematic, mental model, how useq thinks, guide chapter 0, six ideas, LKG demo | `docs/specs/the-machine.md` |
 
 **Language/firmware specs** (in `src-useq/docs/specs/`):
 

@@ -202,6 +202,12 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.31 [synthesis.md](synthesis.md) — (accepted v1) browser modular audio engine: NodeDef registry (Faust-authored DSP behind a source-agnostic contract), single-worklet host with shared-memory zones, Worker-hosted control producer over an epoch-tagged SAB ring (audio frame clock as master time), sample-accurate gate edges, upsert/document-sync eval lifecycle, resource limits and failure containment, audio as a WASM-requiring capability, phased editor integration (node cards, per-param vis, param widgets, graph overview). Language counterpart: `../../src-useq/docs/specs/synth-nodes.md`.
 
+6.32 [witnesses.md](witnesses.md) — (draft) shared witness substrate: the conformance corpus (`src-useq/test/conformance/`) as the single source both canonical representations render; harvest, in-app runner, isolation contract, guide coupling.
+
+6.33 [engine-ledger.md](engine-ledger.md) — (draft) developer-facing canonical representation: living spec corpus in-app, per-clause witness badges, drift made visible; devmode-gated.
+
+6.34 [the-machine.md](the-machine.md) — (draft) user-facing canonical representation: live schematic of the signal model (six ideas, no-animation-without-a-real-event) plus guide chapter 0 "How uSEQ thinks".
+
 ---
 
 ## 7. Cross-References
