@@ -48,9 +48,11 @@ export {
   createStoredSettingsSnapshot,
   createConfigurationDocument,
   settingsPatchFromConfiguration,
+} from "./settings/normalization.ts";
+export {
   validateConfiguration,
   getConfigurationDiff,
-} from "./settings/normalization.ts";
+} from "./settings/configurationValidation.ts";
 
 // Persistence: read/write/clear, bypass detection, bootstrap
 export {

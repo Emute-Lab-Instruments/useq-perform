@@ -38,13 +38,20 @@ import { serialVisPaletteChangedChannel } from "../contracts/visualisationChanne
 import { addValueChangeListener, removeValueChangeListener } from "./mockControlInputs.ts";
 import { hwInputStream } from "../contracts/hardwareChannels.ts";
 import {
-  PROJECTION_MODE_NONE,
-  PROJECTION_MODE_RESET_FILL,
-  PROJECTION_MODE_EXTEND,
   OutputClass,
   type ProjectionMode,
   type OutputClassification,
 } from "../contracts/runtimePorts";
+import {
+  planProjection,
+  PROJECTION_MODE_EXTEND,
+  PROJECTION_MODE_RESET_FILL,
+} from "./visualisationProjectionPlan";
+import {
+  summarizeFutureBuffer,
+  summarizeProjectionSamples,
+} from "./visualisationProjectionTrace";
+import { applyProjectionSamples } from "./visualisationBufferApplication";
 import type { VisExpression, VisSample, VisSettings } from "../utils/visualisationStore.ts";
 import {
   visStore,
@@ -461,19 +468,6 @@ function futureBoundaryMaxGapSeconds(futureDensityHz: number): number {
   return FUTURE_BOUNDARY_GAP_SAMPLE_MULTIPLIER / safeHz;
 }
 
-function futureExtensionSampleCount(
-  origin: number,
-  projectEnd: number,
-  futureDensityHz: number,
-  minimumBatchSize: number,
-): number {
-  const duration = Math.max(0, projectEnd - origin);
-  return Math.max(
-    minimumBatchSize,
-    Math.ceil(duration * Math.max(1, futureDensityHz)),
-  );
-}
-
 function futureBufferHasNearBoundaryCoverage(
   buf: PastBuffer | undefined,
   currentTime: number,
@@ -502,18 +496,10 @@ function applyResetFillSamples(
     resetApplyOutputs === null || resetApplyOutputs.has(name);
   const buf = ensureFutureBuffer(name);
   const appendAfterTime = shouldResetBuffer ? -Infinity : buf.newestTime;
-  if (shouldResetBuffer) buf.clear();
-
-  let actualFrontier = projectionFrontier;
-  for (let i = 0; i < samples.length; i++) {
-    const sample = samples[i];
-    // m2 fix (spec §6.4): truncate trace on first non-finite value.
-    if (!Number.isFinite(sample.value)) break;
-    if (shouldResetBuffer || sample.time > appendAfterTime) {
-      buf.push(sample.time, sample.value);
-    }
-    actualFrontier = Math.max(actualFrontier, sample.time);
-  }
+  const application = applyProjectionSamples(buf, samples, {
+    reset: shouldResetBuffer,
+  });
+  const actualFrontier = Math.max(projectionFrontier, application.frontier);
 
   if (import.meta.env.DEV) {
     projectionTrace.record("sampler-buffer-apply", {
@@ -535,86 +521,14 @@ function futureBufferTraceSummary(
   name: string,
   currentTime: number,
 ): Record<string, unknown> {
-  const buf = futureBuffers.get(name);
-  if (!buf) {
-    return { length: 0, exists: false };
-  }
-  let firstFutureTime: number | null = null;
-  let firstFutureValue: number | null = null;
-  let firstFutureIndex: number | null = null;
-  let expiredCount = 0;
-  for (let i = 0; i < buf.length; i++) {
-    const t = buf.timeAt(i);
-    if (t <= currentTime) {
-      expiredCount++;
-      continue;
-    }
-    firstFutureTime = t;
-    firstFutureValue = buf.valueAt(i);
-    firstFutureIndex = i;
-    break;
-  }
-  return {
-    exists: true,
-    length: buf.length,
-    capacity: buf.capacity,
-    oldestTime: buf.oldestTime,
-    newestTime: buf.newestTime,
-    expiredCount,
-    firstFutureIndex,
-    firstFutureTime,
-    firstFutureValue,
-    firstFutureGap: firstFutureTime === null ? null : firstFutureTime - currentTime,
-  };
+  return summarizeFutureBuffer(futureBuffers.get(name), currentTime);
 }
 
 function sampleTraceSummary(
   samples: VisSample[] | undefined,
   currentTime: number,
 ): Record<string, unknown> {
-  if (!samples || samples.length === 0) {
-    return { count: 0 };
-  }
-  let firstFiniteIndex: number | null = null;
-  let lastFiniteIndex: number | null = null;
-  let nonFiniteIndex: number | null = null;
-  let minValue = Infinity;
-  let maxValue = -Infinity;
-  for (let i = 0; i < samples.length; i++) {
-    const value = samples[i].value;
-    if (!Number.isFinite(value)) {
-      if (nonFiniteIndex === null) nonFiniteIndex = i;
-      continue;
-    }
-    if (firstFiniteIndex === null) firstFiniteIndex = i;
-    lastFiniteIndex = i;
-    if (value < minValue) minValue = value;
-    if (value > maxValue) maxValue = value;
-  }
-  const first = samples[0];
-  const last = samples[samples.length - 1];
-  const detail: Record<string, unknown> = {
-    count: samples.length,
-    firstTime: first.time,
-    firstGap: first.time - currentTime,
-    firstValue: first.value,
-    lastTime: last.time,
-    lastGap: last.time - currentTime,
-    lastValue: last.value,
-    firstFiniteIndex,
-    lastFiniteIndex,
-    nonFiniteIndex,
-    minValue: minValue === Infinity ? null : minValue,
-    maxValue: maxValue === -Infinity ? null : maxValue,
-  };
-  if (projectionTrace.shouldCaptureSamples()) {
-    detail.samples = samples.map((sample) => ({
-      time: sample.time,
-      gap: sample.time - currentTime,
-      value: sample.value,
-    }));
-  }
-  return detail;
+  return summarizeProjectionSamples(samples, currentTime);
 }
 
 // ── Tick & Project ──────────────────────────────────────────────────
@@ -685,52 +599,43 @@ export async function tickAndProject(
     ]))
     : {};
 
-  // Decide projection mode.
-  let needsResetFill = projectFuture && futureInvalidated;
+  // Decide projection mode without performing runtime or buffer work.
   let resetApplyOutputs: Set<string> | null =
-    needsResetFill && invalidatedFutureOutputs !== null
+    futureInvalidated && invalidatedFutureOutputs !== null
       ? new Set(outputs.filter((name) => invalidatedFutureOutputs?.has(name)))
       : null;
-  if (projectFuture && !needsResetFill && !noUserOutputs) {
-    for (const name of outputs) {
-      const fb = futureBuffers.get(name);
-      if (
-        !fb ||
-        fb.length < 2 ||
-        !futureBufferHasNearBoundaryCoverage(fb, timeSeconds, maxBoundaryGap)
-      ) {
-        needsResetFill = true;
-        resetApplyOutputs = null;
-        break;
-      }
-    }
-  }
-
-  // Lever 1 (adaptive quality, spec §1.7/§9.2): under sustained frame
-  // pressure, skip non-urgent lead/guard extension while the visible future
-  // window remains covered. Once the frontier falls inside the visible
-  // window's guard band, extension is urgent and must run even under pressure;
-  // otherwise the drawn future line visibly ages into a growing far-edge gap.
-  const visibleFutureEdgeWithGuard =
-    timeSeconds + halfWindow + FRONTIER_GUARD_BAND_SECONDS;
-  const skipProjection =
-    !projectFuture ||
-    (
-      !needsResetFill &&
-      !noUserOutputs &&
-      shouldSkipFutureEdgePush() &&
-      projectionFrontier >= visibleFutureEdgeWithGuard
-    );
-
-  // Spec §3.8: frontier coverage with guard band. The frontier is
-  // "adequate" when it covers futureEdge + guardBand. Extension is only
-  // needed when the frontier falls short of that target.
-  const futureEdgeWithGuard = futureEdge + FRONTIER_GUARD_BAND_SECONDS;
-  const needsExtension =
-    !needsResetFill &&
-    !noUserOutputs &&
-    !skipProjection &&
-    projectionFrontier < futureEdgeWithGuard;
+  const allOutputsCoverBoundary = noUserOutputs || outputs.every((name) => {
+    const buffer = futureBuffers.get(name);
+    return !!buffer &&
+      buffer.length >= 2 &&
+      futureBufferHasNearBoundaryCoverage(
+        buffer,
+        timeSeconds,
+        maxBoundaryGap,
+      );
+  });
+  const plan = planProjection({
+    timeSeconds,
+    futureEdge,
+    halfWindow,
+    guardBandSeconds: FRONTIER_GUARD_BAND_SECONDS,
+    projectFuture,
+    noUserOutputs,
+    futureInvalidated,
+    allOutputsCoverBoundary,
+    adaptiveSkipRequested: shouldSkipFutureEdgePush(),
+    projectionFrontier,
+    futureDensityHz,
+    extensionBatchSize: settings.extensionBatchSize,
+  });
+  if (plan.boundaryForcedReset) resetApplyOutputs = null;
+  const {
+    needsResetFill,
+    skipProjection,
+    needsExtension,
+    futureEdgeWithGuard,
+    visibleFutureEdgeWithGuard,
+  } = plan;
 
   if (import.meta.env.DEV) {
     projectionTrace.record("sampler-decision", {
@@ -757,46 +662,13 @@ export async function tickAndProject(
   // ── Combined path (projection-fork ABI) ──────────────────────────
   const portCaps = wasmPort().capabilities();
   if (portCaps.supportsTickAndProject) {
-    let projMode: ProjectionMode;
-    let projectEnd: number;
-    let numSamples: number;
-    let origin: number;
-    let modeLabel: string;
-
-    if (noUserOutputs || skipProjection) {
-      projMode = PROJECTION_MODE_NONE;
-      projectEnd = timeSeconds;
-      numSamples = 0;
-      origin = timeSeconds;
-      modeLabel = noUserOutputs ? "no-outputs" : "skip";
-    } else if (needsResetFill) {
-      projMode = PROJECTION_MODE_RESET_FILL;
-      projectEnd = futureEdge;
-      numSamples = Math.max(
-        2,
-        Math.ceil((futureEdge - timeSeconds) * futureDensityHz),
-      );
-      origin = timeSeconds;
-      modeLabel = "reset-fill";
-    } else if (needsExtension) {
-      projMode = PROJECTION_MODE_EXTEND;
-      projectEnd = futureEdgeWithGuard;
-      origin = projectionFrontier;
-      numSamples = futureExtensionSampleCount(
-        origin,
-        projectEnd,
-        futureDensityHz,
-        settings.extensionBatchSize,
-      );
-      modeLabel = "extend";
-    } else {
-      // Frontier already covers futureEdge + guard band — tick only.
-      projMode = PROJECTION_MODE_NONE;
-      projectEnd = timeSeconds;
-      numSamples = 0;
-      origin = timeSeconds;
-      modeLabel = "frontier-adequate";
-    }
+    const {
+      mode: projMode,
+      modeLabel,
+      projectEnd,
+      origin,
+      sampleCount: numSamples,
+    } = plan.request;
     if (import.meta.env.DEV) perf.count(`sampler-mode-${modeLabel}`);
     if (import.meta.env.DEV) {
       projectionTrace.record("sampler-mode", {
@@ -882,12 +754,10 @@ export async function tickAndProject(
           const samples = combined.projectionSamples.get(name);
           if (!samples || samples.length === 0) continue;
           const buf = ensureFutureBuffer(name);
-          for (let i = 0; i < samples.length; i++) {
-            // m2 fix (spec §6.4): truncate trace on first non-finite value.
-            if (!Number.isFinite(samples[i].value)) break;
-            buf.push(samples[i].time, samples[i].value);
-            actualFrontier = Math.max(actualFrontier, samples[i].time);
-          }
+          const application = applyProjectionSamples(buf, samples, {
+            reset: false,
+          });
+          actualFrontier = Math.max(actualFrontier, application.frontier);
           if (import.meta.env.DEV) {
             projectionTrace.record("sampler-buffer-apply", {
               path: "combined",
