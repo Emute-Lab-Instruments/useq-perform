@@ -55,7 +55,7 @@ layer: behavioural
 1.13 **Profile import/export.** Profiles serialise to `{ version: 1, baseProfile, overrides, gamepadOverrides }`. Profiles may be imported via JSON file or `?keymap=base64...` URL parameter; the URL profile is decoded at boot and merged into `settings.keybindings` (see `src/lib/keybindings/profiles.ts`, `src/runtime/applyKeymapFromUrl.ts`, called from `src/runtime/bootstrap.ts`).
 &nbsp;&nbsp;&nbsp;&nbsp;1.13.1 **Known gap:** persisted/imported `overrides` are written to settings but are *not* yet replayed into the live `resolver` (`src/editors/keymaps.ts`) at boot — the resolver is currently only mutated by interactive rebinds in the keybindings panel. Boot-time application of `settings.keybindings.overrides` to the resolver is unimplemented.
 
-1.14 **Backwards passthrough.** Bindings from third-party keymaps (`@nextjournal/clojure-mode`) that are not explicitly wrapped in the registry are passed through unmodified, with a startup warning logged for unrecognised actions. Passthrough bindings must not include keys where the command router enforces policy (Backspace, Delete, Enter, bracket keys) — see [input-dispatch.md](input-dispatch.md) §3.6 and §7.3. (see `src/editors/keymaps.ts`)
+1.14 **Backwards passthrough.** Bindings from third-party keymaps (`@nextjournal/clojure-mode`) that are not explicitly wrapped in the registry are passed through unmodified. The current passthrough set is audited; a startup warning is logged only when a dependency upgrade introduces an unrecognised binding. Passthrough bindings must not include keys where the command router enforces policy (Backspace, Delete, Enter, bracket keys) — see [input-dispatch.md](input-dispatch.md) §3.6 and §7.3. (see `src/editors/keymaps.ts`)
 
 ## 2. Implementation Map
 

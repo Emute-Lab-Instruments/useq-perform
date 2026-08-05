@@ -2,6 +2,10 @@ import './setup.mjs';
 import { expect } from 'chai';
 import { createApp } from '../src/runtime/appLifecycle.ts';
 import { resolveBootstrapPlan } from '../src/runtime/bootstrap.ts';
+import {
+  getActiveWasmRuntimePort,
+  setActiveWasmRuntimePort,
+} from '../src/runtime/activeWasmRuntimePort.ts';
 
 var defaultEnvironmentState = {
   areInBrowser: true,
@@ -26,8 +30,21 @@ describe('Warnings', () => {
             startLocallyWithoutHardware: true,
         });
 
+        const previousPort = getActiveWasmRuntimePort();
+        setActiveWasmRuntimePort({
+          ...previousPort,
+          ensureLoaded: async () => {},
+          sendTransportCommand: async () => {},
+          setHwInputValue: async () => {},
+        });
+
         let app = createApp(null, environmentState, plan);
-        await app.start();
+        try {
+          await app.start();
+        } finally {
+          await app.stop();
+          setActiveWasmRuntimePort(previousPort);
+        }
 
         expect(app.modals).to.not.have.property('webserialWarning');
     });

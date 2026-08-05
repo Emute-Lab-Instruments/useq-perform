@@ -110,18 +110,28 @@ const remappedKeys = new Set([
 const remainingClojureBindings = completeClojureKeymap
   .filter((b: any) => !remappedKeys.has(b.key) && !policyKeys.has(b.key));
 
-// keybindings.md §1.14: third-party (`@nextjournal/clojure-mode`) bindings that
-// are not wrapped in the action registry are passed through unmodified, with a
-// one-time startup warning logged for the unrecognised keys so the set is
-// auditable rather than silent.
-if (remainingClojureBindings.length > 0) {
-  const passthroughKeys = remainingClojureBindings
-    .map((b: any) => b.key)
-    .filter((k: unknown): k is string => typeof k === "string");
+// keybindings.md §1.14: the current third-party passthrough surface is audited.
+// Warn only when an upgrade adds a binding we have not reviewed; the known set
+// is intentional startup configuration, not an exceptional condition.
+const auditedClojurePassthroughKeys = new Set([
+  "Tab", "Alt-ArrowLeft", "Alt-ArrowUp", "Mod-1", "Mod-Shift-k",
+  "Mod-Shift-j", "Alt-ArrowRight", "Alt-s", "Alt-ArrowDown", "Mod-2",
+  "ArrowDown", "Mod-a", "End", "Home", "ArrowLeft", "Mod-End",
+  "Mod-Backspace", "Mod-Delete", "PageDown", "PageUp", "Mod-u",
+  "ArrowRight", "ArrowUp", "Mod-Home",
+]);
+const unrecognisedPassthroughKeys = remainingClojureBindings
+  .map((binding: any) => binding.key)
+  .filter(
+    (key: unknown): key is string =>
+      typeof key === "string" && !auditedClojurePassthroughKeys.has(key),
+  );
+
+if (unrecognisedPassthroughKeys.length > 0) {
   console.warn(
-    `[keybindings] ${passthroughKeys.length} clojure-mode binding(s) passed through ` +
+    `[keybindings] ${unrecognisedPassthroughKeys.length} clojure-mode binding(s) passed through ` +
       `without an action-registry wrapper (keybindings.md §1.14): ` +
-      passthroughKeys.join(", "),
+      unrecognisedPassthroughKeys.join(", "),
   );
 }
 

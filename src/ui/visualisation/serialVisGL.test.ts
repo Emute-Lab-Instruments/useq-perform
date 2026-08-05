@@ -130,12 +130,11 @@ describe("parseColor", () => {
     expect(first).toBe(second);
   });
 
-  it("returns white as fallback for unknown colors without a DOM", () => {
-    // In Vitest jsdom, the canvas fallback may or may not work.
-    // With a real DOM (jsdom), named colors go through the canvas path.
-    const result = parseColor("rgb(128, 0, 255)");
-    expect(result).toHaveLength(3);
-    expect(result.every((v) => v >= 0 && v <= 1)).toBe(true);
+  it("parses numeric rgb() colors without a canvas fallback", () => {
+    const [r, g, b] = parseColor("rgb(128, 0, 255)");
+    expect(r).toBeCloseTo(128 / 255, 5);
+    expect(g).toBe(0);
+    expect(b).toBe(1);
   });
 
   it("handles mixed-case hex", () => {

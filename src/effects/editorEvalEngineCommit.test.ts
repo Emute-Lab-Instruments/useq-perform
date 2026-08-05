@@ -107,6 +107,7 @@ vi.mock("../lib/manualControlState.ts", () => ({
   mapManualControlBindingsThroughChanges: vi.fn(),
 }));
 vi.mock("../runtime/startupContext.ts", () => ({
+  getAudioCapabilitySnapshot: () => null,
   getStartupFlagsSnapshot: () => ({
     debug: false,
     devmode: false,

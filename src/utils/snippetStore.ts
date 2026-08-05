@@ -1,5 +1,4 @@
 import { createStore } from "solid-js/store";
-import { createEffect } from "solid-js";
 import { load, save, saveRaw, loadRaw, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 
 export interface Snippet {
@@ -142,12 +141,14 @@ export const [snippetStore, setSnippetStore] = createStore({
   nextId: initialState.nextId,
 });
 
-// Persistence
-createEffect(() => {
+function persistSnippetStore() {
   save(PERSISTENCE_KEYS.snippets, snippetStore.snippets);
   save(PERSISTENCE_KEYS.snippetsStarred, Array.from(snippetStore.starred));
   saveRaw(PERSISTENCE_KEYS.snippetsNextId, snippetStore.nextId.toString());
-});
+}
+
+// Persist seeded defaults without creating a process-lifetime Solid owner.
+persistSnippetStore();
 
 export const addSnippet = (snippet: Omit<Snippet, "id" | "createdAt">) => {
   const newSnippet: Snippet = {
@@ -157,10 +158,12 @@ export const addSnippet = (snippet: Omit<Snippet, "id" | "createdAt">) => {
   };
   setSnippetStore("snippets", (s) => [...s, newSnippet]);
   setSnippetStore("nextId", (n) => n + 1);
+  persistSnippetStore();
 };
 
 export const updateSnippet = (id: number, updates: Partial<Omit<Snippet, "id" | "createdAt">>) => {
   setSnippetStore("snippets", (s) => s.id === id, updates);
+  persistSnippetStore();
 };
 
 export const deleteSnippet = (id: number) => {
@@ -170,6 +173,7 @@ export const deleteSnippet = (id: number) => {
     next.delete(id);
     return next;
   });
+  persistSnippetStore();
 };
 
 export const toggleStar = (id: number) => {
@@ -182,4 +186,5 @@ export const toggleStar = (id: number) => {
     }
     return next;
   });
+  persistSnippetStore();
 };

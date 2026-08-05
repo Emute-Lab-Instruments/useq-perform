@@ -92,11 +92,13 @@ vi.mock("../editors/extensions/evalHighlight.ts", () => ({
 
 vi.mock("./liveEditRuntime.ts", () => ({
   discoverSlotsAfterEval: vi.fn(() => Promise.resolve()),
+  resyncLiveSlotIndexAfterEval: vi.fn(),
   runBootReconciliation: vi.fn(),
 }));
 
 // noModuleMode: false ⇒ a real (hardware/'both') eval reaches the module.
 vi.mock("../runtime/startupContext.ts", () => ({
+  getAudioCapabilitySnapshot: () => null,
   getStartupFlagsSnapshot: () => ({ noModuleMode: false, devmode: false }),
 }));
 

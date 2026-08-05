@@ -162,6 +162,20 @@ export function parseColor(css: string): [number, number, number] {
     colorCache.set(css, out);
     return out;
   }
+  // Common CSS rgb() form does not need a DOM or canvas round-trip.
+  const rgb = css.match(
+    /^rgb\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)$/i,
+  );
+  if (rgb) {
+    const channel = (value: string) => Math.min(255, Number(value)) / 255;
+    const out: [number, number, number] = [
+      channel(rgb[1]),
+      channel(rgb[2]),
+      channel(rgb[3]),
+    ];
+    colorCache.set(css, out);
+    return out;
+  }
   // Fallback: bounce off a 1x1 2D canvas to resolve named/rgb()/hsl().
   if (typeof document === "undefined") {
     const fallback: [number, number, number] = [1, 1, 1];

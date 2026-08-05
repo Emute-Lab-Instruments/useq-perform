@@ -1,5 +1,4 @@
 import { createStore } from "solid-js/store";
-import { createEffect } from "solid-js";
 import { load, save, loadRaw, saveRaw, remove, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 export { type Version, parseVersionString, compareVersions } from "../lib/versionUtils.ts";
 import type { Version } from "../lib/versionUtils.ts";
@@ -37,22 +36,21 @@ export const [referenceStore, setReferenceStore] = createStore({
   error: null as string | null,
 });
 
-// Persistence
-createEffect(() => {
+function persistStarred() {
   save(PERSISTENCE_KEYS.referenceStarred, Array.from(referenceStore.starred));
-});
+}
 
-createEffect(() => {
+function persistExpanded() {
   save(PERSISTENCE_KEYS.referenceExpanded, Array.from(referenceStore.expanded));
-});
+}
 
-createEffect(() => {
+function persistTargetVersion() {
   if (referenceStore.targetVersion) {
     saveRaw(PERSISTENCE_KEYS.referenceVersion, referenceStore.targetVersion);
   } else {
     remove(PERSISTENCE_KEYS.referenceVersion);
   }
-});
+}
 
 export const toggleStarred = (name: string) => {
   setReferenceStore("starred", (s) => {
@@ -64,6 +62,7 @@ export const toggleStarred = (name: string) => {
     }
     return next;
   });
+  persistStarred();
 };
 
 export const toggleExpanded = (name: string) => {
@@ -76,10 +75,12 @@ export const toggleExpanded = (name: string) => {
     }
     return next;
   });
+  persistExpanded();
 };
 
 export const setTargetVersion = (version: string | null) => {
   setReferenceStore("targetVersion", version);
+  persistTargetVersion();
 };
 
 // ── Deduplicated loading guard ─────────────────────────────────────
