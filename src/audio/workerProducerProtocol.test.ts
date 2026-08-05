@@ -65,6 +65,29 @@ describe("workerProducerProtocol / VAL-ENGINE-001 (sole executor)", () => {
     expect(source).toContain("!wasmEnabled || !interpreter || producerRunning");
     expect(source).toContain("interpreter.tickSynthControls");
   });
+
+  it("shares interpreter policy with the main-thread adapter", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const workerSource = readFileSync(
+      resolve("src/runtime/workers/wasmRuntime.worker.ts"),
+      "utf8",
+    );
+    const mainSource = readFileSync(
+      resolve("src/runtime/wasmInterpreter.ts"),
+      "utf8",
+    );
+    for (const factory of [
+      "createWasmBatchEvaluator",
+      "createWasmLiveInputController",
+      "createWasmProbeController",
+    ]) {
+      expect(workerSource).toContain(factory);
+      expect(mainSource).toContain(factory);
+    }
+    expect(workerSource).not.toContain("function bindOptionalCwrap");
+    expect(mainSource).not.toContain("function bindOptionalCwrap");
+  });
 });
 
 describe("workerProducerProtocol / VAL-ENGINE-003 (transport mapping)", () => {

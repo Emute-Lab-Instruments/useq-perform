@@ -1,17 +1,23 @@
 import { dbg } from "../lib/debug.ts";
-import { perf } from "../lib/perfTrace.ts";
 import { getAppSettings } from "./appSettingsRepository.ts";
 import { TRANSPORT_STATE_TO_COMMAND } from "../contracts/useqRuntimeContract";
 import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
 import {
   assertWasmAbi,
-  probeOptionalWasmExport,
   REQUIRED_WASM_EXPORTS,
   OPTIONAL_WASM_EXPORTS,
   type WasmAbiValidation,
-  type CwrapDescriptor,
 } from "../contracts/wasmAbi";
 import type { ProjectionMode } from "../contracts/runtimePorts";
+import {
+  bindOptionalCwrap,
+  createWasmBatchEvaluator,
+  createWasmLiveInputController,
+  createWasmProbeController,
+  type EmscriptenModule,
+} from "./wasmInterpreterCore";
+
+export type { EmscriptenModule } from "./wasmInterpreterCore";
 
 /** Time-series sample point */
 export interface TimeSample {
@@ -56,16 +62,6 @@ export interface UseqWasmRuntimeGlobal {
    * that is stable until the next eval commits a new synth graph.
    */
   useq_synth_artifacts?: () => string;
-}
-
-// Emscripten module interface (minimal typing for what we use)
-export interface EmscriptenModule {
-  cwrap(symbol: string, returnType: string | null, argTypes: string[]): (...args: any[]) => any;
-  _malloc(size: number): number;
-  _free(pointer: number): void;
-  // Exposed via src-useq/wasm/emscripten-post.js so the typed batch bridge can
-  // read values written into the WASM heap without relying on stale copies.
-  HEAPF64: Float64Array;
 }
 
 /** Runtime interface for the instantiated WASM interpreter */
@@ -113,491 +109,6 @@ function isUseqWasmEnabled(): boolean {
   } catch (_e) {
     return true;
   }
-}
-
-function bindOptionalCwrap(
-  module: EmscriptenModule,
-  desc: CwrapDescriptor
-): ((...args: any[]) => any) | null {
-  if (!probeOptionalWasmExport(module, desc)) {
-    dbg(`useqWasmInterpreter: ${desc.symbol} is not available on this WASM bundle`);
-    return null;
-  }
-
-  try {
-    return module.cwrap(
-      desc.symbol,
-      desc.returnType,
-      desc.argTypes as unknown as string[]
-    );
-  } catch (error) {
-    dbg(`useqWasmInterpreter: failed to bind ${desc.symbol} (${error instanceof Error ? error.message : String(error)})`);
-    return null;
-  }
-}
-
-function isBrokenOptionalExportError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return (
-    error.name === "TypeError" &&
-    /func is not a function/i.test(error.message)
-  );
-}
-
-function clampSampleCount(value: number): number {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric < 1) {
-    return 1;
-  }
-  return Math.max(1, Math.floor(numeric));
-}
-
-type ReadValueFn = (channelIndex: number, sampleIndex: number) => number;
-
-interface SampleSeriesCache {
-  byOutput: Map<string, TimeSample[]>;
-}
-
-function getReusableSeries(
-  cache: SampleSeriesCache | undefined,
-  output: string,
-  sampleCount: number,
-): TimeSample[] {
-  if (!cache) {
-    return new Array<TimeSample>(sampleCount);
-  }
-
-  const existing = cache.byOutput.get(output);
-  if (existing && existing.length === sampleCount) {
-    return existing;
-  }
-
-  const created = Array.from({ length: sampleCount }, () => ({ time: 0, value: 0 }));
-  cache.byOutput.set(output, created);
-  return created;
-}
-
-function buildSampleSeries(
-  outputs: string[],
-  startTime: number,
-  endTime: number,
-  sampleCount: number,
-  readValue: ReadValueFn,
-  cache?: SampleSeriesCache,
-): SampleSeriesMap {
-  if (import.meta.env.DEV) perf.begin("build-sample-series");
-  const result: SampleSeriesMap = new Map();
-  if (!Array.isArray(outputs) || outputs.length === 0 || sampleCount < 1) {
-    if (import.meta.env.DEV) perf.end("build-sample-series");
-    return result;
-  }
-
-  const step = sampleCount > 1 ? (endTime - startTime) / (sampleCount - 1) : 0;
-
-  for (let channelIndex = 0; channelIndex < outputs.length; channelIndex++) {
-    const channelName = outputs[channelIndex];
-    if (typeof channelName !== "string" || !channelName) {
-      continue;
-    }
-
-    // Reuse the same sample objects for the steady-state visualisation path.
-    // This removes the dominant per-rebuild JS allocation churn without
-    // changing the public shape the renderer already consumes.
-    const samples = getReusableSeries(cache, channelName, sampleCount);
-    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
-      const time = startTime + sampleIndex * step;
-      const value = readValue(channelIndex, sampleIndex);
-      const sample = samples[sampleIndex]!;
-      sample.time = time;
-      sample.value = value;
-    }
-    result.set(channelName, samples);
-  }
-
-  if (import.meta.env.DEV) perf.end("build-sample-series");
-  return result;
-}
-
-interface BufferState {
-  pointer: number;
-  capacity: number;
-  view: Float64Array | null;
-  heapBuffer: ArrayBufferLike | null;
-}
-
-interface BatchEvaluator {
-  evaluate: (outputs: string[], startTime: number, endTime: number, numSamples: number) => SampleSeriesMap;
-  tickAndProject: (
-    outputs: string[],
-    tickTime: number,
-    projectionMode: ProjectionMode,
-    projectEnd: number,
-    numFutureSamples: number,
-    projectionOrigin: number,
-  ) => TickAndProjectResult | null;
-  supportsTimeWindow: () => boolean;
-  supportsTickAndProject: () => boolean;
-  release: () => void;
-}
-
-function createBatchEvaluator(
-  module: EmscriptenModule,
-  evaluateOutputAtTime: (name: string, timeSeconds: number) => number
-): BatchEvaluator {
-  const legacyDesc = OPTIONAL_WASM_EXPORTS.useq_eval_outputs_time_window;
-  let legacyEval = bindOptionalCwrap(module, legacyDesc);
-
-  const typedDesc = OPTIONAL_WASM_EXPORTS.useq_eval_outputs_time_window_into;
-  let typedEval = bindOptionalCwrap(module, typedDesc);
-
-  const errorDesc = OPTIONAL_WASM_EXPORTS.useq_last_error;
-  let readLastError = typedEval
-    ? bindOptionalCwrap(module, errorDesc)
-    : null;
-
-  const tickProjectDesc = OPTIONAL_WASM_EXPORTS.useq_tick_and_project;
-  let tickAndProjectEval = bindOptionalCwrap(module, tickProjectDesc);
-  if (tickAndProjectEval && !readLastError) {
-    readLastError = bindOptionalCwrap(module, errorDesc);
-  }
-
-  const bufferState: BufferState = {
-    pointer: 0,
-    capacity: 0,
-    view: null,
-    heapBuffer: null,
-  };
-  const sampleSeriesCache: SampleSeriesCache = {
-    byOutput: new Map(),
-  };
-
-  const ensureCapacity = (requiredLength: number): BufferState => {
-    const heapF64 = module.HEAPF64;
-    if (!heapF64 || typeof heapF64.subarray !== "function") {
-      throw new Error("uSEQ WASM module does not expose HEAPF64 for typed batch reads");
-    }
-
-    const currentHeapBuffer = heapF64.buffer ?? null;
-
-    if (bufferState.pointer && requiredLength <= bufferState.capacity) {
-      if (bufferState.view && bufferState.heapBuffer === currentHeapBuffer) {
-        return bufferState;
-      }
-
-      const start = bufferState.pointer / Float64Array.BYTES_PER_ELEMENT;
-      bufferState.view = heapF64.subarray(start, start + bufferState.capacity);
-      bufferState.heapBuffer = currentHeapBuffer;
-      return bufferState;
-    }
-
-    if (bufferState.pointer) {
-      module._free(bufferState.pointer);
-      bufferState.pointer = 0;
-      bufferState.capacity = 0;
-      bufferState.view = null;
-      bufferState.heapBuffer = null;
-    }
-
-    if (requiredLength === 0) {
-      return bufferState;
-    }
-
-    const bytes = requiredLength * Float64Array.BYTES_PER_ELEMENT;
-    const pointer = module._malloc(bytes);
-    if (!pointer) {
-      throw new Error("Failed to allocate uSEQ batch buffer");
-    }
-
-    bufferState.pointer = pointer;
-    bufferState.capacity = requiredLength;
-    const start = pointer / Float64Array.BYTES_PER_ELEMENT;
-    bufferState.view = heapF64.subarray(start, start + requiredLength);
-    bufferState.heapBuffer = currentHeapBuffer;
-    return bufferState;
-  };
-
-  const release = (): void => {
-    if (bufferState.pointer) {
-      module._free(bufferState.pointer);
-      bufferState.pointer = 0;
-      bufferState.capacity = 0;
-      bufferState.view = null;
-      bufferState.heapBuffer = null;
-    }
-    sampleSeriesCache.byOutput.clear();
-  };
-
-  const evaluateTyped = (outputsArray: string[], outputsJson: string, start: number, end: number, sampleCount: number): SampleSeriesMap => {
-    if (!typedEval) {
-      throw new Error("Typed batch evaluation is unavailable");
-    }
-
-    if (outputsArray.length === 0) {
-      return new Map();
-    }
-
-    const totalEntries = outputsArray.length * sampleCount;
-    const { pointer, view } = ensureCapacity(totalEntries);
-    if (!view || view.length < totalEntries) {
-      throw new Error("uSEQ WASM buffer view is unavailable");
-    }
-    let status: number;
-    if (import.meta.env.DEV) perf.begin("wasm-typed-batch");
-    try {
-      status = typedEval(outputsJson, start, end, sampleCount, pointer, totalEntries) as number;
-      if (import.meta.env.DEV) perf.end("wasm-typed-batch");
-    } catch (error) {
-      if (import.meta.env.DEV) perf.end("wasm-typed-batch");
-      if (isBrokenOptionalExportError(error)) {
-        typedEval = null;
-        readLastError = null;
-      }
-      throw error;
-    }
-    if (status < 0) {
-      let message = "uSEQ WASM batch evaluation failed";
-      if (typeof readLastError === "function") {
-        try {
-          message = (readLastError() as string) || message;
-        } catch (error) {
-          if (isBrokenOptionalExportError(error)) {
-            readLastError = null;
-          }
-        }
-      }
-      throw new Error(message || "uSEQ WASM batch evaluation failed");
-    }
-
-    dbg(`useqWasmInterpreter: typed batch returned status ${status} for ${outputsArray.length} channels x ${sampleCount} samples`);
-
-    const validChannels = Math.min(outputsArray.length, Math.max(status, 0));
-    return buildSampleSeries(outputsArray, start, end, sampleCount, (channelIndex: number, sampleIndex: number): number => {
-      if (!view || channelIndex >= validChannels) {
-        return Number.NaN;
-      }
-      const valueIndex = channelIndex * sampleCount + sampleIndex;
-      if (valueIndex < 0 || valueIndex >= view.length) {
-        return Number.NaN;
-      }
-      return view[valueIndex];
-    }, sampleSeriesCache);
-  };
-
-  const evaluateLegacy = (outputsArray: string[], outputsJson: string, start: number, end: number, sampleCount: number): SampleSeriesMap => {
-    if (!legacyEval) {
-      throw new Error("Legacy batch evaluation is unavailable");
-    }
-
-    let resultJson: string;
-    try {
-      resultJson = legacyEval(outputsJson, start, end, sampleCount) as string;
-    } catch (error) {
-      if (isBrokenOptionalExportError(error)) {
-        legacyEval = null;
-      }
-      throw error;
-    }
-    const parsed = JSON.parse(resultJson) as Record<string, number[]> | { error: string };
-
-    if (parsed && typeof parsed === "object" && Object.prototype.hasOwnProperty.call(parsed, "error")) {
-      throw new Error((parsed as { error: string }).error);
-    }
-
-    const channelNames = Object.keys(parsed || {});
-    return buildSampleSeries(channelNames, start, end, sampleCount, (channelIndex: number, sampleIndex: number): number => {
-      const values = (parsed as Record<string, number[]>)?.[channelNames[channelIndex]];
-      if (!Array.isArray(values) || sampleIndex >= values.length) {
-        return Number.NaN;
-      }
-      return values[sampleIndex];
-    }, sampleSeriesCache);
-  };
-
-  const evaluateBySampling = (
-    outputsArray: string[],
-    start: number,
-    end: number,
-    sampleCount: number
-  ): SampleSeriesMap =>
-    buildSampleSeries(
-      outputsArray,
-      start,
-      end,
-      sampleCount,
-      (channelIndex: number, sampleIndex: number): number => {
-        const channelName = outputsArray[channelIndex];
-        if (typeof channelName !== "string" || !channelName) {
-          return Number.NaN;
-        }
-
-        const time =
-          sampleCount > 1
-            ? start + ((end - start) * sampleIndex) / (sampleCount - 1)
-            : start;
-
-        return evaluateOutputAtTime(channelName, time);
-      },
-      sampleSeriesCache,
-    );
-
-  const evaluate = (outputs: string[], startTime: number, endTime: number, numSamples: number): SampleSeriesMap => {
-    const outputsArray = Array.isArray(outputs) ? Array.from(outputs) : [];
-    const outputsJson = JSON.stringify(outputsArray);
-    const start = Number(startTime) || 0;
-    const end = Number(endTime) || 0;
-    const sampleCount = clampSampleCount(numSamples);
-
-    if (!typedEval && !legacyEval) {
-      dbg("useqWasmInterpreter: batch helpers unavailable; sampling via useq_eval_output()");
-      return evaluateBySampling(outputsArray, start, end, sampleCount);
-    }
-
-    if (!typedEval) {
-      try {
-        return evaluateLegacy(outputsArray, outputsJson, start, end, sampleCount);
-      } catch (error) {
-        if (!legacyEval) {
-          dbg(`useqWasmInterpreter: legacy batch evaluation failed (${error instanceof Error ? error.message : String(error)}); sampling via useq_eval_output()`);
-          return evaluateBySampling(outputsArray, start, end, sampleCount);
-        }
-        throw error;
-      }
-    }
-
-    try {
-      return evaluateTyped(outputsArray, outputsJson, start, end, sampleCount);
-    } catch (error) {
-      if (!legacyEval) {
-        dbg(`useqWasmInterpreter: typed batch evaluation failed (${error instanceof Error ? error.message : String(error)}); sampling via useq_eval_output()`);
-        return evaluateBySampling(outputsArray, start, end, sampleCount);
-      }
-
-      dbg(`useqWasmInterpreter: typed batch evaluation failed (${error instanceof Error ? error.message : String(error)}); falling back to JSON bridge`);
-      try {
-        return evaluateLegacy(outputsArray, outputsJson, start, end, sampleCount);
-      } catch (legacyError) {
-        if (!legacyEval) {
-          dbg(`useqWasmInterpreter: legacy batch evaluation failed (${legacyError instanceof Error ? legacyError.message : String(legacyError)}); sampling via useq_eval_output()`);
-          return evaluateBySampling(outputsArray, start, end, sampleCount);
-        }
-        throw legacyError;
-      }
-    }
-  };
-
-  const tickAndProject = (
-    outputsArray: string[],
-    tickTime: number,
-    projectionMode: ProjectionMode,
-    projectEnd: number,
-    numFutureSamples: number,
-    projectionOrigin: number,
-  ): TickAndProjectResult | null => {
-    if (!tickAndProjectEval) return null;
-    const safeMode = Math.max(0, Math.min(2, Math.floor(Number(projectionMode) || 0)));
-    const safeFuture = (safeMode === 0 || !Number.isFinite(numFutureSamples))
-      ? 0
-      : Math.max(0, Math.floor(numFutureSamples));
-    const safeOutputs = Array.isArray(outputsArray) ? Array.from(outputsArray) : [];
-    if (safeOutputs.length === 0) {
-      return {
-        tickValues: new Map(),
-        projectionSamples: new Map(),
-      };
-    }
-    const outputsJson = JSON.stringify(safeOutputs);
-    const totalEntries = safeOutputs.length + safeOutputs.length * safeFuture;
-    const { pointer, view } = ensureCapacity(totalEntries);
-    if (!view || view.length < totalEntries) {
-      throw new Error("uSEQ WASM buffer view is unavailable");
-    }
-
-    let status: number;
-    if (import.meta.env.DEV) perf.begin("wasm-tick-and-project");
-    try {
-      status = tickAndProjectEval(
-        outputsJson,
-        Number(tickTime) || 0,
-        safeMode,
-        Number(projectEnd) || 0,
-        safeFuture,
-        pointer,
-        totalEntries,
-      ) as number;
-      if (import.meta.env.DEV) perf.end("wasm-tick-and-project");
-    } catch (error) {
-      if (import.meta.env.DEV) perf.end("wasm-tick-and-project");
-      if (isBrokenOptionalExportError(error)) {
-        tickAndProjectEval = null;
-        return null;
-      }
-      throw error;
-    }
-
-    if (status < 0) {
-      let message = "uSEQ WASM tick_and_project failed";
-      if (typeof readLastError === "function") {
-        try {
-          message = (readLastError() as string) || message;
-        } catch (error) {
-          if (isBrokenOptionalExportError(error)) {
-            readLastError = null;
-          }
-        }
-      }
-      throw new Error(message);
-    }
-
-    const validChannels = Math.min(safeOutputs.length, Math.max(status, 0));
-
-    const tickValues = new Map<string, number>();
-    for (let c = 0; c < safeOutputs.length; c++) {
-      const name = safeOutputs[c];
-      if (typeof name !== "string" || !name) continue;
-      const value = c < validChannels ? view[c] : Number.NaN;
-      tickValues.set(name, value);
-    }
-
-    // Reconstruct timestamps: the WASM side produces samples at
-    // origin + step, origin + 2*step, ..., projectionEnd where
-    // step = (projectionEnd - origin) / N. The caller passes origin
-    // so we reconstruct the exact same timestamps here.
-    const projectionSamples = new Map<string, TimeSample[]>();
-    if (safeFuture > 0) {
-      const projOffset = safeOutputs.length;
-      const safeEnd = Number.isFinite(+projectEnd) ? +projectEnd : 0;
-      const safeOrigin = Number.isFinite(+projectionOrigin) ? +projectionOrigin : 0;
-      const step = (safeEnd - safeOrigin) / safeFuture;
-      for (let c = 0; c < safeOutputs.length; c++) {
-        const name = safeOutputs[c];
-        if (typeof name !== "string" || !name) continue;
-        const samples: TimeSample[] = new Array(safeFuture);
-        const rowStart = projOffset + c * safeFuture;
-        for (let s = 0; s < safeFuture; s++) {
-          const time = safeOrigin + step * (s + 1);
-          const value =
-            c < validChannels && rowStart + s < view.length
-              ? view[rowStart + s]
-              : Number.NaN;
-          samples[s] = { time, value };
-        }
-        projectionSamples.set(name, samples);
-      }
-    }
-
-    return { tickValues, projectionSamples };
-  };
-
-  return {
-    evaluate,
-    tickAndProject,
-    supportsTimeWindow: (): boolean => typedEval !== null || legacyEval !== null,
-    supportsTickAndProject: (): boolean => tickAndProjectEval !== null,
-    release,
-  };
 }
 
 function loadWasmScript(): Promise<void> {
@@ -679,7 +190,12 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     const value = useq_eval_output(name, Number(timeSeconds) || 0);
     return Number.isNaN(value) ? NaN : value;
   };
-  const batchEvaluator = createBatchEvaluator(module, evaluateOutputAtTime);
+  const coreLog = (message: string): void => dbg(`useqWasmInterpreter: ${message}`);
+  const batchEvaluator = createWasmBatchEvaluator(
+    module,
+    evaluateOutputAtTime,
+    coreLog,
+  );
 
   // Bind the raw diagnostic export fns and stash them on the
   // `__useqWasmRuntime` global. The in-process port (`wasmRuntimePort.ts`,
@@ -690,13 +206,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const lastDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_last_diagnostics) as (() => string) | null;
   const activeDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_active_diagnostics) as (() => string) | null;
 
-  // Bind live-edit slot ABI exports
-  const setLiveInputsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_set_live_inputs) as ((json: string) => number) | null;
-  const getLiveSlotsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_get_live_slots) as (() => string) | null;
-  const setInputValueFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_set_input_value) as ((channel: number, value: number) => void) | null;
-
-  // Bind state snapshot ABI export (state-sync.md §3)
-  const applyStateSnapshotFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_apply_state_snapshot) as ((json: string) => number) | null;
+  const liveInputs = createWasmLiveInputController(module, coreLog);
 
   // Bind output classification ABI exports (visualisation.md §7.3–7.4)
   const classificationsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_classifications) as (() => string) | null;
@@ -707,54 +217,23 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   // Worker response through the in-process port.
   const synthArtifactsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_synth_artifacts) as (() => string) | null;
 
-  // Bind probe slot ABI exports (probes.md §1.6 — compile-once, sample-many)
-  const probeSetFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_set) as ((slot: number, code: string) => number) | null;
-  const probeSampleFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_sample) as ((slot: number, start: number, end: number, count: number, bufPtr: number, bufCap: number) => number) | null;
-  const probeFreeFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_probe_free) as ((slot: number) => void) | null;
+  const probes = createWasmProbeController(module, coreLog);
 
   // Bind non-finite failure-mode ABI exports (failure-model.md §3.2)
   const setFailureModeFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_set_failure_mode) as ((mode: number) => number) | null;
   const getFailureModeFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_get_failure_mode) as (() => number) | null;
 
-  // Probe sample buffer — reuses same pattern as the batch evaluator
-  let probeBufPtr = 0;
-  let probeBufCap = 0;
-  let probeBufView: Float64Array | null = null;
-  let probeBufHeap: ArrayBufferLike | null = null;
-
-  const ensureProbeBuf = (count: number): { ptr: number; view: Float64Array } => {
-    const heapF64 = module.HEAPF64;
-    if (!heapF64) throw new Error("HEAPF64 unavailable");
-    const currentHeap = heapF64.buffer ?? null;
-
-    if (probeBufPtr && count <= probeBufCap) {
-      if (probeBufView && probeBufHeap === currentHeap) {
-        return { ptr: probeBufPtr, view: probeBufView };
-      }
-      const start = probeBufPtr / Float64Array.BYTES_PER_ELEMENT;
-      probeBufView = heapF64.subarray(start, start + probeBufCap);
-      probeBufHeap = currentHeap;
-      return { ptr: probeBufPtr, view: probeBufView };
-    }
-
-    if (probeBufPtr) { module._free(probeBufPtr); probeBufPtr = 0; }
-    const bytes = count * Float64Array.BYTES_PER_ELEMENT;
-    probeBufPtr = module._malloc(bytes);
-    if (!probeBufPtr) throw new Error("Failed to allocate probe sample buffer");
-    probeBufCap = count;
-    const start = probeBufPtr / Float64Array.BYTES_PER_ELEMENT;
-    probeBufView = heapF64.subarray(start, start + count);
-    probeBufHeap = currentHeap;
-    return { ptr: probeBufPtr, view: probeBufView };
-  };
-
   (globalThis as { __useqWasmRuntime?: UseqWasmRuntimeGlobal }).__useqWasmRuntime = {
     useq_last_diagnostics: lastDiagsFn ?? undefined,
     useq_active_diagnostics: activeDiagsFn ?? undefined,
-    useq_set_live_inputs: setLiveInputsFn ?? undefined,
-    useq_get_live_slots: getLiveSlotsFn ?? undefined,
-    useq_apply_state_snapshot: applyStateSnapshotFn ?? undefined,
-    useq_set_input_value: setInputValueFn ?? undefined,
+    useq_set_live_inputs: liveInputs.supported
+      ? (json) => liveInputs.set(JSON.parse(json) as Record<string, number>)
+      : undefined,
+    useq_get_live_slots: liveInputs.supported
+      ? () => JSON.stringify(liveInputs.getSlots())
+      : undefined,
+    useq_apply_state_snapshot: (json) => liveInputs.applyStateSnapshot(json) ? 0 : -1,
+    useq_set_input_value: liveInputs.setHardwareInput,
     useq_set_failure_mode: setFailureModeFn ?? undefined,
     useq_get_failure_mode: getFailureModeFn ?? undefined,
     useq_synth_artifacts: synthArtifactsFn ?? undefined,
@@ -772,7 +251,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   dbg("uSEQ WASM interpreter initialised");
   lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
   lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
-  lastKnownLiveInputsSupport = setLiveInputsFn !== null;
+  lastKnownLiveInputsSupport = liveInputs.supported;
   classificationsFnStored = classificationsFn;
   dependenciesFnStored = dependenciesFn;
 
@@ -828,24 +307,13 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     },
     supportsTimeWindow: batchEvaluator.supportsTimeWindow(),
     supportsTickAndProject: batchEvaluator.supportsTickAndProject(),
-    supportsProbeSlots: probeSetFn !== null && probeSampleFn !== null,
-    probeSet: (slot: number, code: string): number => {
-      if (!probeSetFn) return -1;
-      return probeSetFn(slot, code) as number;
-    },
-    probeSample: (slot: number, start: number, end: number, count: number): Float64Array | null => {
-      if (!probeSampleFn || count < 1) return null;
-      const { ptr, view } = ensureProbeBuf(count);
-      const written = probeSampleFn(slot, start, end, count, ptr, count) as number;
-      if (written < 1) return null;
-      return view.subarray(0, written);
-    },
-    probeFree: (slot: number): void => {
-      if (probeFreeFn) probeFreeFn(slot);
-    },
+    supportsProbeSlots: probes.supported,
+    probeSet: probes.set,
+    probeSample: probes.sample,
+    probeFree: probes.free,
     release: (): void => {
       batchEvaluator.release();
-      if (probeBufPtr) { module._free(probeBufPtr); probeBufPtr = 0; }
+      probes.release();
     }
   };
 }
