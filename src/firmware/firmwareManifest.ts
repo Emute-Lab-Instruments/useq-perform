@@ -7,6 +7,7 @@ export const FIRMWARE_TARGETS = [
   "musicthing",
   "hardware_v0_2",
   "hardware_v1_0",
+  "expander_aout08_v0_1",
 ] as const;
 
 export type FirmwareTarget = (typeof FIRMWARE_TARGETS)[number];

@@ -19,7 +19,10 @@ desktop packaging, and broad browser compatibility are outside its mission.
 
 **What.** One editor now negotiates protocol-v1 JSON or the bounded legacy
 text adapter, preserves a rollback storage bridge, and can advertise a
-same-origin firmware beta manifest. The current public editor has not yet been
+same-origin firmware beta manifest. Its Chromium updater now verifies before
+reboot, writes only to a user-selected UF2 volume, and falls back to a verified
+download; expander firmware/hardware identity bubbles through the main module.
+The current public editor has not yet been
 archived at `/legacy/`; no beta manifest or UF2 is published; and neither path
 has been exercised against physical pre-1.2 and beta hardware in the release
 browser.

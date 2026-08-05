@@ -2,10 +2,20 @@ import { settings as globalSettings, requestSettingsUpdate } from "../../utils/s
 import { Section, FormRow, Checkbox, Select } from "./FormControls";
 import type { AppSettings } from "../../lib/appSettings.ts";
 import type { FailureMode, FormatSettings } from "../../lib/settings/schema.ts";
+import { post } from "../../utils/consoleStore.ts";
 
 export interface AdvancedSettingsProps {
   settings?: AppSettings;
   onUpdateSettings?: (patch: Record<string, unknown>) => void;
+  onRescanModules?: () => Promise<{
+    modules: readonly {
+      product?: string;
+      hardwareRevision?: string;
+      serial?: string;
+      firmware?: string;
+      identityStatus?: string;
+    }[];
+  }>;
 }
 
 export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
@@ -27,6 +37,15 @@ export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
       runtime: {
         ...s().runtime,
         startLocallyWithoutHardware,
+      },
+    });
+  };
+
+  const handleFirmwareBetaUpdatesChange = (firmwareBetaUpdates: boolean) => {
+    update({
+      runtime: {
+        ...s().runtime,
+        firmwareBetaUpdates,
       },
     });
   };
@@ -60,6 +79,32 @@ export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
     });
   };
 
+  const handleRescanModules = () => {
+    const rescan = props.onRescanModules ?? (async () => {
+      const protocol = await import("../../transport/json-protocol.ts");
+      return protocol.rescanConnectedModules();
+    });
+    void rescan().then((identity) => {
+      const count = identity.modules.length;
+      const details = identity.modules.map((module) => {
+        const name = module.product ?? "unidentified expander";
+        const hardware = module.hardwareRevision ? ` hw ${module.hardwareRevision}` : "";
+        const serial = module.serial ? ` serial ${module.serial}` : "";
+        const firmware = module.firmware ? ` firmware v${module.firmware}` : "";
+        const identity = module.identityStatus && module.identityStatus !== "verified"
+          ? ` (${module.identityStatus} identity)`
+          : "";
+        return `${name}${hardware}${serial}${firmware}${identity}`;
+      });
+      post(
+        `Found ${count} expander${count === 1 ? "" : "s"}.` +
+        (details.length ? ` ${details.join("; ")}.` : ""),
+      );
+    }).catch((error: unknown) => {
+      post(error instanceof Error ? error.message : String(error), "warn");
+    });
+  };
+
   return (
     <Section title="Advanced Settings" level="advanced">
       <FormRow label="Reconnect saved hardware on startup">
@@ -73,6 +118,17 @@ export function AdvancedSettings(props: AdvancedSettingsProps = {}) {
           checked={s().runtime?.startLocallyWithoutHardware !== false}
           onChange={handleStartLocallyWithoutHardwareChange}
         />
+      </FormRow>
+      <FormRow label="Offer beta firmware updates">
+        <Checkbox
+          checked={s().runtime?.firmwareBetaUpdates !== false}
+          onChange={handleFirmwareBetaUpdatesChange}
+        />
+      </FormRow>
+      <FormRow label="Connected expanders">
+        <button class="panel-button" onClick={handleRescanModules}>
+          Rescan I²C modules
+        </button>
       </FormRow>
       <FormRow label="Non-finite failure policy">
         <Select

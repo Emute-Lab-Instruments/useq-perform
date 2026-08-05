@@ -94,6 +94,8 @@ export interface JsonResponse {
   target?: string;
   /** Named firmware capabilities; unknown names are ignored. */
   capabilities?: string[];
+  /** I2C modules discovered by the main module at startup or explicit rescan. */
+  modules?: ConnectedModuleIdentity[];
   /** Diagnostics embedded in eval responses (spec §5.7). */
   diagnostics?: UseqDiagnostic[];
   /** Unsolicited log level (spec §5.6). */
@@ -141,6 +143,26 @@ export interface ProtocolState {
   protocolVersion: number | null;
   hardwareTarget: string | null;
   capabilities: string[];
+  modules: ConnectedModuleIdentity[];
+}
+
+export interface ConnectedModuleIdentity {
+  kind: "output-expander" | string;
+  address: number;
+  identityStatus: "verified" | "unidentified-prototype" | string;
+  product: string;
+  target?: string;
+  connectedVia?: "i2c" | "usb" | string;
+  firmware?: string;
+  protocol?: number;
+  hardwareRevision?: string;
+  assemblyVariant?: string;
+  batch?: string;
+  serial?: string;
+  manufactured?: string;
+  mcu?: "rp2040" | "rp2350" | "unknown" | string;
+  updateTransport: "usb" | "i2c-only" | string;
+  autoUpdateSafe: boolean;
 }
 
 export interface ConnectedFirmwareIdentity {
@@ -149,6 +171,7 @@ export interface ConnectedFirmwareIdentity {
   protocolVersion: number | null;
   hardwareTarget: string | null;
   capabilities: readonly string[];
+  modules: readonly ConnectedModuleIdentity[];
 }
 
 // ── Buffer map function type ─────────────────────────────────────────

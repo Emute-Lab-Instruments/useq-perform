@@ -78,6 +78,7 @@ export const protocolState: ProtocolState = {
   protocolVersion: null,
   hardwareTarget: null,
   capabilities: [],
+  modules: [],
 };
 
 const encoder = new TextEncoder();
@@ -138,7 +139,24 @@ export function getConnectedFirmwareIdentity(): ConnectedFirmwareIdentity {
     protocolVersion: protocolState.protocolVersion,
     hardwareTarget: protocolState.hardwareTarget,
     capabilities: [...protocolState.capabilities],
+    modules: protocolState.modules.map((module) => ({ ...module })),
   };
+}
+
+/** Ask the main module to repeat its bounded I2C discovery scan. */
+export async function rescanConnectedModules(): Promise<ConnectedFirmwareIdentity> {
+  if (protocolState.mode !== "json") {
+    throw new Error("Module rescan requires firmware with the JSON protocol");
+  }
+  const response = await writeJsonRequest({ type: "rescan-modules" }, {
+    skipConsole: true,
+    timeout: 5_000,
+  });
+  if (!response.success || !Array.isArray(response.modules)) {
+    throw new Error(response.error || "Module rescan failed");
+  }
+  protocolState.modules = response.modules.map((module) => ({ ...module }));
+  return getConnectedFirmwareIdentity();
 }
 
 // ── State reset ──────────────────────────────────────────────────────
@@ -158,6 +176,7 @@ export function resetProtocolState(): void {
   protocolState.protocolVersion = null;
   protocolState.hardwareTarget = null;
   protocolState.capabilities = [];
+  protocolState.modules = [];
   // Clear handshake signal — new connection starts fresh.
   _handshakeResolve = null;
   _handshakePromise = null;
@@ -270,6 +289,9 @@ function completeHandshake(response: JsonResponse): void {
     protocolState.capabilities = Array.isArray(response.capabilities)
       ? [...response.capabilities]
       : ["json-v1"];
+    protocolState.modules = Array.isArray(response.modules)
+      ? response.modules.map((module) => ({ ...module }))
+      : [];
     if (import.meta.env.DEV) {
       console.log("[json-protocol] Handshake SUCCESS — mode=json, fw=", response.fw);
     }
@@ -302,6 +324,7 @@ function completeLegacyHandshake(identity: LegacyFirmwareIdentity): void {
   protocolState.protocolVersion = 0;
   protocolState.hardwareTarget = null;
   protocolState.capabilities = ["legacy-text-v1", "legacy-stream-v1"];
+  protocolState.modules = [];
   upgradeCheck(identity.version);
   post(
     `Connected using legacy firmware v${identity.version}. Core editing and hardware evaluation remain available; newer firmware-only features are disabled.`,

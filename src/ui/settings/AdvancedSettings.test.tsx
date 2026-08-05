@@ -10,6 +10,7 @@ vi.mock("../../utils/settingsStore", () => ({
     runtime: {
       autoReconnect: true,
       startLocallyWithoutHardware: true,
+      firmwareBetaUpdates: true,
       failureMode: "lkg",
     },
     wasm: { enabled: true },
@@ -44,9 +45,10 @@ describe("AdvancedSettings", () => {
     expect(screen.getByText("Advanced Settings")).toBeTruthy();
     expect(screen.getByText("Reconnect saved hardware on startup")).toBeTruthy();
     expect(screen.getByText("Start locally before hardware connects")).toBeTruthy();
+    expect(screen.getByText("Offer beta firmware updates")).toBeTruthy();
     expect(screen.getByText("Enable WASM Interpreter")).toBeTruthy();
     const checkboxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
-    expect(checkboxes).toHaveLength(3);
+    expect(checkboxes).toHaveLength(4);
     expect(checkboxes.every((checkbox) => checkbox.checked)).toBe(true);
   });
 
@@ -59,6 +61,7 @@ describe("AdvancedSettings", () => {
       runtime: {
         autoReconnect: false,
         startLocallyWithoutHardware: true,
+        firmwareBetaUpdates: true,
         failureMode: "lkg",
       },
     });
@@ -73,6 +76,7 @@ describe("AdvancedSettings", () => {
       runtime: {
         autoReconnect: true,
         startLocallyWithoutHardware: false,
+        firmwareBetaUpdates: true,
         failureMode: "lkg",
       },
     });
@@ -93,6 +97,7 @@ describe("AdvancedSettings", () => {
       runtime: {
         autoReconnect: true,
         startLocallyWithoutHardware: true,
+        firmwareBetaUpdates: true,
         failureMode: "zero",
       },
     });
@@ -101,10 +106,25 @@ describe("AdvancedSettings", () => {
   it("updates wasm.enabled when toggled", () => {
     render(() => <AdvancedSettings />);
     expandSections();
-    const checkbox = screen.getAllByRole("checkbox")[2];
+    const checkbox = screen.getAllByRole("checkbox")[3];
     fireEvent.input(checkbox, { target: { checked: false } });
     expect(requestSettingsUpdate).toHaveBeenCalledWith({
       wasm: { enabled: false },
+    });
+  });
+
+  it("persists the beta firmware channel preference", () => {
+    render(() => <AdvancedSettings />);
+    expandSections();
+    const checkbox = screen.getAllByRole("checkbox")[2];
+    fireEvent.input(checkbox, { target: { checked: false } });
+    expect(requestSettingsUpdate).toHaveBeenCalledWith({
+      runtime: {
+        autoReconnect: true,
+        startLocallyWithoutHardware: true,
+        firmwareBetaUpdates: false,
+        failureMode: "lkg",
+      },
     });
   });
 });

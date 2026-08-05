@@ -136,6 +136,8 @@ export type FailureMode = "lkg" | "zero";
 export interface RuntimeSettings {
   autoReconnect: boolean;
   startLocallyWithoutHardware: boolean;
+  /** Offer prerelease firmware as well as stable releases. Defaults on. */
+  firmwareBetaUpdates?: boolean;
   /**
    * Engine-global non-finite failure policy, applied to BOTH runtimes:
    * WASM (`useq_set_failure_mode`) and hardware (wire `set-failure-mode`,
@@ -502,6 +504,7 @@ export const defaultUserSettings: AppSettings = {
   runtime: {
     autoReconnect: true,
     startLocallyWithoutHardware: true,
+    firmwareBetaUpdates: true,
     failureMode: "lkg",
   },
   wasm: {

@@ -159,6 +159,7 @@ describe("appSettings", () => {
     expect(document.user.runtime).toEqual({
       autoReconnect: false,
       startLocallyWithoutHardware: false,
+      firmwareBetaUpdates: true,
       failureMode: "lkg",
     });
     expect(document.user.wasm).toEqual({ enabled: false });
@@ -173,6 +174,7 @@ describe("appSettings", () => {
     expect(roundTripped.runtime).toEqual({
       autoReconnect: false,
       startLocallyWithoutHardware: false,
+      firmwareBetaUpdates: true,
       failureMode: "lkg",
     });
     expect(roundTripped.wasm).toEqual({ enabled: false });

@@ -77,8 +77,16 @@ change.
 The editor checks `/firmware/beta/manifest.json` only after a successful
 hardware handshake. Absence (404) means no public beta and produces no prompt.
 The manifest names the version, channel, publication time, exact hardware
-target, immutable same-origin UF2 URL, byte size, and SHA-256. The updater
-downloads into memory, checks size and hash, then enables the browser download.
+target, immutable same-origin UF2 URL, byte size, and SHA-256. Beta offers are
+enabled by default. A user can disable them permanently from the offer itself
+and opt back in under Advanced Settings; stable-channel offers remain enabled.
+
+The updater downloads into memory and checks size and hash before any reboot.
+In a secure Chromium browser it asks the editor to perform the authorised
+1200-baud reset, requires the user to choose the mounted UF2 boot directory,
+validates `INFO_UF2.TXT`, and writes the cached bytes directly. Browsers
+without directory-write support retain a verified download-and-copy fallback.
+Browser security still requires the directory choice to be a user gesture.
 SHA-256 catches corruption or a mismatched file after the manifest is loaded;
 the same-origin manifest is not a publisher signature.
 
@@ -90,12 +98,23 @@ npm run prepare:firmware-beta -- \
   --artifact musicthing=/path/to/musicthing.uf2 \
   --artifact hardware_v0_2=/path/to/hardware_v0_2.uf2 \
   --artifact hardware_v1_0=/path/to/hardware_v1_0.uf2 \
+  --artifact expander_aout08_v0_1=/path/to/expander.uf2 \
   --notes /path/to/release-notes.html
 ```
 
 Review the generated immutable directory and manifest together. Publishing
 the static files activates the editor prompt; removing the manifest disables
 new offers without removing already-published artifacts.
+
+The main firmware reports I²C expander inventory in `hello` and supports an
+explicit `rescan-modules` request. An expander seen through the main module is
+never rebooted or flashed through I²C: the current protocol has no relay
+bootloader. The editor may select its exact UF2 only when its CRC-valid factory
+identity reports a matching firmware target, then directs the user to the
+expander's own USB/BOOTSEL connection. A missing or corrupt identity is shown
+as an unidentified prototype and disables automatic target selection.
+
+Local physical-device procedure: [firmware-update-local.md](../testing/firmware-update-local.md).
 
 ## Cutover gate
 

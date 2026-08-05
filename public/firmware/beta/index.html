@@ -3,55 +3,200 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>uSEQ firmware beta</title>
+  <title>Update uSEQ firmware</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111; color: #eee; }
-    body { max-width: 46rem; margin: 0 auto; padding: 2rem 1rem 4rem; line-height: 1.5; }
-    .card { border: 1px solid #444; border-radius: .75rem; padding: 1rem 1.25rem; background: #191919; }
+    body { max-width: 50rem; margin: 0 auto; padding: 2rem 1rem 4rem; line-height: 1.5; }
+    .card { border: 1px solid #444; border-radius: .75rem; padding: 1rem 1.25rem; background: #191919; margin: 1rem 0; }
     .warning { border-left: .3rem solid #f4b942; padding-left: 1rem; }
+    .step { display: grid; grid-template-columns: 2rem 1fr; gap: .75rem; align-items: start; }
+    .number { border-radius: 50%; background: #3b66e5; width: 2rem; height: 2rem; display: grid; place-items: center; font-weight: 800; }
     label, select, button { display: block; width: 100%; box-sizing: border-box; }
     select, button { margin-top: .5rem; padding: .75rem; font: inherit; }
     button { cursor: pointer; font-weight: 700; }
     button:disabled { cursor: not-allowed; opacity: .55; }
+    .secondary { background: transparent; color: inherit; border: 1px solid #777; }
+    .ok { color: #8be09b; }
+    .error { color: #ff9393; }
     code { overflow-wrap: anywhere; }
     #status { min-height: 1.5em; }
   </style>
 </head>
 <body>
-  <h1>uSEQ firmware beta</h1>
-  <p class="warning">Beta firmware may change. Save your program and choose the exact hardware variant printed on your module or PCB. A UF2 for another target may use incompatible pins.</p>
-  <div class="card">
-    <p id="release">Checking the beta channel…</p>
-    <label for="target">Hardware variant</label>
-    <select id="target" disabled><option value="">Choose your hardware…</option></select>
-    <button id="download" disabled>Download and verify UF2</button>
-    <p id="status" role="status" aria-live="polite"></p>
+  <h1>Update uSEQ firmware</h1>
+  <p id="release-warning" class="warning">This is beta firmware. Save your program and use the exact hardware variant printed on your module or PCB. A UF2 for another target may use incompatible pins.</p>
+
+  <div class="card step">
+    <div class="number">1</div>
+    <div>
+      <h2>Choose and verify</h2>
+      <p id="release">Checking the beta channel…</p>
+      <label for="target">Hardware variant</label>
+      <select id="target" disabled><option value="">Choose your hardware…</option></select>
+      <button id="verify" disabled>Download and verify update</button>
+      <p id="verify-status" role="status" aria-live="polite"></p>
+    </div>
   </div>
-  <h2>Install</h2>
-  <ol>
-    <li>Use the editor’s <strong>Prepare update</strong> button, or hold BOOTSEL while reconnecting the module.</li>
-    <li>Wait for the <strong>RPI-RP2</strong> USB drive to appear.</li>
-    <li>Drag the verified UF2 you downloaded onto that drive.</li>
-    <li>Wait for the module to restart, then reconnect it in the editor.</li>
-  </ol>
+
+  <div class="card step">
+    <div class="number">2</div>
+    <div>
+      <h2>Prepare the module</h2>
+      <p>The module will disconnect and reappear as a USB drive. The update is already cached before this happens.</p>
+      <button id="prepare" disabled>Put connected module in update mode</button>
+      <p id="prepare-status" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <div class="card step">
+    <div class="number">3</div>
+    <div>
+      <h2>Install</h2>
+      <p>Choose the mounted boot drive when prompted. The updater checks <code>INFO_UF2.TXT</code> before writing.</p>
+      <button id="install" disabled>Choose boot drive and install</button>
+      <button id="manual" class="secondary" disabled>Download verified UF2 instead</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <p id="support"></p>
   <p><a href="/legacy/">Open the legacy editor</a> if you need the previous interface.</p>
+
   <script type="module">
     const release = document.querySelector('#release');
+    const releaseWarning = document.querySelector('#release-warning');
     const target = document.querySelector('#target');
-    const download = document.querySelector('#download');
+    const verify = document.querySelector('#verify');
+    const prepare = document.querySelector('#prepare');
+    const install = document.querySelector('#install');
+    const manual = document.querySelector('#manual');
+    const verifyStatus = document.querySelector('#verify-status');
+    const prepareStatus = document.querySelector('#prepare-status');
     const status = document.querySelector('#status');
-    let manifest = null;
+    const support = document.querySelector('#support');
     const requestedTarget = new URLSearchParams(location.search).get('target');
+    const manualReset = new URLSearchParams(location.search).get('manual') === '1';
+    const updateChannel = typeof BroadcastChannel !== 'undefined'
+      ? new BroadcastChannel('useq-firmware-update-v1')
+      : null;
+
+    let manifest = null;
+    let verified = null;
+
+    const automatedInstallAvailable =
+      window.isSecureContext && typeof window.showDirectoryPicker === 'function';
+    support.textContent = automatedInstallAvailable
+      ? 'Direct installation is available in this Chromium browser. You will still choose the boot drive yourself.'
+      : 'This browser cannot write to a chosen USB drive directly. Use the verified-download button and copy the UF2 manually.';
+    if (manualReset) {
+      prepare.textContent = 'I have connected the expander in BOOTSEL mode';
+      prepare.previousElementSibling.textContent = 'The main module cannot relay this update over I²C. Connect the expander directly by USB while holding BOOTSEL; then confirm below.';
+    }
+
+    function setMessage(element, message, kind = '') {
+      element.textContent = message;
+      element.className = kind;
+    }
 
     function hex(bytes) {
-      return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+      return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    }
+
+    function selectedArtifact() {
+      return manifest?.artifacts?.find(item => item.target === target.value) ?? null;
+    }
+
+    function safeArtifactUrl(artifact) {
+      const url = new URL(artifact.url, location.href);
+      if (url.origin !== location.origin || !url.pathname.startsWith('/firmware/beta/')) {
+        throw new Error('Unsafe artifact URL.');
+      }
+      return url;
+    }
+
+    async function fetchAndVerify(artifact) {
+      const response = await fetch(safeArtifactUrl(artifact), {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      if (!response.ok) throw new Error(`UF2 request failed (${response.status}).`);
+      const bytes = await response.arrayBuffer();
+      if (bytes.byteLength !== artifact.size) {
+        throw new Error('UF2 size does not match the release manifest.');
+      }
+      const digest = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)));
+      if (digest !== artifact.sha256) {
+        throw new Error('UF2 SHA-256 does not match the release manifest.');
+      }
+      return { artifact, bytes, digest };
+    }
+
+    function downloadVerified() {
+      if (!verified) return;
+      const blobUrl = URL.createObjectURL(new Blob([verified.bytes], { type: 'application/octet-stream' }));
+      const anchor = document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = `${verified.artifact.target}-${manifest.version}.uf2`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    }
+
+    async function askEditorForBootloader() {
+      if (!updateChannel) return false;
+      return new Promise(resolve => {
+        const timeout = setTimeout(() => {
+          updateChannel.removeEventListener('message', receive);
+          resolve(false);
+        }, 8000);
+        function receive(event) {
+          if (event.data?.type !== 'bootloader-result') return;
+          clearTimeout(timeout);
+          updateChannel.removeEventListener('message', receive);
+          resolve(event.data.entered === true);
+        }
+        updateChannel.addEventListener('message', receive);
+        updateChannel.postMessage({ type: 'prepare-bootloader' });
+      });
+    }
+
+    async function resetAuthorisedSerialPort() {
+      if (!('serial' in navigator)) return false;
+      const ports = await navigator.serial.getPorts();
+      if (ports.length !== 1) return false;
+      const port = ports[0];
+      try {
+        if (port.readable || port.writable) await port.close();
+        await port.open({ baudRate: 1200 });
+        await port.close();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function validateBootDrive(directory) {
+      let infoHandle;
+      try {
+        infoHandle = await directory.getFileHandle('INFO_UF2.TXT');
+      } catch {
+        throw new Error('That folder is not a Pico boot drive: INFO_UF2.TXT is missing.');
+      }
+      const info = await (await infoHandle.getFile()).text();
+      if (!/UF2 Bootloader|Board-ID:\s*(RP2040|RP2350)/i.test(info)) {
+        throw new Error('INFO_UF2.TXT does not identify an RP2040/RP2350 UF2 bootloader.');
+      }
     }
 
     try {
       const response = await fetch('./manifest.json', { cache: 'no-store', credentials: 'same-origin' });
-      if (!response.ok) throw new Error(response.status === 404 ? 'No beta is published yet.' : `Manifest request failed (${response.status}).`);
+      if (!response.ok) {
+        throw new Error(response.status === 404 ? 'No beta is published yet.' : `Manifest request failed (${response.status}).`);
+      }
       manifest = await response.json();
       release.textContent = `Available: v${manifest.version}`;
+      if (manifest.channel !== 'beta') {
+        releaseWarning.textContent = 'Save your program and use the exact hardware variant printed on your module or PCB. A UF2 for another target may use incompatible pins.';
+      }
       for (const artifact of manifest.artifacts ?? []) {
         const option = document.createElement('option');
         option.value = artifact.target;
@@ -59,39 +204,92 @@
         target.append(option);
       }
       target.disabled = false;
-      if ([...target.options].some(option => option.value === requestedTarget)) target.value = requestedTarget;
-      download.disabled = !target.value;
+      if ([...target.options].some(option => option.value === requestedTarget)) {
+        target.value = requestedTarget;
+      }
+      verify.disabled = !target.value;
     } catch (error) {
       release.textContent = error instanceof Error ? error.message : String(error);
     }
 
-    target.addEventListener('change', () => { download.disabled = !target.value; status.textContent = ''; });
-    download.addEventListener('click', async () => {
-      const artifact = manifest?.artifacts?.find(item => item.target === target.value);
+    target.addEventListener('change', () => {
+      verified = null;
+      verify.disabled = !target.value;
+      prepare.disabled = true;
+      install.disabled = true;
+      manual.disabled = true;
+      setMessage(verifyStatus, '');
+      setMessage(prepareStatus, '');
+      setMessage(status, '');
+    });
+
+    verify.addEventListener('click', async () => {
+      const artifact = selectedArtifact();
       if (!artifact) return;
-      download.disabled = true;
-      status.textContent = 'Downloading and checking SHA-256…';
+      verify.disabled = true;
+      setMessage(verifyStatus, 'Downloading and checking SHA-256…');
       try {
-        const url = new URL(artifact.url, location.href);
-        if (url.origin !== location.origin || !url.pathname.startsWith('/firmware/beta/')) throw new Error('Unsafe artifact URL.');
-        const response = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
-        if (!response.ok) throw new Error(`UF2 request failed (${response.status}).`);
-        const bytes = await response.arrayBuffer();
-        if (bytes.byteLength !== artifact.size) throw new Error('UF2 size does not match the manifest.');
-        const digest = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)));
-        if (digest !== artifact.sha256) throw new Error('UF2 SHA-256 does not match the manifest.');
-        const blobUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
-        const anchor = document.createElement('a');
-        anchor.href = blobUrl;
-        anchor.download = `${artifact.target}-${manifest.version}.uf2`;
-        anchor.click();
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-        status.textContent = `Verified SHA-256: ${digest}`;
+        verified = await fetchAndVerify(artifact);
+        setMessage(verifyStatus, `Verified ${verified.bytes.byteLength.toLocaleString()} bytes (SHA-256 ${verified.digest}).`, 'ok');
+        prepare.disabled = false;
+        manual.disabled = false;
       } catch (error) {
-        status.textContent = error instanceof Error ? error.message : String(error);
+        verified = null;
+        setMessage(verifyStatus, error instanceof Error ? error.message : String(error), 'error');
       } finally {
-        download.disabled = false;
+        verify.disabled = false;
       }
+    });
+
+    prepare.addEventListener('click', async () => {
+      if (!verified) return;
+      prepare.disabled = true;
+      if (manualReset) {
+        setMessage(prepareStatus, 'Continue once the expander boot drive is mounted.', 'ok');
+        install.disabled = !automatedInstallAvailable;
+        prepare.disabled = false;
+        return;
+      }
+      setMessage(prepareStatus, 'Asking the editor to put the module in update mode…');
+      let entered = await askEditorForBootloader();
+      if (!entered) entered = await resetAuthorisedSerialPort();
+      if (entered) {
+        setMessage(prepareStatus, 'Update mode requested. Wait for the boot drive to appear.', 'ok');
+        install.disabled = !automatedInstallAvailable;
+      } else {
+        setMessage(prepareStatus, 'Automatic reset was unavailable. Hold BOOTSEL while reconnecting the module, then continue.', 'error');
+        install.disabled = !automatedInstallAvailable;
+      }
+      prepare.disabled = false;
+    });
+
+    install.addEventListener('click', async () => {
+      if (!verified || !automatedInstallAvailable) return;
+      setMessage(status, 'Choose the mounted UF2 boot drive…');
+      try {
+        // This call must remain directly inside the click handler: Chromium
+        // requires a user gesture before granting directory write access.
+        const directory = await window.showDirectoryPicker({ mode: 'readwrite' });
+        await validateBootDrive(directory);
+        const filename = `${verified.artifact.target}-${manifest.version}.uf2`;
+        const file = await directory.getFileHandle(filename, { create: true });
+        const writable = await file.createWritable();
+        await writable.write(verified.bytes);
+        await writable.close();
+        updateChannel?.postMessage({ type: 'flash-written' });
+        setMessage(status, 'UF2 written. The module should restart and the editor will reconnect automatically.', 'ok');
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          setMessage(status, 'No folder selected. Nothing was written.');
+        } else {
+          setMessage(status, error instanceof Error ? error.message : String(error), 'error');
+        }
+      }
+    });
+
+    manual.addEventListener('click', () => {
+      downloadVerified();
+      setMessage(status, 'Verified UF2 downloaded. Copy it to the mounted boot drive.', 'ok');
     });
   </script>
 </body>

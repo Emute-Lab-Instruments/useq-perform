@@ -22,8 +22,10 @@ type ModalState =
       message: string;
       confirmLabel: string;
       cancelLabel: string;
+      secondaryLabel?: string;
       onConfirm: () => void;
       onCancel?: () => void;
+      onSecondary?: () => void;
     }
   | null;
 
@@ -46,8 +48,10 @@ export function showConfirmModal(opts: {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  secondaryLabel?: string;
   onConfirm: () => void;
   onCancel?: () => void;
+  onSecondary?: () => void;
 }): void {
   setModalState({
     kind: "confirm",
@@ -56,8 +60,10 @@ export function showConfirmModal(opts: {
     message: opts.message,
     confirmLabel: opts.confirmLabel ?? "OK",
     cancelLabel: opts.cancelLabel ?? "Cancel",
+    secondaryLabel: opts.secondaryLabel,
     onConfirm: opts.onConfirm,
     onCancel: opts.onCancel,
+    onSecondary: opts.onSecondary,
   });
 }
 
@@ -112,6 +118,10 @@ const adapter = createSolidAdapter({
                   setModalState(null);
                   s.onConfirm();
                 };
+                const secondary = () => {
+                  setModalState(null);
+                  s.onSecondary?.();
+                };
                 return (
                   <Modal
                     id={s.id}
@@ -121,6 +131,14 @@ const adapter = createSolidAdapter({
                   >
                     <p class="modal-confirm-message">{s.message}</p>
                     <div class="modal-confirm-actions">
+                      <Show when={s.secondaryLabel}>
+                        <button
+                          class="modal-confirm-cancel"
+                          onClick={secondary}
+                        >
+                          {s.secondaryLabel}
+                        </button>
+                      </Show>
                       <button
                         class="modal-confirm-cancel"
                         onClick={cancel}

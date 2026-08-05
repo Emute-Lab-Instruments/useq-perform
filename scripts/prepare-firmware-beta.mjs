@@ -8,6 +8,7 @@ const allowedTargets = new Map([
   ["musicthing", "Music Thing Modular"],
   ["hardware_v0_2", "uSEQ hardware v0.2"],
   ["hardware_v1_0", "uSEQ hardware v1.0"],
+  ["expander_aout08_v0_1", "uSEQ 8-output expander v0.1"],
 ]);
 
 function fail(message) {

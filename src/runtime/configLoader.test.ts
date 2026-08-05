@@ -174,6 +174,7 @@ describe("configLoader", () => {
     expect(config.runtime).toEqual({
       autoReconnect: false,
       startLocallyWithoutHardware: false,
+      firmwareBetaUpdates: true,
       failureMode: "lkg",
     });
     expect(config.wasm).toEqual({ enabled: false });

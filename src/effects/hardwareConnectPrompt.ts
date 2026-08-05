@@ -32,8 +32,10 @@ export interface ConfirmPromptFn {
     message: string;
     confirmLabel?: string;
     cancelLabel?: string;
+    secondaryLabel?: string;
     onConfirm: () => void;
     onCancel?: () => void;
+    onSecondary?: () => void;
   }): void;
 }
 
