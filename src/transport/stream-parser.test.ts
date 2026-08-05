@@ -76,4 +76,43 @@ describe("stream-parser — processAllMessages", () => {
     const fixedView = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
     expect(fixedView[0]).toBe(0x7b); // `{`
   });
+
+  it("routes pre-1.2 text frames without confusing them with JSON", () => {
+    const payload = new TextEncoder().encode("uSEQ Firmware 1.1.1");
+    const packet = new Uint8Array(payload.length + 4);
+    packet[0] = 0x1f;
+    packet[1] = 0x20;
+    packet.set(payload, 2);
+    packet[packet.length - 2] = 13;
+    packet[packet.length - 1] = 10;
+
+    const json: string[] = [];
+    const legacy: string[] = [];
+    const result = processAllMessages(
+      packet,
+      (message) => json.push(message),
+      (message) => legacy.push(message),
+    );
+
+    expect(json).toEqual([]);
+    expect(legacy).toEqual(["uSEQ Firmware 1.1.1"]);
+    expect(result.remainingBytes).toHaveLength(0);
+  });
+
+  it("retains a split legacy frame until the CRLF terminator arrives", () => {
+    const encoder = new TextEncoder();
+    const prefix = new Uint8Array([0x1f, 0x64, ...encoder.encode("hello")]);
+    const first = processAllMessages(prefix, () => {}, () => {});
+    expect(first.remainingBytes).toEqual(prefix);
+
+    const complete = new Uint8Array([...first.remainingBytes, 13, 10]);
+    const received: string[] = [];
+    const final = processAllMessages(
+      complete,
+      () => {},
+      (message) => received.push(message),
+    );
+    expect(received).toEqual(["hello"]);
+    expect(final.remainingBytes).toHaveLength(0);
+  });
 });

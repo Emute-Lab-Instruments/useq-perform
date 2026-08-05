@@ -13,6 +13,7 @@ import { top_level_string } from "@nextjournal/clojure-mode/extensions/eval-regi
 import { sendTouSEQ } from "../transport/json-protocol.ts";
 import { post } from "../utils/consoleStore.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
+import { shouldUseWasmShadow } from "../runtime/runtimeCompatibility.ts";
 import {
   discoverSlotsAfterEval,
   runBootReconciliation,
@@ -648,20 +649,23 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
 
         flashEvalHighlight(view, sel.from, sel.to);
 
-        // Also eval in WASM to get an inline result
-        evalWasm(code, {
-          isImmediate: true,
-          noModuleMode: getStartupFlagsSnapshot().noModuleMode,
-          isPreview: false,
-          view,
-          docOffset: sel.from,
-          range: { from: sel.from, to: sel.to },
-          sourceMap: payload.sourceMap,
-        }).then((result) => {
-          if (result.text) {
-            dispatchInlineResult(view, result.text, sel.to, result.isError);
-          }
-        });
+        // Current WASM shadows current firmware only. Pre-1.2 hardware remains
+        // authoritative because its language/runtime semantics differ.
+        if (shouldUseWasmShadow()) {
+          evalWasm(code, {
+            isImmediate: true,
+            noModuleMode: getStartupFlagsSnapshot().noModuleMode,
+            isPreview: false,
+            view,
+            docOffset: sel.from,
+            range: { from: sel.from, to: sel.to },
+            sourceMap: payload.sourceMap,
+          }).then((result) => {
+            if (result.text) {
+              dispatchInlineResult(view, result.text, sel.to, result.isError);
+            }
+          });
+        }
 
         sendTouSEQ(code).then((response) => {
           applyHardwareDiagnostics(
@@ -776,19 +780,21 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
 
   const evalPos = range ? range.to : state.selection.main.from;
 
-  evalWasm(code, {
-    isImmediate,
-    noModuleMode,
-    isPreview: false,
-    view,
-    docOffset: range?.from ?? 0,
-    range: range ?? undefined,
-    sourceMap: payload.sourceMap,
-  }).then((result) => {
+  if (shouldUseWasmShadow()) {
+    evalWasm(code, {
+      isImmediate,
+      noModuleMode,
+      isPreview: false,
+      view,
+      docOffset: range?.from ?? 0,
+      range: range ?? undefined,
+      sourceMap: payload.sourceMap,
+    }).then((result) => {
       if (hasView && result.text) {
         dispatchInlineResult(view, result.text, evalPos, result.isError);
       }
     });
+  }
 
   // §4.4 binding wasm-preview lifecycle: a normal (non-soft) eval that reaches
   // the module lifts any bindings in the form out of preview; in no-module

@@ -140,6 +140,16 @@ describe("parseVersionString", () => {
     const result = parseVersionString("1.2.abc");
     expect(result).toEqual({ major: 1, minor: 2, patch: 0, raw: "1.2.0" });
   });
+
+  it("parses a SemVer prerelease used by beta firmware", () => {
+    expect(parseVersionString("v1.2.0-beta.2")).toEqual({
+      major: 1,
+      minor: 2,
+      patch: 0,
+      prerelease: ["beta", "2"],
+      raw: "1.2.0-beta.2",
+    });
+  });
 });
 
 describe("compareVersions", () => {
@@ -208,6 +218,14 @@ describe("compareVersions", () => {
     const left = parseVersionString("2.3.1")!;
     const right = parseVersionString("2.3.4")!;
     expect(compareVersions(left, right)).toBeLessThan(0);
+  });
+
+  it("orders beta builds numerically and below the stable release", () => {
+    const beta1 = parseVersionString("1.2.0-beta.1")!;
+    const beta2 = parseVersionString("1.2.0-beta.2")!;
+    const stable = parseVersionString("1.2.0")!;
+    expect(compareVersions(beta2, beta1)).toBeGreaterThan(0);
+    expect(compareVersions(beta2, stable)).toBeLessThan(0);
   });
 });
 

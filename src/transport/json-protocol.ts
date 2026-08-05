@@ -9,7 +9,7 @@
 
 import { post } from "../utils/consoleStore.ts";
 import { dbg } from "../lib/debug.ts";
-import { upgradeCheck, meetsMinimumVersion, MIN_FIRMWARE_VERSION } from "./upgradeCheck.ts";
+import { upgradeCheck } from "./upgradeCheck.ts";
 import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
@@ -51,9 +51,17 @@ import {
   type WriteJsonRequestOptions,
   type SendJsonEvalOptions,
   type CaptureCallback,
+  type ConnectedFirmwareIdentity,
 } from "./types.ts";
 import { serialBuffers, setSerialOutputBufferRouting } from "./stream-parser.ts";
 import { clearLiveSlotIndex } from "../lib/liveSlotIndex.ts";
+import {
+  handleLegacyText,
+  probeLegacyFirmware,
+  resetLegacyProtocol,
+  writeLegacyCode,
+  type LegacyFirmwareIdentity,
+} from "./legacy-protocol.ts";
 
 // ── Module state (set once by initProtocol) ──────────────────────────
 
@@ -66,6 +74,10 @@ export const protocolState: ProtocolState = {
   pendingRequests: new Map(),
   ioConfig: null,
   heartbeatInterval: null,
+  firmwareVersion: null,
+  protocolVersion: null,
+  hardwareTarget: null,
+  capabilities: [],
 };
 
 const encoder = new TextEncoder();
@@ -119,6 +131,16 @@ export function getIoConfig(): IoConfig | null {
   return protocolState.ioConfig;
 }
 
+export function getConnectedFirmwareIdentity(): ConnectedFirmwareIdentity {
+  return {
+    protocolMode: getProtocolMode(),
+    firmwareVersion: protocolState.firmwareVersion,
+    protocolVersion: protocolState.protocolVersion,
+    hardwareTarget: protocolState.hardwareTarget,
+    capabilities: [...protocolState.capabilities],
+  };
+}
+
 // ── State reset ──────────────────────────────────────────────────────
 
 export function resetProtocolState(): void {
@@ -132,12 +154,17 @@ export function resetProtocolState(): void {
   protocolState.requestIdCounter = 0;
   protocolState.pendingRequests.clear();
   protocolState.ioConfig = null;
+  protocolState.firmwareVersion = null;
+  protocolState.protocolVersion = null;
+  protocolState.hardwareTarget = null;
+  protocolState.capabilities = [];
   // Clear handshake signal — new connection starts fresh.
   _handshakeResolve = null;
   _handshakePromise = null;
   setSerialOutputBufferRouting({});
   for (const buf of serialBuffers) buf.clear();
   clearLiveSlotIndex();
+  resetLegacyProtocol();
   stopHeartbeat();
   reportProtocolModeChanged(getProtocolMode());
 }
@@ -183,8 +210,9 @@ function stopHeartbeat(): void {
 
 /** Per-attempt timeout for the hello handshake (ms). Spec §7: ≈700 ms. */
 const HELLO_ATTEMPT_TIMEOUT_MS = 700;
-/** Maximum hello attempts before surfacing a connection error. Spec §7: 8. */
-const HELLO_MAX_ATTEMPTS = 8;
+/** JSON retries retain a cold-boot window after the one safe legacy probe. */
+const HELLO_MAX_ATTEMPTS = 3;
+const LEGACY_PROBE_TIMEOUT_MS = 700;
 
 /**
  * Shared handshake completion signal. `sendHelloWithRetry` awaits this;
@@ -235,32 +263,13 @@ function completeHandshake(response: JsonResponse): void {
     console.log("[json-protocol] completeHandshake called with:", JSON.stringify(response).slice(0, 300));
   }
   if (response.success && response.mode === "json") {
-    // Enforce minimum firmware version floor before proceeding.
-    if (response.fw) {
-      // Parse the version string inline to check the floor before calling
-      // upgradeCheck (which posts the "connected" notice).
-      const versionPattern = /(\d+)\.(\d+)(?:\.(\d+))?/;
-      const groups = versionPattern.exec(String(response.fw));
-      if (groups) {
-        const parsed = {
-          major: Number.parseInt(groups[1], 10),
-          minor: Number.parseInt(groups[2], 10),
-          patch: Number.parseInt(groups[3] ?? "0", 10),
-          string: String(response.fw),
-        };
-        if (!meetsMinimumVersion(parsed)) {
-          const floor = `${MIN_FIRMWARE_VERSION.major}.${MIN_FIRMWARE_VERSION.minor}.${MIN_FIRMWARE_VERSION.patch}`;
-          post(
-            `Firmware too old (v${parsed.string}) — please update to v${floor} or later.`,
-            "error"
-          );
-          dispatchProtocolReady();
-          return;
-        }
-      }
-    }
-
     protocolState.mode = "json";
+    protocolState.firmwareVersion = response.fw ?? null;
+    protocolState.protocolVersion = response.protocol ?? 1;
+    protocolState.hardwareTarget = response.target ?? null;
+    protocolState.capabilities = Array.isArray(response.capabilities)
+      ? [...response.capabilities]
+      : ["json-v1"];
     if (import.meta.env.DEV) {
       console.log("[json-protocol] Handshake SUCCESS — mode=json, fw=", response.fw);
     }
@@ -286,6 +295,22 @@ function completeHandshake(response: JsonResponse): void {
   dispatchProtocolReady();
 }
 
+function completeLegacyHandshake(identity: LegacyFirmwareIdentity): void {
+  if (protocolState.mode !== "negotiating") return;
+  protocolState.mode = "legacy";
+  protocolState.firmwareVersion = identity.version;
+  protocolState.protocolVersion = 0;
+  protocolState.hardwareTarget = null;
+  protocolState.capabilities = ["legacy-text-v1", "legacy-stream-v1"];
+  upgradeCheck(identity.version);
+  post(
+    `Connected using legacy firmware v${identity.version}. Core editing and hardware evaluation remain available; newer firmware-only features are disabled.`,
+    "warn",
+  );
+  resolveHandshakeSignal();
+  dispatchProtocolReady();
+}
+
 /**
  * Send the hello request and wait for a response, with per-attempt timeout.
  * Rejects on timeout so the retry loop can move to the next attempt.
@@ -298,7 +323,12 @@ async function sendHelloOnce(): Promise<JsonResponse> {
 }
 
 /**
- * Send hello immediately on port open and retry per spec §4.2.
+ * Probe the legacy form once before sending JSON, then retry JSON hello.
+ * Ordering is safety-critical: pre-1.2 firmware interprets arbitrary incoming
+ * text as ModuLisp, so a JSON-first probe could enqueue invalid user code.
+ * Current firmware receives a newline-terminated unknown request which it can
+ * discard before the subsequent hello. Whichever protocol answers becomes
+ * fixed for this connection.
  * Called by connector.ts after setSerialPort + setConnectedToModule.
  * Does not check firmware version — new spec always uses hello (§4.2).
  *
@@ -310,11 +340,30 @@ async function sendHelloOnce(): Promise<JsonResponse> {
 export async function sendHelloWithRetry(): Promise<void> {
   protocolState.negotiationAttempted = true;
   const handshakeDone = createHandshakeSignal();
-  console.log("[json-protocol] sendHelloWithRetry: starting hello attempts");
+  console.log("[json-protocol] sendHelloWithRetry: starting protocol detection");
+
+  const initialPort = serialport();
+  if (!initialPort?.writable) {
+    console.log("[json-protocol] sendHelloWithRetry: port not writable, aborting");
+    return;
+  }
+
+  const legacyIdentity = await Promise.race([
+    probeLegacyFirmware(
+      (data) => serialWrite(initialPort, data),
+      LEGACY_PROBE_TIMEOUT_MS,
+    ),
+    handshakeDone.then(() => null),
+  ]);
+  if (legacyIdentity) {
+    completeLegacyHandshake(legacyIdentity);
+    return;
+  }
+  if (protocolState.mode !== "negotiating") return;
 
   for (let attempt = 1; attempt <= HELLO_MAX_ATTEMPTS; attempt += 1) {
-    const mode = (): "negotiating" | "json" => protocolState.mode;
-    if (mode() === "json") return;
+    const mode = (): "negotiating" | "legacy" | "json" => protocolState.mode;
+    if (mode() !== "negotiating") return;
 
     const port = serialport();
     if (!port?.writable) {
@@ -327,21 +376,21 @@ export async function sendHelloWithRetry(): Promise<void> {
     const attemptRace = Promise.race([
       sendHelloOnce().then((response) => {
         console.log("[json-protocol] hello response received:", JSON.stringify(response).slice(0, 200));
-        if (mode() !== "json") completeHandshake(response);
+        if (mode() === "negotiating") completeHandshake(response);
       }),
       handshakeDone,
     ]);
 
     try {
       await attemptRace;
-      if (mode() === "json") return;
+      if (mode() !== "negotiating") return;
     } catch (err) {
       console.log(`[json-protocol] hello attempt ${attempt} failed: ${String(err)}`);
-      if (mode() === "json") return;
+      if (mode() !== "negotiating") return;
     }
   }
 
-  if (protocolState.mode !== "json") {
+  if (protocolState.mode === "negotiating") {
     console.log("[json-protocol] All hello attempts exhausted — giving up");
     post(
       "uSEQ did not respond to hello. Try unplugging and reconnecting.",
@@ -358,7 +407,7 @@ export async function sendHelloWithRetry(): Promise<void> {
  * If handshake is already complete, this is a no-op.
  */
 export function retryHelloOnReady(): void {
-  if (protocolState.mode === "json") {
+  if (protocolState.mode !== "negotiating") {
     dbg("Received ready after handshake complete — ignoring (device may have rebooted)");
     return;
   }
@@ -369,7 +418,7 @@ export function retryHelloOnReady(): void {
     timeout: HELLO_ATTEMPT_TIMEOUT_MS,
   })
     .then((response) => {
-      if (protocolState.mode !== "json") {
+      if (protocolState.mode === "negotiating") {
         completeHandshake(response);
       }
     })
@@ -702,8 +751,8 @@ export function sendGetState(): Promise<JsonResponse> {
 
 /**
  * Send code to the uSEQ device.
- * Uses JSON eval when the protocol is active; falls back to raw text
- * serial write during early boot (before negotiation completes).
+ * Uses structured JSON eval on protocol v1 and raw ModuLisp on explicitly
+ * detected legacy firmware. No user eval is guessed while negotiating.
  * In dev mode without a port, simulates execution.
  */
 export function sendTouSEQ(
@@ -711,13 +760,6 @@ export function sendTouSEQ(
   capture: CaptureCallback | null = null
 ): Promise<any> {
   let cleanedCode = cleanCode(code);
-
-  // Strip legacy @ prefix (immediate-eval marker from old protocol).
-  // New wire protocol (§5.7): eval is immediate by default; quant:true opts
-  // into quantised eval. The @ never crosses the wire.
-  if (cleanedCode.startsWith("@")) {
-    cleanedCode = cleanedCode.slice(1);
-  }
 
   if (!cleanedCode.trim()) {
     return Promise.resolve({ success: true, text: "" });
@@ -742,7 +784,24 @@ export function sendTouSEQ(
     return Promise.resolve();
   }
 
-  // JSON protocol active — use structured eval
+  if (protocolState.mode === "legacy") {
+    return writeLegacyCode(
+      cleanedCode,
+      (data) => serialWrite(port!, data),
+      capture,
+    );
+  }
+
+  if (protocolState.mode === "negotiating") {
+    return Promise.reject(
+      new Error("Firmware protocol negotiation is still in progress"),
+    );
+  }
+
+  // JSON eval is immediate by default. The legacy `@` marker is editor-side
+  // syntax only and never crosses the JSON wire.
+  if (cleanedCode.startsWith("@")) cleanedCode = cleanedCode.slice(1);
+
   return sendJsonEval(cleanedCode, { capture }).catch((error: Error) => {
     console.error("Failed to send JSON request to uSEQ", error);
     post(
@@ -751,6 +810,17 @@ export function sendTouSEQ(
     );
     throw error;
   });
+}
+
+/** Route one pre-1.2 framed text message from the universal byte parser. */
+export function handleLegacyTextMessage(message: string): void {
+  const result = handleLegacyText(message);
+  if (result.identity && protocolState.mode === "negotiating") {
+    completeLegacyHandshake(result.identity);
+  }
+  if (!result.captured && message.trim()) {
+    post(`uSEQ: ${message}`);
+  }
 }
 
 function handleNotConnected(): void {

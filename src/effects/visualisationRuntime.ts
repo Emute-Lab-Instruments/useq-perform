@@ -40,6 +40,7 @@ import { refreshOutputHealth } from "../utils/outputHealthStore.ts";
 import { recordTickElapsed } from "./adaptiveQuality.ts";
 import { projectionTrace } from "../lib/projectionTrace.ts";
 import { shouldAdvanceLocalTime } from "../audio/audioClockPolicy.ts";
+import { shouldUseWasmShadow } from "../runtime/runtimeCompatibility.ts";
 
 /**
  * Render hook supplied by a UI adapter — `effects/` is forbidden from
@@ -227,6 +228,10 @@ export function notifyExternalTimeUpdate(time: number): void {
     currentTimeSeconds: numeric,
     displayTimeSeconds: numeric,
   });
+  if (!shouldUseWasmShadow()) {
+    sampleQueue.length = 0;
+    return;
+  }
   requestSampleAt(numeric, { replace: true, projectFuture: false });
   void drainSamplingQueue();
 }
@@ -297,7 +302,13 @@ function tick(): void {
     requestLocalSamplesThrough(localElapsedSeconds);
   }
 
-  if (frameCount % DIAG_POLL_INTERVAL === 0 && !diagPollInFlight) {
+  const wasmObservationEnabled = shouldUseWasmShadow();
+
+  if (
+    wasmObservationEnabled &&
+    frameCount % DIAG_POLL_INTERVAL === 0 &&
+    !diagPollInFlight
+  ) {
     diagPollInFlight = true;
     // Fire-and-forget: don't block the rAF tick on the port read. The
     // worker port crosses postMessage, so the result lands a frame or
@@ -316,14 +327,18 @@ function tick(): void {
       });
   }
 
-  if (!localTimeActive && frameCount % HARDWARE_PROJECTION_INTERVAL === 0) {
+  if (
+    wasmObservationEnabled &&
+    !localTimeActive &&
+    frameCount % HARDWARE_PROJECTION_INTERVAL === 0
+  ) {
     const t = visStore.currentTime;
     if (Number.isFinite(t) && t > 0) {
       requestSampleAt(t, { replace: false, projectFuture: true });
     }
   }
 
-  void drainSamplingQueue();
+  if (wasmObservationEnabled) void drainSamplingQueue();
 
   if (renderRequested) {
     renderFrame();

@@ -65,6 +65,7 @@
     "harvest:witnesses": "node scripts/harvest-witnesses.mjs",
     "harvest:specs": "node scripts/harvest-specs.mjs",
     "build:wasm": "cd src-useq && ./scripts/build_wasm.sh && ./nodedef/build_osc_sine_wasm.sh",
+    "prepare:firmware-beta": "node scripts/prepare-firmware-beta.mjs",
     "src-useq:status": "node scripts/src-useq-status.mjs",
     "watch": "npm run build:wasm && npm-run-all --parallel watch:assets watch:vite",
     "watch:assets": "node scripts/build-assets.mjs --watch",

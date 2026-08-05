@@ -15,9 +15,9 @@
  * The cross-references in each test's title point to the spec section
  * that the test covers. Read the spec before implementing.
  *
- * The test harness is intentionally lightweight: a FakeSerialPort that
- * speaks the *new* spec (no legacy text mode, no 0x65 prefix on JSON,
- * etc.). When the editor matches the spec, these tests pass.
+ * The test harness is intentionally lightweight: a protocol-v1 FakeSerialPort
+ * that safely consumes the one legacy-detection line before speaking bare
+ * JSON. When the editor matches both contracts, these tests pass.
  */
 
 import { ReadableStream, WritableStream } from "node:stream/web";
@@ -148,6 +148,12 @@ class SpecCompliantFakeDevice {
   private handleWrite(chunk: Uint8Array): void {
     this.writes.push(chunk);
 
+    if (decoder.decode(chunk).trim() === "@(useq-report-firmware-info)") {
+      // Protocol-v1 firmware discards this complete non-JSON request. It must
+      // not be concatenated with or mistaken for the following hello.
+      return;
+    }
+
     // Spec §3.3: editor → device JSON is bare `{...}\n` (no 0x1F prefix).
     // The first byte should be `{` (ASCII 0x7b), not 0x1f.
     const firstByte = chunk[0];
@@ -242,6 +248,11 @@ async function flush(): Promise<void> {
   }
 }
 
+async function passLegacyProbe(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(701);
+  await flush();
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────
 
 describe("wire protocol contract — editor side", () => {
@@ -264,22 +275,20 @@ describe("wire protocol contract — editor side", () => {
     vi.useRealTimers();
   });
 
-  // §4.2 — Editor sends hello immediately on port open.
-  // Replaces the legacy text probe `@(useq-report-firmware-info)`.
-  it("T1 [§4.2] sends hello on port-open, no text probe", async () => {
+  // Transport §1.9 — old firmware must never receive JSON.
+  it("T1 [transport §1.9] rules out legacy safely before JSON hello", async () => {
     const transport = await loadTransport();
     const port = new SpecCompliantFakeDevice();
 
     await transport.connectToSerialPort(port as unknown as SerialPort);
-    await flush();
+    await passLegacyProbe();
 
-    expect(port.writes.length).toBeGreaterThan(0);
+    expect(port.writes.length).toBeGreaterThanOrEqual(2);
     const firstWrite = decoder.decode(port.writes[0]);
 
-    // Must NOT be the legacy text probe.
-    expect(firstWrite).not.toContain("useq-report-firmware-info");
+    expect(firstWrite).toBe("@(useq-report-firmware-info)\n");
 
-    // Must be a hello JSON request.
+    // Only after the bounded probe window may JSON cross the wire.
     const firstReq = port.jsonRequests[0];
     expect(firstReq?.type).toBe("hello");
     expect(firstReq).toMatchObject({
@@ -299,17 +308,17 @@ describe("wire protocol contract — editor side", () => {
     port.defersFirstHello = true;
 
     const connectPromise = transport.connectToSerialPort(port as unknown as SerialPort);
-    await flush(); // Editor sends first hello; device defers reply.
+    await flush(); // Editor sends only the legacy-safe probe initially.
 
-    expect(port.jsonRequests.filter((r) => r.type === "hello").length).toBe(1);
+    expect(port.jsonRequests.filter((r) => r.type === "hello").length).toBe(0);
 
     // Device finishes booting and sends ready.
     port.pushReady("1.2.0");
     await flush();
 
-    // Editor should have re-sent hello; device replies on the second one.
+    // Ready identifies a current device, so the editor sends hello immediately.
     const helloCount = port.jsonRequests.filter((r) => r.type === "hello").length;
-    expect(helloCount).toBeGreaterThanOrEqual(2);
+    expect(helloCount).toBe(1);
 
     await connectPromise;
   });
@@ -321,7 +330,7 @@ describe("wire protocol contract — editor side", () => {
     const transport = await loadTransport();
     const port = new SpecCompliantFakeDevice();
     await transport.connectToSerialPort(port as unknown as SerialPort);
-    await flush();
+    await passLegacyProbe();
 
     // Send an eval; the device replies with a bare JSON response.
     // Note: with fake timers we must start the eval, advance the clock to let
@@ -339,7 +348,7 @@ describe("wire protocol contract — editor side", () => {
     const transport = await loadTransport();
     const port = new SpecCompliantFakeDevice();
     await transport.connectToSerialPort(port as unknown as SerialPort);
-    await flush();
+    await passLegacyProbe();
 
     port.pushJson({ type: "log", level: "info", text: "Hello from uSEQ" });
     await flush();
@@ -366,7 +375,7 @@ describe("wire protocol contract — editor side", () => {
 
     const port = new SpecCompliantFakeDevice();
     await transport.connectToSerialPort(port as unknown as SerialPort);
-    await flush();
+    await passLegacyProbe();
 
     port.pushJson({
       type: "diagnostics",
@@ -432,7 +441,7 @@ describe("wire protocol contract — editor side", () => {
     };
 
     await transport.connectToSerialPort(port as unknown as SerialPort);
-    await flush();
+    await passLegacyProbe();
 
     // Note: with fake timers we must start the eval, advance the clock to let
     // the device's setTimeout(0) fire the response, then await the result.
@@ -458,7 +467,7 @@ describe("wire protocol contract — editor side", () => {
     const transport = await loadTransport();
     const port = new SpecCompliantFakeDevice();
     await transport.connectToSerialPort(port as unknown as SerialPort);
-    await flush();
+    await passLegacyProbe();
 
     // Note: with fake timers we must start the eval, advance the clock to let
     // the device's setTimeout(0) fire the response, then await the result.
@@ -477,7 +486,7 @@ describe("wire protocol contract — editor side", () => {
     const transport = await loadTransport();
     const port = new SpecCompliantFakeDevice();
     await transport.connectToSerialPort(port as unknown as SerialPort);
-    await flush();
+    await passLegacyProbe();
 
     // The editor should expose a sendSetLiveInputs (or similar) entry point
     // that builds a `{type:"set-live-inputs", slots:{...}}` request.
@@ -500,11 +509,8 @@ describe("wire protocol contract — editor side", () => {
     });
   });
 
-  // Firmware version floor — audit finding (protocol-coherence #2).
-  // If the device reports a firmware version below 1.2.0, the editor must NOT
-  // complete the handshake; it must surface a blocking "firmware too old" error
-  // to the console and leave protocol mode as "negotiating" (not "json").
-  it("T9 [version-floor] rejects firmware below 1.2.0 with a blocking notice", async () => {
+  // Protocol identity is authoritative; SemVer is update policy, not framing.
+  it("T9 [capability] accepts a JSON-speaking device regardless of semver", async () => {
     const transport = await loadTransport();
     // Use a device that reports an old firmware version in its hello response.
     const port = new SpecCompliantFakeDevice();
@@ -520,7 +526,7 @@ describe("wire protocol contract — editor side", () => {
             requestId: req.requestId,
             success: true,
             mode: "json",
-            // Old firmware that doesn't meet the 1.2.0 floor.
+            // An unusual backport: old version label but protocol-v1 shape.
             fw: "1.1.3",
             config: {
               inputs: [],
@@ -534,18 +540,16 @@ describe("wire protocol contract — editor side", () => {
     };
 
     await transport.connectToSerialPort(port as unknown as SerialPort);
-    await flush();
+    await passLegacyProbe();
 
-    // The editor must post a "firmware too old" error to the console.
+    // The beta updater may offer a newer build, but transport must not reject
+    // a device that proves it can speak the current contract.
     const errorCalls = postMock.mock.calls.filter(
       (args: unknown[]) => typeof args[0] === "string" && args[0].includes("Firmware too old")
     );
-    expect(errorCalls.length).toBeGreaterThan(0);
-    // The error post must carry the "error" severity argument.
-    expect(errorCalls[0][1]).toBe("error");
+    expect(errorCalls).toHaveLength(0);
 
-    // The protocol must NOT advance to "json" mode when firmware is below floor.
     const { protocolState } = await import("./json-protocol.ts");
-    expect(protocolState.mode).not.toBe("json");
+    expect(protocolState.mode).toBe("json");
   });
 });

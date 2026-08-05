@@ -16,8 +16,9 @@ layer: behavioural
 - `src/effects/visualisationRuntime.ts` — single rAF loop owning local-time advancement and sampling/rendering
 - `src/runtime/runtimeTransportService.ts` — fan-out of shared transport commands to both runtimes
 - `src/transport/connector.ts` — serial port lifecycle, auto-reconnect, `connectedToModule`
-- `src/transport/json-protocol.ts` — JSON wire protocol driver (hello, ping, stream-config, eval)
-- `src/transport/stream-parser.ts` — serial stream framing and parsing
+- `src/transport/json-protocol.ts` — capability negotiation and JSON wire protocol driver (hello, ping, stream-config, eval)
+- `src/transport/legacy-protocol.ts` — pre-1.2 firmware probe, raw eval writer, and one-response capture
+- `src/transport/stream-parser.ts` — universal serial stream/framed-JSON/legacy-text parser
 - `src/transport/serial-utils.ts` — low-level serial port utilities
 - `src/transport/webSerialHostPort.ts` — Web Serial `RuntimePort` implementation
 - `src/transport/upgradeCheck.ts` — firmware version upgrade check
@@ -44,7 +45,11 @@ Global events handled in every state, used to keep the machine in sync without r
 
 1.5 In `wasm` mode (the only mode where `shouldUseLocalClock()` is true — `none` mode has WASM disabled, so the internal clock never runs there), transport `stopped` resets the internal clock to zero, `paused` freezes it, `playing` resumes from frozen position. (see `src/effects/transportClock.ts`, `src/effects/localClock.ts`)
 
-1.6 In `hardware` or `both` mode, transport state changes do not directly drive the clock; after the JSON handshake completes, the editor sends a `stream-config` request at the configured rate (`DEFAULT_STREAM_MAX_RATE_HZ`, default **100 Hz**). The default `stream-config` (`buildDefaultStreamConfig`) subscribes only the **input** channels (on-change); output channels (`s1`–`s8`) are **not** subscribed by default, and firmware always streams time regardless of subscription. On the wire, time arrives on **channel 1** (output index 1 in `IoConfig`) and is stored at internal buffer index 0; subscribed channels follow on their own wire channels. The app follows hardware time. Transport commands are sent to both runtimes in `both` mode, but WASM transport state is best-effort — hardware-streamed time overrides WASM's internal clock regardless. (see `src/effects/transportClock.ts`, `src/transport/stream-parser.ts`, `src/runtime/jsonProtocol.ts` `buildDefaultStreamConfig()`)
+1.6 In `hardware` or `both` mode, transport state changes do not directly drive the clock. After a JSON handshake, the editor sends a `stream-config` request at the configured rate (`DEFAULT_STREAM_MAX_RATE_HZ`, default **100 Hz**). The default subscribes only the **input** channels (on-change); output channels (`s1`–`s8`) are **not** subscribed by default, and firmware always streams time regardless of subscription. On the wire, time arrives on **channel 1** (output index 1 in `IoConfig`) and is stored at internal buffer index 0; subscribed channels follow on their own wire channels. Legacy firmware has no `stream-config`; the parser accepts its already-configured 11-byte stream frames. In both cases hardware time wins. The WASM shadow is best-effort for JSON hardware and disabled for legacy hardware. (see `src/effects/transportClock.ts`, `src/transport/stream-parser.ts`, `src/runtime/jsonProtocol.ts` `buildDefaultStreamConfig()`)
+
+1.9 **Protocol selection is capability-based and legacy-safe.** On each port open the editor first sends one newline-terminated `@(useq-report-firmware-info)` probe. This ordering matters because pre-1.2 firmware would interpret a JSON hello as scheduled ModuLisp. A framed version response fixes the connection to `legacy`; otherwise the editor retries JSON `hello`, whose successful response fixes it to `json`. A current device's unsolicited `ready` frame may trigger hello immediately. User code is never sent while the mode is still `negotiating`; the drivers do not fall through into each other after selection.
+
+1.10 In legacy mode, leading `@` and unprefixed forms cross the wire unchanged so the old firmware retains immediate-versus-quantised behaviour. JSON mode removes the historical leading `@` and uses structured eval. JSON-only requests reject in legacy mode rather than pretending to succeed.
 
 1.7 The transport toolbar exposes five buttons: Play, Pause, Stop, Rewind, and Clear. Play/Pause/Stop/Rewind reflect transport state changes; Clear is a mode-less side-effect that sends `CLEAR` to the machine (emitting `(useq-clear)` to the runtime) without changing state (§1.2). Their enabled/disabled and visual state must reflect the current machine state and active runtime mode without lag; in `none` mode Rewind and Clear are disabled. (see `src/ui/TransportToolbar.tsx`, `src/ui/adapters/toolbars.tsx`, `src/contracts/useqRuntimeContract.ts`)
 

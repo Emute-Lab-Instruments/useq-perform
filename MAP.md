@@ -1,6 +1,6 @@
 # Map
 
-Web live-coding interface for the **uSEQ** Eurorack module. SolidJS + Vite + CodeMirror 6 frontend; the same C++ ModuLisp interpreter that runs on hardware is vendored as the `src-useq/` submodule and compiled to WASM for browser-local execution. Hardware talks over Web Serial (JSON protocol on firmware ≥ 1.2.0). One bundle, one editor, one transport.
+Web live-coding interface for the **uSEQ** Eurorack module. SolidJS + Vite + CodeMirror 6 frontend; the same C++ ModuLisp interpreter that runs on current hardware is vendored as the `src-useq/` submodule and compiled to WASM for browser-local execution. Hardware talks over Web Serial using protocol-v1 JSON or a bounded pre-1.2 text compatibility adapter. One bundle, one editor, one transport.
 
 Terminology source of truth: [docs/GLOSSARY.md](docs/GLOSSARY.md). Read [CLAUDE.md](CLAUDE.md) before treating this map as complete; for opinionated diagnoses see `ALIGNMENT.md`.
 
@@ -16,9 +16,9 @@ Terminology source of truth: [docs/GLOSSARY.md](docs/GLOSSARY.md). Read [CLAUDE.
 - `.storybook/` — Storybook config + Vitest browser-test setup.
 - `test/` — Mocha integration tests (`*.mjs`) plus structural YAML fixtures under `test/new_structural/`. `test/helpers/` holds the css-noop node loader (registered via `.mocharc.yml`) and the structural-fuzz worker.
 - `e2e/` — Playwright full-app journeys driven by trusted browser input against the worker-backed WASM runtime. Shared fixtures in `helpers.ts`; per-area specs (boot contract, eval feedback, LKG isolation, input dispatch, original journeys). Run `npm run test:e2e` (full rebuild) or `npx playwright test` (against existing `public/`).
-- `public/` — static assets and build outputs (`public/solid-dist/bundle.js`, `public/wasm/useq.js`).
+- `public/` — static assets and build outputs (`public/solid-dist/bundle.js`, `public/wasm/useq.js`); `public/firmware/beta/` is the same-origin beta updater landing page and optional release manifest location.
 - `assets/` — source markdown/JSON/font assets copied to `public/` by `scripts/build-assets.mjs`.
-- `scripts/` — build-assets pipeline and compiler capability-manifest verifier, config-server (dev), `src-useq:status`, parse-tree printer.
+- `scripts/` — build-assets pipeline and compiler capability-manifest verifier, beta-firmware packager (`prepare-firmware-beta.mjs`), config-server (dev), `src-useq:status`, parse-tree printer.
 - `plugins/` — `babel-solid-label.cjs` (dev-mode `data-component`/`data-source` annotations).
 - `patches/` — patch-package patches for npm deps.
 - `docs/` — architecture and contract docs (see index below).
@@ -73,8 +73,9 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `engineIndicator.tsx` — engine state chip (props-based; wired in `src/ui/adapters/toolbars.tsx`).
 - `src/transport/` — Web Serial lifecycle and protocol. No UI/editor imports.
   - `connector.ts` — port open/close/reconnect, Web Serial events.
-  - `json-protocol.ts` — firmware ≥ 1.2.0 JSON driver (handshake, heartbeat, eval). See [src-useq/docs/specs/wire-protocol.md](src-useq/docs/specs/wire-protocol.md).
-  - `stream-parser.ts` — byte-level parser, routes STREAM/JSON/TEXT, owns 9 `CircularBuffer`s.
+  - `json-protocol.ts` — capability negotiation plus the protocol-v1 JSON driver (handshake, heartbeat, eval). See [src-useq/docs/specs/wire-protocol.md](src-useq/docs/specs/wire-protocol.md).
+  - `legacy-protocol.ts` — isolated pre-1.2 firmware-info probe and raw ModuLisp adapter; it deliberately does not emulate the old interpreter.
+  - `stream-parser.ts` — byte-level universal parser, routes STREAM/bare JSON/framed JSON/legacy text, owns 9 `CircularBuffer`s.
   - `webSerialHostPort.ts` — adapter over `connector.ts` + `json-protocol.ts` implementing the `WebSerialHostPort` contract from `src/contracts/runtimePorts.ts`.
   - `webSocketSerialPort.ts` — duck-typed Web Serial `SerialPort` over a loopback WebSocket (`?nativeBridge`); lets a native uSEQ engine (e.g. the VCV Rack plugin) appear as ordinary hardware. See [docs/specs/url-params.md](docs/specs/url-params.md).
   - `serial-utils.ts`, `upgradeCheck.ts`, `types.ts`, `index.ts`.
@@ -85,6 +86,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `runtimeService.ts` — sole settings-mutation surface; thin façade over the services below.
   - `runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts` — split runtime concerns. Both transport- and session-services now talk to runtime ports rather than `transport/` or `wasmInterpreter` directly.
   - `runtimeSession.ts`, `runtimeSessionStore.ts` — hardware-vs-WASM precedence, plain-JS listener store.
+  - `runtimeCompatibility.ts` — keeps the current WASM loaded but prevents it from presenting current-firmware results as a shadow of legacy hardware.
   - `appSettingsRepository.ts` — canonical settings store (non-reactive). Mirrored into `settingsStore` via `settingsChanged` channel.
   - `wasmInterpreter.ts` — WASM module load, ABI validation, eval/sample bindings; binds optional export fns (diagnostics, live-edit, state-snapshot) onto the `__useqWasmRuntime` global. Wrapped by `wasmRuntimePort.ts` for callers; the port reads diagnostics back from that global (`readLastDiagnosticsSync` / `readActiveDiagnosticsSync`).
   - `witnessEngine.ts` — isolated engine for the conformance-witness runner ([docs/specs/witnesses.md §2.3](docs/specs/witnesses.md)). Uses `wasmInterpreter.createIsolatedWasmModule()` — a non-memoised `createModule()` call that is never published to `__useqWasmRuntime` — and re-instantiates between witnesses (`useq_init` is idempotent and there is no `useq_clear` export, so a fresh module is the only clean reset). The live session's engine never evaluates witness code.
@@ -207,6 +209,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — terminology, single source of truth for naming.
 - [docs/specs/MAIN.md](docs/specs/MAIN.md) — normative app-behaviour spec (split into per-feature sub-specs under `docs/specs/`); source of truth for tests and correctness. §4 covers product boundary, stable core, compatibility cuts, and out-of-scope items.
 - [docs/specs/runtime-contract.md](docs/specs/runtime-contract.md) — editor↔hardware/WASM capability split, WASM ABI floor, promotion workflow.
+- [docs/design/firmware-compatibility-and-beta-release.md](docs/design/firmware-compatibility-and-beta-release.md) — old/new firmware differences, compatibility boundary, beta channel, and production cutover runbook.
 - [src-useq/docs/specs/wire-protocol.md](src-useq/docs/specs/wire-protocol.md) — serial framing, JSON message shapes.
 - [docs/specs/reactive-flow.md](docs/specs/reactive-flow.md) — stores, channels, signals, data flow paths.
 - [docs/specs/keybindings.md](docs/specs/keybindings.md) — unified keybinding architecture.

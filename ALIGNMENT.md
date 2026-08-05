@@ -1,6 +1,6 @@
 # Alignment
 
-Last full review: **2026-08-02**.
+Last full review: **2026-08-05**.
 
 ## Mission
 
@@ -15,7 +15,24 @@ desktop packaging, and broad browser compatibility are outside its mission.
 
 ## Top defects
 
-### 1. Firmware-profile execution is not yet observed *(2026-08-02)*
+### 1. The editor migration is prepared but not yet observed in production *(2026-08-05)*
+
+**What.** One editor now negotiates protocol-v1 JSON or the bounded legacy
+text adapter, preserves a rollback storage bridge, and can advertise a
+same-origin firmware beta manifest. The current public editor has not yet been
+archived at `/legacy/`; no beta manifest or UF2 is published; and neither path
+has been exercised against physical pre-1.2 and beta hardware in the release
+browser.
+
+**Why it blocks the mission.** Parser and integration tests do not prove the
+actual Web Serial devices, BOOTSEL handoff, static-host deployment, or a
+rollback that preserves a user's program.
+
+**Rough cost.** S-M: execute the cutover checklist in
+`docs/design/firmware-compatibility-and-beta-release.md`, retain the physical
+A/B record, then close ergo `6fc96486`.
+
+### 2. Firmware-profile execution is not yet observed *(2026-08-02)*
 
 **What.** The common language corpus passes through the native and generated-
 WASM probes, and the `musicthing` firmware profile compiles and links. There is
@@ -30,7 +47,7 @@ its physical I/O boundary.
 `2f440020`, select its representable corpus, and record physical-device checks
 separately.
 
-### 2. Browser scheduling and audible output need direct observations *(2026-08-02)*
+### 3. Browser scheduling and audible output need direct observations *(2026-08-02)*
 
 **What.** Automated tests cover compiler-to-control mapping, prepare/commit/
 activation ordering, graph execution, generated assets, and the browser-facing
@@ -45,7 +62,7 @@ audio path is perceptually correct.
 listening procedure in `docs/synthesis/LISTENING_GUIDE.md` for the integrated
 revision.
 
-### 3. Target runtime headroom is incompletely measured *(2026-08-02)*
+### 4. Target runtime headroom is incompletely measured *(2026-08-02)*
 
 **What.** The current target build uses 92.3% of static RAM and 17.0% of flash.
 No target stack watermark has been measured under combined compilation,
@@ -57,7 +74,7 @@ headroom at the most constrained supported profile.
 **Rough cost.** M: add a stack-watermark observation and representative
 combined workloads before making a target-headroom claim.
 
-### 4. Clause-level evidence is not yet complete *(2026-08-02)*
+### 5. Clause-level evidence is not yet complete *(2026-08-02)*
 
 **What.** The Engine Ledger exposes the specification corpus and existing
 conformance witnesses, but some normative clauses still have no executable
@@ -90,5 +107,8 @@ make missing joins fail the intended evidence grade.
 - Camera input, virtual gamepad, desktop packaging, MIDI output, firmware-side
   MIDI, authentication, multitenancy, and telemetry remain outside the stable
   product boundary in `docs/specs/MAIN.md`.
-- The legacy text serial protocol remains a compatibility path for older
-  firmware while the JSON protocol is the current contract.
+- The legacy text serial adapter remains only while supported users still run
+  pre-1.2 firmware. It guarantees core editor→hardware eval and incoming time/
+  value streams, not current ModuLisp semantics or JSON-only features. Remove
+  it after the supported population is upgraded and the `/legacy/` rollback
+  endpoint has passed its announced retirement window.

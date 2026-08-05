@@ -2,7 +2,8 @@
  * Stream Parser
  *
  * Byte-level parsing and routing of serial data. Splits incoming byte
- * streams into STREAM (binary §3.2) and bare-JSON (§3.3) messages.
+ * streams into current STREAM/bare-JSON messages and the two pre-1.2
+ * framed-text message types used by the compatibility adapter.
  */
 
 import { Buffer } from "buffer";
@@ -61,7 +62,8 @@ export let readingActive = false;
  */
 export async function serialReader(
   serialport: SerialPort | null,
-  onJsonMessage: (msg: string) => void
+  onJsonMessage: (msg: string) => void,
+  onLegacyTextMessage: (msg: string) => void = () => {},
 ): Promise<void> {
   if (!isSerialPortValid(serialport)) return;
   dbg("reading...");
@@ -72,7 +74,8 @@ export async function serialReader(
     buffer = await setupReaderAndProcessData(
       serialport!,
       buffer,
-      onJsonMessage
+      onJsonMessage,
+      onLegacyTextMessage,
     );
   } else {
     console.log("Serial port is not readable or is locked");
@@ -82,7 +85,8 @@ export async function serialReader(
 async function setupReaderAndProcessData(
   port: SerialPort,
   initialBuffer: Uint8Array,
-  onJsonMessage: (msg: string) => void
+  onJsonMessage: (msg: string) => void,
+  onLegacyTextMessage: (msg: string) => void,
 ): Promise<Uint8Array> {
   let buffer = initialBuffer;
   const reader = port.readable!.getReader();
@@ -93,7 +97,8 @@ async function setupReaderAndProcessData(
     buffer = await processSerialDataLoop(
       reader,
       buffer,
-      onJsonMessage
+      onJsonMessage,
+      onLegacyTextMessage,
     );
   } catch (error) {
     console.log("Serial read error:", error);
@@ -107,7 +112,8 @@ async function setupReaderAndProcessData(
 async function processSerialDataLoop(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   buffer: Uint8Array,
-  onJsonMessage: (msg: string) => void
+  onJsonMessage: (msg: string) => void,
+  onLegacyTextMessage: (msg: string) => void,
 ): Promise<Uint8Array> {
   let chunkCount = 0;
   while (readingActive) {
@@ -125,7 +131,8 @@ async function processSerialDataLoop(
     const byteArray = combineBuffers(buffer, incoming);
     const state = processAllMessages(
       byteArray,
-      onJsonMessage
+      onJsonMessage,
+      onLegacyTextMessage,
     );
     buffer = state.remainingBytes;
   }
@@ -165,7 +172,8 @@ export async function stopSerialReader(): Promise<void> {
  */
 export function processAllMessages(
   byteArray: Uint8Array,
-  onJsonMessage: (msg: string) => void
+  onJsonMessage: (msg: string) => void,
+  onLegacyTextMessage: (msg: string) => void = () => {},
 ): SerialProcessingState {
   let state: SerialProcessingState = {
     mode: SERIAL_READ_MODES.ANY,
@@ -177,7 +185,8 @@ export function processAllMessages(
     state = processSerialData(
       state.remainingBytes,
       state,
-      onJsonMessage
+      onJsonMessage,
+      onLegacyTextMessage,
     );
   }
 
@@ -187,15 +196,24 @@ export function processAllMessages(
 function processSerialData(
   byteArray: Uint8Array,
   state: SerialProcessingState,
-  onJsonMessage: (msg: string) => void
+  onJsonMessage: (msg: string) => void,
+  onLegacyTextMessage: (msg: string) => void,
 ): SerialProcessingState {
   const { mode } = state;
 
   switch (mode) {
     case SERIAL_READ_MODES.ANY:
       return processAnyModeData(byteArray);
+    case SERIAL_READ_MODES.LEGACY_TEXT:
+      return processLegacyTextModeData(byteArray, onLegacyTextMessage);
     case SERIAL_READ_MODES.SERIALSTREAM:
       return processStreamModeData(byteArray);
+    case SERIAL_READ_MODES.FRAMED_JSON:
+      return processDelimitedFrameData(
+        byteArray,
+        SERIAL_READ_MODES.FRAMED_JSON,
+        onJsonMessage,
+      );
     case SERIAL_READ_MODES.BARE_JSON:
       return processBareJsonModeData(byteArray, onJsonMessage);
   }
@@ -216,6 +234,15 @@ function processAnyModeData(byteArray: Uint8Array): SerialProcessingState {
     if (typebyte === MESSAGE_TYPES.STREAM) {
       return { mode: SERIAL_READ_MODES.SERIALSTREAM, processed: false, remainingBytes: byteArray };
     }
+    if (
+      typebyte === MESSAGE_TYPES.LEGACY_TEXT ||
+      typebyte === MESSAGE_TYPES.LEGACY_MESSAGE_TO_EDITOR
+    ) {
+      return { mode: SERIAL_READ_MODES.LEGACY_TEXT, processed: false, remainingBytes: byteArray };
+    }
+    if (typebyte === MESSAGE_TYPES.FRAMED_JSON) {
+      return { mode: SERIAL_READ_MODES.FRAMED_JSON, processed: false, remainingBytes: byteArray };
+    }
     // Unknown binary type byte (§3.4): advance one byte and re-discriminate.
     return { mode: SERIAL_READ_MODES.ANY, processed: false, remainingBytes: byteArray.slice(1) };
   }
@@ -227,6 +254,42 @@ function processAnyModeData(byteArray: Uint8Array): SerialProcessingState {
 
   // Garbage / out-of-sync: advance one byte and re-discriminate (spec §3.1).
   return { mode: SERIAL_READ_MODES.ANY, processed: false, remainingBytes: byteArray.slice(1) };
+}
+
+function processLegacyTextModeData(
+  byteArray: Uint8Array,
+  onLegacyTextMessage: (msg: string) => void,
+): SerialProcessingState {
+  return processDelimitedFrameData(
+    byteArray,
+    SERIAL_READ_MODES.LEGACY_TEXT,
+    onLegacyTextMessage,
+  );
+}
+
+/** Parse `[0x1f][type]payload\r\n` frames used before protocol v1. */
+function processDelimitedFrameData(
+  byteArray: Uint8Array,
+  waitingMode: number,
+  onMessage: (msg: string) => void,
+): SerialProcessingState {
+  for (let i = 2; i < byteArray.length - 1; i += 1) {
+    if (byteArray[i] === 13 && byteArray[i + 1] === 10) {
+      const messageText = extractMessageText(byteArray.slice(2, i));
+      if (messageText.length > 0) onMessage(messageText);
+      return {
+        mode: SERIAL_READ_MODES.ANY,
+        processed: false,
+        remainingBytes: byteArray.slice(i + 2),
+      };
+    }
+  }
+
+  return {
+    mode: waitingMode,
+    processed: true,
+    remainingBytes: byteArray,
+  };
 }
 
 /**

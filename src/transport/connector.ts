@@ -32,6 +32,7 @@ import {
 import {
   getProtocolMode,
   handleJsonMessage,
+  handleLegacyTextMessage,
   initProtocol,
   resetProtocolState,
   sendHelloWithRetry,
@@ -228,7 +229,7 @@ async function setupConnectedPort(port: SerialPort): Promise<void> {
   setConnectedToModule(true);
 
   // Start reading with message callbacks
-  startSerialReader(port, handleJsonMessage);
+  startSerialReader(port, handleJsonMessage, handleLegacyTextMessage);
 
   // Spec §4.2: send hello immediately on port open, retry until handshake
   // completes or the attempt budget is exhausted.

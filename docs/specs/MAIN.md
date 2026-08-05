@@ -42,8 +42,8 @@ layer: cross-cutting
 
 1.2 The product use case is a performer typing ModuLisp expressions and pressing an eval key while a runtime produces voltages or visualisations. The app is shaped by that constraint: feedback latency must be low; the editor must keep working across hardware disconnects, eval errors, and runtime swaps; nothing the user types should ever be silently lost. Visual feedback and structural control of the code are paramount for user experience.
 
-1.3 The app talks to **two interchangeable runtime shapes**: real uSEQ hardware over Web Serial (firmware ≥ 1.2.0, JSON protocol) and an in-browser WASM build of the same interpreter. Both are first-class. The user's code, edits, and evaluations behave the same against either.
-&nbsp;&nbsp;&nbsp;&nbsp;1.3.1 By default, if both are connected, the WASM runtime acts as a "visualisation shadow" for the hardware: we let the hardware focus on updating its outputs, and all other visual feedback is sampled by the WASM runtime for performance reasons.
+1.3 The app talks to **two current runtime shapes**: protocol-v1 uSEQ hardware over Web Serial and an in-browser WASM build of the same interpreter. Both are first-class and share the JSON request contract. A bounded compatibility adapter also permits core raw evaluation against detected pre-1.2 hardware; that older interpreter is not claimed to be interchangeable with current WASM.
+&nbsp;&nbsp;&nbsp;&nbsp;1.3.1 By default, if current hardware and WASM are both connected, the WASM runtime acts as a "visualisation shadow" for the hardware: we let the hardware focus on updating its outputs, and all other visual feedback is sampled by WASM. With legacy hardware, the current WASM remains loaded for browser-local work but does not shadow hardware evaluations or projections.
 
 1.4 The user-facing surfaces (in order of prominence): editor, transport toolbar, main toolbar, visualisation panel, console, help panel, settings panel, picker/radial menus, modals, onboarding banner, action palette, keyboard/gamepad-driven discoverability.
 
@@ -79,7 +79,7 @@ App-wide degradation contracts. Cited from feature sub-specs.
 
 3.1 **First useful frame** under typical conditions (aspirational, not hard CI gates): editor visible and accepting input within 1 second of bundle load.
 
-3.2 **First eval** latency under typical conditions (aspirational): WASM ready within 2 seconds; hardware ready when the JSON handshake completes (≈ tens of ms on a healthy device, worst case ≈ 6.4 seconds).
+3.2 **First eval** latency under typical conditions (aspirational): WASM ready within 2 seconds; current hardware ready when the JSON handshake completes (≈ tens of ms on a healthy device); legacy detection may take one JSON timeout plus the firmware-info response.
 
 3.3 **Visualisation channel target**: 10–20 simultaneous channels at ≥ 30 FPS without dropped frames. Render-frame budget at the upper end of the channel range stays below the rAF interval.
 
@@ -99,6 +99,7 @@ App-wide degradation contracts. Cited from feature sub-specs.
 - Open the app, edit code, evaluate from the main editor.
 - Transport controls mapped to the shared runtime command set.
 - Connect to hardware over Web Serial; auto-reconnect a saved port (with persisted opt-out).
+- Detect protocol-v1 JSON or supported pre-1.2 framed text without asking the user to choose an editor first; keep raw legacy evaluation isolated from the JSON request lifecycle.
 - Run browser-local WASM by default when hardware is unavailable; complement hardware when both are present.
 - A "don't wait for hardware" setting that lets local editing/eval proceed without a connection gate.
 - Distinct visual indication of hardware-connected vs WASM-only states.
@@ -114,9 +115,9 @@ App-wide degradation contracts. Cited from feature sub-specs.
 
 4.3 The stable URL/storage promises in [url-params.md §1.2](url-params.md) and [persistence.md §1.2/§1.3](persistence.md) are part of the stable core.
 
-4.4 **Compatibility cuts** (kept only as bridges, may shrink without replacement): `?noModuleMode=true` (dev/debug escape hatch only — not a release-facing compatibility promise; may move or disappear); `?devmode=true` UI surface (panel/UI is internal tooling, not stable public surface); mock controls; Storybook/test harnesses; live-serial visualisation as observation-only (no time-seeking).
+4.4 **Compatibility cuts** (kept only as bridges, may shrink without replacement): the pre-1.2 raw/text serial adapter and `/legacy/` rollback editor (core eval and stream observation only; removal condition in `docs/design/firmware-compatibility-and-beta-release.md`); `?noModuleMode=true` (dev/debug escape hatch only — not a release-facing compatibility promise; may move or disappear); `?devmode=true` UI surface (panel/UI is internal tooling, not stable public surface); mock controls; Storybook/test harnesses; live-serial visualisation as observation-only (no time-seeking).
 
-4.5 **Out of scope** (not compatibility targets, never returning without a mission case): pre-1.2.0 firmware text-serial protocol, camera workflows, desktop/Electron, virtual gamepad, MIDI output and firmware-side MIDI, ambiguous hybrid runtime states, multi-user/multi-tenant, telemetry.
+4.5 **Out of scope** (not compatibility targets, never returning without a mission case): emulating the pre-1.2 interpreter in WASM; promising current-only diagnostics, state sync, live-edit, calibration, or language semantics on legacy hardware; camera workflows, desktop/Electron, virtual gamepad, MIDI output and firmware-side MIDI, ambiguous hybrid runtime states, multi-user/multi-tenant, telemetry.
 
 ---
 

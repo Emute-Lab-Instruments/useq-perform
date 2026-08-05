@@ -71,6 +71,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const MESSAGE_START_MARKER = 31;
 const STREAM_MESSAGE_TYPE = 0;
+const LEGACY_TEXT_MESSAGE_TYPE = 32;
 
 /** Encode a JSON message in the bare-JSON format per spec §3.3: `{...}\n`. */
 function encodeJsonPacket(payload: Record<string, unknown>): Uint8Array {
@@ -86,6 +87,17 @@ function encodeStreamPacket(channel: number, value: number): Uint8Array {
   return packet;
 }
 
+function encodeLegacyTextPacket(text: string): Uint8Array {
+  const payload = encoder.encode(text);
+  const packet = new Uint8Array(payload.length + 4);
+  packet[0] = MESSAGE_START_MARKER;
+  packet[1] = LEGACY_TEXT_MESSAGE_TYPE;
+  packet.set(payload, 2);
+  packet[packet.length - 2] = 13;
+  packet[packet.length - 1] = 10;
+  return packet;
+}
+
 class FakeSerialPort {
   readable: ReadableStream<Uint8Array> | null = null;
   writable: WritableStream<Uint8Array> | null = null;
@@ -94,6 +106,7 @@ class FakeSerialPort {
   readonly openCalls: number[] = [];
   closeCalls = 0;
   disableResponses = new Set<string>();
+  legacyFirmwareVersion: string | null = null;
   private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
 
   async open(options: { baudRate: number }): Promise<void> {
@@ -145,6 +158,20 @@ class FakeSerialPort {
   private handleWrite(chunk: Uint8Array): void {
     const text = decoder.decode(chunk);
     this.writes.push(text);
+
+    if (text.trim() === "@(useq-report-firmware-info)") {
+      // Protocol-v1 firmware consumes this complete non-JSON line without
+      // treating the following hello as part of it. Legacy firmware answers.
+      if (this.legacyFirmwareVersion) {
+        setTimeout(
+          () => this.enqueueRaw(
+            encodeLegacyTextPacket(`uSEQ Firmware ${this.legacyFirmwareVersion}`),
+          ),
+          0,
+        );
+      }
+      return;
+    }
 
     if (!text.endsWith("\n")) {
       return;
@@ -347,8 +374,8 @@ describe("serialComms fake host harness", () => {
   });
 
   it("reports error and stays in negotiating state when all hello retries time out", async () => {
-    // Under the new spec (§4.2), hello is sent on port-open with 8 attempts
-    // at 700 ms each. If none succeed, the editor posts an error and stays
+    // Under the compatibility spec, one 700 ms legacy-safe probe precedes
+    // three hello attempts at 700 ms each. If none succeed, the editor posts an error and stays
     // in the pre-JSON mode (getProtocolMode returns "legacy" for any non-JSON state).
     const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
@@ -359,13 +386,13 @@ describe("serialComms fake host harness", () => {
       protocolEvents.push(detail as Record<string, unknown>);
     });
 
-    // Don't await the connect promise yet — the hello retries take 5600 ms.
+    // Don't await the connect promise yet — protocol detection takes 2800 ms.
     const connectPromise = serialComms.connectToSerialPort(
       port as unknown as SerialPort
     );
 
-    // Advance past the full hello retry budget: 8 attempts × 700 ms = 5600 ms.
-    await vi.advanceTimersByTimeAsync(6000);
+    // Advance past the full probe/retry budget.
+    await vi.advanceTimersByTimeAsync(3000);
     await flushProtocolWork();
 
     // Now the connect promise should have resolved.
@@ -378,6 +405,32 @@ describe("serialComms fake host harness", () => {
       expect.stringContaining("did not respond to hello"),
       "error"
     );
+
+    await serialComms.disconnect();
+  });
+
+  it("detects pre-1.2 firmware and preserves raw @ evaluation semantics", async () => {
+    const { channels, ...serialComms } = await loadSerialComms();
+    const port = new FakeSerialPort();
+    port.disableResponses.add("hello");
+    port.legacyFirmwareVersion = "1.1.1";
+
+    const protocolEvents: Array<Record<string, unknown>> = [];
+    channels.protocolReady.subscribe((detail) => {
+      protocolEvents.push(detail as Record<string, unknown>);
+    });
+
+    expect(await serialComms.connectToSerialPort(port as unknown as SerialPort)).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    await flushProtocolWork();
+
+    expect(serialComms.getProtocolMode()).toBe("legacy");
+    expect(upgradeCheckMock).toHaveBeenCalledWith("1.1.1");
+    expect(protocolEvents).toContainEqual({ protocolMode: "legacy" });
+
+    await serialComms.sendTouSEQ("@(a1 (sin 1))");
+    expect(port.writes).toContain("@(a1 (sin 1))");
+    expect(port.jsonRequests).toEqual([]);
 
     await serialComms.disconnect();
   });

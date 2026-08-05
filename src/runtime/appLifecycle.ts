@@ -12,6 +12,10 @@ import {
   teardownStateSyncOrchestrator,
 } from '../effects/stateSyncOrchestrator.ts';
 import { initHardwareConnectPrompt } from '../effects/hardwareConnectPrompt.ts';
+import {
+  initFirmwareUpdatePrompt,
+  teardownFirmwareUpdatePrompt,
+} from '../effects/firmwareUpdatePrompt.ts';
 import { webSerialHostPort } from '../transport/webSerialHostPort.ts';
 import {
   createHardwareBindingDispatcher,
@@ -155,6 +159,10 @@ export function createApp(
       // the editor's inline annotation pipeline. Active in every runtime mode.
       initStandaloneDiagnosticsRouter();
 
+      // A published same-origin manifest activates this prompt. A missing
+      // manifest is a silent "no beta available" state.
+      initFirmwareUpdatePrompt(showConfirmModal);
+
       // Keep the engine's non-finite failure policy in step with the
       // runtime.failureMode setting across both runtimes (failure-model.md §3.2).
       initFailureModeSync();
@@ -229,6 +237,7 @@ export function createApp(
 
     async stop() {
       teardownStateSyncOrchestrator();
+      teardownFirmwareUpdatePrompt();
       if (hwBindingDispatcher) {
         hwBindingDispatcher.dispose();
         hwBindingDispatcher = null;

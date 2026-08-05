@@ -14,13 +14,21 @@ export const MESSAGE_START_MARKER = 31;
 
 export const MESSAGE_TYPES = {
   STREAM: 0,
+  /** Pre-1.2 framed console text. */
+  LEGACY_TEXT: 32,
+  /** Pre-1.2 framed message-editor output. */
+  LEGACY_MESSAGE_TO_EDITOR: 100,
+  /** Transitional framed JSON accepted on input only. */
+  FRAMED_JSON: 101,
 } as const;
 
 // ── Serial read mode constants ───────────────────────────────────────
 
 export const SERIAL_READ_MODES = {
   ANY: 0,
+  LEGACY_TEXT: 1,
   SERIALSTREAM: 2,
+  FRAMED_JSON: 3,
   /** Bare JSON mode: `{...}\n` with no 0x1F prefix (spec §3.3). */
   BARE_JSON: 4,
 } as const;
@@ -80,6 +88,12 @@ export interface JsonResponse {
   mode?: string;
   config?: IoConfig;
   fw?: string;
+  /** Independent wire-protocol version advertised by current firmware. */
+  protocol?: number;
+  /** Build target used to select a safe UF2 artifact. */
+  target?: string;
+  /** Named firmware capabilities; unknown names are ignored. */
+  capabilities?: string[];
   /** Diagnostics embedded in eval responses (spec §5.7). */
   diagnostics?: UseqDiagnostic[];
   /** Unsolicited log level (spec §5.6). */
@@ -117,12 +131,24 @@ export interface SendJsonEvalOptions {
 // ── Protocol state bag ───────────────────────────────────────────────
 
 export interface ProtocolState {
-  mode: "negotiating" | "json";
+  mode: "negotiating" | "legacy" | "json";
   negotiationAttempted: boolean;
   requestIdCounter: number;
   pendingRequests: Map<string, PendingRequest>;
   ioConfig: IoConfig | null;
   heartbeatInterval: ReturnType<typeof setInterval> | null;
+  firmwareVersion: string | null;
+  protocolVersion: number | null;
+  hardwareTarget: string | null;
+  capabilities: string[];
+}
+
+export interface ConnectedFirmwareIdentity {
+  protocolMode: "legacy" | "json";
+  firmwareVersion: string | null;
+  protocolVersion: number | null;
+  hardwareTarget: string | null;
+  capabilities: readonly string[];
 }
 
 // ── Buffer map function type ─────────────────────────────────────────

@@ -101,7 +101,7 @@ describe("appSettings", () => {
     ).toBe("lkg");
   });
 
-  it("migrates legacy storage keys into canonical local storage once", async () => {
+  it("migrates legacy storage while preserving the /legacy rollback keys", async () => {
     const settingsModule = await import("./appSettings.ts");
     window.localStorage.setItem(
       "editorConfig",
@@ -122,9 +122,9 @@ describe("appSettings", () => {
     expect(loaded?.editor.code).toBe("(legacy)");
     expect(loaded?.storage.saveCodeLocally).toBe(false);
     expect(stored.editor.fontSize).toBe(21);
-    expect(window.localStorage.getItem("editorConfig")).toBeNull();
-    expect(window.localStorage.getItem("useqConfig")).toBeNull();
-    expect(window.localStorage.getItem("useqcode")).toBeNull();
+    expect(window.localStorage.getItem("editorConfig")).not.toBeNull();
+    expect(window.localStorage.getItem("useqConfig")).not.toBeNull();
+    expect(JSON.parse(window.localStorage.getItem("useqcode") ?? "null")).toBe("(legacy)");
   });
 
   it("round-trips runtime, wasm, and canonical visualisation fields through configuration documents", async () => {

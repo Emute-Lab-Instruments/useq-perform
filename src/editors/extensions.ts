@@ -9,7 +9,7 @@ import { default_extensions as default_clojure_extensions } from "@nextjournal/c
 import { EditorView } from "@codemirror/view";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 import { updateSettings } from "../runtime/runtimeService.ts";
-import { saveRaw, PERSISTENCE_KEYS } from "../lib/persistence.ts";
+import { saveEditorCode } from "../lib/persistence.ts";
 import { themes, editorBaseTheme } from "./themes.ts";
 import { lineNumbers, drawSelection } from "@codemirror/view";
 import { history } from '@codemirror/commands';
@@ -60,7 +60,7 @@ export const updateListener = EditorView.updateListener.of((update) => {
   const currentSettings = getAppSettings();
   const userSessionConfig = currentSettings.storage || { saveCodeLocally: true };
   if (update.docChanged && userSessionConfig.saveCodeLocally) {
-    saveRaw(PERSISTENCE_KEYS.editorCode, update.state.doc.toString());
+    saveEditorCode(update.state.doc.toString());
   }
 
   if (update.docChanged && currentSettings.editor) {

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>uSEQ firmware beta</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111; color: #eee; }
+    body { max-width: 46rem; margin: 0 auto; padding: 2rem 1rem 4rem; line-height: 1.5; }
+    .card { border: 1px solid #444; border-radius: .75rem; padding: 1rem 1.25rem; background: #191919; }
+    .warning { border-left: .3rem solid #f4b942; padding-left: 1rem; }
+    label, select, button { display: block; width: 100%; box-sizing: border-box; }
+    select, button { margin-top: .5rem; padding: .75rem; font: inherit; }
+    button { cursor: pointer; font-weight: 700; }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    code { overflow-wrap: anywhere; }
+    #status { min-height: 1.5em; }
+  </style>
+</head>
+<body>
+  <h1>uSEQ firmware beta</h1>
+  <p class="warning">Beta firmware may change. Save your program and choose the exact hardware variant printed on your module or PCB. A UF2 for another target may use incompatible pins.</p>
+  <div class="card">
+    <p id="release">Checking the beta channel…</p>
+    <label for="target">Hardware variant</label>
+    <select id="target" disabled><option value="">Choose your hardware…</option></select>
+    <button id="download" disabled>Download and verify UF2</button>
+    <p id="status" role="status" aria-live="polite"></p>
+  </div>
+  <h2>Install</h2>
+  <ol>
+    <li>Use the editor’s <strong>Prepare update</strong> button, or hold BOOTSEL while reconnecting the module.</li>
+    <li>Wait for the <strong>RPI-RP2</strong> USB drive to appear.</li>
+    <li>Drag the verified UF2 you downloaded onto that drive.</li>
+    <li>Wait for the module to restart, then reconnect it in the editor.</li>
+  </ol>
+  <p><a href="/legacy/">Open the legacy editor</a> if you need the previous interface.</p>
+  <script type="module">
+    const release = document.querySelector('#release');
+    const target = document.querySelector('#target');
+    const download = document.querySelector('#download');
+    const status = document.querySelector('#status');
+    let manifest = null;
+    const requestedTarget = new URLSearchParams(location.search).get('target');
+
+    function hex(bytes) {
+      return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    try {
+      const response = await fetch('./manifest.json', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error(response.status === 404 ? 'No beta is published yet.' : `Manifest request failed (${response.status}).`);
+      manifest = await response.json();
+      release.textContent = `Available: v${manifest.version}`;
+      for (const artifact of manifest.artifacts ?? []) {
+        const option = document.createElement('option');
+        option.value = artifact.target;
+        option.textContent = artifact.label;
+        target.append(option);
+      }
+      target.disabled = false;
+      if ([...target.options].some(option => option.value === requestedTarget)) target.value = requestedTarget;
+      download.disabled = !target.value;
+    } catch (error) {
+      release.textContent = error instanceof Error ? error.message : String(error);
+    }
+
+    target.addEventListener('change', () => { download.disabled = !target.value; status.textContent = ''; });
+    download.addEventListener('click', async () => {
+      const artifact = manifest?.artifacts?.find(item => item.target === target.value);
+      if (!artifact) return;
+      download.disabled = true;
+      status.textContent = 'Downloading and checking SHA-256…';
+      try {
+        const url = new URL(artifact.url, location.href);
+        if (url.origin !== location.origin || !url.pathname.startsWith('/firmware/beta/')) throw new Error('Unsafe artifact URL.');
+        const response = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`UF2 request failed (${response.status}).`);
+        const bytes = await response.arrayBuffer();
+        if (bytes.byteLength !== artifact.size) throw new Error('UF2 size does not match the manifest.');
+        const digest = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)));
+        if (digest !== artifact.sha256) throw new Error('UF2 SHA-256 does not match the manifest.');
+        const blobUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+        const anchor = document.createElement('a');
+        anchor.href = blobUrl;
+        anchor.download = `${artifact.target}-${manifest.version}.uf2`;
+        anchor.click();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        status.textContent = `Verified SHA-256: ${digest}`;
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : String(error);
+      } finally {
+        download.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

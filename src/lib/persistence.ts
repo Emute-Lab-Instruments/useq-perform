@@ -55,7 +55,7 @@ export const PERSISTENCE_KEYS = {
   // Live-edit panel
   liveEdits: "uSEQ-Perform-Editor-LiveEdits",
 
-  // Legacy migration keys (will be removed after migration)
+  // Legacy editor rollback keys. Read/mirrored while /legacy is supported.
   legacyEditorConfig: "editorConfig",
   legacySettings: "useqConfig",
   legacyCode: "useqcode",
@@ -172,6 +172,16 @@ export function saveRaw(key: string, value: string): void {
   } catch (e) {
     console.warn(`[persistence] Failed to saveRaw key "${key}".`, e);
   }
+}
+
+/**
+ * Persist editor text for both the current app and the archived editor.
+ * The legacy app stored `useqcode` as a JSON string, so use `save()` for the
+ * mirror rather than `saveRaw()`.
+ */
+export function saveEditorCode(value: string): void {
+  saveRaw(PERSISTENCE_KEYS.editorCode, value);
+  save(PERSISTENCE_KEYS.legacyCode, value);
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   loadRaw,
   save,
   saveRaw,
+  saveEditorCode,
   remove,
   has,
   PERSISTENCE_KEYS,
@@ -193,6 +194,16 @@ describe("saveRaw", () => {
   it("stores a string without JSON.stringify", () => {
     saveRaw("code", "(+ 1 2)");
     expect(mockStorage.getItem("code")).toBe("(+ 1 2)");
+  });
+});
+
+describe("saveEditorCode", () => {
+  it("mirrors code to the archived editor without changing either encoding", () => {
+    saveEditorCode("(a1 (sin 1))");
+    expect(mockStorage.getItem(PERSISTENCE_KEYS.editorCode)).toBe("(a1 (sin 1))");
+    expect(mockStorage.getItem(PERSISTENCE_KEYS.legacyCode)).toBe(
+      JSON.stringify("(a1 (sin 1))"),
+    );
   });
 });
 

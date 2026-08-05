@@ -8,7 +8,7 @@
 import { defaultTheme } from "../editorDefaults.ts";
 import { themeNames } from "../themes.ts";
 import { isLocalStorageBypassedInStartupContext } from "../../runtime/startupContext.ts";
-import { load, loadRaw, save, saveRaw, remove, has, PERSISTENCE_KEYS } from "../persistence.ts";
+import { load, loadRaw, save, saveEditorCode, remove, has, PERSISTENCE_KEYS } from "../persistence.ts";
 import type { AppSettings, AppSettingsPatch } from "./schema.ts";
 import { createDefaultUserSettings } from "./schema.ts";
 import {
@@ -100,7 +100,6 @@ function migrateLegacySettings(): AppSettingsPatch {
       };
       delete (migrated.editor as Record<string, unknown>).currentTheme;
     } catch { /* corrupt legacy data, skip migration */ }
-    remove(PERSISTENCE_KEYS.legacyEditorConfig);
   }
 
   const generalConfig = load<Record<string, unknown>>(PERSISTENCE_KEYS.legacySettings);
@@ -122,7 +121,6 @@ function migrateLegacySettings(): AppSettingsPatch {
         migrated.ui = { ...generalConfig.ui };
       }
     } catch { /* corrupt legacy data, skip migration */ }
-    remove(PERSISTENCE_KEYS.legacySettings);
   }
 
   const legacyCodeValue =
@@ -133,7 +131,6 @@ function migrateLegacySettings(): AppSettingsPatch {
       ...(migrated.editor || {}),
       code: decodedCode,
     };
-    remove(PERSISTENCE_KEYS.legacyCode);
   }
 
   return migrated;
@@ -200,7 +197,7 @@ export function writePersistedUserSettings(settings: unknown, options: {
   const storedSettings = createStoredSettingsSnapshot(normalized);
 
   save(PERSISTENCE_KEYS.settings, storedSettings);
-  saveRaw(PERSISTENCE_KEYS.editorCode, normalized.editor.code);
+  saveEditorCode(normalized.editor.code);
 }
 
 export function clearPersistedUserSettings(): void {
@@ -210,9 +207,6 @@ export function clearPersistedUserSettings(): void {
 
   remove(PERSISTENCE_KEYS.settings);
   remove(PERSISTENCE_KEYS.editorCode);
-  remove(PERSISTENCE_KEYS.legacyEditorConfig);
-  remove(PERSISTENCE_KEYS.legacySettings);
-  remove(PERSISTENCE_KEYS.legacyCode);
 }
 
 export async function loadBootstrapSettings(options: {
