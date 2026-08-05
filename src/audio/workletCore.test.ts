@@ -3,7 +3,6 @@
  *
  * Covers (see mission feature `m1-worklet-host-and-epoch-consumer`):
  *   VAL-SAB-016     — mismatched epochs are not consumed.
- *   VAL-DSP-010     — phase continuous across blocks and same-def updates.
  *   VAL-ENGINE-009  — graph changes happen at block boundaries.
  *   VAL-ENGINE-011  — first matching block activates the pending graph.
  *   VAL-ENGINE-012  — mixed graph and control epochs never render.
@@ -85,25 +84,21 @@ function createFakeAllocator(): WorkletMemoryAllocator & {
 }
 
 /**
- * Build a real NodeDef adapter from the fake module. The fake adapter
- * satisfies the adapter contract; it records calls without touching
- * real WASM memory.
+ * Build a real NodeDef adapter from the fake module. When an arena is
+ * supplied, its compute function writes a deterministic non-zero signal into
+ * the same memory the core reads. Fade/output assertions therefore exercise
+ * sample flow rather than proving that a zero-filled buffer remains zero.
  */
-function buildRealFakeAdapter() {
-  const module = createFakeNodeDefModule(OSC_SINE_NODEDEF_DESCRIPTOR);
-  // Override the compute call to write a deterministic sine-like
-  // pattern into a per-instance scratch map, so the core's output
-  // scratch ends up non-zero when an instance is rendering.
-  const instanceOutput = new Map<number, Float32Array>();
-  (module as unknown as { setComputeResult: (v: boolean) => void }).setComputeResult(true);
-  // We cannot easily intercept the fake's compute to write samples into
-  // the instance scratch (the fake does not know about the core's
-  // `instanceScratch`). Instead, the fake's compute simply records the
-  // call; the core leaves its output scratch at zero in the test path.
-  // Tests that need to assert "non-zero output" inspect the recorded
-  // compute calls instead.
+function buildRealFakeAdapter(arena?: ArrayBuffer) {
+  const module = createFakeNodeDefModule(OSC_SINE_NODEDEF_DESCRIPTOR, {
+    compute: arena
+      ? ({ outputPtr, frameCount }) => {
+          new Float64Array(arena, outputPtr, frameCount).fill(1);
+        }
+      : undefined,
+  });
   const adapter = createNodeDefAdapter(module, OSC_SINE_NODEDEF_DESCRIPTOR);
-  return { adapter, module, instanceOutput };
+  return { adapter, module };
 }
 
 /**
@@ -162,9 +157,10 @@ function buildWiredCore(opts?: {
   controlBuffer: ArrayBuffer;
   adapterBundle: ReturnType<typeof buildRealFakeAdapter>;
 } {
+  const arena = new ArrayBuffer(1024 * 1024);
   const allocator = createFakeAllocator();
   const publisher = createRecordingPublisher();
-  const adapterBundle = buildRealFakeAdapter();
+  const adapterBundle = buildRealFakeAdapter(arena);
   const renderQuantum = opts?.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES;
 
   const options: WorkletCoreOptions = {
@@ -173,6 +169,12 @@ function buildWiredCore(opts?: {
     sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
     renderQuantumFrames: renderQuantum,
     publish: publisher.publish,
+    createArenaView: (byteOffset, lengthDoubles) =>
+      new Float64Array(arena, byteOffset, lengthDoubles),
+    createArenaByteView: (byteOffset, lengthBytes) =>
+      new Uint8Array(arena, byteOffset, lengthBytes),
+    freqControlScratch: new Float64Array(arena, 0, 1),
+    ampControlScratch: new Float64Array(arena, 8, 1),
   };
   const core = createWorkletCore(options);
 
@@ -743,43 +745,39 @@ describe("workletCore — emergency fade to silence (VAL-ENGINE-025)", () => {
     const expectedFadeFrames = Math.round((EMERGENCY_FADE_MS * sampleRate) / 1000);
     expect(expectedFadeFrames).toBe(480); // 10 ms at 48 kHz
 
-    const publisher = createRecordingPublisher();
-    const core = createWorkletCore({
-      adapterFactory: () => null,
-      allocator: createFakeAllocator(),
-      sampleRate,
-      renderQuantumFrames: 128,
-      publish: publisher.publish,
+    const { core } = buildWiredCore({ blockEpoch: 1 });
+    core.handleMessage({
+      type: "instantiate",
+      identity: { identity: "fade-signal", def: "osc/sine", version: 1, epoch: 1 },
+      statePointer: 0,
+      stateBytes: 0,
     });
+    const beforeTimeout = core.process(128);
+    expect(beforeTimeout.peakSample).toBeGreaterThan(0);
 
     // Force producer loss.
     core.handleMessage({ type: "devmode-terminate-producer" });
 
-    // Count blocks needed to complete the fade.
-    let blocks = 0;
-    let sawTimeout = false;
-    do {
-      const snap = core.process(128);
-      if (snap.producerTimeoutActive) sawTimeout = true;
-      blocks += 1;
-      if (blocks > 100) break; // safety
-    } while (core.producerTimeoutActive && blocks * 128 < expectedFadeFrames + 128);
+    const peaks: number[] = [];
+    const blocks = Math.ceil(expectedFadeFrames / 128) + 1;
+    for (let i = 0; i < blocks; i++) {
+      peaks.push(core.process(128).peakSample);
+    }
 
-    expect(sawTimeout).toBe(true);
-    // The total frames processed during the fade window should be at
-    // least expectedFadeFrames.
-    expect(blocks * 128).toBeGreaterThanOrEqual(expectedFadeFrames);
+    expect(peaks[0]).toBeGreaterThan(peaks.at(-1)!);
+    expect(peaks.some((peak) => peak > 0 && peak < peaks[0])).toBe(true);
+    expect(peaks.at(-1)).toBe(0);
   });
 
   it("reaches EXACT silence after the fade completes", () => {
-    const publisher = createRecordingPublisher();
-    const core = createWorkletCore({
-      adapterFactory: () => null,
-      allocator: createFakeAllocator(),
-      sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
-      renderQuantumFrames: 128,
-      publish: publisher.publish,
+    const { core } = buildWiredCore({ blockEpoch: 1 });
+    core.handleMessage({
+      type: "instantiate",
+      identity: { identity: "fade-to-zero", def: "osc/sine", version: 1, epoch: 1 },
+      statePointer: 0,
+      stateBytes: 0,
     });
+    expect(core.process(128).peakSample).toBeGreaterThan(0);
 
     // Force timeout and run past the fade.
     core.handleMessage({ type: "devmode-terminate-producer" });
@@ -974,9 +972,9 @@ describe("workletCore — graph retirement (VAL-ENGINE-035)", () => {
   });
 });
 
-describe("workletCore — same-def update preserves phase (VAL-DSP-010)", () => {
+describe("workletCore — same-def update preserves its DSP state zone", () => {
   it("does NOT re-instantiate when the same identity+def arrives again", () => {
-    const { core, allocator } = buildWiredCore({ blockEpoch: 1 });
+    const { core, allocator, adapterBundle } = buildWiredCore({ blockEpoch: 1 });
     core.handleMessage({
       type: "instantiate",
       identity: { identity: "id-same", def: "osc/sine", version: 1, epoch: 1 },
@@ -985,6 +983,8 @@ describe("workletCore — same-def update preserves phase (VAL-DSP-010)", () => 
     });
     core.process(128);
     const allocsAfterFirst = allocator.allocCount();
+    const firstStatePointer = adapterBundle.module.computeCalls.at(-1)?.[0];
+    expect(firstStatePointer).toBeTypeOf("number");
 
     // Same identity + def: update-in-place, no new allocation.
     core.handleMessage({
@@ -1011,6 +1011,7 @@ describe("workletCore — same-def update preserves phase (VAL-DSP-010)", () => 
     const snap = core.process(128);
     expect(snap.instances).toHaveLength(1);
     expect(snap.instances[0].identity).toBe("id-same");
+    expect(adapterBundle.module.computeCalls.at(-1)?.[0]).toBe(firstStatePointer);
   });
 });
 

@@ -541,6 +541,26 @@ export interface FakeNodeDefModule extends NodeDefModule {
   setComputeResult(value: boolean): void;
 }
 
+/** Arguments observed by an optional fake compute implementation. */
+export interface FakeNodeDefComputeCall {
+  readonly statePtr: number;
+  readonly freqPtr: number;
+  readonly ampPtr: number;
+  readonly outputPtr: number;
+  readonly frameCount: number;
+  readonly sampleRate: number;
+  readonly inputPtrs: readonly number[];
+}
+
+export interface FakeNodeDefModuleOptions {
+  /**
+   * Optional sample writer used by worklet tests. The default remains a
+   * recording-only fake; callers that make audible/output claims must provide
+   * a writer backed by the same arena as the worklet core.
+   */
+  readonly compute?: (call: FakeNodeDefComputeCall) => void;
+}
+
 /**
  * Construct a fake NodeDef module that records calls for test assertions.
  *
@@ -552,6 +572,7 @@ export interface FakeNodeDefModule extends NodeDefModule {
  */
 export function createFakeNodeDefModule(
   descriptor: NodeDefDescriptor,
+  options: FakeNodeDefModuleOptions = {},
 ): FakeNodeDefModule {
   const initCalls: Array<readonly [number, number]> = [];
   const computeCalls: Array<readonly [number, number, number, number, number]> = [];
@@ -589,6 +610,17 @@ export function createFakeNodeDefModule(
           computeCalls.push(
             [statePtr, freqPtr, ampPtr, outputPtr, frameCount] as const,
           );
+          if (computeResult) {
+            options.compute?.({
+              statePtr,
+              freqPtr,
+              ampPtr,
+              outputPtr,
+              frameCount,
+              sampleRate: descriptor.sampleRate,
+              inputPtrs: [],
+            });
+          }
           return computeResult ? 1 : 0;
         };
       case "compute_at_sample_rate":
@@ -605,6 +637,17 @@ export function createFakeNodeDefModule(
             [statePtr, freqPtr, ampPtr, outputPtr, frameCount] as const,
           );
           computeSampleRateCalls.push(sampleRate);
+          if (computeResult) {
+            options.compute?.({
+              statePtr,
+              freqPtr,
+              ampPtr,
+              outputPtr,
+              frameCount,
+              sampleRate,
+              inputPtrs: [],
+            });
+          }
           return computeResult ? 1 : 0;
         };
       case "compute_fm":
@@ -620,6 +663,17 @@ export function createFakeNodeDefModule(
           computeCalls.push(
             [statePtr, freqPtr, ampPtr, outputPtr, frameCount] as const,
           );
+          if (computeResult) {
+            options.compute?.({
+              statePtr,
+              freqPtr,
+              ampPtr,
+              outputPtr,
+              frameCount,
+              sampleRate: descriptor.sampleRate,
+              inputPtrs: [_fmPtr],
+            });
+          }
           return computeResult ? 1 : 0;
         };
       case "compute_fm_at_sample_rate":
@@ -637,6 +691,17 @@ export function createFakeNodeDefModule(
             [statePtr, freqPtr, ampPtr, outputPtr, frameCount] as const,
           );
           computeSampleRateCalls.push(sampleRate);
+          if (computeResult) {
+            options.compute?.({
+              statePtr,
+              freqPtr,
+              ampPtr,
+              outputPtr,
+              frameCount,
+              sampleRate,
+              inputPtrs: [_fmPtr],
+            });
+          }
           return computeResult ? 1 : 0;
         };
       case "get_phase":
