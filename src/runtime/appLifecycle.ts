@@ -27,6 +27,7 @@ import {
   setBindingChipFireCallback,
 } from '../editors/extensions/hardwareBinding/chipWidget.ts';
 import { editor as getEditorSignal } from '../lib/editorStore.ts';
+import { pushDiagnostics } from '../editors/extensions/diagnostics.ts';
 import { initStandaloneDiagnosticsRouter } from '../effects/standaloneDiagnosticsRouter.ts';
 import { initFailureModeSync } from '../effects/failureModeSync.ts';
 import type { BootstrapPlan } from './bootstrap.ts';
@@ -157,7 +158,10 @@ export function createApp(
     async start() {
       // Route unsolicited device→editor diagnostics frames (wire §5.9) into
       // the editor's inline annotation pipeline. Active in every runtime mode.
-      initStandaloneDiagnosticsRouter();
+      initStandaloneDiagnosticsRouter({
+        getEditor: getEditorSignal,
+        pushDiagnostics,
+      });
 
       // A published same-origin manifest activates this prompt. A missing
       // manifest is a silent "no beta available" state.

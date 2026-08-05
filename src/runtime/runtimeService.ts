@@ -1,9 +1,10 @@
 /**
  * runtimeService — the public runtime-service facade.
  *
- * This is the canonical import surface for runtime operations (settings
- * mutation, session/connection state, transport orchestration). All consumers
- * import from here; it is not a legacy shim and has no parallel code path.
+ * This is the canonical consumer-facing import surface for runtime operations
+ * (settings mutation, session/connection state, transport orchestration).
+ * Transport producers report facts directly to runtimeSessionService so they
+ * do not create a cycle through this facade and its transport re-exports.
  *
  * The implementation is split into domain-specific service files for internal
  * organisation only:
@@ -22,6 +23,7 @@ export {
   refreshRuntimeSession,
   announceRuntimeSession,
   reportTransportConnectionChanged,
+  reportProtocolModeChanged,
   updateRuntimeSettingsEffect,
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
@@ -44,7 +46,6 @@ export {
 export {
   toggleRuntimeConnection,
   resolveRuntimeTransportMode,
-  reportProtocolModeChanged,
   sendRuntimeTransportCommand,
   queryRuntimeHardwareTransportState,
   syncRuntimeWasmTransportState,

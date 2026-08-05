@@ -49,10 +49,6 @@ import {
   IDENTITY_SNAPSHOT_SCHEMA_VERSION,
 } from "./identitySnapshot.ts";
 import {
-  setStartupFlags,
-  resetStartupContextForTests,
-} from "../../../runtime/startupContext.ts";
-import {
   load as persistenceLoad,
   save as persistenceSave,
   remove as persistenceRemove,
@@ -97,12 +93,12 @@ beforeEach(() => {
     writable: true,
     configurable: true,
   });
-  resetStartupContextForTests();
+  window.history.replaceState({}, "", "/");
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
-  resetStartupContextForTests();
+  window.history.replaceState({}, "", "/");
 });
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -551,14 +547,7 @@ describe("VAL-ID-020 / VAL-ID-024: createIdentityPersistence wiring", () => {
 
 describe("VAL-ID-010: nosave gates writes through the central service", () => {
   it("save() is a silent no-op when nosave is active", () => {
-    setStartupFlags({
-      debug: false,
-      devmode: false,
-      disableWebSerial: false,
-      noModuleMode: false,
-      nosave: true,
-      params: {},
-    });
+    window.history.replaceState({}, "", "/?nosave");
     const adapter = createIdentityPersistence({
       load: (k, fb) => persistenceLoad(k, fb),
       save: (k, v) => persistenceSave(k, v),
@@ -570,14 +559,7 @@ describe("VAL-ID-010: nosave gates writes through the central service", () => {
   });
 
   it("remove() is a silent no-op when nosave is active", () => {
-    setStartupFlags({
-      debug: false,
-      devmode: false,
-      disableWebSerial: false,
-      noModuleMode: false,
-      nosave: true,
-      params: {},
-    });
+    window.history.replaceState({}, "", "/?nosave");
     const adapter = createIdentityPersistence({
       load: (k, fb) => persistenceLoad(k, fb),
       save: (k, v) => persistenceSave(k, v),
@@ -594,14 +576,7 @@ describe("VAL-ID-010: nosave gates writes through the central service", () => {
       entries: [{ id: "id-x" as any, kind: "synth", formKey: [0] }],
     };
     mockStorage.setItem(PERSISTENCE_KEYS.editorIdentity, JSON.stringify(pre));
-    setStartupFlags({
-      debug: false,
-      devmode: false,
-      disableWebSerial: false,
-      noModuleMode: false,
-      nosave: true,
-      params: {},
-    });
+    window.history.replaceState({}, "", "/?nosave");
     const adapter = createIdentityPersistence({
       load: (k, fb) => persistenceLoad(k, fb),
       save: (k, v) => persistenceSave(k, v),

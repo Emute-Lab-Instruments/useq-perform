@@ -9,8 +9,6 @@
  * - A single place that respects the `?nosave` URL parameter
  */
 
-import { isLocalStorageBypassedInStartupContext } from "../runtime/startupContext.ts";
-
 // ---------------------------------------------------------------------------
 // Key Registry
 // ---------------------------------------------------------------------------
@@ -70,17 +68,10 @@ export type PersistenceKey =
 
 /**
  * Returns true when persistence should be completely disabled.
- * Checks the startupContext flag first, then falls back to URL params.
+ * `nosave` is a URL-level write policy, so the persistence boundary reads it
+ * directly instead of depending on the runtime bootstrap layer.
  */
 function isNosaveActive(): boolean {
-  // startupContext is the canonical source — it is populated at boot from
-  // URL params and is always available (including in non-browser contexts).
-  if (isLocalStorageBypassedInStartupContext()) {
-    return true;
-  }
-
-  // Belt-and-suspenders: if startupContext hasn't been initialised yet
-  // (e.g. very early in boot) we fall back to reading the URL directly.
   if (typeof window !== "undefined") {
     try {
       return new URLSearchParams(window.location.search).has("nosave");

@@ -17,7 +17,8 @@ import { createApp } from './appLifecycle.ts';
 import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepository.ts';
 import { editorSession, initEditorPanel, setEditor } from '../lib/editorStore.ts';
 import { recogniseStatefulForms } from '../editors/extensions/stateIdentity/identityClassify.ts';
-import { attachBridgeToEditor, installPageLifecycleHandlers } from '../effects/liveEditRuntime.ts';
+import { installPageLifecycleHandlers, liveEditStore } from '../effects/liveEditRuntime.ts';
+import { attachLiveEditStoreBridge } from '../editors/extensions/liveEdit/widgetStoreBridge.ts';
 import { createGamepadPipeline } from '../lib/gamepad/index.ts';
 import { bindGamepadNavigation, hideSystemCursor } from '../editors/gamepadNavigation.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
@@ -161,7 +162,7 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
 
   // Attach the live-edit store→widget bridge so reactive slot changes
   // flow into the CodeMirror widget decorations.
-  attachBridgeToEditor(editor);
+  attachLiveEditStoreBridge(editor, liveEditStore);
 
   // Install pagehide/visibilitychange flush for live-edit persistence (§7.2).
   installPageLifecycleHandlers();

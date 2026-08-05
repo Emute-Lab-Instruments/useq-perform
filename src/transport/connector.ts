@@ -16,7 +16,7 @@ import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 import {
   reportTransportConnectionChanged,
   announceRuntimeSession as announceFromService,
-} from "../runtime/runtimeService.ts";
+} from "../runtime/runtimeSessionService.ts";
 import {
   animateConnect as animateConnectChannel,
   devicePluggedIn as devicePluggedInChannel,

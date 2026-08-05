@@ -1,7 +1,7 @@
 /**
  * Live-edit runtime wiring — singleton module.
  *
- * Instantiates the live-edit store, persistence, and widget store bridge.
+ * Instantiates the live-edit store and persistence runtime.
  * Provides:
  *   - `liveEditStore` — the singleton store instance
  *   - `liveEditPersistence` — the singleton persistence instance
@@ -9,19 +9,12 @@
  *     updates the store AND pushes to the WASM runtime via setLiveInputs
  *   - `discoverSlotsAfterEval(view)` — called after successful eval to
  *     discover allocated slots from WASM and register/sync them in the store
- *   - `attachBridgeToEditor(view)` — attaches the store→widget bridge to the
- *     editor view (call once after editor creation)
  *
  * Spec: docs/specs/live-edit.md §1.4, §3.2 step 4, §4
  */
 
 import { createLiveEditStore, type LiveEditStoreAPI } from "./liveEditStore.ts";
 import { createLiveEditPersistence, type LiveEditPersistence } from "./liveEditPersistence.ts";
-import {
-  createWidgetStoreBridge,
-  createValueChangeHandler,
-  type WidgetStoreBridge,
-} from "../editors/extensions/liveEdit/widgetStoreBridge.ts";
 import type { EditorView } from "@codemirror/view";
 import type { LiveEditSlot, SlotKind } from "../contracts/liveEdit.ts";
 import type { LiveSlotMetadata } from "../contracts/runtimePorts.ts";
@@ -34,9 +27,6 @@ import { clearLiveSlotIndex } from "../lib/liveSlotIndex.ts";
 
 export const liveEditStore: LiveEditStoreAPI = createLiveEditStore();
 export const liveEditPersistence: LiveEditPersistence = createLiveEditPersistence();
-
-const bridge: WidgetStoreBridge = createWidgetStoreBridge();
-const storeValueHandler = createValueChangeHandler(liveEditStore);
 
 // ─── Value change callback (widget → store → WASM) ──────────────────────────
 
@@ -166,7 +156,7 @@ function flushBatchedValues(): void {
  */
 export function liveEditOnValueChange(slotId: string, value: number | boolean | string): void {
   // Update the store (sets modified flag, triggers reactive subscribers)
-  storeValueHandler(slotId, value);
+  liveEditStore.setValue(slotId, value);
 
   // Persist debounced
   if (typeof value === "number" || typeof value === "boolean" || typeof value === "string") {
@@ -190,21 +180,6 @@ export function liveEditOnValueChange(slotId: string, value: number | boolean | 
 
   // Ensure the batch ticker is running
   startBatchTicker();
-}
-
-// ─── Bridge attachment ──────────────────────────────────────────────────────
-
-/**
- * Attach the store→widget bridge to the editor view. Call once after the
- * main editor is created. Subsequent calls re-attach (implicitly detaches
- * the previous binding).
- *
- * Guards against non-EditorView objects (e.g. in test mocks) by checking
- * for the `dispatch` method before attaching.
- */
-export function attachBridgeToEditor(view: EditorView): void {
-  if (!view || typeof view.dispatch !== "function") return;
-  bridge.attach(view, liveEditStore);
 }
 
 // ─── Slot discovery after eval ──────────────────────────────────────────────

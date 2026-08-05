@@ -18,26 +18,7 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js"
   },
-  "include": [
-    "src/transport/**/*.ts",
-    "src/contracts/**/*.ts",
-    "src/audio/**/*.ts",
-    "src/audio/**/*.tsx",
-    "src/editors/**/*.ts",
-    "src/effects/**/*.ts",
-    "src/lib/**/*.ts",
-    "src/machines/**/*.ts",
-    "src/runtime/**/*.ts",
-    "src/ui/**/*.ts",
-    "src/ui/**/*.tsx",
-    "src/utils/consoleStore.ts",
-    "src/utils/geometry.ts",
-    "src/utils/referenceStore.ts",
-    "src/utils/snippetStore.ts",
-    "vitest.shims.d.ts",
-    "src/types/web-serial.d.ts",
-    "src/types/clojure-mode.d.ts"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vitest.shims.d.ts"],
   "exclude": [
     "node_modules",
     "public",

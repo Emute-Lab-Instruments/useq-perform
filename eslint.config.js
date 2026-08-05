@@ -194,20 +194,6 @@ export default tseslint.config(
     rules: { "import-x/no-restricted-paths": "off" },
   },
   {
-    // persistence.ts imports isLocalStorageBypassedInStartupContext from
-    // runtime/startupContext.ts. This is a known coupling — the bypass flag
-    // should eventually move to lib/ or be passed as a parameter.
-    files: ["src/lib/persistence.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
-    // visualisationUtils.ts imports buffer data from transport/stream-parser.
-    // This coupling should be resolved by passing buffers through the store
-    // or as function parameters.
-    files: ["src/lib/visualisationUtils.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
     // editorEvaluation.ts imports from editors/ for eval highlight and
     // structure tracking. This effect is tightly coupled to the editor
     // layer by design — it orchestrates editor-side effects.
@@ -215,37 +201,10 @@ export default tseslint.config(
     rules: { "import-x/no-restricted-paths": "off" },
   },
   {
-    // standaloneDiagnosticsRouter.ts imports pushDiagnostics from editors/ to
-    // route unsolicited device→editor diagnostics frames (wire §5.9) into the
-    // editor's inline annotation pipeline — the same editor-coupling rationale
-    // as editorEvaluation.ts.
-    files: ["src/effects/standaloneDiagnosticsRouter.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
-    // liveEditRuntime.ts imports from editors/ for the widget store bridge.
-    // This effect orchestrates live-edit slot discovery and the reactive
-    // bridge between the store and the CodeMirror widgets.
-    files: ["src/effects/liveEditRuntime.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
-    // effects/ui.ts imports from ui/adapters for panel toggle operations.
-    // This is an effects module that directly drives UI side-effects.
-    files: ["src/effects/ui.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
     // editorStore.ts lazily imports from runtime/ and editors/ to resolve
     // circular dependency issues. The dynamic imports are deferred, but
     // the static analysis still flags them.
     files: ["src/lib/editorStore.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
-    // settings/persistence.ts imports from runtime/startupContext.ts for
-    // localStorage bypass detection. Types now in contracts/runtimeTypes.ts.
-    files: ["src/lib/settings/persistence.ts"],
     rules: { "import-x/no-restricted-paths": "off" },
   },
   {

@@ -1850,8 +1850,8 @@ webapp and writes config files to the source tree during development.
 
 ### Typecheck Boundary
 
-The explicit `include` list in `tsconfig.json` defining which source directories
-are eligible for `tsc --noEmit`. Legacy code is excluded.
+All production `.ts` and `.tsx` files under `src/` are eligible for
+`tsc --noEmit`. Tests and stories are excluded.
 
 - **Identifiers**: `include` (in `tsconfig.json`)
 - **Files**: `tsconfig.json`

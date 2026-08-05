@@ -2,22 +2,15 @@ import { Effect } from "effect";
 
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
-import {
-  publishDiagnosticsSnapshot,
-  type RuntimeProtocolMode,
-} from "./runtimeDiagnostics";
 import type { WasmRuntimePort } from "../contracts/runtimePorts";
 import { webSerialHostPort } from "../transport/webSerialHostPort";
 import { getActiveWasmRuntimePort } from "./activeWasmRuntimePort";
-import {
-  getRuntimeSessionState,
-} from "./runtimeSessionStore";
+import { getRuntimeSessionState } from "./runtimeSessionStore";
 import {
   supportsHardwareTransport,
   supportsWasmTransport,
   type TransportMode,
 } from "./runtimeSession";
-import { syncRuntimeState } from "./runtimeSessionService";
 
 // ── Active port resolution ─────────────────────────────────────
 //
@@ -35,7 +28,7 @@ interface ActivePorts {
 }
 
 function activePortsForSharedCommands(): ActivePorts {
-  const state = syncRuntimeState();
+  const state = getRuntimeSessionState();
   return {
     hardware: supportsHardwareTransport(state.session.transportMode)
       ? webSerialHostPort
@@ -62,12 +55,6 @@ export function resolveRuntimeTransportMode(): TransportMode {
  * snapshot derives protocolMode from canonical session state; the argument is
  * the change trigger and is not itself published.
  */
-export function reportProtocolModeChanged(
-  _protocolMode: RuntimeProtocolMode
-): void {
-  publishDiagnosticsSnapshot();
-}
-
 export function sendRuntimeTransportCommand(command: SharedTransportCommand) {
   return Effect.gen(function* (_) {
     const ports = activePortsForSharedCommands();

@@ -3,7 +3,6 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { history } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
-// @ts-expect-error — no type declarations
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 import { baseKeymap } from "../editors/keymaps";
 import { editorBaseTheme, themes } from "../editors/themes";

@@ -28,7 +28,7 @@ import {
 } from "../runtime/jsonProtocol.ts";
 import {
   reportProtocolModeChanged,
-} from "../runtime/runtimeService.ts";
+} from "../runtime/runtimeSessionService.ts";
 import {
   protocolReady as protocolReadyChannel,
   jsonMeta as jsonMetaChannel,

@@ -153,8 +153,12 @@ vi.mock("./ui/adapters/toolbars.tsx", () => ({
 }));
 
 vi.mock("./effects/liveEditRuntime.ts", () => ({
-  attachBridgeToEditor: vi.fn(),
+  liveEditStore: {},
   installPageLifecycleHandlers: vi.fn(),
+}));
+
+vi.mock("./editors/extensions/liveEdit/widgetStoreBridge.ts", () => ({
+  attachLiveEditStoreBridge: vi.fn(),
 }));
 
 

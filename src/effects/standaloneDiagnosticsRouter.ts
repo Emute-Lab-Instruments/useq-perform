@@ -14,8 +14,13 @@
  * highlight the active document.
  */
 import { standaloneDiagnostics } from "../contracts/runtimeChannels.ts";
-import { editor } from "../lib/editorStore.ts";
-import { pushDiagnostics } from "../editors/extensions/diagnostics.ts";
+import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
+import type { EditorView } from "@codemirror/view";
+
+export interface StandaloneDiagnosticsRouterDependencies {
+  getEditor(): EditorView | null;
+  pushDiagnostics(view: EditorView, diagnostics: UseqDiagnostic[]): void;
+}
 
 let unsubscribe: (() => void) | null = null;
 
@@ -23,13 +28,15 @@ let unsubscribe: (() => void) | null = null;
  * Subscribe the standalone-diagnostics channel to the editor's inline
  * diagnostics pipeline. Idempotent — calling twice is a no-op.
  */
-export function initStandaloneDiagnosticsRouter(): void {
+export function initStandaloneDiagnosticsRouter(
+  dependencies: StandaloneDiagnosticsRouterDependencies,
+): void {
   if (unsubscribe) return;
   unsubscribe = standaloneDiagnostics.subscribe((detail) => {
-    const view = editor();
+    const view = dependencies.getEditor();
     if (!view) return;
     if (!detail.diagnostics.length) return;
-    pushDiagnostics(view, detail.diagnostics);
+    dependencies.pushDiagnostics(view, detail.diagnostics);
   });
 }
 

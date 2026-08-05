@@ -90,6 +90,17 @@ export function createWidgetStoreBridge(): WidgetStoreBridge {
   return { attach, detach };
 }
 
+const mainEditorBridge = createWidgetStoreBridge();
+
+/** Attach the process-wide live-edit store to the current main editor. */
+export function attachLiveEditStoreBridge(
+  view: EditorView,
+  store: LiveEditStoreAPI,
+): void {
+  if (!view || typeof view.dispatch !== "function") return;
+  mainEditorBridge.attach(view, store);
+}
+
 // ─── Callback factory ─────────────────────────────────────────────────────────
 
 /**

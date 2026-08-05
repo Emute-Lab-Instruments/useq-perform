@@ -14,7 +14,6 @@ import {
 } from "../lib/appSettings.ts";
 import { defaultMainEditorStartingCode } from "../lib/editorDefaults.ts";
 import type { RuntimeSettingsSource } from "./runtimeDiagnostics.ts";
-import { updateRuntimeSettingsEffect } from "./runtimeService.ts";
 import { load, save, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 import {
   getStartupFlagsSnapshot,
@@ -40,15 +39,6 @@ function cloneSettings(settings: AppSettings): AppSettings {
 function notifyListeners(): void {
   const snapshot = getAppSettings();
   listeners.forEach((listener) => listener(snapshot));
-}
-
-function dispatchSettingsChanged(): void {
-  updateRuntimeSettingsEffect({
-    wasmEnabled: activeSettings.wasm.enabled,
-  });
-  // Typed subscribers are notified via notifyListeners() at the call-site.
-  // The previous window CustomEvent ("useq-settings-changed") has been
-  // removed -- all internal consumers now use subscribeAppSettings().
 }
 
 function parseGistId(rawValue: string | null | undefined): string | null {
@@ -212,7 +202,6 @@ export function replaceAppSettings(
   values: unknown,
   options: {
     persist?: boolean;
-    dispatch?: boolean;
   } = {},
 ): AppSettings {
   activeSettings = normalizeUserSettings(values);
@@ -221,10 +210,6 @@ export function replaceAppSettings(
     writePersistedUserSettings(activeSettings, {
       bypassLocalStorage: resolveRepositoryStartupFlags().nosave,
     });
-  }
-
-  if (options.dispatch) {
-    dispatchSettingsChanged();
   }
 
   notifyListeners();
@@ -237,7 +222,6 @@ export function loadAppSettings(): AppSettings {
   });
   return replaceAppSettings(
     persistedSettings ?? createDefaultUserSettings(),
-    { dispatch: false },
   );
 }
 
@@ -247,7 +231,6 @@ export function updateAppSettings(
 ): AppSettings {
   return replaceAppSettings(mergeUserSettings(activeSettings, values), {
     persist: options.persist ?? true,
-    dispatch: true,
   });
 }
 
@@ -259,11 +242,11 @@ export function resetAppSettings(section?: keyof AppSettings): AppSettings {
       mergeUserSettings(activeSettings, {
         [section]: defaults[section],
       }),
-      { persist: true, dispatch: true },
+      { persist: true },
     );
   }
 
-  return replaceAppSettings(defaults, { persist: true, dispatch: true });
+  return replaceAppSettings(defaults, { persist: true });
 }
 
 export function deletePersistedSettings(): void {

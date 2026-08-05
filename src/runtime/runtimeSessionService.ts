@@ -7,8 +7,6 @@ import {
   publishDiagnosticsSnapshot,
   type RuntimeProtocolMode,
 } from "./runtimeDiagnostics";
-import { webSerialHostPort } from "../transport/webSerialHostPort.ts";
-import { getStartupFlagsSnapshot } from "./startupContext.ts";
 import {
   getRuntimeSessionState,
   resetRuntimeSessionState,
@@ -18,9 +16,6 @@ import {
 import {
   type RuntimeSessionInputs,
 } from "./runtimeSession";
-import {
-  getAppSettings,
-} from "./appSettingsRepository";
 
 // Re-export the state type so consumers don't need to reach into the store
 export type { RuntimeSessionState } from "./runtimeSessionStore";
@@ -39,28 +34,6 @@ function toConnectionChangedDetail(
 }
 
 // ── Adapter state snapshot ──────────────────────────────────────
-
-interface RuntimeStateSnapshot {
-  connected: boolean;
-  protocolMode: RuntimeProtocolMode;
-  sessionInputs: RuntimeSessionInputs;
-}
-
-function readRuntimeState(): RuntimeStateSnapshot {
-  const hardware = webSerialHostPort.capabilities();
-  const startupFlags = getStartupFlagsSnapshot();
-  const settings = getAppSettings();
-
-  return {
-    connected: hardware.connected,
-    protocolMode: hardware.protocolMode,
-    sessionInputs: {
-      hasHardwareConnection: hardware.connected && hardware.hasOpenPort,
-      noModuleMode: startupFlags.noModuleMode,
-      wasmEnabled: settings.wasm.enabled,
-    },
-  };
-}
 
 /**
  * Internal helper: update store + optionally publish diagnostics + dispatch event.
@@ -91,24 +64,6 @@ function applySessionUpdate(
   return state;
 }
 
-/**
- * Sync runtime state from external sources (transport, startup flags, settings)
- * into the session store. Exported for use by runtimeTransportService.
- */
-export function syncRuntimeState(options?: {
-  publishDiagnostics?: boolean;
-}): RuntimeSessionState {
-  const snapshot = readRuntimeState();
-  return applySessionUpdate(
-    {
-      ...snapshot.sessionInputs,
-      connected: snapshot.connected,
-      protocolMode: snapshot.protocolMode,
-    },
-    { publishDiagnostics: options?.publishDiagnostics }
-  );
-}
-
 // ── Session lifecycle ──────────────────────────────────────────
 
 export function bootstrapRuntimeSession(
@@ -129,7 +84,8 @@ export function bootstrapRuntimeSession(
 }
 
 export function refreshRuntimeSession(): RuntimeSessionState {
-  return syncRuntimeState({ publishDiagnostics: true });
+  publishDiagnosticsSnapshot();
+  return getRuntimeSessionState();
 }
 
 export function announceRuntimeSession(): RuntimeSessionState {
@@ -162,6 +118,13 @@ export function reportTransportConnectionChanged(facts: {
     },
     { publishDiagnostics: true, dispatchConnectionChanged: true }
   );
+}
+
+/** Publish a diagnostics refresh after the protocol driver changes mode. */
+export function reportProtocolModeChanged(
+  _protocolMode: RuntimeProtocolMode,
+): void {
+  publishDiagnosticsSnapshot();
 }
 
 /**

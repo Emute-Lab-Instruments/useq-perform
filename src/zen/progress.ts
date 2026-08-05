@@ -26,7 +26,7 @@ const DEFAULT_PROGRESS: ZenProgress = {
 };
 
 export function loadProgress(): ZenProgress {
-  const parsed = load<ZenProgress>(PERSISTENCE_KEYS.zenProgress, null);
+  const parsed = load<ZenProgress | null>(PERSISTENCE_KEYS.zenProgress, null);
   if (parsed?.version === 1) return parsed;
   return { ...DEFAULT_PROGRESS };
 }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getRuntimeServiceSnapshot,
+  bootstrapRuntimeSession,
   queryRuntimeHardwareTransportState,
   refreshRuntimeSession,
   resetRuntimeServiceForTests,
@@ -66,8 +67,6 @@ vi.mock("./appSettingsRepository", () => ({
 import { getProtocolMode, sendTouSEQ } from "../transport/json-protocol.ts";
 import { getSerialPort, isConnectedToModule } from "../transport/connector.ts";
 import { evalInUseqWasm } from "./wasmInterpreter.ts";
-import { getStartupFlagsSnapshot } from "./startupContext.ts";
-import { getAppSettings } from "./appSettingsRepository";
 
 type MockFn = ReturnType<typeof vi.fn>;
 
@@ -81,8 +80,17 @@ function configureState(config: {
   (isConnectedToModule as MockFn).mockReturnValue(config.connected);
   (getProtocolMode as MockFn).mockReturnValue(config.protocolMode);
   (getSerialPort as MockFn).mockReturnValue(config.hasSerialPort ? {} : null);
-  (getStartupFlagsSnapshot as MockFn).mockReturnValue({ noModuleMode: config.noModuleMode });
-  (getAppSettings as MockFn).mockReturnValue({ wasm: { enabled: config.wasmEnabled } });
+  bootstrapRuntimeSession(
+    {
+      hasHardwareConnection: config.connected && config.hasSerialPort,
+      noModuleMode: config.noModuleMode,
+      wasmEnabled: config.wasmEnabled,
+    },
+    {
+      connected: config.connected,
+      protocolMode: config.protocolMode as "json" | "legacy",
+    },
+  );
 }
 
 describe("runtimeService", () => {

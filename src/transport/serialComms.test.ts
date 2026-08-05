@@ -61,7 +61,7 @@ vi.mock("../runtime/startupContext.ts", () => ({
   isLocalStorageBypassedInStartupContext: () => false,
 }));
 
-vi.mock("../runtime/runtimeService.ts", () => ({
+vi.mock("../runtime/runtimeSessionService.ts", () => ({
   reportTransportConnectionChanged: reportTransportConnectionChangedMock,
   reportProtocolModeChanged: reportProtocolModeChangedMock,
   announceRuntimeSession: announceRuntimeSessionMock,

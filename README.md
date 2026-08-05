@@ -23,7 +23,7 @@ Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WAS
 - `npm run test:e2e` - rebuilds the pinned firmware WASM and runs trusted-input Playwright journeys against the full browser app.
 - `npm run test:all` - runs Mocha + Vitest unit tests.
 - `npm test` - alias for `npm run test:all`.
-- `npm run typecheck` - TypeScript check for the modern typed boundary (`src/lib`, `src/machines`, selected `src/utils`, and selected `src/ui` TSX components).
+- `npm run typecheck` - strict TypeScript check for all production `.ts`/`.tsx` under `src/` (tests and stories are excluded).
 - `npm run src-useq:status` - print the authoritative `src-useq` submodule repo/branch/commit metadata the editor currently depends on.
 
 Testing styles:

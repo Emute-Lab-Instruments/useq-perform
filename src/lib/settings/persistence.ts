@@ -7,7 +7,6 @@
 
 import { defaultTheme } from "../editorDefaults.ts";
 import { themeNames } from "../themes.ts";
-import { isLocalStorageBypassedInStartupContext } from "../../runtime/startupContext.ts";
 import { load, loadRaw, save, saveEditorCode, remove, has, PERSISTENCE_KEYS } from "../persistence.ts";
 import type { AppSettings, AppSettingsPatch } from "./schema.ts";
 import { createDefaultUserSettings } from "./schema.ts";
@@ -35,7 +34,7 @@ export function isLocalStorageBypassed(options: {
   }
 
   if (typeof window === "undefined") {
-    return isLocalStorageBypassedInStartupContext();
+    return false;
   }
 
   const search = options.search ?? window.location.search;
@@ -56,7 +55,7 @@ function shouldBypassLocalStorage(options: {
   }
 
   if (typeof window === "undefined") {
-    return isLocalStorageBypassedInStartupContext();
+    return false;
   }
 
   return isLocalStorageBypassed(options);

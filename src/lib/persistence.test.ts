@@ -9,10 +9,6 @@ import {
   has,
   PERSISTENCE_KEYS,
 } from "./persistence.ts";
-import {
-  setStartupFlags,
-  resetStartupContextForTests,
-} from "../runtime/startupContext.ts";
 
 // ---------------------------------------------------------------------------
 // Mock localStorage
@@ -50,13 +46,17 @@ beforeEach(() => {
     writable: true,
     configurable: true,
   });
-  resetStartupContextForTests();
+  window.history.replaceState({}, "", "/");
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
-  resetStartupContextForTests();
+  window.history.replaceState({}, "", "/");
 });
+
+function activateNosave(): void {
+  window.history.replaceState({}, "", "/?nosave");
+}
 
 // ---------------------------------------------------------------------------
 // Key registry
@@ -257,43 +257,22 @@ describe("round-trip", () => {
 // ---------------------------------------------------------------------------
 
 describe("nosave mode", () => {
-  it("save is a no-op when nosave startup flag is set", () => {
-    setStartupFlags({
-      debug: false,
-      devmode: false,
-      disableWebSerial: false,
-      noModuleMode: false,
-      nosave: true,
-      params: {},
-    });
+  it("save is a no-op when ?nosave is present", () => {
+    activateNosave();
 
     save("k", "value");
     expect(mockStorage.setItem).not.toHaveBeenCalled();
   });
 
-  it("saveRaw is a no-op when nosave startup flag is set", () => {
-    setStartupFlags({
-      debug: false,
-      devmode: false,
-      disableWebSerial: false,
-      noModuleMode: false,
-      nosave: true,
-      params: {},
-    });
+  it("saveRaw is a no-op when ?nosave is present", () => {
+    activateNosave();
 
     saveRaw("k", "value");
     expect(mockStorage.setItem).not.toHaveBeenCalled();
   });
 
-  it("remove is a no-op when nosave startup flag is set", () => {
-    setStartupFlags({
-      debug: false,
-      devmode: false,
-      disableWebSerial: false,
-      noModuleMode: false,
-      nosave: true,
-      params: {},
-    });
+  it("remove is a no-op when ?nosave is present", () => {
+    activateNosave();
 
     // Pre-populate via the mock directly (bypassing our API)
     (mockStorage as any).__internal_set = true;
@@ -309,14 +288,7 @@ describe("nosave mode", () => {
     // Populate storage before enabling nosave
     mockStorage.setItem("k", JSON.stringify("hello"));
 
-    setStartupFlags({
-      debug: false,
-      devmode: false,
-      disableWebSerial: false,
-      noModuleMode: false,
-      nosave: true,
-      params: {},
-    });
+    activateNosave();
 
     expect(load("k")).toBe("hello");
   });
@@ -324,14 +296,7 @@ describe("nosave mode", () => {
   it("has still works when nosave is active", () => {
     mockStorage.setItem("k", "v");
 
-    setStartupFlags({
-      debug: false,
-      devmode: false,
-      disableWebSerial: false,
-      noModuleMode: false,
-      nosave: true,
-      params: {},
-    });
+    activateNosave();
 
     expect(has("k")).toBe(true);
   });

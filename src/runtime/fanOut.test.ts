@@ -60,7 +60,11 @@ vi.mock("./appSettingsRepository", () => ({
   setSettingsDispatchHook: vi.fn(),
 }));
 
-import { sendRuntimeTransportCommand, resetRuntimeServiceForTests } from "./runtimeService";
+import {
+  bootstrapRuntimeSession,
+  resetRuntimeServiceForTests,
+  sendRuntimeTransportCommand,
+} from "./runtimeService";
 import { SHARED_TRANSPORT_COMMANDS, SHARED_TRANSPORT_COMMAND_LIST } from "../contracts/useqRuntimeContract";
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 
@@ -93,6 +97,16 @@ function enterMode(mode: "none" | "wasm" | "hardware" | "both"): void {
       (mockGetAppSettings as MockFn).mockReturnValue({ wasm: { enabled: true } });
       break;
   }
+
+  const hasHardwareConnection = mode === "hardware" || mode === "both";
+  const wasmEnabled = mode === "wasm" || mode === "both";
+  bootstrapRuntimeSession(
+    { hasHardwareConnection, noModuleMode: false, wasmEnabled },
+    {
+      connected: hasHardwareConnection,
+      protocolMode: hasHardwareConnection ? "json" : "legacy",
+    },
+  );
 }
 
 describe("eval fan-out routing — (mode, command) → ports property test", () => {

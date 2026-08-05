@@ -82,10 +82,10 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - Tests: `serialComms.test.ts` (parser, framing, eval/meta routing) and `serialLifecycle.test.ts` (Web Serial event wiring, auto-reconnect, saved-port matching, bootloader handoff, firmware version gating, post-handshake flow). Both use the same fake-Serial harness pattern.
 - `src/runtime/` — bootstrap, lifecycle, runtime services. May import UI only from `bootstrap.ts` and `appLifecycle.ts` (eslint exceptions).
   - `bootstrap.ts` — startup orchestration: config load, UI mount, app lifecycle. Includes startup-mode selection (formerly `bootstrapPlan.ts`).
-  - `appLifecycle.ts` — top-level lifecycle (orientation lock, about modal, vis panel toggle).
+  - `appLifecycle.ts` — top-level runtime-mode startup/teardown, browser-local activation, reconnect flow, and bootstrap-adjacent UI wiring.
   - `runtimeService.ts` — sole settings-mutation surface; thin façade over the services below.
   - `runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts` — split runtime concerns. Both transport- and session-services now talk to runtime ports rather than `transport/` or `wasmInterpreter` directly.
-  - `runtimeSession.ts`, `runtimeSessionStore.ts` — hardware-vs-WASM precedence, plain-JS listener store.
+  - `runtimeSession.ts`, `runtimeSessionStore.ts`, `runtimeSessionService.ts` — hardware-vs-WASM precedence and the plain-JS session store; transport/settings producers report facts explicitly, and consumers read or subscribe through `runtimeService.ts`.
   - `runtimeCompatibility.ts` — keeps the current WASM loaded but prevents it from presenting current-firmware results as a shadow of legacy hardware.
   - `appSettingsRepository.ts` — canonical settings store (non-reactive). Mirrored into `settingsStore` via `settingsChanged` channel.
   - `wasmInterpreter.ts` — WASM module load, ABI validation, eval/sample bindings; binds optional export fns (diagnostics, live-edit, state-snapshot) onto the `__useqWasmRuntime` global. Wrapped by `wasmRuntimePort.ts` for callers; the port reads diagnostics back from that global (`readLastDiagnosticsSync` / `readActiveDiagnosticsSync`).
@@ -109,7 +109,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `visualisationRuntime.ts` — single rAF loop owning render + sampling + local time; all ModuLisp local-time reads go through one injectable time source (`setVisualisationNowSource`, default `performance.now`) — the deterministic clock seam for e2e.
   - `editor.ts`, `editorEvaluation.ts` — editor-side eval orchestration (eslint exception: imports editors).
   - `noneModeGate.ts` — `none`-mode eval gate (rejects eval with the §1.10 "no runtime available" warning) ([docs/specs/runtime-modes.md §1.10](docs/specs/runtime-modes.md)).
-  - `standaloneDiagnosticsRouter.ts` — routes unsolicited device→editor `diagnostics` frames (wire §5.9) from `standaloneDiagnostics` channel into the editor inline-diagnostics pipeline via `pushDiagnostics` (eslint exception: imports editors). Initialised once in `appLifecycle.createApp().start()`.
+  - `standaloneDiagnosticsRouter.ts` — routes unsolicited device→editor `diagnostics` frames (wire §5.9) from the typed channel through injected editor/diagnostic callbacks. Initialised once in `appLifecycle.createApp().start()`.
   - `visualisationSampler.ts` — WASM sampling with projection-fork architecture. Past buffer (`PastBuffer` rolling window, one sample/frame) + future buffer (batch-refilled on invalidation via save/restore, extended one sample/frame). Expression lifecycle (register/unregister/refresh), `tickAndProject()` entry point, `getRenderData()` for renderer consumption.
   - `adaptiveQuality.ts` — adaptive quality control for projection: skip thresholds, budget-aware future-edge push.
   - `hardwareBindingDispatcher.ts` — dispatches bound expressions on hardware button events. Subscribes to `hwInput` channel, scans editor doc for `(on-press|on-release|on-button|on-toggle)` forms, evals via WASM + hardware with per-binding FIFO queue and hold-tick coalescing ([docs/specs/hardware-bindings.md §4](docs/specs/hardware-bindings.md)). Editor-layer chip sync is injected via `DispatcherConfig` to respect import boundaries.
@@ -183,7 +183,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - `src/contracts/useqRuntimeContract.ts` — shared transport command floor.
 - `vite.config.ts` — single bundle from `src/main.ts` to `public/solid-dist/`; defines Vitest `unit` + `storybook` projects.
 - `eslint.config.js` — import-boundary zones with documented per-file exceptions.
-- `tsconfig.json` — TS settings (strict, no `@ts-nocheck` permitted).
+- `tsconfig.json` — strict check of all production `.ts`/`.tsx` under `src/`; tests and stories are excluded, and `@ts-nocheck` is not permitted.
 - `scripts/build-assets.mjs` — copies markdown/reference/WASM/fonts into `public/`, verifies the compiler record and exact served bytes, generates the application served-bundle record, and runs the two Engine Ledger harvests below. Watch mode observes all of these source domains.
 - `scripts/harvest-witnesses.mjs` — parses `src-useq/test/conformance/**/*.yaml` into `public/assets/witness-index.json`, including the per-spec-file clause→witness aggregation ([docs/specs/witnesses.md §3](docs/specs/witnesses.md)). Parse errors, duplicate case names and malformed `spec:` refs fail the build; a missing `spec:` warns. Standalone: `npm run harvest:witnesses`.
 - `scripts/harvest-specs.mjs` — copies `src-useq/docs/specs/*.md` into `public/assets/spec-corpus.json`, pre-tokenised into a block model with `N.N` clause anchors, raw code fences, and intra-corpus links rewritten for in-Ledger navigation. Index order mirrors the corpus `MAIN.md` §6. Standalone: `npm run harvest:specs`.

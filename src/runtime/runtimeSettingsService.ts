@@ -10,6 +10,11 @@ import {
   loadAppSettings as _loadAppSettings,
   deletePersistedSettings as _deletePersistedSettings,
 } from "./appSettingsRepository";
+import { updateRuntimeSettingsEffect } from "./runtimeSessionService.ts";
+
+function syncRuntimeSettings(settings: AppSettings): void {
+  updateRuntimeSettingsEffect({ wasmEnabled: settings.wasm.enabled });
+}
 
 // ── Settings mutations (sole public surface) ────────────────────
 //
@@ -25,7 +30,8 @@ export function replaceSettings(
   values: unknown,
   options?: { persist?: boolean; dispatch?: boolean },
 ): AppSettings {
-  const result = _replaceAppSettings(values, options);
+  const result = _replaceAppSettings(values, { persist: options?.persist });
+  if (options?.dispatch) syncRuntimeSettings(result);
   settingsChangedChannel.publish(result);
   return result;
 }
@@ -39,6 +45,7 @@ export function updateSettings(
   options?: { persist?: boolean },
 ): AppSettings {
   const result = _updateAppSettings(values, options);
+  syncRuntimeSettings(result);
   settingsChangedChannel.publish(result);
   return result;
 }
@@ -48,6 +55,7 @@ export function updateSettings(
  */
 export function resetSettings(section?: keyof AppSettings): AppSettings {
   const result = _resetAppSettings(section);
+  syncRuntimeSettings(result);
   settingsChangedChannel.publish(result);
   return result;
 }
