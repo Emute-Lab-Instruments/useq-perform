@@ -15,10 +15,10 @@ Terminology source of truth: [docs/GLOSSARY.md](docs/GLOSSARY.md). Read [CLAUDE.
 - `stories/` — Storybook stories grouped by feature area.
 - `.storybook/` — Storybook config + Vitest browser-test setup.
 - `test/` — Mocha integration tests (`*.mjs`) plus structural YAML fixtures under `test/new_structural/`. `test/helpers/` holds the css-noop node loader (registered via `.mocharc.yml`) and the structural-fuzz worker.
-- `e2e/` — Playwright full-app journeys driven by trusted browser input against the worker-backed WASM runtime. Shared fixtures in `helpers.ts`; per-area specs (boot contract, eval feedback, LKG isolation, input dispatch, original journeys). Run `npm run test:e2e` (full rebuild) or `npx playwright test` (against existing `public/`).
+- `e2e/` — Playwright full-app journeys driven by trusted browser input against the worker-backed WASM runtime. Shared fixtures in `helpers.ts`; per-area specs (boot contract, eval feedback, LKG isolation, input dispatch, original journeys). Run `npm run test:e2e` for the deterministic pinned-browser suite; `npm run test:browser-local-eval` rebuilds and runs the fundamental eval smoke in the currently installed Chrome/Chromium/Edge, and `npm run test:release` includes that current-browser gate.
 - `public/` — static assets and build outputs (`public/solid-dist/bundle.js`, `public/wasm/useq.js`); `public/firmware/beta/` is the same-origin beta updater with Chromium directory-write installation and a verified-download fallback.
 - `assets/` — source markdown/JSON/font assets copied to `public/` by `scripts/build-assets.mjs`.
-- `scripts/` — build-assets pipeline and compiler capability-manifest verifier, beta-firmware packager (`prepare-firmware-beta.mjs`), config-server (dev), `src-useq:status`, parse-tree printer.
+- `scripts/` — build-assets pipeline and compiler capability-manifest verifier, current-Chromium worker-eval release gate (`run-current-chromium-eval-smoke.mjs`), beta-firmware packager (`prepare-firmware-beta.mjs`), config-server (dev), `src-useq:status`, parse-tree printer.
 - `plugins/` — `babel-solid-label.cjs` (dev-mode `data-component`/`data-source` annotations).
 - `patches/` — patch-package patches for npm deps.
 - `docs/` — architecture and contract docs (see index below).
@@ -190,7 +190,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - `scripts/compiler-capability-manifest.mjs` + `scripts/served-bundle-manifest.mjs` — verify the compiler profile and emit/reverify one deterministic, explicitly unsigned application-profile record over app source identity, the compiler record/interpreter, module-owned NodeDef descriptor/bytes and sample-rate/render-quantum contract, activation domain, and synthesis worklet. Compiler, application, and target-build fields have explicit profile ownership.
 - `scripts/config-server.mjs` — local dev config-write endpoint (paired with `runtime/configManager.ts`).
 - `scripts/dev/` — native-bridge dev tooling: `useq-stub-ws-server.mjs` (loopback WS stub speaking the JSON `hello` protocol, run via `dev:stub-ws`) and `verify-ws-serialport.mjs` (bridge smoke check, run via `verify:native-bridge`).
-- `package.json` — see scripts: `dev`, `build`, `build:assets`, `build:wasm`, `harvest:witnesses`, `harvest:specs`, `test:mocha`, `test:unit`, `test:all`, `lint`, `typecheck`, `storybook`, `inspector`, `inspector:validate`, `src-useq:status`.
+- `package.json` — see scripts: `dev`, `build`, `build:assets`, `build:wasm`, `harvest:witnesses`, `harvest:specs`, `test:mocha`, `test:unit`, `test:all`, `test:e2e`, `test:browser-local-eval`, `test:release`, `lint`, `typecheck`, `storybook`, `inspector`, `inspector:validate`, `src-useq:status`.
 
 ## Conventions
 

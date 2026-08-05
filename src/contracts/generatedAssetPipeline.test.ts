@@ -91,6 +91,11 @@ function readRepoFile(relativePath: string): string {
 
 interface CompilerCapabilityManifest {
   readonly schema: string;
+  readonly build: {
+    readonly compile_flags: readonly string[];
+    readonly memory_growth: boolean;
+    readonly growable_arraybuffers: boolean;
+  };
   readonly profile_ownership: {
     readonly profile: string;
     readonly field_dispositions: Readonly<Record<string, {
@@ -257,6 +262,17 @@ describe("VAL-CROSS-011: checksums link built and served bytes", () => {
     expect(
       builtManifest.capabilities.hard_limits.synth_artifact_abi_version,
     ).toBe(SYNTH_ARTIFACT_ABI_VERSION);
+    expect(builtManifest.build).toMatchObject({
+      memory_growth: true,
+      growable_arraybuffers: false,
+    });
+    expect(builtManifest.build.compile_flags).toContain(
+      "-sGROWABLE_ARRAYBUFFERS=0",
+    );
+    for (const base of [SUBMODULE_WASM, PUBLIC_WASM]) {
+      expect(readFileSync(path.join(base, "useq.js"), "utf8"))
+        .not.toContain(".toResizableBuffer(");
+    }
 
     for (const [key, filename] of [
       ["wasm/useq.js", "useq.js"],

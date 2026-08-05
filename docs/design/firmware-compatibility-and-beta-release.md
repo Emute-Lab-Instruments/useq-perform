@@ -118,6 +118,11 @@ Local physical-device procedure: [firmware-update-local.md](../testing/firmware-
 
 ## Cutover gate
 
+Run `npm run test:release` from a clean, pinned checkout before any static
+deployment. This includes the full native/unit surface and a real ModuLisp eval
+through the production Worker/WASM bundle in the currently installed Chromium,
+so a green Node/jsdom suite alone cannot authorize a cutover.
+
 Do not replace production merely because native/unit tests pass. Complete all
 of the following under ergo `6fc96486`:
 

@@ -77,6 +77,8 @@
     "test:contracts": "vitest run --project unit src/contracts/*.test.ts src/runtime/*.test.ts src/ui/TransportToolbar.test.tsx src/lib/appSettings.test.ts src/transport/serialComms.test.ts src/transport/serialLifecycle.test.ts src/main.test.ts src/ui/visualisation/visualisationController.test.ts src/audio/synthesisService.test.ts src/audio/synthesisServiceBrowser.test.ts src/audio/workletCore.test.ts src/audio/synthesisWorklet.test.ts src/audio/engineIndicator.test.tsx",
     "test:unit": "vitest run --project unit",
     "test:e2e": "EM_CACHE=$PWD/src-useq/.cache/emscripten npm run build:wasm && npm run build:assets && vite build && playwright test",
+    "test:browser-local-eval": "npm run build && node scripts/run-current-chromium-eval-smoke.mjs",
+    "test:release": "npm run test:browser-local-eval && npm run test:all",
     "test:all": "npm-run-all test:mocha test:unit",
     "test": "npm run test:all",
     "lint": "eslint src/",
