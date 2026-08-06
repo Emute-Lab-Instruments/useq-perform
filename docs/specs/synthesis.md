@@ -48,6 +48,13 @@ recorded removal condition. `useq_tick_synth_controls` now advances the live
 VM once per produced block and returns values in exact compiler control-table
 order; commit-time defaults are prefill only, never the steady-state source.
 
+The host control contract keeps `src/contracts/synthesisControlAbi.ts` as its
+stable public import. Its dependency-light internals have explicit owners:
+`synthesisControlAbi/layout.ts` defines the byte layout, engine constants,
+creation, and validation; `view.ts` implements typed non-blocking ring access;
+`pacing.ts` contains the Worker-only bounded wait helper and load-time layout
+invariants. No binary field or offset is duplicated across those modules.
+
 Known required amendments to other specs:
 [runtime-modes.md](runtime-modes.md) §1.5.2 (sampling-degradation carve-out,
 §4.9 here), [MAIN.md](MAIN.md) §2.10 (WASM crash recovery while WASM is the
