@@ -401,19 +401,31 @@ class ProbeWidget extends WidgetType {
   }
 }
 
-function buildDecorations(
+const contextualHighlightDecoration = Decoration.mark({
+  class: "cm-probe-indexed-item cm-probe-indexed-item-contextual",
+});
+const rawHighlightDecoration = Decoration.mark({
+  class: "cm-probe-indexed-item cm-probe-indexed-item-raw",
+});
+
+export function buildProbeHighlightDecorations(
+  highlights: readonly FromListHighlight[],
+): DecorationSet {
+  const decorations = highlights.map((highlight) =>
+    (highlight.mode === "raw"
+      ? rawHighlightDecoration
+      : contextualHighlightDecoration).range(highlight.from, highlight.to),
+  );
+  return decorations.length > 0
+    ? Decoration.set(decorations, true)
+    : Decoration.none;
+}
+
+export function buildProbeWidgetDecorations(
   snapshot: ProbeFieldValue,
   lineWidth: number,
 ): DecorationSet {
   const decorations = [];
-  for (const highlight of snapshot.highlights) {
-    const className = highlight.mode === "raw"
-      ? "cm-probe-indexed-item cm-probe-indexed-item-raw"
-      : "cm-probe-indexed-item cm-probe-indexed-item-contextual";
-    decorations.push(
-      Decoration.mark({ class: className }).range(highlight.from, highlight.to),
-    );
-  }
   for (const probe of snapshot.probes) {
     const render = snapshot.staleIds.has(probe.id)
       ? buildStaleRender(probe)
@@ -444,6 +456,6 @@ export function buildProbeSnapshot(
     decorations: Decoration.none,
     staleIds,
   };
-  snapshot.decorations = buildDecorations(snapshot, lineWidth);
+  snapshot.decorations = buildProbeWidgetDecorations(snapshot, lineWidth);
   return snapshot;
 }

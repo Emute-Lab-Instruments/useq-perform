@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 // @ts-expect-error - no type declarations available for clojure-mode
@@ -691,6 +691,63 @@ describe("probe commands", () => {
     await runNextFrame(1040);
     const second = view.dom.querySelector(".cm-probe-indexed-item");
     expect(second).toBe(first);
+
+    view.destroy();
+  });
+
+  it("keeps indexed highlights mounted through unrelated document edits", async () => {
+    evalInUseqWasmSilently.mockResolvedValue("0.5");
+
+    const source = "(a1 (from-list [0.1 0.2 0.3] bar))";
+    const { probeExtensions, probeField } = await loadProbeModule();
+    const view = createView(source, probeExtensions, { anchor: anchorOf(source, "bar") });
+
+    await runNextFrame(1000);
+    const before = view.dom.querySelector(".cm-probe-indexed-item");
+    expect(view.state.field(probeField).highlights).toEqual([
+      {
+        from: anchorOf(source, "0.2"),
+        to: anchorOf(source, "0.2") + 3,
+        mode: "contextual",
+      },
+    ]);
+
+    // Insert before the form. The form is unchanged, but all of its positions
+    // move; the decoration should be mapped synchronously instead of cleared
+    // until the next sampling tick.
+    view.dispatch({
+      changes: { from: 0, to: 0, insert: " " },
+      annotations: Transaction.userEvent.of("input"),
+    });
+
+    expect(view.state.field(probeField).highlights).toEqual([
+      {
+        from: anchorOf(source, "0.2") + 1,
+        to: anchorOf(source, "0.2") + 4,
+        mode: "contextual",
+      },
+    ]);
+    expect(view.dom.querySelector(".cm-probe-indexed-item")).toBe(before);
+
+    view.destroy();
+  });
+
+  it("keeps indexed highlights mounted while probe renders update", async () => {
+    evalInUseqWasmSilently.mockResolvedValue("0.5");
+
+    const source = "(a1 (from-list [0.1 0.2 0.3] bar))";
+    const { probeExtensions, probeHighlightField, toggleCurrentProbe } = await loadProbeModule();
+    const view = createView(source, probeExtensions, { anchor: anchorOf(source, "bar") });
+
+    expect(toggleCurrentProbe(view, "raw")).toBe(true);
+    await runNextFrame(1000);
+    const before = view.dom.querySelector(".cm-probe-indexed-item");
+    const highlightDecorations = view.state.field(probeHighlightField);
+    expect(before?.textContent).toBe("0.2");
+
+    await runNextFrame(1040);
+    expect(view.dom.querySelector(".cm-probe-indexed-item")).toBe(before);
+    expect(view.state.field(probeHighlightField)).toBe(highlightDecorations);
 
     view.destroy();
   });

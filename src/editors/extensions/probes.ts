@@ -7,6 +7,7 @@ import {
 import {
   EditorView,
   ViewPlugin,
+  type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
 
@@ -48,6 +49,7 @@ import {
 } from "./probes/probeTypes.ts";
 import {
   highlightsEqual,
+  mapHighlightsThroughChanges,
   persistProbes,
   probeSignature,
   readPersistedProbes,
@@ -55,6 +57,7 @@ import {
 } from "./probes/probeModel.ts";
 import {
   buildProbeSnapshot,
+  buildProbeHighlightDecorations,
   ProbeContextLineRenderer,
   previewProbeDepth,
   previewProbeWindowDuration,
@@ -230,7 +233,7 @@ const probeField = StateField.define<ProbeFieldValue>({
           );
         })
         .filter((p) => p.from <= docLen && p.to <= docLen);
-      highlights = [];
+      highlights = mapHighlightsThroughChanges(highlights, tr.changes);
     }
 
     for (const effect of tr.effects) {
@@ -302,6 +305,38 @@ const probeField = StateField.define<ProbeFieldValue>({
   },
 
   provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
+});
+
+const probeHighlightField = StateField.define<DecorationSet>({
+  create(state) {
+    return buildProbeHighlightDecorations(state.field(probeField).highlights);
+  },
+
+  update(decorations, tr) {
+    const previousHighlights = tr.startState.field(probeField).highlights;
+    const nextHighlights = tr.state.field(probeField).highlights;
+    const mapped = decorations.map(tr.changes);
+    const mappedPreviousHighlights = mapHighlightsThroughChanges(
+      previousHighlights,
+      tr.changes,
+    );
+
+    // Probe render updates happen every sampling tick. Keep the existing mark
+    // set when the active indexed elements did not change, so waveform/widget
+    // updates cannot repaint the from-list highlight.
+    // Compare in post-edit coordinates: an unrelated insertion before a form
+    // changes its positions but not its semantic highlight. A range touched by
+    // the edit is intentionally rebuilt for the new document instead.
+    if (
+      mappedPreviousHighlights.length === previousHighlights.length &&
+      highlightsEqual(mappedPreviousHighlights, nextHighlights)
+    ) {
+      return mapped;
+    }
+    return buildProbeHighlightDecorations(nextHighlights);
+  },
+
+  provide: (field) => EditorView.decorations.from(field),
 });
 
 
@@ -723,7 +758,7 @@ export function contractCurrentProbeContext(view: EditorView): boolean {
   return true;
 }
 
-export { probeField, probeViewPlugin };
+export { probeField, probeHighlightField, probeViewPlugin };
 
 /**
  * Create probe extensions with a custom configuration.
@@ -731,7 +766,7 @@ export { probeField, probeViewPlugin };
  */
 export function createProbeExtensions(config: ProbeConfig): Extension[] {
   _config = config;
-  return [probeField, probeViewPlugin];
+  return [probeField, probeHighlightField, probeViewPlugin];
 }
 
 export const probeExtensions = createProbeExtensions(createDefaultProbeConfig());

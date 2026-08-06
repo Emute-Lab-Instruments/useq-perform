@@ -1,3 +1,5 @@
+import type { ChangeDesc } from "@codemirror/state";
+
 import {
   DEFAULT_PROBE_CANVAS_HEIGHT,
   DEFAULT_PROBE_CANVAS_WIDTH,
@@ -88,6 +90,26 @@ export function highlightsEqual(
       );
     })
   );
+}
+
+/**
+ * Keep indexed-form marks stable while an unrelated edit is being processed.
+ *
+ * A highlight whose range is touched by the edit is deliberately dropped so
+ * the next sampling pass can resolve the changed form. Unaffected ranges are
+ * mapped through the change description and can remain mounted immediately.
+ */
+export function mapHighlightsThroughChanges(
+  highlights: readonly FromListHighlight[],
+  changes: ChangeDesc,
+): FromListHighlight[] {
+  return highlights.flatMap((highlight) => {
+    if (changes.touchesRange(highlight.from, highlight.to)) return [];
+
+    const from = changes.mapPos(highlight.from, 1);
+    const to = changes.mapPos(highlight.to, -1);
+    return to > from ? [{ ...highlight, from, to }] : [];
+  });
 }
 
 export function buildStaleRender(

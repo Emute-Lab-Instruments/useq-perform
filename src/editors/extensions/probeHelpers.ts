@@ -1,4 +1,4 @@
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { EditorState } from "@codemirror/state";
 import type { SyntaxNode } from "@lezer/common";
 
@@ -308,7 +308,15 @@ export function collectVisibleIndexedForms(
   state: EditorState,
   visibleRanges: readonly ProbeRange[],
 ): IndexedFormTarget[] {
-  const tree = syntaxTree(state);
+  // After an edit, CodeMirror may still expose a partial incremental tree for
+  // one view update. Waiting briefly for the visible prefix prevents the probe
+  // loop from interpreting that transient empty scan as "no indexed forms"
+  // and clearing an otherwise valid highlight.
+  const upto = visibleRanges.reduce(
+    (max, range) => Math.max(max, range.to),
+    0,
+  );
+  const tree = ensureSyntaxTree(state, upto, 10) ?? syntaxTree(state);
   const seen = new Set<string>();
   const results: IndexedFormTarget[] = [];
 
