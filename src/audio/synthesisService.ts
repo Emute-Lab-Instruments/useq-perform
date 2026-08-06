@@ -58,9 +58,7 @@ import {
   ENGINE_STATE_REASONS,
   type EngineStateReasonKey,
   type EngineStateSnapshot,
-  type EngineTransitionTrigger,
   engineTransitionTrigger,
-  isAllowedEngineTransition,
   publishEngineState,
   engineLifecycle,
   type SynthesisEngineState,
@@ -1132,16 +1130,19 @@ function createCapableService(
         "synthesis service is disposed; construct a new one to reinitialise",
       );
     }
-    if (currentState === next) return false;
-    const trigger = engineTransitionTrigger(currentState, next);
+    const from = currentState;
+    const trigger = engineTransitionTrigger(from, next);
     if (trigger === null) {
+      // Calls that leave a state unchanged are ordinary no-ops unless the
+      // transition matrix names a real self-loop. The sole named self-loop,
+      // error → error, records a distinct failed recovery attempt.
+      if (from === next) return false;
       // Forbidden transition. The caller is misusing the service; surface
       // the contract violation rather than silently dropping the call.
       throw new SynthesisServiceError(
-        `forbidden engine transition: ${currentState} → ${next}`,
+        `forbidden engine transition: ${from} → ${next}`,
       );
     }
-    const from = currentState;
     currentState = next;
     currentReasonKey = reasonKey;
     currentReasonMessage = reasonMessage;
@@ -1176,10 +1177,7 @@ function createCapableService(
     // legal entry points ('off' and 'error') take their respective
     // 'engine-create' / 'recovery-succeeded' edges into 'suspended'. Every
     // subsequent failure during bring-up then goes through 'suspended → error'.
-    if (currentState === "off") {
-      transition("suspended", "AWAITING_USER_ACTIVATION",
-        ENGINE_STATE_REASONS.AWAITING_USER_ACTIVATION);
-    } else if (currentState === "error") {
+    if (currentState === "off" || currentState === "error") {
       transition("suspended", "AWAITING_USER_ACTIVATION",
         ENGINE_STATE_REASONS.AWAITING_USER_ACTIVATION);
     }
@@ -1787,90 +1785,45 @@ function createCapableService(
     acc.sampleRate = null;
   }
 
-  async function disposeResources(finalState: SynthesisEngineState): Promise<void> {
-    // VAL-ENGINE-027 / Ergo bug c7edc263: stop the Worker producer
-    // FIRST so it stops publishing to the SAB we are about to retire.
-    // Without this stop, the dead producer kept "running" against the
-    // retired SAB and the post-recovery `startProducer()` no-op'd
-    // because `producerRunning` was still `true`. The fresh worklet
-    // never received an `attach-control-buffer` because the SAB
-    // pointer was never cleared, so its `controlView` stayed null and
-    // the published `audioFrame` stayed at 0 — exactly the
-    // `engineState=running, audioFrame=0` signature c7edc263 captured.
-    await stopProducer();
-    // VAL-CROSS-009 post-recovery eval-pipeline fix: clear the WASM
-    // compiler's synth declarations so the next synth eval after
-    // recovery is not rejected as an over-capacity second declaration.
-    // The WASM engine persists across service recovery (the Worker is
-    // not recreated), so without this clear the stale synth declaration
-    // triggers the M1 single-node capacity diagnostic on the first
-    // post-recovery eval, causing the commit pipeline to reject the
-    // response as a failed eval. This is the root cause of the
-    // "post-recovery eval-pipeline gap" that prior evidence masked.
+  async function clearCompilerSynthDeclarations(): Promise<void> {
     const workerPortForClear = options.workerPort;
-    if (workerPortForClear && typeof workerPortForClear.clearSynthDeclarations === "function") {
-      try {
-        await workerPortForClear.clearSynthDeclarations();
-      } catch {
-        // Best-effort: if the clear fails, the user will see a
-        // capacity diagnostic on the next eval, which they can clear
-        // manually with (useq-clear).
-      }
+    if (!workerPortForClear?.clearSynthDeclarations) return;
+    try {
+      await workerPortForClear.clearSynthDeclarations();
+    } catch {
+      // Best-effort: a later eval will surface the retained declaration.
     }
-    // Disconnect the worklet first so no further graph mutations are
-    // applied to a dying context.
-    if (workletNode) {
-      try {
-        workletNode.disconnect();
-        workletNode.port.close?.();
-      } catch {
-        // Best-effort cleanup.
-      }
-      // VAL-ENGINE-027: bump the generation guard so any in-flight
-      // event from the retired (failed) worklet is dropped by the
-      // listener boundary. The next bring-up constructs a fresh node
-      // with a new generation, so the failed worklet cannot affect
-      // telemetry or state after recovery.
-      activeWorkletGeneration += 1;
-      // The currently-held node count drops to zero. The next bring-up
-      // (recovery) sets it back to 1 by constructing exactly one fresh
-      // node, so the count never accumulates across repeated recovery
-      // (VAL-ENGINE-007 / VAL-ENGINE-027).
-      acc.workletNodeCount = 0;
-      workletNode = null;
+  }
+
+  function retireWorkletNode(): void {
+    if (!workletNode) return;
+    try {
+      workletNode.disconnect();
+      workletNode.port.close?.();
+    } catch {
+      // Best-effort cleanup.
     }
-    if (audioContext) {
-      try {
-        await audioContext.close();
-      } catch {
-        // Best-effort cleanup.
-      }
-      audioContext = null;
+    // In-flight events from this generation must not reach the new session.
+    activeWorkletGeneration += 1;
+    acc.workletNodeCount = 0;
+    workletNode = null;
+  }
+
+  function settlePendingGraphTransactions(): void {
+    for (const pending of pendingGraphAcks.values()) {
+      if (pending.timer) clearTimeout(pending.timer);
+      pending.resolve("post-failed");
     }
-    // Reset worklet-add-module tracking so reinitialisation re-adds the
-    // processor script to the next AudioContext. Without this the recovery
-    // path would skip addModule and the new worklet node would have no
-    // processor registered.
+    pendingGraphAcks.clear();
+  }
+
+  function resetEngineSession(): void {
     workletAdded = false;
-    acc.audioContextState = null;
-    acc.sampleRate = null;
     compiledAdapters.clear();
-    // VAL-ENGINE-008: clear the installed-module set so the recovered
-    // worklet receives a fresh installation payload on its next bring-
-    // up. Without this clear, the recovered worklet would never get a
-    // module transfer and instantiation would fail with "no adapter".
     installedWorkletModules.clear();
-    // Reset the eval-to-engine commit state so the recovered session
-    // starts fresh. The active-declaration map is cleared so the next
-    // commit treats every declaration as added (the worklet re-
-    // instantiates from scratch after recovery).
     activeDeclarations.clear();
     lastAppliedRevision = 0;
-    // Reset the worklet-side objective telemetry so the recovered
-    // session starts from a clean baseline. The fresh worklet will
-    // repopulate these fields with its first published snapshot
-    // (VAL-ENGINE-029). Without the reset, stale peak/RMS / counters
-    // from the failed session would leak into the recovered telemetry.
+
     acc.audioFrame = 0n;
     acc.ringWriteSequence = 0;
     acc.ringReadSequence = 0;
@@ -1882,54 +1835,38 @@ function createCapableService(
     acc.peakSample = 0;
     acc.rmsSample = 0;
     acc.finiteOutput = 1;
-    // VAL-ENGINE-027 / Ergo bug c7edc263: clear the producer bridge
-    // state so the next bring-up re-installs a FRESH SAB on the
-    // Worker producer AND ships `attach-control-buffer` to the new
-    // worklet. Pre-fix, `producerControlBuffer` stayed non-null after
-    // recovery, so `installProducerControlBridge()` early-returned
-    // and the new worklet never received an SAB. With `controlView`
-    // null in the worklet core, `audioFrame` was hard-coded to 0 in
-    // every published telemetry snapshot — exactly the
-    // `engineState=running, audioFrame=0` signature c7edc263 reports.
+
+    // The new session must allocate and attach a fresh producer bridge.
     producerControlBuffer = null;
     sabView = null;
     producerInstalled = false;
     producerRunning = false;
-    // Pending deadline/ack timers belong to the session being torn
-    // down; a late firing against the fresh session would be a
-    // spurious error transition.
     clearProducerTimers();
-    for (const pending of pendingGraphAcks.values()) {
-      if (pending.timer) clearTimeout(pending.timer);
-      pending.resolve("post-failed");
-    }
-    pendingGraphAcks.clear();
-    // Note: fault counters (underrun/glitch/timeout) are NOT reset
-    // here. They are lifetime counters for the current service
-    // instance. A full dispose (final state "off") resets them via
-    // the accumulator going out of scope; recovery keeps the counters
-    // so dashboards can observe the cumulative fault history.
+    settlePendingGraphTransactions();
+
+    // Fault counters remain lifetime totals for this service instance.
     acc.producerLivenessAge = 0;
     acc.producerTimeoutActive = false;
+  }
+
+  async function disposeResources(finalState: SynthesisEngineState): Promise<void> {
+    // Stop publishers before retiring the SAB and worklet that consume them.
+    await stopProducer();
+    await clearCompilerSynthDeclarations();
+    retireWorkletNode();
+    await safeCloseAudioContext();
+    resetEngineSession();
+
     if (currentState !== finalState) {
       const reasonKey: EngineStateReasonKey | null =
         finalState === "error" ? "RECOVERY_FAILED" : null;
       const reasonMessage: string | null =
         finalState === "error" ? ENGINE_STATE_REASONS.RECOVERY_FAILED : null;
-      try {
-        transition(finalState, reasonKey, reasonMessage);
-      } catch {
-        // Transition may be forbidden when the service is already in a
-        // terminal state; fall through to clear telemetry.
-      }
+      transition(finalState, reasonKey, reasonMessage);
     } else if (finalState === "error") {
       // error → error self-loop: emit a fresh lifecycle event so
       // dashboards can count distinct recovery attempts.
-      try {
-        transition("error", "RECOVERY_FAILED", ENGINE_STATE_REASONS.RECOVERY_FAILED);
-      } catch {
-        // Swallow — emit is best-effort.
-      }
+      transition("error", "RECOVERY_FAILED", ENGINE_STATE_REASONS.RECOVERY_FAILED);
     }
     publishTelemetry();
   }

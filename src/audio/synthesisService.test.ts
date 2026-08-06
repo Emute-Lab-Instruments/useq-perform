@@ -29,6 +29,7 @@ import {
 import {
   resetEngineStateStoreForTests,
   engineStateStore,
+  engineLifecycle,
 } from "../contracts/synthesisChannels";
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
 import {
@@ -382,6 +383,31 @@ describe("synthesisService — module compilation (VAL-ENGINE-008)", () => {
     expect(resumed).toBe(false);
     expect(service.state).toBe("error");
     expect(engineStateStore.current.reasonKey).toBe("RECOVERY_FAILED");
+    await service.dispose();
+  });
+
+  it("publishes the documented error self-loop for a failed recovery", async () => {
+    const events: Array<{ from: string; to: string; trigger: string }> = [];
+    const unsubscribe = engineLifecycle.subscribe((event) => events.push(event));
+    const failingAudioContext = createFakeAudioContext({ addModuleResult: "throw" });
+    const bundle = buildOptions({ audioContext: failingAudioContext });
+    const service = createSynthesisService(bundle.options);
+
+    await service.resumeOnUserActivation();
+    expect(service.state).toBe("error");
+    const transitionsBeforeRecovery = service.telemetry.transitionCount;
+
+    expect(await service.recoverFromError()).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({
+      from: "error",
+      to: "error",
+      trigger: "recovery-failed",
+    }));
+    expect(service.telemetry.transitionCount).toBeGreaterThan(
+      transitionsBeforeRecovery,
+    );
+
+    unsubscribe();
     await service.dispose();
   });
 
