@@ -9,7 +9,7 @@
  * unit-tested without dragging in the transport/eval module graph.
  */
 
-import { getRuntimeSessionState } from "../runtime/runtimeSessionStore.ts";
+import { getRuntimeServiceSnapshot } from "../runtime/runtimeService.ts";
 
 /** The exact §1.10 warning shown when eval is attempted with no runtime. */
 export const NO_RUNTIME_WARNING =
@@ -21,7 +21,7 @@ export const NO_RUNTIME_WARNING =
  * eval may proceed.
  */
 export function evalRejectionForNoRuntime(): string | null {
-  return getRuntimeSessionState().session.transportMode === "none"
+  return getRuntimeServiceSnapshot().session.transportMode === "none"
     ? NO_RUNTIME_WARNING
     : null;
 }

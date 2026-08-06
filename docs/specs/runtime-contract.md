@@ -16,6 +16,7 @@ For the higher-level product boundary and compatibility cuts, read [MAIN.md](MAI
 - `src/contracts/runtimePorts.ts` — `RuntimePort` interface (hardware and WASM port shapes)
 - `src/contracts/runtimeChannels.ts` — typed channels for runtime events
 - `src/contracts/runtimeTypes.ts` — `RuntimeConnectionMode`, `TransportMode`, session types
+- `src/runtime/runtimeCoordinator.ts` — canonical runtime state transitions and typed WASM-port selection
 - `src/runtime/wasmInterpreter.ts` — WASM instantiation, `createModule()`, ABI validation call site
 - `src/runtime/wasmRuntimePort.ts` — in-process WASM port implementing `RuntimePort`
 - `src/runtime/runtimeTransportService.ts` — fan-out of shared commands to both runtimes

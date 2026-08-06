@@ -14,6 +14,8 @@
  *
  * Per docs/specs/settings.md §1.2, settings mutations go through
  * `runtimeService.updateSettings(patch)` (re-exported below).
+ * Mutable runtime selection/session state is owned by runtimeCoordinator.ts;
+ * this facade exposes its consumer operations without becoming another owner.
  */
 
 // ── Session service ────────────────────────────────────────────

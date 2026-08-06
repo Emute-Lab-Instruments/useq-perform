@@ -1,6 +1,6 @@
 /** Compatibility policy derived from the canonical runtime session state. */
 
-import { getRuntimeSessionState } from "./runtimeSessionStore.ts";
+import { getRuntimeSessionState } from "./runtimeCoordinator.ts";
 
 /**
  * The bundled WASM interpreter is the current v1.2 language implementation.

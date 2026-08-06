@@ -9,17 +9,16 @@ import {
 } from "./runtimeDiagnostics";
 import {
   getRuntimeSessionState,
-  resetRuntimeSessionState,
   subscribeRuntimeSessionState,
-  updateRuntimeSessionState,
-} from "./runtimeSessionStore";
+  transitionRuntimeCoordinator,
+} from "./runtimeCoordinator";
 import {
   type RuntimeSessionInputs,
 } from "./runtimeSession";
 
 // Re-export the state type so consumers don't need to reach into the store
-export type { RuntimeSessionState } from "./runtimeSessionStore";
-import type { RuntimeSessionState } from "./runtimeSessionStore";
+export type { RuntimeSessionState } from "./runtimeCoordinator";
+import type { RuntimeSessionState } from "./runtimeCoordinator";
 
 // ── Internal helpers ───────────────────────────────────────────
 
@@ -49,7 +48,7 @@ function applySessionUpdate(
     dispatchConnectionChanged?: boolean;
   }
 ): RuntimeSessionState {
-  const state = updateRuntimeSessionState(updates);
+  const state = transitionRuntimeCoordinator({ type: "session", updates });
 
   if (options?.publishDiagnostics) {
     // protocolMode and runtimeSession are derived from canonical state by
@@ -158,5 +157,5 @@ export function isRuntimeWasmEnabled(): boolean {
 }
 
 export function resetRuntimeServiceForTests(): void {
-  resetRuntimeSessionState();
+  transitionRuntimeCoordinator({ type: "reset" });
 }

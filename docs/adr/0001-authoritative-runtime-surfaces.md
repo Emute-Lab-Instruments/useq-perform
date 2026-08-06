@@ -15,7 +15,7 @@ The canonical surfaces for ongoing work are:
 - Editor-facing runtime contract: `docs/specs/runtime-contract.md`
 - Serial protocol details: `src-useq/docs/specs/wire-protocol.md`
 - Production startup path: `src/main.ts`, `src/runtime/bootstrap.ts`
-- Startup and runtime ownership: `src/runtime/bootstrap.ts` (also covers startup-mode selection, formerly `bootstrapPlan.ts`), `src/runtime/runtimeService.ts` plus the split services (`runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts`), `src/runtime/runtimeSession.ts`, `src/runtime/runtimeDiagnostics.ts`
+- Startup and runtime ownership: `src/runtime/bootstrap.ts` (startup sequencing and startup-mode selection, formerly `bootstrapPlan.ts`), `src/runtime/runtimeCoordinator.ts` (sole mutable session/port owner), `src/runtime/runtimeService.ts` plus the split services (`runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts`), `src/runtime/runtimeSession.ts`, `src/runtime/runtimeDiagnostics.ts`
 - Runtime contract definitions: `src/runtime/jsonProtocol.ts` (in-runtime helpers), `src/transport/json-protocol.ts` (wire driver), `src/contracts/useqRuntimeContract.ts`, `src/contracts/runtimeChannels.ts`, `src/contracts/runtimeTypes.ts`
 - Settings ownership: `src/lib/settings/` (schema, normalization, persistence; `src/lib/appSettings.ts` is now a thin re-export shim), `src/runtime/appSettingsRepository.ts` (runtime state, subscription, bootstrap orchestration), `src/runtime/startupContext.ts` (startup flag parsing — incorporates former `urlParams.ts`)
 - Firmware and WASM source of truth: the pinned `src-useq/` submodule reported by `npm run src-useq:status`

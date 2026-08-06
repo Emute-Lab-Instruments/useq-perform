@@ -86,8 +86,9 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `bootstrap.ts` — startup orchestration: config load, UI mount, app lifecycle. Includes startup-mode selection (formerly `bootstrapPlan.ts`).
   - `appLifecycle.ts` — top-level runtime-mode startup/teardown, browser-local activation, reconnect flow, and bootstrap-adjacent UI wiring.
   - `runtimeService.ts` — sole settings-mutation surface; thin façade over the services below.
-  - `runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts` — split runtime concerns. Both transport- and session-services now talk to runtime ports rather than `transport/` or `wasmInterpreter` directly.
-  - `runtimeSession.ts`, `runtimeSessionStore.ts`, `runtimeSessionService.ts` — hardware-vs-WASM precedence and the plain-JS session store; transport/settings producers report facts explicitly, and consumers read or subscribe through `runtimeService.ts`.
+  - `runtimeCoordinator.ts` — sole mutable owner of runtime session transitions and active typed WASM-port selection; lifecycle orchestration invokes the selected port, whose implementation owns its internal load/retry state.
+  - `runtimeSettingsService.ts`, `runtimeTransportService.ts`, `runtimeSessionService.ts` — split runtime concerns. Both transport- and session-services talk to runtime ports rather than `transport/` or `wasmInterpreter` directly; session facts enter the coordinator through one transition surface.
+  - `runtimeSession.ts` — pure hardware-vs-WASM precedence and mode derivation. `runtimeSessionStore.ts` is a compatibility re-export with no state; consumers read or subscribe through `runtimeService.ts`.
   - `runtimeCompatibility.ts` — keeps the current WASM loaded but prevents it from presenting current-firmware results as a shadow of legacy hardware.
   - `appSettingsRepository.ts` — canonical settings store (non-reactive). Mirrored into `settingsStore` via `settingsChanged` channel.
   - `wasmInterpreter.ts` — main-thread WASM module loader and adapter; validates the ABI and publishes synchronous diagnostic bridges on `__useqWasmRuntime`. Wrapped by `wasmRuntimePort.ts` for callers.
@@ -97,7 +98,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `wasmJsonTransport.ts` — in-memory virtual transport that lets the WASM port speak the same `hello` / `stream-config` / `eval` / `ping` JSON protocol as hardware. Mirrors `transport/json-protocol.ts` at the message-shape level (no byte framing).
   - `wasmJsonHandlers.ts` — pure WASM-side request handlers for the JSON protocol. Dispatches `hello` / `ping` / `stream-config` / `eval` against an injected `WasmJsonBackend`.
   - `wasmRuntimeWorkerPort.ts` — default `WasmRuntimePort` in browsers with Web Worker support; proxies every method to a dedicated classic Worker hosting the WASM interpreter. The in-process port is the fallback when Workers are unavailable or fail to construct. Diagnostics readback is piped through worker request/response messages.
-  - `activeWasmRuntimePort.ts` — read-through accessor returning the active `WasmRuntimePort` (worker-backed by default, in-process fallback). Bootstrap is the only writer.
+  - `activeWasmRuntimePort.ts` — compatibility read-through facade over the coordinator's typed `WasmRuntimePort` selection; contains no state.
   - `activeSynthesisService.ts` — same accessor pattern for the synthesis engine service; bootstrap is the only writer.
   - `browserEvalSurface.ts` — devmode `window.__useqBrowserEval` surface: verified eval route + `sampleOutputAtTime` + deterministic clock hooks (`freezeClock`/`stepClock`/`resumeClock`/`isClockFrozen`) over the visualisationRuntime time-source seam; used by the first-sound listening guide ([docs/synthesis/LISTENING_GUIDE.md](docs/synthesis/LISTENING_GUIDE.md)) and the e2e journeys.
   - `workers/wasmRuntime.worker.ts` + `workers/wasmRuntimeWorkerProtocol.ts` — classic Web Worker hosting the WASM interpreter and the discriminated-union request/response protocol it speaks; Worker loading, audio production, and dispatch stay local while interpreter policy comes from `wasmInterpreterCore.ts`.

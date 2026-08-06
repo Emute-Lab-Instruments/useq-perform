@@ -21,7 +21,7 @@ layer: cross-cutting
 - `src/utils/snippetStore.ts` — reactive snippet store
 - `src/utils/outputHealthStore.ts` — reactive per-output health store (runtime/eval layer → editor health UI)
 - `src/runtime/appSettingsRepository.ts` — canonical non-reactive settings holder
-- `src/runtime/runtimeSessionStore.ts` — reactive connection/session state (`createStore` + `createEffect`)
+- `src/runtime/runtimeCoordinator.ts` — reactive connection/session state plus typed WASM-port selection (`createStore` + explicit transitions)
 - `src/runtime/runtimeService.ts` — sole settings mutation surface (fans out to repository + channel)
 - `src/effects/visualisationRuntime.ts` — the rAF loop owner: drives time updates, drains the sampling queue, polls active diagnostics into `outputHealthStore`, and invokes the registered render hook
 - `src/lib/persistence.ts` — localStorage persistence service
@@ -34,7 +34,7 @@ layer: cross-cutting
 
 1.3 **Settings is the only mutation surface that fans out to multiple stores.** All other stores are mutated by their owning subsystem only.
 
-1.4 **One non-reactive state holder** is a deliberate exception: `appSettingsRepository` (see `src/runtime/appSettingsRepository.ts`; canonical settings; the reactive `settingsStore` mirrors it). `runtimeSessionStore` is a reactive Solid store (`createStore` + `createEffect`); UI subscribes via `runtimeService`. Plus 9 imperative `CircularBuffer`s in the stream parser. Adding more non-reactive state requires explicit justification.
+1.4 **One non-reactive state holder** is a deliberate exception: `appSettingsRepository` (see `src/runtime/appSettingsRepository.ts`; canonical settings; the reactive `settingsStore` mirrors it). `runtimeCoordinator` owns the reactive Solid session store and the selected typed WASM port; UI subscribes via `runtimeService`, while effects use the typed port facade. Plus 9 imperative `CircularBuffer`s in the stream parser. Adding more non-reactive state requires explicit justification.
 
 1.5 **Channel registries** live in `src/contracts/` (see `src/contracts/runtimeChannels.ts`, `src/contracts/visualisationChannels.ts`, `src/contracts/gamepadChannels.ts`). Adding a channel requires registering it in this spec's inventory.
 

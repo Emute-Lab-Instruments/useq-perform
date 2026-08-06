@@ -4,8 +4,10 @@ import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
 import type { WasmRuntimePort } from "../contracts/runtimePorts";
 import { webSerialHostPort } from "../transport/webSerialHostPort";
-import { getActiveWasmRuntimePort } from "./activeWasmRuntimePort";
-import { getRuntimeSessionState } from "./runtimeSessionStore";
+import {
+  getActiveWasmRuntimePort,
+  getRuntimeSessionState,
+} from "./runtimeCoordinator";
 import {
   supportsHardwareTransport,
   supportsWasmTransport,

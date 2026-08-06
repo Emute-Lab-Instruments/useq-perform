@@ -44,8 +44,8 @@ import {
 } from './browserEvalSurface.ts';
 import {
   getActiveWasmRuntimePort,
-  setActiveWasmRuntimePort,
-} from './activeWasmRuntimePort.ts';
+  transitionRuntimeCoordinator,
+} from './runtimeCoordinator.ts';
 // ── Bootstrap plan (pure decision function) ─────────────────────
 
 export type BootstrapStartupMode =
@@ -252,7 +252,7 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
  * 1. Load settings (defaults + localStorage + URL overrides).
  * 2. Detect environment capabilities once.
  * 3. Derive the bootstrap plan once.
- * 4. Seed the runtime session store.
+ * 4. Seed the runtime coordinator.
  * 5. Publish diagnostics exactly once.
  * 6. Mount the UI and start the app.
  */
@@ -281,7 +281,10 @@ export async function bootstrap(): Promise<BootstrapResult> {
       const { createWasmRuntimeWorkerPort } = await import(
         "./wasmRuntimeWorkerPort.ts"
       );
-      setActiveWasmRuntimePort(createWasmRuntimeWorkerPort());
+      transitionRuntimeCoordinator({
+        type: "select-wasm-port",
+        port: createWasmRuntimeWorkerPort(),
+      });
     } catch (error) {
       reportBootstrapFailure("wasm-worker-port", error);
       console.warn(
@@ -369,7 +372,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
       // contract. We pass the same port the eval pipeline uses so
       // there is exactly one Worker and one producer.
       const { getActiveWasmRuntimePort } = await import(
-        "./activeWasmRuntimePort.ts"
+        "./runtimeCoordinator.ts"
       );
       const synthesisService = createBrowserSynthesisService({
         capabilities: environmentState.audioCapabilities,

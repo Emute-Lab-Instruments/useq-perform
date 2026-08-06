@@ -346,8 +346,8 @@ Which runtime(s) receive shared transport commands (play/pause/stop).
 
 The resolved runtime shape for the current session.
 
-- **Identifiers**: `RuntimeSessionSnapshot`, `runtimeSessionStore`
-- **Files**: `src/runtime/runtimeSession.ts`, `src/runtime/runtimeSessionStore.ts`
+- **Identifiers**: `RuntimeSessionSnapshot`, `runtimeCoordinator`
+- **Files**: `src/runtime/runtimeSession.ts`, `src/runtime/runtimeCoordinator.ts`
 
 ### URL Parameters
 
@@ -573,8 +573,8 @@ WASM interpreter toggle.
 
 A Solid reactive store. The live, subscribable view of state.
 
-- **Identifiers**: `settingsStore`, `consoleStore`, `visStore`, `referenceStore`, `snippetStore`, `runtimeSessionStore`
-- **Files**: `src/utils/settingsStore.ts`, `src/utils/consoleStore.ts`, `src/utils/visualisationStore.ts`, `src/utils/referenceStore.ts`, `src/utils/snippetStore.ts`, `src/runtime/runtimeSessionStore.ts`
+- **Identifiers**: `settingsStore`, `consoleStore`, `visStore`, `referenceStore`, `snippetStore`, `runtimeSessionState`
+- **Files**: `src/utils/settingsStore.ts`, `src/utils/consoleStore.ts`, `src/utils/visualisationStore.ts`, `src/utils/referenceStore.ts`, `src/utils/snippetStore.ts`, `src/runtime/runtimeCoordinator.ts`
 - **Not**: "state" alone (too generic)
 
 ### Repository

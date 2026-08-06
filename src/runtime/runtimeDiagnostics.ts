@@ -2,7 +2,7 @@
  * Runtime diagnostics — derived computation.
  *
  * getDiagnosticsSnapshot() assembles its result on demand from
- * startupContext + runtimeSessionStore. No separate mutable store.
+ * startupContext + runtimeCoordinator. No separate mutable store.
  *
  * The only genuinely unique state is:
  *   - bootstrapFailures[] (accumulated during bootstrap)
@@ -31,7 +31,7 @@ import {
   getEnvironmentCapabilitiesSnapshot,
   getStartupFlagsSnapshot,
 } from "./startupContext";
-import { getRuntimeSessionState } from "./runtimeSessionStore";
+import { getRuntimeSessionState } from "./runtimeCoordinator";
 import {
   runtimeDiagnostics as runtimeDiagnosticsChannel,
   bootstrapFailure as bootstrapFailureChannel,

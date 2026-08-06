@@ -11,15 +11,16 @@ layer: behavioural
 ## Source files
 
 - `src/runtime/runtimeSession.ts` — mode combination matrix, `RuntimeConnectionMode` / `TransportMode` derivation
+- `src/runtime/runtimeCoordinator.ts` — sole mutable owner of session transitions and active typed WASM-port selection
 - `src/runtime/runtimeSessionService.ts` — mode transitions, hardware connect/disconnect handling
-- `src/runtime/runtimeSessionStore.ts` — reactive session state store (`RuntimeSessionState`)
+- `src/runtime/runtimeSessionStore.ts` — compatibility re-export of coordinator session state; contains no state
 - `src/runtime/runtimeService.ts` — runtime session announcements, settings mutation surface
 - `src/contracts/runtimeTypes.ts` — `RuntimeConnectionMode`, `TransportMode`, `RuntimeSessionInputs` type definitions
 - `src/contracts/runtimeChannels.ts` — `connectionChanged` channel for mode-transition events
 - `src/runtime/wasmInterpreter.ts` — WASM runtime instantiation and eval
 - `src/runtime/wasmRuntimePort.ts` — in-process WASM runtime port
 - `src/runtime/wasmRuntimeWorkerPort.ts` — worker-backed WASM runtime port
-- `src/runtime/activeWasmRuntimePort.ts` — active WASM port singleton accessor
+- `src/runtime/activeWasmRuntimePort.ts` — compatibility read-through facade over coordinator port selection
 - `src/runtime/runtimeTransportService.ts` — transport command fan-out to both runtimes
 - `src/effects/transportOrchestrator.ts` — shared transport command dispatch
 - `src/lib/appSettings.ts` — settings types including `runtime.*` and `wasm.*` knobs
@@ -52,3 +53,5 @@ layer: behavioural
 1.12 **WASM eval runs in a Web Worker.** The default `WasmRuntimePort` is the worker-backed port — eval, batch sampling, time advance, probe evaluation, and diagnostics readback all cross the worker boundary via `postMessage`. The in-process port remains as a fallback when `Worker` is unavailable and as the implementation tests mock against. Renderer (WebGL) and editor still run on the main thread. (see `src/runtime/wasmRuntimeWorkerPort.ts`, `src/runtime/workers/wasmRuntime.worker.ts`, `src/runtime/wasmRuntimePort.ts`)
 
 1.13 **`connectedToModule` is a misnomer; do not treat it as "hardware is attached".** The legacy boolean `connectedToModule` in the transport layer means "JSON handshake completed against *some* serial port" — not "real uSEQ hardware is plugged in". Consumers deciding whether the hardware-mode capability set applies must use the runtime-mode signal (this spec), not `connectedToModule`. The variable persists only as a transport-internal flag and may be renamed without notice. (see `src/transport/connector.ts`)
+
+1.14 **Runtime ownership is singular but capability-local.** `runtimeCoordinator.ts` is the only mutable owner of derived session state and the selected `WasmRuntimePort`. `appLifecycle.ts` sequences startup and teardown without maintaining a second mode or connection state. The selected port implementation owns its internal load and retry state; callers invoke it through the typed port contract. The pre-1.2 serial compatibility adapter remains a supported hardware edge and reports facts to the same coordinator, but never derives or stores an alternate runtime mode. (see `src/runtime/runtimeCoordinator.ts`, `src/runtime/appLifecycle.ts`, `src/runtime/wasmRuntimeWorkerPort.ts`, `src/runtime/runtimeCompatibility.ts`)

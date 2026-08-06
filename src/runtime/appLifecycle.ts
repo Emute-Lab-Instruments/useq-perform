@@ -1,6 +1,6 @@
 import { post } from '../utils/consoleStore.ts';
 import { checkForSavedPortAndMaybeConnect } from '../transport/connector.ts';
-import { getActiveWasmRuntimePort } from './activeWasmRuntimePort.ts';
+import { getActiveWasmRuntimePort } from './runtimeCoordinator.ts';
 import { SHARED_TRANSPORT_COMMANDS } from '../contracts/useqRuntimeContract.ts';
 
 import { showModal, showConfirmModal } from '../ui/adapters/modal.tsx';

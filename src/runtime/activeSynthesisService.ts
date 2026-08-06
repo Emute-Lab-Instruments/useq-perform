@@ -2,8 +2,7 @@
  * Active synthesis service selector.
  *
  * Single read-through accessor that returns the synthesis service
- * constructed by `bootstrap.ts`. Mirrors the pattern of
- * `activeWasmRuntimePort.ts`: bootstrap is the only place allowed to
+ * constructed by `bootstrap.ts`. Bootstrap is the only place allowed to
  * choose the active service, so the rest of the codebase asks
  * `getActiveSynthesisService()` instead of importing a concrete
  * singleton.

@@ -24,8 +24,11 @@ vi.mock("../transport/webSerialHostPort", () => ({
   },
 }));
 
-vi.mock("./activeWasmRuntimePort", () => ({
-  getActiveWasmRuntimePort: () => ({
+vi.mock("./runtimeCoordinator", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./runtimeCoordinator")>();
+  return {
+    ...actual,
+    getActiveWasmRuntimePort: () => ({
     kind: "wasm-runtime",
     capabilities: mockWasmCapabilities,
     sendTransportCommand: mockWasmSendTransportCommand,
@@ -36,8 +39,9 @@ vi.mock("./activeWasmRuntimePort", () => ({
     updateTime: vi.fn(async () => undefined),
     evalOutputAtTime: vi.fn(async () => 0),
     evalOutputsInTimeWindow: vi.fn(async () => new Map()),
-  }),
-}));
+    }),
+  };
+});
 
 vi.mock("./startupContext.ts", () => ({
   getStartupFlagsSnapshot: vi.fn(() => ({ noModuleMode: false })),
