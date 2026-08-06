@@ -1050,6 +1050,13 @@ function createCapableService(
       acc.timeoutCount = timeoutCountBase + sabView.timeoutCount;
       acc.producerLivenessAge = sabView.producerLivenessAge;
       acc.activeEpoch = sabView.programEpoch;
+      // Activation can race ahead of the async commit method's final
+      // telemetry publication. Reconcile from the audio-thread source of
+      // truth as well as from the discrete graph-activated event so a late
+      // service-side pending write cannot leave telemetry permanently stale.
+      if (acc.pendingEpoch !== 0 && acc.activeEpoch === acc.pendingEpoch) {
+        acc.pendingEpoch = 0;
+      }
       acc.ringWriteSequence = sabView.ringWriteIndex;
       acc.ringReadSequence = sabView.ringReadIndex;
       acc.ringFillDepth = sabView.ringFillDepth();
@@ -1543,11 +1550,14 @@ function createCapableService(
     if (evt.type === "graph-activated") {
       // Lifecycle audit event (no state transition — the service owns
       // the four-state lifecycle). With per-quantum snapshots gone,
-      // this event is also the authoritative source for the active
-      // instance identity the devmode telemetry exposes.
-      const activated = evt as { identity?: unknown };
+      // this event is the authoritative boundary that clears the
+      // service-side pending epoch and exposes the active identity.
+      const activated = evt as { identity?: unknown; epoch?: unknown };
       if (typeof activated.identity === "string") {
         acc.instanceId = activated.identity;
+      }
+      if (typeof activated.epoch === "number" && activated.epoch === acc.pendingEpoch) {
+        acc.pendingEpoch = 0;
       }
       publishTelemetry();
       return;

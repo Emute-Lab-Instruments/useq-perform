@@ -89,6 +89,7 @@ function createFakeAudioContext(): AudioContextContract {
 
 interface FakeWorklet extends WorkletNodeContract {
   readonly postedMessages: readonly unknown[];
+  deliverFromWorklet(message: unknown): void;
 }
 
 function createFakeWorklet(): FakeWorklet {
@@ -126,6 +127,9 @@ function createFakeWorklet(): FakeWorklet {
     disconnect() {},
     get postedMessages() {
       return posted;
+    },
+    deliverFromWorklet(message) {
+      port.onmessage?.({ data: message });
     },
   };
 }
@@ -462,6 +466,15 @@ describe("synthesisService.commitSynthArtifacts — same-def update-in-place (VA
     await Promise.resolve();
     await Promise.resolve();
     expect(bundle.workerPort.armCalls).toEqual([result.epoch]);
+    expect(service.telemetry.pendingEpoch).toBe(result.epoch);
+
+    bundle.worklet.deliverFromWorklet({
+      type: "graph-activated",
+      identity: "lead",
+      epoch: result.epoch,
+      atBlock: 1,
+    });
+    expect(service.telemetry.pendingEpoch).toBe(0);
 
     await service.dispose();
   });

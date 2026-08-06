@@ -61,6 +61,7 @@ import {
 } from "../contracts/nodeDefRegistry";
 import {
   classifyModuleTransfer,
+  type WorkletPrepareGraphMessage,
   type WorkletModuleTransferMessage,
   type WorkletModuleTransferKind,
   type WorkletOutboundEvent,
@@ -504,6 +505,10 @@ export function registerSynthesisProcessor(): void {
   class SynthesisProcessor extends AudioWorkletProcessor {
     private bag: ProcessorBag | null;
     private moduleInstallChain: Promise<void> = Promise.resolve();
+    // Module ownership is authoritative for this processor's lifetime. A
+    // failed install therefore rejects every graph prepare until the service
+    // replaces the worklet rather than hiding the failure behind a timeout.
+    private moduleInstallFailure: string | null = null;
 
     constructor(options?: AudioWorkletNodeOptions) {
       super(options);
@@ -537,7 +542,13 @@ export function registerSynthesisProcessor(): void {
           // fallback path compiles the EXACT prevalidated bytes ONCE
           // before graph activation; subsequent process() calls reuse
           // the cached adapter without recompiling.
-          this.moduleInstallChain = this.moduleInstallChain.then(() => bag.installModule(payload));
+          this.moduleInstallChain = this.moduleInstallChain
+            .then(() => bag.installModule(payload))
+            .catch((error) => {
+              this.moduleInstallFailure = error instanceof Error
+                ? error.message
+                : String(error);
+            });
           return;
         }
         if (
@@ -551,6 +562,17 @@ export function registerSynthesisProcessor(): void {
           void this.moduleInstallChain.then(() => {
             const currentBag = this.bag;
             if (!currentBag) return;
+            if (this.moduleInstallFailure !== null) {
+              const transactionId = (data as WorkletPrepareGraphMessage).transactionId;
+              this.port.postMessage({
+                type: "graph-transaction-ack",
+                transactionId,
+                phase: "prepare",
+                ok: false,
+                reason: `NodeDef installation failed: ${this.moduleInstallFailure}`,
+              });
+              return;
+            }
             currentBag.core.handleMessage(data);
             drainPendingEvents(currentBag.pendingEvents, (evt) => this.port.postMessage(evt));
           });

@@ -96,6 +96,54 @@ export interface NodeDefModule {
   readonly runtimeDescriptor: NodeDefDescriptor;
 }
 
+/** Decode bounded UTF-8 even in AudioWorkletGlobalScope, which has no TextDecoder. */
+function decodeRegistryUtf8(bytes: Uint8Array): string {
+  if (typeof TextDecoder === "function") {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  }
+
+  let result = "";
+  for (let index = 0; index < bytes.length;) {
+    const first = bytes[index++];
+    if (first <= 0x7f) {
+      result += String.fromCodePoint(first);
+      continue;
+    }
+
+    const continuation = (): number => {
+      const byte = bytes[index++];
+      if (byte === undefined || (byte & 0xc0) !== 0x80) {
+        throw new Error("invalid UTF-8 continuation byte");
+      }
+      return byte & 0x3f;
+    };
+
+    let codePoint: number;
+    if (first >= 0xc2 && first <= 0xdf) {
+      codePoint = ((first & 0x1f) << 6) | continuation();
+    } else if (first >= 0xe0 && first <= 0xef) {
+      const second = continuation();
+      const third = continuation();
+      codePoint = ((first & 0x0f) << 12) | (second << 6) | third;
+      if (codePoint < 0x800 || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+        throw new Error("invalid UTF-8 code point");
+      }
+    } else if (first >= 0xf0 && first <= 0xf4) {
+      const second = continuation();
+      const third = continuation();
+      const fourth = continuation();
+      codePoint = ((first & 0x07) << 18) | (second << 12) | (third << 6) | fourth;
+      if (codePoint < 0x10000 || codePoint > 0x10ffff) {
+        throw new Error("invalid UTF-8 code point");
+      }
+    } else {
+      throw new Error("invalid UTF-8 leading byte");
+    }
+    result += String.fromCodePoint(codePoint);
+  }
+  return result;
+}
+
 /**
  * Read and validate the registry descriptor emitted by the module itself.
  * Missing exports, wild pointers, malformed JSON, and incomplete schemas all
@@ -131,7 +179,7 @@ export function readNodeDefRuntimeDescriptor(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(new TextDecoder("utf-8").decode(view.subarray(0, end)));
+    parsed = JSON.parse(decodeRegistryUtf8(view.subarray(0, end)));
   } catch {
     throw new NodeDefAdapterError(
       "NodeDef module returned malformed registry_json",

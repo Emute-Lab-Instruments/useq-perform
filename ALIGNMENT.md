@@ -50,20 +50,19 @@ its physical I/O boundary.
 `2f440020`, select its representable corpus, and record physical-device checks
 separately.
 
-### 3. Browser scheduling and audible output need direct observations *(2026-08-02)*
+### 3. Audible output still needs a physical-device observation *(2026-08-06)*
 
-**What.** Automated tests cover compiler-to-control mapping, prepare/commit/
-activation ordering, graph execution, generated assets, and the browser-facing
-interfaces. They do not establish real Worker/AudioWorklet scheduling over
-time or audible output on a physical audio device.
+**What.** `e2e/synthesis-lifecycle.spec.ts` now observes real Worker/
+AudioWorklet scheduling, non-zero finite destination samples, producer loss,
+and sound-producing recovery in current Chromium. It cannot establish physical
+output-device routing or perceptual quality.
 
-**Why it blocks the mission.** Unit and integration models cannot determine
-whether a browser maintains the required block cadence, nor whether the final
-audio path is perceptually correct.
+**Why it blocks the mission.** Objective browser sample telemetry does not
+establish that the integrated system is audible or perceptually correct on a
+physical output device.
 
-**Rough cost.** S-M: run and retain the browser timing observation and the
-listening procedure in `docs/synthesis/LISTENING_GUIDE.md` for the integrated
-revision.
+**Rough cost.** S: run and retain the listening procedure in
+`docs/synthesis/LISTENING_GUIDE.md` for the integrated revision.
 
 ### 4. Target runtime headroom is incompletely measured *(2026-08-02)*
 

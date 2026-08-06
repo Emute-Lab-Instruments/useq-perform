@@ -108,6 +108,15 @@ import type {
   WorkletUpdateMessage,
 } from "./workletGraphDelta";
 import { WORKLET_TELEMETRY_SCHEMA_VERSION } from "./workletGraphDelta";
+import {
+  PRODUCER_LIVENESS_ADVANCE,
+  PRODUCER_LIVENESS_ADVANCE_UNDERRUN,
+  PRODUCER_LIVENESS_RESET,
+  planProducerLiveness,
+  planWorkletGraph,
+  shouldEnterProducerTimeout,
+  type WorkletGraphEdge,
+} from "./workletTransitionPlanning";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -616,45 +625,25 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     for (const inst of executionOrder) union.push(inst);
     for (const inst of staged.values()) union.push(inst);
 
-    // --- Topological order (Kahn, stable) ---
+    // --- Pure stable topological plan ---
     const indexOf = new Map<InstanceState, number>();
     for (let i = 0; i < union.length; i++) indexOf.set(union[i], i);
-    const indegree = new Array<number>(union.length).fill(0);
-    const adjacency: number[][] = union.map(() => []);
+    const edges: WorkletGraphEdge[] = [];
     for (const inst of union) {
       for (const w of inst.inputWiring) {
         const src = resolveSource(w.sourceIdentity);
         if (src && src !== inst && indexOf.has(src)) {
-          adjacency[indexOf.get(src)!].push(indexOf.get(inst)!);
-          indegree[indexOf.get(inst)!] += 1;
+          edges.push({
+            source: indexOf.get(src)!,
+            target: indexOf.get(inst)!,
+          });
         }
       }
     }
-    const order: InstanceState[] = [];
-    const visited = new Array<boolean>(union.length).fill(false);
-    const ready: number[] = [];
-    for (let i = 0; i < union.length; i++) {
-      if (indegree[i] === 0) ready.push(i);
-    }
-    while (ready.length > 0) {
-      const i = ready.shift()!;
-      visited[i] = true;
-      order.push(union[i]);
-      for (const j of adjacency[i]) {
-        indegree[j] -= 1;
-        if (indegree[j] === 0) ready.push(j);
-      }
-    }
-    // Cycle remainder: append in insertion order. Compiler-side cycle
-    // detection is M2.2; host-side a cycle degrades to one-block
-    // feedback delay (zones hold the previous block's samples), never
-    // a crash.
-    for (let i = 0; i < union.length; i++) {
-      if (!visited[i]) order.push(union[i]);
-    }
+    const graphPlan = planWorkletGraph(union.length, edges);
+    const order = graphPlan.order.map((index) => union[index]);
 
     // --- Input pointers + terminal flags ---
-    const consumed = new Set<InstanceState>();
     for (const inst of union) {
       let maxPort = -1;
       for (const w of inst.inputWiring) {
@@ -666,13 +655,12 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         if (src && src !== inst && src.outputZonePtr >= 0) {
           ptrs[w.port] =
             src.outputZonePtr + w.sourcePort * zoneFrames * BYTES_PER_DOUBLE;
-          consumed.add(src);
         }
       }
       inst.pendingInputPtrs = ptrs;
     }
-    for (const inst of union) {
-      inst.pendingIsTerminal = !consumed.has(inst);
+    for (let index = 0; index < union.length; index += 1) {
+      union[index].pendingIsTerminal = !graphPlan.consumed[index];
     }
 
     if (staged.size > 0) {
@@ -1520,46 +1508,33 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
         hasBlock = true;
         acquiredBlock = true;
-        // VAL-CROSS-009 recovery race: the producer just published its
-        // first (or a subsequent) block. Close the bring-up window and
-        // activate the liveness watchdog — any future underrun is a
-        // real producer loss.
-        producerEverPublished = true;
-        // Reset liveness: we observed a fresh publication.
-        producerLivenessAge = 0;
-        producerTimeoutActive = false;
-      } else {
-        // Underrun: no fresh block. Hold last values; do NOT reuse a
-        // stale slot (VAL-ENGINE-033). The producer liveness age
-        // advances ONLY if the producer has ever published (otherwise
-        // we are still in the bring-up window between SAB attach and
-        // producer start, and the underrun is not a real producer
-        // loss). When the liveness age reaches the timeout boundary,
-        // the emergency fade fires.
-        if (producerEverPublished) {
-          producerLivenessAge += 1;
-          underrunCount += 1;
-        }
-      }
-    } else {
-      // No SAB attached. Two cases:
-      //  - Bring-up / recovery window (sabEverAttached === false): the
-      //    service has not yet installed the producer control bridge.
-      //    We MUST NOT advance liveness here, or the fresh worklet
-      //    would spuriously time out before the SAB arrives
-      //    (VAL-CROSS-009 recovery race).
-      //  - SAB was previously attached but was detached/lost: advance
-      //    liveness so the producer-loss timeout still fires.
-      if (sabEverAttached) {
-        producerLivenessAge += 1;
       }
     }
 
+    const livenessAction = planProducerLiveness(
+      controlView !== null,
+      acquiredBlock,
+      producerEverPublished,
+      sabEverAttached,
+    );
+    if (livenessAction === PRODUCER_LIVENESS_RESET) {
+      producerEverPublished = true;
+      producerLivenessAge = 0;
+      producerTimeoutActive = false;
+    } else if (livenessAction === PRODUCER_LIVENESS_ADVANCE_UNDERRUN) {
+      producerLivenessAge += 1;
+      underrunCount += 1;
+    } else if (livenessAction === PRODUCER_LIVENESS_ADVANCE) {
+      producerLivenessAge += 1;
+    }
+
     // ---- Step 2: Producer timeout detection (VAL-ENGINE-023/024) ----
-    if (
-      !producerTimeoutActive &&
-      (producerLivenessAge >= PRODUCER_TIMEOUT_BLOCKS || producerTerminated)
-    ) {
+    if (shouldEnterProducerTimeout(
+      producerTimeoutActive,
+      producerLivenessAge,
+      PRODUCER_TIMEOUT_BLOCKS,
+      producerTerminated,
+    )) {
       producerTimeoutActive = true;
       timeoutCount += 1;
       emergencyFadeFramesRemaining = emergencyFadeFrames;

@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,6 +39,11 @@ const ISOLATION_HEADERS = {
 };
 
 type BrowserEvalSurface = {
+  evalToplevelNow(): {
+    ok: boolean;
+    evalAccepted?: boolean;
+    error?: string;
+  };
   sampleOutputAtTime(outputName: string, timeSeconds: number): Promise<number>;
   // Deterministic clock control (A1 hook — src/runtime/browserEvalSurface.ts).
   freezeClock(): void;
@@ -79,6 +86,59 @@ export async function installStaticOrigin(context: BrowserContext): Promise<void
       await route.fulfill({ status: 404, body: "Not found" });
     }
   });
+}
+
+export interface StaticOriginServer {
+  readonly origin: string;
+  close(): Promise<void>;
+}
+
+/**
+ * Serve the built public tree from a real loopback origin.
+ *
+ * Most browser tests use `installStaticOrigin`, but Chromium fetches an
+ * AudioWorklet module outside Playwright's page-routing interception. Audio
+ * lifecycle tests therefore need a real server while retaining the same
+ * isolation headers and MIME types as the intercepted origin.
+ */
+export async function startStaticOriginServer(): Promise<StaticOriginServer> {
+  const server: Server = createServer(async (request, response) => {
+    const requestUrl = new URL(request.url ?? "/", "http://localhost");
+    const relativePath = decodeURIComponent(
+      requestUrl.pathname === "/" ? "/index.html" : requestUrl.pathname,
+    );
+    const filePath = path.resolve(PUBLIC_ROOT, `.${relativePath}`);
+
+    if (!filePath.startsWith(`${PUBLIC_ROOT}${path.sep}`)) {
+      response.writeHead(403).end();
+      return;
+    }
+
+    try {
+      const body = await readFile(filePath);
+      response.writeHead(200, {
+        ...ISOLATION_HEADERS,
+        "Content-Type": MIME_TYPES[path.extname(filePath)] ?? "application/octet-stream",
+        "Content-Length": body.byteLength,
+      });
+      response.end(body);
+    } catch {
+      response.writeHead(404).end("Not found");
+    }
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address() as AddressInfo;
+
+  return {
+    origin: `http://127.0.0.1:${address.port}`,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    }),
+  };
 }
 
 // --------------------------------------------------------------------------
