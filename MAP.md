@@ -195,6 +195,8 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
 - `scripts/compiler-capability-manifest.mjs` + `scripts/served-bundle-manifest.mjs` — verify the compiler profile and emit/reverify one deterministic, explicitly unsigned application-profile record over app source identity, the compiler record/interpreter, module-owned NodeDef descriptor/bytes and sample-rate/render-quantum contract, activation domain, and synthesis worklet. Compiler, application, and target-build fields have explicit profile ownership.
 - `scripts/config-server.mjs` — local dev config-write endpoint (paired with `runtime/configManager.ts`).
 - `scripts/dev/` — native-bridge dev tooling: `useq-stub-ws-server.mjs` (loopback WS stub speaking the JSON `hello` protocol, run via `dev:stub-ws`) and `verify-ws-serialport.mjs` (bridge smoke check, run via `verify:native-bridge`).
+- `scripts/check-doc-links.sh` — verifies intra-repo markdown links resolve.
+- `scripts/gen-by-the-numbers.sh` — regenerates the local (gitignored) `wiki/by-the-numbers.md` metrics page from `git`+`wc`; dependency-free.
 - `package.json` — see scripts: `dev`, `build`, `build:assets`, `build:wasm`, `harvest:witnesses`, `harvest:specs`, `test:mocha`, `test:unit`, `test:all`, `test:e2e`, `test:browser-local-eval`, `test:release`, `lint`, `typecheck`, `storybook`, `inspector`, `inspector:validate`, `src-useq:status`.
 
 ## Conventions
