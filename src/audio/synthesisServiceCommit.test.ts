@@ -17,6 +17,7 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
 import {
+  engineStateStore,
   resetEngineStateStoreForTests,
 } from "../contracts/synthesisChannels";
 import {
@@ -132,8 +133,8 @@ function buildPayload(
 const ROUTING_NODEDEF_DESCRIPTOR: NodeDefDescriptor = Object.freeze({
   ...OSC_SINE_NODEDEF_DESCRIPTOR,
   name: "test/router",
-  audioInputs: 2,
-  audioInputNames: Object.freeze(["fm", "sidechain"]),
+  audioInputs: 1,
+  audioInputNames: Object.freeze(["fm"]),
   params: Object.freeze([]),
 });
 
@@ -914,6 +915,7 @@ describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.2)", 
     });
     const service = createSynthesisService(bundle.options);
     await resumeService(service);
+    expect(service.state, engineStateStore.current.reasonMessage ?? undefined).toBe("running");
 
     const result = await service.commitSynthArtifacts(
       {

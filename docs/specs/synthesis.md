@@ -483,7 +483,13 @@ state, post a console message, and expose a one-click affordance
 (resume / reinitialise). Clicking `error` in production MUST dispose the
 failed producer resources, construct fresh engine resources, and leave the
 engine in `suspended`; the same gesture MUST then attempt normal resume.
-Repeated clicks during recovery MUST share one rebuild.
+Repeated clicks during recovery MUST share one rebuild. The main-thread service
+owns this lifecycle as four serial session transactions: prepare, commit,
+recover, and teardown. A failed prepare MUST run the same teardown transaction
+as disposal before publishing `error`; no partial AudioContext, worklet node,
+port, producer bridge, compiled module, or graph candidate may remain live.
+The producer bridge MUST expose only its valid phases (absent, attached, ready,
+running), with its shared buffer and view created and retired together.
 
 6.5 **Activation and resume.** `AudioContext.resume()` requires
 transient user activation. Keyboard and pointer events grant it;

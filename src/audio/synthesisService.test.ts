@@ -262,7 +262,13 @@ describe("synthesisService — module compilation (VAL-ENGINE-008)", () => {
     const resumed = await service.resumeOnUserActivation();
     expect(resumed).toBe(false);
     expect(service.state).toBe("error");
+    expect(bundle.audioContext.state).toBe("closed");
+    expect(bundle.workletNode.disconnectCallCount).toBe(1);
+    expect(bundle.workletNode.closeCallCount).toBe(1);
+    expect(service.telemetry.workletNodeCount).toBe(0);
     await service.dispose();
+    expect(bundle.workletNode.disconnectCallCount).toBe(1);
+    expect(bundle.workletNode.closeCallCount).toBe(1);
   });
 });
 

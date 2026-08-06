@@ -568,14 +568,23 @@ export interface EngineCommitResult {
 /**
  * Canonical invalid-payload commit result, frozen and returned by
  * reference so callers can reference-compare without unpacking the
- * union. Other rejection outcomes (failed eval, superseded revision)
- * carry per-commit epoch/revision data and are constructed per call.
+ * union.
  */
+const EMPTY_WORKLET_DELTAS = Object.freeze([]);
+
+function rejectedCommit(
+  outcome: Exclude<EngineCommitOutcome, "committed">,
+): EngineCommitResult {
+  return {
+    outcome,
+    epoch: 0,
+    revision: 0,
+    workletDeltas: EMPTY_WORKLET_DELTAS,
+  };
+}
+
 const NOOP_COMMIT_RESULT = Object.freeze({
-  outcome: "rejected-invalid-payload",
-  epoch: 0,
-  revision: 0,
-  workletDeltas: Object.freeze([]),
+  ...rejectedCommit("rejected-invalid-payload"),
 }) satisfies EngineCommitResult;
 
 /**
@@ -916,16 +925,18 @@ function createCapableService(
   // has been attached. The constant comes from the dependency-free
   // contract module (VAL-SAB-001).
   let sabAbiVersionKnown: number | null = null;
-  // VAL-CROSS-002/003 bridge: one SAB per engine session, shared
-  // between the Worker producer and the AudioWorklet. Allocated in
-  // `installProducerControlBridge`, detached on dispose/recovery.
-  let producerControlBuffer: SharedArrayBuffer | null = null;
-  // Service-side view over the control SAB, attached once per engine
-  // session (b3895dbe). Telemetry reads go through this view; it is
-  // replaced on recovery together with the buffer it wraps.
-  let sabView: SynthesisControlView | null = null;
-  let producerInstalled = false;
-  let producerRunning = false;
+  // The producer bridge is a session resource: its buffer, typed view, and
+  // running flag are created and retired together. A discriminated state
+  // prevents the impossible partial combinations admitted by four separate
+  // nullable/boolean fields.
+  type ProducerBridgeResources = {
+    readonly buffer: SharedArrayBuffer;
+    readonly view: SynthesisControlView;
+  };
+  type ProducerBridge =
+    | { readonly kind: "absent" }
+    | ({ readonly kind: "attached" | "ready" | "running" } & ProducerBridgeResources);
+  let producerBridge: ProducerBridge = { kind: "absent" };
   let firstPublishTimer: ReturnType<typeof setTimeout> | null = null;
   let attachAckTimer: ReturnType<typeof setTimeout> | null = null;
   // Lifetime fault-counter bases (VAL-ENGINE-030). The SAB header
@@ -1040,16 +1051,17 @@ function createCapableService(
     // per engine session in `installProducerControlBridge`. Discrete
     // events (producer-timeout, graph-activated, attach ack) still
     // arrive via the port and are merged elsewhere.
-    if (sabView) {
-      acc.audioFrame = sabView.audioFrame;
-      acc.peakSample = sabView.peakSample;
-      acc.rmsSample = sabView.rmsSample;
-      acc.finiteOutput = sabView.finiteOutput;
-      acc.underrunCount = underrunCountBase + sabView.underrunCount;
-      acc.glitchCount = glitchCountBase + sabView.glitchCount;
-      acc.timeoutCount = timeoutCountBase + sabView.timeoutCount;
-      acc.producerLivenessAge = sabView.producerLivenessAge;
-      acc.activeEpoch = sabView.programEpoch;
+    if (producerBridge.kind !== "absent") {
+      const { view } = producerBridge;
+      acc.audioFrame = view.audioFrame;
+      acc.peakSample = view.peakSample;
+      acc.rmsSample = view.rmsSample;
+      acc.finiteOutput = view.finiteOutput;
+      acc.underrunCount = underrunCountBase + view.underrunCount;
+      acc.glitchCount = glitchCountBase + view.glitchCount;
+      acc.timeoutCount = timeoutCountBase + view.timeoutCount;
+      acc.producerLivenessAge = view.producerLivenessAge;
+      acc.activeEpoch = view.programEpoch;
       // Activation can race ahead of the async commit method's final
       // telemetry publication. Reconcile from the audio-thread source of
       // truth as well as from the discrete graph-activated event so a late
@@ -1057,10 +1069,10 @@ function createCapableService(
       if (acc.pendingEpoch !== 0 && acc.activeEpoch === acc.pendingEpoch) {
         acc.pendingEpoch = 0;
       }
-      acc.ringWriteSequence = sabView.ringWriteIndex;
-      acc.ringReadSequence = sabView.ringReadIndex;
-      acc.ringFillDepth = sabView.ringFillDepth();
-      if (sabView.ringWriteIndex > 0 && firstPublishTimer) {
+      acc.ringWriteSequence = view.ringWriteIndex;
+      acc.ringReadSequence = view.ringReadIndex;
+      acc.ringFillDepth = view.ringFillDepth();
+      if (view.ringWriteIndex > 0 && firstPublishTimer) {
         clearTimeout(firstPublishTimer);
         firstPublishTimer = null;
       }
@@ -1120,7 +1132,7 @@ function createCapableService(
    * Read the current engine state without TypeScript narrowing the local
    * `currentState` variable across `await` boundaries. The narrowed type
    * of `currentState` does not get widened by side effects (a transition
-   * inside `bringUpAudio` may change the value), so every cross-await
+   * inside `prepareSession` may change the value), so every cross-await
    * read goes through this helper to defeat the narrow.
    */
   function readState(): SynthesisEngineState {
@@ -1172,7 +1184,7 @@ function createCapableService(
     return true;
   }
 
-  async function bringUpAudio(): Promise<boolean> {
+  async function prepareSession(): Promise<boolean> {
     if (audioContext !== null) return true;
     if (disposed) return false;
 
@@ -1195,12 +1207,9 @@ function createCapableService(
         await audioContext.audioWorklet.addModule(options.workletScriptUrl);
         workletAdded = true;
       } catch (err) {
-        // Failed to add the worklet module — fail closed into error.
-        // We are in 'suspended' here, so 'suspended → error' is allowed.
-        await safeCloseAudioContext();
-        transition("error", "RECOVERY_FAILED",
-          `Failed to load worklet processor: ${(err as Error).message}`);
-        return false;
+        return failSessionPreparation(
+          `Failed to load worklet processor: ${(err as Error).message}`,
+        );
       }
     }
 
@@ -1233,9 +1242,9 @@ function createCapableService(
           acc.sabAbiVersion = sabAbiVersionKnown;
         }
       } catch (err) {
-        transition("error", "RECOVERY_FAILED",
-          `Failed to construct worklet node: ${(err as Error).message}`);
-        return false;
+        return failSessionPreparation(
+          `Failed to construct worklet node: ${(err as Error).message}`,
+        );
       }
     }
 
@@ -1251,9 +1260,9 @@ function createCapableService(
     try {
       await installProducerControlBridge();
     } catch (err) {
-      transition("error", "RECOVERY_FAILED",
-        `Failed to install producer control bridge: ${(err as Error).message}`);
-      return false;
+      return failSessionPreparation(
+        `Failed to install producer control bridge: ${(err as Error).message}`,
+      );
     }
 
     // Compile/transfer NodeDef modules (off the audio thread). The
@@ -1261,10 +1270,9 @@ function createCapableService(
     try {
       await loadNodeDefModules();
     } catch (err) {
-      // loadNodeDefModules already transitioned to 'error'; rethrow is
-      // unnecessary, the resume path returns false below.
-      void err;
-      return false;
+      return failSessionPreparation(
+        `Failed to prepare NodeDef modules: ${(err as Error).message}`,
+      );
     }
 
     return true;
@@ -1286,7 +1294,7 @@ function createCapableService(
    * constructed).
    */
   async function installProducerControlBridge(): Promise<void> {
-    if (producerControlBuffer !== null) return;
+    if (producerBridge.kind !== "absent") return;
     if (typeof SharedArrayBuffer === "undefined") {
       throw new Error("SharedArrayBuffer is unavailable; cannot install producer control bridge");
     }
@@ -1301,8 +1309,11 @@ function createCapableService(
     });
     const sab = new SharedArrayBuffer(layout.byteLength);
     new Uint8Array(sab).set(new Uint8Array(layout));
-    producerControlBuffer = sab;
-    sabView = attachSynthesisControlView(sab);
+    producerBridge = {
+      kind: "attached",
+      buffer: sab,
+      view: attachSynthesisControlView(sab),
+    };
     // Fresh session: bank the lifetime fault totals so the zeroed
     // header continues the count instead of regressing it.
     underrunCountBase = acc.underrunCount;
@@ -1343,7 +1354,7 @@ function createCapableService(
           lookaheadBlocks: CONTROL_LOOKAHEAD_BLOCKS,
           renderQuantumFrames: DEFAULT_RENDER_QUANTUM_FRAMES,
         });
-        producerInstalled = true;
+        producerBridge = { ...producerBridge, kind: "ready" };
       } catch (err) {
         // The producer could not attach (ABI mismatch, OOM, etc.).
         // Fail closed: the worklet's timeout path will silence output
@@ -1365,8 +1376,7 @@ function createCapableService(
    * revisions, unit tests).
    */
   async function startProducer(): Promise<void> {
-    if (producerRunning) return;
-    if (!producerInstalled) return;
+    if (producerBridge.kind !== "ready") return;
     const workerPort = options.workerPort;
     if (!workerPort || typeof workerPort.producerStart !== "function") return;
     if (audioContext === null) return;
@@ -1374,7 +1384,7 @@ function createCapableService(
       await workerPort.producerStart({
         sampleRate: audioContext.sampleRate,
       });
-      producerRunning = true;
+      producerBridge = { ...producerBridge, kind: "running" };
       armFirstPublishDeadline();
     } catch (err) {
       // A producerStart throw was previously swallowed with a comment
@@ -1397,8 +1407,11 @@ function createCapableService(
     if (firstPublishTimer) clearTimeout(firstPublishTimer);
     firstPublishTimer = setTimeout(() => {
       firstPublishTimer = null;
-      if (disposed || !producerRunning || sabView === null) return;
-      if (sabView.ringWriteIndex > 0) return;
+      if (
+        disposed ||
+        producerBridge.kind !== "running"
+      ) return;
+      if (producerBridge.view.ringWriteIndex > 0) return;
       if (currentState !== "running") {
         armFirstPublishDeadline();
         return;
@@ -1414,8 +1427,8 @@ function createCapableService(
    * publishing to a retired SAB.
    */
   async function stopProducer(): Promise<void> {
-    if (!producerRunning) return;
-    producerRunning = false;
+    if (producerBridge.kind !== "running") return;
+    producerBridge = { ...producerBridge, kind: "ready" };
     if (firstPublishTimer) {
       clearTimeout(firstPublishTimer);
       firstPublishTimer = null;
@@ -1471,12 +1484,9 @@ function createCapableService(
           }
         }
       } catch (err) {
-        // Module compilation failed. The worklet has not received the
-        // module, so it cannot render this def. Surface as an error
-        // transition so the user sees the failure.
-        transition("error", "RECOVERY_FAILED",
-          `Failed to compile NodeDef ${key}: ${(err as Error).message}`);
-        throw err;
+        throw new SynthesisServiceError(
+          `Failed to compile NodeDef ${key}: ${(err as Error).message}`,
+        );
       }
     }
     publishTelemetry();
@@ -1667,7 +1677,7 @@ function createCapableService(
       // call below requires the user activation that the caller is
       // asserting was just received.
       if (readState() === "off") {
-        const ok = await bringUpAudio();
+        const ok = await prepareSession();
         // After the await, currentState may have transitioned (the
         // bring-up path emits a 'suspended' transition on success or an
         // 'error' transition on failure). Re-read and compare against
@@ -1732,7 +1742,9 @@ function createCapableService(
         });
         // The producer is no longer running; mark it locally so
         // post-recovery `startProducer()` actually restarts it.
-        producerRunning = false;
+        if (producerBridge.kind === "running") {
+          producerBridge = { ...producerBridge, kind: "ready" };
+        }
       }
       if (workletNode) {
         workletNode.port.postMessage({ type: "devmode-terminate-producer" });
@@ -1747,11 +1759,7 @@ function createCapableService(
     recoverFromError() {
       if (currentState !== "error") return Promise.resolve(false);
       if (recoveryPromise !== null) return recoveryPromise;
-      recoveryPromise = (async () => {
-        await disposeResources("error");
-        const ok = await bringUpAudio();
-        return ok && readState() === "suspended";
-      })().finally(() => {
+      recoveryPromise = recoverSession().finally(() => {
         recoveryPromise = null;
       });
       return recoveryPromise;
@@ -1766,18 +1774,18 @@ function createCapableService(
       payload: SynthArtifactsPayload,
       hasErrors: boolean,
     ): Promise<EngineCommitResult> {
-      const operation = commitQueue.then(() => runEngineCommit(payload, hasErrors));
+      const operation = commitQueue.then(() => commitSession(payload, hasErrors));
       commitQueue = operation.then(() => undefined, () => undefined);
       return operation;
     },
 
     async dispose() {
       if (disposed) return;
-      // IMPORTANT: disposeResources() must run BEFORE we set disposed=true
+      // IMPORTANT: teardownSession() must run BEFORE we set disposed=true
       // so the final state transition ('running → off' or 'error → off')
       // is published through the normal channel/store pipeline. Once
       // disposed is true, transition() refuses to publish.
-      await disposeResources("off");
+      await teardownSession("off");
       disposed = true;
     },
   };
@@ -1847,10 +1855,7 @@ function createCapableService(
     acc.finiteOutput = 1;
 
     // The new session must allocate and attach a fresh producer bridge.
-    producerControlBuffer = null;
-    sabView = null;
-    producerInstalled = false;
-    producerRunning = false;
+    producerBridge = { kind: "absent" };
     clearProducerTimers();
     settlePendingGraphTransactions();
 
@@ -1859,7 +1864,21 @@ function createCapableService(
     acc.producerTimeoutActive = false;
   }
 
-  async function disposeResources(finalState: SynthesisEngineState): Promise<void> {
+  async function failSessionPreparation(message: string): Promise<false> {
+    await teardownSession("error", message);
+    return false;
+  }
+
+  async function recoverSession(): Promise<boolean> {
+    await teardownSession("error");
+    const prepared = await prepareSession();
+    return prepared && readState() === "suspended";
+  }
+
+  async function teardownSession(
+    finalState: SynthesisEngineState,
+    errorMessage: string = ENGINE_STATE_REASONS.RECOVERY_FAILED,
+  ): Promise<void> {
     // Stop publishers before retiring the SAB and worklet that consume them.
     await stopProducer();
     await clearCompilerSynthDeclarations();
@@ -1871,7 +1890,7 @@ function createCapableService(
       const reasonKey: EngineStateReasonKey | null =
         finalState === "error" ? "RECOVERY_FAILED" : null;
       const reasonMessage: string | null =
-        finalState === "error" ? ENGINE_STATE_REASONS.RECOVERY_FAILED : null;
+        finalState === "error" ? errorMessage : null;
       transition(finalState, reasonKey, reasonMessage);
     } else if (finalState === "error") {
       // error → error self-loop: emit a fresh lifecycle event so
@@ -1967,7 +1986,25 @@ function createCapableService(
     }
   }
 
-  async function runEngineCommit(
+  async function rejectCandidate(
+    transactionId: number,
+    epoch: number,
+    outcome: "rejected-preparation-failed" | "rejected-superseded" =
+      "rejected-preparation-failed",
+  ): Promise<EngineCommitResult> {
+    await abortCandidate(transactionId, epoch);
+    return rejectedCommit(outcome);
+  }
+
+  async function rejectArmedCandidate(
+    transactionId: number,
+    epoch: number,
+  ): Promise<EngineCommitResult> {
+    await abortCandidate(transactionId, epoch, true);
+    return rejectedCommit("rejected-preparation-failed");
+  }
+
+  async function commitSession(
     payload: SynthArtifactsPayload,
     hasErrors: boolean,
   ): Promise<EngineCommitResult> {
@@ -1977,12 +2014,7 @@ function createCapableService(
 
     // Step 1: VAL-ENGINE-015 — failed evals change diagnostics only.
     if (hasErrors) {
-      return {
-        outcome: "rejected-failed-eval",
-        epoch: 0,
-        revision: 0,
-        workletDeltas: Object.freeze([]),
-      };
+      return rejectedCommit("rejected-failed-eval");
     }
 
     // Step 2: validate the complete untrusted Worker payload before reading
@@ -1990,7 +2022,9 @@ function createCapableService(
     // worklet/Worker message. The configured descriptor set is the engine
     // instance's actual authority (tests and future registries may inject
     // descriptors beyond the static M1 default).
-    const blockRatePool = sabView?.blockRateCount ?? DEFAULT_BLOCK_RATE_COUNT;
+    const blockRatePool = producerBridge.kind === "absent"
+      ? DEFAULT_BLOCK_RATE_COUNT
+      : producerBridge.view.blockRateCount;
     const validation = validateSynthArtifactsPayload(payload, {
       expectedAbi: SYNTH_ARTIFACT_ABI_VERSION,
       findDescriptor(name, version) {
@@ -2025,12 +2059,7 @@ function createCapableService(
     // commit has landed (lastAppliedRevision > 0), the zero-revision
     // response is stale and must not regress engine state.
     if (payload.revision < lastAppliedRevision) {
-      return {
-        outcome: "rejected-superseded",
-        epoch: 0,
-        revision: 0,
-        workletDeltas: Object.freeze([]),
-      };
+      return rejectedCommit("rejected-superseded");
     }
 
     // Step 4: the exhaustive validator above already checked ABI, NodeDef
@@ -2063,12 +2092,7 @@ function createCapableService(
       typeof workerPort.producerPrepareCommit !== "function" ||
       typeof workerPort.producerAbortCommit !== "function"
     ) {
-      return {
-        outcome: "rejected-preparation-failed",
-        epoch: 0,
-        revision: 0,
-        workletDeltas: Object.freeze([]),
-      };
+      return rejectedCommit("rejected-preparation-failed");
     }
 
     const transactionId = plan.epoch;
@@ -2093,15 +2117,13 @@ function createCapableService(
       deltas: graphDeltas,
     });
     if (!graphPrepared || disposed || payload.revision < lastAppliedRevision) {
-      await abortCandidate(transactionId, plan.epoch);
-      return {
-        outcome: payload.revision < lastAppliedRevision
+      return rejectCandidate(
+        transactionId,
+        plan.epoch,
+        payload.revision < lastAppliedRevision
           ? "rejected-superseded"
           : "rejected-preparation-failed",
-        epoch: 0,
-        revision: 0,
-        workletDeltas: Object.freeze([]),
-      };
+      );
     }
 
     const controlBindings = buildSynthProducerControlBindings(payload.controls);
@@ -2119,15 +2141,9 @@ function createCapableService(
           layout.param === binding.param &&
           layout.compilerControlIndex === binding.compilerControlIndex &&
           layout.channel === index;
-      });
+    });
     if (!mappingValidation.ok || !layoutMatchesCompiler) {
-      await abortCandidate(transactionId, plan.epoch);
-      return {
-        outcome: "rejected-preparation-failed",
-        epoch: 0,
-        revision: 0,
-        workletDeltas: Object.freeze([]),
-      };
+      return rejectCandidate(transactionId, plan.epoch);
     }
     let producerPrepared = false;
     try {
@@ -2140,13 +2156,7 @@ function createCapableService(
       producerPrepared = false;
     }
     if (!producerPrepared) {
-      await abortCandidate(transactionId, plan.epoch);
-      return {
-        outcome: "rejected-preparation-failed",
-        epoch: 0,
-        revision: 0,
-        workletDeltas: Object.freeze([]),
-      };
+      return rejectCandidate(transactionId, plan.epoch);
     }
 
     const graphCommitted = await postGraphTransaction(transactionId, "commit", {
@@ -2154,13 +2164,7 @@ function createCapableService(
       transactionId,
     });
     if (!graphCommitted) {
-      await abortCandidate(transactionId, plan.epoch);
-      return {
-        outcome: "rejected-preparation-failed",
-        epoch: 0,
-        revision: 0,
-        workletDeltas: Object.freeze([]),
-      };
+      return rejectCandidate(transactionId, plan.epoch);
     }
 
     let armedEpoch = 0;
@@ -2170,13 +2174,7 @@ function createCapableService(
       armedEpoch = 0;
     }
     if (armedEpoch !== plan.epoch) {
-      await abortCandidate(transactionId, plan.epoch, true);
-      return {
-        outcome: "rejected-preparation-failed",
-        epoch: 0,
-        revision: 0,
-        workletDeltas: Object.freeze([]),
-      };
+      return rejectArmedCandidate(transactionId, plan.epoch);
     }
 
     // This is the final one-way decision after both participants have
@@ -2190,13 +2188,7 @@ function createCapableService(
       { type: "activate-graph", transactionId },
     );
     if (activationOutcome === "post-failed" || activationOutcome === "nack") {
-      await abortCandidate(transactionId, plan.epoch, true);
-      return {
-        outcome: "rejected-preparation-failed",
-        epoch: 0,
-        revision: 0,
-        workletDeltas: Object.freeze([]),
-      };
+      return rejectArmedCandidate(transactionId, plan.epoch);
     }
     // A successfully-posted activation gate is the transaction's one-way
     // decision. Its wait deliberately has no ordinary timeout: only the real
