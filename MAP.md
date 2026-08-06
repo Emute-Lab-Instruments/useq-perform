@@ -106,8 +106,7 @@ Layered top-to-bottom; import boundaries enforced by `eslint.config.js`.
   - `configManager.ts` + `default-config.json` — internal dev tooling for config import/export (paired with `scripts/config-server.mjs`).
   - `jsonProtocol.ts` — lightweight in-runtime helpers (distinct from `transport/json-protocol.ts`).
 - `src/effects/` — composable side-effect modules. Framework-agnostic where possible.
-  - `transportOrchestrator.ts`, `transportClock.ts` — XState-driven transport state and clock policy.
-  - `localClock.ts` — thin API shim over `visualisationRuntime.ts` (internal clock when no hardware).
+  - `transportOrchestrator.ts`, `transportClock.ts` — XState-driven transport state and internal-clock policy/startup semantics.
   - `visualisationRuntime.ts` — single rAF loop owning render + sampling + local time; all ModuLisp local-time reads go through one injectable time source (`setVisualisationNowSource`, default `performance.now`) — the deterministic clock seam for e2e.
   - `editor.ts`, `editorEvaluation.ts` — editor-side eval orchestration (eslint exception: imports editors).
   - `noneModeGate.ts` — `none`-mode eval gate (rejects eval with the §1.10 "no runtime available" warning) ([docs/specs/runtime-modes.md §1.10](docs/specs/runtime-modes.md)).

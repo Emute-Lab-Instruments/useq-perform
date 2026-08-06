@@ -429,7 +429,7 @@ A standalone side-effect module — composable, testable, framework-agnostic.
 - **Identifiers**: varies per module
 - **Files**: `src/effects/` (directory)
 - **Not**: XState's `effect` parameter (different concept)
-- **Modules**: `transport.ts`, `editor.ts`, `ui.ts`, `localClock.ts`, `transportClock.ts`, `transportOrchestrator.ts`
+- **Modules**: `transport.ts`, `editor.ts`, `ui.ts`, `transportClock.ts`, `transportOrchestrator.ts`
 
 ### Transport Effect
 
@@ -462,8 +462,8 @@ The ~60fps rAF-driven animation loop (`performance.now`) that provides
 time values when hardware isn't connected. This is the computer's real
 clock, not a mock — it is the authoritative time source in WASM-only mode.
 
-- **Identifiers**: `mockTimeGenerator` (rename to `internalClock` pending)
-- **Files**: `src/effects/localClock.ts`
+- **Identifiers**: `startInternalClock()`, `applyClockPolicy()`
+- **Files**: `src/effects/transportClock.ts`, `src/effects/visualisationRuntime.ts`
 - **Not**: "mock time" (misleading — it's real time, just not hardware time)
 
 ### Editor Effect
@@ -1880,7 +1880,7 @@ avoid them and can recognise them in old code.
 | `src-solid/` | `src/ui/` | Old Solid component directory, removed |
 | `useqedit` | `useq-perform` | Legacy Python editor |
 | `serialComms` | `src/transport/` | Real implementation moved |
-| `mockTimeGenerator` | `src/effects/localClock.ts` | Now "internal clock"; rename to `internalClock` pending |
+| `mockTimeGenerator` | `transportClock.ts` + `visualisationRuntime.ts` | Replaced by the internal-clock policy and runtime |
 | `mock time` / `mock clock` | `internal time` / `internal clock` | Not a mock — it's the computer's real clock in absence of hardware |
 | `"useqcode"` (storage key) | `"uSEQ-Perform-User-Code"` | Legacy localStorage key |
 | `"editorConfig"` (storage key) | `"uSEQ-Perform-User-Settings"` | Legacy localStorage key |

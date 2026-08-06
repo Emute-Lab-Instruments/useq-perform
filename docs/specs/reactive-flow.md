@@ -96,7 +96,7 @@ Serial port -> connector -> stream parser
 Browser-local path:
 
 ```text
-localClock -> visualisation store time update
+visualisationRuntime internal clock -> visualisation store time update
   -> WASM sampling/projection
   -> visualisation store
   -> WebGL renderer

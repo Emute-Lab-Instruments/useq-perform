@@ -56,9 +56,9 @@ export const MODULE_DESC = {
   'runtime/startupContext': 'Singleton for startup flags and environment capabilities',
   'runtime/urlParams': 'Parses URL search params into StartupFlags, applies side effects',
   'effects/editor': 'Editor side-effects: font size, file load/save via File System API',
-  'effects/mockTimeGenerator': 'rAF-based mock time loop for WASM-only visualisation',
+  'effects/visualisationRuntime': 'Single rAF owner for internal time, sampling, and rendering',
   'effects/transport': 'Thin facade over runtimeService for transport operations',
-  'effects/transportClock': 'Mock-time clock policy based on transport state transitions',
+  'effects/transportClock': 'Internal-clock policy based on transport state transitions',
   'effects/transportOrchestrator': 'Wires all transport subsystems: XState actor + effects + events',
   'effects/ui': 'UI-level effects: connection toggle, panel visibility, graph toggle',
   'transport/connector': 'Serial port lifecycle manager, owns SerialPort reference',
@@ -162,7 +162,7 @@ export const EDGE_LABELS = {
   'effects/transportOrchestrator|effects/transportClock': 'applyMockTimePolicy()',
   'effects/transportOrchestrator|runtime/runtimeService': 'subscribeRuntimeService()',
   'effects/transportOrchestrator|contracts/runtimeEvents': 'PROTOCOL_READY + JSON_META',
-  'effects/transportClock|effects/mockTimeGenerator': 'start/stop/resume/reset',
+  'effects/transportClock|effects/visualisationRuntime': 'internal-clock policy and control',
   'effects/transportClock|runtime/runtimeService': 'subscribeRuntimeService()',
   'effects/transport|runtime/runtimeService': 'sendRuntimeTransportCommand()',
   'effects/ui|runtime/runtimeService': 'toggleRuntimeConnection()',
@@ -179,7 +179,7 @@ export const EDGE_LABELS = {
   'legacy/editors/editorConfig|lib/editorStore': 'getEditorContent()',
 
   // Vis chain
-  'effects/mockTimeGenerator|legacy/ui/serialVis/visualisationController': 'handleExternalTimeUpdate()',
+  'effects/visualisationRuntime|utils/visualisationStore': 'updateTime()',
   'legacy/ui/serialVis/visualisationController|legacy/io/useqWasmInterpreter': 'evalOutputsInTimeWindow()',
   'legacy/ui/serialVis/visualisationController|contracts/visualisationEvents': 'VISUALISATION_SESSION_EVENT',
   'utils/visualisationStore|contracts/visualisationEvents': 'addVisualisationEventListener()',
@@ -310,8 +310,8 @@ export const FLOW_PRESETS = [
       { id: 'runtime/runtimeSessionStore', note: 'Store updated' },
       { id: 'effects/transportOrchestrator', note: 'send UPDATE_MODE' },
       { id: 'machines/transport.machine', note: 'Mode context updated' },
-      { id: 'effects/transportClock', note: 'applyMockTimePolicy()' },
-      { id: 'effects/mockTimeGenerator', note: 'Start/stop mock time' },
+      { id: 'effects/transportClock', note: 'applyClockPolicy()' },
+      { id: 'effects/visualisationRuntime', note: 'Start/stop internal time' },
     ],
     edgeLabels: [
       'reportTransportConnectionChanged()', 'resolveTransportModeFromRuntime()', 'notifyListeners()', 'actor.send({UPDATE_MODE})', 'assign({mode})', 'actor.subscribe()', 'start/stop/resume/reset'
@@ -338,9 +338,9 @@ export const FLOW_PRESETS = [
   {
     id: 'vis',
     name: 'WASM Visualisation Pipeline',
-    desc: 'Mock time → WASM eval → expression samples → canvas',
+    desc: 'Internal time → WASM eval → expression samples → canvas',
     nodes: [
-      { id: 'effects/mockTimeGenerator', note: 'rAF tick → seconds elapsed' },
+      { id: 'effects/visualisationRuntime', note: 'rAF tick → seconds elapsed' },
       { id: 'legacy/ui/serialVis/visualisationController', note: 'handleExternalTimeUpdate()' },
       { id: 'legacy/io/useqWasmInterpreter', note: 'evalOutputsInTimeWindow()' },
       { id: 'contracts/wasmAbi', note: 'cwrap: useq_eval_outputs_time_window' },

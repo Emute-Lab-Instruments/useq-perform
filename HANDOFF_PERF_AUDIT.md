@@ -75,7 +75,7 @@ The user wants you to use:
 ### The Hot Path (every frame at ~60fps)
 
 ```
-localClock.tick() [rAF]                          ← src/effects/localClock.ts
+visualisationRuntime.tick() [rAF]                ← src/effects/visualisationRuntime.ts
   → visStore.updateTime(elapsed)                 ← src/utils/visualisationStore.ts
   → resampleExpressions(t) [async, fire-forget]  ← src/effects/visualisationSampler.ts
     → updateUseqWasmTime(t)                      ← src/runtime/wasmInterpreter.ts
@@ -96,7 +96,7 @@ serialVis.drawSerialVis() [separate rAF]         ← src/ui/visualisation/serial
 
 | File | Role |
 |------|------|
-| `src/effects/localClock.ts` | Time source (rAF loop), `samplingInFlight` guard |
+| `src/effects/visualisationRuntime.ts` | Time source, sole rAF loop, sampling queue owner |
 | `src/effects/visualisationSampler.ts` | Batch sampling coordinator, staleness guard, window cache |
 | `src/utils/visualisationStore.ts` | SolidJS reactive store for vis state |
 | `src/ui/visualisation/serialVis.ts` | Canvas 2D renderer (main vis panel) |

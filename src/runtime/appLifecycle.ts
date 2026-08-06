@@ -5,7 +5,7 @@ import { SHARED_TRANSPORT_COMMANDS } from '../contracts/useqRuntimeContract.ts';
 
 import { showModal, showConfirmModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
-import { startLocalClock } from '../effects/localClock.ts';
+import { startInternalClock } from '../effects/transportClock.ts';
 import { registerVisualisation } from '../effects/visualisationSampler.ts';
 import {
   initStateSyncOrchestrator,
@@ -99,9 +99,9 @@ async function startBrowserLocalRuntime(options: {
   }
 
   try {
-    startLocalClock();
+    startInternalClock();
   } catch (error) {
-    console.warn('Failed to start local clock:', error);
+    console.warn('Failed to start internal clock:', error);
   }
 
   // The transport machine boots "paused" (transport.machine.ts initial:'paused'),

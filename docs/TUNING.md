@@ -313,6 +313,6 @@ These aren't primary tuning targets but you might occasionally want to touch the
 | `src/lib/gamepad/hardware.ts` | `buttonThreshold: 0.1` — analog trigger threshold for treating as "pressed" | If triggers feel too sensitive or sluggish |
 | `src/machines/transport.machine.ts` | XState transport machine (play/pause/stop states) | If you need new transport states |
 | `src/runtime/wasmInterpreter.ts` | WASM eval/time update interface | If interpreter API changes |
-| `src/effects/localClock.ts` | rAF-driven internal clock | If timing drift is an issue |
+| `src/effects/visualisationRuntime.ts` | rAF-driven internal clock | If timing drift is an issue |
 | `src/ui/overlayManager.ts` | Overlay stack (Escape handling, scroll lock) | If modal stacking feels wrong |
 | `src/lib/menu/state.ts` | Pure state machine reducer for radial menu | If menu transitions need new behaviour |

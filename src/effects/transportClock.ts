@@ -10,11 +10,40 @@ import {
   subscribeRuntimeService,
 } from "../runtime/runtimeService";
 import {
-  startLocalClock,
-  stopLocalClock,
-  resumeLocalClock,
-  resetLocalClock,
-} from "./localClock";
+  isLocalTimeActive,
+  resetLocalTime,
+  setLocalTimeMode,
+  startVisualisationRuntime,
+} from "./visualisationRuntime.ts";
+
+/** Start the internal clock from zero. */
+export function startInternalClock(): boolean {
+  if (isLocalTimeActive()) return false;
+  resetLocalTime();
+  startVisualisationRuntime();
+  setLocalTimeMode(true);
+  return true;
+}
+
+function stopInternalClock(): boolean {
+  if (!isLocalTimeActive()) return false;
+  setLocalTimeMode(false);
+  return true;
+}
+
+function resumeInternalClock(): boolean {
+  if (isLocalTimeActive()) return false;
+  startVisualisationRuntime();
+  setLocalTimeMode(true);
+  return true;
+}
+
+function resetInternalClock(): void {
+  const wasRunning = isLocalTimeActive();
+  setLocalTimeMode(false);
+  resetLocalTime();
+  if (wasRunning) setLocalTimeMode(true);
+}
 
 // ── Pure policy ─────────────────────────────────────────────────
 
@@ -39,15 +68,15 @@ export function applyClockPolicy(
 
   if (current === "playing") {
     if (previous === "paused") {
-      resumeLocalClock();
+      resumeInternalClock();
     } else {
-      startLocalClock();
+      startInternalClock();
     }
   } else if (current === "paused") {
-    stopLocalClock();
+    stopInternalClock();
   } else if (current === "stopped") {
-    stopLocalClock();
-    resetLocalClock();
+    stopInternalClock();
+    resetInternalClock();
   }
 }
 
@@ -62,7 +91,7 @@ export function applyClockPolicy(
 export function listenForHardwareOverride(): () => void {
   return subscribeRuntimeService((runtimeState) => {
     if (runtimeState.connected && runtimeState.session.hasHardwareConnection) {
-      stopLocalClock();
+      stopInternalClock();
     }
   });
 }
