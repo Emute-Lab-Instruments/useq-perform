@@ -17,7 +17,7 @@ import {
 } from "solid-js";
 import { actions, type ActionId, type ActionDef } from "../../lib/keybindings/actions.ts";
 import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
-import { getHandler } from "../../lib/keybindings/handlers.ts";
+import { executeAction as dispatchAction } from "../../lib/keybindings/handlers.ts";
 import { isMac as detectIsMac } from "../../lib/keybindings/osReserved.ts";
 import { editor } from "../../lib/editorStore.ts";
 import { pushOverlay } from "../overlayManager.ts";
@@ -147,15 +147,7 @@ const PaletteInner: Component = () => {
   }
 
   function executeAction(entry: ActionEntry): void {
-    const handler = getHandler(entry.id);
-    if (handler) {
-      const view = editor();
-      if (entry.def.requiresEditor && view) {
-        (handler as (v: any) => boolean)(view);
-      } else if (!entry.def.requiresEditor) {
-        (handler as () => boolean)();
-      }
-    }
+    dispatchAction(entry.id, "palette", editor() ?? undefined);
 
     closePalette();
 

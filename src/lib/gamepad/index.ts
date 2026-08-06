@@ -16,7 +16,7 @@ import {
   type GamepadManager,
   type GamepadSnapshot,
 } from "./gamepadManager";
-import { getHandler } from "../keybindings/handlers";
+import { executeAction } from "../keybindings/handlers";
 import type { ActionId } from "../keybindings/actions";
 import type { MenuDispatcher } from "../menu/dispatcher";
 import * as ch from "../../contracts/gamepadChannels";
@@ -96,16 +96,7 @@ function createActionRunner(
 
     // Try keybinding handler first (covers eval, edit, probe, panel,
     // structural nav, etc.)
-    const handler = getHandler(action);
-    if (handler) {
-      const editor = getEditor();
-      if (handler.length > 0) {
-        if (editor) (handler as (v: EditorView) => boolean)(editor);
-      } else {
-        (handler as () => boolean)();
-      }
-      return;
-    }
+    if (executeAction(action, "gamepad", getEditor())) return;
 
     // Bridge to remaining typed channels for actions that still flow
     // through channel subscribers (eval, manual-control, etc.).

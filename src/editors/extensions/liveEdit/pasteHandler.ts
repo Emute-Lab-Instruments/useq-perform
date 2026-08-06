@@ -14,9 +14,10 @@
 
 import { ViewPlugin } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
-import { type ChangeSpec, Transaction } from "@codemirror/state";
+import type { ChangeSpec } from "@codemirror/state";
 
 import { generateId } from "./markAction.ts";
+import { executeEditorCommand } from "../../commands/editorCommandRouter.ts";
 
 // ── Regex for scanning live-edit wrappers ─────────────────────────────────
 
@@ -158,10 +159,12 @@ export const liveEditPasteHandler = ViewPlugin.fromClass(
         }
 
         if (changes.length > 0) {
-          view.dispatch({
+          executeEditorCommand(view, {
+            kind: "applyChanges",
             changes,
-            annotations: [Transaction.addToHistory.of(false)],
             userEvent: "liveEdit.pasteRewrite",
+            addToHistory: false,
+            source: "system",
           });
         }
       });

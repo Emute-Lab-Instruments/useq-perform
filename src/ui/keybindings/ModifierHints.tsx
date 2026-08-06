@@ -8,7 +8,7 @@ import {
 } from "solid-js";
 import { settings } from "../../utils/settingsStore.ts";
 import { editor } from "../../lib/editorStore.ts";
-import { getHandler } from "../../lib/keybindings/handlers.ts";
+import { executeAction } from "../../lib/keybindings/handlers.ts";
 import { actions, type ActionId } from "../../lib/keybindings/actions.ts";
 import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
 import {
@@ -82,16 +82,7 @@ export function ModifierHints(): JSX.Element {
 
   function executeEntry(entry: HintEntry): void {
     if (!entry.actionId) return;
-    const handler = getHandler(entry.actionId);
-    if (handler) {
-      const action = actions[entry.actionId] as { requiresEditor?: boolean };
-      const view = editor();
-      if (action.requiresEditor && view) {
-        (handler as (v: any) => boolean)(view);
-      } else if (!action.requiresEditor) {
-        (handler as () => boolean)();
-      }
-    }
+    executeAction(entry.actionId, "palette", editor() ?? undefined);
     dismissHints();
   }
 
@@ -122,16 +113,7 @@ export function ModifierHints(): JSX.Element {
         (b) => b.key === bindingKey && !b.when
       );
       if (binding) {
-        const handler = getHandler(binding.action as ActionId);
-        if (handler) {
-          const action = actions[binding.action as ActionId] as { requiresEditor?: boolean };
-          const view = editor();
-          if (action.requiresEditor && view) {
-            (handler as (v: any) => boolean)(view);
-          } else if (!action.requiresEditor) {
-            (handler as () => boolean)();
-          }
-        }
+        executeAction(binding.action as ActionId, "keyboard", editor() ?? undefined);
         dismissHints();
         return true;
       }
@@ -145,16 +127,7 @@ export function ModifierHints(): JSX.Element {
         (b) => b.key === bindingKey && !b.when
       );
       if (binding) {
-        const handler = getHandler(binding.action as ActionId);
-        if (handler) {
-          const action = actions[binding.action as ActionId] as { requiresEditor?: boolean };
-          const view = editor();
-          if (action.requiresEditor && view) {
-            (handler as (v: any) => boolean)(view);
-          } else if (!action.requiresEditor) {
-            (handler as () => boolean)();
-          }
-        }
+        executeAction(binding.action as ActionId, "keyboard", editor() ?? undefined);
         dismissHints();
         return true;
       }

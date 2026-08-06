@@ -391,7 +391,7 @@ export function createVectorMarkController(options?: {
           kind: "applyChanges",
           changes,
           userEvent: "liveEdit.vectorMark",
-          source: "keyboard",
+          source: "widget",
         });
 
         // §3.7.3: one eval fires for the parent form after commit.

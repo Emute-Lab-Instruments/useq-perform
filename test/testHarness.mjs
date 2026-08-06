@@ -1,10 +1,9 @@
 /**
  * Test Harness for the new Structural Editing core (Phase 2.12).
  *
- * Drives the YAML acceptance suite through the new dispatcher in
- * `src/editors/extensions/structure/adapter/dispatcher.ts`. All actions are
- * routed through `dispatchAction(view, "nav.*"/"edit.*")` against a real
- * headless `EditorView` (jsdom is wired in `test/setup.mjs`).
+ * Drives the YAML acceptance suite through the canonical editor command
+ * router against a real headless `EditorView` (jsdom is wired in
+ * `test/setup.mjs`).
  *
  * Supports two YAML row formats:
  *
@@ -35,7 +34,7 @@ import { default_extensions } from '@nextjournal/clojure-mode';
 // `perfTrace.ts`, which references `import.meta.env.DEV` (a Vite construct)
 // and crashes outside Vite's loader. The harness only needs the state field
 // for cursor reads; visual decorations don't affect dispatcher behaviour.
-import { dispatchAction, __resetClipboardForTests } from '../src/editors/extensions/structure/adapter/dispatcher.ts';
+import { __resetClipboardForTests } from '../src/editors/extensions/structure/adapter/dispatcher.ts';
 import { applyVerb } from '../src/lib/menu/verbs.ts';
 import { defaultIdGen } from '../src/editors/extensions/structure/core/index.ts';
 import { executeEditorCommand } from '../src/editors/commands/editorCommandRouter.ts';
@@ -84,7 +83,7 @@ const ACTION_MAP = {
   'out': 'nav.out',
 
   // horizontal spatial (§5.1.9) — Euler-tour, may be in flight in another
-  // subagent. If the dispatcher doesn't know these yet, dispatchAction()
+  // If the dispatcher doesn't know these yet, the structural intent
   // returns false and the test fails with no state change.
   'right': 'nav.right',
   'left': 'nav.left',
@@ -712,28 +711,36 @@ function applyAction(view, action) {
   }
   if (action === 'grab_move_left') {
     if (isGrabActive()) {
-      const ok = dispatchAction(view, 'edit.transposePrev');
+      const ok = executeEditorCommand(view, {
+        kind: 'structural', action: 'edit.transposePrev', source: 'test',
+      });
       if (ok) recordGrabMove();
     }
     return;
   }
   if (action === 'grab_move_right') {
     if (isGrabActive()) {
-      const ok = dispatchAction(view, 'edit.transposeNext');
+      const ok = executeEditorCommand(view, {
+        kind: 'structural', action: 'edit.transposeNext', source: 'test',
+      });
       if (ok) recordGrabMove();
     }
     return;
   }
   if (action === 'grab_move_up') {
     if (isGrabActive()) {
-      const ok = dispatchAction(view, 'edit.raise');
+      const ok = executeEditorCommand(view, {
+        kind: 'structural', action: 'edit.raise', source: 'test',
+      });
       if (ok) recordGrabMove();
     }
     return;
   }
   if (action === 'grab_move_down') {
     if (isGrabActive()) {
-      const ok = dispatchAction(view, 'edit.encloseList');
+      const ok = executeEditorCommand(view, {
+        kind: 'structural', action: 'edit.encloseList', source: 'test',
+      });
       if (ok) recordGrabMove();
     }
     return;
@@ -748,7 +755,11 @@ function applyAction(view, action) {
   // Mapped action — translate and dispatch.
   const dispatcherAction = ACTION_MAP[action];
   if (dispatcherAction) {
-    dispatchAction(view, dispatcherAction);
+    executeEditorCommand(view, {
+      kind: 'structural',
+      action: dispatcherAction,
+      source: 'test',
+    });
     return;
   }
 

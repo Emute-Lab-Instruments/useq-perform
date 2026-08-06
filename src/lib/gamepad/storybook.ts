@@ -103,7 +103,7 @@ export interface UseGamepadPipelineOptions {
    * (that pulls in transport / ui / editors at module-load time, which
    * breaks Storybook's bundle and the unit-test harness). Instead, pass
    * an explicit `fireAction` callback for stories that want real
-   * action dispatch — typically `(action) => getHandler(action)?.(editor)`.
+   * action dispatch — typically `(action) => executeAction(action, "gamepad", editor)`.
    */
   readonly editor?: EditorView;
   /**

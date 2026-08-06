@@ -9,14 +9,19 @@
 // actions and analog-only streams still use their own typed channels.
 
 import type { EditorView } from "@codemirror/view";
-import type { ActionId } from "./actions.ts";
+import { actions, type ActionId } from "./actions.ts";
+import type { EditorCommandSource } from "../../editors/commands/editorCommandRouter.ts";
+import type { StructuralAction } from "../../editors/extensions/structure/adapter/dispatcher.ts";
 
 // ---------------------------------------------------------------------------
 // Handler types
 // ---------------------------------------------------------------------------
 
 /** Handler that receives the CodeMirror EditorView. */
-export type EditorHandler = (view: EditorView) => boolean;
+export type EditorHandler = (
+  view: EditorView,
+  source?: EditorCommandSource,
+) => boolean;
 
 /** Handler that needs no editor context (panel toggles, etc.). */
 export type VoidHandler = () => boolean;
@@ -28,7 +33,6 @@ export type ActionHandler = EditorHandler | VoidHandler;
 // Imports from runtime modules
 // ---------------------------------------------------------------------------
 
-import { evaluate } from "../../effects/editorEvaluation.ts";
 import {
   toggleHelp,
   toggleSerialVis,
@@ -162,12 +166,12 @@ function restoreCursorsFromPaths(
   return { primary: out[0], secondaries: out.slice(1) };
 }
 
-function structHandler(dispatchName: string): EditorHandler {
-  return (view) =>
+function structHandler(dispatchName: StructuralAction): EditorHandler {
+  return (view, source = "keyboard") =>
     executeEditorCommand(view, {
       kind: "structural",
       action: dispatchName,
-      source: "keyboard",
+      source,
     });
 }
 
@@ -177,9 +181,12 @@ function structHandler(dispatchName: string): EditorHandler {
 
 const handlers: Partial<Record<ActionId, ActionHandler>> = {
   // -- Core (evaluation) ----------------------------------------------------
-  "eval.now": (view: EditorView) => evaluate(view, "expression"),
-  "eval.quantised": (view: EditorView) => evaluate(view, "toplevel"),
-  "eval.soft": (view: EditorView) => evaluate(view, "soft"),
+  "eval.now": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "evaluate", strategy: "expression", source }),
+  "eval.quantised": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "evaluate", strategy: "toplevel", source }),
+  "eval.soft": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "evaluate", strategy: "soft", source }),
 
   // -- UI -------------------------------------------------------------------
   "palette.open": () => { openPalette(); return true; },
@@ -239,19 +246,19 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "mainMenu.adjustDown": () => { /* stub — no adjustable items yet */ return true; },
 
   // -- Editor ---------------------------------------------------------------
-  "edit.pasteSample": (view: EditorView) =>
+  "edit.pasteSample": (view: EditorView, source = "keyboard") =>
     executeEditorCommand(view, {
       kind: "replaceDocument",
       text: SAMPLE_CODE,
-      source: "keyboard",
+      source,
     }),
   "doc.symbol": showDocumentationForSymbol,
-  "edit.undo": (view: EditorView) =>
-    executeEditorCommand(view, { kind: "undo", source: "keyboard" }),
-  "edit.redo": (view: EditorView) =>
-    executeEditorCommand(view, { kind: "redo", source: "keyboard" }),
-  "edit.delete": (view: EditorView) =>
-    executeEditorCommand(view, { kind: "deleteNode", source: "keyboard" }),
+  "edit.undo": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "undo", source }),
+  "edit.redo": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "redo", source }),
+  "edit.delete": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "deleteNode", source }),
 
   // -- Navigation (cursor movement) ------------------------------------------
   "nav.home": cursorLineStart,
@@ -297,25 +304,25 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "meta.foldToggle": structHandler("meta.foldToggle"),
 
   // -- Atom manipulation (atom-manipulation.md §2-§5) -----------------------
-  "atom.adjustUp": (view: EditorView) =>
-    executeEditorCommand(view, { kind: "atomAdjust", direction: 1, source: "gamepad" }),
-  "atom.adjustDown": (view: EditorView) =>
-    executeEditorCommand(view, { kind: "atomAdjust", direction: -1, source: "gamepad" }),
-  "atom.flipPolarity": (view: EditorView) =>
-    executeEditorCommand(view, { kind: "atomFlipPolarity", source: "gamepad" }),
+  "atom.adjustUp": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "atomAdjust", direction: 1, source }),
+  "atom.adjustDown": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "atomAdjust", direction: -1, source }),
+  "atom.flipPolarity": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "atomFlipPolarity", source }),
 
   // -- Gamepad editor actions ------------------------------------------------
-  "control.toggleManualLeft": (view: EditorView) =>
+  "control.toggleManualLeft": (view: EditorView, source = "keyboard") =>
     executeEditorCommand(view, {
       kind: "toggleManualControl",
       stick: "left",
-      source: "gamepad",
+      source,
     }),
-  "control.toggleManualRight": (view: EditorView) =>
+  "control.toggleManualRight": (view: EditorView, source = "keyboard") =>
     executeEditorCommand(view, {
       kind: "toggleManualControl",
       stick: "right",
-      source: "gamepad",
+      source,
     }),
 
   // -- Structure (legacy — no core equivalent yet) --------------------------
@@ -334,7 +341,8 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "doc.selectAll": structHandler("doc.selectAll"),
 
   // -- Live-Edit ------------------------------------------------------------
-  "liveEdit.mark": executeLiveEditMark,
+  "liveEdit.mark": (view: EditorView, source = "keyboard") =>
+    executeLiveEditMark(view, source),
   "liveEdit.vectorConfirm": structHandler("liveEdit.vectorConfirm"),
   "liveEdit.vectorCancel": structHandler("liveEdit.vectorCancel"),
 
@@ -356,13 +364,13 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
     view.dispatch({ effects: setGrabMode.of(false) });
     return true;
   },
-  "actOn.cancelGrab": (view: EditorView) => {
+  "actOn.cancelGrab": (view: EditorView, source = "gamepad") => {
     if (!isGrabActive()) return false;
     const snapshot = getGrabSnapshot();
     const count = getGrabMoveCount();
     endGrab();
     for (let i = 0; i < count; i++) {
-      executeEditorCommand(view, { kind: "undo", source: "gamepad" });
+      executeEditorCommand(view, { kind: "undo", source });
     }
     if (snapshot) {
       const value = view.state.field(structField, false);
@@ -390,34 +398,34 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
     view.dispatch({ effects: setGrabMode.of(false) });
     return true;
   },
-  "grab.moveLeft": (view: EditorView) => {
+  "grab.moveLeft": (view: EditorView, source = "gamepad") => {
     if (!isGrabActive()) return false;
     const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.transposePrev", source: "gamepad",
+      kind: "structural", action: "edit.transposePrev", source,
     });
     if (ok) recordGrabMove();
     return ok;
   },
-  "grab.moveRight": (view: EditorView) => {
+  "grab.moveRight": (view: EditorView, source = "gamepad") => {
     if (!isGrabActive()) return false;
     const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.transposeNext", source: "gamepad",
+      kind: "structural", action: "edit.transposeNext", source,
     });
     if (ok) recordGrabMove();
     return ok;
   },
-  "grab.moveUp": (view: EditorView) => {
+  "grab.moveUp": (view: EditorView, source = "gamepad") => {
     if (!isGrabActive()) return false;
     const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.raise", source: "gamepad",
+      kind: "structural", action: "edit.raise", source,
     });
     if (ok) recordGrabMove();
     return ok;
   },
-  "grab.moveDown": (view: EditorView) => {
+  "grab.moveDown": (view: EditorView, source = "gamepad") => {
     if (!isGrabActive()) return false;
     const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.encloseList", source: "gamepad",
+      kind: "structural", action: "edit.encloseList", source,
     });
     if (ok) recordGrabMove();
     return ok;
@@ -428,10 +436,10 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "insertion.right": cursorCharRight,
   "insertion.up":    cursorLineUp,
   "insertion.down":  cursorLineDown,
-  "edit.enterInsertion": (view: EditorView) =>
-    executeEditorCommand(view, { kind: "structural", action: "mode.insert", source: "gamepad" }),
-  "edit.exitInsertion": (view: EditorView) =>
-    executeEditorCommand(view, { kind: "structural", action: "mode.structural", source: "gamepad" }),
+  "edit.enterInsertion": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "structural", action: "mode.insert", source }),
+  "edit.exitInsertion": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "structural", action: "mode.structural", source }),
 };
 
 // ---------------------------------------------------------------------------
@@ -442,8 +450,31 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
  * Retrieve the handler for an action, or `undefined` if the action has no
  * editor handler (e.g. gamepad-only or picker actions).
  */
-export function getHandler(id: ActionId): ActionHandler | undefined {
-  return handlers[id];
+export function executeAction(
+  id: ActionId,
+  source: EditorCommandSource,
+  view?: EditorView,
+): boolean {
+  const handler = handlers[id];
+  if (!handler) return false;
+
+  const requiresEditor = "requiresEditor" in actions[id] && actions[id].requiresEditor;
+  if (requiresEditor) {
+    if (!view) return false;
+    return (handler as EditorHandler)(view, source);
+  }
+  return (handler as VoidHandler)();
+}
+
+export function getHandler(
+  id: ActionId,
+  source: EditorCommandSource = "keyboard",
+): ActionHandler | undefined {
+  if (!handlers[id]) return undefined;
+  const requiresEditor = "requiresEditor" in actions[id] && actions[id].requiresEditor;
+  return requiresEditor
+    ? (view: EditorView) => executeAction(id, source, view)
+    : () => executeAction(id, source);
 }
 
 // Re-export the registry for testing / introspection

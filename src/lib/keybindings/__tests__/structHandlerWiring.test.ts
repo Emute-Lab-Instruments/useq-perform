@@ -31,14 +31,14 @@ vi.mock("../../../editors/extensions/structure/adapter/dispatcher.ts", () => ({
   dispatchAction: vi.fn(() => true),
 }));
 
-import { handlers } from "../handlers.ts";
+import { executeAction, handlers } from "../handlers.ts";
 import { dispatchAction } from "../../../editors/extensions/structure/adapter/dispatcher.ts";
 import type { ActionId } from "../actions.ts";
 
 const mockDispatchAction = vi.mocked(dispatchAction);
 
 // Minimal mock for EditorView — handlers just pass it through.
-const fakeView = {} as import("@codemirror/view").EditorView;
+const fakeView = { focus: vi.fn() } as unknown as import("@codemirror/view").EditorView;
 
 describe("edit.* handler → dispatcher name mapping", () => {
   beforeEach(() => {
@@ -84,5 +84,11 @@ describe("edit.* handler → dispatcher name mapping", () => {
     for (const id of structuralActions) {
       expect(handlers[id]).toBeDefined();
     }
+  });
+
+  it("preserves the originating surface through action translation", () => {
+    expect(executeAction("edit.raise", "gamepad", fakeView)).toBe(true);
+    expect(mockDispatchAction).toHaveBeenCalledWith(fakeView, "edit.raise");
+    expect(fakeView.focus).toHaveBeenCalledOnce();
   });
 });

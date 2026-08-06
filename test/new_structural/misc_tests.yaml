@@ -27,6 +27,21 @@
 #   undo         — undo last action
 #   enter        — enter / newline key
 
+# ── §0. Canonical intent sequence: structural + text commands ──────────────
+
+- name: "canonical intent path: structural navigation then typed insertion"
+  code: "(foo bar)"
+  selection: "foo"
+  steps:
+    - action: next
+      expect_code: "(foo bar)"
+      new_selection: "bar"
+    - action: [type, "baz"]
+      expect_code: "(foo bazbar)"
+      new_selection: "bazbar"
+  new_code: "(foo bazbar)"
+  new_selection: "bazbar"
+
 # ── §1. Auto-close parentheses: insert, backspace, undo, delete ────────────
 
 - name: "auto-close: ( inserts pair, backspace deletes both"

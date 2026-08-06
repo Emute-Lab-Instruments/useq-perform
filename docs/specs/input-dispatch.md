@@ -15,11 +15,13 @@ layer: cross-cutting
 - `src/editors/commands/editorCommandRouter.ts` — the command router: `executeEditorCommand()`, policy enforcement, bracket protection
 - `src/editors/keymaps.ts` — CodeMirror keymap layer (keyboard translator)
 - `src/editors/editorKeyboard.ts` — editor keyboard utilities
-- `src/lib/keybindings/handlers.ts` — action-to-implementation mapping, calls `executeEditorCommand()`
+- `src/lib/keybindings/handlers.ts` — source-aware `ActionId` translator and UI-effect mapping; `executeAction()` removes caller-specific handler-shape inference
 - `src/lib/keybindings/resolver.ts` — binding resolver (key to ActionId)
 - `src/lib/keybindings/actions.ts` — canonical action registry
 - `src/lib/gamepad/dispatcher.ts` — gamepad dispatcher (reaches router via handler registry)
 - `src/ui/keybindings/ActionPalette.tsx` — action palette (reaches router via handler registry)
+- `src/lib/menu/editorTarget.ts` — radial-menu tree commits through the router
+- `src/editors/extensions/liveEdit/markAction.ts` — live-edit widget commits through the router
 
 ---
 
@@ -47,7 +49,7 @@ Input Source → Translator → Command Router → CodeMirror
 
 **Command router** (`editorCommandRouter.ts`): receives `EditorCommand` objects and produces CodeMirror transactions. Owns all policy enforcement. Returns `true` (handled) or `false` (declined — no valid command for this input). (see `src/editors/commands/editorCommandRouter.ts`)
 
-2.2 The `EditorCommand` union type is the **contract** between translators and the router. Every intent the app supports must be expressible as an `EditorCommand` variant. Adding a new intent means adding a variant to the union — not adding a keymap handler or a special case in a translator.
+2.2 The `EditorCommand` union type is the **contract** between translators and the router. Its `source` is mandatory (`keyboard`, `gamepad`, `menu`, `palette`, `widget`, `test`, or `system`), so a translator cannot silently lose provenance. Every editor mutation or evaluation the app supports must be expressible as an `EditorCommand` variant. Adding one means adding a variant to the union — not adding a transaction in a translator.
 
 2.3 **What belongs in the router** (policy enforcement):
 - Bracket protection (blocking deletion of closing delimiters when enabled)
@@ -56,6 +58,7 @@ Input Source → Translator → Command Router → CodeMirror
 - Mode-dependent gating (future: vim-like normal/insert mode filtering)
 - Number adjustment
 - Manual control binding management
+- Editor focus restoration for indirect user surfaces
 
 2.4 **What does NOT belong in the router**:
 - Binding resolution (which key maps to which action) — lives in the resolver ([keybindings.md](keybindings.md))
@@ -68,7 +71,7 @@ Input Source → Translator → Command Router → CodeMirror
 
 3.1 The keyboard translator is the keymap layer in `keymaps.ts`. Its sole job is intercepting key events that have bindings and routing them to the command router as `EditorCommand` objects. It must not contain policy logic (bracket checking, mode gating, structural awareness). (see `src/editors/keymaps.ts`)
 
-3.2 **Keys with action bindings** (registered in the action registry): the binding resolver maps the key to an `ActionId`, the handler registry maps the `ActionId` to a function that calls `executeEditorCommand()`. The keymap layer provides the CodeMirror `keymap.of()` entries that trigger this chain. (see `src/lib/keybindings/resolver.ts`, `src/lib/keybindings/handlers.ts`)
+3.2 **Keys with action bindings** (registered in the action registry): the binding resolver maps the key to an `ActionId`; `executeAction()` translates the action with source `keyboard`; editor-directed handlers call `executeEditorCommand()`. The keymap layer provides the CodeMirror `keymap.of()` entries that trigger this chain. Gamepad and palette dispatch use the same `executeAction()` entry with their own source instead of inspecting handler arity. (see `src/lib/keybindings/resolver.ts`, `src/lib/keybindings/handlers.ts`)
 
 3.3 **Keys with implicit editor semantics** (Backspace, Delete, Enter, closing brackets): these are not bound to named actions in the default state but carry policy-sensitive behaviour. The keymap layer must route them through the command router as `{kind: "key", key: "Backspace"}` etc., rather than delegating to third-party keymap handlers directly.
 
@@ -109,10 +112,13 @@ Current input sources and their translator paths:
 | Gamepad | Three-stage pipeline → dispatcher | Same handler registry as keyboard |
 | Action palette | Palette selection → handler registry | `executeEditorCommand()` via handler |
 | Radial menu | Menu selection → dispatcher | `executeEditorCommand()` |
+| Live-edit widget | Widget interaction → mutation planner | `executeEditorCommand()` |
 | Test harness (YAML) | `testHarness.mjs` action mapping | `executeEditorCommand()` |
 | Test harness (Vitest) | Direct call | `executeEditorCommand()` |
 
-5.1 Every row in this table must reach the same `executeEditorCommand()` entry point. If an input source reaches CodeMirror through any other path for a policy-sensitive key, that is a bug.
+5.1 Every row in this table must reach the same `executeEditorCommand()` entry point for app-authored document mutations, evaluation, or structural movement. CodeMirror-native text composition (§3.4) and effect-only extension state (decorations and mode indicators) are the explicit boundaries. If an input source creates an app-authored document transaction through another path, that is a bug.
+
+5.2 Successful commands from `gamepad`, `menu`, `palette`, and `widget` restore focus to the editor. `keyboard`, `test`, and `system` commands do not steal focus. This policy belongs to the router and must not be reimplemented by input surfaces.
 
 ---
 
@@ -122,19 +128,19 @@ Current input sources and their translator paths:
 
 6.2 Tests should construct `EditorCommand` objects and call `executeEditorCommand()`. Tests should NOT: simulate DOM key events, call `deleteCharBackward` directly, or invoke CodeMirror keymap handlers — these bypass the router and test implementation details rather than user-facing behaviour.
 
-6.3 The YAML structural test harness maps action names (e.g. `backspace`, `type`, `enter`) to `EditorCommand` objects and dispatches them through `executeEditorCommand()`. This is the correct and only test path.
+6.3 The YAML structural test harness maps policy keys, text commands, and structural action names to `EditorCommand` objects and dispatches them through `executeEditorCommand()`. Pure menu-verb planning remains directly testable, but committing its result to CodeMirror uses the router in production.
 
 ---
 
-## 7. Migration from Current State
+## 7. Conformance Boundary
 
-7.1 The current implementation has a split: the keyboard's Backspace routes through a `Prec.highest` gate in `keymaps.ts` that delegates to clojure-mode's `close_brackets` extension, while all other input sources route through the command router. This split means bracket protection works in tests (which use the router) but fails for keyboard input (which bypasses the router). (see `src/editors/keymaps.ts`)
+7.1 Keyboard policy keys are installed at `Prec.highest` and route through `{kind: "key"}`. The third-party passthrough excludes Backspace, Delete, Enter, brackets, and quote.
 
-7.2 To conform to this spec, the keyboard Backspace binding must route through `executeEditorCommand({kind: "key", key: "Backspace"})` and return its result. The `Prec.highest` gate's role collapses to: call the router, return what it returns.
+7.2 Structural names accepted by `EditorCommand` come from the adapter's `STRUCTURAL_ACTIONS` catalog. Callers cannot introduce an unchecked structural spelling through the typed router.
 
-7.3 The same applies to Delete, Enter, and closing bracket keys — any key where the router enforces policy. The `remainingClojureBindings` passthrough in `keymaps.ts` must not include bindings for keys that the router handles (Backspace, Delete, Enter, `(`, `)`, `[`, `]`, `{`, `}`, `"`).
+7.3 Evaluation is `{kind: "evaluate"}`. Keyboard, gamepad channel, and palette execution therefore share the same entry point even though evaluation's asynchronous runtime work remains owned by `editorEvaluation.ts`.
 
-7.4 Clojure-mode's `close_brackets.extension()` remains loaded for its **input composition** role (auto-pairing on open brackets during regular typing — §3.5). But its Backspace binding must not be in the active keymap for keys the router owns.
+7.4 Radial-menu and live-edit modules retain their pure/domain mutation planners. They hand only the resulting source change to the router; reducer and widget state effects are not document intents.
 
 ---
 

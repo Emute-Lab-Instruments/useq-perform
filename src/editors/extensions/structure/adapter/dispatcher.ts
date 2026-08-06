@@ -450,6 +450,24 @@ function clipDuplicate(view: EditorView): boolean {
 }
 
 /** Run the named action against the editor. Returns true on dispatch. */
+export const STRUCTURAL_ACTIONS = [
+  "nav.out", "nav.in", "nav.next", "nav.prev", "nav.first", "nav.last",
+  "nav.extendNext", "nav.extendPrev", "nav.shrink", "nav.nextHole",
+  "nav.prevHole", "nav.right", "nav.left", "nav.up", "nav.down",
+  "edit.slurpForward", "edit.slurpBackward", "edit.barfForward",
+  "edit.barfBackward", "edit.raise", "edit.splice", "edit.transposeNext",
+  "edit.transposePrev", "edit.moveRight", "edit.moveLeft", "edit.moveUp",
+  "edit.moveDown", "edit.delete", "edit.encloseList", "edit.encloseVector",
+  "edit.encloseMap", "edit.encloseSet", "format.topLevel", "format.document",
+  "format.indentToFixedPoint", "doc.deleteAll", "doc.cutAll", "doc.copyAll",
+  "doc.selectAll", "edit.cut", "edit.copy", "edit.paste", "edit.pasteBefore",
+  "edit.duplicate", "meta.add", "meta.remove", "meta.cycle", "meta.foldToggle",
+  "liveEdit.vectorConfirm", "liveEdit.vectorCancel", "mode.insert",
+  "mode.structural",
+] as const;
+
+export type StructuralAction = (typeof STRUCTURAL_ACTIONS)[number];
+
 export function dispatchAction(view: EditorView, name: string): boolean {
   // ── Vector-mark sub-mode interception (live-edit.md §3.7.3) ──────────
   // When the vector-mark controller is active, nav.next/prev/right/left
@@ -528,55 +546,4 @@ export function dispatchAction(view: EditorView, name: string): boolean {
 }
 
 /** Names the dispatcher knows about. Useful for the gamepad bridge. */
-export const KNOWN_ACTIONS: ReadonlySet<string> = new Set([
-  "nav.out",
-  "nav.in",
-  "nav.next",
-  "nav.prev",
-  "nav.first",
-  "nav.last",
-  "nav.extendNext",
-  "nav.extendPrev",
-  "nav.shrink",
-  "nav.nextHole",
-  "nav.prevHole",
-  "nav.right",
-  "nav.left",
-  "nav.up",
-  "nav.down",
-  "edit.slurpForward",
-  "edit.slurpBackward",
-  "edit.barfForward",
-  "edit.barfBackward",
-  "edit.raise",
-  "edit.splice",
-  "edit.transposeNext",
-  "edit.transposePrev",
-  "edit.moveRight",
-  "edit.moveLeft",
-  "edit.moveUp",
-  "edit.moveDown",
-  "edit.delete",
-  "edit.encloseList",
-  "edit.encloseVector",
-  "edit.encloseMap",
-  "edit.encloseSet",
-  "format.topLevel",
-  "format.document",
-  "format.indentToFixedPoint",
-  "doc.deleteAll",
-  "doc.cutAll",
-  "doc.copyAll",
-  "doc.selectAll",
-  "edit.cut",
-  "edit.copy",
-  "edit.paste",
-  "edit.pasteBefore",
-  "edit.duplicate",
-  "meta.add",
-  "meta.remove",
-  "meta.cycle",
-  "meta.foldToggle",
-  "liveEdit.vectorConfirm",
-  "liveEdit.vectorCancel",
-]);
+export const KNOWN_ACTIONS: ReadonlySet<StructuralAction> = new Set(STRUCTURAL_ACTIONS);

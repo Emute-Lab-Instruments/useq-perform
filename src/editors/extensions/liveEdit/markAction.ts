@@ -26,7 +26,10 @@ import { structField } from "../structure/adapter/stateField.ts";
 import { findById, parentOf, isLeaf, childrenOf, type Node, type Meta } from "../structure/core/index.ts";
 import type { LiveEditMetaPayload } from "../structure/adapter/treeFromLezer.ts";
 import { printNode } from "../structure/adapter/printTree.ts";
-import { executeEditorCommand } from "../../commands/editorCommandRouter.ts";
+import {
+  executeEditorCommand,
+  type EditorCommandSource,
+} from "../../commands/editorCommandRouter.ts";
 import { inferRange } from "./rangeInference.ts";
 import { liveEditPersistence, liveEditOnValueChange, liveEditStore } from "../../../effects/liveEditRuntime.ts";
 import type { LiveEditSlot } from "../../../contracts/liveEdit.ts";
@@ -309,7 +312,10 @@ function triggerPostMarkEval(view: EditorView): void {
  * Supports multi-cursor (§3.8): applies pointwise per cursor. All wraps
  * are batched into a single transaction so one eval fires after all changes.
  */
-export function executeLiveEditMark(view: EditorView): boolean {
+export function executeLiveEditMark(
+  view: EditorView,
+  source: EditorCommandSource = "system",
+): boolean {
   // If the vector-mark sub-mode is already active, the same action
   // toggles the focused element (§3.7.3).
   if (vectorController.active) {
@@ -445,7 +451,7 @@ export function executeLiveEditMark(view: EditorView): boolean {
       kind: "applyChanges",
       changes,
       userEvent: "liveEdit.mark",
-      source: "keyboard",
+      source,
     });
 
     // §3.2 step 4 / §3.3 step 2: trigger an immediate eval of the
@@ -603,7 +609,7 @@ function executeMark(
     to: range.to,
     insert: wrapper,
     userEvent: "liveEdit.mark",
-    source: "keyboard",
+    source: "widget",
   });
 
   // §3.2 step 4: trigger immediate eval to allocate the slot.
@@ -655,7 +661,7 @@ function executeToggleOff(
     to: wrapperRange.to,
     insert: innerText,
     userEvent: "liveEdit.unmark",
-    source: "keyboard",
+    source: "widget",
   });
 
   triggerPostMarkEval(view);
@@ -731,7 +737,7 @@ export function executeLiveEditCommit(
       kind: "applyChanges",
       changes,
       userEvent: "liveEdit.commit",
-      source: "keyboard",
+      source: "widget",
     });
 
     // §6.1 step 3: trigger immediate eval to free the slot(s).
@@ -840,7 +846,7 @@ export function executeLiveEditRename(
     to: wrapperRange.to,
     insert: newWrapperText,
     userEvent: "liveEdit.rename",
-    source: "keyboard",
+    source: "widget",
   });
 
   return true;
@@ -920,7 +926,7 @@ export function executeLiveEditEditRange(
     to: wrapperRange.to,
     insert: wrapperText,
     userEvent: "liveEdit.editRange",
-    source: "keyboard",
+    source: "widget",
   });
 
   return true;

@@ -174,6 +174,7 @@ function createFakeEditorView(structValue: FakeStructValue): any {
     dispatch: vi.fn(() => {
       // No-op — just record the call.
     }),
+    focus: vi.fn(),
     dom: { ownerDocument: { defaultView: { KeyboardEvent } } },
   };
 }

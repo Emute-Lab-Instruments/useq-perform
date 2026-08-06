@@ -45,31 +45,36 @@ import {
   type State,
 } from "../extensions/structure/core/index.ts";
 import { atomAdjust, flipPolarity } from "../extensions/structure/core/atomOps.ts";
+import { evaluate, type EvalStrategy } from "../../effects/editorEvaluation.ts";
+import type { StructuralAction } from "../extensions/structure/adapter/dispatcher.ts";
 
 export type EditorCommandSource =
   | "keyboard"
   | "gamepad"
   | "menu"
   | "palette"
+  | "widget"
   | "test"
   | "system";
 
-export type EditorCommand =
-  | { kind: "key"; key: string; allowBracketUnbalancing?: boolean; source?: EditorCommandSource }
-  | { kind: "typeText"; text: string; source?: EditorCommandSource }
-  | { kind: "insertText"; text: string; source?: EditorCommandSource }
-  | { kind: "replaceRange"; from: number; to: number; insert: string; selectionAnchor?: number; scrollIntoView?: boolean; userEvent?: string; source?: EditorCommandSource }
-  | { kind: "applyChanges"; changes: ChangeSpec | readonly ChangeSpec[]; scrollIntoView?: boolean; userEvent?: string; source?: EditorCommandSource }
-  | { kind: "replaceDocument"; text: string; source?: EditorCommandSource }
-  | { kind: "undo"; source?: EditorCommandSource }
-  | { kind: "redo"; source?: EditorCommandSource }
-  | { kind: "structural"; action: string; source?: EditorCommandSource }
-  | { kind: "deleteNode"; source?: EditorCommandSource }
-  | { kind: "adjustNumber"; delta: number; source?: EditorCommandSource }
-  | { kind: "atomAdjust"; direction: 1 | -1; source?: EditorCommandSource }
-  | { kind: "atomFlipPolarity"; source?: EditorCommandSource }
-  | { kind: "toggleManualControl"; stick: "left" | "right"; source?: EditorCommandSource }
-  | { kind: "manualControlAxis"; stick: "left" | "right"; x: number; y: number; nowMs?: number; source?: EditorCommandSource };
+export type EditorCommand = (
+  | { kind: "key"; key: string; allowBracketUnbalancing?: boolean }
+  | { kind: "typeText"; text: string }
+  | { kind: "insertText"; text: string }
+  | { kind: "replaceRange"; from: number; to: number; insert: string; selectionAnchor?: number; scrollIntoView?: boolean; userEvent?: string }
+  | { kind: "applyChanges"; changes: ChangeSpec | readonly ChangeSpec[]; scrollIntoView?: boolean; userEvent?: string; addToHistory?: boolean }
+  | { kind: "replaceDocument"; text: string }
+  | { kind: "undo" }
+  | { kind: "redo" }
+  | { kind: "evaluate"; strategy: EvalStrategy }
+  | { kind: "structural"; action: StructuralAction }
+  | { kind: "deleteNode" }
+  | { kind: "adjustNumber"; delta: number }
+  | { kind: "atomAdjust"; direction: 1 | -1 }
+  | { kind: "atomFlipPolarity" }
+  | { kind: "toggleManualControl"; stick: "left" | "right" }
+  | { kind: "manualControlAxis"; stick: "left" | "right"; x: number; y: number; nowMs?: number }
+) & { source: EditorCommandSource };
 
 const MANUAL_CONTROL_SEND_HZ = 30;
 const MANUAL_CONTROL_SEND_INTERVAL_MS = Math.ceil(
@@ -127,65 +132,96 @@ export function executeEditorCommand(
   view: EditorView,
   command: EditorCommand,
 ): boolean {
+  let handled: boolean;
   switch (command.kind) {
     case "key":
-      return pressEditorKey(view, command);
+      handled = pressEditorKey(view, command);
+      break;
 
     case "typeText":
-      return typeText(view, command.text);
+      handled = typeText(view, command.text, command.source);
+      break;
 
     case "insertText":
-      return replaceSelection(view, command.text, "input");
+      handled = replaceSelection(view, command.text, "input");
+      break;
 
     case "replaceRange":
-      return replaceRange(view, command);
+      handled = replaceRange(view, command);
+      break;
 
     case "applyChanges":
       view.dispatch({
         changes: command.changes,
         scrollIntoView: command.scrollIntoView ?? true,
         userEvent: command.userEvent,
-        annotations: isolateHistory.of("full"),
+        annotations: command.addToHistory === false
+          ? Transaction.addToHistory.of(false)
+          : isolateHistory.of("full"),
       });
       syncStructuralCursorFromSelection(view);
-      return true;
+      handled = true;
+      break;
 
     case "replaceDocument":
-      return replaceWholeDocument(view, command.text);
+      handled = replaceWholeDocument(view, command.text);
+      break;
 
     case "undo":
-      return undo(view);
+      handled = undo(view);
+      if (handled) syncStructuralCursorFromSelection(view);
+      break;
 
     case "redo":
-      return redo(view);
+      handled = redo(view);
+      if (handled) syncStructuralCursorFromSelection(view);
+      break;
+
+    case "evaluate":
+      handled = evaluate(view, command.strategy);
+      break;
 
     case "structural":
-      return dispatchAction(view, command.action);
+      handled = dispatchAction(view, command.action);
+      break;
 
     case "deleteNode":
-      return dispatchAction(view, "edit.delete");
+      handled = dispatchAction(view, "edit.delete");
+      break;
 
     case "adjustNumber":
-      return adjustNumberAtCursor(view, command.delta);
+      handled = adjustNumberAtCursor(view, command.delta);
+      break;
 
     case "atomAdjust":
-      return atomAdjustAtCursor(view, command.direction);
+      handled = atomAdjustAtCursor(view, command.direction);
+      break;
 
     case "atomFlipPolarity":
-      return atomFlipPolarityAtCursor(view);
+      handled = atomFlipPolarityAtCursor(view);
+      break;
 
     case "toggleManualControl":
-      return toggleManualControl(view, command.stick);
+      handled = toggleManualControl(view, command.stick);
+      break;
 
     case "manualControlAxis":
-      return updateManualControlAxis(
+      handled = updateManualControlAxis(
         view,
         command.stick,
         command.x,
         command.y,
         command.nowMs ?? Date.now(),
       );
+      break;
   }
+
+  if (handled && shouldRestoreEditorFocus(command.source)) view.focus();
+  return handled;
+}
+
+function shouldRestoreEditorFocus(source: EditorCommandSource): boolean {
+  return source === "gamepad" || source === "menu" || source === "palette" || source === "widget";
 }
 
 function pressEditorKey(
@@ -424,10 +460,14 @@ function runKeymap(view: EditorView, key: string): boolean {
   return runScopeHandlers(view, event, "editor");
 }
 
-function typeText(view: EditorView, text: string): boolean {
+function typeText(
+  view: EditorView,
+  text: string,
+  source: EditorCommandSource,
+): boolean {
   let changed = false;
   for (const char of text) {
-    changed = pressEditorKey(view, { kind: "key", key: char }) || changed;
+    changed = pressEditorKey(view, { kind: "key", key: char, source }) || changed;
   }
   return changed;
 }
@@ -536,7 +576,7 @@ function deleteOneCharForward(view: EditorView): boolean {
 
 function replaceRange(
   view: EditorView,
-  command: Extract<EditorCommand, { kind: "replaceRange" }>,
+  command: Omit<Extract<EditorCommand, { kind: "replaceRange" }>, "source">,
 ): boolean {
   const docLength = view.state.doc.length;
   const rawFrom = clampPosition(command.from, docLength);

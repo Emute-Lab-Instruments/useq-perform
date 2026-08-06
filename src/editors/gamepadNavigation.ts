@@ -8,19 +8,13 @@
 // directly through the keybindings handler registry from the gamepad
 // pipeline (see `src/lib/gamepad/index.ts` → `createActionRunner`). This
 // module covers the remaining channel-driven intents — eval and the
-// manual-control stick axis — pending Track G/H.
+// manual-control stick axis — and emits both through the editor router.
 
 import type { EditorView } from "@codemirror/view";
 
-import { evaluate } from "../effects/editorEvaluation.ts";
 import { executeEditorCommand } from "./commands/editorCommandRouter.ts";
 
 import * as ch from "../contracts/gamepadChannels";
-
-const typedEvaluate = evaluate as (
-  view: EditorView,
-  strategy: "toplevel" | "expression" | "soft",
-) => boolean;
 
 // ---------------------------------------------------------------------------
 // Cursor helpers
@@ -75,7 +69,11 @@ export function bindGamepadNavigation(
 
   const unsubEval = ch.evalNow.subscribe(() => {
     if (!view) return;
-    typedEvaluate(view, "expression");
+    executeEditorCommand(view, {
+      kind: "evaluate",
+      strategy: "expression",
+      source: "gamepad",
+    });
   });
 
   // -- Manual control -------------------------------------------------------

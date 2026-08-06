@@ -2,7 +2,10 @@ import type { EditorView } from "@codemirror/view";
 import type { ActionId } from "../lib/keybindings/actions";
 
 import { findNodeAt, getTrimmedRange } from "../editors/extensions/lezerHelpers";
-import { dispatchAction } from "../editors/extensions/structure/adapter/dispatcher";
+import {
+  executeEditorCommand,
+} from "../editors/commands/editorCommandRouter.ts";
+import type { StructuralAction } from "../editors/extensions/structure/adapter/dispatcher";
 
 export type ActionGate = (actionId: ActionId) => "allow" | "block";
 
@@ -41,13 +44,15 @@ function deleteNodeAtCursor(view: EditorView): boolean {
     }
   }
 
-  view.dispatch({
-    changes: { from: range.from, to: whitespaceEnd, insert: "" },
-    selection: { anchor: range.from },
-    scrollIntoView: true,
+  return executeEditorCommand(view, {
+    kind: "replaceRange",
+    from: range.from,
+    to: whitespaceEnd,
+    insert: "",
+    selectionAnchor: range.from,
     userEvent: "delete.node",
+    source: "gamepad",
   });
-  return true;
 }
 
 function hideEditorCursor(view: EditorView): void {
@@ -56,7 +61,7 @@ function hideEditorCursor(view: EditorView): void {
 
 // Map an ActionId to the structural-dispatcher action name. Only listed
 // actions are routed; everything else is ignored by the zen bridge.
-const ACTION_TO_DISPATCH: Partial<Record<ActionId, string>> = {
+const ACTION_TO_DISPATCH: Partial<Record<ActionId, StructuralAction>> = {
   "nav.up": "nav.up",
   "nav.down": "nav.down",
   "nav.left": "nav.left",
@@ -91,7 +96,11 @@ export function bindZenGamepadNavigation(
     }
 
     const dispatchName = ACTION_TO_DISPATCH[actionId];
-    if (dispatchName && dispatchAction(view, dispatchName)) {
+    if (dispatchName && executeEditorCommand(view, {
+      kind: "structural",
+      action: dispatchName,
+      source: "gamepad",
+    })) {
       hideEditorCursor(view);
       return true;
     }
