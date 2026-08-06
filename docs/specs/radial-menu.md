@@ -18,7 +18,11 @@ layer: behavioural
 - `src/lib/menu/state.ts` — pure state machine reducer
 - `src/lib/menu/verbs.ts` — verb implementations
 - `src/lib/menu/chain.ts` — auto-chain runner
-- `src/lib/menu/dispatcher.ts` — menu dispatcher (impure)
+- `src/lib/menu/dispatcher.ts` — lifecycle/action routing adapter (impure)
+- `src/lib/menu/textEntry.ts` — numpad/T9 layouts, hover state, and multi-tap timing
+- `src/lib/menu/verbApplication.ts` — selection resolution and structural verb application
+- `src/lib/menu/editorTarget.ts` — CodeMirror/structural-tree target and mutation adapter
+- `src/lib/menu/chainCoordination.ts` — close/reopen input planning after a verb commit
 - `src/lib/menu/store.ts` — Solid reactive store (menuStore)
 - `src/ui/menu/RadialMenu.tsx` — SVG renderer (props-based)
 - `src/ui/adapters/radialMenu.tsx` — imperative adapter (`mountRadialMenu`)
@@ -616,9 +620,13 @@ src/lib/menu/
   state.ts               // pure state machine: reducer (state, input) → state
   verbs.ts               // pure verb implementations: (Tree, CursorSet, MenuItem, Verb) → (Tree, CursorSet)
   chain.ts               // auto-chain runner: detects holes, schedules next-pick
+  chainCoordination.ts   // translates a post-verb chain result into close/reopen reducer inputs
+  textEntry.ts           // numpad/T9 layouts plus hover and multi-tap timing
+  verbApplication.ts     // resolves a frozen selection and applies one structural verb
+  editorTarget.ts        // CodeMirror/structural target lookup and source mutation
   templates.ts           // parseTemplate(str) → snippet tree fragment with holes
   store.ts               // Solid reactive store (menuStore.open, current MenuState, current target, …)
-  dispatcher.ts          // wires gamepad input to state.ts; mutates the document on verb commit
+  dispatcher.ts          // wires lifecycle and high-level actions across the focused modules
 
 src/lib/menu/state.test.ts
 src/lib/menu/verbs.test.ts
@@ -637,14 +645,17 @@ src/ui/adapters/
 
 Files dropped from the original outline (now deferred): `alphabet.ts`, `drill.ts`, `AlphabetRing.tsx`, `DrillRing.tsx`.
 
-### 11.2 The dispatcher (planned: `src/lib/menu/dispatcher.ts`)
+### 11.2 The dispatcher (`src/lib/menu/dispatcher.ts`)
 
-The dispatcher (`src/lib/menu/dispatcher.ts`) is the single impure component. It:
+The dispatcher is the menu's lifecycle and high-level action adapter. It:
 - Subscribes to the gamepad's `radial-menu` transient layer's actions and axis channels.
 - Translates input into state-machine events.
-- Calls `state.reduce(currentState, event)` to compute the next state.
-- On verb commit, calls `verbs.apply(tree, cursorSet, item, verb)` and dispatches the resulting document mutation through the editor's transaction API.
-- Handles auto-chain by inspecting the cursor post-mutation and, if a hole is found, re-opens the menu via the same path as `tap(X)` would.
+- Dispatches typed `MenuInput` values through the injected store bridge, whose reducer computes the next state.
+- Delegates numpad/T9 hover and multi-tap state to `textEntry.ts`.
+- Delegates frozen-selection resolution and structural mutation to `verbApplication.ts`, whose CodeMirror boundary is isolated in `editorTarget.ts`.
+- Dispatches the close/reopen reducer inputs planned by `chainCoordination.ts` after a successful verb commit.
+
+This keeps impurity explicit without making one module own every concern: the dispatcher owns subscriptions and ordering, text entry owns its timer, and the editor adapter owns source mutation.
 
 ### 11.3 Picker layer (gamepad.md §6.5) replacement (current: `src/lib/gamepad/paradigms/picker.ts`)
 
