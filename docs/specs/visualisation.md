@@ -10,14 +10,17 @@ layer: behavioural
 
 ### Source files
 
-- `src/effects/visualisationRuntime.ts` — rAF loop, past/future buffer management, projection fork lifecycle
-- `src/effects/visualisationSampler.ts` — per-frame sampling loop, tick-and-project dispatch, render-data assembly, **per-output past/future rolling buffers** (the `pastBuffers`/`futureBuffers` Maps)
+- `src/effects/visualisationRuntime.ts` — sole rAF/local-time owner and serialized sample-request queue
+- `src/effects/visualisationSampler.ts` — WASM tick-and-project execution, projection scheduling, and expression lifecycle
+- `src/effects/visualisationBuffers.ts` — exclusive owner of per-output past/future rolling-buffer allocation, capacity, and render lookup
+- `src/effects/visualisationSamplingPolicy.ts` — live-loop safety bounds and projection-relevant identity, applied after general app-settings normalization
 - `src/lib/PastBuffer.ts` — the `PastBuffer` FIFO rolling-buffer class used for both past and future halves
 - `src/effects/adaptiveQuality.ts` — pressure detection, adaptive quality levers (§1.7.1)
-- `src/ui/visualisation/serialVisGL.ts` — WebGL rendering surface, lane layout, past/future segment drawing, plus a 2D overlay for axes, labels, and empty-state text; owns canvas mount/resize geometry (`activateGLCanvas`/`ensureGLCanvasGeometry`)
+- `src/ui/visualisation/serialVisGL.ts` — WebGL canvas/program/VBO lifecycle, segment drawing, and 2D overlay; owns mount/resize geometry (`activateGLCanvas`/`ensureGLCanvasGeometry`)
+- `src/ui/visualisation/serialVisPlanning.ts` — DOM-free lane layout, past/future sample assembly, boundary policy, and pixel-matched rate planning
 - `src/ui/visualisation/webglLineRenderer.ts` — low-level WebGL line rasteriser
 - `src/ui/VisLegend.tsx` — vis legend UI component
-- `src/utils/visualisationStore.ts` — reactive store (current time, registered expressions, serial buffers, settings-derived state); note the rolling buffers themselves live in `visualisationSampler.ts`, not here
+- `src/utils/visualisationStore.ts` — reactive store for current time, registered expressions, and settings-derived state; rolling sample buffers live in `visualisationBuffers.ts`
 - `src/contracts/visualisationChannels.ts` — typed pub/sub channels for vis events
 - `src/contracts/visualisationEvents.ts` — vis event type definitions
 - `src/ui/adapters/visualisationPanel.ts` — imperative adapter for vis panel mounting
@@ -56,7 +59,7 @@ Past values are ground truth: what the signal engine actually produced as time a
 
 2.1 **Recording model.** The browser-local WASM engine is ticked on a monotonic sampling timeline, not limited to one tick per animation frame. The target live tick rate is `pixelMatchedPastRate × visualisation.temporalSampleRateMultiplier`, where the multiplier is clamped to `0.05..1.0`. A multiplier of `1.0` means every horizontal visual sample column can receive its own state-advancing temporal sample. Each committed tick computes all active output values, commits state, and records the results into a **per-output rolling buffer**. This tick stream is the authoritative source of past values.
 
-2.2 **Rolling buffer shape.** (see `src/effects/visualisationSampler.ts` for the `pastBuffers` Map, `src/lib/PastBuffer.ts` for the FIFO class) Each active output maintains a FIFO buffer of recorded samples. All outputs are sampled at the same committed tick times. The buffer is time-aligned at constant sample rate, so index arithmetic suffices for time lookups — no (time, value) pairs needed.
+2.2 **Rolling buffer shape.** (see `src/effects/visualisationBuffers.ts` for buffer ownership, `src/lib/PastBuffer.ts` for the FIFO class) Each active output maintains a FIFO buffer of recorded samples. All outputs are sampled at the same committed tick times. The buffer is time-aligned at constant sample rate, so index arithmetic suffices for time lookups — no (time, value) pairs needed.
 
 2.2.1 **Pixel-matched buffer capacity and tick density.** The rolling buffer's capacity is derived from rendering-surface pixel width: `bufferSampleRate = floor(canvasWidth / 2) / (windowDuration / 2)` when future projection is visible, and `bufferSampleRate = canvasWidth / windowDuration` when the past occupies the full surface. The renderer recomputes this on surface resize and integer-snaps it to avoid sub-pixel re-allocation. The live WASM tick target is configurable up to this same rate (§2.1), so `temporalSampleRateMultiplier = 1.0` gives literal one-sample-per-column past recording for the effective visual rate. Lower multipliers intentionally trade temporal fidelity for CPU headroom.
 
@@ -154,7 +157,7 @@ Not all outputs need the same future-projection work. The engine classifies each
 
 5.3 **Sampling guards.** At most one tick-and-project cycle is in flight at a time. Browser-local mode may queue multiple monotonic catch-up sample times while a call is running; external hardware time updates coalesce to the newest time. A slow batch must never overwrite a fresher one — this invariant follows from strict serialization, not from post-hoc sequence-counter discard.
 
-5.4 **Render data assembly.** (see `src/ui/visualisation/serialVisGL.ts`) The renderer receives two data sources per output: past samples from the past rolling buffer and future samples from the future rolling buffer. Both are `PastBuffer` instances. The renderer draws them as separate segments split at `t = now` — past segment from the past buffer (full alpha), future segment from the future buffer (reduced alpha). The boundary is exact, no blending or interpolation.
+5.4 **Render data assembly.** (see `src/ui/visualisation/serialVisPlanning.ts`) The renderer receives two data sources per output: past samples from the past rolling buffer and future samples from the future rolling buffer. Both are `PastBuffer` instances. The planning layer assembles independent segments split at `t = now`; `serialVisGL.ts` draws the past at full alpha and the future at reduced alpha. The boundary is exact, with no cross-stream interpolation.
 
 5.5 **Shift, don't rebuild.** As time advances, the past buffer grows by one sample per committed tick and the future buffer grows by small frontier-extension batches. The render path reads from the rolling buffers directly — no per-frame allocation on the hot path ([MAIN.md §3.5](MAIN.md)).
 

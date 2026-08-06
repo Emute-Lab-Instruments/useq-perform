@@ -18,7 +18,7 @@
 import { dbg } from "../lib/debug.ts";
 import { perf } from "../lib/perfTrace.ts";
 import { projectionTrace } from "../lib/projectionTrace.ts";
-import { PastBuffer } from "../lib/PastBuffer.ts";
+import type { PastBuffer } from "../lib/PastBuffer.ts";
 import {
   shouldSkipFutureEdgePush,
   setAdaptiveQualityEnabled,
@@ -62,6 +62,28 @@ import {
   removeExpression,
   setLastChangeKind,
 } from "../utils/visualisationStore.ts";
+import {
+  clearFutureBuffer,
+  configureFutureBufferCapacity,
+  destroyVisualisationBuffers,
+  ensureFutureBuffer,
+  ensurePastBuffer,
+  futureBufferFor,
+  futureProjectionSampleRate,
+} from "./visualisationBuffers.ts";
+import {
+  DEFAULT_INPUT_EPSILON,
+  resolveVisualisationSamplingPolicy,
+  projectionSettingsKey,
+} from "./visualisationSamplingPolicy.ts";
+
+export {
+  getPastBufferSampleRate,
+  getRenderData,
+  getTemporalSampleRate,
+  setPastBufferSampleRate,
+} from "./visualisationBuffers.ts";
+export type { OutputRenderData } from "./visualisationBuffers.ts";
 
 // ── WASM port ───────────────────────────────────────────────────────
 
@@ -87,8 +109,6 @@ const wasmTickAndProject = (
 
 // ── Constants ────────────────────────────────────────────────────────
 
-const DEFAULT_FUTURE_LEAD_SECONDS = 1;
-const MAX_FUTURE_LEAD_SECONDS = 8;
 const WASM_ERROR_RESULT = "{error}";
 
 // Guard band for frontier coverage (spec §3.8): expressed in seconds so
@@ -96,252 +116,7 @@ const WASM_ERROR_RESULT = "{error}";
 // considered "adequate" when it reaches futureEdge + guardBand.
 export const FRONTIER_GUARD_BAND_SECONDS = 0.5;
 
-// Default history: visible past + 5s headroom, max 30s at ~30fps
-const DEFAULT_HISTORY_HEADROOM = 5;
-const DEFAULT_MAX_HISTORY_SECONDS = 30;
-const ASSUMED_FRAME_RATE = 30;
 const FUTURE_BOUNDARY_GAP_SAMPLE_MULTIPLIER = 4;
-
-// ── Past buffer sample rate (pixel-matched) ─────────────────────────
-//
-// Spec visualisation.md §2.2.1: rolling buffer rate is derived from
-// canvas pixel width — `floor(canvasWidth / 2) / (windowDuration / 2)`.
-// The renderer computes this each paint and pushes via
-// `setPastBufferSampleRate()`.  Past buffers are sized for
-// `DEFAULT_MAX_HISTORY_SECONDS` worth of samples at this rate.
-//
-// The live temporal sampler can run at this rate too when
-// `temporalSampleRateMultiplier` is 1.0.
-let pastBufferSampleRate = ASSUMED_FRAME_RATE;
-
-// Spec visualisation.md §2.3: retain `windowDuration / 2 + historyHeadroom`
-// seconds of history, capped at `maxHistorySeconds`. Both headroom and cap
-// are configurable (`visualisation.historyHeadroom` / `.maxHistorySeconds`).
-function retainedHistorySeconds(): number {
-  const settings = visStore.settings;
-  const windowDuration = Number.isFinite(settings.windowDuration)
-    ? settings.windowDuration
-    : 10;
-  const headroom = Number.isFinite(settings.historyHeadroom)
-    ? settings.historyHeadroom
-    : DEFAULT_HISTORY_HEADROOM;
-  const cap = Number.isFinite(settings.maxHistorySeconds)
-    ? settings.maxHistorySeconds
-    : DEFAULT_MAX_HISTORY_SECONDS;
-  return Math.min(windowDuration / 2 + headroom, cap);
-}
-
-function pastBufferCapacity(): number {
-  return Math.max(
-    1,
-    Math.ceil(retainedHistorySeconds() * pastBufferSampleRate),
-  );
-}
-
-function futureProjectionSampleRate(settings: VisSettings): number {
-  return Math.max(
-    settings.minFutureSampleRate,
-    (settings.sampleCount || 100) / (settings.windowDuration || 1),
-  );
-}
-
-function updateFutureBufferCapacity(settings: VisSettings): void {
-  const MIN_FUTURE_CAP = Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * ASSUMED_FRAME_RATE);
-  const MAX_FUTURE_CAP = 8192;
-  const rate = futureProjectionSampleRate(settings);
-  const settingsCap = Math.ceil(
-    (settings.windowDuration + (settings.futureLeadSeconds || 0)) * rate * 1.5,
-  );
-  futureBufferCap = Math.min(MAX_FUTURE_CAP, Math.max(MIN_FUTURE_CAP, settingsCap));
-}
-
-export function getPastBufferSampleRate(): number {
-  return pastBufferSampleRate;
-}
-
-export function getTemporalSampleRate(): number {
-  const multiplier = visStore.settings.temporalSampleRateMultiplier ?? 1;
-  return Math.max(1, pastBufferSampleRate * multiplier);
-}
-
-/**
- * Set the target sample-rate (Hz) for the past rolling buffers.
- *
- * Called by the renderer each paint with the pixel-matched rate
- * `floor(canvasWidth / 2) / (windowDuration / 2)`.  Most paints are a
- * no-op (rate unchanged); on a real change every existing past buffer
- * is reallocated at the new capacity, **preserving in-bounds samples**.
- * Future buffers are unaffected.
- */
-export function setPastBufferSampleRate(hz: number): void {
-  const numeric = Number(hz);
-  if (!Number.isFinite(numeric) || numeric <= 0) return;
-  // Snap to integer Hz to avoid drift between paints from minor
-  // floating-point fluctuations in the reported canvas size.
-  const next = Math.max(1, Math.round(numeric));
-  if (next === pastBufferSampleRate) return;
-  pastBufferSampleRate = next;
-  // Reallocate every past buffer at the new capacity, copying the
-  // existing in-order samples across.  Newest samples win on overflow.
-  const newCapacity = pastBufferCapacity();
-  for (const [key, oldBuf] of pastBuffers) {
-    const replacement = new PastBuffer(newCapacity);
-    const start = Math.max(0, oldBuf.length - newCapacity);
-    for (let i = start; i < oldBuf.length; i++) {
-      replacement.push(oldBuf.timeAt(i), oldBuf.valueAt(i));
-    }
-    pastBuffers.set(key, replacement);
-  }
-}
-
-// ── Past buffers & future buffers ───────────────────────────────────
-
-const pastBuffers = new Map<string, PastBuffer>();
-const futureBuffers = new Map<string, PastBuffer>();
-
-function ensurePastBuffer(exprType: string): PastBuffer {
-  let buf = pastBuffers.get(exprType);
-  if (!buf) {
-    buf = new PastBuffer(pastBufferCapacity());
-    pastBuffers.set(exprType, buf);
-  }
-  return buf;
-}
-
-// Settings-aware future buffer capacity (spec m6 fix).
-// Recomputed in loadAndApplySettings; defaults to a safe fallback.
-let futureBufferCap = Math.ceil(DEFAULT_MAX_HISTORY_SECONDS * ASSUMED_FRAME_RATE);
-
-function ensureFutureBuffer(exprType: string): PastBuffer {
-  let buf = futureBuffers.get(exprType);
-  if (!buf || buf.capacity < futureBufferCap) {
-    // Allocate (or re-allocate) at the current settings-derived capacity.
-    const replacement = new PastBuffer(futureBufferCap);
-    if (buf) {
-      // Preserve existing samples on capacity upgrade.
-      const start = Math.max(0, buf.length - futureBufferCap);
-      for (let i = start; i < buf.length; i++) {
-        replacement.push(buf.timeAt(i), buf.valueAt(i));
-      }
-    }
-    buf = replacement;
-    futureBuffers.set(exprType, buf);
-  }
-  return buf;
-}
-
-function destroyBuffers(exprType: string): void {
-  pastBuffers.delete(exprType);
-  futureBuffers.delete(exprType);
-}
-
-// ── Render data (read by the renderer each frame) ───────────────────
-
-export interface OutputRenderData {
-  pastBuffer: PastBuffer;
-  futureBuffer: PastBuffer | undefined;
-}
-
-export function getRenderData(exprType: string): OutputRenderData | null {
-  const buf = pastBuffers.get(exprType);
-  if (!buf) return null;
-  return {
-    pastBuffer: buf,
-    futureBuffer: futureBuffers.get(exprType),
-  };
-}
-
-// ── Settings helpers ─────────────────────────────────────────────────
-
-function getDefaults(): VisSettings {
-  return {
-    showFutureProjection: false,
-    windowDuration: 10,
-    sampleCount: 100,
-    lineWidth: 1.5,
-    futureDashed: true,
-    futureMaskOpacity: 0.35,
-    futureMaskWidth: 12,
-    circularOffset: 0,
-    futureLeadSeconds: DEFAULT_FUTURE_LEAD_SECONDS,
-    digitalLaneGap: 4,
-    futureLineAlpha: 0.6,
-    minFutureSampleRate: 30,
-    extensionBatchSize: 4,
-    temporalSampleRateMultiplier: 1,
-    inputEpsilon: DEFAULT_INPUT_EPSILON,
-    historyHeadroom: DEFAULT_HISTORY_HEADROOM,
-    maxHistorySeconds: DEFAULT_MAX_HISTORY_SECONDS,
-  };
-}
-
-function clampSettings(raw: Partial<VisSettings> | null): VisSettings {
-  const defaults = getDefaults();
-  const safe: VisSettings = { ...defaults, ...(raw || {}) };
-  safe.showFutureProjection = safe.showFutureProjection === true;
-  safe.windowDuration = Math.min(
-    20,
-    Math.max(1, Number(safe.windowDuration) || defaults.windowDuration),
-  );
-  safe.sampleCount = Math.max(
-    2,
-    Math.min(400, Math.floor(Number(safe.sampleCount) || defaults.sampleCount)),
-  );
-  safe.lineWidth = Math.min(
-    5,
-    Math.max(0.5, Number(safe.lineWidth) || defaults.lineWidth),
-  );
-  safe.futureDashed = safe.futureDashed !== false;
-  const opacity = Number(safe.futureMaskOpacity);
-  safe.futureMaskOpacity = Number.isFinite(opacity)
-    ? Math.min(1, Math.max(0, opacity))
-    : defaults.futureMaskOpacity;
-  safe.futureMaskWidth = Math.min(
-    48,
-    Math.max(4, Number(safe.futureMaskWidth) || defaults.futureMaskWidth),
-  );
-  const circularOffsetNumeric = Number(safe.circularOffset);
-  safe.circularOffset = Number.isFinite(circularOffsetNumeric)
-    ? Math.round(circularOffsetNumeric)
-    : defaults.circularOffset;
-  const leadNumeric = Number(safe.futureLeadSeconds);
-  safe.futureLeadSeconds = Number.isFinite(leadNumeric)
-    ? Math.min(MAX_FUTURE_LEAD_SECONDS, Math.max(0, leadNumeric))
-    : DEFAULT_FUTURE_LEAD_SECONDS;
-  const digitalGapNumeric = Number(safe.digitalLaneGap);
-  safe.digitalLaneGap = Number.isFinite(digitalGapNumeric)
-    ? Math.min(40, Math.max(0, digitalGapNumeric))
-    : defaults.digitalLaneGap;
-  const alphaNumeric = Number(safe.futureLineAlpha);
-  safe.futureLineAlpha = Number.isFinite(alphaNumeric)
-    ? Math.min(1, Math.max(0, alphaNumeric))
-    : defaults.futureLineAlpha;
-  const minRateNumeric = Number(safe.minFutureSampleRate);
-  safe.minFutureSampleRate = Number.isFinite(minRateNumeric)
-    ? Math.min(120, Math.max(1, minRateNumeric))
-    : defaults.minFutureSampleRate;
-  const batchNumeric = Number(safe.extensionBatchSize);
-  safe.extensionBatchSize = Number.isFinite(batchNumeric)
-    ? Math.min(32, Math.max(1, Math.floor(batchNumeric)))
-    : defaults.extensionBatchSize;
-  const temporalMultiplierNumeric = Number(safe.temporalSampleRateMultiplier);
-  safe.temporalSampleRateMultiplier = Number.isFinite(temporalMultiplierNumeric)
-    ? Math.min(1, Math.max(0.05, temporalMultiplierNumeric))
-    : defaults.temporalSampleRateMultiplier;
-  const epsilonNumeric = Number(safe.inputEpsilon);
-  safe.inputEpsilon = Number.isFinite(epsilonNumeric)
-    ? Math.min(1, Math.max(0, epsilonNumeric))
-    : defaults.inputEpsilon;
-  const headroomNumeric = Number(safe.historyHeadroom);
-  safe.historyHeadroom = Number.isFinite(headroomNumeric)
-    ? Math.max(0, headroomNumeric)
-    : defaults.historyHeadroom;
-  const maxHistoryNumeric = Number(safe.maxHistorySeconds);
-  safe.maxHistorySeconds = Number.isFinite(maxHistoryNumeric)
-    ? Math.max(1, maxHistoryNumeric)
-    : defaults.maxHistorySeconds;
-  return safe;
-}
 
 function resolveColor(
   exprType: string,
@@ -403,15 +178,6 @@ async function refreshClassificationCache(): Promise<void> {
   }
 }
 
-function projectionSettingsKey(settings: VisSettings): string {
-  return JSON.stringify({
-    windowDuration: settings.windowDuration,
-    sampleCount: settings.sampleCount,
-    futureLeadSeconds: settings.futureLeadSeconds,
-    minFutureSampleRate: settings.minFutureSampleRate,
-  });
-}
-
 // ── Future invalidation & frontier tracking ───────────────────────
 //
 // Selective invalidation (spec §4.4): input changes only invalidate
@@ -419,8 +185,6 @@ function projectionSettingsKey(settings: VisSettings): string {
 // Pure outputs never need fork invalidation on input changes.
 // Falls back to conservative (invalidate all) when classifications
 // are unavailable.
-
-const DEFAULT_INPUT_EPSILON = 0.01;
 
 let futureInvalidated = false;
 let projectionFrontier = -Infinity;
@@ -521,7 +285,7 @@ function futureBufferTraceSummary(
   name: string,
   currentTime: number,
 ): Record<string, unknown> {
-  return summarizeFutureBuffer(futureBuffers.get(name), currentTime);
+  return summarizeFutureBuffer(futureBufferFor(name), currentTime);
 }
 
 function sampleTraceSummary(
@@ -605,7 +369,7 @@ export async function tickAndProject(
       ? new Set(outputs.filter((name) => invalidatedFutureOutputs?.has(name)))
       : null;
   const allOutputsCoverBoundary = noUserOutputs || outputs.every((name) => {
-    const buffer = futureBuffers.get(name);
+    const buffer = futureBufferFor(name);
     return !!buffer &&
       buffer.length >= 2 &&
       futureBufferHasNearBoundaryCoverage(
@@ -976,7 +740,7 @@ export async function registerVisualisation(
   const trimmed = (expressionText || "").trim();
   if (!trimmed) {
     removeExpression(exprType);
-    destroyBuffers(exprType);
+    destroyVisualisationBuffers(exprType);
     setLastChangeKind("unregister", { exprType });
     return;
   }
@@ -985,8 +749,7 @@ export async function registerVisualisation(
   await refreshClassificationCache();
 
   ensurePastBuffer(exprType);
-  const fb = futureBuffers.get(exprType);
-  if (fb) fb.clear();
+  clearFutureBuffer(exprType);
 
   const color = resolveColor(exprType, visStore.settings.circularOffset);
   const expressions = { ...visStore.expressions };
@@ -1004,7 +767,7 @@ export async function registerVisualisation(
 
 export function unregisterVisualisation(exprType: string): void {
   removeExpression(exprType);
-  destroyBuffers(exprType);
+  destroyVisualisationBuffers(exprType);
   setLastChangeKind("unregister", { exprType });
 }
 
@@ -1075,8 +838,7 @@ export async function refreshVisualisedExpression(
   if (expressionChanged) {
     // Past buffer is preserved — this output's future will re-project on
     // the next future sample without trashing unrelated future buffers.
-    const fb = futureBuffers.get(exprType);
-    if (fb) fb.clear();
+    clearFutureBuffer(exprType);
     invalidateFutureProjections(exprType);
   }
 
@@ -1137,10 +899,10 @@ function loadAndApplySettings(): VisSettings {
   // `false`, the detector still records ticks but consumers see
   // pressure level 0 — see effects/adaptiveQuality.ts.
   setAdaptiveQualityEnabled(adaptive === undefined ? true : adaptive !== false);
-  const settings = clampSettings(visual);
+  const settings = resolveVisualisationSamplingPolicy(visual);
   updateSettings(settings);
 
-  updateFutureBufferCapacity(settings);
+  configureFutureBufferCapacity(settings);
 
   return settings;
 }

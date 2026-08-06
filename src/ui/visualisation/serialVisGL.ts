@@ -8,7 +8,7 @@
  *                                      Inspector harnesses with synthetic
  *                                      data; performs no singleton reads.
  *   - drawSerialVisGLFromStores()    — wired wrapper that builds the input
- *                                      from `visStore` + the sampler's
+ *                                      from `visStore` + the buffer owner's
  *                                      `getRenderData()` and calls through.
  *                                      This is what the production render
  *                                      hook invokes.
@@ -39,10 +39,10 @@ import { projectionTrace } from "../../lib/projectionTrace.ts";
 import type { VisExpression, VisSettings } from "../../utils/visualisationStore.ts";
 import { visStore } from "../../utils/visualisationStore.ts";
 import {
-  getRenderData as getRenderDataFromSampler,
+  getRenderData as getRenderDataFromBuffers,
   setPastBufferSampleRate,
   type OutputRenderData,
-} from "../../effects/visualisationSampler.ts";
+} from "../../effects/visualisationBuffers.ts";
 import { getSampleRateDivisor } from "../../effects/adaptiveQuality.ts";
 import {
   compileShader,
@@ -62,6 +62,20 @@ import {
   type VisSampleLike,
   type SampleFingerprint,
 } from "./webglLineRenderer.ts";
+import {
+  buildCombinedSamples,
+  computeAdaptivePastBufferRate,
+  computeLaneLayout,
+  futureBoundaryMaxGapSeconds,
+  getCombinedSplitIndex,
+  isDigitalOutput,
+} from "./serialVisPlanning.ts";
+
+export {
+  computeAdaptivePastBufferRate,
+  computeLaneLayout,
+} from "./serialVisPlanning.ts";
+export type { LaneBox, LaneLayoutGeometry } from "./serialVisPlanning.ts";
 
 /**
  * All data required to paint one frame of the serial visualisation.
@@ -119,75 +133,12 @@ export function isVisPanelVisible(): boolean {
 // outputs are `a<n>` (continuous). The channel set is dynamic (a1–a8,
 // d1–d8, s1–s8 per spec §1.5), so lane layout is derived from the ACTIVE
 // output set each frame, not a hardcoded channel list.
-const DIGITAL_OUTPUT_RE = /^[ds]\d+$/i;
 const VERTICAL_PADDING_FRACTION = 0.1;
-
-function isDigitalOutput(exprType: string): boolean {
-  return DIGITAL_OUTPUT_RE.test(exprType);
-}
 
 function verticalPaddingFallback(height: number): number {
   return height * VERTICAL_PADDING_FRACTION;
 }
 
-export interface LaneBox {
-  yTop: number;
-  yBottom: number;
-}
-
-export interface LaneLayoutGeometry {
-  /** Full canvas pixel height. */
-  height: number;
-  /** Pixel padding reserved at top and bottom. */
-  verticalPadding: number;
-  /** Pixel gap between adjacent lanes. */
-  laneGap: number;
-}
-
-/**
- * Derive per-output lane boxes from the ACTIVE output set (spec §1.5).
- *
- * Both analogue (`a<n>`) and digital (`d<n>`/`s<n>`) outputs are stacked
- * into their own equal-height lanes within the drawable area — analogue
- * lanes on top, digital below, each ordered by first appearance. Replaces
- * the old behaviour that hardcoded digital lanes to `d1/d2/d3` and let
- * every analogue trace overlap on the full height.
- *
- * Pure and DOM-free so it can be unit-tested in isolation.
- */
-export function computeLaneLayout(
-  exprTypes: string[],
-  geometry: LaneLayoutGeometry,
-): Map<string, LaneBox> {
-  const layout = new Map<string, LaneBox>();
-  const { height, verticalPadding } = geometry;
-  const drawableHeight = Math.max(0, height - verticalPadding * 2);
-
-  // Stable, de-duplicated active set: analogue lanes first, then digital,
-  // each preserving first-seen order so a given output keeps its lane.
-  const seen = new Set<string>();
-  const analogue: string[] = [];
-  const digital: string[] = [];
-  for (const exprType of exprTypes) {
-    if (seen.has(exprType)) continue;
-    seen.add(exprType);
-    (isDigitalOutput(exprType) ? digital : analogue).push(exprType);
-  }
-  const ordered = [...analogue, ...digital];
-  const laneCount = ordered.length;
-  if (laneCount === 0 || drawableHeight <= 0) return layout;
-
-  const laneGap = Math.max(0, Math.min(drawableHeight, geometry.laneGap || 0));
-  const totalGapHeight = laneCount > 1 ? laneGap * (laneCount - 1) : 0;
-  const availableHeight = Math.max(0, drawableHeight - totalGapHeight);
-  const laneHeight = availableHeight / laneCount;
-
-  for (let idx = 0; idx < laneCount; idx++) {
-    const yTop = verticalPadding + idx * (laneHeight + laneGap);
-    layout.set(ordered[idx], { yTop, yBottom: yTop + laneHeight });
-  }
-  return layout;
-}
 
 const AXIS_COLOR = "rgba(255, 255, 255, 0.12)";
 const TEXT_COLOR = "rgba(255, 255, 255, 0.5)";
@@ -526,143 +477,6 @@ function ensureGLState(canvas: HTMLCanvasElement): GLState | null {
   return glState;
 }
 
-// ── Sample → vertex flattening ──────────────────────────────────────
-
-/**
- * Module-level reusable scratch for `buildCombinedSamples`.
- *
- * The result is consumed synchronously by the caller (read once, then
- * uploaded to a VBO) so a single shared buffer is safe.  Each entry is
- * a stable `{time, value}` object that we mutate in place; we grow the
- * pool lazily and never shrink.  `result.length` tracks the current
- * write count so consumers see the right size.
- */
-const combinedScratch: VisSampleLike[] = [];
-
-/** Index in `combinedScratch` where past ends and future begins. */
-let combinedSplitIndex = 0;
-
-function ensureCombinedSlot(i: number): VisSampleLike {
-  let slot = combinedScratch[i];
-  if (!slot) {
-    slot = { time: 0, value: 0 };
-    combinedScratch[i] = slot;
-  }
-  return slot;
-}
-
-/**
- * Build past + future samples for one output. Sets `combinedSplitIndex`
- * to the boundary between past and future so the draw path can issue
- * separate draw calls (spec §3.9 — no interpolation across now).
- *
- * When there is a past sample, the future segment starts from a
- * boundary anchor at exactly `currentTime` with the newest past value
- * (spec §3.1.1).  The anchor must not use the past sample's original
- * timestamp; if the sampler trails the display clock, that would create
- * a moving cross-boundary segment.
- */
-function buildCombinedSamples(
-  key: string,
-  getRenderData: (exprType: string) => OutputRenderData | null,
-  currentTime: number,
-  maxFutureBoundaryGapSeconds = Infinity,
-): VisSampleLike[] {
-  combinedScratch.length = 0;
-  combinedSplitIndex = 0;
-  const data = getRenderData(key);
-  if (!data) return combinedScratch;
-  const past = data.pastBuffer;
-  const fb = data.futureBuffer;
-  let w = 0;
-  let expiredFutureCount = 0;
-  let keptFutureCount = 0;
-  let firstFutureTime: number | null = null;
-  let firstFutureValue: number | null = null;
-  let firstFutureGap: number | null = null;
-  let anchorInserted = false;
-  let anchorSkippedDueGap = false;
-  for (let i = 0; i < past.length; i++) {
-    const slot = ensureCombinedSlot(w++);
-    slot.time = past.timeAt(i);
-    slot.value = past.valueAt(i);
-  }
-  combinedSplitIndex = w;
-  if (fb && fb.length > 0) {
-    let hasFuture = false;
-    for (let i = 0; i < fb.length; i++) {
-      const t = fb.timeAt(i);
-      if (t <= currentTime) {
-        expiredFutureCount++;
-        continue;
-      }
-      if (firstFutureTime === null) {
-        firstFutureTime = t;
-        firstFutureValue = fb.valueAt(i);
-        firstFutureGap = t - currentTime;
-      }
-      if (!hasFuture && combinedSplitIndex > 0) {
-        if (t - currentTime <= maxFutureBoundaryGapSeconds) {
-          // Boundary anchor: repeat the most recent past sample at the start
-          // of the future segment so both segments visually meet at t=now
-          // without the GPU interpolating between them.
-          const anchor = ensureCombinedSlot(w++);
-          anchor.time = currentTime;
-          anchor.value = combinedScratch[combinedSplitIndex - 1].value;
-          anchorInserted = true;
-        } else {
-          anchorSkippedDueGap = true;
-        }
-        hasFuture = true;
-      }
-      const slot = ensureCombinedSlot(w++);
-      slot.time = t;
-      slot.value = fb.valueAt(i);
-      keptFutureCount++;
-    }
-  }
-  combinedScratch.length = w;
-  if (import.meta.env.DEV) {
-    const detail: Record<string, unknown> = {
-      output: key,
-      currentTime,
-      pastLength: past.length,
-      futureLength: fb?.length ?? 0,
-      splitIndex: combinedSplitIndex,
-      combinedLength: w,
-      expiredFutureCount,
-      keptFutureCount,
-      firstFutureTime,
-      firstFutureValue,
-      firstFutureGap,
-      maxFutureBoundaryGapSeconds,
-      anchorInserted,
-      anchorSkippedDueGap,
-      pastNewestTime: past.newestTime,
-      pastNewestGap: past.newestTime === -Infinity ? null : past.newestTime - currentTime,
-      futureOldestTime: fb?.oldestTime ?? null,
-      futureNewestTime: fb?.newestTime ?? null,
-    };
-    if (projectionTrace.shouldCaptureSamples()) {
-      detail.combinedSamples = combinedScratch.map((sample) => ({
-        time: sample.time,
-        gap: sample.time - currentTime,
-        value: sample.value,
-      }));
-    }
-    projectionTrace.record("renderer-build", detail);
-  }
-  return combinedScratch;
-}
-
-function futureBoundaryMaxGapSeconds(settings: VisSettings): number {
-  const futureDensityHz = Math.max(
-    settings.minFutureSampleRate || 1,
-    (settings.sampleCount || 100) / (settings.windowDuration || 1),
-  );
-  return 4 / Math.max(1, futureDensityHz);
-}
-
 function getOrCreateBuffer(state: GLState, key: string): ExprBuffer {
   let buf = state.buffers.get(key);
   if (buf) return buf;
@@ -809,36 +623,6 @@ function uploadGeometry(
   }
 }
 
-
-// ── Pixel-matched buffer rate (spec §2.2.1, with adaptive Lever 3) ─
-
-/**
- * Compute the target past-buffer sample rate (Hz) for the current
- * canvas geometry and adaptive divisor.
- *
- * Spec visualisation.md §2.2.1: pixel-matched capacity is
- * `floor(canvasWidth / 2) / (windowDuration / 2)`.
- *
- * Lever 3 (§1.7/§9.2): the renderer divides the pixel-matched rate by
- * the pressure-derived divisor (1 / 2 / 4) before pushing it to the
- * sampler.  Returns `null` when the geometry would yield a non-positive
- * rate (e.g. zero canvas width or non-positive window).
- */
-export function computeAdaptivePastBufferRate(
-  canvasWidth: number,
-  windowDurationSeconds: number,
-  divisor: number,
-  showFuture = true,
-): number | null {
-  const windowSeconds = windowDurationSeconds || 1;
-  if (windowSeconds <= 0 || canvasWidth <= 0) return null;
-  const pixelSpan = showFuture ? Math.floor(canvasWidth / 2) : canvasWidth;
-  const timeSpan = showFuture ? windowSeconds / 2 : windowSeconds;
-  const baseRate = pixelSpan / timeSpan;
-  const safeDivisor = divisor > 0 ? divisor : 1;
-  const target = baseRate / safeDivisor;
-  return target > 0 ? target : null;
-}
 
 // ── Main draw entry ─────────────────────────────────────────────────
 
@@ -993,7 +777,7 @@ export function drawSerialVisGL(input: VisRenderInput): void {
 }
 
 /**
- * Wired wrapper — reads from `visStore` and the sampler's `getRenderData`,
+ * Wired wrapper — reads from `visStore` and the buffer owner's `getRenderData`,
  * then delegates to the pure `drawSerialVisGL`.  This is the path the
  * production render hook calls.
  */
@@ -1002,7 +786,7 @@ export function drawSerialVisGLFromStores(): void {
     expressions: visStore.expressions,
     settings: visStore.settings,
     currentTime: visStore.currentTime,
-    getRenderData: getRenderDataFromSampler,
+    getRenderData: getRenderDataFromBuffers,
   });
 }
 
@@ -1043,7 +827,7 @@ function drawExpressions(
       currentTime,
       maxFutureBoundaryGap,
     );
-    const splitIndex = combinedSplitIndex;
+    const splitIndex = getCombinedSplitIndex();
     if (import.meta.env.DEV) perf.end("vis-gl-build-samples");
     if (samples.length < 2) continue;
 

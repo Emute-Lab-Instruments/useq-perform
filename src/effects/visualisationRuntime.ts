@@ -32,10 +32,10 @@ import {
   visStore,
 } from "../utils/visualisationStore.ts";
 import {
-  getTemporalSampleRate,
   tickAndProject,
   syncInterpreterTime,
 } from "./visualisationSampler.ts";
+import { getTemporalSampleRate } from "./visualisationBuffers.ts";
 import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
 import { refreshOutputHealth } from "../utils/outputHealthStore.ts";
 import { recordTickElapsed } from "./adaptiveQuality.ts";
