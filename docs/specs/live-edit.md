@@ -12,7 +12,11 @@ layer: behavioural
 ### Source files
 
 **Editor extensions:**
-- `src/editors/extensions/liveEdit/widgets.ts` — inline CodeMirror widget rendering (knob, toggle, picker, vector row)
+- `src/editors/extensions/liveEdit/widgets.ts` — CodeMirror slot state, decoration selection, and extension composition
+- `src/editors/extensions/liveEdit/widgetBase.ts` — shared wrapper, state/readout, and value-sink behavior
+- `src/editors/extensions/liveEdit/numericWidgets.ts` — knob and slider interaction behavior
+- `src/editors/extensions/liveEdit/choiceWidgets.ts` — boolean toggle and keyword picker behavior
+- `src/editors/extensions/liveEdit/widgetTheme.ts` — inline widget styling
 - `src/editors/extensions/liveEdit/markAction.ts` — `liveEdit.mark`/unmark action, wrapper insertion/removal
 - `src/editors/extensions/liveEdit/rangeInference.ts` — `:min`/`:max` range inference from seed and lexical context (§3.4)
 - `src/editors/extensions/liveEdit/vectorMarkController.ts` — vector-mark sub-mode controller (§3.7)
@@ -190,7 +194,7 @@ If the user idles for ≥ `liveEdit.subModeIdleHintMs` (default 2000 ms) with no
 
 ## 4. Widget
 
-4.1 The inline widget is a CodeMirror `Decoration.replace()` that hides the wrapper text and renders a control surface in its place. (See `src/editors/extensions/liveEdit/widgets.ts`) **Idle height is exactly the line height** so knob-turns and focus changes do not reflow surrounding code. Width adapts to the surrounding line.
+4.1 The inline widget is a CodeMirror `Decoration.replace()` that hides the wrapper text and renders a control surface in its place. (See `src/editors/extensions/liveEdit/widgets.ts` and the behavior modules listed above.) **Idle height is exactly the line height** so knob-turns and focus changes do not reflow surrounding code. Width adapts to the surrounding line.
 
 **Single-line invariant.** CodeMirror forbids `Decoration.replace()` from spanning line breaks when the decoration source is a StateField. The wrapper's source text MUST therefore occupy a single line at all times. The formatter enforces this ([formatting.md §3.7](formatting.md)). The decoration builder in `widgets.ts` also guards against multi-line ranges: if a slot's `from`/`to` spans multiple lines, the slot is silently dropped and a console warning is emitted. When insertion mode (§2.5) is implemented, a `changeFilter` MUST reject any transaction that would insert a newline inside a live-edit wrapper range.
 
