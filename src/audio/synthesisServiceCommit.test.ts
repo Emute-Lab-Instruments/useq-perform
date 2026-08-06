@@ -28,15 +28,20 @@ import {
 } from "../contracts/nodeDefRegistry";
 import {
   createSynthesisService,
-  type AudioContextContract,
   type EngineCommitResult,
-  type NodeDefModuleLoader,
   type SynthesisService,
   type SynthesisServiceOptions,
   type SynthesisWorkerPort,
   type WorkletNodeContract,
 } from "./synthesisService";
-import { createFakeNodeDefModule } from "./nodeDefAdapter";
+import {
+  audioCapabilitySnapshot,
+  createFakeAudioContext,
+  createFakeNodeDefModuleLoader,
+  createFakeWorkletNode,
+  type FakeAudioContext,
+  type FakeWorkletNode,
+} from "./testing/synthesisServiceFakes.ts";
 import type {
   SynthArtifactsPayload,
   SynthDeclarationArtefact,
@@ -44,102 +49,6 @@ import type {
   SynthProducerControlBinding,
 } from "../contracts/runtimeTypes";
 import { SYNTH_ARTIFACT_ABI_VERSION } from "../contracts/runtimeTypes";
-import type { AudioCapabilitySnapshot } from "../contracts/audioCapabilities";
-import { detectAudioCapabilities } from "../contracts/audioCapabilities";
-
-// ---------------------------------------------------------------------------
-// Fakes (miniature — the full fakes live in synthesisService.test.ts)
-// ---------------------------------------------------------------------------
-
-function capableSnapshot(): AudioCapabilitySnapshot {
-  return detectAudioCapabilities({
-    crossOriginIsolated: true,
-    sharedArrayBufferAvailable: true,
-    audioWorkletAvailable: true,
-    workerAvailable: true,
-    sharedWebAssemblyMemoryAvailable: true,
-  });
-}
-
-function createFakeAudioContext(): AudioContextContract {
-  let state: "suspended" | "running" | "closed" | "interrupted" = "suspended";
-  return {
-    get state() {
-      return state;
-    },
-    sampleRate: 48000,
-    currentTime: 0,
-    audioWorklet: {
-      addModule() {
-        return Promise.resolve();
-      },
-    },
-    destination: { name: "fake-destination" },
-    async resume() {
-      state = "running";
-    },
-    async suspend() {
-      state = "suspended";
-    },
-    async close() {
-      state = "closed";
-    },
-  };
-}
-
-interface FakeWorklet extends WorkletNodeContract {
-  readonly postedMessages: readonly unknown[];
-  deliverFromWorklet(message: unknown): void;
-}
-
-function createFakeWorklet(): FakeWorklet {
-  const posted: unknown[] = [];
-  const port: FakeWorklet["port"] = {
-    postMessage(message: unknown) {
-      posted.push(message);
-      const tx = message as {
-        type?: string;
-        transactionId?: number;
-        deltas?: readonly unknown[];
-      };
-      if (tx.type === "prepare-graph" && tx.deltas) posted.push(...tx.deltas);
-      const phase =
-        tx.type === "prepare-graph" ? "prepare" :
-        tx.type === "commit-graph" ? "commit" :
-        tx.type === "activate-graph" ? "activate" : null;
-      if (phase && typeof tx.transactionId === "number") {
-        queueMicrotask(() => port.onmessage?.({ data: {
-          type: "graph-transaction-ack",
-          transactionId: tx.transactionId,
-          phase,
-          ok: true,
-        } }));
-      }
-    },
-    onmessage: null,
-    close() {},
-  };
-  return {
-    numberOfInputs: 0,
-    numberOfOutputs: 1,
-    port,
-    connect() {},
-    disconnect() {},
-    get postedMessages() {
-      return posted;
-    },
-    deliverFromWorklet(message) {
-      port.onmessage?.({ data: message });
-    },
-  };
-}
-
-function fakeModuleLoader(): NodeDefModuleLoader {
-  return async (descriptor) => {
-    const fake = createFakeNodeDefModule(descriptor);
-    return { module: fake, compiledWasm: null };
-  };
-}
 
 interface FakeWorkerPort extends SynthesisWorkerPort {
   readonly armCalls: readonly number[];
@@ -240,21 +149,24 @@ function routingDeclaration(identity: string): SynthDeclarationArtefact {
 
 interface Bundle {
   readonly options: SynthesisServiceOptions;
-  readonly audioContext: AudioContextContract;
-  readonly worklet: FakeWorklet;
+  readonly audioContext: FakeAudioContext;
+  readonly worklet: FakeWorkletNode;
   readonly workerPort: FakeWorkerPort;
 }
 
 function buildBundle(overrides?: Partial<SynthesisServiceOptions>): Bundle {
   const audioContext = createFakeAudioContext();
-  const worklet = createFakeWorklet();
+  const worklet = createFakeWorkletNode({
+    autoAcknowledgeGraphTransactions: true,
+    flattenPreparedDeltas: true,
+  });
   const workerPort = createFakeWorkerPort();
   const options: SynthesisServiceOptions = {
-    capabilities: capableSnapshot(),
+    capabilities: audioCapabilitySnapshot(),
     audioContextFactory: () => audioContext,
     workletScriptUrl: "fake-worklet.js",
     workletNodeFactory: () => worklet,
-    nodeDefModuleLoader: fakeModuleLoader(),
+    nodeDefModuleLoader: createFakeNodeDefModuleLoader(),
     nodeDefDescriptors: [OSC_SINE_NODEDEF_DESCRIPTOR],
     workerPort,
     ...overrides,
@@ -847,11 +759,11 @@ describe("synthesisService.commitSynthArtifacts — atomic preparation boundarie
       },
     };
     const service = createSynthesisService({
-      capabilities: capableSnapshot(),
+      capabilities: audioCapabilitySnapshot(),
       audioContextFactory: () => audioContext,
       workletScriptUrl: "fake-worklet.js",
       workletNodeFactory: () => worklet,
-      nodeDefModuleLoader: fakeModuleLoader(),
+      nodeDefModuleLoader: createFakeNodeDefModuleLoader(),
       nodeDefDescriptors: [OSC_SINE_NODEDEF_DESCRIPTOR],
       workerPort,
     });

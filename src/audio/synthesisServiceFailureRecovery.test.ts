@@ -35,10 +35,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
 import {
-  detectAudioCapabilities,
-  type AudioCapabilitySnapshot,
-} from "../contracts/audioCapabilities";
-import {
   resetEngineStateStoreForTests,
   engineStateStore,
 } from "../contracts/synthesisChannels";
@@ -47,16 +43,20 @@ import {
   createSynthesisService,
   createSynthesisDevmodeSurface,
   SYNTHESIS_TELEMETRY_SCHEMA_VERSION,
-  type AudioContextContract,
   type ConsoleMessageSink,
-  type NodeDefModuleLoader,
   type SynthesisService,
   type SynthesisServiceOptions,
-  type WorkletNodeContract,
 } from "./synthesisService";
-import { createFakeNodeDefModule } from "./nodeDefAdapter";
+import {
+  audioCapabilitySnapshot,
+  createFakeAudioContext,
+  createFakeNodeDefModuleLoader,
+  createFakeTelemetryInstaller,
+  createFakeWorkletNode,
+  type FakeAudioContext,
+  type FakeWorkletNode,
+} from "./testing/synthesisServiceFakes.ts";
 import type {
-  WorkletOutboundEvent,
   WorkletTelemetrySnapshot,
   WorkletProducerTimeoutEvent,
 } from "./workletGraphDelta";
@@ -69,157 +69,6 @@ import {
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
-
-function capableSnapshot(): AudioCapabilitySnapshot {
-  return detectAudioCapabilities({
-    crossOriginIsolated: true,
-    sharedArrayBufferAvailable: true,
-    audioWorkletAvailable: true,
-    workerAvailable: true,
-    sharedWebAssemblyMemoryAvailable: true,
-  });
-}
-
-function incapableSnapshot(): AudioCapabilitySnapshot {
-  return detectAudioCapabilities({
-    crossOriginIsolated: true,
-    sharedArrayBufferAvailable: true,
-    audioWorkletAvailable: false,
-    workerAvailable: true,
-    sharedWebAssemblyMemoryAvailable: true,
-  });
-}
-
-function createFakeAudioContext(): AudioContextContract & {
-  simulateRunning(): void;
-  forceClose(): void;
-} {
-  let state: "suspended" | "running" | "closed" | "interrupted" = "suspended";
-  return {
-    get state() {
-      return state;
-    },
-    sampleRate: 48000,
-    currentTime: 0,
-    audioWorklet: {
-      addModule() {
-        return Promise.resolve();
-      },
-    },
-    destination: { name: "fake-destination" },
-    async resume() {
-      state = "running";
-    },
-    async suspend() {
-      state = "suspended";
-    },
-    async close() {
-      state = "closed";
-    },
-    simulateRunning() {
-      state = "running";
-    },
-    forceClose() {
-      state = "closed";
-    },
-  };
-}
-
-/**
- * Simulated worklet node. The fake keeps a reference to its own
- * `port.onmessage` handler so tests can post `WorkletOutboundEvent`
- * messages back into the service as if the real worklet core had
- * published them.
- */
-interface SimulatedWorkletNode extends WorkletNodeContract {
-  readonly postedMessages: readonly unknown[];
-  /** Deliver a worklet-originated event to the service via onmessage. */
-  deliverFromWorklet(event: WorkletOutboundEvent): void;
-  /** Recorded connect/disconnect calls. */
-  readonly connectCallCount: number;
-  readonly disconnectCallCount: number;
-  readonly closeCallCount: number;
-  /** Installers run on each new port (used to assert listener is added once). */
-  onmessageInstallerCount(): number;
-}
-
-function createSimulatedWorkletNode(): SimulatedWorkletNode {
-  const posted: unknown[] = [];
-  let connects = 0;
-  let disconnects = 0;
-  let closes = 0;
-  let installers = 0;
-  let onmessage: ((event: { data: unknown }) => void) | null = null;
-  const node: SimulatedWorkletNode = {
-    numberOfInputs: 0,
-    numberOfOutputs: 1,
-    get port() {
-      return {
-        postMessage(message: unknown) {
-          posted.push(message);
-        },
-        get onmessage() {
-          return onmessage;
-        },
-        set onmessage(handler: ((event: { data: unknown }) => void) | null) {
-          installers += 1;
-          onmessage = handler;
-        },
-        close() {
-          closes += 1;
-          onmessage = null;
-        },
-      };
-    },
-    connect(_destination: unknown) {
-      connects += 1;
-      return _destination;
-    },
-    disconnect() {
-      disconnects += 1;
-    },
-    deliverFromWorklet(event: WorkletOutboundEvent) {
-      if (onmessage) {
-        onmessage({ data: event });
-      }
-    },
-    get postedMessages() {
-      return posted;
-    },
-    get connectCallCount() {
-      return connects;
-    },
-    get disconnectCallCount() {
-      return disconnects;
-    },
-    get closeCallCount() {
-      return closes;
-    },
-    onmessageInstallerCount() {
-      return installers;
-    },
-  };
-  return node;
-}
-
-function fakeModuleLoader(): NodeDefModuleLoader {
-  return async (descriptor) => {
-    const fake = createFakeNodeDefModule(descriptor);
-    return { module: fake, compiledWasm: null };
-  };
-}
-
-function createFakeTelemetryInstaller() {
-  const snapshots: unknown[] = [];
-  const installer = (snapshot: unknown) => {
-    snapshots.push(snapshot);
-  };
-  return Object.assign(installer, {
-    snapshots,
-    callCount: () => snapshots.length,
-    latest: () => snapshots[snapshots.length - 1],
-  });
-}
 
 /** Build a minimal worklet telemetry snapshot for injection. */
 function buildWorkletSnapshot(
@@ -246,11 +95,8 @@ function buildWorkletSnapshot(
 
 interface OptionsBundle {
   readonly options: SynthesisServiceOptions;
-  readonly audioContext: AudioContextContract & {
-    simulateRunning(): void;
-    forceClose(): void;
-  };
-  readonly workletNode: SimulatedWorkletNode;
+  readonly audioContext: FakeAudioContext;
+  readonly workletNode: FakeWorkletNode;
   readonly telemetry: ReturnType<typeof createFakeTelemetryInstaller>;
 }
 
@@ -260,7 +106,7 @@ interface OptionsBundle {
  * (b3895dbe): tests simulate the real worklet by writing header fields
  * directly, exactly as workletCore's process() step 8 does in Chromium.
  */
-function sabViewShippedTo(node: SimulatedWorkletNode): SynthesisControlView {
+function sabViewShippedTo(node: FakeWorkletNode): SynthesisControlView {
   // Latest attach wins: a node reused across recovery sessions receives
   // one attach-control-buffer message per session, and only the newest
   // buffer is live.
@@ -277,14 +123,14 @@ function sabViewShippedTo(node: SimulatedWorkletNode): SynthesisControlView {
 
 function buildOptions(overrides?: Partial<SynthesisServiceOptions>): OptionsBundle {
   const audioContext = createFakeAudioContext();
-  const workletNode = createSimulatedWorkletNode();
+  const workletNode = createFakeWorkletNode();
   const telemetry = createFakeTelemetryInstaller();
   const options: SynthesisServiceOptions = {
-    capabilities: capableSnapshot(),
+    capabilities: audioCapabilitySnapshot(),
     audioContextFactory: () => audioContext,
     workletScriptUrl: "fake-worklet.js",
     workletNodeFactory: () => workletNode,
-    nodeDefModuleLoader: fakeModuleLoader(),
+    nodeDefModuleLoader: createFakeNodeDefModuleLoader(),
     nodeDefDescriptors: [OSC_SINE_NODEDEF_DESCRIPTOR],
     installTelemetryGlobal: telemetry,
     ...overrides,
@@ -598,8 +444,8 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
 
   it("recovery disposes the failed worklet and constructs exactly one fresh node", async () => {
     let nodeCount = 0;
-    const firstNode = createSimulatedWorkletNode();
-    const secondNode = createSimulatedWorkletNode();
+    const firstNode = createFakeWorkletNode();
+    const secondNode = createFakeWorkletNode();
     const nodes = [firstNode, secondNode];
     const bundle = buildOptions({
       devmode: true,
@@ -650,8 +496,8 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
   });
 
   it("concurrent recoveries share one dispose and bring-up", async () => {
-    const firstNode = createSimulatedWorkletNode();
-    const secondNode = createSimulatedWorkletNode();
+    const firstNode = createFakeWorkletNode();
+    const secondNode = createFakeWorkletNode();
     let nodeIndex = 0;
     let releaseBringUp!: () => void;
     const bringUpReleased = new Promise<void>((resolve) => {
@@ -692,7 +538,7 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
       },
       workletNodeFactory: () => {
         nodes += 1;
-        return createSimulatedWorkletNode();
+        return createFakeWorkletNode();
       },
     });
     const service = createSynthesisService(bundle.options);
@@ -704,8 +550,8 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
   });
 
   it("recovery prevents the failed node from publishing further telemetry", async () => {
-    const firstNode = createSimulatedWorkletNode();
-    const secondNode = createSimulatedWorkletNode();
+    const firstNode = createFakeWorkletNode();
+    const secondNode = createFakeWorkletNode();
     let idx = 0;
     const bundle = buildOptions({
       devmode: true,
@@ -751,11 +597,11 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
   });
 
   it("repeated recovery preserves one executor and one worklet node", async () => {
-    const nodes: SimulatedWorkletNode[] = [];
+    const nodes: FakeWorkletNode[] = [];
     const bundle = buildOptions({
       devmode: true,
       workletNodeFactory: () => {
-        const node = createSimulatedWorkletNode();
+        const node = createFakeWorkletNode();
         nodes.push(node);
         return node;
       },
@@ -902,7 +748,10 @@ describe("synthesisService — fault actions are inert when capability is absent
   });
 
   it("terminateProducer and reinitialise are no-ops when audio is incapable", async () => {
-    const bundle = buildOptions({ devmode: true, capabilities: incapableSnapshot() });
+    const bundle = buildOptions({
+      devmode: true,
+      capabilities: audioCapabilitySnapshot({ audioWorkletAvailable: false }),
+    });
     const service = createSynthesisService(bundle.options);
     expect(service.state).toBe("off");
     expect(service.devmodeTerminateProducer()).toBe(false);

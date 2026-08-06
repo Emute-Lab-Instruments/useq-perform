@@ -36,26 +36,25 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
 import {
-  detectAudioCapabilities,
-  type AudioCapabilitySnapshot,
-} from "../contracts/audioCapabilities";
-import {
   engineStateStore,
   resetEngineStateStoreForTests,
 } from "../contracts/synthesisChannels";
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
 import {
   createSynthesisService,
-  type AudioContextContract,
-  type NodeDefModuleLoader,
   type SynthesisService,
   type SynthesisServiceOptions,
   type SynthesisWorkerPort,
-  type WorkletNodeContract,
 } from "./synthesisService";
-import { createFakeNodeDefModule } from "./nodeDefAdapter";
+import {
+  audioCapabilitySnapshot,
+  createFakeAudioContext,
+  createFakeNodeDefModuleLoader,
+  createFakeWorkletNode,
+  type FakeAudioContext,
+  type FakeWorkletNode,
+} from "./testing/synthesisServiceFakes.ts";
 import type {
-  WorkletOutboundEvent,
   WorkletTelemetrySnapshot,
 } from "./workletGraphDelta";
 import { WORKLET_TELEMETRY_SCHEMA_VERSION } from "./workletGraphDelta";
@@ -68,126 +67,6 @@ import {
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
-
-function capableSnapshot(): AudioCapabilitySnapshot {
-  return detectAudioCapabilities({
-    crossOriginIsolated: true,
-    sharedArrayBufferAvailable: true,
-    audioWorkletAvailable: true,
-    workerAvailable: true,
-    sharedWebAssemblyMemoryAvailable: true,
-  });
-}
-
-function createFakeAudioContext(): AudioContextContract & {
-  simulateRunning(): void;
-  forceClose(): void;
-} {
-  let state: "suspended" | "running" | "closed" | "interrupted" = "suspended";
-  return {
-    get state() {
-      return state;
-    },
-    sampleRate: 48000,
-    currentTime: 0,
-    audioWorklet: {
-      addModule() {
-        return Promise.resolve();
-      },
-    },
-    destination: { name: "fake-destination" },
-    async resume() {
-      state = "running";
-    },
-    async suspend() {
-      state = "suspended";
-    },
-    async close() {
-      state = "closed";
-    },
-    simulateRunning() {
-      state = "running";
-    },
-    forceClose() {
-      state = "closed";
-    },
-  };
-}
-
-interface SimulatedWorkletNode extends WorkletNodeContract {
-  deliverFromWorklet(event: WorkletOutboundEvent): void;
-  readonly postedMessages: readonly unknown[];
-  readonly connectCallCount: number;
-  readonly disconnectCallCount: number;
-  readonly closeCallCount: number;
-  onmessageInstallerCount(): number;
-}
-
-function createSimulatedWorkletNode(): SimulatedWorkletNode {
-  const posted: unknown[] = [];
-  let connects = 0;
-  let disconnects = 0;
-  let closes = 0;
-  let installers = 0;
-  let onmessage: ((event: { data: unknown }) => void) | null = null;
-  const node: SimulatedWorkletNode = {
-    numberOfInputs: 0,
-    numberOfOutputs: 1,
-    get port() {
-      return {
-        postMessage(message: unknown) {
-          posted.push(message);
-        },
-        get onmessage() {
-          return onmessage;
-        },
-        set onmessage(handler: ((event: { data: unknown }) => void) | null) {
-          installers += 1;
-          onmessage = handler;
-        },
-        close() {
-          closes += 1;
-          onmessage = null;
-        },
-      };
-    },
-    connect(_destination: unknown) {
-      connects += 1;
-      return _destination;
-    },
-    disconnect() {
-      disconnects += 1;
-    },
-    deliverFromWorklet(event: WorkletOutboundEvent) {
-      if (onmessage) {
-        onmessage({ data: event });
-      }
-    },
-    get postedMessages() {
-      return posted;
-    },
-    get connectCallCount() {
-      return connects;
-    },
-    get disconnectCallCount() {
-      return disconnects;
-    },
-    get closeCallCount() {
-      return closes;
-    },
-    onmessageInstallerCount() {
-      return installers;
-    },
-  };
-  return node;
-}
-
-function fakeModuleLoader(): NodeDefModuleLoader {
-  return async (descriptor) => {
-    const fake = createFakeNodeDefModule(descriptor);
-    return { module: fake, compiledWasm: null };
-  };
-}
 
 /**
  * Fake Worker port that records every producer lifecycle call. Each
@@ -263,24 +142,21 @@ function buildWorkletSnapshot(
 
 interface OptionsBundle {
   readonly options: SynthesisServiceOptions;
-  readonly audioContext: AudioContextContract & {
-    simulateRunning(): void;
-    forceClose(): void;
-  };
-  readonly workletNode: SimulatedWorkletNode;
+  readonly audioContext: FakeAudioContext;
+  readonly workletNode: FakeWorkletNode;
   readonly workerPort: FakeWorkerPort;
 }
 
 function buildOptions(overrides?: Partial<SynthesisServiceOptions>): OptionsBundle {
   const audioContext = createFakeAudioContext();
-  const workletNode = createSimulatedWorkletNode();
+  const workletNode = createFakeWorkletNode();
   const workerPort = createFakeWorkerPort();
   const options: SynthesisServiceOptions = {
-    capabilities: capableSnapshot(),
+    capabilities: audioCapabilitySnapshot(),
     audioContextFactory: () => audioContext,
     workletScriptUrl: "fake-worklet.js",
     workletNodeFactory: () => workletNode,
-    nodeDefModuleLoader: fakeModuleLoader(),
+    nodeDefModuleLoader: createFakeNodeDefModuleLoader(),
     nodeDefDescriptors: [OSC_SINE_NODEDEF_DESCRIPTOR],
     workerPort,
     ...overrides,
@@ -322,8 +198,8 @@ describe("synthesisService — post-recovery producer bridge is rebuilt (VAL-ENG
 
   it("recovery installs a FRESH SAB on the Worker producer and ships it to the new worklet", async () => {
     let nodeCount = 0;
-    const firstNode = createSimulatedWorkletNode();
-    const secondNode = createSimulatedWorkletNode();
+    const firstNode = createFakeWorkletNode();
+    const secondNode = createFakeWorkletNode();
     const nodes = [firstNode, secondNode];
     const bundle = buildOptions({
       devmode: true,

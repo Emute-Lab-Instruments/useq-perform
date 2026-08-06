@@ -21,11 +21,7 @@
  */
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
-import {
-  detectAudioCapabilities,
-  type AudioCapabilityProbe,
-  type AudioCapabilitySnapshot,
-} from "../contracts/audioCapabilities";
+import type { AudioCapabilityProbe } from "../contracts/audioCapabilities";
 import {
   resetEngineStateStoreForTests,
   engineStateStore,
@@ -37,189 +33,32 @@ import {
   createSynthesisDevmodeSurface,
   createSynthesisService,
   SynthesisServiceError,
-  type AudioContextContract,
   type ConsoleMessageSink,
-  type NodeDefModuleLoader,
   type SynthesisService,
   type SynthesisServiceOptions,
-  type WorkletNodeContract,
 } from "./synthesisService";
-import { createFakeNodeDefModule } from "./nodeDefAdapter";
+import {
+  audioCapabilitySnapshot,
+  createFakeAudioContext,
+  createFakeNodeDefModuleLoader,
+  createFakeTelemetryInstaller,
+  createFakeWorkletNode,
+  type FakeAudioContext,
+  type FakeNodeDefModuleLoader,
+  type FakeTelemetryInstaller,
+  type FakeWorkletNode,
+} from "./testing/synthesisServiceFakes.ts";
 
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
 
-function capableSnapshot(): AudioCapabilitySnapshot {
-  return detectAudioCapabilities({
-    crossOriginIsolated: true,
-    sharedArrayBufferAvailable: true,
-    audioWorkletAvailable: true,
-    workerAvailable: true,
-    sharedWebAssemblyMemoryAvailable: true,
-  });
+function capableSnapshot() {
+  return audioCapabilitySnapshot();
 }
 
-function incapableSnapshot(missing: Partial<AudioCapabilityProbe>): AudioCapabilitySnapshot {
-  return detectAudioCapabilities({
-    crossOriginIsolated: true,
-    sharedArrayBufferAvailable: true,
-    audioWorkletAvailable: true,
-    workerAvailable: true,
-    sharedWebAssemblyMemoryAvailable: true,
-    ...missing,
-  });
-}
-
-interface FakeAudioContext extends AudioContextContract {
-  /** Transition this context into the running state (simulates resume). */
-  simulateRunning(): void;
-  /** Force the next resume() call to reject. */
-  failNextResume(): void;
-  /** Recorded addModule calls. */
-  readonly addModuleCalls: readonly string[];
-  /** Recorded resume calls. */
-  readonly resumeCallCount: number;
-}
-
-function createFakeAudioContext(opts: { addModuleResult: "ok" | "throw" } = { addModuleResult: "ok" }): FakeAudioContext {
-  let state: "suspended" | "running" | "closed" | "interrupted" = "suspended";
-  let failResume = false;
-  const addModuleCalls: string[] = [];
-  let resumeCallCount = 0;
-  const ctx: FakeAudioContext = {
-    get state() {
-      return state;
-    },
-    sampleRate: 48000,
-    currentTime: 0,
-    audioWorklet: {
-      addModule(url: string) {
-        addModuleCalls.push(url);
-        if (opts.addModuleResult === "throw") {
-          return Promise.reject(new Error("worklet addModule failed"));
-        }
-        return Promise.resolve();
-      },
-    },
-    destination: { name: "fake-destination" },
-    async resume() {
-      resumeCallCount += 1;
-      if (failResume) {
-        failResume = false;
-        throw new Error("resume rejected");
-      }
-      state = "running";
-    },
-    async suspend() {
-      state = "suspended";
-    },
-    async close() {
-      state = "closed";
-    },
-    simulateRunning() {
-      state = "running";
-    },
-    failNextResume() {
-      failResume = true;
-    },
-    get addModuleCalls() {
-      return addModuleCalls;
-    },
-    get resumeCallCount() {
-      return resumeCallCount;
-    },
-  };
-  return ctx;
-}
-
-interface FakeWorkletNode extends WorkletNodeContract {
-  readonly postedMessages: readonly unknown[];
-  readonly connectCallCount: number;
-  readonly disconnectCallCount: number;
-}
-
-function createFakeWorkletNode(): FakeWorkletNode {
-  const posted: unknown[] = [];
-  let connects = 0;
-  let disconnects = 0;
-  const node: FakeWorkletNode = {
-    numberOfInputs: 0,
-    numberOfOutputs: 1,
-    port: {
-      postMessage(message: unknown) {
-        posted.push(message);
-        const tx = message as { type?: string; transactionId?: number };
-        const phase =
-          tx.type === "prepare-graph" ? "prepare" :
-          tx.type === "commit-graph" ? "commit" :
-          tx.type === "activate-graph" ? "activate" : null;
-        if (phase && typeof tx.transactionId === "number") {
-          queueMicrotask(() => node.port.onmessage?.({ data: {
-            type: "graph-transaction-ack",
-            transactionId: tx.transactionId,
-            phase,
-            ok: true,
-          } }));
-        }
-      },
-      onmessage: null,
-      close() {
-        // no-op
-      },
-    },
-    connect(_destination: unknown) {
-      connects += 1;
-      return _destination;
-    },
-    disconnect() {
-      disconnects += 1;
-    },
-    get postedMessages() {
-      return posted;
-    },
-    get connectCallCount() {
-      return connects;
-    },
-    get disconnectCallCount() {
-      return disconnects;
-    },
-  };
-  return node;
-}
-
-function fakeModuleLoader(): NodeDefModuleLoader & {
-  readonly loadCount: () => number;
-  readonly loadedNames: () => readonly string[];
-} {
-  const loaded: string[] = [];
-  const loader: NodeDefModuleLoader = async (descriptor) => {
-    loaded.push(descriptor.name);
-    // Build a fake module that satisfies the adapter contract.
-    const fake = createFakeNodeDefModule(descriptor);
-    return { module: fake, compiledWasm: null };
-  };
-  return Object.assign(loader, {
-    loadCount: () => loaded.length,
-    loadedNames: () => loaded,
-  });
-}
-
-interface FakeTelemetryInstaller {
-  (snapshot: unknown): void;
-  readonly snapshots: readonly unknown[];
-  callCount(): number;
-}
-
-function createFakeTelemetryInstaller(): FakeTelemetryInstaller {
-  const snapshots: unknown[] = [];
-  const installer = (snapshot: unknown) => {
-    snapshots.push(snapshot);
-  };
-  return Object.assign(installer, {
-    snapshots,
-    callCount: () => snapshots.length,
-  });
+function incapableSnapshot(missing: Partial<AudioCapabilityProbe>) {
+  return audioCapabilitySnapshot(missing);
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +69,7 @@ interface OptionsBundle {
   readonly options: SynthesisServiceOptions;
   readonly audioContext: FakeAudioContext;
   readonly workletNode: FakeWorkletNode;
-  readonly loader: ReturnType<typeof fakeModuleLoader>;
+  readonly loader: FakeNodeDefModuleLoader;
   readonly telemetry: FakeTelemetryInstaller;
 }
 
@@ -241,8 +80,10 @@ function buildOptions(
   },
 ): OptionsBundle {
   const audioContext = overrides?.audioContext ?? createFakeAudioContext();
-  const workletNode = overrides?.workletNode ?? createFakeWorkletNode();
-  const loader = fakeModuleLoader();
+  const workletNode = overrides?.workletNode ?? createFakeWorkletNode({
+    autoAcknowledgeGraphTransactions: true,
+  });
+  const loader = createFakeNodeDefModuleLoader();
   const telemetry = createFakeTelemetryInstaller();
   const options: SynthesisServiceOptions = {
     capabilities: capableSnapshot(),

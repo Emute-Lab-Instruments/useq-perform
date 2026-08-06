@@ -51,9 +51,12 @@ import { createFakeNodeDefModule } from "./nodeDefAdapter";
 import {
   resetEngineStateStoreForTests,
 } from "../contracts/synthesisChannels";
-import { detectAudioCapabilities } from "../contracts/audioCapabilities";
 import { createSynthesisService } from "./synthesisService";
-import type { WorkletNodeContract, AudioContextContract } from "./synthesisService";
+import {
+  audioCapabilitySnapshot,
+  createFakeAudioContext,
+  createFakeWorkletNode,
+} from "./testing/synthesisServiceFakes.ts";
 import {
   buildNodeDefDescriptorMap,
   createAdapterCache,
@@ -80,16 +83,6 @@ function readOscSineWasmBytes(): Uint8Array {
   // src-useq/wasm/. Two levels up from src/audio -> repo root, then
   // into src-useq/wasm/.
   return new Uint8Array(readFileSync(OSC_SINE_WASM_PATH));
-}
-
-function capableSnapshot() {
-  return detectAudioCapabilities({
-    crossOriginIsolated: true,
-    sharedArrayBufferAvailable: true,
-    audioWorkletAvailable: true,
-    workerAvailable: true,
-    sharedWebAssemblyMemoryAvailable: true,
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -198,72 +191,6 @@ describe("classifyModuleTransfer (VAL-ENGINE-008 discriminator)", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Minimal fake worklet that records every posted message.
- */
-function createRecordingWorklet(): WorkletNodeContract & {
-  readonly postedMessages: readonly unknown[];
-  installMessages(): readonly WorkletModuleTransferMessage[];
-} {
-  const posted: unknown[] = [];
-  return {
-    numberOfInputs: 0,
-    numberOfOutputs: 1,
-    port: {
-      postMessage(message: unknown) {
-        posted.push(message);
-      },
-      onmessage: null,
-      close() {
-        // no-op
-      },
-    },
-    connect(_destination: unknown) {
-      return _destination;
-    },
-    disconnect() {
-      // no-op
-    },
-    get postedMessages() {
-      return posted;
-    },
-    installMessages() {
-      return posted.filter(
-        (m): m is WorkletModuleTransferMessage =>
-          typeof m === "object" &&
-          m !== null &&
-          (m as { type?: string }).type === "nodedef-module",
-      );
-    },
-  };
-}
-
-/**
- * Minimal fake AudioContext that satisfies the synthesis service.
- */
-function createFakeAudioContext(): AudioContextContract {
-  return {
-    state: "running",
-    sampleRate: 48000,
-    currentTime: 0,
-    audioWorklet: {
-      addModule(_url: string) {
-        return Promise.resolve();
-      },
-    },
-    destination: {},
-    resume() {
-      return Promise.resolve();
-    },
-    suspend() {
-      return Promise.resolve();
-    },
-    close() {
-      return Promise.resolve();
-    },
-  };
-}
-
-/**
  * Loader that returns a real compiled WebAssembly.Module so the
  * service's preferred (structured-cloned module) path is exercised.
  */
@@ -313,11 +240,11 @@ describe("synthesisService — VAL-ENGINE-008 exactly-one installation payload",
   });
 
   it("sends exactly ONE module installation payload per def on bring-up (compiled-module path)", async () => {
-    const worklet = createRecordingWorklet();
+    const worklet = createFakeWorkletNode();
     const loader = realCompiledModuleLoader();
     const options: SynthesisServiceOptions = {
-      capabilities: capableSnapshot(),
-      audioContextFactory: () => createFakeAudioContext(),
+      capabilities: audioCapabilitySnapshot(),
+      audioContextFactory: () => createFakeAudioContext({ initialState: "running" }),
       workletScriptUrl: "fake-worklet.js",
       workletNodeFactory: () => worklet,
       nodeDefModuleLoader: loader,
@@ -326,7 +253,7 @@ describe("synthesisService — VAL-ENGINE-008 exactly-one installation payload",
     const service = createSynthesisService(options);
     await service.resumeOnUserActivation();
 
-    const installMsgs = worklet.installMessages();
+    const installMsgs = worklet.messagesOfType<WorkletModuleTransferMessage>("nodedef-module");
     expect(installMsgs).toHaveLength(1);
     expect(installMsgs[0].descriptor).toEqual({
       name: "osc/sine",
@@ -339,16 +266,16 @@ describe("synthesisService — VAL-ENGINE-008 exactly-one installation payload",
     // Repeated resume attempts do NOT re-send the payload.
     await service.resumeOnUserActivation();
     await service.resumeOnUserActivation();
-    expect(worklet.installMessages()).toHaveLength(1);
+    expect(worklet.messagesOfType("nodedef-module")).toHaveLength(1);
     await service.dispose();
   });
 
   it("sends exactly ONE module installation payload per def on bring-up (bytes-fallback path)", async () => {
-    const worklet = createRecordingWorklet();
+    const worklet = createFakeWorkletNode();
     const loader = bytesFallbackModuleLoader();
     const options: SynthesisServiceOptions = {
-      capabilities: capableSnapshot(),
-      audioContextFactory: () => createFakeAudioContext(),
+      capabilities: audioCapabilitySnapshot(),
+      audioContextFactory: () => createFakeAudioContext({ initialState: "running" }),
       workletScriptUrl: "fake-worklet.js",
       workletNodeFactory: () => worklet,
       nodeDefModuleLoader: loader,
@@ -357,7 +284,7 @@ describe("synthesisService — VAL-ENGINE-008 exactly-one installation payload",
     const service = createSynthesisService(options);
     await service.resumeOnUserActivation();
 
-    const installMsgs = worklet.installMessages();
+    const installMsgs = worklet.messagesOfType<WorkletModuleTransferMessage>("nodedef-module");
     expect(installMsgs).toHaveLength(1);
     expect(installMsgs[0].descriptor).toEqual({
       name: "osc/sine",
@@ -381,11 +308,11 @@ describe("synthesisService — VAL-ENGINE-008 exactly-one installation payload",
     // bring-up. To make ordering observable we capture the message
     // positions: every `nodedef-module` must arrive before any other
     // module-related state (no `instantiate` delta may predate it).
-    const worklet = createRecordingWorklet();
+    const worklet = createFakeWorkletNode();
     const loader = realCompiledModuleLoader();
     const options: SynthesisServiceOptions = {
-      capabilities: capableSnapshot(),
-      audioContextFactory: () => createFakeAudioContext(),
+      capabilities: audioCapabilitySnapshot(),
+      audioContextFactory: () => createFakeAudioContext({ initialState: "running" }),
       workletScriptUrl: "fake-worklet.js",
       workletNodeFactory: () => worklet,
       nodeDefModuleLoader: loader,
