@@ -16,6 +16,7 @@ For the higher-level product boundary and compatibility cuts, read [MAIN.md](MAI
 - `src/contracts/runtimePorts.ts` — `RuntimePort` interface (hardware and WASM port shapes)
 - `src/contracts/runtimeChannels.ts` — typed channels for runtime events
 - `src/contracts/runtimeTypes.ts` — `RuntimeConnectionMode`, `TransportMode`, session types
+- `src/contracts/useqProtocolSchema.ts` — generated-schema request/response validation and derived runtime support catalogs
 - `src/runtime/runtimeCoordinator.ts` — canonical runtime state transitions and typed WASM-port selection
 - `src/runtime/wasmInterpreter.ts` — WASM instantiation, `createModule()`, ABI validation call site
 - `src/runtime/wasmRuntimePort.ts` — in-process WASM port implementing `RuntimePort`
@@ -153,8 +154,8 @@ The following checks are the minimum guardrail against contract drift:
 - `src/contracts/wasmAbi.test.ts` verifies ABI contract consistency, tests validation against mock modules, and ensures required/runtime-probed export sets are disjoint. The pinned compiler's tracked build profile and generated capability manifest are the executable export inventory.
 - `src/contracts/generatedAssetPipeline.test.ts` verifies the compiler manifest names the exact clean gitlink and binds the exact built and served interpreter JS/WASM hashes and sizes. It also verifies compiler/application profile ownership, application source identity, and the served NodeDef clock contract without attributing NodeDef provenance to the compiler record.
 - `src/runtime/wasmInterpreter.test.ts` instantiates the generated `public/wasm/useq.js` bundle and verifies the batch helper raw exports are actually present.
-- `src/contracts/useqRuntimeContract.test.ts` verifies the shared command set and the hardware-only/WASM-only split.
-- `src-useq/test/hardware/test_json_protocol.cpp` verifies the `hello` I/O contract, `stream-config` output enablement/rate parsing, and that `hello`, `ping`, and `stream-config` parse without `code` while malformed eval requests still fail.
+- `src/contracts/useqProtocolSchema.test.ts` verifies generated TypeScript/C++ freshness and every schema-owned valid/invalid fixture; `src/contracts/useqRuntimeContract.test.ts` verifies the shared command set and schema-derived hardware/WASM split.
+- `src-useq/test/firmware/test_wire_protocol_contract.cpp` runs the generated request fixtures through the C++ validator and verifies unknown or reserved requests cannot fall through to eval.
 - `assertWasmAbi()` throws at WASM instantiation time if the bundle does not export required symbols. (see `src/contracts/wasmAbi.ts`)
 - `assertWasmAbiContract()` throws at module load time if the ABI contract constants are internally inconsistent. (see `src/contracts/wasmAbi.ts`)
 - `assertEditorRuntimeContract()` throws during module load if the editor’s transport state mapping stops matching the shared command set. (see `src/contracts/useqRuntimeContract.ts`)

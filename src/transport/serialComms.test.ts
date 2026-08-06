@@ -190,7 +190,7 @@ class FakeSerialPort {
         this.enqueueJson({
           requestId: request.requestId,
           success: true,
-          type: "hello",
+          type: "response",
           mode: "json",
           fw: "1.2.0",
           config: {
@@ -214,7 +214,7 @@ class FakeSerialPort {
         this.enqueueJson({
           requestId: request.requestId,
           success: true,
-          type: requestType,
+          type: "response",
         })
       , 0);
     }

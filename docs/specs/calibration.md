@@ -8,6 +8,9 @@ layer: behavioural
 > Spec: editor-side machinery for the CV-output 1V/oct calibration flow — a full-screen takeover that walks the user through tuning each analog output against an external tuner, with per-octave save and flash persistence. Counterpart to [MAIN.md](MAIN.md).
 > See also [overlays.md](overlays.md) (modal stack, focus rules), [transport.md](transport.md) (the takeover supersedes normal transport ownership of outputs), [code-evaluation.md](code-evaluation.md) (the takeover suspends eval-driven output behaviour).
 > Wire-protocol counterpart: see the `calibrate-*` message family in [../../src-useq/docs/specs/wire-protocol.md](../../src-useq/docs/specs/wire-protocol.md) §5.11–§5.16.
+> Current boundary: the editor flow is aspirational and the pinned firmware
+> does not yet implement calibration takeover/storage. JSON-v1 reserves and
+> validates the message family but returns `success:false`; see §1.6.
 
 ### Source files
 
@@ -32,6 +35,13 @@ layer: behavioural
 1.4 The user calibrates **one output at a time**. Per-output, the flow walks five fixed octave points: `0V, 1V, 2V, 3V, 4V`. After completing an output, the user is offered the chain to the next. (Multi-output batch mode is deferred — §10.)
 
 1.5 The user reads voltage from an **external tuner** (or oscilloscope, or another module). The editor never measures the output itself; it only commands the firmware to drive a target and applies adjustment deltas the user dictates.
+
+1.6 **Current implementation boundary.** The editor state machine and UI shell
+exist, but the pinned firmware has no `calibrate-*` handlers or flash-backed
+takeover state. The canonical JSON-v1 schema marks these routes unsupported so
+the device rejects them explicitly instead of acknowledging them through the
+eval fallback. This clause is removed when the firmware backend and physical
+calibration validation land.
 
 ---
 

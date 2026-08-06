@@ -28,10 +28,14 @@ describe("useqRuntimeContract", () => {
   });
 
   it("documents runtime-exclusive capabilities explicitly", () => {
-    expect(EDITOR_RUNTIME_CONTRACT.hardwareOnlyJsonRequests).toEqual([
+    expect(EDITOR_RUNTIME_CONTRACT.hardwareJsonRequests).toContain("eval");
+    expect(EDITOR_RUNTIME_CONTRACT.hardwareJsonRequests).toContain("get-state");
+    expect(EDITOR_RUNTIME_CONTRACT.wasmJsonRequests).toEqual([
       "hello",
       "ping",
       "stream-config",
+      "eval",
+      "set-live-inputs",
     ]);
     expect(EDITOR_RUNTIME_CONTRACT.hardwareOnlyCapabilities).toContain(
       "serial-output-streams"

@@ -199,7 +199,7 @@ class FakeSerialPort {
         this.enqueueJson({
           requestId: request.requestId,
           success: true,
-          type: "hello",
+          type: "response",
           mode: "json",
           fw: this.opts.helloFw ?? "1.2.0",
           config: {
@@ -223,7 +223,7 @@ class FakeSerialPort {
         this.enqueueJson({
           requestId: request.requestId,
           success: true,
-          type: requestType,
+          type: "response",
         }), 0);
     }
   }
@@ -742,7 +742,7 @@ describe("hardware transport lifecycle", () => {
       await flushProtocolWork();
       const result = await evalPromise;
 
-      expect(result).toMatchObject({ success: true, type: "eval" });
+      expect(result).toMatchObject({ success: true, type: "response" });
       // Assert wire ordering: hello, stream-config, then eval.
       expect(port.jsonRequests.map((r) => r.type)).toEqual([
         "hello",

@@ -22,6 +22,7 @@ layer: behavioural
 - `src/transport/webSerialHostPort.ts` — Web Serial `RuntimePort` implementation
 - `src/transport/upgradeCheck.ts` — firmware version upgrade check
 - `src/transport/types.ts` — transport type definitions
+- `src/contracts/useqProtocolSchema.ts` — canonical JSON-v1 validation and runtime-support catalog generated from the pinned firmware schema
 - `src/contracts/useqRuntimeContract.ts` — shared transport command set constants
 - `src/ui/TransportToolbar.tsx` — transport toolbar UI (Play/Pause/Stop/Rewind/Clear buttons)
 - `src/ui/adapters/toolbars.tsx` — toolbar adapter wiring

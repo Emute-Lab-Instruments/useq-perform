@@ -85,6 +85,21 @@ export interface JsonGetStateRequest {
   type: "get-state";
 }
 
+export interface JsonSetFailureModeRequest {
+  type: "set-failure-mode";
+  mode: "lkg" | "zero";
+}
+
+export interface JsonRescanModulesRequest {
+  type: "rescan-modules";
+}
+
+export interface JsonDebugRequest {
+  type: "debug";
+  action: "capabilities" | "configure" | "query" | "status";
+  [key: string]: unknown;
+}
+
 /**
  * Discriminated union of every editor → runtime JSON request shape.
  *
@@ -105,7 +120,10 @@ export type JsonRequest =
   | JsonCalibrateAdjustRequest
   | JsonCalibrateSavePointRequest
   | JsonCalibrateEndRequest
-  | JsonGetStateRequest;
+  | JsonGetStateRequest
+  | JsonSetFailureModeRequest
+  | JsonRescanModulesRequest
+  | JsonDebugRequest;
 
 export interface JsonResponseBody {
   requestId?: string;

@@ -1,4 +1,8 @@
 import type { TransportState } from "../machines/transport.machine";
+import {
+  currentHardwareRequestTypes,
+  currentWasmRequestTypes,
+} from "./useqProtocolSchema.ts";
 
 export const SHARED_TRANSPORT_COMMANDS = Object.freeze({
   play: "(useq-play)",
@@ -24,7 +28,8 @@ export const TRANSPORT_STATE_TO_COMMAND: Readonly<Record<TransportState, SharedT
 
 export const EDITOR_RUNTIME_CONTRACT = Object.freeze({
   sharedTransportBuiltins: SHARED_TRANSPORT_COMMAND_LIST,
-  hardwareOnlyJsonRequests: Object.freeze(["hello", "ping", "stream-config"] as const),
+  hardwareJsonRequests: Object.freeze(currentHardwareRequestTypes()),
+  wasmJsonRequests: Object.freeze(currentWasmRequestTypes()),
   hardwareOnlyCapabilities: Object.freeze([
     "json-handshake",
     "json-heartbeat",

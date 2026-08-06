@@ -142,7 +142,13 @@ class SpecCompliantFakeDevice {
 
   /** Push the unsolicited boot ready frame (spec §5.5). */
   pushReady(version = "1.2.0"): void {
-    this.pushJson({ type: "ready", version });
+    this.pushJson({
+      type: "ready",
+      version,
+      protocol: 1,
+      target: "test",
+      capabilities: ["json-v1"],
+    });
   }
 
   private handleWrite(chunk: Uint8Array): void {

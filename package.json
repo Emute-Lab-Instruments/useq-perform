@@ -50,6 +50,8 @@
     "xstate": "^5.20.2"
   },
   "scripts": {
+    "generate:protocol": "node scripts/generate-protocol-schema.mjs",
+    "check:protocol": "node scripts/generate-protocol-schema.mjs --check",
     "build": "npm run build:wasm && npm run build:assets && vite build",
     "build:assets": "node scripts/build-assets.mjs",
     "harvest:witnesses": "node scripts/harvest-witnesses.mjs",

@@ -40,6 +40,10 @@ import {
   type JsonStreamConfigRequest,
 } from "./jsonProtocol.ts";
 import { EDITOR_VERSION } from "../transport/types.ts";
+import {
+  getProtocolRequestDefinition,
+  validateProtocolRequest,
+} from "../contracts/useqProtocolSchema.ts";
 
 /**
  * Backend the WASM-mode JSON handlers dispatch against.
@@ -247,6 +251,25 @@ export async function dispatchWasmJsonRequest(
   backend: WasmJsonBackend,
   options: { silent?: boolean } = {}
 ): Promise<JsonResponseBody> {
+  const validation = validateProtocolRequest(request);
+  if (!validation.ok) {
+    return {
+      requestId: request.requestId,
+      success: false,
+      type: "response",
+      text: validation.error,
+    };
+  }
+  const definition = getProtocolRequestDefinition(request.type);
+  if (!definition || definition.wasm !== "supported") {
+    return {
+      requestId: request.requestId,
+      success: false,
+      type: "response",
+      text: `${request.type} is not supported in WASM mode`,
+    };
+  }
+
   switch (request.type) {
     case "hello":
       return handleHelloRequest(request);
@@ -258,27 +281,12 @@ export async function dispatchWasmJsonRequest(
       return handleEvalRequest(request, backend, options);
     case "set-live-inputs":
       return handleSetLiveInputsRequest(request);
-    // Calibration and state-snapshot requests are hardware-only.
-    case "calibrate-begin":
-    case "calibrate-set-target":
-    case "calibrate-adjust":
-    case "calibrate-save-point":
-    case "calibrate-end":
-    case "get-state":
-      return {
-        requestId: request.requestId,
-        success: false,
-        type: "response",
-        text: `${request.type} is not supported in WASM mode`,
-      };
     default: {
-      const exhaustive: never = request;
-      void exhaustive;
       return {
         requestId: (request as { requestId?: string }).requestId,
         success: false,
         type: "response",
-        text: `unknown request type: ${(request as { type?: string }).type}`,
+        text: `no WASM handler for request type: ${(request as { type?: string }).type}`,
       };
     }
   }

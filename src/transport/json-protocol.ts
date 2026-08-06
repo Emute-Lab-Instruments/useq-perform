@@ -27,6 +27,11 @@ import {
   type StreamChannelConfig,
 } from "../runtime/jsonProtocol.ts";
 import {
+  assertProtocolRequest,
+  validateProtocolResponseEnvelope,
+  validateProtocolUnsolicitedMessage,
+} from "../contracts/useqProtocolSchema.ts";
+import {
   reportProtocolModeChanged,
 } from "../runtime/runtimeSessionService.ts";
 import {
@@ -477,6 +482,7 @@ export function writeJsonRequest(
   const requestId =
     (mutablePayload.requestId as string) || nextRequestId();
   mutablePayload.requestId = requestId;
+  assertProtocolRequest(mutablePayload);
 
   const pending = {
     resolve: null as ((value: any) => void) | null,
@@ -588,7 +594,9 @@ export function sendSetLiveInputs(
     return Promise.reject(new Error("Serial port is not writable"));
   }
 
-  const message = `${JSON.stringify(buildSetLiveInputsRequest(slots))}\n`;
+  const request = buildSetLiveInputsRequest(slots);
+  assertProtocolRequest(request);
+  const message = `${JSON.stringify(request)}\n`;
   return serialWrite(port, encoder.encode(message));
 }
 
@@ -877,6 +885,11 @@ export function handleJsonMessage(rawMessage: string): void {
 
   // §4.2 / §5.5 — unsolicited `ready` frame: re-send hello immediately.
   if (parsed.type === "ready") {
+    const validation = validateProtocolUnsolicitedMessage(parsed);
+    if (!validation.ok) {
+      console.error(`[json-protocol] Invalid ready frame: ${validation.error}`);
+      return;
+    }
     console.log("[json-protocol] Received 'ready' frame from device");
     retryHelloOnReady();
     return;
@@ -884,6 +897,11 @@ export function handleJsonMessage(rawMessage: string): void {
 
   // §5.6 — unsolicited `log` envelope (replaces legacy TEXT/MSG_TO_EDITOR).
   if (parsed.type === "log") {
+    const validation = validateProtocolUnsolicitedMessage(parsed);
+    if (!validation.ok) {
+      console.error(`[json-protocol] Invalid log frame: ${validation.error}`);
+      return;
+    }
     const level = parsed.level as string | undefined;
     const text = parsed.text as string | undefined;
     if (text) {
@@ -904,6 +922,11 @@ export function handleJsonMessage(rawMessage: string): void {
 
   // §5.9 — unsolicited standalone `diagnostics` frame.
   if (parsed.type === "diagnostics") {
+    const validation = validateProtocolUnsolicitedMessage(parsed);
+    if (!validation.ok) {
+      console.error(`[json-protocol] Invalid diagnostics frame: ${validation.error}`);
+      return;
+    }
     const diags = parsed.diagnostics;
     if (Array.isArray(diags)) {
       try {
@@ -917,6 +940,11 @@ export function handleJsonMessage(rawMessage: string): void {
 
   // §5.10 — unsolicited `hw-input` frame (hardware button/toggle/encoder/gate event).
   if (parsed.type === "hw-input") {
+    const validation = validateProtocolUnsolicitedMessage(parsed);
+    if (!validation.ok) {
+      console.error(`[json-protocol] Invalid hw-input frame: ${validation.error}`);
+      return;
+    }
     const kind = parsed.kind as string | undefined;
     const id = parsed.id as string | undefined;
     const state = parsed.state as string | boolean | undefined;
@@ -930,6 +958,22 @@ export function handleJsonMessage(rawMessage: string): void {
       dbg("Received malformed hw-input frame (missing kind/id/state):", parsed);
     }
     return;
+  }
+
+  if (parsed.type === "meta") {
+    const validation = validateProtocolUnsolicitedMessage(parsed);
+    if (!validation.ok) {
+      console.error(`[json-protocol] Invalid meta frame: ${validation.error}`);
+      return;
+    }
+  } else {
+    const responseValidation = validateProtocolResponseEnvelope(parsed);
+    if (!responseValidation.ok) {
+      console.error(
+        `[json-protocol] Invalid response envelope: ${responseValidation.error}`,
+      );
+      return;
+    }
   }
 
   const { requestId, text, meta, success } = parsed;
