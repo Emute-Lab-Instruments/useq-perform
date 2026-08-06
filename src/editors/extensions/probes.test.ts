@@ -141,6 +141,7 @@ beforeEach(() => {
   });
   vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => ({
+    setTransform: vi.fn(),
     clearRect: vi.fn(),
     fillRect: vi.fn(),
     beginPath: vi.fn(),
@@ -149,6 +150,11 @@ beforeEach(() => {
     stroke: vi.fn(),
     strokeRect: vi.fn(),
     fillText: vi.fn(),
+    setLineDash: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    arc: vi.fn(),
+    fill: vi.fn(),
   }) as unknown as CanvasRenderingContext2D);
 });
 

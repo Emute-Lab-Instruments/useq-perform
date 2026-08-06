@@ -5,11 +5,8 @@ import {
   type EditorState,
 } from "@codemirror/state";
 import {
-  Decoration,
   EditorView,
   ViewPlugin,
-  WidgetType,
-  type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
 
@@ -26,76 +23,59 @@ import { dbg } from "../../lib/debug.ts";
 import { getProbeIntervalMultiplier } from "../../effects/adaptiveQuality.ts";
 import {
   buildProbeExpression,
-  collectTemporalWrappers,
   collectVisibleIndexedForms,
-  computeFromListIndex,
   getCurrentProbeRange,
   type IndexedFormTarget,
   type ProbeMode,
   type ProbeRange,
 } from "./probeHelpers.ts";
-import { drawProbeWaveformGL, releaseProbeGLState } from "../../ui/visualisation/webglLineRenderer.ts";
 import { perf } from "../../lib/perfTrace.ts";
+import {
+  DEFAULT_PROBE_CANVAS_HEIGHT,
+  DEFAULT_PROBE_CANVAS_WIDTH,
+  DEFAULT_PROBE_LINE_WIDTH,
+  DEFAULT_PROBE_REFRESH_INTERVAL_MS,
+  DEFAULT_PROBE_SAMPLE_COUNT,
+  DEFAULT_PROBE_WINDOW_DURATION_MS,
+  MAX_PROBE_WINDOW_DURATION_MS,
+  MIN_PROBE_WINDOW_DURATION_MS,
+  type FromListHighlight,
+  type PersistedProbeSpec,
+  type ProbeConfig,
+  type ProbeFieldValue,
+  type ProbeRenderData,
+  type ProbeRenderUpdate,
+} from "./probes/probeTypes.ts";
+import {
+  highlightsEqual,
+  persistProbes,
+  probeSignature,
+  readPersistedProbes,
+  updateProbeRender,
+} from "./probes/probeModel.ts";
+import {
+  buildProbeSnapshot,
+  ProbeContextLineRenderer,
+  previewProbeDepth,
+  previewProbeWindowDuration,
+  updateProbeDOM,
+} from "./probes/probeRendering.ts";
+import {
+  MAX_PROBE_SLOTS,
+  buildRenderForProbe,
+  computeProbeHighlights,
+  defaultEvalExpressionAtTimes,
+} from "./probes/probeSampling.ts";
+
+export type {
+  PersistedProbeSpec,
+  ProbeBatchResult,
+  ProbeConfig,
+} from "./probes/probeTypes.ts";
 
 // ---------------------------------------------------------------------------
 // ProbeConfig — dependency injection interface
 // ---------------------------------------------------------------------------
-
-/**
- * Result of a batched probe sample call.
- * `samples` is the numeric vector of length `times.length` (NaN for non-finite).
- * `current` is the string form of the *last* sample (used for the inline label).
- */
-export interface ProbeBatchResult {
-  samples: number[];
-  current: string;
-}
-
-/**
- * Configuration for the probe system.
- * Each field is a specific capability the probes need — no app-wide settings objects.
- */
-export interface ProbeConfig {
-  /** Evaluate a code expression silently via the WASM interpreter and return the result string (or null on error) */
-  evalExpression: (code: string) => Promise<string | null>;
-  /**
-   * Evaluate a single expression at a vector of absolute times in ONE WASM
-   * round-trip. Default impl wraps the expression in
-   * `[(eval-at-time t0 expr) (eval-at-time t1 expr) ...]` and parses the
-   * returned numeric vector. Implementations may use a worker / typed batch
-   * later — the contract is "one call per probe per tick".
-   */
-  evalExpressionAtTimes: (
-    code: string,
-    times: readonly number[],
-  ) => Promise<ProbeBatchResult | null>;
-  /** Get the probe refresh interval in ms */
-  getRefreshIntervalMs: () => number;
-  /** Get the probe line width for canvas rendering */
-  getLineWidth: () => number;
-  /** Get the default number of samples to display */
-  getDefaultSamples: () => number;
-  /** Get the current time value for temporal probes */
-  getCurrentTime: () => number;
-  /** Load persisted probe state */
-  loadPersistedProbes: () => unknown[];
-  /** Save probe state for persistence */
-  savePersistedProbes: (data: PersistedProbeSpec[]) => void;
-  /** Remove persisted probe state (when empty) */
-  removePersistedProbes: () => void;
-  /** Install/update a probe expression in a compile-cached WASM slot. Returns 0 on success. */
-  probeSet: (slot: number, code: string) => Promise<number>;
-  /** Sample an already-compiled probe slot at evenly-spaced times. Returns Float64Array or null. */
-  probeSample: (slot: number, startTime: number, endTime: number, count: number) => Promise<Float64Array | null>;
-  /** Free a probe slot. */
-  probeFree: (slot: number) => Promise<void>;
-  /**
-   * Whether the WASM runtime is available for probe sampling. In
-   * `hardware`-only mode this is `false` and probes render visually disabled
-   * (spec §1.6.3): no sampling, no CPU.
-   */
-  isWasmEnabled: () => boolean;
-}
 
 /** Create a ProbeConfig that delegates to the existing singletons. */
 export function createDefaultProbeConfig(): ProbeConfig {
@@ -136,136 +116,12 @@ export function createDefaultProbeConfig(): ProbeConfig {
   };
 }
 
-/**
- * Default batched-sample implementation: one WASM round-trip per probe per
- * tick instead of one per sample. Builds a single ModuLisp vector form
- * `[(eval-at-time t0 expr) (eval-at-time t1 expr) ...]`, evaluates it via
- * the supplied per-call eval, and parses the resulting numeric vector.
- *
- * Returns `null` on failure (parse failure, vector length mismatch, eval
- * threw) so the caller can fall back to per-sample evaluation.
- */
-async function defaultEvalExpressionAtTimes(
-  evalExpression: (code: string) => Promise<string | null>,
-  code: string,
-  times: readonly number[],
-): Promise<ProbeBatchResult | null> {
-  if (times.length === 0) {
-    return { samples: [], current: "" };
-  }
-
-  const batchExpr = buildBatchSampleExpression(code, times);
-  let raw: string | null;
-  try {
-    raw = await evalExpression(batchExpr);
-  } catch {
-    return null;
-  }
-
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-
-  // Batch eval can fail when the combined vector expression overflows the
-  // WASM interpreter's token limit (256 tokens).  Return null so the caller
-  // falls through to the per-sample path, which evaluates each time-point
-  // individually and stays well under the limit.
-  if (trimmed.startsWith(ERROR_PREFIX)) {
-    return null;
-  }
-
-  const samples = parseNumericVector(trimmed);
-  if (!samples || samples.length !== times.length) {
-    return null;
-  }
-
-  // The "current" value displayed alongside the waveform is the last sample,
-  // formatted to match what the per-call path would have produced.
-  const last = samples[samples.length - 1];
-  const current = Number.isFinite(last) ? formatSampleScalar(last) : trimmed;
-  return { samples, current };
-}
-
-/**
- * Format a numeric sample back to a string roughly matching what the
- * per-call eval path produced. Used to feed the inline label.
- */
-function formatSampleScalar(value: number): string {
-  if (!Number.isFinite(value)) return String(value);
-  if (Number.isInteger(value)) return String(value);
-  // Trim trailing zeros after a fixed precision pass.
-  return value.toFixed(6).replace(/\.?0+$/, "");
-}
-
-const DEFAULT_PROBE_SAMPLE_COUNT = 40;
-const DEFAULT_PROBE_LINE_WIDTH = 2;
-const DEFAULT_PROBE_REFRESH_INTERVAL_MS = 33;
-const PROBE_ACCENT_REFRESH_INTERVAL_MS = 250;
-const DEFAULT_BAR_DURATION_SECONDS = 1;
-const ERROR_PREFIX = "Error:";
-
 // Module-level config reference, set by createProbeExtensions.
 let _config: ProbeConfig = createDefaultProbeConfig();
-const DEFAULT_PROBE_CANVAS_WIDTH = 138;
-const DEFAULT_PROBE_CANVAS_HEIGHT = 46;
-const DEFAULT_PROBE_WINDOW_DURATION_MS = 1000;
-const MIN_PROBE_WINDOW_DURATION_MS = 500;
-const MAX_PROBE_WINDOW_DURATION_MS = 5000;
-
-let cachedAccentColor: string | null = null;
-let lastAccentColorRead = 0;
 
 // Placement choice for v1: inline widget immediately after the probed form.
 // Follow-up options worth testing are block widgets under the form and an
 // absolutely positioned floating overlay anchored from editor coordinates.
-
-type ProbeRenderKind = "loading" | "waveform" | "text" | "error" | "stale" | "disabled";
-type HighlightMode = "contextual" | "raw";
-
-export interface PersistedProbeSpec {
-  id: string;
-  from: number;
-  to: number;
-  mode: ProbeMode;
-  depth: number;
-  maxDepth: number;
-  cachedCode: string;
-  canvasWidth: number;
-  canvasHeight: number;
-  windowDurationMs: number;
-}
-
-interface ProbeRenderData {
-  revision: number;
-  kind: ProbeRenderKind;
-  text: string;
-  samples: number[];
-  currentTime: number;
-  windowStart: number;
-  windowDuration: number;
-  depth: number;
-  maxDepth: number;
-}
-
-function readAccentColor(): string {
-  const computed = getComputedStyle(document.documentElement).getPropertyValue(
-    "--accent-color",
-  );
-  return (computed && computed.trim()) || "#00ff41";
-}
-
-function getAccentColor(): string {
-  const now = window.performance?.now?.() ?? Date.now();
-  if (
-    cachedAccentColor !== null &&
-    now - lastAccentColorRead <= PROBE_ACCENT_REFRESH_INTERVAL_MS
-  ) {
-    return cachedAccentColor;
-  }
-
-  cachedAccentColor = readAccentColor();
-  lastAccentColorRead = now;
-  return cachedAccentColor;
-}
 
 function getProbeRefreshIntervalMs(): number {
   // Lever 2 (adaptive quality, spec §1.7/§9.2): under sustained frame
@@ -273,48 +129,6 @@ function getProbeRefreshIntervalMs(): number {
   // 4×). The persisted setting is unchanged — the multiplier is applied
   // at read time so the override evaporates when pressure releases.
   return _config.getRefreshIntervalMs() * getProbeIntervalMultiplier();
-}
-
-interface FromListHighlight {
-  from: number;
-  to: number;
-  mode: HighlightMode;
-}
-
-interface ProbeFieldValue {
-  probes: PersistedProbeSpec[];
-  renderById: Record<string, ProbeRenderData>;
-  highlights: FromListHighlight[];
-  decorations: DecorationSet;
-  /**
-   * IDs of probes that restored into the **stale** state (spec §1.5.5/§1.8.3):
-   * the text at their saved offsets no longer matches `cachedCode`. Stale
-   * probes are visible but do not sample. The marker is cleared when the
-   * probe's range is edited (it re-binds via live-edit) or it is removed.
-   */
-  staleIds: Set<string>;
-}
-
-interface ProbeRenderUpdate {
-  probe: PersistedProbeSpec;
-  render: ProbeRenderData;
-}
-
-function highlightsEqual(
-  left: readonly FromListHighlight[],
-  right: readonly FromListHighlight[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((highlight, index) => {
-      const other = right[index];
-      return (
-        other?.from === highlight.from &&
-        other.to === highlight.to &&
-        other.mode === highlight.mode
-      );
-    })
-  );
 }
 
 const toggleProbeEffect = StateEffect.define<PersistedProbeSpec>();
@@ -325,53 +139,6 @@ const updateProbeRenderEffect = StateEffect.define<{
   updates: ProbeRenderUpdate[];
   highlights: FromListHighlight[];
 }>();
-
-function isPersistedProbeSpec(value: unknown): value is PersistedProbeSpec {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.id === "string" &&
-    typeof candidate.from === "number" &&
-    typeof candidate.to === "number" &&
-    (candidate.mode === "raw" || candidate.mode === "contextual") &&
-    typeof candidate.depth === "number" &&
-    typeof candidate.maxDepth === "number" &&
-    typeof candidate.cachedCode === "string"
-  );
-}
-
-function readPersistedProbes(): PersistedProbeSpec[] {
-  const loaded = _config.loadPersistedProbes();
-  if (!Array.isArray(loaded)) return [];
-  return loaded.filter(isPersistedProbeSpec).map((probe) => ({
-    ...probe,
-    depth: Math.max(0, Math.floor(probe.depth)),
-    maxDepth: Math.max(0, Math.floor(probe.maxDepth)),
-    canvasWidth: Number.isFinite(probe.canvasWidth) && probe.canvasWidth > 0
-      ? probe.canvasWidth
-      : DEFAULT_PROBE_CANVAS_WIDTH,
-    canvasHeight: Number.isFinite(probe.canvasHeight) && probe.canvasHeight > 0
-      ? probe.canvasHeight
-      : DEFAULT_PROBE_CANVAS_HEIGHT,
-    windowDurationMs: Number.isFinite(probe.windowDurationMs) && probe.windowDurationMs >= MIN_PROBE_WINDOW_DURATION_MS && probe.windowDurationMs <= MAX_PROBE_WINDOW_DURATION_MS
-      ? probe.windowDurationMs
-      : DEFAULT_PROBE_WINDOW_DURATION_MS,
-  }));
-}
-
-function persistProbes(probes: PersistedProbeSpec[]): void {
-  if (probes.length === 0) {
-    _config.removePersistedProbes();
-    return;
-  }
-  _config.savePersistedProbes(probes);
-}
-
-/** Lightweight signature for detecting probe list changes without JSON.stringify. */
-function probeSignature(probes: PersistedProbeSpec[]): string {
-  if (probes.length === 0) return "";
-  return probes.map((p) => `${p.id}:${p.from}:${p.to}:${p.depth}:${p.windowDurationMs}`).join("|");
-}
 
 function intersectsViewport(
   range: ProbeRange,
@@ -385,339 +152,6 @@ function intersectsViewport(
 function createProbeId(range: ProbeRange, mode: ProbeMode): string {
   const random = Math.random().toString(36).slice(2, 8);
   return `${mode}:${range.from}:${range.to}:${random}`;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function drawWaveform(
-  canvas: HTMLCanvasElement,
-  render: ProbeRenderData,
-  lineWidth: number,
-): void {
-  drawProbeWaveformGL(canvas, {
-    samples: render.samples,
-    color: getAccentColor(),
-    lineWidth,
-    backgroundColor: "rgba(13, 18, 24, 0.94)",
-  });
-}
-
-interface ProbeDOMElements {
-  root: HTMLElement;
-  canvas: HTMLCanvasElement | null;
-  textEl: HTMLElement | null;
-  depthLabel: HTMLElement;
-  leftCaret: HTMLButtonElement | null;
-  rightCaret: HTMLButtonElement | null;
-  windowDurationSlider: HTMLInputElement | null;
-  windowDurationValue: HTMLElement | null;
-}
-
-const probeDOMRegistry: Map<string, ProbeDOMElements> = new Map();
-
-function getProbeDOM(id: string): ProbeDOMElements | undefined {
-  return probeDOMRegistry.get(id);
-}
-
-function updateProbeDOM(
-  id: string,
-  probe: PersistedProbeSpec,
-  render: ProbeRenderData | null,
-): void {
-  const elements = probeDOMRegistry.get(id);
-  if (!elements) return;
-
-  elements.depthLabel.textContent = probe.mode === "raw"
-    ? "raw"
-    : `${probe.depth}/${probe.maxDepth}`;
-
-  if (elements.leftCaret) {
-    elements.leftCaret.disabled = probe.depth <= 0;
-  }
-  if (elements.rightCaret) {
-    elements.rightCaret.disabled = probe.depth >= probe.maxDepth;
-  }
-
-  if (elements.windowDurationSlider) {
-    elements.windowDurationSlider.value = String(probe.windowDurationMs);
-  }
-  if (elements.windowDurationValue) {
-    elements.windowDurationValue.textContent = `${probe.windowDurationMs}ms`;
-  }
-
-  if (!render || render.kind === "loading") {
-    if (elements.canvas) {
-      releaseProbeGLState(elements.canvas);
-      elements.canvas.remove();
-      elements.canvas = null;
-    }
-    if (!elements.textEl) {
-      const text = document.createElement("span");
-      text.className = "cm-probe-widget-text";
-      text.textContent = "sampling...";
-      elements.root.querySelector(".cm-probe-widget-body")?.prepend(text);
-      elements.textEl = text;
-    } else {
-      elements.textEl.textContent = "sampling...";
-      elements.textEl.className = "cm-probe-widget-text";
-    }
-  } else if (render.kind === "waveform") {
-    if (elements.textEl) {
-      elements.textEl.remove();
-      elements.textEl = null;
-    }
-    if (!elements.canvas) {
-      const canvas = document.createElement("canvas");
-      elements.root.querySelector(".cm-probe-widget-body")?.prepend(canvas);
-      elements.canvas = canvas;
-    }
-    const canvas = elements.canvas;
-    if (canvas.width !== probe.canvasWidth || canvas.height !== probe.canvasHeight) {
-      canvas.width = probe.canvasWidth;
-      canvas.height = probe.canvasHeight;
-    }
-    drawWaveform(canvas, render, _config.getLineWidth());
-  } else {
-    if (elements.canvas) {
-      releaseProbeGLState(elements.canvas);
-      elements.canvas.remove();
-      elements.canvas = null;
-    }
-    if (!elements.textEl) {
-      const text = document.createElement("span");
-      elements.root.querySelector(".cm-probe-widget-body")?.prepend(text);
-      elements.textEl = text;
-    }
-    elements.textEl.className = `cm-probe-widget-text is-${render.kind}`;
-    elements.textEl.innerHTML = escapeHtml(render.text);
-    if (render.kind === "stale") {
-      elements.textEl.title = "Probe text changed since it was saved — delete and recreate the probe.";
-    } else {
-      elements.textEl.removeAttribute("title");
-    }
-  }
-}
-
-class ProbeWidget extends WidgetType {
-  constructor(
-    private readonly probe: PersistedProbeSpec,
-    private readonly render: ProbeRenderData | null,
-  ) {
-    super();
-  }
-
-  eq(other: ProbeWidget): boolean {
-    return this.probe.id === other.probe.id;
-  }
-
-  toDOM(): HTMLElement {
-    const root = document.createElement("span");
-    root.className = "cm-probe-widget";
-    root.dataset.probeId = this.probe.id;
-
-    const chrome = document.createElement("span");
-    chrome.className = "cm-probe-widget-chrome";
-
-    const depthOverlay = document.createElement("span");
-    depthOverlay.className = "cm-probe-depth-overlay";
-
-    const depthLabel = document.createElement("span");
-    depthLabel.className = "cm-probe-depth-label";
-    depthLabel.textContent = this.probe.mode === "raw"
-      ? "raw"
-      : `${this.probe.depth}/${this.probe.maxDepth}`;
-    depthOverlay.appendChild(depthLabel);
-
-    let leftCaret: HTMLButtonElement | null = null;
-    let rightCaret: HTMLButtonElement | null = null;
-
-    if (this.probe.mode === "contextual" && this.probe.maxDepth > 0) {
-      leftCaret = document.createElement("button");
-      leftCaret.type = "button";
-      leftCaret.className = "cm-probe-caret-btn";
-      leftCaret.dataset.probeId = this.probe.id;
-      leftCaret.dataset.delta = "-1";
-      leftCaret.title = "Decrease context depth";
-      leftCaret.setAttribute("aria-label", "Decrease context depth");
-      leftCaret.textContent = "‹";
-      if (this.probe.depth <= 0) {
-        leftCaret.disabled = true;
-      }
-      depthOverlay.appendChild(leftCaret);
-
-      rightCaret = document.createElement("button");
-      rightCaret.type = "button";
-      rightCaret.className = "cm-probe-caret-btn";
-      rightCaret.dataset.probeId = this.probe.id;
-      rightCaret.dataset.delta = "1";
-      rightCaret.title = "Increase context depth";
-      rightCaret.setAttribute("aria-label", "Increase context depth");
-      rightCaret.textContent = "›";
-      if (this.probe.depth >= this.probe.maxDepth) {
-        rightCaret.disabled = true;
-      }
-      depthOverlay.appendChild(rightCaret);
-    }
-
-    chrome.appendChild(depthOverlay);
-
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "cm-probe-close-btn";
-    close.dataset.probeId = this.probe.id;
-    close.title = "Remove probe";
-    close.setAttribute("aria-label", "Remove probe");
-    close.textContent = "×";
-    chrome.appendChild(close);
-
-    const body = document.createElement("span");
-    body.className = "cm-probe-widget-body";
-
-    let canvas: HTMLCanvasElement | null = null;
-    let textEl: HTMLElement | null = null;
-
-    const render = this.render;
-    if (!render || render.kind === "loading") {
-      textEl = document.createElement("span");
-      textEl.className = "cm-probe-widget-text";
-      textEl.textContent = "sampling...";
-      body.appendChild(textEl);
-    } else if (render.kind === "waveform") {
-      canvas = document.createElement("canvas");
-      canvas.width = this.probe.canvasWidth;
-      canvas.height = this.probe.canvasHeight;
-      drawWaveform(canvas, render, _config.getLineWidth());
-      body.appendChild(canvas);
-    } else {
-      textEl = document.createElement("span");
-      textEl.className = `cm-probe-widget-text is-${render.kind}`;
-      textEl.innerHTML = escapeHtml(render.text);
-      if (render.kind === "stale") {
-        textEl.title = "Probe text changed since it was saved — delete and recreate the probe.";
-      }
-      body.appendChild(textEl);
-    }
-
-    const windowDurationContainer = document.createElement("span");
-    windowDurationContainer.className = "cm-probe-window-duration";
-
-    const windowDurationSlider = document.createElement("input");
-    windowDurationSlider.type = "range";
-    windowDurationSlider.className = "cm-probe-window-duration-slider";
-    windowDurationSlider.min = String(MIN_PROBE_WINDOW_DURATION_MS);
-    windowDurationSlider.max = String(MAX_PROBE_WINDOW_DURATION_MS);
-    windowDurationSlider.step = "100";
-    windowDurationSlider.value = String(this.probe.windowDurationMs);
-    windowDurationSlider.dataset.probeId = this.probe.id;
-    windowDurationSlider.title = "Oscilloscope window width (ms)";
-    windowDurationSlider.setAttribute("aria-label", "Oscilloscope window width in milliseconds");
-    windowDurationContainer.appendChild(windowDurationSlider);
-
-    const windowDurationValue = document.createElement("span");
-    windowDurationValue.className = "cm-probe-window-duration-value";
-    windowDurationValue.textContent = `${this.probe.windowDurationMs}ms`;
-    windowDurationContainer.appendChild(windowDurationValue);
-
-    root.appendChild(chrome);
-    root.appendChild(body);
-    root.appendChild(windowDurationContainer);
-
-    probeDOMRegistry.set(this.probe.id, {
-      root,
-      canvas,
-      textEl,
-      depthLabel,
-      leftCaret,
-      rightCaret,
-      windowDurationSlider,
-      windowDurationValue,
-    });
-
-    return root;
-  }
-
-  destroy(dom: HTMLElement): void {
-    const id = dom.dataset.probeId;
-    if (id) {
-      const elements = probeDOMRegistry.get(id);
-      if (elements?.canvas) {
-        releaseProbeGLState(elements.canvas);
-      }
-      probeDOMRegistry.delete(id);
-    }
-  }
-}
-
-function buildDecorations(snapshot: ProbeFieldValue): DecorationSet {
-  const decorations = [];
-
-  for (const highlight of snapshot.highlights) {
-    const className = highlight.mode === "raw"
-      ? "cm-probe-indexed-item cm-probe-indexed-item-raw"
-      : "cm-probe-indexed-item cm-probe-indexed-item-contextual";
-    decorations.push(
-      Decoration.mark({ class: className }).range(
-        highlight.from,
-        highlight.to,
-      ),
-    );
-  }
-
-  for (const probe of snapshot.probes) {
-    const render = snapshot.staleIds.has(probe.id)
-      ? buildStaleRender(probe)
-      : (snapshot.renderById[probe.id] ?? null);
-    decorations.push(
-      Decoration.widget({
-        widget: new ProbeWidget(probe, render),
-        side: 1,
-      }).range(probe.to),
-    );
-  }
-
-  return decorations.length > 0
-    ? Decoration.set(decorations, true)
-    : Decoration.none;
-}
-
-function buildSnapshot(
-  probes: PersistedProbeSpec[],
-  renderById: Record<string, ProbeRenderData>,
-  highlights: FromListHighlight[],
-  staleIds: Set<string> = new Set(),
-): ProbeFieldValue {
-  const snapshot: ProbeFieldValue = {
-    probes,
-    renderById,
-    highlights,
-    decorations: Decoration.none,
-    staleIds,
-  };
-  snapshot.decorations = buildDecorations(snapshot);
-  return snapshot;
-}
-
-/**
- * Build the synthetic render used for a stale probe (spec §1.5.5): visible,
- * non-sampling, with a warning icon and "probe text changed" tooltip.
- */
-function buildStaleRender(probe: PersistedProbeSpec): ProbeRenderData {
-  return {
-    revision: 0,
-    kind: "stale",
-    text: "probe text changed",
-    samples: [],
-    currentTime: 0,
-    windowStart: 0,
-    windowDuration: probe.windowDurationMs / 1000,
-    depth: probe.depth,
-    maxDepth: probe.maxDepth,
-  };
 }
 
 function updateProbeRangeThroughChanges(
@@ -735,37 +169,13 @@ function updateProbeRangeThroughChanges(
   };
 }
 
-function updateProbeRender(
-  existing: ProbeRenderData | undefined,
-  next: Omit<ProbeRenderData, "revision">,
-): ProbeRenderData {
-  if (
-    existing &&
-    existing.kind === next.kind &&
-    existing.text === next.text &&
-    existing.currentTime === next.currentTime &&
-    existing.windowStart === next.windowStart &&
-    existing.windowDuration === next.windowDuration &&
-    existing.depth === next.depth &&
-    existing.maxDepth === next.maxDepth &&
-    existing.samples.length === next.samples.length &&
-    existing.samples.every((v, i) => v === next.samples[i])
-  ) {
-    return existing;
-  }
-  return {
-    ...next,
-    revision: (existing?.revision ?? 0) + 1,
-  };
-}
-
 const probeField = StateField.define<ProbeFieldValue>({
   create(state) {
     // Filter out persisted probes whose positions exceed this document's length.
     // This prevents crashes when the extension is used in a smaller editor instance
     // (e.g., guide playgrounds) that shares localStorage with the main editor.
     const docLen = state.doc.length;
-    const probes = readPersistedProbes().filter(
+    const probes = readPersistedProbes(_config).filter(
       (p) => p.from <= docLen && p.to <= docLen
     );
     // Spec §1.8.3 restore semantics: rebuild each probe's expression at its
@@ -787,7 +197,7 @@ const probeField = StateField.define<ProbeFieldValue>({
         staleIds.add(probe.id);
       }
     }
-    return buildSnapshot(probes, {}, [], staleIds);
+    return buildProbeSnapshot(probes, {}, [], _config.getLineWidth(), staleIds);
   },
 
   update(value, tr) {
@@ -882,487 +292,18 @@ const probeField = StateField.define<ProbeFieldValue>({
       }
     }
 
-    return buildSnapshot(probes, renderById, highlights, staleIds);
+    return buildProbeSnapshot(
+      probes,
+      renderById,
+      highlights,
+      _config.getLineWidth(),
+      staleIds,
+    );
   },
 
   provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
 });
 
-async function evaluateProbeCode(code: string): Promise<string> {
-  const result = await _config.evalExpression(code);
-  return typeof result === "string" ? result.trim() : String(result ?? "").trim();
-}
-
-function isErrorResult(text: string): boolean {
-  return text.startsWith(ERROR_PREFIX);
-}
-
-async function readBarDurationSeconds(): Promise<number> {
-  try {
-    const result = await evaluateProbeCode("barDur");
-    const numeric = Number(result);
-    if (Number.isFinite(numeric) && numeric > 0) {
-      return numeric;
-    }
-  } catch (error) {
-    dbg(`probe: failed to read barDur (${error})`);
-  }
-  return DEFAULT_BAR_DURATION_SECONDS;
-}
-
-function formatOffset(offsetSeconds: number): string {
-  if (!Number.isFinite(offsetSeconds) || Math.abs(offsetSeconds) < 1e-9) {
-    return "0";
-  }
-  return offsetSeconds.toFixed(6).replace(/\.?0+$/, "");
-}
-
-function buildEvalAtTimeExpression(code: string, timeSeconds: number): string {
-  return `(eval-at-time ${formatOffset(timeSeconds)} ${code})`;
-}
-
-/**
- * Build a single ModuLisp vector form that evaluates `code` at every time
- * in `times`, returning all values in one call. Used by the default batch
- * sampler to collapse N WASM round-trips per probe into one.
- */
-function buildBatchSampleExpression(
-  code: string,
-  times: readonly number[],
-): string {
-  if (times.length === 0) return "[]";
-  const parts: string[] = new Array(times.length);
-  for (let i = 0; i < times.length; i++) {
-    parts[i] = buildEvalAtTimeExpression(code, times[i]);
-  }
-  return `[${parts.join(" ")}]`;
-}
-
-/** Parse a ModuLisp numeric vector `[a b c ...]` into `number[]`. */
-function parseNumericVector(text: string): number[] | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
-    return null;
-  }
-  const inner = trimmed.slice(1, -1).trim();
-  if (!inner) return [];
-  const parts = inner.split(/[\s,]+/).filter(Boolean);
-  const values = new Array<number>(parts.length);
-  for (let i = 0; i < parts.length; i++) {
-    const value = Number(parts[i]);
-    if (!Number.isFinite(value)) return null;
-    values[i] = value;
-  }
-  return values;
-}
-
-/**
- * Sample a probe expression across a window. Issues a single batched WASM
- * call (via `_config.evalExpressionAtTimes`) instead of one call per
- * sample; falls back to per-sample evaluation only if the batch returns
- * `null` (parse failure, length mismatch, or unsupported form).
- */
-async function sampleWaveform(
-  code: string,
-  currentTime: number,
-  windowDuration: number,
-  sampleCount: number,
-): Promise<{ current: string; samples: number[] }> {
-  const startTime = currentTime - windowDuration;
-  const count = Math.max(2, Math.floor(sampleCount) || DEFAULT_PROBE_SAMPLE_COUNT);
-  const step = count > 1 ? windowDuration / (count - 1) : windowDuration;
-
-  const times = new Array<number>(count);
-  for (let i = 0; i < count; i++) {
-    times[i] = startTime + step * i;
-  }
-
-  // Fast path: one WASM call for the whole window.
-  if (import.meta.env.DEV) perf.begin("probe-batch-eval");
-  try {
-    const batch = await _config.evalExpressionAtTimes(code, times);
-    if (batch) {
-      // If the interpreter returned an error or an empty vector, fall
-      // through to the per-sample legacy path so a single misbehaving
-      // sub-expression doesn't kill the whole probe.
-      if (batch.samples.length === count) {
-        if (import.meta.env.DEV) {
-          perf.count("probe-batch-success");
-          perf.count("probe-batch-samples", count);
-          perf.end("probe-batch-eval");
-        }
-        return { current: batch.current, samples: batch.samples };
-      }
-      // Empty samples but a current string → propagate as a no-op
-      // (matches the legacy "non-numeric result" branch).
-      if (batch.samples.length === 0 && batch.current) {
-        if (import.meta.env.DEV) {
-          perf.count("probe-batch-non-numeric");
-          perf.end("probe-batch-eval");
-        }
-        return { current: batch.current, samples: [] };
-      }
-    }
-  } catch (error) {
-    dbg(`probe: batch sample failed for ${code} (${error})`);
-  }
-  if (import.meta.env.DEV) {
-    perf.count("probe-batch-fallback");
-    perf.end("probe-batch-eval");
-  }
-
-  // Fallback: per-sample loop. Only reached when the batch path fails or
-  // is unavailable. Preserves original semantics — including letting
-  // throws propagate so the caller can retry with the cached expression.
-  const samples: number[] = [];
-  let currentResult = "";
-  for (let index = 0; index < count; index++) {
-    const sampleTime = times[index];
-    const result = await evaluateProbeCode(
-      buildEvalAtTimeExpression(code, sampleTime),
-    );
-    if (index === count - 1) {
-      currentResult = result;
-    }
-    const numeric = Number(result);
-    if (!Number.isFinite(numeric)) {
-      return { current: currentResult || result, samples: [] };
-    }
-    samples.push(numeric);
-  }
-
-  return { current: currentResult, samples };
-}
-
-async function sampleWaveformViaSlot(
-  slotId: number,
-  code: string,
-  currentTime: number,
-  windowDuration: number,
-  sampleCount: number,
-): Promise<{ current: string; samples: number[] } | null> {
-  const setResult = await _config.probeSet(slotId, code);
-  if (setResult < 0) return null;
-
-  const startTime = currentTime - windowDuration;
-  const endTime = currentTime;
-  const count = Math.max(2, Math.floor(sampleCount) || DEFAULT_PROBE_SAMPLE_COUNT);
-
-  const raw = await _config.probeSample(slotId, startTime, endTime, count);
-  if (!raw || raw.length === 0) return null;
-
-  const samples = Array.from(raw);
-  const last = samples[samples.length - 1];
-  const current = Number.isFinite(last) ? formatSampleScalar(last) : "NaN";
-  return { current, samples };
-}
-
-const MAX_PROBE_SLOTS = 8;
-
-async function buildRenderForProbe(
-  state: EditorState,
-  probe: PersistedProbeSpec,
-  currentTime: number,
-  settings: { probeSampleCount: number },
-  slotId?: number,
-): Promise<ProbeRenderUpdate | null> {
-  const built = buildProbeExpression(
-    state,
-    { from: probe.from, to: probe.to },
-    probe.mode,
-    probe.mode === "raw" ? 0 : probe.depth,
-  );
-
-  const liveCode = built?.code?.trim() ?? "";
-  const maxDepth = built?.maxDepth ?? probe.maxDepth;
-  const depth = probe.mode === "raw" ? 0 : Math.min(probe.depth, maxDepth);
-  const temporalScale = built?.temporalScale ?? 1;
-  const windowDurationSeconds = (probe.windowDurationMs / 1000) * temporalScale;
-  const candidateCode = liveCode || probe.cachedCode;
-  const sampleCount = settings.probeSampleCount || DEFAULT_PROBE_SAMPLE_COUNT;
-
-  if (!candidateCode) {
-    return {
-      probe: { ...probe, maxDepth, depth },
-      render: {
-        revision: 0,
-        kind: "loading",
-        text: "sampling...",
-        samples: [],
-        currentTime,
-        windowStart: currentTime - windowDurationSeconds,
-        windowDuration: windowDurationSeconds,
-        depth,
-        maxDepth,
-      },
-    };
-  }
-
-  const attempts = [candidateCode];
-  if (probe.cachedCode && probe.cachedCode !== candidateCode) {
-    attempts.push(probe.cachedCode);
-  }
-
-  let lastError: string | null = null;
-  for (const code of attempts) {
-    try {
-      // Fast path: compile-cached probe slot (compile once, sample many)
-      const slotSample = slotId != null
-        ? await sampleWaveformViaSlot(slotId, code, currentTime, windowDurationSeconds, sampleCount)
-        : null;
-      const sample = slotSample ?? await sampleWaveform(
-        code,
-        currentTime,
-        windowDurationSeconds,
-        sampleCount,
-      );
-      if (sample.samples.length === 0) {
-        return {
-          probe: {
-            ...probe,
-            cachedCode: code,
-            maxDepth,
-            depth,
-          },
-          render: {
-            revision: 0,
-            kind: isErrorResult(sample.current) ? "error" : "text",
-            text: sample.current || "nil",
-            samples: [],
-            currentTime,
-            windowStart: currentTime - windowDurationSeconds,
-            windowDuration: windowDurationSeconds,
-            depth,
-            maxDepth,
-          },
-        };
-      }
-
-      return {
-        probe: {
-          ...probe,
-          cachedCode: code,
-          maxDepth,
-          depth,
-        },
-        render: {
-          revision: 0,
-          kind: "waveform",
-          text: sample.current,
-          samples: sample.samples,
-          currentTime,
-          windowStart: currentTime - windowDurationSeconds,
-          windowDuration: windowDurationSeconds,
-          depth,
-          maxDepth,
-        },
-      };
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-      dbg(`probe: sample failed for ${probe.id} (${error})`);
-    }
-  }
-
-  return {
-    probe: {
-      ...probe,
-      maxDepth,
-      depth,
-    },
-    render: {
-      revision: 0,
-      kind: "error",
-      text: lastError
-        ? (lastError.startsWith(ERROR_PREFIX) ? lastError : `${ERROR_PREFIX} ${lastError}`)
-        : "probe unavailable",
-      samples: [],
-      currentTime,
-      windowStart: currentTime - windowDurationSeconds,
-      windowDuration: windowDurationSeconds,
-      depth,
-      maxDepth,
-    },
-  };
-}
-
-// Key by mode + operator + vector content. This is invariant while the user
-// edits the phasor (the part most likely to be transiently broken) but
-// invalidates the moment the vector itself changes — which is the point at
-// which a stale LKG expression would index into a changed array.
-function highlightCacheKey(
-  state: EditorState,
-  form: IndexedFormTarget,
-  mode: HighlightMode,
-): string {
-  const listText = state.sliceDoc(form.listRange.from, form.listRange.to);
-  return `${mode}|${form.operatorName ?? ""}|${listText}`;
-}
-
-function pushHighlightFromIndex(
-  highlights: FromListHighlight[],
-  form: IndexedFormTarget,
-  index: number,
-  mode: HighlightMode,
-): boolean {
-  if (index < 0 || index >= form.elementRanges.length) return false;
-  const active = form.elementRanges[index];
-  if (!active) return false;
-  highlights.push({ from: active.from, to: active.to, mode });
-  return true;
-}
-
-// Evaluate a phasor expression at the current time and produce a from-list
-// index. Returns null if the eval failed or yielded a non-numeric result.
-async function evalPhasorIndex(
-  code: string,
-  elementCount: number,
-): Promise<number | null> {
-  // The visualisation sampler already evaluates `bar` as part of its
-  // authoritative tick and publishes that value synchronously. Re-evaluating
-  // bare `bar` through the async silent-eval path can observe a different
-  // runtime tick, making the decoration alternate or skip an element.
-  if (code.trim() === "bar" && visStore.lastChangeKind === "data") {
-    return computeFromListIndex(elementCount, visStore.bar);
-  }
-
-  const currentTime = _config.getCurrentTime();
-  const timedCode = buildEvalAtTimeExpression(code, currentTime);
-  const result = await evaluateProbeCode(timedCode);
-  if (isErrorResult(result)) return null;
-  if (!result.trim()) return null;
-  const numeric = Number(result);
-  if (!Number.isFinite(numeric)) return null;
-  return computeFromListIndex(elementCount, numeric);
-}
-
-// Try fresh code; on failure, fall back to the cached LKG code (which is
-// re-evaluated at the current time so the highlight keeps animating). On
-// fresh success, the cache is refreshed.
-async function resolvePhasorHighlight(
-  freshCode: string | null,
-  cacheKey: string,
-  elementCount: number,
-  lkg: Map<string, string>,
-  indexLKG: Map<string, number>,
-): Promise<number | null> {
-  if (freshCode) {
-    try {
-      const index = await evalPhasorIndex(freshCode, elementCount);
-      if (index != null) {
-        lkg.set(cacheKey, freshCode);
-        indexLKG.set(cacheKey, index);
-        return index;
-      }
-    } catch (error) {
-      dbg(`probe: fresh phasor eval failed (${error})`);
-    }
-  }
-  const cached = lkg.get(cacheKey);
-  if (!cached) return null;
-  try {
-    const index = await evalPhasorIndex(cached, elementCount);
-    if (index != null) {
-      indexLKG.set(cacheKey, index);
-      return index;
-    }
-  } catch (error) {
-    dbg(`probe: cached phasor eval failed (${error})`);
-  }
-  // A silent runtime failure must not make the current mark blink off (or
-  // accidentally select element zero through Number(null/"")). Keep the
-  // last valid index until a later tick produces a valid result.
-  return indexLKG.get(cacheKey) ?? null;
-}
-
-async function computeHighlights(
-  state: EditorState,
-  forms: IndexedFormTarget[],
-  probes: PersistedProbeSpec[],
-  lkg: Map<string, string>,
-  indexLKG: Map<string, number>,
-): Promise<FromListHighlight[]> {
-  if (import.meta.env.DEV) {
-    perf.begin("probe-highlights");
-    perf.count("probe-highlights-forms", forms.length);
-  }
-  const highlights: FromListHighlight[] = [];
-  const validKeys = new Set<string>();
-  for (const form of forms) {
-    validKeys.add(highlightCacheKey(state, form, "contextual"));
-    validKeys.add(highlightCacheKey(state, form, "raw"));
-  }
-
-  for (const form of forms) {
-    const contextualKey = highlightCacheKey(state, form, "contextual");
-    const contextual = buildProbeExpression(state, form.phasorRange, "contextual");
-    if (import.meta.env.DEV) {
-      perf.begin("probe-highlights-eval");
-      perf.count("probe-highlights-eval-contextual");
-    }
-    const contextualIndex = await resolvePhasorHighlight(
-      contextual?.code ?? null,
-      contextualKey,
-      form.elementRanges.length,
-      lkg,
-      indexLKG,
-    );
-    if (import.meta.env.DEV) perf.end("probe-highlights-eval");
-    if (contextualIndex != null) {
-      pushHighlightFromIndex(highlights, form, contextualIndex, "contextual");
-    }
-
-    const formCode = state.sliceDoc(form.formRange.from, form.formRange.to).trim();
-    const rawFormProbe = probes.some((probe) => {
-      if (probe.mode !== "raw") return false;
-      if (probe.to <= form.formRange.from || probe.from >= form.formRange.to) {
-        return false;
-      }
-
-      const built = buildProbeExpression(
-        state,
-        { from: probe.from, to: probe.to },
-        "raw",
-      );
-
-      return built?.code.trim() === formCode;
-    });
-
-    if (!rawFormProbe) {
-      continue;
-    }
-
-    const rawKey = highlightCacheKey(state, form, "raw");
-    const raw = buildProbeExpression(state, form.phasorRange, "raw");
-    if (import.meta.env.DEV) {
-      perf.begin("probe-highlights-eval");
-      perf.count("probe-highlights-eval-raw");
-    }
-    const rawIndex = await resolvePhasorHighlight(
-      raw?.code ?? null,
-      rawKey,
-      form.elementRanges.length,
-      lkg,
-      indexLKG,
-    );
-    if (import.meta.env.DEV) perf.end("probe-highlights-eval");
-    if (rawIndex != null) {
-      pushHighlightFromIndex(highlights, form, rawIndex, "raw");
-    }
-  }
-
-  for (const key of [...lkg.keys()]) {
-    if (!validKeys.has(key)) {
-      lkg.delete(key);
-      indexLKG.delete(key);
-    }
-  }
-  for (const key of [...indexLKG.keys()]) {
-    if (!validKeys.has(key)) indexLKG.delete(key);
-  }
-
-  if (import.meta.env.DEV) perf.end("probe-highlights");
-  return highlights;
-}
 
 class ProbePlugin {
   private frameId: number | null = null;
@@ -1374,9 +315,7 @@ class ProbePlugin {
   private tickLoopActive = false;
   private highlightLKG: Map<string, string> = new Map();
   private highlightIndexLKG: Map<string, number> = new Map();
-  private contextLineCanvas: HTMLCanvasElement | null = null;
-  private onScroll: () => void;
-  private onWindowResize: () => void;
+  private readonly contextLines: ProbeContextLineRenderer;
   private slotMap: Map<string, number> = new Map();
   private slotFree: number[] = Array.from({ length: MAX_PROBE_SLOTS }, (_, i) => i);
   // Slots whose WASM-side probeFree() is in flight. They cannot be reallocated
@@ -1395,11 +334,9 @@ class ProbePlugin {
     this.onClick = this.onClick.bind(this);
     this.onWindowDurationInput = this.onWindowDurationInput.bind(this);
     this.tick = this.tick.bind(this);
-    this.onScroll = () => this.drawContextLines();
-    this.onWindowResize = () => this.drawContextLines();
     this.view.dom.addEventListener("click", this.onClick);
     this.view.dom.addEventListener("input", this.onWindowDurationInput);
-    this.initContextLineCanvas();
+    this.contextLines = new ProbeContextLineRenderer(this.view);
     if (this.tickLoopActive) {
       this.frameId = window.requestAnimationFrame(this.tick);
     }
@@ -1414,7 +351,7 @@ class ProbePlugin {
     const nextSignature = probeSignature(probes);
     if (nextSignature !== this.previousProbeSignature) {
       this.previousProbeSignature = nextSignature;
-      persistProbes(probes);
+      persistProbes(_config, probes);
     }
 
     // Start or stop the animation frame loop based on whether probes or visible indexed forms exist.
@@ -1460,108 +397,11 @@ class ProbePlugin {
     for (const [id] of this.slotMap) this.freeSlot(id);
     this.view.dom.removeEventListener("click", this.onClick);
     this.view.dom.removeEventListener("input", this.onWindowDurationInput);
-    this.destroyContextLineCanvas();
-  }
-
-  private initContextLineCanvas(): void {
-    const scroller = this.view.scrollDOM;
-    const canvas = document.createElement("canvas");
-    canvas.className = "cm-probe-context-lines";
-    scroller.appendChild(canvas);
-    this.contextLineCanvas = canvas;
-    scroller.addEventListener("scroll", this.onScroll);
-    window.addEventListener("resize", this.onWindowResize);
-  }
-
-  private destroyContextLineCanvas(): void {
-    if (this.contextLineCanvas) {
-      this.contextLineCanvas.remove();
-      this.contextLineCanvas = null;
-    }
-    this.view.scrollDOM.removeEventListener("scroll", this.onScroll);
-    window.removeEventListener("resize", this.onWindowResize);
+    this.contextLines.destroy();
   }
 
   private drawContextLines(): void {
-    const canvas = this.contextLineCanvas;
-    if (!canvas) return;
-
-    const scroller = this.view.scrollDOM;
-    const scrollerRect = scroller.getBoundingClientRect();
-
-    // Size the canvas to cover the full scrollable content area
-    const contentWidth = scroller.scrollWidth;
-    const contentHeight = scroller.scrollHeight;
-    const dpr = window.devicePixelRatio || 1;
-
-    if (canvas.width !== contentWidth * dpr || canvas.height !== contentHeight * dpr) {
-      canvas.width = contentWidth * dpr;
-      canvas.height = contentHeight * dpr;
-      canvas.style.width = `${contentWidth}px`;
-      canvas.style.height = `${contentHeight}px`;
-    }
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, contentWidth, contentHeight);
-
-    const snapshot = this.view.state.field(probeField);
-    const accentColor = getAccentColor();
-
-    for (const probe of snapshot.probes) {
-      if (probe.mode !== "contextual" || probe.depth <= 0) continue;
-
-      const wrappers = collectTemporalWrappers(
-        this.view.state,
-        { from: probe.from, to: probe.to },
-      );
-      if (wrappers.length === 0) continue;
-
-      const targetWrapper = wrappers[probe.depth - 1];
-      if (!targetWrapper) continue;
-
-      // Get wrapper function name position in viewport coordinates
-      const nameCoords = this.view.coordsAtPos(targetWrapper.nameFrom);
-      const nameEndCoords = this.view.coordsAtPos(targetWrapper.nameTo);
-      if (!nameCoords || !nameEndCoords) continue;
-
-      // Get probe widget DOM element position
-      const elements = getProbeDOM(probe.id);
-      if (!elements) continue;
-      const widgetRect = elements.root.getBoundingClientRect();
-      if (widgetRect.width === 0 && widgetRect.height === 0) continue;
-
-      // Convert screen coords to content-relative coords (accounting for scroll)
-      const scrollLeft = scroller.scrollLeft;
-      const scrollTop = scroller.scrollTop;
-
-      const nameCenterX = ((nameCoords.left + nameEndCoords.right) / 2) - scrollerRect.left + scrollLeft;
-      const nameCenterY = ((nameCoords.top + nameCoords.bottom) / 2) - scrollerRect.top + scrollTop;
-
-      const widgetCenterX = ((widgetRect.left + widgetRect.right) / 2) - scrollerRect.left + scrollLeft;
-      const widgetTopY = widgetRect.top - scrollerRect.top + scrollTop;
-
-      ctx.save();
-      ctx.strokeStyle = accentColor;
-      ctx.globalAlpha = 0.35;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(nameCenterX, nameCenterY);
-      ctx.lineTo(widgetCenterX, widgetTopY);
-      ctx.stroke();
-
-      // Small dot at the wrapper name end
-      ctx.globalAlpha = 0.5;
-      ctx.setLineDash([]);
-      ctx.fillStyle = accentColor;
-      ctx.beginPath();
-      ctx.arc(nameCenterX, nameCenterY, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
+    this.contextLines.draw(this.view.state.field(probeField).probes);
   }
 
   private recomputeVisibleForms(view: EditorView): void {
@@ -1599,12 +439,7 @@ class ProbePlugin {
       const probe = probes.find(p => p.id === id);
       if (probe) {
         const nextDepth = Math.max(0, Math.min(probe.maxDepth, probe.depth + delta));
-        const elements = getProbeDOM(id);
-        if (elements) {
-          elements.depthLabel.textContent = `${nextDepth}/${probe.maxDepth}`;
-          if (elements.leftCaret) elements.leftCaret.disabled = nextDepth <= 0;
-          if (elements.rightCaret) elements.rightCaret.disabled = nextDepth >= probe.maxDepth;
-        }
+        previewProbeDepth(id, nextDepth, probe.maxDepth);
       }
 
       this.view.dispatch({ effects: setProbeDepthEffect.of({ id, delta }) });
@@ -1622,10 +457,7 @@ class ProbePlugin {
     const value = Number(target.value);
     if (!Number.isFinite(value)) return;
 
-    const elements = getProbeDOM(id);
-    if (elements?.windowDurationValue) {
-      elements.windowDurationValue.textContent = `${value}ms`;
-    }
+    previewProbeWindowDuration(id, value);
 
     this.view.dispatch({
       effects: setProbeWindowDurationEffect.of({ id, durationMs: value }),
@@ -1681,7 +513,12 @@ class ProbePlugin {
           depth: probe.depth,
           maxDepth: probe.maxDepth,
         };
-        updateProbeDOM(probe.id, probe, disabledRender);
+        updateProbeDOM(
+          probe.id,
+          probe,
+          disabledRender,
+          _config.getLineWidth(),
+        );
         updates.push({
           probe,
           render: updateProbeRender(existing, disabledRender),
@@ -1720,6 +557,7 @@ class ProbePlugin {
         if (import.meta.env.DEV) perf.begin("probe-build-render");
         const slotId = this.allocSlot(probe.id);
         const next = await buildRenderForProbe(
+          _config,
           this.view.state,
           probe,
           currentTime,
@@ -1732,7 +570,12 @@ class ProbePlugin {
         if (!next) continue;
 
         if (import.meta.env.DEV) perf.begin("probe-paint");
-        updateProbeDOM(next.probe.id, next.probe, next.render);
+        updateProbeDOM(
+          next.probe.id,
+          next.probe,
+          next.render,
+          _config.getLineWidth(),
+        );
         if (import.meta.env.DEV) perf.end("probe-paint");
 
         const existing = snapshot.renderById[next.probe.id];
@@ -1744,7 +587,8 @@ class ProbePlugin {
 
       const highlightsEnabled = getAppSettings().visualisation?.fromListHighlights !== false;
       const highlights = highlightsEnabled
-        ? await computeHighlights(
+        ? await computeProbeHighlights(
+            _config,
             this.view.state,
             this.visibleForms,
             snapshot.probes,

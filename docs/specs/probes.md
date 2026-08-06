@@ -10,7 +10,11 @@ layer: behavioural
 
 ### Source files
 
-- `src/editors/extensions/probes.ts` — probe CodeMirror extension, state field, widget, sampling dispatch, persistence
+- `src/editors/extensions/probes.ts` — probe CodeMirror state field, commands, and view-plugin orchestration
+- `src/editors/extensions/probes/probeModel.ts` — persisted-state normalisation, signatures, and render revision model
+- `src/editors/extensions/probes/probeSampling.ts` — batch/slot sampling, expression planning, and indexed-form highlight evaluation
+- `src/editors/extensions/probes/probeRendering.ts` — widget DOM registry, WebGL drawing, and decoration construction
+- `src/editors/extensions/probes/probeTypes.ts` — shared probe contracts and defaults
 - `src/editors/extensions/probeHelpers.ts` — `buildProbeExpression()`, recognised-operator set, wrapper-depth logic
 - `src/ui/visualisation/webglLineRenderer.ts` — `drawProbeWaveformGL()` / `releaseProbeGLState()`: the per-probe WebGL waveform rendering surface
 - `src/editors/extensions/expressionEval.ts` — expression evaluation helpers used by probe sampling
@@ -47,7 +51,7 @@ layer: behavioural
 
 ### 1.6 Probe sampling
 
-1.6.1 Probes are batch-sampled at `visualisation.probeRefreshIntervalMs` (default 33 ms). All active probes are gathered and dispatched together; one batch is in flight at a time per editor. (see `src/editors/extensions/probes.ts` for batch dispatch)
+1.6.1 Probes are batch-sampled at `visualisation.probeRefreshIntervalMs` (default 33 ms). All active probes are gathered and dispatched together; one batch is in flight at a time per editor. (see `src/editors/extensions/probes.ts` for scheduling and `src/editors/extensions/probes/probeSampling.ts` for sampling)
 
 1.6.2 **Perf budget** ([MAIN.md §3.4](MAIN.md)): one WASM call per probe per tick after batching. Probes scale linearly, not multiplicatively, with sample-per-tick count.
 
@@ -57,7 +61,7 @@ layer: behavioural
 
 ### 1.7 Probe rendering
 
-1.7.1 Each probe renders on a WebGL-backed surface adjacent to the marked range, drawn by `drawProbeWaveformGL()` (see `src/ui/visualisation/webglLineRenderer.ts`), wired from the probe widget in `src/editors/extensions/probes.ts`. Default surface size is `DEFAULT_PROBE_CANVAS_WIDTH × DEFAULT_PROBE_CANVAS_HEIGHT`; per-probe size is adjustable at runtime.
+1.7.1 Each probe renders on a WebGL-backed surface adjacent to the marked range, drawn by `drawProbeWaveformGL()` (see `src/ui/visualisation/webglLineRenderer.ts`), wired by `src/editors/extensions/probes/probeRendering.ts`. Default surface size is `DEFAULT_PROBE_CANVAS_WIDTH × DEFAULT_PROBE_CANVAS_HEIGHT`; per-probe size is adjustable at runtime.
 
 1.7.2 Each probe has its own window duration (`windowDurationMs`). On creation it inherits from the global default (`visualisation.probeDefaultWindowDurationMs`, fallback to `DEFAULT_PROBE_WINDOW_DURATION_MS`). Once the user adjusts the per-probe window, that probe is **sticky**: it does not follow subsequent changes to the global default. Newly-created probes after a global change pick up the new default. The global default is independent of the vis-panel `visualisation.windowDuration` ([visualisation.md §1.3](visualisation.md)) — the panel and the probes are different surfaces with different time-scope intents.
 

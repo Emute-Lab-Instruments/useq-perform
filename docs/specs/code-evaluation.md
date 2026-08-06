@@ -20,7 +20,7 @@ layer: behavioural
 - `src/editors/extensions/inlineResults.ts` — inline result widgets
 - `src/editors/extensions/diagnostics.ts` — inline diagnostic annotations (position-mapped, per-range persistence)
 - `src/utils/outputHealthStore.ts` — per-output health state (`idle`/`running`/`fallback`/`error`)
-- `src/editors/extensions/probes.ts` — probe registration and sampling
+- `src/editors/extensions/probes.ts` + `probes/probeSampling.ts` — probe registration and sampling
 - `src/contracts/runtimePorts.ts` — runtime port interface (eval request/response boundary)
 
 1.1 The user has **three eval strategies**, each surface-bound to a distinct keybinding and visually distinct:

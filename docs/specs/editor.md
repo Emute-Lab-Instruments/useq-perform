@@ -22,7 +22,7 @@ layer: behavioural
 - `src/editors/extensions/expressionEval.ts` — expression evaluation extension
 - `src/editors/extensions/inlineResults.ts` — inline eval-result widgets
 - `src/editors/extensions/diagnostics.ts` — inline diagnostic annotations
-- `src/editors/extensions/probes.ts` — probe inline widgets
+- `src/editors/extensions/probes.ts` + `probes/probeRendering.ts` — probe extension and inline widgets
 - `src/editors/extensions/evalHighlight.ts` — eval flash decoration
 - `src/editors/extensions/visReadability.ts` — visualisation readability extension
 - `src/effects/editor.ts` — editor side-effect module (focus, lifecycle, font-size, save-to-file)

@@ -23,7 +23,7 @@ layer: cross-cutting
 - `src/editors/extensions/expressionEval.ts` - evaluable-range detection and gutter/eval affordances.
 - `src/editors/extensions/expressionEvalState.ts` - per-expression eval state; future home or consumer of active-state-identity metadata.
 - `src/editors/extensions/evalHighlight.ts` - visual indication of the last-evaluated expression.
-- `src/editors/extensions/probes.ts` - probe sampling and batch expression construction; future consumer of state identity for stateful probes.
+- `src/editors/extensions/probes/probeSampling.ts` - probe sampling and batch expression construction; future consumer of state identity for stateful probes.
 - `src/editors/extensions/probeHelpers.ts` - AST/range helpers used to relate source ranges to expression identity.
 - `src/editors/extensions/liveEdit/markAction.ts` - precedent for editor-generated stable ids in source.
 - `src/lib/persistence.ts` - persistence service for document-side metadata.
@@ -438,7 +438,7 @@ vector string when possible:
 ```
 
 The current probe batch path builds exactly this shape in
-`src/editors/extensions/probes.ts`.
+`src/editors/extensions/probes/probeSampling.ts`.
 
 10.3 Pure and time-derived expressions can run in a scratch graph with no
 persistent state. The scratch graph must not leak nodes into the live
