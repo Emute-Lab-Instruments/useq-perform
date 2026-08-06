@@ -78,7 +78,11 @@ test.describe("transport clicks -> XState -> WASM clock (transport §1.1-1.2/§1
     await expect(page.locator(SEL.transportPause)).toBeDisabled();
     await expect(page.locator(SEL.transportPlay)).toBeEnabled();
 
-    // 5. Obs 2b (runtime/clock — the §1.5 reset): `stopped` reset the clock to 0
+    // 5. Obs 2b (runtime/clock — the §1.5 reset): the runtime evaluates bar at
+    //    zero, independently of the UI projection.
+    await expect.poll(() => sampleOutput(page, "bar", 0)).toBeCloseTo(0, 6);
+
+    // 6. Obs 2c (UI projection): `stopped` reset the clock to 0
     //    and froze it there, so the bar converges to and stays at 0 (a fixed
     //    target, not a timing assertion).
     await expect

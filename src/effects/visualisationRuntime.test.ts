@@ -165,6 +165,21 @@ describe("vis renderer survives runtime transitions (spec: visualisation.md §1.
     resetRuntimeSessionState();
   });
 
+  it("resets the transport time and bar projection at one synchronous boundary", async () => {
+    const runtime = await import("./visualisationRuntime.ts");
+    const { visStore, updateBar, updateTime } = await import(
+      "../utils/visualisationStore.ts"
+    );
+    updateTime(2.5);
+    updateBar(0.75);
+
+    runtime.resetLocalTime();
+
+    expect(visStore.currentTime).toBe(0);
+    expect(visStore.displayTime).toBe(0);
+    expect(visStore.bar).toBe(0);
+  });
+
   describe("wasm → both transition (hardware connect)", () => {
     it("preserves registered expressions across the transition", async () => {
       // Arrange: start in wasm mode, register expressions.

@@ -27,6 +27,7 @@ import { dbg } from "../lib/debug.ts";
 import { perf } from "../lib/perfTrace.ts";
 import {
   setLastChangeKind,
+  updateBar,
   updateTime,
   visStore,
 } from "../utils/visualisationStore.ts";
@@ -209,7 +210,18 @@ export function resetLocalTime(): void {
     currentTimeSeconds: 0,
     displayTimeSeconds: 0,
   });
-  if (running) requestSampleAt(0, { replace: true, projectFuture: true });
+  // The progress bar is the transport-clock projection, so reset it at the
+  // same boundary instead of waiting for an asynchronous WASM sample.
+  updateBar(0);
+  if (running) {
+    requestSampleAt(0, { replace: true, projectFuture: true });
+    // A pre-reset sample may already be in flight and briefly republish its
+    // old bar value. Once the replacement t=0 request has drained, re-pin the
+    // projection if the clock is still stopped at the reset boundary.
+    void drainSamplingQueue().then(() => {
+      if (!localTimeActive && visStore.currentTime === 0) updateBar(0);
+    });
+  }
 }
 
 export function isLocalTimeActive(): boolean {
