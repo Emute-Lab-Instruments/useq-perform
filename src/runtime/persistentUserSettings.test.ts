@@ -37,9 +37,14 @@ describe("appSettingsRepository persistence", () => {
     setLocation();
   });
 
-  it("stores editor code only in the canonical code key", async () => {
+  it("persists settings without claiming ownership of live document text", async () => {
     const appSettings = await import("../lib/appSettings.ts");
+    const { PERSISTENCE_KEYS } = await import("../lib/persistence.ts");
     const repo = await import("./appSettingsRepository.ts");
+    window.localStorage.setItem(
+      PERSISTENCE_KEYS.editorDocument,
+      JSON.stringify({ schemaVersion: 1, text: "(canonical)", identities: null }),
+    );
 
     repo.replaceAppSettings(
       {
@@ -56,7 +61,10 @@ describe("appSettingsRepository persistence", () => {
     const storedSettings = JSON.parse(window.localStorage.getItem(appSettings.settingsStorageKey) ?? "{}");
 
     expect(storedSettings.editor.code).toBeUndefined();
-    expect(window.localStorage.getItem(appSettings.codeStorageKey)).toBe("(play)");
+    expect(window.localStorage.getItem(appSettings.codeStorageKey)).toBeNull();
+    expect(
+      JSON.parse(window.localStorage.getItem(PERSISTENCE_KEYS.editorDocument) ?? "null").text,
+    ).toBe("(canonical)");
   }, 30000);
 
   it("loads legacy JSON-encoded code values through the canonical bootstrap path", async () => {

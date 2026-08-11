@@ -4,7 +4,6 @@ import {
   loadRaw,
   save,
   saveRaw,
-  saveEditorCode,
   remove,
   has,
   PERSISTENCE_KEYS,
@@ -66,6 +65,7 @@ describe("PERSISTENCE_KEYS", () => {
   it("contains all known application keys", () => {
     expect(PERSISTENCE_KEYS.settings).toBe("uSEQ-Perform-User-Settings");
     expect(PERSISTENCE_KEYS.editorCode).toBe("uSEQ-Perform-User-Code");
+    expect(PERSISTENCE_KEYS.editorDocument).toBe("uSEQ-Perform-Document");
     expect(PERSISTENCE_KEYS.serialPortInfo).toBe("uSEQ-Serial-Port-Info");
     expect(PERSISTENCE_KEYS.editorProbes).toBe("uSEQ-Perform-Editor-Probes");
     expect(PERSISTENCE_KEYS.referenceStarred).toBe("moduLispReference:starredFunctions");
@@ -194,16 +194,6 @@ describe("saveRaw", () => {
   it("stores a string without JSON.stringify", () => {
     saveRaw("code", "(+ 1 2)");
     expect(mockStorage.getItem("code")).toBe("(+ 1 2)");
-  });
-});
-
-describe("saveEditorCode", () => {
-  it("mirrors code to the archived editor without changing either encoding", () => {
-    saveEditorCode("(a1 (sin 1))");
-    expect(mockStorage.getItem(PERSISTENCE_KEYS.editorCode)).toBe("(a1 (sin 1))");
-    expect(mockStorage.getItem(PERSISTENCE_KEYS.legacyCode)).toBe(
-      JSON.stringify("(a1 (sin 1))"),
-    );
   });
 });
 

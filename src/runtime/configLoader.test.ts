@@ -67,6 +67,24 @@ describe("configLoader", () => {
     expect(config.editor.code).toBe("(saved-from-local-storage)");
   });
 
+  it("prefers the atomic DocumentRecord over split legacy code keys", async () => {
+    const { PERSISTENCE_KEYS } = await import("../lib/persistence.ts");
+    window.localStorage.setItem(
+      PERSISTENCE_KEYS.editorDocument,
+      JSON.stringify({
+        schemaVersion: 1,
+        text: "(from-document-record)",
+        identities: null,
+      }),
+    );
+    window.localStorage.setItem(PERSISTENCE_KEYS.editorCode, "(stale-split-code)");
+
+    const { loadConfiguration } = await import("./appSettingsRepository.ts");
+    const config = await loadConfiguration();
+
+    expect(config.editor.code).toBe("(from-document-record)");
+  });
+
   it("reports the settings sources used for bootstrap diagnostics", async () => {
     const settingsModule = await import("../lib/appSettings.ts");
     window.localStorage.setItem(

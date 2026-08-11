@@ -1,6 +1,5 @@
 import { Component, Show, For, createSignal, createEffect, on, onCleanup, createMemo } from "solid-js";
 import { EditorView } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
 import { history } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
@@ -33,12 +32,17 @@ import { createZenKeymapGuard } from "./zenKeymapGuard";
 import { subscribeZenAction } from "./zenActionBus";
 import type { ActionId } from "../lib/keybindings/actions";
 import ZenInputToggle from "./ZenInputToggle";
+import {
+  createDocumentSession,
+  type DocumentSession,
+} from "../editors/documentSession.ts";
 
 const ZenExercise: Component = () => {
   let editorContainer: HTMLDivElement | undefined;
   let targetContainer: HTMLDivElement | undefined;
   let editorView: EditorView | undefined;
-  let targetView: EditorView | undefined;
+  let editorDocumentSession: DocumentSession | undefined;
+  let targetDocumentSession: DocumentSession | undefined;
   let navHandle: ZenNavigationHandle | undefined;
   let unsubAction: (() => void) | undefined;
   let completed = false;
@@ -54,14 +58,11 @@ const ZenExercise: Component = () => {
       navHandle.dispose();
       navHandle = undefined;
     }
-    if (editorView) {
-      editorView.destroy();
-      editorView = undefined;
-    }
-    if (targetView) {
-      targetView.destroy();
-      targetView = undefined;
-    }
+    editorDocumentSession?.dispose();
+    editorDocumentSession = undefined;
+    editorView = undefined;
+    targetDocumentSession?.dispose();
+    targetDocumentSession = undefined;
     completed = false;
     setShowDone(false);
     setGlowing(false);
@@ -90,11 +91,12 @@ const ZenExercise: Component = () => {
 
     let ready = false;
 
-    editorView = createZenEditor(editorContainer, ex, actionGate, () => {
+    editorDocumentSession = createZenEditor(editorContainer, ex, actionGate, () => {
       if (!ready || completed) return;
       completed = true;
       handleCompletion();
     });
+    editorView = editorDocumentSession.view;
 
     // The target editor only exists for prompt modes that render it
     // (beforeAfter, puzzle, ghost). spotlight has no target container.
@@ -105,7 +107,7 @@ const ZenExercise: Component = () => {
       targetContainer &&
       targetContainer.isConnected
     ) {
-      targetView = createTargetEditor(targetContainer, ex);
+      targetDocumentSession = createTargetEditor(targetContainer, ex);
     }
 
     navHandle = bindZenGamepadNavigation(editorView, actionGate);
@@ -334,7 +336,7 @@ function createZenEditor(
   ex: Exercise,
   gate: ActionGate,
   onComplete: () => void,
-): EditorView {
+): DocumentSession {
   container.innerHTML = "";
 
   const settings = getAppSettings();
@@ -350,9 +352,12 @@ function createZenEditor(
 
   const keymapGuard = createZenKeymapGuard(gate);
 
-  const editorState = EditorState.create({
-    doc: ex.startCode,
-    extensions: [
+  const session = createDocumentSession({
+    initialText: ex.startCode,
+    settings,
+    repository: null,
+    parent: container,
+    buildExtensions: ({ identityExtensions, sessionExtensions }) => [
       keymapGuard,
       baseKeymap,
       history(),
@@ -370,29 +375,33 @@ function createZenEditor(
       ...clojureExtensions,
       ...structuralCoreExtensions(),
       validationListener,
+      ...identityExtensions,
+      ...sessionExtensions,
     ],
   });
-
-  const view = new EditorView({ state: editorState, parent: container });
+  const view = session.view;
 
   placeCursor(view, ex.startCode, ex.startCursorText);
   view.focus();
 
-  return view;
+  return session;
 }
 
 function createTargetEditor(
   container: HTMLDivElement,
   ex: Exercise,
-): EditorView {
+): DocumentSession {
   container.innerHTML = "";
 
   const settings = getAppSettings();
   const theme = themes[settings.editor?.theme] ?? themes[defaultTheme];
 
-  const editorState = EditorState.create({
-    doc: ex.targetCode,
-    extensions: [
+  const session = createDocumentSession({
+    initialText: ex.targetCode,
+    settings,
+    repository: null,
+    parent: container,
+    buildExtensions: ({ identityExtensions, sessionExtensions }) => [
       editorBaseTheme,
       theme,
       EditorView.theme({
@@ -405,14 +414,15 @@ function createTargetEditor(
       }),
       ...clojureExtensions,
       EditorView.editable.of(false),
+      ...identityExtensions,
+      ...sessionExtensions,
     ],
   });
-
-  const view = new EditorView({ state: editorState, parent: container });
+  const view = session.view;
 
   placeCursor(view, ex.targetCode, ex.targetCursorText);
 
-  return view;
+  return session;
 }
 
 function placeCursor(

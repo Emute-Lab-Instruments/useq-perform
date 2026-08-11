@@ -1,14 +1,14 @@
 /**
- * Default production wiring for the state-identity sidecar.
+ * Default state-identity wiring.
  *
  * The default config:
  *   - uses {@link defaultIdGenerator} (opaque url-safe tokens);
  *   - uses {@link defaultStatefulFormClassifier} (recognises top-level
  *     `(synth …)` forms);
- *   - wires {@link createIdentityPersistence} so the sidecar persists
- *     through the central persistence service (state-identity.md §7.3,
- *     persistence.md). `?nosave` is applied by the central service
- *     itself, so this adapter is unconditionally installed;
+ *   - accepts a session-owned persistence adapter. The running main editor
+ *     injects DocumentSession's load-only adapter and writes text+identity as
+ *     one DocumentRecord. The old split adapter remains the compatibility
+ *     default for isolated wiring tests and legacy migration witnesses;
  *   - does not log reconciliation events (the persistence/payload layers
  *     will surface diagnostics instead).
  *
@@ -29,15 +29,19 @@ import { createIdentityPersistence } from "./identityPersistence.ts";
 import type { IdentityConfig } from "./identityField.ts";
 
 /**
- * Default production config — opaque IDs, top-level synth classifier, and
- * persistence through the central persistence service. The persistence
- * adapter never touches localStorage directly (VAL-ID-024).
+ * Default config — opaque IDs, top-level synth classifier, and an injectable
+ * persistence adapter. Pass `null` for an ephemeral session.
  */
-export function createDefaultIdentityConfig(): IdentityConfig {
+export function createDefaultIdentityConfig(options: {
+  persistence?: IdentityConfig["persistence"] | null;
+} = {}): IdentityConfig {
   return {
     ids: defaultIdGenerator(),
     classifier: defaultStatefulFormClassifier,
-    persistence: createIdentityPersistence(),
+    persistence:
+      options.persistence === null
+        ? undefined
+        : (options.persistence ?? createIdentityPersistence()),
   };
 }
 
@@ -84,4 +88,3 @@ export function setProductionIdentityConfigForTests(
 export function _productionIdentityConfigOverrideForTests(): IdentityConfig | null {
   return _testOverride;
 }
-

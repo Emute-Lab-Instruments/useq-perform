@@ -25,9 +25,12 @@ layer: behavioural
 - `src/editors/extensions/probes.ts` + `probes/probeRendering.ts` — probe extension and inline widgets
 - `src/editors/extensions/evalHighlight.ts` — eval flash decoration
 - `src/editors/extensions/visReadability.ts` — visualisation readability extension
-- `src/effects/editor.ts` — editor side-effect module (focus, lifecycle, font-size, save-to-file)
-- `src/lib/editorStore.ts` — editor instance lifecycle, including the autosave timer (`setupAutosaveTimer`)
-- `src/lib/persistence.ts` — persistence service (localStorage access)
+- `src/editors/documentSession.ts` — one-editor ownership, coherent snapshots, autosave, flush, and teardown
+- `src/editors/editorLifecycle.ts` — main/secondary editor construction and application-lifetime wiring
+- `src/effects/editor.ts` — editor side effects (focus, font-size, save-to-file)
+- `src/lib/editorStore.ts` — active main-view signal and small view operations; not document authority
+- `src/lib/documentRecord.ts` — atomic `DocumentRecord` repository/schema and legacy document migration
+- `src/lib/persistence.ts` — central localStorage primitives and typed key registry
 
 1.1 The app uses CodeMirror 6 as the substrate for **multiple editor instances** that share a common foundation but differ in role and in which extensions they carry. There is exactly one **main editor** (the user's live-coding surface); additional **secondary editors** appear inline in the help guide as code examples, tutorial playgrounds, theme demos/previews, snippet previews, and similar contexts.
 
@@ -35,9 +38,16 @@ layer: behavioural
 
 1.3 **Main editor.** The user's primary live-coding surface. Wires the full extension set: themes, autosave, bracket protection, structural editing, expression gutter, probes, eval results, diagnostics, evaluation, gamepad navigation. There is exactly one main editor in the app at a time. Sections 1.4–1.12 below specify behaviours of the main editor.
 
-1.4 The main editor's content on first load is determined by precedence: explicit URL load (`?gist`/`?txt`) > persisted user code > startup-context default > empty.
+1.4 The main editor's content on first load is determined by precedence:
+explicit URL load (`?gist`/`?txt`) > valid canonical `DocumentRecord` > legacy
+text migration input (including `editor.code`) > startup-context default >
+empty. URL-loaded text begins a new coherent session snapshot and does not
+inherit identity metadata from a different persisted text revision.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** bootstrap precedence must never attach durable state
+identity to unrelated replacement text merely because both were available at
+startup.
 
-1.5 **Autosave** (main editor only). With `storage.saveCodeLocally && storage.autoSaveEnabled` (both default true), the main editor persists its full content every `storage.autoSaveInterval` ms (default 5000, min 1000, max 60000). The interval is reconfigured live when settings change. Secondary editors do not autosave. (See `setupAutosaveTimer` in `src/lib/editorStore.ts`, `src/lib/persistence.ts`)
+1.5 **Autosave** (main editor only). With `storage.saveCodeLocally && storage.autoSaveEnabled` (both default true), the main editor's `DocumentSession` persists one coherent `DocumentRecord` snapshot every `storage.autoSaveInterval` ms (default 5000, min 1000, max 60000). The interval is reconfigured live when settings change. Secondary editors do not autosave. (See §2.3–§2.5 and [persistence.md §2](persistence.md))
 
 1.6 The main editor is themed via a CodeMirror compartment driven by `editor.theme`. Theme switches must be hot — no reload, no flash of unstyled content — and must coincide with chrome theme changes (see [themes.md](themes.md)). Secondary editors may either follow the global theme or be pinned to a specific theme (e.g. theme-demo previews show one theme regardless of the user's active theme). (See `src/editors/themes.ts`)
 
@@ -60,3 +70,80 @@ layer: behavioural
 - **Snippet preview** (snippets tab): typically read-only; may render with the user's active theme; the snippet is inserted into the main editor on a user gesture.
 
 1.14 **What secondary editors must never do**: write to main-editor persistence keys; mutate global settings; send eval requests to hardware; register probes against the global visualisation store; interfere with the main editor's focus or selection.
+
+---
+
+## 2. Canonical Document Model
+
+2.1 **CodeMirror text is the sole program authority.** The current
+`EditorState.doc` text determines which forms the user has written. No AST,
+structural tree, state-identity sidecar, settings field, persisted cache, or
+runtime program is a second mutable authority for program content.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** two writable program representations would require
+conflict resolution and could silently evaluate or restore code other than the
+text the performer sees.
+
+2.2 **Syntax and structural state are derived projections.** Lezer reparses the
+authoritative text after each CodeMirror transaction; the structural tree,
+Metas, cursors, ranges, gutters, and decorations are then derived or remapped
+from that transaction. Structural operations may plan against the derived tree,
+but they take effect only by committing a CodeMirror text transaction; they do
+not retain a separately editable AST.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** the tree remains useful for safe structural commands
+without creating AST authority or a text/tree synchronisation protocol.
+
+2.3 A persisted **`DocumentRecord`** is one versioned value containing the
+authoritative `text` and its stable state-identity metadata. The metadata may
+annotate stateful forms that exist in the text, but it cannot introduce,
+remove, reorder, or otherwise redefine program forms. Full atomicity and
+migration rules live in [persistence.md §2](persistence.md); identity rules live
+in [state-identity.md §7](state-identity.md).
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** text and identity must cross save/load boundaries at
+the same revision, while text remains the only authority for program meaning.
+
+2.4 **Runtime programs are execution artefacts, not documents.** An eval takes
+a coherent snapshot of text plus identity metadata and may derive a rewritten
+hardware/Worker-WASM payload with hidden IDs and source mappings. The active
+hardware program and Worker-WASM program have their own last-known-good
+lifecycle and may legitimately lag the editor; neither may write back to or
+replace the document implicitly. In `both`, hardware remains authoritative for
+outputs and Worker-WASM remains the best-effort visualisation/probe shadow per
+[runtime-modes.md §1.5](runtime-modes.md).
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** live coding requires the editable source, the
+hardware LKG, and the WASM shadow to disagree safely during edits, failures, and
+quantised transitions without becoming competing document authorities.
+
+2.5 **One `DocumentSession` owns each editor instance.** The session owns that
+instance's CodeMirror view/state, document revision, state-identity metadata,
+subscriptions, autosave scheduling, and persistence policy. The main editor has
+one durable session; every secondary editor has its own isolated session.
+Global stores may expose the active main view for commands, but they do not own
+document state or session lifetime.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** singular per-editor ownership prevents orphan timers,
+cross-editor metadata leakage, and lifecycle split across framework adapters and
+global modules.
+
+2.6 A `DocumentSession` exposes coherent lifecycle operations:
+
+- `snapshot()` returns text and identity metadata from the same applied
+  CodeMirror revision.
+- autosave persists only such a snapshot and coalesces superseded pending work.
+- `flush()` completes or reports the final eligible write for the latest
+  revision.
+- `dispose()` flushes first when persistence is enabled, then cancels timers and
+  subscriptions, releases editor/extension resources, and makes later session
+  callbacks inert. Repeated disposal is safe.
+
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** save and teardown must never pair new text with old
+identity metadata or let a late timer overwrite a newer/final snapshot.
+
+2.7 **Secondary sessions are isolated and ephemeral unless explicitly
+promoted.** Closing a secondary editor disposes its session without writing the
+main `DocumentRecord`. A user gesture such as "send to main editor" performs an
+explicit copy/replace transaction into the main session, which assigns or
+remaps identity under the main document's rules; it never shares mutable
+CodeMirror state, identity maps, undo history, autosave timers, or runtime
+program ownership with the secondary session.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** previews and playgrounds must be safe to discard and
+must not mutate the performer's durable program by mounting, evaluating, or
+unmounting.

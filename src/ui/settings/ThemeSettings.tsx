@@ -8,6 +8,10 @@ import { defaultThemeEditorStartingCode } from "../../lib/editorDefaults.ts";
 import { settings as globalSettings, requestSettingsUpdate } from "../../utils/settingsStore";
 import { hideChromePanel } from "../adapters/panels";
 import type { AppSettings } from "../../lib/appSettings.ts";
+import {
+  createDocumentSession,
+  type DocumentSession,
+} from "../../editors/documentSession.ts";
 
 export interface ThemeSettingsProps {
   settings?: AppSettings;
@@ -43,24 +47,27 @@ function ThemePreview(props: {
   onSelect: (theme: string) => void;
 }) {
   let editorParent: HTMLDivElement | undefined;
-  let view: EditorView | undefined;
+  let documentSession: DocumentSession | undefined;
 
   onMount(() => {
     if (editorParent) {
-      const state = EditorState.create({
-        doc: defaultThemeEditorStartingCode,
-        extensions: [...previewBaseExtensions, props.themeExtension],
-      });
-
-      view = new EditorView({
-        state,
+      documentSession = createDocumentSession({
+        initialText: defaultThemeEditorStartingCode,
+        settings: props.settings(),
+        repository: null,
         parent: editorParent,
+        buildExtensions: ({ identityExtensions, sessionExtensions }) => [
+          ...previewBaseExtensions,
+          props.themeExtension,
+          ...identityExtensions,
+          ...sessionExtensions,
+        ],
       });
     }
   });
 
   onCleanup(() => {
-    view?.destroy();
+    documentSession?.dispose();
   });
 
   const isActive = () => props.settings().editor?.theme === props.themeName;

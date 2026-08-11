@@ -5,13 +5,11 @@
  * persistence service); docs/specs/persistence.md (central service, JSON
  * recovery, `?nosave` write gate).
  *
- * This module is the single dependency-injected seam between the
- * state-identity extension and the central persistence service. The
- * extension accepts an {@link IdentityPersistence} instance via its
- * {@link IdentityConfig} and routes every snapshot read/write through it.
- * The default production wiring lives in
- * `createDefaultIdentityConfig.ts`, which calls
- * {@link createIdentityPersistence} with the real central service.
+ * This is the legacy split-key adapter used for migration and isolated
+ * extension tests. The running main editor injects a DocumentSession-owned
+ * adapter instead: it may load this legacy snapshot once, but field writes are
+ * buffered and the session persists text+identity atomically as a
+ * `DocumentRecord`.
  *
  * The adapter is intentionally tiny:
  *

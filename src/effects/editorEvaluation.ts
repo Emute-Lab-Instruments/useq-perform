@@ -41,7 +41,6 @@ const evalInUseqWasm = async (
 }> =>
   getActiveWasmRuntimePort().evalCodeWithDiagnostics(code);
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
-import { rewriteCodeSliceForModule } from "../lib/manualControlState.ts";
 import { getAllManualControlBindings } from "../lib/manualControlState.ts";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 import { evalRejectionForNoRuntime } from "./noneModeGate.ts";
@@ -66,7 +65,8 @@ import {
   type EvalPayload,
   type ManualControlBinding,
 } from "../editors/extensions/stateIdentity/evalPayload.ts";
-import { identityField } from "../editors/extensions/stateIdentity/identityFieldExport.ts";
+import type { IdentityMap } from "../editors/extensions/stateIdentity/identityTypes.ts";
+import { captureDocumentSnapshot } from "../editors/documentSession.ts";
 
 // ---------------------------------------------------------------------------
 // Output assignment detection
@@ -107,6 +107,7 @@ export type EvalStrategy = "toplevel" | "expression" | "soft";
 interface EvalContext {
   view: EditorView;
   state: EditorState;
+  identities: IdentityMap;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +146,7 @@ function getSelectionRange(
 
 function getToplevelPayload(
   state: EditorState,
-  view: EditorView | undefined,
+  identities: IdentityMap,
   source: EvalPayload["source"] = "toplevel",
 ): { payload: EvalPayload; range: { from: number; to: number } | null } {
   const range = getTopLevelFormRange(state);
@@ -156,7 +157,7 @@ function getToplevelPayload(
   const slice = effectiveRange
     ? state.doc.sliceString(effectiveRange.from, effectiveRange.to)
     : (top_level_string(state) ?? "");
-  const payload = buildPayloadFromState(state, view, slice, sliceFrom, source);
+  const payload = buildPayloadFromState(state, identities, slice, sliceFrom, source);
   return { payload, range: effectiveRange };
 }
 
@@ -168,58 +169,16 @@ function getToplevelPayload(
  * {@link evalWasm} and the hardware path to remap diagnostics back to
  * the visible source (VAL-ID-013..022).
  *
- * If the identity field is not installed on the view (e.g. read-only
- * snippet editors), the payload degenerates to the legacy
- * manual-control-only rewrite via {@link rewriteCodeSliceForModule}.
+ * A view without stateful forms supplies an empty identity map; the same
+ * builder still owns manual-control substitution and source mapping.
  */
 function buildPayloadFromState(
   state: EditorState,
-  view: EditorView | undefined,
+  identityMap: IdentityMap,
   visibleSlice: string,
   sliceFrom: number,
   source: EvalPayload["source"],
 ): EvalPayload {
-  // Read the live identity map from the state-identity sidecar, if it
-  // is installed. The field reference comes from the production
-  // singleton (extensions.ts installs the same instance).
-  let identityMap = null;
-  if (view) {
-    try {
-      identityMap = view.state.field(identityField()).map;
-    } catch {
-      identityMap = null;
-    }
-  }
-  if (identityMap === null) {
-    try {
-      identityMap = state.field(identityField()).map;
-    } catch {
-      identityMap = null;
-    }
-  }
-
-  if (identityMap === null) {
-    // Identity sidecar not installed — degenerate to legacy behaviour.
-    const runtimeCode = rewriteCodeSliceForModule(
-      visibleSlice,
-      sliceFrom,
-      sliceFrom + visibleSlice.length,
-    );
-    return {
-      visibleSlice,
-      runtimeCode,
-      sourceMap: [
-        {
-          visible: { from: 0, to: visibleSlice.length },
-          runtime: { from: 0, to: runtimeCode.length },
-          generated: runtimeCode !== visibleSlice,
-        },
-      ],
-      sliceFrom,
-      source,
-    };
-  }
-
   // Convert the global manual-control bindings to the payload-builder
   // shape (document coordinates).
   const manualBindings: ManualControlBinding[] = getAllManualControlBindings().map((b) => ({
@@ -609,7 +568,9 @@ function pushCapabilityInfoDiagnostic(
  * - `"soft"` — preview in WASM only, no send to module
  */
 export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
-  const state = view.state;
+  const document = captureDocumentSnapshot(view);
+  const state = document.state;
+  const identities = document.identities;
 
   // runtime-modes.md §1.10: in `none` mode there is no runtime to evaluate
   // against. The editor still accepts input, but eval is rejected with a
@@ -639,7 +600,7 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
         // and hardware; diagnostics are remapped through sourceMap.
         const payload = buildPayloadFromState(
           state,
-          view,
+          identities,
           sel.text,
           sel.from,
           "expression",
@@ -680,14 +641,14 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
         return true;
       }
       // Fall through to toplevel with @ prefix
-      return evaluateToplevel({ view, state }, "@");
+      return evaluateToplevel({ view, state, identities }, "@");
     }
 
     case "toplevel":
-      return evaluateToplevel({ view, state }, "");
+      return evaluateToplevel({ view, state, identities }, "");
 
     case "soft":
-      return evaluateSoft({ view, state });
+      return evaluateSoft({ view, state, identities });
 
     default:
       return false;
@@ -733,7 +694,7 @@ function gateFormWithHoles(
 // ---------------------------------------------------------------------------
 
 function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
-  const { view, state } = ctx;
+  const { view, state, identities } = ctx;
   const startupFlags = getStartupFlagsSnapshot();
   const noModuleMode = startupFlags.noModuleMode;
   // Unified payload: composes identity injection + manual control through
@@ -741,7 +702,7 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
   // both WASM and hardware paths; diagnostics are remapped through
   // payload.sourceMap so visible, generated, and overlapping ranges
   // anchor meaningfully (VAL-ID-017, VAL-ID-018).
-  const { payload, range } = getToplevelPayload(state, view, "toplevel");
+  const { payload, range } = getToplevelPayload(state, identities, "toplevel");
   const rawCode = payload.visibleSlice;
   const rawRuntimeCode = payload.runtimeCode;
 
@@ -825,7 +786,7 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
 }
 
 function evaluateSoft(ctx: EvalContext): boolean {
-  const { view, state } = ctx;
+  const { view, state, identities } = ctx;
   // Soft eval uses the top-level form at cursor (or top_level_string
   // fallback) and reuses the unified payload so the same identity
   // injection + manual-control composition applies (VAL-ID-016:
@@ -852,7 +813,13 @@ function evaluateSoft(ctx: EvalContext): boolean {
   }
 
   const sliceFrom = range?.from ?? 0;
-  const payload = buildPayloadFromState(state, view, visibleSlice, sliceFrom, "soft");
+  const payload = buildPayloadFromState(
+    state,
+    identities,
+    visibleSlice,
+    sliceFrom,
+    "soft",
+  );
 
   const isImmediate = visibleSlice.startsWith("@");
 

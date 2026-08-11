@@ -18,26 +18,28 @@ describe("editorStore", () => {
     expect(editor()).toBeNull();
   });
 
-  it("setEditor updates the signal", async () => {
-    const { editor, setEditor } = await loadEditorStore();
+  it("setEditorSession exposes the session-owned view", async () => {
+    const { editor, editorSession, setEditorSession } = await loadEditorStore();
     expect(editor()).toBeNull();
 
     const mockEditor = { test: "editor" };
-    setEditor(mockEditor);
+    const mockSession = { view: mockEditor };
+    setEditorSession(mockSession);
 
     expect(editor()).toBe(mockEditor);
+    expect(editorSession.document).toBe(mockSession);
   });
 
   it("multiple updates work correctly", async () => {
-    const { editor, setEditor } = await loadEditorStore();
+    const { editor, setEditorSession } = await loadEditorStore();
 
     const editorA = { name: "A" };
     const editorB = { name: "B" };
 
-    setEditor(editorA);
+    setEditorSession({ view: editorA });
     expect(editor()).toBe(editorA);
 
-    setEditor(editorB);
+    setEditorSession({ view: editorB });
     expect(editor()).toBe(editorB);
   });
 });

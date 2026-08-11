@@ -26,6 +26,7 @@ export const PERSISTENCE_KEYS = {
   serialPortInfo: "uSEQ-Serial-Port-Info",
 
   // Editor autosave
+  editorDocument: "uSEQ-Perform-Document",
   editorProbes: "uSEQ-Perform-Editor-Probes",
   // Editor state-identity sidecar (anonymous stateful-form IDs)
   editorIdentity: "uSEQ-Perform-Editor-Identity",
@@ -136,15 +137,17 @@ export function loadRaw(key: string, fallback?: string): string | null {
  *
  * When `?nosave` is active this is a silent no-op.
  */
-export function save(key: string, value: unknown): void {
+export function save(key: string, value: unknown): boolean {
   if (typeof window === "undefined" || isNosaveActive()) {
-    return;
+    return false;
   }
 
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (e) {
     console.warn(`[persistence] Failed to save key "${key}".`, e);
+    return false;
   }
 }
 
@@ -153,26 +156,18 @@ export function save(key: string, value: unknown): void {
  *
  * When `?nosave` is active this is a silent no-op.
  */
-export function saveRaw(key: string, value: string): void {
+export function saveRaw(key: string, value: string): boolean {
   if (typeof window === "undefined" || isNosaveActive()) {
-    return;
+    return false;
   }
 
   try {
     window.localStorage.setItem(key, value);
+    return true;
   } catch (e) {
     console.warn(`[persistence] Failed to saveRaw key "${key}".`, e);
+    return false;
   }
-}
-
-/**
- * Persist editor text for both the current app and the archived editor.
- * The legacy app stored `useqcode` as a JSON string, so use `save()` for the
- * mirror rather than `saveRaw()`.
- */
-export function saveEditorCode(value: string): void {
-  saveRaw(PERSISTENCE_KEYS.editorCode, value);
-  save(PERSISTENCE_KEYS.legacyCode, value);
 }
 
 /**
@@ -180,15 +175,17 @@ export function saveEditorCode(value: string): void {
  *
  * When `?nosave` is active this is a silent no-op.
  */
-export function remove(key: string): void {
+export function remove(key: string): boolean {
   if (typeof window === "undefined" || isNosaveActive()) {
-    return;
+    return false;
   }
 
   try {
     window.localStorage.removeItem(key);
+    return true;
   } catch (e) {
     console.warn(`[persistence] Failed to remove key "${key}".`, e);
+    return false;
   }
 }
 

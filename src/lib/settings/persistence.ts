@@ -7,7 +7,11 @@
 
 import { defaultTheme } from "../editorDefaults.ts";
 import { themeNames } from "../themes.ts";
-import { load, loadRaw, save, saveEditorCode, remove, has, PERSISTENCE_KEYS } from "../persistence.ts";
+import { load, loadRaw, save, remove, has, PERSISTENCE_KEYS } from "../persistence.ts";
+import {
+  readDocumentRecordText,
+  readLegacyDocumentText,
+} from "../documentRecord.ts";
 import type { AppSettings, AppSettingsPatch } from "./schema.ts";
 import { createDefaultUserSettings } from "./schema.ts";
 import {
@@ -151,9 +155,15 @@ export function readPersistedUserSettings(options: {
 
   const storedSettings = load<Record<string, unknown>>(PERSISTENCE_KEYS.settings);
   const legacySettingsPresent = hasLegacySettings();
-  const storedCodeValue = loadRaw(PERSISTENCE_KEYS.editorCode);
+  const documentText = readDocumentRecordText();
+  const storedCodeValue = readLegacyDocumentText();
 
-  if (!storedSettings && storedCodeValue == null && !legacySettingsPresent) {
+  if (
+    !storedSettings &&
+    documentText === null &&
+    storedCodeValue === null &&
+    !legacySettingsPresent
+  ) {
     return null;
   }
 
@@ -165,11 +175,7 @@ export function readPersistedUserSettings(options: {
     loaded = migrateLegacySettings();
   }
 
-  const legacyCodeValue =
-    !storedSettings && legacySettingsPresent
-      ? loadRaw(PERSISTENCE_KEYS.legacyCode)
-      : null;
-  const decodedCode = decodeStoredCode(storedCodeValue ?? legacyCodeValue);
+  const decodedCode = decodeStoredCode(documentText ?? storedCodeValue);
   if (decodedCode !== null) {
     loaded = {
       ...loaded,
@@ -196,7 +202,6 @@ export function writePersistedUserSettings(settings: unknown, options: {
   const storedSettings = createStoredSettingsSnapshot(normalized);
 
   save(PERSISTENCE_KEYS.settings, storedSettings);
-  saveEditorCode(normalized.editor.code);
 }
 
 export function clearPersistedUserSettings(): void {
@@ -205,7 +210,9 @@ export function clearPersistedUserSettings(): void {
   }
 
   remove(PERSISTENCE_KEYS.settings);
+  remove(PERSISTENCE_KEYS.editorDocument);
   remove(PERSISTENCE_KEYS.editorCode);
+  remove(PERSISTENCE_KEYS.editorIdentity);
 }
 
 export async function loadBootstrapSettings(options: {

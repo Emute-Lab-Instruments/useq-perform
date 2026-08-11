@@ -47,7 +47,7 @@ Testing styles:
 
 ## Architecture
 
-The application uses a single-bundle Vite build. The bundle starts at `src/main.ts`, loads configuration, starts Worker-only WASM loading without blocking the editor, mounts one Solid `ApplicationRoot`, and reconnects saved hardware independently. Settings express WASM intent; runtime modes reflect only a successfully loaded Worker. In simultaneous `both` mode hardware remains output-authoritative while WASM supplies visualisation/probe shadow work. Wired UI adapters expose imperative state operations such as `showModal()` but are rendered inside the one application root.
+The application uses a single-bundle Vite build. The bundle starts at `src/main.ts`, loads configuration, starts Worker-only WASM loading without blocking the editor, mounts one Solid `ApplicationRoot`, and reconnects saved hardware independently. Each CodeMirror instance is owned by a text-canonical `DocumentSession`; the durable main session atomically persists visible text with its state-identity metadata, while secondary sessions are isolated and ephemeral. Settings express WASM intent; runtime modes reflect only a successfully loaded Worker. In simultaneous `both` mode hardware remains output-authoritative while WASM supplies visualisation/probe shadow work. Wired UI adapters expose imperative state operations such as `showModal()` but are rendered inside the one application root.
 
 Read `MAP.md` first for a terse codebase index, and `ALIGNMENT.md` for the dated diagnosis of where the codebase currently falls short of its mission.
 

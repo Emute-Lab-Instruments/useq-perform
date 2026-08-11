@@ -1,9 +1,9 @@
 /**
- * Singleton production wiring for the state-identity StateField.
+ * Singleton compatibility/test wiring for the state-identity StateField.
  *
- * Production wiring (extensions.ts) installs the field AND its
- * `invertedEffects` history companion via `defaultIdentityExtension`,
- * which lazily builds the field with the default config. CodeMirror
+ * Older harnesses install the field AND its `invertedEffects` history
+ * companion via `defaultIdentityExtension`, which lazily builds the field
+ * with the default config. CodeMirror
  * StateFields compare by reference, so the SAME instance must be added
  * to the editor extensions and read back from `view.state.field(...)`.
  *
@@ -14,8 +14,9 @@
  * Tests bypass this singleton: they call {@link buildIdentityField}
  * directly with a custom config, install the returned field in their
  * own EditorView, and pass the same field reference when reading
- * state. The singleton pattern here is purely for the production
- * editor's convenience.
+ * state. The running editor instead receives a session-owned field from
+ * `DocumentSession`; this singleton remains for isolated eval and historical
+ * wiring tests that need one shared field reference.
  *
  * Ergo bug f55bcf74: an earlier version of this module installed only
  * the bare `StateField` (`return [identityField()];`) and omitted the
@@ -56,7 +57,7 @@ let _extensions: Extension[] | null = null;
 export function identityField(): StateField<IdentityFieldValue> {
   if (_field === null) {
     // Use the test override when set; otherwise build the real
-    // production config.
+    // compatibility default config.
     _config =
       _productionIdentityConfigOverrideForTests() ?? createDefaultIdentityConfig();
     const built = identityExtensionsWithField(_config);
@@ -67,9 +68,9 @@ export function identityField(): StateField<IdentityFieldValue> {
 }
 
 /**
- * Production identity extension set: installs the singleton
+ * Compatibility identity extension set: installs the singleton
  * {@link identityField} AND its `invertedEffects` history companion into
- * the editor. Drop into the main editor's extension list.
+ * a historical harness. The running main editor uses DocumentSession's field.
  *
  * CodeMirror StateFields compare by reference, so the SAME instance
  * must be installed via this function and read back via

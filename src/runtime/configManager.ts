@@ -18,6 +18,7 @@ import {
   validateConfiguration,
 } from '../lib/appSettings.ts';
 import type { AppConfigDocument } from '../lib/settings/schema.ts';
+import { getEditorContent, setEditorContent } from '../lib/editorStore.ts';
 
 interface ExportOptions {
   includeCode?: boolean;
@@ -54,11 +55,18 @@ export function exportConfiguration(options: ExportOptions = {}): AppConfigDocum
   dbg('configManager: Exporting configuration', options);
 
   // Extract base configuration from active settings
-  const config = createConfigurationDocument(getAppSettings(), {
-    includeCode,
-    includeDevMode,
-    metadataSource: 'webapp-export',
-  });
+  const settings = getAppSettings();
+  const documentText = includeCode ? getEditorContent() : null;
+  const config = createConfigurationDocument(
+    documentText === null
+      ? settings
+      : { ...settings, editor: { ...settings.editor, code: documentText } },
+    {
+      includeCode,
+      includeDevMode,
+      metadataSource: 'webapp-export',
+    },
+  );
 
   // Optionally include devMode settings
   if (includeDevMode) {
@@ -100,6 +108,9 @@ export function importConfiguration(config: unknown, options: ImportOptions = {}
 
   // Update active settings
   updateSettings(newSettings);
+  if (typeof importedSettings.editor?.code === "string") {
+    setEditorContent(importedSettings.editor.code);
+  }
 
   dbg('configManager: Configuration imported successfully');
 

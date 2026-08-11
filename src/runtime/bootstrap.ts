@@ -17,7 +17,7 @@ import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
 import type { EditorView } from '@codemirror/view';
 import { loadConfigurationWithMetadata } from './appSettingsRepository.ts';
-import { editorSession, setEditor } from '../lib/editorStore.ts';
+import { editorSession, setEditorSession } from '../lib/editorStore.ts';
 import {
   disposeEditorLifecycle,
   initEditorPanel,
@@ -179,7 +179,8 @@ export interface BootstrapResult {
 // Merged from legacy/ui/ui.ts
 
 async function createAppUI(environmentState: EnvironmentState): Promise<AppUI> {
-  const editor = initEditorPanel("#panel-main-editor");
+  const documentSession = initEditorPanel("#panel-main-editor");
+  const editor = documentSession.view;
 
   visualisationSession.begin();
   const visPanelEl = document.getElementById("panel-vis");
@@ -199,7 +200,7 @@ async function createAppUI(environmentState: EnvironmentState): Promise<AppUI> {
 
   // The editor must be visible to wired components before the single Solid
   // application root mounts.
-  setEditor(editor);
+  setEditorSession(documentSession);
   let applicationRoot: ApplicationRootHandle | null = null;
   try {
     // Keep pure bootstrap-plan consumers free of the browser-only Solid graph.
@@ -270,7 +271,7 @@ async function createAppUI(environmentState: EnvironmentState): Promise<AppUI> {
       removePageLifecycleHandlers();
       detachLiveEditStoreBridge();
       disposeEditorLifecycle();
-      setEditor(null);
+      setEditorSession(null);
     },
   };
 }

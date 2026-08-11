@@ -25,7 +25,7 @@ const bootstrapRuntimeSession = vi.fn(() => ({
 }));
 
 // Mocks for createAppUI dependencies (now inlined in bootstrap.ts)
-const initEditorPanel = vi.fn(() => ({ id: "editor" }));
+const initEditorPanel = vi.fn(() => ({ view: { id: "editor" } }));
 const createGamepadPipeline = vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), dispose: vi.fn() }));
 const bindGamepadNavigation = vi.fn(() => ({ dispose: vi.fn() }));
 const createMenuDispatcher = vi.fn(() => ({
@@ -35,7 +35,7 @@ const createMenuDispatcher = vi.fn(() => ({
   open: vi.fn(),
   close: vi.fn(),
 }));
-const setEditor = vi.fn();
+const setEditorSession = vi.fn();
 const registerVisualisationPanel = vi.fn();
 const disposeApplicationRoot = vi.fn();
 const mountApplicationRoot = vi.fn(() => ({ dispose: disposeApplicationRoot }));
@@ -135,7 +135,7 @@ vi.mock("./ui/mainMenu/menuItems.ts", () => ({
 }));
 
 vi.mock("./lib/editorStore.ts", () => ({
-  setEditor,
+  setEditorSession,
   editorSession: { view: null },
 }));
 
@@ -221,7 +221,7 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
     expect(replaceSettings).toHaveBeenCalledWith({ editor: { code: "(play)" } });
     expect(initEditorPanel).toHaveBeenCalledWith("#panel-main-editor");
     expect(ensureWorkerLoaded).toHaveBeenCalledTimes(1);
-    expect(setEditor).toHaveBeenCalled();
+    expect(setEditorSession).toHaveBeenCalled();
     expect(mountApplicationRoot).toHaveBeenCalledWith({
       devmode: false,
       virtualGamepad: false,

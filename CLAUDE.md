@@ -151,7 +151,7 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 
 - `src/lib/` - shared foundations: settings (schema, normalization, persistence), editor defaults, `CircularBuffer`, debug utilities, editor compartments, editor store, persistence service, gamepad manager, picker menu model
 - `src/lib/settings/` - settings split: `schema.ts` (types/defaults), `normalization.ts` (validation/migration), `persistence.ts` (localStorage via persistence service)
-- `src/editors/` - CodeMirror extensions, keymaps, themes (data-driven), gamepad navigation, editor keyboard utilities, editor evaluation
+- `src/editors/` - text-canonical `DocumentSession` ownership plus CodeMirror extensions, keymaps, themes (data-driven), gamepad navigation, and editor keyboard utilities
 - `src/editors/extensions/` - CodeMirror extensions: `structure/` (ast, decorations, eval-integration), `evalHighlight`, `visReadability`, `diagnostics` (inline error squiggles from WASM)
 - `src/transport/` - serial port lifecycle, JSON protocol driver, stream parser, serial utilities, connector, firmware upgrade check
 - `src/runtime/` - bootstrap, Worker lifecycle/port, runtime coordinator/services, settings repository, startup context, app lifecycle, diagnostics, isolated witness interpreter
@@ -170,6 +170,8 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 **Typed Channels** (`src/contracts/*Channels.ts`): All inter-module communication uses typed pub/sub channels from `src/lib/typedChannel.ts`. No CustomEvents for runtime or visualisation events.
 
 **Persistence Service** (`src/lib/persistence.ts`): All localStorage access goes through a central service with typed keys, nosave support, and JSON error recovery.
+
+**Document Session** (`src/editors/documentSession.ts`): Every production CodeMirror view has one owning session. `EditorState.doc` is the sole program authority; structural state is derived. The durable main session snapshots text and identity from one immutable revision and persists them atomically as `uSEQ-Perform-Document`; secondary sessions are isolated and ephemeral. `editor.code` and the old split text/identity keys are bootstrap/migration inputs only.
 
 **Settings Mutation Surface**: All settings mutations go through `runtimeService` (sole mutation surface). External code reads via stores, writes via runtimeService.
 

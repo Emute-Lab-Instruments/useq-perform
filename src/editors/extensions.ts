@@ -2,8 +2,6 @@ import { foldGutter, bracketMatching } from "@codemirror/language";
 import { default_extensions as default_clojure_extensions } from "@nextjournal/clojure-mode";
 import { EditorView } from "@codemirror/view";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
-import { updateSettings } from "../runtime/runtimeService.ts";
-import { saveEditorCode } from "../lib/persistence.ts";
 import { themes, editorBaseTheme } from "./themes.ts";
 import { lineNumbers, drawSelection } from "@codemirror/view";
 import { history } from '@codemirror/commands';
@@ -22,10 +20,8 @@ import { structuralCoreExtensions } from "./extensions/structure/adapter/extensi
 // injected so tests/Storybook can render the editor without synthesis
 // runtime singletons. Spec: docs/specs/state-identity.md.
 //
-// Production uses the singleton field exposed by identityFieldExport so
-// editorEvaluation.ts can read the live identity map from the same field
-// instance (CodeMirror StateFields compare by reference).
-import { defaultIdentityExtension } from "./extensions/stateIdentity/identityFieldExport.ts";
+// The main DocumentSession injects its own field instance so the identity map
+// and document text share one revision and persistence lifetime.
 
 // Wire the default eval-integration config on module load (production wiring).
 // Tests/Storybook can override via `setEvalIntegrationConfig()`.
@@ -51,16 +47,6 @@ dbg('extensions.mjs: Available themes:', Object.keys(themes));
 
 // Create update listener
 export const updateListener = EditorView.updateListener.of((update) => {
-  const currentSettings = getAppSettings();
-  const userSessionConfig = currentSettings.storage || { saveCodeLocally: true };
-  if (update.docChanged && userSessionConfig.saveCodeLocally) {
-    saveEditorCode(update.state.doc.toString());
-  }
-
-  if (update.docChanged && currentSettings.editor) {
-    updateSettings({ editor: { code: update.state.doc.toString() } });
-  }
-
   // Keep manual-control bindings stable across arbitrary edits.
   if (update.docChanged) {
     mapManualControlBindingsThroughChanges(update.changes);
@@ -130,8 +116,7 @@ export const snippetReadOnlyExtensions = [
 const functionalExtensions = [
   history(),
   foldGutter(),
-  drawSelection(),
-  updateListener
+  drawSelection()
 ];
 
 // Editable extension set for guide playgrounds.
@@ -161,11 +146,6 @@ export const baseExtensions = [
   ...themeExtensions,
   ...default_clojure_extensions,
   ...structuralCoreExtensions(),
-  // State-identity sidecar: opaque hidden IDs for stateful top-level forms
-  // (synth today; future registrars extend via the classifier). Dependency-
-  // injected so tests/Storybook can render the editor without synthesis
-  // runtime singletons. Spec: docs/specs/state-identity.md.
-  ...defaultIdentityExtension(),
   lastEvaluatedExpressionField,
   ...createExpressionGutter(createDefaultGutterConfig()),
   ...probeExtensions,
@@ -179,10 +159,22 @@ export const baseExtensions = [
   visReadabilityPlugin,
 ];
 
-// Main editor combines all extensions
-export const mainEditorExtensions = [
-  ...mainEditorKeymap,
-  ...baseExtensions
-];
+/**
+ * Build the production editor extension set around a session-owned identity
+ * field. Embedded/guide editors use `baseExtensions` without silently
+ * joining the main document's persistence or identity lifetime.
+ */
+export function createMainEditorExtensions(options: {
+  identityExtensions: readonly import("@codemirror/state").Extension[];
+  sessionExtensions: readonly import("@codemirror/state").Extension[];
+}): import("@codemirror/state").Extension[] {
+  return [
+    ...mainEditorKeymap,
+    ...baseExtensions,
+    ...options.identityExtensions,
+    updateListener,
+    ...options.sessionExtensions,
+  ];
+}
 
-dbg('extensions.mjs: Final mainEditorExtensions array created');
+dbg('extensions.mjs: Main editor extension factory ready');

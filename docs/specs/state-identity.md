@@ -315,32 +315,68 @@ silently replacing it.
 
 ## 7. Editor Metadata
 
-7.1 The editor owns hidden state IDs for anonymous stateful forms. It creates,
-preserves, forks, and reveals them using syntax-tree-aware metadata.
+7.1 The owning `DocumentSession` manages hidden state IDs for anonymous
+stateful forms. It creates, preserves, forks, and reveals them using
+syntax-tree-aware metadata, while CodeMirror text remains the sole program
+authority ([editor.md §2.1](editor.md)). Metadata may annotate an existing
+stateful form; it may not create or rewrite visible program structure by
+itself.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** identity affects runtime continuity, but must not
+become a second representation of which program the user wrote.
 
 7.2 Metadata is keyed by source range plus structural context, not by raw text
-alone. Whitespace edits and local parameter edits preserve IDs. Moving a form
-preserves IDs. Replacing a stateful form with a distinct non-stateful form
-detaches the ID unless undo restores it.
+alone. Its structure and anchors are remapped from the Lezer projection after
+each CodeMirror transaction. Whitespace edits and local parameter edits
+preserve IDs. Moving a form preserves IDs. Replacing a stateful form with a
+distinct non-stateful form detaches the ID unless undo restores it.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** identity should follow user intent across ordinary
+edits without granting the derived tree independent authority.
 
-7.3 Metadata must persist with the editor document/session. A page reload
-should not silently regenerate all state IDs, because that would erase the
-meaning of linked variants. Persistence should use the central persistence
-service (`src/lib/persistence.ts`) and follow [persistence.md](persistence.md)
-error-recovery rules.
+7.3 Metadata persists atomically with its exact text revision in the canonical
+`DocumentRecord`; it is not saved through a live independent sidecar. A page
+reload must not silently regenerate all state IDs, because that would erase the
+meaning of linked variants. Persistence and legacy migration follow
+[persistence.md §2](persistence.md).
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** independently persisted text and IDs can be valid
+individually yet refer to different source revisions.
 
 7.4 Eval-time rewriting is tree-aware. The editor must not use ad hoc string
 replacement to inject IDs into code sent to the runtime. It must either rewrite
 using parsed ranges or pass an out-of-band ID map through a future runtime API.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** identity injection must preserve exact user text
+ranges so runtime diagnostics can map back without altering document authority.
 
-7.5 The visible buffer and runtime payload may differ. Diagnostics returned
-from the runtime must map back to visible source ranges, hiding injected ID
-syntax unless the user is in "show IDs" mode.
+7.5 The visible buffer and runtime payload may differ. A runtime payload is an
+execution artefact derived from one coherent `DocumentSession.snapshot()`; it
+is not persisted as the document and never writes its injected syntax back.
+Diagnostics returned from the runtime must map back to visible source ranges,
+hiding injected ID syntax unless the user is in "show IDs" mode.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** hardware and Worker-WASM may retain different LKG
+programs while the user's editable text continues to change.
 
 7.6 The ID metadata must compose with structural editing. Metas/wrappers that
 move with nodes in [structural-editing.md](structural-editing.md) should carry
 state identity with the stateful host form. Slurp, raise, transpose, wrap, and
 unwrap should not reset identity merely because parent structure changed.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** structural commands are ordinary edits of the same
+document, not implicit requests to replace musical state.
+
+7.7 A coherent session snapshot pairs text and metadata after the same applied
+CodeMirror transaction. An identity entry enters the session and runtime
+payload only when its schema is supported, its value validates safely, and its
+anchor/context correlates to a compatible form in that text. Malformed,
+unsupported, or uncorrelated entries are ignored without blocking or changing
+the authoritative text; the canonical record does not retain them in an
+additional opaque metadata store.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** validation preserves identities that can be applied
+safely without guessing or accumulating a second unbounded metadata store.
+
+7.8 Secondary editor sessions own isolated identity metadata in memory and do
+not read or write the main `DocumentRecord`. Explicit promotion into the main
+editor applies the copy/move rules in §8 through a main-session CodeMirror
+transaction; sharing an editor view or mutable identity map is forbidden.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** disposable playgrounds and previews must not acquire
+or mutate the identity of the performer's durable program accidentally.
 
 ---
 
@@ -524,10 +560,14 @@ not a runtime crash.
 12.4 Runtime payload diagnostics must refer to visible source ranges. Hidden
 injected syntax should not create confusing diagnostic positions.
 
-12.5 If metadata persistence fails, the editor may regenerate IDs, but it must
-not claim continuity. A console warning is sufficient under
-[persistence.md](persistence.md); visible state-link debugging may show the
-IDs as new.
+12.5 If `DocumentRecord` persistence fails, the editor keeps the latest
+coherent text-and-metadata snapshot in memory, warns, and leaves the previous
+durable record and legacy inputs intact. It must not regenerate IDs solely
+because a write failed or claim the unsaved revision is durable. On a later
+load, recovered metadata is validated and correlated under §7.7; invalid
+entries are ignored without endangering the text.
+&nbsp;&nbsp;&nbsp;&nbsp;**Why:** regeneration after an I/O failure converts a
+temporary durability problem into permanent, silent state-identity loss.
 
 ---
 
@@ -551,7 +591,7 @@ IDs as new.
 
 - Identify stateful forms in the syntax tree.
 - Maintain sidecar IDs across CodeMirror transactions.
-- Persist sidecar metadata.
+- Persist text and sidecar IDs together as one atomic `DocumentRecord`.
 - Rewrite eval payloads with IDs.
 - Remap diagnostics from rewritten payloads to visible source.
 

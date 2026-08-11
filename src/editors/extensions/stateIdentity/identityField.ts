@@ -89,12 +89,12 @@ export interface IdentityConfig {
    */
   readonly continuity?: ContinuitySource;
   /**
-   * Optional persistence adapter. When present, the field reads any
-   * stored snapshot at `create` time and restores safely-correlated
-   * identities; on every map-changing transaction it writes the new
-   * snapshot through the adapter. The default wiring
-   * ({@link createDefaultIdentityConfig}) supplies the central
-   * persistence service.
+   * Optional snapshot adapter. When present, the field reads a snapshot at
+   * `create` time and restores safely-correlated identities; on every
+   * map-changing transaction it offers the new snapshot to the adapter.
+   * The production DocumentSession supplies a load-only adapter and owns the
+   * actual atomic text-plus-identity write. The legacy default adapter remains
+   * available to compatibility harnesses and focused field tests.
    *
    * Spec: state-identity.md §7.3, persistence.md. The adapter must not
    * access localStorage directly; it must route through the central
@@ -288,8 +288,9 @@ export function buildIdentityField(config: IdentityConfig): StateField<IdentityF
         for (const id of result.debug.dropped) log({ kind: "drop", id });
       }
 
-      // 4. Persist the initial snapshot (no-op under nosave or when no
-      //    persistence adapter is configured).
+      // 4. Offer the initial snapshot to the adapter. This is deliberately a
+      //    no-op for production DocumentSession wiring, which persists the
+      //    coherent text-plus-identity pair at its own boundary.
       if (persistence !== undefined) {
         try {
           persistence.save(

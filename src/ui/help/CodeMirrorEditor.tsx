@@ -1,6 +1,6 @@
 import { Component, onMount, onCleanup } from "solid-js";
 import { EditorView } from "@codemirror/view";
-import { EditorState, Extension } from "@codemirror/state";
+import { Extension } from "@codemirror/state";
 import {
   baseExtensions,
   readOnlyExtensions,
@@ -10,6 +10,11 @@ import {
 import { themes } from "../../editors/themes.ts";
 import { defaultTheme } from "../../lib/editorDefaults.ts";
 import { settings } from "../../utils/settingsStore";
+import {
+  createDocumentSession,
+  type DocumentSession,
+} from "../../editors/documentSession.ts";
+import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
 
 interface CodeMirrorEditorProps {
   code: string;
@@ -30,7 +35,7 @@ interface CodeMirrorEditorProps {
 
 export const CodeMirrorEditor: Component<CodeMirrorEditorProps> = (props) => {
   let editorContainer: HTMLDivElement | undefined;
-  let view: EditorView | undefined;
+  let documentSession: DocumentSession | undefined;
 
   onMount(() => {
     if (!editorContainer) return;
@@ -78,21 +83,21 @@ export const CodeMirrorEditor: Component<CodeMirrorEditorProps> = (props) => {
       );
     }
 
-    const state = EditorState.create({
-      doc: props.code,
-      extensions,
-    });
-
-    view = new EditorView({
-      state,
+    documentSession = createDocumentSession({
+      initialText: props.code,
+      settings: getAppSettings(),
+      repository: null,
       parent: editorContainer,
+      buildExtensions: ({ identityExtensions, sessionExtensions }) => [
+        ...extensions,
+        ...identityExtensions,
+        ...sessionExtensions,
+      ],
     });
   });
 
   onCleanup(() => {
-    if (view) {
-      view.destroy();
-    }
+    documentSession?.dispose();
   });
 
   return <div ref={editorContainer} class="cm-editor-wrapper" />;
