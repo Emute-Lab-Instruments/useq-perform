@@ -17,7 +17,7 @@ import {
 } from "solid-js";
 import { actions, type ActionId, type ActionDef } from "../../lib/keybindings/actions.ts";
 import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
-import { executeAction as dispatchAction } from "../../lib/keybindings/handlers.ts";
+import { executeAction as dispatchAction } from "../../editors/commands/actionHandlers.ts";
 import { isMac as detectIsMac } from "../../lib/keybindings/osReserved.ts";
 import { editor } from "../../lib/editorStore.ts";
 import { pushOverlay } from "../overlayManager.ts";

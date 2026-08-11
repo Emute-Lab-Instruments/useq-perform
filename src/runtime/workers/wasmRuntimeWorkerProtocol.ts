@@ -122,6 +122,12 @@ export interface ReadActiveDiagnosticsRequest {
   id: number;
 }
 
+export interface SetFailureModeRequest {
+  type: "setFailureMode";
+  id: number;
+  mode: "lkg" | "zero";
+}
+
 export interface SetLiveInputsRequest {
   type: "setLiveInputs";
   id: number;
@@ -327,6 +333,7 @@ export type WasmWorkerRequest =
   | SendTransportCommandRequest
   | ReadLastDiagnosticsRequest
   | ReadActiveDiagnosticsRequest
+  | SetFailureModeRequest
   | SetLiveInputsRequest
   | SetHwInputValueRequest
   | ProbeSetRequest
@@ -453,6 +460,12 @@ export interface ReadActiveDiagnosticsResponse {
   type: "readActiveDiagnostics-result";
   id: number;
   diagnostics: RuntimeDiagnostic[];
+}
+
+export interface SetFailureModeResponse {
+  type: "setFailureMode-result";
+  id: number;
+  accepted: boolean;
 }
 
 export interface SetLiveInputsResponse {
@@ -603,6 +616,7 @@ export interface ClearSynthDeclarationsResponse {
 export interface ErrorResponse {
   type: "error";
   id: number;
+  code: "abi-mismatch" | "runtime-error";
   message: string;
 }
 
@@ -618,6 +632,7 @@ export type WasmWorkerResponse =
   | SendTransportCommandResponse
   | ReadLastDiagnosticsResponse
   | ReadActiveDiagnosticsResponse
+  | SetFailureModeResponse
   | SetLiveInputsResponse
   | SetHwInputValueResponse
   | ProbeSetResponse

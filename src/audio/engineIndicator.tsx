@@ -57,7 +57,7 @@ export interface EngineIndicatorProps {
 }
 
 /**
- * Visual class for each engine state. Consumers (Inspector scenarios,
+ * Visual class for each engine state. Consumers (Storybook stories,
  * visual regression tests) match against these class names.
  */
 export function engineIndicatorClass(state: SynthesisEngineState): string {

@@ -65,8 +65,10 @@ vi.mock("./upgradeCheck.ts", () => ({
   },
 }));
 
-vi.mock("../effects/visualisationSampler.ts", () => ({
-  handleExternalTimeUpdate: handleExternalTimeUpdateMock,
+vi.mock("../effects/visualisationSession.ts", () => ({
+  visualisationSession: {
+    clock: { acceptHardwareTime: handleExternalTimeUpdateMock },
+  },
 }));
 
 vi.mock("../runtime/appSettingsRepository.ts", () => ({

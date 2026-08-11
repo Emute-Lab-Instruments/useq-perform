@@ -45,7 +45,7 @@ layer: behavioural
 ## 2. Entry and exit
 
 2.1 **Entry points:**
-- Keyboard shortcut — action `view.zenMode`, default `Ctrl+Shift+Z` (configurable via keybindings; handler sets `#/zen` and reloads — see `src/lib/keybindings/handlers.ts`). **Implemented.**
+- Keyboard shortcut — action `view.zenMode`, default `Ctrl+Shift+Z` (configurable via keybindings; handler sets `#/zen` and reloads — see `src/editors/commands/actionHandlers.ts`). **Implemented.**
 - Direct URL navigation (`#/zen`). **Implemented.**
 - Menu item (in Help or toolbar). *Deferred — see §11.8.*
 - Gamepad gesture (hold `Start`+`Back` for 1s). *Deferred — see §11.8.*

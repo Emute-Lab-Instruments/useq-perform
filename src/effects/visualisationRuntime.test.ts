@@ -67,7 +67,6 @@ vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
     readActiveDiagnostics: vi.fn().mockResolvedValue([]),
     readLastDiagnostics: vi.fn().mockResolvedValue([]),
   }),
-  setActiveWasmRuntimePort: vi.fn(),
   isUsingInProcessWasmRuntime: () => true,
 }));
 
@@ -125,7 +124,7 @@ vi.mock("../utils/outputHealthStore.ts", () => ({
  */
 async function getCurrentTransportMode(): Promise<string> {
   const { getRuntimeSessionState } = await import(
-    "../runtime/runtimeSessionStore.ts"
+    "../runtime/runtimeCoordinator.ts"
   );
   return getRuntimeSessionState().session.transportMode;
 }
@@ -140,7 +139,7 @@ async function setRuntimeMode(opts: {
   wasmEnabled?: boolean;
 }): Promise<void> {
   const { updateRuntimeSessionState } = await import(
-    "../runtime/runtimeSessionStore.ts"
+    "../runtime/runtimeCoordinator.ts"
   );
   updateRuntimeSessionState({
     hasHardwareConnection: opts.hasHardwareConnection,
@@ -160,7 +159,7 @@ describe("vis renderer survives runtime transitions (spec: visualisation.md §1.
 
   afterEach(async () => {
     const { resetRuntimeSessionState } = await import(
-      "../runtime/runtimeSessionStore.ts"
+      "../runtime/runtimeCoordinator.ts"
     );
     resetRuntimeSessionState();
   });
@@ -178,6 +177,29 @@ describe("vis renderer survives runtime transitions (spec: visualisation.md §1.
     expect(visStore.currentTime).toBe(0);
     expect(visStore.displayTime).toBe(0);
     expect(visStore.bar).toBe(0);
+  });
+
+  it("drops a sample completion that arrives after the application lifetime stops", async () => {
+    await setRuntimeMode({ hasHardwareConnection: false });
+    let releaseSync!: () => void;
+    wasmInterpreterMocks.updateUseqWasmTime.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        releaseSync = resolve;
+      }),
+    );
+    const sampler = await import("./visualisationSampler.ts");
+    const runtime = await import("./visualisationRuntime.ts");
+    await sampler.registerVisualisation("a1", "(a1 1)");
+
+    runtime.notifyExternalTimeUpdate(4);
+    await vi.waitFor(() => {
+      expect(wasmInterpreterMocks.updateUseqWasmTime).toHaveBeenCalled();
+    });
+    runtime.stopVisualisationRuntime();
+    releaseSync();
+    await runtime._drainForTests();
+
+    expect(sampler.getRenderData("a1")?.pastBuffer.length).toBe(0);
   });
 
   describe("wasm → both transition (hardware connect)", () => {

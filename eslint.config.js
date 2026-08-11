@@ -200,26 +200,4 @@ export default tseslint.config(
     files: ["src/effects/editorEvaluation.ts"],
     rules: { "import-x/no-restricted-paths": "off" },
   },
-  {
-    // editorStore.ts lazily imports from runtime/ and editors/ to resolve
-    // circular dependency issues. The dynamic imports are deferred, but
-    // the static analysis still flags them.
-    files: ["src/lib/editorStore.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
-    // handlers.ts is the keybinding bridge between the action registry and
-    // runtime modules (effects, editors, UI). It must import handler
-    // implementations from higher layers by design.
-    files: ["src/lib/keybindings/handlers.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
-  {
-    // gamepad/index.ts reads CodeMirror cursor context for grab-mode
-    // recognition. This is a temporary architectural debt; see
-    // bd issue useq-perform-xf0o for the proper fix (cursorContext
-    // channel or DI callback).
-    files: ["src/lib/gamepad/index.ts"],
-    rules: { "import-x/no-restricted-paths": "off" },
-  },
 );

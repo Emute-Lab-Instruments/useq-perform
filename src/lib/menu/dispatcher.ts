@@ -11,7 +11,7 @@
 //
 // Lifecycle:
 //   1. `createMenuDispatcher(deps)` — creates the dispatcher instance.
-//   2. `bind(editorView)` — subscribes to action routing, returns cleanup fn.
+//   2. `bind()` — subscribes to action routing, returns cleanup fn.
 //   3. `open(target)` — transitions from closed to open.
 //   4. On verb commit: reads frozen snapshot → applyVerb → editor mutation →
 //      auto-chain check → reopen or close.
@@ -68,11 +68,8 @@ export {
  * @see docs/specs/radial-menu.md §11.2
  */
 export interface MenuDispatcher {
-  /**
-   * Bind the dispatcher to an editor view. Registers action handlers and
-   * axis subscriptions. Returns an unsubscribe / cleanup function.
-   */
-  bind(editorView: EditorView): () => void;
+  /** Register action and axis subscriptions; returns their cleanup function. */
+  bind(): () => void;
 
   /**
    * Open the menu with a specific apply target. Reads the manifest from the
@@ -188,7 +185,7 @@ const MENU_ALL_ACTIONS: ReadonlySet<ActionId> = new Set([
 
 /**
  * Create a new menu dispatcher. The dispatcher is inert until `bind()` is
- * called with an EditorView.
+ * called.
  *
  * @see docs/specs/radial-menu.md §11.2
  */
@@ -201,7 +198,7 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
   const textEntry = createTextEntryController(deps);
 
   return {
-    bind(editorView: EditorView): () => void {
+    bind(): () => void {
       // Clear any previous bindings.
       unbind();
 

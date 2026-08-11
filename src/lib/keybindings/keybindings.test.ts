@@ -11,7 +11,7 @@ import {
   type OsFamily,
 } from "./osReserved.ts";
 
-// Mock heavy runtime dependencies that handlers.ts transitively imports.
+// Mock heavy runtime dependencies that actionHandlers.ts transitively imports.
 // We only need to verify handler *keys* exist, not execute the handlers.
 vi.mock("../../effects/editorEvaluation.ts", () => ({
   evaluate: vi.fn(() => true),
@@ -31,7 +31,7 @@ vi.mock("../../editors/extensions/structure/adapter/dispatcher.ts", () => ({
 }));
 
 // Import handlers after mocks are registered
-import { handlers } from "./handlers.ts";
+import { handlers } from "../../editors/commands/actionHandlers.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers

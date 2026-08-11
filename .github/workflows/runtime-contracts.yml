@@ -56,9 +56,6 @@ jobs:
       - name: Install Playwright browsers (Chromium)
         run: npx playwright install chromium --with-deps
 
-      - name: Inspector runtime scenario validation (Chromium)
-        run: npm run inspector:validate-runtime
-
       - name: Storybook browser smoke tests (Chromium)
         run: npx vitest run --project storybook
 

@@ -9,7 +9,7 @@
 import { Buffer } from "buffer";
 import { CircularBuffer } from "../lib/CircularBuffer.ts";
 import { dbg } from "../lib/debug.ts";
-import { notifyExternalTimeUpdate } from "../effects/visualisationRuntime.ts";
+import { visualisationSession } from "../effects/visualisationSession.ts";
 import {
   combineBuffers,
   extractMessageText,
@@ -115,19 +115,12 @@ async function processSerialDataLoop(
   onJsonMessage: (msg: string) => void,
   onLegacyTextMessage: (msg: string) => void,
 ): Promise<Uint8Array> {
-  let chunkCount = 0;
   while (readingActive) {
     const readResult = await reader.read();
     if (readResult.done) break;
 
     const v = readResult.value!;
     const incoming = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
-    chunkCount++;
-    if (chunkCount <= 20) {
-      const hex = Array.from(incoming.slice(0, 40)).map(b => b.toString(16).padStart(2, '0')).join(' ');
-      // console.log(`[stream-parser] chunk #${chunkCount} (${incoming.length} bytes): ${hex}${incoming.length > 40 ? '...' : ''}`);
-    }
-
     const byteArray = combineBuffers(buffer, incoming);
     const state = processAllMessages(
       byteArray,
@@ -367,7 +360,7 @@ function updateSerialBuffer(bufferIndex: number, value: number): void {
     // Push the time into the visualisation runtime; it updates the store
     // immediately and queues a fresh sample (latest-time-wins).
     try {
-      notifyExternalTimeUpdate(value);
+      visualisationSession.clock.acceptHardwareTime(value);
     } catch (error: unknown) {
       dbg(`streamParser: failed to forward time update: ${error}`);
     }

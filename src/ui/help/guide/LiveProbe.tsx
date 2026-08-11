@@ -1,7 +1,7 @@
 import { Component, createSignal, createEffect, on, onMount, onCleanup, Show } from "solid-js";
 import { MiniVis } from "../lessons/MiniVis";
 import type { VisSignal } from "./guideTypes";
-import { getActiveWasmRuntimePort } from "../../../runtime/activeWasmRuntimePort";
+import { visualisationSession } from "../../../effects/visualisationSession";
 
 const SAMPLE_COUNT = 200;
 const DEBOUNCE_MS = 300;
@@ -34,17 +34,7 @@ export const LiveProbe: Component<LiveProbeProps> = (props) => {
 
     // // console.debug("[LiveProbe] probe()", { code: code.slice(0, 60), outputs });
 
-    const port = getActiveWasmRuntimePort();
-    const caps = port.capabilities();
-    if (!caps.enabled) {
-      setWasmReady(false);
-      scheduleWasmPoll(code, outputs);
-      return;
-    }
-
-    try {
-      await port.ensureLoaded();
-    } catch {
+    if (!visualisationSession.probes.available()) {
       setWasmReady(false);
       scheduleWasmPoll(code, outputs);
       return;
@@ -54,7 +44,7 @@ export const LiveProbe: Component<LiveProbeProps> = (props) => {
     setWasmReady(true);
 
     try {
-      await port.evalCode(code);
+      await visualisationSession.probes.evaluate(code);
     } catch {
       setHasError(true);
       return;
@@ -81,7 +71,7 @@ export const LiveProbe: Component<LiveProbeProps> = (props) => {
         const barsCount = props.bars ?? 1;
         const time = (i / (SAMPLE_COUNT - 1)) * barsCount;
         try {
-          const value = await port.evalOutputAtTime(outputName, time);
+          const value = await visualisationSession.probes.evaluateOutput(outputName, time);
           samples.push(Number.isFinite(value) ? value : 0);
         } catch {
           failed = true;

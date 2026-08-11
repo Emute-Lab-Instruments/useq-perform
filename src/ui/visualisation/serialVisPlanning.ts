@@ -2,8 +2,7 @@
 // lane layout, past/future sample assembly, and pixel-matched sample rate.
 
 import { projectionTrace } from "../../lib/projectionTrace.ts";
-import type { VisSettings } from "../../utils/visualisationStore.ts";
-import type { OutputRenderData } from "../../effects/visualisationBuffers.ts";
+import type { OutputRenderData, VisSettings } from "../../effects/visualisationSession.ts";
 import type { VisSampleLike } from "./webglLineRenderer.ts";
 
 const DIGITAL_OUTPUT_RE = /^[ds]\d+$/i;

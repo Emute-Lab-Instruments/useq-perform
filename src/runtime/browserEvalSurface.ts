@@ -43,10 +43,7 @@ import { EditorSelection } from "@codemirror/state";
 
 import { editorSession } from "../lib/editorStore.ts";
 import { evaluate } from "../effects/editorEvaluation.ts";
-import {
-  setVisualisationNowSource,
-  _drainForTests as drainVisualisationSampling,
-} from "../effects/visualisationRuntime.ts";
+import { visualisationSession } from "../effects/visualisationSession.ts";
 import { audioIsMasterClock } from "../audio/audioClockPolicy.ts";
 import { getActiveSynthesisService } from "./activeSynthesisService.ts";
 import { getActiveWasmRuntimePort } from "./activeWasmRuntimePort.ts";
@@ -272,7 +269,7 @@ function buildSurface(): BrowserEvalSurface {
       // The installed source reads the mutable `frozenNowMs` so
       // `stepClock` advances it without re-installing (re-installing
       // would re-anchor and lose the step).
-      setVisualisationNowSource(() => frozenNowMs ?? performance.now());
+      visualisationSession.clock.setNowSource(() => frozenNowMs ?? performance.now());
     },
 
     async stepClock(stepMs: number): Promise<void> {
@@ -294,7 +291,7 @@ function buildSurface(): BrowserEvalSurface {
       // drain then guarantees every queued sample has been processed.
       await nextAnimationFrame();
       await nextAnimationFrame();
-      await drainVisualisationSampling();
+      await visualisationSession.clock.drainForTests();
     },
 
     resumeClock(): void {
@@ -302,7 +299,7 @@ function buildSurface(): BrowserEvalSurface {
       frozenNowMs = null;
       // Restoring the default source re-anchors inside the seam, so
       // local time continues from the frozen value without a jump.
-      setVisualisationNowSource(null);
+      visualisationSession.clock.setNowSource(null);
     },
 
     isClockFrozen(): boolean {
@@ -343,6 +340,6 @@ export function teardownBrowserEvalSurface(target: unknown): void {
   // (dev hot-reload replaces the surface; the runtime seam outlives it).
   if (frozenNowMs !== null) {
     frozenNowMs = null;
-    setVisualisationNowSource(null);
+    visualisationSession.clock.setNowSource(null);
   }
 }

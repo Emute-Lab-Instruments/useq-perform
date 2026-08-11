@@ -7,7 +7,7 @@
 // Receives state and callbacks as props. The adapter layer
 // (adapters/toolbars.tsx) wires the real orchestrator into props.
 
-import { Show, onCleanup, onMount } from "solid-js";
+import { Show, onCleanup, onMount, type JSX } from "solid-js";
 import { ProgressBar } from "./ProgressBar";
 import { Play, Pause, Square, Rewind, X } from "lucide-solid";
 
@@ -22,6 +22,8 @@ export interface TransportToolbarProps {
   onStop: () => void;
   onRewind: () => void;
   onClear: () => void;
+  /** Transport-family status indicators rendered inside the toolbar. */
+  children?: JSX.Element;
 }
 
 function formatBpm(value: number): string {
@@ -173,6 +175,7 @@ export function TransportToolbar(props: TransportToolbarProps) {
         </button>
       </div>
       <ProgressBar progress={props.progress} />
+      {props.children}
     </div>
   );
 }

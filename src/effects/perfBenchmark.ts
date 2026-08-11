@@ -10,8 +10,8 @@
  *   15 channels — stress test (target ceiling)
  */
 
-import { registerVisualisation, unregisterVisualisation } from "./visualisationSampler.ts";
-import { evalInUseqWasm } from "../runtime/wasmInterpreter.ts";
+import { visualisationSession } from "./visualisationSession.ts";
+import { getActiveWasmRuntimePort } from "../runtime/runtimeCoordinator.ts";
 import { perf } from "../lib/perfTrace.ts";
 
 // Expressions of varying complexity for realistic benchmarking.
@@ -56,12 +56,12 @@ async function setup(channelCount: number): Promise<void> {
 
   // Define all expressions in the interpreter first
   for (const expr of expressions) {
-    await evalInUseqWasm(expr.code);
+    await getActiveWasmRuntimePort().evalCode(expr.code);
   }
 
   // Register all for visualisation
   for (const expr of expressions) {
-    await registerVisualisation(expr.name, expr.code);
+    await visualisationSession.expressions.register(expr.name, expr.code);
     activeChannels.push(expr.name);
   }
 
@@ -70,7 +70,7 @@ async function setup(channelCount: number): Promise<void> {
 
 async function teardown(): Promise<void> {
   for (const name of activeChannels) {
-    unregisterVisualisation(name);
+    visualisationSession.expressions.unregister(name);
   }
   activeChannels = [];
 }

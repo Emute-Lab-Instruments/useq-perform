@@ -6,7 +6,7 @@ import { diagnosticField, pushDiagnostics, clearDiagnosticsForRange } from "../e
 import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
 import { findHolePositions } from "../lib/holeDetection.ts";
 import { evalRejectionForNoRuntime, NO_RUNTIME_WARNING } from "./noneModeGate.ts";
-import { updateRuntimeSessionState } from "../runtime/runtimeSessionStore.ts";
+import { updateRuntimeSessionState } from "../runtime/runtimeCoordinator.ts";
 
 function createView(doc: string): EditorView {
   return new EditorView({

@@ -3,9 +3,8 @@ import { expect } from 'chai';
 import { createApp } from '../src/runtime/appLifecycle.ts';
 import { resolveBootstrapPlan } from '../src/runtime/bootstrap.ts';
 import {
-  getActiveWasmRuntimePort,
-  setActiveWasmRuntimePort,
-} from '../src/runtime/activeWasmRuntimePort.ts';
+  transitionRuntimeCoordinator,
+} from '../src/runtime/runtimeCoordinator.ts';
 
 var defaultEnvironmentState = {
   areInBrowser: true,
@@ -30,20 +29,28 @@ describe('Warnings', () => {
             startLocallyWithoutHardware: true,
         });
 
-        const previousPort = getActiveWasmRuntimePort();
-        setActiveWasmRuntimePort({
-          ...previousPort,
+        const workerPort = new Proxy({
+          kind: 'wasm-runtime',
+          capabilities: () => ({ available: true, enabled: true, loaded: true }),
           ensureLoaded: async () => {},
           sendTransportCommand: async () => {},
+          syncTransportState: async () => {},
           setHwInputValue: async () => {},
+          setFailureMode: async () => true,
+        }, {
+          get(target, property) {
+            if (property in target) return target[property];
+            return async () => undefined;
+          },
         });
+        transitionRuntimeCoordinator({ type: 'select-wasm-port', port: workerPort });
 
         let app = createApp(null, environmentState, plan);
         try {
           await app.start();
         } finally {
           await app.stop();
-          setActiveWasmRuntimePort(previousPort);
+          transitionRuntimeCoordinator({ type: 'select-wasm-port', port: null });
         }
 
         expect(app.modals).to.not.have.property('webserialWarning');

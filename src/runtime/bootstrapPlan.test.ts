@@ -20,6 +20,23 @@ describe("resolveBootstrapPlan", () => {
     });
   });
 
+  it("does not invent a main-thread runtime for no-module mode without a Worker", () => {
+    expect(
+      resolveBootstrapPlan({
+        noModuleMode: true,
+        isWebSerialAvailable: true,
+        wasmEnabled: false,
+        startLocallyWithoutHardware: true,
+      }),
+    ).toEqual({
+      startupMode: "unsupported-browser",
+      startBrowserLocal: false,
+      seedDefaultNoModuleExpressions: false,
+      attemptHardwareReconnect: false,
+      showUnsupportedBrowserWarning: true,
+    });
+  });
+
   it("starts browser-local first when hardware is available and retained settings allow it", () => {
     expect(
       resolveBootstrapPlan({

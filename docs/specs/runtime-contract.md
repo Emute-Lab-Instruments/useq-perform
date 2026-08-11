@@ -18,8 +18,9 @@ For the higher-level product boundary and compatibility cuts, read [MAIN.md](MAI
 - `src/contracts/runtimeTypes.ts` — `RuntimeConnectionMode`, `TransportMode`, session types
 - `src/contracts/useqProtocolSchema.ts` — generated-schema request/response validation and derived runtime support catalogs
 - `src/runtime/runtimeCoordinator.ts` — canonical runtime state transitions and typed WASM-port selection
-- `src/runtime/wasmInterpreter.ts` — WASM instantiation, `createModule()`, ABI validation call site
-- `src/runtime/wasmRuntimePort.ts` — in-process WASM port implementing `RuntimePort`
+- `src/runtime/wasmRuntimeWorkerPort.ts` — sole production WASM `RuntimePort`
+- `src/runtime/workers/wasmRuntime.worker.ts` — Worker-local WASM instantiation and ABI validation call site
+- `src/runtime/witnessEngine.ts` — isolated, non-production conformance-witness interpreter
 - `src/runtime/runtimeTransportService.ts` — fan-out of shared commands to both runtimes
 - `src/effects/transportOrchestrator.ts` — transport command dispatch
 - `src/contracts/wasmAbi.test.ts` — ABI contract tests
@@ -46,7 +47,7 @@ That command reports the pinned gitlink commit, the checked-out submodule commit
 The editor talks to two runtime shapes:
 
 - Hardware runtime: full `uSEQ` over serial/JSON protocol.
-- Browser runtime: `ModuLispInterpreter` compiled to WASM.
+- Browser runtime: `ModuLispInterpreter` compiled to WASM and hosted only in a dedicated Worker.
 
 Shared capabilities are the only transport commands the editor may fan out to both runtimes:
 

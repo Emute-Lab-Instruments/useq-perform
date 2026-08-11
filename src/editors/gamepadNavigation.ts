@@ -1,18 +1,27 @@
 // src/editors/gamepadNavigation.ts
 //
-// Subscribes to remaining gamepad intent channels and drives editor
-// commands for non-structural concerns. Has no knowledge of the gamepad
-// polling system — it only reacts to published intents.
+// Owns the editor-specific half of gamepad integration: reads structural
+// cursor context for the lower-layer recognizer and applies the continuous
+// manual-control axis stream.
 //
 // Spatial navigation (`nav.up`/`nav.down`/`nav.left`/`nav.right`) flows
 // directly through the keybindings handler registry from the gamepad
 // pipeline (see `src/lib/gamepad/index.ts` → `createActionRunner`). This
-// module covers the remaining channel-driven intents — eval and the
-// manual-control stick axis — and emits both through the editor router.
+// module covers the remaining channel-driven manual-control stick axis.
 
 import type { EditorView } from "@codemirror/view";
 
 import { executeEditorCommand } from "./commands/editorCommandRouter.ts";
+import type { GamepadEditorContext } from "../lib/gamepad/index.ts";
+import {
+  insertionModeField,
+  structField,
+} from "./extensions/structure/adapter/stateField.ts";
+import {
+  findById,
+  isLeaf,
+  type LeafKind,
+} from "./extensions/structure/core/index.ts";
 
 import * as ch from "../contracts/gamepadChannels";
 
@@ -48,6 +57,33 @@ export interface GamepadNavigationHandle {
   dispose(): void;
 }
 
+/** Read CodeMirror/structural state without pulling editor modules into lib/. */
+export function readGamepadEditorContext(
+  view: EditorView,
+): GamepadEditorContext {
+  const insertionMode = view.state.field(insertionModeField, false) ?? false;
+  const structural = view.state.field(structField, false);
+  if (!structural) {
+    return { insertionMode, cursorOnLeafAtom: false, cursorNodeKind: null };
+  }
+
+  const primary = structural.state.cursors.primary;
+  if (primary.kind !== "node") {
+    return { insertionMode, cursorOnLeafAtom: false, cursorNodeKind: null };
+  }
+
+  const node = findById(structural.state.tree.root, primary.target);
+  if (!node || !isLeaf(node) || node.kind === "document") {
+    return { insertionMode, cursorOnLeafAtom: false, cursorNodeKind: null };
+  }
+
+  return {
+    insertionMode,
+    cursorOnLeafAtom: true,
+    cursorNodeKind: node.kind as LeafKind,
+  };
+}
+
 /**
  * Wire up remaining gamepad intent channels to CodeMirror editor actions.
  * Returns a handle to unsubscribe all listeners.
@@ -64,17 +100,6 @@ export function bindGamepadNavigation(
   // Restore system cursor on mouse movement
   const mouseMoveListener = () => showSystemCursor();
   document.addEventListener("mousemove", mouseMoveListener);
-
-  // -- Eval -----------------------------------------------------------------
-
-  const unsubEval = ch.evalNow.subscribe(() => {
-    if (!view) return;
-    executeEditorCommand(view, {
-      kind: "evaluate",
-      strategy: "expression",
-      source: "gamepad",
-    });
-  });
 
   // -- Manual control -------------------------------------------------------
 
@@ -95,7 +120,6 @@ export function bindGamepadNavigation(
 
   return {
     dispose() {
-      unsubEval();
       unsubStickAxis();
       if (view?.dom) {
         view.dom.removeEventListener("pointerdown", pointerListener);

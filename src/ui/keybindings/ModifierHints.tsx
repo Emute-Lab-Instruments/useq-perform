@@ -8,8 +8,8 @@ import {
 } from "solid-js";
 import { settings } from "../../utils/settingsStore.ts";
 import { editor } from "../../lib/editorStore.ts";
-import { executeAction } from "../../lib/keybindings/handlers.ts";
-import { actions, type ActionId } from "../../lib/keybindings/actions.ts";
+import { executeAction } from "../../editors/commands/actionHandlers.ts";
+import type { ActionId } from "../../lib/keybindings/actions.ts";
 import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
 import {
   MODIFIER_KEYS,

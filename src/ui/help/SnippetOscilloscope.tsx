@@ -1,6 +1,5 @@
 import { Component, onCleanup, onMount } from "solid-js";
-import { getActiveWasmRuntimePort } from "../../runtime/activeWasmRuntimePort.ts";
-import { visStore } from "../../utils/visualisationStore.ts";
+import { visualisationSession } from "../../effects/visualisationSession.ts";
 import { drawProbeWaveformGL } from "../../ui/visualisation/webglLineRenderer.ts";
 import { dbg } from "../../lib/debug.ts";
 
@@ -116,7 +115,7 @@ export const SnippetOscilloscope: Component<SnippetOscilloscopeProps> = (props) 
     const expr = extractSampleExpression(props.code);
     if (!expr || !canvas) return;
 
-    const currentTime = visStore.currentTime || 0;
+    const currentTime = visualisationSession.state.currentTime || 0;
     const startTime = currentTime - WINDOW_DURATION_S;
     const step = WINDOW_DURATION_S / (SAMPLE_COUNT - 1);
     const times = new Array<number>(SAMPLE_COUNT);
@@ -125,7 +124,7 @@ export const SnippetOscilloscope: Component<SnippetOscilloscopeProps> = (props) 
     const batchCode = buildBatchSampleExpression(expr, times);
     inFlight = true;
     try {
-      const raw = await getActiveWasmRuntimePort().evalCodeSilently(batchCode);
+      const raw = await visualisationSession.probes.evaluate(batchCode);
       if (cancelled || !canvas) return;
       if (typeof raw !== "string") return;
       const trimmed = raw.trim();

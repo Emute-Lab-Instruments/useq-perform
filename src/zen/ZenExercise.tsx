@@ -10,7 +10,7 @@ import { defaultTheme } from "../lib/editorDefaults";
 import { structuralCoreExtensions } from "../editors/extensions/structure/adapter/extension";
 import { getAppSettings } from "../runtime/appSettingsRepository";
 import { validateExercise } from "./validation";
-import { getButtonHint, getDeduplicatedHints, type ButtonHint } from "./hints";
+import { getButtonHint, getDeduplicatedHints } from "./hints";
 import {
   state,
   activeExercise,

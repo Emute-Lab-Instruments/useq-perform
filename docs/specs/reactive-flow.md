@@ -22,6 +22,8 @@ layer: cross-cutting
 - `src/utils/outputHealthStore.ts` — reactive per-output health store (runtime/eval layer → editor health UI)
 - `src/runtime/appSettingsRepository.ts` — canonical non-reactive settings holder
 - `src/runtime/runtimeCoordinator.ts` — reactive connection/session state plus typed WASM-port selection (`createStore` + explicit transitions)
+- `src/runtime/browserWasmRuntime.ts` — sole Worker lifecycle owner; converts configured intent into actual coordinator availability
+- `src/effects/visualisationSession.ts` — sole production seam for visualisation state, clock, view, probes, and hardware→WASM shadow work
 - `src/runtime/runtimeService.ts` — sole settings mutation surface (fans out to repository + channel)
 - `src/effects/visualisationRuntime.ts` — the rAF loop owner: drives time updates, drains the sampling queue, polls active diagnostics into `outputHealthStore`, and invokes the registered render hook
 - `src/lib/persistence.ts` — localStorage persistence service
@@ -34,7 +36,7 @@ layer: cross-cutting
 
 1.3 **Settings is the only mutation surface that fans out to multiple stores.** All other stores are mutated by their owning subsystem only.
 
-1.4 **One non-reactive state holder** is a deliberate exception: `appSettingsRepository` (see `src/runtime/appSettingsRepository.ts`; canonical settings; the reactive `settingsStore` mirrors it). `runtimeCoordinator` owns the reactive Solid session store and the selected typed WASM port; UI subscribes via `runtimeService`, while effects use the typed port facade. Plus 9 imperative `CircularBuffer`s in the stream parser. Adding more non-reactive state requires explicit justification.
+1.4 **One canonical settings holder** is a deliberate non-reactive exception: `appSettingsRepository` (the reactive `settingsStore` mirrors it). `browserWasmRuntime` owns Worker construction/recovery/disposal; `runtimeCoordinator` alone owns the reactive actual-availability snapshot and selected typed port. UI subscribes via `runtimeService`; visualisation/probe consumers enter through `visualisationSession`. Plus 9 imperative `CircularBuffer`s in the stream parser. Adding more non-reactive state requires explicit justification.
 
 1.5 **Channel registries** live in `src/contracts/` (see `src/contracts/runtimeChannels.ts`, `src/contracts/visualisationChannels.ts`, `src/contracts/gamepadChannels.ts`). Adding a channel requires registering it in this spec's inventory.
 
@@ -88,17 +90,18 @@ Hardware visualisation path:
 
 ```text
 Serial port -> connector -> stream parser
-  -> binary STREAM frames -> serial buffers / visualisation store
+  -> binary STREAM frames -> visualisationSession clock/state immediately
   -> JSON messages -> JSON protocol driver -> typed channels
-  -> WebGL renderer reads visualisation store on rAF
+  -> visualisationSession queues optional Worker shadow sampling without delaying serial
+  -> WebGL renderer reads session state on rAF
 ```
 
 Browser-local path:
 
 ```text
-visualisationRuntime internal clock -> visualisation store time update
-  -> WASM sampling/projection
-  -> visualisation store
+browserWasmRuntime Worker readiness -> runtimeCoordinator actual availability
+  -> visualisationSession local clock + sampling/projection/probes
+  -> visualisation session state
   -> WebGL renderer
 ```
 

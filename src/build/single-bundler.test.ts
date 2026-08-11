@@ -3,7 +3,7 @@
  *
  * Verifies that the Vite single-bundle setup produces a working build output.
  * After eliminating islands, we now have a single bundle.js entry point
- * that includes all UI components via adapters.
+ * that loads all UI components through one ApplicationRoot chunk.
  *
  * Previous tests checked for deduplication across multiple entry points.
  * With the island elimination, those tests are no longer applicable.
@@ -27,6 +27,14 @@ function listJsFiles(dir: string): string[] {
     .readdirSync(dir)
     .filter((f) => f.endsWith(".js"))
     .sort();
+}
+
+/** Read the entry and every emitted application chunk as one searchable corpus. */
+function readAllBuildJavaScript(): string {
+  return [
+    readBuildFile(ENTRY_POINT),
+    ...listJsFiles(CHUNKS_DIR).map((file) => readBuildFile(path.join("chunks", file))),
+  ].join("\n");
 }
 
 // Entry point for the application (single bundle after island elimination)
@@ -128,15 +136,14 @@ describe("Single-bundle build structure", () => {
       ).toBe(true);
     });
 
-    it("adapter code is included in the bundle", () => {
-      const content = readBuildFile(ENTRY_POINT);
-      // Check for evidence of adapters
-      const hasAdapters = content.includes("mountModal") ||
-                          content.includes("mountRadialMenu") ||
-                          content.includes("mountSettingsPanel");
+    it("the single application root owns the adapter-backed UI", () => {
+      const content = readAllBuildJavaScript();
+      const hasApplicationRoot = content.includes("useq-application-root") &&
+                                 content.includes("solid-panel-root") &&
+                                 content.includes("radial-menu-root");
       expect(
-        hasAdapters,
-        "Expected adapter mounting functions in bundle",
+        hasApplicationRoot,
+        "Expected the ApplicationRoot-owned UI graph in emitted JavaScript",
       ).toBe(true);
     });
   });

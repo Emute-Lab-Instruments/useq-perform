@@ -4,7 +4,7 @@ import type { WasmRuntimePort } from "../contracts/runtimePorts.ts";
 import {
   getActiveWasmRuntimePort,
   getRuntimeSessionState,
-  isUsingInProcessWasmRuntime,
+  hasActiveWasmRuntimePort,
   transitionRuntimeCoordinator,
 } from "./runtimeCoordinator.ts";
 
@@ -33,10 +33,11 @@ describe("runtimeCoordinator transitions", () => {
     transitionRuntimeCoordinator({ type: "select-wasm-port", port: workerPort });
 
     expect(getActiveWasmRuntimePort()).toBe(workerPort);
-    expect(isUsingInProcessWasmRuntime()).toBe(false);
+    expect(hasActiveWasmRuntimePort()).toBe(true);
 
     transitionRuntimeCoordinator({ type: "reset" });
-    expect(isUsingInProcessWasmRuntime()).toBe(true);
-    expect(getRuntimeSessionState().session.transportMode).toBe("wasm");
+    expect(hasActiveWasmRuntimePort()).toBe(false);
+    expect(() => getActiveWasmRuntimePort()).toThrow(/no Worker runtime/i);
+    expect(getRuntimeSessionState().session.transportMode).toBe("none");
   });
 });

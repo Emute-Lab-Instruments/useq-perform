@@ -1,4 +1,4 @@
-import { screen } from "@solidjs/testing-library";
+import { render, screen } from "@solidjs/testing-library";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../settings/SettingsPanel", () => ({
@@ -45,7 +45,7 @@ describe("panels adapter", () => {
   it("locks scroll and closes the settings panel on Escape", async () => {
     const panels = await loadPanelsModule();
 
-    panels.mountSettingsPanel();
+    const mounted = render(() => <panels.PanelRoot />);
     panels.showPanel("settings");
     await Promise.resolve();
 
@@ -57,13 +57,13 @@ describe("panels adapter", () => {
 
     expect(screen.queryByTestId("settings-panel")).toBeNull();
     expect(document.body.style.overflow).toBe("");
+    mounted.unmount();
   });
 
   it("switches panel ownership cleanly between help and settings", async () => {
     const panels = await loadPanelsModule();
 
-    panels.mountHelpPanel();
-    panels.mountSettingsPanel();
+    const mounted = render(() => <panels.PanelRoot />);
     panels.showPanel("help");
     await Promise.resolve();
     expect(screen.getByTestId("help-panel")).toBeTruthy();
@@ -74,5 +74,6 @@ describe("panels adapter", () => {
     expect(screen.queryByTestId("help-panel")).toBeNull();
     expect(screen.getByTestId("settings-panel")).toBeTruthy();
     expect(document.body.style.overflow).toBe("hidden");
+    mounted.unmount();
   });
 });

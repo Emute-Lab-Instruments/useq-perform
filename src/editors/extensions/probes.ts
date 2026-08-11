@@ -17,9 +17,8 @@ import {
   remove,
   save,
 } from "../../lib/persistence.ts";
-import { visStore } from "../../utils/visualisationStore.ts";
+import { visualisationSession } from "../../effects/visualisationSession.ts";
 import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
-import { getActiveWasmRuntimePort } from "../../runtime/activeWasmRuntimePort.ts";
 import { dbg } from "../../lib/debug.ts";
 import { getProbeIntervalMultiplier } from "../../effects/adaptiveQuality.ts";
 import {
@@ -82,10 +81,8 @@ export type {
 
 /** Create a ProbeConfig that delegates to the existing singletons. */
 export function createDefaultProbeConfig(): ProbeConfig {
-  // Route through the active WASM runtime port so probes work in both
-  // in-process and worker modes. The port is selected during bootstrap.
   const evalExpression = (code: string) =>
-    getActiveWasmRuntimePort().evalCodeSilently(code);
+    visualisationSession.probes.evaluate(code);
   return {
     evalExpression,
     evalExpressionAtTimes: (code, times) =>
@@ -98,7 +95,7 @@ export function createDefaultProbeConfig(): ProbeConfig {
     },
     getLineWidth: () => getAppSettings().visualisation?.probeLineWidth || DEFAULT_PROBE_LINE_WIDTH,
     getDefaultSamples: () => getAppSettings().visualisation?.probeSampleCount || DEFAULT_PROBE_SAMPLE_COUNT,
-    getCurrentTime: () => visStore.currentTime,
+    getCurrentTime: () => visualisationSession.state.currentTime,
     loadPersistedProbes: () => {
       const loaded = load<unknown[]>(PERSISTENCE_KEYS.editorProbes, []);
       return Array.isArray(loaded) ? loaded : [];
@@ -109,13 +106,11 @@ export function createDefaultProbeConfig(): ProbeConfig {
     removePersistedProbes: () => {
       remove(PERSISTENCE_KEYS.editorProbes);
     },
-    probeSet: (slot, code) => getActiveWasmRuntimePort().probeSet(slot, code),
-    probeSample: (slot, start, end, count) => getActiveWasmRuntimePort().probeSample(slot, start, end, count),
-    probeFree: (slot) => getActiveWasmRuntimePort().probeFree(slot),
-    // Hardware-only mode (spec §1.6.3) is exactly "WASM disabled". The session
-    // `wasmEnabled` input derives from this same setting; read it directly so
-    // the probe extension doesn't pull in the heavy runtime-session graph.
-    isWasmEnabled: () => getAppSettings().wasm?.enabled !== false,
+    probeSet: (slot, code) => visualisationSession.probes.set(slot, code),
+    probeSample: (slot, start, end, count) =>
+      visualisationSession.probes.sample(slot, start, end, count),
+    probeFree: (slot) => visualisationSession.probes.free(slot),
+    isWasmEnabled: () => visualisationSession.probes.available(),
   };
 }
 

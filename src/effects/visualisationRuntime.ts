@@ -146,10 +146,13 @@ export function setVisualisationNowSource(
 interface SampleRequest {
   timeSeconds: number;
   projectFuture: boolean;
+  generation: number;
 }
 
 const sampleQueue: SampleRequest[] = [];
 let samplingInFlight = false;
+let acceptingWork = true;
+let lifecycleGeneration = 0;
 
 // ── Diagnostic poll coalescing ──────────────────────────────────────
 //
@@ -172,9 +175,22 @@ export function startVisualisationRuntime(): void {
   scheduleNextTick();
 }
 
+/** Begin a fresh application-owned visualisation lifetime. */
+export function beginVisualisationRuntimeLifecycle(): void {
+  if (acceptingWork) return;
+  acceptingWork = true;
+  lifecycleGeneration += 1;
+}
+
 export function stopVisualisationRuntime(): void {
-  if (!running) return;
+  acceptingWork = false;
+  lifecycleGeneration += 1;
   running = false;
+  renderRequested = false;
+  sampleQueue.length = 0;
+  localTimeActive = false;
+  lastLocalSampleTime = null;
+  lastCompletedSampleTime = null;
   if (frameId !== null && typeof window !== "undefined") {
     window.cancelAnimationFrame(frameId);
     frameId = null;
@@ -240,7 +256,7 @@ export function notifyExternalTimeUpdate(time: number): void {
     currentTimeSeconds: numeric,
     displayTimeSeconds: numeric,
   });
-  if (!shouldUseWasmShadow()) {
+  if (!acceptingWork || !shouldUseWasmShadow()) {
     sampleQueue.length = 0;
     return;
   }
@@ -384,6 +400,7 @@ function requestSampleAt(
   time: number,
   options: { replace?: boolean; projectFuture?: boolean } = {},
 ): void {
+  if (!acceptingWork) return;
   const queueBefore = sampleQueue.map((request) => ({
     timeSeconds: request.timeSeconds,
     projectFuture: request.projectFuture,
@@ -394,6 +411,7 @@ function requestSampleAt(
   const request: SampleRequest = {
     timeSeconds: time,
     projectFuture: requestedProjectFuture || preserveQueuedProjection,
+    generation: lifecycleGeneration,
   };
   if (options.replace) {
     sampleQueue.length = 0;
@@ -497,7 +515,11 @@ async function drainSamplingQueue(): Promise<void> {
     try {
       while (sampleQueue.length > 0) {
         const request = sampleQueue.shift()!;
-        await runSample(request.timeSeconds, request.projectFuture);
+        await runSample(
+          request.timeSeconds,
+          request.projectFuture,
+          request.generation,
+        );
       }
     } finally {
       samplingInFlight = false;
@@ -510,7 +532,11 @@ async function drainSamplingQueue(): Promise<void> {
 async function runSample(
   timeSeconds: number,
   projectFuture: boolean,
+  generation: number,
 ): Promise<void> {
+  const isCurrent = () =>
+    acceptingWork && generation === lifecycleGeneration;
+  if (!isCurrent()) return;
   if (import.meta.env.DEV) {
     projectionTrace.record("runtime-sample-run", {
       timeSeconds,
@@ -528,6 +554,7 @@ async function runSample(
       if (import.meta.env.DEV) perf.end("wasm-update-time");
       return;
     }
+    if (!isCurrent()) return;
     if (import.meta.env.DEV) perf.end("wasm-update-time");
 
     // tick-and-project also samples `bar` from the same batch; run it
@@ -535,7 +562,8 @@ async function runSample(
     // user expressions are registered.
     const settings = visStore.settings;
     if (import.meta.env.DEV) perf.begin("tick-and-project");
-    await tickAndProject(timeSeconds, settings, { projectFuture });
+    await tickAndProject(timeSeconds, settings, { projectFuture, isCurrent });
+    if (!isCurrent()) return;
     if (import.meta.env.DEV) perf.end("tick-and-project");
     lastCompletedSampleTime = timeSeconds;
 
@@ -553,6 +581,8 @@ export async function _drainForTests(): Promise<void> {
 
 export function _resetForTests(): void {
   stopVisualisationRuntime();
+  acceptingWork = true;
+  lifecycleGeneration += 1;
   nowSource = defaultNowSource;
   localTimeActive = false;
   localResetMs = null;

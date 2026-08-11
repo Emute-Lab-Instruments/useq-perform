@@ -2,7 +2,6 @@ import {
   connectionChanged as connectionChangedChannel,
 } from "../contracts/runtimeChannels";
 import type { ConnectionChangedDetail } from "../contracts/runtimeChannels";
-import type { AppSettings } from "../lib/appSettings";
 import {
   publishDiagnosticsSnapshot,
   type RuntimeProtocolMode,
@@ -105,7 +104,6 @@ export function reportTransportConnectionChanged(facts: {
   protocolMode: RuntimeProtocolMode;
   hasHardwareConnection: boolean;
   noModuleMode: boolean;
-  wasmEnabled: boolean;
 }): RuntimeSessionState {
   return applySessionUpdate(
     {
@@ -113,7 +111,6 @@ export function reportTransportConnectionChanged(facts: {
       protocolMode: facts.protocolMode,
       hasHardwareConnection: facts.hasHardwareConnection,
       noModuleMode: facts.noModuleMode,
-      wasmEnabled: facts.wasmEnabled,
     },
     { publishDiagnostics: true, dispatchConnectionChanged: true }
   );
@@ -124,16 +121,6 @@ export function reportProtocolModeChanged(
   _protocolMode: RuntimeProtocolMode,
 ): void {
   publishDiagnosticsSnapshot();
-}
-
-/**
- * Called by settings repositories when a setting that affects the runtime
- * session (e.g. wasm.enabled) changes. runtimeService is the sole owner.
- */
-export function updateRuntimeSettingsEffect(
-  updates: Partial<RuntimeSessionInputs>
-): RuntimeSessionState {
-  return applySessionUpdate(updates, { publishDiagnostics: true });
 }
 
 // ── Snapshot & subscription ─────────────────────────────────────

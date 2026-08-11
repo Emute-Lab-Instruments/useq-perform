@@ -18,7 +18,7 @@ layer: behavioural
 
 1.3 **Line limit.** The console caps stored messages at `ui.consoleLinesLimit` (default 1000). Beyond the limit, the oldest message is dropped per new message. (see `src/utils/consoleStore.ts`)
 
-1.4 The console supports **inline markdown in content**: `**bold**`, `*italic*`, `` `code` ``, and `[label](url)` links. Other HTML must be escaped.
+1.4 The console supports **inline markdown in content**: `**bold**`, `*italic*`, `` `code` ``, and `[label](https://example.com)` links. Other HTML must be escaped.
 
 1.5 New entries animate in. Animation style is `console.entryAnimation` (`slide`, `fade`, `none`, default `slide`). The `slide` and `fade` styles are independent per-entry CSS transitions (all new entries animate concurrently). **Typewriter** mode reveals text at `console.typewriterIntervalMs` (default 20ms) per character and is the only serialized style: a queue ensures only one entry typewrites at a time. **Burst pressure valve** (typewriter only): when > 3 messages are pending in the typewriter queue, all pending messages appear instantly and animation resumes for subsequent messages. (see `src/ui/console/ConsolePanel.tsx`)
 

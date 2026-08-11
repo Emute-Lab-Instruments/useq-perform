@@ -10,10 +10,10 @@ import {
   loadAppSettings as _loadAppSettings,
   deletePersistedSettings as _deletePersistedSettings,
 } from "./appSettingsRepository";
-import { updateRuntimeSettingsEffect } from "./runtimeSessionService.ts";
+import { configureInstalledBrowserWasmRuntime } from "./browserWasmRuntime.ts";
 
 function syncRuntimeSettings(settings: AppSettings): void {
-  updateRuntimeSettingsEffect({ wasmEnabled: settings.wasm.enabled });
+  void configureInstalledBrowserWasmRuntime(settings.wasm.enabled);
 }
 
 // ── Settings mutations (sole public surface) ────────────────────

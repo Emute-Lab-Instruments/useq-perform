@@ -480,7 +480,7 @@ export function onDocumentChange(view: EditorView): void {
  * Flush pending debounced values on page hide / visibility change.
  * Should be called once during app bootstrap to install the listeners.
  */
-export function installPageLifecycleHandlers(): void {
+export function installPageLifecycleHandlers(): () => void {
   const flush = () => {
     const values = liveEditStore.getValuesRecord();
     const stringValues: Record<string, number | boolean | string> = {};
@@ -490,12 +490,19 @@ export function installPageLifecycleHandlers(): void {
     liveEditPersistence.flushValues(stringValues);
   };
 
-  document.addEventListener("visibilitychange", () => {
+  const onVisibilityChange = () => {
     if (document.visibilityState === "hidden") {
       flush();
     }
-  });
+  };
+
+  document.addEventListener("visibilitychange", onVisibilityChange);
   window.addEventListener("pagehide", flush);
+
+  return () => {
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    window.removeEventListener("pagehide", flush);
+  };
 }
 
 // ─── Boot-time reconciliation (§7.3 trigger 3) ─────────────────────────

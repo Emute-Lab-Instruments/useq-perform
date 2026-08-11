@@ -3,11 +3,10 @@
 // Adapter that bridges the CalibrationSequencer (pure state machine) to the
 // CalibrationTakeover and CalibrationPicker UI components.
 //
-// Uses createSolidAdapter for mount lifecycle and reactive Solid signals to
-// push sequencer state changes into the component tree.
+// The application root owns rendering; reactive Solid signals push sequencer
+// state changes into the component tree.
 
 import { Show, createSignal, createMemo, onCleanup } from "solid-js";
-import { createSolidAdapter } from "./createSolidAdapter";
 import { CalibrationTakeover } from "../calibration/CalibrationTakeover";
 import { CalibrationPicker } from "../calibration/CalibrationPicker";
 import type {
@@ -54,7 +53,7 @@ export function unwireCalibrationSequencer(): void {
 
 // ── Solid component tree ─────────────────────────────────────────────────────
 
-function CalibrationRoot() {
+export function CalibrationRoot() {
   const seq = sequencerRef;
   const state = snapshot;
 
@@ -107,34 +106,7 @@ function CalibrationRoot() {
   );
 }
 
-// ── Solid adapter ────────────────────────────────────────────────────────────
-
-const calibrationAdapter = createSolidAdapter({
-  containerId: "solid-calibration-root",
-  Component: () => <CalibrationRoot />,
-  containerStyle: {
-    position: "fixed",
-    top: "0",
-    left: "0",
-    width: "100vw",
-    height: "100vh",
-    zIndex: "9999",
-    pointerEvents: "none",
-  },
-});
-
-/**
- * Mount the calibration overlay container. Safe to call multiple times.
- * The overlay only renders content when a sequencer is wired.
- */
-export function mountCalibrationOverlay(): void {
-  calibrationAdapter.mount();
-}
-
-/**
- * Dispose the calibration overlay entirely.
- */
-export function disposeCalibrationOverlay(): void {
+/** Reset the calibration session without disposing the application tree. */
+export function resetCalibrationOverlay(): void {
   unwireCalibrationSequencer();
-  calibrationAdapter.dispose();
 }

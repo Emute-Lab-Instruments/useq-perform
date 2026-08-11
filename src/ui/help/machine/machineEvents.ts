@@ -27,11 +27,10 @@ import { createSignal, onCleanup, type Accessor } from "solid-js";
 
 import { codeEvaluated } from "../../../contracts/runtimeChannels";
 import { connectionChanged, settingsChanged } from "../../../contracts/runtimeChannels";
-import { getRenderData } from "../../../effects/visualisationSampler";
+import { visualisationSession } from "../../../effects/visualisationSession";
 import { peekTransportOrchestrator } from "../../../effects/transportOrchestrator";
 import { getActiveWasmRuntimePort } from "../../../runtime/activeWasmRuntimePort";
 import { outputHealth } from "../../../utils/outputHealthStore";
-import { visStore } from "../../../utils/visualisationStore";
 import type { OutputHealth } from "../../../utils/outputHealthStore";
 import type { MachineClockState, SampleWindow } from "./machineModel";
 
@@ -101,7 +100,7 @@ function defaultIsLive(): boolean {
 /** Real past-sample buffer for an output, straight from the sampler. */
 function defaultSampleWindowFor(output: string): SampleWindow | null {
   try {
-    return getRenderData(output)?.pastBuffer ?? null;
+    return visualisationSession.view.readOutput(output)?.pastBuffer ?? null;
   } catch {
     return null;
   }
@@ -160,9 +159,9 @@ export function createMachineSources(
 
   return {
     clockState,
-    phase: () => visStore.bar,
-    timeSeconds: () => visStore.currentTime,
-    expressions: () => visStore.expressions,
+    phase: () => visualisationSession.state.bar,
+    timeSeconds: () => visualisationSession.state.currentTime,
+    expressions: () => visualisationSession.state.expressions,
     health: () => outputHealth,
     sampleWindowFor: overrides.sampleWindowFor ?? defaultSampleWindowFor,
     evalPulse,

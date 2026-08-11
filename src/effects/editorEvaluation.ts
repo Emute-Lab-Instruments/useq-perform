@@ -32,7 +32,7 @@ import {
 // (VAL-COMP-013). The eval-to-engine commit pipeline consumes it after
 // the editor-state mutations below so the worklet receives the graph
 // delta and the Worker producer arms the new epoch (VAL-ENGINE-010).
-const evalInUseqWasm = (
+const evalInUseqWasm = async (
   code: string,
 ): Promise<{
   result: string | null;
@@ -49,7 +49,7 @@ import { flashEvalHighlight } from "../editors/extensions/evalHighlight.ts";
 import { detectAndTrackExpressionEvaluation } from "../editors/extensions/expressionEval.ts";
 import { markOutputRunning } from "../utils/outputHealthStore.ts";
 import { dispatchInlineResult } from "../editors/extensions/inlineResults.ts";
-import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
+import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
 import type { SynthArtifactsPayload } from "../contracts/runtimeTypes.ts";
 import { getActiveSynthesisService } from "../runtime/activeSynthesisService.ts";
 import { getAudioCapabilitySnapshot } from "../runtime/startupContext.ts";

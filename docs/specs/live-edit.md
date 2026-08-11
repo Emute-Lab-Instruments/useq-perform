@@ -513,7 +513,7 @@ Live-edit-related settings live under `liveEdit.*`:
 
 11.7 **History / undo.** Knob movements are not added to the editor's undo stack today. Whether they should be (with debouncing/coalescing) is open. Source mutations from `mark`/`commit`/`unmark`/`editRange` *are* on the undo stack like any other text edit.
 
-11.8 **Inspector / Storybook story.** Widgets should be renderable in isolation per the props-based UI conventions in `CLAUDE.md` (`value`, `min`, `max`, `step`, `precision`, `state`, `onValueChange`, `onCommit` props). Wired adapter pulls from the live-edit store. Not yet specified beyond this note.
+11.8 **Storybook story.** Widgets should be renderable in isolation per the props-based UI conventions in `CLAUDE.md` (`value`, `min`, `max`, `step`, `precision`, `state`, `onValueChange`, `onCommit` props). Wired adapter pulls from the live-edit store. Not yet specified beyond this note.
 
 11.9 **Macro-style MIDI links (one CC → many slots).** Today (§5.10) binding a CC that's already bound replaces the previous binding. A future macro-link feature would let one CC explicitly drive many slots simultaneously, with curve/scale per-slot — useful for "big knob controls everything" performance patches. Out of v1.
 

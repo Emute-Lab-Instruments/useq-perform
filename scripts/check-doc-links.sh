@@ -8,8 +8,11 @@ cd "$ROOT"
 
 BROKEN=0
 
-# Collect all markdown files: top-level + docs/
-mapfile -t FILES < <(find . -maxdepth 1 -name '*.md' -print; find ./docs -name '*.md' -print 2>/dev/null)
+# Collect tracked markdown files only: top-level + docs/. Ignored, machine-local
+# instruction files are outside the repository's documentation contract.
+mapfile -t FILES < <(
+  git ls-files -- ':(top,glob)*.md' ':(top,glob)docs/**/*.md'
+)
 
 for file in "${FILES[@]}"; do
   dir=$(dirname "$file")

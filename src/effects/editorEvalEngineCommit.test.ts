@@ -15,6 +15,13 @@
  * atomic Worker response into the engine-commit path.
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+
+vi.mock("./noneModeGate.ts", () => ({
+  evalRejectionForNoRuntime: () => null,
+}));
+vi.mock("../runtime/runtimeCompatibility.ts", () => ({
+  shouldUseWasmShadow: () => true,
+}));
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 // @ts-expect-error — clojure-mode has no type declarations

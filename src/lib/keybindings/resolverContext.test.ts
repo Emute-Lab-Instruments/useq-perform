@@ -1,10 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-
-// Mock the heavy handler registry — the resolver only needs `getHandler` to
-// return *something* callable so a binding makes it into the keymap.
-vi.mock("./handlers.ts", () => ({
-  getHandler: () => () => true,
-}));
+import { describe, it, expect, beforeEach } from "vitest";
 
 import { createResolver, suggestChordTarget } from "./resolver.ts";
 import type { KeyBinding } from "./defaults.ts";
@@ -20,7 +14,10 @@ describe("resolver: context-gated conditional bindings", () => {
     const bindings: KeyBinding[] = [
       { action: "eval.now", key: "Mod-y", when: "test.active" },
     ];
-    const resolver = createResolver({ defaults: bindings });
+    const resolver = createResolver({
+      defaults: bindings,
+      getHandler: () => () => true,
+    });
     const exts = resolver.toKeymapExtensions();
     // The first extension is the Prec.high conditional keymap. Drill into the
     // CodeMirror keymap facet value to retrieve the run wrapper.

@@ -221,6 +221,6 @@ Hardware-binding-related settings live under `hardware.*`:
 
 8.4 **Velocity / pressure on bindings.** No binding form receives "how hard" the button was pressed (uSEQ buttons are digital). If future hardware exposes pressure or velocity, a `:velocity` arg to the lifecycle callback is the natural extension.
 
-8.5 **Inspector / Storybook story.** Binding chips should be renderable in isolation per the props-based UI conventions in `CLAUDE.md` (`inputId`, `kind` (`press`/`release`/`button`/`toggle`), `state` (`idle`/`fired`/`error`/`disabled`), `onTestFire` props). Wired adapter pulls from the binding store. Not yet specified beyond this note.
+8.5 **Storybook story.** Binding chips should be renderable in isolation per the props-based UI conventions in `CLAUDE.md` (`inputId`, `kind` (`press`/`release`/`button`/`toggle`), `state` (`idle`/`fired`/`error`/`disabled`), `onTestFire` props). Wired adapter pulls from the binding store. Not yet specified beyond this note.
 
 8.6 **Discoverability of available input-ids.** Today the user has to know that `:sw1`, `:swr`, etc. exist. A future improvement: an inline picker or autocomplete showing the connected variant's input map. Tracked but not gating MVP.

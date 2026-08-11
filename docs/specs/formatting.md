@@ -380,10 +380,10 @@ editors (help guide code examples) render source as-provided and do not
 reformat. The formatter has no dependency on main-editor singletons — it is a
 pure function of (tree, settings) and can be called from any editor context.
 
-6.6 **Inspector scenarios.** The Inspector dev tool
-([inspector.md](inspector.md)) exercises editor scenarios in isolation. It uses
-the same `printTree` function. Formatting consistency between the Inspector and
-the main editor is required — if the Inspector shows different layout for the
+6.6 **Storybook stories.** The Storybook review surface
+([storybook.md](storybook.md)) exercises editor scenarios in isolation. It uses
+the same `printTree` function. Formatting consistency between Storybook and
+the main editor is required — if Storybook shows different layout for the
 same tree, that's a bug.
 
 ---

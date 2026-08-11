@@ -98,8 +98,6 @@ declare global {
 const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise: Promise<void> | null = null;
 let runtimePromise: Promise<UseqRuntime> | null = null;
-let lastKnownTimeWindowSupport = false;
-let lastKnownTickAndProjectSupport = false;
 let lastKnownLiveInputsSupport = false;
 let classificationsFnStored: (() => string) | null = null;
 let dependenciesFnStored: ((idx: number) => number) | null = null;
@@ -197,12 +195,8 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     coreLog,
   );
 
-  // Bind the raw diagnostic export fns and stash them on the
-  // `__useqWasmRuntime` global. The in-process port (`wasmRuntimePort.ts`,
-  // readLastDiagnosticsSync / readActiveDiagnosticsSync) reads them back from
-  // the global to pull structured diagnostics for inline editor squiggles.
-  // wasmInterpreter.ts intentionally exposes no reader functions of its own;
-  // the global is the sync seam shared by all optional WASM consumers below.
+  // Bind raw diagnostic exports for interpreter-level tests and isolated
+  // witness execution. Production diagnostics are read inside the Worker.
   const lastDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_last_diagnostics) as (() => string) | null;
   const activeDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_active_diagnostics) as (() => string) | null;
 
@@ -213,8 +207,8 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const dependenciesFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_dependencies) as ((idx: number) => number) | null;
 
   // Bind synth artefact ABI export (synth-nodes.md §7.2 / VAL-COMP-015).
-  // The versioned payload is returned atomically from the exact-eval
-  // Worker response through the in-process port.
+  // Interpreter integration tests validate the same payload the production
+  // Worker returns atomically with each exact eval.
   const synthArtifactsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_synth_artifacts) as (() => string) | null;
 
   const probes = createWasmProbeController(module, coreLog);
@@ -249,8 +243,6 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     setFailureModeFn(configuredMode === "zero" ? 1 : 0);
   }
   dbg("uSEQ WASM interpreter initialised");
-  lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
-  lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
   lastKnownLiveInputsSupport = liveInputs.supported;
   classificationsFnStored = classificationsFn;
   dependenciesFnStored = dependenciesFn;
@@ -281,10 +273,8 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     evaluateOutputsTimeWindow: (outputs: string[], startTime: number, endTime: number, numSamples: number): SampleSeriesMap => {
       try {
         const result = batchEvaluator.evaluate(outputs, startTime, endTime, numSamples);
-        lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
         return result;
       } catch (error) {
-        lastKnownTimeWindowSupport = batchEvaluator.supportsTimeWindow();
         throw new Error(`uSEQ WASM batch evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
@@ -298,10 +288,8 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     ): TickAndProjectResult | null => {
       try {
         const result = batchEvaluator.tickAndProject(outputs, tickTime, projectionMode, projectEnd, numFutureSamples, projectionOrigin);
-        lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
         return result;
       } catch (error) {
-        lastKnownTickAndProjectSupport = batchEvaluator.supportsTickAndProject();
         throw new Error(`uSEQ WASM tick_and_project failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
@@ -350,8 +338,6 @@ export function ensureUseqWasmLoaded(): Promise<UseqRuntime> {
     runtimePromise = instantiateInterpreter().catch((error) => {
       scriptLoadPromise = null;
       runtimePromise = null;
-      lastKnownTimeWindowSupport = false;
-      lastKnownTickAndProjectSupport = false;
       console.error("Failed to load uSEQ WASM interpreter", error);
       throw error;
     });
@@ -488,84 +474,6 @@ export async function probeFree(slot: number): Promise<void> {
   const runtime = await ensureUseqWasmLoaded();
   runtime.probeFree(slot);
 }
-
-/**
- * Capability report for a WasmRuntimePort instance.
- *
- * Allows callers to discover which operations are actually available before
- * attempting them, without relying on try/catch at call sites.
- */
-export interface WasmCapabilities {
-  /** Whether the WASM runtime is enabled in user settings. */
-  readonly enabled: boolean;
-  /** Whether eval operations are available. */
-  readonly supportsEval: boolean;
-  /** Whether time-window batch evaluation is available. */
-  readonly supportsTimeWindow: boolean;
-  /** Whether the combined tick + project export is available. */
-  readonly supportsTickAndProject: boolean;
-}
-
-/**
- * Typed boundary for the uSEQ WASM interpreter capabilities.
- *
- * Consumers should depend on this interface rather than importing individual
- * functions directly, so the concrete implementation can be replaced or mocked.
- */
-export interface WasmRuntimePort {
-  /** Report what this port can actually do at runtime. */
-  capabilities(): WasmCapabilities;
-  /** Evaluate uSEQ Lisp code and return the result string, or null if WASM is disabled. */
-  eval(code: string): Promise<string | null>;
-  /** Sync the hardware transport state to the WASM interpreter. */
-  syncTransportState(state: TransportState): Promise<string | null>;
-  /** Advance the WASM interpreter's internal clock. */
-  updateTime(timeSeconds: number): Promise<void>;
-  /** Evaluate a single named output at a given time. */
-  evalOutputAtTime(name: string, timeSeconds: number): Promise<number>;
-  /** Evaluate multiple outputs across a time window. */
-  evalOutputsInTimeWindow(
-    outputs: string[],
-    startTime: number,
-    endTime: number,
-    numSamples: number
-  ): Promise<SampleSeriesMap>;
-
-  /**
-   * Combined tick + future projection in a single boundary crossing.
-   *
-   * Returns `null` when the export isn't available — callers must fall
-   * back to the legacy `evalOutputAtTime` + `evalOutputsInTimeWindow`
-   * path. See `docs/specs/visualisation.md` §5.2 / §7.2.
-   */
-  tickAndProject(
-    outputs: string[],
-    tickTime: number,
-    projectionMode: ProjectionMode,
-    projectEnd: number,
-    numFutureSamples: number,
-    projectionOrigin: number,
-  ): Promise<TickAndProjectResult | null>;
-}
-
-/** Concrete WasmRuntimePort backed by the embedded WASM interpreter. */
-export const wasmRuntimePort: WasmRuntimePort = {
-  capabilities(): WasmCapabilities {
-    const enabled = isUseqWasmEnabled();
-    return {
-      enabled,
-      supportsEval: enabled,
-      supportsTimeWindow: enabled && lastKnownTimeWindowSupport,
-      supportsTickAndProject: enabled && lastKnownTickAndProjectSupport,
-    };
-  },
-  eval: evalInUseqWasm,
-  syncTransportState: syncWasmTransportState,
-  updateTime: updateUseqWasmTime,
-  evalOutputAtTime,
-  evalOutputsInTimeWindow,
-  tickAndProject: tickAndProjectOutputs,
-};
 
 // ---------------------------------------------------------------------------
 // Live-edit slot ABI bindings

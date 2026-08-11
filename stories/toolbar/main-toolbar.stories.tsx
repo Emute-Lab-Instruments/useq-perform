@@ -42,3 +42,8 @@ export const ConnectedHardware: Story = {
   args: { connectionState: 'hardware' },
   parameters: { docs: { description: { story: 'Main toolbar when connected to hardware via serial. Connect button shows blue transport-hardware styling with active cable icon.' } } },
 };
+
+export const HardwareWithWasmShadow: Story = {
+  args: { connectionState: 'both' },
+  parameters: { docs: { description: { story: 'Hardware-authoritative output with the Worker WASM visualisation shadow active. The distinct HW+W badge makes the simultaneous asymmetric mode explicit.' } } },
+};

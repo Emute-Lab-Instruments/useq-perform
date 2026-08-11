@@ -50,7 +50,7 @@ async function loadAssets(): Promise<LedgerAssets> {
 }
 
 export interface LedgerTabProps {
-  /** Asset loader override. Test/Inspector seam; defaults to the bundled assets. */
+  /** Asset loader override. Test/Storybook seam; defaults to the bundled assets. */
   loadAssets?: () => Promise<LedgerAssets>;
 }
 

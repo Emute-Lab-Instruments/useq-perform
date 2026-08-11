@@ -32,9 +32,6 @@ export async function detectLayout(): Promise<KeyboardLayoutId> {
       const keyZ = layoutMap.get("KeyZ");
       const keyY = layoutMap.get("KeyY");
       const keyQ = layoutMap.get("KeyQ");
-      const keyM = layoutMap.get("KeyM");
-      const semicolon = layoutMap.get("Semicolon");
-
       if (keyA === "q" && keyZ === "w") return "azerty-fr";
       if (keyY === "z" && keyZ === "y") return "qwertz-de";
       if (keyQ === "'" && keyA === "a") return "dvorak";

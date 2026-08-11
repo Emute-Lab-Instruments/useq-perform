@@ -5,7 +5,7 @@
  *   - drawSerialVisGL(input)         — pure entry; takes a `VisRenderInput`
  *                                      with all expressions/settings/buffers
  *                                      it needs.  Suitable for Storybook /
- *                                      Inspector harnesses with synthetic
+ *                                      Storybook harnesses with synthetic
  *                                      data; performs no singleton reads.
  *   - drawSerialVisGLFromStores()    — wired wrapper that builds the input
  *                                      from `visStore` + the buffer owner's
@@ -36,16 +36,14 @@
 
 import { perf } from "../../lib/perfTrace.ts";
 import { projectionTrace } from "../../lib/projectionTrace.ts";
-import type { VisExpression, VisSettings } from "../../utils/visualisationStore.ts";
-import { visStore } from "../../utils/visualisationStore.ts";
 import {
-  getRenderData as getRenderDataFromBuffers,
-  setPastBufferSampleRate,
+  visualisationSession,
   type OutputRenderData,
-} from "../../effects/visualisationBuffers.ts";
+  type VisExpression,
+  type VisSettings,
+} from "../../effects/visualisationSession.ts";
 import { getSampleRateDivisor } from "../../effects/adaptiveQuality.ts";
 import {
-  compileShader,
   linkProgram,
   parseColor,
   flattenSamples,
@@ -54,7 +52,6 @@ import {
   fingerprintChanged,
   ensureScratch,
   getScratch,
-  ensureThickScratch,
   getThickScratch,
   THICK_FLOATS_PER_VERTEX,
   THICK_VERTEX_SRC as VERTEX_SHADER_SRC,
@@ -81,7 +78,7 @@ export type { LaneBox, LaneLayoutGeometry } from "./serialVisPlanning.ts";
  * All data required to paint one frame of the serial visualisation.
  *
  * The pure paint entry (`drawSerialVisGL`) takes this as its sole
- * argument so it can run with synthetic data in Storybook / Inspector
+ * argument so it can run with synthetic data in Storybook
  * scenarios.  The wired entry (`drawSerialVisGLFromStores`) builds it
  * from the global `visStore` + sampler.
  */
@@ -629,7 +626,7 @@ function uploadGeometry(
 /**
  * Pure paint entry — renders one frame from the supplied `VisRenderInput`.
  *
- * No singleton reads.  Suitable for Storybook / Inspector harnesses
+ * No singleton reads. Suitable for Storybook harnesses
  * that want to drive the renderer with synthetic data.  The DOM bits
  * (`getCanvas`, overlay, panel-visibility cache) still touch the page
  * because the renderer paints to a real `<canvas id="serialcanvas-gl">`
@@ -701,7 +698,7 @@ export function drawSerialVisGL(input: VisRenderInput): void {
     getSampleRateDivisor(),
     showFuture,
   );
-  if (targetRate !== null) setPastBufferSampleRate(targetRate);
+  if (targetRate !== null) visualisationSession.view.setPastSampleRate(targetRate);
   if (import.meta.env.DEV) perf.end("vis-gl-setup");
 
   // Repaint the overlay only when geometry, expression count, or accent changes.
@@ -783,10 +780,10 @@ export function drawSerialVisGL(input: VisRenderInput): void {
  */
 export function drawSerialVisGLFromStores(): void {
   drawSerialVisGL({
-    expressions: visStore.expressions,
-    settings: visStore.settings,
-    currentTime: visStore.currentTime,
-    getRenderData: getRenderDataFromBuffers,
+    expressions: visualisationSession.state.expressions,
+    settings: visualisationSession.state.settings,
+    currentTime: visualisationSession.state.currentTime,
+    getRenderData: visualisationSession.view.readOutput,
   });
 }
 

@@ -1,7 +1,7 @@
 /**
  * Editor harness — creates a CodeMirror editor from declarative setup.
  *
- * This is the imperative API. For Storybook/Inspector, use <ScenarioEditor> instead.
+ * This is the imperative API. For Storybook, use <ScenarioEditor> instead.
  */
 import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, lineNumbers, drawSelection } from '@codemirror/view';

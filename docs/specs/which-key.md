@@ -15,7 +15,7 @@ layer: behavioural
 - `src/ui/keybindings/hintStateMachine.ts` — state machine + `pendingChordPrefix` reactive signal (the chord bridge)
 - `src/lib/keybindings/actions.ts` — action registry (metadata, categories)
 - `src/lib/keybindings/defaults.ts` — default key-to-action maps
-- `src/lib/keybindings/handlers.ts` — action-to-implementation mapping, `executeEditorCommand()`
+- `src/editors/commands/actionHandlers.ts` — action-to-implementation mapping, `executeEditorCommand()`
 - `src/lib/settings/schema.ts` — `KeybindingsSettings` (contains hint settings)
 
 ---
@@ -220,7 +220,7 @@ immediately and dismisses the popup.
 5.1.1 Every clickable element must call `e.preventDefault()` on `mousedown` to
 prevent stealing focus from the CodeMirror editor.
 
-5.1.2 Execution uses the handler registry (`src/lib/keybindings/handlers.ts`).
+5.1.2 Execution uses the handler registry (`src/editors/commands/actionHandlers.ts`).
 If the handler expects an `EditorView` argument, the currently focused editor
 view is supplied. If no editor is focused, the action is a no-op.
 

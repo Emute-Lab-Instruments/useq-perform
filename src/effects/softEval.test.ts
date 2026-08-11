@@ -1,4 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("./noneModeGate.ts", () => ({
+  evalRejectionForNoRuntime: () => null,
+}));
+vi.mock("../runtime/runtimeCompatibility.ts", () => ({
+  shouldUseWasmShadow: () => true,
+}));
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 

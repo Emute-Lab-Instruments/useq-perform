@@ -31,10 +31,7 @@ import {
   getAppSettings,
   subscribeAppSettings,
 } from "../../runtime/appSettingsRepository.ts";
-import {
-  isExpressionVisualised,
-  reportExpressionColor,
-} from "../../effects/visualisationSampler.ts";
+import { visualisationSession } from "../../effects/visualisationSession.ts";
 import { outputHealth } from "../../utils/outputHealthStore.ts";
 import { createRoot, createEffect } from "solid-js";
 
@@ -490,12 +487,12 @@ export function createDefaultGutterConfig(): GutterConfig {
     isClearButtonEnabled: () => ((getAppSettings()?.ui) as any)?.expressionClearButtonEnabled !== false,
     isLastTrackingEnabled: () => ((getAppSettings()?.ui) as any)?.expressionLastTrackingEnabled !== false,
     getExpressionColor: (match: RegExpExecArray) => getMatchColor(match),
-    isVisualised: (exprType, position) => isExpressionVisualised(exprType, position),
+    isVisualised: (exprType, position) => visualisationSession.expressions.isVisualised(exprType, position),
     isFailing: (exprType) => {
       const entry = outputHealth[exprType];
       return entry?.health === "error" || entry?.health === "fallback";
     },
-    reportColor: (exprType, color) => reportExpressionColor(exprType, color),
+    reportColor: (exprType, color) => visualisationSession.expressions.reportColor(exprType, color),
     onPlayExpression: (view, exprType) => handlePlayExpression(view, exprType),
     onExternalChange: (callback) => {
       const unsub1 = subscribeAppSettings(callback);

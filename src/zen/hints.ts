@@ -32,7 +32,6 @@ function gestureKeyToHint(gestureKey: string, layerName: string): string | null 
   const [kind, rest] = gestureKey.split(":");
   if (!rest) return null;
 
-  const isShifted = layerName.includes("lb") || layerName.includes("rb");
   const modifier = layerName.includes("lb") ? "LB + " : layerName.includes("rb") ? "RB + " : "";
 
   switch (kind) {

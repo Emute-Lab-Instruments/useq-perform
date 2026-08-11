@@ -15,7 +15,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Mocks for handlers.ts transitive deps
+// Mocks for actionHandlers.ts transitive dependencies.
 // (mirrors contracts/gamepadStructural.test.ts — same rationale)
 // ---------------------------------------------------------------------------
 
@@ -188,7 +188,7 @@ function createRig(doc: string): Rig {
   });
 
   // Bind the dispatcher so it receives menu.* actions.
-  const menuCleanup = menuDispatcher.bind(view);
+  const menuCleanup = menuDispatcher.bind();
 
   const padState: FakePadState = {
     pressed: new Set(),

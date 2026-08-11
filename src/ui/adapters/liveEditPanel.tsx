@@ -14,7 +14,6 @@
  * Spec: docs/specs/live-edit.md §5.1–§5.4, §5.7–§5.11
  */
 import { createSignal, onCleanup, onMount } from "solid-js";
-import { createSolidAdapter } from "./createSolidAdapter.ts";
 import { LiveEditPanel } from "../liveEdit/LiveEditPanel.tsx";
 import type { LiveEditStoreAPI } from "../../effects/liveEditStore.ts";
 import type { LiveEditPersistence } from "../../effects/liveEditPersistence.ts";
@@ -68,7 +67,7 @@ function toOrderProp(
 
 // ── WiredPanel component ─────────────────────────────────────────────────────
 
-function WiredLiveEditPanel(deps: LiveEditPanelAdapterDeps) {
+export function WiredLiveEditPanel(deps: LiveEditPanelAdapterDeps) {
   // Load initial persisted state once.
   const initialData = deps.persistence.load();
 
@@ -171,30 +170,4 @@ function WiredLiveEditPanel(deps: LiveEditPanelAdapterDeps) {
       onClose={handleClose}
     />
   );
-}
-
-// ── Public API ───────────────────────────────────────────────────────────────
-
-/**
- * Mount the wired live-edit panel.
- *
- * Creates a SolidJS reactive boundary that reads from the store, persistence,
- * and MIDI learn controller, mapping their state into LiveEditPanelProps.
- *
- * Returns a { mount, dispose } handle. The panel root container is created
- * automatically and appended to document.body when mount() is called.
- */
-export function mountLiveEditPanel(deps: LiveEditPanelAdapterDeps): {
-  mount: () => void;
-  dispose: () => void;
-} {
-  const adapter = createSolidAdapter({
-    containerId: "live-edit-panel-root",
-    Component: () => <WiredLiveEditPanel {...deps} />,
-  });
-
-  return {
-    mount: () => adapter.mount(),
-    dispose: () => adapter.dispose(),
-  };
 }

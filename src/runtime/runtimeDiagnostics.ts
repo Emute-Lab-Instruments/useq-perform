@@ -20,13 +20,11 @@ export type {
 } from "../contracts/runtimeTypes";
 
 import type {
-  RuntimeProtocolMode,
   RuntimeSettingsSource,
   StartupMode,
   RuntimeBootstrapFailure,
   RuntimeDiagnosticsSnapshot,
 } from "../contracts/runtimeTypes";
-import type { RuntimeSessionSnapshot } from "../contracts/runtimeTypes";
 import {
   getEnvironmentCapabilitiesSnapshot,
   getStartupFlagsSnapshot,

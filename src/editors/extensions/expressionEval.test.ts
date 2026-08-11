@@ -32,17 +32,26 @@ import {
   type EvalIntegrationConfig,
 } from "./expressionEval.ts";
 import { lastEvaluatedExpressionField } from "./expressionEvalState.ts";
-import {
-  registerVisualisation,
-  refreshVisualisedExpression,
-} from "../../effects/visualisationSampler.ts";
-
-vi.mock("../../effects/visualisationSampler.ts", () => ({
-  isExpressionVisualised: () => false,
+const visualisationMocks = vi.hoisted(() => ({
+  isExpressionVisualised: vi.fn(() => false),
   toggleVisualisation: vi.fn(async () => {}),
   registerVisualisation: vi.fn(async () => {}),
   refreshVisualisedExpression: vi.fn(async () => {}),
   notifyExpressionEvaluated: vi.fn(),
+}));
+const registerVisualisation = visualisationMocks.registerVisualisation;
+const refreshVisualisedExpression = visualisationMocks.refreshVisualisedExpression;
+
+vi.mock("../../effects/visualisationSession.ts", () => ({
+  visualisationSession: {
+    expressions: {
+      isVisualised: visualisationMocks.isExpressionVisualised,
+      toggle: visualisationMocks.toggleVisualisation,
+      register: visualisationMocks.registerVisualisation,
+      refresh: visualisationMocks.refreshVisualisedExpression,
+      notifyEvaluated: visualisationMocks.notifyExpressionEvaluated,
+    },
+  },
 }));
 vi.mock("../../ui/adapters/visualisationPanel", () => ({
   showVisualisationPanel: vi.fn(),
@@ -304,7 +313,7 @@ describe("expressionEval: buffer edges", () => {
 
 // ---------------------------------------------------------------------------
 // DI seam — handlers must route through EvalIntegrationConfig, not the
-// transport singletons directly. This is what lets the Inspector and unit
+// transport singletons directly. This is what lets Storybook and unit
 // tests load the editor layer without dragging the transport surface in.
 // ---------------------------------------------------------------------------
 

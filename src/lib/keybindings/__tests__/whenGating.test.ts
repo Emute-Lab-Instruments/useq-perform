@@ -10,11 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { keymap, type KeyBinding as CMKeyBinding } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 
-// Mock the handler registry so the gated action resolves to a spy we control.
 const handlerSpy = vi.fn(() => true);
-vi.mock("../handlers.ts", () => ({
-  getHandler: () => handlerSpy,
-}));
 
 import { createResolver } from "../resolver.ts";
 import { registerContext, evaluateWhen } from "../contexts.ts";
@@ -39,7 +35,7 @@ describe("when-clause gating in toKeymapExtensions", () => {
     const defaults: KeyBinding[] = [
       { action: "edit.raise", key: "Mod-r", when: "test.gate" },
     ];
-    const resolver = createResolver({ defaults });
+    const resolver = createResolver({ defaults, getHandler: () => handlerSpy });
     const bindings = collectBindings(resolver.toKeymapExtensions());
 
     const gated = bindings.find((b) => b.key === "Mod-r");
@@ -54,7 +50,7 @@ describe("when-clause gating in toKeymapExtensions", () => {
     const defaults: KeyBinding[] = [
       { action: "edit.raise", key: "Mod-r", when: "test.gate" },
     ];
-    const resolver = createResolver({ defaults });
+    const resolver = createResolver({ defaults, getHandler: () => handlerSpy });
     const bindings = collectBindings(resolver.toKeymapExtensions());
 
     const gated = bindings.find((b) => b.key === "Mod-r");
@@ -68,7 +64,7 @@ describe("when-clause gating in toKeymapExtensions", () => {
     const defaults: KeyBinding[] = [
       { action: "edit.raise", key: "Mod-r" },
     ];
-    const resolver = createResolver({ defaults });
+    const resolver = createResolver({ defaults, getHandler: () => handlerSpy });
     const bindings = collectBindings(resolver.toKeymapExtensions());
 
     const b = bindings.find((x) => x.key === "Mod-r");

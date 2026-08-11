@@ -1,7 +1,5 @@
 /**
- * Toolbar adapters - mount functions for toolbars.
- *
- * Uses createSolidAdapter for mount lifecycle.
+ * Wired toolbar components owned by the application Solid root.
  */
 import { createSignal, onMount, onCleanup } from "solid-js";
 import { Effect } from "effect";
@@ -9,7 +7,6 @@ import { TransportToolbar, type TransportToolbarProps } from "../TransportToolba
 import { MainToolbar, type ConnectionState } from "../MainToolbar";
 import { OnboardingBanner } from "../OnboardingBanner";
 import { EngineIndicator } from "../../audio/engineIndicator";
-import { createSolidAdapter } from "./createSolidAdapter";
 import { adjustFontSize, loadCode, saveCode } from "../../effects/editor";
 import {
   animateConnect as animateConnectChannel,
@@ -32,47 +29,10 @@ import { toggleVisualisationPanel } from "./visualisationPanel";
 import { getTransportOrchestrator } from "../../effects/transportOrchestrator";
 import { getActiveWasmRuntimePort } from "../../runtime/activeWasmRuntimePort";
 import { useActorSignal } from "../../lib/useActorSignal";
-import { visStore } from "../../utils/visualisationStore";
-
-const TRANSPORT_ROOT_ID = "panel-top-toolbar-root";
-const MAIN_ROOT_ID = "panel-toolbar-root";
-
-function ensureTransportRoot(): HTMLElement {
-  const existing = document.getElementById(TRANSPORT_ROOT_ID);
-  if (existing) return existing;
-
-  const oldToolbar = document.getElementById("panel-top-toolbar");
-  const el = document.createElement("div");
-  el.id = TRANSPORT_ROOT_ID;
-
-  if (oldToolbar) {
-    oldToolbar.replaceWith(el);
-  } else {
-    document.body.prepend(el);
-  }
-
-  return el;
-}
-
-function ensureMainRoot(): HTMLElement {
-  const existing = document.getElementById(MAIN_ROOT_ID);
-  if (existing) return existing;
-
-  const oldToolbar = document.getElementById("panel-toolbar");
-  const el = document.createElement("div");
-  el.id = MAIN_ROOT_ID;
-
-  if (oldToolbar) {
-    oldToolbar.replaceWith(el);
-  } else {
-    document.body.appendChild(el);
-  }
-
-  return el;
-}
+import { visualisationSession } from "../../effects/visualisationSession";
 
 /** Wrapper that reads orchestrator state and passes it as props. */
-function ConnectedTransportToolbar() {
+export function ConnectedTransportToolbar() {
   const orchestrator = getTransportOrchestrator();
   const { state, send } = useActorSignal(orchestrator.actor as any);
   const [bpm, setBpm] = createSignal<number | null>(null);
@@ -117,22 +77,20 @@ function ConnectedTransportToolbar() {
     <TransportToolbar
       state={state().value as TransportToolbarProps["state"]}
       mode={state().context.mode as TransportToolbarProps["mode"]}
-      progress={visStore.bar}
+      progress={visualisationSession.state.bar}
       bpm={bpm()}
       onPlay={() => send({ type: "PLAY" })}
       onPause={() => send({ type: "PAUSE" })}
       onStop={() => send({ type: "STOP" })}
       onRewind={() => send({ type: "REWIND" })}
       onClear={() => send({ type: "CLEAR" })}
-    />
+    >
+      <div id="engine-indicator-root">
+        <WiredEngineIndicator />
+      </div>
+    </TransportToolbar>
   );
 }
-
-const transportAdapter = createSolidAdapter({
-  containerId: TRANSPORT_ROOT_ID,
-  ensureRoot: ensureTransportRoot,
-  Component: () => <ConnectedTransportToolbar />,
-});
 
 function deriveConnectionState(snapshot: ReturnType<typeof getRuntimeServiceSnapshot>): ConnectionState {
   const { connectionMode, transportMode } = snapshot.session;
@@ -142,7 +100,7 @@ function deriveConnectionState(snapshot: ReturnType<typeof getRuntimeServiceSnap
   return "none";
 }
 
-function WiredMainToolbar() {
+export function WiredMainToolbar() {
   const [connectionState, setConnectionState] = createSignal<ConnectionState>(
     deriveConnectionState(getRuntimeServiceSnapshot())
   );
@@ -179,45 +137,9 @@ function WiredMainToolbar() {
   );
 }
 
-const mainAdapter = createSolidAdapter({
-  containerId: MAIN_ROOT_ID,
-  ensureRoot: ensureMainRoot,
-  Component: () => <WiredMainToolbar />,
-});
-
-/**
- * Mount the transport toolbar.
- * Replaces the existing #panel-top-toolbar element if present.
- * In non-browser environments, this is a no-op.
- */
-export function mountTransportToolbar(root?: HTMLElement): void {
-  transportAdapter.mount(root);
-}
-
-/**
- * Mount the main toolbar.
- * Replaces the existing #panel-toolbar element if present.
- * In non-browser environments, this is a no-op.
- */
-export function mountMainToolbar(root?: HTMLElement): void {
-  mainAdapter.mount(root);
-}
-
 // ── Onboarding Banner ───────────────────────────────────────────────
-
-const ONBOARDING_ROOT_ID = "onboarding-banner-root";
-
-const onboardingAdapter = createSolidAdapter({
-  containerId: ONBOARDING_ROOT_ID,
-  Component: () => <OnboardingBanner />,
-});
-
-/**
- * Mount the onboarding banner.
- * Renders a dismissible inline banner near the Connect button area.
- */
-export function mountOnboardingBanner(root?: HTMLElement): void {
-  onboardingAdapter.mount(root);
+export function WiredOnboardingBanner() {
+  return <OnboardingBanner />;
 }
 
 // ── Engine Indicator ────────────────────────────────────────────────
@@ -231,25 +153,6 @@ export function mountOnboardingBanner(root?: HTMLElement): void {
 // synthesis service accessor so the adapter never imports the service
 // singleton directly.
 
-const ENGINE_INDICATOR_ROOT_ID = "engine-indicator-root";
-
-function ensureEngineIndicatorRoot(): HTMLElement {
-  const existing = document.getElementById(ENGINE_INDICATOR_ROOT_ID);
-  if (existing) return existing;
-  const el = document.createElement("div");
-  el.id = ENGINE_INDICATOR_ROOT_ID;
-  // Mount inside the actual fixed toolbar, not its normal-flow mount root,
-  // so the chip stays with the transport controls and is not hidden behind
-  // the editor. `toolbar.css` re-enables pointer events for this child.
-  const transport = document.getElementById("panel-top-toolbar");
-  if (transport) {
-    transport.appendChild(el);
-  } else {
-    document.body.prepend(el);
-  }
-  return el;
-}
-
 const INITIAL_ENGINE_SNAPSHOT: EngineStateSnapshot = Object.freeze({
   state: "off",
   reasonKey: null,
@@ -258,7 +161,7 @@ const INITIAL_ENGINE_SNAPSHOT: EngineStateSnapshot = Object.freeze({
   transitionedAt: 0,
 });
 
-function WiredEngineIndicator() {
+export function WiredEngineIndicator() {
   const [snapshot, setSnapshot] = createSignal<EngineStateSnapshot>(
     engineStateStore.current ?? INITIAL_ENGINE_SNAPSHOT,
   );
@@ -275,22 +178,4 @@ function WiredEngineIndicator() {
   const onResume = createEngineIndicatorResumeHandler(snapshot, getActiveSynthesisService);
 
   return <EngineIndicator state={snapshot()} onResume={onResume} />;
-}
-
-const engineIndicatorAdapter = createSolidAdapter({
-  containerId: ENGINE_INDICATOR_ROOT_ID,
-  ensureRoot: ensureEngineIndicatorRoot,
-  Component: () => <WiredEngineIndicator />,
-});
-
-/**
- * Mount the synthesis engine indicator.
- *
- * The indicator lives inside the transport toolbar area so it is part
- * of the transport-indicator family (synthesis.md §6.4). It renders
- * nothing when audio capability is absent; the capability diagnostic
- * flows through the regular compiler diagnostic channel.
- */
-export function mountEngineIndicator(root?: HTMLElement): void {
-  engineIndicatorAdapter.mount(root);
 }

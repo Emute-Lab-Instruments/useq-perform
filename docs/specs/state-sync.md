@@ -19,7 +19,6 @@ layer: behavioural
 - `src/runtime/jsonProtocol.ts` — `JsonGetStateRequest` type, `buildGetStateRequest()` builder
 - `src/transport/json-protocol.ts` — `sendGetState()` wire function
 - `src/transport/webSerialHostPort.ts` — `requestStateSnapshot()` implementation
-- `src/runtime/wasmRuntimePort.ts` — `applyStateSnapshot()` in-process implementation
 - `src/runtime/wasmRuntimeWorkerPort.ts` — `applyStateSnapshot()` worker proxy
 - `src/runtime/workers/wasmRuntimeWorkerProtocol.ts` — `ApplyStateSnapshotRequest/Response`
 - `src/runtime/workers/wasmRuntime.worker.ts` — worker-side `applyStateSnapshot` handler

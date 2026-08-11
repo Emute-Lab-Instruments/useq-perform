@@ -175,7 +175,7 @@ worklet host → sound.
 - **M4.1 Node rail**: health rail + chip row + collapsed ghost line
   with click-to-expand param rows; malformed-form degradation
   (`synthesis.md` §7.2). Build on the DI extension pattern
-  (`GutterConfig`-style factories) so Inspector scenarios can render it
+  (`GutterConfig`-style factories) so Storybook stories can render it
   in isolation.
 - **M4.2 Per-param scopes**: togglable, off by default, persisted;
   reuse probe/vis machinery (`synthesis.md` §7.2.1, §7.3).
@@ -192,7 +192,7 @@ worklet host → sound.
   cursor↔node highlight (`synthesis.md` §7.5–7.5.1, §2.1).
 - **M4.6 Engine indicator**: off/suspended/running(+load%)/error chips
   in the transport-indicator family (`synthesis.md` §6.4).
-- **Acceptance**: Inspector scenarios cover all states (running/
+- **Acceptance**: Storybook stories cover all states (running/
   fallback/error rails, ghost line expanded/collapsed, both widget
   styles, suspended banner, graph with a composite expanded); scenario
   validation green.
@@ -224,7 +224,7 @@ worklet host → sound.
 Per repo convention: Vitest unit/contract tests for module behaviour
 and ABI conformance (`test:contracts` gains a `synthesis` group);
 Mocha integration where eval flow is exercised; golden DSP renders for
-defs (M3.4); Inspector scenarios for every editor surface state (M4);
+defs (M3.4); Storybook stories for every editor surface state (M4);
 structural YAML only where editor *command* semantics are touched
 (paste gestures). The SAB ABI and NodeDef registry contracts get
 dedicated conformance suites that hand-written and Faust defs must both

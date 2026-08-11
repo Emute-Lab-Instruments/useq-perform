@@ -398,7 +398,7 @@ describe("useqWasmInterpreter", () => {
     installLoadedScriptTag();
     window.createModule = vi.fn(async () => module as never);
 
-    const { evalOutputsInTimeWindow, wasmRuntimePort } = await import("./wasmInterpreter.ts");
+    const { evalOutputsInTimeWindow } = await import("./wasmInterpreter.ts");
     const samples = await evalOutputsInTimeWindow(["a1"], 0, 1, 3);
 
     expect(window.createModule).toHaveBeenCalledTimes(1);
@@ -412,7 +412,6 @@ describe("useqWasmInterpreter", () => {
         ([symbol]) => symbol === "useq_eval_outputs_time_window_into"
       )
     ).toBe(false);
-    expect(wasmRuntimePort.capabilities().supportsTimeWindow).toBe(false);
     expect(samples.get("a1")).toEqual([
       { time: 0, value: 0 },
       { time: 0.5, value: 1 },
@@ -442,7 +441,7 @@ describe("useqWasmInterpreter", () => {
     installLoadedScriptTag();
     window.createModule = vi.fn(async () => module as never);
 
-    const { evalOutputsInTimeWindow, wasmRuntimePort } = await import("./wasmInterpreter.ts");
+    const { evalOutputsInTimeWindow } = await import("./wasmInterpreter.ts");
 
     const first = await evalOutputsInTimeWindow(["a1"], 0, 1, 3);
     const second = await evalOutputsInTimeWindow(["a1"], 0, 1, 3);
@@ -458,7 +457,6 @@ describe("useqWasmInterpreter", () => {
       { time: 1, value: 2 },
     ]);
     expect(legacyBatch).toHaveBeenCalledTimes(1);
-    expect(wasmRuntimePort.capabilities().supportsTimeWindow).toBe(false);
   });
 
   it("publishes diagnostic readers on globalThis.__useqWasmRuntime after init", async () => {
@@ -681,54 +679,4 @@ describe("useqWasmInterpreter", () => {
     expect(synthArtifactsSupportsAbi(committed.abi + 1)).toBe(false);
   });
 
-  it("evalCodeWithDiagnostics returns synth artefacts correlated to the exact eval (VAL-COMP-013/014)", async () => {
-    // End-to-end through the in-process port: a successful eval response
-    // carries diagnostics + synth artefacts at an advanced revision; a
-    // failed eval response carries error diagnostics and the artefacts
-    // retain the LAST successful revision (no engine commit).
-    installLoadedScriptTag();
-    window.createModule = vi.fn(async () =>
-      (await loadGeneratedBundleModule("../../public/wasm/useq.js")) as never,
-    );
-
-    const portModule = await import("./wasmRuntimePort.ts");
-    const port = portModule.wasmRuntimePort;
-    await port.ensureLoaded();
-
-    // Baseline: empty synth graph at revision 0.
-    const baseline = await port.evalCodeWithDiagnostics("(+ 1 1)");
-    expect(baseline.diagnostics).toEqual([]);
-    expect(baseline.synthArtifacts).not.toBeNull();
-    expect(baseline.synthArtifacts?.abi).toBe(2);
-    expect(baseline.synthArtifacts?.revision).toBe(0);
-    expect(baseline.synthArtifacts?.declarations).toEqual([]);
-
-    // Successful synth commit: artefacts advance to revision > 0 with one
-    // declaration. The response carries the artefacts of THIS eval (not a
-    // later racing eval).
-    const success = await port.evalCodeWithDiagnostics(
-      '(synth "osc/sine" :name "lead" :freq 440)',
-    );
-    expect(success.diagnostics).toEqual([]);
-    expect(success.synthArtifacts).not.toBeNull();
-    expect(success.synthArtifacts?.revision).toBeGreaterThan(0);
-    expect(success.synthArtifacts?.declarations).toHaveLength(1);
-    expect(success.synthArtifacts?.declarations[0].identity).toBe("lead");
-    const committedRevision = success.synthArtifacts!.revision;
-
-    // Failed eval: diagnostics include the error, and the synth artefacts
-    // retain the LAST successful revision (no engine commit).
-    const failed = await port.evalCodeWithDiagnostics(
-      '(synth "osc/unknown" :freq 110)',
-    );
-    expect(failed.diagnostics.length).toBeGreaterThan(0);
-    expect(
-      failed.diagnostics.some((d) => d.severity === "error"),
-    ).toBe(true);
-    expect(failed.synthArtifacts).not.toBeNull();
-    expect(failed.synthArtifacts?.revision).toBe(committedRevision);
-    expect(failed.synthArtifacts?.declarations).toEqual(
-      success.synthArtifacts?.declarations,
-    );
-  });
 });

@@ -53,11 +53,11 @@ layer: cross-cutting
 
 App-wide degradation contracts. Cited from feature sub-specs.
 
-2.1 **An eval that fails to compile or evaluate must not stop the app** (see `src/effects/editorEvaluation.ts`, `src/runtime/wasmInterpreter.ts`). The previously active outputs continue running on hardware (per language LKG semantics); on WASM, the prior compiled program continues. The user sees an inline diagnostic and a console message.
+2.1 **An eval that fails to compile or evaluate must not stop the app** (see `src/effects/editorEvaluation.ts`, `src/runtime/wasmRuntimeWorkerPort.ts`). The previously active outputs continue running on hardware (per language LKG semantics); on WASM, the prior compiled program continues. The user sees an inline diagnostic and a console message.
 
 2.2 **A runtime disconnect must not lose editor state.** Editor content, console history, settings, and visualisation traces survive a hardware disconnect or a WASM crash.
 
-2.3 **A WASM ABI mismatch is a fatal startup error** with a clear, actionable message. The app surfaces a diagnostic explaining which export is missing or has the wrong signature.
+2.3 **A WASM ABI mismatch is fatal to browser-local runtime activation, not to editor/UI mount.** The typed Worker error remains a clear, actionable recovery message explaining which export is missing or incompatible; the mode truthfully degrades to `hardware` or `none`.
 
 2.4 **Bootstrap failures** publish a structured diagnostic and render a recovery surface (see `src/runtime/bootstrap.ts`); the user is never left with a blank page.
 
@@ -183,7 +183,7 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.21 [calibration.md](calibration.md) — CV 1V/oct calibration full-screen takeover flow, per-output picker, ±50¢ slider with carry-forward offset, save/abort/error semantics.
 
-6.22 [inspector.md](inspector.md) — same-repo visual review tool for isolated app scenarios and local approval workflow.
+6.22 [storybook.md](storybook.md) — canonical isolated component/editor review surface and executable browser gate.
 
 6.23 [radial-menu.md](radial-menu.md) — centre-screen double-ring gamepad-driven command surface for picking and applying nouns into the document.
 
@@ -227,7 +227,7 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 7.7 `../GLOSSARY.md` — terminology source of truth. Consult before introducing new terms.
 
-7.8 [inspector.md](inspector.md), [user-guide.md](user-guide.md) — sub-surface specs.
+7.8 [storybook.md](storybook.md), [user-guide.md](user-guide.md) — sub-surface specs.
 
 7.9 `../../src-useq/docs/specs/MAIN.md` — language semantics (what programs *mean*). Counterpart to this doc.
 

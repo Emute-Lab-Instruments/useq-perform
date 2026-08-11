@@ -180,7 +180,7 @@ describe("paradigm: modal-shift", () => {
     });
 
     it("every action bound on the modal-shift paradigm exists in the action registry", async () => {
-      // Note: we deliberately don't import handlers.ts here — that pulls in
+      // Note: we deliberately don't import actionHandlers.ts here — that pulls in
       // the editor/transport runtime stack, which can't initialise in this
       // pure-unit context. Existence in the action registry is the contract
       // the keybinding system uses for ID validity; handler wiring is covered

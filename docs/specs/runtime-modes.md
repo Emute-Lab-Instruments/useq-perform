@@ -12,14 +12,14 @@ layer: behavioural
 
 - `src/runtime/runtimeSession.ts` — mode combination matrix, `RuntimeConnectionMode` / `TransportMode` derivation
 - `src/runtime/runtimeCoordinator.ts` — sole mutable owner of session transitions and active typed WASM-port selection
+- `src/runtime/browserWasmRuntime.ts` — configured intent, Worker readiness/recovery, and actual-availability publication
 - `src/runtime/runtimeSessionService.ts` — mode transitions, hardware connect/disconnect handling
-- `src/runtime/runtimeSessionStore.ts` — compatibility re-export of coordinator session state; contains no state
+- `src/runtime/runtimeCoordinator.ts` — canonical owner of runtime session state and active WASM-port selection
 - `src/runtime/runtimeService.ts` — runtime session announcements, settings mutation surface
 - `src/contracts/runtimeTypes.ts` — `RuntimeConnectionMode`, `TransportMode`, `RuntimeSessionInputs` type definitions
 - `src/contracts/runtimeChannels.ts` — `connectionChanged` channel for mode-transition events
-- `src/runtime/wasmInterpreter.ts` — WASM runtime instantiation and eval
-- `src/runtime/wasmRuntimePort.ts` — in-process WASM runtime port
-- `src/runtime/wasmRuntimeWorkerPort.ts` — worker-backed WASM runtime port
+- `src/runtime/wasmRuntimeWorkerPort.ts` — sole production browser-local WASM port
+- `src/runtime/workers/wasmRuntime.worker.ts` — Worker-local WASM instantiation and execution
 - `src/runtime/activeWasmRuntimePort.ts` — compatibility read-through facade over coordinator port selection
 - `src/runtime/runtimeTransportService.ts` — transport command fan-out to both runtimes
 - `src/effects/transportOrchestrator.ts` — shared transport command dispatch
@@ -37,8 +37,9 @@ layer: behavioural
 1.5 **`both`** — hardware connected *and* WASM enabled. Hardware is authoritative for outputs; WASM complements with local sampling and visualisation. Must be visually distinct in the connection indicator from any single-runtime mode.
 &nbsp;&nbsp;&nbsp;&nbsp;1.5.1 By default in `both`, WASM acts as a "visualisation shadow" for the hardware (see [MAIN.md §1.3.1](MAIN.md)): hardware drives outputs, WASM drives visual feedback.
 &nbsp;&nbsp;&nbsp;&nbsp;1.5.2 **WASM must not bog down the hardware runtime.** WASM sampling, visualisation, and probe evaluation in `both` mode are best-effort: they may degrade their own quality (drop frames, reduce sample rate, skip channels) but must never steal cycles from the serial transport reader/writer or block on hardware I/O. Hardware-driven outputs are the contract; everything WASM does is local enrichment.
+&nbsp;&nbsp;&nbsp;&nbsp;1.5.3 The browser represents this asymmetry through the single `visualisationSession` seam. Hardware time and streamed samples update the visible session immediately; WASM sampling, future projection, probes, and drift resync are queued/coalesced shadow operations. The session may discard stale shadow work, but it must not discard or delay hardware transport work.
 
-1.6 **Mode determination is observable, not inferred from `connectedToModule`.** Any UI indicator showing "connected" must distinguish hardware from WASM-only — never collapse them.
+1.6 **Mode determination is observable, not inferred from `connectedToModule` or settings.** `wasm.enabled` is configured intent; `wasm`/`both` becomes true only after a selected Worker completes its readiness handshake. Hardware connection facts cannot manufacture WASM availability. Any UI indicator showing "connected" must distinguish hardware from WASM-only — never collapse them.
 
 1.7 **Mode transitions are seamless.** Connecting hardware while in `wasm` upgrades to `both` without losing editor state, console history, or vis state. On hardware connect, the app prompts the user: "Hardware connected. Send current program to device?" — letting the user decide whether to sync the current WASM state to hardware. The prompt fires on the `wasm` → `both` transition (a fresh hardware connect while WASM is running), never on a boot directly into `both` nor on disconnect, and is suppressed when the editor is empty; on confirm the current editor program is sent over serial. Disconnecting hardware while in `both` falls back to `wasm`. The user's evaluations across the boundary must continue to produce visible feedback. (see `src/runtime/runtimeSessionService.ts`, `src/effects/hardwareConnectPrompt.ts`)
 
@@ -50,8 +51,8 @@ layer: behavioural
 
 1.11 The **shared transport command set** that fans out to both runtimes is exactly: `(useq-play)`, `(useq-pause)`, `(useq-stop)`, `(useq-rewind)`, `(useq-clear)`, `(useq-get-transport-state)`. Anything else is hardware-only or WASM-only and must not be silently sent to the wrong runtime. (see `src/contracts/useqRuntimeContract.ts`, `src/runtime/runtimeTransportService.ts`)
 
-1.12 **WASM eval runs in a Web Worker.** The default `WasmRuntimePort` is the worker-backed port — eval, batch sampling, time advance, probe evaluation, and diagnostics readback all cross the worker boundary via `postMessage`. The in-process port remains as a fallback when `Worker` is unavailable and as the implementation tests mock against. Renderer (WebGL) and editor still run on the main thread. (see `src/runtime/wasmRuntimeWorkerPort.ts`, `src/runtime/workers/wasmRuntime.worker.ts`, `src/runtime/wasmRuntimePort.ts`)
+1.12 **WASM eval is Worker-only in production.** Eval, batch sampling, time advance, probes, state resync, failure-mode changes, diagnostics, and synthesis-producer control all cross one `WasmRuntimePort` Worker boundary. If `Worker` is unavailable or the Worker cannot load, browser-local WASM is unavailable: the app continues as hardware-only when hardware is usable, otherwise as `none`; it never runs the interpreter on the UI/serial thread. Renderer (WebGL) and editor remain on the main thread. The direct `wasmInterpreter.ts` loader exists only for isolated conformance witnesses and interpreter integration tests. (see `src/runtime/wasmRuntimeWorkerPort.ts`, `src/runtime/workers/wasmRuntime.worker.ts`, `src/runtime/witnessEngine.ts`)
 
 1.13 **`connectedToModule` is a misnomer; do not treat it as "hardware is attached".** The legacy boolean `connectedToModule` in the transport layer means "JSON handshake completed against *some* serial port" — not "real uSEQ hardware is plugged in". Consumers deciding whether the hardware-mode capability set applies must use the runtime-mode signal (this spec), not `connectedToModule`. The variable persists only as a transport-internal flag and may be renamed without notice. (see `src/transport/connector.ts`)
 
-1.14 **Runtime ownership is singular but capability-local.** `runtimeCoordinator.ts` is the only mutable owner of derived session state and the selected `WasmRuntimePort`. `appLifecycle.ts` sequences startup and teardown without maintaining a second mode or connection state. The selected port implementation owns its internal load and retry state; callers invoke it through the typed port contract. The pre-1.2 serial compatibility adapter remains a supported hardware edge and reports facts to the same coordinator, but never derives or stores an alternate runtime mode. (see `src/runtime/runtimeCoordinator.ts`, `src/runtime/appLifecycle.ts`, `src/runtime/wasmRuntimeWorkerPort.ts`, `src/runtime/runtimeCompatibility.ts`)
+1.14 **Runtime ownership is singular but capability-local.** `runtimeCoordinator.ts` is the only mutable owner of derived session state and selected port. `browserWasmRuntime.ts` owns Worker construction, readiness, one controlled replacement after a post-ready crash, and disposal; it publishes actual availability to the coordinator. `appLifecycle.ts` reacts to those transitions without deriving a second mode. On final recovery failure the selected port is cleared and mode truthfully downgrades to `hardware`/`none`. The serial edge reports hardware facts only. (see `src/runtime/runtimeCoordinator.ts`, `src/runtime/browserWasmRuntime.ts`, `src/runtime/appLifecycle.ts`, `src/runtime/wasmRuntimeWorkerPort.ts`)

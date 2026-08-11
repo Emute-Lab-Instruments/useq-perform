@@ -36,11 +36,15 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("./visualisationRuntime.ts", () => ({
-  isLocalTimeActive: () => mocks.localTimeActive,
-  resetLocalTime: mocks.resetLocalTime,
-  setLocalTimeMode: mocks.setLocalTimeMode,
-  startVisualisationRuntime: mocks.startVisualisationRuntime,
+vi.mock("./visualisationSession.ts", () => ({
+  visualisationSession: {
+    clock: {
+      isLocal: () => mocks.localTimeActive,
+      reset: mocks.resetLocalTime,
+      setLocal: mocks.setLocalTimeMode,
+      startRuntime: mocks.startVisualisationRuntime,
+    },
+  },
 }));
 
 vi.mock("../runtime/runtimeService", () => ({

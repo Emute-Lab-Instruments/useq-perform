@@ -9,6 +9,7 @@ import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import type { KeyBinding as CMKeyBinding } from "@codemirror/view";
+import type { EditorView } from "@codemirror/view";
 
 import type { ActionId } from "./actions.ts";
 import { getAction } from "./actions.ts";
@@ -16,8 +17,7 @@ import {
   defaultKeyBindings,
   type KeyBinding,
 } from "./defaults.ts";
-import { getHandler, type ActionHandler } from "./handlers.ts";
-import { isBrowserReserved, isOsReserved, type ReservedKey } from "./osReserved.ts";
+import { isBrowserReserved, isOsReserved } from "./osReserved.ts";
 import { whenExpressionsOverlap, evaluateWhen } from "./contexts.ts";
 import { recordAction } from "./usageTracker.ts";
 import { announceAction } from "./announcer.ts";
@@ -33,6 +33,10 @@ export interface ResolvedBinding {
   preventDefault: boolean;
   handler?: ActionHandler;
 }
+
+export type ActionHandler =
+  | ((view: EditorView) => boolean)
+  | (() => boolean);
 
 export interface ConflictInfo {
   key: string;
@@ -210,9 +214,11 @@ function generateCandidateKeys(modifiers: string[]): string[] {
 export function createResolver(opts?: {
   defaults?: KeyBinding[];
   overrides?: Partial<Record<ActionId, string>>;
+  getHandler?: (action: ActionId) => ActionHandler | undefined;
 }): BindingResolver {
   const baseDefaults = opts?.defaults ?? defaultKeyBindings;
   const overrides = opts?.overrides ?? {};
+  const resolveHandler = opts?.getHandler ?? (() => undefined);
 
   // Build the working binding list: apply overrides to defaults
   let bindings: KeyBinding[] = baseDefaults.map((binding) => {
@@ -237,7 +243,7 @@ export function createResolver(opts?: {
           key: binding.key,
           when: binding.when,
           preventDefault: binding.preventDefault ?? true,
-          handler: getHandler(binding.action),
+          handler: resolveHandler(binding.action),
         });
       }
     }
@@ -251,7 +257,7 @@ export function createResolver(opts?: {
       key: binding.key,
       when: binding.when,
       preventDefault: binding.preventDefault ?? true,
-      handler: getHandler(binding.action),
+      handler: resolveHandler(binding.action),
     }));
   }
 

@@ -7,29 +7,40 @@
  *
  * Design invariants:
  *   1. `resolveBootstrapPlan` is called at most once per session.
- *   2. `publishDiagnosticsSnapshot` is called at most once per session.
+ *   2. Bootstrap diagnostics are seeded once; runtime transitions may publish
+ *      fresh snapshots as actual capabilities become available or fail.
  *   3. The plan is threaded *into* `createApp` – the app never
  *      recomputes it.
  */
 
 import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
-import { loadConfigurationWithMetadata, getAppSettings } from './appSettingsRepository.ts';
-import { editorSession, initEditorPanel, setEditor } from '../lib/editorStore.ts';
+import type { EditorView } from '@codemirror/view';
+import { loadConfigurationWithMetadata } from './appSettingsRepository.ts';
+import { editorSession, setEditor } from '../lib/editorStore.ts';
+import {
+  disposeEditorLifecycle,
+  initEditorPanel,
+} from '../editors/editorLifecycle.ts';
 import { recogniseStatefulForms } from '../editors/extensions/stateIdentity/identityClassify.ts';
 import { installPageLifecycleHandlers, liveEditStore } from '../effects/liveEditRuntime.ts';
-import { attachLiveEditStoreBridge } from '../editors/extensions/liveEdit/widgetStoreBridge.ts';
+import {
+  attachLiveEditStoreBridge,
+  detachLiveEditStoreBridge,
+} from '../editors/extensions/liveEdit/widgetStoreBridge.ts';
 import { createGamepadPipeline } from '../lib/gamepad/index.ts';
-import { bindGamepadNavigation, hideSystemCursor } from '../editors/gamepadNavigation.ts';
+import {
+  bindGamepadNavigation,
+  hideSystemCursor,
+  readGamepadEditorContext,
+} from '../editors/gamepadNavigation.ts';
+import { executeAction } from '../editors/commands/actionHandlers.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
-import { mountModal } from '../ui/adapters/modal.tsx';
-import { mountRadialMenu } from '../ui/adapters/radialMenu.tsx';
-import { mountMainMenu } from '../ui/adapters/mainMenu.tsx';
-import { mountPalette } from '../ui/adapters/palette.tsx';
+import { visualisationSession } from '../effects/visualisationSession.ts';
 import { createMenuDispatcher } from '../lib/menu/dispatcher.ts';
 import { menuState, dispatchMenuInput } from '../lib/menu/store.ts';
 import { getCachedManifest } from '../lib/menu/manifest.ts';
-import { mountModifierHints } from '../ui/adapters/modifier-hints.tsx';
+import type { ApplicationRootHandle } from '../ui/ApplicationRoot.tsx';
 import {
   seedBootstrapDiagnostics,
   publishDiagnosticsSnapshot,
@@ -43,9 +54,17 @@ import {
   installBrowserEvalSurface,
 } from './browserEvalSurface.ts';
 import {
-  getActiveWasmRuntimePort,
-  transitionRuntimeCoordinator,
+  hasActiveWasmRuntimePort,
+  isWasmRuntimeAvailable,
 } from './runtimeCoordinator.ts';
+import {
+  createBrowserWasmRuntimeController,
+  installBrowserWasmRuntimeController,
+} from './browserWasmRuntime.ts';
+import {
+  clearBootstrapRecovery,
+  showBootstrapRecovery,
+} from './bootstrapRecoverySurface.ts';
 // ── Bootstrap plan (pure decision function) ─────────────────────
 
 export type BootstrapStartupMode =
@@ -87,6 +106,15 @@ export function resolveBootstrapPlan(
   input: BootstrapPlanInput,
 ): BootstrapPlan {
   if (input.noModuleMode) {
+    if (!input.wasmEnabled) {
+      return {
+        startupMode: "unsupported-browser",
+        startBrowserLocal: false,
+        seedDefaultNoModuleExpressions: false,
+        attemptHardwareReconnect: false,
+        showUnsupportedBrowserWarning: true,
+      };
+    }
     return {
       startupMode: "no-module",
       startBrowserLocal: true,
@@ -133,10 +161,11 @@ import {
 // ── Types ──────────────────────────────────────────────────────────
 
 interface AppUI {
-  mainEditor: any;
+  mainEditor: EditorView;
   serialVis: HTMLElement | null;
   logConsole: null;
   statusBar: HTMLElement | null;
+  dispose(): void;
 }
 
 export interface BootstrapResult {
@@ -149,9 +178,10 @@ export interface BootstrapResult {
 // ── UI bootstrap ────────────────────────────────────────────────────
 // Merged from legacy/ui/ui.ts
 
-async function createAppUI(environmentState: any): Promise<AppUI> {
-  const editor = await initEditorPanel("#panel-main-editor");
+async function createAppUI(environmentState: EnvironmentState): Promise<AppUI> {
+  const editor = initEditorPanel("#panel-main-editor");
 
+  visualisationSession.begin();
   const visPanelEl = document.getElementById("panel-vis");
   registerVisualisationPanel(visPanelEl);
   if (visPanelEl) visPanelEl.style.display = "none";
@@ -165,48 +195,29 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
   attachLiveEditStoreBridge(editor, liveEditStore);
 
   // Install pagehide/visibilitychange flush for live-edit persistence (§7.2).
-  installPageLifecycleHandlers();
+  const removePageLifecycleHandlers = installPageLifecycleHandlers();
 
-  // Mount Solid UI adapters and wire editor store.
-  // panels.tsx and toolbars.tsx are loaded dynamically so Vite can split them into
-  // separate chunks. The try/catch guards against mount-time failures.
+  // The editor must be visible to wired components before the single Solid
+  // application root mounts.
+  setEditor(editor);
+  let applicationRoot: ApplicationRootHandle | null = null;
   try {
-    const [panels, toolbars] = await Promise.all([
-      import("../ui/adapters/panels.tsx"),
-      import("../ui/adapters/toolbars.tsx"),
-    ]);
-    setEditor(editor);
-    // Mount toolbars first (they replace the static HTML toolbar elements)
-    toolbars.mountTransportToolbar();
-    toolbars.mountMainToolbar();
-    // VAL-ENGINE-020/021: the synthesis engine indicator is a
-    // transport-family member. Mount it after the transport toolbar
-    // so the indicator's root can attach inside the toolbar area.
-    toolbars.mountEngineIndicator();
-    toolbars.mountOnboardingBanner();
-    mountModal();
-    mountRadialMenu();
-    mountMainMenu();
-    mountPalette();
-    mountModifierHints();
-    // Mount panels and design selector
-    panels.mountSettingsPanel();
-    panels.mountHelpPanel();
-    panels.mountDesignSelector(environmentState?.startupFlags?.devmode === true);
+    // Keep pure bootstrap-plan consumers free of the browser-only Solid graph.
+    // The application root is still mounted exactly once on the real UI path.
+    const { mountApplicationRoot } = await import('../ui/ApplicationRoot.tsx');
+    applicationRoot = mountApplicationRoot({
+      devmode: environmentState?.startupFlags?.devmode === true,
+      virtualGamepad: environmentState?.startupFlags?.params?.virtualGamepad === "true",
+    });
+    clearBootstrapRecovery("application-root");
   } catch (error) {
-    reportBootstrapFailure("ui-adapter-mount", error);
-  }
-
-  // Mount virtual gamepad overlay when ?virtualGamepad=true is set.
-  // Must be installed before the gamepad pipeline starts so the synthetic
-  // gamepad is visible to the first poll.
-  if (environmentState?.startupFlags?.params?.virtualGamepad === "true") {
-    try {
-      const { mountVirtualGamepad } = await import("../ui/adapters/virtualGamepad.tsx");
-      mountVirtualGamepad();
-    } catch (error) {
-      reportBootstrapFailure("virtual-gamepad-mount", error);
-    }
+    reportBootstrapFailure("application-root-mount", error);
+    showBootstrapRecovery({
+      id: "application-root",
+      title: "Application controls failed to start",
+      message: "The editor is still available, but the application controls could not mount.",
+      detail: error instanceof Error ? error.message : String(error),
+    });
   }
 
   // Wire up three-stage gamepad pipeline + menu dispatcher.
@@ -220,8 +231,14 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
     getManifest: () => getCachedManifest(),
     getEditorView: () => editor,
   });
-  const gamepadPipeline = createGamepadPipeline({ editor, menuDispatcher, onAction: hideSystemCursor });
-  const menuCleanup = menuDispatcher.bind(editor);
+  const gamepadPipeline = createGamepadPipeline({
+    editor,
+    menuDispatcher,
+    onAction: hideSystemCursor,
+    actionExecutor: (action, view) => executeAction(action, "gamepad", view),
+    readEditorContext: readGamepadEditorContext,
+  });
+  const menuCleanup = menuDispatcher.bind();
   const navHandle = bindGamepadNavigation(editor);
   // Expose dispatcher on window for console-driven testing during round 2.
   if (typeof globalThis !== 'undefined') {
@@ -236,11 +253,25 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
   }
   gamepadPipeline.start();
 
+  let disposed = false;
   return {
     mainEditor: editor,
     serialVis: document.getElementById("panel-vis") || null,
     logConsole: null,
     statusBar: document.getElementById("status-bar") || null,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      menuCleanup();
+      navHandle.dispose();
+      gamepadPipeline.dispose();
+      applicationRoot?.dispose();
+      registerVisualisationPanel(null);
+      removePageLifecycleHandlers();
+      detachLiveEditStoreBridge();
+      disposeEditorLifecycle();
+      setEditor(null);
+    },
   };
 }
 
@@ -253,7 +284,7 @@ async function createAppUI(environmentState: any): Promise<AppUI> {
  * 2. Detect environment capabilities once.
  * 3. Derive the bootstrap plan once.
  * 4. Seed the runtime coordinator.
- * 5. Publish diagnostics exactly once.
+ * 5. Seed bootstrap diagnostics and publish the initial snapshot.
  * 6. Mount the UI and start the app.
  */
 export async function bootstrap(): Promise<BootstrapResult> {
@@ -263,7 +294,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
   try {
     const result = await loadConfigurationWithMetadata();
     settingsSources = result.settingsSources;
-    replaceSettings(result.config, { dispatch: true });
+    replaceSettings(result.config);
   } catch (error) {
     reportBootstrapFailure('config-loader', error);
     console.warn('bootstrap: failed to load configuration, using defaults:', error);
@@ -272,33 +303,32 @@ export async function bootstrap(): Promise<BootstrapResult> {
   // ── Step 1b: preload help content (fire-and-forget) ────────────
   preloadHelpContent();
 
-  // ── Step 1c: select the WASM runtime port. ──
-  // Default: worker-backed port — WASM eval runs off the main thread.
-  // The in-process port is the fallback when Web Workers are unavailable
-  // or fail to construct (rare in practice, but keep the recovery path).
-  if (typeof window !== "undefined" && typeof Worker !== "undefined") {
-    try {
-      const { createWasmRuntimeWorkerPort } = await import(
-        "./wasmRuntimeWorkerPort.ts"
-      );
-      transitionRuntimeCoordinator({
-        type: "select-wasm-port",
-        port: createWasmRuntimeWorkerPort(),
+  // ── Step 1c: eagerly start (but do not await) Worker-only WASM. ──
+  // Actual availability is published only after the Worker handshake. UI and
+  // hardware startup continue while the Worker loads.
+  const wasmConfigured = getSettings().wasm.enabled;
+  const browserWasmRuntime = createBrowserWasmRuntimeController({
+    onFailure({ reason, error }) {
+      reportBootstrapFailure(`wasm-worker-${reason}`, error);
+      const abiMismatch = reason === "abi-mismatch";
+      showBootstrapRecovery({
+        id: "wasm-worker",
+        title: abiMismatch
+          ? "Browser runtime ABI mismatch"
+          : "Browser runtime unavailable",
+        message: abiMismatch
+          ? "The generated WASM bundle is incompatible with this editor. Hardware remains usable; rebuild or refresh the WASM assets."
+          : "Hardware remains usable. Browser-local evaluation and visualisation probes are disabled until the Worker can start.",
+        detail: error.message,
       });
-    } catch (error) {
-      reportBootstrapFailure("wasm-worker-port", error);
-      console.warn(
-        "[bootstrap] failed to construct WASM worker port; falling back to in-process:",
-        error,
-      );
-    }
-  }
-
-  // Start the WASM download + compile immediately instead of waiting
-  // until after app.start(), which already needs the WASM runtime.
-  const wasmPreload = getActiveWasmRuntimePort()
-    .ensureLoaded()
-    .catch(() => {});
+      console.warn("[bootstrap] browser-local WASM unavailable:", error);
+    },
+    onRecovered() {
+      clearBootstrapRecovery("wasm-worker");
+    },
+  });
+  installBrowserWasmRuntimeController(browserWasmRuntime);
+  void browserWasmRuntime.configure(wasmConfigured);
 
 
   // ── Step 2: detect environment ─────────────────────────────────
@@ -358,7 +388,10 @@ export async function bootstrap(): Promise<BootstrapResult> {
   //
   // VAL-ENGINE-022: suspended and error transitions post one clear
   // non-flooding console message through the central console store.
-  if (environmentState.audioCapabilities.audioCapable) {
+  if (
+    environmentState.audioCapabilities.audioCapable
+    && hasActiveWasmRuntimePort()
+  ) {
     try {
       const [{ createBrowserSynthesisService }, { addConsoleMessage }] =
         await Promise.all([
@@ -410,7 +443,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
   const bootstrapPlan = resolveBootstrapPlan({
     noModuleMode: startupFlags.noModuleMode,
     isWebSerialAvailable: environmentState.isWebSerialAvailable,
-    wasmEnabled: userSettings.wasm.enabled,
+    wasmEnabled: userSettings.wasm.enabled && typeof Worker !== "undefined",
     startLocallyWithoutHardware: userSettings.runtime.startLocallyWithoutHardware,
   });
 
@@ -419,7 +452,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
     {
       hasHardwareConnection: false,
       noModuleMode: startupFlags.noModuleMode,
-      wasmEnabled: userSettings.wasm.enabled,
+      wasmEnabled: isWasmRuntimeAvailable(),
     },
     { connected: false },
   );
@@ -438,7 +471,9 @@ export async function bootstrap(): Promise<BootstrapResult> {
 
   // ── Step 6: mount UI + start app ───────────────────────────────
   const appUI = await createAppUI(environmentState);
-  const app = createApp(appUI, environmentState, bootstrapPlan);
+  const app = createApp(appUI, environmentState, bootstrapPlan, {
+    browserWasmRuntime,
+  });
   await app.start();
 
   // ── Step 7: optional native-bridge connection ──────────────────

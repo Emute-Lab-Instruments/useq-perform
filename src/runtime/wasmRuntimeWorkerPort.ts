@@ -1,15 +1,14 @@
 /**
- * Worker-backed `WasmRuntimePort` adapter — the default port.
+ * Worker-backed `WasmRuntimePort` adapter — the only production browser-local port.
  *
- * Mirrors the surface of `wasmRuntimePort.ts` (the in-process fallback)
- * but routes every method through `postMessage()` to a dedicated Web
+ * Routes every method through `postMessage()` to a dedicated Web
  * Worker that hosts the WASM interpreter. This keeps WASM eval, batch
  * sampling, and time updates off the main thread so the editor + UI keep
  * their frame budget.
  *
- * Bootstrap chooses this port whenever `Worker` is available
- * (`bootstrap.ts`); the in-process port remains as a fallback for
- * environments without Web Workers and as the surface tests mock against.
+ * The browser runtime lifecycle may select this port while its handshake is
+ * pending, but publishes WASM availability only after loading succeeds.
+ * Hardware/UI startup continues independently.
  *
  * Worker readiness contract (from `src/contracts/runtimePorts.ts`):
  *
@@ -56,6 +55,23 @@ interface PendingRequest {
   reject: (error: Error) => void;
 }
 
+export type WasmRuntimeWorkerErrorCode = "abi-mismatch" | "runtime-error" | "worker-crashed";
+
+export class WasmRuntimeWorkerError extends Error {
+  constructor(
+    readonly code: WasmRuntimeWorkerErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "WasmRuntimeWorkerError";
+  }
+}
+
+export interface WasmRuntimeWorkerPortOptions {
+  /** Called only when a previously-ready Worker crashes. */
+  onCrash?: (error: WasmRuntimeWorkerError) => void;
+}
+
 function isUseqWasmEnabled(): boolean {
   try {
     return getAppSettings()?.wasm?.enabled ?? true;
@@ -70,11 +86,15 @@ function isUseqWasmEnabled(): boolean {
  * The factory shape (rather than a top-level singleton) keeps the worker
  * spawn lazy: callers that don't enable the flag never construct a Worker.
  */
-export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
+export function createWasmRuntimeWorkerPort(
+  options: WasmRuntimeWorkerPortOptions = {},
+): WasmRuntimePort {
   let worker: Worker | null = null;
   let nextId = 1;
   const pending = new Map<number, PendingRequest>();
   let loadPromise: Promise<void> | null = null;
+  let loadedSuccessfully = false;
+  let disposed = false;
   let lastKnownCapabilities: WorkerCapabilitySnapshot = {
     enabled: true,
     supportsEval: false,
@@ -84,6 +104,12 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
   };
 
   function ensureWorker(): Worker {
+    if (disposed) {
+      throw new WasmRuntimeWorkerError(
+        "runtime-error",
+        "Browser-local WASM Worker has been disposed",
+      );
+    }
     if (worker) return worker;
     // Vite resolves this URL at build time; the chunk gets emitted as a
     // worker bundle. The `import.meta.url` form is the documented Vite
@@ -95,11 +121,12 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
     // `globalThis.createModule`. Module workers do not support
     // `importScripts`; switching to ESM would require an ESM-shaped
     // WASM bootstrap, which is a separate concern.
-    worker = new Worker(
+    const createdWorker = new Worker(
       new URL("./workers/wasmRuntime.worker.ts", import.meta.url),
       { name: "useq-wasm-runtime" },
     );
-    worker.addEventListener("message", (event: MessageEvent<WasmWorkerResponse>) => {
+    worker = createdWorker;
+    createdWorker.addEventListener("message", (event: MessageEvent<WasmWorkerResponse>) => {
       const data = event.data;
       if (!data || typeof data !== "object" || typeof (data as any).id !== "number") {
         return;
@@ -108,20 +135,38 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
       if (!entry) return;
       pending.delete(data.id);
       if (data.type === "error") {
-        entry.reject(new Error(data.message));
+        entry.reject(new WasmRuntimeWorkerError(data.code, data.message));
       } else {
         entry.resolve(data);
       }
     });
-    worker.addEventListener("error", (event) => {
+    createdWorker.addEventListener("error", (event) => {
+      if (worker !== createdWorker || disposed) return;
       dbg(`wasmRuntimeWorkerPort: worker error: ${event.message}`);
+      const error = new WasmRuntimeWorkerError(
+        "worker-crashed",
+        event.message || "WASM worker crashed",
+      );
       // Reject all in-flight requests so callers don't hang indefinitely.
       for (const [, entry] of pending) {
-        entry.reject(new Error(event.message || "WASM worker crashed"));
+        entry.reject(error);
       }
       pending.clear();
+      createdWorker.terminate();
+      worker = null;
+      loadPromise = null;
+      const wasReady = loadedSuccessfully;
+      loadedSuccessfully = false;
+      lastKnownCapabilities = {
+        enabled: false,
+        supportsEval: false,
+        supportsTimeWindow: false,
+        supportsTickAndProject: false,
+        supportsLiveInputs: false,
+      };
+      if (wasReady) options.onCrash?.(error);
     });
-    return worker;
+    return createdWorker;
   }
 
   /**
@@ -178,6 +223,7 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
         "load-result",
       );
       lastKnownCapabilities = response.capabilities;
+      loadedSuccessfully = true;
       dbg(
         `wasmRuntimeWorkerPort: worker loaded; supportsEval=${response.capabilities.supportsEval} supportsTimeWindow=${response.capabilities.supportsTimeWindow}`,
       );
@@ -191,6 +237,28 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
 
   return {
     kind: "wasm-runtime",
+
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      const error = new WasmRuntimeWorkerError(
+        "runtime-error",
+        "Browser-local WASM Worker was disposed",
+      );
+      for (const [, entry] of pending) entry.reject(error);
+      pending.clear();
+      worker?.terminate();
+      worker = null;
+      loadPromise = null;
+      loadedSuccessfully = false;
+      lastKnownCapabilities = {
+        enabled: false,
+        supportsEval: false,
+        supportsTimeWindow: false,
+        supportsTickAndProject: false,
+        supportsLiveInputs: false,
+      };
+    },
 
     capabilities(): WasmRuntimeCapabilities {
       const enabled = isUseqWasmEnabled();
@@ -371,6 +439,18 @@ export function createWasmRuntimeWorkerPort(): WasmRuntimePort {
         "readActiveDiagnostics-result",
       );
       return response.diagnostics;
+    },
+
+    async setFailureMode(mode: "lkg" | "zero"): Promise<boolean> {
+      if (!isUseqWasmEnabled()) return false;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "setFailureMode-result" }>
+      >(
+        { type: "setFailureMode", mode },
+        "setFailureMode-result",
+      );
+      return response.accepted;
     },
 
     async setLiveInputs(values: Record<string, number>): Promise<number> {

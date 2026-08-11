@@ -1,4 +1,4 @@
-import { Show, onMount, onCleanup, type JSX } from "solid-js";
+import { onMount, onCleanup, type JSX } from "solid-js";
 import { sanitizeHtml } from "../utils/sanitize";
 
 /**

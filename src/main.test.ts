@@ -25,7 +25,7 @@ const bootstrapRuntimeSession = vi.fn(() => ({
 }));
 
 // Mocks for createAppUI dependencies (now inlined in bootstrap.ts)
-const initEditorPanel = vi.fn(async () => ({ id: "editor" }));
+const initEditorPanel = vi.fn(() => ({ id: "editor" }));
 const createGamepadPipeline = vi.fn(() => ({ start: vi.fn(), stop: vi.fn(), dispose: vi.fn() }));
 const bindGamepadNavigation = vi.fn(() => ({ dispose: vi.fn() }));
 const createMenuDispatcher = vi.fn(() => ({
@@ -36,14 +36,16 @@ const createMenuDispatcher = vi.fn(() => ({
   close: vi.fn(),
 }));
 const setEditor = vi.fn();
-const mountModal = vi.fn();
-const mountRadialMenu = vi.fn();
 const registerVisualisationPanel = vi.fn();
-const mountTransportToolbar = vi.fn();
-const mountMainToolbar = vi.fn();
-const mountSettingsPanel = vi.fn();
-const mountHelpPanel = vi.fn();
-const mountDesignSelector = vi.fn();
+const disposeApplicationRoot = vi.fn();
+const mountApplicationRoot = vi.fn(() => ({ dispose: disposeApplicationRoot }));
+const ensureWorkerLoaded = vi.fn(async () => undefined);
+const createWasmRuntimeWorkerPort = vi.fn(() => ({
+  kind: "wasm-runtime",
+  ensureLoaded: ensureWorkerLoaded,
+  capabilities: () => ({ available: true }),
+  dispose: vi.fn(),
+}));
 
 vi.mock("./runtime/appSettingsRepository.ts", () => ({
   loadConfigurationWithMetadata,
@@ -71,6 +73,10 @@ vi.mock("./runtime/appLifecycle.ts", () => ({
   createApp,
 }));
 
+vi.mock("./runtime/wasmRuntimeWorkerPort.ts", () => ({
+  createWasmRuntimeWorkerPort,
+}));
+
 vi.mock("./runtime/runtimeDiagnostics.ts", () => ({
   seedBootstrapDiagnostics,
   publishDiagnosticsSnapshot,
@@ -91,6 +97,15 @@ vi.mock("./lib/gamepad/index.ts", () => ({
 vi.mock("./editors/gamepadNavigation.ts", () => ({
   bindGamepadNavigation,
   hideSystemCursor: vi.fn(),
+  readGamepadEditorContext: vi.fn(() => ({
+    insertionMode: false,
+    cursorOnLeafAtom: false,
+    cursorNodeKind: null,
+  })),
+}));
+
+vi.mock("./editors/commands/actionHandlers.ts", () => ({
+  executeAction: vi.fn(),
 }));
 
 vi.mock("./lib/menu/dispatcher.ts", () => ({
@@ -121,44 +136,28 @@ vi.mock("./ui/mainMenu/menuItems.ts", () => ({
 
 vi.mock("./lib/editorStore.ts", () => ({
   setEditor,
+  editorSession: { view: null },
+}));
+
+vi.mock("./editors/editorLifecycle.ts", () => ({
   initEditorPanel,
+  disposeEditorLifecycle: vi.fn(),
 }));
 
-vi.mock("./ui/adapters/modal.tsx", () => ({
-  mountModal,
-}));
-
-vi.mock("./ui/adapters/radialMenu.tsx", () => ({
-  mountRadialMenu,
-}));
-
-vi.mock("./ui/adapters/mainMenu.tsx", () => ({
-  mountMainMenu: vi.fn(),
-}));
+vi.mock("./ui/ApplicationRoot.tsx", () => ({ mountApplicationRoot }));
 
 vi.mock("./ui/adapters/visualisationPanel", () => ({
   registerVisualisationPanel,
 }));
 
-vi.mock("./ui/adapters/panels.tsx", () => ({
-  mountSettingsPanel,
-  mountHelpPanel,
-  mountDesignSelector,
-  hideAllPanels: vi.fn(),
-}));
-
-vi.mock("./ui/adapters/toolbars.tsx", () => ({
-  mountTransportToolbar,
-  mountMainToolbar,
-}));
-
 vi.mock("./effects/liveEditRuntime.ts", () => ({
   liveEditStore: {},
-  installPageLifecycleHandlers: vi.fn(),
+  installPageLifecycleHandlers: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("./editors/extensions/liveEdit/widgetStoreBridge.ts", () => ({
   attachLiveEditStoreBridge: vi.fn(),
+  detachLiveEditStoreBridge: vi.fn(),
 }));
 
 
@@ -166,6 +165,7 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.stubGlobal("Worker", vi.fn());
 
     // Set up DOM elements that createAppUI expects
     document.body.innerHTML = `
@@ -218,12 +218,14 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
     await startLegacyApp();
 
     expect(loadConfigurationWithMetadata).toHaveBeenCalledTimes(1);
-    expect(replaceSettings).toHaveBeenCalledWith(
-      { editor: { code: "(play)" } },
-      { dispatch: true }
-    );
+    expect(replaceSettings).toHaveBeenCalledWith({ editor: { code: "(play)" } });
     expect(initEditorPanel).toHaveBeenCalledWith("#panel-main-editor");
+    expect(ensureWorkerLoaded).toHaveBeenCalledTimes(1);
     expect(setEditor).toHaveBeenCalled();
+    expect(mountApplicationRoot).toHaveBeenCalledWith({
+      devmode: false,
+      virtualGamepad: false,
+    });
     expect(createApp).toHaveBeenCalled();
     expect(startApp).toHaveBeenCalledTimes(1);
     expect(bootstrapRuntimeSession).toHaveBeenCalledWith(
@@ -240,7 +242,9 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
         startupMode: "browser-local",
       })
     );
-    expect(publishDiagnosticsSnapshot).toHaveBeenCalledTimes(1);
+    // Bootstrap publishes once, and the asynchronous Worker lifecycle may
+    // publish additional truthful availability transitions.
+    expect(publishDiagnosticsSnapshot).toHaveBeenCalled();
   });
 
   it("surfaces configuration bootstrap failures and still starts with examined environment", async () => {
@@ -254,5 +258,29 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
       expect.any(Error)
     );
     expect(startApp).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues hardware-only instead of falling back to main-thread WASM when Worker is absent", async () => {
+    vi.stubGlobal("Worker", undefined);
+    const { startLegacyApp } = await import("./main.ts");
+
+    await startLegacyApp();
+
+    expect(ensureWorkerLoaded).not.toHaveBeenCalled();
+    expect(bootstrapRuntimeSession).toHaveBeenCalledWith(
+      expect.objectContaining({ wasmEnabled: false }),
+      { connected: false },
+    );
+    expect(createApp).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        startupMode: "hardware",
+        startBrowserLocal: false,
+      }),
+      expect.objectContaining({
+        browserWasmRuntime: expect.anything(),
+      }),
+    );
   });
 });

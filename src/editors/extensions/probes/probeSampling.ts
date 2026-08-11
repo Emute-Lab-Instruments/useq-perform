@@ -2,7 +2,7 @@ import type { EditorState } from "@codemirror/state";
 
 import { dbg } from "../../../lib/debug.ts";
 import { perf } from "../../../lib/perfTrace.ts";
-import { visStore } from "../../../utils/visualisationStore.ts";
+import { visualisationSession } from "../../../effects/visualisationSession.ts";
 import {
   buildProbeExpression,
   computeFromListIndex,
@@ -329,8 +329,8 @@ async function evalPhasorIndex(
   code: string,
   elementCount: number,
 ): Promise<number | null> {
-  if (code.trim() === "bar" && visStore.lastChangeKind === "data") {
-    return computeFromListIndex(elementCount, visStore.bar);
+  if (code.trim() === "bar" && visualisationSession.state.lastChangeKind === "data") {
+    return computeFromListIndex(elementCount, visualisationSession.state.bar);
   }
   const result = await evaluateProbeCode(
     config,

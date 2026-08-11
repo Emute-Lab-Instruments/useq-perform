@@ -1,21 +1,12 @@
 // src/contracts/gamepadChannels.ts
 //
-// Typed pub/sub channels for gamepad intents. The gamepad polling module
-// publishes high-level intents here; subscribers (editor navigation,
-// manual control bridge) react to them without the gamepad module
-// needing to know about menus, themes, or editor internals.
+// Typed pub/sub channel for the continuous gamepad axis stream. Discrete
+// actions route through the source-aware action executor instead of a second
+// channel path.
 
 import { createChannel, type TypedChannel } from "../lib/typedChannel";
 
 // ── Intent payloads ─────────────────────────────────────────────
-
-/** Evaluate the current editor content (Start button). */
-export interface EvalIntent {}
-
-/** Toggle manual control binding for a stick. */
-export interface ToggleManualControlIntent {
-  stick: "left" | "right";
-}
 
 /** Stick axis values for manual control updates. */
 export interface StickAxisUpdate {
@@ -25,12 +16,6 @@ export interface StickAxisUpdate {
 }
 
 // ── Channels ────────────────────────────────────────────────────
-
-/** Evaluate editor content. */
-export const evalNow: TypedChannel<EvalIntent> = createChannel();
-
-/** Toggle manual control. */
-export const toggleManualControl: TypedChannel<ToggleManualControlIntent> = createChannel();
 
 /** Stick axis update for manual control. */
 export const stickAxis: TypedChannel<StickAxisUpdate> = createChannel();

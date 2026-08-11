@@ -44,7 +44,7 @@ export const DrawerDefault: Story = {
         'justify-content': 'flex-end',
       }}
     >
-      <DrawerChrome panelId="inspector-drawer" title="Settings" onClose={() => console.log('[Inspector] close')}>
+      <DrawerChrome panelId="storybook-drawer" title="Settings" onClose={() => console.log('[Storybook] close')}>
         <div style={{ padding: '1rem', color: '#a0a0c0' }}>
           <p>Drawer panel content, slides in from the right.</p>
           <p style={{ opacity: 0.5, 'font-size': '0.85rem' }}>
@@ -71,9 +71,9 @@ export const DrawerCollapsed: Story = {
     >
       <PanelChrome
         design="drawer"
-        panelId="inspector-drawer-collapse"
+        panelId="storybook-drawer-collapse"
         title="Help"
-        onClose={() => console.log('[Inspector] close')}
+        onClose={() => console.log('[Storybook] close')}
       >
         <div style={{ padding: '1rem', color: '#a0a0c0' }}>
           <p>Click the collapse button (&laquo;) in the title bar to minimize this drawer to a vertical tab.</p>
@@ -95,7 +95,7 @@ export const PaneDefault: Story = {
         background: '#0f172a',
       }}
     >
-      <PaneChrome panelId="inspector-pane" title="Settings" onClose={() => console.log('[Inspector] close')}>
+      <PaneChrome panelId="storybook-pane" title="Settings" onClose={() => console.log('[Storybook] close')}>
         <div style={{ padding: '1rem', color: '#a0a0c0' }}>
           <p>Sample panel content rendered inside PaneChrome.</p>
           <p style={{ opacity: 0.5, 'font-size': '0.85rem' }}>
@@ -120,9 +120,9 @@ export const PaneExpanded: Story = {
     >
       <PanelChrome
         design="pane"
-        panelId="inspector-pane-expand"
+        panelId="storybook-pane-expand"
         title="Help"
-        onClose={() => console.log('[Inspector] close')}
+        onClose={() => console.log('[Storybook] close')}
       >
         <div style={{ padding: '1rem', color: '#a0a0c0' }}>
           <p>Click the left-edge caret button to toggle expanded mode (90% viewport).</p>
@@ -144,7 +144,7 @@ export const TileRightThird: Story = {
         background: '#0f172a',
       }}
     >
-      <TileChrome panelId="inspector-tile" title="Settings" onClose={() => console.log('[Inspector] close')}>
+      <TileChrome panelId="storybook-tile" title="Settings" onClose={() => console.log('[Storybook] close')}>
         <div style={{ padding: '1rem', color: '#a0a0c0' }}>
           <p>Tile panel in right-third slot.</p>
           <p style={{ opacity: 0.5, 'font-size': '0.85rem' }}>
@@ -169,9 +169,9 @@ export const TileCenterLarge: Story = {
     >
       <PanelChrome
         design="tile"
-        panelId="inspector-tile-center"
+        panelId="storybook-tile-center"
         title="Help"
-        onClose={() => console.log('[Inspector] close')}
+        onClose={() => console.log('[Storybook] close')}
       >
         <div style={{ padding: '1rem', color: '#a0a0c0' }}>
           <p>Tile panel starting in right-third slot.</p>

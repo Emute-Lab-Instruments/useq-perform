@@ -1,5 +1,5 @@
 import { Component, Show, onMount, onCleanup, createSignal, createEffect } from "solid-js";
-import { state, returnToGrid, enterExercise, setDetectedInput, getFirstIncomplete } from "./store";
+import { state, returnToGrid, enterExercise, setDetectedInput } from "./store";
 import { categories, getExercisesByCategory, getExercise, type Exercise } from "./exercises";
 import ZenGrid from "./ZenGrid";
 import ZenExercise from "./ZenExercise";

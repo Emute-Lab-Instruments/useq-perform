@@ -48,7 +48,7 @@ Before working on a feature, find and read the relevant spec(s). Match by keywor
 | live-edit, knob, slider, toggle, widget, MIDI learn, dockable panel, parameter, control, tweak, real-time edit, CC, fader, continuous control | `docs/specs/live-edit.md` |
 | hardware bindings, on-press, on-release, on-button, on-toggle, chip widget, button mapping, switch, encoder, physical control, event binding | `docs/specs/hardware-bindings.md` |
 | calibration, 1V/oct, tuning, CV output, per-octave, pitch, tune, voltage, DAC, accuracy, scale | `docs/specs/calibration.md` |
-| inspector, dev review, scenarios, approval, visual testing, screenshot, regression, component review | `docs/specs/inspector.md` |
+| storybook, dev review, stories, visual testing, screenshot, regression, component review | `docs/specs/storybook.md` |
 | zen mode, practice, distraction-free, focus mode, minimal, training, sandbox | `docs/specs/zen-mode.md` |
 | state sync, drift, WASM↔hardware, recalibration, mismatch, desync, diverge, reconcile, shadow | `docs/specs/state-sync.md` |
 | state identity, stateful expressions, anonymous state, IDs, stable ID, identity tracking, state slot, refactor state | `docs/specs/state-identity.md` |
@@ -93,8 +93,8 @@ Before working on a feature, find and read the relevant spec(s). Match by keywor
 - `npm run build` - `build:assets` then Vite build.
 - `npm run watch` - asset + Vite watch builds.
 - `npm run storybook` - Storybook dev server.
-- `npm run inspector` - Inspector dev review tool (port 5555). See `inspector/CLAUDE.md`.
-- `npm run inspector:validate` - Validate all Inspector scenarios (94 scenarios, 565 checks).
+- `npm run build-storybook` - Build the canonical component/scenario review surface.
+- `npm run grammar-lab` - Run the separate motor-grammar research surface.
 - `npm run lint` - ESLint with import boundary enforcement.
 
 Build outputs:
@@ -154,16 +154,16 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 - `src/editors/` - CodeMirror extensions, keymaps, themes (data-driven), gamepad navigation, editor keyboard utilities, editor evaluation
 - `src/editors/extensions/` - CodeMirror extensions: `structure/` (ast, decorations, eval-integration), `evalHighlight`, `visReadability`, `diagnostics` (inline error squiggles from WASM)
 - `src/transport/` - serial port lifecycle, JSON protocol driver, stream parser, serial utilities, connector, firmware upgrade check
-- `src/runtime/` - bootstrap, runtime service, settings repository, startup context, URL params, config schema, config manager, WASM interpreter, app lifecycle, runtime diagnostics, runtime session
-- `src/effects/` - side-effect modules: internal clock (rAF time when no hardware), transport clock policy, transport orchestrator, editor evaluation, visualisation sampler, mock control inputs, websocket server
+- `src/runtime/` - bootstrap, Worker lifecycle/port, runtime coordinator/services, settings repository, startup context, app lifecycle, diagnostics, isolated witness interpreter
+- `src/effects/` - side-effect modules: transport policy, editor evaluation, the public visualisation session, its internal sampler/runtime, mock control inputs, websocket server
 - `src/machines/` - XState state machines (transport)
 - `src/contracts/` - typed channels (runtime, visualisation, gamepad, help), event types, capability contracts
 - `src/ui/` - Solid UI components (settings, help, toolbar, modals)
-- `src/ui/adapters/` - imperative adapters via `createSolidAdapter()` utility
+- `src/ui/adapters/` - application-owned wired component trees and imperative state adapters; `ApplicationRoot.tsx` renders them once
 - `src/ui/styles/` - application CSS stylesheets
 - `src/ui/visualisation/` - WebGL visualisation renderer (`serialVisGL.ts` + `webglLineRenderer.ts`)
 - `src/utils/` - reactive stores (settings, console, visualisation, reference, snippets, output health)
-- `inspector/` - Inspector dev review tool (separate Vite app, see `inspector/CLAUDE.md`)
+- `stories/` - canonical Storybook component/scenario surface; Grammar Lab remains a separate research app
 
 ### Key Design Patterns
 
@@ -175,11 +175,11 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 
 **Gamepad Intent Architecture**: Gamepad emits typed intents via channels; separate subscribers handle editor navigation and menu bridging. Zero coupling to UI internals.
 
-**Visualisation Pipeline**: Stream parser → visualisationStore (direct, reactive). The per-frame loop is owned by `src/effects/visualisationRuntime.ts` — the rAF controller that drives time updates, drains the sampling queue, polls active diagnostics into `outputHealthStore`, and invokes the render hook (`serialVisGL.ts` WebGL renderer).
+**Visualisation Pipeline**: Production consumers enter through `visualisationSession`. Hardware time/store updates are synchronous; Worker sampling, projections, probes, and drift resync are best-effort shadow work. The session owns the rAF/render hook, probe access, state-sync, and teardown lifetime.
 
 **Import Boundaries**: Enforced via ESLint (`eslint.config.js`). `src/lib/` and `src/contracts/` must not import from higher layers.
 
-**Dependency Injection for Extensions**: CodeMirror extensions that depend on runtime globals (settings, WASM, stores) use a Config interface + factory pattern instead of importing singletons directly. Each extension declares exactly the capabilities it needs via getter functions. A `createDefaultXxxConfig()` function wires the real app globals for backward compatibility. This makes extensions renderable in isolation (e.g., in the Inspector dev tool). Applied to: `GutterConfig`/`createExpressionGutter()`, `InlineResultsConfig`/`createInlineResultsField()`, `ProbeConfig`/`createProbeExtensions()`.
+**Dependency Injection for Extensions**: CodeMirror extensions that depend on runtime behavior use a Config interface + factory pattern instead of importing concrete Workers/stores. Each extension declares exactly the capabilities it needs; the default probe config routes through `visualisationSession`. This keeps extensions isolated in tests and Storybook.
 
 **Props-Based UI Components**: UI components that previously imported singletons (stores, services, adapters) have been refactored to accept data and callbacks as props. The adapter layer (`src/ui/adapters/`) creates "Wired" wrapper components that read from real singletons and pass them as props. This makes components testable and renderable in isolation. Applied to: MainToolbar, TransportToolbar, ProgressBar, Modal, VisLegend, GeneralSettings (+ sub-panels), HelpPanel, KeyboardVisualiser.
 
@@ -187,21 +187,16 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 
 - `src/editors/extensions/diagnostics.ts` — CodeMirror state field that accumulates diagnostics across evals. Diagnostics persist per-range until that range is re-evaluated successfully. `pushDiagnostics()` adds diagnostics with document offset mapping; `clearDiagnosticsForRange()` removes diagnostics for a specific range.
 - `src/utils/outputHealthStore.ts` — SolidJS reactive store tracking per-output health (`idle`/`running`/`fallback`/`error`). Polled per animation frame via `useq_active_diagnostics()`. Success feedback with auto-fade.
-- `src/runtime/wasmInterpreter.ts` — binds the optional `useq_last_diagnostics` / `useq_active_diagnostics` WASM export fns and stashes them on the `__useqWasmRuntime` global.
-- `src/runtime/wasmRuntimePort.ts` — `readLastDiagnosticsSync()` / `readActiveDiagnosticsSync()` read those fns back from the global and parse their JSON (active-diags reader memoizes on the raw string for cheap per-frame polling).
+- `src/runtime/wasmRuntimeWorkerPort.ts` — sole production WASM port; reads diagnostics inside the Worker and transports typed results to the main thread.
+- `src/runtime/wasmInterpreter.ts` — direct loader reserved for isolated witness/integration execution; production does not import it.
 - `src/effects/editorEvaluation.ts` — after each eval, reads diagnostics, pushes them to the editor with correct document offsets, shows error messages inline instead of `"{error}"`.
 - `src/contracts/wasmAbi.ts` — `useq_last_diagnostics` and `useq_active_diagnostics` as optional WASM exports.
 
 Full spec: `src-useq/docs/specs/diagnostics.md`. See also `src-useq/docs/specs/failure-model.md` for failure semantics (LKG, health states).
 
-## UI Adapters
+## UI Lifetime
 
-UI components are mounted via `createSolidAdapter()` in `src/ui/adapters/`:
-
-- `mountModal()`, `showModal()`, `closeModal()` - Modal dialog management
-- `mountPickerMenu()`, `showPickerMenu()`, etc. - Picker menu APIs
-- `mountDoubleRadialMenu()` - Gamepad radial menu
-- `mountSettingsPanel()`, `mountHelpPanel()`, etc. - Panel mounting
+`src/ui/ApplicationRoot.tsx` is the one production Solid render owner. Wired trees from `src/ui/adapters/` are children/portals of that root and expose imperative state operations (`showModal()`, menu/panel visibility, toolbar state) without creating new roots. `app.stop()` disposes the visualisation/Worker lifetimes before disposing the application root.
 
 ## Dev-Mode Component Labels
 

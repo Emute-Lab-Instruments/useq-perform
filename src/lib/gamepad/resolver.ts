@@ -12,14 +12,11 @@
 import { keyOf } from "./gestures";
 import type {
   AppStateSnapshot,
-  AxisChannelName,
   AxisFrame,
-  DualBinding,
   Gesture,
   GestureKey,
   Layer,
   LayerName,
-  MissPolicy,
   Resolution,
   StickName,
 } from "./types";

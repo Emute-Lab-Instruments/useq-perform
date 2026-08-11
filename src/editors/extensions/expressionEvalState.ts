@@ -1,5 +1,5 @@
 // Pure expression evaluation state — no runtime dependencies.
-// These definitions are safe to import in any context (Inspector iframe, tests, etc.)
+// These definitions are safe to import in any context (Storybook, tests, etc.)
 // The side-effectful integration code lives in expressionEval.ts.
 
 import type { EditorState } from "@codemirror/state";

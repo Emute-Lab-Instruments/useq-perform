@@ -3,11 +3,7 @@ import type { JSX } from "solid-js";
 import {
   serialVisAutoOpenChannel,
 } from "../../contracts/visualisationChannels";
-import {
-  pauseVisualisationRender,
-  registerVisualisationRenderHook,
-  requestVisualisationRender,
-} from "../../effects/visualisationRuntime";
+import { visualisationSession } from "../../effects/visualisationSession";
 import {
   drawSerialVisGLFromStores,
   ensureGLCanvasGeometry,
@@ -16,7 +12,7 @@ import {
 } from "../visualisation/serialVisGL";
 import { readabilityAfterPaint } from "../../editors/extensions/visReadability";
 
-registerVisualisationRenderHook({
+const renderHook = {
   paint: () => {
     activateGLCanvas();
     ensureGLCanvasGeometry();
@@ -24,7 +20,7 @@ registerVisualisationRenderHook({
   },
   afterPaint: readabilityAfterPaint,
   isVisible: () => isVisPanelVisible(),
-});
+};
 
 const PANEL_ID = "panel-vis";
 
@@ -32,6 +28,7 @@ let registeredPanel: HTMLElement | null = null;
 
 export function registerVisualisationPanel(panel: HTMLElement | null): void {
   registeredPanel = panel;
+  visualisationSession.view.attach(panel ? renderHook : null);
 }
 
 export function getVisualisationPanel(): HTMLElement | null {
@@ -93,7 +90,7 @@ export function showVisualisationPanel(options?: { emitAutoOpenEvent?: boolean }
   const wasVisible = isVisualisationPanelVisible(panel);
   if (!wasVisible) {
     applyVisibleVisualisationPanelState(panel);
-    requestVisualisationRender();
+    visualisationSession.view.request();
     if (options?.emitAutoOpenEvent) {
       serialVisAutoOpenChannel.publish(undefined);
     }
@@ -110,7 +107,7 @@ export function hideVisualisationPanel(): boolean {
 
   const wasVisible = isVisualisationPanelVisible(panel);
   if (wasVisible) {
-    pauseVisualisationRender();
+    visualisationSession.view.pause();
     Object.assign(panel.style, getVisualisationPanelStyles(false));
     panel.hidden = true;
   }

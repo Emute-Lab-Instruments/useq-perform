@@ -1,12 +1,11 @@
 /**
  * Modal adapter - imperative modal API.
  *
- * Uses createSolidAdapter for mount lifecycle.
+ * The application root owns rendering; this module owns modal state.
  */
 import { Show, createSignal, Switch, Match } from "solid-js";
 import { HtmlModal, Modal } from "../Modal";
 import { pushOverlay } from "../overlayManager";
-import { createSolidAdapter } from "./createSolidAdapter";
 
 type ModalState =
   | {
@@ -74,15 +73,8 @@ export function closeModal(_id: string): void {
   setModalState(null);
 }
 
-const adapter = createSolidAdapter({
-  containerId: "solid-modal-root",
-  containerStyle: {
-    position: "fixed",
-    inset: "0",
-    zIndex: "1000",
-    pointerEvents: "none",
-  },
-  Component: () => (
+export function ModalRoot() {
+  return (
     <Show when={modalState()}>
       {(state) => (
         <div style={{ "pointer-events": "auto" }}>
@@ -160,14 +152,5 @@ const adapter = createSolidAdapter({
         </div>
       )}
     </Show>
-  ),
-});
-
-/**
- * Mount the modal root element and render the modal component.
- * Safe to call multiple times; will only mount once.
- * In non-browser environments (e.g., Node.js tests), this is a no-op.
- */
-export function mountModal(root?: HTMLElement): void {
-  adapter.mount(root);
+  );
 }

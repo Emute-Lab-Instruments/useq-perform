@@ -1,12 +1,10 @@
 // src/ui/adapters/mainMenu.tsx
 //
-// Imperative adapter for the main menu overlay. Uses createSolidAdapter()
-// per repo convention. Mount-once-on-bootstrap pattern.
+// Application-owned main menu overlay.
 //
 // @see docs/specs/main-menu.md
 
 import { Show } from "solid-js";
-import { createSolidAdapter } from "./createSolidAdapter";
 import { MainMenu } from "../mainMenu/MainMenu";
 import {
   mainMenuState,
@@ -14,7 +12,7 @@ import {
   dispatchMainMenu,
   closeMainMenu,
 } from "../../lib/mainMenu/store";
-import { resolveItems, type MainMenuItem } from "../mainMenu/menuItems";
+import type { MainMenuItem } from "../mainMenu/menuItems";
 import { buildZenHash } from "../../zen/routing";
 
 // ---------------------------------------------------------------------------
@@ -59,18 +57,11 @@ function handleSelect(item: MainMenuItem, _index: number): void {
 }
 
 // ---------------------------------------------------------------------------
-// Adapter
+// Application-owned component
 // ---------------------------------------------------------------------------
 
-const adapter = createSolidAdapter({
-  containerId: "main-menu-root",
-  containerStyle: {
-    position: "fixed",
-    inset: "0",
-    zIndex: "1200",
-    pointerEvents: "none",
-  },
-  Component: () => (
+export function MainMenuRoot() {
+  return (
     <Show when={isMainMenuOpen()}>
       <div style={{ "pointer-events": "auto" }}>
         <MainMenu
@@ -80,13 +71,5 @@ const adapter = createSolidAdapter({
         />
       </div>
     </Show>
-  ),
-});
-
-/**
- * Mount the main menu overlay. Safe to call multiple times; only mounts once.
- * In non-browser environments (e.g. Node.js tests), this is a no-op.
- */
-export function mountMainMenu(): void {
-  adapter.mount();
+  );
 }

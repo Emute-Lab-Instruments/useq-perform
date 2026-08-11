@@ -8,7 +8,7 @@ import type { Tab } from '@src/ui/Tabs';
  * adapters). Each story renders representative static content so the full
  * HelpPanel chrome can be reviewed without the app runtime.
  */
-const inspectorTabs: Tab[] = [
+const storyTabs: Tab[] = [
   {
     id: 'panel-help-tab-guide-v2',
     name: 'Guide',
@@ -528,7 +528,7 @@ export default meta;
 type Story = StoryObj;
 
 export const FullPanel: Story = {
-  render: () => <HelpPanel tabs={inspectorTabs} />,
+  render: () => <HelpPanel tabs={storyTabs} />,
 };
 
 export const GuideChapter: Story = {

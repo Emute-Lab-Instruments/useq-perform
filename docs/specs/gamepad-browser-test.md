@@ -16,11 +16,11 @@ non-normative: true
 - `src/lib/gamepad/hardware.ts` — Stage 1 hardware polling adapter
 - `src/lib/gamepad/gamepadManager.ts` — low-level Gamepad API polling
 - `src/lib/gamepad/paradigms/modal-shift.ts` — default paradigm tested here
-- `src/lib/gamepad/paradigms/picker.ts` — picker layer active during menu tests
+- `src/lib/gamepad/paradigms/radial.ts` — full-takeover layer active during menu tests
 - `src/contracts/gamepadChannels.ts` — typed channels (subscribe in console for debugging)
-- `src/editors/gamepadNavigation.ts` — editor navigation from gamepad intents (eval / manual-control axis)
-- `src/lib/keybindings/handlers.ts` — handler registry; dispatches `nav.up`/`nav.down`/`nav.left`/`nav.right` and other ActionIds to the structural dispatcher
-- `src/ui/adapters/gamepadMenuBridge.ts` — picker/menu bridge
+- `src/editors/gamepadNavigation.ts` — editor-context reader and manual-control axis bridge
+- `src/editors/commands/actionHandlers.ts` — handler registry; dispatches `nav.up`/`nav.down`/`nav.left`/`nav.right` and other ActionIds to the structural dispatcher
+- `src/lib/menu/dispatcher.ts` — menu action, axis, freeze, and mutation bridge
 
 ---
 
@@ -83,25 +83,27 @@ non-normative: true
 
 **Test**: Place cursor on a number like `3` inside the list, press Y. The number should be deleted.
 
-## 6. Menu system (see `src/ui/adapters/gamepadMenuBridge.ts`, `src/lib/gamepad/paradigms/picker.ts`)
+## 6. Menu system (see `src/lib/menu/dispatcher.ts`, `src/lib/gamepad/paradigms/radial.ts`)
 
 | Action | Gamepad | Expected |
 |--------|---------|----------|
-| Open radial menu | X button | Radial/picker menu opens |
+| Open radial menu | X button | Radial menu opens |
 | Open menu before | LB+A chord (press together) | Insert menu opens in "before" direction |
 | Open menu after | RB+A chord (press together) | Insert menu opens in "after" direction |
 
 **Test**: Press X — the create menu should open. Then test navigation within the menu:
 
-### 6a. Picker navigation (while menu is open)
+### 6a. Ring and verb selection (while menu is open)
 
 | Action | Gamepad | Expected |
 |--------|---------|----------|
-| Navigate picker | D-pad | Moves highlight in the menu |
-| Select item | A button | Selects and inserts the highlighted item |
-| Cancel picker | B button | Closes the menu without inserting |
+| Select rings | Left/right sticks | Each engaged stick highlights one ring item |
+| Freeze selection | LB or RB press | Latches both highlighted items |
+| Apply Insert | A button while frozen | Inserts the selected item |
+| Apply Replace / WrapWith / Call | X / Y / B while frozen | Applies the corresponding menu verb |
+| Cancel | Back button | Steps back from frozen, or closes the menu |
 
-**Pass criteria**: picker layer activates when menu is open, deactivates when menu closes. D-pad navigates the menu instead of the editor.
+**Pass criteria**: the radial layer activates when the menu opens and deactivates when it closes. Unbound controls such as D-pad do not leak through to the editor.
 
 ## 7. Manual control
 
@@ -112,7 +114,7 @@ non-normative: true
 
 **Test**: Press left stick in, then move it — check if number at cursor changes (if manual control is active).
 
-## 8. LB-shifted layer (structural editing) (see `src/lib/gamepad/paradigms/modal-shift.ts`, `src/lib/keybindings/handlers.ts`)
+## 8. LB-shifted layer (structural editing) (see `src/lib/gamepad/paradigms/modal-shift.ts`, `src/editors/commands/actionHandlers.ts`)
 
 Hold LB, then press:
 
@@ -157,20 +159,10 @@ Open browser devtools console. The pipeline publishes to typed channels — you 
 
 ```js
 // In browser console:
-// These come from src/contracts/gamepadChannels.ts
-// Subscribe to see what the pipeline publishes:
+// Manual-control axis is the sole remaining gamepad channel. Discrete input
+// resolves to ActionId and is executed through actionHandlers.ts.
 import('/src/contracts/gamepadChannels.ts').then(ch => {
-  ch.navigate.subscribe(e => console.log('navigate', e));
-  ch.evalNow.subscribe(e => console.log('evalNow', e));
-  ch.enter.subscribe(e => console.log('enter', e));
-  ch.back.subscribe(e => console.log('back', e));
-  ch.toggleNavMode.subscribe(e => console.log('toggleNavMode', e));
-  ch.deleteNode.subscribe(e => console.log('deleteNode', e));
   ch.stickAxis.subscribe(e => console.log('stickAxis', e));
-  ch.pickerNavigate.subscribe(e => console.log('pickerNavigate', e));
-  ch.pickerSelect.subscribe(e => console.log('pickerSelect', e));
-  ch.pickerCancel.subscribe(e => console.log('pickerCancel', e));
-  ch.controllerMode.subscribe(e => console.log('controllerMode', e));
 });
 ```
 

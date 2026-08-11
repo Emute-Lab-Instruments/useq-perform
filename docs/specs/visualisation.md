@@ -10,6 +10,7 @@ layer: behavioural
 
 ### Source files
 
+- `src/effects/visualisationSession.ts` — sole production seam for clock, expression, view-data, probes, hardware→WASM shadow, and teardown
 - `src/effects/visualisationRuntime.ts` — sole rAF/local-time owner and serialized sample-request queue
 - `src/effects/visualisationSampler.ts` — WASM tick-and-project execution, projection scheduling, and expression lifecycle
 - `src/effects/visualisationBuffers.ts` — exclusive owner of per-output past/future rolling-buffer allocation, capacity, and render lookup
@@ -23,8 +24,7 @@ layer: behavioural
 - `src/utils/visualisationStore.ts` — reactive store for current time, registered expressions, and settings-derived state; rolling sample buffers live in `visualisationBuffers.ts`
 - `src/contracts/visualisationChannels.ts` — typed pub/sub channels for vis events
 - `src/contracts/visualisationEvents.ts` — vis event type definitions
-- `src/ui/adapters/visualisationPanel.ts` — imperative adapter for vis panel mounting
-- `src/ui/adapters/visualisation.tsx` — Solid adapter wiring for vis components
+- `src/ui/adapters/visualisationPanel.ts` — panel visibility and render-hook wiring through the visualisation session
 - `src/contracts/wasmAbi.ts` — WASM ABI export declarations (§7)
 
 ## 1. Panel and Rendering
@@ -50,6 +50,8 @@ layer: behavioural
 1.8 **Palette is theme-coupled.** Switching to a light theme switches the visualisation palette; a dark theme uses a dark palette. Custom palettes are not user-editable in v1. See [themes.md](themes.md).
 
 1.9 The visualisation panel must continue to render correctly across runtime transitions (see [runtime-modes.md §1.7](runtime-modes.md)). A hardware connect/disconnect must not blank the rendering surface or lose in-flight traces.
+
+1.10 **One session boundary.** Production consumers access visualisation state and behaviour only through `visualisationSession`. Its `clock`, `expressions`, `view`, `probes`, and `shadow` facets own the public behavior; `begin()`/`dispose()` own their joint lifetime. Dispose stops rAF/local time, clears queued work, detaches the render hook, invalidates late probe results, and stops state sync before the UI root is removed. The runtime, sampler, buffer, store, and drift-resync modules are implementation details. Hardware time enters synchronously through `clock.acceptHardwareTime()`: it updates the visible clock immediately and merely queues/coalesces best-effort WASM shadow sampling, so visualisation work cannot backpressure the serial transport path.
 
 ---
 

@@ -9,7 +9,7 @@
  * dispatcher → action runner → keybinding handler → structHandler →
  * executeEditorCommand → dispatchAction → core mutator → CodeMirror txn.
  *
- * Heavy runtime dependencies that handlers.ts pulls in (transport, console,
+ * Heavy runtime dependencies that actionHandlers.ts pulls in (transport, console,
  * probes, diagnostics, evaluation, panels) are mocked so the test stays a
  * pure integration test of the gamepad → editor path.
  */
@@ -17,7 +17,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Mocks for handlers.ts transitive deps
+// Mocks for actionHandlers.ts transitive dependencies.
 // (mirrors src/lib/keybindings/keybindings.test.ts — same rationale)
 // ---------------------------------------------------------------------------
 
@@ -53,6 +53,8 @@ import { default_extensions } from "@nextjournal/clojure-mode";
 import { structuralCoreExtensions } from "../editors/extensions/structure/adapter/extension.ts";
 import { dispatchAction } from "../editors/extensions/structure/adapter/dispatcher.ts";
 import { structField } from "../editors/extensions/structure/adapter/stateField.ts";
+import { executeAction } from "../editors/commands/actionHandlers.ts";
+import { readGamepadEditorContext } from "../editors/gamepadNavigation.ts";
 import { createGamepadPipeline, type GamepadPipeline } from "../lib/gamepad/index.ts";
 import { createGamepadManager } from "../lib/gamepad/gamepadManager.ts";
 import { BUTTON_ORDER, type ButtonName } from "../lib/gamepad/types.ts";
@@ -161,6 +163,9 @@ function createRig(doc: string): Rig {
     gamepadManager: manager,
     pollIntervalMs: POLL_MS,
     now: () => nowMs,
+    actionExecutor: (action, editor) =>
+      executeAction(action, "gamepad", editor),
+    readEditorContext: readGamepadEditorContext,
   });
 
   pipeline.start();

@@ -6,12 +6,11 @@ import { SHARED_TRANSPORT_COMMANDS } from '../contracts/useqRuntimeContract.ts';
 import { showModal, showConfirmModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
 import { startInternalClock } from '../effects/transportClock.ts';
-import { registerVisualisation } from '../effects/visualisationSampler.ts';
+import { visualisationSession } from '../effects/visualisationSession.ts';
 import {
-  initStateSyncOrchestrator,
-  teardownStateSyncOrchestrator,
-} from '../effects/stateSyncOrchestrator.ts';
-import { initHardwareConnectPrompt } from '../effects/hardwareConnectPrompt.ts';
+  initHardwareConnectPrompt,
+  teardownHardwareConnectPrompt,
+} from '../effects/hardwareConnectPrompt.ts';
 import {
   initFirmwareUpdatePrompt,
   teardownFirmwareUpdatePrompt,
@@ -26,14 +25,21 @@ import {
   setBindingChips,
   setBindingChipFireCallback,
 } from '../editors/extensions/hardwareBinding/chipWidget.ts';
-import { editor as getEditorSignal } from '../lib/editorStore.ts';
+import { editor as getEditorSignal, getEditorContent } from '../lib/editorStore.ts';
 import { pushDiagnostics } from '../editors/extensions/diagnostics.ts';
 import { initStandaloneDiagnosticsRouter } from '../effects/standaloneDiagnosticsRouter.ts';
-import { initFailureModeSync } from '../effects/failureModeSync.ts';
+import { initFailureModeSync, teardownFailureModeSync } from '../effects/failureModeSync.ts';
 import type { BootstrapPlan } from './bootstrap.ts';
 import type { EnvironmentState } from './startupContext.ts';
-import { announceRuntimeSession } from './runtimeService.ts';
+import {
+  announceRuntimeSession,
+  getRuntimeServiceSnapshot,
+  subscribeRuntimeService,
+  type RuntimeSessionState,
+} from './runtimeService.ts';
 import { showVisualisationPanel } from '../ui/adapters/visualisationPanel';
+import type { BrowserWasmRuntimeController } from './browserWasmRuntime.ts';
+import { uninstallBrowserWasmRuntimeController } from './browserWasmRuntime.ts';
 
 interface NoModuleExpression {
   exprType: string;
@@ -51,7 +57,7 @@ function ensureSerialVisPanelVisibleForNoModule() {
 
 async function activateNoModuleExpression({ exprType, code }: NoModuleExpression) {
   try {
-    await registerVisualisation(exprType, code);
+    await visualisationSession.expressions.register(exprType, code);
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : String(error);
     post(`Failed to evaluate ${code}: ${rawMessage}`, "error");
@@ -88,9 +94,21 @@ function createDispatcherConfig(): DispatcherConfig {
 async function startBrowserLocalRuntime(options: {
   announceMessage: string;
   seedDefaultExpressions?: boolean;
+  recovering?: boolean;
 }) {
   await getActiveWasmRuntimePort().ensureLoaded();
   announceRuntimeSession();
+
+  if (options.recovering) {
+    const program = getEditorContent();
+    if (program?.trim()) {
+      try {
+        await getActiveWasmRuntimePort().evalCodeSilently(program);
+      } catch (error) {
+        console.warn('Recovered Worker could not replay the current editor program:', error);
+      }
+    }
+  }
 
   try {
     await initializeMockControls();
@@ -118,13 +136,15 @@ async function startBrowserLocalRuntime(options: {
 
   // Start hardware binding dispatcher after WASM and editor are available.
   try {
-    hwBindingDispatcher = createHardwareBindingDispatcher(createDispatcherConfig());
+    if (!hwBindingDispatcher) {
+      hwBindingDispatcher = createHardwareBindingDispatcher(createDispatcherConfig());
+    }
   } catch (error) {
     console.warn('Failed to start hardware binding dispatcher:', error);
   }
 
   try {
-    initStateSyncOrchestrator(webSerialHostPort, getActiveWasmRuntimePort());
+    visualisationSession.shadow.start(webSerialHostPort, getActiveWasmRuntimePort());
   } catch (error) {
     console.warn('Failed to initialise state sync orchestrator:', error);
   }
@@ -147,11 +167,70 @@ async function startBrowserLocalRuntime(options: {
 }
 
 export function createApp(
-  appUI: unknown,
+  appUI: { dispose?: () => void | Promise<void> } | null,
   environmentState: EnvironmentState,
   bootstrapPlan: BootstrapPlan,
+  options: { browserWasmRuntime?: BrowserWasmRuntimeController } = {},
 ) {
-  void appUI;
+  let stopped = false;
+  let unsubscribeRuntime: (() => void) | null = null;
+  let wasmActive = false;
+  let wasmActivationInFlight = false;
+  let wasmHasActivated = false;
+  let wasmActivationGeneration = 0;
+
+  async function activateAvailableWasm(): Promise<void> {
+    if (stopped || wasmActive || wasmActivationInFlight) return;
+    wasmActivationInFlight = true;
+    const activationGeneration = wasmActivationGeneration;
+    const recovering = wasmHasActivated;
+    try {
+      await startBrowserLocalRuntime({
+        announceMessage: !recovering && bootstrapPlan.startupMode === 'no-module'
+          ? 'No-module mode active: expressions will run on the in-browser interpreter.'
+          : recovering
+          ? 'Browser-local uSEQ recovered; visualisation and probes resumed.'
+          : environmentState.isWebSerialAvailable
+            ? 'Browser-local uSEQ is ready. You can start editing and evaluating before hardware reconnect finishes.'
+            : 'Web Serial is unavailable. Browser-local uSEQ is ready, and hardware can be paired later from a supported browser.',
+        seedDefaultExpressions:
+          !recovering && bootstrapPlan.seedDefaultNoModuleExpressions,
+        recovering,
+      });
+      if (
+        !stopped
+        && activationGeneration === wasmActivationGeneration
+        && getRuntimeServiceSnapshot().session.wasmEnabled
+      ) {
+        wasmActive = true;
+        wasmHasActivated = true;
+      } else {
+        visualisationSession.shadow.stop();
+      }
+    } catch (error) {
+      post(`Failed to initialise the in-browser interpreter: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      wasmActivationInFlight = false;
+      if (!stopped && getRuntimeServiceSnapshot().session.wasmEnabled && !wasmActive) {
+        void activateAvailableWasm();
+      }
+    }
+  }
+
+  function reconcileRuntimeAvailability(state: RuntimeSessionState): void {
+    if (state.session.wasmEnabled) {
+      void activateAvailableWasm();
+      return;
+    }
+    if (!wasmActive && !wasmActivationInFlight) return;
+    wasmActivationGeneration += 1;
+    wasmActive = false;
+    visualisationSession.shadow.stop();
+    if (!state.session.hasHardwareConnection) {
+      visualisationSession.clock.setLocal(false);
+    }
+  }
+
   const app: { modals: Record<string, unknown>; start(): Promise<void>; stop(): Promise<void> } = {
     modals: {},
 
@@ -177,22 +256,27 @@ export function createApp(
 
       const plan = bootstrapPlan;
 
-      if (plan.startupMode === 'no-module') {
+      unsubscribeRuntime = subscribeRuntimeService(reconcileRuntimeAvailability);
+      reconcileRuntimeAvailability(getRuntimeServiceSnapshot());
+
+      // Hardware input bindings never wait for Worker readiness.
+      if (!hwBindingDispatcher) {
         try {
-          await startBrowserLocalRuntime({
-            announceMessage: 'No-module mode active: expressions will run on the in-browser interpreter.',
-            seedDefaultExpressions: plan.seedDefaultNoModuleExpressions,
-          });
+          hwBindingDispatcher = createHardwareBindingDispatcher(createDispatcherConfig());
         } catch (error) {
-          post('Failed to initialise the in-browser interpreter.', 'error');
+          console.warn('Failed to start hardware binding dispatcher:', error);
         }
+      }
+
+      if (plan.startupMode === 'no-module') {
+        post('No-module mode active: waiting for the in-browser Worker runtime.');
         return;
       }
 
       if (plan.showUnsupportedBrowserWarning) {
         const modalContent = `
-          <p>This browser doesn't support the WebSerial API, and browser-local WASM is disabled in settings.</p>
-          <p>Use a Chromium-based browser or re-enable the browser-local runtime to keep working locally.</p>
+          <p>No runtime is currently available. Browser-local WASM requires a working Web Worker, and no hardware runtime is active.</p>
+          <p>Use a browser with Worker support or connect uSEQ hardware from a Web Serial-capable browser.</p>
         `;
 
         app.modals.webserialWarning = showModal(
@@ -201,22 +285,12 @@ export function createApp(
           modalContent
         );
 
-        post('Web Serial is unavailable and browser-local uSEQ is disabled.', 'warn');
+        post('Browser-local uSEQ is unavailable and no hardware runtime is active.', 'warn');
         announceRuntimeSession();
         return;
       }
 
       if (plan.startBrowserLocal) {
-        try {
-          await startBrowserLocalRuntime({
-            announceMessage: environmentState.isWebSerialAvailable
-              ? 'Browser-local uSEQ is ready. You can start editing and evaluating before hardware reconnect finishes.'
-              : 'Web Serial is unavailable. Browser-local uSEQ is ready, and hardware can be paired later from a supported browser.',
-          });
-        } catch (_error) {
-          post('Failed to initialise the in-browser interpreter.', 'error');
-        }
-
         if (plan.attemptHardwareReconnect) {
           void checkForSavedPortAndMaybeConnect();
         }
@@ -227,25 +301,25 @@ export function createApp(
         await checkForSavedPortAndMaybeConnect();
       }
 
-      // Start hardware binding dispatcher for hardware-only mode too.
-      // Events from the device still need binding dispatch even without
-      // a browser-local WASM runtime.
-      if (!hwBindingDispatcher) {
-        try {
-          hwBindingDispatcher = createHardwareBindingDispatcher(createDispatcherConfig());
-        } catch (error) {
-          console.warn('Failed to start hardware binding dispatcher:', error);
-        }
-      }
     },
 
     async stop() {
-      teardownStateSyncOrchestrator();
+      if (stopped) return;
+      stopped = true;
+      unsubscribeRuntime?.();
+      unsubscribeRuntime = null;
+      visualisationSession.dispose();
+      teardownHardwareConnectPrompt();
+      teardownFailureModeSync();
       teardownFirmwareUpdatePrompt();
       if (hwBindingDispatcher) {
         hwBindingDispatcher.dispose();
         hwBindingDispatcher = null;
       }
+      if (options.browserWasmRuntime) {
+        uninstallBrowserWasmRuntimeController(options.browserWasmRuntime);
+      }
+      await appUI?.dispose?.();
     }
   };
 

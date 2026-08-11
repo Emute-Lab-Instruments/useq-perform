@@ -343,8 +343,10 @@ function applyTickValues(
 export async function tickAndProject(
   timeSeconds: number,
   settings: VisSettings,
-  options: { projectFuture?: boolean } = {},
+  options: { projectFuture?: boolean; isCurrent?: () => boolean } = {},
 ): Promise<void> {
+  const isCurrent = options.isCurrent ?? (() => true);
+  if (!isCurrent()) return;
   const outputs = Object.keys(visStore.expressions);
   const requestedOutputs = ["bar", ...outputs];
   const noUserOutputs = outputs.length === 0;
@@ -465,6 +467,7 @@ export async function tickAndProject(
       return;
     }
     if (import.meta.env.DEV) perf.end("sampler-combined-wasm");
+    if (!isCurrent()) return;
 
     if (combined) {
       if (import.meta.env.DEV) {
@@ -554,6 +557,7 @@ export async function tickAndProject(
     tickResult = new Map();
   }
   if (import.meta.env.DEV) perf.end("sampler-legacy-tick-wasm");
+  if (!isCurrent()) return;
 
   const tickValuesNumeric = new Map<string, number>();
   for (const name of requestedOutputs) {
@@ -602,6 +606,7 @@ export async function tickAndProject(
       return;
     }
     if (import.meta.env.DEV) perf.end("sampler-legacy-refill-wasm");
+    if (!isCurrent()) return;
     if (import.meta.env.DEV) {
       projectionTrace.record("sampler-legacy-result", {
         modeLabel: "reset-fill",
@@ -693,6 +698,7 @@ export async function tickAndProject(
     return;
   }
   if (import.meta.env.DEV) perf.end("sampler-legacy-edge-wasm");
+  if (!isCurrent()) return;
   if (import.meta.env.DEV) {
     projectionTrace.record("sampler-legacy-result", {
       modeLabel: "edge",

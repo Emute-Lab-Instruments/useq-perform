@@ -8,7 +8,7 @@
  *
  * The devmode flag is captured once from `startupContext` (it is frozen at
  * bootstrap), but exposed here as an overridable signal so tests and the
- * Inspector can toggle it without touching the global startup context.
+ * Storybook can toggle it without touching the global startup context.
  */
 
 import { createSignal } from "solid-js";
@@ -18,7 +18,7 @@ export type SettingsLevel = "basic" | "advanced";
 
 /**
  * Lazy default: read devmode from startup context the first time it's
- * needed. Stored in a signal so tests/Inspector can override it.
+ * needed. Stored in a signal so tests/Storybook can override it.
  */
 const [devmodeSignal, setDevmodeSignal] = createSignal<boolean | null>(null);
 
@@ -38,7 +38,7 @@ export function isDevmode(): boolean {
 }
 
 /**
- * Test/Inspector override. Pass `null` to fall back to the startup flag.
+ * Test/Storybook override. Pass `null` to fall back to the startup flag.
  */
 export function setDevmodeOverride(value: boolean | null): void {
   setDevmodeSignal(value);

@@ -23,7 +23,7 @@ import {
 import {
   updateRuntimeSessionState,
   teardownRuntimeSessionState,
-} from "./runtimeSessionStore";
+} from "./runtimeCoordinator";
 
 describe("runtimeDiagnostics (derived)", () => {
   beforeEach(() => {
@@ -65,7 +65,7 @@ describe("runtimeDiagnostics (derived)", () => {
     });
   });
 
-  it("derives runtimeSession from runtimeSessionStore", () => {
+  it("derives runtimeSession from the runtime coordinator", () => {
     updateRuntimeSessionState({
       hasHardwareConnection: true,
       noModuleMode: false,

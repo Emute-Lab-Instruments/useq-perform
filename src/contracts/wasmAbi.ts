@@ -315,6 +315,21 @@ export interface WasmAbiValidation {
 }
 
 /**
+ * Typed startup failure used across the Worker boundary.
+ *
+ * A stale/incompatible generated bundle is not ordinary Worker
+ * unavailability: callers must preserve the actionable ABI diagnostic.
+ */
+export class WasmAbiMismatchError extends Error {
+  readonly code = "abi-mismatch" as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "WasmAbiMismatchError";
+  }
+}
+
+/**
  * Validate that an Emscripten module conforms to the canonical WASM ABI.
  *
  * This should be called immediately after `createModule()` resolves,
@@ -383,7 +398,7 @@ export function validateWasmAbi(
 export function assertWasmAbi(module: EmscriptenModuleShape): WasmAbiValidation {
   const result = validateWasmAbi(module);
   if (!result.valid) {
-    throw new Error(
+    throw new WasmAbiMismatchError(
       `WASM ABI validation failed — missing required exports: ${result.missingRequired.join(", ")}. ` +
         `The WASM bundle does not match the editor's expected ABI. ` +
         `See src/contracts/wasmAbi.ts and docs/specs/runtime-contract.md.`

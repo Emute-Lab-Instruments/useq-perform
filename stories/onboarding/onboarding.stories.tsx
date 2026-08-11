@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { onMount, onCleanup } from 'solid-js';
 import { OnboardingBanner } from '@src/ui/OnboardingBanner';
 import { resetRuntimeServiceForTests } from '@src/runtime/runtimeService';
-import { updateRuntimeSessionState } from '@src/runtime/runtimeSessionStore';
+import { updateRuntimeSessionState } from '@src/runtime/runtimeCoordinator';
 import { remove, PERSISTENCE_KEYS } from '@src/lib/persistence';
 
 /**

@@ -9,40 +9,35 @@ import {
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
 } from "../runtime/runtimeService";
-import {
-  isLocalTimeActive,
-  resetLocalTime,
-  setLocalTimeMode,
-  startVisualisationRuntime,
-} from "./visualisationRuntime.ts";
+import { visualisationSession } from "./visualisationSession.ts";
 
 /** Start the internal clock from zero. */
 export function startInternalClock(): boolean {
-  if (isLocalTimeActive()) return false;
-  resetLocalTime();
-  startVisualisationRuntime();
-  setLocalTimeMode(true);
+  if (visualisationSession.clock.isLocal()) return false;
+  visualisationSession.clock.reset();
+  visualisationSession.clock.startRuntime();
+  visualisationSession.clock.setLocal(true);
   return true;
 }
 
 function stopInternalClock(): boolean {
-  if (!isLocalTimeActive()) return false;
-  setLocalTimeMode(false);
+  if (!visualisationSession.clock.isLocal()) return false;
+  visualisationSession.clock.setLocal(false);
   return true;
 }
 
 function resumeInternalClock(): boolean {
-  if (isLocalTimeActive()) return false;
-  startVisualisationRuntime();
-  setLocalTimeMode(true);
+  if (visualisationSession.clock.isLocal()) return false;
+  visualisationSession.clock.startRuntime();
+  visualisationSession.clock.setLocal(true);
   return true;
 }
 
 function resetInternalClock(): void {
-  const wasRunning = isLocalTimeActive();
-  setLocalTimeMode(false);
-  resetLocalTime();
-  if (wasRunning) setLocalTimeMode(true);
+  const wasRunning = visualisationSession.clock.isLocal();
+  visualisationSession.clock.setLocal(false);
+  visualisationSession.clock.reset();
+  if (wasRunning) visualisationSession.clock.setLocal(true);
 }
 
 // ── Pure policy ─────────────────────────────────────────────────

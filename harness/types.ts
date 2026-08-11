@@ -1,4 +1,4 @@
-// Shared types for scenario harness — used by both Storybook stories and Inspector
+// Shared types for Storybook's scenario harness.
 
 import type { LiveEditSlot, VectorMarkSession } from '@src/contracts/liveEdit';
 import type { BindingChip } from '@src/contracts/hardware';

@@ -10,7 +10,6 @@ import { createStore, reconcile } from "solid-js/store";
 import { createRoot, createEffect } from "solid-js";
 import type { WasmRuntimePort } from "../contracts/runtimePorts";
 import type { RuntimeProtocolMode } from "./runtimeDiagnostics";
-import { wasmRuntimePort as inProcessWasmPort } from "./wasmRuntimePort.ts";
 import {
   createRuntimeSessionSnapshot,
   type RuntimeSessionInputs,
@@ -33,16 +32,18 @@ type RuntimeSessionUpdate = Partial<RuntimeSessionInputs> & {
 export type RuntimeCoordinatorTransition =
   | { type: "session"; updates: RuntimeSessionUpdate }
   | { type: "select-wasm-port"; port: WasmRuntimePort }
+  | { type: "clear-wasm-port"; port?: WasmRuntimePort }
+  | { type: "wasm-availability"; available: boolean }
   | { type: "reset" };
 
 const DEFAULT_INPUTS: RuntimeSessionInputs = {
   hasHardwareConnection: false,
   noModuleMode: false,
-  wasmEnabled: true,
+  wasmEnabled: false,
 };
 
 let currentInputs: RuntimeSessionInputs = { ...DEFAULT_INPUTS };
-let activeWasmPort: WasmRuntimePort = inProcessWasmPort;
+let activeWasmPort: WasmRuntimePort | null = null;
 
 function createDefaultState(): RuntimeSessionState {
   return {
@@ -100,9 +101,16 @@ export function transitionRuntimeCoordinator(
     case "select-wasm-port":
       activeWasmPort = transition.port;
       return snapshotState();
+    case "clear-wasm-port":
+      if (!transition.port || transition.port === activeWasmPort) {
+        activeWasmPort = null;
+      }
+      return applySessionUpdate({ wasmEnabled: false });
+    case "wasm-availability":
+      return applySessionUpdate({ wasmEnabled: transition.available });
     case "reset":
       currentInputs = { ...DEFAULT_INPUTS };
-      activeWasmPort = inProcessWasmPort;
+      activeWasmPort = null;
       setRuntimeSessionState(reconcile(createDefaultState()));
       return snapshotState();
   }
@@ -110,11 +118,19 @@ export function transitionRuntimeCoordinator(
 
 /** Snapshot of the typed WASM edge selected by bootstrap. */
 export function getActiveWasmRuntimePort(): WasmRuntimePort {
+  if (!activeWasmPort) {
+    throw new Error("Browser-local WASM is unavailable: no Worker runtime is selected");
+  }
   return activeWasmPort;
 }
 
-export function isUsingInProcessWasmRuntime(): boolean {
-  return activeWasmPort === inProcessWasmPort;
+export function hasActiveWasmRuntimePort(): boolean {
+  return activeWasmPort !== null;
+}
+
+export function isWasmRuntimeAvailable(): boolean {
+  return currentInputs.wasmEnabled
+    && activeWasmPort?.capabilities().available === true;
 }
 
 /**

@@ -9,6 +9,7 @@ import { CodeMirrorEditor } from "./CodeMirrorEditor";
 import { SnippetOscilloscope } from "./SnippetOscilloscope";
 import { insertEditorText as globalInsertEditorText } from "../../lib/editorStore";
 import { settings as globalSettings } from "../../utils/settingsStore";
+import { visualisationSession } from "../../effects/visualisationSession.ts";
 
 export interface SnippetItemProps {
   snippet: Snippet;
@@ -59,12 +60,11 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
     setIsVisualizing(!isActive);
 
     try {
-      const { toggleVisualisation } = await import("../../effects/visualisationSampler.ts");
       const exprType = `S${props.snippet.id}`;
       if (!isActive) {
-        await toggleVisualisation(exprType, props.snippet.code);
+        await visualisationSession.expressions.toggle(exprType, props.snippet.code);
       } else {
-        await toggleVisualisation(exprType, "");
+        await visualisationSession.expressions.toggle(exprType, "");
       }
     } catch (error) {
       console.error("Failed to toggle visualization:", error);

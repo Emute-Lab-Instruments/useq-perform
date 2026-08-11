@@ -31,7 +31,7 @@ vi.mock("../../../editors/extensions/structure/adapter/dispatcher.ts", () => ({
   dispatchAction: vi.fn(() => true),
 }));
 
-import { executeAction, handlers } from "../handlers.ts";
+import { executeAction, handlers } from "../../../editors/commands/actionHandlers.ts";
 import { dispatchAction } from "../../../editors/extensions/structure/adapter/dispatcher.ts";
 import type { ActionId } from "../actions.ts";
 

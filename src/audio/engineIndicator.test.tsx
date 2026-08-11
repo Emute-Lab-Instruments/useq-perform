@@ -1,5 +1,5 @@
 /**
- * Inspector-style component tests for the synthesis engine indicator.
+ * Isolated component tests for the synthesis engine indicator.
  *
  * Covers (partial — see mission feature
  * `m1-synthesis-service-and-devmode-contract`):

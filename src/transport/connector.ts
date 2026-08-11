@@ -17,10 +17,7 @@ import {
   reportTransportConnectionChanged,
   announceRuntimeSession as announceFromService,
 } from "../runtime/runtimeSessionService.ts";
-import {
-  animateConnect as animateConnectChannel,
-  devicePluggedIn as devicePluggedInChannel,
-} from "../contracts/runtimeChannels";
+import { devicePluggedIn as devicePluggedInChannel } from "../contracts/runtimeChannels";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 
 import type { TransportContext } from "./types.ts";
@@ -36,7 +33,6 @@ import {
   initProtocol,
   resetProtocolState,
   sendHelloWithRetry,
-  sendTouSEQ,
 } from "./json-protocol.ts";
 
 // ── Module-level state ──────────────────────────────────────────────
@@ -55,7 +51,6 @@ function emitConnectionChanged(): void {
     protocolMode: getProtocolMode(),
     hasHardwareConnection: connectedToModule && !!serialport,
     noModuleMode: startupFlags.noModuleMode,
-    wasmEnabled: getAppSettings()?.wasm?.enabled ?? true,
   });
 }
 
@@ -274,7 +269,7 @@ export async function disconnect(port?: SerialPort | null): Promise<void> {
 // ── Web Serial support check ────────────────────────────────────────
 
 export function checkForWebserialSupport(): boolean {
-  console.log("Checking for Web Serial API support...");
+  dbg("Checking for Web Serial API support...");
   if (typeof navigator === "undefined" || !navigator.serial) {
     post(
       'Web Serial requires Chrome, Edge, or Opera. See <a href="https://caniuse.com/web-serial">browser support</a>',
@@ -283,7 +278,7 @@ export function checkForWebserialSupport(): boolean {
     return false;
   }
 
-  console.log("Web Serial API supported");
+  dbg("Web Serial API supported");
 
   navigator.serial.addEventListener("connect", (e: Event) => {
     const savedPort = getSerialPort();

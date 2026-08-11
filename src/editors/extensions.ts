@@ -1,10 +1,4 @@
-import {
-  syntaxHighlighting,
-  HighlightStyle,
-  defaultHighlightStyle,
-  foldGutter,
-  bracketMatching,
-} from "@codemirror/language";
+import { foldGutter, bracketMatching } from "@codemirror/language";
 import { default_extensions as default_clojure_extensions } from "@nextjournal/clojure-mode";
 import { EditorView } from "@codemirror/view";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
@@ -25,7 +19,7 @@ import {
 import { structuralCoreExtensions } from "./extensions/structure/adapter/extension.ts";
 // State-identity sidecar: opaque hidden IDs for stateful top-level forms
 // (synth today; future registrars extend via the classifier). Dependency-
-// injected so tests/Inspector can render the editor without synthesis
+// injected so tests/Storybook can render the editor without synthesis
 // runtime singletons. Spec: docs/specs/state-identity.md.
 //
 // Production uses the singleton field exposed by identityFieldExport so
@@ -34,7 +28,7 @@ import { structuralCoreExtensions } from "./extensions/structure/adapter/extensi
 import { defaultIdentityExtension } from "./extensions/stateIdentity/identityFieldExport.ts";
 
 // Wire the default eval-integration config on module load (production wiring).
-// Tests/Inspector can override via `setEvalIntegrationConfig()`.
+// Tests/Storybook can override via `setEvalIntegrationConfig()`.
 setEvalIntegrationConfig(createDefaultEvalIntegrationConfig());
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { deleteConfirmField } from "./extensions/deleteConfirmFlash.ts";
@@ -169,7 +163,7 @@ export const baseExtensions = [
   ...structuralCoreExtensions(),
   // State-identity sidecar: opaque hidden IDs for stateful top-level forms
   // (synth today; future registrars extend via the classifier). Dependency-
-  // injected so tests/Inspector can render the editor without synthesis
+  // injected so tests/Storybook can render the editor without synthesis
   // runtime singletons. Spec: docs/specs/state-identity.md.
   ...defaultIdentityExtension(),
   lastEvaluatedExpressionField,

@@ -6,7 +6,7 @@ Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WAS
 
 - `npm run dev` - starts config server, static server, and watch builds.
 - `npm run build` - builds the interpreter and osc/sine NodeDef WASM artefacts, copies non-code assets, and builds Vite bundles to `public/solid-dist/`.
-- `npm run build:wasm` - requires Emscripten (`emcc`) and generates both `src-useq/wasm/useq.{js,wasm}` and `src-useq/wasm/osc_sine.wasm`.
+- `npm run build:wasm` - enters the pinned `src-useq/shell.nix` toolchain and generates both `src-useq/wasm/useq.{js,wasm}` and `src-useq/wasm/osc_sine.wasm`.
 - `npm run build:assets` - verifies and copies the generated WASM artefacts,
   generates the application served-bundle record, and refreshes the Engine
   Ledger specification and witness indexes.
@@ -35,7 +35,7 @@ Testing styles:
 
 - `src/` - application source (TypeScript/TSX).
 - `src/ui/` - Solid UI components, styles, and visualisation renderer.
-- `src/ui/adapters/` - imperative adapters for mounting Solid UI components.
+- `src/ui/adapters/` - application-owned wired components and imperative state adapters; they never mount independent Solid roots.
 - `src/editors/` - CodeMirror extensions, keymaps, themes, gamepad control.
 - `src/runtime/` - bootstrap, settings repository, config manager, startup context.
 - `src/transport/` - serial port lifecycle, protocol drivers, stream parser.
@@ -47,7 +47,7 @@ Testing styles:
 
 ## Architecture
 
-The application uses a single-bundle Vite build. The bundle starts at `src/main.ts`, loads configuration, mounts the UI shell, and then prefers browser-local WASM startup by default while reconnecting saved hardware opportunistically unless the user opts out. UI components are mounted via adapter modules that provide imperative APIs (for example `mountSettingsPanel()` and `showModal()`).
+The application uses a single-bundle Vite build. The bundle starts at `src/main.ts`, loads configuration, starts Worker-only WASM loading without blocking the editor, mounts one Solid `ApplicationRoot`, and reconnects saved hardware independently. Settings express WASM intent; runtime modes reflect only a successfully loaded Worker. In simultaneous `both` mode hardware remains output-authoritative while WASM supplies visualisation/probe shadow work. Wired UI adapters expose imperative state operations such as `showModal()` but are rendered inside the one application root.
 
 Read `MAP.md` first for a terse codebase index, and `ALIGNMENT.md` for the dated diagnosis of where the codebase currently falls short of its mission.
 

@@ -273,6 +273,9 @@ export interface WasmRuntimeCapabilities extends RuntimePortCapabilities {
 export interface WasmRuntimePort extends SharedRuntimePort {
   readonly kind: "wasm-runtime";
 
+  /** Terminate the Worker and reject every in-flight request. Idempotent. */
+  dispose(): void;
+
   capabilities(): WasmRuntimeCapabilities;
 
   /**
@@ -385,6 +388,9 @@ export interface WasmRuntimePort extends SharedRuntimePort {
    * export is unavailable, or parsing fails.
    */
   readActiveDiagnostics(): Promise<RuntimeDiagnostic[]>;
+
+  /** Set the non-finite output policy inside the Worker-owned engine. */
+  setFailureMode(mode: "lkg" | "zero"): Promise<boolean>;
 
   /**
    * Inject live-edit slot values into the WASM interpreter.

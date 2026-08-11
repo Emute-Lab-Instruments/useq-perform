@@ -58,7 +58,6 @@ vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
     readActiveDiagnostics: vi.fn().mockResolvedValue([]),
     readLastDiagnostics: vi.fn().mockResolvedValue([]),
   }),
-  setActiveWasmRuntimePort: vi.fn(),
   isUsingInProcessWasmRuntime: () => true,
 }));
 

@@ -7,20 +7,27 @@ import { default_extensions } from "@nextjournal/clojure-mode";
 import { PERSISTENCE_KEYS } from "../../lib/persistence.ts";
 import { resetStartupContextForTests } from "../../runtime/startupContext.ts";
 
-const { evalInUseqWasmSilently } = vi.hoisted(() => ({
+const { evalInUseqWasmSilently, sessionState, wasmAvailable } = vi.hoisted(() => ({
   evalInUseqWasmSilently: vi.fn(),
+  sessionState: {
+    currentTime: 0,
+    bar: 0,
+    lastChangeKind: "time",
+  },
+  wasmAvailable: { value: true },
 }));
 
-// Probes now route silent evals through the active WASM runtime port so the
-// worker-mode flag works. Mock the port accessor and return a stub port whose
-// `evalCodeSilently` is the spy used throughout these tests.
-vi.mock("../../runtime/activeWasmRuntimePort.ts", () => ({
-  getActiveWasmRuntimePort: () => ({
-    evalCodeSilently: evalInUseqWasmSilently,
-    probeSet: async () => -1,
-    probeSample: async () => null,
-    probeFree: async () => {},
-  }),
+vi.mock("../../effects/visualisationSession.ts", () => ({
+  visualisationSession: {
+    state: sessionState,
+    probes: {
+      available: () => wasmAvailable.value,
+      evaluate: evalInUseqWasmSilently,
+      set: async () => -1,
+      sample: async () => null,
+      free: async () => {},
+    },
+  },
 }));
 
 function createMockStorage(): Storage {
@@ -118,6 +125,10 @@ beforeEach(() => {
   vi.resetModules();
   vi.restoreAllMocks();
   evalInUseqWasmSilently.mockReset();
+  sessionState.currentTime = 0;
+  sessionState.bar = 0;
+  sessionState.lastChangeKind = "time";
+  wasmAvailable.value = true;
   frameCallbacks = [];
   document.body.innerHTML = "";
 
@@ -464,6 +475,7 @@ describe("probe commands", () => {
 
     const { updateAppSettings } = await import("../../runtime/appSettingsRepository.ts");
     updateAppSettings({ wasm: { enabled: false } });
+    wasmAvailable.value = false;
 
     const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
     const view = createView("bar", probeExtensions, { anchor: 0 });
@@ -549,6 +561,7 @@ describe("probe commands", () => {
     const { setVisStore } = await import("../../utils/visualisationStore.ts");
     const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
     setVisStore("currentTime", 4);
+    sessionState.currentTime = 4;
 
     const view = createView("bar", probeExtensions, { anchor: 0 });
     expect(toggleCurrentProbe(view, "raw")).toBe(true);
@@ -592,6 +605,7 @@ describe("probe commands", () => {
     const { setVisStore } = await import("../../utils/visualisationStore.ts");
     const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
     setVisStore("currentTime", 3);
+    sessionState.currentTime = 3;
 
     const view = createView("bar", probeExtensions, { anchor: 0 });
     expect(toggleCurrentProbe(view, "raw")).toBe(true);
@@ -622,6 +636,7 @@ describe("probe commands", () => {
     const { setVisStore } = await import("../../utils/visualisationStore.ts");
     const { probeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
     setVisStore("currentTime", 2);
+    sessionState.currentTime = 2;
 
     const view = createView("bar", probeExtensions, { anchor: 0 });
     expect(toggleCurrentProbe(view, "raw")).toBe(true);
@@ -782,6 +797,8 @@ describe("probe commands", () => {
     const { setVisStore } = await import("../../utils/visualisationStore.ts");
     setVisStore("bar", 0.75);
     setVisStore("lastChangeKind", "data");
+    sessionState.bar = 0.75;
+    sessionState.lastChangeKind = "data";
     evalInUseqWasmSilently.mockResolvedValue("0.0");
 
     const source = "(a1 (from-list [0.1 0.2 0.3] bar))";
@@ -933,6 +950,7 @@ describe("probe refresh adaptive quality (lever 2)", () => {
     const adaptive = await import("../../effects/adaptiveQuality.ts");
     adaptive._resetForTests();
     setVisStore("currentTime", 4);
+    sessionState.currentTime = 4;
 
     const view = createView("bar", probeExtensions, { anchor: 0 });
     expect(toggleCurrentProbe(view, "raw")).toBe(true);
@@ -981,6 +999,7 @@ describe("probe refresh adaptive quality (lever 2)", () => {
     const adaptive = await import("../../effects/adaptiveQuality.ts");
     adaptive._resetForTests();
     setVisStore("currentTime", 4);
+    sessionState.currentTime = 4;
 
     const view = createView("bar", probeExtensions, { anchor: 0 });
     expect(toggleCurrentProbe(view, "raw")).toBe(true);

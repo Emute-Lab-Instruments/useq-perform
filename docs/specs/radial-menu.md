@@ -280,7 +280,7 @@ The menu closes on:
 - The user leaving the gamepad's connected state (gamepad disconnect → close + cancel).
 - An out-of-band close gesture from elsewhere (e.g. keyboard `Esc`) — possible but rare, since the menu is gamepad-only by design.
 
-On close, the radial-menu transient layer is popped, `menuStore.open = false`, and the structural cursor returns to its position post-mutation (or the original target on cancel). (see `src/ui/adapters/gamepadMenuBridge.ts` for current close handling)
+On close, the menu store returns to its `closed` phase and the radial layer's predicate becomes false; the structural cursor remains at its post-mutation position (or the original target on cancel). See `src/lib/menu/dispatcher.ts` and `src/lib/gamepad/paradigms/radial.ts`.
 
 ---
 
@@ -657,15 +657,15 @@ The dispatcher is the menu's lifecycle and high-level action adapter. It:
 
 This keeps impurity explicit without making one module own every concern: the dispatcher owns subscriptions and ordering, text entry owns its timer, and the editor adapter owns source mutation.
 
-### 11.3 Picker layer (gamepad.md §6.5) replacement (current: `src/lib/gamepad/paradigms/picker.ts`)
+### 11.3 Radial layer (gamepad.md §6.5; `src/lib/gamepad/paradigms/radial.ts`)
 
-The new radial layer in the gamepad pipeline replaces the existing picker layer. Bindings are registered as a transient layer in the gamepad paradigm files (or as a permanent layer with `when: state => menuStore.open`).
+The radial layer is a permanent predicate layer whose `when` condition reads the menu store. It replaces the removed picker layer.
 
 ```ts
 // src/lib/gamepad/paradigms/radial.ts
 const radialLayer: Layer = {
   name: 'radial-menu',
-  when: state => state.menu.open,
+  when: () => isMenuOpen(),
   gestures: {
     // LB/RB: tap = tab cycle (sub-phase-conditional in dispatcher); press = freeze trigger.
     // The recognizer always emits both tap and held; the dispatcher decides which to honour.
@@ -697,7 +697,6 @@ The dispatcher consults the current `MenuState.shoulderHeld` (computed from raw 
 
 New `ActionId`s registered:
 
-```ts
 'menu.tab.cyclePrev'    // non-reversible (UI state)
 'menu.tab.cycleNext'    // non-reversible
 'menu.verb.insert'      // reversible

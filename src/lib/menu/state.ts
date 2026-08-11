@@ -34,7 +34,6 @@ import type {
   ShoulderHeld,
   ShoulderSide,
   StickHover,
-  Verb,
 } from "./types";
 
 // ---------------------------------------------------------------------------

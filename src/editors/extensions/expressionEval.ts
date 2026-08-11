@@ -4,17 +4,11 @@
 //
 // Pure state definitions (matchPattern, annotations, StateField, pure helpers)
 // live in expressionEvalState.ts to avoid pulling runtime deps into the
-// Inspector iframe.
+// Storybook canvas.
 
 import type { EditorView } from "@codemirror/view";
 
-import {
-  isExpressionVisualised,
-  toggleVisualisation,
-  registerVisualisation,
-  refreshVisualisedExpression,
-  notifyExpressionEvaluated,
-} from "../../effects/visualisationSampler.ts";
+import { visualisationSession } from "../../effects/visualisationSession.ts";
 import { showVisualisationPanel } from "../../ui/adapters/visualisationPanel";
 import { dbg } from "../../lib/debug.ts";
 import { getAppSettings } from "../../runtime/appSettingsRepository.ts";
@@ -41,7 +35,7 @@ export interface EvalIntegrationConfig {
 // wiring module (expressionEvalDefaults.ts).
 let _config: EvalIntegrationConfig | null = null;
 
-/** Override the eval-integration config (e.g. for tests or Inspector). */
+/** Override the eval-integration config (e.g. for tests or Storybook). */
 export function setEvalIntegrationConfig(config: EvalIntegrationConfig): void {
   _config = config;
 }
@@ -244,21 +238,21 @@ export function detectAndTrackExpressionEvaluation(
 
     for (const info of evaluations) {
       const exprType = info.expressionType;
-      notifyExpressionEvaluated(exprType);
+      visualisationSession.expressions.notifyEvaluated(exprType);
 
       const position = { from: info.position.line, to: info.position.line };
       const definition = findExpressionDefinition(view, exprType);
       const newText = definition?.expressionText?.trim();
       if (!newText) continue;
 
-      const alreadyVisualised = isExpressionVisualised(exprType, position);
+      const alreadyVisualised = visualisationSession.expressions.isVisualised(exprType, position);
 
       if (opts.isPreview) {
         // Soft eval is an inspection action — it must NOT flip the toggle
         // (expression-gutter.md §3.4). Only refresh an already-toggled variant
         // so the preview updates its trace.
         if (!alreadyVisualised) continue;
-        refreshVisualisedExpression(exprType, newText, position).catch((error: any) => {
+        visualisationSession.expressions.refresh(exprType, newText, position).catch((error: any) => {
           dbg(`Visualise: failed to refresh ${exprType} after evaluation: ${error}`);
         });
         continue;
@@ -269,11 +263,11 @@ export function detectAndTrackExpressionEvaluation(
       // §1.8). registerVisualisation keys by output name, so re-registering a1
       // replaces any prior a1 variant — that is the per-output exclusivity.
       if (alreadyVisualised) {
-        refreshVisualisedExpression(exprType, newText, position).catch((error: any) => {
+        visualisationSession.expressions.refresh(exprType, newText, position).catch((error: any) => {
           dbg(`Visualise: failed to refresh ${exprType} after evaluation: ${error}`);
         });
       } else {
-        registerVisualisation(exprType, newText, position).catch((error: any) => {
+        visualisationSession.expressions.register(exprType, newText, position).catch((error: any) => {
           dbg(`Visualise: failed to register ${exprType} after evaluation: ${error}`);
         });
       }
@@ -411,7 +405,7 @@ export function handleVisualiseExpression(
     return;
   }
 
-  const wasVisualised = isExpressionVisualised(exprType, position);
+  const wasVisualised = visualisationSession.expressions.isVisualised(exprType, position);
 
   if (typeof console !== "undefined" && console.debug) {
     console.debug("useq:visualise-toggle", {
@@ -421,9 +415,9 @@ export function handleVisualiseExpression(
     });
   }
   dbg(`Visualise: toggling ${exprType}, text length ${expressionText.length}`);
-  toggleVisualisation(exprType, expressionText, position)
+  visualisationSession.expressions.toggle(exprType, expressionText, position)
     .then(() => {
-      const isNowVisualised = isExpressionVisualised(exprType, position);
+      const isNowVisualised = visualisationSession.expressions.isVisualised(exprType, position);
       if (!wasVisualised && isNowVisualised) {
         ensureSerialVisPanelVisible();
       }

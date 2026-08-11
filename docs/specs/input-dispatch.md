@@ -15,7 +15,7 @@ layer: cross-cutting
 - `src/editors/commands/editorCommandRouter.ts` — the command router: `executeEditorCommand()`, policy enforcement, bracket protection
 - `src/editors/keymaps.ts` — CodeMirror keymap layer (keyboard translator)
 - `src/editors/editorKeyboard.ts` — editor keyboard utilities
-- `src/lib/keybindings/handlers.ts` — source-aware `ActionId` translator and UI-effect mapping; `executeAction()` removes caller-specific handler-shape inference
+- `src/editors/commands/actionHandlers.ts` — source-aware `ActionId` translator and UI-effect mapping; `executeAction()` removes caller-specific handler-shape inference
 - `src/lib/keybindings/resolver.ts` — binding resolver (key to ActionId)
 - `src/lib/keybindings/actions.ts` — canonical action registry
 - `src/lib/gamepad/dispatcher.ts` — gamepad dispatcher (reaches router via handler registry)
@@ -71,7 +71,7 @@ Input Source → Translator → Command Router → CodeMirror
 
 3.1 The keyboard translator is the keymap layer in `keymaps.ts`. Its sole job is intercepting key events that have bindings and routing them to the command router as `EditorCommand` objects. It must not contain policy logic (bracket checking, mode gating, structural awareness). (see `src/editors/keymaps.ts`)
 
-3.2 **Keys with action bindings** (registered in the action registry): the binding resolver maps the key to an `ActionId`; `executeAction()` translates the action with source `keyboard`; editor-directed handlers call `executeEditorCommand()`. The keymap layer provides the CodeMirror `keymap.of()` entries that trigger this chain. Gamepad and palette dispatch use the same `executeAction()` entry with their own source instead of inspecting handler arity. (see `src/lib/keybindings/resolver.ts`, `src/lib/keybindings/handlers.ts`)
+3.2 **Keys with action bindings** (registered in the action registry): the binding resolver maps the key to an `ActionId`; `executeAction()` translates the action with source `keyboard`; editor-directed handlers call `executeEditorCommand()`. The keymap layer provides the CodeMirror `keymap.of()` entries that trigger this chain. Gamepad and palette dispatch use the same `executeAction()` entry with their own source instead of inspecting handler arity. (see `src/lib/keybindings/resolver.ts`, `src/editors/commands/actionHandlers.ts`)
 
 3.3 **Keys with implicit editor semantics** (Backspace, Delete, Enter, closing brackets): these are not bound to named actions in the default state but carry policy-sensitive behaviour. The keymap layer must route them through the command router as `{kind: "key", key: "Backspace"}` etc., rather than delegating to third-party keymap handlers directly.
 
@@ -107,7 +107,7 @@ Current input sources and their translator paths:
 
 | Source | Translator | Reaches router via |
 |---|---|---|
-| Keyboard (bound actions) | Binding resolver → handler registry | `handlers.ts` calls `executeEditorCommand()` |
+| Keyboard (bound actions) | Binding resolver → handler registry | `actionHandlers.ts` calls `executeEditorCommand()` |
 | Keyboard (policy keys) | Keymap layer | Must call `executeEditorCommand()` directly |
 | Gamepad | Three-stage pipeline → dispatcher | Same handler registry as keyboard |
 | Action palette | Palette selection → handler registry | `executeEditorCommand()` via handler |
@@ -148,6 +148,6 @@ Current input sources and their translator paths:
 
 8.1 **Modal editing system.** When introduced, the translator layer gains a mode-aware stage: the same physical key produces different `EditorCommand` variants depending on the active mode. The router and policy layer remain unchanged. Design deferred until the modal system is specced.
 
-8.2 **Kill-to-end-of-list.** Currently delegates to clojure-mode's `Ctrl-k` handler directly (`handlers.ts`). Should be reimplemented as a router-native operation so it participates in policy enforcement (e.g. respecting bracket protection).
+8.2 **Kill-to-end-of-list.** Currently delegates to clojure-mode's `Ctrl-k` handler directly (`actionHandlers.ts`). Should be reimplemented as a router-native operation so it participates in policy enforcement (e.g. respecting bracket protection).
 
 8.3 **Multi-cursor dispatch.** The router currently operates on the primary selection only. Structural operations on multiple cursors may require the router to iterate over selections. Deferred until multi-cursor structural editing is specced ([structural-editing.md](structural-editing.md) §5).

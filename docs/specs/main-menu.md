@@ -14,7 +14,7 @@ layer: behavioural
 - `src/ui/mainMenu/menuItems.ts` — menu item registry and state
 - `src/ui/adapters/mainMenu.tsx` — imperative adapter (`mountMainMenu`, `showMainMenu`, `closeMainMenu`)
 - `src/lib/mainMenu/store.ts` — menu state store (open/closed, focused item, submenu stack)
-- `src/lib/keybindings/handlers.ts` — `mainMenu.*` action handlers (open/close/next/prev/select/back/adjust); `mainMenu.open` force-closes active sub-modes per §1.4
+- `src/editors/commands/actionHandlers.ts` — `mainMenu.*` action handlers (open/close/next/prev/select/back/adjust); `mainMenu.open` force-closes active sub-modes per §1.4
 - `src/lib/gamepad/paradigms/modal-shift.ts` — L3+R3 chord binding (base layer) and the `main-menu` masking layer
 - `src/lib/keybindings/defaults.ts` — keyboard `Escape` → `mainMenu.open` (§2.1.2)
 - `src/lib/keybindings/actions.ts` — `mainMenu.*` action IDs
@@ -29,7 +29,7 @@ layer: behavioural
 
 1.3 Opening the menu does **not** stop the runtime or silence outputs. Hardware outputs continue from their last-evaluated state. WASM visualisation pauses (no sampling ticks). On menu close, visualisation resumes from current transport time.
 
-1.4 The menu is accessible from **any** editor state — structural mode, insertion mode, with or without a radial menu open, with or without a sub-mode active. Opening the menu forcibly closes any active sub-mode and pushes the main-menu layer to the top of the stack. The `mainMenu.open` handler (`src/lib/keybindings/handlers.ts`) closes the sub-modes with well-defined close APIs — the **radial menu** (`dispatchMenuInput({ kind: 'cancel' })`) and **grab mode** (`endGrab` + `setGrabMode.of(false)`). Insertion mode and vector-mark are left to their own exit gestures (closing them blindly here would risk committing or discarding in-flight edits); the masking `main-menu` layer keeps their gamepad input from leaking while the menu is open regardless.
+1.4 The menu is accessible from **any** editor state — structural mode, insertion mode, with or without a radial menu open, with or without a sub-mode active. Opening the menu forcibly closes any active sub-mode and pushes the main-menu layer to the top of the stack. The `mainMenu.open` handler (`src/editors/commands/actionHandlers.ts`) closes the sub-modes with well-defined close APIs — the **radial menu** (`dispatchMenuInput({ kind: 'cancel' })`) and **grab mode** (`endGrab` + `setGrabMode.of(false)`). Insertion mode and vector-mark are left to their own exit gestures (closing them blindly here would risk committing or discarding in-flight edits); the masking `main-menu` layer keeps their gamepad input from leaking while the menu is open regardless.
 
 ---
 
@@ -41,7 +41,7 @@ The main menu opens on the **chord** of both stick presses simultaneously: `chor
 
 2.1.1 **Why L3+R3.** This is the standard "pause menu" gesture in console games. It's physically distinct (requires both thumbs to press inward simultaneously), impossible to trigger accidentally during normal navigation or value editing, and carries strong muscle-memory associations for gamepad users.
 
-2.1.2 **Keyboard equivalent.** `Escape` when no other sub-mode is active (i.e. Escape has nothing to cancel). If a sub-mode is active, Escape cancels that first; a second Escape with nothing to cancel opens the main menu. This is realised by binding `Escape → mainMenu.open` **unconditionally and at lower keymap precedence** than the conditional sub-mode Escape bindings (`liveEdit.vectorCancel`, `picker.cancel`), which are `Prec.high`: those run first and consume Escape while their sub-mode is active, so the menu only opens once nothing is left to cancel (`src/lib/keybindings/defaults.ts`, `handlers.ts`). `Ctrl+Shift+P` is **not** used for the menu — it is already bound to `palette.open` (the action palette); the menu is not a palette, so no second opener is provided.
+2.1.2 **Keyboard equivalent.** `Escape` when no other sub-mode is active (i.e. Escape has nothing to cancel). If a sub-mode is active, Escape cancels that first; a second Escape with nothing to cancel opens the main menu. This is realised by binding `Escape → mainMenu.open` **unconditionally and at lower keymap precedence** than the conditional sub-mode Escape bindings (`liveEdit.vectorCancel`, `picker.cancel`), which are `Prec.high`: those run first and consume Escape while their sub-mode is active, so the menu only opens once nothing is left to cancel (`src/lib/keybindings/defaults.ts`, `src/editors/commands/actionHandlers.ts`). `Ctrl+Shift+P` is **not** used for the menu — it is already bound to `palette.open` (the action palette); the menu is not a palette, so no second opener is provided.
 
 2.1.3 **Individual stick presses retain their existing bindings.** L3 alone = polarity flip (on numbers) or `control.toggleManualLeft`; R3 alone = `control.toggleManualRight`. Only the simultaneous chord opens the menu.
 

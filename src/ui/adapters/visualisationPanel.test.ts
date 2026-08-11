@@ -10,10 +10,14 @@ const {
   registerVisualisationRenderHook: vi.fn(),
 }));
 
-vi.mock("../../effects/visualisationRuntime", () => ({
-  requestVisualisationRender,
-  pauseVisualisationRender,
-  registerVisualisationRenderHook,
+vi.mock("../../effects/visualisationSession", () => ({
+  visualisationSession: {
+    view: {
+      request: requestVisualisationRender,
+      pause: pauseVisualisationRender,
+      attach: registerVisualisationRenderHook,
+    },
+  },
 }));
 
 describe("visualisationPanel", () => {
@@ -31,6 +35,9 @@ describe("visualisationPanel", () => {
       document.getElementById("panel-vis") as HTMLDivElement,
     );
 
+    expect(registerVisualisationRenderHook).toHaveBeenCalledWith(
+      expect.objectContaining({ paint: expect.any(Function) }),
+    );
     expect(panelModule.showVisualisationPanel()).toBe(true);
     expect(requestVisualisationRender).toHaveBeenCalledTimes(1);
     expect(panelModule.isVisualisationPanelVisible()).toBe(true);
@@ -46,5 +53,15 @@ describe("visualisationPanel", () => {
     expect(panelModule.hideVisualisationPanel()).toBe(true);
     expect(pauseVisualisationRender).toHaveBeenCalledTimes(1);
     expect(panelModule.isVisualisationPanelVisible()).toBe(false);
+  });
+
+  it("detaches the render hook with the panel lifetime", async () => {
+    const panelModule = await import("./visualisationPanel.ts");
+    panelModule.registerVisualisationPanel(
+      document.getElementById("panel-vis") as HTMLDivElement,
+    );
+    panelModule.registerVisualisationPanel(null);
+
+    expect(registerVisualisationRenderHook).toHaveBeenLastCalledWith(null);
   });
 });

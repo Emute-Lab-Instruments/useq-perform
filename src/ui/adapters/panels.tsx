@@ -5,7 +5,7 @@
  * inside a PanelChrome component that provides the active chrome design
  * (Pane, Drawer, or Tile).
  *
- * Uses createSolidAdapter for mount lifecycle.
+ * The application root owns rendering; this module owns panel state.
  */
 import { Show, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { PanelChrome } from "../panel-chrome/PanelChrome";
@@ -19,7 +19,6 @@ import { ConsolePanel } from "../console/ConsolePanel";
 // is live before any diagnostic can be rendered.
 import "../help/guideNavigation";
 import { pushOverlay } from "../overlayManager";
-import { createSolidAdapter } from "./createSolidAdapter";
 import "../panel-chrome/panel-chrome.css";
 
 // ---- Visibility signals ----
@@ -109,7 +108,7 @@ export function hideChromePanel(panelId: string): void {
   hidePanel(panelId);
 }
 
-// ---- Mount helpers ----
+// ---- Application-owned component tree ----
 
 function ManagedPanel(props: {
   panelId: string;
@@ -126,9 +125,8 @@ function ManagedPanel(props: {
   return <>{props.children}</>;
 }
 
-const panelRootAdapter = createSolidAdapter({
-  containerId: "solid-panel-root",
-  Component: () => (
+export function PanelRoot() {
+  return (
     <>
       <Show when={settingsVisible()}>
         <ManagedPanel panelId="settings" onClose={() => setSettingsVisible(false)}>
@@ -177,46 +175,18 @@ const panelRootAdapter = createSolidAdapter({
         <ConsolePanel />
       </Show>
     </>
-  ),
-});
-
-/**
- * Mount the settings panel. Called from legacy solidBridge.
- * The elementId parameter is accepted for backward compat but the chrome
- * components create their own fixed-position root.
- */
-export function mountSettingsPanel(_elementId?: string) {
-  panelRootAdapter.mount();
-}
-
-/**
- * Mount the help panel. Called from legacy solidBridge.
- */
-export function mountHelpPanel(_elementId?: string) {
-  panelRootAdapter.mount();
+  );
 }
 
 /**
  * Toggle the standalone Machine schematic panel (the-machine.md §2.4).
  */
 export function toggleMachinePanel(): void {
-  panelRootAdapter.mount();
   togglePanelVisibility("machine");
 }
 
 // ---- Design selector ----
 
-const [devmodeSignal, setDevmodeSignal] = createSignal(false);
-
-const designSelectorAdapter = createSolidAdapter({
-  containerId: "solid-design-selector-root",
-  Component: () => <DesignSelector devmode={devmodeSignal()} />,
-});
-
-/**
- * Mount the DesignSelector widget. Call once when devmode is determined.
- */
-export function mountDesignSelector(devmode: boolean) {
-  setDevmodeSignal(devmode);
-  designSelectorAdapter.mount();
+export function DesignSelectorRoot(props: { devmode: boolean }) {
+  return <DesignSelector devmode={props.devmode} />;
 }

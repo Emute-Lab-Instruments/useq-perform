@@ -15,6 +15,7 @@ layer: behavioural
 - `src/editors/extensions/probes/probeSampling.ts` — batch/slot sampling, expression planning, and indexed-form highlight evaluation
 - `src/editors/extensions/probes/probeRendering.ts` — widget DOM registry, WebGL drawing, and decoration construction
 - `src/editors/extensions/probes/probeTypes.ts` — shared probe contracts and defaults
+- `src/effects/visualisationSession.ts` — sole production probe availability/eval/slot-sampling seam
 - `src/editors/extensions/probeHelpers.ts` — `buildProbeExpression()`, recognised-operator set, wrapper-depth logic
 - `src/ui/visualisation/webglLineRenderer.ts` — `drawProbeWaveformGL()` / `releaseProbeGLState()`: the per-probe WebGL waveform rendering surface
 - `src/editors/extensions/expressionEval.ts` — expression evaluation helpers used by probe sampling
@@ -55,7 +56,7 @@ layer: behavioural
 
 1.6.2 **Perf budget** ([MAIN.md §3.4](MAIN.md)): one WASM call per probe per tick after batching. Probes scale linearly, not multiplicatively, with sample-per-tick count.
 
-1.6.3 Probe sampling routes through the WASM runtime only. Hardware does not evaluate probe expressions. In `hardware`-only mode (WASM disabled), probe widgets render in a **visually-disabled state**: they remain in the document and persisted state, retain their last-known sample if any, and surface a "WASM disabled" indicator. They do not sample and do not consume CPU.
+1.6.3 Probe sampling routes through the `visualisationSession.probes` Worker-shadow facet only. Hardware does not evaluate probe expressions. In `hardware`-only mode (configured off, unavailable, or failed), probe widgets render in a **visually-disabled state**: they remain in the document and persisted state, retain their last-known sample if any, and surface a "WASM disabled" indicator. They do not sample and do not consume CPU.
 
 1.6.4 Sampling is animation-frame paced. The probe sampler no-ops when the editor is hidden or the document has no probes.
 

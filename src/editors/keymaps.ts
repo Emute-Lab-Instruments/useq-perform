@@ -16,6 +16,7 @@ import type { EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { historyKeymap } from "@codemirror/commands";
 import { createResolver } from "../lib/keybindings/resolver.ts";
+import { getHandler } from "./commands/actionHandlers.ts";
 import { bindingsForProfile } from "../lib/keybindings/profileRegistry.ts";
 import { registerDefaultContexts } from "../lib/keybindings/contexts.ts";
 import { profileFromUrl } from "../lib/keybindings/profiles.ts";
@@ -67,7 +68,7 @@ export function buildInitialResolver() {
     }
   }
 
-  return createResolver({ defaults, overrides });
+  return createResolver({ defaults, overrides, getHandler });
 }
 
 export const resolver = buildInitialResolver();

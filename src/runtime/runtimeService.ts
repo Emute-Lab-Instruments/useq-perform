@@ -26,7 +26,6 @@ export {
   announceRuntimeSession,
   reportTransportConnectionChanged,
   reportProtocolModeChanged,
-  updateRuntimeSettingsEffect,
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
   isRuntimeHardwareConnected,

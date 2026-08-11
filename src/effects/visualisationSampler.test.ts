@@ -74,8 +74,13 @@ vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
     setHwInputValue: portState.setHwInputValue,
     readOutputClassifications: portState.readOutputClassifications,
   }),
-  setActiveWasmRuntimePort: vi.fn(),
   isUsingInProcessWasmRuntime: () => true,
+}));
+
+// This suite exercises sampling and buffer behaviour, not runtime-mode
+// eligibility. Make its intended `both`-mode precondition explicit.
+vi.mock("../runtime/runtimeCompatibility.ts", () => ({
+  shouldUseWasmShadow: () => true,
 }));
 
 const appSettingsMock = vi.hoisted(() => {

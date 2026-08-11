@@ -19,9 +19,8 @@
  *     worker-local `__useqWasmRuntime` global so the editor's inline
  *     diagnostics and per-frame output health both keep working when
  *     the worker port is active.
- *   - Bytewise this duplicates ~50 lines of interpreter binding logic.
- *     Keeping the duplication local lets us iterate on the worker
- *     contract without touching the in-process port.
+ *   - Worker loading and request dispatch remain local so the public port
+ *     contract can evolve without leaking interpreter globals main-thread.
  */
 /// <reference lib="webworker" />
 
@@ -29,6 +28,7 @@ import {
   assertWasmAbi,
   REQUIRED_WASM_EXPORTS,
   OPTIONAL_WASM_EXPORTS,
+  WasmAbiMismatchError,
 } from "../../contracts/wasmAbi";
 import { TRANSPORT_STATE_TO_COMMAND } from "../../contracts/useqRuntimeContract";
 import type {
@@ -128,6 +128,7 @@ interface InterpreterHandle {
   probeFree: (slot: number) => void;
   getLiveSlots: () => LiveSlotMetadata[];
   applyStateSnapshot: (json: string) => boolean;
+  setFailureMode: (mode: "lkg" | "zero") => boolean;
   release: () => void;
 }
 
@@ -345,6 +346,10 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     module,
     OPTIONAL_WASM_EXPORTS.useq_tick_synth_controls,
   ) as ((time: number, bufferPtr: number, bufferLength: number) => number) | null;
+  const setFailureModeFn = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_set_failure_mode,
+  ) as ((mode: number) => number) | null;
   (globalThis as { __useqWasmRuntime?: UseqRuntimeGlobal }).__useqWasmRuntime = {
     useq_last_diagnostics: lastDiagsFn ?? undefined,
     useq_active_diagnostics: activeDiagsFn ?? undefined,
@@ -399,6 +404,11 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     probeFree: probes.free,
     getLiveSlots: liveInputs.getSlots,
     applyStateSnapshot: liveInputs.applyStateSnapshot,
+    setFailureMode: (mode) => {
+      if (!setFailureModeFn) return false;
+      const requested = mode === "zero" ? 1 : 0;
+      return setFailureModeFn(requested) === requested;
+    },
     release: () => {
       batchEvaluator.release();
       probes.release();
@@ -409,8 +419,7 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
 
 // ─── Diagnostic readers (worker-local) ─────────────────────────────────────
 //
-// Mirror of the main-thread readers in `runtime/wasmRuntimePort.ts`. The
-// Emscripten bundle running inside the worker exposes the diagnostic
+// The Emscripten bundle running inside the worker exposes the diagnostic
 // exports on the `__useqWasmRuntime` global; reading from the worker
 // scope is what keeps inline editor diagnostics and per-frame output
 // health alive when the worker port is the active port.
@@ -660,6 +669,11 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           id,
           diagnostics: readActiveDiagnosticsLocal(),
         });
+        return;
+      }
+      case "setFailureMode": {
+        const accepted = !!(wasmEnabled && interpreter?.setFailureMode(request.mode));
+        postResponse({ type: "setFailureMode-result", id, accepted });
         return;
       }
       case "setLiveInputs": {
@@ -1020,7 +1034,14 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    postResponse({ type: "error", id, message });
+    postResponse({
+      type: "error",
+      id,
+      code: error instanceof WasmAbiMismatchError
+        ? "abi-mismatch"
+        : "runtime-error",
+      message,
+    });
   }
 }
 

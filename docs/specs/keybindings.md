@@ -11,7 +11,7 @@ layer: behavioural
 
 - `src/lib/keybindings/actions.ts` — canonical action registry with metadata, `ActionDef`, `ReversibleActionId`, `NonReversibleActionId`
 - `src/lib/keybindings/defaults.ts` — default key-to-action maps per profile
-- `src/lib/keybindings/handlers.ts` — action-to-implementation mapping, `executeEditorCommand()`
+- `src/editors/commands/actionHandlers.ts` — action-to-implementation mapping, `executeEditorCommand()`
 - `src/lib/keybindings/resolver.ts` — merge defaults and overrides, conflict detection, context evaluation
 - `src/lib/keybindings/profileRegistry.ts` — maps a profile ID to its base binding set
 - `src/lib/keybindings/contexts.ts` — context-sensitive binding predicates (chord state lives in `src/ui/keybindings/hintStateMachine.ts`)
@@ -75,7 +75,7 @@ Core implementation modules:
 |---|---|---|
 | Action registry | `src/lib/keybindings/actions.ts` | Canonical list of bindable actions with metadata |
 | Default bindings | `src/lib/keybindings/defaults.ts` | Default key-to-action maps per profile |
-| Handler registry | `src/lib/keybindings/handlers.ts` | Action-to-implementation mapping |
+| Handler registry | `src/editors/commands/actionHandlers.ts` | Action-to-implementation mapping |
 | Binding resolver | `src/lib/keybindings/resolver.ts` | Merge defaults and overrides, detect conflicts, evaluate contexts |
 | OS reservations | `src/lib/keybindings/osReserved.ts` | Per-OS and browser-reserved key database |
 | Keyboard layouts | `src/lib/keybindings/layouts/` | Physical-layout metadata for visual labels |

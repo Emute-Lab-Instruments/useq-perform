@@ -101,6 +101,11 @@ export function attachLiveEditStoreBridge(
   mainEditorBridge.attach(view, store);
 }
 
+/** Detach the process-wide bridge during application teardown. */
+export function detachLiveEditStoreBridge(): void {
+  mainEditorBridge.detach();
+}
+
 // ─── Callback factory ─────────────────────────────────────────────────────────
 
 /**

@@ -60,10 +60,6 @@ const MODIFIER_KEYS: Record<string, ModifierName> = {
   Meta: "meta",
 };
 
-function isModifierKey(key: string): boolean {
-  return key in MODIFIER_KEYS;
-}
-
 function modifierName(key: string): ModifierName | undefined {
   return MODIFIER_KEYS[key];
 }

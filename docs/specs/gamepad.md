@@ -527,32 +527,30 @@ const chordLayer: Layer = {
 }
 ```
 
-### 6.5 Picker layer (always present) (see `src/lib/gamepad/paradigms/picker.ts`)
+### 6.5 Radial-menu layer (always present) (see `src/lib/gamepad/paradigms/radial.ts`)
 
-> Ships orthogonal to whichever of 6.1–6.4 the user picks. Activates declaratively whenever a menu or radial picker is open; binds gestures to `picker.*` actions. Same actions are bindable on the keyboard.
+> Ships orthogonal to whichever of 6.1–6.4 the user picks. It activates declaratively while the radial menu is open, maps both sticks to ring angles, and maps face buttons to menu verbs.
 
 ```ts
-const pickerLayer: Layer = {
-  name: 'picker',
-  when: state => state.menu.open,
+const radialLayer: Layer = {
+  name: 'radial-menu',
+  when: () => isMenuOpen(),
   gestures: {
-    [keyOf(tap('Up'))]:    'picker.move.up',
-    [keyOf(tap('Down'))]:  'picker.move.down',
-    [keyOf(tap('Left'))]:  'picker.move.left',
-    [keyOf(tap('Right'))]: 'picker.move.right',
-    [keyOf(tap('A'))]:     'picker.select',
-    [keyOf(tap('B'))]:     'picker.cancel',
-    [keyOf(tap('LB'))]:    'picker.apply.pre',
-    [keyOf(tap('RB'))]:    'picker.apply.replace',
-    [keyOf(tap('LT'))]:    'picker.apply',
-    [keyOf(tap('RT'))]:    'picker.apply.call',
+    [keyOf(tap('LB'))]:   'menu.tab.cyclePrev',
+    [keyOf(tap('RB'))]:   'menu.tab.cycleNext',
+    [keyOf(tap('A'))]:    'menu.verb.insert',
+    [keyOf(tap('X'))]:    'menu.verb.replace',
+    [keyOf(tap('Y'))]:    'menu.verb.wrapWith',
+    [keyOf(tap('B'))]:    'menu.verb.call',
+    [keyOf(tap('Back'))]: 'menu.cancel',
   },
-  axes: { left: 'picker.angle', right: 'picker.angle' },
-  onMiss: 'fall-through',  // bare buttons that have no picker meaning fall through
+  axes: { left: 'menu.left.angle', right: 'menu.right.angle' },
+  mask: true,
+  onMiss: 'pop-and-discard',
 }
 ```
 
-The picker layer sits at the top of the predicate-driven stack when active, masking conflicting bindings in the structural / base layers below.
+The radial layer masks the structural/base layers while active so unbound gestures cannot leak into the editor. Raw shoulder press/release edges also flow to the menu dispatcher for its freeze mechanic.
 
 ### 6.6 Act-on layer (modal-shift extension)
 
