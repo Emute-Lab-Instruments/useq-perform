@@ -41,6 +41,7 @@ import type {
 import type { SharedTransportCommand } from "../contracts/useqRuntimeContract";
 import type { TransportState } from "../machines/transport.machine";
 import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
+import { usesHardwareOnlyNamespace } from "../contracts/runtimeNamespaces.ts";
 import { getAppSettings } from "./appSettingsRepository.ts";
 import type {
   WasmWorkerRequest,
@@ -315,6 +316,9 @@ export function createWasmRuntimeWorkerPort(
       synthArtifacts: import("../contracts/runtimeTypes").SynthArtifactsPayload | null;
     }> {
       if (!isUseqWasmEnabled()) return { result: null, diagnostics: [], synthArtifacts: null };
+      if (usesHardwareOnlyNamespace(code)) {
+        return { result: null, diagnostics: [], synthArtifacts: null };
+      }
       await ensureLoadedInternal();
       const response = await send<
         Extract<WasmWorkerResponse, { type: "evalCodeWithDiagnostics-result" }>
