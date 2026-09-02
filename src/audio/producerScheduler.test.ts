@@ -152,6 +152,7 @@ function buildScheduler(opts: {
   blockRateChannels?: ReadonlyArray<string>;
   lookaheadBlocks?: number;
   renderQuantumFrames?: number;
+  audit?: boolean;
 } = {}): {
   scheduler: ProducerScheduler;
   clock: ReturnType<typeof createFakeClock>;
@@ -173,8 +174,8 @@ function buildScheduler(opts: {
     blockRateChannels: opts.blockRateChannels ?? ["freq", "amp"],
     lookaheadBlocks: opts.lookaheadBlocks ?? CONTROL_LOOKAHEAD_BLOCKS,
     renderQuantumFrames: opts.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES,
-    audit,
   };
+  if (opts.audit !== false) schedulerOpts.audit = audit;
   const scheduler = createProducerScheduler(schedulerOpts);
   return { scheduler, clock, executor, view, map, audit };
 }
@@ -184,6 +185,20 @@ function buildScheduler(opts: {
 // ---------------------------------------------------------------------------
 
 describe("producerScheduler / lookahead publication (VAL-ENGINE-004)", () => {
+  it("reports published blocks without retaining production audit records", () => {
+    const { scheduler, view, map, audit } = buildScheduler({ audit: false });
+    map.start({ atFrame: 0n, atTime: 0 });
+
+    expect(scheduler.iterate()).toBe(0);
+    scheduler.start();
+    view.publishAudioFrame({ frame: 1n, blockFrameOffset: 1 });
+
+    expect(scheduler.iterate()).toBe(CONTROL_LOOKAHEAD_BLOCKS);
+    expect(audit).toHaveLength(0);
+    expect(scheduler.iterate()).toBe(0);
+    scheduler.stop();
+  });
+
   it("publishes CONTROL_LOOKAHEAD_BLOCKS ahead of the current audio frame", () => {
     const { scheduler, view, map } = buildScheduler();
     map.start({ atFrame: 0n, atTime: 0 });

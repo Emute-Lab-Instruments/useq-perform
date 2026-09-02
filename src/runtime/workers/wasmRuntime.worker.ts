@@ -61,7 +61,6 @@ import {
 } from "../../contracts/synthesisControlAbi";
 import {
   createProducerScheduler,
-  type ProducedBlockAudit,
   type ProducerExecutor,
   type ProducerScheduler,
   type ProducerSchedulingClock,
@@ -194,8 +193,6 @@ function rearmProducerControlMapping(
   for (const binding of bindings) producerControlBindings.push({ ...binding });
   rearmProducerChannels(bindings.map((binding) => binding.channelKey));
 }
-const producerAudit: ProducedBlockAudit[] = [];
-
 /**
  * Producer pacing clock. `sleep` blocks on the SAB wake word so each
  * scheduler iteration lines up with a worklet block publication rather
@@ -738,8 +735,6 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           preparedProducerCommit = null;
           lastArmedProducerCommit = null;
           rearmProducerControlMapping(0, []);
-          // Reset the audit so devmode traces reflect this session only.
-          producerAudit.length = 0;
           producerBlocksPublished = 0;
           postResponse({ type: "producerInstallSab-result", id, installed: true });
         } catch (error) {
@@ -836,7 +831,6 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
             request.lookaheadBlocks ?? CONTROL_LOOKAHEAD_BLOCKS,
           renderQuantumFrames:
             request.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES,
-          audit: producerAudit,
         });
         producer.start();
         producerRunning = true;
@@ -849,9 +843,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         producerLoopDriver = createProducerLoopDriver({
           iterate: () => {
             if (!producerRunning || !producer) return;
-            const before = producerAudit.length;
-            producer.iterate();
-            producerBlocksPublished += producerAudit.length - before;
+            producerBlocksPublished += producer.iterate();
           },
           yieldToQueue: (runNext) => {
             // setTimeout(0) is the unconditional macrotask loop budget;

@@ -213,8 +213,10 @@ export interface ProducerScheduler {
    * {@link SynthesisControlView.publishAudioFrame} on the worklet's
    * behalf (or wiring the worklet to publish directly). The producer
    * observes the latest audio frame via `view.audioFrame`.
+   *
+   * @returns The number of blocks published by this iteration.
    */
-  iterate(): void;
+  iterate(): number;
 
   /**
    * Apply external inputs to the NEXT produced block. Inputs are
@@ -348,8 +350,9 @@ export function createProducerScheduler(
     },
 
     iterate() {
-      if (!running) return;
+      if (!running) return 0;
       const startedAt = clock.now();
+      let produced = 0;
 
       // Acquire the latest audio frame published by the worklet.
       const currentFrame = view.audioFrame;
@@ -380,8 +383,10 @@ export function createProducerScheduler(
           break;
         }
         produceOneBlock(nextFrame, slot, epoch, revision);
+        produced += 1;
         lastProducedFrame = nextFrame;
       }
+      return produced;
     },
   };
 }
