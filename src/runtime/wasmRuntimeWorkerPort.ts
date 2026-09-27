@@ -550,10 +550,15 @@ export function createWasmRuntimeWorkerPort(
     },
 
     async readOutputClassifications(): Promise<import("../contracts/runtimePorts").OutputClassification | null> {
-      // Worker port: not yet wired through the worker protocol.
-      // Falls back to null (conservative invalidation) until the worker
-      // protocol is extended.
-      return null;
+      if (!isUseqWasmEnabled()) return null;
+      await ensureLoadedInternal();
+      const response = await send<
+        Extract<WasmWorkerResponse, { type: "readOutputClassifications-result" }>
+      >(
+        { type: "readOutputClassifications" },
+        "readOutputClassifications-result",
+      );
+      return response.classification;
     },
 
     async producerInstallSab(

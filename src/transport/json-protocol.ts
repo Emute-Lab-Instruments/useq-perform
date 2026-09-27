@@ -133,8 +133,11 @@ function serialport(): SerialPort | null {
 
 // ── Protocol accessors ──────────────────────────────────────────────
 
-export function getProtocolMode(): "legacy" | "json" {
-  return protocolState.mode === "json" ? "json" : "legacy";
+export function getProtocolMode(): "negotiating" | "legacy" | "json" {
+  if (protocolState.mode === "negotiating") {
+    return protocolState.negotiationAttempted ? "negotiating" : "legacy";
+  }
+  return protocolState.mode;
 }
 
 export function isJsonProtocolActive(): boolean {
@@ -147,7 +150,9 @@ export function getIoConfig(): IoConfig | null {
 
 export function getConnectedFirmwareIdentity(): ConnectedFirmwareIdentity {
   return {
-    protocolMode: getProtocolMode(),
+    // This identity is consumed only after protocolReady; keep its narrower
+    // contract explicit while the public protocol accessor reports negotiation.
+    protocolMode: protocolState.mode === "json" ? "json" : "legacy",
     firmwareVersion: protocolState.firmwareVersion,
     protocolVersion: protocolState.protocolVersion,
     hardwareTarget: protocolState.hardwareTarget,
@@ -374,15 +379,16 @@ async function sendHelloOnce(): Promise<JsonResponse> {
  * for the current attempt's timeout.
  */
 export async function sendHelloWithRetry(): Promise<void> {
-  protocolState.negotiationAttempted = true;
-  const handshakeDone = createHandshakeSignal();
-  dbg("json-protocol: starting protocol detection");
-
   const initialPort = serialport();
   if (!initialPort?.writable) {
     dbg("json-protocol: port not writable; protocol detection aborted");
     return;
   }
+
+  protocolState.negotiationAttempted = true;
+  const handshakeDone = createHandshakeSignal();
+  dbg("json-protocol: starting protocol detection");
+  _ctx?.emitConnectionChanged();
 
   const legacyIdentity = await Promise.race([
     probeLegacyFirmware(

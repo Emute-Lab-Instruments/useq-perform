@@ -1,9 +1,10 @@
 /** Production wiring for Web MIDI input, learn, routing, and live-edit values. */
 import { createMidiInputService } from "./midiInput.ts";
-import { createMidiLearnController } from "./midiLearnController.ts";
+import { createMidiLearnController, type ConflictInfo } from "./midiLearnController.ts";
 import { createMidiRouter } from "./midiRouter.ts";
 import { liveEditOnValueChange, liveEditPersistence, liveEditStore } from "./liveEditRuntime.ts";
-import type { MidiBinding } from "../contracts/midi.ts";
+import { notify } from "../contracts/toastChannels.ts";
+import type { MidiBinding, MidiSource } from "../contracts/midi.ts";
 
 export const midiInput = createMidiInputService();
 
@@ -48,11 +49,44 @@ function sameSource(a: MidiBinding["source"], b: MidiBinding["source"]): boolean
 
 let stopListening: (() => void) | undefined;
 
+/** Compact source label for the conflict toast (live-edit.md §5.10, e.g. "CC74"). */
+function sourceLabel(source: MidiSource): string {
+  return source.kind === "cc" ? `CC${source.controller}` : `note ${source.note}`;
+}
+
+function slotName(slotId: string): string {
+  return liveEditStore.getSlot(slotId)?.name ?? slotId;
+}
+
+/**
+ * Revert a conflict back to the pre-bind state in one action (§5.10):
+ * the target slot loses the learned source, and both its previous binding
+ * (if any) and the displaced slot's binding are restored.
+ */
+function revertConflict(conflict: ConflictInfo): void {
+  liveEditPersistence.removeBinding(conflict.slotId);
+  if (conflict.replacedBinding) {
+    liveEditPersistence.saveBinding(conflict.replacedBinding.slotId, conflict.replacedBinding.source);
+  }
+  liveEditPersistence.saveBinding(conflict.previousSlotId, conflict.source);
+}
+
+/** §5.10: binding a source that is already bound moves it and offers Undo. */
+function showConflictToast(conflict: ConflictInfo): void {
+  notify({
+    message: `${sourceLabel(conflict.source)} moved from \`${slotName(conflict.previousSlotId)}\` to \`${slotName(conflict.slotId)}\`.`,
+    kind: "info",
+    durationMs: 6000,
+    action: { label: "Undo", run: () => revertConflict(conflict) },
+  });
+}
+
 /** Attach message routing for the application-root lifetime. */
 export function startLiveEditMidiRuntime(): () => void {
   if (stopListening) return stopListening;
   const unsubscribe = midiInput.onMessage((message) => {
-    midiLearnController.handleMessage(message);
+    const conflict = midiLearnController.handleMessage(message);
+    if (conflict) showConflictToast(conflict);
     for (const update of midiRouter.route(message)) {
       liveEditOnValueChange(update.slotId, update.value);
     }

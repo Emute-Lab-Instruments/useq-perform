@@ -411,7 +411,7 @@ describe("serialComms fake host harness", () => {
   it("reports error and stays in negotiating state when all hello retries time out", async () => {
     // Under the compatibility spec, one 700 ms legacy-safe probe precedes
     // three hello attempts at 700 ms each. If none succeed, the editor posts an error and stays
-    // in the pre-JSON mode (getProtocolMode returns "legacy" for any non-JSON state).
+    // in the explicit negotiation state, not mislabeled as legacy.
     const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
     port.disableResponses.add("hello");
@@ -426,6 +426,9 @@ describe("serialComms fake host harness", () => {
       port as unknown as SerialPort
     );
 
+    await flushProtocolWork();
+    expect(serialComms.getProtocolMode()).toBe("negotiating");
+
     // Advance past the full probe/retry budget.
     await vi.advanceTimersByTimeAsync(3000);
     await flushProtocolWork();
@@ -433,8 +436,8 @@ describe("serialComms fake host harness", () => {
     // Now the connect promise should have resolved.
     expect(await connectPromise).toBe(true);
 
-    expect(serialComms.getProtocolMode()).toBe("legacy");
-    expect(protocolEvents.some((e) => e.protocolMode === "legacy")).toBe(true);
+    expect(serialComms.getProtocolMode()).toBe("negotiating");
+    expect(protocolEvents.some((e) => e.protocolMode === "negotiating")).toBe(true);
     // An error should have been posted to the console.
     expect(postMock).toHaveBeenCalledWith(
       expect.stringContaining("did not respond to hello"),

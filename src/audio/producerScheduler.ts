@@ -118,6 +118,17 @@ export interface ProducerExecutor {
     time: number,
     inputs: Record<string, number>,
   ): Record<string, number>;
+
+  /** Read-only row-major control samples; rows follow `controlIndices`. */
+  sampleSynthControls?(
+    controlIndices: readonly number[],
+    sampleTimes: readonly number[],
+  ): Float64Array | null;
+}
+
+export interface ProducerRateBinding {
+  readonly channelKey: string;
+  readonly compilerControlIndex: number;
 }
 
 /**
@@ -157,6 +168,8 @@ export interface ProducerSchedulerOptions {
   readonly map: TransportFrameMap;
   /** Block-rate channel names, in declared order. */
   readonly blockRateChannels: readonly string[];
+  readonly fastRateBindings?: readonly ProducerRateBinding[];
+  readonly eventBindings?: readonly ProducerRateBinding[];
   /** Lookahead in blocks (default {@link CONTROL_LOOKAHEAD_BLOCKS}). */
   readonly lookaheadBlocks?: number;
   /** Render quantum in frames per block (default 128). */
@@ -269,6 +282,7 @@ export function createProducerScheduler(
   let blockIndex = 0;
   let lastProducedFrame = -1n;
   let pendingInputs: Record<string, number> = {};
+  const previousLatchValues = new Map<number, number>();
 
   // Bounded per-iteration budget. The scheduler MUST leave the host
   // responsive inside PRODUCER_POLL_INTERVAL_MS.
@@ -296,6 +310,70 @@ export function createProducerScheduler(
       } else {
         // Non-finite values are replaced with zero per synthesis.md §4.9.
         view.writeBlockRateValue(slot, i, 0);
+      }
+    }
+    const points = view.fastPointsPerBlock;
+    const fastBindings = options.fastRateBindings ?? [];
+    for (let channel = 0; channel < fastBindings.length; channel += 1) {
+      for (let point = 0; point < points; point += 1) {
+        view.writeFastRateValue(slot, channel, point, 0);
+      }
+    }
+    const eventBindings = options.eventBindings ?? [];
+    for (let channel = 0; channel < eventBindings.length; channel += 1) {
+      view.setEventCount(slot, channel, 0);
+    }
+    if (fastBindings.length > 0 && executor.sampleSynthControls) {
+      const times = Array.from({ length: points }, (_, point) =>
+        map.sample(frame + BigInt(Math.floor(
+          point * renderQuantumFrames / points,
+        ))),
+      );
+      const samples = executor.sampleSynthControls(
+        fastBindings.map((binding) => binding.compilerControlIndex), times,
+      );
+      if (samples && samples.length === fastBindings.length * points) {
+        for (let channel = 0; channel < fastBindings.length; channel += 1) {
+          for (let point = 0; point < points; point += 1) {
+            const value = samples[channel * points + point];
+            view.writeFastRateValue(
+              slot, channel, point, Number.isFinite(value) ? value : 0,
+            );
+          }
+        }
+      }
+    }
+    if (eventBindings.length > 0 && executor.sampleSynthControls) {
+      const times = Array.from({ length: renderQuantumFrames }, (_, offset) =>
+        map.sample(frame + BigInt(offset)),
+      );
+      const samples = executor.sampleSynthControls(
+        eventBindings.map((binding) => binding.compilerControlIndex), times,
+      );
+      if (samples && samples.length === eventBindings.length * renderQuantumFrames) {
+        for (let channel = 0; channel < eventBindings.length; channel += 1) {
+          const binding = eventBindings[channel]!;
+          let prior = previousLatchValues.get(binding.compilerControlIndex);
+          let count = 0;
+          let overflow = false;
+          for (let offset = 0; offset < renderQuantumFrames; offset += 1) {
+            const raw = samples[channel * renderQuantumFrames + offset];
+            const value = Number.isFinite(raw) ? raw : 0;
+            if (prior !== undefined && value !== prior) {
+              if (count < view.eventSlotsPerChannel) {
+                view.writeEvent(slot, channel, count++, { value, frameOffset: offset });
+              } else {
+                overflow = true;
+              }
+            }
+            prior = value;
+          }
+          if (prior !== undefined) previousLatchValues.set(binding.compilerControlIndex, prior);
+          // A partial edge stream can leave a gate in the wrong state. If the
+          // bounded per-channel record area overflows, reject the channel's
+          // complete event list for this block before publishing the slot.
+          view.setEventCount(slot, channel, overflow ? 0 : count);
+        }
       }
     }
     // Tag the block with the current epoch / revision.
@@ -328,6 +406,7 @@ export function createProducerScheduler(
       blockIndex = 0;
       lastProducedFrame = -1n;
       pendingInputs = {};
+      previousLatchValues.clear();
     },
 
     stop() {
@@ -343,6 +422,7 @@ export function createProducerScheduler(
     reanchor() {
       view.discardQueuedBlocks();
       lastProducedFrame = -1n;
+      previousLatchValues.clear();
     },
 
     processInbox(processOne) {

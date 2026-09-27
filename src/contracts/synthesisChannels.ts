@@ -77,7 +77,7 @@ export const ENGINE_STATE_REASONS = Object.freeze({
   WORKLET_CONTROL_ATTACH_FAILED:
     "The audio worklet rejected the control buffer. Reload to refresh the worklet bundle.",
   WORKLET_TRAP:
-    "The audio worklet reported a trap. Output has been faded to silence.",
+    "A NodeDef trapped during compute. That node was silenced; sibling nodes continue and the failed node retries.",
   OVERLOAD:
     "The audio thread missed its deadline repeatedly. Output has been faded to silence.",
   RECOVERY_FAILED:

@@ -188,7 +188,7 @@ describe("visualisation sampling boundary", () => {
   describe("pure history backfill after background suspension", () => {
     async function setup(outputClass = 1) {
       portState.readOutputClassifications.mockResolvedValue({
-        classes: [outputClass], inputMasks: [0],
+        classes: [outputClass], inputMasks: [0], outputHealth: {}, semanticEffects: [0],
       });
       const sampler = await import("./visualisationSampler.ts");
       const { visStore } = await import("../utils/visualisationStore.ts");

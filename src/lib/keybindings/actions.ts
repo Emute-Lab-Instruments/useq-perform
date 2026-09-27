@@ -91,6 +91,11 @@ export const actions = {
     reversible: false,
     icon: "target",
   },
+  "calibration.begin": {
+    description: "Begin CV output calibration (opens the picker; needs a connected module)",
+    category: "ui",
+    reversible: false,
+  },
 
   // -- Vis (expression-gutter.md §4.1) --------------------------------------
 
@@ -821,6 +826,11 @@ export const actions = {
 
   // -- Live-Edit ------------------------------------------------------------
 
+  "liveEdit.panel.toggle": {
+    description: "Toggle the dockable live-edit panel",
+    category: "ui",
+    reversible: false,
+  },
   "liveEdit.mark": {
     description:
       "Toggle live-edit on the cursor's literal: wrap if bare, replace with current value if already wrapped",

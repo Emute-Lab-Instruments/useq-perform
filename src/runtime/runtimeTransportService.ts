@@ -10,6 +10,7 @@ import {
   supportsHardwareTransport,
   supportsWasmTransport,
 } from "./runtimeSession";
+import { getActiveSynthesisService } from "./activeSynthesisService";
 
 // ── Active port resolution ─────────────────────────────────────
 //
@@ -91,11 +92,17 @@ export async function updateRuntimeWasmAudioTransport(
         atTime?: number;
       }) => Promise<number>;
     };
-    if (!port.producerTransportUpdate) return;
-    const telemetry = await port.producerReadTelemetry?.();
-    const rawFrame = telemetry?.audioFrame ?? 0n;
-    const atFrame = typeof rawFrame === "bigint" ? rawFrame : BigInt(Math.max(0, Math.trunc(rawFrame)));
-    await port.producerTransportUpdate({ transition, atFrame });
+    if (port.producerTransportUpdate) {
+      const telemetry = await port.producerReadTelemetry?.();
+      const rawFrame = telemetry?.audioFrame ?? 0n;
+      const atFrame = typeof rawFrame === "bigint" ? rawFrame : BigInt(Math.max(0, Math.trunc(rawFrame)));
+      await port.producerTransportUpdate({ transition, atFrame });
+    }
+    const synthesis = getActiveSynthesisService();
+    if (transition === "pause") await synthesis?.pauseForTransport();
+    else if (transition === "resume" || transition === "start") {
+      await synthesis?.resumeForTransport();
+    } else if (transition === "stop") synthesis?.stopForTransport();
   } catch {
     // Audio is an optional runtime capability; transport command delivery
     // remains owned by the existing hardware/WASM command path.

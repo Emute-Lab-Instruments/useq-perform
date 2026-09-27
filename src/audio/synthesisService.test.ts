@@ -173,7 +173,6 @@ describe("synthesisService worklet fault reasons", () => {
   beforeEach(() => resetEngineStateStoreForTests());
 
   it.each([
-    ["WORKLET_TRAP", "engine-fault"],
     ["OVERLOAD", "engine-fault"],
   ] as const)("transitions to error for %s", async (reason, type) => {
     const bundle = buildOptions();
@@ -182,6 +181,17 @@ describe("synthesisService worklet fault reasons", () => {
     bundle.workletNode.deliverFromWorklet({ type, reason, atBlock: 8 });
     expect(service.state).toBe("error");
     expect(engineStateStore.current.reasonKey).toBe(reason);
+    await service.dispose();
+  });
+
+  it("keeps the engine running after a contained node trap", async () => {
+    const bundle = buildOptions();
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+    bundle.workletNode.deliverFromWorklet({
+      type: "engine-fault", reason: "WORKLET_TRAP", atBlock: 1, identity: "lead",
+    });
+    expect(service.state).toBe("running");
     await service.dispose();
   });
 });
@@ -332,6 +342,47 @@ describe("synthesisService — four-state lifecycle (VAL-ENGINE-016)", () => {
 
     expect(service.state).toBe("suspended");
     expect(engineStateStore.current.reasonKey).toBe("AWAITING_USER_ACTIVATION");
+    await service.dispose();
+  });
+
+  it("fades before transport pause, resumes, and release-fades on stop", async () => {
+    const bundle = buildOptions();
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+    await service.pauseForTransport();
+    expect(bundle.workletNode.postedMessages).toContainEqual({ type: "transport-pause" });
+    expect(bundle.audioContext.state).toBe("suspended");
+    expect(service.state).toBe("suspended");
+    await service.resumeForTransport();
+    expect(bundle.workletNode.postedMessages).toContainEqual({ type: "transport-resume" });
+    expect(service.state).toBe("running");
+    service.stopForTransport();
+    expect(bundle.workletNode.postedMessages).toContainEqual({ type: "transport-stop" });
+    await service.dispose();
+  });
+
+  it("never brings the engine up from off on transport play (§6.5)", async () => {
+    const bundle = buildOptions();
+    let contextsCreated = 0;
+    bundle.options.audioContextFactory = () => {
+      contextsCreated += 1;
+      return bundle.audioContext;
+    };
+    const service = createSynthesisService(bundle.options);
+    await service.resumeForTransport();
+    expect(contextsCreated).toBe(0);
+    expect(service.state).toBe("off");
+    await service.dispose();
+  });
+
+  it("does not resume a suspension that transport pause did not cause", async () => {
+    const bundle = buildOptions();
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+    await bundle.audioContext.suspend();
+    expect(service.state).toBe("suspended");
+    await service.resumeForTransport();
+    expect(service.state).toBe("suspended");
     await service.dispose();
   });
 

@@ -87,6 +87,7 @@ import {
   CONTROL_LOOKAHEAD_BLOCKS,
   DEFAULT_BLOCK_RATE_COUNT,
   DEFAULT_RENDER_QUANTUM_FRAMES,
+  EMERGENCY_FADE_MS,
   MAX_SYNTH_NODES,
   PRODUCER_FIRST_PUBLISH_DEADLINE_MS,
   attachSynthesisControlView,
@@ -649,6 +650,13 @@ export interface SynthesisService {
    */
   resumeOnUserActivation(): Promise<boolean>;
 
+  /** Fade output then suspend the AudioContext for transport pause. */
+  pauseForTransport(): Promise<void>;
+  /** Resume the AudioContext and fade output back in for transport play. */
+  resumeForTransport(): Promise<void>;
+  /** Release-fade all live nodes while retaining the graph. */
+  stopForTransport(): void;
+
   /**
    * Rebuild failed engine resources and leave the engine suspended.
    * This is the explicit error-indicator action; unlike autoplay, it is
@@ -827,6 +835,9 @@ function createUnavailableService(
       // Audio is unavailable; resume is a no-op.
       return false;
     },
+    async pauseForTransport() {},
+    async resumeForTransport() {},
+    stopForTransport() {},
     async recoverFromError() {
       return false;
     },
@@ -901,6 +912,8 @@ function createCapableService(
   };
 
   let currentState: SynthesisEngineState = "off";
+  /** True while the context is suspended by `pauseForTransport`. */
+  let suspendedByTransport = false;
   let currentReasonKey: EngineStateReasonKey | null = null;
   let currentReasonMessage: string | null = null;
   let audioContext: AudioContextContract | null = null;
@@ -1557,12 +1570,10 @@ function createCapableService(
     }
     if (evt.type === "engine-fault") {
       const fault = data as WorkletEngineFaultEvent;
+      if (fault.reason === "WORKLET_TRAP") return;
       if (!disposed && currentState !== "error") {
-        const detail = fault.reason === "WORKLET_TRAP" && fault.identity
-          ? ` for node ${fault.identity}`
-          : "";
         transition("error", fault.reason,
-          `${ENGINE_STATE_REASONS[fault.reason]}${detail}`);
+          ENGINE_STATE_REASONS[fault.reason]);
       }
       return;
     }
@@ -1692,6 +1703,35 @@ function createCapableService(
     },
     get telemetry() {
       return snapshotTelemetry();
+    },
+
+    async pauseForTransport() {
+      if (disposed || !audioContext || !workletNode || currentState !== "running") return;
+      workletNode.port.postMessage({ type: "transport-pause" });
+      suspendedByTransport = true;
+      await new Promise<void>((resolve) => setTimeout(resolve, EMERGENCY_FADE_MS));
+      if (audioContext && !disposed) await audioContext.suspend();
+    },
+
+    async resumeForTransport() {
+      if (disposed) return;
+      if (currentState === "running") {
+        suspendedByTransport = false;
+        workletNode?.port.postMessage({ type: "transport-resume" });
+        return;
+      }
+      // Only undo a suspension that transport pause caused. Transport play
+      // must never bring the engine up from `off` (§6.5: output-only
+      // programs do not create an AudioContext), and other suspensions
+      // resume through the activation path.
+      if (!suspendedByTransport) return;
+      suspendedByTransport = false;
+      const resumed = await service.resumeOnUserActivation();
+      if (resumed) workletNode?.port.postMessage({ type: "transport-resume" });
+    },
+
+    stopForTransport() {
+      if (!disposed) workletNode?.port.postMessage({ type: "transport-stop" });
     },
 
     async resumeOnUserActivation() {

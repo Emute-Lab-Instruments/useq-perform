@@ -39,10 +39,16 @@ export interface LiveEditPanelAdapterDeps {
 }
 
 let externalToggle: (() => void) | undefined;
+let externalLearnAll: (() => void) | undefined;
 
 /** Imperative action target for toolbar and keybinding adapters. */
 export function toggleLiveEditPanel(): void {
   externalToggle?.();
+}
+
+/** Imperative action target for the toolbar's LEARN ALL button (live-edit.md §5.8.2). */
+export function startLiveEditLearnAll(): void {
+  externalLearnAll?.();
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,7 +113,17 @@ export function WiredLiveEditPanel(deps: LiveEditPanelAdapterDeps) {
       setIsOpen(open);
       deps.persistence.savePanelState({ open });
     };
+    // §5.8.2 batch learn reports its progress through the panel banner, so
+    // make sure the panel is visible before arming the cards.
+    externalLearnAll = () => {
+      if (!isOpen()) {
+        setIsOpen(true);
+        deps.persistence.savePanelState({ open: true });
+      }
+      handleStartLearnAll();
+    };
     onCleanup(() => { externalToggle = undefined; });
+    onCleanup(() => { externalLearnAll = undefined; });
     const unsubscribe = deps.learnController.onStateChanged((state) => {
       setLearnState(state);
       setBindings(bindingsMap(deps.persistence.load().midiBindings));

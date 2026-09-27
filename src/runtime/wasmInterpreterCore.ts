@@ -1,5 +1,6 @@
 import {
   OPTIONAL_WASM_EXPORTS,
+  REQUIRED_WASM_EXPORTS,
   probeOptionalWasmExport,
   type CwrapDescriptor,
 } from "../contracts/wasmAbi";
@@ -36,6 +37,69 @@ export function readAndFreeCString(
   } finally {
     module._free(pointer);
   }
+}
+
+export interface RequiredWasmExports {
+  initialize(): void;
+  evaluate(code: string): string;
+  updateTime(seconds: number): void;
+  evaluateOutputAtTime(name: string, seconds: number): number;
+}
+
+/** Bind the shared, required interpreter ABI used by both runtime adapters. */
+export function bindRequiredWasmExports(
+  module: EmscriptenModule,
+): RequiredWasmExports {
+  const bind = (key: keyof typeof REQUIRED_WASM_EXPORTS) => {
+    const descriptor = REQUIRED_WASM_EXPORTS[key];
+    return module.cwrap(
+      descriptor.symbol,
+      descriptor.returnType,
+      descriptor.argTypes as unknown as string[],
+    );
+  };
+
+  const initialize = bind("useq_init") as () => void;
+  const evaluatePointer = bind("useq_eval") as (code: string) => number;
+  const update = bind("useq_update_time") as (seconds: number) => void;
+  const evaluateOutput = bind("useq_eval_output") as (
+    name: string,
+    seconds: number,
+  ) => number;
+
+  return {
+    initialize,
+    evaluate: (code) => readAndFreeCString(module, evaluatePointer(code)),
+    updateTime: (seconds) => update(Number(seconds) || 0),
+    evaluateOutputAtTime: (name, seconds) => {
+      const value = evaluateOutput(name, Number(seconds) || 0);
+      return Number.isNaN(value) ? Number.NaN : value;
+    },
+  };
+}
+
+export interface WasmDiagnosticReaders {
+  last?: () => string;
+  active?: () => string;
+}
+
+/** Bind optional diagnostic readers consistently for main-thread and Worker adapters. */
+export function bindWasmDiagnosticReaders(
+  module: EmscriptenModule,
+): WasmDiagnosticReaders {
+  const last = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_last_diagnostics,
+  ) as (() => number) | null;
+  const active = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_active_diagnostics,
+  ) as (() => number) | null;
+
+  return {
+    last: last ? () => readAndFreeCString(module, last()) : undefined,
+    active: active ? () => readAndFreeCString(module, active()) : undefined,
+  };
 }
 
 export function bindOptionalCwrap(

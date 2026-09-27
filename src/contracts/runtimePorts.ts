@@ -241,6 +241,10 @@ export interface OutputClassification {
   classes: OutputClass[];
   /** Per-output bitmask of referenced hardware input channels. */
   inputMasks: number[];
+  /** Runtime health state (0 idle, 1 running, 2 fallback, 3 error) by output name. */
+  outputHealth: Record<string, number>;
+  /** Program semantic-effect bitmask for each output index (0–41). */
+  semanticEffects: number[];
 }
 
 /** Metadata for a live-edit slot returned from the WASM runtime. */

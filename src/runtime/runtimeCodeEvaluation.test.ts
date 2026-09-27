@@ -6,7 +6,7 @@ import type {
 import type { TransportMode } from "../contracts/runtimeTypes.ts";
 import { createRuntimeCodeEvaluationDispatcher } from "./runtimeCodeEvaluation.ts";
 
-function runtimeState(mode: TransportMode, protocolMode: "legacy" | "json" = "json") {
+function runtimeState(mode: TransportMode, protocolMode: "negotiating" | "legacy" | "json" = "json") {
   const hasHardwareConnection = mode === "hardware" || mode === "both";
   const wasmEnabled = mode === "wasm" || mode === "both";
   return {
@@ -104,6 +104,25 @@ describe("runtime code evaluation authority", () => {
     await dispatch({ code: "(a1 1)" });
     expect(p.hardwareEval).toHaveBeenCalledOnce();
     expect(p.wasmEval).not.toHaveBeenCalled();
+  });
+
+  it("keeps WASM eval active while negotiating and preserves the hardware warning rejection", async () => {
+    const p = ports();
+    p.hardwareEval.mockRejectedValueOnce(
+      new Error("Firmware protocol negotiation is still in progress"),
+    );
+    const dispatch = createRuntimeCodeEvaluationDispatcher({
+      getSessionState: () => runtimeState("both", "negotiating"),
+      getWasmPort: () => p.wasm,
+      hardwarePort: p.hardware,
+    });
+
+    const result = await dispatch({ code: "(a1 1)" });
+
+    expect(p.wasmEval).toHaveBeenCalledOnce();
+    expect(p.hardwareEval).toHaveBeenCalledOnce();
+    expect(result.wasm?.status).toBe("fulfilled");
+    expect(result.hardware?.status).toBe("rejected");
   });
 
   it("compile-checks bindings before sending them to hardware", async () => {

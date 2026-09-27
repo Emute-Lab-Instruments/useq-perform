@@ -30,6 +30,7 @@ import {
 } from "../../runtime/runtimeService";
 import { toggleChromePanel } from "./panels";
 import { toggleVisualisationPanel } from "./visualisationPanel";
+import { startLiveEditLearnAll, toggleLiveEditPanel } from "./liveEditPanel.tsx";
 import { getTransportOrchestrator } from "../../effects/transportOrchestrator";
 import { getActiveWasmRuntimePort } from "../../runtime/activeWasmRuntimePort";
 import { useActorSignal } from "../../lib/useActorSignal";
@@ -50,6 +51,7 @@ import { beginCalibration } from "./calibrationRuntime.ts";
 const MAIN_TOOLBAR_ACTIONS: Partial<Record<MainToolbarAction, ActionId>> = {
   graph: "panel.vis",
   help: "panel.help",
+  liveEdit: "liveEdit.panel.toggle",
 };
 const TRANSPORT_TOOLBAR_ACTIONS: Partial<Record<TransportAction, ActionId>> = {};
 
@@ -158,9 +160,11 @@ function deriveConnectionState(snapshot: ReturnType<typeof getRuntimeServiceSnap
 }
 
 export function WiredMainToolbar() {
+  const initialRuntimeState = getRuntimeServiceSnapshot();
   const [connectionState, setConnectionState] = createSignal<ConnectionState>(
-    deriveConnectionState(getRuntimeServiceSnapshot())
+    deriveConnectionState(initialRuntimeState)
   );
+  const [protocolMode, setProtocolMode] = createSignal(initialRuntimeState.protocolMode);
   const [shortcuts, setShortcuts] = createSignal<Partial<Record<MainToolbarAction, string>>>({});
 
   // Adapter owns the channel subscription; child just registers a callback.
@@ -170,6 +174,7 @@ export function WiredMainToolbar() {
     setShortcuts(resolveToolbarShortcuts(MAIN_TOOLBAR_ACTIONS, lookupLiveBinding, isMac()));
     const unsubRuntimeService = subscribeRuntimeService((nextState) => {
       setConnectionState(deriveConnectionState(nextState));
+      setProtocolMode(nextState.protocolMode);
     });
     const unsubAnimateConnect = animateConnectChannel.subscribe(() => {
       animateCallback?.();
@@ -183,6 +188,7 @@ export function WiredMainToolbar() {
   return (
     <MainToolbar
       connectionState={connectionState()}
+      protocolMode={protocolMode()}
       shortcuts={shortcuts()}
       onConnect={() => toggleRuntimeConnection()}
       onToggleGraph={() => toggleVisualisationPanel()}
@@ -190,6 +196,8 @@ export function WiredMainToolbar() {
       onSaveCode={() => saveCode(editor())}
       onFontSizeUp={() => adjustFontSize(editor(), 1)}
       onFontSizeDown={() => adjustFontSize(editor(), -1)}
+      onToggleLiveEditPanel={() => toggleLiveEditPanel()}
+      onStartLearnAll={() => startLiveEditLearnAll()}
       onBeginCalibration={() => { beginCalibration(); }}
       onSettings={() => toggleChromePanel("settings")}
       onHelp={() => toggleChromePanel("help")}

@@ -91,6 +91,16 @@ describe("MainToolbar", () => {
     expect(CONNECTION_DESCRIPTIONS.both).toMatch(/Click to disconnect/);
   });
 
+  it("shows protocol negotiation in the connection indicator", () => {
+    const { container } = render(() => (
+      <MainToolbar {...defaultProps({ connectionState: "both", protocolMode: "negotiating" })} />
+    ));
+    const button = chip(container);
+    expect(container.querySelector(".connection-chip-label")?.textContent)
+      .toBe("Connecting to uSEQ…");
+    expect(button.getAttribute("aria-label")).toContain("protocol handshake is in progress");
+  });
+
   it("calls onConnect when the connection chip is clicked", () => {
     const onConnect = vi.fn();
     const { container } = render(() => <MainToolbar {...defaultProps({ onConnect })} />);
@@ -168,5 +178,43 @@ describe("MainToolbar", () => {
     render(() => <MainToolbar {...defaultProps({ onAnimateConnect })} />);
     expect(onAnimateConnect).toHaveBeenCalledOnce();
     expect(typeof onAnimateConnect.mock.calls[0][0]).toBe("function");
+  });
+
+  // live-edit.md §5.1.5 / §5.8.2 — panel toggle and LEARN ALL sit in the View group.
+  it("renders the live-edit panel toggle with LEARN ALL next to it", () => {
+    const { container } = render(() => <MainToolbar {...defaultProps()} />);
+    const view = container.querySelector(".toolbar-group-view");
+    const buttons = Array.from(view?.querySelectorAll("button") ?? []);
+    const toggle = buttons.find((b) => b.getAttribute("aria-label") === "Live-edit panel");
+    const learnAll = buttons.find((b) => b.getAttribute("aria-label") === "LEARN ALL");
+    expect(toggle).toBeTruthy();
+    // §5.8.2: LEARN ALL is next to the panel toggle.
+    expect(buttons.indexOf(learnAll!)).toBe(buttons.indexOf(toggle!) + 1);
+  });
+
+  it("clicking the live-edit toggle fires onToggleLiveEditPanel", () => {
+    const onToggleLiveEditPanel = vi.fn();
+    const { container } = render(() => (
+      <MainToolbar {...defaultProps({ onToggleLiveEditPanel })} />
+    ));
+
+    const btn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.getAttribute("aria-label") === "Live-edit panel",
+    ) as HTMLButtonElement;
+    btn.click();
+    expect(onToggleLiveEditPanel).toHaveBeenCalledOnce();
+  });
+
+  it("clicking LEARN ALL fires onStartLearnAll", () => {
+    const onStartLearnAll = vi.fn();
+    const { container } = render(() => (
+      <MainToolbar {...defaultProps({ onStartLearnAll })} />
+    ));
+
+    const btn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.getAttribute("aria-label") === "LEARN ALL",
+    ) as HTMLButtonElement;
+    btn.click();
+    expect(onStartLearnAll).toHaveBeenCalledOnce();
   });
 });

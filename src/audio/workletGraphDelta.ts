@@ -123,8 +123,10 @@ export interface WorkletAudioInputWiring {
 export interface WorkletControlChannel {
   /** NodeDef param name (e.g. `"freq"`). */
   readonly param: string;
-  /** Absolute block-rate SAB channel index. */
+  /** Absolute channel index in the SAB rate family named by `rate`. */
   readonly channel: number;
+  readonly rate?: "block" | "fast" | "event";
+  readonly smoothing?: "step" | "linear" | "slew" | "latch";
 }
 
 // ---------------------------------------------------------------------------

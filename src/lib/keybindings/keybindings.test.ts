@@ -26,6 +26,13 @@ vi.mock("../../editors/extensions/probes.ts", () => ({
 vi.mock("../../editors/extensions/structure/adapter/dispatcher.ts", () => ({
   dispatchAction: vi.fn(() => true),
 }));
+vi.mock("../../ui/adapters/calibrationRuntime.ts", () => ({
+  beginCalibration: vi.fn(() => true),
+}));
+vi.mock("../../ui/adapters/liveEditPanel.tsx", () => ({
+  toggleLiveEditPanel: vi.fn(),
+  startLiveEditLearnAll: vi.fn(),
+}));
 
 // Import handlers after mocks are registered
 import { handlers } from "../../editors/commands/actionHandlers.ts";
@@ -96,6 +103,24 @@ describe("Default bindings reference valid actions", () => {
       expect(allActionIds).toContain(binding.action);
     });
   }
+
+  // calibration.md §2.1 / live-edit.md §5.1.5 — round-3 errata wiring:
+  // both actions are registered and routed, and the panel toggle ships a
+  // default keybinding.
+  it("calibration.begin is registered and routed", () => {
+    expect(actions["calibration.begin"]).toBeDefined();
+    expect(handlers["calibration.begin"]).toBeDefined();
+  });
+
+  it("liveEdit.panel.toggle is registered, routed, and bound by default", () => {
+    expect(actions["liveEdit.panel.toggle"]).toBeDefined();
+    expect(handlers["liveEdit.panel.toggle"]).toBeDefined();
+    expect(
+      defaultKeyBindings.some(
+        (b) => b.action === "liveEdit.panel.toggle" && b.key === "Alt-l",
+      ),
+    ).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -242,6 +267,7 @@ describe("Default keyboard binding key snapshot", () => {
         "Alt-f",
         "Alt-g",
         "Alt-h",
+        "Alt-l",
         "Alt-o g",
         "Alt-o h",
         "Alt-o p",

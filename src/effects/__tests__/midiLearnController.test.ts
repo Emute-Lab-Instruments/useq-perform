@@ -241,11 +241,32 @@ describe("conflict resolution", () => {
     expect(bindings.get("slotB")?.source).toEqual({
       kind: "cc", channel: 1, controller: 74,
     });
-    // Conflict info returned
+    // Conflict info returned — carries everything the §5.10 Undo needs.
     expect(conflict).toEqual<ConflictInfo>({
       previousSlotId: "slotA",
       source: { kind: "cc", channel: 1, controller: 74 },
+      slotId: "slotB",
     });
+  });
+
+  it("reports the target slot's prior binding so undo can restore it", () => {
+    const { config, bindings } = makeConfig({
+      initialBindings: [
+        { slotId: "slotA", source: { kind: "cc", channel: 1, controller: 74 } },
+        { slotId: "slotB", source: { kind: "cc", channel: 1, controller: 20 } },
+      ],
+    });
+    const ctrl = createMidiLearnController(config);
+
+    ctrl.startSingle("slotB");
+    const conflict = ctrl.handleMessage(cc(74, 64, 1));
+
+    expect(conflict?.slotId).toBe("slotB");
+    expect(conflict?.replacedBinding).toEqual({
+      slotId: "slotB",
+      source: { kind: "cc", channel: 1, controller: 20 },
+    });
+    expect(bindings.get("slotB")?.source).toEqual({ kind: "cc", channel: 1, controller: 74 });
   });
 
   it("no conflict when re-learning the same slot", () => {

@@ -37,6 +37,8 @@ export const defaultKeyBindings: KeyBinding[] = [
   // -- Panel toggles (from useq_keymap) -------------------------------------
   { action: "panel.help", key: "Alt-/", preventDefault: true },
   { action: "panel.vis", key: "Alt-g", preventDefault: true },
+  // live-edit.md §5.1.5 — panel toggle keybinding (L for Live edits).
+  { action: "liveEdit.panel.toggle", key: "Alt-l", preventDefault: true },
   { action: "vis.screenshot", key: "Alt-o g", preventDefault: true },
 
   // -- Documentation (from useq_keymap) -------------------------------------

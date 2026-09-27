@@ -22,6 +22,7 @@ import type { TransportState } from "../../machines/transport.machine";
 import type { SharedTransportCommand } from "../../contracts/useqRuntimeContract";
 import type {
   LiveSlotMetadata,
+  OutputClassification,
   RuntimeDiagnostic,
   SynthArtifactsPayload,
   TickAndProjectResult,
@@ -119,6 +120,11 @@ export interface ReadLastDiagnosticsRequest {
 
 export interface ReadActiveDiagnosticsRequest {
   type: "readActiveDiagnostics";
+  id: number;
+}
+
+export interface ReadOutputClassificationsRequest {
+  type: "readOutputClassifications";
   id: number;
 }
 
@@ -333,6 +339,7 @@ export type WasmWorkerRequest =
   | SendTransportCommandRequest
   | ReadLastDiagnosticsRequest
   | ReadActiveDiagnosticsRequest
+  | ReadOutputClassificationsRequest
   | SetFailureModeRequest
   | SetLiveInputsRequest
   | SetHwInputValueRequest
@@ -460,6 +467,12 @@ export interface ReadActiveDiagnosticsResponse {
   type: "readActiveDiagnostics-result";
   id: number;
   diagnostics: RuntimeDiagnostic[];
+}
+
+export interface ReadOutputClassificationsResponse {
+  type: "readOutputClassifications-result";
+  id: number;
+  classification: OutputClassification | null;
 }
 
 export interface SetFailureModeResponse {
@@ -632,6 +645,7 @@ export type WasmWorkerResponse =
   | SendTransportCommandResponse
   | ReadLastDiagnosticsResponse
   | ReadActiveDiagnosticsResponse
+  | ReadOutputClassificationsResponse
   | SetFailureModeResponse
   | SetLiveInputsResponse
   | SetHwInputValueResponse

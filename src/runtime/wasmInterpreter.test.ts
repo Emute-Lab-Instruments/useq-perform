@@ -111,6 +111,8 @@ function createBaseModule(options: {
     }),
     useq_output_classifications: vi.fn(() => 64),
     useq_output_dependencies: vi.fn((index: number) => index === 0 ? 5 : 0),
+    useq_output_health: vi.fn((name: string) => name === "a1" ? 2 : 0),
+    useq_output_semantic_effects: vi.fn((index: number) => index === 2 ? 7 : 0),
     ...overrides,
   };
 
@@ -190,6 +192,8 @@ describe("useqWasmInterpreter", () => {
 
     expect(result?.classes.slice(0, 4)).toEqual([0, 1, 2, 3]);
     expect(result?.inputMasks.slice(0, 3)).toEqual([5, 0, 0]);
+    expect(result?.outputHealth.a1).toBe(2);
+    expect(result?.semanticEffects.slice(0, 4)).toEqual([0, 0, 7, 0]);
   });
 
   it("ships a generated bundle with callable raw batch exports", async () => {

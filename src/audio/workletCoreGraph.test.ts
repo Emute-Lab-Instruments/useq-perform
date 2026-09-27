@@ -1,4 +1,6 @@
 import { commitGraph } from "./testing/commitGraph";
+import { createProducerScheduler } from "./producerScheduler";
+import { createTransportFrameMap } from "./transportFrameMap";
 /**
  * Multi-node worklet host tests (synthesis epic M2.1, ergo 9a9370af;
  * quantum-growth fix, ergo 10271a1d).
@@ -367,6 +369,114 @@ function instance(
 // ---------------------------------------------------------------------------
 
 describe("workletCore graph — multiple live instances (synthesis.md §3.1)", () => {
+  it("carries producer samples through the SAB into worklet rendering", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const descriptor = Object.freeze({
+      ...makeDescriptor("src/producer-rate", 0),
+      params: Object.freeze([
+        Object.freeze({ name: "cutoff", default: 0, min: 0, max: 100, rate: "fast" as const, smoothing: "linear" as const }),
+      ]),
+    });
+    const observed: number[] = [];
+    const base = createConstAdapter(arena, "src/producer-rate", 0, []);
+    const adapter: FakeGraphAdapter = {
+      ...base,
+      descriptor,
+      params: buildNodeDefParamTable(descriptor),
+      computeWithParams(_statePtr, params, outputPtr, frameCount) {
+        observed.push(params[0]!.value);
+        new Float64Array(arena, outputPtr, frameCount).fill(params[0]!.value);
+        return true;
+      },
+    };
+    const h = buildGraphHarness({ adapters: { "src/producer-rate": adapter }, arena });
+    commitGraph(h.core, [instance("producer-rate", "src/producer-rate", 1, {
+      controlChannels: [
+        { param: "cutoff", channel: 0, rate: "fast", smoothing: "linear" },
+      ],
+    })]);
+    const map = createTransportFrameMap({ sampleRate: 48000 });
+    map.start({ atFrame: 0n, atTime: 0 });
+    const producer = createProducerScheduler({
+      clock: { now: () => 0, sleep: () => undefined },
+      executor: {
+        liveTick: () => ({}),
+        sampleSynthControls(indices, times) {
+          return new Float64Array(indices.length * times.length).map((_, index) =>
+            (index % times.length) * 10,
+          );
+        },
+      },
+      view: h.view,
+      map,
+      blockRateChannels: [],
+      fastRateBindings: [{ channelKey: "producer-rate\0cutoff", compilerControlIndex: 0 }],
+    });
+    producer.start();
+    h.view.pendingEpoch = 1;
+    h.view.publishAudioFrame({ frame: 1n, blockFrameOffset: 1 });
+    expect(producer.iterate()).toBeGreaterThan(0);
+    h.core.process(DEFAULT_RENDER_QUANTUM_FRAMES);
+    expect(observed).toHaveLength(DEFAULT_RENDER_QUANTUM_FRAMES);
+    expect(observed[0]).toBeCloseTo(0);
+    expect(observed[127]).toBeCloseTo(70);
+    producer.stop();
+  });
+
+  it("interpolates fast controls and applies latch edges at their frame", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const descriptor = Object.freeze({
+      ...makeDescriptor("src/rate-test", 0),
+      params: Object.freeze([
+        Object.freeze({ name: "cutoff", default: 0, min: 0, max: 100, rate: "fast" as const, smoothing: "linear" as const }),
+        Object.freeze({ name: "gate", default: 0, min: 0, max: 1, rate: "block" as const, smoothing: "latch" as const }),
+      ]),
+    });
+    const observedCutoff: number[] = [];
+    const observedGate: number[] = [];
+    const base = createConstAdapter(arena, "src/rate-test", 0, []);
+    const adapter: FakeGraphAdapter = {
+      ...base,
+      descriptor,
+      params: buildNodeDefParamTable(descriptor),
+      computeWithParams(_statePtr, params, outputPtr, frameCount) {
+        observedCutoff.push(params[0]!.value);
+        observedGate.push(params[1]!.value);
+        new Float64Array(arena, outputPtr, frameCount).fill(params[0]!.value);
+        return true;
+      },
+    };
+    const h = buildGraphHarness({ adapters: { "src/rate-test": adapter }, arena });
+    commitGraph(h.core, [instance("rate", "src/rate-test", 1, {
+      controlChannels: [
+        { param: "cutoff", channel: 0, rate: "fast", smoothing: "linear" },
+        { param: "gate", channel: 0, rate: "event", smoothing: "latch" },
+      ],
+    })]);
+    for (let block = 0; block < FADE_IN_BLOCKS + 1; block += 1) {
+      const slot = h.view.physicalSlotForSequence(h.view.ringWriteIndex);
+      h.view.writeBlockEpoch(slot, 1);
+      h.view.writeBlockRevision(slot, 1);
+      for (let point = 0; point < h.view.fastPointsPerBlock; point += 1) {
+        h.view.writeFastRateValue(slot, 0, point, point * 10);
+      }
+      h.view.writeEvent(slot, 0, 0, { value: 1, frameOffset: 17 });
+      h.view.writeEvent(slot, 0, 1, { value: 0, frameOffset: 50 });
+      h.view.setEventCount(slot, 0, 2);
+      h.view.advanceWriteIndex();
+      h.core.process(DEFAULT_RENDER_QUANTUM_FRAMES);
+    }
+    const start = observedCutoff.length - DEFAULT_RENDER_QUANTUM_FRAMES;
+    const lastCutoff = observedCutoff.slice(start);
+    const lastGate = observedGate.slice(start);
+    expect(lastCutoff[0]).toBeCloseTo(0);
+    expect(lastCutoff[127]).toBeCloseTo(70);
+    expect(lastGate[16]).toBe(0);
+    expect(lastGate[17]).toBe(1);
+    expect(lastGate[49]).toBe(1);
+    expect(lastGate[50]).toBe(0);
+  });
+
   it("renders two independent nodes and sums them into the output", () => {
     const arena = new ArrayBuffer(1024 * 1024);
     const callOrder: string[] = [];
@@ -889,12 +999,7 @@ describe("workletCore graph — per-instance trap containment", () => {
         identity: "bad",
       });
       if (fault.mode === "trap") {
-        expect(h.engineFaults()).toContainEqual({
-          type: "engine-fault",
-          reason: "WORKLET_TRAP",
-          atBlock: h.core.telemetry.blockCount,
-          identity: "bad",
-        });
+        expect(h.engineFaults()).toEqual([]);
       }
 
       mode.current = "success";
@@ -914,24 +1019,58 @@ describe("workletCore consecutive deadline overload", () => {
   it("publishes OVERLOAD after eight consecutive missed block deadlines", () => {
     const arena = new ArrayBuffer(1024 * 1024);
     let now = 0;
+    let slow = false;
+    const callOrder: string[] = [];
     const h = buildGraphHarness({
-      adapters: {},
+      adapters: { "src/unit": createConstAdapter(arena, "src/unit", 1, callOrder) },
       arena,
-      now: () => { now += 5; return now; },
+      callOrder,
+      now: () => { now += slow ? 5 : 0; return now; },
     });
+    commitGraph(h.core, [instance("unit", "src/unit", 1)]);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    expect(h.core.readOutput()[0]).toBeGreaterThan(0);
+    slow = true;
     for (let i = 0; i < 8; i++) h.core.process(128);
-    expect(h.engineFaults()).toContainEqual({
-      type: "engine-fault",
-      reason: "OVERLOAD",
-      atBlock: 8,
-      consecutiveMisses: 8,
-    });
+    expect(h.engineFaults()).toContainEqual(expect.objectContaining({
+      type: "engine-fault", reason: "OVERLOAD", consecutiveMisses: 8,
+    }));
     h.core.process(128);
+    const fading = h.core.readOutput().slice(0, 128);
+    expect(Math.min(...fading)).toBeGreaterThan(0);
+    expect(Math.min(...fading)).toBeLessThan(1);
+    for (let i = 0; i < 4; i++) h.core.process(128);
     expect(h.core.readOutput().slice(0, 128).some((sample) => sample !== 0)).toBe(false);
   });
 });
 
 describe("workletCore graph — sample-indexed fade invariance", () => {
+  it("pause-fades and suspends output, then stop-fades without discarding the graph", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const callOrder: string[] = [];
+    const h = buildGraphHarness({
+      adapters: { "src/unit": createConstAdapter(arena, "src/unit", 1, callOrder) },
+      arena,
+      callOrder,
+    });
+    commitGraph(h.core, [instance("unit", "src/unit", 1)]);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
+    expect(h.core.readOutput()[0]).toBeGreaterThan(0);
+
+    h.core.handleMessage({ type: "transport-pause" });
+    h.step(1);
+    const pausedFade = h.core.readOutput().slice(0, 128);
+    expect(Math.min(...pausedFade)).toBeLessThan(1);
+    for (let i = 0; i < 3; i++) h.step(1);
+    expect(h.core.readOutput().slice(0, 128).every((sample) => sample === 0)).toBe(true);
+
+    h.core.handleMessage({ type: "transport-stop" });
+    h.core.handleMessage({ type: "transport-resume" });
+    for (let i = 0; i < FADE_IN_BLOCKS + 3; i++) h.step(1);
+    expect(h.core.telemetry.instances.map((entry) => entry.identity)).toContain("unit");
+    expect(h.core.readOutput()[0]).toBeGreaterThan(0);
+  });
+
   function renderFadeIn(partitions: readonly number[]): number[] {
     const arena = new ArrayBuffer(1024 * 1024);
     const callOrder: string[] = [];

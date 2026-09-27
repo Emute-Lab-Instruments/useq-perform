@@ -227,6 +227,12 @@ for `OVERLOAD_BLOCKS` consecutive blocks (default 8), the engine fades
 all output to silence and enters the `error` engine state (§6.4) — never
 sustained glitching.
 
+A live compute trap is node-scoped and does not transition the service's
+engine state to `error`: the failed node's output is zero for that block,
+siblings continue, and the node retries. `WORKLET_TRAP` may be retained as a
+diagnostic reason, but only overload and producer loss are whole-engine
+runtime faults.
+
 3.7 `AudioContext` start requires user activation. See §6.5 for the full
 resume/suspension contract (including the gamepad caveat).
 
@@ -312,12 +318,17 @@ the program correspondingly earlier and browser audio meets the rack.
 The setting is inert unless hardware is connected. Automatic offset
 detection via audio loopback is deferred (§9.4).
 
-4.6 **Latch channels are event channels.** For `latch` (gate/trigger)
-params the producer detects the crossing inside the block and ships
-`(value, frameOffset)` edge records; the host synthesises sample-accurate
-steps into the def's event port (§2.3). Gate edges are therefore *not*
-quantised to block boundaries; their timing error is bounded by the
-producer's sampling resolution of the crossing, which must be ≤ 1 frame.
+4.6 **Fast and latch control sampling.** A `fast` control is sampled at
+`fastPointsPerBlock` evenly spaced points across the render block (8 in
+ABI v1); the worklet linearly interpolates `linear` controls between
+adjacent points per frame, while `step` and `slew` controls hold each raw
+point for the NodeDef's declared behavior. The final point holds through
+the block end. For `latch` (gate/trigger) params the producer samples
+every frame, detects value changes, and ships `(value, frameOffset)` edge
+records; the host applies each edge at that exact frame in the def's event
+input. Gate edges are not quantised to block boundaries and their sampling
+error is at most one frame. A transport re-anchor seeds latch state without
+emitting an edge for the time jump itself.
 
 4.7 **Underrun and producer liveness.** On ring underrun the worklet
 holds last values (smoothing classes still honoured; latched gates hold,
@@ -327,8 +338,9 @@ fades all output to silence and enters `error` (§6.4) — a dead producer
 must never yield an indefinite drone.
 
 4.8 **SAB ABI.** The layout (header with frame index + epochs, per-block
-channel records, `fast`-class channels carrying their declared
-points-per-block, event-channel edge records) is a versioned internal
+channel records, `fast`-class channels carrying `fastPointsPerBlock`
+Float32 points, and event-channel edge records with a frame offset and
+value) is a versioned internal
 ABI; version mismatch between app bundle and worklet bundle is a fatal
 startup error in the spirit of [MAIN.md](MAIN.md) §2.3. Publication is
 index-published with `Atomics` (release-store of the write index after

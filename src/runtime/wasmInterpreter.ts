@@ -4,19 +4,20 @@ import { TRANSPORT_STATE_TO_COMMAND } from "../contracts/useqRuntimeContract";
 import { codeEvaluated as codeEvaluatedChannel } from "../contracts/runtimeChannels";
 import {
   assertWasmAbi,
-  REQUIRED_WASM_EXPORTS,
   OPTIONAL_WASM_EXPORTS,
   type WasmAbiValidation,
 } from "../contracts/wasmAbi";
-import type { ProjectionMode } from "../contracts/runtimePorts";
+import type { OutputClassification, ProjectionMode } from "../contracts/runtimePorts";
 import {
   bindOptionalCwrap,
   createWasmBatchEvaluator,
   createWasmLiveInputController,
   createWasmProbeController,
-  readAndFreeCString,
+  bindRequiredWasmExports,
+  bindWasmDiagnosticReaders,
   type EmscriptenModule,
 } from "./wasmInterpreterCore";
+import { bindOutputClassifications } from "./wasmOutputClassifications";
 
 export type { EmscriptenModule } from "./wasmInterpreterCore";
 
@@ -100,8 +101,7 @@ const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise: Promise<void> | null = null;
 let runtimePromise: Promise<UseqRuntime> | null = null;
 let lastKnownLiveInputsSupport = false;
-let classificationsFnStored: (() => number[]) | null = null;
-let dependenciesFnStored: ((idx: number) => number) | null = null;
+let outputClassificationReaderStored: (() => OutputClassification | null) | null = null;
 function isUseqWasmEnabled(): boolean {
   try {
     return getAppSettings()?.wasm?.enabled ?? true;
@@ -173,24 +173,11 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
     dbg(`useqWasmInterpreter: optional ABI exports detected: ${abiResult.presentOptional.join(", ")}`);
   }
 
-  // Bind required exports using contract descriptors
-  const initDesc = REQUIRED_WASM_EXPORTS.useq_init;
-  const useq_init = module.cwrap(initDesc.symbol, initDesc.returnType, initDesc.argTypes as unknown as string[]) as () => void;
-
-  const evalDesc = REQUIRED_WASM_EXPORTS.useq_eval;
-  const evalPointer = module.cwrap(evalDesc.symbol, evalDesc.returnType, evalDesc.argTypes as unknown as string[]) as (code: string) => number;
-  const useq_eval = (code: string): string =>
-    readAndFreeCString(module, evalPointer(code));
-
-  const timeDesc = REQUIRED_WASM_EXPORTS.useq_update_time;
-  const useq_update_time = module.cwrap(timeDesc.symbol, timeDesc.returnType, timeDesc.argTypes as unknown as string[]) as (t: number) => void;
-
-  const outputDesc = REQUIRED_WASM_EXPORTS.useq_eval_output;
-  const useq_eval_output = module.cwrap(outputDesc.symbol, outputDesc.returnType, outputDesc.argTypes as unknown as string[]) as (name: string, t: number) => number;
-  const evaluateOutputAtTime = (name: string, timeSeconds: number): number => {
-    const value = useq_eval_output(name, Number(timeSeconds) || 0);
-    return Number.isNaN(value) ? NaN : value;
-  };
+  const requiredExports = bindRequiredWasmExports(module);
+  const useq_init = requiredExports.initialize;
+  const useq_eval = requiredExports.evaluate;
+  const useq_update_time = requiredExports.updateTime;
+  const evaluateOutputAtTime = requiredExports.evaluateOutputAtTime;
   const coreLog = (message: string): void => dbg(`useqWasmInterpreter: ${message}`);
   const batchEvaluator = createWasmBatchEvaluator(
     module,
@@ -200,20 +187,12 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
 
   // Bind raw diagnostic exports for interpreter-level tests and isolated
   // witness execution. Production diagnostics are read inside the Worker.
-  const lastDiagsPointer = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_last_diagnostics) as (() => number) | null;
-  const lastDiagsFn = lastDiagsPointer
-    ? () => readAndFreeCString(module, lastDiagsPointer())
-    : null;
-  const activeDiagsPointer = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_active_diagnostics) as (() => number) | null;
-  const activeDiagsFn = activeDiagsPointer
-    ? () => readAndFreeCString(module, activeDiagsPointer())
-    : null;
+  const diagnosticReaders = bindWasmDiagnosticReaders(module);
 
   const liveInputs = createWasmLiveInputController(module, coreLog);
 
-  // Bind output classification ABI exports (visualisation.md §7.3–7.4)
-  const classificationsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_classifications) as (() => number) | null;
-  const dependenciesFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_dependencies) as ((idx: number) => number) | null;
+  // Bind output classification ABI exports (visualisation.md §7.3–7.4).
+  const outputClassificationReader = bindOutputClassifications(module);
 
   // Bind synth artefact ABI export (synth-nodes.md §7.2 / VAL-COMP-015).
   // Interpreter integration tests validate the same payload the production
@@ -227,8 +206,8 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const getFailureModeFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_get_failure_mode) as (() => number) | null;
 
   (globalThis as { __useqWasmRuntime?: UseqWasmRuntimeGlobal }).__useqWasmRuntime = {
-    useq_last_diagnostics: lastDiagsFn ?? undefined,
-    useq_active_diagnostics: activeDiagsFn ?? undefined,
+    useq_last_diagnostics: diagnosticReaders.last,
+    useq_active_diagnostics: diagnosticReaders.active,
     useq_set_live_inputs: liveInputs.supported
       ? (json) => liveInputs.set(JSON.parse(json) as Record<string, number>)
       : undefined,
@@ -253,15 +232,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   }
   dbg("uSEQ WASM interpreter initialised");
   lastKnownLiveInputsSupport = liveInputs.supported;
-  classificationsFnStored = classificationsFn
-    ? () => {
-        const pointer = classificationsFn();
-        return pointer && module.HEAPU8
-          ? Array.from(module.HEAPU8.subarray(pointer, pointer + 42))
-          : [];
-      }
-    : null;
-  dependenciesFnStored = dependenciesFn;
+  outputClassificationReaderStored = outputClassificationReader;
 
   return {
     module,
@@ -579,38 +550,8 @@ export function supportsLiveInputs(): boolean {
 // Output Classification (visualisation.md §7.3–7.4)
 // ---------------------------------------------------------------------------
 
-import type { OutputClassification } from "../contracts/runtimePorts";
-import { OutputClass } from "../contracts/runtimePorts";
-
 export async function readOutputClassifications(): Promise<OutputClassification | null> {
   if (!isUseqWasmEnabled()) return null;
   await ensureUseqWasmLoaded();
-  if (!classificationsFnStored) return null;
-
-  try {
-    const raw = classificationsFnStored();
-    if (!raw.length) return null;
-
-    const classes: OutputClass[] = raw.map((v) => {
-      if (v === 1) return OutputClass.Pure;
-      if (v === 2) return OutputClass.InputDep;
-      if (v === 3) return OutputClass.Stateful;
-      return OutputClass.Inactive;
-    });
-
-    const inputMasks: number[] = [];
-    if (dependenciesFnStored) {
-    for (let i = 0; i < raw.length; i++) {
-        inputMasks.push(dependenciesFnStored(i));
-      }
-    } else {
-      for (let i = 0; i < raw.length; i++) {
-        inputMasks.push(0);
-      }
-    }
-
-    return { classes, inputMasks };
-  } catch {
-    return null;
-  }
+  return outputClassificationReaderStored?.() ?? null;
 }

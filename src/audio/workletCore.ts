@@ -323,7 +323,7 @@ interface InstanceState {
    * channel table, M2.2). Params without an entry are unbound: the
    * instance holds its prefill/default value for them.
    */
-  controlChannels: ReadonlyMap<string, number>;
+  controlChannels: ReadonlyMap<string, WorkletControlChannel>;
   /** One-shot guard for the missing-input-support diagnostic. */
   inputSupportWarned: boolean;
   /** True once the retire-sweep released this instance's zones. */
@@ -532,6 +532,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 
   // --- Emergency fade state ---
   let emergencyFadeFramesRemaining = 0;
+  let transportFadeFramesRemaining = 0;
+  let transportFadeFramesTotal = emergencyFadeFrames;
+  let transportFadeStart = 1;
+  let transportFadeEnd = 1;
 
   // Retained telemetry struct, mutated in place on every read. Steady-
   // state telemetry lives in the SAB header (written in process() step
@@ -630,6 +634,24 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         break;
       case "devmode-terminate-producer":
         handleDevmodeTerminateProducer();
+        break;
+      case "transport-pause":
+        transportFadeFramesRemaining = emergencyFadeFrames;
+        transportFadeFramesTotal = emergencyFadeFrames;
+        transportFadeStart = 1;
+        transportFadeEnd = 0;
+        break;
+      case "transport-resume":
+        transportFadeFramesRemaining = emergencyFadeFrames;
+        transportFadeFramesTotal = emergencyFadeFrames;
+        transportFadeStart = 0;
+        transportFadeEnd = 1;
+        break;
+      case "transport-stop":
+        transportFadeFramesRemaining = fadeOutFrames;
+        transportFadeFramesTotal = fadeOutFrames;
+        transportFadeStart = 1;
+        transportFadeEnd = 0;
         break;
       default:
         // Unknown message type: no-op (forward compatibility).
@@ -1239,6 +1261,18 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     }
 
     // ---- Step 6: Apply emergency fade if producer has timed out ----
+    if (transportFadeFramesRemaining > 0) {
+      const total = transportFadeFramesTotal;
+      const elapsed = total - transportFadeFramesRemaining;
+      const count = Math.min(frameCount, transportFadeFramesRemaining);
+      for (let i = 0; i < frameCount; i++) {
+        const progress = Math.min(1, (elapsed + i) / Math.max(1, total - 1));
+        const gain = transportFadeStart + (transportFadeEnd - transportFadeStart) * progress;
+        outputMixScratch[i] *= gain;
+      }
+      transportFadeFramesRemaining -= count;
+      if (transportFadeFramesRemaining === 0 && transportFadeEnd === 0) outputMixScratch.fill(0);
+    }
     if ((producerTimeoutActive || overloadActive) && emergencyFadeFramesRemaining > 0) {
       const remaining = emergencyFadeFramesRemaining;
       const total = emergencyFadeFrames;
@@ -1404,8 +1438,9 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         for (let i = 0; i < adapter.descriptor.params.length; i++) {
           const descriptor = adapter.descriptor.params[i];
           const channel = instance.controlChannels.get(descriptor.name);
-          if (channel === undefined || channel >= controlView.blockRateCount) continue;
-          let value = controlView.readBlockRateValue(physicalSlot, channel);
+          if (channel === undefined || channel.rate !== "block" ||
+              channel.channel >= controlView.blockRateCount) continue;
+          let value = controlView.readBlockRateValue(physicalSlot, channel.channel);
           if (!Number.isFinite(value)) {
             value = descriptor.default;
             glitchCount += 1;
@@ -1418,8 +1453,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         }
       }
       const freqChannel = instance.controlChannels.get("freq");
-      if (freqChannel !== undefined && freqChannel < controlView.blockRateCount) {
-        let controlFreq = controlView.readBlockRateValue(physicalSlot, freqChannel);
+      if (freqChannel?.rate === "block" && freqChannel.channel < controlView.blockRateCount) {
+        let controlFreq = controlView.readBlockRateValue(physicalSlot, freqChannel.channel);
         // Validate: non-finite values clamp to the registry default and
         // increment the glitch counter.
         if (!Number.isFinite(controlFreq)) {
@@ -1433,8 +1468,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         instance.currentFreq = controlFreq;
       }
       const ampChannel = instance.controlChannels.get("amp");
-      if (ampChannel !== undefined && ampChannel < controlView.blockRateCount) {
-        let controlAmp = controlView.readBlockRateValue(physicalSlot, ampChannel);
+      if (ampChannel?.rate === "block" && ampChannel.channel < controlView.blockRateCount) {
+        let controlAmp = controlView.readBlockRateValue(physicalSlot, ampChannel.channel);
         if (!Number.isFinite(controlAmp)) {
           controlAmp = DEFAULT_AMP;
           glitchCount += 1;
@@ -1485,7 +1520,67 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     let failureCode: "nodedef-trap" | "nodedef-compute-rejected" | "nodedef-nonfinite-output" =
       "nodedef-compute-rejected";
     try {
-      if (typeof adapter.computeWithParams === "function") {
+      let hasFrameControls = false;
+      if (hasBlock && controlView) {
+        for (const channel of instance.controlChannels.values()) {
+          if (channel.rate === "fast" || channel.rate === "event") {
+            hasFrameControls = true;
+            break;
+          }
+        }
+      }
+      if (hasFrameControls && controlView) {
+        ok = true;
+        for (let frame = 0; frame < frameCount && ok; frame += 1) {
+          for (let paramIndex = 0; paramIndex < adapter.descriptor.params.length; paramIndex += 1) {
+            const descriptor = adapter.descriptor.params[paramIndex]!;
+            const channel = instance.controlChannels.get(descriptor.name);
+            if (!channel) continue;
+            let value = instance.parameterValues[paramIndex]?.value ?? descriptor.default;
+            if (channel.rate === "fast" && channel.channel < controlView.fastRateCount) {
+              const pointPosition = frameCount <= 1 ? 0
+                : frame * (controlView.fastPointsPerBlock - 1) / (frameCount - 1);
+              const lowerPoint = Math.floor(pointPosition);
+              const upperPoint = Math.min(controlView.fastPointsPerBlock - 1, lowerPoint + 1);
+              const lowerValue = controlView.readFastRateValue(physicalSlot, channel.channel, lowerPoint);
+              const upperValue = controlView.readFastRateValue(physicalSlot, channel.channel, upperPoint);
+              const blend = channel.smoothing === "linear"
+                ? pointPosition - lowerPoint
+                : 0;
+              value = lowerValue + (upperValue - lowerValue) * blend;
+            } else if (channel.rate === "event" && channel.channel < controlView.eventChannelCount) {
+              const count = controlView.eventCount(physicalSlot, channel.channel);
+              for (let edge = 0; edge < count; edge += 1) {
+                const event = controlView.readEvent(physicalSlot, channel.channel, edge);
+                if (event.frameOffset === frame) value = event.value;
+              }
+            } else if (channel.rate === "block" && channel.channel < controlView.blockRateCount) {
+              value = controlView.readBlockRateValue(physicalSlot, channel.channel);
+            }
+            if (!Number.isFinite(value)) value = descriptor.default;
+            value = Math.max(descriptor.min ?? -Infinity,
+              Math.min(descriptor.max ?? Infinity, value));
+            const parameter = instance.parameterValues[paramIndex];
+            if (parameter) parameter.value = value;
+            if (descriptor.name === "freq") instance.currentFreq = Math.max(0,
+              Math.min(sampleRate / 2, value));
+            if (descriptor.name === "amp") instance.currentAmp = Math.max(0,
+              Math.min(1, value));
+          }
+          freqControlScratch[0] = instance.currentFreq;
+          ampControlScratch[0] = instance.currentAmp;
+          const frameOutputPtr = instance.outputZonePtr + frame * Float64Array.BYTES_PER_ELEMENT;
+          if (typeof adapter.computeWithParams === "function") {
+            ok = adapter.computeWithParams(
+              instance.statePointer, instance.parameterValues, frameOutputPtr, 1,
+            );
+          } else {
+            ok = adapter.compute(
+              instance.statePointer, freqPtr, ampPtr, frameOutputPtr, 1,
+            );
+          }
+        }
+      } else if (typeof adapter.computeWithParams === "function") {
         ok = adapter.computeWithParams(
           instance.statePointer,
           instance.parameterValues,
@@ -1547,9 +1642,9 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         code: failureCode,
         identity: instance.identity,
       });
-      if (failureCode === "nodedef-trap") {
-        publishWorkletTrap(instance.identity);
-      }
+      // A live-node trap is contained by the failure-atomic path above.
+      // The graph diagnostic is the observable failure; it must not be
+      // escalated to a whole-engine fault (synthesis.md §3.6).
       applyFadeEnvelope(instance, frameCount);
       return;
     }
@@ -1740,7 +1835,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
 /** Shared empty wiring/pointer singletons (never mutated). */
 const EMPTY_WIRING: readonly WorkletAudioInputWiring[] = Object.freeze([]);
 const EMPTY_PTRS: number[] = [];
-const EMPTY_CONTROL_CHANNELS: ReadonlyMap<string, number> = new Map();
+const EMPTY_CONTROL_CHANNELS: ReadonlyMap<string, WorkletControlChannel> = new Map();
 
 /**
  * Build the per-(node, param) channel map from a delta message's
@@ -1749,12 +1844,16 @@ const EMPTY_CONTROL_CHANNELS: ReadonlyMap<string, number> = new Map();
  */
 function buildControlChannelMap(
   channels: readonly WorkletControlChannel[] | undefined,
-): ReadonlyMap<string, number> {
+): ReadonlyMap<string, WorkletControlChannel> {
   if (!channels || channels.length === 0) return EMPTY_CONTROL_CHANNELS;
-  const map = new Map<string, number>();
+  const map = new Map<string, WorkletControlChannel>();
   for (const entry of channels) {
     if (Number.isInteger(entry.channel) && entry.channel >= 0) {
-      map.set(entry.param, entry.channel);
+      map.set(entry.param, {
+        ...entry,
+        rate: entry.rate ?? "block",
+        smoothing: entry.smoothing ?? "step",
+      });
     }
   }
   return map;

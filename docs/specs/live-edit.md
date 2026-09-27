@@ -270,7 +270,7 @@ Cards stack vertically. The panel is single-column at all widths; cards do not f
 
 5.1.4 **Drag-to-reorder override.** The user can drag any card to a new position. Dragging switches the panel to "custom order" mode; the custom order is persisted (§7) keyed by `:id`. New live-edits added to the document while in custom-order mode are appended to the bottom of the custom order. An action `liveEdit.resetPanelOrder` returns the panel to document-order mode (and forgets the custom order). Setting: `liveEdit.panelOrder` (`"document"` | `"custom"`); custom order itself stored under `liveEdit.panelCustomOrder` keyed by document.
 
-5.1.5 **Panel toggle.** A toolbar button and a keybinding (registered in [keybindings.md](keybindings.md) under the `liveEdit` action category, e.g. `liveEdit.togglePanel`) open/close the panel. The open/closed state persists.
+5.1.5 **Panel toggle.** A toolbar button and a keybinding (`liveEdit.panel.toggle`, registered in [keybindings.md](keybindings.md) under the `ui` panel category, default `Alt-l`) open/close the panel. The open/closed state persists.
 
 5.2 **Focus-follows-cursor for gamepad (editor side).** When the gamepad target is the editor: whichever live-edit the structural cursor is currently on is the gamepad target. The configured axis (default: right stick X for scalars/sliders/knobs, A button for booleans, right stick X-as-cycler for enums; full mapping in [gamepad.md](gamepad.md)) drives that live-edit until the cursor moves to another live-edit (or off all live-edits, in which case the axis is idle).
 
@@ -304,6 +304,15 @@ the resulting value through the same `set-live-inputs` path as mouse,
 keyboard, panel, and gamepad control. MIDI output, MIDI clock, sysex, OSC, and
 firmware-side MIDI are out of scope.
 
+The settings panel (General tab) hosts the MIDI device-management surface
+(`src/ui/settings/MidiSettings.tsx`, mounted via `GeneralSettings`): full
+permission state with recovery hints and per-device enable/disable toggles.
+The live-edit panel header keeps its compact `Enable MIDI` affordance because
+the learn flow needs a just-in-time permission gate next to the learn buttons
+(§5.8.2); it is not a second device manager. Both surfaces read and drive the
+same `MidiInputService` singleton (`src/effects/liveEditMidiRuntime.ts`), so
+the service state is the single source of truth.
+
 5.7 **MIDI binding model.** A binding pairs a live-edit `:id` with a MIDI source descriptor: (See `src/contracts/liveEdit.ts`, `src/effects/midiRouter.ts`)
 
 ```ts
@@ -327,7 +336,7 @@ One slot ↔ at most one binding (v1). Many-to-one (one CC drives many slots) is
 - The next CC or note-on message received from any enumerated MIDI input device binds to this card per §5.7. Listening ends; the binding indicator (§5.9) appears.
 - If `Esc` is pressed (or the learn icon is clicked again) before a message arrives, listening is cancelled with no binding change.
 
-5.8.2 **Global "Learn All" (batch).** A toolbar button `◉ LEARN ALL` (next to the panel toggle) enters batch-learn mode:
+5.8.2 **Global "Learn All" (batch).** A toolbar button `◉ LEARN ALL` (next to the panel toggle) enters batch-learn mode; if the panel is closed it is opened first so the progress banner is visible. The panel header also offers a `◉ LEARN ALL` affordance with the same behaviour, for when the user is already looking at the panel:
 - Walks the panel cards top-to-bottom in current panel order.
 - Arms the first unbound card. (If all are bound, starts at the first card; the user can re-bind by stepping through.)
 - On each binding, advances to the next card automatically.

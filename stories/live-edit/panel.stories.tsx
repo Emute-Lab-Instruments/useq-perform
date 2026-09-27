@@ -13,7 +13,7 @@ import type {
   LiveEditSlot,
   SlotValue,
 } from "@src/contracts/liveEdit";
-import type { MidiBinding, MidiLearnState } from "@src/contracts/midi";
+import type { MidiBinding, MidiLearnState, MidiPermissionState } from "@src/contracts/midi";
 
 // ── Mock-state harness ────────────────────────────────────────────────────
 
@@ -23,6 +23,8 @@ interface PanelHarnessProps {
   initialBindings?: MidiBinding[];
   initialLearnState?: MidiLearnState;
   initialFocusedSlotId?: string;
+  initialMidiPermission?: MidiPermissionState;
+  initialDock?: "right" | "bottom" | "left";
 }
 
 function PanelHarness(props: PanelHarnessProps): JSX.Element {
@@ -36,6 +38,10 @@ function PanelHarness(props: PanelHarnessProps): JSX.Element {
       props.initialLearnState ?? ({ mode: "idle" } as MidiLearnState),
     focusedSlotId: props.initialFocusedSlotId,
   });
+
+  const [midiPermission, setMidiPermission] =
+    createSignal<MidiPermissionState>(props.initialMidiPermission ?? "unknown");
+  const [dock, setDock] = createSignal(props.initialDock ?? "right");
 
   const [closed, setClosed] = createSignal(false);
 
@@ -77,6 +83,8 @@ function PanelHarness(props: PanelHarnessProps): JSX.Element {
           order={state.order}
           bindings={state.bindings}
           learnState={state.learnState}
+          midiPermission={midiPermission()}
+          dock={dock()}
           focusedSlotId={state.focusedSlotId}
           onValueChange={(slotId, value: SlotValue) => {
             const i = findIdx(slotId);
@@ -113,6 +121,15 @@ function PanelHarness(props: PanelHarnessProps): JSX.Element {
           onStartLearn={(slotId) => {
             setState("learnState", { mode: "single", slotId });
           }}
+          onStartLearnAll={() => {
+            setState("learnState", {
+              mode: "batch",
+              slotIds: state.slots.map((s) => s.id),
+              index: 0,
+            });
+          }}
+          onRequestMidiAccess={() => setMidiPermission("granted")}
+          onDockChange={(next) => setDock(next)}
           onClearBinding={(slotId) => {
             setState(
               produce((s) => {

@@ -154,6 +154,8 @@ function buildScheduler(opts: {
   clock?: ProducerSchedulingClock;
   executor?: ProducerExecutor;
   blockRateChannels?: ReadonlyArray<string>;
+  fastRateBindings?: ProducerSchedulerOptions["fastRateBindings"];
+  eventBindings?: ProducerSchedulerOptions["eventBindings"];
   lookaheadBlocks?: number;
   renderQuantumFrames?: number;
   audit?: boolean;
@@ -176,6 +178,8 @@ function buildScheduler(opts: {
     view,
     map,
     blockRateChannels: opts.blockRateChannels ?? ["freq", "amp"],
+    ...(opts.fastRateBindings ? { fastRateBindings: opts.fastRateBindings } : {}),
+    ...(opts.eventBindings ? { eventBindings: opts.eventBindings } : {}),
     lookaheadBlocks: opts.lookaheadBlocks ?? CONTROL_LOOKAHEAD_BLOCKS,
     renderQuantumFrames: opts.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES,
     ...(opts.audit !== false ? { audit } : {}),
@@ -189,6 +193,41 @@ function buildScheduler(opts: {
 // ---------------------------------------------------------------------------
 
 describe("producerScheduler / lookahead publication (VAL-ENGINE-004)", () => {
+  it("publishes fast control points and frame-indexed latch edges", () => {
+    const executor: ProducerExecutor = {
+      liveTick: () => ({ freq: 440, amp: 0.2 }),
+      sampleSynthControls(indices, times) {
+        const values = new Float64Array(indices.length * times.length);
+        for (let row = 0; row < indices.length; row += 1) {
+          for (let sample = 0; sample < times.length; sample += 1) {
+            values[row * times.length + sample] = indices[row] === 2
+              ? sample
+              : Number(sample >= 32 && sample < 35);
+          }
+        }
+        return values;
+      },
+    };
+    const { scheduler, view, map } = buildScheduler({
+      executor,
+      fastRateBindings: [{ channelKey: "fast", compilerControlIndex: 2 }],
+      eventBindings: [{ channelKey: "gate", compilerControlIndex: 3 }],
+    });
+    map.start({ atFrame: 0n, atTime: 0 });
+    scheduler.start();
+    view.publishAudioFrame({ frame: 1n, blockFrameOffset: 1 });
+    scheduler.iterate();
+
+    const points = Array.from({ length: view.fastPointsPerBlock }, (_, point) =>
+      view.readFastRateValue(0, 0, point),
+    );
+    expect(points).toEqual(Array.from({ length: view.fastPointsPerBlock }, (_, i) => i));
+    expect(view.eventCount(0, 0)).toBe(2);
+    expect(view.readEvent(0, 0, 0)).toEqual({ value: 1, frameOffset: 32 });
+    expect(view.readEvent(0, 0, 1)).toEqual({ value: 0, frameOffset: 35 });
+    scheduler.stop();
+  });
+
   it("reports published blocks without retaining production audit records", () => {
     const { scheduler, view, map, audit, clock } = buildScheduler({ audit: false });
     map.start({ atFrame: 0n, atTime: 0 });

@@ -254,6 +254,12 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     returnType: "number",
     argTypes: ["number", "number", "number"],
   },
+  /** Read-only row-major samples for selected synth controls at explicit times. */
+  useq_sample_synth_controls_into: {
+    symbol: "useq_sample_synth_controls_into",
+    returnType: "number",
+    argTypes: ["number", "number", "number", "number", "number"],
+  },
 } as const satisfies Record<string, CwrapDescriptor>);
 
 export type OptionalWasmExport = keyof typeof OPTIONAL_WASM_EXPORTS;

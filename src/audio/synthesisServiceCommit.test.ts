@@ -892,13 +892,13 @@ describe("synthesisService.commitSynthArtifacts — multi-node commits (M2.2)", 
     expect(instantiates).toHaveLength(2);
     const lead = instantiates.find((m) => m.identity.identity === "lead");
     const bass = instantiates.find((m) => m.identity.identity === "bass");
-    expect(lead?.controlChannels).toEqual([
-      { param: "freq", channel: 0 },
-      { param: "amp", channel: 1 },
+    expect(lead?.controlChannels).toMatchObject([
+      { param: "freq", channel: 0, rate: "block" },
+      { param: "amp", channel: 1, rate: "block" },
     ]);
-    expect(bass?.controlChannels).toEqual([
-      { param: "freq", channel: 2 },
-      { param: "amp", channel: 3 },
+    expect(bass?.controlChannels).toMatchObject([
+      { param: "freq", channel: 2, rate: "block" },
+      { param: "amp", channel: 3, rate: "block" },
     ]);
     expect(lead?.audioOutputs).toBe(1);
     expect(bass?.audioOutputs).toBe(1);

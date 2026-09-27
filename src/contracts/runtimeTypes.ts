@@ -65,7 +65,7 @@ export type RuntimeDiagnostic = UseqDiagnostic;
 
 // ── Diagnostics types ──────────────────────────────────────────
 
-export type RuntimeProtocolMode = "legacy" | "json";
+export type RuntimeProtocolMode = "negotiating" | "legacy" | "json";
 export type RuntimeSettingsSource =
   | "defaults"
   | "local-storage"

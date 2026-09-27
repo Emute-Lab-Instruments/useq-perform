@@ -56,6 +56,9 @@ import {
 } from "@codemirror/commands";
 import { SAMPLE_CODE } from "../../lib/keybindings/sampleCode.ts";
 import { openPalette } from "../../ui/keybindings/ActionPalette.tsx";
+import { beginCalibration } from "../../ui/adapters/calibrationRuntime.ts";
+import { toggleLiveEditPanel } from "../../ui/adapters/liveEditPanel.tsx";
+import { notify } from "../../contracts/toastChannels.ts";
 import { executeEditorCommand } from "./editorCommandRouter.ts";
 import { startGrab, endGrab, cancelGrab, moveGrab } from "../grabSession.ts";
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
@@ -151,6 +154,19 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "panel.vis": toggleSerialVis,
   "vis.screenshot": () => { requestVisScreenshot(); return true; },
   "view.zenMode": () => { enterZenMode(); return true; },
+  // calibration.md §2.1: beginCalibration() already gates on a connected
+  // JSON-protocol module and returns false otherwise — surface that as
+  // feedback instead of a silent no-op.
+  "calibration.begin": () => {
+    if (beginCalibration()) return true;
+    notify({
+      message: "Calibration needs a connected uSEQ module speaking the JSON protocol.",
+      kind: "warn",
+    });
+    return false;
+  },
+  // live-edit.md §5.1.5
+  "liveEdit.panel.toggle": () => { toggleLiveEditPanel(); return true; },
 
   // -- Vis (expression-gutter.md §4.1) ---------------------------------------
   "vis.toggleAtHalo": (view: EditorView) => handleToggleVisAtHalo(view),

@@ -1,6 +1,7 @@
 import { onMount } from "solid-js";
-import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings, AudioLines } from "lucide-solid";
+import { Cable, ChartSpline, CircleDot, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings, AudioLines, SlidersHorizontal } from "lucide-solid";
 import { withShortcut } from "./toolbar/shortcutLabels";
+import type { RuntimeProtocolMode } from "../contracts/runtimeTypes.ts";
 
 export type ConnectionState = 'none' | 'wasm' | 'hardware' | 'both';
 
@@ -11,18 +12,25 @@ export type MainToolbarAction =
   | 'save'
   | 'fontDown'
   | 'fontUp'
+  | 'liveEdit'
+  | 'learnAll'
   | 'help'
   | 'settings'
   | 'calibrate';
 
 export interface MainToolbarProps {
   connectionState: ConnectionState;
+  protocolMode?: RuntimeProtocolMode;
   onConnect: () => void;
   onToggleGraph: () => void;
   onLoadCode: () => void;
   onSaveCode: () => void;
   onFontSizeUp: () => void;
   onFontSizeDown: () => void;
+  /** live-edit.md §5.1.5 — open/close the dockable live-edit panel. */
+  onToggleLiveEditPanel?: () => void;
+  /** live-edit.md §5.8.2 — batch MIDI-learn across every live-edit. */
+  onStartLearnAll?: () => void;
   onSettings: () => void;
   onBeginCalibration?: () => void;
   onHelp: () => void;
@@ -99,6 +107,12 @@ export function MainToolbar(props: MainToolbarProps) {
     withShortcut(label, props.shortcuts?.[action]);
 
   const connectionClass = () => CONNECTION_CLASSES[props.connectionState];
+  const connectionLabel = () => props.protocolMode === "negotiating"
+    ? "Connecting to uSEQ…"
+    : CONNECTION_LABELS[props.connectionState];
+  const connectionDescription = () => props.protocolMode === "negotiating"
+    ? "Connecting to uSEQ: the protocol handshake is in progress. Browser-local WASM remains available; hardware evals are not delivered while the protocol is unresolved."
+    : CONNECTION_DESCRIPTIONS[props.connectionState];
 
   return (
     <div id="panel-toolbar">
@@ -108,8 +122,8 @@ export function MainToolbar(props: MainToolbarProps) {
           type="button"
           class={`toolbar-button connection-chip ${connectionClass()}`}
           data-connection-state={props.connectionState}
-          title={title(CONNECTION_DESCRIPTIONS[props.connectionState], 'connect')}
-          aria-label={CONNECTION_DESCRIPTIONS[props.connectionState]}
+          title={title(connectionDescription(), 'connect')}
+          aria-label={connectionDescription()}
           onClick={() => props.onConnect()}
         >
           <Cable />
@@ -118,7 +132,7 @@ export function MainToolbar(props: MainToolbarProps) {
             class={`connect-badge connection-chip-label ${connectionClass()}`}
             aria-live="polite"
           >
-            {CONNECTION_LABELS[props.connectionState]}
+            {connectionLabel()}
           </span>
         </button>
         <button type="button" class="toolbar-button" title="Calibrate CV outputs" aria-label="Calibrate CV outputs" onClick={() => props.onBeginCalibration?.()} disabled={props.connectionState !== 'hardware' && props.connectionState !== 'both'}>
@@ -156,6 +170,25 @@ export function MainToolbar(props: MainToolbarProps) {
           onClick={() => props.onToggleGraph()}
         >
           <ChartSpline />
+        </button>
+        <button
+          type="button"
+          class="toolbar-button"
+          title={title("Live-edit panel", 'liveEdit')}
+          aria-label="Live-edit panel"
+          onClick={() => props.onToggleLiveEditPanel?.()}
+        >
+          <SlidersHorizontal />
+        </button>
+        {/* live-edit.md §5.8.2: LEARN ALL sits next to the panel toggle. */}
+        <button
+          type="button"
+          class="toolbar-button"
+          title={title("LEARN ALL — MIDI-learn every live-edit", 'learnAll')}
+          aria-label="LEARN ALL"
+          onClick={() => props.onStartLearnAll?.()}
+        >
+          <CircleDot />
         </button>
         <div class="toolbar-button-pair" role="group" aria-label="Font size">
           <button
