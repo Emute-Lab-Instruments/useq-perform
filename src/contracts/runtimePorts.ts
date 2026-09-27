@@ -215,6 +215,7 @@ export type ProjectionMode = 0 | 1 | 2;
 export interface TickAndProjectResult {
   tickValues: Map<string, number>;
   projectionSamples: SampleSeriesMap;
+  projectionFrontierTime?: number;
 }
 
 /**

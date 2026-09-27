@@ -25,6 +25,7 @@ import {
   syncRuntimeWasmTransportState,
   type RuntimeSessionState,
 } from "../runtime/runtimeService";
+import { updateRuntimeWasmAudioTransport } from "../runtime/runtimeTransportService";
 import { applyClockPolicy, listenForHardwareOverride, restoreClockAfterHardwareDisconnect } from "./transportClock";
 
 // ── Pure helpers ─────────────────────────────────────────────────
@@ -108,21 +109,46 @@ export interface TransportOrchestrator {
  * any side-effects.
  */
 export function createTransportOrchestrator(): TransportOrchestrator {
+  let audioTransportState: TransportState = "paused";
+  const playAudioTransport = () => {
+    const transition = audioTransportState === "stopped" ? "start" : "resume";
+    audioTransportState = "playing";
+    void updateRuntimeWasmAudioTransport(transition);
+  };
+  const pauseAudioTransport = () => {
+    audioTransportState = "paused";
+    void updateRuntimeWasmAudioTransport("pause");
+  };
+  const stopAudioTransport = () => {
+    audioTransportState = "stopped";
+    void updateRuntimeWasmAudioTransport("stop");
+  };
+
   // ── 1. Actor creation ──────────────────────────────────────────
   const machine = transportMachine.provide({
     actions: {
-      emitPlay:     () => { void play(); },
-      emitPause:    () => { void pause(); },
-      emitStop:     () => { void stop(); },
+      emitPlay:     () => { void play(); playAudioTransport(); },
+      emitPause:    () => { void pause(); pauseAudioTransport(); },
+      emitStop:     () => { void stop(); stopAudioTransport(); },
       emitRewind:   () => { void rewind(); },
       emitClear:    () => { void clear(); },
       autoStartBrowserLocal: () => {
         void play();
+        playAudioTransport();
         applyClockPolicy("playing", "stopped");
       },
-      syncWasmPlay: () => { void syncRuntimeWasmTransportState("playing"); },
-      syncWasmPause:() => { void syncRuntimeWasmTransportState("paused"); },
-      syncWasmStop: () => { void syncRuntimeWasmTransportState("stopped"); },
+      syncWasmPlay: () => {
+        void syncRuntimeWasmTransportState("playing");
+        playAudioTransport();
+      },
+      syncWasmPause:() => {
+        void syncRuntimeWasmTransportState("paused");
+        pauseAudioTransport();
+      },
+      syncWasmStop: () => {
+        void syncRuntimeWasmTransportState("stopped");
+        stopAudioTransport();
+      },
     },
   });
   const actor = createActor(machine);
@@ -161,6 +187,7 @@ export function createTransportOrchestrator(): TransportOrchestrator {
         mode,
         browserLocalAutoRun ? "playing" : actor.getSnapshot().value as TransportState,
       );
+      void updateRuntimeWasmAudioTransport("reanchor");
     }
   };
 

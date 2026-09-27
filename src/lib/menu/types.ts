@@ -31,7 +31,7 @@ export interface MenuDispatcher {
    * Open the menu with a specific apply target. Reads the manifest from the
    * cached loader. No-op if the menu is already open.
    */
-  open(target: ApplyTarget): void;
+  open(target: ApplyTarget, side?: "before" | "after", initialVerb?: VerbKind, categoryIndex?: number): void;
 
   /**
    * Close the menu (cancel path). Dispatches a `cancel` input to the reducer.
@@ -406,6 +406,7 @@ export interface Manifest {
  */
 export interface ApplyTarget {
   readonly __brand: "ApplyTarget";
+  readonly side?: "before" | "after";
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +482,8 @@ export interface MenuStateOpen {
   readonly shoulderHeld: ShoulderHeld;
   readonly frozen: FrozenSnapshot | null;
   readonly target: ApplyTarget;
+  readonly side?: "before" | "after";
+  readonly initialVerb?: VerbKind;
   readonly manifest: Manifest;
 }
 
@@ -599,6 +602,9 @@ export type MenuInput =
       readonly kind: "open";
       readonly target: ApplyTarget;
       readonly manifest: Manifest;
+      readonly side?: "before" | "after";
+      readonly initialVerb?: VerbKind;
+      readonly categoryIndex?: number;
     }
   /** Live left-stick poll. `hover` is null when stick is centred. */
   | { readonly kind: "axisLeft"; readonly hover: StickHover }

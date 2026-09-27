@@ -40,6 +40,7 @@ import { showVisualisationPanel } from '../ui/adapters/visualisationPanel';
 import { devicePluggedIn as devicePluggedInChannel } from '../contracts/runtimeChannels.ts';
 import type { BrowserWasmRuntimeController } from './browserWasmRuntime.ts';
 import { uninstallBrowserWasmRuntimeController } from './browserWasmRuntime.ts';
+import { initStickyModifiers } from '../lib/keybindings/stickyModifiers.ts';
 
 interface NoModuleExpression {
   exprType: string;
@@ -153,6 +154,7 @@ export function createApp(
   bootstrapPlan: BootstrapPlan,
   options: { browserWasmRuntime?: BrowserWasmRuntimeController } = {},
 ) {
+  let cleanupStickyModifiers: (() => void) | null = null;
   let stopped = false;
   let unsubscribeRuntime: (() => void) | null = null;
   let wasmActive = false;
@@ -220,6 +222,7 @@ export function createApp(
     modals: {},
 
     async start() {
+      cleanupStickyModifiers ??= initStickyModifiers();
       unsubscribeDevicePluggedIn = devicePluggedInChannel.subscribe(() => {
         post('Previously saved uSEQ device detected; reconnecting.');
       });
@@ -281,15 +284,10 @@ export function createApp(
         return;
       }
 
-      if (plan.startBrowserLocal) {
-        if (plan.attemptHardwareReconnect) {
-          void checkForSavedPortAndMaybeConnect();
-        }
-        return;
-      }
-
       if (plan.attemptHardwareReconnect) {
-        await checkForSavedPortAndMaybeConnect();
+        const reconnect = checkForSavedPortAndMaybeConnect();
+        if (plan.awaitSavedPortReconnect) await reconnect;
+        else void reconnect;
       }
 
     },
@@ -297,6 +295,8 @@ export function createApp(
     async stop() {
       if (stopped) return;
       stopped = true;
+      cleanupStickyModifiers?.();
+      cleanupStickyModifiers = null;
       unsubscribeRuntime?.();
       unsubscribeRuntime = null;
       visualisationSession.dispose();

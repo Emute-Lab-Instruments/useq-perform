@@ -43,5 +43,3 @@ export interface VisualisationSessionDetail {
 export interface SerialVisPaletteChangedDetail {
   palette?: string[];
 }
-
-export type SerialVisAutoOpenDetail = undefined;

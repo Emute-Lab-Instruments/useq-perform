@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   resetRuntimeSessionState,
   transitionRuntimeCoordinator,
-  updateRuntimeSessionState,
 } from "./runtimeCoordinator.ts";
 import type { WasmRuntimePort } from "../contracts/runtimePorts.ts";
+import type { RuntimeCoordinatorTransition } from "./runtimeCoordinator.ts";
 import { shouldUseWasmShadow } from "./runtimeCompatibility.ts";
+
+const setSession = (updates: Extract<RuntimeCoordinatorTransition, { type: "session" }>['updates']) =>
+  transitionRuntimeCoordinator({ type: "session", updates });
 
 describe("WASM shadow compatibility", () => {
   beforeEach(() => {
@@ -19,7 +22,7 @@ describe("WASM shadow compatibility", () => {
 
   it("keeps WASM active without hardware and with JSON firmware", () => {
     expect(shouldUseWasmShadow()).toBe(true);
-    updateRuntimeSessionState({
+    setSession({
       hasHardwareConnection: true,
       connected: true,
       protocolMode: "json",
@@ -28,7 +31,7 @@ describe("WASM shadow compatibility", () => {
   });
 
   it("makes pre-1.2 hardware authoritative without unloading WASM", () => {
-    updateRuntimeSessionState({
+    setSession({
       hasHardwareConnection: true,
       connected: true,
       protocolMode: "legacy",

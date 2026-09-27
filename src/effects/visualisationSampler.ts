@@ -582,7 +582,9 @@ export async function tickAndProject(
         }
         // M2 fix: advance frontier only to the actual max time pushed,
         // not the requested projectEnd, to avoid suppressing re-extension.
-        projectionFrontier = actualFrontier;
+        projectionFrontier = Number.isFinite(combined.projectionFrontierTime)
+          ? Math.max(actualFrontier, combined.projectionFrontierTime!)
+          : actualFrontier;
         if (import.meta.env.DEV) perf.end("sampler-refill-apply");
       } else if (projMode === PROJECTION_MODE_EXTEND) {
         if (import.meta.env.DEV) perf.begin("sampler-extend-apply");
@@ -608,7 +610,9 @@ export async function tickAndProject(
           }
         }
         // M2 fix: advance frontier only to actual max time pushed.
-        projectionFrontier = actualFrontier;
+        projectionFrontier = Number.isFinite(combined.projectionFrontierTime)
+          ? Math.max(actualFrontier, combined.projectionFrontierTime!)
+          : actualFrontier;
         if (import.meta.env.DEV) perf.end("sampler-extend-apply");
       }
       return;

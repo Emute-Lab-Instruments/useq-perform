@@ -409,6 +409,22 @@ describe("wire protocol contract — editor side", () => {
     );
   });
 
+  it("handles the save-in-progress status frame", async () => {
+    const transport = await loadTransport();
+    const { firmwareStatus } = await import("../contracts/runtimeChannels.ts");
+    const received: Array<{ status: string }> = [];
+    const unsub = firmwareStatus.subscribe((status) => received.push(status));
+    const port = new SpecCompliantFakeDevice();
+    await transport.connectToSerialPort(port as unknown as SerialPort);
+    await passLegacyProbe();
+
+    port.pushJson({ type: "status", status: "save-in-progress" });
+    await flush();
+    unsub();
+
+    expect(received).toEqual([{ status: "save-in-progress" }]);
+  });
+
   // §5.7 — Editor parses `diagnostics` field from eval responses.
   // Currently the editor reads diagnostics ONLY from WASM exports
   // (src/runtime/wasmInterpreter.ts). For hardware mode it must also

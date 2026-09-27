@@ -83,7 +83,6 @@ const baseLayer: Layer = {
     [keyOf(held("Left"))]: "nav.left",
     [keyOf(tap("Right"))]: "nav.right",
     [keyOf(held("Right"))]: "nav.right",
-    [keyOf(tap("A"))]: "actOn.open",
     [keyOf(tap("B"))]: "nav.out",
     [keyOf(tap("Start"))]: "eval.now",
     [keyOf(tap("Back"))]: "edit.undo",
@@ -97,7 +96,27 @@ const baseLayer: Layer = {
     [keyOf(chord(["RT", "A"]))]: "actOn.grab",
     [keyOf(chord(["LeftStickPress", "RightStickPress"]))]: "mainMenu.open",
   },
+  leaders: { [keyOf(tap("A"))]: ln("act-on") },
   axes: { right: ch("manual-control") },
+};
+
+const actOnLayer: Layer = {
+  name: ln("act-on"),
+  popOn: ["resolution", "timeout"],
+  ttlMs: 2000,
+  onMiss: "pop-and-fall-through",
+  gestures: {
+    [keyOf(tap("X"))]: "actOn.replace",
+    [keyOf(tap("Y"))]: "actOn.wrapWith",
+    [keyOf(tap("B"))]: "actOn.cut",
+    [keyOf(tap("A"))]: "actOn.duplicate",
+    [keyOf(tap("LB"))]: "actOn.copy",
+    [keyOf(tap("RB"))]: "actOn.paste",
+    [keyOf(tap("Up"))]: "edit.raise",
+    [keyOf(tap("Down"))]: "actOn.wrapList",
+    [keyOf(tap("Start"))]: "liveEdit.mark",
+    [keyOf(tap("Back"))]: "actOn.cancel",
+  },
 };
 
 const lbShiftedLayer: Layer = {
@@ -274,3 +293,5 @@ export const modalShiftLayers: readonly Layer[] = [
   atomEditLayer,
   baseLayer,
 ];
+
+export const modalShiftTransientLayers: readonly Layer[] = [actOnLayer];

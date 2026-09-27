@@ -42,7 +42,9 @@ export function applyMenuVerb(request: MenuVerbApplicationRequest): MenuVerbAppl
   const item = resolveItem(manifest, state.frozen);
   if (item === null) return { kind: "ignored" };
 
-  const hand: Handedness = state.shoulderHeld === "none" ? "left" : state.shoulderHeld;
+  const hand: Handedness = state.shoulderHeld === "none"
+    ? state.side === "after" ? "right" : "left"
+    : state.shoulderHeld;
   const verb: Verb = { kind: verbKind, hand };
   const structValue = view.state.field(structField, false);
   if (!structValue) return { kind: "ignored" };

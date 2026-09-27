@@ -29,6 +29,7 @@
 // module can splice it without re-parsing.
 
 import { findHolesInOrder, makeHole } from "../extensions/structure/core/holes";
+import { makeMutators } from "../extensions/structure/core/mutate";
 import {
   findById,
   indexOfChild,
@@ -113,6 +114,11 @@ export function applyVerb(args: {
   readonly ids: IdGen;
 }): ApplyResult {
   const { tree, cursorSet, item, verb, ids } = args;
+  const targetId = primaryTargetId(cursorSet);
+  const target = targetId === null ? null : findById(tree.root, targetId);
+  if (target?.kind === "hole") {
+    return applyHoleFill(tree, cursorSet, item, ids);
+  }
   switch (verb.kind) {
     case "insert":
       return applyInsert(tree, cursorSet, item, verb.hand, ids);
@@ -245,25 +251,31 @@ export function applyReplace(
     return { ok: false, reason: "unsupported-combination" };
   }
 
-  const made = makeNodeFromItem(item, ids);
-  if (!made.ok) return made;
-  const replacement = made.value;
-
   const targetId = primaryTargetId(cursorSet);
   if (targetId === null || targetId === tree.root.id) {
     return { ok: false, reason: "invalid-target" };
   }
 
-  // Existence guard: `replaceNode` throws when the id is not in the tree.
-  // The other three verbs guard via `parentOf` / `findById` before mutating.
-  if (findById(tree.root, targetId) === null) {
-    return { ok: false, reason: "invalid-target" };
-  }
+  const target = findById(tree.root, targetId);
+  if (target === null) return { ok: false, reason: "invalid-target" };
+  if (target.kind === "hole") return applyHoleFill(tree, cursorSet, item, ids);
+
+  const made = makeNodeFromItem(item, ids);
+  if (!made.ok) return made;
+  const replacement = made.value;
 
   // `replaceNode` requires an addressable node id; the document root is
   // already excluded above. The replacement is always addressable.
   const newRoot = replaceNode(tree.root, targetId, replacement);
   return successOnInserted(newRoot, replacement);
+}
+
+function applyHoleFill(tree: Tree, cursorSet: CursorSet, item: MenuItem, ids: IdGen): ApplyResult {
+  const made = makeNodeFromItem(item, ids);
+  if (!made.ok) return made;
+  const result = makeMutators({ ids }).fillHole({ tree, cursors: cursorSet }, () => made.value);
+  if (result.noOps.length > 0) return { ok: false, reason: "invalid-target" };
+  return { ok: true, tree: result.state.tree, cursorSet: result.state.cursors };
 }
 
 // ---------------------------------------------------------------------------

@@ -250,6 +250,7 @@ interface GraphHarness {
   /** Push a block and process one quantum. */
   step(epoch: number, channels?: readonly number[], frames?: number): void;
   diagnostics(): Array<Extract<WorkletOutboundEvent, { type: "graph-diagnostic" }>>;
+  engineFaults(): Array<Extract<WorkletOutboundEvent, { type: "engine-fault" }>>;
 }
 
 function buildGraphHarness(opts: {
@@ -257,6 +258,7 @@ function buildGraphHarness(opts: {
   arena: ArrayBuffer;
   limitBytes?: number;
   renderQuantumFrames?: number;
+  now?: () => number;
   /** Shared compute-call recorder (the same array the adapters push into). */
   callOrder?: string[];
 }): GraphHarness {
@@ -293,6 +295,7 @@ function buildGraphHarness(opts: {
     sampleRate: DEFAULT_WORKLET_SAMPLE_RATE,
     renderQuantumFrames: opts.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES,
     publish: (e) => events.push(e),
+    now: opts.now,
     createArenaView: (byteOffset, lengthDoubles) =>
       new Float64Array(arena, byteOffset, lengthDoubles),
     createArenaByteView: (byteOffset, lengthBytes) =>
@@ -335,6 +338,11 @@ function buildGraphHarness(opts: {
       events.filter(
         (e): e is Extract<WorkletOutboundEvent, { type: "graph-diagnostic" }> =>
           "type" in e && e.type === "graph-diagnostic",
+      ),
+    engineFaults: () =>
+      events.filter(
+        (e): e is Extract<WorkletOutboundEvent, { type: "engine-fault" }> =>
+          "type" in e && e.type === "engine-fault",
       ),
   };
 }
@@ -528,6 +536,35 @@ describe("workletCore graph — topological execution and port wiring", () => {
 
     const out = h.core.readOutput();
     expect(out[0]).toBeCloseTo(300, 4);
+  });
+
+  it("dispatches non freq/amp controls from descriptor metadata", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    const descriptor = Object.freeze({
+      ...makeDescriptor("src/filter", 0),
+      params: Object.freeze([
+        Object.freeze({ name: "cutoff", default: 1200, min: 20, max: 20000, rate: "block" as const, smoothing: "step" as const }),
+      ]),
+    });
+    let observed = 0;
+    const base = createConstAdapter(arena, "src/filter", 0, []);
+    const adapter: FakeGraphAdapter = {
+      ...base,
+      descriptor,
+      params: buildNodeDefParamTable(descriptor),
+      computeWithParams(_statePtr, params, outputPtr, frameCount) {
+        observed = params[0].value;
+        new Float64Array(arena, outputPtr, frameCount).fill(observed);
+        return true;
+      },
+    };
+    const h = buildGraphHarness({ adapters: { "src/filter": adapter }, arena, callOrder: [] });
+    commitGraph(h.core, [instance("filter", "src/filter", 1, {
+      controlChannels: [{ param: "cutoff", channel: 0 }],
+    })]);
+    for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1, [6400]);
+    expect(observed).toBe(6400);
+    expect(h.core.readOutput()[0]).toBeCloseTo(6400, 4);
   });
 
   it("holds prefill values for params without a channel (sparse binding)", () => {
@@ -851,6 +888,14 @@ describe("workletCore graph — per-instance trap containment", () => {
         code: fault.code,
         identity: "bad",
       });
+      if (fault.mode === "trap") {
+        expect(h.engineFaults()).toContainEqual({
+          type: "engine-fault",
+          reason: "WORKLET_TRAP",
+          atBlock: h.core.telemetry.blockCount,
+          identity: "bad",
+        });
+      }
 
       mode.current = "success";
       h.step(1);
@@ -862,6 +907,27 @@ describe("workletCore graph — per-instance trap containment", () => {
 
     expect(h.core.telemetry.instances.map((instance) => instance.identity))
       .toEqual(["bad", "good"]);
+  });
+});
+
+describe("workletCore consecutive deadline overload", () => {
+  it("publishes OVERLOAD after eight consecutive missed block deadlines", () => {
+    const arena = new ArrayBuffer(1024 * 1024);
+    let now = 0;
+    const h = buildGraphHarness({
+      adapters: {},
+      arena,
+      now: () => { now += 5; return now; },
+    });
+    for (let i = 0; i < 8; i++) h.core.process(128);
+    expect(h.engineFaults()).toContainEqual({
+      type: "engine-fault",
+      reason: "OVERLOAD",
+      atBlock: 8,
+      consecutiveMisses: 8,
+    });
+    h.core.process(128);
+    expect(h.core.readOutput().slice(0, 128).some((sample) => sample !== 0)).toBe(false);
   });
 });
 

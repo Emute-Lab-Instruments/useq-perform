@@ -58,7 +58,6 @@ vi.mock("./appSettingsRepository", () => ({
   replaceAppSettings: vi.fn(),
   updateAppSettings: vi.fn(),
   resetAppSettings: vi.fn(),
-  loadAppSettings: vi.fn(),
   deletePersistedSettings: vi.fn(),
   setSettingsDispatchHook: vi.fn(),
 }));

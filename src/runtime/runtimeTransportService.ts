@@ -77,3 +77,27 @@ export async function syncRuntimeWasmTransportState(state: TransportState): Prom
     return null;
   }
 }
+
+/** Route transport-map changes to the audio producer owned by the WASM Worker. */
+export async function updateRuntimeWasmAudioTransport(
+  transition: "start" | "pause" | "resume" | "stop" | "reanchor",
+): Promise<void> {
+  try {
+    const port = getActiveWasmRuntimePort() as WasmRuntimePort & {
+      producerReadTelemetry?: () => Promise<{ audioFrame: bigint | number } | null>;
+      producerTransportUpdate?: (options: {
+        transition: "start" | "pause" | "resume" | "stop" | "reanchor";
+        atFrame: bigint;
+        atTime?: number;
+      }) => Promise<number>;
+    };
+    if (!port.producerTransportUpdate) return;
+    const telemetry = await port.producerReadTelemetry?.();
+    const rawFrame = telemetry?.audioFrame ?? 0n;
+    const atFrame = typeof rawFrame === "bigint" ? rawFrame : BigInt(Math.max(0, Math.trunc(rawFrame)));
+    await port.producerTransportUpdate({ transition, atFrame });
+  } catch {
+    // Audio is an optional runtime capability; transport command delivery
+    // remains owned by the existing hardware/WASM command path.
+  }
+}

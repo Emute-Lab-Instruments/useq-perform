@@ -1,5 +1,5 @@
 import { onMount } from "solid-js";
-import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings } from "lucide-solid";
+import { Cable, ChartSpline, File, Save, AArrowDown, AArrowUp, CircleHelp, Settings, AudioLines } from "lucide-solid";
 import { withShortcut } from "./toolbar/shortcutLabels";
 
 export type ConnectionState = 'none' | 'wasm' | 'hardware' | 'both';
@@ -12,7 +12,8 @@ export type MainToolbarAction =
   | 'fontDown'
   | 'fontUp'
   | 'help'
-  | 'settings';
+  | 'settings'
+  | 'calibrate';
 
 export interface MainToolbarProps {
   connectionState: ConnectionState;
@@ -23,6 +24,7 @@ export interface MainToolbarProps {
   onFontSizeUp: () => void;
   onFontSizeDown: () => void;
   onSettings: () => void;
+  onBeginCalibration?: () => void;
   onHelp: () => void;
   /** Display shortcuts for toolbar actions, already formatted by the adapter. */
   shortcuts?: Partial<Record<MainToolbarAction, string>>;
@@ -118,6 +120,9 @@ export function MainToolbar(props: MainToolbarProps) {
           >
             {CONNECTION_LABELS[props.connectionState]}
           </span>
+        </button>
+        <button type="button" class="toolbar-button" title="Calibrate CV outputs" aria-label="Calibrate CV outputs" onClick={() => props.onBeginCalibration?.()} disabled={props.connectionState !== 'hardware' && props.connectionState !== 'both'}>
+          <AudioLines />
         </button>
       </div>
 

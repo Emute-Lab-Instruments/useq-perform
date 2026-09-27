@@ -96,7 +96,6 @@ vi.mock("../contracts/runtimeChannels", () => ({
 vi.mock("../contracts/visualisationChannels", () => ({
   serialVisPaletteChangedChannel: { subscribe: vi.fn() },
   visualisationSessionChannel: { publish: vi.fn(), subscribe: vi.fn() },
-  serialVisAutoOpenChannel: { publish: vi.fn(), subscribe: vi.fn() },
 }));
 
 vi.mock("../utils/outputHealthStore.ts", () => ({

@@ -65,22 +65,8 @@ function cloneStartupFlags(flags: StartupFlags): StartupFlags {
   };
 }
 
-export function setStartupFlags(flags: StartupFlags): StartupFlags {
-  assertNotFrozen("setStartupFlags");
-  currentStartupFlags = cloneStartupFlags(flags);
-  return getStartupFlagsSnapshot();
-}
-
 export function getStartupFlagsSnapshot(): StartupFlags {
   return cloneStartupFlags(currentStartupFlags);
-}
-
-export function setEnvironmentCapabilities(
-  capabilities: EnvironmentCapabilities,
-): EnvironmentCapabilities {
-  assertNotFrozen("setEnvironmentCapabilities");
-  currentEnvironmentCapabilities = { ...capabilities };
-  return getEnvironmentCapabilitiesSnapshot();
 }
 
 export function getEnvironmentCapabilitiesSnapshot(): EnvironmentCapabilities {
@@ -105,10 +91,6 @@ export function applyStartupContext(input: {
   const probe = input.audioCapabilityProbe ?? probeAudioCapabilities();
   currentAudioCapabilitySnapshot = detectAudioCapabilities(probe);
   frozen = true;
-}
-
-export function isStartupContextFrozen(): boolean {
-  return frozen;
 }
 
 export function isLocalStorageBypassedInStartupContext(): boolean {
@@ -165,7 +147,7 @@ export function withStartupContextOverride<T>(
 
 /**
  * Test-only: reset the context to defaults and unfreeze it so
- * setStartupFlags / applyStartupContext can be called again.
+ * applyStartupContext can be called again.
  */
 export function resetStartupContextForTests(): void {
   frozen = false;

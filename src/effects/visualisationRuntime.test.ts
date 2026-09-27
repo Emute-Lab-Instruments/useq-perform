@@ -109,7 +109,6 @@ vi.mock("../contracts/runtimeChannels", () => ({
 vi.mock("../contracts/visualisationChannels", () => ({
   serialVisPaletteChangedChannel: { subscribe: vi.fn() },
   visualisationSessionChannel: { publish: vi.fn(), subscribe: vi.fn() },
-  serialVisAutoOpenChannel: { publish: vi.fn(), subscribe: vi.fn() },
 }));
 
 vi.mock("../utils/outputHealthStore.ts", () => ({
@@ -138,16 +137,16 @@ async function setRuntimeMode(opts: {
   hasHardwareConnection: boolean;
   wasmEnabled?: boolean;
 }): Promise<void> {
-  const { updateRuntimeSessionState } = await import(
+  const { transitionRuntimeCoordinator } = await import(
     "../runtime/runtimeCoordinator.ts"
   );
-  updateRuntimeSessionState({
+  transitionRuntimeCoordinator({ type: "session", updates: {
     hasHardwareConnection: opts.hasHardwareConnection,
     wasmEnabled: opts.wasmEnabled ?? true,
     noModuleMode: false,
     connected: opts.hasHardwareConnection,
     protocolMode: opts.hasHardwareConnection ? "json" : "legacy",
-  });
+  } });
 }
 
 // ── Tests ────────────────────────────────────────────────────────────

@@ -15,6 +15,8 @@ type MockModule = {
   _malloc: ReturnType<typeof vi.fn>;
   _free: ReturnType<typeof vi.fn>;
   HEAPF64: Float64Array;
+  HEAPU8: Uint8Array;
+  UTF8ToString: ReturnType<typeof vi.fn>;
 };
 
 function installLoadedScriptTag(): void {
@@ -95,6 +97,8 @@ function createBaseModule(options: {
   overrides?: Record<string, MockHandler>;
 } = {}): MockModule {
   const { missingSymbols = [], missingRawSymbols = [], overrides = {} } = options;
+  const strings = new Map<number, string>();
+  let nextStringPointer = 16;
   const handlers: Record<string, MockHandler> = {
     useq_init: vi.fn(),
     useq_eval: vi.fn((code: string) => code),
@@ -105,11 +109,13 @@ function createBaseModule(options: {
       }
       return Number.NaN;
     }),
+    useq_output_classifications: vi.fn(() => 64),
+    useq_output_dependencies: vi.fn((index: number) => index === 0 ? 5 : 0),
     ...overrides,
   };
 
   const module = {
-    cwrap: vi.fn((symbol: string) => {
+    cwrap: vi.fn((symbol: string, returnType?: string | null) => {
       if (missingSymbols.includes(symbol)) {
         throw new Error(`missing export: ${symbol}`);
       }
@@ -118,11 +124,23 @@ function createBaseModule(options: {
       if (!handler) {
         throw new Error(`missing export: ${symbol}`);
       }
-      return handler;
+      return (...args: any[]) => {
+        const result = handler(...args);
+        if (returnType === "number" && typeof result === "string" &&
+            ["useq_eval", "useq_last_error", "useq_last_diagnostics", "useq_active_diagnostics"].includes(symbol)) {
+          const pointer = nextStringPointer;
+          nextStringPointer += 8;
+          strings.set(pointer, result);
+          return pointer;
+        }
+        return result;
+      };
     }),
     _malloc: vi.fn(() => Float64Array.BYTES_PER_ELEMENT),
     _free: vi.fn(),
     HEAPF64: new Float64Array(256),
+    HEAPU8: new Uint8Array(4096),
+    UTF8ToString: vi.fn((pointer: number) => strings.get(pointer) ?? ""),
   } as MockModule & Record<string, unknown>;
 
   for (const [symbol, handler] of Object.entries(handlers)) {
@@ -161,6 +179,19 @@ describe("useqWasmInterpreter", () => {
     expect(exports).toContain("useq_last_error");
   });
 
+  it("reads packed output classes and dependency masks from the WASM heap", async () => {
+    const module = createBaseModule();
+    module.HEAPU8.set([0, 1, 2, 3], 64);
+    installLoadedScriptTag();
+    window.createModule = vi.fn(async () => module as never);
+
+    const { readOutputClassifications } = await import("./wasmInterpreter.ts");
+    const result = await readOutputClassifications();
+
+    expect(result?.classes.slice(0, 4)).toEqual([0, 1, 2, 3]);
+    expect(result?.inputMasks.slice(0, 3)).toEqual([5, 0, 0]);
+  });
+
   it("ships a generated bundle with callable raw batch exports", async () => {
     const module = await loadGeneratedBundleModule("../../public/wasm/useq.js");
 
@@ -177,16 +208,18 @@ describe("useqWasmInterpreter", () => {
     expect(typeof typedModule.HEAPF64?.subarray).toBe("function");
 
     const init = typedModule.cwrap("useq_init", null, []);
-    const evalCode = typedModule.cwrap("useq_eval", "string", ["string"]);
+    const evalCode = typedModule.cwrap("useq_eval", "number", ["string"]);
     const typedEval = typedModule.cwrap(
       "useq_eval_outputs_time_window_into",
       "number",
       ["string", "number", "number", "number", "number", "number"]
     );
-    const lastError = typedModule.cwrap("useq_last_error", "string", []);
+    const lastError = typedModule.cwrap("useq_last_error", "number", []);
 
     init();
-    expect(evalCode("(a1 0.5)")).toBe("ok");
+    const evalPointer = evalCode("(a1 0.5)");
+    expect(typedModule.UTF8ToString(evalPointer)).toBe("ok");
+    typedModule._free(evalPointer);
 
     const sampleCount = 5;
     const pointer = typedModule._malloc(sampleCount * Float64Array.BYTES_PER_ELEMENT);
@@ -196,7 +229,9 @@ describe("useqWasmInterpreter", () => {
     try {
       const status = typedEval(JSON.stringify(["a1"]), 0, 1, sampleCount, pointer, sampleCount);
       expect(status).toBe(1);
-      expect(lastError()).toBe("");
+      const lastErrorPointer = lastError();
+      expect(lastErrorPointer ? typedModule.UTF8ToString(lastErrorPointer) : "").toBe("");
+      if (lastErrorPointer) typedModule._free(lastErrorPointer);
       expect(Array.from(view)).toEqual([0.5, 0.5, 0.5, 0.5, 0.5]);
     } finally {
       typedModule._free(pointer);

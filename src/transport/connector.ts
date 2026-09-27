@@ -17,7 +17,10 @@ import {
   reportTransportConnectionChanged,
   announceRuntimeSession as announceFromService,
 } from "../runtime/runtimeSessionService.ts";
-import { devicePluggedIn as devicePluggedInChannel } from "../contracts/runtimeChannels";
+import {
+  devicePluggedIn as devicePluggedInChannel,
+  protocolReady as protocolReadyChannel,
+} from "../contracts/runtimeChannels";
 import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 
 import type { TransportContext } from "./types.ts";
@@ -33,6 +36,7 @@ import {
   initProtocol,
   resetProtocolState,
   sendHelloWithRetry,
+  getConnectedFirmwareIdentity,
 } from "./json-protocol.ts";
 
 // ── Module-level state ──────────────────────────────────────────────
@@ -41,6 +45,7 @@ let serialport: SerialPort | null = null;
 let connectedToModule = false;
 let flag_triggeringBootloader = false;
 let connectionInProgress = false;
+let unsubscribeProtocolReady: (() => void) | null = null;
 
 // ── Connection state ────────────────────────────────────────────────
 
@@ -220,7 +225,7 @@ export async function connectToSerialPort(port: SerialPort): Promise<boolean> {
 async function setupConnectedPort(port: SerialPort): Promise<void> {
   resetProtocolState();
   setSerialPort(port);
-  setConnectedToModule(true);
+  setConnectedToModule(false);
 
   // Start reading with message callbacks
   startSerialReader(port, handleJsonMessage, handleLegacyTextMessage);
@@ -229,6 +234,15 @@ async function setupConnectedPort(port: SerialPort): Promise<void> {
   // completes or the attempt budget is exhausted.
   // Fire-and-forget: do not block port setup on handshake completion so the
   // stream reader can process the device's hello response concurrently.
+  unsubscribeProtocolReady?.();
+  unsubscribeProtocolReady = protocolReadyChannel.subscribe(() => {
+    // sendHelloWithRetry also publishes protocolReady when attempts are
+    // exhausted. Firmware identity is populated only by a completed JSON or
+    // legacy handshake, so an exhausted negotiation remains disconnected.
+    if (getConnectedFirmwareIdentity().protocolVersion !== null) {
+      setConnectedToModule(true);
+    }
+  });
   sendHelloWithRetry().catch((err) => {
     console.error("sendHelloWithRetry failed unexpectedly:", err);
   });
@@ -255,6 +269,8 @@ export async function disconnect(port?: SerialPort | null): Promise<void> {
     }
 
     if (port === serialport) {
+      unsubscribeProtocolReady?.();
+      unsubscribeProtocolReady = null;
       setConnectedToModule(false);
       if (disconnectError) {
         post("uSEQ disconnected with errors", "warn");

@@ -36,7 +36,7 @@ import {
 // delta and the Worker producer arms the new epoch (VAL-ENGINE-010).
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import { getAllManualControlBindings } from "../lib/manualControlState.ts";
-import { evalRejectionForNoRuntime } from "./noneModeGate.ts";
+import { evalRejectionForNoRuntime, WASM_RUNTIME_NOT_READY_WARNING } from "./noneModeGate.ts";
 import { flashEvalHighlight } from "../editors/extensions/evalHighlight.ts";
 import { detectAndTrackExpressionEvaluation } from "../editors/extensions/expressionEval.ts";
 import { markOutputRunning } from "../utils/outputHealthStore.ts";
@@ -223,6 +223,31 @@ function nextEvalSeq(view: EditorView): number {
 
 function isLatestEvalSeq(view: EditorView, seq: number): boolean {
   return viewEvalSeq.get(view) === seq;
+}
+
+/**
+ * runtime-modes.md §1.10: the app must never silently drop an eval. When the
+ * fanned-out outcome carries NEITHER leg — e.g. wasm mode while the Worker
+ * runtime is still loading (`capabilities().available` false until load) and
+ * no hardware leg is active — both legs resolve null and the eval highlight
+ * would flash with no user-visible feedback. Post the §1.10-style warning.
+ *
+ * Outcomes where a leg exists are surfaced by their own paths: a fulfilled
+ * WASM leg through evalWasm's inline result/diagnostics, a hardware leg
+ * through the hardware diagnostics readback, WASM rejection through
+ * evalWasm's `.catch`. Hardware-only normal evals (wasm leg null, hardware
+ * fulfilled) are delivery per code-evaluation.md §1.2.1 and stay silent;
+ * soft evals report inline via evalWasm's preview branch, so only the two
+ * normal dispatch sites attach this guard.
+ */
+function warnWhenEvalHasNoRuntimeLeg(
+  evaluation: Promise<RuntimeCodeEvaluationResult>,
+): void {
+  void evaluation.then((outcome) => {
+    if (!outcome.wasm && !outcome.hardware) {
+      post(WASM_RUNTIME_NOT_READY_WARNING, "warn");
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -670,6 +695,7 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
           code,
           wasmCode: payload.runtimeCode,
         });
+        warnWhenEvalHasNoRuntimeLeg(evaluation);
         evalWasm(code, {
           isImmediate: true,
           isPreview: false,
@@ -795,6 +821,7 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
     code,
     wasmCode: rawRuntimeCode,
   });
+  warnWhenEvalHasNoRuntimeLeg(evaluation);
   evalWasm(code, {
     isImmediate,
     isPreview: false,
@@ -813,7 +840,11 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
   const bindingKeys = bindingKeysInText(rawCode);
   if (bindingKeys.length > 0) {
     void evaluation.then((result) => {
-      if (result.hardware?.status === "fulfilled") {
+      // code-evaluation.md §1.2.1: failed or inactive ports do not count as
+      // delivery — a hardware leg that resolved with success:false (device
+      // rejection or the not-connected envelope) must NOT lift the preview.
+      if (result.hardware?.status === "fulfilled"
+          && result.hardware.value.success !== false) {
         clearBindingsSoftPreview(bindingKeys);
       } else if (result.wasm?.status === "fulfilled") {
         markBindingsSoftPreview(bindingKeys);

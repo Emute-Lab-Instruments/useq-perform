@@ -82,7 +82,7 @@ export interface BootstrapPlanInput {
 
 export interface BootstrapPlan {
   startupMode: BootstrapStartupMode;
-  startBrowserLocal: boolean;
+  awaitSavedPortReconnect: boolean;
   seedDefaultNoModuleExpressions: boolean;
   attemptHardwareReconnect: boolean;
   showUnsupportedBrowserWarning: boolean;
@@ -109,7 +109,7 @@ export function resolveBootstrapPlan(
     if (!input.wasmEnabled) {
       return {
         startupMode: "unsupported-browser",
-        startBrowserLocal: false,
+        awaitSavedPortReconnect: false,
         seedDefaultNoModuleExpressions: false,
         attemptHardwareReconnect: false,
         showUnsupportedBrowserWarning: true,
@@ -117,7 +117,7 @@ export function resolveBootstrapPlan(
     }
     return {
       startupMode: "no-module",
-      startBrowserLocal: true,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: true,
       attemptHardwareReconnect: false,
       showUnsupportedBrowserWarning: false,
@@ -127,7 +127,7 @@ export function resolveBootstrapPlan(
   if (!input.isWebSerialAvailable) {
     return {
       startupMode: input.wasmEnabled ? "browser-local" : "unsupported-browser",
-      startBrowserLocal: input.wasmEnabled,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: false,
       attemptHardwareReconnect: false,
       showUnsupportedBrowserWarning: !input.wasmEnabled,
@@ -137,7 +137,7 @@ export function resolveBootstrapPlan(
   if (input.wasmEnabled && input.startLocallyWithoutHardware) {
     return {
       startupMode: "browser-local",
-      startBrowserLocal: true,
+      awaitSavedPortReconnect: false,
       seedDefaultNoModuleExpressions: false,
       attemptHardwareReconnect: true,
       showUnsupportedBrowserWarning: false,
@@ -146,7 +146,7 @@ export function resolveBootstrapPlan(
 
   return {
     startupMode: "hardware",
-    startBrowserLocal: false,
+    awaitSavedPortReconnect: true,
     seedDefaultNoModuleExpressions: false,
     attemptHardwareReconnect: true,
     showUnsupportedBrowserWarning: false,
@@ -399,8 +399,14 @@ export async function bootstrap(): Promise<BootstrapResult> {
         devmode: startupFlags.devmode,
         // Resolve at every producer operation: the runtime controller
         // replaces this Worker port after crashes and enable/disable cycles.
-        workerPort: () => (getActiveWasmRuntimePort() ?? undefined) as unknown as
-          import("../audio/synthesisService.ts").SynthesisWorkerPort | undefined,
+        workerPort: () => {
+          try {
+            return getActiveWasmRuntimePort() as unknown as
+              import("../audio/synthesisService.ts").SynthesisWorkerPort;
+          } catch {
+            return undefined;
+          }
+        },
         consoleMessageSink: (message, type) => {
           // The synthesis service emits plain strings; the console
           // store escapes and renders inline markdown. The sink types

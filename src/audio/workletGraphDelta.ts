@@ -432,6 +432,15 @@ export interface WorkletProducerTimeoutEvent {
   readonly livenessAge: number;
 }
 
+/** Worklet faults that require the synthesis service to enter error state. */
+export interface WorkletEngineFaultEvent {
+  readonly type: "engine-fault";
+  readonly reason: "WORKLET_TRAP" | "OVERLOAD";
+  readonly atBlock: number;
+  readonly identity?: string;
+  readonly consecutiveMisses?: number;
+}
+
 /**
  * Event the core publishes when an instance finishes retiring. The
  * service uses this to advance its internal graph state and reclaim
@@ -512,6 +521,7 @@ export interface WorkletGraphTransactionAckEvent {
 export type WorkletOutboundEvent =
   | WorkletTelemetrySnapshot
   | WorkletProducerTimeoutEvent
+  | WorkletEngineFaultEvent
   | WorkletInstanceRetiredEvent
   | WorkletGraphActivatedEvent
   | WorkletControlAttachAckEvent

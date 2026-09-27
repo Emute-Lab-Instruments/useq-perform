@@ -64,7 +64,7 @@ Runtime channels (see `src/contracts/runtimeChannels.ts`):
 | `protocolReady` | `ProtocolReadyDetail` | JSON protocol driver | Transport orchestration |
 | `jsonMeta` | `JsonMetaEventDetail` | JSON protocol driver | Transport orchestration |
 | `codeEvaluated` | `CodeEvaluatedDetail` | Runtime/evaluation layer | Visualisation sampler, editor feedback, toolbar BPM refresh, LiveAnnouncer (eval announcements) |
-| `runtimeDiagnostics` | diagnostic snapshot | `runtimeDiagnostics` | Diagnostics UI |
+| `runtimeDiagnostics` | diagnostic snapshot | `runtimeDiagnostics` | Devmode Runtime diagnostics settings section |
 | `bootstrapFailure` | failure detail | `runtimeDiagnostics` | Recovery UI |
 | `animateConnect` | `AnimateConnectDetail` | JSON protocol driver (not-connected) | Connect-button animation (UI) |
 | `devicePluggedIn` | `DevicePluggedInDetail` | `connector.ts` (saved device replug) | Reconnect UI / prompt |

@@ -357,7 +357,6 @@ const irreversibleActions = [
   'eval.now',
   'mode.insert', 'mode.structural', 'mode.toggle',
   'transport.start', 'transport.stop',
-  'picker.select', 'picker.cancel',
   // ...
 ] as const
 
@@ -829,7 +828,7 @@ test/lib/gamepad/
 
 10.1 **Action registry refactor.** The reversibility classification (§5.1) requires tagging every existing `ActionId`. The current `src/lib/keybindings/actions.ts` does not carry this metadata. Refactor scope is non-trivial; some actions (e.g. `eval.now`) are unambiguous, others (e.g. menu-driven inserts that themselves push a single edit) need adjudication.
 
-10.2 **Keyboard <-> gamepad action symmetry.** The picker layer defines a richer `picker.*` action namespace than today's `pickerNavigate` / `pickerSelect` channels. Moving the picker subsystem onto action dispatch is a separate piece of work; until it lands, the picker layer's bindings can target the existing channels via a `{kind:'channel', ch:..., payload:...}` escape hatch (option B in the brainstorm — kept available as a migration aid, not the long-term shape).
+10.2 **Keyboard <-> gamepad action symmetry.** The legacy picker layer and its `picker.*` action namespace were removed when the radial menu replaced that layer (§6.5, radial-menu.md §1). Radial-menu controls use the `menu.*` actions; no picker-channel migration path remains.
 
 10.3 **Multi-controller support.** All wording assumes a single connected gamepad. Multi-controller scenarios (two players, or split roles) are deferred. The store would gain a `controllerId` axis; bindings would gain optional controller filters.
 

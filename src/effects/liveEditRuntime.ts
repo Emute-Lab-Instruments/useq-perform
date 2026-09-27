@@ -303,13 +303,32 @@ function scanDocumentForLiveEditRanges(
 export async function discoverSlotsAfterEval(view: EditorView): Promise<void> {
   const port = getActiveWasmRuntimePort();
   const caps = port.capabilities();
-  if (!caps.supportsLiveInputs) return;
-
   let wasmSlots: LiveSlotMetadata[];
-  try {
-    wasmSlots = await port.getLiveSlots();
-  } catch {
-    return;
+  const hardwareOnly = !caps.supportsLiveInputs;
+  if (hardwareOnly) {
+    if (!isConnectedToModule() || !isJsonProtocolActive()) return;
+    try {
+      const snapshot = await webSerialHostPort.requestStateSnapshot();
+      wasmSlots = (snapshot?.liveSlots ?? []).map((slot) => ({
+        id: slot.id,
+        value: slot.value,
+        min: slot.min,
+        max: slot.max,
+        seed: slot.seed ?? slot.value,
+        variant: slot.variant ?? "numeric",
+        options: slot.options ?? [],
+        step: slot.step,
+        precision: slot.precision,
+      }));
+    } catch {
+      return;
+    }
+  } else {
+    try {
+      wasmSlots = await port.getLiveSlots();
+    } catch {
+      return;
+    }
   }
 
   if (wasmSlots.length === 0) {
@@ -405,7 +424,7 @@ export async function discoverSlotsAfterEval(view: EditorView): Promise<void> {
   }
   if (hasValues) {
     // Push to WASM (all values as doubles)
-    port.setLiveInputs(wasmDoubles).catch(() => {});
+    if (!hardwareOnly) port.setLiveInputs(wasmDoubles).catch(() => {});
 
     // Push to hardware transport if connected (spec §7.3, §8.4)
     if (isConnectedToModule() && isJsonProtocolActive()) {

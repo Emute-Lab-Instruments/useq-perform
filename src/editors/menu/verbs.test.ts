@@ -951,6 +951,23 @@ describe("applyCall", () => {
 // ---------------------------------------------------------------------------
 
 describe("applyVerb dispatch", () => {
+  it("delegates a hole target to Mutators.fillHole regardless of verb", () => {
+    const target = hole("value", "expr", ids);
+    const root = doc(ids, target);
+    const result = applyVerb({
+      tree: asTree(root),
+      cursorSet: cursorOn(target.id),
+      item: symItem("x"),
+      verb: { kind: "wrapWith", hand: "right" },
+      ids,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.tree.root.children[0]?.kind).toBe("symbol");
+      expect((result.cursorSet.primary as { target: string }).target).toBe(result.tree.root.children[0]?.id);
+    }
+  });
+
   it("dispatches verb.kind === 'insert' to applyInsert", () => {
     const foo = sym("foo", ids);
     const root = doc(ids, list(ids, foo));

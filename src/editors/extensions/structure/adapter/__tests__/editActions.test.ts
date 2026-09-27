@@ -39,6 +39,21 @@ function navIntoFirstForm(view: EditorView): void {
 }
 
 describe("edit.* actions wired through functional core", () => {
+  it("dispatches atom slurp forward and backward through the adapter", () => {
+    const forward = createView("a b");
+    dispatchAction(forward, "nav.in");
+    expect(dispatchAction(forward, "edit.atomSlurpForward")).toBe(true);
+    expect(forward.state.doc.toString()).toBe("[a b]");
+    forward.destroy();
+
+    const backward = createView("a b");
+    dispatchAction(backward, "nav.in");
+    dispatchAction(backward, "nav.next");
+    expect(dispatchAction(backward, "edit.atomSlurpBackward")).toBe(true);
+    expect(backward.state.doc.toString()).toBe("[a b]");
+    backward.destroy();
+  });
+
   // ─── Slurp ───────────────────────────────────────���────────────────────────
 
   describe("slurp", () => {

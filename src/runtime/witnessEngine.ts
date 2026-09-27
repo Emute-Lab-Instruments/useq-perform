@@ -20,6 +20,7 @@
 
 import type { WitnessEngine } from "../lib/witness/types.ts";
 import { REQUIRED_WASM_EXPORTS } from "../contracts/wasmAbi.ts";
+import { readAndFreeCString } from "./wasmInterpreterCore.ts";
 import { createIsolatedWasmModule, type EmscriptenModule } from "./wasmInterpreter.ts";
 
 interface Bound {
@@ -33,7 +34,9 @@ function bind(module: EmscriptenModule): Bound {
     module.cwrap(desc.symbol, desc.returnType, desc.argTypes as unknown as string[]) as T;
 
   const init = call<() => void>(REQUIRED_WASM_EXPORTS.useq_init);
-  const evaluate = call<(code: string) => string>(REQUIRED_WASM_EXPORTS.useq_eval);
+  const evaluatePointer = call<(code: string) => number>(REQUIRED_WASM_EXPORTS.useq_eval);
+  const evaluate = (code: string): string =>
+    readAndFreeCString(module, evaluatePointer(code));
   const evalOutput = call<(name: string, t: number) => number>(REQUIRED_WASM_EXPORTS.useq_eval_output);
 
   init();

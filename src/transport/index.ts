@@ -14,7 +14,6 @@ export type {
   WriteJsonRequestOptions,
   SendJsonEvalOptions,
   ProtocolState,
-  BufferMapFunction,
   TransportContext,
 } from "./types.ts";
 

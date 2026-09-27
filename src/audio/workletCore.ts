@@ -80,6 +80,7 @@ import {
   EMERGENCY_FADE_MS,
   MAX_RENDER_QUANTUM_FRAMES,
   MAX_SYNTH_NODES,
+  OVERLOAD_BLOCKS,
   PRODUCER_TIMEOUT_BLOCKS,
   SYNTH_FADE_IN_MS,
   SYNTH_FADE_OUT_MS,
@@ -97,6 +98,7 @@ import type {
   WorkletInstantiateMessage,
   WorkletInstanceRetiredEvent,
   WorkletInstanceTelemetry,
+  WorkletEngineFaultEvent,
   WorkletOutboundEvent,
   WorkletPrefillParam,
   WorkletProducerTimeoutEvent,
@@ -289,6 +291,8 @@ interface InstanceState {
   currentFreq: number;
   /** Most recently applied amplitude (param `amp`). Held on underrun. */
   currentAmp: number;
+  /** Mutable descriptor-ordered parameter vector for generic adapters. */
+  parameterValues: Array<{ name: string; value: number }>;
   /**
    * Prefilled param values that apply to the first matching-epoch
    * block only. Cleared after application so the steady-state path
@@ -518,6 +522,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   let peakSample = 0;
   let rmsSample = 0;
   let finiteOutput = 1;
+  let consecutiveDeadlineMisses = 0;
+  let overloadActive = false;
 
   // --- Precomputed fade frame counts (sample-rate derived) ---
   const fadeInFrames = Math.max(1, Math.round((SYNTH_FADE_IN_MS * sampleRate) / 1000));
@@ -588,6 +594,16 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     options.publish(event);
   }
 
+  function publishWorkletTrap(identity: string): void {
+    const event: WorkletEngineFaultEvent = {
+      type: "engine-fault",
+      reason: "WORKLET_TRAP",
+      atBlock: blockCount,
+      identity,
+    };
+    publishEvent(event);
+  }
+
   // -----------------------------------------------------------------------
   // Message handling (between quanta)
   // -----------------------------------------------------------------------
@@ -654,6 +670,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         code: "nodedef-trap",
         identity: id.identity,
       });
+      publishWorkletTrap(id.identity);
       glitchCount += 1;
       return `NodeDef ${id.def}@${id.version} trapped during adapter creation`;
     }
@@ -684,6 +701,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         code: "nodedef-trap",
         identity: id.identity,
       });
+      publishWorkletTrap(id.identity);
       glitchCount += 1;
     }
     if (!initOk) {
@@ -713,6 +731,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       fadeGainEnd: 1,
       currentFreq: DEFAULT_FREQ,
       currentAmp: DEFAULT_AMP,
+      parameterValues: adapter.descriptor.params.map((param) => ({
+        name: param.name,
+        value: param.default,
+      })),
       prefill: buildPrefillMap(message.prefill),
       audioOutputs,
       inputWiring: message.audioInputs ?? EMPTY_WIRING,
@@ -1027,6 +1049,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   // -----------------------------------------------------------------------
 
   function process(requestedFrameCount: number): WorkletTelemetrySnapshot {
+    const processStartedAt = options.now?.() ?? Date.now();
     blockCount += 1;
 
     // Bound the quantum by the ABI's validation ceiling so zone sizes
@@ -1216,7 +1239,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     }
 
     // ---- Step 6: Apply emergency fade if producer has timed out ----
-    if (producerTimeoutActive && emergencyFadeFramesRemaining > 0) {
+    if ((producerTimeoutActive || overloadActive) && emergencyFadeFramesRemaining > 0) {
       const remaining = emergencyFadeFramesRemaining;
       const total = emergencyFadeFrames;
       // Linear fade from current → 0 across the remaining frames.
@@ -1234,7 +1257,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
           outputMixScratch[i] = 0;
         }
       }
-    } else if (producerTimeoutActive) {
+    } else if (producerTimeoutActive || overloadActive) {
       // Past the fade: hard zero.
       outputMixScratch.fill(0);
     }
@@ -1328,6 +1351,24 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       activeEpoch = 0;
     }
 
+    const elapsedMs = (options.now?.() ?? Date.now()) - processStartedAt;
+    if (elapsedMs > (frameCount / sampleRate) * 1000) {
+      consecutiveDeadlineMisses += 1;
+      if (consecutiveDeadlineMisses >= OVERLOAD_BLOCKS && !overloadActive) {
+        overloadActive = true;
+        emergencyFadeFramesRemaining = emergencyFadeFrames;
+        const event: WorkletEngineFaultEvent = {
+          type: "engine-fault",
+          reason: "OVERLOAD",
+          atBlock: blockCount,
+          consecutiveMisses: consecutiveDeadlineMisses,
+        };
+        publishEvent(event);
+      }
+    } else {
+      consecutiveDeadlineMisses = 0;
+    }
+
     return refreshTelemetry();
   }
 
@@ -1359,6 +1400,23 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     // assignment, synth-nodes.md §7.2). Unbound params never touch the
     // SAB: the instance holds its prefill/default value (§3.3).
     if (hasBlock && controlView) {
+      if (typeof adapter.computeWithParams === "function") {
+        for (let i = 0; i < adapter.descriptor.params.length; i++) {
+          const descriptor = adapter.descriptor.params[i];
+          const channel = instance.controlChannels.get(descriptor.name);
+          if (channel === undefined || channel >= controlView.blockRateCount) continue;
+          let value = controlView.readBlockRateValue(physicalSlot, channel);
+          if (!Number.isFinite(value)) {
+            value = descriptor.default;
+            glitchCount += 1;
+          }
+          const max = descriptor.name === "freq"
+            ? Math.min(descriptor.max ?? Infinity, sampleRate / 2)
+            : descriptor.max ?? Infinity;
+          value = Math.max(descriptor.min ?? -Infinity, Math.min(max, value));
+          instance.parameterValues[i].value = value;
+        }
+      }
       const freqChannel = instance.controlChannels.get("freq");
       if (freqChannel !== undefined && freqChannel < controlView.blockRateCount) {
         let controlFreq = controlView.readBlockRateValue(physicalSlot, freqChannel);
@@ -1395,6 +1453,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       const amp = instance.prefill.get("amp");
       if (typeof freq === "number" && Number.isFinite(freq)) instance.currentFreq = freq;
       if (typeof amp === "number" && Number.isFinite(amp)) instance.currentAmp = amp;
+      for (let i = 0; i < instance.parameterValues.length; i++) {
+        const entry = instance.parameterValues[i];
+        const value = instance.prefill.get(entry.name);
+        if (typeof value === "number" && Number.isFinite(value)) entry.value = value;
+      }
       instance.prefill = null; // Single-shot; steady-state reads SAB.
     }
 
@@ -1422,7 +1485,14 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     let failureCode: "nodedef-trap" | "nodedef-compute-rejected" | "nodedef-nonfinite-output" =
       "nodedef-compute-rejected";
     try {
-      if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
+      if (typeof adapter.computeWithParams === "function") {
+        ok = adapter.computeWithParams(
+          instance.statePointer,
+          instance.parameterValues,
+          instance.outputZonePtr,
+          frameCount,
+        );
+      } else if (instance.inputPtrs.length > 0 && typeof adapter.computeWithInputs === "function") {
         ok = adapter.computeWithInputs(
           instance.statePointer,
           instance.inputPtrs,
@@ -1477,6 +1547,9 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
         code: failureCode,
         identity: instance.identity,
       });
+      if (failureCode === "nodedef-trap") {
+        publishWorkletTrap(instance.identity);
+      }
       applyFadeEnvelope(instance, frameCount);
       return;
     }
@@ -1625,6 +1698,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     rmsSample = 0;
     finiteOutput = 1;
     emergencyFadeFramesRemaining = 0;
+    consecutiveDeadlineMisses = 0;
+    overloadActive = false;
   }
 
   // -----------------------------------------------------------------------

@@ -1520,6 +1520,24 @@ describe("visualisation sampling boundary", () => {
       expect(calls[1].numFutureSamples).toBeGreaterThan(4);
     });
 
+    it("tracks the WASM frontier after a finite-prefix application", async () => {
+      portState.supportsTickAndProject = true;
+      portState.tickAndProject = vi.fn(async () => ({
+        tickValues: new Map([["a1", 0.5]]),
+        projectionSamples: new Map([[
+          "a1",
+          [{ time: 5.1, value: 0.7 }, { time: 5.2, value: Number.NaN }],
+        ]]),
+        projectionFrontierTime: 10,
+      }));
+
+      const sampler = await import("./visualisationSampler.ts");
+      await sampler.registerVisualisation("a1", "(a1 (sin 1))");
+      await projectFutureAt(sampler, 5);
+
+      expect(sampler.getProjectionFrontier()).toBe(10);
+    });
+
     it("reset-fills instead of extending when the future buffer has no near-boundary coverage", async () => {
       const modes: number[] = [];
       const tickAndProjectMock = vi.fn(async (

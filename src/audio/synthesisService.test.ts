@@ -169,6 +169,23 @@ describe("synthesisService — capability orthogonality", () => {
   });
 });
 
+describe("synthesisService worklet fault reasons", () => {
+  beforeEach(() => resetEngineStateStoreForTests());
+
+  it.each([
+    ["WORKLET_TRAP", "engine-fault"],
+    ["OVERLOAD", "engine-fault"],
+  ] as const)("transitions to error for %s", async (reason, type) => {
+    const bundle = buildOptions();
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+    bundle.workletNode.deliverFromWorklet({ type, reason, atBlock: 8 });
+    expect(service.state).toBe("error");
+    expect(engineStateStore.current.reasonKey).toBe(reason);
+    await service.dispose();
+  });
+});
+
 describe("synthesisService — one-worklet topology (VAL-ENGINE-007)", () => {
   beforeEach(() => {
     resetEngineStateStoreForTests();

@@ -14,6 +14,7 @@ import {
   buildDefaultStreamConfig,
   buildHeartbeatRequest,
   buildHelloRequest,
+  buildInputChannelRouting,
   buildSerialOutputRouting,
   buildSetLiveInputsRequest,
   buildCalibrateBeginRequest,
@@ -36,6 +37,7 @@ import {
 } from "../runtime/runtimeSessionService.ts";
 import {
   protocolReady as protocolReadyChannel,
+  firmwareStatus as firmwareStatusChannel,
   jsonMeta as jsonMetaChannel,
   animateConnect as animateConnectChannel,
   standaloneDiagnostics as standaloneDiagnosticsChannel,
@@ -60,7 +62,11 @@ import {
   type CaptureCallback,
   type ConnectedFirmwareIdentity,
 } from "./types.ts";
-import { serialBuffers, setSerialOutputBufferRouting } from "./stream-parser.ts";
+import {
+  serialBuffers,
+  setSerialInputHwRouting,
+  setSerialOutputBufferRouting,
+} from "./stream-parser.ts";
 import { clearLiveSlotIndex } from "../lib/liveSlotIndex.ts";
 import {
   handleLegacyText,
@@ -188,6 +194,7 @@ export function resetProtocolState(): void {
   _handshakeResolve = null;
   _handshakePromise = null;
   setSerialOutputBufferRouting({});
+  setSerialInputHwRouting({});
   for (const buf of serialBuffers) buf.clear();
   clearLiveSlotIndex();
   resetLegacyProtocol();
@@ -304,6 +311,9 @@ function completeHandshake(response: JsonResponse): void {
     if (response.config) {
       protocolState.ioConfig = response.config;
       setSerialOutputBufferRouting(buildSerialOutputRouting(response.config));
+      // state-sync.md §1.2: route input stream frames (ain1/ain2) to the WASM
+      // hardware-input indices so the sampler subscriber receives them.
+      setSerialInputHwRouting(buildInputChannelRouting(response.config));
       sendDefaultStreamConfig(response.config);
     }
     startHeartbeat();
@@ -949,6 +959,17 @@ export function handleJsonMessage(rawMessage: string): void {
         post(`uSEQ: ${text}`);
       }
     }
+    return;
+  }
+
+  if (parsed.type === "status") {
+    const validation = validateProtocolUnsolicitedMessage(parsed);
+    if (!validation.ok) {
+      console.error(`[json-protocol] Invalid status frame: ${validation.error}`);
+      return;
+    }
+    const status = parsed.status as string | undefined;
+    if (status) firmwareStatusChannel.publish({ status });
     return;
   }
 

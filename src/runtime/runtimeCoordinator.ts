@@ -170,13 +170,6 @@ export function resetRuntimeSessionState(): void {
   transitionRuntimeCoordinator({ type: "reset" });
 }
 
-/** Compatibility wrapper; new runtime code uses the explicit transition. */
-export function updateRuntimeSessionState(
-  updates: RuntimeSessionUpdate,
-): RuntimeSessionState {
-  return transitionRuntimeCoordinator({ type: "session", updates });
-}
-
 /** Remove all listeners and reset state. Test-only. */
 export function teardownRuntimeSessionState(): void {
   resetRuntimeSessionState();

@@ -58,6 +58,7 @@ export type {
 } from "../utils/visualisationStore.ts";
 export type { OutputRenderData } from "./visualisationBuffers.ts";
 export { DIGITAL_CHANNELS, SERIAL_VIS_CHANNELS } from "../utils/visualisationStore.ts";
+export { futureBoundaryMaxGapSeconds } from "./visualisationSampler.ts";
 
 let disposed = false;
 let probeGeneration = 0;

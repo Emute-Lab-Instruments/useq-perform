@@ -94,10 +94,10 @@ export function wrapBrowserAudioContext(context: BrowserAudioContext): AudioCont
       return context.suspend();
     },
     addEventListener(type, listener) {
-      context.addEventListener(type, listener);
+      context.addEventListener?.(type, listener);
     },
     removeEventListener(type, listener) {
-      context.removeEventListener(type, listener);
+      context.removeEventListener?.(type, listener);
     },
     close() {
       return context.close();

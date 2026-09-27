@@ -100,7 +100,7 @@ const WASM_SCRIPT_URL = "wasm/useq.js";
 let scriptLoadPromise: Promise<void> | null = null;
 let runtimePromise: Promise<UseqRuntime> | null = null;
 let lastKnownLiveInputsSupport = false;
-let classificationsFnStored: (() => string) | null = null;
+let classificationsFnStored: (() => number[]) | null = null;
 let dependenciesFnStored: ((idx: number) => number) | null = null;
 function isUseqWasmEnabled(): boolean {
   try {
@@ -212,7 +212,7 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const liveInputs = createWasmLiveInputController(module, coreLog);
 
   // Bind output classification ABI exports (visualisation.md §7.3–7.4)
-  const classificationsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_classifications) as (() => string) | null;
+  const classificationsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_classifications) as (() => number) | null;
   const dependenciesFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_output_dependencies) as ((idx: number) => number) | null;
 
   // Bind synth artefact ABI export (synth-nodes.md §7.2 / VAL-COMP-015).
@@ -253,7 +253,14 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   }
   dbg("uSEQ WASM interpreter initialised");
   lastKnownLiveInputsSupport = liveInputs.supported;
-  classificationsFnStored = classificationsFn;
+  classificationsFnStored = classificationsFn
+    ? () => {
+        const pointer = classificationsFn();
+        return pointer && module.HEAPU8
+          ? Array.from(module.HEAPU8.subarray(pointer, pointer + 42))
+          : [];
+      }
+    : null;
   dependenciesFnStored = dependenciesFn;
 
   return {
@@ -581,10 +588,8 @@ export async function readOutputClassifications(): Promise<OutputClassification 
   if (!classificationsFnStored) return null;
 
   try {
-    const json = classificationsFnStored();
-    if (!json) return null;
-    const raw = JSON.parse(json) as number[];
-    if (!Array.isArray(raw)) return null;
+    const raw = classificationsFnStored();
+    if (!raw.length) return null;
 
     const classes: OutputClass[] = raw.map((v) => {
       if (v === 1) return OutputClass.Pure;
@@ -595,7 +600,7 @@ export async function readOutputClassifications(): Promise<OutputClassification 
 
     const inputMasks: number[] = [];
     if (dependenciesFnStored) {
-      for (let i = 0; i < raw.length; i++) {
+    for (let i = 0; i < raw.length; i++) {
         inputMasks.push(dependenciesFnStored(i));
       }
     } else {

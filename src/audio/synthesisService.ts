@@ -95,6 +95,7 @@ import {
 } from "../contracts/synthesisControlAbi";
 import type {
   WorkletControlAttachAckEvent,
+  WorkletEngineFaultEvent,
   WorkletGraphTransactionAckEvent,
   WorkletModuleTransferMessage,
   WorkletProducerTimeoutEvent,
@@ -1552,6 +1553,17 @@ function createCapableService(
 
     if (evt.type === "producer-timeout") {
       handleProducerTimeout(data as WorkletProducerTimeoutEvent);
+      return;
+    }
+    if (evt.type === "engine-fault") {
+      const fault = data as WorkletEngineFaultEvent;
+      if (!disposed && currentState !== "error") {
+        const detail = fault.reason === "WORKLET_TRAP" && fault.identity
+          ? ` for node ${fault.identity}`
+          : "";
+        transition("error", fault.reason,
+          `${ENGINE_STATE_REASONS[fault.reason]}${detail}`);
+      }
       return;
     }
     if (evt.type === "attach-control-buffer-ack") {

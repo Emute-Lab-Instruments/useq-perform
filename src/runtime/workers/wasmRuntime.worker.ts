@@ -46,6 +46,7 @@ import {
   createWasmBatchEvaluator,
   createWasmLiveInputController,
   createWasmProbeController,
+  createWasmSynthDeclarationReset,
   readAndFreeCString,
   isBrokenOptionalExportError,
   type EmscriptenModule,
@@ -129,6 +130,7 @@ interface InterpreterHandle {
   getLiveSlots: () => LiveSlotMetadata[];
   applyStateSnapshot: (json: string) => boolean;
   setFailureMode: (mode: "lkg" | "zero") => boolean;
+  clearSynthDeclarations: () => boolean;
   release: () => void;
 }
 
@@ -356,6 +358,7 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
     module,
     OPTIONAL_WASM_EXPORTS.useq_set_failure_mode,
   ) as ((mode: number) => number) | null;
+  const clearSynthDeclarations = createWasmSynthDeclarationReset(module);
   (globalThis as { __useqWasmRuntime?: UseqRuntimeGlobal }).__useqWasmRuntime = {
     useq_last_diagnostics: lastDiagsFn ?? undefined,
     useq_active_diagnostics: activeDiagsFn ?? undefined,
@@ -415,6 +418,7 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
       const requested = mode === "zero" ? 1 : 0;
       return setFailureModeFn(requested) === requested;
     },
+    clearSynthDeclarations,
     release: () => {
       batchEvaluator.release();
       probes.release();
@@ -685,7 +689,12 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
       case "setLiveInputs": {
         let applied = 0;
         if (wasmEnabled && interpreter) {
-          applied = interpreter.setLiveInputs(request.values);
+          if (producerRunning && producer) {
+            producer.applyInputs(request.values);
+            applied = Object.keys(request.values).length;
+          } else {
+            applied = interpreter.setLiveInputs(request.values);
+          }
         }
         postResponse({ type: "setLiveInputs-result", id, applied });
         return;
@@ -911,6 +920,8 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
             transportMap.reanchor(opts);
             break;
         }
+        // A map revision invalidates every queued lookahead block.
+        producer?.reanchor();
         postResponse({
           type: "producerTransportUpdate-result",
           id,
@@ -973,12 +984,8 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
         return;
       }
       case "clearSynthDeclarations": {
-        // VAL-CROSS-009 post-recovery eval-pipeline fix: clear the
-        // WASM compiler's synth declarations by evaluating (useq-clear).
-        // The synth declarations persist across service recovery (the
-        // Worker is not recreated); without this clear the stale
-        // declaration triggers the M1 single-node capacity diagnostic
-        // on the first post-recovery eval.
+        // Recovery needs to release synth declarations without clearing the
+        // live program that this Worker also serves for evaluation/visualisation.
         if (!wasmEnabled || !interpreter) {
           postResponse({
             type: "clearSynthDeclarations-result",
@@ -988,7 +995,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           return;
         }
         try {
-          interpreter.evaluate("(useq-clear)");
+          if (!interpreter.clearSynthDeclarations()) throw new Error("synth declaration reset unavailable");
           postResponse({
             type: "clearSynthDeclarations-result",
             id,

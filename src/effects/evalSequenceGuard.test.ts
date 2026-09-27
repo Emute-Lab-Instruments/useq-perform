@@ -20,6 +20,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./noneModeGate.ts", () => ({
   evalRejectionForNoRuntime: () => null,
+  WASM_RUNTIME_NOT_READY_WARNING:
+    "WASM runtime not ready — eval was not delivered",
 }));
 vi.mock("../runtime/runtimeCompatibility.ts", () => ({
   shouldUseWasmShadow: () => true,
@@ -60,7 +62,7 @@ Object.defineProperty(globalThis, "__evalSeqPending", {
 });
 
 const mockEvalCode = vi.hoisted(() => vi.fn(() => Promise.resolve("42")));
-const mockSendTouSEQ = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve()));
+const mockSendTouSEQ = vi.hoisted(() => vi.fn((_code: string): Promise<unknown> => Promise.resolve()));
 const mockPost = vi.hoisted(() => vi.fn());
 const wasmAuthorityRef = vi.hoisted(() => ({ enabled: false }));
 

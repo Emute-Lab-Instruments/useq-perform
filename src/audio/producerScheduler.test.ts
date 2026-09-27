@@ -219,6 +219,20 @@ describe("producerScheduler / lookahead publication (VAL-ENGINE-004)", () => {
     scheduler.stop();
   });
 
+  it("drops stale queued blocks and refills after a transport reanchor", () => {
+    const { scheduler, view, map } = buildScheduler();
+    map.start({ atFrame: 0n, atTime: 0 });
+    scheduler.start();
+    view.publishAudioFrame({ frame: 1n, blockFrameOffset: 1 });
+    scheduler.iterate();
+    expect(view.ringFillDepth()).toBe(CONTROL_LOOKAHEAD_BLOCKS);
+    scheduler.reanchor();
+    expect(view.ringFillDepth()).toBe(0);
+    map.reanchor({ atFrame: 1n, atTime: 2 });
+    expect(scheduler.iterate()).toBe(CONTROL_LOOKAHEAD_BLOCKS);
+    expect(view.ringFillDepth()).toBe(CONTROL_LOOKAHEAD_BLOCKS);
+  });
+
   it("keeps the ring horizon bounded by CONTROL_LOOKAHEAD_BLOCKS + slack", () => {
     const { scheduler, view, map } = buildScheduler();
     map.start({ atFrame: 0n, atTime: 0 });

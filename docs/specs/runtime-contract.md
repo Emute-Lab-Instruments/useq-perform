@@ -86,7 +86,7 @@ These symbols are listed in `src-useq/scripts/build_wasm.sh` under `-s EXPORTED_
 | Symbol | cwrap return | cwrap args | Purpose |
 |--------|-------------|------------|---------|
 | `useq_init` | `null` | `[]` | Initialize the interpreter |
-| `useq_eval` | `"string"` | `["string"]` | Evaluate ModuLisp code |
+| `useq_eval` | `"number"` | `["string"]` | Evaluate ModuLisp code and return an owned result pointer |
 | `useq_update_time` | `null` | `["number"]` | Inject wall-clock time |
 | `useq_eval_output` | `"number"` | `["string", "number"]` | Sample a named output at a time |
 
@@ -103,9 +103,12 @@ These helpers are defined in `wasm_wrapper.cpp` and the current build script exp
 | `useq_tick_and_project` | `"number"` | evolving; see [visualisation.md §7.2](visualisation.md) | Combined live tick + visualisation projection-fork operation |
 | `useq_synth_artifacts` | `"string"` | `[]` | Read the versioned compiler patch/control snapshot |
 | `useq_tick_synth_controls` | `"number"` | `["number", "number", "number"]` | Advance the live VM once and write controls in exact artefact-table order |
-| `useq_last_error` | `"string"` | `[]` | Read last error message |
-| `useq_last_diagnostics` | `"string"` | `[]` | Read diagnostics from the most recent eval |
-| `useq_active_diagnostics` | `"string"` | `[]` | Read active output, named-state, and synth-control diagnostics |
+| `useq_last_error` | `"number"` | `[]` | Read owned error-message pointer (host decodes and frees it) |
+| `useq_last_diagnostics` | `"number"` | `[]` | Read owned diagnostics pointer (host decodes and frees it) |
+| `useq_active_diagnostics` | `"number"` | `[]` | Read owned active-diagnostics pointer (host decodes and frees it) |
+| `useq_output_classifications` | `"number"` | `[]` | Read static packed output classification bytes |
+| `useq_projection_frontier_time` | `"number"` | `[]` | Read the projection fork frontier after projection |
+| `useq_clear_synth_declarations` | `"number"` | `[]` | Clear host synth declarations while preserving the running program |
 
 Current expectation:
 

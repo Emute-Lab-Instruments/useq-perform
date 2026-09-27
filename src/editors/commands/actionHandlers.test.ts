@@ -7,7 +7,6 @@ vi.mock("../../ui/visualisation/serialVisGL.ts", () => ({ requestVisScreenshot: 
 vi.mock("./editorCommandRouter.ts", () => ({ executeEditorCommand: vi.fn(() => true) }));
 import { closeMainMenu, dispatchMainMenu, isMainMenuOpen, openMainMenu } from "../../lib/mainMenu/store";
 import { executeAction, getHandler } from "./actionHandlers";
-import { selectMainMenuAction } from "../../zen/mainMenuAction";
 
 afterEach(() => {
   closeMainMenu();
@@ -25,12 +24,18 @@ describe("global action handlers", () => {
     expect(executeAction("control.toggleManualRight", "gamepad")).toBe(false);
   });
 
+  it("declines main-menu adjustment while no adjustable menu items exist", () => {
+    expect(executeAction("mainMenu.adjustUp", "gamepad")).toBe(false);
+    expect(executeAction("mainMenu.adjustDown", "gamepad")).toBe(false);
+  });
+
   it("exposes the implemented structural and formatting operations to action dispatch", () => {
     const ids = [
       "format.topLevel", "format.document", "format.indentToFixedPoint",
       "edit.moveRight", "edit.moveLeft", "edit.moveUp", "edit.moveDown",
       "edit.cut", "edit.copy", "edit.paste", "edit.pasteBefore", "edit.duplicate",
       "actOn.cut", "actOn.copy", "actOn.paste", "actOn.duplicate",
+      "actOn.wrapList", "actOn.cancel",
     ] as const;
     for (const id of ids) expect(getHandler(id, "gamepad")).toBeDefined();
   });

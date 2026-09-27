@@ -16,6 +16,7 @@ import { EditorView } from "@codemirror/view";
 import { default_extensions } from "@nextjournal/clojure-mode";
 import { structField, setStructState } from "../extensions/structure/adapter/stateField";
 import { pathsFromCursorSet } from "../extensions/structure/adapter/cursorPath";
+import { holeFocused } from "../../contracts/editorChannels";
 
 import { createMenuDispatcher, type MenuDispatcherDeps, t9GroupAt, t9CharAt, T9_POSITION_COUNT, textModeForHoleType } from "./dispatcher";
 import { INITIAL_STATE, reduce } from "../../lib/menu/state";
@@ -314,6 +315,69 @@ describe("MenuDispatcher", () => {
       expect(getMenuState().phase).toBe("closed");
     });
 
+    it("translates menu.openBefore and menu.openAfter into sided opens", () => {
+      const { dispatcher, fireAction, getMenuState, setEditorView } = createHarness();
+      const ids = defaultIdGen();
+      const node = sym("x", ids);
+      const view = createEditorView(fakeStructValueOnNode({ root: doc(ids, node) }, node.id));
+      setEditorView(view);
+      const unsub = dispatcher.bind();
+
+      fireAction("menu.openBefore");
+      expect(getMenuState()).toMatchObject({ phase: "open", side: "before" });
+      fireAction("menu.openAfter");
+      expect(getMenuState()).toMatchObject({ phase: "open", side: "after" });
+
+      unsub();
+      view.destroy();
+    });
+
+    it("routes act-on replace and quick-replace into the radial menu", () => {
+      const ids = defaultIdGen();
+      const target = hole("freq", "number", ids);
+      const view = createEditorView(fakeStructValueOnNode({ root: doc(ids, target) }, target.id));
+      const { dispatcher, fireAction, getMenuState, setEditorView } = createHarness();
+      setEditorView(view);
+      const unsub = dispatcher.bind();
+
+      fireAction("actOn.replace");
+      expect(getMenuState()).toMatchObject({ phase: "open", initialVerb: "replace" });
+      fireAction("actOn.wrapWith");
+      expect(getMenuState()).toMatchObject({ phase: "open", initialVerb: "wrapWith" });
+      fireAction("actOn.quickReplace");
+      expect(getMenuState()).toMatchObject({ phase: "numpad", activeVerb: { kind: "replace", hand: "left" } });
+
+      unsub();
+      view.destroy();
+    });
+
+    it("pre-filters quick-replace symbols to their cycle group", () => {
+      const ids = defaultIdGen();
+      const targetNode = sym("sin", ids);
+      const symbols: MenuItem[] = ["sin", "cos", "noise"].map((text) => ({
+        kind: "symbol",
+        id: `item-${text}` as ItemId,
+        label: text,
+        text,
+      }));
+      const manifest = makeManifest(symbols);
+      const view = createEditorView(fakeStructValueOnNode({ root: doc(ids, targetNode) }, targetNode.id));
+      const { dispatcher, fireAction, getMenuState, setEditorView } = createHarness({ manifest });
+      setEditorView(view);
+      const unsub = dispatcher.bind();
+
+      fireAction("actOn.quickReplace");
+      const state = getMenuState();
+      expect(state.phase).toBe("open");
+      if (state.phase === "open") {
+        expect(state.initialVerb).toBe("replace");
+        expect(state.manifest.tabs[0]?.categories[0]?.items.map((item) => item.kind === "symbol" ? item.text : "")).toEqual(["sin", "cos"]);
+      }
+
+      unsub();
+      view.destroy();
+    });
+
     it("close dispatches cancel", () => {
       const { dispatcher, getMenuState, log } = createHarness();
       const target = { __brand: "ApplyTarget" } as unknown as ApplyTarget;
@@ -330,6 +394,23 @@ describe("MenuDispatcher", () => {
         .pop();
       expect(lastInput?.kind).toBe("cancel");
     });
+  });
+
+  it("reopens auto-chain from the holeFocused channel exactly once", () => {
+    const ids = defaultIdGen();
+    const node = hole("rate", "number", ids);
+    const view = createEditorView(fakeStructValueOnNode({ root: doc(ids, node) }, node.id));
+    const { dispatcher, setEditorView, log } = createHarness();
+    setEditorView(view);
+    const unsub = dispatcher.bind();
+
+    holeFocused.publish({ name: "rate", type: "number", from: 0, to: 1, source: "chain" });
+    const opens = log.filter((entry) => entry.kind === "dispatchInput" && (entry.detail as MenuInput).kind === "open");
+    expect(opens).toHaveLength(1);
+    expect(log.filter((entry) => entry.kind === "dispatchInput" && (entry.detail as MenuInput).kind === "cancel")).toHaveLength(1);
+
+    unsub();
+    view.destroy();
   });
 
   // ---- Axis routing -------------------------------------------------------

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { onMount, onCleanup } from 'solid-js';
 import { OnboardingBanner } from '@src/ui/OnboardingBanner';
 import { resetRuntimeServiceForTests } from '@src/runtime/runtimeService';
-import { updateRuntimeSessionState } from '@src/runtime/runtimeCoordinator';
+import { transitionRuntimeCoordinator } from '@src/runtime/runtimeCoordinator';
 import { remove, PERSISTENCE_KEYS } from '@src/lib/persistence';
 
 /**
@@ -13,11 +13,11 @@ import { remove, PERSISTENCE_KEYS } from '@src/lib/persistence';
 function BannerWithDisconnectedRuntime() {
   onMount(() => {
     remove(PERSISTENCE_KEYS.onboardingDismissed);
-    updateRuntimeSessionState({
+    transitionRuntimeCoordinator({ type: 'session', updates: {
       hasHardwareConnection: false,
       noModuleMode: false,
       wasmEnabled: false,
-    });
+    } });
   });
   onCleanup(() => {
     resetRuntimeServiceForTests();
@@ -35,11 +35,11 @@ function BannerWithDisconnectedRuntime() {
 /** Banner pre-dismissed: should render nothing. */
 function BannerDismissed() {
   onMount(() => {
-    updateRuntimeSessionState({
+    transitionRuntimeCoordinator({ type: 'session', updates: {
       hasHardwareConnection: false,
       noModuleMode: false,
       wasmEnabled: false,
-    });
+    } });
   });
   onCleanup(() => {
     resetRuntimeServiceForTests();
@@ -59,11 +59,11 @@ function BannerDismissed() {
 function BannerConnectedBrowser() {
   onMount(() => {
     remove(PERSISTENCE_KEYS.onboardingDismissed);
-    updateRuntimeSessionState({
+    transitionRuntimeCoordinator({ type: 'session', updates: {
       hasHardwareConnection: false,
       noModuleMode: false,
       wasmEnabled: true,
-    });
+    } });
   });
   onCleanup(() => {
     resetRuntimeServiceForTests();

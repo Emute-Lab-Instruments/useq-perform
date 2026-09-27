@@ -26,11 +26,11 @@ function ports() {
   const hardwareEval = vi.fn(async () => ({
     success: true,
     result: "hardware",
-    diagnostics: [{ start: 0, end: 1, severity: "warning" as const, message: "hardware" }],
+    diagnostics: [{ start: 0, end: 1, severity: "warning" as "warning" | "error", message: "hardware" }],
   }));
   const wasmEval = vi.fn(async () => ({
     result: "wasm",
-    diagnostics: [{ start: 0, end: 1, severity: "warning" as const, message: "wasm" }],
+    diagnostics: [{ start: 0, end: 1, severity: "warning" as "warning" | "error", message: "wasm" }],
     synthArtifacts: null,
   }));
   const hardware = {

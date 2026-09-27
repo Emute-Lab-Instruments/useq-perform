@@ -34,6 +34,26 @@ function cloneSettings(settings: AppSettings): AppSettings {
   return normalizeUserSettings(settings);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function changedSettingsPatch(current: unknown, patch: unknown): unknown {
+  if (!isRecord(patch)) return {};
+  const base = isRecord(current) ? current : {};
+  const changed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    const prior = base[key];
+    if (isRecord(value) && isRecord(prior)) {
+      const nested = changedSettingsPatch(prior, value) as Record<string, unknown>;
+      if (Object.keys(nested).length > 0) changed[key] = nested;
+    } else if (JSON.stringify(value) !== JSON.stringify(prior)) {
+      changed[key] = value;
+    }
+  }
+  return changed;
+}
+
 function notifyListeners(): void {
   const snapshot = getAppSettings();
   listeners.forEach((listener) => listener(snapshot));
@@ -214,22 +234,27 @@ export function replaceAppSettings(
   return getAppSettings();
 }
 
-export function loadAppSettings(): AppSettings {
-  const persistedSettings = readPersistedUserSettings({
-    bypassLocalStorage: resolveRepositoryStartupFlags().nosave,
-  });
-  return replaceAppSettings(
-    persistedSettings ?? createDefaultUserSettings(),
-  );
-}
-
 export function updateAppSettings(
   values: unknown,
   options: { persist?: boolean } = {},
 ): AppSettings {
-  return replaceAppSettings(mergeUserSettings(activeSettings, values), {
-    persist: options.persist ?? true,
-  });
+  const persistencePatch = changedSettingsPatch(activeSettings, values);
+  const nextSettings = mergeUserSettings(activeSettings, values);
+  if (
+    (options.persist ?? true) &&
+    Object.keys(persistencePatch as Record<string, unknown>).length > 0
+  ) {
+    // Persist the explicit patch over the stored baseline. URL configuration
+    // is active for this session, but must not leak into unrelated saved keys.
+    const persisted = readPersistedUserSettings({
+      bypassLocalStorage: resolveRepositoryStartupFlags().nosave,
+    });
+    writePersistedUserSettings(
+      mergeUserSettings(persisted ?? createDefaultUserSettings(), persistencePatch),
+      { bypassLocalStorage: resolveRepositoryStartupFlags().nosave },
+    );
+  }
+  return replaceAppSettings(nextSettings);
 }
 
 export function resetAppSettings(section?: keyof AppSettings): AppSettings {

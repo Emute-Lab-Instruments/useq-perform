@@ -86,4 +86,4 @@ Core implementation modules:
 
 3.1 **Layout auto-detection.** The Keyboard API is Chromium-only. The reliability bar for auto-detection on Firefox/Safari versus manual selection is undecided.
 
-3.2 **Picker navigation rebindability.** Arrow keys for picker navigation are currently fixed. Whether to register them as rebindable actions (scoped to `when: "picker.open"`) is undecided.
+3.2 **Picker navigation.** The legacy picker layer has been replaced by the radial menu (see `radial-menu.md` §1 and `gamepad.md` §6.5). Its navigation remains gamepad-axis driven; there is no `picker.open` context or `picker.*` action family to rebind.

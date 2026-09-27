@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./noneModeGate.ts", () => ({
   evalRejectionForNoRuntime: () => null,
+  WASM_RUNTIME_NOT_READY_WARNING:
+    "WASM runtime not ready — eval was not delivered",
 }));
 vi.mock("../runtime/runtimeCompatibility.ts", () => ({
   shouldUseWasmShadow: () => true,

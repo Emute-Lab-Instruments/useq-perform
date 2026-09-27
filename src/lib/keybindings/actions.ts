@@ -562,8 +562,8 @@ export const actions = {
 
   // -- Act-on layer (gamepad.md §6.6) ---------------------------------------
 
-  "actOn.open": {
-    description: "Select node for action (open act-on layer)",
+  "actOn.cancel": {
+    description: "Cancel act-on and return to the editor",
     category: "gamepad",
     reversible: false,
     requiresEditor: true,
@@ -772,43 +772,6 @@ export const actions = {
   },
   "menu.cancel": {
     description: "Dismiss menu",
-    category: "menu",
-    reversible: false,
-  },
-
-  // -- Picker ---------------------------------------------------------------
-
-  "picker.up": {
-    description: "Picker: move up",
-    category: "menu",
-    reversible: false,
-    repeatable: true,
-  },
-  "picker.down": {
-    description: "Picker: move down",
-    category: "menu",
-    reversible: false,
-    repeatable: true,
-  },
-  "picker.left": {
-    description: "Picker: move left",
-    category: "menu",
-    reversible: false,
-    repeatable: true,
-  },
-  "picker.right": {
-    description: "Picker: move right",
-    category: "menu",
-    reversible: false,
-    repeatable: true,
-  },
-  "picker.select": {
-    description: "Picker: select item",
-    category: "menu",
-    reversible: false,
-  },
-  "picker.cancel": {
-    description: "Picker: dismiss",
     category: "menu",
     reversible: false,
   },

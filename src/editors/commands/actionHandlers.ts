@@ -198,8 +198,8 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
     return true;
   },
   "mainMenu.back": () => { dispatchMainMenu({ type: "back" }); return true; },
-  "mainMenu.adjustUp": () => { /* stub — no adjustable items yet */ return true; },
-  "mainMenu.adjustDown": () => { /* stub — no adjustable items yet */ return true; },
+  "mainMenu.adjustUp": () => false,
+  "mainMenu.adjustDown": () => false,
 
   // -- Editor ---------------------------------------------------------------
   "edit.pasteSample": (view: EditorView, source = "keyboard") =>
@@ -269,6 +269,8 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "actOn.copy": structHandler("edit.copy"),
   "actOn.paste": structHandler("edit.paste"),
   "actOn.duplicate": structHandler("edit.duplicate"),
+  "actOn.wrapList": structHandler("edit.encloseList"),
+  "actOn.cancel": () => true,
   "format.topLevel": structHandler("format.topLevel"),
   "format.document": structHandler("format.document"),
   "format.indentToFixedPoint": structHandler("format.indentToFixedPoint"),

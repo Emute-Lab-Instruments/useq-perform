@@ -27,6 +27,7 @@ import type {
   SlotValue,
 } from "../../contracts/liveEdit.ts";
 import type { MidiBinding, MidiLearnState } from "../../contracts/midi.ts";
+import type { MidiPermissionState } from "../../contracts/midi.ts";
 import { LiveEditCard } from "./LiveEditCard.tsx";
 
 import "./LiveEditPanel.css";
@@ -37,6 +38,8 @@ export interface LiveEditPanelProps {
   /** slotId -> binding. */
   bindings: Map<string, MidiBinding>;
   learnState: MidiLearnState;
+  midiPermission: MidiPermissionState;
+  dock: "right" | "bottom" | "left";
   /** Currently focused slot (gamepad/cursor focus follows-cursor — §5.2). */
   focusedSlotId?: string;
 
@@ -45,6 +48,9 @@ export interface LiveEditPanelProps {
   onResetToSeed: (slotId: string) => void;
   onUnmark: (slotId: string) => void;
   onStartLearn: (slotId: string) => void;
+  onStartLearnAll: () => void;
+  onRequestMidiAccess: () => void;
+  onDockChange: (dock: "right" | "bottom" | "left") => void;
   onClearBinding: (slotId: string) => void;
 
   /** Called with the new ordered list of slot ids. */
@@ -102,10 +108,19 @@ export function LiveEditPanel(props: LiveEditPanelProps) {
   };
 
   return (
-    <div class="le-panel-root" role="region" aria-label="Live-edit panel">
+    <div class={`le-panel-root le-panel-dock-${props.dock}`} role="region" aria-label="Live-edit panel">
       <header class="le-panel-header">
         <h2 class="le-panel-title">Live edits</h2>
         <div class="le-panel-header-actions">
+          <select aria-label="Live-edit panel dock" value={props.dock} onChange={(event) => props.onDockChange(event.currentTarget.value as "right" | "bottom" | "left")}>
+            <option value="right">Right</option><option value="bottom">Bottom</option><option value="left">Left</option>
+          </select>
+          <button type="button" class="le-panel-icon-button" onClick={() => props.onRequestMidiAccess()}>
+            {props.midiPermission === "granted" ? "MIDI ready" : props.midiPermission === "denied" ? "MIDI blocked" : props.midiPermission === "unsupported" ? "MIDI unavailable" : "Enable MIDI"}
+          </button>
+          <button type="button" class="le-panel-icon-button" onClick={() => props.onStartLearnAll()} disabled={props.midiPermission !== "granted" || props.slots.length === 0}>
+            ◉ LEARN ALL
+          </button>
           <Show when={props.order.mode === "custom"}>
             <button
               type="button"

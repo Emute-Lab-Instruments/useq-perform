@@ -20,6 +20,7 @@ import type { AppSettings } from "../lib/appSettings";
 
 export const CONNECTION_CHANGED_EVENT = "useq-connection-changed";
 export const PROTOCOL_READY_EVENT = "useq-protocol-ready";
+export const FIRMWARE_STATUS_EVENT = "useq-firmware-status";
 export const JSON_META_EVENT = "useq-json-meta";
 export const RUNTIME_DIAGNOSTICS_EVENT = "useq-runtime-diagnostics";
 export const BOOTSTRAP_FAILURE_EVENT = "useq-bootstrap-failure";
@@ -38,6 +39,10 @@ export interface ConnectionChangedDetail extends RuntimeSessionSnapshot {
 
 export interface ProtocolReadyDetail {
   protocolMode: RuntimeProtocolMode;
+}
+
+export interface FirmwareStatusDetail {
+  status: string;
 }
 
 export interface JsonMetaResponse {
@@ -87,6 +92,7 @@ export interface StandaloneDiagnosticsDetail {
 export interface RuntimeEventDetailMap {
   [CONNECTION_CHANGED_EVENT]: ConnectionChangedDetail;
   [PROTOCOL_READY_EVENT]: ProtocolReadyDetail;
+  [FIRMWARE_STATUS_EVENT]: FirmwareStatusDetail;
   [JSON_META_EVENT]: JsonMetaEventDetail;
   [RUNTIME_DIAGNOSTICS_EVENT]: RuntimeDiagnosticsSnapshot;
   [BOOTSTRAP_FAILURE_EVENT]: RuntimeBootstrapFailure;
@@ -102,6 +108,7 @@ export type RuntimeEventName = keyof RuntimeEventDetailMap;
 export const RUNTIME_EVENT_NAMES = Object.freeze([
   CONNECTION_CHANGED_EVENT,
   PROTOCOL_READY_EVENT,
+  FIRMWARE_STATUS_EVENT,
   JSON_META_EVENT,
   RUNTIME_DIAGNOSTICS_EVENT,
   BOOTSTRAP_FAILURE_EVENT,
@@ -129,6 +136,9 @@ export const connectionChanged = createChannel<ConnectionChangedDetail>();
 
 /** Protocol negotiation completed (JSON or legacy). */
 export const protocolReady = createChannel<ProtocolReadyDetail>();
+
+/** Unsolicited firmware operation status (for example, a flash save pause). */
+export const firmwareStatus = createChannel<FirmwareStatusDetail>();
 
 /** JSON meta response received from firmware. */
 export const jsonMeta = createChannel<JsonMetaEventDetail>();

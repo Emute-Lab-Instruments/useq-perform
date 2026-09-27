@@ -807,6 +807,10 @@ describe("hardware transport lifecycle", () => {
       // Advance past a single retry budget but do NOT complete the handshake.
       await vi.advanceTimersByTimeAsync(700);
       await flushProtocolWork();
+      expect(transport.isConnectedToModule()).toBe(false);
+      expect(reportTransportConnectionChangedMock).toHaveBeenCalledWith(
+        expect.objectContaining({ connected: false, hasHardwareConnection: false }),
+      );
 
       await expect(
         transport.sendStreamConfig(

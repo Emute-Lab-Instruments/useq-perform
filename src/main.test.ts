@@ -62,8 +62,6 @@ vi.mock("./runtime/startupContext.ts", () => ({
     nosave: false,
     params: {},
   })),
-  setStartupFlags: vi.fn((flags: any) => flags),
-  setEnvironmentCapabilities: vi.fn(),
   applyStartupContext: vi.fn(),
   isLocalStorageBypassedInStartupContext: vi.fn(() => false),
   resetStartupContextForTests: vi.fn(),
@@ -276,7 +274,7 @@ describe("bootstrap (via main.ts re-export)", () => {
       expect.anything(),
       expect.objectContaining({
         startupMode: "hardware",
-        startBrowserLocal: false,
+        awaitSavedPortReconnect: true,
       }),
       expect.objectContaining({
         browserWasmRuntime: expect.anything(),

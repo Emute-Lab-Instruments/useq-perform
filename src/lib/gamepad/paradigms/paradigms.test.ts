@@ -12,7 +12,7 @@ import {
 } from "../resolver";
 import type { AppStateSnapshot, GamepadState, LayerName } from "../types";
 import { radialLayer } from "./radial";
-import { modalShiftLayers } from "./modal-shift";
+import { modalShiftLayers, modalShiftTransientLayers } from "./modal-shift";
 import { leaderLayers, leaderTransientLayers } from "./leader";
 import { hydraLayers, hydraTransientLayers } from "./hydra";
 import { chordHeavyLayers } from "./chord-heavy";
@@ -120,6 +120,15 @@ describe("paradigm: modal-shift", () => {
     const r = resolveGesture(tap("Start"), mkState(), [...modalShiftLayers], map);
     expect(r?.kind).toBe("action");
     if (r?.kind === "action") expect(r.action).toBe("eval.now");
+  });
+
+  it("tap(A) pushes act-on and its transient verbs resolve to shared actions", () => {
+    const layers = [...modalShiftLayers, ...modalShiftTransientLayers];
+    const map = buildLayerMap(layers);
+    expect(resolveGesture(tap("A"), mkState(), layers, map)).toMatchObject({ kind: "leader", layerName: "act-on" });
+    const active = mkState({ transientLayers: [{ name: ln("act-on"), pushedAt: 0, expiresAt: 2000 }] });
+    expect(resolveGesture(tap("B"), active, layers, map)).toMatchObject({ kind: "action", action: "actOn.cut" });
+    expect(resolveGesture(tap("LB"), active, layers, map)).toMatchObject({ kind: "action", action: "actOn.copy" });
   });
 
   it("LB-shifted layer shadows base for tap(A)", () => {

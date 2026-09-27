@@ -156,7 +156,7 @@ export function buildCombinedSamples(
  * sampler must never drift apart on this test, so there is exactly one
  * definition (see visualisation spec §5.4).
  */
-export { futureBoundaryMaxGapSeconds } from "../../effects/visualisationSampler.ts";
+export { futureBoundaryMaxGapSeconds } from "../../effects/visualisationSession.ts";
 
 export function computeAdaptivePastBufferRate(
   canvasWidth: number,

@@ -136,9 +136,14 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     returnType: "number",
     argTypes: ["string", "number", "number", "number", "number", "number", "number"],
   },
+  useq_projection_frontier_time: {
+    symbol: "useq_projection_frontier_time",
+    returnType: "number",
+    argTypes: [],
+  },
   useq_last_error: {
     symbol: "useq_last_error",
-    returnType: "string",
+    returnType: "number",
     argTypes: [],
   },
   useq_last_diagnostics: {
@@ -173,7 +178,7 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
   },
   useq_output_classifications: {
     symbol: "useq_output_classifications",
-    returnType: "string",
+    returnType: "number",
     argTypes: [],
   },
   useq_output_dependencies: {
@@ -190,6 +195,11 @@ export const OPTIONAL_WASM_EXPORTS = Object.freeze({
     symbol: "useq_output_semantic_effects",
     returnType: "number",
     argTypes: ["number"],
+  },
+  useq_clear_synth_declarations: {
+    symbol: "useq_clear_synth_declarations",
+    returnType: "number",
+    argTypes: [],
   },
   useq_probe_set: {
     symbol: "useq_probe_set",

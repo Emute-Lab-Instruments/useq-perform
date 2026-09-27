@@ -6,7 +6,11 @@ import { diagnosticField, pushDiagnostics, clearDiagnosticsForRange } from "../e
 import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
 import { findHolePositions } from "../lib/holeDetection.ts";
 import { evalRejectionForNoRuntime, NO_RUNTIME_WARNING } from "./noneModeGate.ts";
-import { updateRuntimeSessionState } from "../runtime/runtimeCoordinator.ts";
+import { transitionRuntimeCoordinator } from "../runtime/runtimeCoordinator.ts";
+import type { RuntimeCoordinatorTransition } from "../runtime/runtimeCoordinator.ts";
+
+const setSession = (updates: Extract<RuntimeCoordinatorTransition, { type: "session" }>['updates']) =>
+  transitionRuntimeCoordinator({ type: "session", updates });
 
 function createView(doc: string): EditorView {
   return new EditorView({
@@ -199,7 +203,7 @@ describe("findHolePositions", () => {
 describe("none-mode eval gating", () => {
   afterEach(() => {
     // Restore the default browser-local (wasm) session for other tests.
-    updateRuntimeSessionState({
+    setSession({
       hasHardwareConnection: false,
       noModuleMode: false,
       wasmEnabled: true,
@@ -209,7 +213,7 @@ describe("none-mode eval gating", () => {
 
   it("rejects eval with the §1.10 warning in none mode", () => {
     // No hardware + WASM disabled + no-module off ⇒ transportMode "none".
-    updateRuntimeSessionState({
+    setSession({
       hasHardwareConnection: false,
       noModuleMode: false,
       wasmEnabled: false,
@@ -222,7 +226,7 @@ describe("none-mode eval gating", () => {
   });
 
   it("does not gate eval when WASM is available (wasm mode)", () => {
-    updateRuntimeSessionState({
+    setSession({
       hasHardwareConnection: false,
       noModuleMode: false,
       wasmEnabled: true,
@@ -233,7 +237,7 @@ describe("none-mode eval gating", () => {
   });
 
   it("does not gate eval when hardware is connected", () => {
-    updateRuntimeSessionState({
+    setSession({
       hasHardwareConnection: true,
       noModuleMode: false,
       wasmEnabled: false,

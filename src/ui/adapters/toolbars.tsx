@@ -40,6 +40,7 @@ import type { ActionId } from "../../lib/keybindings/actions";
 import { isMac } from "../../lib/keybindings/osReserved";
 import { formatBpm } from "../toolbar/BpmControl";
 import { resolveToolbarShortcuts } from "../toolbar/shortcutLabels";
+import { beginCalibration } from "./calibrationRuntime.ts";
 
 // ── Toolbar shortcuts (transport.md §1.7.2) ─────────────────────────
 //
@@ -189,6 +190,7 @@ export function WiredMainToolbar() {
       onSaveCode={() => saveCode(editor())}
       onFontSizeUp={() => adjustFontSize(editor(), 1)}
       onFontSizeDown={() => adjustFontSize(editor(), -1)}
+      onBeginCalibration={() => { beginCalibration(); }}
       onSettings={() => toggleChromePanel("settings")}
       onHelp={() => toggleChromePanel("help")}
       onAnimateConnect={(cb) => { animateCallback = cb; }}

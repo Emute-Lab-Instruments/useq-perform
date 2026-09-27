@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { liveEditValueChanged } from "../contracts/runtimeChannels.ts";
-import { liveEditStore, liveEditOnValueChange } from "./liveEditRuntime.ts";
+import { discoverSlotsAfterEval, liveEditStore, liveEditOnValueChange } from "./liveEditRuntime.ts";
 import type { LiveEditValueChangedDetail } from "../contracts/runtimeChannels.ts";
 import type { LiveEditSlot } from "../contracts/liveEdit.ts";
 
@@ -18,8 +18,25 @@ import type { LiveEditSlot } from "../contracts/liveEdit.ts";
 // push a no-op so no timer tick can throw after a test ends.
 vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
   getActiveWasmRuntimePort: () => ({
+    capabilities: () => ({ supportsLiveInputs: false }),
+    getLiveSlots: vi.fn().mockResolvedValue([]),
     setLiveInputs: vi.fn().mockResolvedValue(undefined),
   }),
+}));
+vi.mock("../transport/index.ts", () => ({
+  isConnectedToModule: () => true,
+  isJsonProtocolActive: () => true,
+  sendSetLiveInputs: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../transport/webSerialHostPort.ts", () => ({
+  webSerialHostPort: {
+    requestStateSnapshot: vi.fn().mockResolvedValue({
+      liveSlots: [{
+        id: "hardware-slot", value: 0.25, min: 0, max: 1, seed: 0.25,
+        variant: "numeric", options: [], step: 0.1, precision: 2,
+      }],
+    }),
+  },
 }));
 
 function makeSlot(overrides: Partial<LiveEditSlot> = {}): LiveEditSlot {
@@ -57,6 +74,19 @@ describe("liveEditOnValueChange → liveEditValueChanged", () => {
     unsub?.();
     unsub = null;
     liveEditStore.replaceAll([]);
+  });
+
+  it("registers widgets from a hardware-only state snapshot", async () => {
+    const view = {
+      state: { doc: { toString: () => '(live-edit 0.25 :id "hardware-slot" :min 0 :max 1)' } },
+    } as unknown as import("@codemirror/view").EditorView;
+
+    await discoverSlotsAfterEval(view);
+
+    expect(liveEditStore.getSlot("hardware-slot")).toMatchObject({
+      id: "hardware-slot", kind: "numeric", seed: 0.25, value: 0.25,
+      min: 0, max: 1, step: 0.1, precision: 2,
+    });
   });
 
   it("publishes old → new when the value changes beyond epsilon", () => {

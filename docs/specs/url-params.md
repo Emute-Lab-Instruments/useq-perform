@@ -19,7 +19,7 @@ layer: behavioural
 
 ## 1. General rules
 
-1.1 URL parameters are the **highest-precedence configuration source**, above persisted settings and product defaults (see `src/runtime/startupContext.ts`).
+1.1 URL parameters are the **highest-precedence configuration source**, above persisted settings and product defaults (see `src/runtime/startupContext.ts`). Values from `?config` are session-only overrides: bootstrap and later unrelated settings edits must not write them to storage. An explicit edit persists only the keys in that edit, merged over the prior stored settings.
 
 1.2 An unknown URL param is **stored in `startupFlags.params` but is not an error**. Future params may be added; old bundles must not crash on encountering them.
 

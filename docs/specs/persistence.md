@@ -43,6 +43,8 @@ the successful atomic migration defined by §2.4.
 
 1.7 `?nosave` is a **session-scoped write gate**: every write through the persistence service becomes a silent no-op, but reads still return pre-existing persisted state. (see `src/lib/persistence.ts`) The app starts with whatever was previously saved but never writes back. Modules that use other persistence channels (e.g. IndexedDB, cookies) must respect the same flag.
 
+1.7.1 Settings loaded from `?config` are session-only overrides and are never implicitly persisted. An explicit settings edit persists only the edited patch, merged over the previously stored settings, so unrelated URL-provided values do not become durable. `?nosave` still suppresses that explicit write.
+
 1.8 **Downgrade is unsupported.** Only forward migration (older persisted data → newer app version) is a supported path. An older app version encountering unknown fields from a newer version may drop them; this is acceptable.
 
 1.9 **Legacy-editor rollback exception.** While `/legacy/` is a supported migration escape hatch, migration must not delete `editorConfig`, `useqConfig`, or `useqcode`. Every successful current-editor `DocumentRecord` save also mirrors that snapshot's text to legacy `useqcode` using the old JSON-string encoding. Settings are preserved in their last legacy shape but are not reverse-migrated. Clearing current settings does not erase the legacy keys. This exception ends only when the legacy endpoint reaches its announced retirement date.

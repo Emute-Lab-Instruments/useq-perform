@@ -4,7 +4,6 @@
  * These are shared across the connector, protocol drivers, and stream parser.
  */
 
-import type { CircularBuffer } from "../lib/CircularBuffer.ts";
 import type { IoConfig } from "../runtime/jsonProtocol.ts";
 import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
 
@@ -18,8 +17,6 @@ export const MESSAGE_TYPES = {
   LEGACY_TEXT: 32,
   /** Pre-1.2 framed message-editor output. */
   LEGACY_MESSAGE_TO_EDITOR: 100,
-  /** Transitional framed JSON accepted on input only. */
-  FRAMED_JSON: 101,
 } as const;
 
 // ── Serial read mode constants ───────────────────────────────────────
@@ -28,7 +25,6 @@ export const SERIAL_READ_MODES = {
   ANY: 0,
   LEGACY_TEXT: 1,
   SERIALSTREAM: 2,
-  FRAMED_JSON: 3,
   /** Bare JSON mode: `{...}\n` with no 0x1F prefix (spec §3.3). */
   BARE_JSON: 4,
 } as const;
@@ -133,7 +129,7 @@ export interface JsonResponse {
   /** Firmware's authoritative cumulative offset in cents (spec §5.13 `calibrate-adjust`). */
   clampedOffset?: number;
   /** Per-output calibration status (spec §5.11 `calibrate-begin` response). */
-  status?: { kind: string; date?: string; savedOctaves?: number[] };
+  status?: string | { kind: string; date?: string; savedOctaves?: number[] };
   /** Human-readable error reason (calibrate-* rejections, spec §5.16). */
   error?: string;
 }
@@ -197,7 +193,3 @@ export interface ConnectedFirmwareIdentity {
   capabilities: readonly string[];
   modules: readonly ConnectedModuleIdentity[];
 }
-
-// ── Buffer map function type ─────────────────────────────────────────
-
-export type BufferMapFunction = (buffer: CircularBuffer) => void;

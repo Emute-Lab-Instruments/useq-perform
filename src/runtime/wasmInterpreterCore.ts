@@ -20,6 +20,7 @@ export interface EmscriptenModule {
   _malloc(size: number): number;
   _free(pointer: number): void;
   HEAPF64: Float64Array;
+  HEAPU8?: Uint8Array;
   UTF8ToString(pointer: number): string;
 }
 
@@ -65,6 +66,18 @@ export function isBrokenOptionalExportError(error: unknown): boolean {
   return error instanceof Error &&
     error.name === "TypeError" &&
     /func is not a function/i.test(error.message);
+}
+
+export function createWasmSynthDeclarationReset(
+  module: EmscriptenModule,
+  log: CoreLog = () => {},
+): () => boolean {
+  const reset = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_clear_synth_declarations,
+    log,
+  ) as (() => number) | null;
+  return () => reset?.() === 1;
 }
 
 interface HeapBuffer {
@@ -227,6 +240,11 @@ export function createWasmBatchEvaluator(
     OPTIONAL_WASM_EXPORTS.useq_tick_and_project,
     log,
   );
+  const readProjectionFrontier = bindOptionalCwrap(
+    module,
+    OPTIONAL_WASM_EXPORTS.useq_projection_frontier_time,
+    log,
+  ) as (() => number) | null;
   if (tickAndProjectEval && !readLastError) {
     readLastError = bindOptionalCwrap(
       module,
@@ -241,7 +259,8 @@ export function createWasmBatchEvaluator(
   const lastErrorMessage = (fallback: string): string => {
     if (!readLastError) return fallback;
     try {
-      return (readLastError() as string) || fallback;
+      const pointer = Number(readLastError());
+      return (pointer ? readAndFreeCString(module, pointer) : "") || fallback;
     } catch (error) {
       if (isBrokenOptionalExportError(error)) readLastError = null;
       return fallback;
@@ -392,6 +411,9 @@ export function createWasmBatchEvaluator(
 
       const total = safeOutputs.length * (1 + safeFuture);
       const { pointer, view } = buffer.ensure(total);
+      const frontierBefore = readProjectionFrontier
+        ? Number(readProjectionFrontier())
+        : Number.NaN;
       let status: number;
       try {
         status = tickAndProjectEval(
@@ -427,9 +449,16 @@ export function createWasmBatchEvaluator(
       }
 
       const projectionSamples = new Map<string, TimeSample[]>();
+      const frontierAfter = safeFuture > 0 && readProjectionFrontier
+        ? Number(readProjectionFrontier())
+        : Number.NaN;
       if (safeFuture > 0) {
-        const origin = Number.isFinite(projectionOrigin) ? projectionOrigin : 0;
-        const end = Number.isFinite(projectEnd) ? projectEnd : 0;
+        const origin = safeMode === 2 && Number.isFinite(frontierBefore)
+          ? frontierBefore
+          : (Number.isFinite(projectionOrigin) ? projectionOrigin : 0);
+        const end = Number.isFinite(frontierAfter)
+          ? frontierAfter
+          : (Number(projectEnd) || 0);
         const step = (end - origin) / safeFuture;
         for (let channel = 0; channel < safeOutputs.length; channel++) {
           const name = safeOutputs[channel];
@@ -444,7 +473,13 @@ export function createWasmBatchEvaluator(
           projectionSamples.set(name, samples);
         }
       }
-      return { tickValues, projectionSamples };
+      return {
+        tickValues,
+        projectionSamples,
+        ...(Number.isFinite(frontierAfter)
+          ? { projectionFrontierTime: frontierAfter }
+          : {}),
+      };
     },
 
     supportsTimeWindow: () => typedEval !== null || legacyEval !== null,

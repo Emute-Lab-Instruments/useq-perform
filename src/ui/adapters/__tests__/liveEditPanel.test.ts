@@ -17,6 +17,7 @@ import type { LiveEditPersistence, LiveEditPersistedData } from "../../../effect
 import type { MidiLearnController } from "../../../effects/midiLearnController.ts";
 import type { MidiLearnState } from "../../../contracts/midi.ts";
 import type { LiveEditSlot } from "../../../contracts/liveEdit.ts";
+import type { MidiInputService } from "../../../effects/midiInput.ts";
 
 // Mock LiveEditPanel to avoid full SolidJS rendering in the unit test project.
 const liveEditPanel = vi.hoisted(() => vi.fn(() => null));
@@ -85,6 +86,19 @@ function makeLearnController(): MidiLearnController {
   return ctrl;
 }
 
+function makeMidiInput(): MidiInputService {
+  return {
+    permission: "unknown",
+    inputs: [],
+    requestAccess: vi.fn(async () => {}),
+    setInputEnabled: vi.fn(),
+    onMessage: vi.fn(() => () => {}),
+    onDevicesChanged: vi.fn(() => () => {}),
+    onPermissionChanged: vi.fn(() => () => {}),
+    dispose: vi.fn(),
+  };
+}
+
 // ── Import under test (after mocks are registered) ───────────────────────────
 
 import { WiredLiveEditPanel } from "../liveEditPanel.tsx";
@@ -98,13 +112,15 @@ describe("WiredLiveEditPanel", () => {
 
   it("loads persisted state and subscribes to MIDI learn for its application lifetime", () => {
     const store = makeStore();
-    const persistence = makePersistence();
+    const persistence = makePersistence({ panelOpen: true });
     const learnController = makeLearnController();
 
-    const mounted = render(() => WiredLiveEditPanel({ store, persistence, learnController }));
+    const midiInput = makeMidiInput();
+    const mounted = render(() => WiredLiveEditPanel({ store, persistence, learnController, midiInput }));
 
     expect(persistence.load).toHaveBeenCalledTimes(1);
     expect(learnController.onStateChanged).toHaveBeenCalledTimes(1);
+    expect(midiInput.onPermissionChanged).toHaveBeenCalledTimes(1);
     expect(liveEditPanel).toHaveBeenCalledTimes(1);
     mounted.unmount();
   });

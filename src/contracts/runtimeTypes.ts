@@ -116,6 +116,11 @@ export interface StateSnapshotLiveSlot {
   value: number;
   min: number;
   max: number;
+  seed?: number;
+  variant?: "numeric" | "boolean" | "keyword";
+  options?: string[];
+  step?: number;
+  precision?: number;
 }
 
 export interface StateSnapshot {

@@ -28,6 +28,7 @@ export type DispatcherConfig = {
   readonly publishAxis: (channel: AxisChannelName, frame: AxisFrame) => void;
   readonly onLayerPush: (entry: TransientLayerEntry) => void;
   readonly onLayerPop: (name: LayerName) => void;
+  readonly getLayerTtlMs?: (name: LayerName) => number | undefined;
   readonly onNoopFlash: () => void;
   readonly getState: () => GamepadState;
   readonly now: () => number;
@@ -63,7 +64,7 @@ export function createDispatcher(config: DispatcherConfig): Dispatcher {
 
       case "leader": {
         const layer = resolution.layerName;
-        const ttlMs = 800; // default; overridden by layer.ttlMs in full wiring
+        const ttlMs = config.getLayerTtlMs?.(layer) ?? 800;
         const now = config.now();
         config.onLayerPush({
           name: layer,

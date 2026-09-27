@@ -226,6 +226,9 @@ export interface ProducerScheduler {
    */
   applyInputs(inputs: Record<string, number>): void;
 
+  /** Drop stale lookahead blocks after a transport map revision. */
+  reanchor(): void;
+
   /**
    * Drain the Worker inbox between iterations. The host passes a
    * callback that processes one queued message (or returns immediately
@@ -335,6 +338,11 @@ export function createProducerScheduler(
       // Merge into the pending queue so the next block sees the union
       // of every input applied since the last production.
       pendingInputs = { ...pendingInputs, ...inputs };
+    },
+
+    reanchor() {
+      view.discardQueuedBlocks();
+      lastProducedFrame = -1n;
     },
 
     processInbox(processOne) {

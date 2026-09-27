@@ -118,16 +118,24 @@ function rightTabCount(manifest: Manifest, leftTabIdx: number): number {
  * `(leftTabIdx=0, rightTabIdx=0, leftHover=null, rightHover=null,
  * shoulderHeld='none', frozen=null)`.
  */
-function freshOpen(target: ApplyTarget, manifest: Manifest): MenuStateOpen {
+function freshOpen(
+  target: ApplyTarget,
+  manifest: Manifest,
+  side?: "before" | "after",
+  initialVerb?: import("./types").VerbKind,
+  categoryIndex?: number,
+): MenuStateOpen {
   return {
     phase: "open",
     leftTabIdx: 0,
     rightTabIdx: 0,
-    leftHover: null,
+    leftHover: categoryIndex ?? null,
     rightHover: null,
     shoulderHeld: "none",
     frozen: null,
     target,
+    ...(side ? { side } : {}),
+    ...(initialVerb ? { initialVerb } : {}),
     manifest,
   };
 }
@@ -262,7 +270,7 @@ function snapshotFromHovers(state: MenuStateOpen): FrozenSnapshot | null {
 function reduceClosed(state: MenuStateClosed, input: MenuInput): MenuState {
   switch (input.kind) {
     case "open":
-      return freshOpen(input.target, input.manifest);
+      return freshOpen(input.target, input.manifest, input.side, input.initialVerb, input.categoryIndex);
 
     // Every other input is a no-op while closed — gamepad input is masked
     // by the radial layer's `when` predicate (spec §11.3) so these only
@@ -300,7 +308,7 @@ function reduceOpen(state: MenuStateOpen, input: MenuInput): MenuState {
     case "open":
       // A second `open` while already open is treated as a re-open with new
       // target / manifest (auto-chain re-opens this way per §8.2).
-      return freshOpen(input.target, input.manifest);
+      return freshOpen(input.target, input.manifest, input.side, input.initialVerb, input.categoryIndex);
 
     // ---- live stick tracking ----------------------------------------------
     case "axisLeft": {
@@ -616,7 +624,7 @@ function reduceNumpad(state: MenuStateNumpad, input: MenuInput): MenuState {
     case "open":
       // A fresh open replaces sub-mode wholesale (auto-chain triggered
       // mid-buffer is unlikely but defined: drop the buffer, open clean).
-      return freshOpen(input.target, input.manifest);
+      return freshOpen(input.target, input.manifest, input.side, input.initialVerb, input.categoryIndex);
 
     case "subModeOpen": {
       // Switching sub-mode mid-buffer: discard the current buffer and
@@ -751,7 +759,7 @@ function reduceT9(state: MenuStateT9, input: MenuInput): MenuState {
       return { phase: "closed" };
 
     case "open":
-      return freshOpen(input.target, input.manifest);
+      return freshOpen(input.target, input.manifest, input.side, input.initialVerb, input.categoryIndex);
 
     case "subModeOpen": {
       if (input.mode === "t9") {

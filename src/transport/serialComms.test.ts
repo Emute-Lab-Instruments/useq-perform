@@ -339,6 +339,43 @@ describe("serialComms fake host harness", () => {
     );
   });
 
+  it("routes STREAM frames for input channels to hwInputStream after the handshake", async () => {
+    const { channels: _channels, ...serialComms } = await loadSerialComms();
+    // Same module registry instance the connector/json-protocol just loaded.
+    const streamParser = await import("./stream-parser.ts");
+    const hwChannels = await import("../contracts/hardwareChannels");
+    const port = new FakeSerialPort();
+    const hwInputEvents: Array<
+      import("../contracts/hardwareChannels").HwInputStreamValue
+    > = [];
+
+    hwChannels.hwInputStream.subscribe((value) => {
+      hwInputEvents.push(value);
+    });
+
+    const connectPromise = serialComms.connectToSerialPort(
+      port as unknown as SerialPort
+    );
+    await vi.advanceTimersByTimeAsync(3500);
+    expect(await connectPromise).toBe(true);
+    await flushProtocolWork();
+
+    // The fake hello config subscribes inputs first (ssin1), so the device
+    // numbers it as wire channel 2 → WASM hw_input 8 (state-sync.md §1.2).
+    expect(streamParser.serialInputHwRouting).toEqual({ 2: 8 });
+
+    port.enqueueStream(2, 0.75);
+    // Wire channel 3 is an output (s1): must go to serialBuffers, not hwInputStream.
+    port.enqueueStream(3, 5);
+    await flushProtocolWork();
+
+    expect(hwInputEvents).toEqual([{ hwInputIndex: 8, value: 0.75 }]);
+
+    // Disconnect resets input routing together with output routing.
+    await serialComms.disconnect();
+    expect(streamParser.serialInputHwRouting).toEqual({});
+  });
+
   it("surfaces request timeouts on the fake serial harness", async () => {
     const serialComms = await loadSerialComms();
     const port = new FakeSerialPort();

@@ -7,16 +7,36 @@
  */
 
 .le-panel-root {
+  position: fixed;
+  right: 12px;
+  top: 12px;
+  z-index: 1200;
   display: flex;
   flex-direction: column;
-  width: 100%;
-  height: 100%;
+  width: min(360px, calc(100vw - 24px));
+  height: min(70vh, 640px);
   background-color: var(--panel-bg, #1e1e1e);
   border-left: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
   color: var(--text-primary, #e8e8e8);
   font-family: var(--code-font, "IBM Plex Mono", monospace);
   font-size: 13px;
   overflow: hidden;
+}
+
+.le-panel-dock-left { left: 12px; right: auto; }
+.le-panel-dock-bottom { left: 12px; right: 12px; top: auto; bottom: 12px; width: auto; height: min(38vh, 360px); }
+
+.le-panel-reopen {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 1200;
+  padding: 8px 12px;
+  color: var(--text-primary, #e8e8e8);
+  background: var(--panel-bg, #1e1e1e);
+  border: 1px solid var(--panel-border-strong, rgba(255, 255, 255, 0.18));
+  border-radius: 6px;
+  font: inherit;
 }
 
 .le-panel-header {

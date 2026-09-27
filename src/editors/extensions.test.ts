@@ -17,7 +17,6 @@ import {
   createMainEditorExtensions,
 } from "./extensions.ts";
 import {
-  createEphemeralProbeExtensions,
   probeExtensions,
   probeField,
   probeHighlightField,

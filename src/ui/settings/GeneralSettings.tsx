@@ -12,6 +12,7 @@ import { ConfigurationManagement, handleSettingsExport, handleSettingsImport } f
 import { ConsoleSettings } from "./ConsoleSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
+import { RuntimeDiagnosticsSettings } from "./RuntimeDiagnosticsSettings";
 import type { AppSettings } from "../../lib/appSettings.ts";
 import { confirmDialog, type ConfirmDialogFn } from "../adapters/modal";
 
@@ -58,6 +59,7 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
       <KeybindingsSettings settings={s()} onUpdateSettings={update} />
       <VisualisationSettings settings={s()} onUpdateSettings={update} />
       <AdvancedSettings settings={s()} onUpdateSettings={update} />
+      <RuntimeDiagnosticsSettings />
       <ConfigurationManagement onReload={reload} confirm={props.confirm} />
 
       <div class="settings-footer">

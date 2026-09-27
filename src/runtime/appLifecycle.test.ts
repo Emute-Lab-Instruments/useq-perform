@@ -6,9 +6,15 @@ const {
   post,
   ensureUseqWasmLoaded,
   announceRuntimeSession,
+  sendRuntimeTransportCommand,
   checkForSavedPortAndMaybeConnect,
   initializeMockControls,
+  addValueChangeListener,
+  removeValueChangeListener,
   startInternalClockMock,
+  applyClockPolicyMock,
+  initStickyModifiersMock,
+  cleanupStickyModifiersMock,
   registerVisualisation,
   startVisualisationShadow,
   stopVisualisationShadow,
@@ -21,9 +27,20 @@ const {
   post: vi.fn(),
   ensureUseqWasmLoaded: vi.fn(),
   announceRuntimeSession: vi.fn(),
+  sendRuntimeTransportCommand: vi.fn(),
   checkForSavedPortAndMaybeConnect: vi.fn(),
   initializeMockControls: vi.fn(),
+  addValueChangeListener: vi.fn(),
+  removeValueChangeListener: vi.fn(),
   startInternalClockMock: vi.fn(),
+  applyClockPolicyMock: vi.fn(),
+  ...(() => {
+    const cleanupStickyModifiersMock = vi.fn();
+    return {
+      cleanupStickyModifiersMock,
+      initStickyModifiersMock: vi.fn(() => cleanupStickyModifiersMock),
+    };
+  })(),
   registerVisualisation: vi.fn(),
   startVisualisationShadow: vi.fn(),
   stopVisualisationShadow: vi.fn(),
@@ -58,6 +75,7 @@ vi.mock("../utils/consoleStore.ts", () => ({
 
 vi.mock("../transport/connector.ts", () => ({
   checkForSavedPortAndMaybeConnect,
+  disconnect: vi.fn(),
 }));
 
 vi.mock("./runtimeCoordinator.ts", () => ({
@@ -86,10 +104,18 @@ vi.mock("../ui/adapters/modal.tsx", () => ({
 
 vi.mock("../effects/mockControlInputs.ts", () => ({
   initializeMockControls,
+  addValueChangeListener,
+  removeValueChangeListener,
+}));
+
+vi.mock("../lib/keybindings/stickyModifiers.ts", () => ({
+  initStickyModifiers: initStickyModifiersMock,
 }));
 
 vi.mock("../effects/transportClock.ts", () => ({
   startInternalClock: startInternalClockMock,
+  listenForHardwareOverride: vi.fn(() => vi.fn()),
+  applyClockPolicy: applyClockPolicyMock,
 }));
 
 vi.mock("../effects/visualisationSession.ts", () => ({
@@ -110,6 +136,7 @@ vi.mock("../ui/adapters/visualisationPanel", () => ({
 
 vi.mock("./runtimeService.ts", () => ({
   announceRuntimeSession,
+  sendRuntimeTransportCommand,
   getRuntimeServiceSnapshot: () => runtimeSnapshot,
   subscribeRuntimeService: (listener: (state: typeof runtimeSnapshot) => void) => {
     runtimeSubscribers.push(listener);
@@ -164,12 +191,14 @@ describe("application no-module startup", () => {
     const app = createApp(null, environmentState, plan);
 
     await app.start();
-    await vi.waitFor(() => expect(startInternalClockMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(applyClockPolicyMock).toHaveBeenCalledWith("playing", "stopped"));
+    const { getTransportOrchestrator } = await import("../effects/transportOrchestrator.ts");
+    expect(getTransportOrchestrator().getSnapshot().value).toBe("paused");
 
     expect(ensureUseqWasmLoaded).toHaveBeenCalledTimes(1);
     expect(announceRuntimeSession).toHaveBeenCalledTimes(1);
     expect(initializeMockControls).toHaveBeenCalledTimes(1);
-    expect(startInternalClockMock).toHaveBeenCalledTimes(1);
+    expect(startInternalClockMock).not.toHaveBeenCalled();
     expect(showVisualisationPanel).toHaveBeenCalledTimes(1);
     expect(registerVisualisation).toHaveBeenNthCalledWith(1, "a1", "(a1 bar)");
     expect(registerVisualisation).toHaveBeenNthCalledWith(2, "a2", "(a2 (slow 2 bar))");
@@ -177,6 +206,9 @@ describe("application no-module startup", () => {
     expect(post).toHaveBeenCalledWith(
       "No-module mode active: expressions will run on the in-browser interpreter."
     );
+    expect(initStickyModifiersMock).toHaveBeenCalledTimes(1);
+    await app.stop();
+    expect(cleanupStickyModifiersMock).toHaveBeenCalledTimes(1);
   });
 
   it("starts browser-local runtime first and still kicks off reconnect checks in normal mode", async () => {
@@ -217,15 +249,11 @@ describe("application no-module startup", () => {
     const app = createApp(null, environmentState, plan);
 
     await app.start();
-    await vi.waitFor(() => expect(post).toHaveBeenCalledWith(
-      "Browser-local uSEQ is ready. You can start editing and evaluating before hardware reconnect finishes."
-    ));
+    await vi.waitFor(() => expect(applyClockPolicyMock).toHaveBeenCalledWith("playing", "stopped"));
 
     expect(ensureUseqWasmLoaded).toHaveBeenCalledTimes(1);
     expect(checkForSavedPortAndMaybeConnect).toHaveBeenCalledTimes(1);
-    expect(post).toHaveBeenCalledWith(
-      "Browser-local uSEQ is ready. You can start editing and evaluating before hardware reconnect finishes."
-    );
+    expect(startInternalClockMock).not.toHaveBeenCalled();
   });
 
   it("starts hardware/UI lifecycle before Worker readiness and activates WASM later", async () => {

@@ -67,21 +67,6 @@ describe("appSettingsRepository persistence", () => {
     ).toBe("(canonical)");
   }, 30000);
 
-  it("loads legacy JSON-encoded code values through the canonical bootstrap path", async () => {
-    const appSettings = await import("../lib/appSettings.ts");
-    const repo = await import("./appSettingsRepository.ts");
-    window.localStorage.setItem(
-      appSettings.settingsStorageKey,
-      JSON.stringify({ editor: { fontSize: 18 } }),
-    );
-    window.localStorage.setItem(appSettings.codeStorageKey, JSON.stringify("(legacy-json-code)"));
-
-    const loadedSettings = repo.loadAppSettings();
-
-    expect(loadedSettings.editor.fontSize).toBe(18);
-    expect(loadedSettings.editor.code).toBe("(legacy-json-code)");
-  });
-
   it("does not write local storage when ?nosave is active", async () => {
     setLocation("/?nosave");
     const appSettings = await import("../lib/appSettings.ts");
@@ -123,5 +108,30 @@ describe("appSettingsRepository persistence", () => {
 
     expect(storedSettings.visualisation.windowDuration).toBe(6);
     expect(storedSettings.visualisation.offsetSeconds).toBeUndefined();
+  });
+
+  it("keeps URL-config values session-only when another setting is explicitly edited", async () => {
+    const appSettings = await import("../lib/appSettings.ts");
+    const { PERSISTENCE_KEYS } = await import("../lib/persistence.ts");
+    const repo = await import("./appSettingsRepository.ts");
+    const persisted = appSettings.normalizeUserSettings({
+      runtime: { autoReconnect: false },
+      editor: { fontSize: 18 },
+    });
+    repo.replaceAppSettings(persisted, { persist: true });
+    repo.replaceAppSettings(
+      appSettings.mergeUserSettings(persisted, {
+        runtime: { autoReconnect: true },
+        editor: { fontSize: 28 },
+      }),
+    );
+    repo.updateAppSettings({ editor: { fontSize: 30 } });
+
+    const stored = JSON.parse(
+      window.localStorage.getItem(PERSISTENCE_KEYS.settings) ?? "{}",
+    );
+    expect(stored.runtime.autoReconnect).toBe(false);
+    expect(stored.editor.fontSize).toBe(30);
+    expect(repo.getAppSettings().runtime.autoReconnect).toBe(true);
   });
 });

@@ -38,8 +38,11 @@ import {
 import manifestJson from "../../lib/menu/manifest.json" with { type: "json" };
 import type { IdGen } from "../extensions/structure/core/types";
 import { defaultIdGen } from "../extensions/structure/core/index";
-import { currentApplyTarget, resolveHoleType } from "./editorTarget";
+import { currentApplyTarget, quickReplaceCategoryIndex, quickReplaceIsCompound, quickReplaceIsNumber, quickReplaceManifestForTarget, resolveHoleType } from "./editorTarget";
 import { postVerbMenuInputs } from "./chainCoordination";
+import { holeFocused } from "../../contracts/editorChannels";
+import { checkAndPublishHoleFocus } from "../holeFocusEmitter";
+import { structField } from "../extensions/structure/adapter/stateField";
 import { actionToVerbKind, applyMenuVerb } from "./verbApplication";
 import {
   createTextEntryController,
@@ -113,6 +116,11 @@ const MENU_ALL_ACTIONS: ReadonlySet<ActionId> = new Set([
   "menu.text.open",
   "menu.cancel",
   "menu.radial",
+  "menu.openBefore",
+  "menu.openAfter",
+  "actOn.quickReplace",
+  "actOn.replace",
+  "actOn.wrapWith",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -166,16 +174,27 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
         cleanups.push(unregister);
       }
 
+      cleanups.push(holeFocused.subscribe((detail) => {
+        if (detail.source !== "chain") return;
+        const structural = deps.getEditorView()?.state.field(structField, false);
+        if (!structural) return;
+        for (const input of postVerbMenuInputs(
+          structural.state.tree,
+          structural.state.cursors,
+          deps.getManifest(),
+        )) deps.dispatchInput(input);
+      }));
+
       return unbind;
     },
 
-    open(target: ApplyTarget): void {
+    open(target: ApplyTarget, side?: "before" | "after", initialVerb?: import("../../lib/menu/types").VerbKind, categoryIndex?: number): void {
       const manifest = deps.getManifest();
       if (manifest === null) {
         // §12.2: menu disabled on manifest failure.
         return;
       }
-      deps.dispatchInput({ kind: "open", target, manifest });
+      deps.dispatchInput({ kind: "open", target, manifest, side, initialVerb, categoryIndex });
     },
 
     close(): void {
@@ -230,6 +249,42 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
       const manifest = deps.getManifest();
       if (!manifest) return;
       deps.dispatchInput({ kind: "open", target, manifest });
+      return;
+    }
+
+    if (action === "menu.openBefore" || action === "menu.openAfter") {
+      const view = deps.getEditorView();
+      if (!view) return;
+      const side = action === "menu.openBefore" ? "before" : "after";
+      const target = currentApplyTarget(view, side);
+      const manifest = deps.getManifest();
+      if (target && manifest) deps.dispatchInput({ kind: "open", target, manifest, side });
+      return;
+    }
+
+    if (action === "actOn.quickReplace" || action === "actOn.replace" || action === "actOn.wrapWith") {
+      const view = deps.getEditorView();
+      if (!view) return;
+      const target = currentApplyTarget(view);
+      const manifest = deps.getManifest();
+      if (!target || !manifest) return;
+      const initialVerb = action === "actOn.wrapWith" || (action === "actOn.quickReplace" && quickReplaceIsCompound(view, target))
+        ? "wrapWith"
+        : "replace";
+      const categoryIndex = quickReplaceCategoryIndex(view, target, manifest);
+      const scopedManifest = action === "actOn.quickReplace"
+        ? quickReplaceManifestForTarget(view, target, manifest)
+        : manifest;
+      deps.dispatchInput({ kind: "open", target, manifest: scopedManifest, initialVerb, categoryIndex });
+      if (action === "actOn.quickReplace" && quickReplaceIsNumber(view, target)) {
+        deps.dispatchInput({
+          kind: "subModeOpen",
+          mode: "numpad",
+          target,
+          activeVerb: { kind: "replace", hand: "left" },
+          returnTo: "open",
+        });
+      }
       return;
     }
 
@@ -290,7 +345,9 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
       const state = deps.getMenuState();
       if (textEntry.handleVerbAction(state, action)) return;
 
-      const verbKind = actionToVerbKind(action);
+      const verbKind = state.phase === "open" && state.initialVerb
+        ? state.initialVerb
+        : actionToVerbKind(action);
       if (verbKind) {
         dispatchVerb(verbKind);
       }
@@ -347,9 +404,9 @@ export function createMenuDispatcher(deps: MenuDispatcherDeps): MenuDispatcher {
       deps.dispatchInput({ kind: "cancel" });
       return;
     }
-    for (const input of postVerbMenuInputs(result.tree, result.cursorSet, deps.getManifest())) {
-      deps.dispatchInput(input);
-    }
+    const view = deps.getEditorView();
+    const focusedHole = view ? checkAndPublishHoleFocus(view, "chain") : null;
+    if (!focusedHole) deps.dispatchInput({ kind: "cancel" });
   }
 }
 

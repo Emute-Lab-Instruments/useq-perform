@@ -132,7 +132,7 @@ describe("REQUIRED_WASM_EXPORTS", () => {
   it("contains useq_eval with correct signature", () => {
     const desc = REQUIRED_WASM_EXPORTS.useq_eval;
     expect(desc.symbol).toBe("useq_eval");
-    expect(desc.returnType).toBe("string");
+    expect(desc.returnType).toBe("number");
     expect(desc.argTypes).toEqual(["string"]);
   });
 
@@ -200,8 +200,12 @@ describe("OPTIONAL_WASM_EXPORTS", () => {
 
   it("useq_last_error has correct signature", () => {
     const desc = OPTIONAL_WASM_EXPORTS.useq_last_error;
-    expect(desc.returnType).toBe("string");
+    expect(desc.returnType).toBe("number");
     expect(desc.argTypes).toEqual([]);
+  });
+
+  it("output classifications returns a static heap pointer", () => {
+    expect(OPTIONAL_WASM_EXPORTS.useq_output_classifications.returnType).toBe("number");
   });
 
   it("includes diagnostics helpers", () => {
@@ -211,8 +215,12 @@ describe("OPTIONAL_WASM_EXPORTS", () => {
 
   it("useq_active_diagnostics has correct signature", () => {
     const desc = OPTIONAL_WASM_EXPORTS.useq_active_diagnostics;
-    expect(desc.returnType).toBe("string");
+    expect(desc.returnType).toBe("number");
     expect(desc.argTypes).toEqual([]);
+  });
+
+  it("useq_last_diagnostics returns an owned string pointer", () => {
+    expect(OPTIONAL_WASM_EXPORTS.useq_last_diagnostics.returnType).toBe("number");
   });
 
   it("includes synth artefact snapshot helper (VAL-COMP-009/012)", () => {
