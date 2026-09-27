@@ -116,11 +116,10 @@ function actionOp(name: string): Op | null {
     case "nav.shrink":    return nav.shrink;
     case "nav.nextHole":  return nav.nextHole;
     case "nav.prevHole":  return nav.prevHole;
-    case "nav.right":     return nav.right;
-    case "nav.left":      return nav.left;
-
     case "edit.slurpForward":  return (s) => getMutators().slurpForward(s);
     case "edit.slurpBackward": return (s) => getMutators().slurpBackward(s);
+    case "edit.atomSlurpForward": return (s) => getMutators().atomSlurpForward(s);
+    case "edit.atomSlurpBackward": return (s) => getMutators().atomSlurpBackward(s);
     case "edit.barfForward":   return (s) => getMutators().barfForward(s);
     case "edit.barfBackward":  return (s) => getMutators().barfBackward(s);
     case "edit.raise":         return (s) => getMutators().raise(s);
@@ -423,7 +422,8 @@ export const STRUCTURAL_ACTIONS = [
   "nav.out", "nav.in", "nav.next", "nav.prev", "nav.first", "nav.last",
   "nav.extendNext", "nav.extendPrev", "nav.shrink", "nav.nextHole",
   "nav.prevHole", "nav.right", "nav.left", "nav.up", "nav.down",
-  "edit.slurpForward", "edit.slurpBackward", "edit.barfForward",
+  "edit.slurpForward", "edit.slurpBackward", "edit.atomSlurpForward",
+  "edit.atomSlurpBackward", "edit.barfForward",
   "edit.barfBackward", "edit.raise", "edit.splice", "edit.transposeNext",
   "edit.transposePrev", "edit.moveRight", "edit.moveLeft", "edit.moveUp",
   "edit.moveDown", "edit.delete", "edit.encloseList", "edit.encloseVector",

@@ -18,7 +18,6 @@ import { describe, expect, it, beforeEach } from "vitest";
 import {
   ENGINE_STATE_REASONS,
   ENGINE_TRANSITIONS,
-  engineLifecycle,
   engineTransitionTrigger,
   engineStateChanged,
   isAllowedEngineTransition,
@@ -178,18 +177,4 @@ describe("synthesisChannels — publication", () => {
     }
   });
 
-  it("lifecycle channel receives an event per publish", () => {
-    // The lifecycle channel is a flat audit trail of every transition.
-    // The synthesis service emits lifecycle events on each transition;
-    // direct publishEngineState callers do not (the service is the sole
-    // emitter of lifecycle events).
-    const events: number[] = [];
-    const unsub = engineLifecycle.subscribe((e) => events.push(e.transitionCount));
-    try {
-      // No direct emit here; just verify subscription works.
-      expect(events).toEqual([]);
-    } finally {
-      unsub();
-    }
-  });
 });

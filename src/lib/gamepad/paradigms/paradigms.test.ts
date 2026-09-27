@@ -26,7 +26,9 @@ vi.mock("../../mainMenu/store", () => ({
 }));
 
 import { isMenuOpen } from "../../menu/store";
+import { isMainMenuOpen } from "../../mainMenu/store";
 const mockedIsMenuOpen = vi.mocked(isMenuOpen);
+const mockedIsMainMenuOpen = vi.mocked(isMainMenuOpen);
 
 const ln = (n: string) => n as LayerName;
 
@@ -134,6 +136,41 @@ describe("paradigm: modal-shift", () => {
     const r = resolveGesture(tap("A"), state, [...modalShiftLayers], map);
     expect(r?.kind).toBe("action");
     if (r?.kind === "action") expect(r.action).toBe("probe.toggle");
+  });
+
+  // ─── Main-menu layer (main-menu.md §4.1, gamepad.md §6.8.1) ───────────────
+  describe("main-menu layer", () => {
+    it("passes binding lint", () => {
+      expect(lintBindings([...modalShiftLayers])).toEqual([]);
+    });
+
+    it("still resolves its own bindings while active", () => {
+      mockedIsMainMenuOpen.mockReturnValue(true);
+      const map = buildLayerMap([...modalShiftLayers]);
+      const r = resolveGesture(tap("A"), mkState(), [...modalShiftLayers], map);
+      expect(r?.kind).toBe("action");
+      if (r?.kind === "action") expect(r.action).toBe("mainMenu.select");
+    });
+
+    it("masks unbound gestures instead of leaking to the base layer", () => {
+      // X → menu.radial, Y → edit.delete and Left → nav.left live on the base
+      // layer; while the main menu is open they must be discarded, not
+      // executed behind the menu (gamepad.md §6.8.1 "masks all other input").
+      mockedIsMainMenuOpen.mockReturnValue(true);
+      const map = buildLayerMap([...modalShiftLayers]);
+      for (const gesture of [tap("X"), tap("Y"), tap("Left")]) {
+        const r = resolveGesture(gesture, mkState(), [...modalShiftLayers], map);
+        expect(r?.kind, `tap(${gesture.btn})`).toBe("miss");
+      }
+    });
+
+    it("stops masking once the menu closes", () => {
+      mockedIsMainMenuOpen.mockReturnValue(false);
+      const map = buildLayerMap([...modalShiftLayers]);
+      const r = resolveGesture(tap("Y"), mkState(), [...modalShiftLayers], map);
+      expect(r?.kind).toBe("action");
+      if (r?.kind === "action") expect(r.action).toBe("edit.delete");
+    });
   });
 
   // ─── LB+RB shift layer (B6: face-button structural verbs) ─────────────────

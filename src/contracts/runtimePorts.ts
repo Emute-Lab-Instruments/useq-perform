@@ -46,6 +46,9 @@
 
 import type { TransportState } from "../machines/transport.machine";
 import type { SharedTransportCommand } from "./useqRuntimeContract";
+// Sanctioned contracts→runtime crossing (see eslint.config.js): this port
+// surface re-exposes the Worker wire protocol's telemetry snapshot type.
+import type { ProducerTelemetrySnapshot } from "../runtime/workers/wasmRuntimeWorkerProtocol.ts";
 import type {
   RuntimeDiagnostic,
   RuntimeProtocolMode,
@@ -557,9 +560,7 @@ export interface WasmRuntimePort extends SharedRuntimePort {
    * Read a producer telemetry snapshot. Returns `null` when the
    * producer has not been started.
    */
-  producerReadTelemetry(): Promise<
-    import("../runtime/workers/wasmRuntimeWorkerProtocol").ProducerTelemetrySnapshot | null
-  >;
+  producerReadTelemetry(): Promise<ProducerTelemetrySnapshot | null>;
 
   /**
    * Clear the WASM compiler's synth declarations by evaluating `(useq-clear)`.

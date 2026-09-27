@@ -344,14 +344,6 @@ export interface WorkletAttachControlBufferMessage {
 }
 
 /**
- * Disconnect from the SAB and retire every active instance. Sent by
- * the service when the engine is disposed or reinitialised.
- */
-export interface WorkletDetachControlBufferMessage {
-  readonly type: "detach-control-buffer";
-}
-
-/**
  * Union of every message the worklet core accepts. Unknown shapes are
  * treated as no-ops so a forward-compatible main thread cannot crash
  * the audio thread.
@@ -363,8 +355,7 @@ export type WorkletInboundMessage =
   | WorkletAbortGraphMessage
   | WorkletActivateGraphMessage
   | WorkletDevmodeTerminateProducerMessage
-  | WorkletAttachControlBufferMessage
-  | WorkletDetachControlBufferMessage;
+  | WorkletAttachControlBufferMessage;
 
 // ---------------------------------------------------------------------------
 // Outbound telemetry (worklet → main thread)

@@ -20,9 +20,22 @@ export interface EmscriptenModule {
   _malloc(size: number): number;
   _free(pointer: number): void;
   HEAPF64: Float64Array;
+  UTF8ToString(pointer: number): string;
 }
 
 export type CoreLog = (message: string) => void;
+
+export function readAndFreeCString(
+  module: EmscriptenModule,
+  pointer: number,
+): string {
+  if (!pointer) return "";
+  try {
+    return module.UTF8ToString(pointer);
+  } finally {
+    module._free(pointer);
+  }
+}
 
 export function bindOptionalCwrap(
   module: EmscriptenModule,

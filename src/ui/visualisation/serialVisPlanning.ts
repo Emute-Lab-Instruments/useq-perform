@@ -2,7 +2,7 @@
 // lane layout, past/future sample assembly, and pixel-matched sample rate.
 
 import { projectionTrace } from "../../lib/projectionTrace.ts";
-import type { OutputRenderData, VisSettings } from "../../effects/visualisationSession.ts";
+import type { OutputRenderData } from "../../effects/visualisationSession.ts";
 import type { VisSampleLike } from "./webglLineRenderer.ts";
 
 const DIGITAL_OUTPUT_RE = /^[ds]\d+$/i;
@@ -150,13 +150,13 @@ export function buildCombinedSamples(
   return combinedScratch;
 }
 
-export function futureBoundaryMaxGapSeconds(settings: VisSettings): number {
-  const futureDensityHz = Math.max(
-    settings.minFutureSampleRate || 1,
-    (settings.sampleCount || 100) / (settings.windowDuration || 1),
-  );
-  return 4 / Math.max(1, futureDensityHz);
-}
+/**
+ * Re-exported from the sampler, which owns the boundary-gap policy
+ * (future-sample density × boundary-gap multiplier). The renderer and the
+ * sampler must never drift apart on this test, so there is exactly one
+ * definition (see visualisation spec §5.4).
+ */
+export { futureBoundaryMaxGapSeconds } from "../../effects/visualisationSampler.ts";
 
 export function computeAdaptivePastBufferRate(
   canvasWidth: number,

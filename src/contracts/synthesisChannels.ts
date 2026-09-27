@@ -273,32 +273,6 @@ export function engineTransitionTrigger(
 }
 
 // ---------------------------------------------------------------------------
-// Lifecycle event channel — recovery/telemetry audit trail
-// ---------------------------------------------------------------------------
-
-/**
- * Lifecycle event published on every transition in addition to the
- * snapshot. Useful for telemetry dashboards that want a flat audit trail
- * rather than a Solid store subscription.
- */
-export interface EngineLifecycleEvent {
-  /** Transition counter at the time of the event. */
-  readonly transitionCount: number;
-  /** Source state. */
-  readonly from: SynthesisEngineState;
-  /** Destination state. */
-  readonly to: SynthesisEngineState;
-  /** Trigger key that caused the transition. */
-  readonly trigger: EngineTransitionTrigger;
-  /** Wall-clock millis (`Date.now()`) of the transition. */
-  readonly at: number;
-}
-
-export const ENGINE_LIFECYCLE_EVENT = "useq-engine-lifecycle";
-export const engineLifecycle: TypedChannel<EngineLifecycleEvent> =
-  createChannel<EngineLifecycleEvent>();
-
-// ---------------------------------------------------------------------------
 // Re-export
 // ---------------------------------------------------------------------------
 

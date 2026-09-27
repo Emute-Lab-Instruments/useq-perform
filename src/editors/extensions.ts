@@ -140,8 +140,8 @@ export const guideEditorExtensions = [
 // The eval gutter (`lastEvaluatedExpressionField` + `createExpressionGutter`)
 // is independent of structural editing and lives in `expressionHighlights.ts`.
 
-// Base extensions combine core functionality
-export const baseExtensions = [
+// Core (non-probe) extension stack shared by every editable editor.
+const baseCoreExtensions = [
   baseKeymap,
   ...functionalExtensions,
   ...themeExtensions,
@@ -150,7 +150,6 @@ export const baseExtensions = [
   ...operatorNamespaceExtensions(),
   lastEvaluatedExpressionField,
   ...createExpressionGutter(createDefaultGutterConfig()),
-  ...createEphemeralProbeExtensions(),
   ...createLiveEditWidgetsExtension({ onValueChange: liveEditOnValueChange }),
   liveEditPasteHandler,
   createIdleEvalPlugin(),
@@ -161,10 +160,24 @@ export const baseExtensions = [
   visReadabilityPlugin,
 ];
 
+// Base extensions combine core functionality with the ephemeral probe set:
+// secondary documents (guide/snippet editors) keep their probes local and
+// do not share runtime slots. The main editor must install its production
+// probe set exactly once — see createMainEditorExtensions.
+export const baseExtensions = [
+  ...baseCoreExtensions,
+  ...createEphemeralProbeExtensions(),
+];
+
 /**
  * Build the production editor extension set around a session-owned identity
  * field. Embedded/guide editors use `baseExtensions` without silently
  * joining the main document's persistence or identity lifetime.
+ *
+ * The production `probeExtensions` are added here INSTEAD of the ephemeral
+ * set baked into `baseExtensions`, so the editor state carries exactly one
+ * `probeConfig` facet value (the facet reads `configs[0]`, so stacking two
+ * sets would make the winning config depend on array order).
  */
 export function createMainEditorExtensions(options: {
   identityExtensions: readonly import("@codemirror/state").Extension[];
@@ -173,7 +186,7 @@ export function createMainEditorExtensions(options: {
   return [
     ...mainEditorKeymap,
     ...probeExtensions,
-    ...baseExtensions,
+    ...baseCoreExtensions,
     ...options.identityExtensions,
     updateListener,
     ...options.sessionExtensions,

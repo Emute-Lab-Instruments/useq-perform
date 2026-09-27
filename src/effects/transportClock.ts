@@ -10,6 +10,7 @@ import {
   subscribeRuntimeService,
 } from "../runtime/runtimeService";
 import { visualisationSession } from "./visualisationSession.ts";
+import type { TransportMode } from "../contracts/runtimeTypes";
 
 /** Start the internal clock from zero. */
 export function startInternalClock(): boolean {
@@ -73,6 +74,14 @@ export function applyClockPolicy(
     stopInternalClock();
     resetInternalClock();
   }
+}
+
+/** Reconcile local time after hardware stops owning transport time. */
+export function restoreClockAfterHardwareDisconnect(
+  mode: TransportMode,
+  state: TransportState,
+): void {
+  if (mode === "wasm") applyClockPolicy(state, "paused");
 }
 
 // ── Runtime-connection listener ─────────────────────────────────

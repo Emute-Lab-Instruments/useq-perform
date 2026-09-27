@@ -74,13 +74,17 @@ import {
 function createFakeClock(): ProducerSchedulingClock & {
   tick(ms: number): void;
   now(): number;
+  sleepCalls(): number;
 } {
   let t = 0;
+  let sleeps = 0;
   return {
     now: () => t,
     sleep(ms: number): void {
+      sleeps += 1;
       t += ms;
     },
+    sleepCalls: () => sleeps,
     tick(ms: number): void {
       t += ms;
     },
@@ -186,7 +190,7 @@ function buildScheduler(opts: {
 
 describe("producerScheduler / lookahead publication (VAL-ENGINE-004)", () => {
   it("reports published blocks without retaining production audit records", () => {
-    const { scheduler, view, map, audit } = buildScheduler({ audit: false });
+    const { scheduler, view, map, audit, clock } = buildScheduler({ audit: false });
     map.start({ atFrame: 0n, atTime: 0 });
 
     expect(scheduler.iterate()).toBe(0);
@@ -196,6 +200,7 @@ describe("producerScheduler / lookahead publication (VAL-ENGINE-004)", () => {
     expect(scheduler.iterate()).toBe(CONTROL_LOOKAHEAD_BLOCKS);
     expect(audit).toHaveLength(0);
     expect(scheduler.iterate()).toBe(0);
+    expect(clock.sleepCalls()).toBe(1);
     scheduler.stop();
   });
 

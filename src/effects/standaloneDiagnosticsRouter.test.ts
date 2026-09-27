@@ -30,7 +30,7 @@ describe("standalone diagnostics router", () => {
     standaloneDiagnostics.publish({ diagnostics: [diagnostic] });
 
     expect(pushDiagnostics).toHaveBeenCalledOnce();
-    expect(pushDiagnostics).toHaveBeenCalledWith(view, [diagnostic]);
+    expect(pushDiagnostics).toHaveBeenCalledWith(view, [diagnostic], 0, 0, 0, false);
   });
 
   it("ignores frames when there is no active editor", () => {

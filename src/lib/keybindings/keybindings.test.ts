@@ -1,9 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { actions, type ActionId, type ActionCategory } from "./actions.ts";
-import {
-  defaultKeyBindings,
-  defaultGamepadBindings,
-} from "./defaults.ts";
+import { defaultKeyBindings } from "./defaults.ts";
 import {
   detectOs,
   isBrowserReserved,
@@ -54,15 +51,11 @@ const validCategories: ActionCategory[] = [
 ];
 
 // Actions not expected to have a handler in the handler registry.
-// Picker/menu scoped actions are dispatched via their own channel subscribers.
+// menu.openBefore / menu.openAfter / menu.radial are dispatched to the menu
+// dispatcher's own channel subscriber (gamepad.md §6.5/§6.1).
 // nav.home / nav.end are handled by CodeMirror's built-in defaultKeymap.
+// (picker.* bindings were removed with the picker layer — radial-menu.md §11.3.)
 const handlerExemptActions = new Set<string>([
-  "picker.up",
-  "picker.down",
-  "picker.left",
-  "picker.right",
-  "picker.select",
-  "picker.cancel",
   "menu.openBefore",
   "menu.openAfter",
   "menu.radial",
@@ -103,12 +96,23 @@ describe("Default bindings reference valid actions", () => {
       expect(allActionIds).toContain(binding.action);
     });
   }
+});
 
-  for (const binding of defaultGamepadBindings) {
-    it(`gamepad binding [${binding.combo.join("+")}] → "${binding.action}" is a valid ActionId`, () => {
-      expect(allActionIds).toContain(binding.action);
-    });
-  }
+// ---------------------------------------------------------------------------
+// 2b. When-clauses only reference contexts that are actually registered
+// ---------------------------------------------------------------------------
+
+describe("When-clauses reference registered contexts", () => {
+  it("no default binding gates on the removed picker layer", () => {
+    // radial-menu.md §11.3: the radial layer replaces the removed picker
+    // layer. No predicate named "picker.open" is ever registered, so a
+    // when-clause referencing it logged "Unknown context predicate" on every
+    // qualifying keypress.
+    const stale = defaultKeyBindings.filter((b) =>
+      b.when?.includes("picker."),
+    );
+    expect(stale.map((b) => b.action)).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -246,10 +250,6 @@ describe("Default keyboard binding key snapshot", () => {
         "Alt-p",
         "Alt-r",
         "Alt-s",
-        "ArrowDown",
-        "ArrowLeft",
-        "ArrowRight",
-        "ArrowUp",
         "Ctrl-Shift-[",
         "Ctrl-Shift-]",
         "Ctrl-[",
@@ -257,8 +257,6 @@ describe("Default keyboard binding key snapshot", () => {
         "Ctrl-k",
         "End",
         "Enter",
-        "Enter",
-        "Escape",
         "Escape",
         "Escape",
         "Home",

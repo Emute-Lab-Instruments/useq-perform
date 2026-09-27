@@ -295,7 +295,6 @@ export const HEADER_OFFSETS = Object.freeze({
   emergencyFadeMs: 68,
   pendingEpoch: 72,
   programEpoch: 76,
-  controlRevision: 80,
   ringWriteIndex: 84,
   ringReadIndex: 88,
   producerLivenessBlock: 92,

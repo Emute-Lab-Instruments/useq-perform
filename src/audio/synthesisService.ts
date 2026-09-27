@@ -60,7 +60,6 @@ import {
   type EngineStateSnapshot,
   engineTransitionTrigger,
   publishEngineState,
-  engineLifecycle,
   type SynthesisEngineState,
 } from "../contracts/synthesisChannels";
 import type {
@@ -134,6 +133,8 @@ export interface AudioContextContract {
   resume(): Promise<void>;
   /** AudioContext.suspend() — used for the running→suspended transition. */
   suspend(): Promise<void>;
+  addEventListener?(type: "statechange", listener: () => void): void;
+  removeEventListener?(type: "statechange", listener: () => void): void;
   /** AudioContext.close() — used when disposing the engine session. */
   close(): Promise<void>;
   /** Add the AudioWorklet module. The service uses this exactly once per session. */
@@ -416,7 +417,7 @@ export interface SynthesisServiceOptions {
    * Tests use the omission to verify the diff/prefill path in
    * isolation; production wiring always supplies the live port.
    */
-  readonly workerPort?: SynthesisWorkerPort;
+  readonly workerPort?: SynthesisWorkerPort | (() => SynthesisWorkerPort | undefined);
 }
 
 // ---------------------------------------------------------------------------
@@ -902,9 +903,14 @@ function createCapableService(
   let currentReasonKey: EngineStateReasonKey | null = null;
   let currentReasonMessage: string | null = null;
   let audioContext: AudioContextContract | null = null;
+  let audioContextStateChangeHandler: (() => void) | null = null;
   let workletNode: WorkletNodeContract | null = null;
   let disposed = false;
   let recoveryPromise: Promise<boolean> | null = null;
+  const getWorkerPort = (): SynthesisWorkerPort | undefined => {
+    const source = options.workerPort;
+    return typeof source === "function" ? source() : source;
+  };
   let workletAdded = false;
   const compiledAdapters = new Map<string, NodeDefAdapter>();
   // VAL-ENGINE-008: track which NodeDef modules have already been
@@ -965,6 +971,9 @@ function createCapableService(
   // program epochs so the worklet activates each commit on the first
   // matching-epoch block (VAL-ENGINE-011).
   const activeDeclarations = new Map<string, ActiveDeclaration>();
+  // Keep the last accepted compiler payload so a fresh worklet session can
+  // restore the graph after startup or crash recovery without another eval.
+  let lastAcceptedPayload: SynthArtifactsPayload | null = null;
   let lastAppliedRevision = 0;
   const epochAllocator: EpochAllocator = createEpochAllocator();
   let commitQueue: Promise<unknown> = Promise.resolve();
@@ -995,7 +1004,7 @@ function createCapableService(
       lastConsoleMessage !== null &&
       lastConsoleMessage.message === message &&
       lastConsoleMessage.type === type
-    ) {
+) {
       // Dedup: consecutive identical pairs are suppressed.
       return;
     }
@@ -1172,13 +1181,6 @@ function createCapableService(
     if (consoleMessage !== null) {
       postConsoleMessage(consoleMessage.message, consoleMessage.type);
     }
-    engineLifecycle.publish({
-      transitionCount: acc.transitionCount,
-      from,
-      to: next,
-      trigger,
-      at: now(),
-    });
     return true;
   }
 
@@ -1189,6 +1191,17 @@ function createCapableService(
     audioContext = options.audioContextFactory();
     acc.audioContextState = audioContext.state;
     acc.sampleRate = audioContext.sampleRate;
+    audioContextStateChangeHandler = () => {
+      if (!audioContext || disposed) return;
+      acc.audioContextState = audioContext.state;
+      if (audioContext.state === "suspended" && currentState === "running") {
+        void stopProducer();
+        transition("suspended", "AWAITING_USER_ACTIVATION",
+          ENGINE_STATE_REASONS.AWAITING_USER_ACTIVATION);
+      }
+      publishTelemetry();
+    };
+    audioContext.addEventListener?.("statechange", audioContextStateChangeHandler);
 
     // Transition into 'suspended' the moment the AudioContext exists. Both
     // legal entry points ('off' and 'error') take their respective
@@ -1345,13 +1358,16 @@ function createCapableService(
     // Install the SAB on the Worker producer. The producer attaches
     // its own typed view and starts publishing blocks paced by the
     // worklet's frame counter.
-    const workerPort = options.workerPort;
+    const workerPort = getWorkerPort();
     if (workerPort && typeof workerPort.producerInstallSab === "function") {
       try {
-        await workerPort.producerInstallSab(sab, {
+        const installed = await workerPort.producerInstallSab(sab, {
           lookaheadBlocks: CONTROL_LOOKAHEAD_BLOCKS,
           renderQuantumFrames: DEFAULT_RENDER_QUANTUM_FRAMES,
         });
+        if (installed === false) {
+          throw new Error("Worker rejected the synthesis control buffer");
+        }
         producerBridge = { ...producerBridge, kind: "ready" };
       } catch (err) {
         // The producer could not attach (ABI mismatch, OOM, etc.).
@@ -1373,23 +1389,28 @@ function createCapableService(
    * worker port does not expose `producerStart` (older Worker
    * revisions, unit tests).
    */
-  async function startProducer(): Promise<void> {
-    if (producerBridge.kind !== "ready") return;
-    const workerPort = options.workerPort;
-    if (!workerPort || typeof workerPort.producerStart !== "function") return;
-    if (audioContext === null) return;
+  async function startProducer(): Promise<boolean> {
+    if (producerBridge.kind !== "ready") return true;
+    const workerPort = getWorkerPort();
+    if (!workerPort || typeof workerPort.producerStart !== "function") return true;
+    if (audioContext === null) return false;
     try {
-      await workerPort.producerStart({
+      const started = await workerPort.producerStart({
         sampleRate: audioContext.sampleRate,
       });
+      if (started === false) {
+        throw new Error("Worker rejected producer start");
+      }
       producerBridge = { ...producerBridge, kind: "running" };
       armFirstPublishDeadline();
+      return true;
     } catch (err) {
       // A producerStart throw was previously swallowed with a comment
       // claiming the worklet timeout path covers it — it does not: the
       // worklet only ages liveness after a first publish (5f4de6d8).
       transition("error", "PRODUCER_FIRST_PUBLISH_TIMEOUT",
         `The control producer failed to start: ${(err as Error).message}`);
+      return false;
     }
   }
 
@@ -1431,7 +1452,7 @@ function createCapableService(
       clearTimeout(firstPublishTimer);
       firstPublishTimer = null;
     }
-    const workerPort = options.workerPort;
+    const workerPort = getWorkerPort();
     if (!workerPort || typeof workerPort.producerStop !== "function") return;
     try {
       await workerPort.producerStop();
@@ -1545,13 +1566,6 @@ function createCapableService(
         transition("error", "WORKLET_CONTROL_ATTACH_FAILED",
           `${ENGINE_STATE_REASONS.WORKLET_CONTROL_ATTACH_FAILED}${detail}`);
       }
-      return;
-    }
-
-    if (typeof (evt as { schemaVersion?: unknown }).schemaVersion === "number") {
-      // Legacy WorkletTelemetrySnapshot. Steady-state telemetry is
-      // SAB-header-authoritative (b3895dbe); the production worklet no
-      // longer posts snapshots and any that arrive are ignored.
       return;
     }
 
@@ -1698,8 +1712,11 @@ function createCapableService(
         // control blocks paced by the worklet's audio-frame counter;
         // without this step the ring stays empty and the worklet
         // times out within ~64 ms.
-        await startProducer();
-        return true;
+        const producerStarted = await startProducer();
+        if (lastAcceptedPayload !== null && lastAppliedRevision === 0) {
+          await commitSession(lastAcceptedPayload, false);
+        }
+        return producerStarted;
       } catch {
         // Resume was rejected (browser did not see activation, or
         // hardware rejected the request). Stay suspended.
@@ -1727,7 +1744,7 @@ function createCapableService(
       // to re-fire on every block. The engine never stabilised in
       // `error`, which masked the post-recovery audio-output bug
       // (Ergo bug c7edc263).
-      const workerPort = options.workerPort;
+      const workerPort = getWorkerPort();
       if (workerPort && typeof workerPort.producerTerminate === "function") {
         // Fire-and-forget: the Worker-side termination is bounded
         // (wasmRuntime.worker.ts: `producer?.stop()` and
@@ -1772,9 +1789,24 @@ function createCapableService(
       payload: SynthArtifactsPayload,
       hasErrors: boolean,
     ): Promise<EngineCommitResult> {
-      const operation = commitQueue.then(() => commitSession(payload, hasErrors));
+      const operation = commitQueue.then(() => {
+        return commitSession(payload, hasErrors).then((result) => {
+          if (
+            !hasErrors &&
+            (result.outcome === "committed" ||
+              (!workletNode && result.outcome === "rejected-preparation-failed"))
+          ) {
+            lastAcceptedPayload = payload;
+          }
+          return result;
+        });
+      });
       commitQueue = operation.then(() => undefined, () => undefined);
-      return operation;
+      return operation.catch((error: unknown) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        postConsoleMessage(`Synthesis commit failed: ${detail}`, "error");
+        throw error;
+      });
     },
 
     async dispose() {
@@ -1790,6 +1822,9 @@ function createCapableService(
 
   async function safeCloseAudioContext(): Promise<void> {
     if (audioContext) {
+      if (audioContextStateChangeHandler) {
+        audioContext.removeEventListener?.("statechange", audioContextStateChangeHandler);
+      }
       try {
         await audioContext.close();
       } catch {
@@ -1797,12 +1832,13 @@ function createCapableService(
       }
     }
     audioContext = null;
+    audioContextStateChangeHandler = null;
     acc.audioContextState = null;
     acc.sampleRate = null;
   }
 
   async function clearCompilerSynthDeclarations(): Promise<void> {
-    const workerPortForClear = options.workerPort;
+    const workerPortForClear = getWorkerPort();
     if (!workerPortForClear?.clearSynthDeclarations) return;
     try {
       await workerPortForClear.clearSynthDeclarations();
@@ -1868,7 +1904,9 @@ function createCapableService(
   }
 
   async function recoverSession(): Promise<boolean> {
-    await teardownSession("error");
+    // This teardown starts a rebuild; an error → error event here would
+    // announce a failed recovery before the new session has been attempted.
+    await teardownSession("error", ENGINE_STATE_REASONS.RECOVERY_FAILED, false);
     const prepared = await prepareSession();
     return prepared && readState() === "suspended";
   }
@@ -1876,6 +1914,7 @@ function createCapableService(
   async function teardownSession(
     finalState: SynthesisEngineState,
     errorMessage: string = ENGINE_STATE_REASONS.RECOVERY_FAILED,
+    publishRecoveryFailure = true,
   ): Promise<void> {
     // Stop publishers before retiring the SAB and worklet that consume them.
     await stopProducer();
@@ -1890,7 +1929,7 @@ function createCapableService(
       const reasonMessage: string | null =
         finalState === "error" ? errorMessage : null;
       transition(finalState, reasonKey, reasonMessage);
-    } else if (finalState === "error") {
+    } else if (finalState === "error" && publishRecoveryFailure) {
       // error → error self-loop: emit a fresh lifecycle event so
       // dashboards can count distinct recovery attempts.
       transition("error", "RECOVERY_FAILED", ENGINE_STATE_REASONS.RECOVERY_FAILED);
@@ -1958,7 +1997,7 @@ function createCapableService(
   ): Promise<void> {
     let producerRolledBack = false;
     try {
-      producerRolledBack = await options.workerPort?.producerAbortCommit?.(epoch) === true;
+      producerRolledBack = await getWorkerPort()?.producerAbortCommit?.(epoch) === true;
     } catch {
       producerRolledBack = false;
     }
@@ -2083,7 +2122,7 @@ function createCapableService(
       );
     }
 
-    const workerPort = options.workerPort;
+    const workerPort = getWorkerPort();
     if (
       !workletNode ||
       !workerPort ||
@@ -2198,6 +2237,7 @@ function createCapableService(
     // stable identity so update-in-place preserves instance and phase
     // (VAL-ENGINE-014).
     activeDeclarations.clear();
+    lastAcceptedPayload = payload;
     for (const decl of payload.declarations) {
       activeDeclarations.set(decl.identity, {
         identity: decl.identity,

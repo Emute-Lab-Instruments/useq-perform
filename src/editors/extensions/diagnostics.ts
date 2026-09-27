@@ -29,6 +29,7 @@ const addDiagnosticsEffect = StateEffect.define<{
   diagnostics: UseqDiagnostic[];
   rangeFrom: number;
   rangeTo: number;
+  clearRange: boolean;
 }>();
 
 /** Effect to clear diagnostics overlapping a range (on successful eval). */
@@ -83,11 +84,13 @@ export const diagnosticField = StateField.define<StoredDiagnostic[]>({
           (d) => d.to <= from || d.from >= to,
         );
       } else if (effect.is(addDiagnosticsEffect)) {
-        const { docOffset, diagnostics, rangeFrom, rangeTo } = effect.value;
-        // First remove old diagnostics for this range
-        result = result.filter(
-          (d) => d.to <= rangeFrom || d.from >= rangeTo,
-        );
+        const { docOffset, diagnostics, rangeFrom, rangeTo, clearRange } = effect.value;
+        if (clearRange) {
+          // Eval-bound diagnostics replace the previous set for that range.
+          result = result.filter(
+            (d) => d.to <= rangeFrom || d.from >= rangeTo,
+          );
+        }
         // Then add new ones
         const docLength = tr.state.doc.length;
         const newDiags: StoredDiagnostic[] = diagnostics
@@ -154,6 +157,7 @@ export function pushDiagnostics(
   docOffset: number = 0,
   rangeFrom: number = 0,
   rangeTo: number = view.state.doc.length,
+  clearRange = true,
 ): void {
   view.dispatch({
     effects: addDiagnosticsEffect.of({
@@ -161,6 +165,7 @@ export function pushDiagnostics(
       diagnostics,
       rangeFrom,
       rangeTo,
+      clearRange,
     }),
   });
 

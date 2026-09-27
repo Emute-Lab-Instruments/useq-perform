@@ -16,7 +16,10 @@ import {
 } from "solid-js";
 
 import { settings, requestSettingsUpdate } from "../../utils/settingsStore";
-import { resolver } from "../../editors/keymaps";
+import {
+  resolver,
+  refreshKeymapExtensions,
+} from "../../editors/keymaps";
 import {
   actions,
   getAction,
@@ -178,6 +181,7 @@ export const KeybindingsPanel: Component = () => {
 
     if (result.status === "ok") {
       persistOverrides();
+      refreshKeymapExtensions();
       setVersion((v) => v + 1);
       stopListening();
     } else if (result.status === "blocked") {
@@ -231,6 +235,7 @@ export const KeybindingsPanel: Component = () => {
       const rebindResult = resolver.rebind(c.actionId, c.newKey);
       if (rebindResult.status === "ok") {
         persistOverrides();
+        refreshKeymapExtensions();
         setVersion((v) => v + 1);
       }
     }
@@ -289,6 +294,7 @@ export const KeybindingsPanel: Component = () => {
       },
     });
 
+    refreshKeymapExtensions();
     setVersion((v) => v + 1);
     setConflict(null);
     setListeningAction(null);

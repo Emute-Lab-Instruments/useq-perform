@@ -10,8 +10,23 @@
  * Audit finding: audit-editor-perf.md "Serial STREAM ingestion".
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { processAllMessages } from "./stream-parser.ts";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// Keep the parser unit tests hermetic: the real visualisation session wires
+// a sampler that subscribes to hwInputStream and needs a Worker WASM runtime.
+vi.mock("../effects/visualisationSession.ts", () => ({
+  visualisationSession: {
+    clock: { acceptHardwareTime: vi.fn() },
+  },
+}));
+
+import {
+  processAllMessages,
+  serialBuffers,
+  setSerialOutputBufferRouting,
+  setSerialInputHwRouting,
+} from "./stream-parser.ts";
+import { hwInputStream } from "../contracts/hardwareChannels.ts";
 
 // processAllMessages is a pure function that operates only on the bytes it
 // receives — no mocks needed for the byteOffset regression.
@@ -20,6 +35,13 @@ describe("stream-parser — processAllMessages", () => {
   beforeEach(() => {
     // Suppress dbg / console noise during tests.
     vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    setSerialOutputBufferRouting({});
+    setSerialInputHwRouting({});
+    for (const buf of serialBuffers) buf.clear();
+    vi.restoreAllMocks();
   });
 
   it("handles a Uint8Array backed by an offset subarray without corrupting bytes", () => {
@@ -114,5 +136,94 @@ describe("stream-parser — processAllMessages", () => {
     );
     expect(received).toEqual(["hello"]);
     expect(final.remainingBytes).toHaveLength(0);
+  });
+
+  // ── STREAM frame routing ────────────────────────────────────────
+
+  /** Build one 11-byte STREAM frame: [0x1F][0x00][channel][f64-LE]. */
+  function streamFrame(channel: number, value: number): Uint8Array {
+    const packet = new Uint8Array(11);
+    packet[0] = 0x1f;
+    packet[1] = 0x00;
+    packet[2] = channel;
+    new DataView(packet.buffer).setFloat64(3, value, true);
+    return packet;
+  }
+
+  it("routes STREAM frames by wire channel, and hardware inputs to hwInputStream", () => {
+    // Hardware-shaped routing (buildSerialOutputRouting / buildInputChannelRouting
+    // with the default stream-config): wire 1 = time, wire 4 = s1 (after the two
+    // input subscriptions), wire 2 = ssin1 → WASM hw_input 8.
+    setSerialOutputBufferRouting({ 1: 0, 4: 1 });
+    setSerialInputHwRouting({ 2: 8 });
+
+    const hwValues: Array<{ hwInputIndex: number; value: number }> = [];
+    const unsub = hwInputStream.subscribe((detail) => hwValues.push(detail));
+
+    // Feed one chunk with all three frames back to back.
+    const chunk = new Uint8Array([
+      ...streamFrame(1, 12.5), // time
+      ...streamFrame(2, 0.25), // ssin1
+      ...streamFrame(4, -3.5), // s1
+    ]);
+    const state = processAllMessages(chunk, () => {}, () => {});
+
+    unsub();
+    expect(state.remainingBytes).toHaveLength(0);
+    expect(serialBuffers[0]!.last(0)).toBe(12.5);
+    expect(serialBuffers[1]!.last(0)).toBe(-3.5);
+    // ain values must NOT leak into output buffers (regression: ain1 used to
+    // land in s1's buffer via the `channel - 1` fallback).
+    expect(serialBuffers[1]!.length).toBe(1);
+    expect(hwValues).toEqual([{ hwInputIndex: 8, value: 0.25 }]);
+  });
+
+  it("drops STREAM frames for channels with no routing entry", () => {
+    setSerialOutputBufferRouting({ 1: 0 });
+    const hwValues: Array<{ hwInputIndex: number; value: number }> = [];
+    const unsub = hwInputStream.subscribe((detail) => hwValues.push(detail));
+
+    const state = processAllMessages(streamFrame(9, 1.5), () => {}, () => {});
+    unsub();
+
+    expect(state.remainingBytes).toHaveLength(0);
+    expect(serialBuffers.every((buf) => buf.length === 0)).toBe(true);
+    expect(hwValues).toEqual([]);
+  });
+
+  it("retains a split STREAM frame and resumes on the next chunk", () => {
+    setSerialOutputBufferRouting({ 1: 0 });
+    const frame = streamFrame(1, 7.25);
+    const first = processAllMessages(frame.slice(0, 6), () => {}, () => {});
+    expect(first.remainingBytes).toEqual(frame.slice(0, 6));
+
+    const second = processAllMessages(
+      new Uint8Array([...first.remainingBytes, ...frame.slice(6)]),
+      () => {},
+      () => {},
+    );
+    expect(second.remainingBytes).toHaveLength(0);
+    expect(serialBuffers[0]!.last(0)).toBe(7.25);
+  });
+
+  it("skips the retired 0x1F 0x65 framed-JSON type per spec §3.2", () => {
+    // Protocol v1 has no framed-JSON producer (wire-protocol.md §3.2 table);
+    // unknown binary type bytes MUST be skipped one byte and re-discriminated.
+    // The JSON payload must still parse — as a bare `{...}\n` message.
+    const json = new TextEncoder().encode('{"type":"response","success":true}\n');
+    const chunk = new Uint8Array([0x1f, 0x65, ...json]);
+    const received: string[] = [];
+    const state = processAllMessages(chunk, (msg) => received.push(msg), () => {});
+
+    expect(received).toEqual(['{"type":"response","success":true}']);
+    expect(state.remainingBytes).toHaveLength(0);
+  });
+
+  it("advances one byte on unknown binary type bytes and recovers the next message", () => {
+    const json = new TextEncoder().encode('{"a":1}\n');
+    const chunk = new Uint8Array([0x1f, 0x7f, ...json]);
+    const received: string[] = [];
+    processAllMessages(chunk, (msg) => received.push(msg), () => {});
+    expect(received).toEqual(['{"a":1}']);
   });
 });

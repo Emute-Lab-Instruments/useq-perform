@@ -39,8 +39,13 @@ import type { IdIndex } from "./treeFromLezer.ts";
  * Find the deepest non-document node whose inclusive source range
  * contains `pos`.  Ranges are [from, to] (inclusive both ends).
  * Returns null when `pos` falls in the gap between nodes → halo clears.
+ *
+ * Single source of truth: both the caret plugin below and the command
+ * router's `syncStructuralCursorFromSelection` use this. Note the callers
+ * deliberately differ in null handling — the plugin resets to the document
+ * root (clearing the halo) while the router keeps the previous cursor.
  */
-function findSmallestEnclosingAddressableNode(
+export function findSmallestEnclosingAddressableNode(
   root: DocumentNode,
   idIndex: IdIndex,
   pos: number,

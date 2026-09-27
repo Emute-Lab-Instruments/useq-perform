@@ -1,11 +1,10 @@
 import { post } from '../utils/consoleStore.ts';
 import { checkForSavedPortAndMaybeConnect } from '../transport/connector.ts';
 import { getActiveWasmRuntimePort } from './runtimeCoordinator.ts';
-import { SHARED_TRANSPORT_COMMANDS } from '../contracts/useqRuntimeContract.ts';
+import { getTransportOrchestrator } from '../effects/transportOrchestrator.ts';
 
 import { showModal, showConfirmModal } from '../ui/adapters/modal.tsx';
 import { initializeMockControls } from '../effects/mockControlInputs.ts';
-import { startInternalClock } from '../effects/transportClock.ts';
 import { visualisationSession } from '../effects/visualisationSession.ts';
 import {
   initHardwareConnectPrompt,
@@ -27,7 +26,7 @@ import {
 } from '../editors/extensions/hardwareBinding/chipWidget.ts';
 import { editor as getEditorSignal, getEditorContent } from '../lib/editorStore.ts';
 import { pushDiagnostics } from '../editors/extensions/diagnostics.ts';
-import { initStandaloneDiagnosticsRouter } from '../effects/standaloneDiagnosticsRouter.ts';
+import { initStandaloneDiagnosticsRouter, teardownStandaloneDiagnosticsRouter } from '../effects/standaloneDiagnosticsRouter.ts';
 import { initFailureModeSync, teardownFailureModeSync } from '../effects/failureModeSync.ts';
 import type { BootstrapPlan } from './bootstrap.ts';
 import type { EnvironmentState } from './startupContext.ts';
@@ -38,6 +37,7 @@ import {
   type RuntimeSessionState,
 } from './runtimeService.ts';
 import { showVisualisationPanel } from '../ui/adapters/visualisationPanel';
+import { devicePluggedIn as devicePluggedInChannel } from '../contracts/runtimeChannels.ts';
 import type { BrowserWasmRuntimeController } from './browserWasmRuntime.ts';
 import { uninstallBrowserWasmRuntimeController } from './browserWasmRuntime.ts';
 
@@ -93,6 +93,7 @@ function createDispatcherConfig(): DispatcherConfig {
 
 async function startBrowserLocalRuntime(options: {
   announceMessage: string;
+  startupMode: BootstrapPlan['startupMode'];
   seedDefaultExpressions?: boolean;
   recovering?: boolean;
 }) {
@@ -116,31 +117,11 @@ async function startBrowserLocalRuntime(options: {
     console.warn('Failed to initialise mock controls:', error);
   }
 
-  try {
-    startInternalClock();
-  } catch (error) {
-    console.warn('Failed to start internal clock:', error);
-  }
-
-  // The transport machine boots "paused" (transport.machine.ts initial:'paused'),
-  // and emitPlay only fires on transitions. Browser-local (hardware-optional)
-  // startup intentionally auto-runs the program for instant feedback, so we send
-  // (useq-play) to the WASM interpreter explicitly here. This nudges only the
-  // interpreter, not the machine's state value. Documented as the intended
-  // behaviour in transport.md §1.1.
-  try {
-    await getActiveWasmRuntimePort().sendTransportCommand(SHARED_TRANSPORT_COMMANDS.play);
-  } catch (_e) {
-    // Non-fatal: the interpreter will accept play commands later.
-  }
-
-  // Start hardware binding dispatcher after WASM and editor are available.
-  try {
-    if (!hwBindingDispatcher) {
-      hwBindingDispatcher = createHardwareBindingDispatcher(createDispatcherConfig());
-    }
-  } catch (error) {
-    console.warn('Failed to start hardware binding dispatcher:', error);
+  // Browser-local startup auto-runs through the transport machine so its
+  // state, runtime command, and local-clock policy stay in sync. A Worker
+  // activated as a hardware shadow must not start playback automatically.
+  if (options.startupMode === 'browser-local' || options.startupMode === 'no-module') {
+    getTransportOrchestrator().startBrowserLocalRuntime();
   }
 
   try {
@@ -176,16 +157,19 @@ export function createApp(
   let unsubscribeRuntime: (() => void) | null = null;
   let wasmActive = false;
   let wasmActivationInFlight = false;
+  let wasmActivationFailed = false;
   let wasmHasActivated = false;
   let wasmActivationGeneration = 0;
+  let unsubscribeDevicePluggedIn: (() => void) | null = null;
 
   async function activateAvailableWasm(): Promise<void> {
-    if (stopped || wasmActive || wasmActivationInFlight) return;
+    if (stopped || wasmActive || wasmActivationInFlight || wasmActivationFailed) return;
     wasmActivationInFlight = true;
     const activationGeneration = wasmActivationGeneration;
     const recovering = wasmHasActivated;
     try {
       await startBrowserLocalRuntime({
+        startupMode: bootstrapPlan.startupMode,
         announceMessage: !recovering && bootstrapPlan.startupMode === 'no-module'
           ? 'No-module mode active: expressions will run on the in-browser interpreter.'
           : recovering
@@ -208,10 +192,11 @@ export function createApp(
         visualisationSession.shadow.stop();
       }
     } catch (error) {
+      wasmActivationFailed = true;
       post(`Failed to initialise the in-browser interpreter: ${error instanceof Error ? error.message : String(error)}`, 'error');
     } finally {
       wasmActivationInFlight = false;
-      if (!stopped && getRuntimeServiceSnapshot().session.wasmEnabled && !wasmActive) {
+      if (!stopped && !wasmActivationFailed && getRuntimeServiceSnapshot().session.wasmEnabled && !wasmActive) {
         void activateAvailableWasm();
       }
     }
@@ -235,6 +220,9 @@ export function createApp(
     modals: {},
 
     async start() {
+      unsubscribeDevicePluggedIn = devicePluggedInChannel.subscribe(() => {
+        post('Previously saved uSEQ device detected; reconnecting.');
+      });
       // Route unsolicited device→editor diagnostics frames (wire §5.9) into
       // the editor's inline annotation pipeline. Active in every runtime mode.
       initStandaloneDiagnosticsRouter({
@@ -256,7 +244,10 @@ export function createApp(
 
       const plan = bootstrapPlan;
 
-      unsubscribeRuntime = subscribeRuntimeService(reconcileRuntimeAvailability);
+      unsubscribeRuntime = subscribeRuntimeService((state) => {
+        wasmActivationFailed = false;
+        reconcileRuntimeAvailability(state);
+      });
       reconcileRuntimeAvailability(getRuntimeServiceSnapshot());
 
       // Hardware input bindings never wait for Worker readiness.
@@ -310,8 +301,29 @@ export function createApp(
       unsubscribeRuntime = null;
       visualisationSession.dispose();
       teardownHardwareConnectPrompt();
+      unsubscribeDevicePluggedIn?.();
+      unsubscribeDevicePluggedIn = null;
+      teardownStandaloneDiagnosticsRouter();
       teardownFailureModeSync();
       teardownFirmwareUpdatePrompt();
+      const { teardownEngineAutoplayListener } = await import('../effects/engineAutoplayListener.ts');
+      teardownEngineAutoplayListener();
+      const [{ getActiveSynthesisService, setActiveSynthesisService }, { teardownBrowserEvalSurface }] = await Promise.all([
+        import('./activeSynthesisService.ts'),
+        import('./browserEvalSurface.ts'),
+      ]);
+      const synthesisService = getActiveSynthesisService();
+      setActiveSynthesisService(null);
+      try {
+        await synthesisService?.dispose();
+      } catch (error) {
+        console.warn('Failed to dispose synthesis service during app shutdown:', error);
+      }
+      if (environmentState.startupFlags.devmode && typeof window !== 'undefined') {
+        teardownBrowserEvalSurface(window);
+        delete (window as unknown as Record<string, unknown>).__useqAudioCapabilities;
+        delete (window as unknown as Record<string, unknown>).__useqSynthesisDev;
+      }
       if (hwBindingDispatcher) {
         hwBindingDispatcher.dispose();
         hwBindingDispatcher = null;
@@ -319,6 +331,10 @@ export function createApp(
       if (options.browserWasmRuntime) {
         uninstallBrowserWasmRuntimeController(options.browserWasmRuntime);
       }
+      const { disposeTransportOrchestrator } = await import('../effects/transportOrchestrator.ts');
+      disposeTransportOrchestrator();
+      const { disconnect } = await import('../transport/connector.ts');
+      await disconnect();
       await appUI?.dispose?.();
     }
   };

@@ -46,6 +46,7 @@ import {
   createWasmBatchEvaluator,
   createWasmLiveInputController,
   createWasmProbeController,
+  readAndFreeCString,
   isBrokenOptionalExportError,
   type EmscriptenModule,
 } from "../wasmInterpreterCore";
@@ -289,11 +290,13 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
   ) as () => void;
 
   const evalDesc = REQUIRED_WASM_EXPORTS.useq_eval;
-  const useq_eval = module.cwrap(
+  const evalPointer = module.cwrap(
     evalDesc.symbol,
     evalDesc.returnType,
     evalDesc.argTypes as unknown as string[],
-  ) as (code: string) => string;
+  ) as (code: string) => number;
+  const useq_eval = (code: string): string =>
+    readAndFreeCString(module, evalPointer(code));
 
   const timeDesc = REQUIRED_WASM_EXPORTS.useq_update_time;
   const useq_update_time = module.cwrap(
@@ -327,14 +330,20 @@ async function instantiateInterpreter(scriptUrl: string): Promise<InterpreterHan
   // Diagnostic readers must be reachable via `globalThis.__useqWasmRuntime`
   // because `readLast/ActiveDiagnosticsLocal` (below) read from that handle
   // rather than holding a direct module reference.
-  const lastDiagsFn = bindOptionalCwrap(
+  const lastDiagsPointer = bindOptionalCwrap(
     module,
     OPTIONAL_WASM_EXPORTS.useq_last_diagnostics,
-  ) as (() => string) | null;
-  const activeDiagsFn = bindOptionalCwrap(
+  ) as (() => number) | null;
+  const lastDiagsFn = lastDiagsPointer
+    ? () => readAndFreeCString(module, lastDiagsPointer())
+    : null;
+  const activeDiagsPointer = bindOptionalCwrap(
     module,
     OPTIONAL_WASM_EXPORTS.useq_active_diagnostics,
-  ) as (() => string) | null;
+  ) as (() => number) | null;
+  const activeDiagsFn = activeDiagsPointer
+    ? () => readAndFreeCString(module, activeDiagsPointer())
+    : null;
   const synthArtifactsFn = bindOptionalCwrap(
     module,
     OPTIONAL_WASM_EXPORTS.useq_synth_artifacts,
@@ -804,7 +813,7 @@ async function handleRequest(request: WasmWorkerRequest): Promise<void> {
           // final activation gate failed. Drop the whole lookahead window so
           // the prior graph can never consume candidate-layout values; the
           // running producer immediately refills it from the restored layout.
-          controlView.ringReadIndex = controlView.ringWriteIndex;
+          controlView.discardQueuedBlocks();
           lastArmedProducerCommit = null;
           aborted = true;
         }

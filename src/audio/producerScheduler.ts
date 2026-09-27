@@ -386,6 +386,9 @@ export function createProducerScheduler(
         produced += 1;
         lastProducedFrame = nextFrame;
       }
+      // Once lookahead is full, wait for the worklet's next frame publish
+      // instead of polling the shared ring on every macrotask turn.
+      if (produced === 0) clock.sleep(PRODUCER_POLL_INTERVAL_MS);
       return produced;
     },
   };

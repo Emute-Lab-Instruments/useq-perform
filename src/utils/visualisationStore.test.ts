@@ -35,7 +35,6 @@ describe("visualisationStore", () => {
       expect(visStore.bar).toBe(0);
       expect(visStore.lastChangeKind).toBe("");
       expect(visStore.expressions).toEqual({});
-      expect(visStore.serialBuffers).toEqual({ channels: [], lengths: [] });
       expect(visStore.palette).toEqual([]);
     });
 
@@ -242,113 +241,6 @@ describe("visualisationStore", () => {
 
       removeExpression("a99");
       expect(Object.keys(visStore.expressions)).toEqual(["a1"]);
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // snapshotSerialBuffers
-  // -----------------------------------------------------------------------
-  describe("snapshotSerialBuffers", () => {
-    function createMockBuffer(values: number[]) {
-      return {
-        length: values.length,
-        oldest: (i: number) => values[i],
-        capacity: values.length + 10,
-      };
-    }
-
-    it("converts buffer objects to plain arrays", async () => {
-      const { visStore, snapshotSerialBuffers } = await loadVisStore();
-
-      const buf1 = createMockBuffer([1.0, 2.0, 3.0]);
-      const buf2 = createMockBuffer([4.0, 5.0]);
-
-      snapshotSerialBuffers([buf1, buf2]);
-
-      expect(visStore.serialBuffers.channels).toEqual([
-        [1.0, 2.0, 3.0],
-        [4.0, 5.0],
-      ]);
-    });
-
-    it("sets lengths correctly", async () => {
-      const { visStore, snapshotSerialBuffers } = await loadVisStore();
-
-      const buf1 = createMockBuffer([1.0, 2.0, 3.0]);
-      const buf2 = createMockBuffer([4.0, 5.0]);
-
-      snapshotSerialBuffers([buf1, buf2]);
-
-      expect(visStore.serialBuffers.lengths).toEqual([3, 2]);
-    });
-
-    it("handles empty buffer array", async () => {
-      const { visStore, snapshotSerialBuffers } = await loadVisStore();
-
-      snapshotSerialBuffers([]);
-
-      expect(visStore.serialBuffers.channels).toEqual([]);
-      expect(visStore.serialBuffers.lengths).toEqual([]);
-    });
-
-    it("handles buffers with zero length", async () => {
-      const { visStore, snapshotSerialBuffers } = await loadVisStore();
-
-      const emptyBuf = createMockBuffer([]);
-      snapshotSerialBuffers([emptyBuf]);
-
-      expect(visStore.serialBuffers.channels).toEqual([[]]);
-      expect(visStore.serialBuffers.lengths).toEqual([0]);
-    });
-
-    it("reads values using oldest() in order", async () => {
-      const { visStore, snapshotSerialBuffers } = await loadVisStore();
-
-      const oldestSpy = vi.fn((i: number) => [10, 20, 30][i]);
-      const buf = { length: 3, oldest: oldestSpy, capacity: 10 };
-
-      snapshotSerialBuffers([buf]);
-
-      expect(oldestSpy).toHaveBeenCalledTimes(3);
-      expect(oldestSpy).toHaveBeenCalledWith(0);
-      expect(oldestSpy).toHaveBeenCalledWith(1);
-      expect(oldestSpy).toHaveBeenCalledWith(2);
-      expect(visStore.serialBuffers.channels[0]).toEqual([10, 20, 30]);
-    });
-
-    it("handles 9 channels (matching real hardware buffer count)", async () => {
-      const { visStore, snapshotSerialBuffers } = await loadVisStore();
-
-      const buffers = Array.from({ length: 9 }, (_, ch) =>
-        createMockBuffer(Array.from({ length: 50 }, (_, i) => ch * 100 + i))
-      );
-
-      snapshotSerialBuffers(buffers);
-
-      expect(visStore.serialBuffers.channels).toHaveLength(9);
-      expect(visStore.serialBuffers.lengths).toHaveLength(9);
-      expect(visStore.serialBuffers.channels[0][0]).toBe(0);
-      expect(visStore.serialBuffers.channels[8][49]).toBe(849);
-    });
-
-    it("re-snapshot reflects buffer content changes", async () => {
-      const { visStore, snapshotSerialBuffers } = await loadVisStore();
-
-      const values = [1, 2, 3];
-      const buf = {
-        get length() { return values.length; },
-        oldest: (i: number) => values[i],
-        capacity: 10,
-      };
-
-      snapshotSerialBuffers([buf]);
-      expect(visStore.serialBuffers.channels[0]).toEqual([1, 2, 3]);
-
-      values.shift();
-      values.push(4);
-
-      snapshotSerialBuffers([buf]);
-      expect(visStore.serialBuffers.channels[0]).toEqual([2, 3, 4]);
     });
   });
 

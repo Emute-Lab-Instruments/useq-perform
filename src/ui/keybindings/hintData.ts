@@ -1,4 +1,4 @@
-import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
+import { activeKeyBindings } from "./activeBindings.ts";
 import { actions, type ActionId, type ActionCategory } from "../../lib/keybindings/actions.ts";
 import { isMac as detectIsMac } from "../../lib/keybindings/osReserved.ts";
 
@@ -85,7 +85,7 @@ function prefixesForModifier(modifier: string): string[] {
 
 export function isChordLeader(modifier: string, key: string): boolean {
   const prefixes = prefixesForModifier(modifier);
-  for (const binding of defaultKeyBindings) {
+  for (const binding of activeKeyBindings()) {
     if (binding.when) continue;
     const matched = prefixes.find((p) => binding.key.startsWith(p));
     if (!matched) continue;
@@ -100,7 +100,7 @@ export function getHintsForModifier(modifier: string): HintEntry[] {
   const seen = new Set<string>();
   const entries: HintEntry[] = [];
 
-  for (const binding of defaultKeyBindings) {
+  for (const binding of activeKeyBindings()) {
     if (binding.when) continue;
 
     const matchedPrefix = prefixes.find((p) => binding.key.startsWith(p));
@@ -156,7 +156,7 @@ export function getChordCompletions(prefix: string): HintEntry[] {
   const fullPrefix = prefix + " ";
   const entries: HintEntry[] = [];
 
-  for (const binding of defaultKeyBindings) {
+  for (const binding of activeKeyBindings()) {
     if (binding.when) continue;
     if (!binding.key.startsWith(fullPrefix)) continue;
 

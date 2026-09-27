@@ -2,7 +2,7 @@ import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import type { ActionId } from "../lib/keybindings/actions";
-import { defaultKeyBindings } from "../lib/keybindings/defaults";
+import { activeKeyBindings } from "../ui/keybindings/activeBindings";
 import type { ActionGate } from "./zenNavigation";
 
 const ZEN_RELEVANT_ACTIONS = new Set<string>([
@@ -28,7 +28,7 @@ const ZEN_RELEVANT_ACTIONS = new Set<string>([
 ]);
 
 export function createZenKeymapGuard(gate: ActionGate): Extension {
-  const guardBindings = defaultKeyBindings
+  const guardBindings = activeKeyBindings()
     .filter((b) => ZEN_RELEVANT_ACTIONS.has(b.action))
     .map((b) => ({
       key: b.key,

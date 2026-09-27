@@ -2,11 +2,12 @@
  * Stream Parser
  *
  * Byte-level parsing and routing of serial data. Splits incoming byte
- * streams into current STREAM/bare-JSON messages and the two pre-1.2
- * framed-text message types used by the compatibility adapter.
+ * streams into current STREAM/bare-JSON messages and the pre-1.2
+ * framed-text message types used by the compatibility adapter. Binary
+ * type bytes outside the spec's §3.2 table are skipped one byte at a
+ * time and re-discriminated.
  */
 
-import { Buffer } from "buffer";
 import { CircularBuffer } from "../lib/CircularBuffer.ts";
 import { dbg } from "../lib/debug.ts";
 import { visualisationSession } from "../effects/visualisationSession.ts";
@@ -21,7 +22,6 @@ import {
   MESSAGE_START_MARKER,
   MESSAGE_TYPES,
   type SerialProcessingState,
-  type BufferMapFunction,
 } from "./types.ts";
 import { hwInputStream } from "../contracts/hardwareChannels.ts";
 
@@ -48,8 +48,6 @@ export function setSerialInputHwRouting(
 ): void {
   serialInputHwRouting = routing;
 }
-
-export const serialMapFunctions: Array<BufferMapFunction | undefined> = [];
 
 // ── Reader lifecycle ─────────────────────────────────────────────────
 
@@ -201,12 +199,6 @@ function processSerialData(
       return processLegacyTextModeData(byteArray, onLegacyTextMessage);
     case SERIAL_READ_MODES.SERIALSTREAM:
       return processStreamModeData(byteArray);
-    case SERIAL_READ_MODES.FRAMED_JSON:
-      return processDelimitedFrameData(
-        byteArray,
-        SERIAL_READ_MODES.FRAMED_JSON,
-        onJsonMessage,
-      );
     case SERIAL_READ_MODES.BARE_JSON:
       return processBareJsonModeData(byteArray, onJsonMessage);
   }
@@ -233,10 +225,8 @@ function processAnyModeData(byteArray: Uint8Array): SerialProcessingState {
     ) {
       return { mode: SERIAL_READ_MODES.LEGACY_TEXT, processed: false, remainingBytes: byteArray };
     }
-    if (typebyte === MESSAGE_TYPES.FRAMED_JSON) {
-      return { mode: SERIAL_READ_MODES.FRAMED_JSON, processed: false, remainingBytes: byteArray };
-    }
-    // Unknown binary type byte (§3.4): advance one byte and re-discriminate.
+    // Unknown binary type byte (§3.2 — including the retired pre-1.2
+    // framed-JSON type 0x65): advance one byte and re-discriminate.
     return { mode: SERIAL_READ_MODES.ANY, processed: false, remainingBytes: byteArray.slice(1) };
   }
 
@@ -331,18 +321,25 @@ function processStreamModeData(byteArray: Uint8Array): SerialProcessingState {
   return {
     mode: SERIAL_READ_MODES.ANY,
     processed: false,
-    remainingBytes: byteArray.slice(11),
+    // Zero-copy advance: `subarray` shares the chunk's memory instead of
+    // copying the tail. Safe because the chunk is never written after the
+    // read and the next `combineBuffers` allocates a fresh buffer.
+    remainingBytes: byteArray.subarray(11),
   };
 }
 
 function processSerialStreamValue(byteArray: Uint8Array): void {
   const channel = byteArray[2];
-  const buf = Buffer.from(byteArray);
-  const val = buf.readDoubleLE(3);
+  // Read the f64-LE payload straight out of the chunk — one 11-byte frame
+  // at a time, with no copy of the remaining chunk (frames arrive in bursts).
+  const val = new DataView(byteArray.buffer, byteArray.byteOffset + 3, 8).getFloat64(0, true);
 
-  const bufferIndex =
-    serialOutputBufferRouting[channel] ?? channel - 1;
-  if (bufferIndex >= 0 && bufferIndex < serialBuffers.length) {
+  const bufferIndex = serialOutputBufferRouting[channel];
+  if (
+    bufferIndex !== undefined &&
+    bufferIndex >= 0 &&
+    bufferIndex < serialBuffers.length
+  ) {
     updateSerialBuffer(bufferIndex, val);
   }
 
@@ -366,8 +363,4 @@ function updateSerialBuffer(bufferIndex: number, value: number): void {
     }
   }
 
-  const mapIndex = bufferIndex - 1;
-  if (mapIndex >= 0 && serialMapFunctions[mapIndex]) {
-    serialMapFunctions[mapIndex]!(buffer);
-  }
 }

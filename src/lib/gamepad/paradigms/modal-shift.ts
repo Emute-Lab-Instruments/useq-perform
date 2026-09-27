@@ -235,7 +235,10 @@ const insertionLayer: Layer = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main menu layer (main-menu.md §4.1): masks all other gamepad input when the
-// main menu is open. D-pad navigates the menu; face buttons select/back/close.
+// main menu is open — `mask: true` discards any gesture this layer does not
+// bind (gamepad.md §6.8.1: "When open, it masks all other input"), so X, Y and
+// D-pad left/right cannot leak through to the editor's base layer. D-pad
+// Up/Down navigates the menu; face buttons select/back/close.
 // L3+R3 chord toggles (closes) the menu.
 // ─────────────────────────────────────────────────────────────────────────────
 const mainMenuLayer: Layer = {
@@ -256,6 +259,9 @@ const mainMenuLayer: Layer = {
     [keyOf(held("RB"))]: "mainMenu.adjustUp",
     [keyOf(chord(["LeftStickPress", "RightStickPress"]))]: "mainMenu.close",
   },
+  // Full input takeover (main-menu.md §1.4/§4.1, gamepad.md §6.8.1): discard
+  // unbound gestures instead of leaking them to lower layers.
+  mask: true,
 };
 
 export const modalShiftLayers: readonly Layer[] = [

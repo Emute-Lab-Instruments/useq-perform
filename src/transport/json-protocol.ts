@@ -48,8 +48,10 @@ import { cleanCode, isPortWritable } from "./serial-utils.ts";
 
 import {
   EDITOR_VERSION,
+  EVAL_TIMEOUT_MS,
   HEARTBEAT_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
+  MAX_REQUEST_LINE_BYTES,
   type TransportContext,
   type ProtocolState,
   type JsonResponse,
@@ -190,7 +192,7 @@ export function resetProtocolState(): void {
   clearLiveSlotIndex();
   resetLegacyProtocol();
   stopHeartbeat();
-  reportProtocolModeChanged(getProtocolMode());
+  reportProtocolModeChanged();
 }
 
 // ── Heartbeat ────────────────────────────────────────────────────────
@@ -489,6 +491,16 @@ export function writeJsonRequest(
   };
 
   const message = `${JSON.stringify(payload)}\n`;
+  // The device drops any line that fills its 2048-byte RX ring without a
+  // newline, replying only with an unsolicited log that carries no requestId —
+  // so an oversized request could otherwise pend until disconnect.
+  if (encoder.encode(message).byteLength > MAX_REQUEST_LINE_BYTES) {
+    return Promise.reject(
+      new Error(
+        `Request exceeds the device receive buffer (${MAX_REQUEST_LINE_BYTES} bytes max) — not sent`,
+      ),
+    );
+  }
   if (!options.skipConsole) dbg(`json-protocol: TX ${message.trim().slice(0, 200)}`);
 
   return new Promise<JsonResponse>((resolve, reject) => {
@@ -559,7 +571,12 @@ export function sendJsonEval(
   code: string,
   options: SendJsonEvalOptions = {}
 ): Promise<JsonResponse> {
-  const { capture = null, force = false, skipConsole = false } = options;
+  const {
+    capture = null,
+    force = false,
+    skipConsole = false,
+    timeout = EVAL_TIMEOUT_MS,
+  } = options;
 
   const port = serialport();
   if (!port || !port.writable) {
@@ -570,7 +587,10 @@ export function sendJsonEval(
     return Promise.reject(new Error("JSON protocol not active"));
   }
 
-  return writeJsonRequest({ type: "eval", code }, { capture, skipConsole });
+  return writeJsonRequest(
+    { type: "eval", code },
+    { capture, skipConsole, timeout }
+  );
 }
 
 // ── Send live-input slot values ──────────────────────────────────────
@@ -583,6 +603,10 @@ export function sendJsonEval(
 export function sendSetLiveInputs(
   slots: Record<string, number | boolean | string>
 ): Promise<void> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
   const port = serialport();
   if (!port || !port.writable) {
     return Promise.reject(new Error("Serial port is not writable"));
@@ -653,6 +677,10 @@ export function buildBinaryInputSetFrame(
 export function sendBinaryInputSet(
   entries: ReadonlyArray<BinaryInputSetEntry>,
 ): Promise<void> {
+  if (protocolState.mode !== "json") {
+    return Promise.reject(new Error("JSON protocol not active"));
+  }
+
   const port = serialport();
   if (!port || !port.writable) {
     return Promise.reject(new Error("Serial port is not writable"));
@@ -806,7 +834,10 @@ export function sendTouSEQ(
 
   if (!isPortWritable(port)) {
     handleNotConnected();
-    return Promise.resolve();
+    // Resolve with an explicit failure envelope (never `undefined`) so
+    // callers mapping the response — e.g. evalCodeWithDiagnostics — do not
+    // mistake "could not send" for a delivered eval.
+    return Promise.resolve({ success: false, error: "uSEQ not connected" });
   }
 
   if (protocolState.mode === "legacy") {
@@ -818,6 +849,13 @@ export function sendTouSEQ(
   }
 
   if (protocolState.mode === "negotiating") {
+    // Surface the drop: without this the eval silently vanishes for the
+    // user during the handshake window (the rejection only reaches the
+    // runtime fan-out's settled promise, which shows nothing).
+    post(
+      "uSEQ is still connecting (protocol handshake in progress) — eval not sent. Try again shortly.",
+      "warn",
+    );
     return Promise.reject(
       new Error("Firmware protocol negotiation is still in progress"),
     );

@@ -106,4 +106,62 @@ describe("runtime code evaluation authority", () => {
     expect(p.wasmEval).not.toHaveBeenCalled();
   });
 
+  it("compile-checks bindings before sending them to hardware", async () => {
+    const order: string[] = [];
+    const p = ports();
+    p.wasmEval.mockImplementation(async () => {
+      order.push("wasm");
+      return { result: "ok", diagnostics: [], synthArtifacts: null };
+    });
+    p.hardwareEval.mockImplementation(async () => {
+      order.push("hardware");
+      return { success: true, result: "ok", diagnostics: [] };
+    });
+    const dispatch = createRuntimeCodeEvaluationDispatcher({
+      getSessionState: () => runtimeState("both"),
+      getWasmPort: () => p.wasm,
+      hardwarePort: p.hardware,
+    });
+
+    const result = await dispatch({ code: "@(setbpm 120)", wasmCode: "(setbpm 120)", binding: true });
+
+    expect(order).toEqual(["wasm", "hardware"]);
+    expect(result.wasm?.status).toBe("fulfilled");
+    expect(result.hardware?.status).toBe("fulfilled");
+  });
+
+  it("blocks hardware binding delivery when its request-scoped WASM result has an error", async () => {
+    const p = ports();
+    p.wasmEval.mockResolvedValueOnce({
+      result: "{error}",
+      diagnostics: [{ start: 0, end: 1, severity: "error", message: "bad binding" }],
+      synthArtifacts: null,
+    });
+    const dispatch = createRuntimeCodeEvaluationDispatcher({
+      getSessionState: () => runtimeState("both"),
+      getWasmPort: () => p.wasm,
+      hardwarePort: p.hardware,
+    });
+
+    const result = await dispatch({ code: "@(bad)", wasmCode: "(bad)", binding: true });
+
+    expect(result.wasm?.status).toBe("fulfilled");
+    expect(result.hardware).toBeNull();
+    expect(p.hardwareEval).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch binding work when no runtime is active", async () => {
+    const p = ports();
+    const dispatch = createRuntimeCodeEvaluationDispatcher({
+      getSessionState: () => runtimeState("none"),
+      getWasmPort: () => p.wasm,
+      hardwarePort: p.hardware,
+    });
+    const result = await dispatch({ code: "@(setbpm 120)", wasmCode: "(setbpm 120)", binding: true });
+    expect(result.hardware).toBeNull();
+    expect(result.wasm).toBeNull();
+    expect(p.hardwareEval).not.toHaveBeenCalled();
+    expect(p.wasmEval).not.toHaveBeenCalled();
+  });
+
 });

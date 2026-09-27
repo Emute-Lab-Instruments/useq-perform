@@ -288,10 +288,12 @@ export function createWasmRuntimeWorkerPort(
         { type: "evalCode", code, publish: true },
         "evalCode-result",
       );
-      try {
-        codeEvaluatedChannel.publish({ code });
-      } catch (error) {
-        dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
+      if (!/^\s*(?:Error:|\{error\})/i.test(response.result ?? "")) {
+        try {
+          codeEvaluatedChannel.publish({ code });
+        } catch (error) {
+          dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
+        }
       }
       return response.result;
     },
@@ -326,10 +328,13 @@ export function createWasmRuntimeWorkerPort(
         { type: "evalCodeWithDiagnostics", code, publish: true },
         "evalCodeWithDiagnostics-result",
       );
-      try {
-        codeEvaluatedChannel.publish({ code });
-      } catch (error) {
-        dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
+      if (!response.diagnostics.some((diagnostic) => diagnostic.severity === "error")
+        && !/^\s*(?:Error:|\{error\})/i.test(response.result ?? "")) {
+        try {
+          codeEvaluatedChannel.publish({ code });
+        } catch (error) {
+          dbg(`wasmRuntimeWorkerPort: failed to publish codeEvaluated: ${error}`);
+        }
       }
       return {
         result: response.result,

@@ -234,9 +234,16 @@ export function getProjectionFrontier(): number {
   return projectionFrontier;
 }
 
-function futureBoundaryMaxGapSeconds(futureDensityHz: number): number {
-  const safeHz = Math.max(1, futureDensityHz);
-  return FUTURE_BOUNDARY_GAP_SAMPLE_MULTIPLIER / safeHz;
+/**
+ * Boundary-gap policy shared with the renderer (visualisation spec §5.4):
+ * the future stream may start at most this many seconds after `now`, given
+ * the configured future sample density. Single source of truth — the sampler
+ * uses it to decide whether future buffers need a reset-fill, and the
+ * renderer (serialVisPlanning) uses the same test to place the future-line
+ * anchor at `t = now`.
+ */
+export function futureBoundaryMaxGapSeconds(settings: VisSettings): number {
+  return FUTURE_BOUNDARY_GAP_SAMPLE_MULTIPLIER / Math.max(1, futureProjectionSampleRate(settings));
 }
 
 function futureBufferHasNearBoundaryCoverage(
@@ -420,7 +427,7 @@ export async function tickAndProject(
 
   // Compute the required future sample density (spec §3.1.2).
   const futureDensityHz = futureProjectionSampleRate(settings);
-  const maxBoundaryGap = futureBoundaryMaxGapSeconds(futureDensityHz);
+  const maxBoundaryGap = futureBoundaryMaxGapSeconds(settings);
   const traceBuffersBefore = import.meta.env.DEV
     ? Object.fromEntries(outputs.map((name) => [
       name,

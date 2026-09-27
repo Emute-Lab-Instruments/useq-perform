@@ -9,7 +9,6 @@
 import type { WebSerialHostPort, WasmRuntimePort } from "../contracts/runtimePorts.ts";
 import { visStore } from "../utils/visualisationStore.ts";
 import {
-  getLocalTime,
   isLocalTimeActive,
   notifyExternalTimeUpdate,
   pauseVisualisationRender,
@@ -91,11 +90,9 @@ export const visualisationSession = Object.freeze({
 
   clock: Object.freeze({
     startRuntime: startVisualisationRuntime,
-    stopRuntime: stopVisualisationRuntime,
     setLocal: setLocalTimeMode,
     reset: resetLocalTime,
     isLocal: isLocalTimeActive,
-    localTime: getLocalTime,
     acceptHardwareTime: notifyExternalTimeUpdate,
     setNowSource: setVisualisationNowSource,
     drainForTests: _drainForTests,

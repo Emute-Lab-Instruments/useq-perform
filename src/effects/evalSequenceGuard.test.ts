@@ -61,6 +61,8 @@ Object.defineProperty(globalThis, "__evalSeqPending", {
 
 const mockEvalCode = vi.hoisted(() => vi.fn(() => Promise.resolve("42")));
 const mockSendTouSEQ = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve()));
+const mockPost = vi.hoisted(() => vi.fn());
+const wasmAuthorityRef = vi.hoisted(() => ({ enabled: false }));
 
 vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
   dispatchRuntimeCodeEvaluation: vi.fn(async ({ code, wasmCode, soft = false }) => ({
@@ -70,7 +72,7 @@ vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
       status: "fulfilled",
       value: await mockSendTouSEQ(code),
     },
-    diagnosticAuthority: soft ? "wasm" : "hardware",
+    diagnosticAuthority: soft || wasmAuthorityRef.enabled ? "wasm" : "hardware",
   })),
 }));
 const mockPushDiagnostics = vi.hoisted(() => vi.fn());
@@ -108,7 +110,7 @@ vi.mock("../utils/outputHealthStore.ts", () => ({
 }));
 
 vi.mock("../utils/consoleStore.ts", () => ({
-  post: vi.fn(),
+  post: mockPost,
 }));
 
 vi.mock("../editors/extensions/diagnostics.ts", () => ({
@@ -130,6 +132,7 @@ vi.mock("../editors/extensions/evalHighlight.ts", () => ({
 vi.mock("./liveEditRuntime.ts", () => ({
   discoverSlotsAfterEval: vi.fn(() => Promise.resolve()),
   runBootReconciliation: vi.fn(),
+  resyncLiveSlotIndexAfterEval: vi.fn(),
 }));
 
 vi.mock("../runtime/startupContext.ts", () => ({
@@ -172,6 +175,7 @@ describe("per-view eval-sequence guard", () => {
   beforeEach(() => {
     pendingRef.current.length = 0;
     vi.clearAllMocks();
+    wasmAuthorityRef.enabled = false;
     view = createView();
   });
 
@@ -267,5 +271,44 @@ describe("per-view eval-sequence guard", () => {
     );
     expect(pushedDiags).toContainEqual(bDiag);
     expect(pushedDiags).not.toContainEqual(aDiag);
+  });
+
+  it("treats Error result strings as failures and does not mark outputs running", async () => {
+    wasmAuthorityRef.enabled = true;
+    evaluate(view, "toplevel");
+    await flushMicrotasks();
+    pendingRef.current[0].resolve({ result: "Error: engine not initialized", diagnostics: [] });
+    await flushMicrotasks();
+
+    expect(mockMarkOutputRunning).not.toHaveBeenCalled();
+    expect(mockPost).toHaveBeenCalledWith("Error: engine not initialized", "error");
+    expect(mockDispatchInlineResult.mock.calls.some((call) => call[3] === true)).toBe(true);
+    expect(mockPushDiagnostics.mock.calls.flatMap((call) => call[1] as Array<{severity?: string}>))
+      .toContainEqual(expect.objectContaining({ severity: "error", message: "Error: engine not initialized" }));
+  });
+
+  it("drops late hardware diagnostics from an older eval", async () => {
+    const stale = { start: 0, end: 6, severity: "error" as const, message: "stale hardware" };
+    const fresh = { start: 0, end: 6, severity: "warning" as const, message: "fresh hardware" };
+    let resolveOldHardware!: (value: unknown) => void;
+    mockSendTouSEQ.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveOldHardware = resolve;
+    }));
+    mockSendTouSEQ.mockResolvedValueOnce({ diagnostics: [fresh] });
+
+    evaluate(view, "toplevel");
+    await flushMicrotasks();
+    pendingRef.current[0].resolve({ result: "old wasm result", diagnostics: [] });
+    await flushMicrotasks();
+    evaluate(view, "toplevel");
+    await flushMicrotasks();
+    pendingRef.current[1].resolve({ result: "new wasm result", diagnostics: [] });
+    await flushMicrotasks();
+    resolveOldHardware({ diagnostics: [stale] });
+    await flushMicrotasks();
+
+    const pushed = mockPushDiagnostics.mock.calls.flatMap((call) => call[1] as unknown[]);
+    expect(pushed).toContainEqual(fresh);
+    expect(pushed).not.toContainEqual(stale);
   });
 });

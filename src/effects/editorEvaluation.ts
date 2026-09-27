@@ -211,6 +211,9 @@ function buildPayloadFromState(
 // spec contract regardless of future engine changes (parallel workers,
 // cancellation, etc.).
 const viewEvalSeq = new WeakMap<EditorView, number>();
+type WasmEvaluationWithAuthority = WasmCodeEvaluation & {
+  diagnosticAuthority: RuntimeCodeEvaluationResult["diagnosticAuthority"];
+};
 
 function nextEvalSeq(view: EditorView): number {
   const next = (viewEvalSeq.get(view) ?? 0) + 1;
@@ -244,7 +247,7 @@ function evalWasm(
      */
     sourceMap?: EvalPayload["sourceMap"];
   },
-  evaluation: Promise<WasmCodeEvaluation | null>,
+  evaluation: Promise<WasmEvaluationWithAuthority | null>,
 ): Promise<{ text: string; isError: boolean; pos: number }> {
   const wasmCode = opts.isImmediate ? code.slice(1) : code;
   const evalPos = opts.view ? opts.view.state.selection.main.from : 0;
@@ -257,7 +260,12 @@ function evalWasm(
 
   return evaluation
     .then(async (wasmResult) => {
-      if (!wasmResult) return { text: "", isError: false, pos: evalPos };
+      if (!wasmResult) {
+        const unavailable = opts.isPreview
+          ? "Soft eval unavailable: the WASM runtime is not ready."
+          : "";
+        return { text: unavailable, isError: opts.isPreview, pos: evalPos };
+      }
       const { result, diagnostics, synthArtifacts } = wasmResult;
       // A newer eval has been dispatched on this view since we started.
       // Drop our result so we don't clobber the fresher eval's effects.
@@ -268,6 +276,8 @@ function evalWasm(
       }
       const output = typeof result === "string" ? result : String(result ?? "");
       const trimmed = output.trim();
+      const hasErrors = diagnostics.some((d) => d.severity === "error");
+      const isError = hasErrors || trimmed === "{error}" || /^Error:/i.test(trimmed);
 
       // Remap runtime-coordinate diagnostics back to visible-slice
       // coordinates through the unified source map (state-identity.md
@@ -278,12 +288,21 @@ function evalWasm(
         ? remapDiagnostics(diagnostics, opts.sourceMap, docOffset) as UseqDiagnostic[]
         : diagnostics;
 
-      if (opts.view) {
+      if (opts.view && wasmResult.diagnosticAuthority !== "hardware") {
         if (remappedDiagnostics.length > 0) {
           // `pushDiagnostics` adds `docOffset` to each diagnostic's
           // start/end. We already incorporated the offset via
           // `remapDiagnostics(..., docOffset)`, so pass 0 here.
           pushDiagnostics(opts.view, remappedDiagnostics, 0, rangeFrom, rangeTo);
+        } else if (isError) {
+          // Some WASM failure paths return text without an ABI diagnostic.
+          // Preserve the normal inline diagnostic + console error contract.
+          pushDiagnostics(opts.view, [{
+            start: 0,
+            end: 0,
+            severity: "error",
+            message: trimmed || "Evaluation failed",
+          }], 0, rangeFrom, rangeTo);
         } else {
           // Only clear diagnostics for the range we just eval'd successfully
           clearDiagnosticsForRange(opts.view, rangeFrom, rangeTo);
@@ -295,16 +314,16 @@ function evalWasm(
       }
 
       // Check if diagnostics indicate an error
-      const hasErrors = remappedDiagnostics.some(
+      const hasRemappedErrors = remappedDiagnostics.some(
         (d) => d.severity === "error",
       );
 
       // Show first error message inline instead of "{error}"
       const displayText =
-        hasErrors && remappedDiagnostics.length > 0
+        hasRemappedErrors && remappedDiagnostics.length > 0
           ? remappedDiagnostics[0].message
           : trimmed;
-      const isError = hasErrors || trimmed === "{error}";
+      const failed = hasRemappedErrors || trimmed === "{error}" || /^Error:/i.test(trimmed);
 
       if (!opts.isPreview) {
         // MAIN §2.1: a failed eval must surface BOTH an inline diagnostic
@@ -316,7 +335,7 @@ function evalWasm(
         // formatMessage). Only the resolved path runs here; the `.catch`
         // path posts on its own and stale evals returned early above, so no
         // single eval double-posts.
-        if (hasErrors) {
+        if (hasRemappedErrors) {
           const firstError =
             remappedDiagnostics.find((d) => d.severity === "error") ??
             remappedDiagnostics[0];
@@ -324,18 +343,20 @@ function evalWasm(
           if (firstError.suggestion) parts.push(firstError.suggestion);
           if (firstError.example) parts.push(`Example: ${firstError.example}`);
           post(parts.join("\n"), "error");
+        } else if (/^Error:/i.test(trimmed)) {
+          post(trimmed, "error");
         }
 
         const assignedOutputs = detectOutputAssignments(wasmCode);
         for (const outputName of assignedOutputs) {
-          if (!hasErrors) {
+          if (!failed) {
             markOutputRunning(outputName);
           }
         }
 
         // After successful eval, discover live-edit slots allocated by WASM.
         // Fire-and-forget: slot discovery is non-blocking and non-critical.
-        if (!hasErrors && opts.view) {
+        if (!failed && opts.view) {
           discoverSlotsAfterEval(opts.view).catch(() => {});
           // wire-protocol.md §6.5/§11.1: eval re-allocates the device live-slot
           // table, so invalidate the §6.5 binary INPUT_SET id→index map and
@@ -392,7 +413,7 @@ function evalWasm(
           // `bootstrap.ts` §2c), so without it the diagnostic would
           // never appear in exactly the degraded profile VAL-HOST-008
           // requires it to appear in.
-          if (opts.view && !hasErrors) {
+          if (opts.view && !failed && /\(\s*synth(?:\s|\))/i.test(wasmCode)) {
             const synthServiceForCapability =
               synthService ?? getActiveSynthesisService();
             const bootstrapCapabilities =
@@ -434,11 +455,11 @@ function evalWasm(
 
 function wasmOutcome(
   evaluation: Promise<RuntimeCodeEvaluationResult>,
-): Promise<WasmCodeEvaluation | null> {
+): Promise<WasmEvaluationWithAuthority | null> {
   return evaluation.then((result) => {
     if (!result.wasm) return null;
     if (result.wasm.status === "rejected") throw result.wasm.error;
-    return result.wasm.value;
+    return { ...result.wasm.value, diagnosticAuthority: result.diagnosticAuthority };
   });
 }
 
@@ -450,9 +471,16 @@ function applyAuthoritativeHardwareDiagnostics(
   rangeTo: number,
   sourceMap?: EvalPayload["sourceMap"],
 ): void {
+  const seq = view ? viewEvalSeq.get(view) : undefined;
   void evaluation.then((result) => {
     if (result.diagnosticAuthority !== "hardware"
-      || result.hardware?.status !== "fulfilled") return;
+      || result.hardware?.status !== "fulfilled"
+      || (view && seq !== undefined && !isLatestEvalSeq(view, seq))) return;
+    if (!result.wasm) {
+      // A hardware-only eval still reallocates device input slots. Invalidate
+      // any index map left from a prior WASM/both session before later scrubs.
+      resyncLiveSlotIndexAfterEval();
+    }
     applyHardwareDiagnostics(
       view,
       result.hardware.value,
@@ -487,6 +515,8 @@ function applyHardwareDiagnostics(
   if (!view) return;
   const diagnostics = (response as { diagnostics?: UseqDiagnostic[] } | null)
     ?.diagnostics;
+  if (!Array.isArray(diagnostics)
+    && (response as { success?: boolean } | null)?.success === false) return;
   if (Array.isArray(diagnostics) && diagnostics.length > 0) {
     // Remap hardware diagnostics through the same source map the WASM
     // path uses so both targets anchor to visible ranges
@@ -495,6 +525,11 @@ function applyHardwareDiagnostics(
       ? remapDiagnostics(diagnostics, sourceMap, docOffset) as UseqDiagnostic[]
       : diagnostics;
     pushDiagnostics(view, remapped, 0, rangeFrom, rangeTo);
+  } else if ((response as { success?: boolean } | null)?.success !== false) {
+    // Hardware owns diagnostics for this range in `both` mode as well as in
+    // hardware-only mode, so a successful empty set clears prior hardware
+    // diagnostics here instead of relying on the WASM shadow.
+    clearDiagnosticsForRange(view, rangeFrom, rangeTo);
   }
 }
 

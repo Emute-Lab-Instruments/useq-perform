@@ -78,7 +78,6 @@ Visualisation channels (see `src/contracts/visualisationChannels.ts`):
 |---|---|---|---|
 | `visualisationSessionChannel` | session detail | Visualisation sampler | Editor decorations |
 | `serialVisPaletteChangedChannel` | palette detail | Theme/visualisation utilities | Visualisation sampler |
-| `serialVisAutoOpenChannel` | `undefined` | Visualisation panel adapter | Visualisation panel |
 
 Gamepad channels (see `src/contracts/gamepadChannels.ts`) carry only typed gamepad pipeline events into editor/menu adapters. New gamepad-visible operations should prefer the action registry and resolver path before adding bespoke channels.
 

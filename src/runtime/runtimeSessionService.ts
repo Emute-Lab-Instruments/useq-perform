@@ -117,9 +117,7 @@ export function reportTransportConnectionChanged(facts: {
 }
 
 /** Publish a diagnostics refresh after the protocol driver changes mode. */
-export function reportProtocolModeChanged(
-  _protocolMode: RuntimeProtocolMode,
-): void {
+export function reportProtocolModeChanged(): void {
   publishDiagnosticsSnapshot();
 }
 

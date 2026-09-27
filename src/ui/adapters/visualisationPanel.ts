@@ -1,8 +1,5 @@
 import type { JSX } from "solid-js";
 
-import {
-  serialVisAutoOpenChannel,
-} from "../../contracts/visualisationChannels";
 import { visualisationSession } from "../../effects/visualisationSession";
 import {
   drawSerialVisGLFromStores,
@@ -81,7 +78,7 @@ function applyVisibleVisualisationPanelState(panel: HTMLElement): void {
   // first paint (see serialVisGL.getCanvas / ensureGLCanvasGeometry).
 }
 
-export function showVisualisationPanel(options?: { emitAutoOpenEvent?: boolean }): boolean {
+export function showVisualisationPanel(): boolean {
   const panel = getVisualisationPanel();
   if (!panel) {
     return false;
@@ -91,9 +88,6 @@ export function showVisualisationPanel(options?: { emitAutoOpenEvent?: boolean }
   if (!wasVisible) {
     applyVisibleVisualisationPanelState(panel);
     visualisationSession.view.request();
-    if (options?.emitAutoOpenEvent) {
-      serialVisAutoOpenChannel.publish(undefined);
-    }
   }
 
   return true;

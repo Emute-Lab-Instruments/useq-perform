@@ -18,12 +18,6 @@ export interface KeyBinding {
   preventDefault?: boolean; // Default true
 }
 
-export interface GamepadBinding {
-  action: ActionId;
-  combo: string[]; // Button names: ["LB", "A"], ["Start"]
-  when?: string; // Same context predicates as keyboard
-}
-
 // ---------------------------------------------------------------------------
 // Default keyboard bindings
 // ---------------------------------------------------------------------------
@@ -73,14 +67,6 @@ export const defaultKeyBindings: KeyBinding[] = [
   { action: "nav.home", key: "Home" },
   { action: "nav.end", key: "End" },
 
-  // -- Picker menu (scoped to picker open) ----------------------------------
-  { action: "picker.up", key: "ArrowUp", when: "picker.open" },
-  { action: "picker.down", key: "ArrowDown", when: "picker.open" },
-  { action: "picker.left", key: "ArrowLeft", when: "picker.open" },
-  { action: "picker.right", key: "ArrowRight", when: "picker.open" },
-  { action: "picker.select", key: "Enter", when: "picker.open" },
-  { action: "picker.cancel", key: "Escape", when: "picker.open" },
-
   // -- Extended structural editing -------------------------------------------
   { action: "edit.raise", key: "Alt-r" },
   { action: "edit.splice", key: "Alt-Shift-s" },
@@ -127,30 +113,20 @@ export const defaultKeyBindings: KeyBinding[] = [
 
   // -- Main menu (main-menu.md §2.1.2) --------------------------------------
   // Escape opens the system/pause menu, but only when no sub-mode owns Escape:
-  // the conditional Escape bindings above (picker.cancel / vectorCancel) must
-  // win the cancel-first contract (§2.1.2). Expressing that as an explicit
-  // mutually-exclusive when-clause (rather than relying on keymap precedence)
-  // keeps the three Escape bindings provably non-overlapping — exactly one is
-  // ever active — which both `evaluateWhen` (fire-time) and
+  // vectorCancel's when-clause ("vectorMark.active") is its exact negation, so
+  // the two Escape bindings are provably non-overlapping — exactly one is ever
+  // active — which both `evaluateWhen` (fire-time) and
   // `whenExpressionsOverlap` (conflict check) honour.
+  // (The legacy picker.cancel gate was removed with the picker layer —
+  // radial-menu.md §11.3: the radial layer replaces the picker layer. The
+  // main menu must also open while the radial menu is open per
+  // main-menu.md §1.4, so no radial gate here.)
   // Ctrl+Shift+P is NOT used — it is already palette.open (see above); §2.1.2
   // lists it as a non-binding "secondary" suggestion, so Escape is the opener.
   {
     action: "mainMenu.open",
     key: "Escape",
-    when: "!picker.open && !vectorMark.active",
+    when: "!vectorMark.active",
     preventDefault: false,
   },
-];
-
-// ---------------------------------------------------------------------------
-// Default gamepad bindings
-// ---------------------------------------------------------------------------
-
-export const defaultGamepadBindings: GamepadBinding[] = [
-  { action: "eval.now", combo: ["Start"] },
-  { action: "edit.delete", combo: ["Y"] },
-  { action: "menu.openBefore", combo: ["LB", "A"] },
-  { action: "menu.openAfter", combo: ["RB", "A"] },
-  { action: "menu.radial", combo: ["X"] },
 ];

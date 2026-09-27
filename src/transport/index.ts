@@ -66,7 +66,6 @@ export {
 // ── Stream parser ───────────────────────────────────────────────────
 export {
   serialBuffers,
-  serialMapFunctions,
   serialReader,
   readingActive,
   serialOutputBufferRouting,

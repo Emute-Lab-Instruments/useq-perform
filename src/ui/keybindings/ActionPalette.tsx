@@ -16,7 +16,7 @@ import {
   type Component,
 } from "solid-js";
 import { actions, type ActionId, type ActionDef } from "../../lib/keybindings/actions.ts";
-import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
+import { activeKeyBindings } from "./activeBindings.ts";
 import { executeAction as dispatchAction } from "../../editors/commands/actionHandlers.ts";
 import { isMac as detectIsMac } from "../../lib/keybindings/osReserved.ts";
 import { notify } from "../../contracts/toastChannels.ts";
@@ -27,10 +27,10 @@ import { pushOverlay } from "../overlayManager.ts";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Build a lookup from ActionId to its default key string. */
+/** Build a lookup from ActionId to its active key string (keybindings.md §2). */
 function buildKeyLookup(): Map<string, string> {
   const map = new Map<string, string>();
-  for (const binding of defaultKeyBindings) {
+  for (const binding of activeKeyBindings()) {
     if (!map.has(binding.action)) {
       map.set(binding.action, binding.key);
     }
@@ -38,7 +38,9 @@ function buildKeyLookup(): Map<string, string> {
   return map;
 }
 
-const keyLookup = buildKeyLookup();
+// Lazy: the resolver is built at boot; re-read per render pass so overrides
+// and profile changes are reflected without a module reload.
+const keyLookup = () => buildKeyLookup();
 
 /** Format a CodeMirror key string for display (e.g. "Mod-Shift-p" -> "Ctrl+Shift+P"). */
 function formatKey(key: string): string {
@@ -139,7 +141,7 @@ const PaletteInner: Component = () => {
 
     closePalette();
 
-    const keyStr = keyLookup.get(entry.id);
+    const keyStr = keyLookup().get(entry.id);
     if (keyStr) {
       showToast(`Tip: ${formatKey(keyStr)}`);
     }
@@ -214,7 +216,7 @@ const PaletteInner: Component = () => {
           >
             <For each={filtered()}>
               {(entry, i) => {
-                const keyStr = keyLookup.get(entry.id);
+                const keyStr = keyLookup().get(entry.id);
                 return (
                   <div
                     class="action-palette-item"

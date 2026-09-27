@@ -7,7 +7,9 @@
 import { createMemo, createSignal, createEffect, For, Show, onCleanup } from "solid-js";
 import { getLayout, type KeyboardLayoutId, type KeyDef } from "../../lib/keybindings/layouts/index.ts";
 import { actions, type ActionCategory, type ActionId } from "../../lib/keybindings/actions.ts";
-import { defaultKeyBindings, type KeyBinding } from "../../lib/keybindings/defaults.ts";
+import type { KeyBinding } from "../../lib/keybindings/defaults.ts";
+import { activeKeyBindings } from "./activeBindings.ts";
+import { resolver, refreshKeymapExtensions } from "../../editors/keymaps.ts";
 import { keyEventToNotation } from "../../lib/keybindings/keyNotation.ts";
 import type { BindingResolver, RebindResult, RebindSuggestion } from "../../lib/keybindings/resolver.ts";
 
@@ -574,7 +576,7 @@ function CommandList(props: CommandListProps) {
 
 export interface KeyboardVisualiserProps {
   layout?: KeyboardLayoutId;
-  /** Key bindings to display. Defaults to defaultKeyBindings when omitted. */
+  /** Key bindings to display. Defaults to the active resolved bindings when omitted. */
   bindings?: KeyBinding[];
   showLegend?: boolean;
   showCommandList?: boolean;
@@ -587,7 +589,7 @@ export interface KeyboardVisualiserProps {
 
 export default function KeyboardVisualiser(props: KeyboardVisualiserProps) {
   const layoutId = (): KeyboardLayoutId => props.layout ?? "qwerty-us";
-  const activeBindings = (): KeyBinding[] => props.bindings ?? defaultKeyBindings;
+  const activeBindings = (): KeyBinding[] => props.bindings ?? activeKeyBindings();
 
   const layout = createMemo(() => getLayout(layoutId()));
   const isEditMode = () => (props.mode === "edit") && !!props.resolver;
@@ -684,6 +686,9 @@ export default function KeyboardVisualiser(props: KeyboardVisualiserProps) {
     if (result.status === "ok") {
       setResolverVersion(v => v + 1);
       props.onRebind?.(action, notation);
+      // When rebinding the live app resolver, push the rebuilt keymap into
+      // every running editor (keybindings.md §1.9; no reload needed).
+      if (props.resolver === resolver) refreshKeymapExtensions();
 
       const parsed = parseKeyString(notation);
       const targetCode = parsed ? resolveToPhysicalCode(parsed.baseKey) : null;

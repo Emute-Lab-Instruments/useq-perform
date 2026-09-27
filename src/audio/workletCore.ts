@@ -600,9 +600,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       case "attach-control-buffer":
         handleAttachControlBuffer(msg as unknown as WorkletAttachControlBufferMessage);
         break;
-      case "detach-control-buffer":
-        handleDetachControlBuffer();
-        break;
       case "prepare-graph":
         handlePrepareGraph(msg as unknown as WorkletPrepareGraphMessage);
         break;
@@ -938,33 +935,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       return;
     }
     options.publish({ type: "attach-control-buffer-ack", ok: true });
-  }
-
-  function handleDetachControlBuffer(): void {
-    controlView = null;
-    controlBuffer = null;
-    // VAL-CROSS-009 recovery race: reset the bring-up window flags so
-    // the next attach cycle (recovery) starts fresh. Without this a
-    // detach/reattach pair would skip the bring-up window entirely.
-    sabEverAttached = false;
-    producerEverPublished = false;
-    // Retire every instance immediately (no fade): the SAB is gone, so
-    // further rendering is impossible. The processor shell disconnects
-    // the node so no further process() calls land. Zones are released
-    // silently (no instance-retired events on teardown).
-    for (const inst of executionOrder) {
-      retireImmediately(inst);
-      releaseInstanceZones(inst);
-    }
-    executionOrder.length = 0;
-    if (preparedCandidate) releaseCandidate(preparedCandidate);
-    if (committedCandidate) releaseCandidate(committedCandidate);
-    preparedCandidate = null;
-    committedCandidate = null;
-    committedCandidateEligible = false;
-    liveByIdentity.clear();
-    activeEpoch = 0;
-    pendingEpoch = 0;
   }
 
   function handleDevmodeTerminateProducer(): void {
@@ -1575,13 +1545,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     instance.fadeFramesTotal = frames;
     instance.fadeGainStart = 1;
     instance.fadeGainEnd = 0;
-  }
-
-  function retireImmediately(instance: InstanceState): void {
-    instance.lifecycle = "retired";
-    instance.retireAfterBlock = false;
-    instance.fadeFramesRemaining = 0;
-    instance.fadeFramesTotal = 0;
   }
 
   /**

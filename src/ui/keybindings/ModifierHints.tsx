@@ -10,7 +10,7 @@ import { settings } from "../../utils/settingsStore.ts";
 import { editor } from "../../lib/editorStore.ts";
 import { executeAction } from "../../editors/commands/actionHandlers.ts";
 import type { ActionId } from "../../lib/keybindings/actions.ts";
-import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
+import { activeKeyBindings } from "./activeBindings.ts";
 import {
   MODIFIER_KEYS,
   MODIFIER_LABELS,
@@ -109,7 +109,7 @@ export function ModifierHints(): JSX.Element {
       }
       // Try to find and execute a direct binding
       const bindingKey = mod + "-" + key;
-      const binding = defaultKeyBindings.find(
+      const binding = activeKeyBindings().find(
         (b) => b.key === bindingKey && !b.when
       );
       if (binding) {
@@ -123,7 +123,7 @@ export function ModifierHints(): JSX.Element {
       const prefix = pendingChordPrefix();
       if (!prefix) return false;
       const bindingKey = prefix + " " + key;
-      const binding = defaultKeyBindings.find(
+      const binding = activeKeyBindings().find(
         (b) => b.key === bindingKey && !b.when
       );
       if (binding) {

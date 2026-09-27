@@ -8,10 +8,8 @@
  * pipeline via `pushDiagnostics`, mirroring the eval-response path in
  * `editorEvaluation.ts`.
  *
- * Because a standalone frame is not tied to a specific eval range, we push the
- * diagnostics against the whole document (the `pushDiagnostics` defaults):
- * diagnostics that carry a span land on that span; spanless diagnostics
- * highlight the active document.
+ * Standalone spans are document-relative. They are additive because the frame
+ * is not tied to an eval range and must not clear diagnostics from prior evals.
  */
 import { standaloneDiagnostics } from "../contracts/runtimeChannels.ts";
 import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
@@ -19,7 +17,14 @@ import type { EditorView } from "@codemirror/view";
 
 export interface StandaloneDiagnosticsRouterDependencies {
   getEditor(): EditorView | null;
-  pushDiagnostics(view: EditorView, diagnostics: UseqDiagnostic[]): void;
+  pushDiagnostics(
+    view: EditorView,
+    diagnostics: UseqDiagnostic[],
+    docOffset?: number,
+    rangeFrom?: number,
+    rangeTo?: number,
+    clearRange?: boolean,
+  ): void;
 }
 
 let unsubscribe: (() => void) | null = null;
@@ -36,7 +41,9 @@ export function initStandaloneDiagnosticsRouter(
     const view = dependencies.getEditor();
     if (!view) return;
     if (!detail.diagnostics.length) return;
-    dependencies.pushDiagnostics(view, detail.diagnostics);
+    // Unsolicited diagnostics are not tied to an eval range. Preserve existing
+    // eval diagnostics and treat firmware spans as document coordinates.
+    dependencies.pushDiagnostics(view, detail.diagnostics, 0, 0, 0, false);
   });
 }
 

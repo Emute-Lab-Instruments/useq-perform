@@ -193,7 +193,6 @@ describe("synthesisControlAbi — declared widths (VAL-SAB-003)", () => {
     // reading them back exactly.
     view.initialise();
     view.programEpoch = 0xdeadbeef;
-    view.controlRevision = 0x12345678;
     // Use values within the signed int64 range (BigInt64Array stores signed).
     view.audioFrame = 0x123456789abcdef0n;
     view.wakeSequence = 0x0edcba9876543210n;
@@ -201,7 +200,6 @@ describe("synthesisControlAbi — declared widths (VAL-SAB-003)", () => {
     expect(view.magic).toBe(ABI_MAGIC);
     expect(view.abiVersion).toBe(ABI_VERSION);
     expect(view.programEpoch).toBe(0xdeadbeef);
-    expect(view.controlRevision).toBe(0x12345678);
     expect(view.audioFrame).toBe(0x123456789abcdef0n);
     expect(view.wakeSequence).toBe(0x0edcba9876543210n);
   });
@@ -325,7 +323,6 @@ describe("synthesisControlAbi — deterministic initial values (VAL-SAB-005)", (
     expect(view.wakeSequence).toBe(0n);
     expect(view.programEpoch).toBe(0);
     expect(view.pendingEpoch).toBe(0);
-    expect(view.controlRevision).toBe(0);
 
     expect(view.ringWriteIndex).toBe(0);
     expect(view.ringReadIndex).toBe(0);
@@ -551,6 +548,27 @@ describe("synthesisControlAbi — full, empty, overrun (VAL-SAB-011)", () => {
     // One more publish without consumption is an overrun.
     view.advanceWriteIndex();
     expect(view.isRingOverrun()).toBe(true);
+  });
+
+  it("keeps producer liveness writes out of ring publication", () => {
+    const { view } = rawBytes(freshBuffer());
+    view.initialise();
+    view.advanceWriteIndex();
+    expect(view.producerLivenessAge).toBe(0);
+  });
+
+  it("discards queued blocks without moving a consumer index backwards", () => {
+    const { view } = rawBytes(freshBuffer());
+    view.initialise();
+    view.advanceWriteIndex();
+    view.advanceWriteIndex();
+    view.advanceReadIndex();
+    view.discardQueuedBlocks();
+    expect(view.ringReadIndex).toBe(view.ringWriteIndex);
+
+    view.advanceReadIndex();
+    view.discardQueuedBlocks();
+    expect(view.ringReadIndex).toBe(view.ringWriteIndex + 1);
   });
 
   it("the consumer never accepts an unpublished slot as current data", () => {

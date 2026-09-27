@@ -15,6 +15,8 @@
 
 import { createLiveEditStore, type LiveEditStoreAPI } from "./liveEditStore.ts";
 import { createLiveEditPersistence, type LiveEditPersistence } from "./liveEditPersistence.ts";
+import { liveEditValueChanged } from "../contracts/runtimeChannels.ts";
+import { DEFAULT_INPUT_EPSILON } from "./visualisationSamplingPolicy.ts";
 import type { EditorView } from "@codemirror/view";
 import type { LiveEditSlot, SlotKind } from "../contracts/liveEdit.ts";
 import type { LiveSlotMetadata } from "../contracts/runtimePorts.ts";
@@ -155,6 +157,11 @@ function flushBatchedValues(): void {
  * §9.2: Diff-encoding — only send changed values via last-sent table.
  */
 export function liveEditOnValueChange(slotId: string, value: number | boolean | string): void {
+  // Capture the pre-write value so the vis-invalidation announcement can
+  // report old → new (liveEditValueChanged contract).
+  const slotBeforeWrite = liveEditStore.getSlot(slotId);
+  const previousDouble = slotValueToDouble(slotBeforeWrite?.value ?? value, slotBeforeWrite);
+
   // Update the store (sets modified flag, triggers reactive subscribers)
   liveEditStore.setValue(slotId, value);
 
@@ -180,6 +187,38 @@ export function liveEditOnValueChange(slotId: string, value: number | boolean | 
 
   // Ensure the batch ticker is running
   startBatchTicker();
+
+  announceLiveEditValueChanged(slotId, wasmDouble, previousDouble);
+}
+
+// ─── Vis-projection invalidation announcements (visualisation spec §3.7) ────
+
+/**
+ * Last value announced on `liveEditValueChanged` per slot. Announcements are
+ * epsilon-gated against this (not the raw pre-write value) so a slow knob
+ * drag — many sub-epsilon deltas per tick — still invalidates once the
+ * accumulated change becomes meaningful.
+ */
+const lastAnnouncedValues = new Map<string, number>();
+
+/**
+ * Announce a live-edit value change beyond epsilon on `liveEditValueChanged`.
+ * The visualisation sampler subscribes to this channel to invalidate future
+ * projections conservatively (all outputs — per-output dependency tracking
+ * is planned, visualisation spec §3.7).
+ */
+function announceLiveEditValueChanged(slotId: string, newDouble: number, previousDouble: number): void {
+  let baseline = lastAnnouncedValues.get(slotId);
+  if (baseline === undefined) {
+    // First change for this slot: seed the baseline with the pre-write
+    // value. It only advances when an announcement actually fires, so a
+    // drag of many sub-epsilon deltas accumulates until it crosses epsilon.
+    baseline = previousDouble;
+    lastAnnouncedValues.set(slotId, baseline);
+  }
+  if (Math.abs(newDouble - baseline) <= DEFAULT_INPUT_EPSILON) return;
+  lastAnnouncedValues.set(slotId, newDouble);
+  liveEditValueChanged.publish({ slotId, newValue: newDouble, oldValue: baseline });
 }
 
 // ─── Slot discovery after eval ──────────────────────────────────────────────

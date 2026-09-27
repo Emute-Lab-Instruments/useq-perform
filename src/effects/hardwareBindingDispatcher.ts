@@ -25,12 +25,10 @@
 import { hwInput } from "../contracts/hardwareChannels.ts";
 import type { HwInputEvent } from "../contracts/hardware.ts";
 import type { BindingEventKind, BindingChip } from "../contracts/hardware.ts";
-import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
+import { dispatchRuntimeCodeEvaluation } from "../runtime/runtimeCodeEvaluation.ts";
 import { getAppSettings } from "../runtime/appSettingsRepository.ts";
 import { editor } from "../lib/editorStore.ts";
 import { post } from "../utils/consoleStore.ts";
-import { sendTouSEQ } from "../transport/json-protocol.ts";
-import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 
 // ---------------------------------------------------------------------------
 // Config (dependency injection for editor-layer integration)
@@ -251,31 +249,44 @@ async function evalBinding(
   key: string,
   inputId: string,
 ): Promise<void> {
-  const noModuleMode = getStartupFlagsSnapshot().noModuleMode;
-
   try {
-    const result = await getActiveWasmRuntimePort().evalCode(code);
-    const diagnostics = await getActiveWasmRuntimePort().readLastDiagnostics();
-    const hasErrors = diagnostics.some((d) => d.severity === "error");
+    const outcome = await dispatchRuntimeCodeEvaluation({
+      code: `@${code}`,
+      wasmCode: code,
+      binding: true,
+    });
+    const wasm = outcome.wasm?.status === "fulfilled" ? outcome.wasm.value : null;
+    const hardware = outcome.hardware?.status === "fulfilled" ? outcome.hardware.value : null;
+    if (!wasm && !hardware) {
+      throw new Error("No runtime is available for hardware binding evaluation");
+    }
+    const error = wasm?.diagnostics.find((diagnostic) => diagnostic.severity === "error")
+      ?? hardware?.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+    const errorText = wasm?.result ?? hardware?.result;
+    const runtimeErrorText = [wasm?.result, hardware?.result].find((result) =>
+      /^\s*(?:Error:|\{error\})/i.test(result ?? ""),
+    );
 
-    if (hasErrors && diagnostics.length > 0) {
-      const msg = diagnostics[0]!.message;
+    if (error || hardware?.success === false || runtimeErrorText) {
+      const msg = error?.message ?? runtimeErrorText ?? errorText ?? "Evaluation failed";
       lastError.set(key, msg);
       console.warn(`[hw-binding] ${inputId} eval error: ${msg}`);
       // Compile-time error (§7.1): block hardware dispatch.
       return;
     }
 
+    if (outcome.wasm?.status === "rejected" || outcome.hardware?.status === "rejected") {
+      const failure = outcome.wasm?.status === "rejected"
+        ? outcome.wasm.error
+        : (outcome.hardware as { status: "rejected"; error: unknown }).error;
+      throw failure;
+    }
+
     // Clear error on successful fire.
     lastError.delete(key);
 
-    // Also send to hardware if not in no-module mode.
-    if (!noModuleMode) {
-      sendTouSEQ("@" + code);
-    }
-
-    if (result != null && import.meta.env.DEV) {
-      const trimmed = (typeof result === "string" ? result : String(result)).trim();
+    if (errorText != null && import.meta.env.DEV) {
+      const trimmed = (typeof errorText === "string" ? errorText : String(errorText)).trim();
       if (trimmed.length > 0) {
         console.log(`[hw-binding] ${inputId} → ${trimmed}`);
       }

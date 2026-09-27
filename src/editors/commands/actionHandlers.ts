@@ -69,6 +69,7 @@ import {
 import { resolveItems } from "../../ui/mainMenu/menuItems.ts";
 import { isMenuOpen, dispatchMenuInput } from "../../lib/menu/store.ts";
 import { ZEN_HASH_PREFIX } from "../../zen/routing.ts";
+import { selectMainMenuAction } from "../../zen/mainMenuAction.ts";
 
 // ---------------------------------------------------------------------------
 // Main-menu helpers (main-menu.md §1.4)
@@ -82,11 +83,11 @@ import { ZEN_HASH_PREFIX } from "../../zen/routing.ts";
  * vector-mark are left to their own exit gestures — closing them blindly here
  * would risk committing or discarding in-flight edits.)
  */
-function closeActiveSubModes(view: EditorView): void {
+function closeActiveSubModes(view?: EditorView): void {
   if (isMenuOpen()) {
     dispatchMenuInput({ kind: "cancel" });
   }
-  endGrab(view);
+  if (view) endGrab(view);
 }
 
 /**
@@ -192,8 +193,7 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
     if (item.type === "submenu") {
       dispatchMainMenu({ type: "pushSubmenu", submenuId: item.id });
     } else {
-      // Action items close the menu (resume or any other action)
-      closeMainMenu();
+      selectMainMenuAction(item.id);
     }
     return true;
   },
@@ -244,6 +244,8 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   // -- Structure (functional-core via adapter dispatcher) --------------------
   "edit.slurpFwd": structHandler("edit.slurpForward"),
   "edit.slurpBack": structHandler("edit.slurpBackward"),
+  "edit.atomSlurpFwd": structHandler("edit.atomSlurpForward"),
+  "edit.atomSlurpBack": structHandler("edit.atomSlurpBackward"),
   "edit.barfFwd": structHandler("edit.barfForward"),
   "edit.barfBack": structHandler("edit.barfBackward"),
   "edit.raise": structHandler("edit.raise"),
@@ -254,6 +256,22 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "edit.wrapSet": structHandler("edit.encloseSet"),
   "edit.transposeFwd": structHandler("edit.transposeNext"),
   "edit.transposeBack": structHandler("edit.transposePrev"),
+  "edit.moveRight": structHandler("edit.moveRight"),
+  "edit.moveLeft": structHandler("edit.moveLeft"),
+  "edit.moveUp": structHandler("edit.moveUp"),
+  "edit.moveDown": structHandler("edit.moveDown"),
+  "edit.cut": structHandler("edit.cut"),
+  "edit.copy": structHandler("edit.copy"),
+  "edit.paste": structHandler("edit.paste"),
+  "edit.pasteBefore": structHandler("edit.pasteBefore"),
+  "edit.duplicate": structHandler("edit.duplicate"),
+  "actOn.cut": structHandler("edit.cut"),
+  "actOn.copy": structHandler("edit.copy"),
+  "actOn.paste": structHandler("edit.paste"),
+  "actOn.duplicate": structHandler("edit.duplicate"),
+  "format.topLevel": structHandler("format.topLevel"),
+  "format.document": structHandler("format.document"),
+  "format.indentToFixedPoint": structHandler("format.indentToFixedPoint"),
 
   // -- Meta operations (§6.6) -----------------------------------------------
   "meta.add": structHandler("meta.add"),

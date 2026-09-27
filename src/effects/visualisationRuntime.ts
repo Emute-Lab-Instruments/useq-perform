@@ -41,6 +41,7 @@ import { refreshOutputHealth } from "../utils/outputHealthStore.ts";
 import { recordTickElapsed } from "./adaptiveQuality.ts";
 import { projectionTrace } from "../lib/projectionTrace.ts";
 import { shouldAdvanceLocalTime } from "../audio/audioClockPolicy.ts";
+import { getActiveSynthesisService } from "../runtime/activeSynthesisService.ts";
 import { shouldUseWasmShadow } from "../runtime/runtimeCompatibility.ts";
 
 /**
@@ -301,25 +302,31 @@ function tick(): void {
   if (import.meta.env.DEV) perf.begin("frame-tick");
   frameCount++;
 
-  if (localTimeActive && shouldAdvanceLocalTime()) {
-    // VAL-ENGINE-002: while the synthesis engine is running, audio frames
-    // own ModuLisp time. A suspended engine has no advancing audio frame,
-    // so rAF continues to drive the local visualisation clock until sound
-    // is actually running. Outside this branch rAF still paints and polls
-    // diagnostics, but it never advances a second live timeline while
-    // `shouldAdvanceLocalTime()` reports that audio owns the clock.
-    //
-    // Local time reads through the deterministic clock seam (`nowMs`),
-    // so a frozen test clock holds this branch still while the rAF loop
-    // keeps painting and polling, and a stepped clock drives it through
-    // this exact production path.
-    localElapsedSeconds = (nowMs() - (localResetMs ?? 0)) / 1000;
-    updateTime(localElapsedSeconds);
-    setLastChangeKind("time", {
-      currentTimeSeconds: localElapsedSeconds,
-      displayTimeSeconds: localElapsedSeconds,
-    });
-    requestLocalSamplesThrough(localElapsedSeconds);
+  if (localTimeActive) {
+    let currentTime: number | null = null;
+    if (shouldAdvanceLocalTime()) {
+      // A suspended engine has no advancing audio frame, so rAF drives the
+      // local clock until sound is actually running.
+      localElapsedSeconds = (nowMs() - (localResetMs ?? 0)) / 1000;
+      currentTime = localElapsedSeconds;
+    } else {
+      // Audio owns the live timeline while running. Read its published frame
+      // from the service telemetry so plots and probes follow that same clock.
+      const telemetry = getActiveSynthesisService()?.telemetry;
+      const sampleRate = telemetry?.sampleRate;
+      if (telemetry && sampleRate && sampleRate > 0) {
+        const audioTime = Number(telemetry.audioFrame) / sampleRate;
+        if (Number.isFinite(audioTime)) currentTime = audioTime;
+      }
+    }
+    if (currentTime !== null) {
+      updateTime(currentTime);
+      setLastChangeKind("time", {
+        currentTimeSeconds: currentTime,
+        displayTimeSeconds: currentTime,
+      });
+      requestLocalSamplesThrough(currentTime);
+    }
   }
 
   const wasmObservationEnabled = shouldUseWasmShadow();

@@ -29,25 +29,22 @@ import {
 } from "../extensions/lezerHelpers.ts";
 import { syntaxTree } from "@codemirror/language";
 import { flashDeleteConfirm, deleteConfirmField } from "../extensions/deleteConfirmFlash.ts";
-import { dispatchAction } from "../extensions/structure/adapter/dispatcher.ts";
+import { dispatchAction, type StructuralAction } from "../extensions/structure/adapter/dispatcher.ts";
+import { applyOp } from "../extensions/structure/adapter/applyOp.ts";
 import { pathsFromCursorSet } from "../extensions/structure/adapter/cursorPath.ts";
+import { findSmallestEnclosingAddressableNode } from "../extensions/structure/adapter/cursorFromSelection.ts";
 import {
   setStructState,
   setIntendedFocus,
   structField,
 } from "../extensions/structure/adapter/stateField.ts";
 import {
-  childrenOf,
   nodeCursor,
   singleCursor,
-  type DocumentNode,
-  type Node,
-  type NodeId,
   type State,
 } from "../extensions/structure/core/index.ts";
 import { atomAdjust, flipPolarity } from "../extensions/structure/core/atomOps.ts";
 import { evaluate, type EvalStrategy } from "../../effects/editorEvaluation.ts";
-import type { StructuralAction } from "../extensions/structure/adapter/dispatcher.ts";
 import { openNamespacePicker } from "../extensions/operatorNamespaces.ts";
 
 export type EditorCommandSource =
@@ -70,6 +67,7 @@ export type EditorCommand = (
   | { kind: "redo" }
   | { kind: "evaluate"; strategy: EvalStrategy }
   | { kind: "structural"; action: StructuralAction }
+  | { kind: "structuralState"; state: State; userEvent?: string }
   | { kind: "deleteNode" }
   | { kind: "adjustNumber"; delta: number }
   | { kind: "atomAdjust"; direction: 1 | -1 }
@@ -184,6 +182,14 @@ export function executeEditorCommand(
 
     case "structural":
       handled = dispatchAction(view, command.action);
+      break;
+
+    case "structuralState":
+      handled = applyOp(
+        view,
+        () => ({ state: command.state, noOps: [] }),
+        command.userEvent ?? "structure.mutate",
+      );
       break;
 
     case "deleteNode":
@@ -646,6 +652,10 @@ function syncStructuralCursorFromSelection(view: EditorView): void {
     pos,
   );
   if (enclosingId === null) return;
+  // No node encloses the caret here (programmatic dispatches may leave the
+  // caret between top-level forms): keep the previous structural cursor —
+  // unlike the caret plugin, which resets to the document root to clear
+  // the halo.
   const primary = value.state.cursors.primary;
   if (primary.kind === "node" && primary.target === enclosingId) return;
   const cs = singleCursor(nodeCursor(enclosingId));
@@ -658,23 +668,6 @@ function syncStructuralCursorFromSelection(view: EditorView): void {
     }),
     annotations: Transaction.addToHistory.of(false),
   });
-}
-
-function findSmallestEnclosingAddressableNode(
-  root: DocumentNode,
-  idIndex: ReadonlyMap<NodeId, { from: number; to: number }>,
-  pos: number,
-): NodeId | null {
-  let best: NodeId | null = null;
-  const visit = (node: Node): void => {
-    const range = idIndex.get(node.id);
-    if (!range) return;
-    if (range.from > pos || range.to < pos) return;
-    if (node.kind !== "document") best = node.id;
-    for (const child of childrenOf(node)) visit(child);
-  };
-  visit(root);
-  return best;
 }
 
 function getCursorNode(view: EditorView): SyntaxNode | null {

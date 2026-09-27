@@ -175,6 +175,61 @@ export const actions = {
     requiresEditor: true,
   },
 
+  "edit.moveRight": {
+    description: "Move focused node right",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.moveLeft": {
+    description: "Move focused node left",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.moveUp": {
+    description: "Move focused node up",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.moveDown": {
+    description: "Move focused node down",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.cut": {
+    description: "Cut focused node",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.copy": {
+    description: "Copy focused node",
+    category: "editor",
+    reversible: false,
+    requiresEditor: true,
+  },
+  "edit.paste": {
+    description: "Paste after focused node",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.pasteBefore": {
+    description: "Paste before focused node",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.duplicate": {
+    description: "Duplicate focused node",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
+
   // -- Structure (clojure-mode remaps) --------------------------------------
 
   "edit.slurpFwd": {
@@ -182,6 +237,18 @@ export const actions = {
     category: "structure",
     reversible: true,
     icon: "chevron-right",
+    requiresEditor: true,
+  },
+  "edit.atomSlurpFwd": {
+    description: "Promote and slurp forward",
+    category: "structure",
+    reversible: true,
+    requiresEditor: true,
+  },
+  "edit.atomSlurpBack": {
+    description: "Promote and slurp backward",
+    category: "structure",
+    reversible: true,
     requiresEditor: true,
   },
   "edit.slurpBack": {
@@ -483,11 +550,13 @@ export const actions = {
     description: "Toggle manual control for left stick",
     category: "gamepad",
     reversible: false,
+    requiresEditor: true,
   },
   "control.toggleManualRight": {
     description: "Toggle manual control for right stick",
     category: "gamepad",
     reversible: false,
+    requiresEditor: true,
   },
 
 

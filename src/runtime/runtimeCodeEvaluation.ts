@@ -26,6 +26,8 @@ export interface CodeEvaluationRequest {
   wasmCode?: string;
   /** Soft evaluation is a browser-local preview and never reaches hardware. */
   soft?: boolean;
+  /** Evaluate in WASM first and only send to hardware after a clean compile. */
+  binding?: boolean;
 }
 
 export interface HardwareCodeEvaluation {
@@ -102,14 +104,30 @@ export function createRuntimeCodeEvaluationDispatcher(
       }
     }
 
-    const hardwarePromise = hardwareActive
-      ? settle(dependencies.hardwarePort.evalCodeWithDiagnostics(request.code))
-      : Promise.resolve(null);
-    const wasmPromise = wasmPort
-      ? settle(wasmPort.evalCodeWithDiagnostics(request.wasmCode ?? request.code))
-      : Promise.resolve(null);
-
-    const [hardware, wasm] = await Promise.all([hardwarePromise, wasmPromise]);
+    let hardware: CodeEvaluationOutcome<HardwareCodeEvaluation> | null = null;
+    let wasm: CodeEvaluationOutcome<WasmCodeEvaluation> | null = null;
+    if (request.binding) {
+      // Hardware bindings must compile-check before the device receives the
+      // expression. Diagnostics belong to this exact response, avoiding the
+      // global readLastDiagnostics race.
+      if (wasmPort) wasm = await settle(wasmPort.evalCodeWithDiagnostics(request.wasmCode ?? request.code));
+      const wasmFailed = wasm?.status === "rejected"
+        || (wasm?.status === "fulfilled" && (
+          wasm.value.diagnostics.some((diagnostic) => diagnostic.severity === "error")
+          || /^\s*(?:Error:|\{error\})/i.test(wasm.value.result ?? "")
+        ));
+      if (hardwareActive && !wasmFailed) {
+        hardware = await settle(dependencies.hardwarePort.evalCodeWithDiagnostics(request.code));
+      }
+    } else {
+      const hardwarePromise = hardwareActive
+        ? settle(dependencies.hardwarePort.evalCodeWithDiagnostics(request.code))
+        : Promise.resolve(null);
+      const wasmPromise = wasmPort
+        ? settle(wasmPort.evalCodeWithDiagnostics(request.wasmCode ?? request.code))
+        : Promise.resolve(null);
+      [hardware, wasm] = await Promise.all([hardwarePromise, wasmPromise]);
+    }
     const diagnosticAuthority = hardware?.status === "fulfilled"
       ? "hardware"
       : wasm?.status === "fulfilled"

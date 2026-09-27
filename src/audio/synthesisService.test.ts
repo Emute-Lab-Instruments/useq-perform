@@ -25,7 +25,6 @@ import type { AudioCapabilityProbe } from "../contracts/audioCapabilities";
 import {
   resetEngineStateStoreForTests,
   engineStateStore,
-  engineLifecycle,
 } from "../contracts/synthesisChannels";
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
 import {
@@ -137,6 +136,25 @@ describe("synthesisService — capability orthogonality", () => {
     await service.dispose();
   });
 
+  it("fails bring-up when the Worker rejects SAB installation or producer start", async () => {
+    for (const rejectedStep of ["install", "start"] as const) {
+      const bundle = buildOptions({
+        workerPort: {
+          async producerInstallSab() { return rejectedStep !== "install"; },
+          async producerStart() { return rejectedStep !== "start"; },
+          async producerPrepareCommit() { return true; },
+          async producerAbortCommit() { return true; },
+          async producerArmEpoch(epoch: number) { return epoch; },
+        },
+      });
+      const service = createSynthesisService(bundle.options);
+
+      expect(await service.resumeOnUserActivation()).toBe(false);
+      expect(service.state).toBe("error");
+      await service.dispose();
+    }
+  });
+
   it("constructs an AudioContext lazily on the first resume attempt when capable", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
@@ -225,9 +243,7 @@ describe("synthesisService — module compilation (VAL-ENGINE-008)", () => {
     await service.dispose();
   });
 
-  it("publishes the documented error self-loop for a failed recovery", async () => {
-    const events: Array<{ from: string; to: string; trigger: string }> = [];
-    const unsubscribe = engineLifecycle.subscribe((event) => events.push(event));
+  it("reports recovery failure only after the replacement session fails", async () => {
     const failingAudioContext = createFakeAudioContext({ addModuleResult: "throw" });
     const bundle = buildOptions({ audioContext: failingAudioContext });
     const service = createSynthesisService(bundle.options);
@@ -237,16 +253,12 @@ describe("synthesisService — module compilation (VAL-ENGINE-008)", () => {
     const transitionsBeforeRecovery = service.telemetry.transitionCount;
 
     expect(await service.recoverFromError()).toBe(false);
-    expect(events).toContainEqual(expect.objectContaining({
-      from: "error",
-      to: "error",
-      trigger: "recovery-failed",
-    }));
+    expect(service.state).toBe("error");
+    expect(engineStateStore.current.reasonKey).toBe("RECOVERY_FAILED");
     expect(service.telemetry.transitionCount).toBeGreaterThan(
       transitionsBeforeRecovery,
     );
 
-    unsubscribe();
     await service.dispose();
   });
 
@@ -287,9 +299,23 @@ describe("synthesisService — four-state lifecycle (VAL-ENGINE-016)", () => {
     // running → suspended requires a direct API (audio suspend); the
     // service does not expose a suspend button in this feature. Verify
     // the transition matrix is honoured via the engineLifecycle channel.
-    // For now, the only public path back to off is dispose.
+    // The state snapshot is the public lifecycle surface; the only public
+    // path back to off is dispose.
     await service.dispose();
     expect(service.state).toBe("off");
+  });
+
+  it("returns to suspended when the AudioContext suspends while running", async () => {
+    const bundle = buildOptions();
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+    expect(service.state).toBe("running");
+
+    await bundle.audioContext.suspend();
+
+    expect(service.state).toBe("suspended");
+    expect(engineStateStore.current.reasonKey).toBe("AWAITING_USER_ACTIVATION");
+    await service.dispose();
   });
 
   it("rejects forbidden transitions via the finite matrix", () => {
@@ -481,6 +507,57 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
     await service.dispose();
   });
 
+  it("resolves a replaced Worker port for each commit", async () => {
+    const first = {
+      producerPrepareCommit: vi.fn().mockResolvedValue(true),
+      producerAbortCommit: vi.fn().mockResolvedValue(true),
+      producerArmEpoch: vi.fn().mockResolvedValue(1),
+    };
+    const replacement = {
+      producerPrepareCommit: vi.fn().mockResolvedValue(true),
+      producerAbortCommit: vi.fn().mockResolvedValue(true),
+      producerArmEpoch: vi.fn().mockImplementation(async (epoch: number) => epoch),
+    };
+    let current = first;
+    const bundle = buildOptions({ workerPort: () => current });
+    const service = createSynthesisService(bundle.options);
+    await service.resumeOnUserActivation();
+    current = replacement;
+
+    const result = await service.commitSynthArtifacts({
+      abi: 2,
+      revision: 1,
+      declarations: [],
+      controls: [],
+      connections: [],
+    }, false);
+
+    expect(result.outcome).toBe("committed");
+    expect(first.producerPrepareCommit).not.toHaveBeenCalled();
+    expect(replacement.producerPrepareCommit).toHaveBeenCalledOnce();
+    expect(replacement.producerArmEpoch).toHaveBeenCalledOnce();
+    await service.dispose();
+  });
+
+  it("replays the last valid synth payload after an off-state commit", async () => {
+    const bundle = buildOptions();
+    const service = createSynthesisService(bundle.options);
+    const payload = {
+      abi: 2,
+      revision: 1,
+      declarations: [],
+      controls: [],
+      connections: [],
+    };
+
+    expect((await service.commitSynthArtifacts(payload, false)).outcome)
+      .toBe("rejected-preparation-failed");
+    await service.resumeOnUserActivation();
+
+    expect(service.telemetry.programRevision).toBe(1);
+    await service.dispose();
+  });
+
   it("commitSynthArtifacts rejects payloads with diagnostics errors (VAL-COMP-014)", async () => {
     const bundle = buildOptions();
     const service = createSynthesisService(bundle.options);
@@ -513,6 +590,27 @@ describe("synthesisService — synth artefact intake (VAL-COMP-013/014/015)", ()
         false,
       ),
     ).rejects.toThrowError(SynthesisServiceError);
+    await service.dispose();
+  });
+
+  it("reports async commit validation errors through the console sink", async () => {
+    const messages: string[] = [];
+    const bundle = buildOptions({
+      consoleMessageSink: (message) => messages.push(message),
+    });
+    const service = createSynthesisService(bundle.options);
+
+    await expect(service.commitSynthArtifacts({
+      abi: 99,
+      revision: 1,
+      declarations: [],
+      controls: [],
+      connections: [],
+    }, false)).rejects.toThrowError(SynthesisServiceError);
+
+    expect(messages).toContain(
+      "Synthesis commit failed: synth artefact ABI version 99 does not match consumer ABI 2",
+    );
     await service.dispose();
   });
 

@@ -14,6 +14,7 @@ import {
   createWasmBatchEvaluator,
   createWasmLiveInputController,
   createWasmProbeController,
+  readAndFreeCString,
   type EmscriptenModule,
 } from "./wasmInterpreterCore";
 
@@ -177,7 +178,9 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
   const useq_init = module.cwrap(initDesc.symbol, initDesc.returnType, initDesc.argTypes as unknown as string[]) as () => void;
 
   const evalDesc = REQUIRED_WASM_EXPORTS.useq_eval;
-  const useq_eval = module.cwrap(evalDesc.symbol, evalDesc.returnType, evalDesc.argTypes as unknown as string[]) as (code: string) => string;
+  const evalPointer = module.cwrap(evalDesc.symbol, evalDesc.returnType, evalDesc.argTypes as unknown as string[]) as (code: string) => number;
+  const useq_eval = (code: string): string =>
+    readAndFreeCString(module, evalPointer(code));
 
   const timeDesc = REQUIRED_WASM_EXPORTS.useq_update_time;
   const useq_update_time = module.cwrap(timeDesc.symbol, timeDesc.returnType, timeDesc.argTypes as unknown as string[]) as (t: number) => void;
@@ -197,8 +200,14 @@ async function instantiateInterpreter(): Promise<UseqRuntime> {
 
   // Bind raw diagnostic exports for interpreter-level tests and isolated
   // witness execution. Production diagnostics are read inside the Worker.
-  const lastDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_last_diagnostics) as (() => string) | null;
-  const activeDiagsFn = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_active_diagnostics) as (() => string) | null;
+  const lastDiagsPointer = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_last_diagnostics) as (() => number) | null;
+  const lastDiagsFn = lastDiagsPointer
+    ? () => readAndFreeCString(module, lastDiagsPointer())
+    : null;
+  const activeDiagsPointer = bindOptionalCwrap(module, OPTIONAL_WASM_EXPORTS.useq_active_diagnostics) as (() => number) | null;
+  const activeDiagsFn = activeDiagsPointer
+    ? () => readAndFreeCString(module, activeDiagsPointer())
+    : null;
 
   const liveInputs = createWasmLiveInputController(module, coreLog);
 

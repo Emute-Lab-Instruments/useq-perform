@@ -8,7 +8,7 @@ import { structField } from "../extensions/structure/adapter/stateField";
 import type { CursorSet, IdGen, Tree } from "../extensions/structure/core/types";
 import { subPhase } from "../../lib/menu/state";
 import { applyVerb } from "./verbs";
-import { applyOp } from "../extensions/structure/adapter/applyOp";
+import { executeEditorCommand } from "../commands/editorCommandRouter";
 import type {
   FrozenSnapshot,
   Handedness,
@@ -56,7 +56,12 @@ export function applyMenuVerb(request: MenuVerbApplicationRequest): MenuVerbAppl
   });
   if (!result.ok) return { kind: "rejected" };
 
-  applyOp(view, () => ({ state: { tree: result.tree, cursors: result.cursorSet }, noOps: [] }), "structure.mutate.menu");
+  executeEditorCommand(view, {
+    kind: "structuralState",
+    state: { tree: result.tree, cursors: result.cursorSet },
+    userEvent: "structure.mutate.menu",
+    source: "menu",
+  });
   return { kind: "committed", tree: result.tree, cursorSet: result.cursorSet };
 }
 

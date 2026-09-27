@@ -93,6 +93,12 @@ export function wrapBrowserAudioContext(context: BrowserAudioContext): AudioCont
     suspend() {
       return context.suspend();
     },
+    addEventListener(type, listener) {
+      context.addEventListener(type, listener);
+    },
+    removeEventListener(type, listener) {
+      context.removeEventListener(type, listener);
+    },
     close() {
       return context.close();
     },
@@ -464,7 +470,7 @@ export interface BrowserSynthesisOptions {
    * when omitted, the service computes the diff and posts worklet
    * messages but the producer does not tag blocks with the new epoch.
    */
-  readonly workerPort?: SynthesisWorkerPort;
+  readonly workerPort?: SynthesisWorkerPort | (() => SynthesisWorkerPort | undefined);
 }
 
 /**

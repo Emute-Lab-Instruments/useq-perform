@@ -77,7 +77,7 @@ function findExpressionDefinition(
 }
 
 function ensureSerialVisPanelVisible(): void {
-  showVisualisationPanel({ emitAutoOpenEvent: true });
+  showVisualisationPanel();
 }
 
 // ---------------------------------------------------------------------------

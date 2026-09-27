@@ -25,7 +25,7 @@ import {
   syncRuntimeWasmTransportState,
   type RuntimeSessionState,
 } from "../runtime/runtimeService";
-import { applyClockPolicy, listenForHardwareOverride } from "./transportClock";
+import { applyClockPolicy, listenForHardwareOverride, restoreClockAfterHardwareDisconnect } from "./transportClock";
 
 // ── Pure helpers ─────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ export function extractTransportStateFromMeta(
 // ── Transport command helpers (call runtimeService directly) ─────
 
 const sendTransportCommand = (command: SharedTransportCommand) =>
-  sendRuntimeTransportCommand(command).catch((error) => {
+  Promise.resolve().then(() => sendRuntimeTransportCommand(command)).catch((error) => {
     console.error("Transport command failed", error);
   });
 
@@ -86,6 +86,8 @@ export interface TransportOrchestrator {
   subscribe: (cb: (snapshot: ReturnType<TransportActor["getSnapshot"]>) => void) => { unsubscribe: () => void };
   /** Tear down all listeners and stop the actor. */
   dispose: () => void;
+  /** Start browser-local playback while retaining the startup paused state. */
+  startBrowserLocalRuntime: () => void;
 }
 
 // ── Factory ─────────────────────────────────────────────────────
@@ -114,6 +116,10 @@ export function createTransportOrchestrator(): TransportOrchestrator {
       emitStop:     () => { void stop(); },
       emitRewind:   () => { void rewind(); },
       emitClear:    () => { void clear(); },
+      autoStartBrowserLocal: () => {
+        void play();
+        applyClockPolicy("playing", "stopped");
+      },
       syncWasmPlay: () => { void syncRuntimeWasmTransportState("playing"); },
       syncWasmPause:() => { void syncRuntimeWasmTransportState("paused"); },
       syncWasmStop: () => { void syncRuntimeWasmTransportState("stopped"); },
@@ -126,6 +132,7 @@ export function createTransportOrchestrator(): TransportOrchestrator {
   // Machine boots in "paused" (spec §1.1). The no-runtime boot case is driven
   // to "stopped" below via an initial SYNC once the mode is known.
   let prevTransportState: TransportState = "paused";
+  let browserLocalAutoRun = false;
 
   const actorSub = actor.subscribe((snapshot) => {
     const current = snapshot.value as TransportState;
@@ -133,14 +140,28 @@ export function createTransportOrchestrator(): TransportOrchestrator {
     if (current === prevTransportState) return;
     const prev = prevTransportState;
     prevTransportState = current;
+    if (current !== "paused") browserLocalAutoRun = false;
     applyClockPolicy(current, prev);
   });
 
   // ── 3. Runtime-service subscriptions ───────────────────────────
+  let lastMode = getRuntimeServiceSnapshot().session.transportMode;
   const refreshMode = (
     runtimeState: RuntimeSessionState = getRuntimeServiceSnapshot()
   ) => {
-    send({ type: "UPDATE_MODE", mode: runtimeState.session.transportMode });
+    const previousMode = lastMode;
+    const mode = runtimeState.session.transportMode;
+    lastMode = mode;
+    send({ type: "UPDATE_MODE", mode });
+    if ((previousMode === "hardware" || previousMode === "both") && mode === "wasm") {
+      // Hardware time stops owning the clock on disconnect. Reapply policy
+      // using the current machine state so WASM resumes, freezes, or resets
+      // according to the transport state without requiring a user transition.
+      restoreClockAfterHardwareDisconnect(
+        mode,
+        browserLocalAutoRun ? "playing" : actor.getSnapshot().value as TransportState,
+      );
+    }
   };
 
   // Set initial mode before starting the actor
@@ -191,12 +212,22 @@ export function createTransportOrchestrator(): TransportOrchestrator {
     actor.stop();
   }
 
+  function startBrowserLocalRuntime() {
+    if (getRuntimeServiceSnapshot().session.transportMode !== "wasm") return;
+    if (actor.getSnapshot().value === "stopped") {
+      send({ type: "SYNC", state: "paused" });
+    }
+    browserLocalAutoRun = true;
+    send({ type: "AUTO_START_BROWSER_LOCAL" });
+  }
+
   return {
     actor,
     send,
     getSnapshot: () => actor.getSnapshot(),
     subscribe: (cb) => actor.subscribe(cb),
     dispose,
+    startBrowserLocalRuntime,
   };
 }
 

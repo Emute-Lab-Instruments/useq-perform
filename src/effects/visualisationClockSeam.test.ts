@@ -38,6 +38,8 @@ const wasmInterpreterMocks = vi.hoisted(() => ({
   ),
 }));
 
+const synthesisServiceMocks = vi.hoisted(() => ({ service: null as null | { telemetry: unknown } }));
+
 vi.mock("../runtime/wasmInterpreter.ts", () => wasmInterpreterMocks);
 
 vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
@@ -59,6 +61,10 @@ vi.mock("../runtime/activeWasmRuntimePort.ts", () => ({
     readLastDiagnostics: vi.fn().mockResolvedValue([]),
   }),
   isUsingInProcessWasmRuntime: () => true,
+}));
+
+vi.mock("../runtime/activeSynthesisService.ts", () => ({
+  getActiveSynthesisService: () => synthesisServiceMocks.service,
 }));
 
 vi.mock("../runtime/appSettingsRepository.ts", () => ({
@@ -105,6 +111,7 @@ describe("deterministic clock seam (A1: transport.md §1.4–1.5)", () => {
   beforeEach(() => {
     vi.resetModules();
     rafCallbacks = [];
+    synthesisServiceMocks.service = null;
     rafSpy = vi
       .spyOn(window, "requestAnimationFrame")
       .mockImplementation((cb: FrameRequestCallback) => {
@@ -222,5 +229,33 @@ describe("deterministic clock seam (A1: transport.md §1.4–1.5)", () => {
     // Elapsed local time is bounded by the real wall clock.
     expect(runtime.getLocalTime()).toBeGreaterThanOrEqual(0);
     expect(runtime.getLocalTime()).toBeLessThanOrEqual((after - before) / 1000 + 0.001);
+  });
+
+  it("follows the audio frame clock while synthesis is running", async () => {
+    wasmInterpreterMocks.updateUseqWasmTime.mockClear();
+    const runtime = await import("./visualisationRuntime.ts");
+    const channels = await import("../contracts/synthesisChannels.ts");
+    const { visStore } = await import("../utils/visualisationStore.ts");
+    synthesisServiceMocks.service = {
+      telemetry: { audioFrame: 24_000n, sampleRate: 48_000 },
+    };
+    channels.publishEngineState({
+      state: "running",
+      reasonKey: null,
+      reasonMessage: null,
+      transitionCount: 1,
+      transitionedAt: 0,
+    });
+    runtime.startVisualisationRuntime();
+    runtime.setLocalTimeMode(true);
+
+    fireTick();
+    await runtime._drainForTests();
+
+    expect(visStore.currentTime).toBe(0.5);
+    const syncedTimes = wasmInterpreterMocks.updateUseqWasmTime.mock.calls.map(
+      (call) => call[0] as number,
+    );
+    expect(Math.max(...syncedTimes)).toBeCloseTo(0.5, 2);
   });
 });

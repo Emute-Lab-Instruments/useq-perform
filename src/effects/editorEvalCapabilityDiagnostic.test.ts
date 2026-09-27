@@ -73,6 +73,7 @@ const capturedEvals: Array<{
     synthArtifacts: unknown;
   }) => void;
 }> = [];
+const mockHardwareInactive = vi.hoisted(() => ({ enabled: false }));
 const mockEvalCodeWithDiagnostics = vi.hoisted(() =>
   vi.fn((code: string) => {
     return new Promise<{
@@ -90,11 +91,11 @@ vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
   dispatchRuntimeCodeEvaluation: vi.fn(async ({ code, wasmCode, soft = false }) => ({
     session: { transportMode: soft ? "wasm" : "both" },
     wasm: { status: "fulfilled", value: await mockEvalCodeWithDiagnostics(wasmCode ?? code) },
-    hardware: soft ? null : {
+    hardware: soft || mockHardwareInactive.enabled ? null : {
       status: "fulfilled",
       value: await mockSendTouSEQ(code),
     },
-    diagnosticAuthority: soft ? "wasm" : "hardware",
+    diagnosticAuthority: soft || mockHardwareInactive.enabled ? "wasm" : "hardware",
   })),
 }));
 
@@ -259,13 +260,13 @@ function oscSinePayload(revision: number) {
 }
 
 /** Resolve one pending eval. */
-async function flushOneEval(payload: unknown): Promise<void> {
+async function flushOneEval(payload: unknown, diagnostics: unknown[] = []): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
   expect(capturedEvals.length).toBeGreaterThanOrEqual(1);
   capturedEvals[0].resolve({
     result: "ok",
-    diagnostics: [],
+    diagnostics,
     synthArtifacts: payload,
   });
   // Let the .then chain run.
@@ -284,6 +285,7 @@ describe("editorEvaluation → capability informational diagnostic (VAL-HOST-008
 
   beforeEach(() => {
     capturedEvals.length = 0;
+    mockHardwareInactive.enabled = false;
     mockCommitSynthArtifacts.mockClear();
     mockGetActiveSynthesisService.mockReturnValue(mockIncapableService);
     view = newView('(synth "osc/sine" :freq 440)');
@@ -340,6 +342,29 @@ describe("editorEvaluation → capability informational diagnostic (VAL-HOST-008
 
     const diags = view.state.field(diagnosticField);
     expect(diags.length).toBe(0);
+  });
+
+  it("preserves WASM warnings on a non-synth eval with a retained synth snapshot", async () => {
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: "(a1 1)" },
+    });
+    mockGetActiveSynthesisService.mockReturnValue({
+      commitSynthArtifacts: mockCommitSynthArtifacts,
+      state: "running",
+      telemetry: { capabilities: { audioCapable: true, reasons: [] }, engineState: "running" },
+    });
+    mockHardwareInactive.enabled = true;
+    evaluate(view, "toplevel");
+    await flushOneEval(oscSinePayload(1), [{
+      start: 1,
+      end: 2,
+      severity: "warning",
+      message: "preserve this warning",
+    }]);
+
+    const diags = view.state.field(diagnosticField);
+    expect(diags.some((diagnostic) => diagnostic.message.includes("preserve this warning"))).toBe(true);
+    mockHardwareInactive.enabled = false;
   });
 
   it("does not inject the info diagnostic when no synthesis service exists", async () => {

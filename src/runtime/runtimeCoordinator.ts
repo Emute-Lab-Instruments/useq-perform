@@ -74,7 +74,7 @@ export function getRuntimeSessionState(): RuntimeSessionState {
   return snapshotState();
 }
 
-function applySessionUpdate(updates: RuntimeSessionUpdate): RuntimeSessionState {
+function transitionSessionInputs(updates: RuntimeSessionUpdate): RuntimeSessionState {
   currentInputs = {
     ...currentInputs,
     ...updates,
@@ -97,17 +97,17 @@ export function transitionRuntimeCoordinator(
 ): RuntimeSessionState {
   switch (transition.type) {
     case "session":
-      return applySessionUpdate(transition.updates);
+      return transitionSessionInputs(transition.updates);
     case "select-wasm-port":
       activeWasmPort = transition.port;
       return snapshotState();
     case "clear-wasm-port":
       if (transition.port && transition.port !== activeWasmPort) return snapshotState();
       activeWasmPort = null;
-      return applySessionUpdate({ wasmEnabled: false });
+      return transitionSessionInputs({ wasmEnabled: false });
     case "wasm-availability":
       if (transition.port && transition.port !== activeWasmPort) return snapshotState();
-      return applySessionUpdate({ wasmEnabled: transition.available });
+      return transitionSessionInputs({ wasmEnabled: transition.available });
     case "reset":
       currentInputs = { ...DEFAULT_INPUTS };
       activeWasmPort = null;

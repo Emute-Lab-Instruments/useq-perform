@@ -55,7 +55,6 @@ import {
   installBrowserEvalSurface,
 } from './browserEvalSurface.ts';
 import {
-  hasActiveWasmRuntimePort,
   isWasmRuntimeAvailable,
 } from './runtimeCoordinator.ts';
 import {
@@ -242,17 +241,6 @@ async function createAppUI(environmentState: EnvironmentState): Promise<AppUI> {
   });
   const menuCleanup = menuDispatcher.bind();
   const navHandle = bindGamepadNavigation(editor);
-  // Expose dispatcher on window for console-driven testing during round 2.
-  if (typeof globalThis !== 'undefined') {
-    void import('../editors/extensions/structure/adapter/dispatcher.ts')
-      .then((mod) => {
-        (globalThis as unknown as Record<string, unknown>).__structDispatch =
-          (action: string) => mod.dispatchAction(editor, action);
-      })
-      .catch(() => {
-        // Best-effort exposure; failure is non-fatal for app boot.
-      });
-  }
   gamepadPipeline.start();
 
   let disposed = false;
@@ -390,10 +378,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
   //
   // VAL-ENGINE-022: suspended and error transitions post one clear
   // non-flooding console message through the central console store.
-  if (
-    environmentState.audioCapabilities.audioCapable
-    && hasActiveWasmRuntimePort()
-  ) {
+  if (environmentState.audioCapabilities.audioCapable) {
     try {
       const [{ createBrowserSynthesisService }, { addConsoleMessage }] =
         await Promise.all([
@@ -412,7 +397,10 @@ export async function bootstrap(): Promise<BootstrapResult> {
       const synthesisService = createBrowserSynthesisService({
         capabilities: environmentState.audioCapabilities,
         devmode: startupFlags.devmode,
-        workerPort: getActiveWasmRuntimePort(),
+        // Resolve at every producer operation: the runtime controller
+        // replaces this Worker port after crashes and enable/disable cycles.
+        workerPort: () => (getActiveWasmRuntimePort() ?? undefined) as unknown as
+          import("../audio/synthesisService.ts").SynthesisWorkerPort | undefined,
         consoleMessageSink: (message, type) => {
           // The synthesis service emits plain strings; the console
           // store escapes and renders inline markdown. The sink types

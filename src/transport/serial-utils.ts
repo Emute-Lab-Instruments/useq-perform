@@ -29,13 +29,57 @@ export function setCodeHighlightColor(
  */
 
 /**
- * Clean code by removing comments and newlines
+ * Clean code for the wire: blank out `;` comments (outside string literals)
+ * and replace line breaks with spaces.
+ *
+ * Replacement — not deletion — matters twice over:
+ * - newline-only token separators survive: `(+ 1\n2)` must not become `(+ 12)`;
+ * - the cleaned text stays length-aligned with the original, so device
+ *   diagnostic offsets remap 1:1 onto the editor document.
+ *
+ * Semicolons inside string literals are preserved; `\` escapes are honoured
+ * so `"...\"..."` does not end the string early.
  */
 export function cleanCode(code: string): string {
-  // Remove comments (anything between ; and newline) and all newlines in a single step
-  return code.replace(/;[^\n]*(\n|$)|\n/g, (match) =>
-    match.startsWith(";") ? "" : ""
-  );
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < code.length; i += 1) {
+    const ch = code[i];
+    if (ch === "\n" || ch === "\r") {
+      out += " ";
+      continue;
+    }
+    if (inString) {
+      out += ch;
+      if (ch === "\\") {
+        // Copy the escaped character verbatim (e.g. `\"` does not close).
+        if (i + 1 < code.length) {
+          out += code[i + 1];
+          i += 1;
+        }
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === ";") {
+      // Comment: emit spaces up to end of line, preserving offsets. The
+      // newline itself is reprocessed below and emitted as a space.
+      while (i < code.length && code[i] !== "\n") {
+        out += " ";
+        i += 1;
+      }
+      i -= 1;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
 }
 
 /**

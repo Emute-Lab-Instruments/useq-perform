@@ -71,7 +71,9 @@ export function resolveRuntimeConnectionMode(
     return "hardware";
   }
 
-  if (inputs.noModuleMode || inputs.wasmEnabled) {
+  // A no-module request selects browser-local execution; it does not make a
+  // Worker available. Until the Worker handshake enables WASM, report none.
+  if (inputs.wasmEnabled) {
     return "browser";
   }
 

@@ -40,6 +40,7 @@ const mockEvalCodeWithDiagnostics = vi.hoisted(() =>
 const sendResponseRef = vi.hoisted(() => ({
   current: { success: true } as { success: boolean; diagnostics?: unknown[] },
 }));
+const hardwareOnlyRef = vi.hoisted(() => ({ enabled: false }));
 const mockSendTouSEQ = vi.hoisted(() =>
   vi.fn((_code: string) => Promise.resolve(sendResponseRefInner.current)),
 );
@@ -47,6 +48,15 @@ const sendResponseRefInner = sendResponseRef;
 
 vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
   dispatchRuntimeCodeEvaluation: vi.fn(async ({ code, wasmCode, soft = false }) => {
+    if (!soft && hardwareOnlyRef.enabled) {
+      const hardwareValue = await mockSendTouSEQ(code);
+      return {
+        session: { transportMode: "hardware" },
+        wasm: null,
+        hardware: { status: "fulfilled", value: hardwareValue },
+        diagnosticAuthority: "hardware",
+      };
+    }
     const wasmValue = await mockEvalCodeWithDiagnostics(wasmCode ?? code);
     const hardwareValue = soft ? null : await mockSendTouSEQ(code);
     return {
@@ -138,6 +148,7 @@ vi.mock("./hardwareBindingDispatcher.ts", () => ({
 // ---------------------------------------------------------------------------
 
 const { evaluate } = await import("./editorEvaluation.ts");
+const { resyncLiveSlotIndexAfterEval } = await import("./liveEditRuntime.ts");
 
 function createView(doc: string): EditorView {
   return new EditorView({
@@ -165,6 +176,7 @@ describe("[CF2] hardware eval diagnostics drive inline lint", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sendResponseRef.current = { success: true };
+    hardwareOnlyRef.enabled = false;
   });
 
   afterEach(() => {
@@ -215,17 +227,13 @@ describe("[CF2] hardware eval diagnostics drive inline lint", () => {
     expect(hwDiags[0]!.start).toBe(4);
     expect(hwDiags[0]!.end).toBe(7);
 
-    // The WASM shadow returned [] this eval, so it called
-    // clearDiagnosticsForRange(view, from, to) with the canonical
-    // (rangeFrom, rangeTo). Assert the hardware push used exactly those
-    // same (rangeFrom, rangeTo) bounds. This is the §5.3 "identical on
-    // both targets" contract.
-    expect(mockClearDiagnosticsForRange).toHaveBeenCalled();
-    const [, wasmFrom, wasmTo] = mockClearDiagnosticsForRange.mock.calls[0];
+    // Hardware is authoritative in `both` mode (§1.2). The empty WASM
+    // shadow must not clear the range before or after the hardware result.
+    expect(mockClearDiagnosticsForRange).not.toHaveBeenCalled();
     // args: (view, diagnostics, docOffset=0 [already remapped], rangeFrom, rangeTo)
     expect(hwCall![2]).toBe(0); // docOffset: remap already incorporated sliceFrom
-    expect(hwCall![3]).toBe(wasmFrom); // rangeFrom matches WASM
-    expect(hwCall![4]).toBe(wasmTo); // rangeTo matches WASM
+    expect(hwCall![3]).toBe(0);
+    expect(hwCall![4]).toBe(doc.length);
   });
 
   it("does not push when the module response carries no diagnostics", async () => {
@@ -260,5 +268,17 @@ describe("[CF2] hardware eval diagnostics drive inline lint", () => {
       (c) => Array.isArray(c[1]) && c[1].length > 0,
     );
     expect(pushedNonEmpty).toBe(false);
+  });
+
+  it("invalidates the hardware slot-index map after a hardware-only eval", async () => {
+    hardwareOnlyRef.enabled = true;
+    view = createView("(a1 1)");
+    view.dispatch({ selection: { anchor: 1 } });
+    sendResponseRef.current = { success: true, diagnostics: [] };
+
+    evaluate(view, "toplevel");
+    await flushMicrotasks();
+
+    expect(resyncLiveSlotIndexAfterEval).toHaveBeenCalledOnce();
   });
 });

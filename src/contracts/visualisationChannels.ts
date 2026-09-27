@@ -5,7 +5,6 @@
 
 import { createChannel, type TypedChannel } from "../lib/typedChannel";
 import type {
-  SerialVisAutoOpenDetail,
   SerialVisPaletteChangedDetail,
   VisualisationSessionDetail,
 } from "./visualisationEvents";
@@ -21,7 +20,3 @@ export const visualisationSessionChannel: TypedChannel<VisualisationSessionDetai
 /** Fires when the serial-vis colour palette changes (theme swap, etc.). */
 export const serialVisPaletteChangedChannel: TypedChannel<SerialVisPaletteChangedDetail> =
   createChannel<SerialVisPaletteChangedDetail>();
-
-/** Fires to request the visualisation panel auto-opens. */
-export const serialVisAutoOpenChannel: TypedChannel<SerialVisAutoOpenDetail> =
-  createChannel<SerialVisAutoOpenDetail>();
