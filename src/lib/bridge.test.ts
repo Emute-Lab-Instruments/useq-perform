@@ -1,12 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createRoot } from "solid-js";
-import { Effect } from "effect";
-import { createResource } from "solid-js";
 import { useActorSignal } from "./useActorSignal";
-
-/** Inline of deleted effectResource.ts — wraps an Effect as a Solid resource. */
-const effectResource = <A>(eff: Effect.Effect<A, unknown, never>) =>
-  createResource(() => Effect.runPromise(eff));
 
 // ---------------------------------------------------------------------------
 // Helper: create a mock object that satisfies the AnyActorRef shape
@@ -116,11 +110,9 @@ describe("useActorSignal", () => {
       send: vi.fn(),
     };
 
-    let readState: (() => any) | null = null;
 
     createRoot((dispose) => {
       const { state } = useActorSignal(actor as any);
-      readState = state;
 
       // Emit while alive — signal updates
       subscriber?.("alive");
@@ -212,69 +204,6 @@ describe("useActorSignal", () => {
 
       // dispose should not throw even though unsubscribe is undefined
       expect(() => dispose()).not.toThrow();
-    });
-  });
-});
-
-// ===========================================================================
-// effectResource
-// ===========================================================================
-describe("effectResource", () => {
-  it("resolves with the value when the Effect succeeds", async () => {
-    const eff = Effect.succeed(42);
-
-    let resource: any;
-    createRoot((dispose) => {
-      const [res] = effectResource(eff);
-      resource = res;
-      dispose();
-    });
-
-    // Effect.runPromise is async, so wait for microtasks to flush
-    await vi.waitFor(() => {
-      expect(resource()).toBe(42);
-    });
-  });
-
-  it("resolves with complex values", async () => {
-    const data = { items: [1, 2, 3], name: "test" };
-    const eff = Effect.succeed(data);
-
-    let resource: any;
-    createRoot((dispose) => {
-      const [res] = effectResource(eff);
-      resource = res;
-      dispose();
-    });
-
-    await vi.waitFor(() => {
-      expect(resource()).toEqual(data);
-    });
-  });
-
-  it("resource is initially undefined before resolving", () => {
-    // Use a deferred effect that won't resolve immediately
-    const eff = Effect.promise(
-      () => new Promise<string>((resolve) => setTimeout(() => resolve("later"), 1000)),
-    );
-
-    createRoot((dispose) => {
-      const [resource] = effectResource(eff);
-      // Before async resolution, the resource value should be undefined
-      expect(resource()).toBeUndefined();
-      dispose();
-    });
-  });
-
-  it("returns a refetch function in the tuple", () => {
-    const eff = Effect.succeed("ok");
-
-    createRoot((dispose) => {
-      const result = effectResource(eff);
-      const [, actions] = result;
-      expect(actions).toBeDefined();
-      expect(typeof actions.refetch).toBe("function");
-      dispose();
     });
   });
 });

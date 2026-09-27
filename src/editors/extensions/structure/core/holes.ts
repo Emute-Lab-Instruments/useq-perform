@@ -6,7 +6,7 @@
  * `name` and `holeType` are not addressable.
  */
 
-import type { HoleNode, HoleType, IdGen, Node, NodeId } from "./types.ts";
+import type { HoleNode, HoleType, IdGen, Node } from "./types.ts";
 
 /** Create a fresh hole leaf. Holes are never Meta-bearing (§2.9.6). */
 export function makeHole(

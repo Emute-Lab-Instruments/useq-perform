@@ -23,9 +23,7 @@ import { describe, expect, it } from "vitest";
 import {
   createTransportFrameMap,
   TRANSPORT_FRAME_MAP_REVISION_INITIAL,
-  type TransportFrameMap,
   type TransportFrameMapSnapshot,
-  type TransportFrameMapState,
 } from "./transportFrameMap";
 
 // ---------------------------------------------------------------------------
@@ -230,9 +228,3 @@ describe("transportFrameMap / re-anchor flushes stale blocks (VAL-ENGINE-032)", 
 
 // Utility type: forces a readonly shape to mutable for negative tests.
 type mutable<T> = { -readonly [K in keyof T]: T[K] };
-
-// Touch the public types so they are exercised by the type-checker.
-function _typeCheck(snap: TransportFrameMapSnapshot): TransportFrameMapState {
-  return snap;
-}
-void _typeCheck;

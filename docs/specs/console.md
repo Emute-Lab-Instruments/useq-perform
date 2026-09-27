@@ -26,8 +26,12 @@ layer: behavioural
 
 1.7 The console is the canonical surface for serial `{type:"log",...}` messages, **eval result echoes**, **runtime warnings**, and **bootstrap notices**. Errors that have a corresponding inline diagnostic must still appear in the console as a message.
 
-1.8 A **clear** action wipes the message buffer. There is no per-type filter UI in v1.
+1.8 A **clear** action wipes the message buffer. A compact **filter row** between the title bar and the log provides view-only filtering: per-type toggles (`log` / `warn` / `error` / `wasm`), a case-insensitive text search that matches each entry's **stripped** plain text, and a match count (`visible/total`, shown only while a filter is active). Filtering never drops messages from the store; auto-scroll and unread behaviour (§1.6) keep operating against the filtered view. A filter change that hides the currently-typewriting entry treats that entry as finished so the typewriter queue keeps advancing.
+
+1.9 **Copy affordance.** Each entry has a hover "copy" control that copies the entry's plain (stripped) text to the clipboard.
+
+1.10 **Layout persistence.** The panel's size, position, collapsed state, and per-type filter toggles persist under the `consoleLayout` key through the central persistence service, so `?nosave` gates writes (see [persistence.md](persistence.md)). The panel is dragged by its title bar; a drag switches it from the default bottom-right anchor to a viewport position. Restored geometry is clamped to the current viewport and to `MIN_W`/`MIN_H`; missing or corrupt persisted fields fall back to defaults (persistence.md §1.6).
 
 ## Open / Deferred
 
-2.1 **Console filtering.** No per-type filter UI exists in v1. Whether to add filters/levels or keep the chronological log unfiltered is open.
+2.1 **Console filtering** — resolved. Per-type toggles, text search, and a match count shipped as the view-only filter row (§1.8); the chronological store itself remains unfiltered.

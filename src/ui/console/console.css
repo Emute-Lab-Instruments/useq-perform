@@ -78,6 +78,12 @@
   border-bottom: 1px solid var(--panel-border);
   gap: 6px;
   background: var(--toolbar-bg, rgba(0, 0, 0, 0.15));
+  cursor: grab;
+  touch-action: none;
+}
+
+.console-title-bar:active {
+  cursor: grabbing;
 }
 
 .console-title-bar .title-text {
@@ -144,6 +150,119 @@
   overflow-y: auto;
   overflow-x: hidden;
   user-select: text;
+}
+
+/* ---------- Filter row ---------- */
+
+.console-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--panel-groove, rgba(255, 255, 255, 0.06));
+  background: rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.console-filter-types {
+  display: flex;
+  gap: 4px;
+}
+
+.console-filter-type {
+  font-family: var(--code-font);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--item-border-radius, 4px);
+  background: transparent;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.console-filter-type--log   { color: var(--text-dim, rgba(255, 255, 255, 0.35)); }
+.console-filter-type--warn  { color: var(--status-warn, #ffd866); }
+.console-filter-type--error { color: var(--status-error, #ff9c9c); }
+.console-filter-type--wasm  { color: var(--accent-color); }
+
+.console-filter-type:hover {
+  background: var(--panel-item-hover-bg);
+}
+
+.console-filter-type--off {
+  opacity: 0.35;
+  text-decoration: line-through;
+}
+
+.console-filter-search {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--code-font);
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--item-border-radius, 4px);
+  background: var(--panel-control-bg, rgba(0, 0, 0, 0.2));
+  color: var(--text-primary);
+  outline: none;
+}
+
+.console-filter-search:focus {
+  border-color: color-mix(in srgb, var(--accent-color) 40%, transparent);
+}
+
+.console-filter-search::placeholder {
+  color: var(--text-dim, rgba(255, 255, 255, 0.35));
+}
+
+.console-filter-count {
+  font-size: 9px;
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Copy affordance ---------- */
+
+.console-entry .console-copy-btn {
+  flex-shrink: 0;
+  align-self: center;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--item-border-radius, 4px);
+  background: transparent;
+  color: var(--text-dim, rgba(255, 255, 255, 0.35));
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  font-family: var(--code-font);
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.console-entry:hover .console-copy-btn,
+.console-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.console-entry .console-copy-btn:hover {
+  background: var(--panel-item-hover-bg);
+  color: var(--text-primary);
+}
+
+.console-entry .console-copy-btn--done,
+.console-entry .console-copy-btn--done:hover {
+  color: var(--status-ok, #7ee787);
+  opacity: 1;
 }
 
 /* ---------- Entries ---------- */

@@ -37,8 +37,7 @@ import { createRoot, createEffect } from "solid-js";
 
 import {
   lastEvaluatedExpressionField,
-  findExpressionBounds,
-  findExpressionRanges,
+  collectOutputAssignments,
   isRangeActive,
 } from "./expressionEvalState.ts";
 import { handlePlayExpression } from "./expressionEval.ts";
@@ -67,7 +66,7 @@ export interface GutterConfig {
   /** Report the resolved color for an expression type (for external UI sync) */
   reportColor: (exprType: string, color: string | null) => void;
   /** Handle play button click on an expression */
-  onPlayExpression: (view: EditorView, exprType: string) => void;
+  onPlayExpression: (view: EditorView, exprType: string, position?: { from: number; to: number }) => void;
   /** Subscribe to external changes that should trigger gutter rebuild. Returns unsubscribe function. */
   onExternalChange: (callback: () => void) => () => void;
 }
@@ -119,6 +118,7 @@ export class ExpressionGutterMarker extends GutterMarker {
     showPlayButton = false,
     isVisualised = false,
     isFailing = false,
+    readonly position?: { from: number; to: number },
   ) {
     super();
     this.color = color;
@@ -174,13 +174,19 @@ export class ExpressionGutterMarker extends GutterMarker {
     }
 
     if (this.showPlayButton && this.exprType) {
-      const btn = document.createElement("span");
+      const btn = document.createElement("button");
+      btn.type = "button";
       btn.className = "cm-expr-play-btn";
       btn.dataset.expr = this.exprType;
+      if (this.position) {
+        btn.dataset.from = String(this.position.from);
+        btn.dataset.to = String(this.position.to);
+      }
       btn.textContent = "▶";
       btn.title = this.isVisualised
         ? `Stop visualising ${this.exprType}`
-        : `Play ${this.exprType}`;
+        : `Visualise ${this.exprType}`;
+      btn.setAttribute("aria-label", btn.title);
       btn.setAttribute("aria-pressed", this.isVisualised ? "true" : "false");
 
       const bg = this.isVisualised ? baseColor : "rgba(0, 0, 0, 0.45)";
@@ -224,6 +230,7 @@ export class ExpressionGutterMarker extends GutterMarker {
         text-align: center;
         font-size: 10px;
         font-weight: bold;
+        padding: 0;
         cursor: pointer;
         user-select: none;
         color: ${fg};
@@ -254,7 +261,9 @@ export class ExpressionGutterMarker extends GutterMarker {
       other.exprType === this.exprType &&
       other.showPlayButton === this.showPlayButton &&
       other.isVisualised === this.isVisualised &&
-      other.isFailing === this.isFailing
+      other.isFailing === this.isFailing &&
+      other.position?.from === this.position?.from &&
+      other.position?.to === this.position?.to
     );
   }
 }
@@ -265,7 +274,7 @@ export class ExpressionGutterMarker extends GutterMarker {
 
 /** Pure: create gutter markers for a single expression range. */
 export function createMarkersForRange(
-  range: { color: string; from: number; to: number },
+  range: { color: string; from: number; to: number; startPos?: number; endPos?: number },
   isActive: boolean,
   docLineFn: (line: number) => { from: number },
   exprType: string,
@@ -274,8 +283,10 @@ export function createMarkersForRange(
   isFailing = false,
 ): Array<{ pos: number; marker: ExpressionGutterMarker }> {
   const markers: Array<{ pos: number; marker: ExpressionGutterMarker }> = [];
-  const midLine = Math.floor((range.from + range.to) / 2);
-  const position = { from: range.from, to: range.to };
+  const position = {
+    from: range.startPos ?? range.from,
+    to: range.endPos ?? range.to,
+  };
 
   for (let line = range.from; line <= range.to; line++) {
     const isStart = line === range.from;
@@ -283,7 +294,7 @@ export function createMarkersForRange(
     const isMid = !isStart && !isEnd;
 
     const buttonsEnabled = isClearButtonEnabled();
-    const showPlayButton = buttonsEnabled && line === midLine;
+    const showPlayButton = buttonsEnabled && isStart;
 
     const marker = new ExpressionGutterMarker(
       range.color,
@@ -295,6 +306,7 @@ export function createMarkersForRange(
       showPlayButton,
       isVisualisedFn(exprType, position),
       isFailing,
+      position,
     );
     const lineObj = docLineFn(line);
     markers.push({ pos: lineObj.from, marker });
@@ -305,8 +317,8 @@ export function createMarkersForRange(
 
 /** Pure: process all expression ranges and create sorted markers. */
 export function processExpressionRanges(
-  expressionRanges: Map<string, Array<{ color: string; from: number; to: number }>>,
-  lastEvaluatedMap: Map<string, { line: number }>,
+  expressionRanges: Map<string, Array<{ color: string; from: number; to: number; startPos?: number; endPos?: number }>>,
+  lastEvaluatedMap: Map<string, { line: number; from?: number; to?: number }>,
   docLineFn: (line: number) => { from: number },
   reportColorFn: (exprType: string, color: string | null) => void,
   isClearButtonEnabled: () => boolean,
@@ -354,16 +366,21 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
     const lastEvaluated =
       !config.isLastTrackingEnabled() ? new Map() : lastEvaluatedRaw;
 
-    const docLines: Array<{ text: string; from: number }> = [];
-    for (let line = 1; line <= doc.lines; line++) {
-      docLines.push(doc.line(line));
+    const expressionRanges = new Map<string, Array<{
+      color: string; from: number; to: number; startPos: number; endPos: number;
+    }>>();
+    for (const assignment of collectOutputAssignments(state)) {
+      const match = /^([ads])([1-8])$/.exec(assignment.expressionType)!;
+      const ranges = expressionRanges.get(assignment.expressionType) ?? [];
+      ranges.push({
+        color: config.getExpressionColor(match),
+        from: assignment.line,
+        to: assignment.endLine,
+        startPos: assignment.from,
+        endPos: assignment.to,
+      });
+      expressionRanges.set(assignment.expressionType, ranges);
     }
-
-    const expressionRanges = findExpressionRanges(
-      docLines,
-      (matchStart) => findExpressionBounds(state, matchStart),
-      config.getExpressionColor,
-    );
 
     buildingMarkers = true;
     try {
@@ -443,7 +460,10 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
           e.stopPropagation();
           const exprType = (playBtn as HTMLElement).getAttribute("data-expr");
           if (!exprType) return;
-          config.onPlayExpression(this.view, exprType);
+          const from = Number((playBtn as HTMLElement).dataset.from);
+          const to = Number((playBtn as HTMLElement).dataset.to);
+          if (!Number.isInteger(from) || !Number.isInteger(to)) return;
+          config.onPlayExpression(this.view, exprType, { from, to });
         }
       }
 
@@ -473,14 +493,18 @@ export function createExpressionGutter(config: GutterConfig): Extension[] {
     domEventHandlers: {},
   });
 
-  return [gutterField, clickPlugin, gutterExt];
+  return [gutterField, clickPlugin, gutterExt, EditorView.baseTheme({
+    // CodeMirror places all markers for a line in one element. Outputs
+    // sharing a form need parallel rails instead of overflowing into later lines.
+    ".cm-expression-gutter .cm-gutterElement": { display: "flex" },
+  })];
 }
 
 // ---------------------------------------------------------------------------
-// Default config — backward-compatible wrapper using global state
+// Default config — production wiring to global state
 // ---------------------------------------------------------------------------
 
-/** Default config that reads from the app's global state (backward-compatible). */
+/** Default config that reads from the app's global state. */
 export function createDefaultGutterConfig(): GutterConfig {
   return {
     isGutterEnabled: () => ((getAppSettings()?.ui) as any)?.expressionGutterEnabled !== false,
@@ -493,7 +517,7 @@ export function createDefaultGutterConfig(): GutterConfig {
       return entry?.health === "error" || entry?.health === "fallback";
     },
     reportColor: (exprType, color) => visualisationSession.expressions.reportColor(exprType, color),
-    onPlayExpression: (view, exprType) => handlePlayExpression(view, exprType),
+    onPlayExpression: (view, exprType, position) => handlePlayExpression(view, exprType, position),
     onExternalChange: (callback) => {
       const unsub1 = subscribeAppSettings(callback);
       const unsub2 = visualisationSessionChannel.subscribe(callback);

@@ -4,13 +4,13 @@
 // resolver without errors. Not exhaustive — validates the plumbing.
 
 import { describe, expect, it, vi } from "vitest";
-import { chord, keyOf, tap, held } from "../gestures";
+import { chord, tap, held } from "../gestures";
 import {
   buildLayerMap,
   lintBindings,
   resolveGesture,
 } from "../resolver";
-import type { AppStateSnapshot, GamepadState, Layer, LayerName } from "../types";
+import type { AppStateSnapshot, GamepadState, LayerName } from "../types";
 import { radialLayer } from "./radial";
 import { modalShiftLayers } from "./modal-shift";
 import { leaderLayers, leaderTransientLayers } from "./leader";

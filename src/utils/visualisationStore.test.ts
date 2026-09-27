@@ -117,6 +117,7 @@ describe("visualisationStore", () => {
 
       updateSettings({
         windowDuration: 20,
+        showFutureProjection: false, historyHeadroom: 2, maxHistorySeconds: 120,
         sampleCount: 200,
         lineWidth: 3,
         futureDashed: false,

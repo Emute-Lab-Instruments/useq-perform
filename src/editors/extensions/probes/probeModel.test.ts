@@ -58,10 +58,21 @@ describe("probe persistence model", () => {
     expect(port.savePersistedProbes).toHaveBeenCalledWith([validProbe]);
   });
 
-  it("signs only fields that require persistence refresh", () => {
+  it("includes cached code in the persistence signature used at restore", () => {
     const signature = probeSignature([validProbe]);
-    expect(probeSignature([{ ...validProbe, cachedCode: "changed" }])).toBe(signature);
+    expect(probeSignature([{ ...validProbe, cachedCode: "changed" }])).not.toBe(signature);
     expect(probeSignature([{ ...validProbe, depth: 1 }])).not.toBe(signature);
+  });
+
+  it("rejects unsafe offsets and clamps contextual depth to its maximum", () => {
+    const probes = readPersistedProbes(persistence([
+      { ...validProbe, from: -1 },
+      { ...validProbe, from: 2.5 },
+      { ...validProbe, to: Infinity },
+      { ...validProbe, depth: NaN },
+      { ...validProbe, depth: 10 },
+    ]));
+    expect(probes).toEqual([{ ...validProbe, depth: 3 }]);
   });
 
   it("reuses identical renders and revisions changed renders", () => {

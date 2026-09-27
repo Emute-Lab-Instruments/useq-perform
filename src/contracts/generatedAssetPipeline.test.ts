@@ -327,7 +327,7 @@ describe("VAL-CROSS-011: checksums link built and served bytes", () => {
       },
     });
     const appDirtyEntries = git([
-      "status", "--porcelain", "--untracked-files=no",
+      "status", "--porcelain", "--untracked-files=all",
     ]).split("\n").filter(Boolean).sort();
     expect(manifest.application).toEqual({
       git_commit: git(["rev-parse", "HEAD"]),
@@ -619,6 +619,9 @@ describe("VAL-DSP-015: osc/sine NodeDef is a separate build artefact", () => {
     expect(packageJson.scripts?.watch).toContain("build:wasm");
     expect(packageJson.scripts?.["build:wasm"]).toContain(
       "./nodedef/build_osc_sine_wasm.sh",
+    );
+    expect(packageJson.scripts?.["build:wasm"]).toContain(
+      "nix-shell src-useq/shell.nix --run",
     );
   });
 

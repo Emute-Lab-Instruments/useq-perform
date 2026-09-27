@@ -2,7 +2,8 @@
  * Visualisation Sampler — faithful-past / projected-future architecture
  *
  * The runtime calls `tickAndProject()` for each committed live sample:
- *   1. Tick — advance WASM state to the sample time, record output values in
+ *   1. Backfill missed time-only samples, then tick — advance WASM state
+ *      to the sample time and record output values in
  *      per-output rolling buffers (PastBuffer).
  *   2. Project — on the newest sample for a frame, batch-evaluate the
  *      future window from t=now forward with save/restore (live state is
@@ -70,6 +71,7 @@ import {
   ensurePastBuffer,
   futureBufferFor,
   futureProjectionSampleRate,
+  getTemporalSampleRate,
 } from "./visualisationBuffers.ts";
 import {
   DEFAULT_INPUT_EPSILON,
@@ -186,6 +188,10 @@ async function refreshClassificationCache(): Promise<void> {
 // Falls back to conservative (invalidate all) when classifications
 // are unavailable.
 
+// A recorded sample can seed exact reconstruction only while its signal
+// definition and parameters remain unchanged.
+let signalRevision = 0;
+const pastSampleRevisions = new WeakMap<PastBuffer, number>();
 let futureInvalidated = false;
 let projectionFrontier = -Infinity;
 let invalidatedFutureOutputs: Set<string> | null = new Set();
@@ -204,6 +210,7 @@ function normalizeInvalidatedOutputs(
 export function invalidateFutureProjections(
   exprTypes?: string | Iterable<string> | null,
 ): void {
+  signalRevision += 1;
   const scopedOutputs = normalizeInvalidatedOutputs(exprTypes);
   const alreadyAllInvalidated = futureInvalidated && invalidatedFutureOutputs === null;
   futureInvalidated = true;
@@ -310,6 +317,7 @@ function applyTickValues(
   outputs: string[],
   timeSeconds: number,
   tickValues: Map<string, number>,
+  revision: number,
 ): void {
   const barValue = tickValues.get("bar");
   if (typeof barValue === "number" && Number.isFinite(barValue)) {
@@ -323,10 +331,62 @@ function applyTickValues(
     const value = tickValues.get(name);
     if (typeof value === "number" && Number.isFinite(value)) {
       buf.push(timeSeconds, value);
+      pastSampleRevisions.set(buf, revision);
       recordDriftSample(name, value);
     }
   }
   checkDriftThreshold();
+}
+
+/**
+ * Time-only outputs can be evaluated retrospectively without guessing inputs
+ * or replaying live state. Use the runtime's save/restore batch evaluator, and
+ * bound work to the retained visible window even after a long suspension.
+ */
+async function backfillPureHistory(
+  outputs: string[],
+  timeSeconds: number,
+  settings: VisSettings,
+  revision: number,
+  isCurrent: () => boolean,
+): Promise<void> {
+  const hz = getTemporalSampleRate();
+  const interval = 1 / hz;
+  const maxGap = Math.max(0.25, 4 * interval);
+  if (!wasmPort().capabilities().supportsTimeWindow) return;
+  for (const name of outputs) {
+    const buffer = ensurePastBuffer(name);
+    const previousTime = buffer.newestTime;
+    if (getOutputClass(name) !== OutputClass.Pure ||
+        pastSampleRevisions.get(buffer) !== revision ||
+        !Number.isFinite(previousTime) ||
+        timeSeconds - previousTime <= maxGap) continue;
+
+    const visibleDuration = settings.showFutureProjection
+      ? settings.windowDuration / 2 : settings.windowDuration;
+    const start = Math.max(previousTime + interval, timeSeconds - visibleDuration);
+    const end = timeSeconds - interval;
+    if (end < start) continue;
+    const count = Math.min(buffer.capacity - 1, 8192,
+      Math.max(2, Math.ceil((end - start) * hz) + 1));
+    if (count < 2) continue;
+    try {
+      const result = await evalOutputsInTimeWindow([name], start, end, count);
+      if (!isCurrent() || signalRevision !== revision) return;
+      // An unregister/re-register or another writer must not receive stale data.
+      if (ensurePastBuffer(name) !== buffer || buffer.newestTime !== previousTime) continue;
+      const samples = result.get(name);
+      if (!samples || samples.length !== count ||
+          samples.some((sample, index) =>
+            !Number.isFinite(sample.value) || !Number.isFinite(sample.time) ||
+            sample.time < start - 1e-6 || sample.time > end + 1e-6 ||
+            (index > 0 && sample.time <= samples[index - 1].time))) continue;
+      for (const sample of samples) buffer.push(sample.time, sample.value);
+    } catch (error) {
+      dbg(`visualisationSampler: history reconstruction failed: ${error}`);
+      // A failed reconstruction must not prevent the current live tick.
+    }
+  }
 }
 
 /**
@@ -348,6 +408,9 @@ export async function tickAndProject(
   const isCurrent = options.isCurrent ?? (() => true);
   if (!isCurrent()) return;
   const outputs = Object.keys(visStore.expressions);
+  const revision = signalRevision;
+  await backfillPureHistory(outputs, timeSeconds, settings, revision, isCurrent);
+  if (!isCurrent()) return;
   const requestedOutputs = ["bar", ...outputs];
   const noUserOutputs = outputs.length === 0;
   const projectFuture = options.projectFuture !== false;
@@ -486,7 +549,7 @@ export async function tickAndProject(
         });
       }
       if (import.meta.env.DEV) perf.begin("sampler-apply-tick");
-      applyTickValues(outputs, timeSeconds, combined.tickValues);
+      applyTickValues(outputs, timeSeconds, combined.tickValues, revision);
       if (import.meta.env.DEV) perf.end("sampler-apply-tick");
 
       if (noUserOutputs) return;
@@ -567,7 +630,7 @@ export async function tickAndProject(
     }
   }
   if (import.meta.env.DEV) perf.begin("sampler-apply-tick");
-  applyTickValues(outputs, timeSeconds, tickValuesNumeric);
+  applyTickValues(outputs, timeSeconds, tickValuesNumeric, revision);
   if (import.meta.env.DEV) perf.end("sampler-apply-tick");
 
   if (outputs.length === 0) return;
@@ -751,7 +814,10 @@ export async function registerVisualisation(
     return;
   }
 
-  await evalInUseqWasmSilently(trimmed);
+  const result = await evalInUseqWasmSilently(trimmed);
+  if (isWasmErrorResult(result)) {
+    throw new Error(`uSEQ returned ${WASM_ERROR_RESULT}`);
+  }
   await refreshClassificationCache();
 
   ensurePastBuffer(exprType);

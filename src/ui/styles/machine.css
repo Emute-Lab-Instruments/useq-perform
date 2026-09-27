@@ -139,12 +139,12 @@
 .machine-row[data-state="fallback"] {
   /* LKG: broken, but still sounding — must read as distinct from both a
      healthy row and a dead one (the-machine.md §2.2). */
-  border-left-color: #ffb020;
+  border-left-color: var(--status-warn, #ffb020);
   border-left-style: dashed;
 }
 
 .machine-row[data-state="error"] {
-  border-left-color: #ff4444;
+  border-left-color: var(--status-error, #ff4444);
 }
 
 .machine-row-output {
@@ -168,7 +168,7 @@
 
 .machine-row[data-lkg="true"] .machine-row-state {
   opacity: 0.9;
-  color: #ffb020;
+  color: var(--status-warn, #ffb020);
 }
 
 /* ── Jacks ─────────────────────────────────────────────────────── */
@@ -200,11 +200,11 @@
 }
 
 .machine-jack[data-state="fallback"] .machine-jack-ring {
-  border-color: #ffb020;
+  border-color: var(--status-warn, #ffb020);
 }
 
 .machine-jack[data-state="error"] .machine-jack-ring {
-  border-color: #ff4444;
+  border-color: var(--status-error, #ff4444);
 }
 
 .machine-spark {

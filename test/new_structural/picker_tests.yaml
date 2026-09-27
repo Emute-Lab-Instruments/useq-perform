@@ -67,36 +67,36 @@
   code: "(a b)"
   selection: "a"
   actions: [insert, maths, "+", apply_call]
-  new_code: "(a (+ _) b)"
-  new_selection: "_"
+  new_code: "(a (+ ($ _ :expr)) b)"
+  new_selection: "($ _ :expr)"
 
 - name: "insert function call before - apply_call_pre"
   code: "(a b)"
   selection: "b"
   actions: [insert, maths, "+", apply_call_pre]
-  new_code: "(a (+ _) b)"
-  new_selection: "_"
+  new_code: "(a (+ ($ _ :expr)) b)"
+  new_selection: "($ _ :expr)"
 
 - name: "insert function call at end"
   code: "(foo bar)"
   selection: "bar"
   actions: [insert, maths, "*", apply_call]
-  new_code: "(foo bar (* _))"
-  new_selection: "_"
+  new_code: "(foo bar (* ($ _ :expr)))"
+  new_selection: "($ _ :expr)"
 
 - name: "insert nested function call"
   code: "(+ 1 2)"
   selection: "1"
   actions: [insert, maths, "*", apply_call]
-  new_code: "(+ 1 (* _) 2)"
-  new_selection: "_"
+  new_code: "(+ 1 (* ($ _ :expr)) 2)"
+  new_selection: "($ _ :expr)"
 
 - name: "insert function with multiple holes"
   code: "(a)"
   selection: "a"
   actions: [insert, maths, "+", apply_call]
-  new_code: "(a (+ _))"
-  new_selection: "_"
+  new_code: "(a (+ ($ _ :expr)))"
+  new_selection: "($ _ :expr)"
 
 # ============================================================================
 # INSERT - WRAP OPERATIONS (apply_wrap)
@@ -106,43 +106,43 @@
   code: "(a b c)"
   selection: "b"
   actions: [insert, maths, "+", apply_wrap]
-  new_code: "(a (+ b _) c)"
-  new_selection: "_"
+  new_code: "(a (+ b ($ _ :expr)) c)"
+  new_selection: "($ _ :expr)"
 
 - name: "wrap expression in function call"
   code: "(foo (* 2 3) bar)"
   selection: "(* 2 3)"
   actions: [insert, maths, "+", apply_wrap]
-  new_code: "(foo (+ (* 2 3) _) bar)"
-  new_selection: "_"
+  new_code: "(foo (+ (* 2 3) ($ _ :expr))\n     bar)"
+  new_selection: "($ _ :expr)"
 
 - name: "wrap first element"
   code: "(a b c)"
   selection: "a"
   actions: [insert, maths, "*", apply_wrap]
-  new_code: "((* a _) b c)"
-  new_selection: "_"
+  new_code: "((* a ($ _ :expr)) b c)"
+  new_selection: "($ _ :expr)"
 
 - name: "wrap last element"
   code: "(a b c)"
   selection: "c"
   actions: [insert, maths, "-", apply_wrap]
-  new_code: "(a b (- c _))"
-  new_selection: "_"
+  new_code: "(a b (- c ($ _ :expr)))"
+  new_selection: "($ _ :expr)"
 
 - name: "wrap entire expression"
   code: "(a b)"
   selection: "(a b)"
   actions: [insert, maths, "+", apply_wrap]
-  new_code: "(+ (a b) _)"
-  new_selection: "_"
+  new_code: "(+ (a b) ($ _ :expr))"
+  new_selection: "($ _ :expr)"
 
 - name: "wrap in vector"
   code: "[1 2 3]"
   selection: "2"
   actions: [insert, maths, "*", apply_wrap]
-  new_code: "[1 (* 2 _) 3]"
-  new_selection: "_"
+  new_code: "[1 (* 2 ($ _ :expr)) 3]"
+  new_selection: "($ _ :expr)"
 
 # ============================================================================
 # COMPLEX EDITING SEQUENCES (insert-dependent)

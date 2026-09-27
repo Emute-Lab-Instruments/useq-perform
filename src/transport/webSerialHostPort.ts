@@ -118,6 +118,28 @@ export const webSerialHostPort: WebSerialHostPort = {
     await sendTouSEQ(code, capture);
   },
 
+  async evalCodeWithDiagnostics(code: string) {
+    const response = await sendTouSEQ(code) as {
+      success?: boolean;
+      text?: unknown;
+      result?: unknown;
+      diagnostics?: unknown;
+      error?: unknown;
+    };
+    return {
+      success: response?.success !== false,
+      result: typeof response?.result === "string"
+        ? response.result
+        : typeof response?.text === "string"
+          ? response.text
+          : null,
+      diagnostics: Array.isArray(response?.diagnostics)
+        ? response.diagnostics
+        : [],
+      ...(typeof response?.error === "string" ? { error: response.error } : {}),
+    };
+  },
+
   async requestStateSnapshot(): Promise<StateSnapshot | null> {
     try {
       const response = await sendGetState();

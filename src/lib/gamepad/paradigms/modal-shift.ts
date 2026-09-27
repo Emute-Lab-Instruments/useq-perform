@@ -55,7 +55,6 @@ import type {
   LayerName,
 } from "../types";
 import { isMainMenuOpen } from "../../mainMenu/store";
-import { isGrabActive } from "../grabState";
 
 const ln = (n: string) => n as LayerName;
 const ch = (n: string) => n as AxisChannelName;
@@ -157,7 +156,7 @@ const lbRbShiftedLayer: Layer = {
 // ─────────────────────────────────────────────────────────────────────────────
 const grabLayer: Layer = {
   name: ln("grab-mode"),
-  when: () => isGrabActive(),
+  when: (state) => state.grabActive === true,
   gestures: {
     [keyOf(tap("Left"))]: "grab.moveLeft",
     [keyOf(held("Left"))]: "grab.moveLeft",

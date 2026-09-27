@@ -118,7 +118,6 @@ describe("liveEditPanel callback routing", () => {
   it("onValueChange routes to store.setValue and persistence.saveValue", () => {
     const store = makeStore();
     const persistence = makePersistence();
-    const learnController = makeLearnController();
 
     // Simulate what handleValueChange does (extracted from WiredLiveEditPanel).
     const slotId = "slot-abc";

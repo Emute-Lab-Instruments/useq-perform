@@ -1,23 +1,24 @@
 #panel-main-editor {
-    z-index: 0;
+    z-index: var(--z-editor);
 }
 
 #panel-top-toolbar {
-    z-index: 30;
+    z-index: var(--z-toolbar);
 }
 
 #panel-toolbar {
-    z-index: 35;
+    z-index: var(--z-toolbar-side);
 }
 
-/* Update notification should appear above everything */
+/* Update notification floats with the toolbar band (import order below
+   makes this the winning declaration over toolbar.css). */
 #update-notification-panel {
-    z-index: 30;
+    z-index: var(--z-toolbar);
 }
 
 /* Above everything else except for panel-aux */
 #panel-vis {
-    z-index: 19;
+    z-index: var(--z-vis);
 
     & #serialcanvas-gl,
     & #serialcanvas-gl-overlay {

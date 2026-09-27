@@ -27,12 +27,12 @@ const BENCHMARK_EXPRESSIONS: Array<{ name: string; code: string }> = [
   { name: "a2", code: "(a2 (slow 2 bar))" },
   { name: "a3", code: "(a3 (fast 4 bar))" },
   // Tier 2 — smooth shapers.
-  { name: "a4", code: "(a4 (usin bar))" },
-  { name: "a5", code: "(a5 (usin (fast 8 bar)))" },
+  { name: "a4", code: "(a4 (sin bar))" },
+  { name: "a5", code: "(a5 (sin (fast 8 bar)))" },
   // Tier 3 — quantised + arithmetic.
   { name: "a6", code: "(a6 (from-list [0.1 0.4 0.2 0.7] bar))" },
-  { name: "a7", code: "(a7 (* (usin bar) (usin (fast 3 bar))))" },
-  { name: "a8", code: "(a8 (+ (* 0.1 (usin beat)) (* 0.2 (from-list [1 2 1 4] (slow 2 bar)))))" },
+  { name: "a7", code: "(a7 (* (sin bar) (sin (fast 3 bar))))" },
+  { name: "a8", code: "(a8 (+ (* 0.1 (sin beat)) (* 0.2 (from-list [1 2 1 4] (slow 2 bar)))))" },
   // Digital outputs (Tier 1 onward beyond 8 channels).
   { name: "d1", code: "(d1 (sqr 2))" },
   { name: "d2", code: "(d2 (sqr 4))" },

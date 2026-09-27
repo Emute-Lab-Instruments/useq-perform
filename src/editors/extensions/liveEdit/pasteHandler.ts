@@ -141,7 +141,7 @@ export const liveEditPasteHandler = ViewPlugin.fromClass(
 
         const changes: ChangeSpec[] = [];
 
-        for (const [id, occurrences] of idMap) {
+        for (const occurrences of idMap.values()) {
           if (occurrences.length <= 1) continue;
 
           // Keep the first occurrence, rewrite subsequent ones

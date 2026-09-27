@@ -119,8 +119,9 @@ export function LiveEditCard(props: LiveEditCardProps) {
             class="le-panel-card-affordance"
             onClick={() => props.onClearBinding()}
             title="Clear MIDI binding"
+            aria-label="Clear MIDI binding"
           >
-            ✕
+            <span aria-hidden="true">✕</span>
           </button>
         </Show>
 
@@ -132,8 +133,9 @@ export function LiveEditCard(props: LiveEditCardProps) {
             aria-haspopup="menu"
             aria-expanded={menuOpen()}
             title="More actions"
+            aria-label="More actions"
           >
-            ⋮
+            <span aria-hidden="true">⋮</span>
           </button>
           <Show when={menuOpen()}>
             <div class="le-panel-card-menu" role="menu">

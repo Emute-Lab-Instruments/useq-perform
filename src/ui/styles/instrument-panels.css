@@ -1,0 +1,317 @@
+/* Help and Settings share the instrument's theme and a compact faceplate.
+   Scope the chrome here so other floating tools retain their own treatment. */
+.panel-chrome:has(.help-panel, .settings-panel-container) {
+  --instrument-surface: color-mix(in srgb, var(--toolbar-bg) 94%, var(--text-primary) 6%);
+  background: var(--instrument-surface);
+  border-color: color-mix(in srgb, var(--panel-border) 75%, var(--accent-color) 25%);
+  border-radius: 3px;
+  box-shadow: 0 12px 36px #0005, inset 0 1px var(--panel-ridge);
+  container-type: inline-size;
+}
+
+.panel-chrome:has(.help-panel, .settings-panel-container) > .panel-chrome-title-bar {
+  height: 38px;
+  min-height: 38px;
+  padding: 0 12px;
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.panel-chrome:has(.help-panel, .settings-panel-container) .title-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+.panel-chrome:has(.help-panel, .settings-panel-container) .title-text::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--accent-color);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent-color) 25%, transparent);
+}
+
+.panel-chrome:has(.help-panel, .settings-panel-container) .title-text::after {
+  content: '';
+  flex: 1;
+  height: 5px;
+  margin: 0 12px;
+  opacity: 0.45;
+  background: repeating-linear-gradient(90deg, var(--panel-border) 0 1px, transparent 1px 5px);
+}
+
+.panel-chrome:has(.help-panel, .settings-panel-container) .chrome-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--panel-border);
+  color: var(--text-secondary);
+}
+
+.panel-chrome:has(.help-panel, .settings-panel-container) > .panel-chrome-content {
+  overflow: hidden;
+}
+
+.help-panel, .settings-panel-container {
+  height: 100%;
+  min-height: 0;
+  font-size: 16px;
+}
+
+:is(.help-panel, .settings-panel-container) .panel-nav-bar {
+  flex-shrink: 0;
+  min-height: 39px;
+  overflow-x: auto;
+  background: var(--panel-control-bg);
+}
+
+:is(.help-panel, .settings-panel-container) .panel-tab-button {
+  flex-shrink: 0;
+  padding: 10px 15px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  border-right: 0;
+  color: var(--text-secondary);
+}
+
+:is(.help-panel, .settings-panel-container) .panel-tab-button.active {
+  color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+}
+
+:is(.help-panel, .settings-panel-container) .panel-tab-button.active::after {
+  height: 2px;
+  bottom: 0;
+  left: 14px;
+  right: 14px;
+}
+
+/* Secondary tabs read as a smaller index within the selected main tab. */
+.help-panel .panel-tab .panel-nav-bar { min-height: 32px; }
+.help-panel .panel-tab .panel-tab-button { padding: 8px 14px; font-size: 10px; }
+
+:is(.help-panel, .settings-panel-container) :is(button, input, select, [tabindex]):focus-visible,
+.settings-panel-container .panel-toggle:has(:focus-visible) .panel-toggle-track,
+.settings-panel-container .panel-range:has(:focus-visible) .panel-range-track {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+/* Settings: a numbered index of control sections, with recessed controls. */
+.settings-panel-container #general-settings-tab > .panel-tab-content {
+  counter-reset: setting-section;
+  padding: 8px 12px 0;
+}
+
+.settings-panel-container #general-settings-tab .panel-section {
+  counter-increment: setting-section;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.settings-panel-container .panel-section-toggle {
+  min-height: 41px;
+  padding: 10px 4px;
+  gap: 10px;
+}
+
+.settings-panel-container .panel-section-toggle::before {
+  content: counter(setting-section, decimal-leading-zero);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-panel-container .panel-section-arrow { order: 1; margin-left: auto; }
+.settings-panel-container .panel-section-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  line-height: 1.3;
+}
+
+.settings-panel-container .panel-section--open > .panel-section-toggle :is(.panel-section-title, .panel-section-arrow),
+.settings-panel-container .panel-section--open > .panel-section-toggle::before {
+  color: var(--accent-color);
+}
+
+.settings-panel-container .panel-section-body {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+  background: var(--panel-control-bg);
+}
+
+.settings-panel-container .panel-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(120px, 1fr);
+  gap: 14px;
+  margin: 0;
+  min-height: 38px;
+}
+
+.settings-panel-container .panel-label { font-size: 12px; line-height: 1.45; }
+.settings-panel-container :is(.panel-text-input, .panel-select, .panel-number-input) {
+  min-height: 30px;
+  font-size: 12px;
+  box-sizing: border-box;
+  border-radius: 2px;
+}
+
+.settings-panel-container .panel-control { justify-content: flex-end; }
+.settings-panel-container .settings-footer {
+  padding: 16px 0;
+  gap: 12px;
+  border: 0;
+  align-items: flex-start;
+}
+
+.settings-panel-container .settings-footer-group { flex-wrap: wrap; }
+.settings-panel-container .settings-footer .panel-button {
+  font-size: 10px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-color: var(--panel-border);
+  color: var(--text-secondary);
+}
+
+.settings-panel-container .settings-footer .panel-button:hover {
+  color: var(--accent-color);
+  background: var(--panel-item-hover-bg);
+  border-color: var(--accent-color);
+}
+
+.settings-panel-container .settings-footer .reset { color: var(--text-muted); }
+.settings-panel-container .settings-footer .reset:hover { color: var(--status-error, #ff7777); border-color: var(--status-error, #ff7777); }
+.settings-panel-container .themes-container {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+.settings-panel-container #keybindings-settings-tab { padding: 12px; box-sizing: border-box; }
+.settings-panel-container #keybindings-settings-tab .panel-section-title {
+  margin-bottom: 8px;
+  color: var(--accent-color);
+}
+
+/* Help: a readable manual, with a bounded index and visible chapter summaries. */
+.help-panel .guide-tab {
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  overscroll-behavior: contain;
+  scroll-padding-top: 54px;
+}
+
+.help-panel .guide-toc {
+  top: 0;
+  padding: 0;
+  margin-bottom: 14px;
+  background: var(--instrument-surface, var(--panel-bg));
+  border-color: var(--panel-border);
+  box-shadow: 0 -12px var(--instrument-surface, var(--panel-bg)), 0 3px 8px #0002;
+}
+
+.help-panel .guide-toc-toggle {
+  min-height: 34px;
+  padding: 8px 10px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.help-panel .guide-toc-list {
+  max-height: min(210px, 32vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 0 6px 6px;
+}
+
+.help-panel .guide-toc-entry { padding: 0; }
+.help-panel .guide-toc-link {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  background: none;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.help-panel .guide-toc-entry:focus-within .guide-toc-dismiss-btn { opacity: 1; }
+.help-panel .guide-domain-divider { margin: 14px 0 12px; opacity: 1; font-size: 9px; }
+.help-panel .guide-chapter { margin-bottom: 26px; }
+.help-panel .guide-chapter-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.help-panel .guide-chapter-title {
+  color: var(--text-primary);
+  font-size: 18px;
+  line-height: 1.35;
+  letter-spacing: -0.04em;
+}
+
+.help-panel .guide-chapter-summary {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: normal;
+  overflow: visible;
+}
+
+.help-panel .guide-expand-all-btn { font-size: 9px; padding: 5px 7px; }
+.help-panel .guide-section { border-top: 1px solid var(--panel-border); }
+.help-panel .guide-section-header {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 4px 8px;
+  padding: 10px 2px;
+}
+
+.help-panel .guide-section-arrow { grid-row: 1 / 3; }
+.help-panel .guide-section-title { font-size: 12px; line-height: 1.45; }
+.help-panel .guide-section-summary {
+  grid-column: 2;
+  margin: 0;
+  white-space: normal;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.help-panel .guide-section--expanded > .guide-section-header .guide-section-title { color: var(--accent-color); }
+.help-panel .guide-prose { font-size: 12px; line-height: 1.7; }
+.help-panel .guide-progress { font-size: 9px; }
+.help-panel .machine { padding: 8px; }
+.help-panel .machine-region { min-width: 0; padding: 8px; overflow-wrap: anywhere; }
+.help-panel .machine-region-caption { opacity: 0.8; }
+.help-panel .machine-flow { display: none; }
+.help-panel .doc-search-input { padding: 9px 10px; font-size: 12px; }
+.help-panel .doc-tags-container { box-sizing: border-box; }
+.help-panel .doc-version-select { max-width: 100%; }
+.help-panel .doc-tag { padding: 4px 8px; font-size: 10px; }
+.help-panel .doc-function-header { min-height: 36px; box-sizing: border-box; }
+.help-panel .doc-function-name { font-size: 13px; }
+.help-panel .doc-function-param { font-size: 11px; font-style: normal; }
+
+@container (max-width: 380px) {
+  .settings-panel-container .panel-row { grid-template-columns: 1fr; gap: 4px; padding: 6px 0; }
+  .settings-panel-container .panel-control { width: 100%; }
+  .help-panel .guide-chapter-header { grid-template-columns: 1fr; }
+  .help-panel .guide-chapter-header > .guide-expand-all-btn { justify-self: start; }
+  .help-panel .machine-scene { flex-direction: column; }
+  .help-panel .guide-playground-body { flex-direction: column; }
+  .help-panel .guide-playground-probe { flex-basis: 80px; }
+  .help-panel .doc-version-filter { flex-wrap: wrap; }
+}

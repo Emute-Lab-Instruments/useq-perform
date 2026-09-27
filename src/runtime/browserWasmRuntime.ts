@@ -69,8 +69,8 @@ export function createBrowserWasmRuntimeController(
     publishDiagnosticsSnapshot();
   }
 
-  function publishAvailable(): void {
-    transitionRuntimeCoordinator({ type: "wasm-availability", available: true });
+  function publishAvailable(port: WasmRuntimePort): void {
+    transitionRuntimeCoordinator({ type: "wasm-availability", available: true, port });
     publishDiagnosticsSnapshot();
   }
 
@@ -86,6 +86,7 @@ export function createBrowserWasmRuntimeController(
       return false;
     }
     if (!workerSupported()) {
+      if (disposed || !configured || activationGeneration !== generation) return false;
       publishUnavailable();
       dependencies.onFailure?.({
         reason: "worker-unavailable",
@@ -100,6 +101,7 @@ export function createBrowserWasmRuntimeController(
         void recoverAfterCrash(port, error);
       });
     } catch (error) {
+      if (disposed || !configured || activationGeneration !== generation) return false;
       const failure = asError(error);
       publishUnavailable();
       dependencies.onFailure?.({
@@ -111,7 +113,7 @@ export function createBrowserWasmRuntimeController(
 
     currentPort = port;
     transitionRuntimeCoordinator({ type: "select-wasm-port", port });
-    transitionRuntimeCoordinator({ type: "wasm-availability", available: false });
+    transitionRuntimeCoordinator({ type: "wasm-availability", available: false, port });
 
     try {
       await port.ensureLoaded();
@@ -124,12 +126,15 @@ export function createBrowserWasmRuntimeController(
         disposePort(port);
         return false;
       }
-      publishAvailable();
+      publishAvailable(port);
       if (recoveryAttempt) dependencies.onRecovered?.();
       return true;
     } catch (error) {
-      if (currentPort === port) currentPort = null;
       disposePort(port);
+      if (disposed || !configured || activationGeneration !== generation || currentPort !== port) {
+        return false;
+      }
+      currentPort = null;
       publishUnavailable(port);
       const failure = asError(error);
       dependencies.onFailure?.({
@@ -173,7 +178,7 @@ export function createBrowserWasmRuntimeController(
 
       if (enabled && configured && currentPort) {
         if (currentPort.capabilities().available) {
-          publishAvailable();
+          publishAvailable(currentPort);
           return Promise.resolve(true);
         }
         if (currentActivation) return currentActivation;

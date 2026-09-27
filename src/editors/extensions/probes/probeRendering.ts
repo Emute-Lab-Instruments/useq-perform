@@ -280,7 +280,13 @@ class ProbeWidget extends WidgetType {
   }
 
   eq(other: ProbeWidget): boolean {
-    return this.probe.id === other.probe.id;
+    return this.probe.id === other.probe.id &&
+      this.probe.mode === other.probe.mode &&
+      this.probe.depth === other.probe.depth &&
+      this.probe.maxDepth === other.probe.maxDepth &&
+      this.probe.canvasWidth === other.probe.canvasWidth &&
+      this.probe.canvasHeight === other.probe.canvasHeight &&
+      this.probe.windowDurationMs === other.probe.windowDurationMs;
   }
 
   toDOM(): HTMLElement {
@@ -396,8 +402,11 @@ class ProbeWidget extends WidgetType {
     const id = dom.dataset.probeId;
     if (!id) return;
     const elements = probeDOMRegistry.get(id);
-    if (elements?.canvas) releaseProbeGLState(elements.canvas);
-    probeDOMRegistry.delete(id);
+    const canvas = dom.querySelector("canvas");
+    if (canvas) releaseProbeGLState(canvas);
+    // CodeMirror may mount a replacement with the same id before destroying
+    // this DOM. Do not erase the replacement's rendering registration.
+    if (elements?.root === dom) probeDOMRegistry.delete(id);
   }
 }
 

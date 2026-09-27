@@ -19,14 +19,14 @@ import type {
   AppDevModeState,
   AppSettings,
   AppSettingsPatch,
+  PanelChromeDesign,
   StoredAppSettings,
-  VisualisationSettings,
 } from "./schema.ts";
 import {
   CONFIG_VERSION,
   createDefaultUserSettings,
   defaultDevModeConfiguration,
-  defaultUserSettings,
+  PANEL_CHROME_DESIGNS,
 } from "./schema.ts";
 import {
   isRecord,
@@ -138,12 +138,19 @@ export function normalizeUserSettings(value: unknown): AppSettings {
           : ui.expressionClearButtonEnabled !== false,
       gamepadPickerStyle:
         ui.gamepadPickerStyle === "radial" ? "radial" : defaults.ui.gamepadPickerStyle,
+      panelChrome: PANEL_CHROME_DESIGNS.includes(ui.panelChrome as PanelChromeDesign)
+        ? (ui.panelChrome as PanelChromeDesign)
+        : defaults.ui.panelChrome,
       indentGuideMode:
         ui.indentGuideMode === "always" ||
         ui.indentGuideMode === "path" ||
         ui.indentGuideMode === "never"
           ? ui.indentGuideMode
           : defaults.ui.indentGuideMode,
+      namespaceHintsVerbose:
+        ui.namespaceHintsVerbose == null
+          ? defaults.ui.namespaceHintsVerbose
+          : ui.namespaceHintsVerbose !== false,
     },
     visualisation: normalizeVisualisationSettings(raw.visualisation, defaults.visualisation),
     evalResults: normalizeEvalResultsSettings(raw.evalResults, defaults.evalResults),

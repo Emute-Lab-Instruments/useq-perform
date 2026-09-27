@@ -24,7 +24,7 @@ vi.mock("../runtime/runtimeCompatibility.ts", () => ({
 }));
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
+import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
 
 // ---------------------------------------------------------------------------
 // Hoisted mocks
@@ -33,7 +33,7 @@ import type { UseqDiagnostic } from "../runtime/wasmInterpreter.ts";
 // WASM shadow produces no diagnostics — only the hardware path does, so any
 // pushed diagnostic in these tests must have come from the module response.
 const mockEvalCodeWithDiagnostics = vi.hoisted(() =>
-  vi.fn(() => Promise.resolve({ result: "ok", diagnostics: [] as unknown[] })),
+  vi.fn((_code: string) => Promise.resolve({ result: "ok", diagnostics: [] as unknown[] })),
 );
 
 // The module-send response the test crafts. `sendTouSEQ` resolves with it.
@@ -41,9 +41,22 @@ const sendResponseRef = vi.hoisted(() => ({
   current: { success: true } as { success: boolean; diagnostics?: unknown[] },
 }));
 const mockSendTouSEQ = vi.hoisted(() =>
-  vi.fn(() => Promise.resolve(sendResponseRefInner.current)),
+  vi.fn((_code: string) => Promise.resolve(sendResponseRefInner.current)),
 );
 const sendResponseRefInner = sendResponseRef;
+
+vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
+  dispatchRuntimeCodeEvaluation: vi.fn(async ({ code, wasmCode, soft = false }) => {
+    const wasmValue = await mockEvalCodeWithDiagnostics(wasmCode ?? code);
+    const hardwareValue = soft ? null : await mockSendTouSEQ(code);
+    return {
+      session: { transportMode: soft ? "wasm" : "both" },
+      wasm: { status: "fulfilled", value: wasmValue },
+      hardware: soft ? null : { status: "fulfilled", value: hardwareValue },
+      diagnosticAuthority: soft ? "wasm" : "hardware",
+    };
+  }),
+}));
 
 const mockPushDiagnostics = vi.hoisted(() => vi.fn());
 const mockClearDiagnosticsForRange = vi.hoisted(() => vi.fn());

@@ -412,6 +412,7 @@ interface ExprBuffer {
 }
 
 interface RenderParamsFingerprint {
+  maxPastGapSeconds: number;
   windowStart: number;
   windowEnd: number;
   yTop: number;
@@ -431,7 +432,8 @@ function renderParamsChanged(
     a.yTop !== b.yTop ||
     a.yBottom !== b.yBottom ||
     a.viewportW !== b.viewportW ||
-    a.viewportH !== b.viewportH
+    a.viewportH !== b.viewportH ||
+    a.maxPastGapSeconds !== b.maxPastGapSeconds
   );
 }
 
@@ -511,10 +513,11 @@ function uploadSegmentGeometry(
   yBottom: number,
   viewportW: number,
   viewportH: number,
+  maxGapSeconds = Infinity,
 ): { vertexCount: number; capacity: number } {
   if (segEnd - segStart < 2) return { vertexCount: 0, capacity };
 
-  const flatVertexCount = flattenSamples(samples, stepMode, segStart, segEnd);
+  const flatVertexCount = flattenSamples(samples, stepMode, segStart, segEnd, maxGapSeconds);
   if (flatVertexCount < 2) return { vertexCount: 0, capacity };
 
   const halfWidth = Math.max(lineWidth, 1) / 2;
@@ -522,7 +525,7 @@ function uploadSegmentGeometry(
     flatVertexCount, halfWidth,
     windowStart, windowEnd,
     yTop, yBottom,
-    viewportW, viewportH,
+    viewportW, viewportH, maxGapSeconds,
   );
   if (thickVertexCount < 3) return { vertexCount: 0, capacity };
 
@@ -572,9 +575,11 @@ function uploadGeometry(
   yBottom: number,
   viewportW: number,
   viewportH: number,
+  maxPastGapSeconds: number,
 ): void {
   const fp = sampleFingerprint(samples);
   const rp: RenderParamsFingerprint = {
+    maxPastGapSeconds,
     windowStart, windowEnd, yTop, yBottom, viewportW, viewportH,
   };
   // m1 fix: removed `&& !stepMode` — valueHash handles step-mode changes
@@ -596,7 +601,7 @@ function uploadGeometry(
   const pastResult = uploadSegmentGeometry(
     state.gl, buf.pastVbo, buf.pastCapacity,
     samples, 0, splitIndex, stepMode, lineWidth,
-    windowStart, windowEnd, yTop, yBottom, viewportW, viewportH,
+    windowStart, windowEnd, yTop, yBottom, viewportW, viewportH, maxPastGapSeconds,
   );
   buf.pastVertexCount = pastResult.vertexCount;
   buf.pastCapacity = pastResult.capacity;
@@ -762,6 +767,7 @@ export function drawSerialVisGL(input: VisRenderInput): void {
     futureLineAlpha, lineWidth, windowStart, windowEnd,
     laneY,
     getRenderData, showFuture, maxFutureBoundaryGap,
+    Math.max(0.25, 4 / Math.max(1, (targetRate ?? 30) * settings.temporalSampleRateMultiplier)),
   );
   if (import.meta.env.DEV) perf.end("vis-gl-draw-pass");
 
@@ -803,6 +809,7 @@ function drawExpressions(
   getRenderData: (exprType: string) => OutputRenderData | null,
   showFuture: boolean,
   maxFutureBoundaryGap: number,
+  maxPastGapSeconds: number,
 ): void {
   gl.useProgram(state.program);
   gl.bindVertexArray(state.vao);
@@ -841,7 +848,7 @@ function drawExpressions(
     const buf = getOrCreateBuffer(state, key);
     uploadGeometry(
       state, buf, samples, splitIndex, isDigital, lineWidth,
-      windowStart, windowEnd, yTop, yBottom, w, h,
+      windowStart, windowEnd, yTop, yBottom, w, h, maxPastGapSeconds,
     );
     if (buf.pastVertexCount < 3 && buf.futureVertexCount < 3) continue;
 

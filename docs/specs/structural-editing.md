@@ -106,7 +106,7 @@ layer: behavioural
 Examples (in source view above, in folded pill view below):
 
 ```
-(osc ($ freq :number))      →   (osc [num·freq])
+(sin[lfo] ($ freq :number))  →   (sin[lfo] [num·freq])
 (slow ($ rate :number)
       ($ body :expr))       →   (slow [num·rate] [exp·body])
 ```

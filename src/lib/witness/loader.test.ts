@@ -131,7 +131,7 @@ describe("lookup helpers", () => {
   });
 
   it("merges clause-level and document-level citations per file", () => {
-    expect(witnessNamesForFile(index, "time.md").sort()).toEqual(["alpha", "beta"]);
+    expect([...witnessNamesForFile(index, "time.md")].sort()).toEqual(["alpha", "beta"]);
   });
 });
 

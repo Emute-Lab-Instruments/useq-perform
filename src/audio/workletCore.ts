@@ -35,8 +35,8 @@
  *      (VAL-SAB-019).
  *
  *   4. Graph mutation happens between render quanta. {@link WorkletCore.handleMessage}
- *      stages pending deltas; {@link WorkletCore.process} activates the
- *      staged set on the first matching block boundary (VAL-ENGINE-009/011).
+ *      prepares and commits candidates, then explicitly opens activation;
+ *      {@link WorkletCore.process} activates on the first matching block boundary (VAL-ENGINE-009/011).
  *
  *   5. Multi-node execution (synthesis.md §3.1): the core hosts N live
  *      instances and executes them in TOPOLOGICAL order of the patch
@@ -91,19 +91,16 @@ import type {
   WorkletAttachControlBufferMessage,
   WorkletAudioInputWiring,
   WorkletControlChannel,
-  WorkletGraphActivatedEvent,
   WorkletAbortGraphMessage,
   WorkletActivateGraphMessage,
   WorkletCommitGraphMessage,
   WorkletInstantiateMessage,
   WorkletInstanceRetiredEvent,
   WorkletInstanceTelemetry,
-  WorkletModuleTransferMessage,
   WorkletOutboundEvent,
   WorkletPrefillParam,
   WorkletProducerTimeoutEvent,
   WorkletPrepareGraphMessage,
-  WorkletRetireMessage,
   WorkletTelemetrySnapshot,
   WorkletUpdateMessage,
 } from "./workletGraphDelta";
@@ -113,9 +110,7 @@ import {
   PRODUCER_LIVENESS_ADVANCE_UNDERRUN,
   PRODUCER_LIVENESS_RESET,
   planProducerLiveness,
-  planWorkletGraph,
   shouldEnterProducerTimeout,
-  type WorkletGraphEdge,
 } from "./workletTransitionPlanning";
 
 // ---------------------------------------------------------------------------
@@ -142,8 +137,7 @@ const DEFAULT_AMP = 0.2;
 /**
  * Adapter factory the processor shell provides. Looks up a compiled
  * NodeDef adapter by `(name, version)`. Returns `null` when the module
- * has not been transferred yet (the core treats instantiate messages
- * for unknown defs as deferred).
+ * has not been transferred yet; graph preparation rejects unknown defs.
  *
  * The factory must not allocate on the hot path; it returns a cached
  * adapter constructed when {@link WorkletModuleTransferMessage} arrived.
@@ -274,7 +268,7 @@ interface InstanceState {
   /** Preallocated rollback image for one compute call. */
   stateSnapshot: Uint8Array;
   /** Adapter resolved at instantiate time. Cached for the hot path. */
-  adapter: NodeDefAdapter | null;
+  adapter: NodeDefAdapter;
   /** Active program epoch. Blocks whose epoch does not match are ignored. */
   epoch: number;
   /** Current fade stage. */
@@ -312,7 +306,6 @@ interface InstanceState {
    */
   inputPtrs: number[];
   /** Staged input pointers, swapped in at epoch activation. */
-  pendingInputPtrs: number[] | null;
   /** Output zone pointer (all ports), or -1 when allocation failed. */
   outputZonePtr: number;
   /** Output zone byte length. */
@@ -321,8 +314,6 @@ interface InstanceState {
   outputView: Float64Array | null;
   /** True when no other instance consumes this instance's output. */
   isTerminal: boolean;
-  /** Staged terminal flag, swapped in at epoch activation. */
-  pendingIsTerminal: boolean;
   /**
    * Per-(node, param) block-rate SAB channel assignments (compiler
    * channel table, M2.2). Params without an entry are unbound: the
@@ -493,7 +484,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   // --- Runtime state ---
   let controlView: SynthesisControlView | null = null;
   let controlBuffer: SharedArrayBuffer | null = null;
-  const adapters = new Map<string, NodeDefAdapter>();
   /**
    * Live rendering set in topological execution order. Includes
    * fading-out retirees until the sweep removes them.
@@ -501,10 +491,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   let executionOrder: InstanceState[] = [];
   /** Newest instance per identity (fading def-change ancestors excluded). */
   const liveByIdentity = new Map<string, InstanceState>();
-  /** Staged instances awaiting their epoch block (not rendering yet). */
-  const staged = new Map<string, InstanceState>();
-  /** Precomputed post-activation execution order (swap at activation). */
-  let stagedOrder: InstanceState[] | null = null;
   let preparedCandidate: PreparedGraphCandidate | null = null;
   let committedCandidate: PreparedGraphCandidate | null = null;
   let committedCandidateEligible = false;
@@ -603,87 +589,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   }
 
   // -----------------------------------------------------------------------
-  // Graph planning (between quanta only)
-  // -----------------------------------------------------------------------
-
-  /** Resolve the instance an identity refers to for wiring purposes. */
-  function resolveSource(identity: string): InstanceState | null {
-    return staged.get(identity) ?? liveByIdentity.get(identity) ?? null;
-  }
-
-  /**
-   * Rebuild the pending graph plan: topological execution order over
-   * (live ∪ staged), per-instance input-port pointers, and terminal
-   * flags. Runs in the message handler (between quanta) so activation
-   * inside process() is a pure pointer/array swap.
-   *
-   * When nothing is staged, the plan applies immediately (still between
-   * quanta — a block boundary per VAL-ENGINE-009).
-   */
-  function rebuildGraphPlan(): void {
-    const union: InstanceState[] = [];
-    for (const inst of executionOrder) union.push(inst);
-    for (const inst of staged.values()) union.push(inst);
-
-    // --- Pure stable topological plan ---
-    const indexOf = new Map<InstanceState, number>();
-    for (let i = 0; i < union.length; i++) indexOf.set(union[i], i);
-    const edges: WorkletGraphEdge[] = [];
-    for (const inst of union) {
-      for (const w of inst.inputWiring) {
-        const src = resolveSource(w.sourceIdentity);
-        if (src && src !== inst && indexOf.has(src)) {
-          edges.push({
-            source: indexOf.get(src)!,
-            target: indexOf.get(inst)!,
-          });
-        }
-      }
-    }
-    const graphPlan = planWorkletGraph(union.length, edges);
-    const order = graphPlan.order.map((index) => union[index]);
-
-    // --- Input pointers + terminal flags ---
-    for (const inst of union) {
-      let maxPort = -1;
-      for (const w of inst.inputWiring) {
-        if (w.port > maxPort) maxPort = w.port;
-      }
-      const ptrs = new Array<number>(maxPort + 1).fill(silencePtr);
-      for (const w of inst.inputWiring) {
-        const src = resolveSource(w.sourceIdentity);
-        if (src && src !== inst && src.outputZonePtr >= 0) {
-          ptrs[w.port] =
-            src.outputZonePtr + w.sourcePort * zoneFrames * BYTES_PER_DOUBLE;
-        }
-      }
-      inst.pendingInputPtrs = ptrs;
-    }
-    for (let index = 0; index < union.length; index += 1) {
-      union[index].pendingIsTerminal = !graphPlan.consumed[index];
-    }
-
-    if (staged.size > 0) {
-      stagedOrder = order;
-    } else {
-      stagedOrder = null;
-      executionOrder = order;
-      applyPendingWiring();
-    }
-  }
-
-  /** Swap staged wiring into the live set (allocation-free). */
-  function applyPendingWiring(): void {
-    for (const inst of executionOrder) {
-      if (inst.pendingInputPtrs) {
-        inst.inputPtrs = inst.pendingInputPtrs;
-        inst.pendingInputPtrs = null;
-      }
-      inst.isTerminal = inst.pendingIsTerminal;
-    }
-  }
-
-  // -----------------------------------------------------------------------
   // Message handling (between quanta)
   // -----------------------------------------------------------------------
 
@@ -692,23 +597,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     const msg = message as { type?: string };
 
     switch (msg.type) {
-      case "nodedef-module":
-        handleModuleTransfer(msg as unknown as WorkletModuleTransferMessage);
-        break;
       case "attach-control-buffer":
         handleAttachControlBuffer(msg as unknown as WorkletAttachControlBufferMessage);
         break;
       case "detach-control-buffer":
         handleDetachControlBuffer();
-        break;
-      case "instantiate":
-        handleInstantiate(msg as unknown as WorkletInstantiateMessage);
-        break;
-      case "update":
-        handleUpdate(msg as unknown as WorkletUpdateMessage);
-        break;
-      case "retire":
-        handleRetire(msg as unknown as WorkletRetireMessage);
         break;
       case "prepare-graph":
         handlePrepareGraph(msg as unknown as WorkletPrepareGraphMessage);
@@ -827,12 +720,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       audioOutputs,
       inputWiring: message.audioInputs ?? EMPTY_WIRING,
       inputPtrs: EMPTY_PTRS,
-      pendingInputPtrs: null,
       outputZonePtr,
       outputZoneBytes,
       outputView,
       isTerminal: true,
-      pendingIsTerminal: true,
       controlChannels: buildControlChannelMap(message.controlChannels),
       inputSupportWarned: false,
       released: false,
@@ -1017,20 +908,10 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       releaseCandidate(committedCandidate);
       committedCandidate = null;
       committedCandidateEligible = false;
-      pendingEpoch = staged.size > 0 ? pendingEpoch : 0;
+      pendingEpoch = 0;
       aborted = true;
     }
     transactionAck(message.transactionId, "abort", aborted, aborted ? undefined : "candidate not found");
-  }
-
-  function handleModuleTransfer(message: WorkletModuleTransferMessage): void {
-    const key = `${message.descriptor.name}@${message.descriptor.version}`;
-    const adapter = options.adapterFactory(message.descriptor.name, message.descriptor.version);
-    if (adapter !== null) {
-      adapters.set(key, adapter);
-    }
-    // If the adapter is not yet available (race with transfer), the
-    // instantiate handler will defer the delta until both arrive.
   }
 
   function handleAttachControlBuffer(message: WorkletAttachControlBufferMessage): void {
@@ -1076,11 +957,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       releaseInstanceZones(inst);
     }
     executionOrder.length = 0;
-    for (const inst of staged.values()) {
-      releaseInstanceZones(inst);
-    }
-    staged.clear();
-    stagedOrder = null;
     if (preparedCandidate) releaseCandidate(preparedCandidate);
     if (committedCandidate) releaseCandidate(committedCandidate);
     preparedCandidate = null;
@@ -1089,278 +965,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     liveByIdentity.clear();
     activeEpoch = 0;
     pendingEpoch = 0;
-  }
-
-  function handleInstantiate(message: WorkletInstantiateMessage): void {
-    const id = message.identity;
-    const live = liveByIdentity.get(id.identity);
-
-    // Same identity + same def/version on a live instance and no staged
-    // replacement: update-in-place. We keep the DSP instance and phase
-    // (VAL-DSP-010) and just refresh epoch/prefill/controls/wiring.
-    if (
-      live &&
-      live.def === id.def &&
-      live.version === id.version &&
-      !staged.has(id.identity)
-    ) {
-      live.epoch = id.epoch;
-      live.prefill = buildPrefillMap(message.prefill);
-      if (message.controlChannels) {
-        live.controlChannels = buildControlChannelMap(message.controlChannels);
-      }
-      if (message.audioInputs) {
-        live.inputWiring = message.audioInputs;
-        rebuildGraphPlan();
-      }
-      pendingEpoch = id.epoch;
-      return;
-    }
-
-    // Same identity with a DIFFERENT def/version: retire the old
-    // instance with a release fade (VAL-ENGINE-035). It keeps rendering
-    // in the execution order until its fade completes; the incoming
-    // instance is staged and activates on the next matching epoch
-    // block (overlapping fades per synth-nodes.md §5.7).
-    if (live && (live.def !== id.def || live.version !== id.version)) {
-      startFadeOut(live, fadeOutFrames);
-      liveByIdentity.delete(id.identity);
-    }
-
-    // A staged set armed for a DIFFERENT epoch is superseded by this
-    // delta (a newer commit won the race, VAL-ENGINE-013). Drop it and
-    // reclaim its zones before staging the new set.
-    if (staged.size > 0 && pendingEpoch !== 0 && id.epoch !== pendingEpoch) {
-      for (const inst of staged.values()) {
-        releaseInstanceZones(inst);
-      }
-      staged.clear();
-    }
-
-    // Resource limit (synthesis.md §3.5): live + staged instances are
-    // bounded by MAX_SYNTH_NODES. Breach is a diagnostic, never a
-    // glitch — the delta is refused and the running graph continues.
-    if (
-      !staged.has(id.identity) &&
-      executionOrder.length + staged.size >= MAX_SYNTH_NODES
-    ) {
-      publishEvent({
-        type: "graph-diagnostic",
-        code: "node-limit",
-        identity: id.identity,
-      });
-      return;
-    }
-
-    // Resolve the adapter. First check the cache (populated by
-    // {@link WorkletModuleTransferMessage}); if not cached, fall back
-    // to the injected factory. If neither yields an adapter the
-    // instance stays staged but silent until the module arrives.
-    const adapterKey = `${id.def}@${id.version}`;
-    let adapter = adapters.get(adapterKey) ?? null;
-    if (!adapter) {
-      try {
-        adapter = options.adapterFactory(id.def, id.version);
-      } catch {
-        publishEvent({
-          type: "graph-diagnostic",
-          code: "nodedef-trap",
-          identity: id.identity,
-        });
-        glitchCount += 1;
-        return;
-      }
-      if (adapter) {
-        adapters.set(adapterKey, adapter);
-      }
-    }
-
-    ensureSilenceZone();
-
-    // Allocate the state zone between quanta only.
-    let statePointer = message.statePointer;
-    let stateBytes = message.stateBytes;
-    let stateAllocatedHere = false;
-    if (statePointer === 0 || stateBytes === 0) {
-      // The host did not preallocate; allocate on its behalf using the
-      // adapter's declared state size. This is the between-quantum
-      // carve-out (synthesis.md §3.2).
-      if (adapter) {
-        stateBytes = adapter.descriptor.stateBytes;
-        statePointer = options.allocator.allocate(
-          stateBytes,
-          adapter.descriptor.stateAlign,
-        );
-        stateAllocatedHere = statePointer >= 0;
-        if (statePointer < 0) {
-          publishEvent({
-            type: "graph-diagnostic",
-            code: "zone-exhausted",
-            identity: id.identity,
-          });
-          return;
-        }
-      }
-    }
-
-    // Allocate the output zone (all ports). Zone exhaustion fails the
-    // delta closed with a diagnostic; the rest of the graph continues
-    // (synthesis.md §3.5).
-    const audioOutputs =
-      typeof message.audioOutputs === "number" && message.audioOutputs > 0
-        ? message.audioOutputs
-        : DEFAULT_AUDIO_OUTPUT_PORTS;
-    const outputZoneBytes = audioOutputs * zoneFrames * BYTES_PER_DOUBLE;
-    const outputZonePtr = options.allocator.allocate(outputZoneBytes, DOUBLE_ALIGN);
-    if (outputZonePtr < 0) {
-      if (stateAllocatedHere) {
-        try {
-          options.allocator.release(statePointer);
-        } catch {
-          // Best-effort cleanup.
-        }
-      }
-      publishEvent({
-        type: "graph-diagnostic",
-        code: "zone-exhausted",
-        identity: id.identity,
-      });
-      return;
-    }
-    const outputView = arenaView(outputZonePtr, audioOutputs * zoneFrames);
-    outputView.fill(0);
-    const stateView =
-      statePointer >= 0 && stateBytes > 0 ? arenaByteView(statePointer, stateBytes) : null;
-
-    const instance: InstanceState = {
-      identity: id.identity,
-      def: id.def,
-      version: id.version,
-      statePointer,
-      stateBytes,
-      stateView,
-      stateSnapshot: new Uint8Array(Math.max(0, stateBytes)),
-      adapter,
-      epoch: id.epoch,
-      lifecycle: "fade-in",
-      health: "ok",
-      retireAfterBlock: false,
-      fadeFramesRemaining: fadeInFrames,
-      fadeFramesTotal: fadeInFrames,
-      fadeGainStart: 0,
-      fadeGainEnd: 1,
-      currentFreq: DEFAULT_FREQ,
-      currentAmp: DEFAULT_AMP,
-      prefill: buildPrefillMap(message.prefill),
-      audioOutputs,
-      inputWiring: message.audioInputs ?? EMPTY_WIRING,
-      inputPtrs: EMPTY_PTRS,
-      pendingInputPtrs: null,
-      outputZonePtr,
-      outputZoneBytes,
-      outputView,
-      isTerminal: true,
-      pendingIsTerminal: true,
-      controlChannels: buildControlChannelMap(message.controlChannels),
-      inputSupportWarned: false,
-      released: false,
-      telemetryEntry: {
-        identity: id.identity,
-        def: id.def,
-        version: id.version,
-        statePointer,
-        lifecycle: "fade-in",
-        health: "ok",
-      },
-    };
-
-    // Initialise the DSP state zone between quanta. The adapter calls
-    // `init` against the host-owned memory; failure fails closed (the
-    // instance stays in `retired` and never renders).
-    if (adapter && statePointer >= 0 && stateBytes > 0) {
-      let ok = false;
-      try {
-        ok = adapter.init(statePointer, stateBytes);
-      } catch {
-        publishEvent({
-          type: "graph-diagnostic",
-          code: "nodedef-trap",
-          identity: id.identity,
-        });
-        glitchCount += 1;
-      }
-      if (!ok) {
-        instance.lifecycle = "retired";
-      }
-    } else if (!adapter) {
-      // Module not yet transferred; keep the instance staged but mark
-      // lifecycle as fade-in (it will activate once the adapter arrives
-      // — the renderer re-resolves per block, VAL-ENGINE-008).
-      instance.lifecycle = "fade-in";
-    } else {
-      instance.lifecycle = "retired";
-    }
-
-    // Warn once when the delta wires inputs into a def whose adapter
-    // has no input-capable compute entry point. The instance degrades
-    // to its input-less compute (typically silence), never a crash.
-    if (
-      adapter &&
-      instance.inputWiring.length > 0 &&
-      typeof adapter.computeWithInputs !== "function"
-    ) {
-      instance.inputSupportWarned = true;
-      publishEvent({
-        type: "graph-diagnostic",
-        code: "missing-input-support",
-        identity: id.identity,
-      });
-    }
-
-    staged.set(id.identity, instance);
-    pendingEpoch = id.epoch;
-    rebuildGraphPlan();
-  }
-
-  function handleUpdate(message: WorkletUpdateMessage): void {
-    const id = message.identity;
-    const live = liveByIdentity.get(id.identity);
-    if (!live || live.def !== id.def || live.version !== id.version) {
-      // No matching active instance. Late update from a superseded eval
-      // is a no-op (VAL-ENGINE-013).
-      return;
-    }
-    // Same def/version → update in place. Phase is preserved because
-    // we never call `reset_phase` here (VAL-DSP-010).
-    live.epoch = id.epoch;
-    live.prefill = buildPrefillMap(message.prefill);
-    if (message.controlChannels) {
-      live.controlChannels = buildControlChannelMap(message.controlChannels);
-    }
-    if (message.audioInputs) {
-      live.inputWiring = message.audioInputs;
-      rebuildGraphPlan();
-    }
-    pendingEpoch = id.epoch;
-  }
-
-  function handleRetire(message: WorkletRetireMessage): void {
-    const target = message.identity;
-    const live = liveByIdentity.get(target.identity);
-    if (live) {
-      // Begin the release fade; the post-fade sweep retires it fully
-      // and releases its zones (VAL-ENGINE-035).
-      startFadeOut(live, fadeOutFrames);
-      return;
-    }
-    const stagedInstance = staged.get(target.identity);
-    if (stagedInstance) {
-      // The staged instance never reached activation; drop it and
-      // reclaim its zones.
-      staged.delete(target.identity);
-      releaseInstanceZones(stagedInstance);
-      rebuildGraphPlan();
-    }
   }
 
   function handleDevmodeTerminateProducer(): void {
@@ -1441,15 +1045,11 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       }
     });
 
-    // Staged wiring (if any) was computed against the old zones.
-    if (staged.size > 0) {
-      rebuildGraphPlan();
-    }
+
   }
 
   function forEachInstance(fn: (inst: InstanceState) => void): void {
     for (const inst of executionOrder) fn(inst);
-    for (const inst of staged.values()) fn(inst);
   }
 
   // -----------------------------------------------------------------------
@@ -1605,30 +1205,6 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       } else if (consumedBlockEpoch !== 0) {
         hasBlock = false;
       }
-    } else if (staged.size > 0 && hasBlock) {
-      if (consumedBlockEpoch === pendingEpoch && pendingEpoch !== 0) {
-        if (stagedOrder) {
-          executionOrder = stagedOrder;
-          stagedOrder = null;
-        }
-        applyPendingWiring();
-        for (const inst of staged.values()) {
-          liveByIdentity.set(inst.identity, inst);
-          const activatedEvent: WorkletGraphActivatedEvent = {
-            type: "graph-activated",
-            identity: inst.identity,
-            epoch: pendingEpoch,
-            atBlock: blockCount,
-          };
-          publishEvent(activatedEvent);
-        }
-        staged.clear();
-        activeEpoch = pendingEpoch;
-      } else if (consumedBlockEpoch !== 0 && consumedBlockEpoch !== pendingEpoch) {
-        // Stale or mismatched block: do not render (VAL-ENGINE-012).
-        // We hold the last values and let the producer catch up.
-        hasBlock = false;
-      }
     }
 
     // ---- Step 4: If a control block was acquired, advance the read index ----
@@ -1778,7 +1354,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
       write += 1;
     }
     executionOrder.length = write;
-    if (executionOrder.length === 0 && staged.size === 0) {
+    if (executionOrder.length === 0 && !committedCandidate) {
       activeEpoch = 0;
     }
 
@@ -1798,72 +1374,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
     consumedBlockEpoch: number,
     frameCount: number,
   ): void {
-    let adapter = instance.adapter;
-    if (!adapter) {
-      // VAL-ENGINE-008 race: the instantiate delta may have arrived
-      // before the nodedef-module transfer completed (both are async
-      // postMessages). The worklet core's adapter cache may have been
-      // populated since the instance was staged. Re-resolve from the
-      // cache (and the factory) on every render so the instance
-      // activates as soon as the module lands, without a second
-      // instantiate round-trip.
-      const adapterKey = `${instance.def}@${instance.version}`;
-      adapter = adapters.get(adapterKey) ?? null;
-      if (!adapter) {
-        try {
-          adapter = options.adapterFactory(instance.def, instance.version);
-        } catch {
-          publishEvent({
-            type: "graph-diagnostic",
-            code: "nodedef-trap",
-            identity: instance.identity,
-          });
-          glitchCount += 1;
-          instance.lifecycle = "retired";
-          instance.outputView?.fill(0);
-          return;
-        }
-        if (adapter) {
-          adapters.set(adapterKey, adapter);
-        }
-      }
-      if (adapter) {
-        instance.adapter = adapter;
-        // The instance was staged without an adapter; its state zone
-        // was not allocated at instantiate time. Allocate and
-        // initialise it now (a graph-mutation boundary) so the first
-        // render produces sound. Without this, statePointer stays at 0
-        // and the WASM compute reads/writes the wrong memory region,
-        // producing silence or garbage.
-        if (instance.statePointer === 0 || instance.stateBytes === 0) {
-          instance.stateBytes = adapter.descriptor.stateBytes;
-          instance.statePointer = options.allocator.allocate(
-            instance.stateBytes,
-            adapter.descriptor.stateAlign,
-          );
-        }
-        if (instance.statePointer >= 0 && instance.stateBytes > 0) {
-          let initOk = false;
-          try {
-            initOk = adapter.init(instance.statePointer, instance.stateBytes);
-          } catch {
-            publishEvent({
-              type: "graph-diagnostic",
-              code: "nodedef-trap",
-              identity: instance.identity,
-            });
-            glitchCount += 1;
-          }
-          if (!initOk) {
-            instance.lifecycle = "retired";
-            return;
-          }
-          instance.stateView = arenaByteView(instance.statePointer, instance.stateBytes);
-          instance.stateSnapshot = new Uint8Array(instance.stateBytes);
-        }
-      }
-    }
-    if (!adapter || instance.statePointer < 0 || !instance.outputView || instance.outputZonePtr < 0) {
+    const adapter = instance.adapter;
+    if (instance.statePointer < 0 || !instance.outputView || instance.outputZonePtr < 0) {
       // Module not yet transferred or zone invalid: hold silence in the
       // zone so downstream consumers never read stale samples.
       if (instance.outputView) {
@@ -2089,13 +1601,7 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
           other.inputPtrs[i] = silencePtr;
         }
       }
-      if (other.pendingInputPtrs) {
-        for (let i = 0; i < other.pendingInputPtrs.length; i++) {
-          if (other.pendingInputPtrs[i] >= lo && other.pendingInputPtrs[i] < hi) {
-            other.pendingInputPtrs[i] = silencePtr;
-          }
-        }
-      }
+
     });
   }
 
@@ -2130,11 +1636,8 @@ export function createWorkletCore(options: WorkletCoreOptions): WorkletCore {
   function reset(): void {
     controlView = null;
     controlBuffer = null;
-    adapters.clear();
     executionOrder = [];
     liveByIdentity.clear();
-    staged.clear();
-    stagedOrder = null;
     if (preparedCandidate) releaseCandidate(preparedCandidate);
     if (committedCandidate) releaseCandidate(committedCandidate);
     preparedCandidate = null;

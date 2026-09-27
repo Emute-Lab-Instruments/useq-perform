@@ -38,9 +38,6 @@ const utriDuty = (duty: number, p: number): number => {
 /** fast(n, phase): speed up by factor n. */
 const fast = (n: number, p: number): number => frac(p * n);
 
-/** shift(offset, phase): phase-shift a phasor. */
-const shift = (offset: number, p: number): number => frac(p + offset);
-
 /** scale(value, inMin, inMax, outMin, outMax). */
 const scale = (
   v: number,

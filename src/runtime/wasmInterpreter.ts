@@ -600,11 +600,3 @@ export async function readOutputClassifications(): Promise<OutputClassification 
     return null;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Diagnostic type — re-exported from canonical location
-// ---------------------------------------------------------------------------
-// The canonical definition lives in `src/contracts/runtimeTypes.ts`.
-// Re-exported here for backward compatibility with existing consumers.
-
-export type { UseqDiagnostic } from "../contracts/runtimeTypes";

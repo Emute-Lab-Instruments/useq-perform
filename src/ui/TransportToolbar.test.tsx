@@ -42,41 +42,44 @@ describe("TransportToolbar", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows all transport buttons as disabled in none mode with stop as primary", () => {
+  it("disables every control and lights nothing in none mode", () => {
     const { container } = render(() => (
       <TransportToolbar {...defaultProps({ state: "stopped", mode: "none" })} />
     ));
 
-    const playEl = container.querySelector("[title='Play']");
-    const pauseEl = container.querySelector("[title='Pause']");
-    const stopEl = container.querySelector("[title='Stop']");
-    const rewindEl = container.querySelector("[title='Rewind']");
-    const clearEl = container.querySelector("[title='Clear']");
-
-    expect(playEl?.classList.contains("disabled")).toBe(true);
-    expect(pauseEl?.classList.contains("disabled")).toBe(true);
-    expect(stopEl?.classList.contains("disabled")).toBe(true);
-    expect(rewindEl?.classList.contains("disabled")).toBe(true);
-    expect(clearEl?.classList.contains("disabled")).toBe(true);
-    expect(stopEl?.classList.contains("primary")).toBe(true);
+    for (const title of ["Play", "Pause", "Stop", "Rewind", "Clear"]) {
+      const el = container.querySelector(`[title='${title}']`) as HTMLButtonElement;
+      expect(el.classList.contains("disabled")).toBe(true);
+      expect(el.disabled).toBe(true);
+      expect(el.classList.contains("is-active")).toBe(false);
+    }
+    expect(container.querySelector(".transport-state")?.textContent).toContain("No runtime");
   });
 
-  it("shows correct button CSS in playing state with wasm mode", () => {
+  it("lights Play (not disabled) while playing, with a playing indicator", () => {
     const { container } = render(() => (
       <TransportToolbar {...defaultProps({ state: "playing", mode: "wasm" })} />
     ));
 
-    const playBtn = container.querySelector("[title='Play']");
+    const playBtn = container.querySelector("[title='Play']") as HTMLButtonElement;
     const pauseBtn = container.querySelector("[title='Pause']");
     const stopBtn = container.querySelector("[title='Stop']");
 
-    expect(playBtn?.classList.contains("primary")).toBe(true);
-    expect(playBtn?.classList.contains("disabled")).toBe(true);
+    expect(playBtn.classList.contains("is-active")).toBe(true);
+    expect(playBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(playBtn.classList.contains("disabled")).toBe(false);
+    expect(playBtn.disabled).toBe(false);
+    expect(pauseBtn?.getAttribute("aria-pressed")).toBe("false");
     expect(pauseBtn?.classList.contains("disabled")).toBe(false);
     expect(stopBtn?.classList.contains("disabled")).toBe(false);
+
+    const indicator = container.querySelector(".transport-state");
+    expect(indicator?.classList.contains("is-playing")).toBe(true);
+    expect(indicator?.textContent).toContain("Playing");
+    expect(container.querySelector("#panel-top-toolbar")?.getAttribute("data-transport-state")).toBe("playing");
   });
 
-  it("shows correct button CSS in paused state", () => {
+  it("lights Pause while paused", () => {
     const { container } = render(() => (
       <TransportToolbar {...defaultProps({ state: "paused", mode: "wasm" })} />
     ));
@@ -84,12 +87,14 @@ describe("TransportToolbar", () => {
     const playBtn = container.querySelector("[title='Play']");
     const pauseBtn = container.querySelector("[title='Pause']");
 
-    expect(pauseBtn?.classList.contains("primary")).toBe(true);
-    expect(pauseBtn?.classList.contains("disabled")).toBe(true);
+    expect(pauseBtn?.classList.contains("is-active")).toBe(true);
+    expect(pauseBtn?.getAttribute("aria-pressed")).toBe("true");
+    expect(pauseBtn?.classList.contains("disabled")).toBe(false);
     expect(playBtn?.classList.contains("disabled")).toBe(false);
+    expect(container.querySelector(".transport-state")?.textContent).toContain("Paused");
   });
 
-  it("shows correct button CSS in stopped state with active mode", () => {
+  it("lights Stop while stopped and disables only Pause", () => {
     const { container } = render(() => (
       <TransportToolbar {...defaultProps({ state: "stopped", mode: "wasm" })} />
     ));
@@ -100,12 +105,46 @@ describe("TransportToolbar", () => {
     const rewindBtn = container.querySelector("[title='Rewind']");
     const clearBtn = container.querySelector("[title='Clear']");
 
-    expect(stopBtn?.classList.contains("primary")).toBe(true);
-    expect(stopBtn?.classList.contains("disabled")).toBe(true);
+    expect(stopBtn?.classList.contains("is-active")).toBe(true);
+    expect(stopBtn?.classList.contains("disabled")).toBe(false);
     expect(pauseBtn?.classList.contains("disabled")).toBe(true);
     expect(playBtn?.classList.contains("disabled")).toBe(false);
     expect(rewindBtn?.classList.contains("disabled")).toBe(false);
     expect(clearBtn?.classList.contains("disabled")).toBe(false);
+    // Rewind/Clear are actions, not states: never pressed.
+    expect(rewindBtn?.hasAttribute("aria-pressed")).toBe(false);
+  });
+
+  it("shows adapter-provided shortcuts in tooltips", () => {
+    const { container } = render(() => (
+      <TransportToolbar
+        {...defaultProps({ mode: "wasm", shortcuts: { play: "Ctrl+Space" } })}
+      />
+    ));
+    expect(container.querySelector("[title='Play (Ctrl+Space)']")).toBeTruthy();
+    expect(container.querySelector("[aria-label='Play']")).toBeTruthy();
+    expect(container.querySelector("[title='Pause']")).toBeTruthy();
+  });
+
+  it("renders the BPM chip only when a BPM is known and forwards commits", () => {
+    const onBpmCommit = vi.fn();
+    const [bpm, setBpm] = createSignal<number | null>(null);
+    const { container } = render(() => (
+      <TransportToolbar {...defaultProps({ mode: "wasm", bpm: bpm(), onBpmCommit })} />
+    ));
+    expect(container.querySelector(".bpm-display")).toBeNull();
+
+    setBpm(120);
+    const chip = container.querySelector(".bpm-display") as HTMLElement;
+    expect(chip.querySelector(".bpm-value")?.textContent).toBe("120");
+    expect(chip.getAttribute("aria-valuenow")).toBe("120");
+  });
+
+  it("passes beats per bar to the progress bar ticks", () => {
+    const { container } = render(() => (
+      <TransportToolbar {...defaultProps({ beatsPerBar: 3 })} />
+    ));
+    expect(container.querySelectorAll(".progress-beat-tick").length).toBe(2);
   });
 
   it("reacts to prop changes", async () => {

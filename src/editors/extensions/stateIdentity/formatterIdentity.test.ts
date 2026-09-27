@@ -27,13 +27,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 
 import { getAppSettings, replaceAppSettings } from "../../../runtime/appSettingsRepository.ts";
 import { structuralCoreExtensions } from "../structure/adapter/extension.ts";
 import { dispatchAction } from "../structure/adapter/dispatcher.ts";
-import { structField } from "../structure/adapter/stateField.ts";
 
 import {
   buildIdentityField,
@@ -92,13 +91,6 @@ function navToFirstForm(h: Harness): void {
   dispatchAction(h.view, "nav.in");
 }
 
-/** Move the structural cursor onto the nth top-level form (0-indexed). */
-function navToNthForm(h: Harness, n: number): void {
-  dispatchAction(h.view, "nav.in"); // into doc → first form
-  for (let i = 0; i < n; i++) {
-    dispatchAction(h.view, "nav.next");
-  }
-}
 
 /** Snapshot settings and restore them after the test. */
 let _settingsSnapshot: ReturnType<typeof getAppSettings>;

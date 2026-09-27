@@ -77,7 +77,7 @@ export function parseSpecRefs(raw) {
 
 /**
  * Build the witness index from the corpus on disk.
- * @returns {{index: object, errors: string[], warnings: string[]}}
+ * @returns {{index: import("../src/lib/witness/types.ts").WitnessIndex, errors: string[], warnings: string[]}}
  */
 export function harvestWitnesses({ corpusDir = CORPUS_DIR } = {}) {
   const errors = [];

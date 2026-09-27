@@ -274,14 +274,6 @@ export function pauseVisualisationRender(): void {
   renderRequested = false;
 }
 
-/**
- * Force the next sample to recompute. Kept for API compat with callers
- * that used the old sampling-window cache invalidation.
- */
-export function invalidateSamplingCache(): void {
-  // No-op — tick-and-project runs unconditionally each frame.
-}
-
 // ── Internal: rAF loop ──────────────────────────────────────────────
 
 function scheduleNextTick(): void {

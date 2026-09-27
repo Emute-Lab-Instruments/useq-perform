@@ -28,7 +28,8 @@ layer: behavioural
 - `useq:zen:progress` (zen-mode lesson progress — see [zen-mode.md §8.1](zen-mode.md))
 - `uSEQ-Perform-Editor-Probes` (probe state)
 - `uSEQ-Perform-Editor-LiveEdits` (live-edit values, orphan state, MIDI bindings, panel state)
-- `uSEQ-Perform-DevMode-State` (devmode toggle)
+- `uSEQ-Perform-Console-Layout` (console panel size, position, collapsed state, filter toggles — see [console.md §1.10](console.md))
+- `uSEQ-Perform-Panel-Geometry` (panel chrome geometry per design and per panel: pane x/y/w/h, drawer width %, tile slot; clamped to the viewport on restore — see [settings.md §1.8.2](settings.md))
 
 1.3.1 `uSEQ-Perform-Editor-Identity` is a legacy state-identity migration input,
 not a live sidecar. It remains readable alongside `uSEQ-Perform-User-Code` until

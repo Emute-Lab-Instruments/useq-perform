@@ -1,78 +1,324 @@
+/* ── Right-hand main toolbar ──────────────────────────────────────────
+ * Grouped column: runtime/connection, file, view, app (transport.md §1.8).
+ * Sits below the top transport strip so the two toolbars never overlap. */
 #panel-toolbar {
     position: fixed;
-    top: 0;
+    top: calc(var(--top-toolbar-height, 48px) + 6px);
     right: 10px;
+    z-index: var(--z-toolbar-side, 35);
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    align-items: stretch;
+    gap: 6px;
+    max-height: calc(100vh - var(--top-toolbar-height, 48px) - 12px);
+    overflow-y: auto;
+    overflow-x: hidden;
     background: transparent;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-    border:none;
+    border: none;
     border-radius: var(--panel-border-radius);
     padding: 5px;
 }
 
-/* Top playback toolbar */
+#panel-toolbar .toolbar-group {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+/* Separators between groups */
+#panel-toolbar .toolbar-group + .toolbar-group {
+    border-top: 1px solid var(--section-separator, var(--panel-border));
+    padding-top: 6px;
+}
+
+/* Consistent sizing for every square toolbar button */
+#panel-toolbar .toolbar-button {
+    height: 2.3em;
+    min-width: 2.3em;
+    margin: 0;
+    padding: 0.4em 0.5em;
+}
+
+#panel-toolbar .toolbar-button svg {
+    width: 1.25em;
+    height: 1.25em;
+    flex: 0 0 auto;
+}
+
+/* Compact joined pair (font size down/up) */
+.toolbar-button-pair {
+    display: inline-flex;
+}
+
+#panel-toolbar .toolbar-button-pair .toolbar-button {
+    min-width: 1.9em;
+    padding: 0.4em 0.3em;
+}
+
+.toolbar-button-pair .toolbar-button:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.toolbar-button-pair .toolbar-button:last-child {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    margin-left: -1px;
+}
+
+/* ── Connection status chip (runtime-modes.md §1.6) ─────────────────── */
+.connection-chip {
+    --chip-color: var(--text-primary);
+    gap: 0.4em;
+    justify-content: flex-start;
+    color: var(--chip-color);
+    border-color: color-mix(in srgb, var(--chip-color) 55%, var(--panel-border));
+    box-shadow: 0 0 14px color-mix(in srgb, var(--chip-color) 45%, transparent);
+    transform-origin: center;
+}
+
+#panel-toolbar .connection-chip {
+    width: 100%;
+    padding-right: 0.7em;
+}
+
+#panel-toolbar .connection-chip:hover {
+    color: var(--chip-color);
+    border-color: var(--chip-color);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--chip-color) 60%, transparent);
+}
+
+.connection-chip.transport-none { --chip-color: var(--status-error, #ff5c5c); }
+.connection-chip.transport-wasm { --chip-color: var(--status-info, #4fc3f7); }
+.connection-chip.transport-hardware { --chip-color: var(--status-ok, #69f0ae); }
+.connection-chip.transport-both { --chip-color: var(--status-ok, #69f0ae); }
+
+.connection-chip-dot {
+    width: 0.55em;
+    height: 0.55em;
+    border-radius: 50%;
+    background: currentColor;
+    flex: 0 0 auto;
+}
+
+/* Two runtimes: a second ring distinguishes `both` from hardware-only. */
+.connection-chip.transport-both .connection-chip-dot {
+    box-shadow: 0 0 0 2px var(--panel-control-bg), 0 0 0 3px currentColor;
+}
+
+.connection-chip.transport-none .connection-chip-dot {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.connection-chip-label {
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    line-height: 1.1;
+    pointer-events: none;
+}
+
+/* ── Top transport strip ─────────────────────────────────────────────
+ * Three columns: [state + BPM] [buttons + bar progress] [engine status].
+ * The centre column sizes to the button row; the progress bar inherits
+ * that width through layout. */
 #panel-top-toolbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 10px;
-  gap: 4px;
-  background: var(--toolbar-bg, transparent);
-  backdrop-filter: blur(12px);
-  z-index: 1000;
-  pointer-events: none; /* allow underlying clicks except buttons */
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--z-toolbar, 30);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-areas: "start center end";
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 4px;
+    padding: 4px 10px;
+    background: var(--toolbar-bg, transparent);
+    backdrop-filter: blur(12px);
+    pointer-events: none; /* allow underlying clicks except controls */
+}
+
+#panel-top-toolbar .transport-side {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+#panel-top-toolbar .transport-side-start {
+    grid-area: start;
+    justify-content: flex-start;
+}
+
+#panel-top-toolbar .transport-side-end {
+    grid-area: end;
+    justify-content: flex-end;
+}
+
+#panel-top-toolbar .transport-center {
+    grid-area: center;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+    min-width: 0;
 }
 
 #panel-top-toolbar .toolbar-row {
-  pointer-events: auto; /* re-enable for row/buttons */
-  gap: 4px;
+    pointer-events: auto; /* re-enable for row/buttons */
+    gap: 4px;
 }
 
 #panel-top-toolbar .toolbar-button {
-  padding: 0.35em 0.5em;
-  height: 2.1em;
-  min-width: 22px;
-  font-size: 0.95em;
+    padding: 0.35em 0.5em;
+    height: 2.1em;
+    min-width: 2.1em;
+    font-size: 0.95em;
 }
 
-/* BPM readout pinned to the left so the centered button row is untouched. */
+/* Current transport state: lit, not faded (transport.md §1.7.1). */
+.toolbar-button.transport-button.is-active,
+.toolbar-button.transport-button.is-active:hover,
+.toolbar-button.transport-button.is-active:active {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+    color: var(--on-accent, #000);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent-color) 55%, transparent);
+    cursor: default;
+    transform: none;
+}
+
+/* Transport state readout (dot + word) */
+#panel-top-toolbar .transport-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    padding: 0.25em 0.55em;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--panel-border-radius);
+    background: var(--panel-control-bg);
+    color: var(--text-secondary, var(--text-primary));
+    font-family: var(--code-font, monospace);
+    font-size: 0.78em;
+    line-height: 1.2;
+    white-space: nowrap;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.transport-state-dot {
+    width: 0.6em;
+    height: 0.6em;
+    border-radius: 50%;
+    background: currentColor;
+    flex: 0 0 auto;
+}
+
+#panel-top-toolbar[data-transport-state="paused"] .transport-state {
+    color: var(--status-warn, #ffd54f);
+}
+
+#panel-top-toolbar .transport-state.is-playing {
+    color: var(--status-ok, #69f0ae);
+    border-color: color-mix(in srgb, var(--status-ok, #69f0ae) 50%, var(--panel-border));
+}
+
+#panel-top-toolbar .transport-state.is-playing .transport-state-dot {
+    animation: transport-playing-pulse 1.2s ease-in-out infinite;
+}
+
+#panel-top-toolbar .transport-state.is-inert {
+    opacity: 0.6;
+}
+
+@keyframes transport-playing-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+    50% { box-shadow: 0 0 0.5em 0.1em currentColor; opacity: 0.7; }
+}
+
+/* Editable BPM chip (transport.md §1.7.3) */
 #panel-top-toolbar .bpm-display {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  padding: 0.25em 0.55em;
-  border: 1px solid var(--panel-border);
-  border-radius: 4px;
-  background-color: var(--panel-control-bg);
-  color: var(--text-primary);
-  font-family: monospace;
-  font-size: 0.85em;
-  line-height: 1.2;
-  pointer-events: auto;
-  user-select: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 0.25em 0.55em;
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    background-color: var(--panel-control-bg);
+    color: var(--text-primary);
+    font-family: monospace;
+    font-size: 0.85em;
+    line-height: 1.2;
+    pointer-events: auto;
+    user-select: none;
+    touch-action: none;
+    cursor: ns-resize;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+#panel-top-toolbar .bpm-display:hover,
+#panel-top-toolbar .bpm-display:focus-visible,
+#panel-top-toolbar .bpm-display.bpm-scrubbing,
+#panel-top-toolbar .bpm-display.bpm-editing {
+    border-color: var(--accent-color);
+}
+
+#panel-top-toolbar .bpm-display:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+}
+
+#panel-top-toolbar .bpm-display.bpm-editing {
+    cursor: text;
 }
 
 #panel-top-toolbar .bpm-display .bpm-value {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+#panel-top-toolbar .bpm-display .bpm-input {
+    width: 4.5ch;
+    padding: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
 
 #panel-top-toolbar .bpm-display .bpm-unit {
-  font-size: 0.75em;
-  letter-spacing: 0.06em;
-  opacity: 0.7;
+    font-size: 0.75em;
+    letter-spacing: 0.06em;
+    opacity: 0.7;
+}
+
+/* Bar-position strip: beat ticks (transport.md §1.7.4) */
+#toolbar-bar-progress-container {
+    position: relative;
+}
+
+#panel-top-toolbar #toolbar-bar-progress-container {
+    margin-top: 0;
+}
+
+.progress-beat-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    transform: translateX(-0.5px);
+    background: color-mix(in srgb, var(--editor-background, #000) 60%, transparent);
+    pointer-events: none;
 }
 
 /* Synthesis engine state chip. It belongs to the transport family and must
@@ -99,6 +345,7 @@
   font-family: var(--code-font);
   font-size: 0.78em;
   line-height: 1;
+  white-space: nowrap;
   pointer-events: auto;
   user-select: none;
 }
@@ -126,15 +373,15 @@
 }
 
 #panel-top-toolbar .engine-indicator-suspended {
-  color: #ffd54f;
+  color: var(--status-warn, #ffd54f);
 }
 
 #panel-top-toolbar .engine-indicator-running {
-  color: #69f0ae;
+  color: var(--status-ok, #69f0ae);
 }
 
 #panel-top-toolbar .engine-indicator-error {
-  color: #ff8a80;
+  color: var(--status-error, #ff8a80);
 }
 
 .toolbar-row {
@@ -143,13 +390,13 @@
     justify-content: center;
 }
 
-/* Button styles */
+/* ── Buttons ─────────────────────────────────────────────────────────── */
 .toolbar-button {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding:0.46em 0.6em;
-    /*padding: 4px 8px;*/
+    padding: 0.46em 0.6em;
     border: 1px solid var(--panel-border);
     border-radius: 4px;
     margin: 0 2px;
@@ -160,141 +407,131 @@
     font-family: monospace;
     font-weight: 400;
     color: var(--text-primary);
-    background-color: var(--panel-control-bg); 
+    background-color: var(--panel-control-bg);
     text-align: center;
-    transition: all 0.15s;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, opacity 0.15s;
     user-select: none;
     cursor: pointer;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  }
-  
-  .toolbar-button:hover {
+}
+
+.toolbar-button:hover:not(:disabled):not(.disabled) {
     background-color: var(--panel-item-hover-bg);
     border-color: var(--accent-color);
     color: var(--accent-color);
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-  }
-  
-  .toolbar-button:active {
+}
+
+.toolbar-button:active:not(:disabled):not(.disabled) {
     background-color: var(--panel-item-active-bg);
     border-color: var(--accent-color-active);
     color: var(--accent-color-active);
     transform: translateY(1px);
-  }
-  
-  .toolbar-button.primary {
+}
+
+.toolbar-button:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+}
+
+.toolbar-button.primary {
     background-color: var(--accent-color);
     border-color: var(--accent-color);
-    color: white;
-  }
-  
-  .toolbar-button.primary:hover {
+    color: var(--on-accent, #000);
+}
+
+.toolbar-button.primary:hover:not(:disabled):not(.disabled) {
     background-color: var(--accent-color-hover);
     border-color: var(--accent-color-hover);
-    color: white;
-  }
-  
-  .toolbar-button.primary:active {
+    color: var(--on-accent, #000);
+}
+
+.toolbar-button.primary:active:not(:disabled):not(.disabled) {
     background-color: var(--accent-color-active);
     border-color: var(--accent-color-active);
-    color: white;
-  }
+    color: var(--on-accent, #000);
+}
 
-  /* Disabled state */
-  .toolbar-button.disabled {
-    opacity: 0.5;
-    pointer-events: none;
-  }
+/* Genuinely unavailable actions */
+.toolbar-button.disabled,
+.toolbar-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    box-shadow: none;
+}
 
-  /* Connection button styling - matches first toolbar button */
-  .toolbar-row:first-child .toolbar-button:first-child {
-    box-shadow: 0 0 20px var(--accent-color);
-    transform-origin: center;
-    transition: transform 0.2s ease-in-out;
-  }
-
-  .toolbar-row:first-child .toolbar-button:first-child:hover {
-    box-shadow: 0 0 20px var(--accent-color-hover);
-  }
-
-  /* transport-none: red — no connection */
-  .toolbar-row:first-child .toolbar-button.transport-none {
-    color: rgba(255, 60, 60, 0.8) !important;
-    box-shadow: 0 0 20px rgba(255, 60, 60, 0.55) !important;
-  }
-
-  /* transport-wasm: orange — WASM only */
-  .toolbar-row:first-child .toolbar-button.transport-wasm {
-    color: rgba(255, 165, 0, 0.85) !important;
-    box-shadow: 0 0 20px rgba(255, 165, 0, 0.6) !important;
-  }
-
-  /* transport-both: green — WASM + hardware */
-  .toolbar-row:first-child .toolbar-button.transport-both {
-    color: rgba(0, 230, 100, 0.85) !important;
-    box-shadow: 0 0 20px rgba(0, 230, 100, 0.6) !important;
-  }
-
-  /* transport-hardware: warm off-green — hardware only */
-  .toolbar-row:first-child .toolbar-button.transport-hardware {
-    color: rgba(120, 210, 80, 0.85) !important;
-    box-shadow: 0 0 20px rgba(120, 210, 80, 0.6) !important;
-  }
-
-  /* ── Connect button badge ────────────────────────────────── */
-  .toolbar-button {
-    position: relative;
-  }
-
-  .connect-badge {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    padding: 1px 3px;
-    font-family: monospace;
-    font-size: 0.55em;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    line-height: 1.2;
-    border-radius: 3px;
-    white-space: nowrap;
-    user-select: none;
-    pointer-events: none;
-    transition: color 0.3s, background-color 0.3s, box-shadow 0.3s;
-  }
-
-  .connect-badge.transport-wasm {
-    color: rgba(255, 165, 0, 0.95);
-    background: rgba(255, 165, 0, 0.18);
-  }
-
-  .connect-badge.transport-hardware {
-    color: rgba(120, 210, 80, 0.95);
-    background: rgba(120, 210, 80, 0.18);
-  }
-
-  .connect-badge.transport-both {
-    color: rgba(0, 230, 100, 0.95);
-    background: rgba(0, 230, 100, 0.18);
-  }
-
-
-  @media all and (max-width:30em) {
-    .toolbar-button {
-      display: inline-flex;
-      margin: 0.4em auto;
+/* ── Reduced motion ──────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    .toolbar-button,
+    .connection-chip {
+        transition: none;
     }
-  }
 
+    #panel-top-toolbar .transport-state.is-playing .transport-state-dot {
+        animation: none;
+        box-shadow: 0 0 0.4em currentColor;
+    }
+}
 
+/* ── Narrow windows / large projected fonts (≤ 700px) ────────────────
+ * Text labels collapse to icons + colour dots; the full state stays in the
+ * tooltip and accessible name. */
+@media (max-width: 700px) {
+    #panel-top-toolbar {
+        column-gap: 6px;
+        padding: 3px 6px;
+    }
 
-/* Make connect button take full width */
-/* .toolbar-row:first-child {
-    width: 65%;
-    margin: 0 auto;
-} */
+    #panel-top-toolbar .transport-state-label,
+    #panel-top-toolbar .bpm-display .bpm-unit,
+    #panel-top-toolbar .engine-indicator-label {
+        display: none;
+    }
 
-/* .toolbar-row:first-child .toolbar-button {
-    flex: 1;
-} */
+    #panel-top-toolbar .transport-state {
+        padding: 0.45em;
+    }
+
+    .connection-chip-label {
+        display: none;
+    }
+
+    #panel-toolbar {
+        right: 4px;
+        gap: 4px;
+        padding: 4px;
+    }
+
+    #panel-toolbar .connection-chip {
+        justify-content: center;
+        padding-right: 0.5em;
+    }
+
+    #panel-toolbar .toolbar-group {
+        flex-direction: column;
+    }
+
+    #panel-toolbar .toolbar-button-pair {
+        flex-direction: column;
+    }
+
+    #panel-toolbar .toolbar-button-pair .toolbar-button {
+        min-width: 2.3em;
+        border-radius: 4px;
+        margin: 0;
+    }
+}
+
+/* Very narrow: buttons take the first row, status chips drop below. */
+@media (max-width: 480px) {
+    #panel-top-toolbar {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-areas:
+            "center center"
+            "start end";
+    }
+
+    #panel-top-toolbar .transport-center {
+        justify-self: center;
+    }
+}

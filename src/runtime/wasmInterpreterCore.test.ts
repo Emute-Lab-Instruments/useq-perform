@@ -7,7 +7,7 @@ import {
 
 function createHeapModule(): EmscriptenModule & {
   _malloc: ReturnType<typeof vi.fn>;
-  _free: ReturnType<typeof vi.fn>;
+  _free: ReturnType<typeof vi.fn<(pointer: number) => void>>;
 } {
   let nextPointer = 8;
   return {
@@ -17,7 +17,7 @@ function createHeapModule(): EmscriptenModule & {
       nextPointer += bytes;
       return pointer;
     }),
-    _free: vi.fn(),
+    _free: vi.fn< (pointer: number) => void >(),
     HEAPF64: new Float64Array(32),
   };
 }

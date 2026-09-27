@@ -17,9 +17,8 @@ import {
   type GamepadSnapshot,
 } from "./gamepadManager";
 import type { ActionId } from "../keybindings/actions";
-import type { MenuDispatcher } from "../menu/dispatcher";
+import type { MenuDispatcher } from "../menu/types";
 import * as ch from "../../contracts/gamepadChannels";
-import { isGrabActive } from "./grabState.ts";
 import { isMenuOpen } from "../menu/store.ts";
 
 import { diffSnapshots } from "./hardware";
@@ -75,6 +74,7 @@ export type GamepadPipelineOptions = {
 };
 
 export interface GamepadEditorContext {
+  readonly grabActive: boolean;
   readonly insertionMode: boolean;
   readonly cursorOnLeafAtom: boolean;
   readonly cursorNodeKind: string | null;
@@ -182,6 +182,7 @@ export function createGamepadPipeline(
       ? options.readEditorContext(editor)
       : {
           insertionMode: false,
+          grabActive: false,
           cursorOnLeafAtom: false,
           cursorNodeKind: null,
         };
@@ -189,7 +190,6 @@ export function createGamepadPipeline(
     return {
       gamepad: getState(),
       ...editorContext,
-      grabActive: isGrabActive(),
     };
   }
 

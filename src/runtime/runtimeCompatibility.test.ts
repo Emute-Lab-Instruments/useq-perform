@@ -38,7 +38,7 @@ describe("WASM shadow compatibility", () => {
   });
 
   it("does not invent a shadow when no Worker port is selected", () => {
-    transitionRuntimeCoordinator({ type: "select-wasm-port", port: null });
+    transitionRuntimeCoordinator({ type: "clear-wasm-port" });
     expect(shouldUseWasmShadow()).toBe(false);
   });
 });

@@ -24,7 +24,7 @@ vi.mock("../runtime/runtimeCompatibility.ts", () => ({
 }));
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 
 // ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ const mockCommitSynthArtifacts = vi.hoisted(() =>
 );
 
 const mockGetActiveSynthesisService = vi.hoisted(() =>
-  vi.fn(() => ({
+  vi.fn((): { commitSynthArtifacts: typeof mockCommitSynthArtifacts } | null => ({
     commitSynthArtifacts: mockCommitSynthArtifacts,
   })),
 );
@@ -67,7 +67,19 @@ const mockEvalCodeWithDiagnostics = vi.hoisted(() =>
     });
   }),
 );
-const mockSendTouSEQ = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const mockSendTouSEQ = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve()));
+
+vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
+  dispatchRuntimeCodeEvaluation: vi.fn(async ({ code, wasmCode, soft = false }) => ({
+    session: { transportMode: soft ? "wasm" : "both" },
+    wasm: { status: "fulfilled", value: await mockEvalCodeWithDiagnostics(wasmCode ?? code) },
+    hardware: soft ? null : {
+      status: "fulfilled",
+      value: await mockSendTouSEQ(code),
+    },
+    diagnosticAuthority: soft ? "wasm" : "hardware",
+  })),
+}));
 
 vi.mock("@nextjournal/clojure-mode/extensions/eval-region", () => ({
   top_level_string: (_state: unknown) => "",
@@ -186,6 +198,10 @@ function oscSinePayload(revision: number) {
   };
 }
 
+async function flushEvaluationPipeline(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -219,9 +235,7 @@ describe("editorEvaluation → synthesisService.commitSynthArtifacts (VAL-ENGINE
     });
 
     // Let the .then chain run.
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushEvaluationPipeline();
 
     expect(commitCalls.length).toBe(1);
     expect(commitCalls[0].hasErrors).toBe(false);
@@ -244,9 +258,7 @@ describe("editorEvaluation → synthesisService.commitSynthArtifacts (VAL-ENGINE
       synthArtifacts: oscSinePayload(1),
     });
 
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushEvaluationPipeline();
 
     expect(commitCalls.length).toBe(1);
     // The service receives hasErrors=true and rejects the commit itself.

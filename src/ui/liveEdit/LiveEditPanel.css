@@ -143,7 +143,7 @@
 }
 
 .le-panel-card.is-error {
-  border-color: var(--error-color, #ff5555);
+  border-color: var(--status-error, #ff5555);
 }
 
 .le-panel-card.is-wasm-preview {
@@ -235,17 +235,17 @@
 }
 
 .le-panel-card-state-badge.is-error {
-  background-color: var(--error-color, #ff5555);
+  background-color: var(--status-error, #ff5555);
   color: #fff;
 }
 
 .le-panel-card-state-badge.is-listening {
   background-color: var(--accent-color, #ffaa44);
-  color: var(--panel-bg, #1e1e1e);
+  color: var(--on-accent, #1e1e1e);
 }
 
 .le-panel-card-state-badge.is-wasm-preview {
-  background-color: var(--warn-color, #ffcc66);
+  background-color: var(--status-warn, #ffcc66);
   color: var(--panel-bg, #1e1e1e);
 }
 
@@ -469,7 +469,7 @@
 }
 
 .le-panel-card-menu-item.is-destructive {
-  color: var(--error-color, #ff7777);
+  color: var(--status-error, #ff7777);
 }
 
 .le-panel-card-menu-separator {

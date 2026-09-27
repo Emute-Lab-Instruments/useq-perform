@@ -16,7 +16,8 @@
 import { examineEnvironment, type EnvironmentState } from './startupContext.ts';
 import { createApp } from './appLifecycle.ts';
 import type { EditorView } from '@codemirror/view';
-import { loadConfigurationWithMetadata } from './appSettingsRepository.ts';
+import { loadBootstrapSettingsWithMetadata } from './appSettingsRepository.ts';
+import { dbg } from '../lib/debug.ts';
 import { editorSession, setEditorSession } from '../lib/editorStore.ts';
 import {
   disposeEditorLifecycle,
@@ -37,7 +38,7 @@ import {
 import { executeAction } from '../editors/commands/actionHandlers.ts';
 import { registerVisualisationPanel } from '../ui/adapters/visualisationPanel';
 import { visualisationSession } from '../effects/visualisationSession.ts';
-import { createMenuDispatcher } from '../lib/menu/dispatcher.ts';
+import { createMenuDispatcher } from '../editors/menu/dispatcher.ts';
 import { menuState, dispatchMenuInput } from '../lib/menu/store.ts';
 import { getCachedManifest } from '../lib/menu/manifest.ts';
 import type { ApplicationRootHandle } from '../ui/ApplicationRoot.tsx';
@@ -293,7 +294,7 @@ export async function bootstrap(): Promise<BootstrapResult> {
   let settingsSources: RuntimeSettingsSource[] = ['defaults'];
 
   try {
-    const result = await loadConfigurationWithMetadata();
+    const result = await loadBootstrapSettingsWithMetadata();
     settingsSources = result.settingsSources;
     replaceSettings(result.config);
   } catch (error) {
@@ -527,7 +528,7 @@ async function maybeConnectNativeBridge(
         void disconnect(serialPort);
       },
     });
-    console.log(`[bootstrap] native bridge: connecting to ${url}`);
+    dbg("bootstrap", `native bridge: connecting to ${url}`);
     await connectToSerialPort(serialPort);
   } catch (error) {
     reportBootstrapFailure("native-bridge", error);

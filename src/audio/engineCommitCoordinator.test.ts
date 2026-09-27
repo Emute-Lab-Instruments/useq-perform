@@ -15,7 +15,7 @@
  * and emits the ordered list of worklet messages + the Worker arm-epoch
  * call. It performs no I/O and touches no singletons.
  */
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   allocateEpoch,
@@ -334,10 +334,6 @@ describe("engineCommitCoordinator — worklet delta ordering (VAL-ENGINE-010)", 
   });
 
   it("emits no deltas for an empty diff (no-op)", () => {
-    const prior: ActiveDeclaration[] = [
-      { identity: "lead", def: "osc/sine", version: 2 },
-    ];
-    const diff = buildGraphDiff(prior, [oscSineDeclaration("lead")]);
     // Update-in-place is represented; force empty by filtering.
     const emptyDiff = {
       added: [],

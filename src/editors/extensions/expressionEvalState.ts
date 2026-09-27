@@ -4,7 +4,8 @@
 
 import type { EditorState } from "@codemirror/state";
 import { Annotation, StateField } from "@codemirror/state";
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
+import type { SyntaxNode } from "@lezer/common";
 
 // ---------------------------------------------------------------------------
 // Shared regex — matches expression references like a1, d2, s3, etc.
@@ -13,6 +14,70 @@ import { syntaxTree } from "@codemirror/language";
 /** Regex matching expression type references (e.g. `a1`, `d3`, `s2`). Uses the
  *  global flag, so always reset `lastIndex` before each scan. */
 export const matchPattern = /\b([ads])([1-8])(?=[\s)(]|$)/g;
+
+export interface OutputAssignment {
+  expressionType: string;
+  /** Exact source offsets of the evaluated top-level form. */
+  from: number;
+  to: number;
+  line: number;
+  endLine: number;
+}
+
+/** Output calls and sequential do blocks, excluding references and quoted code. */
+export function collectOutputAssignments(state: EditorState): OutputAssignment[] {
+  const tree = ensureSyntaxTree(state, state.doc.length, 10) ?? syntaxTree(state);
+  const assignments: OutputAssignment[] = [];
+
+  function children(node: SyntaxNode): SyntaxNode[] {
+    const result: SyntaxNode[] = [];
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (!["(", ")", "LineComment", "BlockComment"].includes(child.name)) result.push(child);
+    }
+    return result;
+  }
+
+  function isComplete(node: SyntaxNode): boolean {
+    if (node.type.isError) return false;
+    if (node.name === "List") {
+      const head = children(node)[0];
+      if (head && state.sliceDoc(head.from, head.to) === "$") return false;
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (!isComplete(child)) return false;
+    }
+    return true;
+  }
+
+  function collect(node: SyntaxNode, outputs: Set<string>): void {
+    if (node.name !== "List" || node.lastChild?.name !== ")") return;
+    const parts = children(node);
+    const head = parts[0];
+    if (!head || !["Symbol", "Operator"].includes(head.name)) return;
+    const name = state.sliceDoc(head.from, head.to);
+    if (/^[ads][1-8]$/.test(name) && parts.length === 2) {
+      outputs.add(name);
+    } else if (name === "do") {
+      for (const part of parts.slice(1)) collect(part, outputs);
+    }
+  }
+
+  for (let form = tree.topNode.firstChild; form; form = form.nextSibling) {
+    if (!isComplete(form)) continue;
+    const outputs = new Set<string>();
+    collect(form, outputs);
+    for (const expressionType of outputs) {
+      assignments.push({
+        expressionType,
+        from: form.from,
+        to: form.to,
+        line: state.doc.lineAt(form.from).number,
+        endLine: state.doc.lineAt(form.to).number,
+      });
+    }
+  }
+  return assignments;
+}
 
 // ---------------------------------------------------------------------------
 // Annotations & StateField
@@ -130,10 +195,13 @@ export function findExpressionAtPosition(
 
 /** Pure: determine if a range is active based on last evaluation. */
 export function isRangeActive(
-  range: { from: number; to: number },
-  lastEvaluated: { line: number } | null | undefined,
+  range: { from: number; to: number; startPos?: number; endPos?: number },
+  lastEvaluated: { line: number; from?: number; to?: number } | null | undefined,
 ): boolean {
   if (!lastEvaluated) return false;
+  if (range.startPos !== undefined && range.endPos !== undefined) {
+    return lastEvaluated.from === range.startPos && lastEvaluated.to === range.endPos;
+  }
   return lastEvaluated.line >= range.from && lastEvaluated.line <= range.to;
 }
 

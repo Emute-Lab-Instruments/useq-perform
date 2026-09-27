@@ -33,7 +33,7 @@ export type RuntimeCoordinatorTransition =
   | { type: "session"; updates: RuntimeSessionUpdate }
   | { type: "select-wasm-port"; port: WasmRuntimePort }
   | { type: "clear-wasm-port"; port?: WasmRuntimePort }
-  | { type: "wasm-availability"; available: boolean }
+  | { type: "wasm-availability"; available: boolean; port?: WasmRuntimePort }
   | { type: "reset" };
 
 const DEFAULT_INPUTS: RuntimeSessionInputs = {
@@ -102,11 +102,11 @@ export function transitionRuntimeCoordinator(
       activeWasmPort = transition.port;
       return snapshotState();
     case "clear-wasm-port":
-      if (!transition.port || transition.port === activeWasmPort) {
-        activeWasmPort = null;
-      }
+      if (transition.port && transition.port !== activeWasmPort) return snapshotState();
+      activeWasmPort = null;
       return applySessionUpdate({ wasmEnabled: false });
     case "wasm-availability":
+      if (transition.port && transition.port !== activeWasmPort) return snapshotState();
       return applySessionUpdate({ wasmEnabled: transition.available });
     case "reset":
       currentInputs = { ...DEFAULT_INPUTS };

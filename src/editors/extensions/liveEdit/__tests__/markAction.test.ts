@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { structuralCoreExtensions } from "../../structure/adapter/extension.ts";
@@ -63,8 +63,8 @@ function currentNodeText(view: EditorView): string {
 
 describe("liveEdit.mark — marking", () => {
   it("marks a number literal → wraps with (live-edit ...)", () => {
-    const view = createView("(osc 0.5)");
-    // nav: doc → list (osc 0.5) → symbol osc → number 0.5
+    const view = createView("(lfo/sin 0.5)");
+    // nav: doc → list (lfo/sin 0.5) → symbol head → number 0.5
     navigateTo(view, "in", "in", "next");
     expect(currentNodeText(view)).toBe("0.5");
 
@@ -74,7 +74,7 @@ describe("liveEdit.mark — marking", () => {
     const text = view.state.doc.toString();
     // Should contain the live-edit wrapper
     expect(text).toMatch(/\(live-edit 0\.5 :id "[a-z2-9]{4}" :min \d+ :max \d+/);
-    // Parent osc context: inferRange(0.5, "osc") → min 20, max 2000
+    // Parent lfo/sin context infers a frequency range.
     expect(text).toContain(":min 20");
     expect(text).toContain(":max 2000");
     view.destroy();

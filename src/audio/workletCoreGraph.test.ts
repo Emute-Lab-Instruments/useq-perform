@@ -1,3 +1,4 @@
+import { commitGraph } from "./testing/commitGraph";
 /**
  * Multi-node worklet host tests (synthesis epic M2.1, ergo 9a9370af;
  * quantum-growth fix, ergo 10271a1d).
@@ -338,20 +339,19 @@ function buildGraphHarness(opts: {
   };
 }
 
-function instantiate(
-  core: WorkletCore,
+function instance(
   identity: string,
   def: string,
   epoch: number,
   extra?: Record<string, unknown>,
 ) {
-  core.handleMessage({
-    type: "instantiate",
+  return {
+    type: "instantiate" as const,
     identity: { identity, def, version: 1, epoch },
     statePointer: 0,
     stateBytes: 0,
     ...extra,
-  });
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -370,8 +370,10 @@ describe("workletCore graph — multiple live instances (synthesis.md §3.1)", (
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "src/b", 1);
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "src/b", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     const out = h.core.readOutput();
@@ -391,8 +393,10 @@ describe("workletCore graph — multiple live instances (synthesis.md §3.1)", (
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 3);
-    instantiate(h.core, "id-b", "src/b", 3);
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 3),
+      instance("id-b", "src/b", 3)
+    ]);
 
     // A mismatched-epoch block must NOT activate or render either node.
     h.step(7);
@@ -420,10 +424,12 @@ describe("workletCore graph — multiple live instances (synthesis.md §3.1)", (
       arena,
       callOrder,
     });
-    instantiate(h.core, "one", "src/one", 1);
-    instantiate(h.core, "tiny-a", "src/tiny-a", 1);
-    instantiate(h.core, "tiny-b", "src/tiny-b", 1);
-    instantiate(h.core, "tiny-c", "src/tiny-c", 1);
+    commitGraph(h.core, [
+      instance("one", "src/one", 1),
+      instance("tiny-a", "src/tiny-a", 1),
+      instance("tiny-b", "src/tiny-b", 1),
+      instance("tiny-c", "src/tiny-c", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     const expected = Math.fround(1 + 3 * tiny);
@@ -450,10 +456,12 @@ describe("workletCore graph — topological execution and port wiring", () => {
     });
     // Downstream (B consumes A) instantiated FIRST — topological order
     // must still run A before B.
-    instantiate(h.core, "id-b", "fx/gain", 1, {
+    commitGraph(h.core, [
+      instance("id-b", "fx/gain", 1, {
       audioInputs: [{ port: 0, sourceIdentity: "id-a", sourcePort: 0 }],
-    });
-    instantiate(h.core, "id-a", "src/a", 1);
+    }),
+      instance("id-a", "src/a", 1)
+    ]);
     h.step(1);
 
     expect(h.callOrder).toEqual(["src/a", "fx/gain"]);
@@ -469,10 +477,12 @@ describe("workletCore graph — topological execution and port wiring", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "fx/gain", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "fx/gain", 1, {
       audioInputs: [{ port: 0, sourceIdentity: "id-a", sourcePort: 0 }],
-    });
+    })
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     // Pointer wiring: the gain node's input pointer IS the const node's
@@ -499,18 +509,20 @@ describe("workletCore graph — topological execution and port wiring", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/echo-a", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/echo-a", 1, {
       controlChannels: [
         { param: "freq", channel: 0 },
         { param: "amp", channel: 1 },
       ],
-    });
-    instantiate(h.core, "id-b", "src/echo-b", 1, {
+    }),
+      instance("id-b", "src/echo-b", 1, {
       controlChannels: [
         { param: "freq", channel: 2 },
         { param: "amp", channel: 3 },
       ],
-    });
+    })
+    ]);
     // Channels: node A freq=100 amp=1, node B freq=200 amp=1.
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1, [100, 1, 200, 1]);
 
@@ -531,13 +543,15 @@ describe("workletCore graph — topological execution and port wiring", () => {
     // Only amp is bound to a channel; freq is unbound and must hold its
     // prefill value even while the SAB carries junk in channel 0 (which
     // the interim per-node window would have read as freq).
-    instantiate(h.core, "id-a", "src/echo-a", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/echo-a", 1, {
       controlChannels: [{ param: "amp", channel: 1 }],
       prefill: [
         { name: "freq", value: 150 },
         { name: "amp", value: 0.5 },
       ],
-    });
+    })
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1, [999, 1, 0, 0]);
 
     // The echo adapter outputs its freq control: the prefilled 150 must
@@ -563,12 +577,14 @@ describe("workletCore graph — multi-node retirement (VAL-ENGINE-035)", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "src/b", 1);
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "src/b", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     const releasesBefore = h.releaseCount();
-    h.core.handleMessage({ type: "retire", identity: { identity: "id-a", epoch: 1 } });
+    commitGraph(h.core, [{ type: "retire", identity: { identity: "id-a", epoch: 1 } }]);
     for (let i = 0; i < FADE_OUT_BLOCKS + 2; i++) h.step(1);
 
     // The retired node's zones (state + output) were released; the
@@ -591,14 +607,16 @@ describe("workletCore graph — multi-node retirement (VAL-ENGINE-035)", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "fx/gain", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "fx/gain", 1, {
       audioInputs: [{ port: 0, sourceIdentity: "id-a", sourcePort: 0 }],
-    });
+    })
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
     expect(h.core.readOutput()[0]).toBeCloseTo(1.0, 6);
 
-    h.core.handleMessage({ type: "retire", identity: { identity: "id-a", epoch: 1 } });
+    commitGraph(h.core, [{ type: "retire", identity: { identity: "id-a", epoch: 1 } }]);
     for (let i = 0; i < FADE_OUT_BLOCKS + 2; i++) h.step(1);
 
     // The source is gone; the consumer must read silence (never a
@@ -654,7 +672,9 @@ describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
       callOrder,
       limitBytes,
     });
-    instantiate(h.core, "old", "src/a", 1);
+    commitGraph(h.core, [
+      instance("old", "src/a", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
     const releasesBefore = h.releaseCount();
 
@@ -677,7 +697,9 @@ describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "old", "src/a", 1);
+    commitGraph(h.core, [
+      instance("old", "src/a", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
@@ -703,7 +725,9 @@ describe("workletCore graph — failure-atomic prepare/commit/activate", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "old", "src/a", 1);
+    commitGraph(h.core, [
+      instance("old", "src/a", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     h.core.handleMessage(prepareAdd("candidate", "src/b", 2));
@@ -743,7 +767,9 @@ describe("workletCore graph — per-instance trap containment", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "old", "src/good", 1);
+    commitGraph(h.core, [
+      instance("old", "src/good", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     expect(() => h.core.handleMessage({
@@ -794,8 +820,10 @@ describe("workletCore graph — per-instance trap containment", () => {
       arena,
       callOrder,
     });
-    instantiate(h.core, "bad", "src/bad", 1);
-    instantiate(h.core, "good", "src/good", 1);
+    commitGraph(h.core, [
+      instance("bad", "src/bad", 1),
+      instance("good", "src/good", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
     const statePointer = h.core.telemetry.instances.find((instance) => instance.identity === "bad")!
       .statePointer;
@@ -847,7 +875,9 @@ describe("workletCore graph — sample-indexed fade invariance", () => {
       callOrder,
       renderQuantumFrames: 256,
     });
-    instantiate(h.core, "unit", "src/unit", 1);
+    commitGraph(h.core, [
+      instance("unit", "src/unit", 1)
+    ]);
     const samples: number[] = [];
     for (const frames of partitions) {
       h.step(1, undefined, frames);
@@ -865,9 +895,11 @@ describe("workletCore graph — sample-indexed fade invariance", () => {
       callOrder,
       renderQuantumFrames: 256,
     });
-    instantiate(h.core, "unit", "src/unit", 1);
+    commitGraph(h.core, [
+      instance("unit", "src/unit", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
-    h.core.handleMessage({ type: "retire", identity: { identity: "unit", epoch: 1 } });
+    commitGraph(h.core, [{ type: "retire", identity: { identity: "unit", epoch: 1 } }]);
     const samples: number[] = [];
     for (const frames of partitions) {
       h.step(1, undefined, frames);
@@ -900,7 +932,7 @@ describe("workletCore graph — sample-indexed fade invariance", () => {
 // ---------------------------------------------------------------------------
 
 describe("workletCore graph — zone exhaustion and node limit (synthesis.md §3.5)", () => {
-  it("publishes a zone-exhausted diagnostic instead of glitching", () => {
+  it("rejects an exhausted candidate and keeps the live graph audible", () => {
     const arena = new ArrayBuffer(1024 * 1024);
     const callOrder: string[] = [];
     // Arena bounded so the FIRST node fits but the second's output zone
@@ -923,12 +955,14 @@ describe("workletCore graph — zone exhaustion and node limit (synthesis.md §3
       callOrder,
       limitBytes,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "src/b", 1);
+    commitGraph(h.core, [instance("id-a", "src/a", 1)]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
-
-    const diags = h.diagnostics();
-    expect(diags.some((d) => d.code === "zone-exhausted" && d.identity === "id-b")).toBe(true);
+    commitGraph(h.core, [instance("id-b", "src/b", 2)]);
+    expect(h.events).toContainEqual(expect.objectContaining({
+      type: "graph-transaction-ack", phase: "prepare", ok: false, reason: "zone-exhausted",
+    }));
+    h.step(1);
+    expect(h.core.telemetry.instances).toHaveLength(1);
     // The first node still renders cleanly.
     expect(h.core.readOutput()[0]).toBeCloseTo(0.25, 6);
   });
@@ -943,17 +977,17 @@ describe("workletCore graph — zone exhaustion and node limit (synthesis.md §3
       arena,
       callOrder,
     });
-    for (let i = 0; i < MAX_SYNTH_NODES; i++) {
-      instantiate(h.core, `id-${i}`, "src/a", 1);
-    }
-    expect(h.diagnostics()).toHaveLength(0);
-    instantiate(h.core, `id-${MAX_SYNTH_NODES}`, "src/a", 1);
-    const diags = h.diagnostics();
-    expect(
-      diags.some(
-        (d) => d.code === "node-limit" && d.identity === `id-${MAX_SYNTH_NODES}`,
-      ),
-    ).toBe(true);
+    commitGraph(h.core, Array.from({ length: MAX_SYNTH_NODES }, (_, i) =>
+      instance(`id-${i}`, "src/a", 1)));
+    h.step(1);
+    expect(h.core.telemetry.instances).toHaveLength(MAX_SYNTH_NODES);
+    commitGraph(h.core, [instance(`id-${MAX_SYNTH_NODES}`, "src/a", 2)]);
+    expect(h.events).toContainEqual(expect.objectContaining({
+      type: "graph-transaction-ack", phase: "prepare", ok: false, reason: "node-limit",
+    }));
+    h.step(1);
+    expect(h.core.telemetry.activeEpoch).toBe(1);
+    expect(h.core.telemetry.instances).toHaveLength(MAX_SYNTH_NODES);
   });
 });
 
@@ -974,11 +1008,13 @@ describe("workletCore graph — steady state stays allocation-free (VAL-ENGINE-0
       arena,
       callOrder,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
-    instantiate(h.core, "id-b", "src/b", 1);
-    instantiate(h.core, "id-c", "fx/gain", 1, {
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1),
+      instance("id-b", "src/b", 1),
+      instance("id-c", "fx/gain", 1, {
       audioInputs: [{ port: 0, sourceIdentity: "id-a", sourcePort: 0 }],
-    });
+    })
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
 
     const allocsBefore = h.allocCount();
@@ -1005,7 +1041,9 @@ describe("workletCore graph — quantum growth re-derives arena views (synthesis
       callOrder,
       renderQuantumFrames: 128,
     });
-    instantiate(h.core, "id-a", "src/a", 1);
+    commitGraph(h.core, [
+      instance("id-a", "src/a", 1)
+    ]);
     for (let i = 0; i < FADE_IN_BLOCKS + 2; i++) h.step(1);
     expect(h.core.readOutput()[0]).toBeCloseTo(0.5, 6);
 

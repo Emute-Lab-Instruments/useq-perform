@@ -20,7 +20,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { EditorSelection, EditorState, type EditorState as EditorStateType } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { findNodeAt } from "./lezerHelpers.ts";
@@ -35,7 +35,7 @@ import { lastEvaluatedExpressionField } from "./expressionEvalState.ts";
 const visualisationMocks = vi.hoisted(() => ({
   isExpressionVisualised: vi.fn(() => false),
   toggleVisualisation: vi.fn(async () => {}),
-  registerVisualisation: vi.fn(async () => {}),
+  registerVisualisation: vi.fn(async (_channel: string) => {}),
   refreshVisualisedExpression: vi.fn(async () => {}),
   notifyExpressionEvaluated: vi.fn(),
 }));
@@ -323,34 +323,30 @@ function makeView(doc: string): EditorView {
   });
 }
 
-function makeMockConfig(): EvalIntegrationConfig & {
-  sendCode: ReturnType<typeof vi.fn>;
-  isConnected: ReturnType<typeof vi.fn>;
-} {
+function makeMockConfig() {
   return {
-    sendCode: vi.fn(),
+    sendCode: vi.fn(async (_code: string) => undefined),
     isConnected: vi.fn(() => true),
-  };
+  } satisfies EvalIntegrationConfig;
 }
 
 describe("expressionEval: DI seam routes through EvalIntegrationConfig", () => {
   beforeEach(() => {
     setEvalIntegrationConfig({
-      sendCode: () => {},
+      sendCode: async () => {},
       isConnected: () => false,
     });
   });
 
-  it("handlePlayExpression sends through config.sendCode when connected", () => {
+  it("handlePlayExpression only toggles visualization even when hardware is connected", () => {
     const config = makeMockConfig();
     setEvalIntegrationConfig(config);
 
     const view = makeView("(a1 0.5)");
     handlePlayExpression(view, "a1");
 
-    expect(config.isConnected).toHaveBeenCalled();
-    expect(config.sendCode).toHaveBeenCalledTimes(1);
-    expect(config.sendCode.mock.calls[0][0]).toContain("a1");
+    expect(config.sendCode).not.toHaveBeenCalled();
+    expect(visualisationMocks.toggleVisualisation).toHaveBeenCalledWith("a1", "(a1 0.5)", { from: 0, to: 8 });
   });
 
   it("handlePlayExpression skips sendCode when disconnected", () => {

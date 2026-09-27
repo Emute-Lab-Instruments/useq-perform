@@ -31,7 +31,7 @@ vi.mock("../runtime/runtimeCompatibility.ts", () => ({
 }));
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 
 // ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ const mockCommitSynthArtifacts = vi.hoisted(() =>
 const mockIncapableService = vi.hoisted(() => ({
   commitSynthArtifacts: mockCommitSynthArtifacts,
   // The state used by the eval pipeline to detect the incapable case.
-  state: "off" as const,
+  state: "off" as "off" | "running" | "suspended" | "error",
   telemetry: {
     capabilities: {
       audioCapable: false,
@@ -62,7 +62,7 @@ const mockIncapableService = vi.hoisted(() => ({
 }));
 
 const mockGetActiveSynthesisService = vi.hoisted(() =>
-  vi.fn(() => mockIncapableService),
+  vi.fn((): typeof mockIncapableService | null => mockIncapableService),
 );
 
 const capturedEvals: Array<{
@@ -84,7 +84,19 @@ const mockEvalCodeWithDiagnostics = vi.hoisted(() =>
     });
   }),
 );
-const mockSendTouSEQ = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const mockSendTouSEQ = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve()));
+
+vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
+  dispatchRuntimeCodeEvaluation: vi.fn(async ({ code, wasmCode, soft = false }) => ({
+    session: { transportMode: soft ? "wasm" : "both" },
+    wasm: { status: "fulfilled", value: await mockEvalCodeWithDiagnostics(wasmCode ?? code) },
+    hardware: soft ? null : {
+      status: "fulfilled",
+      value: await mockSendTouSEQ(code),
+    },
+    diagnosticAuthority: soft ? "wasm" : "hardware",
+  })),
+}));
 
 vi.mock("@nextjournal/clojure-mode/extensions/eval-region", () => ({
   top_level_string: (_state: unknown) => "",
@@ -303,7 +315,7 @@ describe("editorEvaluation → capability informational diagnostic (VAL-HOST-008
     // add a capability-info diagnostic when audio is capable.
     mockGetActiveSynthesisService.mockReturnValue({
       commitSynthArtifacts: mockCommitSynthArtifacts,
-      state: "off" as const,
+      state: "off" as "off" | "running" | "suspended" | "error",
       telemetry: {
         capabilities: { audioCapable: true, reasons: [] },
         engineState: "off",

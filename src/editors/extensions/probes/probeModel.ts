@@ -22,11 +22,11 @@ function isPersistedProbeSpec(value: unknown): value is PersistedProbeSpec {
   const candidate = value as Record<string, unknown>;
   return (
     typeof candidate.id === "string" &&
-    typeof candidate.from === "number" &&
-    typeof candidate.to === "number" &&
+    Number.isSafeInteger(candidate.from) && (candidate.from as number) >= 0 &&
+    Number.isSafeInteger(candidate.to) && (candidate.to as number) >= (candidate.from as number) &&
     (candidate.mode === "raw" || candidate.mode === "contextual") &&
-    typeof candidate.depth === "number" &&
-    typeof candidate.maxDepth === "number" &&
+    Number.isFinite(candidate.depth) &&
+    Number.isFinite(candidate.maxDepth) &&
     typeof candidate.cachedCode === "string"
   );
 }
@@ -38,7 +38,7 @@ export function readPersistedProbes(
   if (!Array.isArray(loaded)) return [];
   return loaded.filter(isPersistedProbeSpec).map((probe) => ({
     ...probe,
-    depth: Math.max(0, Math.floor(probe.depth)),
+    depth: probe.mode === "raw" ? 0 : Math.max(0, Math.min(Math.floor(probe.depth), Math.floor(probe.maxDepth))),
     maxDepth: Math.max(0, Math.floor(probe.maxDepth)),
     canvasWidth: Number.isFinite(probe.canvasWidth) && probe.canvasWidth > 0
       ? probe.canvasWidth
@@ -67,12 +67,8 @@ export function persistProbes(
 }
 
 export function probeSignature(probes: PersistedProbeSpec[]): string {
-  if (probes.length === 0) return "";
-  return probes
-    .map((probe) =>
-      `${probe.id}:${probe.from}:${probe.to}:${probe.depth}:${probe.windowDurationMs}`,
-    )
-    .join("|");
+  // cachedCode is part of restore validation, including same-length edits.
+  return JSON.stringify(probes);
 }
 
 export function highlightsEqual(

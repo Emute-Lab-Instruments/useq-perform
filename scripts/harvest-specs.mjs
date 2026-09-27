@@ -85,7 +85,11 @@ export function rewriteLinks(html, corpusFiles) {
   });
 }
 
-/** Tokenise one spec markdown file into the Ledger block model. */
+/** Tokenise one spec markdown file into the Ledger block model.
+ * @param {string} source
+ * @param {{file?: string, corpusFiles?: string[]}} options
+ * @returns {Omit<import("../src/lib/witness/loader.ts").SpecDocument, "file">}
+ */
 export function parseSpecMarkdown(source, { file, corpusFiles = [] } = {}) {
   const marked = new Marked({ gfm: true });
   const tokens = marked.lexer(source);
@@ -200,7 +204,9 @@ export function parseSubSpecOrder(mainSource) {
   return order;
 }
 
-/** Build the bundled spec-corpus payload. */
+/** Build the bundled spec-corpus payload.
+ * @returns {{corpus: import("../src/lib/witness/loader.ts").SpecCorpus | null, errors: string[]}}
+ */
 export function harvestSpecs({ specsDir = SPECS_DIR } = {}) {
   const errors = [];
   const corpusFiles = listSpecFiles(specsDir);

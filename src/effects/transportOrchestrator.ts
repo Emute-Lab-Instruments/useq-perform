@@ -6,8 +6,7 @@
 // TransportToolbar's onMount / createEffect hooks so it can run (and be
 // tested) without mounting any Solid component.
 
-import { createActor, type AnyActorRef } from "xstate";
-import { Effect } from "effect";
+import { createActor, type ActorRefFrom } from "xstate";
 import { transportMachine, type TransportState } from "../machines/transport.machine";
 import {
   SHARED_TRANSPORT_COMMANDS,
@@ -62,7 +61,9 @@ export function extractTransportStateFromMeta(
 // ── Transport command helpers (call runtimeService directly) ─────
 
 const sendTransportCommand = (command: SharedTransportCommand) =>
-  sendRuntimeTransportCommand(command);
+  sendRuntimeTransportCommand(command).catch((error) => {
+    console.error("Transport command failed", error);
+  });
 
 const play = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.play);
 const pause = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.pause);
@@ -72,15 +73,17 @@ const clear = () => sendTransportCommand(SHARED_TRANSPORT_COMMANDS.clear);
 
 // ── Types ───────────────────────────────────────────────────────
 
+type TransportActor = ActorRefFrom<typeof transportMachine>;
+
 export interface TransportOrchestrator {
   /** The xstate actor backing the transport machine. */
-  actor: AnyActorRef;
+  actor: TransportActor;
   /** Send an event to the transport machine. */
-  send: (event: any) => void;
+  send: TransportActor["send"];
   /** Current snapshot accessor (for UI binding). */
-  getSnapshot: () => any;
+  getSnapshot: TransportActor["getSnapshot"];
   /** Subscribe to actor state changes. Returns unsubscribe. */
-  subscribe: (cb: (snapshot: any) => void) => { unsubscribe: () => void };
+  subscribe: (cb: (snapshot: ReturnType<TransportActor["getSnapshot"]>) => void) => { unsubscribe: () => void };
   /** Tear down all listeners and stop the actor. */
   dispose: () => void;
 }
@@ -106,18 +109,18 @@ export function createTransportOrchestrator(): TransportOrchestrator {
   // ── 1. Actor creation ──────────────────────────────────────────
   const machine = transportMachine.provide({
     actions: {
-      emitPlay:     () => { Effect.runPromise(play()); },
-      emitPause:    () => { Effect.runPromise(pause()); },
-      emitStop:     () => { Effect.runPromise(stop()); },
-      emitRewind:   () => { Effect.runPromise(rewind()); },
-      emitClear:    () => { Effect.runPromise(clear()); },
-      syncWasmPlay: () => { Effect.runPromise(syncRuntimeWasmTransportState("playing")).catch(() => undefined); },
-      syncWasmPause:() => { Effect.runPromise(syncRuntimeWasmTransportState("paused")).catch(() => undefined); },
-      syncWasmStop: () => { Effect.runPromise(syncRuntimeWasmTransportState("stopped")).catch(() => undefined); },
+      emitPlay:     () => { void play(); },
+      emitPause:    () => { void pause(); },
+      emitStop:     () => { void stop(); },
+      emitRewind:   () => { void rewind(); },
+      emitClear:    () => { void clear(); },
+      syncWasmPlay: () => { void syncRuntimeWasmTransportState("playing"); },
+      syncWasmPause:() => { void syncRuntimeWasmTransportState("paused"); },
+      syncWasmStop: () => { void syncRuntimeWasmTransportState("stopped"); },
     },
   });
   const actor = createActor(machine);
-  const send = (event: any) => actor.send(event);
+  const send: TransportActor["send"] = (event) => actor.send(event);
 
   // ── 2. Transport-state → clock policy ──────────────────────────
   // Machine boots in "paused" (spec §1.1). The no-runtime boot case is driven
@@ -158,7 +161,7 @@ export function createTransportOrchestrator(): TransportOrchestrator {
 
   const removeProtocolReady = protocolReadyChannel.subscribe(
     () => {
-      Effect.runPromise(queryRuntimeHardwareTransportState()).then(syncState);
+      queryRuntimeHardwareTransportState().then(syncState);
     }
   );
 

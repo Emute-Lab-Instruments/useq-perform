@@ -112,6 +112,7 @@ export function LiveEditPanel(props: LiveEditPanelProps) {
               class="le-panel-icon-button"
               onClick={() => props.onResetOrder()}
               title="Reset card order to document order"
+              aria-label="Reset card order to document order"
             >
               ↺ doc-order
             </button>

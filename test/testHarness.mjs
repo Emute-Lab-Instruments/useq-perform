@@ -35,30 +35,18 @@ import { default_extensions } from '@nextjournal/clojure-mode';
 // and crashes outside Vite's loader. The harness only needs the state field
 // for cursor reads; visual decorations don't affect dispatcher behaviour.
 import { __resetClipboardForTests } from '../src/editors/extensions/structure/adapter/dispatcher.ts';
-import { applyVerb } from '../src/lib/menu/verbs.ts';
+import { applyOp } from '../src/editors/extensions/structure/adapter/applyOp.ts';
+import { applyVerb } from '../src/editors/menu/verbs.ts';
 import { defaultIdGen } from '../src/editors/extensions/structure/core/index.ts';
 import { executeEditorCommand } from '../src/editors/commands/editorCommandRouter.ts';
-import { structField, setStructState, grabModeField, setGrabMode } from '../src/editors/extensions/structure/adapter/stateField.ts';
-import {
-  startGrab,
-  endGrab,
-  isGrabActive,
-  recordGrabMove,
-  getGrabMoveCount,
-  getGrabSnapshot,
-} from '../src/lib/gamepad/grabState.ts';
+import { structField, setStructState } from '../src/editors/extensions/structure/adapter/stateField.ts';
+import { startGrab, endGrab, cancelGrab, moveGrab, grabSessionField } from '../src/editors/grabSession.ts';
 import { pathsFromCursorSet, rederiveCursors } from '../src/editors/extensions/structure/adapter/cursorPath.ts';
 import { _internals } from '../src/editors/extensions/structure/adapter/cursorFromSelection.ts';
 import { deleteConfirmField } from '../src/editors/extensions/deleteConfirmFlash.ts';
 import { history } from '@codemirror/commands';
 
 const { findSmallestEnclosingAddressableNode } = _internals;
-
-// ── Cursor restoration for grab cancel ─────────────────────────────────────
-
-function _restoreCursors(paths, tree) {
-  return rederiveCursors(paths, tree);
-}
 
 // ── Action mapping ──────────────────────────────────────────────────────────
 //
@@ -163,7 +151,7 @@ const UNMAPPED_COMPOUND_TOKENS = new Set([
 // The YAML vocabulary `insert <category> <symbol> <applyType>` simulates
 // choosing a noun from the radial menu and committing it with one of the
 // menu's apply verbs. We map each applyType onto the REAL verb implementations
-// in `src/lib/menu/verbs.ts` (the same code the live dispatcher runs):
+// in `src/editors/menu/verbs.ts` (the same code the live dispatcher runs):
 //
 //   apply          → SymbolItem,   verb insert,   hand right (sibling-after)
 //   apply_pre      → SymbolItem,   verb insert,   hand left  (sibling-before)
@@ -171,10 +159,7 @@ const UNMAPPED_COMPOUND_TOKENS = new Set([
 //   apply_call_pre → FunctionItem(sig=[expr]), insert, left
 //   apply_wrap     → FunctionItem(sig=[a,b]),  wrapWith, left → (sym target _)
 //
-// Holes are rendered to source as the bare placeholder `_` (the form the
-// picker YAML uses), not the canonical `($ name :type)` surface syntax — the
-// YAML rows are written against the `_` convention. After re-parse `_` is a
-// plain symbol, which is exactly what the cursor/selection assertions expect.
+// Synthetic signatures use canonical ($ _ :expr) holes, committed by applyOp.
 
 const PICKER_APPLY_TYPES = new Set([
   'apply',
@@ -229,58 +214,6 @@ function pickerItemAndVerb(symbol, applyType) {
 }
 
 /**
- * Flat printer that renders a core tree to source while recording each node's
- * [from, to] range, so the caller can re-seed the structural cursor onto the
- * verb's chosen target. Holes render as the bare `_` placeholder.
- */
-function printTreeTracked(root) {
-  const ranges = new Map();
-  let buf = '';
-  const writeNode = (n) => {
-    const from = buf.length;
-    switch (n.kind) {
-      case 'document': {
-        for (let i = 0; i < n.children.length; i++) {
-          // Top-level forms are separated by a single space, matching the flat
-          // one-line source convention the picker YAML rows are written in
-          // (e.g. `(+ 1 2) (* 3 4)` after a barf-then-wrap). A `\n` here would
-          // spuriously line-break sibling top-level forms produced by an edit.
-          if (i > 0) buf += ' ';
-          writeNode(n.children[i]);
-        }
-        break;
-      }
-      case 'symbol':
-      case 'number':
-      case 'keyword':
-      case 'string':
-        buf += n.text;
-        break;
-      case 'hole':
-        buf += '_';
-        break;
-      case 'list':
-      case 'vector':
-      case 'map':
-      case 'set': {
-        const open = n.kind === 'list' ? '(' : n.kind === 'vector' ? '[' : n.kind === 'set' ? '#{' : '{';
-        const close = n.kind === 'vector' ? ']' : n.kind === 'list' ? ')' : '}';
-        buf += open;
-        for (let i = 0; i < n.children.length; i++) {
-          if (i > 0) buf += ' ';
-          writeNode(n.children[i]);
-        }
-        buf += close;
-        break;
-      }
-    }
-    ranges.set(n.id, { from, to: buf.length });
-  };
-  writeNode(root);
-  return { text: buf, ranges };
-}
-
-/**
  * Execute one `insert <category> <symbol> <applyType>` command against the
  * view by delegating to the real radial-menu verb implementations.
  */
@@ -299,34 +232,7 @@ function applyPickerInsert(view, symbol, applyType) {
   });
   if (!result.ok) return;
 
-  // Render the new tree to source (holes → `_`) and replace the whole doc.
-  const { text } = printTreeTracked(result.tree.root);
-  view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: text },
-    userEvent: 'menu.apply',
-    scrollIntoView: true,
-  });
-
-  // Re-parse and seed the structural cursor at the verb's chosen target by
-  // matching its source range in the freshly-printed tree.
-  const targetId = result.cursorSet.primary.kind === 'node'
-    ? result.cursorSet.primary.target
-    : result.cursorSet.primary.start;
-  const { ranges } = printTreeTracked(result.tree.root);
-  const targetRange = ranges.get(targetId);
-  if (targetRange) {
-    seedCursorAtRange(view, targetRange.from, targetRange.to);
-    // Mirror the structural cursor into the CM text selection over the target
-    // node's source range. The whole-doc replace above leaves the CM caret at
-    // offset 0; without this a following `type` action (e.g. typing "10" over
-    // the `_` hole left by apply_wrap / apply_call) inserts at the doc origin
-    // instead of substituting into the hole. In the live app the two are kept
-    // in sync (the structural cursor is derived from the CM selection); here we
-    // seed the structural cursor directly, so we replicate that sync locally.
-    view.dispatch({
-      selection: { anchor: targetRange.from, head: targetRange.to },
-    });
-  }
+  applyOp(view, () => ({ state: { tree: result.tree, cursors: result.cursorSet }, noOps: [] }), 'structure.mutate.menu');
 }
 
 const KEY_COMMANDS = {
@@ -431,7 +337,7 @@ function createView(doc) {
     state: EditorState.create({
       doc,
       // Only the state field is required — decorations are visual-only.
-      extensions: [...default_extensions, history(), structField, grabModeField, deleteConfirmField],
+      extensions: [...default_extensions, history(), structField, grabSessionField, deleteConfirmField],
     }),
   });
 }
@@ -661,90 +567,15 @@ function applyAction(view, action) {
     return;
   }
 
-  // ── Grab-mode actions (gamepad.md §6.6.4) ──────────────────────────────
-  if (action === 'grab') {
-    if (!isGrabActive()) {
-      const value = view.state.field(structField);
-      const doc = view.state.doc.toString();
-      const paths = pathsFromCursorSet(value.state.cursors, value.state.tree);
-      startGrab(doc, paths);
-      view.dispatch({ effects: setGrabMode.of(true) });
-    }
-    return;
-  }
-  if (action === 'drop') {
-    if (isGrabActive()) {
-      endGrab();
-      view.dispatch({ effects: setGrabMode.of(false) });
-    }
-    return;
-  }
-  if (action === 'cancel_grab') {
-    if (isGrabActive()) {
-      const snapshot = getGrabSnapshot();
-      const count = getGrabMoveCount();
-      endGrab();
-      for (let i = 0; i < count; i++) {
-        executeEditorCommand(view, { kind: 'undo', source: 'test' });
-      }
-      // Re-derive cursor from saved snapshot paths against restored tree
-      if (snapshot) {
-        const value = view.state.field(structField, false);
-        if (value) {
-          const cursors = _restoreCursors(snapshot.cursorPaths, value.state.tree);
-          view.dispatch({
-            effects: [
-              setStructState.of({
-                state: { tree: value.state.tree, cursors },
-                idIndex: value.idIndex,
-                cursorPaths: snapshot.cursorPaths,
-              }),
-              setGrabMode.of(false),
-            ],
-          });
-          return;
-        }
-      }
-      view.dispatch({ effects: setGrabMode.of(false) });
-    }
-    return;
-  }
-  if (action === 'grab_move_left') {
-    if (isGrabActive()) {
-      const ok = executeEditorCommand(view, {
-        kind: 'structural', action: 'edit.transposePrev', source: 'test',
-      });
-      if (ok) recordGrabMove();
-    }
-    return;
-  }
-  if (action === 'grab_move_right') {
-    if (isGrabActive()) {
-      const ok = executeEditorCommand(view, {
-        kind: 'structural', action: 'edit.transposeNext', source: 'test',
-      });
-      if (ok) recordGrabMove();
-    }
-    return;
-  }
-  if (action === 'grab_move_up') {
-    if (isGrabActive()) {
-      const ok = executeEditorCommand(view, {
-        kind: 'structural', action: 'edit.raise', source: 'test',
-      });
-      if (ok) recordGrabMove();
-    }
-    return;
-  }
-  if (action === 'grab_move_down') {
-    if (isGrabActive()) {
-      const ok = executeEditorCommand(view, {
-        kind: 'structural', action: 'edit.encloseList', source: 'test',
-      });
-      if (ok) recordGrabMove();
-    }
-    return;
-  }
+  // Use the document-owned production grab lifecycle, including its commit path.
+  if (action === 'grab') { startGrab(view); return; }
+  if (action === 'drop') { endGrab(view); return; }
+  if (action === 'cancel_grab') { cancelGrab(view); return; }
+  const grabMove = {
+    grab_move_left: 'edit.transposePrev', grab_move_right: 'edit.transposeNext',
+    grab_move_up: 'edit.raise', grab_move_down: 'edit.encloseList',
+  }[action];
+  if (grabMove) { moveGrab(view, grabMove); return; }
 
   const keyCommand = KEY_COMMANDS[action];
   if (keyCommand) {
@@ -784,8 +615,6 @@ function applyAction(view, action) {
 
 function runTestCase(testCase) {
   let view = null;
-  // Reset grab state between tests so module-level state doesn't leak.
-  if (isGrabActive()) endGrab();
   // Reset the structural kill-ring so a prior cut/copy doesn't bleed into
   // a "paste without prior cut" case (editing_tests.yaml).
   __resetClipboardForTests();

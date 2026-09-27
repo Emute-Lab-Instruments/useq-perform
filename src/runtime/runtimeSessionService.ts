@@ -135,14 +135,6 @@ export function subscribeRuntimeService(
   return subscribeRuntimeSessionState(listener);
 }
 
-export function isRuntimeHardwareConnected(): boolean {
-  return getRuntimeSessionState().session.hasHardwareConnection;
-}
-
-export function isRuntimeWasmEnabled(): boolean {
-  return getRuntimeSessionState().session.wasmEnabled;
-}
-
 export function resetRuntimeServiceForTests(): void {
   transitionRuntimeCoordinator({ type: "reset" });
 }

@@ -2,7 +2,7 @@
 
 This file provides guidance to coding agents working in this repository.
 
-**Note**: Use `ergo` for task tracking. Do not use markdown TODO tracking. See `README.md` and `/home/w1n5t0n/agents/skills/ergo/SKILL.md`. (Beads/`bd` and Dolt are frozen read-only historical infrastructure.)
+**Note**: Use `ergon` for task tracking. Do not use markdown TODO tracking. See `README.md` and `/home/w1n5t0n/agents/skills/ergon/SKILL.md`. (Beads/`bd`, Dolt, and the earlier `ergo` CLI are historical.)
 
 ## Project Overview
 
@@ -35,6 +35,7 @@ Before working on a feature, find and read the relevant spec(s). Match by keywor
 | keybindings, shortcuts, profiles, action registry, contexts, palette, hotkeys, keyboard, mapping, remap, command palette | `docs/specs/keybindings.md` |
 | input dispatch, command router, chokepoint, policy, event handling, key handler, action dispatch, intent routing | `docs/specs/input-dispatch.md` |
 | which-key, modifier hints, chord pending, modifier overlay, hint popup, key helper, shortcut guide, discoverable | `docs/specs/which-key.md` |
+| namespace token, namespace picker, ns hover, namespace autocomplete, ns/op editing, namespace hints, formatter canonicalisation | `docs/specs/namespace-ui.md` |
 | gamepad, controller, buttons, sticks, gestures, paradigms, hold, tap, Xbox, PlayStation, DualSense, joystick, trigger, bumper, D-pad, analog stick | `docs/specs/gamepad.md` |
 | radial menu, noun picker, double-ring, wrap, replace, insert content, pie menu, circular menu, form picker, template, snippet insertion | `docs/specs/radial-menu.md` |
 | main menu, pause menu, L3+R3, save/restore, system menu, escape menu, global menu | `docs/specs/main-menu.md` |
@@ -72,6 +73,7 @@ Before working on a feature, find and read the relevant spec(s). Match by keywor
 | compilation, node graph, compile passes, loop unrolling, compiler, CSE, constant folding, optimisation, DAG, topological | `src-useq/docs/specs/compilation.md` |
 | functions, lambda, recursion, variadic, inlining, fn, defun, callable, closure, higher-order, apply | `src-useq/docs/specs/functions.md` |
 | values, types, numbers, vectors, nil, truthiness, float, integer, boolean, list, string, data types, numeric | `src-useq/docs/specs/values-types.md` |
+| namespaces, ns/op, adapter, unipolar, bipolar, u/, b/, n/, r/, lfo/, osc/, k/, raw/, radians, phasor-domain, free-running, tempo-sync, bare-name default | `src-useq/docs/specs/namespaces.md` |
 | outputs, a1-a8, d1-d8, s1-s8, q0, LKG, active program, analog, digital, voltage, gate out, CV out | `src-useq/docs/specs/outputs.md` |
 | prev, cross-output reads, feedback loops, batch, previous value, last sample, read other output, inter-output | `src-useq/docs/specs/prev.md` |
 | inputs, gate, CV, switches, encoders, swm, swt, swr, rot, analog in, digital in, potentiometer, external signal | `src-useq/docs/specs/inputs.md` |
@@ -99,7 +101,7 @@ Before working on a feature, find and read the relevant spec(s). Match by keywor
 
 Build outputs:
 
-- App bundles: `public/solid-dist/` (single `bundle.js` + `bundle.css`)
+- App bundles: `public/solid-dist/` (entry `bundle.js` + `bundle.css`, plus lazy `chunks/` and their CSS)
 - Generated assets: `public/assets/` and `public/wasm/`
 
 ## Testing
@@ -111,7 +113,7 @@ Both are first-class tests; there is no legacy/non-legacy split.
 - `npm run test:unit` - Vitest unit/component tests.
 - `npm run test:e2e` - Playwright trusted-input browser journeys (`e2e/`) against the full app + worker-backed WASM runtime; rebuilds WASM/assets/bundle first. Serves `public/` via route interception on `http://localhost` (origin must stay trustworthy or COOP/COEP is ignored and `crossOriginIsolated` breaks).
 - `npm run test:contracts` - Vitest contract tests (runtime, UI, transport)
-- `npm run test:all` / `npm test` - all suites
+- `npm run test:all` / `npm test` - Mocha + Vitest unit suites (not contracts, e2e, or Storybook)
 - `npm run typecheck` - TypeScript type checking
 
 Storybook stories are also exercised through the Vitest Storybook project in Vite config.
@@ -137,7 +139,7 @@ command-router behaviour before changing or retiring the row.
 
 ## CI
 
-GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushes to main: typecheck → contract tests → unit tests → Storybook smoke tests → app build → Storybook build → firmware test → assert pinned src-useq status.
+GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and on pushes to its listed branches. The main job runs: lint (import boundaries + doc paths) → Mocha → typecheck (production + tests) → app build → contract tests → unit tests → Grammar Lab checks → Storybook smoke tests → Storybook build → src-useq wire-protocol contract test → assert pinned src-useq status. A separate job runs `npm run test:e2e`.
 
 ## Architecture
 
@@ -149,13 +151,13 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 
 ### Source Layout
 
-- `src/lib/` - shared foundations: settings (schema, normalization, persistence), editor defaults, `CircularBuffer`, debug utilities, editor compartments, editor store, persistence service, gamepad manager, picker menu model
+- `src/lib/` - shared foundations: settings (schema, normalization, persistence), editor defaults, `CircularBuffer`, debug utilities, editor compartments, editor store, persistence service, picker menu model; subsystems in `gamepad/`, `keybindings/`, `menu/`, `mainMenu/`, `settings/`, `witness/`
 - `src/lib/settings/` - settings split: `schema.ts` (types/defaults), `normalization.ts` (validation/migration), `persistence.ts` (localStorage via persistence service)
 - `src/editors/` - text-canonical `DocumentSession` ownership plus CodeMirror extensions, keymaps, themes (data-driven), gamepad navigation, and editor keyboard utilities
-- `src/editors/extensions/` - CodeMirror extensions: `structure/` (ast, decorations, eval-integration), `evalHighlight`, `visReadability`, `diagnostics` (inline error squiggles from WASM)
+- `src/editors/extensions/` - CodeMirror extensions: `structure/` (`core/` pure tree operations, `adapter/` CodeMirror integration), `evalHighlight`, `visReadability`, `diagnostics` (inline error squiggles from WASM)
 - `src/transport/` - serial port lifecycle, JSON protocol driver, stream parser, serial utilities, connector, firmware upgrade check
 - `src/runtime/` - bootstrap, Worker lifecycle/port, runtime coordinator/services, settings repository, startup context, app lifecycle, diagnostics, isolated witness interpreter
-- `src/effects/` - side-effect modules: transport policy, editor evaluation, the public visualisation session, its internal sampler/runtime, mock control inputs, websocket server
+- `src/effects/` - side-effect modules: transport policy, editor evaluation, the public visualisation session, its internal sampler/runtime, mock control inputs
 - `src/machines/` - XState state machines (transport)
 - `src/contracts/` - typed channels (runtime, visualisation, gamepad, help), event types, capability contracts
 - `src/ui/` - Solid UI components (settings, help, toolbar, modals)
@@ -183,7 +185,7 @@ GitHub Actions (`.github/workflows/runtime-contracts.yml`) runs on PRs and pushe
 
 **Dependency Injection for Extensions**: CodeMirror extensions that depend on runtime behavior use a Config interface + factory pattern instead of importing concrete Workers/stores. Each extension declares exactly the capabilities it needs; the default probe config routes through `visualisationSession`. This keeps extensions isolated in tests and Storybook.
 
-**Props-Based UI Components**: UI components that previously imported singletons (stores, services, adapters) have been refactored to accept data and callbacks as props. The adapter layer (`src/ui/adapters/`) creates "Wired" wrapper components that read from real singletons and pass them as props. This makes components testable and renderable in isolation. Applied to: MainToolbar, TransportToolbar, ProgressBar, Modal, VisLegend, GeneralSettings (+ sub-panels), HelpPanel, KeyboardVisualiser.
+**Props-Based UI Components**: UI components that previously imported singletons (stores, services, adapters) have been refactored to accept data and callbacks as props. Some are wired by adapter components in `src/ui/adapters/` (toolbars, modal, panels); others (GeneralSettings, CodeSnippetsTab) default each omitted prop to the real singleton, so production renders them bare while tests and stories inject data. This makes components testable and renderable in isolation. Applied to: MainToolbar, TransportToolbar, ProgressBar, Modal, VisLegend, GeneralSettings (+ sub-panels), HelpPanel, KeyboardVisualiser.
 
 **Diagnostic System**: The WASM interpreter produces structured diagnostics (errors, warnings, hints) with source spans, human-readable messages, and suggestions. These flow from C++ through the WASM ABI to the editor as CodeMirror inline annotations.
 

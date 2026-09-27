@@ -27,7 +27,7 @@ import {
 // ---------------------------------------------------------------------------
 
 interface FakeService {
-  resumeOnUserActivation: ReturnType<typeof vi.fn>;
+  resumeOnUserActivation: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
   state: "off" | "suspended" | "running" | "error";
 }
 
@@ -117,9 +117,7 @@ function buildDependencies(
   target: FakeEventTarget,
 ): EngineAutoplayListenerDependencies {
   return {
-    getActiveSynthesisService: () => service as unknown as Parameters<
-      EngineAutoplayListenerDependencies["getActiveSynthesisService"]
-    >[0],
+    getActiveSynthesisService: () => service,
     eventTarget: target,
   };
 }

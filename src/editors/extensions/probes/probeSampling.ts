@@ -100,7 +100,7 @@ async function evaluateProbeCode(
 }
 
 function isErrorResult(text: string): boolean {
-  return text.startsWith(ERROR_PREFIX);
+  return text.startsWith(ERROR_PREFIX) || text.trim() === "{error}";
 }
 
 async function sampleWaveform(
@@ -150,7 +150,7 @@ async function sampleWaveform(
     );
     if (index === count - 1) currentResult = result;
     const numeric = Number(result);
-    if (!Number.isFinite(numeric)) {
+    if (!result.trim() || !Number.isFinite(numeric)) {
       return { current: currentResult || result, samples: [] };
     }
     samples.push(numeric);
@@ -246,6 +246,9 @@ export async function buildRenderForProbe(
         windowDuration,
         sampleCount,
       );
+      if (isErrorResult(sample.current)) {
+        throw new Error(sample.current);
+      }
       const nextProbe = { ...probe, cachedCode: code, maxDepth, depth };
       if (sample.samples.length === 0) {
         return {
@@ -306,7 +309,7 @@ function highlightCacheKey(
   form: IndexedFormTarget,
   mode: HighlightMode,
 ): string {
-  return `${mode}|${form.operatorName ?? ""}|${state.sliceDoc(
+  return `${mode}|${form.formRange.from}:${form.formRange.to}|${form.operatorName ?? ""}|${state.sliceDoc(
     form.listRange.from,
     form.listRange.to,
   )}`;

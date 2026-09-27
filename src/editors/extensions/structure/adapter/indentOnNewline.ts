@@ -27,6 +27,7 @@
 import { EditorView } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 
+import { setIntendedFocus } from "./stateField.ts";
 import { indentRangeToFixedPoint } from "./indentFixedPoint.ts";
 
 export const indentOnNewlineChange: Extension = EditorView.updateListener.of(
@@ -35,8 +36,11 @@ export const indentOnNewlineChange: Extension = EditorView.updateListener.of(
 
     for (const tr of u.transactions) {
       if (
+        tr.isUserEvent("undo") ||
+        tr.isUserEvent("redo") ||
         tr.isUserEvent("format.indentFixedPoint") ||
-        tr.isUserEvent("structure.mutate")
+        tr.isUserEvent("structure.mutate") ||
+        tr.effects.some((effect) => effect.is(setIntendedFocus))
       ) {
         return;
       }
@@ -61,7 +65,11 @@ export const indentOnNewlineChange: Extension = EditorView.updateListener.of(
     const fromLine = doc.lineAt(Math.min(lo, doc.length)).from;
     const toLine = doc.lineAt(Math.min(hi, doc.length)).to;
     const view = u.view;
+    const scheduledState = u.state;
     queueMicrotask(() => {
+      // History restores exact text. Never apply an older edit's formatting
+      // after undo/redo (or another edit) has replaced the scheduled state.
+      if (view.state !== scheduledState) return;
       indentRangeToFixedPoint(view, fromLine, toLine);
     });
   },

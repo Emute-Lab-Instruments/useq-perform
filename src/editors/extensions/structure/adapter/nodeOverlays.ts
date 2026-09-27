@@ -1,3 +1,4 @@
+import { isGrabActive } from "../../../grabSession.ts";
 /**
  * SVG overlay for the structural-cursor visual.
  *
@@ -44,7 +45,7 @@ import {
   type Node,
   type NodeId,
 } from "../core/index.ts";
-import { grabModeField, insertionModeField, structField } from "./stateField.ts";
+import { insertionModeField, structField } from "./stateField.ts";
 import type { IdIndex, SourceRange } from "./treeFromLezer.ts";
 
 // ─── Debug logging ───────────────────────────────────────────────────────────
@@ -427,8 +428,8 @@ class StructuralNodeOverlayPlugin {
     this.view = u.view;
     const oldField = u.startState.field(structField, false);
     const newField = u.state.field(structField, false);
-    const oldGrab = u.startState.field(grabModeField, false);
-    const newGrab = u.state.field(grabModeField, false);
+    const oldGrab = isGrabActive(u.startState);
+    const newGrab = isGrabActive(u.state);
     const oldInsert = u.startState.field(insertionModeField, false);
     const newInsert = u.state.field(insertionModeField, false);
     if (
@@ -630,7 +631,7 @@ class StructuralNodeOverlayPlugin {
           fade:
             (view.state.field(insertionModeField, false) ?? false) ||
             fadeProvider(),
-          grabbed: view.state.field(grabModeField, false) ?? false,
+          grabbed: isGrabActive(view.state),
         };
       },
       write(measure: NodeOverlayMeasure) {

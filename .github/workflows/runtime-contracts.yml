@@ -26,6 +26,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Import boundaries and documentation paths
+        run: npm run lint
+
       - name: Mocha integration tests (structural + protocol)
         run: npm run test:mocha
 
@@ -34,8 +37,10 @@ jobs:
         with:
           version: 3.1.69
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Typecheck production and unit tests
+        run: |
+          npm run typecheck
+          npm run typecheck:tests
 
       - name: Build app bundle
         run: npm run build

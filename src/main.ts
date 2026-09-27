@@ -6,7 +6,7 @@
 import './ui/styles/index.css';
 import { bootstrap, type BootstrapResult } from './runtime/bootstrap.ts';
 
-export { bootstrap as startLegacyApp };
+export { bootstrap };
 export type { BootstrapResult };
 
 // Main entry point

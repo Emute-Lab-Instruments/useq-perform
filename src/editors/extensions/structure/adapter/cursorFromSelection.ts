@@ -32,7 +32,7 @@ import {
   type State,
 } from "../core/index.ts";
 import { pathsFromCursorSet } from "./cursorPath.ts";
-import { setStructState, structField } from "./stateField.ts";
+import { setIntendedFocus, setStructState, structField } from "./stateField.ts";
 import type { IdIndex } from "./treeFromLezer.ts";
 
 /**
@@ -66,13 +66,13 @@ export const structuralCursorFromSelection = ViewPlugin.fromClass(
       this.view = view;
     }
     update(u: ViewUpdate): void {
+      ++this.syncSeq; // Any newer transaction invalidates a deferred caret projection.
       if (!u.selectionSet && !u.docChanged) return;
       // If structural nav/mutation drove this transaction, don't fight it.
-      // Structural mutations dispatch a follow-up setCursorFromState that
-      // sets the correct cursor — interfering here would race with it.
+      // Structural mutations carry their intended focus in the transaction.
       for (const tr of u.transactions) {
         for (const e of tr.effects) {
-          if (e.is(setStructState)) return;
+          if (e.is(setStructState) || e.is(setIntendedFocus)) return;
         }
         if (tr.isUserEvent("structure.mutate")) return;
         if (tr.isUserEvent("format.")) return;

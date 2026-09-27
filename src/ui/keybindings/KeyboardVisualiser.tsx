@@ -85,14 +85,6 @@ const keyToCode: Record<string, string> = {
 const MODIFIERS = ["Mod", "Ctrl", "Alt", "Shift", "Meta"] as const;
 type Modifier = (typeof MODIFIERS)[number];
 
-interface ParsedBinding {
-  modifiers: Set<Modifier>;
-  baseCode: string;  // Physical key code
-  action: ActionId;
-  description: string;
-  category: ActionCategory;
-}
-
 /**
  * Parse a CodeMirror key notation string into modifiers + physical key code.
  * Handles chords by taking only the first stroke (leader key).

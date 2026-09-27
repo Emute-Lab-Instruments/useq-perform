@@ -185,6 +185,97 @@ describe("visualisation sampling boundary", () => {
     mockInputListeners.listeners.clear();
   });
 
+  describe("pure history backfill after background suspension", () => {
+    async function setup(outputClass = 1) {
+      portState.readOutputClassifications.mockResolvedValue({
+        classes: [outputClass], inputMasks: [0],
+      });
+      const sampler = await import("./visualisationSampler.ts");
+      const { visStore } = await import("../utils/visualisationStore.ts");
+      sampler.setPastBufferSampleRate(100);
+      await sampler.registerVisualisation("a1", "(a1 (slow 1 beat))");
+      await sampler.tickAndProject(0, visStore.settings, { projectFuture: false });
+      wasmInterpreterMocks.evalOutputsInTimeWindow.mockClear();
+      return { sampler, settings: visStore.settings };
+    }
+
+    it.each([false, true])("reconstructs phasor cycles (combined ABI: %s)", async combined => {
+      const { sampler, settings } = await setup();
+      portState.supportsTickAndProject = combined;
+      portState.tickAndProject.mockResolvedValue({
+        tickValues: new Map([["bar", 0], ["a1", 0]]),
+        projectionSamples: new Map(),
+      });
+      wasmInterpreterMocks.evalOutputsInTimeWindow.mockImplementationOnce(
+        (names: string[], start: number, end: number, count: number) =>
+          Promise.resolve(new Map(names.map(name => [name,
+            Array.from({ length: count }, (_, i) => {
+              const time = start + (end - start) * i / (count - 1);
+              return { time, value: (time * 2) % 1 };
+            }),
+          ]))),
+      );
+      await sampler.tickAndProject(3, settings, { projectFuture: false });
+      const buffer = sampler.getRenderData("a1")!.pastBuffer;
+      expect(buffer.length).toBeGreaterThan(290);
+      let wraps = 0;
+      for (let i = 1; i < buffer.length - 1; i++) {
+        expect(buffer.timeAt(i) - buffer.timeAt(i - 1)).toBeLessThan(0.011);
+        expect(buffer.valueAt(i)).toBeCloseTo((buffer.timeAt(i) * 2) % 1, 8);
+        if (i > 1 && buffer.valueAt(i) < buffer.valueAt(i - 1)) wraps++;
+      }
+      expect(wraps).toBe(5);
+      expect(buffer.newestTime).toBe(3);
+    });
+
+    it.each([0, 2, 3])("does not reconstruct output classification %s", async cls => {
+      const { sampler, settings } = await setup(cls);
+      await sampler.tickAndProject(3, settings, { projectFuture: false });
+      expect(sampler.getRenderData("a1")!.pastBuffer.length).toBe(2);
+    });
+
+    it("does not apply a changed expression or tempo to earlier history", async () => {
+      const { sampler, settings } = await setup();
+      sampler.notifyExpressionEvaluated();
+      await sampler.tickAndProject(3, settings, { projectFuture: false });
+      expect(sampler.getRenderData("a1")!.pastBuffer.length).toBe(2);
+    });
+
+    it("continues the live tick if reconstruction fails", async () => {
+      const { sampler, settings } = await setup();
+      wasmInterpreterMocks.evalOutputsInTimeWindow.mockRejectedValueOnce(new Error("batch failed"));
+      await sampler.tickAndProject(3, settings, { projectFuture: false });
+      const buffer = sampler.getRenderData("a1")!.pastBuffer;
+      expect(buffer.length).toBe(2);
+      expect(buffer.newestTime).toBe(3);
+    });
+
+    it("bounds reconstruction to the visible window after a long absence", async () => {
+      const { sampler, settings } = await setup();
+      await sampler.tickAndProject(3600, settings, { projectFuture: false });
+      const [names, start, end, count] =
+        wasmInterpreterMocks.evalOutputsInTimeWindow.mock.calls[0];
+      expect(names).toEqual(["a1"]);
+      expect(start).toBeGreaterThanOrEqual(3600 - settings.windowDuration);
+      expect(end).toBeLessThan(3600);
+      expect(count).toBeLessThanOrEqual(8192);
+      expect(sampler.getRenderData("a1")!.pastBuffer.newestTime).toBe(3600);
+    });
+
+    it("discards a backfill invalidated while its batch is in flight", async () => {
+      const { sampler, settings } = await setup();
+      wasmInterpreterMocks.evalOutputsInTimeWindow.mockImplementationOnce(
+        async (names: string[], start: number, end: number, count: number) => {
+          sampler.notifyExpressionEvaluated();
+          return new Map(names.map(name => [name, Array.from({ length: count }, (_, i) =>
+            ({ time: start + (end - start) * i / (count - 1), value: 0.7 }))]));
+        },
+      );
+      await sampler.tickAndProject(3, settings, { projectFuture: false });
+      expect(sampler.getRenderData("a1")!.pastBuffer.length).toBe(2);
+    });
+  });
+
   describe("concurrent expression registration (regression: race condition)", () => {
     it("preserves all expressions when registering 3+ sequentially", async () => {
       const { registerVisualisation, isExpressionVisualised } = await import(
@@ -622,6 +713,16 @@ describe("visualisation sampling boundary", () => {
       expect(isExpressionVisualised("a1", { from: 1, to: 1 })).toBe(true);
     });
 
+    it("keeps the selected variant when registering a replacement returns an engine error", async () => {
+      const { visStore } = await import("../utils/visualisationStore.ts");
+      const sampler = await import("./visualisationSampler.ts");
+      wasmInterpreterMocks.evalInUseqWasm.mockResolvedValue("0.5");
+      await sampler.registerVisualisation("a1", "(a1 0.5)", { from: 0, to: 8 });
+      wasmInterpreterMocks.evalInUseqWasm.mockResolvedValueOnce("{error}");
+      await expect(sampler.registerVisualisation("a1", "(a1 missing)", { from: 9, to: 21 })).rejects.toThrow();
+      expect(visStore.expressions.a1).toMatchObject({ expressionText: "(a1 0.5)", position: { from: 0, to: 8 } });
+    });
+
     it("keeps the last known good expression text when refresh fails", async () => {
       const { evalInUseqWasm } = await import("../runtime/wasmInterpreter.ts");
       const { evalOutputsInTimeWindow } = await import("../runtime/wasmInterpreter.ts");
@@ -855,7 +956,6 @@ describe("visualisation sampling boundary", () => {
         "../runtime/wasmInterpreter.ts"
       );
       const sampler = await import("./visualisationSampler.ts");
-      const runtime = await import("./visualisationRuntime.ts");
       const mockBatch = vi.mocked(evalOutputsInTimeWindow);
 
       await sampler.registerVisualisation("a1", "(a1 (sin 1))");

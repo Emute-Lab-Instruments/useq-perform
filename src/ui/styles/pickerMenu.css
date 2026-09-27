@@ -6,7 +6,7 @@
   width: 100vw;
   height: 100vh;
   background: rgba(0,0,0,0.45);
-  z-index: 1000;
+  z-index: var(--z-modal-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -64,7 +64,6 @@
   cursor: pointer;
   border: 2px solid transparent;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
-  outline: none;
   user-select: none;
   min-width: 90px; /* Ensure minimum width */
   box-sizing: border-box; /* Include padding in width calculation */

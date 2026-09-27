@@ -132,4 +132,51 @@ describe("browser WASM runtime lifecycle", () => {
     expect(failures).toMatchObject([{ reason: "abi-mismatch" }]);
     expect(getRuntimeSessionState().session.transportMode).toBe("none");
   });
+
+  it("does not let a stale rejected activation downgrade its replacement", async () => {
+    const firstLoad = deferred<void>();
+    const secondLoad = deferred<void>();
+    const first = fakePort(firstLoad.promise);
+    const second = fakePort(secondLoad.promise);
+    const failures: BrowserWasmFailure[] = [];
+    const firstController = createBrowserWasmRuntimeController({ workerSupported: () => true, createPort: () => first, onFailure: (f) => failures.push(f) });
+    const secondController = createBrowserWasmRuntimeController({ workerSupported: () => true, createPort: () => second, onFailure: (f) => failures.push(f) });
+    const firstActivation = firstController.configure(true);
+    firstController.dispose();
+    const secondActivation = secondController.configure(true);
+    secondLoad.resolve();
+    await secondActivation;
+    firstLoad.reject(new Error("stale load failed"));
+    await firstActivation;
+    expect(getRuntimeSessionState().session.transportMode).toBe("wasm");
+    expect(hasActiveWasmRuntimePort()).toBe(true);
+    expect(failures).toEqual([]);
+  });
+
+  it("disposes a pending activation without publishing its later success", async () => {
+    const load = deferred<void>();
+    const port = fakePort(load.promise);
+    const controller = createBrowserWasmRuntimeController({ workerSupported: () => true, createPort: () => port });
+    const activation = controller.configure(true);
+    await controller.configure(false);
+    load.resolve();
+    await expect(activation).resolves.toBe(false);
+    expect(port.dispose).toHaveBeenCalled();
+    expect(getRuntimeSessionState().session.transportMode).toBe("none");
+  });
+
+  it("ignores a crashed old port after a reconfiguration selected a new port", async () => {
+    const first = fakePort(Promise.resolve());
+    const second = fakePort(Promise.resolve());
+    const handlers: Array<(error: WasmRuntimeWorkerError) => void> = [];
+    const firstController = createBrowserWasmRuntimeController({ workerSupported: () => true, createPort: (h) => { handlers.push(h); return first; } });
+    const secondController = createBrowserWasmRuntimeController({ workerSupported: () => true, createPort: () => second });
+    await firstController.configure(true);
+    firstController.dispose();
+    await secondController.configure(true);
+    handlers[0](new WasmRuntimeWorkerError("worker-crashed", "late crash"));
+    await Promise.resolve();
+    expect(getRuntimeSessionState().session.transportMode).toBe("wasm");
+    expect(second.dispose).not.toHaveBeenCalled();
+  });
 });

@@ -1,18 +1,30 @@
 import { createSignal, Show } from "solid-js";
 import { Section } from "./FormControls";
 import { getStartupFlagsSnapshot } from "../../runtime/startupContext.ts";
+import { notify as globalNotify, type ToastRequest } from "../../contracts/toastChannels.ts";
+import { confirmDialog, type ConfirmDialogFn } from "../adapters/modal";
 
-type ConfigurationManagementProps = {
+/** Injectable dialog/notification capabilities (defaults: in-app modal + toast). */
+export interface ConfigurationDialogs {
+  confirm?: ConfirmDialogFn;
+  notify?: (request: ToastRequest) => void;
+}
+
+type ConfigurationManagementProps = ConfigurationDialogs & {
   devmode?: boolean;
   onReload?: () => void;
 };
+
+const errorText = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 
 async function loadConfigManager() {
   return import("../../runtime/configManager.ts");
 }
 
 /** Export settings as a JSON file download. Available to all users. */
-export function handleSettingsExport() {
+export function handleSettingsExport(dialogs: ConfigurationDialogs = {}) {
+  const notify = dialogs.notify ?? globalNotify;
   return async () => {
     try {
       const { exportConfiguration } = await loadConfigManager();
@@ -27,13 +39,15 @@ export function handleSettingsExport() {
       URL.revokeObjectURL(url);
     } catch (error: unknown) {
       console.error("Export error:", error);
-      alert(`Failed to export settings:\n${error instanceof Error ? error.message : String(error)}`);
+      notify({ kind: "error", message: `Failed to export settings: ${errorText(error)}` });
     }
   };
 }
 
 /** Import settings from a JSON file. Available to all users. */
-export function handleSettingsImport(onReload: () => void) {
+export function handleSettingsImport(onReload: () => void, dialogs: ConfigurationDialogs = {}) {
+  const confirmAction = dialogs.confirm ?? confirmDialog;
+  const notify = dialogs.notify ?? globalNotify;
   return async () => {
     try {
       const {
@@ -44,22 +58,24 @@ export function handleSettingsImport(onReload: () => void) {
       const config = await loadConfigurationFromFile();
       const preview = previewConfiguration(config);
 
-      let confirmMessage = "Apply this configuration?\n\n";
-      if (preview.hasChanges) {
-        confirmMessage += "Changes:\n" + preview.diffs.join("\n") + "\n\n";
-      } else {
-        confirmMessage += "No changes detected.\n\n";
-      }
+      let confirmMessage = preview.hasChanges
+        ? "Changes:\n" + preview.diffs.join("\n") + "\n\n"
+        : "No changes detected.\n\n";
       confirmMessage += "The page will reload to apply changes.";
 
-      if (confirm(confirmMessage)) {
+      const ok = await confirmAction({
+        title: "Apply this configuration?",
+        message: confirmMessage,
+        confirmLabel: "Apply and reload",
+      });
+      if (ok) {
         importConfiguration(config);
         onReload();
       }
     } catch (error: unknown) {
       if (error instanceof Error && error.message === "File selection cancelled") return;
       console.error("Import error:", error);
-      alert(`Failed to import settings:\n${error instanceof Error ? error.message : String(error)}`);
+      notify({ kind: "error", message: `Failed to import settings: ${errorText(error)}` });
     }
   };
 }
@@ -76,13 +92,19 @@ export function ConfigurationManagement(props: ConfigurationManagementProps = {}
   }
 
   const [promoting, setPromoting] = createSignal(false);
+  const confirmAction = props.confirm ?? confirmDialog;
+  const notify = props.notify ?? globalNotify;
 
   const handlePromoteToDefaults = async () => {
-    if (!confirm(
-      "Promote current settings to shipped defaults?\n\n" +
-      "This overwrites src/runtime/default-config.json.\n" +
-      "You can then commit the change to ship these defaults to all users."
-    )) return;
+    const ok = await confirmAction({
+      title: "Promote to shipped defaults?",
+      message:
+        "This overwrites src/runtime/default-config.json.\n" +
+        "You can then commit the change to ship these defaults to all users.",
+      confirmLabel: "Overwrite defaults",
+      destructive: true,
+    });
+    if (!ok) return;
 
     setPromoting(true);
     try {
@@ -92,16 +114,18 @@ export function ConfigurationManagement(props: ConfigurationManagementProps = {}
         includeDevMode: true,
       }) as { method: string; path?: string; name?: string };
 
+      // Success toasts carry follow-up instructions, so they linger longer.
+      const durationMs = 8000;
       if (result.method === "websocket") {
-        alert(`Defaults updated:\n${result.path}\n\nCommit this file to ship the new defaults.`);
+        notify({ kind: "success", durationMs, message: `Defaults updated: ${result.path}\nCommit this file to ship the new defaults.` });
       } else if (result.method === "filesystem-api") {
-        alert(`Saved to: ${result.name}\n\nCopy to src/runtime/default-config.json and commit.`);
+        notify({ kind: "success", durationMs, message: `Saved to: ${result.name}\nCopy to src/runtime/default-config.json and commit.` });
       } else if (result.method === "download") {
-        alert("Downloaded config file.\n\nReplace src/runtime/default-config.json with it and commit.");
+        notify({ kind: "success", durationMs, message: "Downloaded config file.\nReplace src/runtime/default-config.json with it and commit." });
       }
     } catch (error: unknown) {
       console.error("Promote error:", error);
-      alert(`Failed to promote defaults:\n${error instanceof Error ? error.message : String(error)}`);
+      notify({ kind: "error", message: `Failed to promote defaults: ${errorText(error)}` });
     } finally {
       setPromoting(false);
     }

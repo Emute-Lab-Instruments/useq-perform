@@ -12,7 +12,6 @@ import {
   validateWasmAbi,
   type CwrapDescriptor,
   type EmscriptenModuleShape,
-  type WasmAbiValidation,
 } from "./wasmAbi";
 
 // ---------------------------------------------------------------------------

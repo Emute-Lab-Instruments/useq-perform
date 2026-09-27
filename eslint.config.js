@@ -47,6 +47,12 @@ export default tseslint.config(
     plugins: {
       "import-x": importPlugin,
     },
+    settings: {
+      // Resolve extensionless TypeScript imports before checking layer zones.
+      "import-x/resolver": {
+        node: { extensions: [".js", ".jsx", ".mjs", ".ts", ".tsx", ".json"] },
+      },
+    },
     rules: {
       "import-x/no-restricted-paths": [
         "error",
@@ -161,12 +167,12 @@ export default tseslint.config(
             zone(
               `${srcDir}/runtime/`,
               `${srcDir}/ui/`,
-              "src/runtime/ must not import from src/ui/ (except bootstrap files — add eslint-disable if needed)"
+              "src/runtime/ must not import from src/ui/ (bootstrap wiring is exempted by the per-file overrides below)"
             ),
             zone(
               `${srcDir}/runtime/`,
               `${srcDir}/editors/`,
-              "src/runtime/ must not import from src/editors/ (except bootstrap files — add eslint-disable if needed)"
+              "src/runtime/ must not import from src/editors/ (bootstrap wiring is exempted by the per-file overrides below)"
             ),
           ],
         },

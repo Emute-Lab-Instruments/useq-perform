@@ -1,46 +1,38 @@
-import { createSignal, onMount, onCleanup } from "solid-js";
+import { For } from "solid-js";
 
 export interface ProgressBarProps {
-  /** Progress value from 0 to 1 */
+  /** Bar-phase progress value from 0 to 1 */
   progress: number;
+  /**
+   * Beats per bar. Draws `beats - 1` subtle tick marks at the beat
+   * boundaries inside the bar. Defaults to 4; values < 2 draw no ticks.
+   */
+  beats?: number;
 }
 
+const DEFAULT_BEATS = 4;
+/** Guard against absurd runtime values turning the bar into a comb. */
+const MAX_TICKS = 32;
+
+/**
+ * Bar-position strip under the transport buttons (transport.md §1.7.4).
+ * Width follows its parent through CSS layout (`width: 100%` of the transport
+ * column); no measurement or ResizeObserver is involved.
+ */
 export function ProgressBar(props: ProgressBarProps) {
-  const [containerWidth, setContainerWidth] = createSignal<number | null>(null);
-
-  let containerRef: HTMLDivElement | undefined;
-  let resizeObserver: ResizeObserver | undefined;
-
-  onMount(() => {
-    // Attempt to sync width with the sibling toolbar-row
-    const toolbarRow = containerRef?.parentElement?.querySelector(".toolbar-row");
-    if (toolbarRow) {
-      resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          setContainerWidth(entry.contentRect.width);
-        }
-      });
-      resizeObserver.observe(toolbarRow);
-
-      // Initial width
-      const rect = toolbarRow.getBoundingClientRect();
-      if (rect.width > 0) {
-        setContainerWidth(rect.width);
-      }
-    }
-  });
-
-  onCleanup(() => {
-    resizeObserver?.disconnect();
-  });
+  const tickPositions = () => {
+    const raw = props.beats ?? DEFAULT_BEATS;
+    const beats = Number.isFinite(raw) ? Math.min(MAX_TICKS, Math.floor(raw)) : DEFAULT_BEATS;
+    if (beats < 2) return [];
+    return Array.from({ length: beats - 1 }, (_, i) => ((i + 1) / beats) * 100);
+  };
 
   return (
     <div
       id="toolbar-bar-progress-container"
-      ref={containerRef}
       role="presentation"
       style={{
-        width: containerWidth() !== null ? `${containerWidth()}px` : "100%",
+        width: "100%",
         "pointer-events": "none",
         display: "block",
       }}
@@ -52,6 +44,15 @@ export function ProgressBar(props: ProgressBarProps) {
           "pointer-events": "none",
         }}
       />
+      <For each={tickPositions()}>
+        {(left) => (
+          <span
+            class="progress-beat-tick"
+            aria-hidden="true"
+            style={{ left: `${left}%` }}
+          />
+        )}
+      </For>
     </div>
   );
 }

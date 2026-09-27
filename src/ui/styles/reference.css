@@ -37,7 +37,6 @@
   font-size: 0.82em;
   font-family: var(--code-font);
   margin-bottom: 0;
-  outline: none;
 }
 
 .doc-search-input::placeholder {
@@ -509,7 +508,7 @@
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.15s ease, transform 0.15s ease;
-  z-index: 10000;
+  z-index: var(--z-toast);
   box-shadow: none;
   white-space: nowrap;
 }
@@ -517,4 +516,26 @@
 .useq-reference-toast--visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+.doc-more-tags {
+  margin-top: 6px;
+}
+
+.doc-more-tags > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.82em;
+}
+
+.doc-more-tags > .doc-tags-wrapper {
+  max-height: 180px;
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+
+.doc-more-tags > summary:focus-visible,
+.doc-tag:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
 }

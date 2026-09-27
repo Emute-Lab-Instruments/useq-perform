@@ -938,6 +938,7 @@ function applyThemeCssVariables(spec: ThemeSpec): void {
       "--accent-color-active",
       adjustColorBrightness(settings.accentColor || "#0066cc", -10),
     );
+    setStatusBarTokens(docStyle, true);
   } else {
     docStyle.setProperty("--panel-bg", adjustedHelpBackground + "F0");
     docStyle.setProperty("--toolbar-bg", adjustedConsoleBackground);
@@ -970,5 +971,39 @@ function applyThemeCssVariables(spec: ThemeSpec): void {
       "--accent-color-active",
       adjustColorBrightness(settings.accentColor || foregroundColor, -10),
     );
+    setStatusBarTokens(docStyle, false);
   }
+}
+
+/**
+ * Semantic status tokens (consumed via `var(--status-*)` across the UI
+ * stylesheets). Colours are per-variant, not per-theme: dark themes keep
+ * bright status colours that read on dark panels; light themes get darker
+ * variants readable on light surfaces. `--on-accent` pairs with the
+ * active accent for text placed on accent-filled chips.
+ */
+function setStatusBarTokens(
+  docStyle: CSSStyleDeclaration,
+  isLightTheme: boolean,
+): void {
+  const tokens = isLightTheme
+    ? {
+        ok: "#1a7f4b",
+        warn: "#b45309",
+        error: "#c62828",
+        info: "#1d4ed8",
+        onAccent: "#ffffff",
+      }
+    : {
+        ok: "#4ec9a0",
+        warn: "#ffb454",
+        error: "#ff6b6b",
+        info: "#7aa2f7",
+        onAccent: "#10131a",
+      };
+  docStyle.setProperty("--status-ok", tokens.ok);
+  docStyle.setProperty("--status-warn", tokens.warn);
+  docStyle.setProperty("--status-error", tokens.error);
+  docStyle.setProperty("--status-info", tokens.info);
+  docStyle.setProperty("--on-accent", tokens.onAccent);
 }

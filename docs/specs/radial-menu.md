@@ -13,16 +13,16 @@ layer: behavioural
 
 ### Source files
 
-- `src/lib/menu/types.ts` — MenuTab, MenuItem, Verb, MenuState, HoleSpec
+- `src/lib/menu/types.ts` — MenuTab, MenuItem, Verb, MenuState, HoleSpec, MenuDispatcher
 - `src/lib/menu/manifest.ts` / `manifest.json` — manifest loading, lint, cache
 - `src/lib/menu/state.ts` — pure state machine reducer
-- `src/lib/menu/verbs.ts` — verb implementations
-- `src/lib/menu/chain.ts` — auto-chain runner
-- `src/lib/menu/dispatcher.ts` — lifecycle/action routing adapter (impure)
+- `src/editors/menu/verbs.ts` — verb implementations
+- `src/editors/menu/chain.ts` — auto-chain runner
+- `src/editors/menu/dispatcher.ts` — lifecycle/action routing adapter (impure)
 - `src/lib/menu/textEntry.ts` — numpad/T9 layouts, hover state, and multi-tap timing
-- `src/lib/menu/verbApplication.ts` — selection resolution and structural verb application
-- `src/lib/menu/editorTarget.ts` — CodeMirror/structural-tree target and mutation adapter
-- `src/lib/menu/chainCoordination.ts` — close/reopen input planning after a verb commit
+- `src/editors/menu/verbApplication.ts` — selection resolution and structural verb application
+- `src/editors/menu/editorTarget.ts` — CodeMirror/structural-tree target and mutation adapter
+- `src/editors/menu/chainCoordination.ts` — close/reopen input planning after a verb commit
 - `src/lib/menu/store.ts` — Solid reactive store (menuStore)
 - `src/ui/menu/RadialMenu.tsx` — SVG renderer (props-based)
 - `src/ui/adapters/radialMenu.tsx` — imperative adapter (`mountRadialMenu`)
@@ -280,7 +280,7 @@ The menu closes on:
 - The user leaving the gamepad's connected state (gamepad disconnect → close + cancel).
 - An out-of-band close gesture from elsewhere (e.g. keyboard `Esc`) — possible but rare, since the menu is gamepad-only by design.
 
-On close, the menu store returns to its `closed` phase and the radial layer's predicate becomes false; the structural cursor remains at its post-mutation position (or the original target on cancel). See `src/lib/menu/dispatcher.ts` and `src/lib/gamepad/paradigms/radial.ts`.
+On close, the menu store returns to its `closed` phase and the radial layer's predicate becomes false; the structural cursor remains at its post-mutation position (or the original target on cancel). See `src/editors/menu/dispatcher.ts` and `src/lib/gamepad/paradigms/radial.ts`.
 
 ---
 
@@ -295,7 +295,7 @@ On close, the menu store returns to its `closed` phase and the radial layer's pr
 | `functions` | Functions | The language's built-in callable forms, bucketed into categories (Math, Audio, Control, Lists, Time, IO). |
 | `symbols` | Symbols | Curated common variable names (`x`, `i`, `t`, `phase`, `freq`, `cutoff`, `bpm`…). v1 has no soft-alphabet escape hatch; new symbol names require a keyboard. |
 | `literals` | Numbers/KW | Common numbers (small ints, durations, ratios, audio rates), booleans, common keywords. v1 has no digit-by-digit drill; arbitrary numbers require a keyboard. |
-| `snippets` | Snippets | Multi-token templates such as `(slow N body)`, `(osc freq)`, common patterns. |
+| `snippets` | Snippets | Multi-token templates such as `(slow N body)`, `(sin[lfo] freq)`, common patterns. |
 
 4.1.2 Tabs cycle on LB/RB tap when the menu is in sub-phase `cyclingLeftTabs` (both sticks centred). To cycle left tabs without closing the menu, the user briefly returns both sticks to centre, taps LB/RB, then re-engages.
 
@@ -368,7 +368,7 @@ Each verb is an action over `(Tree, CursorSet, MenuItem) → (Tree, CursorSet)`.
 - `hand: 'right'`: produces `(target picked)` — target is the head; picked is the first child.
 - `hand: 'both'`: no-op flash (reserved).
 - Cursor moves to the new compound, or to its first hole if any.
-- For function items, holes from `signature` are inserted *after* the relevant participant; e.g. `hand: 'left'` on `osc` (signature `[($ freq :number)]`) wrapping target `440` produces `(osc 440)` — the wrap consumed the freq hole.
+- For function items, holes from `signature` are inserted *after* the relevant participant; e.g. `hand: 'left'` on `sin[lfo]` (signature `[($ freq :number)]`) wrapping target `440` produces `(sin[lfo] 440)` — the wrap consumed the freq hole.
 
 5.1.4 **Call** (face B). Similar to Wrap but the apply target is *not* a child — it's a sibling of a fresh call form.
 - `hand: 'left'`: inserts `(picked ($ hole-1 :type) …)` as the sibling-before of the apply target.
@@ -486,7 +486,7 @@ Each entry has its label (= head), tags (used for category routing), and a `sign
 - Booleans: `true`, `false`.
 - Keywords: a context-aware list — when the cursor's enclosing form's head matches a known wrapper (e.g. `live-edit`), this category is dynamically populated from the wrapper's known keys (`:id`, `:min`, `:max`, `:step`, `:precision`, `:options`, `:name`). Otherwise a generic list of common keywords.
 
-7.3.4 **Snippets tab.** Categories: Time (`(slow ($ rate :number) ($ body :expr))`, `(fast ($ rate :number) ($ body :expr))`, `(every ($ n :number) ($ body :expr))`), Audio (`(osc ($ freq :number))`, `(phasor ($ freq :number))`), Control (`(if ($ cond :expr) ($ then :expr) ($ else :expr))`, `(let [($ name :symbol) ($ value :expr)] ($ body :expr))`, `(when ($ cond :expr) ($ body :expr))`).
+7.3.4 **Snippets tab.** Categories: Time (`(slow ($ rate :number) ($ body :expr))`, `(fast ($ rate :number) ($ body :expr))`, `(every ($ n :number) ($ body :expr))`), Audio (`(sin[lfo] ($ freq :number))`, `(phasor ($ freq :number))`), Control (`(if ($ cond :expr) ($ then :expr) ($ else :expr))`, `(let [($ name :symbol) ($ value :expr)] ($ body :expr))`, `(when ($ cond :expr) ($ body :expr))`).
 
 The exact item lists evolve; the manifest is the single source of truth and changes go there.
 
@@ -503,7 +503,7 @@ Keyword literals in source begin with a leading `:` (`:up`, `:down`). The manife
 8.1.1 Holes are **first-class structural nodes** per [structural-editing.md §2.9](structural-editing.md). Their surface syntax is `($ name :type)`; their internal representation is a `hole` leaf with core fields `(name, type)`. The menu's auto-chain, eval-gate, and fold rendering all key off the `hole` node kind directly — there is no menu-private hole concept.
 
 ```lisp
-(osc ($ freq :number))
+(sin[lfo] ($ freq :number))
 (slow ($ rate :number) ($ body :expr))
 ```
 
@@ -612,25 +612,30 @@ Dismissed by any input.
 
 ### 11.1 File layout
 
+The foundation retains shared state, types and content. Editor-dependent modules live under `src/editors/menu/`; their structural planners remain pure. The unchanged `MenuDispatcher` interface lives in `src/lib/menu/types.ts`, with no foundation implementation facade. This ownership split does not change menu behaviour or command-router authority.
+
 ```
 src/lib/menu/
-  types.ts               // MenuTab, MenuCategory, MenuItem, Verb, MenuState, HoleSpec, HoleType
+  types.ts               // MenuTab, MenuCategory, MenuItem, Verb, MenuState, HoleSpec, HoleType, MenuDispatcher
   manifest.ts            // load, lint, cache the JSON manifest
   manifest.json          // v1 curated content (stub initially, fleshed out via the manifest epic)
   state.ts               // pure state machine: reducer (state, input) → state
+  textEntry.ts           // numpad/T9 layouts plus hover and multi-tap timing
+  templates.ts           // parseTemplate(str) → snippet tree fragment with holes
+  store.ts               // Solid reactive store (menuStore.open, current MenuState, current target, …)
+
+src/editors/menu/
   verbs.ts               // pure verb implementations: (Tree, CursorSet, MenuItem, Verb) → (Tree, CursorSet)
   chain.ts               // auto-chain runner: detects holes, schedules next-pick
   chainCoordination.ts   // translates a post-verb chain result into close/reopen reducer inputs
-  textEntry.ts           // numpad/T9 layouts plus hover and multi-tap timing
   verbApplication.ts     // resolves a frozen selection and applies one structural verb
   editorTarget.ts        // CodeMirror/structural target lookup and source mutation
-  templates.ts           // parseTemplate(str) → snippet tree fragment with holes
-  store.ts               // Solid reactive store (menuStore.open, current MenuState, current target, …)
+  previewCache.ts        // structural preview cache
   dispatcher.ts          // wires lifecycle and high-level actions across the focused modules
 
 src/lib/menu/state.test.ts
-src/lib/menu/verbs.test.ts
-src/lib/menu/chain.test.ts
+src/editors/menu/verbs.test.ts
+src/editors/menu/chain.test.ts
 src/lib/menu/manifest.test.ts
 src/lib/menu/state.property.test.ts   // fast-check property tests (mirrors gamepad pipeline)
 
@@ -645,7 +650,7 @@ src/ui/adapters/
 
 Files dropped from the original outline (now deferred): `alphabet.ts`, `drill.ts`, `AlphabetRing.tsx`, `DrillRing.tsx`.
 
-### 11.2 The dispatcher (`src/lib/menu/dispatcher.ts`)
+### 11.2 The dispatcher (`src/editors/menu/dispatcher.ts`)
 
 The dispatcher is the menu's lifecycle and high-level action adapter. It:
 - Subscribes to the gamepad's `radial-menu` transient layer's actions and axis channels.

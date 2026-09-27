@@ -10,7 +10,7 @@
 .zen-root {
   position: fixed;
   inset: 0;
-  z-index: 2000;
+  z-index: var(--z-takeover);
   background: #0a0a0f;
   color: #e8e8e8;
   font-family: var(--code-font, "IBM Plex Mono", monospace);

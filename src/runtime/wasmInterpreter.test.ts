@@ -61,7 +61,7 @@ async function loadGeneratedBundleModule(bundleRelativePath: string): Promise<{
   // With SINGLE_FILE=0 the .wasm is a separate file — provide it through
   // Emscripten's instantiateWasm hook so Node does not fetch() a file path.
   const wasmPath = path.resolve(bundleDir, "useq.wasm");
-  let wasmBytes: Uint8Array | undefined;
+  let wasmBytes: Uint8Array<ArrayBuffer> | undefined;
   try {
     wasmBytes = new Uint8Array(readFileSync(wasmPath));
   } catch {

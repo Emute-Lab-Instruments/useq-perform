@@ -1,4 +1,5 @@
 import type { JSX } from "solid-js";
+import type { PanelChromeDesign } from "../../lib/settings/schema";
 
 /** Absolute pixel geometry for a panel window. */
 export interface Geometry {
@@ -8,14 +9,19 @@ export interface Geometry {
   h: number;
 }
 
-/** The three chrome design modes. */
-export type ChromeDesign = "pane" | "drawer" | "tile";
+/** The three chrome design modes (persisted as `settings.ui.panelChrome`). */
+export type ChromeDesign = PanelChromeDesign;
 
 /** Panel visibility/interaction state. */
 export type ChromeMode = "normal" | "expanded" | "collapsed";
 
+/** Viewport side a panel docks to by default (side-by-side panels). */
+export type PanelSide = "left" | "right";
+
 /** Tile layout slot names. */
 export type TileSlot =
+  | "left-third"
+  | "left-half"
   | "right-third"
   | "right-half"
   | "bottom-half"
@@ -33,4 +39,11 @@ export interface ChromeProps {
   children: JSX.Element;
   /** Called when the user closes the panel. */
   onClose: () => void;
+  /** Default docking side when no geometry is stored. Defaults to "right". */
+  side?: PanelSide;
+  /**
+   * Position in the panel stacking order (0 = bottom). Added to the base
+   * panel z-index so the most recently raised panel paints on top.
+   */
+  stackIndex?: number;
 }

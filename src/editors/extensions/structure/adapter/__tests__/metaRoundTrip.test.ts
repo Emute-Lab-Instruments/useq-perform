@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 /**
  * Meta serialization/parse round-trip (§6.5 Meta preservation, §7.4(c)).
  *
@@ -14,7 +15,7 @@
 
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { treeFromLezer } from "../treeFromLezer.ts";
@@ -29,11 +30,13 @@ function parse(doc: string) {
   return treeFromLezer(state);
 }
 
-function only(doc: string): Node {
+function only(doc: string): Exclude<Node, { kind: "document" }> {
   const { tree, warnings } = parse(doc);
   expect(warnings).toHaveLength(0);
   expect(tree.root.children).toHaveLength(1);
-  return tree.root.children[0]!;
+  const node = tree.root.children[0]!;
+  assert(node.kind !== "document");
+  return node;
 }
 
 describe("sigil Meta recognition (§6.2) — parse side", () => {
@@ -48,7 +51,7 @@ describe("sigil Meta recognition (§6.2) — parse side", () => {
   for (const [kind, src, hostText] of cases) {
     it(`${src} folds to a host with a ${kind} Meta`, () => {
       const node = only(src);
-      expect(node.kind).toBe("symbol");
+      assert(node.kind === "symbol");
       expect(node.metas).toHaveLength(1);
       expect(node.metas[0]!.kind).toBe(kind);
       if (node.kind === "symbol") expect(node.text).toBe(hostText);
@@ -57,20 +60,20 @@ describe("sigil Meta recognition (§6.2) — parse side", () => {
 
   it("'(a b) folds the quoted list, not its children", () => {
     const node = only("'(a b)");
-    expect(node.kind).toBe("list");
+    assert(node.kind === "list");
     expect(node.metas).toHaveLength(1);
-    expect(node.metas[0]!.kind).toBe("quote");
+    assert(node.metas[0]!.kind === "quote");
     if (node.kind === "list") {
       expect(node.children).toHaveLength(2);
-      expect(node.children.every((c) => c.metas.length === 0)).toBe(true);
+      expect(node.children.every((c) => c.kind !== "document" && c.metas.length === 0)).toBe(true);
     }
   });
 
   it("^:dynamic x folds to host x with a metadata Meta carrying the payload", () => {
     const node = only("^:dynamic x");
-    expect(node.kind).toBe("symbol");
+    assert(node.kind === "symbol");
     expect(node.metas).toHaveLength(1);
-    expect(node.metas[0]!.kind).toBe("metadata");
+    assert(node.metas[0]!.kind === "metadata");
     expect(node.metas[0]!.payload).toBe(":dynamic");
   });
 });
@@ -99,7 +102,7 @@ describe("non-sigil forms are unaffected", () => {
   it("true/false/nil are symbols with no Meta (booleans are symbols, §2.1)", () => {
     for (const src of ["true", "false", "nil"]) {
       const node = only(src);
-      expect(node.kind).toBe("symbol");
+      assert(node.kind === "symbol");
       expect(node.metas).toHaveLength(0);
     }
   });

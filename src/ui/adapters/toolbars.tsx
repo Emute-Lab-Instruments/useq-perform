@@ -2,11 +2,15 @@
  * Wired toolbar components owned by the application Solid root.
  */
 import { createSignal, onMount, onCleanup } from "solid-js";
-import { Effect } from "effect";
-import { TransportToolbar, type TransportToolbarProps } from "../TransportToolbar";
-import { MainToolbar, type ConnectionState } from "../MainToolbar";
+import {
+  TransportToolbar,
+  type TransportAction,
+  type TransportToolbarProps,
+} from "../TransportToolbar";
+import { MainToolbar, type ConnectionState, type MainToolbarAction } from "../MainToolbar";
 import { OnboardingBanner } from "../OnboardingBanner";
 import { EngineIndicator } from "../../audio/engineIndicator";
+import { editor } from "../../lib/editorStore";
 import { adjustFontSize, loadCode, saveCode } from "../../effects/editor";
 import {
   animateConnect as animateConnectChannel,
@@ -30,46 +34,95 @@ import { getTransportOrchestrator } from "../../effects/transportOrchestrator";
 import { getActiveWasmRuntimePort } from "../../runtime/activeWasmRuntimePort";
 import { useActorSignal } from "../../lib/useActorSignal";
 import { visualisationSession } from "../../effects/visualisationSession";
+import { dispatchRuntimeCodeEvaluation } from "../../runtime/runtimeCodeEvaluation";
+import { resolver } from "../../editors/keymaps";
+import type { ActionId } from "../../lib/keybindings/actions";
+import { isMac } from "../../lib/keybindings/osReserved";
+import { formatBpm } from "../toolbar/BpmControl";
+import { resolveToolbarShortcuts } from "../toolbar/shortcutLabels";
+
+// ── Toolbar shortcuts (transport.md §1.7.2) ─────────────────────────
+//
+// Toolbar buttons that correspond to an action-registry action show that
+// action's live binding in their tooltip. The registry has no transport,
+// file, font-size, settings or connect actions yet, so only these map.
+const MAIN_TOOLBAR_ACTIONS: Partial<Record<MainToolbarAction, ActionId>> = {
+  graph: "panel.vis",
+  help: "panel.help",
+};
+const TRANSPORT_TOOLBAR_ACTIONS: Partial<Record<TransportAction, ActionId>> = {};
+
+function lookupLiveBinding(action: ActionId): string | undefined {
+  return resolver.resolved().get(action)?.key;
+}
+
+/**
+ * Read a numeric runtime cell from the active WASM port without publishing a
+ * user-visible evaluation. Null when WASM is unavailable or the value is not
+ * a finite number.
+ */
+async function readRuntimeNumber(name: string): Promise<number | null> {
+  try {
+    const text = await getActiveWasmRuntimePort().evalCodeSilently(name);
+    if (text === null) return null;
+    const parsed = Number(text);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Wrapper that reads orchestrator state and passes it as props. */
 export function ConnectedTransportToolbar() {
   const orchestrator = getTransportOrchestrator();
-  const { state, send } = useActorSignal(orchestrator.actor as any);
+  const { state, send } = useActorSignal(orchestrator.actor);
   const [bpm, setBpm] = createSignal<number | null>(null);
+  const [beatsPerBar, setBeatsPerBar] = createSignal<number | null>(null);
+  const [shortcuts, setShortcuts] = createSignal<Partial<Record<TransportAction, string>>>({});
 
-  // BPM is a runtime cell; refresh on mount, after every code eval, and on
-  // a slow timer to catch the post-load value when the worker comes up
-  // before the user has evaluated anything.
+  // BPM and beats-per-bar are runtime cells. Refresh event-driven: on mount,
+  // after every evaluation (including our own set-bpm commit, which the WASM
+  // port publishes on `codeEvaluated`), and whenever the runtime session
+  // changes (e.g. the WASM Worker finishes its readiness handshake).
   let alive = true;
-  const refreshBpm = async () => {
+  let refreshSeq = 0;
+  const refreshTiming = async () => {
+    const seq = ++refreshSeq;
+    const [nextBpm, nextBeats] = await Promise.all([
+      readRuntimeNumber("bpm"),
+      readRuntimeNumber("beats-per-bar"),
+    ]);
+    // Drop stale responses that resolve after a newer refresh started.
+    if (!alive || seq !== refreshSeq) return;
+    setBpm(nextBpm);
+    setBeatsPerBar(nextBeats);
+  };
+
+  // transport.md §1.7.3: commit through the shared runtime eval fan-out so
+  // hardware (with the immediate `@` marker) and WASM both receive the form.
+  const commitBpm = async (value: number) => {
+    setBpm(value); // optimistic; the refresh below reconciles
+    const form = `(set-bpm ${formatBpm(value)})`;
     try {
-      const text = await getActiveWasmRuntimePort().evalCodeSilently("bpm");
-      if (!alive) return;
-      if (text === null) {
-        setBpm(null);
-        return;
-      }
-      const parsed = Number(text);
-      setBpm(Number.isFinite(parsed) ? parsed : null);
-    } catch {
-      if (alive) setBpm(null);
+      await dispatchRuntimeCodeEvaluation({ code: `@${form}`, wasmCode: form });
+    } finally {
+      if (alive) void refreshTiming();
     }
   };
 
   onMount(() => {
-    void refreshBpm();
-    const unsub = codeEvaluatedChannel.subscribe(() => {
-      void refreshBpm();
+    void refreshTiming();
+    setShortcuts(resolveToolbarShortcuts(TRANSPORT_TOOLBAR_ACTIONS, lookupLiveBinding, isMac()));
+    const unsubEval = codeEvaluatedChannel.subscribe(() => {
+      void refreshTiming();
     });
-    // Slow heartbeat so the box appears once the worker finishes loading
-    // even if no code has been evaluated yet.
-    const timer = window.setInterval(() => {
-      if (bpm() === null) void refreshBpm();
-    }, 1000);
+    const unsubSession = subscribeRuntimeService(() => {
+      void refreshTiming();
+    });
     onCleanup(() => {
       alive = false;
-      unsub();
-      window.clearInterval(timer);
+      unsubEval();
+      unsubSession();
     });
   });
 
@@ -79,6 +132,9 @@ export function ConnectedTransportToolbar() {
       mode={state().context.mode as TransportToolbarProps["mode"]}
       progress={visualisationSession.state.bar}
       bpm={bpm()}
+      beatsPerBar={beatsPerBar()}
+      onBpmCommit={(value) => void commitBpm(value)}
+      shortcuts={shortcuts()}
       onPlay={() => send({ type: "PLAY" })}
       onPause={() => send({ type: "PAUSE" })}
       onStop={() => send({ type: "STOP" })}
@@ -104,11 +160,13 @@ export function WiredMainToolbar() {
   const [connectionState, setConnectionState] = createSignal<ConnectionState>(
     deriveConnectionState(getRuntimeServiceSnapshot())
   );
+  const [shortcuts, setShortcuts] = createSignal<Partial<Record<MainToolbarAction, string>>>({});
 
   // Adapter owns the channel subscription; child just registers a callback.
   let animateCallback: (() => void) | undefined;
 
   onMount(() => {
+    setShortcuts(resolveToolbarShortcuts(MAIN_TOOLBAR_ACTIONS, lookupLiveBinding, isMac()));
     const unsubRuntimeService = subscribeRuntimeService((nextState) => {
       setConnectionState(deriveConnectionState(nextState));
     });
@@ -124,12 +182,13 @@ export function WiredMainToolbar() {
   return (
     <MainToolbar
       connectionState={connectionState()}
+      shortcuts={shortcuts()}
       onConnect={() => toggleRuntimeConnection()}
       onToggleGraph={() => toggleVisualisationPanel()}
-      onLoadCode={() => Effect.runPromise(loadCode())}
-      onSaveCode={() => Effect.runPromise(saveCode())}
-      onFontSizeUp={() => Effect.runPromise(adjustFontSize(1))}
-      onFontSizeDown={() => Effect.runPromise(adjustFontSize(-1))}
+      onLoadCode={() => loadCode(editor())}
+      onSaveCode={() => saveCode(editor())}
+      onFontSizeUp={() => adjustFontSize(editor(), 1)}
+      onFontSizeDown={() => adjustFontSize(editor(), -1)}
       onSettings={() => toggleChromePanel("settings")}
       onHelp={() => toggleChromePanel("help")}
       onAnimateConnect={(cb) => { animateCallback = cb; }}

@@ -116,12 +116,12 @@ The **source is the canonical declaration**; the **slot is the canonical current
 
 The user's intent on toggle-off is "preserve what the knob currently shows in the source," not "throw away my tuning." Restore-to-seed remains available as the explicit `liveEdit.resetToSeed` action (§6.2).
 
-3.4 **Range inference.** At mark-time, `:min`/`:max` are inferred from the seed and its lexical context. (See `src/editors/extensions/liveEdit/rangeInference.ts`) **Parent-head rules are checked first** — if the parent form has a recognised head, its context-specific range wins over the generic value-based rules. This is intentional: `(osc 0.5)` should get a frequency range, not the unit range, because 0.5 Hz is a valid control-rate oscillator frequency (uSEQ is control-rate only; there is no audio-rate processing in this language).
+3.4 **Range inference.** At mark-time, `:min`/`:max` are inferred from the seed and its lexical context. (See `src/editors/extensions/liveEdit/rangeInference.ts`) **Parent-head rules are checked first** — if the parent form has a recognised head, its context-specific range wins over the generic value-based rules. This is intentional: `(sin[lfo] 0.5)` should get a frequency range, not the unit range, because 0.5 Hz is a valid control-rate oscillator frequency (uSEQ is control-rate only; audio-rate processing lives in NodeDefs).
 
 | Priority | Seed                                        | Default `:min` | Default `:max`  |
 | -------- | ------------------------------------------- | -------------- | --------------- |
 | 1        | Integer X, parent `slow`/`fast`             | `1`            | `max(16, 2X)`   |
-| 2        | Number X, parent `osc`/`phasor` head        | `20`           | `max(2000, 2X)` |
+| 2        | Number X, parent head with `lfo` facet, or `phasor` | `20`    | `max(2000, 2X)` |
 | 3        | `0 ≤ X ≤ 1`                                 | `0`            | `1`             |
 | 4        | `-1 ≤ X < 0`                                | `-1`           | `0`             |
 | 5        | Other numeric X > 0                         | `0`            | `2X`            |

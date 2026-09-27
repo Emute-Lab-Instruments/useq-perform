@@ -51,7 +51,7 @@
 
 @keyframes delete-confirm-pulse {
   0%, 100% { background-color: transparent; outline: 2px solid transparent; outline-offset: 1px; }
-  50%      { background-color: rgba(255, 100, 80, 0.30); outline: 2px solid rgba(255, 80, 60, 0.55); outline-offset: 1px; }
+  50%      { background-color: color-mix(in srgb, var(--status-error, #ff6b6b) 30%, transparent); outline: 2px solid color-mix(in srgb, var(--status-error, #ff6b6b) 55%, transparent); outline-offset: 1px; }
 }
 /* Current node highlighting */
 .cm-current-node {
@@ -103,7 +103,7 @@ body.gamepad-active, body.gamepad-active * {
   width: 6px;
   height: 100%;
   border-radius: 2px;
-  background-color: rgba(255, 60, 60, 0.85);
+  background-color: color-mix(in srgb, var(--status-error, #ff6b6b) 85%, transparent);
   animation: cm-expr-fail-pulse 1.6s ease-in-out infinite;
   z-index: 4;
 }
@@ -202,12 +202,12 @@ body.gamepad-active, body.gamepad-active * {
 }
 
 .cm-probe-widget-text.is-error {
-  color: #ff9c9c;
+  color: var(--status-error, #ff9c9c);
 }
 
 /* Stale probe (spec §1.5.5): text at saved offsets changed since save. */
 .cm-probe-widget-text.is-stale {
-  color: #ffd27a;
+  color: var(--status-warn, #ffd27a);
   cursor: help;
 }
 
@@ -272,7 +272,6 @@ body.gamepad-active, body.gamepad-active * {
   height: 3px;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
-  outline: none;
   cursor: pointer;
 }
 

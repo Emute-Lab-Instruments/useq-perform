@@ -44,8 +44,10 @@ export function HintRow(props: HintRowProps): JSX.Element {
           onMouseDown={handleMouseDown}
           onClick={handleToggleClick}
           tabindex={-1}
+          aria-expanded={props.isExpanded}
+          aria-label={props.isExpanded ? "Collapse chord" : "Expand chord"}
         >
-          {props.isExpanded ? "▾" : "▸"}
+          <span aria-hidden="true">{props.isExpanded ? "▾" : "▸"}</span>
         </button>
       )}
     </div>

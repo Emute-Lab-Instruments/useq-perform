@@ -156,6 +156,18 @@ export interface WebSerialHostPort extends SharedRuntimePort {
   ): Promise<void>;
 
   /**
+   * Evaluate code and return the diagnostics owned by that exact hardware
+   * request. Runtime-owned editor fan-out uses this instead of reaching
+   * through the port to the JSON-protocol adapter.
+   */
+  evalCodeWithDiagnostics(code: string): Promise<{
+    success: boolean;
+    result: string | null;
+    diagnostics: RuntimeDiagnostic[];
+    error?: string;
+  }>;
+
+  /**
    * Request a full interpreter state snapshot from the hardware.
    *
    * Sends a `get-state` JSON request and parses the `state-snapshot`

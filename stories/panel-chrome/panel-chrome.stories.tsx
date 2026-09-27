@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { DesignSelector } from '@src/ui/panel-chrome/DesignSelector';
 import { PanelChrome } from '@src/ui/panel-chrome/PanelChrome';
 import { DrawerChrome } from '@src/ui/panel-chrome/DrawerChrome';
 import { PaneChrome } from '@src/ui/panel-chrome/PaneChrome';
@@ -11,25 +10,6 @@ const meta: Meta = {
 };
 export default meta;
 type Story = StoryObj;
-
-/** Design selector widget with devmode enabled. */
-export const DesignSelector_: Story = {
-  render: () => (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        background: '#0f172a',
-        display: 'flex',
-        'align-items': 'flex-end',
-        padding: '1rem',
-      }}
-    >
-      <DesignSelector devmode={true} />
-    </div>
-  ),
-};
 
 /** DrawerChrome in default right-aligned state. */
 export const DrawerDefault: Story = {

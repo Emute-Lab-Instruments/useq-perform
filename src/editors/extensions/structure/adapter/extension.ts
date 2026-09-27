@@ -9,6 +9,7 @@
  * routed through the keybindings handler registry → `dispatchAction`.
  */
 
+import { grabSessionField } from "../../../grabSession.ts";
 import type { Extension } from "@codemirror/state";
 
 import { structuralCursorFromSelection } from "./cursorFromSelection.ts";
@@ -18,13 +19,13 @@ import {
   structuralNodeOverlay,
   structuralNodeOverlayTheme,
 } from "./nodeOverlays.ts";
-import { grabModeField, insertionModeField, structField } from "./stateField.ts";
+import { insertionModeField, structField } from "./stateField.ts";
 
 export function structuralCoreExtensions(): Extension[] {
   return [
     structField,
     insertionModeField,
-    grabModeField,
+    grabSessionField,
     structuralCursorFromSelection,
     structuralNodeOverlay,
     structuralNodeOverlayTheme,

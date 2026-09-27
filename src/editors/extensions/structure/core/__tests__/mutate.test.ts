@@ -1,7 +1,7 @@
 /**
  * Mutation algebra tests (§5.2).
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { defaultIdGen, __resetIdCounterForTests } from "../types.ts";
 import { makeMutators } from "../mutate.ts";
@@ -9,12 +9,10 @@ import {
   doc,
   list,
   listWithMetas,
-  num,
   pp,
   stateOn,
   stateWithCursors,
   sym,
-  vec,
 } from "./builders.ts";
 import { nodeCursor, rangeCursor, singleCursor } from "../types.ts";
 import type { Meta } from "../types.ts";

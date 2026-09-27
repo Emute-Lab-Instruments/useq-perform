@@ -8,6 +8,7 @@ import { publishZenAction, subscribeZenAction } from "./zenActionBus";
 import type { ActionId } from "../lib/keybindings/actions";
 import { buildZenHash, parseZenHash, ZEN_HASH_PREFIX } from "./routing";
 import "./zen.css";
+import { dbg } from "../lib/debug";
 
 const ZenMode: Component = () => {
   let gamepadPipeline: GamepadPipeline | undefined;
@@ -139,12 +140,12 @@ const ZenMode: Component = () => {
       },
     });
     gamepadPipeline.start();
-    console.log("[zen] Gamepad pipeline started, polling for controllers...");
+    dbg("zen", "Gamepad pipeline started, polling for controllers...");
 
     const gamepads = navigator.getGamepads?.() ?? [];
     for (const gp of gamepads) {
       if (gp) {
-        console.log(`[zen] Gamepad already connected: "${gp.id}" (index ${gp.index})`);
+        dbg("zen", `Gamepad already connected: "${gp.id}" (index ${gp.index})`);
         setDetectedInput("gamepad");
       }
     }
@@ -190,17 +191,17 @@ const ZenMode: Component = () => {
     if (gamepadPipeline) {
       gamepadPipeline.dispose();
       gamepadPipeline = undefined;
-      console.log("[zen] Gamepad pipeline disposed");
+      dbg("zen", "Gamepad pipeline disposed");
     }
   });
 
   function onGamepadConnected(e: GamepadEvent) {
-    console.log(`[zen] Gamepad connected: "${e.gamepad.id}" (index ${e.gamepad.index})`);
+    dbg("zen", `Gamepad connected: "${e.gamepad.id}" (index ${e.gamepad.index})`);
     setDetectedInput("gamepad");
   }
 
   function onGamepadDisconnected(e: GamepadEvent) {
-    console.log(`[zen] Gamepad disconnected: "${e.gamepad.id}" (index ${e.gamepad.index})`);
+    dbg("zen", `Gamepad disconnected: "${e.gamepad.id}" (index ${e.gamepad.index})`);
   }
 
   function onHashChange() {

@@ -22,13 +22,32 @@ type ModalState =
       confirmLabel: string;
       cancelLabel: string;
       secondaryLabel?: string;
+      /** Style the confirm button as destructive and focus the cancel button. */
+      destructive?: boolean;
       onConfirm: () => void;
       onCancel?: () => void;
       onSecondary?: () => void;
+      /** Runs when another modal replaces this one or `closeModal` removes it. */
+      onDiscard?: () => void;
     }
   | null;
 
-const [modalState, setModalState] = createSignal<ModalState>(null);
+const [modalState, setModalStateSignal] = createSignal<ModalState>(null);
+
+/**
+ * Single writer for the modal-state signal. A confirm that is replaced or
+ * closed without a user choice is told so via `onDiscard` (overlays.md §1.5).
+ */
+function setModalState(next: ModalState): void {
+  const prev = modalState();
+  setModalStateSignal(next);
+  if (prev && prev !== next && prev.kind === "confirm") prev.onDiscard?.();
+}
+
+/** Settle a confirm by user choice: clear it without triggering `onDiscard`. */
+function settleConfirm(): void {
+  setModalStateSignal(null);
+}
 
 /**
  * Show a modal with the given id, title, and HTML content.
@@ -48,9 +67,11 @@ export function showConfirmModal(opts: {
   confirmLabel?: string;
   cancelLabel?: string;
   secondaryLabel?: string;
+  destructive?: boolean;
   onConfirm: () => void;
   onCancel?: () => void;
   onSecondary?: () => void;
+  onDiscard?: () => void;
 }): void {
   setModalState({
     kind: "confirm",
@@ -60,11 +81,45 @@ export function showConfirmModal(opts: {
     confirmLabel: opts.confirmLabel ?? "OK",
     cancelLabel: opts.cancelLabel ?? "Cancel",
     secondaryLabel: opts.secondaryLabel,
+    destructive: opts.destructive,
     onConfirm: opts.onConfirm,
     onCancel: opts.onCancel,
     onSecondary: opts.onSecondary,
+    onDiscard: opts.onDiscard,
   });
 }
+
+export interface ConfirmDialogOptions {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Destructive actions get a danger-styled confirm and focus on Cancel. */
+  destructive?: boolean;
+  id?: string;
+}
+
+export type ConfirmDialogFn = (opts: ConfirmDialogOptions) => Promise<boolean>;
+
+/**
+ * In-app replacement for the native `window.confirm` dialog. Resolves `true` on confirm and
+ * `false` on cancel, Escape, backdrop click, close button, or when another
+ * modal replaces it.
+ */
+export const confirmDialog: ConfirmDialogFn = (opts) =>
+  new Promise<boolean>((resolve) => {
+    showConfirmModal({
+      id: opts.id ?? "confirm-dialog",
+      title: opts.title,
+      message: opts.message,
+      confirmLabel: opts.confirmLabel,
+      cancelLabel: opts.cancelLabel,
+      destructive: opts.destructive,
+      onConfirm: () => resolve(true),
+      onCancel: () => resolve(false),
+      onDiscard: () => resolve(false),
+    });
+  });
 
 /**
  * Close the currently open modal.
@@ -103,15 +158,15 @@ export function ModalRoot() {
                   { kind: "confirm" }
                 >;
                 const cancel = () => {
-                  setModalState(null);
+                  settleConfirm();
                   s.onCancel?.();
                 };
                 const confirm = () => {
-                  setModalState(null);
+                  settleConfirm();
                   s.onConfirm();
                 };
                 const secondary = () => {
-                  setModalState(null);
+                  settleConfirm();
                   s.onSecondary?.();
                 };
                 return (
@@ -125,6 +180,7 @@ export function ModalRoot() {
                     <div class="modal-confirm-actions">
                       <Show when={s.secondaryLabel}>
                         <button
+                          type="button"
                           class="modal-confirm-cancel"
                           onClick={secondary}
                         >
@@ -132,13 +188,18 @@ export function ModalRoot() {
                         </button>
                       </Show>
                       <button
+                        type="button"
                         class="modal-confirm-cancel"
+                        data-autofocus={s.destructive ? "" : undefined}
                         onClick={cancel}
                       >
                         {s.cancelLabel}
                       </button>
                       <button
+                        type="button"
                         class="modal-confirm-ok"
+                        classList={{ "modal-confirm-destructive": !!s.destructive }}
+                        data-autofocus={s.destructive ? undefined : ""}
                         onClick={confirm}
                       >
                         {s.confirmLabel}

@@ -19,7 +19,7 @@
  * FAILING before the service module was added (imports did not resolve)
  * and pass after the canonical surfaces are in place.
  */
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 
 import type { AudioCapabilityProbe } from "../contracts/audioCapabilities";
 import {
@@ -33,8 +33,6 @@ import {
   createSynthesisDevmodeSurface,
   createSynthesisService,
   SynthesisServiceError,
-  type ConsoleMessageSink,
-  type SynthesisService,
   type SynthesisServiceOptions,
 } from "./synthesisService";
 import {
@@ -66,7 +64,7 @@ function incapableSnapshot(missing: Partial<AudioCapabilityProbe>) {
 // ---------------------------------------------------------------------------
 
 interface OptionsBundle {
-  readonly options: SynthesisServiceOptions;
+  readonly options: { -readonly [K in keyof SynthesisServiceOptions]: SynthesisServiceOptions[K] };
   readonly audioContext: FakeAudioContext;
   readonly workletNode: FakeWorkletNode;
   readonly loader: FakeNodeDefModuleLoader;

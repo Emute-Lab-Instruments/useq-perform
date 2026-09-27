@@ -75,7 +75,6 @@ describe("PERSISTENCE_KEYS", () => {
     expect(PERSISTENCE_KEYS.snippetsStarred).toBe("codeSnippets:starred");
     expect(PERSISTENCE_KEYS.snippetsNextId).toBe("codeSnippets:nextId");
     expect(PERSISTENCE_KEYS.experienceLevel).toBe("useqExperienceLevel");
-    expect(PERSISTENCE_KEYS.devModeState).toBe("uSEQ-Perform-DevMode-State");
     expect(PERSISTENCE_KEYS.legacyEditorConfig).toBe("editorConfig");
     expect(PERSISTENCE_KEYS.legacySettings).toBe("useqConfig");
     expect(PERSISTENCE_KEYS.legacyCode).toBe("useqcode");

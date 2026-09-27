@@ -20,7 +20,6 @@ import {
   freezeAudioCapabilitySnapshot,
   isAudioCapabilitySnapshot,
   type AudioCapabilityProbe,
-  type AudioCapabilitySnapshot,
 } from "./audioCapabilities";
 
 /** A fully-capable probe used as the baseline for individual overrides. */
@@ -129,11 +128,11 @@ describe("audioCapabilities — immutability (VAL-HOST-005 / VAL-HOST-011)", () 
 
     expect(() => {
       // Strict-mode mutation of a frozen object must throw.
-      (snapshot as AudioCapabilitySnapshot).audioCapable = false;
+      (snapshot as { audioCapable: boolean }).audioCapable = false;
     }).toThrow();
 
     expect(() => {
-      (snapshot as AudioCapabilitySnapshot).reasons.push("mutated");
+      (snapshot.reasons as string[]).push("mutated");
     }).toThrow();
   });
 

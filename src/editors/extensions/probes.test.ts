@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
-// @ts-expect-error - no type declarations available for clojure-mode
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 import { PERSISTENCE_KEYS } from "../../lib/persistence.ts";
 import { resetStartupContextForTests } from "../../runtime/startupContext.ts";
@@ -59,18 +59,10 @@ function anchorOf(source: string, snippet: string, occurrence = 0): number {
   return offset;
 }
 
-function rangeOf(
-  source: string,
-  snippet: string,
-  occurrence = 0,
-): { anchor: number; head: number } {
-  const anchor = anchorOf(source, snippet, occurrence);
-  return { anchor, head: anchor + snippet.length };
-}
 
 function createView(
   doc: string,
-  extension: unknown,
+  extension: import("@codemirror/state").Extension,
   selection: { anchor: number; head?: number },
 ): EditorView {
   return new EditorView({
@@ -89,7 +81,7 @@ function selectEnclosingList(view: EditorView, snippet: string): void {
     throw new Error(`Snippet not found: ${snippet}`);
   }
 
-  let node = syntaxTree(view.state).resolveInner(pos, 0);
+  let node: import("@lezer/common").SyntaxNode | null = syntaxTree(view.state).resolveInner(pos, 0);
   while (node && node.type.name !== "List") {
     node = node.parent;
   }
@@ -188,6 +180,101 @@ async function runNextFrame(now = 1000): Promise<void> {
 }
 
 describe("probe commands", () => {
+  it("adds context controls when an existing probe gains a wrapper", async () => {
+    const { probeExtensions, toggleCurrentProbe } = await loadProbeModule();
+    const view = createView("bar", probeExtensions, { anchor: 0 });
+    toggleCurrentProbe(view, "contextual");
+    expect(view.dom.querySelector(".cm-probe-caret-btn")).toBeNull();
+    view.dispatch({ changes: [{ from: 0, insert: "(slow 2 " }, { from: 3, insert: ")" }] });
+    expect(view.dom.querySelectorAll(".cm-probe-caret-btn")).toHaveLength(2);
+    view.destroy();
+  });
+
+  it("keeps secondary document probes out of main-editor persistence", async () => {
+    mockStorage.setItem(PERSISTENCE_KEYS.editorProbes, JSON.stringify([{
+      id: "main", from: 0, to: 3, mode: "raw", depth: 0, maxDepth: 0, cachedCode: "bar",
+    }]));
+    const saved = mockStorage.getItem(PERSISTENCE_KEYS.editorProbes);
+    const { createEphemeralProbeExtensions, probeField, toggleCurrentProbe } = await loadProbeModule();
+    const view = createView("bar", createEphemeralProbeExtensions(), { anchor: 0 });
+    expect(view.state.field(probeField).probes).toHaveLength(0);
+    toggleCurrentProbe(view, "raw");
+    expect(mockStorage.getItem(PERSISTENCE_KEYS.editorProbes)).toBe(saved);
+    view.destroy();
+  });
+
+  it("keeps a restored mismatch stale after edits elsewhere", async () => {
+    mockStorage.setItem(PERSISTENCE_KEYS.editorProbes, JSON.stringify([{
+      id: "stale", from: 0, to: 3, mode: "raw", depth: 0, maxDepth: 0, cachedCode: "bar",
+    }]));
+    const { probeField } = await loadProbeModule();
+    const view = createView("baz\n123", probeField, { anchor: 0 });
+    view.dispatch({ changes: { from: 4, to: 7, insert: "456" } });
+    expect(view.state.field(probeField).staleIds.has("stale")).toBe(true);
+    view.destroy();
+  });
+
+  it("keeps probe configuration local to each editor", async () => {
+    const { createProbeExtensions, createDefaultProbeConfig, probeField, toggleCurrentProbe } = await loadProbeModule();
+    const firstConfig = { ...createDefaultProbeConfig(), loadPersistedProbes: () => [], savePersistedProbes: vi.fn() };
+    const secondConfig = { ...createDefaultProbeConfig(), loadPersistedProbes: () => [], savePersistedProbes: vi.fn() };
+    const first = createView("bar", createProbeExtensions(firstConfig), { anchor: 0 });
+    const second = createView("bar", createProbeExtensions(secondConfig), { anchor: 0 });
+    toggleCurrentProbe(first, "raw");
+    expect(firstConfig.savePersistedProbes).toHaveBeenCalledOnce();
+    expect(secondConfig.savePersistedProbes).not.toHaveBeenCalled();
+    expect(second.state.field(probeField).probes).toHaveLength(0);
+    first.destroy();
+    second.destroy();
+  });
+
+  it("persists updated cached code after a same-length edit and resample", async () => {
+    evalInUseqWasmSilently.mockImplementation(async (code: string) => code.startsWith("[") ? numericVector(40, 0.5) : "0.5");
+    const { probeExtensions, toggleCurrentProbe } = await loadProbeModule();
+    const view = createView("bar", probeExtensions, { anchor: 0 });
+    toggleCurrentProbe(view, "raw");
+    await runNextFrame(1000);
+    view.dispatch({ changes: { from: 0, to: 3, insert: "baz" } });
+    await runNextFrame(2000);
+    const saved = JSON.parse(mockStorage.getItem(PERSISTENCE_KEYS.editorProbes)!);
+    expect(saved[0].cachedCode).toBe("baz");
+    view.destroy();
+  });
+
+  it("discards a sample completed after its source range was moved", async () => {
+    const { createProbeExtensions, createDefaultProbeConfig, probeField, toggleCurrentProbe } = await loadProbeModule();
+    let resolveSample!: (value: { samples: number[]; current: string }) => void;
+    const sampling = vi.fn(() => new Promise<{ samples: number[]; current: string }>((resolve) => { resolveSample = resolve; }));
+    const view = createView("bar", createProbeExtensions({ ...createDefaultProbeConfig(), evalExpressionAtTimes: sampling }), { anchor: 0 });
+    toggleCurrentProbe(view, "raw");
+    await runNextFrame(1000);
+    expect(sampling).toHaveBeenCalledOnce();
+    view.dispatch({ changes: { from: 0, insert: "; prefix\n" } });
+    const mapped = view.state.field(probeField).probes[0];
+    resolveSample({ samples: Array(40).fill(0.5), current: "0.5" });
+    await flushPromises();
+    await flushPromises();
+    expect(view.state.field(probeField).probes[0]).toEqual(mapped);
+    expect(view.state.field(probeField).renderById[mapped.id]).toBeUndefined();
+    view.destroy();
+  });
+
+  it("frees the last probe slot when removal stops the sampling loop", async () => {
+    const { createProbeExtensions, createDefaultProbeConfig, toggleCurrentProbe } = await loadProbeModule();
+    const probeFree = vi.fn(async () => {});
+    const view = createView("bar", createProbeExtensions({
+      ...createDefaultProbeConfig(), probeFree,
+      probeSet: async () => 0,
+      probeSample: async () => new Float64Array(40).fill(0.5),
+    }), { anchor: 0 });
+    toggleCurrentProbe(view, "raw");
+    await runNextFrame(1000);
+    toggleCurrentProbe(view, "raw");
+    await flushPromises();
+    expect(probeFree).toHaveBeenCalledOnce();
+    view.destroy();
+  });
+
   it("toggles contextual probes and adjusts depth", async () => {
     const { contractCurrentProbeContext, expandCurrentProbeContext, probeField, toggleCurrentProbe } = await loadProbeModule();
     const source = "(slow 2 (offset 0.5 (fast 3 bar)))";

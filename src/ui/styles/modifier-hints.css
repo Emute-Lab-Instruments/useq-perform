@@ -145,7 +145,7 @@
 
 .mh-cursor {
   position: fixed;
-  z-index: 2100;
+  z-index: calc(var(--z-takeover) + 100);
   pointer-events: auto;
   min-width: 200px;
   max-width: 300px;
@@ -172,7 +172,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 2100;
+  z-index: calc(var(--z-takeover) + 100);
   pointer-events: auto;
   padding: 12px 16px 16px;
   background: var(--panel-bg, rgba(20, 20, 25, 0.92));
@@ -199,7 +199,7 @@
 .mh-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 2100;
+  z-index: calc(var(--z-takeover) + 100);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -237,9 +237,3 @@
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
 }
-
-/* ======================================================================
-   Legacy class aliases (retained during migration, can remove later)
-   ====================================================================== */
-
-.modifier-hints { /* no longer used — kept to avoid broken references */ }

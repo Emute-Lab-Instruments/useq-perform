@@ -78,7 +78,7 @@ const OSC_SINE_WASM_PATH = resolvePath(
 );
 const OSC_SINE_VERSION = OSC_SINE_NODEDEF_DESCRIPTOR.version;
 
-function readOscSineWasmBytes(): Uint8Array {
+function readOscSineWasmBytes(): Uint8Array<ArrayBuffer> {
   // The path resolves under src/audio; the wasm lives under
   // src-useq/wasm/. Two levels up from src/audio -> repo root, then
   // into src-useq/wasm/.
@@ -180,7 +180,7 @@ describe("classifyModuleTransfer (VAL-ENGINE-008 discriminator)", () => {
 
   it("classifies a neither-field payload as 'malformed'", () => {
     expect(classifyModuleTransfer({})).toBe("malformed");
-    expect(classifyModuleTransfer({ module: null, wasmBytes: null })).toBe(
+    expect(classifyModuleTransfer({ module: undefined, wasmBytes: undefined })).toBe(
       "malformed",
     );
   });

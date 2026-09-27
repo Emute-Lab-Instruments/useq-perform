@@ -15,6 +15,7 @@ import {
   createDefaultGutterConfig,
 } from "./extensions/expressionHighlights.ts";
 import { structuralCoreExtensions } from "./extensions/structure/adapter/extension.ts";
+import { operatorNamespaceExtensions } from "./extensions/operatorNamespaces.ts";
 // State-identity sidecar: opaque hidden IDs for stateful top-level forms
 // (synth today; future registrars extend via the classifier). Dependency-
 // injected so tests/Storybook can render the editor without synthesis
@@ -29,7 +30,7 @@ setEvalIntegrationConfig(createDefaultEvalIntegrationConfig());
 import { evalHighlightField } from "./extensions/evalHighlight.ts";
 import { deleteConfirmField } from "./extensions/deleteConfirmFlash.ts";
 import { visReadabilityPlugin } from "./extensions/visReadability.ts";
-import { probeExtensions } from "./extensions/probes.ts";
+import { createEphemeralProbeExtensions, probeExtensions } from "./extensions/probes.ts";
 import { inlineResultsField } from "./extensions/inlineResults.ts";
 import { diagnosticField } from "./extensions/diagnostics.ts";
 import { createLiveEditWidgetsExtension } from "./extensions/liveEdit/widgets.ts";
@@ -109,7 +110,7 @@ export const readOnlyExtensions = [
 // no user toggle needed.
 export const snippetReadOnlyExtensions = [
   ...readOnlyExtensions,
-  ...probeExtensions,
+  ...createEphemeralProbeExtensions(),
 ];
 
 // Core functionality extensions
@@ -146,9 +147,10 @@ export const baseExtensions = [
   ...themeExtensions,
   ...default_clojure_extensions,
   ...structuralCoreExtensions(),
+  ...operatorNamespaceExtensions(),
   lastEvaluatedExpressionField,
   ...createExpressionGutter(createDefaultGutterConfig()),
-  ...probeExtensions,
+  ...createEphemeralProbeExtensions(),
   ...createLiveEditWidgetsExtension({ onValueChange: liveEditOnValueChange }),
   liveEditPasteHandler,
   createIdleEvalPlugin(),
@@ -170,6 +172,7 @@ export function createMainEditorExtensions(options: {
 }): import("@codemirror/state").Extension[] {
   return [
     ...mainEditorKeymap,
+    ...probeExtensions,
     ...baseExtensions,
     ...options.identityExtensions,
     updateListener,

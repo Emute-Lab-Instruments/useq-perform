@@ -1,6 +1,5 @@
 import defaultConfig from "./default-config.json" with { type: "json" };
 import {
-  clearPersistedUserSettings,
   createDefaultUserSettings,
   defaultUserSettings,
   loadBootstrapSettings,
@@ -14,7 +13,6 @@ import {
 } from "../lib/appSettings.ts";
 import { defaultMainEditorStartingCode } from "../lib/editorDefaults.ts";
 import type { RuntimeSettingsSource } from "./runtimeDiagnostics.ts";
-import { load, save, PERSISTENCE_KEYS } from "../lib/persistence.ts";
 import {
   getStartupFlagsSnapshot,
   type StartupFlags,
@@ -248,45 +246,3 @@ export function resetAppSettings(section?: keyof AppSettings): AppSettings {
 
   return replaceAppSettings(defaults, { persist: true });
 }
-
-export function deletePersistedSettings(): void {
-  clearPersistedUserSettings();
-}
-
-// ── Convenience wrapper ─────────────────────────────────────────────
-// Merged from legacy/config/configLoader.ts
-
-export async function loadConfiguration(): Promise<AppSettings> {
-  const result = await loadBootstrapSettingsWithMetadata();
-  return result.config;
-}
-
-/**
- * Alias kept for callers that used the old configLoader name.
- */
-export const loadConfigurationWithMetadata = loadBootstrapSettingsWithMetadata;
-
-// ── DevMode state persistence ───────────────────────────────────────
-
-export function loadDevModeConfiguration(): unknown | null {
-  if (!getStartupFlagsSnapshot().devmode) {
-    return null;
-  }
-
-  return load(PERSISTENCE_KEYS.devModeState);
-}
-
-export function saveDevModeConfiguration(devModeConfig: unknown): void {
-  save(PERSISTENCE_KEYS.devModeState, devModeConfig);
-}
-
-export const appSettingsRepository = {
-  getSettings: getAppSettings,
-  subscribe: subscribeAppSettings,
-  replaceSettings: replaceAppSettings,
-  loadSettings: loadAppSettings,
-  updateSettings: updateAppSettings,
-  resetSettings: resetAppSettings,
-  deletePersistedSettings,
-  loadBootstrapSettingsWithMetadata,
-};

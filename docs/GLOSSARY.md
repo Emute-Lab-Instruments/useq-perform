@@ -23,6 +23,38 @@ A ModuLisp form. “Top-level form” means a direct child of the document root;
 that boundary matters for evaluation, diagnostics, output tracking, and stable
 state identity.
 
+### Operator modifier
+
+An attached call-head specialization such as `sin[uni norm]`,
+`sin[lfo bi]`, or `pulse[bi :duty 0.2]`. Facets and options are validated
+against the exact base callable in the firmware's canonical inventory and
+produce one fixed `OperatorSpec` before lowering. See
+`src-useq/docs/specs/operator-modifiers.md`.
+
+### Modifier facet
+
+An unordered symbolic entry in an operator modifier block. The initial facets
+are `norm`/`rad`, `uni`/`bi`, `lfo`, and `raw`; facets on the same axis conflict.
+
+### Qualified symbol
+
+One exact binding identity containing `/`, such as `left/gain` or `osc/sine`.
+Qualification chooses a binding and is orthogonal to attached operator
+modifiers. The bare symbol `/` remains division. See
+`src-useq/docs/specs/qualified-symbols.md`.
+
+### OperatorSpec
+
+The fixed callable specification produced after exact base resolution,
+default-or-intrinsic-baseline selection, modifier merge, and validation. It is
+lowered once; there is no parallel adapter path.
+
+### Driving signal
+
+The positional argument that supplies a form's time-varying input. For
+`pulse`, it is the sole positional argument: `(pulse[:duty value] phasor)`,
+where `:duty` defaults to the signal-rate value `0.5`.
+
 ### Output channel
 
 A named analogue, digital, or stream output such as `a1`, `d1`, or `s1`.

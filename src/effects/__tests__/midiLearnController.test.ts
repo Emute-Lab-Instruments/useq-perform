@@ -10,7 +10,7 @@ import {
   type MidiLearnController,
   type ConflictInfo,
 } from "../midiLearnController.ts";
-import type { MidiBinding, MidiMessage, MidiSource } from "../../contracts/midi.ts";
+import type { MidiBinding, MidiMessage } from "../../contracts/midi.ts";
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
@@ -545,4 +545,3 @@ describe("state change callbacks", () => {
 
 // Verify MidiLearnState type is re-exported from contracts (used by the controller)
 import type { MidiLearnState } from "../../contracts/midi.ts";
-type _checkMidiLearnState = MidiLearnState; // used only for type check

@@ -406,10 +406,14 @@ or resumes an `AudioContext`; it requires the already-prepared engine session,
 so lifecycle activation and graph publication cannot be conflated.
 
 5.2 On eval commit, the app diffs the declared identities against the
-running graph and ships an epoch-tagged delta (§4.4):
+running graph and includes the epoch-tagged deltas (§4.4) in `prepare-graph`:
 instantiate / update-in-place / free-with-fade / def-change
 (free + instantiate, overlapping fades). Param-expression-only changes
-touch no DSP state.
+touch no DSP state. These are changes within the prepared candidate, not
+standalone `instantiate`, `update`, or `retire` worklet messages. Required
+NodeDef modules must be ready before preparation; rejection leaves the live
+graph unchanged. Publication follows `commit-graph` and `activate-graph` as
+specified in §3.5.1 and §5.1.3.
 
 5.3 The **document-sync eval** (`synth-nodes.md` §5.6a) is an explicit
 editor action (action registry: `eval.document`), distinct from

@@ -1,4 +1,3 @@
-import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -119,7 +118,7 @@ describe("runtimeService", () => {
       wasmEnabled: true,
     });
 
-    await Effect.runPromise(sendRuntimeTransportCommand("(useq-stop)"));
+    await sendRuntimeTransportCommand("(useq-stop)");
 
     expect(sendTouSEQ).toHaveBeenCalledWith("(useq-stop)");
     expect(workerSendTransportCommand).toHaveBeenCalledWith("(useq-stop)");
@@ -134,7 +133,7 @@ describe("runtimeService", () => {
       wasmEnabled: true,
     });
 
-    await Effect.runPromise(sendRuntimeTransportCommand("(useq-pause)"));
+    await sendRuntimeTransportCommand("(useq-pause)");
 
     expect(sendTouSEQ).not.toHaveBeenCalled();
     expect(workerSendTransportCommand).toHaveBeenCalledWith("(useq-pause)");
@@ -157,11 +156,11 @@ describe("runtimeService", () => {
     refreshRuntimeSession();
 
     await expect(
-      Effect.runPromise(queryRuntimeHardwareTransportState())
+      queryRuntimeHardwareTransportState()
     ).resolves.toBe("paused");
     // Runtime state synchronization crosses the selected Worker port.
     await expect(
-      Effect.runPromise(syncRuntimeWasmTransportState("paused"))
+      syncRuntimeWasmTransportState("paused")
     ).resolves.toBe("paused");
 
     expect(sendTouSEQ).toHaveBeenCalledWith(
@@ -170,4 +169,12 @@ describe("runtimeService", () => {
     );
     expect(workerSyncTransportState).toHaveBeenCalledWith("paused");
   });
+  it("treats failed hardware queries and WASM synchronization as unavailable state", async () => {
+    configureState({ connected: true, protocolMode: "json", hasSerialPort: true, noModuleMode: false, wasmEnabled: true });
+    (sendTouSEQ as MockFn).mockRejectedValueOnce(new Error("disconnected"));
+    workerSyncTransportState.mockRejectedValueOnce(new Error("worker unavailable"));
+    await expect(queryRuntimeHardwareTransportState()).resolves.toBeNull();
+    await expect(syncRuntimeWasmTransportState("paused")).resolves.toBeNull();
+  });
+
 });

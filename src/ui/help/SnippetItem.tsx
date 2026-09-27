@@ -10,6 +10,7 @@ import { SnippetOscilloscope } from "./SnippetOscilloscope";
 import { insertEditorText as globalInsertEditorText } from "../../lib/editorStore";
 import { settings as globalSettings } from "../../utils/settingsStore";
 import { visualisationSession } from "../../effects/visualisationSession.ts";
+import { confirmDialog, type ConfirmDialogFn } from "../adapters/modal";
 
 export interface SnippetItemProps {
   snippet: Snippet;
@@ -22,12 +23,23 @@ export interface SnippetItemProps {
   onDeleteSnippet?: (id: number) => void;
   /** Insert text into the editor. Falls back to the global insertEditorText. */
   onInsertText?: (text: string, pos: number) => boolean;
+  /** In-app confirmation dialog. Falls back to the modal adapter's confirmDialog. */
+  confirm?: ConfirmDialogFn;
 }
 
 export const SnippetItem: Component<SnippetItemProps> = (props) => {
   const starred = () => props.starred ?? globalSnippetStore.starred;
   const doToggleStar = (id: number) => (props.onToggleStar ?? globalToggleStar)(id);
   const doDeleteSnippet = (id: number) => (props.onDeleteSnippet ?? globalDeleteSnippet)(id);
+  const handleDelete = async () => {
+    const ok = await (props.confirm ?? confirmDialog)({
+      title: "Delete snippet?",
+      message: `"${props.snippet.title}" will be permanently deleted.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (ok) doDeleteSnippet(props.snippet.id);
+  };
   const doInsertText = (text: string, pos: number) =>
     props.onInsertText ? props.onInsertText(text, pos) : globalInsertEditorText(text, pos);
 
@@ -126,7 +138,7 @@ export const SnippetItem: Component<SnippetItemProps> = (props) => {
           👁
         </button>
         <button class="code-snippet-action-btn" onClick={() => props.onEdit(props.snippet)} title="Edit snippet">✏</button>
-        <button class="code-snippet-action-btn delete" onClick={() => { if(confirm("Delete snippet?")) doDeleteSnippet(props.snippet.id) }} title="Delete snippet">🗑</button>
+        <button class="code-snippet-action-btn delete" onClick={() => void handleDelete()} title="Delete snippet">🗑</button>
       </div>
     </div>
   );

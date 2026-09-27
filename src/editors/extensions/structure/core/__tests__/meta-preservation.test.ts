@@ -12,13 +12,11 @@ import {
   doc,
   list,
   listWithMetas,
-  num,
   stateOn,
   sym,
-  vec,
 } from "./builders.ts";
 import { findById } from "../traversal.ts";
-import type { Meta, AddressableNode } from "../types.ts";
+import type { Meta } from "../types.ts";
 
 function setup() {
   __resetIdCounterForTests();

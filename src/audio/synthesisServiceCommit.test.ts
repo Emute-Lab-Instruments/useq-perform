@@ -29,7 +29,6 @@ import {
 } from "../contracts/nodeDefRegistry";
 import {
   createSynthesisService,
-  type EngineCommitResult,
   type SynthesisService,
   type SynthesisServiceOptions,
   type SynthesisWorkerPort,
@@ -559,6 +558,7 @@ describe("synthesisService.commitSynthArtifacts — validation", () => {
           revision: 1,
           declarations: [],
           controls: [],
+          connections: [],
         },
         false,
       ),

@@ -1,3 +1,4 @@
+import { commitGraph } from "./testing/commitGraph";
 /**
  * Contract tests for the worklet core.
  *
@@ -17,7 +18,7 @@
  * The tests inject fakes for the adapter, allocator, and SAB so they run
  * in Node without touching the Web Audio graph.
  */
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   ABI_VERSION,
@@ -122,19 +123,19 @@ function createRecordingPublisher() {
     producerTimeouts() {
       return events.filter(
         (e): e is Extract<WorkletOutboundEvent, { type: "producer-timeout" }> =>
-          e.type === "producer-timeout",
+          "type" in e && e.type === "producer-timeout",
       );
     },
     activations() {
       return events.filter(
         (e): e is Extract<WorkletOutboundEvent, { type: "graph-activated" }> =>
-          e.type === "graph-activated",
+          "type" in e && e.type === "graph-activated",
       );
     },
     retirements() {
       return events.filter(
         (e): e is Extract<WorkletOutboundEvent, { type: "instance-retired" }> =>
-          e.type === "instance-retired",
+          "type" in e && e.type === "instance-retired",
       );
     },
   };
@@ -253,12 +254,12 @@ describe("workletCore — block-boundary activation (VAL-ENGINE-009/011)", () =>
     // The message handler must only STAGE the delta; activation happens
     // inside process() on the first matching block.
     const { core } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-bb", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
     // After handleMessage (but before process), the graph is staged only.
     // The core exposes no active instance.
@@ -274,12 +275,12 @@ describe("workletCore — block-boundary activation (VAL-ENGINE-009/011)", () =>
 
   it("holds a pending graph until the first matching epoch block", () => {
     const { core } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-1", def: "osc/sine", version: 1, epoch: 5 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
     // The first block has epoch 1, not 5; the pending instance does NOT activate.
     const snap1 = core.process(128);
@@ -315,12 +316,12 @@ describe("workletCore — block-boundary activation (VAL-ENGINE-009/011)", () =>
 
   it("activates a pending graph on the FIRST matching block only", () => {
     const { core, publisher } = buildWiredCore({ blockEpoch: 7 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-7", def: "osc/sine", version: 1, epoch: 7 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
     core.process(128);
     const activations = publisher.activations();
@@ -347,12 +348,12 @@ describe("workletCore — block-boundary activation (VAL-ENGINE-009/011)", () =>
 describe("workletCore — mixed epochs never render (VAL-ENGINE-012)", () => {
   it("does not apply a block whose epoch does not match the pending graph", () => {
     const { core } = buildWiredCore({ blockEpoch: 99 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-A", def: "osc/sine", version: 1, epoch: 100 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
     // Block epoch is 99; pending epoch is 100. The instance must not activate.
     const snap = core.process(128);
@@ -362,12 +363,12 @@ describe("workletCore — mixed epochs never render (VAL-ENGINE-012)", () => {
 
   it("does not activate a pending graph when the block epoch is zero (no program)", () => {
     const { core } = buildWiredCore({ blockEpoch: 0 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-B", def: "osc/sine", version: 1, epoch: 50 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
     const snap = core.process(128);
     expect(snap.activeEpoch).toBe(0);
@@ -415,12 +416,12 @@ describe("workletCore — pending graph drains stale-epoch blocks (VAL-ENGINE-01
     view.advanceWriteIndex();
 
     // Stage the pending graph for epoch 5.
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-stale", def: "osc/sine", version: 1, epoch: 5 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
     // First process: the stale block is observed but does not activate
     // the pending graph. Importantly, it must NOT remain at the read
@@ -476,12 +477,12 @@ describe("workletCore — pending graph drains stale-epoch blocks (VAL-ENGINE-01
     view.writeBlockRateValue(0, 1, 0.99);
     view.advanceWriteIndex();
 
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-clean", def: "osc/sine", version: 1, epoch: 100 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
     const snap = core.process(128);
     expect(snap.activeEpoch).toBe(0);
@@ -494,17 +495,7 @@ describe("workletCore — pending graph drains stale-epoch blocks (VAL-ENGINE-01
 });
 
 describe("workletCore — instantiate-before-module race (VAL-ENGINE-008 / VAL-CROSS-002)", () => {
-  // Regression: both the instantiate delta and the nodedef-module
-  // transfer arrive via postMessage; their order is not guaranteed.
-  // When instantiate arrives first the instance is staged with a null
-  // adapter. The renderer must re-resolve the adapter from the cache
-  // on every process() call so the instance activates as soon as the
-  // module lands, without requiring a second instantiate round-trip.
-  //
-  // This test was OBSERVED FAILING before the fix: the instance's
-  // adapter stayed null forever once the module was installed, so
-  // renderInstance early-returned and output stayed silent.
-  it("activates a staged instance after the adapter factory yields an adapter", () => {
+  it("rejects preparation until the module is installed, then accepts a retry", () => {
     const allocator = createFakeAllocator();
     const publisher = createRecordingPublisher();
     const adapterBundle = buildRealFakeAdapter();
@@ -534,25 +525,31 @@ describe("workletCore — instantiate-before-module race (VAL-ENGINE-008 / VAL-C
     view.advanceWriteIndex();
 
     // Stage the instance for epoch 5 (no adapter yet).
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "race-1", def: "osc/sine", version: 1, epoch: 5 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
-    // First process: graph activates but adapter is null. The instance
-    // is staged with lifecycle fade-in. Adapter cache is empty.
+    // A missing module cannot become a partially active graph.
     const snap1 = core.process(128);
-    expect(snap1.activeEpoch).toBe(5);
-    expect(snap1.instances).toHaveLength(1);
-    expect(snap1.instances[0].identity).toBe("race-1");
+    expect(snap1.activeEpoch).toBe(0);
+    expect(snap1.instances).toHaveLength(0);
+    expect(publisher.events).toContainEqual(expect.objectContaining({
+      type: "graph-transaction-ack", phase: "prepare", ok: false,
+    }));
     // No compute call yet (no adapter).
     expect(adapterBundle.module.computeCalls.length).toBe(0);
 
     // Now simulate the module transfer arriving: subsequent calls to
     // the factory return the cached adapter.
     moduleTransferred = true;
+    commitGraph(core, [{
+      type: "instantiate",
+      identity: { identity: "race-1", def: "osc/sine", version: 1, epoch: 5 },
+      statePointer: 0, stateBytes: 0,
+    }]);
 
     // Publish a second block at the matching epoch for the next pass.
     const slot2 = view.physicalSlotForSequence(view.ringWriteIndex);
@@ -562,10 +559,7 @@ describe("workletCore — instantiate-before-module race (VAL-ENGINE-008 / VAL-C
     view.writeBlockRateValue(slot2, 1, 0.2);
     view.advanceWriteIndex();
 
-    // Second process: the renderer re-resolves the adapter from the
-    // factory and initialises the state zone. Before the fix this
-    // returned silence because `instance.adapter` was captured as null
-    // at instantiate time and never refreshed.
+    // The explicitly retried candidate activates with its ready adapter.
     const snap2 = core.process(128);
     expect(snap2.instances).toHaveLength(1);
     expect(snap2.instances[0].identity).toBe("race-1");
@@ -746,12 +740,12 @@ describe("workletCore — emergency fade to silence (VAL-ENGINE-025)", () => {
     expect(expectedFadeFrames).toBe(480); // 10 ms at 48 kHz
 
     const { core } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "fade-signal", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
     const beforeTimeout = core.process(128);
     expect(beforeTimeout.peakSample).toBeGreaterThan(0);
 
@@ -771,12 +765,12 @@ describe("workletCore — emergency fade to silence (VAL-ENGINE-025)", () => {
 
   it("reaches EXACT silence after the fade completes", () => {
     const { core } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "fade-to-zero", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
     expect(core.process(128).peakSample).toBeGreaterThan(0);
 
     // Force timeout and run past the fade.
@@ -895,22 +889,22 @@ describe("workletCore — underrun handling (VAL-ENGINE-033)", () => {
 describe("workletCore — graph retirement (VAL-ENGINE-035)", () => {
   it("retires an instance when a retire message arrives", () => {
     const { core, publisher, allocator } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-retire", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
     // Activate.
     core.process(128);
     expect(publisher.activations()).toHaveLength(1);
 
     // Retire.
-    core.handleMessage({
+    commitGraph(core, [{
       type: "retire",
       identity: { identity: "id-retire", epoch: 1 },
-    });
+    }]);
 
     // Run past the fade-out window.
     const fadeBlocks = Math.ceil((SYNTH_FADE_OUT_MS * DEFAULT_WORKLET_SAMPLE_RATE) / 1000 / 128);
@@ -933,18 +927,18 @@ describe("workletCore — graph retirement (VAL-ENGINE-035)", () => {
 
   it("does NOT render an orphan after retirement", () => {
     const { core, publisher } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-orphan", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
     core.process(128);
 
-    core.handleMessage({
+    commitGraph(core, [{
       type: "retire",
       identity: { identity: "id-orphan", epoch: 1 },
-    });
+    }]);
 
     // Run past the fade.
     const fadeBlocks = Math.ceil((SYNTH_FADE_OUT_MS * DEFAULT_WORKLET_SAMPLE_RATE) / 1000 / 128);
@@ -963,37 +957,70 @@ describe("workletCore — graph retirement (VAL-ENGINE-035)", () => {
     // After retirement, the active instance is gone. Further retire
     // messages for the same identity are no-ops.
     const retirementsBefore = publisher.retirements().length;
-    core.handleMessage({
+    commitGraph(core, [{
       type: "retire",
       identity: { identity: "id-orphan", epoch: 1 },
-    });
+    }]);
     // The retire event was published exactly once for the real retirement.
     expect(publisher.retirements().length).toBe(retirementsBefore);
+  });
+});
+
+describe("workletCore — graph mutations require a prepared transaction", () => {
+  it("ignores removed top-level deltas without allocating or changing the live graph", () => {
+    const { core, allocator } = buildWiredCore({ blockEpoch: 1 });
+    const identity = { identity: "guarded", def: "osc/sine", version: 1, epoch: 1 };
+    const directMessages = [
+      { type: "instantiate", identity, statePointer: 0, stateBytes: 0 },
+      { type: "update", identity, prefill: [{ name: "freq", value: 880 }] },
+      { type: "retire", identity },
+    ];
+    const sendDirect = () => {
+      const allocs = allocator.allocCount();
+      const releases = allocator.releaseCount();
+      for (const message of directMessages) {
+        // Exercise untyped messages arriving at the worklet port boundary.
+        core.handleMessage(message as unknown as Parameters<WorkletCore["handleMessage"]>[0]);
+      }
+      expect(allocator.allocCount()).toBe(allocs);
+      expect(allocator.releaseCount()).toBe(releases);
+    };
+    sendDirect();
+    expect(core.process(128).instances).toHaveLength(0);
+    commitGraph(core, [{ type: "instantiate", identity, statePointer: 0, stateBytes: 0 }]);
+    const buffer = createSynthesisControlBuffer();
+    const view = attachSynthesisControlView(buffer);
+    view.writeBlockEpoch(0, 1);
+    view.advanceWriteIndex();
+    core.handleMessage({ type: "attach-control-buffer", controlBuffer: buffer as unknown as SharedArrayBuffer });
+    core.process(128);
+    sendDirect();
+    expect(core.process(128).instances).toEqual([
+      expect.objectContaining({ identity: "guarded", lifecycle: "fade-in" }),
+    ]);
   });
 });
 
 describe("workletCore — same-def update preserves its DSP state zone", () => {
   it("does NOT re-instantiate when the same identity+def arrives again", () => {
     const { core, allocator, adapterBundle } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-same", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
     core.process(128);
     const allocsAfterFirst = allocator.allocCount();
     const firstStatePointer = adapterBundle.module.computeCalls.at(-1)?.[0];
     expect(firstStatePointer).toBeTypeOf("number");
 
     // Same identity + def: update-in-place, no new allocation.
-    core.handleMessage({
-      type: "instantiate",
+    commitGraph(core, [{
+      type: "update",
       identity: { identity: "id-same", def: "osc/sine", version: 1, epoch: 2 },
-      statePointer: 0,
-      stateBytes: 0,
       prefill: [{ name: "freq", value: 880 }],
-    });
+    }]);
 
     expect(allocator.allocCount()).toBe(allocsAfterFirst);
 
@@ -1019,21 +1046,24 @@ describe("workletCore — def-change retire-and-replace (VAL-ENGINE-035)", () =>
   it("retires the old instance and activates the new one", () => {
     const { core } = buildWiredCore({ blockEpoch: 1 });
     // Instantiate def "osc/sine" v1.
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-x", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
     core.process(128);
 
     // Replace with a different def/version under the SAME identity.
-    core.handleMessage({
+    commitGraph(core, [{
+      type: "retire",
+      identity: { identity: "id-x", epoch: 2 },
+    }, {
       type: "instantiate",
       identity: { identity: "id-x", def: "osc/saw", version: 1, epoch: 2 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
 
     // Publish a matching block for the new epoch.
     const buffer = createSynthesisControlBuffer();
@@ -1082,12 +1112,12 @@ describe("workletCore — def-change retire-and-replace (VAL-ENGINE-035)", () =>
 describe("workletCore — steady-state allocation-free (VAL-ENGINE-034)", () => {
   it("does NOT allocate during steady-state process() calls", () => {
     const { core, allocator } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-alloc", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
     core.process(128);
 
     // After activation, run several steady-state blocks. The allocator
@@ -1113,12 +1143,12 @@ describe("workletCore — steady-state allocation-free (VAL-ENGINE-034)", () => 
 describe("workletCore — fade-in on activation (VAL-ENGINE-028)", () => {
   it("begins in fade-in lifecycle on activation", () => {
     const { core } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-fade", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
     const snap = core.process(128);
     expect(snap.instances).toHaveLength(1);
     // On the very first block the lifecycle is fade-in.
@@ -1127,12 +1157,12 @@ describe("workletCore — fade-in on activation (VAL-ENGINE-028)", () => {
 
   it("reaches active lifecycle after the fade-in window", () => {
     const { core } = buildWiredCore({ blockEpoch: 1 });
-    core.handleMessage({
+    commitGraph(core, [{
       type: "instantiate",
       identity: { identity: "id-fade2", def: "osc/sine", version: 1, epoch: 1 },
       statePointer: 0,
       stateBytes: 0,
-    });
+    }]);
     const fadeInBlocks = Math.ceil(
       (SYNTH_FADE_IN_MS * DEFAULT_WORKLET_SAMPLE_RATE) / 1000 / 128,
     );

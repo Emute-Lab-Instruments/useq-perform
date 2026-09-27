@@ -57,20 +57,7 @@ import {
 import { SAMPLE_CODE } from "../../lib/keybindings/sampleCode.ts";
 import { openPalette } from "../../ui/keybindings/ActionPalette.tsx";
 import { executeEditorCommand } from "./editorCommandRouter.ts";
-import {
-  startGrab,
-  endGrab,
-  isGrabActive,
-  recordGrabMove,
-  getGrabMoveCount,
-  getGrabSnapshot,
-} from "../../lib/gamepad/grabState.ts";
-import {
-  setGrabMode,
-  setStructState,
-  structField,
-} from "../extensions/structure/adapter/stateField.ts";
-import { pathsFromCursorSet } from "../extensions/structure/adapter/cursorPath.ts";
+import { startGrab, endGrab, cancelGrab, moveGrab } from "../grabSession.ts";
 import { complete_keymap as completeClojureKeymap } from "@nextjournal/clojure-mode";
 import {
   openMainMenu,
@@ -99,10 +86,7 @@ function closeActiveSubModes(view: EditorView): void {
   if (isMenuOpen()) {
     dispatchMenuInput({ kind: "cancel" });
   }
-  if (isGrabActive()) {
-    endGrab();
-    view.dispatch({ effects: setGrabMode.of(false) });
-  }
+  endGrab(view);
 }
 
 /**
@@ -137,34 +121,6 @@ const killToEndOfList = findClojureHandler("Ctrl-k");
 // `dispatchAction`, which: reads the core State from the editor, runs the pure
 // op, and applies the resulting tree change back as a CodeMirror transaction.
 // ---------------------------------------------------------------------------
-
-function restoreCursorsFromPaths(
-  paths: ReadonlyArray<ReadonlyArray<number>>,
-  tree: import("../extensions/structure/core/types.ts").Tree,
-): import("../extensions/structure/core/types.ts").CursorSet {
-  type CoreNode = import("../extensions/structure/core/types.ts").Node;
-  const out = paths.map((p) => {
-    let cur: CoreNode = tree.root;
-    for (const i of p) {
-      if (
-        cur.kind === "list" || cur.kind === "vector" ||
-        cur.kind === "map" || cur.kind === "set" || cur.kind === "document"
-      ) {
-        const next: CoreNode | undefined = cur.children[i];
-        if (!next) { cur = tree.root; break; }
-        cur = next;
-      } else {
-        cur = tree.root;
-        break;
-      }
-    }
-    return { kind: "node" as const, target: cur.id };
-  });
-  if (out.length === 0) {
-    return { primary: { kind: "node" as const, target: tree.root.id }, secondaries: [] };
-  }
-  return { primary: out[0], secondaries: out.slice(1) };
-}
 
 function structHandler(dispatchName: StructuralAction): EditorHandler {
   return (view, source = "keyboard") =>
@@ -253,6 +209,8 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
       source,
     }),
   "doc.symbol": showDocumentationForSymbol,
+  "namespace.pick": (view: EditorView, source = "keyboard") =>
+    executeEditorCommand(view, { kind: "openNamespacePicker", source }),
   "edit.undo": (view: EditorView, source = "keyboard") =>
     executeEditorCommand(view, { kind: "undo", source }),
   "edit.redo": (view: EditorView, source = "keyboard") =>
@@ -347,89 +305,14 @@ const handlers: Partial<Record<ActionId, ActionHandler>> = {
   "liveEdit.vectorCancel": structHandler("liveEdit.vectorCancel"),
 
   // -- Grab mode (gamepad.md §6.6.4) -----------------------------------------
-  "actOn.grab": (view: EditorView) => {
-    if (isGrabActive()) return true;
-    const value = view.state.field(structField, false);
-    const doc = view.state.doc.toString();
-    const paths = value
-      ? pathsFromCursorSet(value.state.cursors, value.state.tree)
-      : [];
-    startGrab(doc, paths);
-    view.dispatch({ effects: setGrabMode.of(true) });
-    return true;
-  },
-  "actOn.drop": (view: EditorView) => {
-    if (!isGrabActive()) return false;
-    endGrab();
-    view.dispatch({ effects: setGrabMode.of(false) });
-    return true;
-  },
-  "actOn.cancelGrab": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const snapshot = getGrabSnapshot();
-    const count = getGrabMoveCount();
-    endGrab();
-    for (let i = 0; i < count; i++) {
-      executeEditorCommand(view, { kind: "undo", source });
-    }
-    if (snapshot) {
-      const value = view.state.field(structField, false);
-      if (value) {
-        const cursors = restoreCursorsFromPaths(snapshot.cursorPaths, value.state.tree);
-        view.dispatch({
-          effects: [
-            setStructState.of({
-              state: { tree: value.state.tree, cursors },
-              idIndex: value.idIndex,
-              cursorPaths: snapshot.cursorPaths,
-            }),
-            setGrabMode.of(false),
-          ],
-        });
-        return true;
-      }
-    }
-    view.dispatch({ effects: setGrabMode.of(false) });
-    return true;
-  },
-  "actOn.duplicateDrop": (view: EditorView) => {
-    if (!isGrabActive()) return false;
-    endGrab();
-    view.dispatch({ effects: setGrabMode.of(false) });
-    return true;
-  },
-  "grab.moveLeft": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.transposePrev", source,
-    });
-    if (ok) recordGrabMove();
-    return ok;
-  },
-  "grab.moveRight": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.transposeNext", source,
-    });
-    if (ok) recordGrabMove();
-    return ok;
-  },
-  "grab.moveUp": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.raise", source,
-    });
-    if (ok) recordGrabMove();
-    return ok;
-  },
-  "grab.moveDown": (view: EditorView, source = "gamepad") => {
-    if (!isGrabActive()) return false;
-    const ok = executeEditorCommand(view, {
-      kind: "structural", action: "edit.encloseList", source,
-    });
-    if (ok) recordGrabMove();
-    return ok;
-  },
+  "actOn.grab": startGrab,
+  "actOn.drop": endGrab,
+  "actOn.cancelGrab": cancelGrab,
+  "actOn.duplicateDrop": endGrab,
+  "grab.moveLeft": (view: EditorView) => moveGrab(view, "edit.transposePrev"),
+  "grab.moveRight": (view: EditorView) => moveGrab(view, "edit.transposeNext"),
+  "grab.moveUp": (view: EditorView) => moveGrab(view, "edit.raise"),
+  "grab.moveDown": (view: EditorView) => moveGrab(view, "edit.encloseList"),
 
   // -- Insertion mode (character-level caret movement) ----------------------
   "insertion.left":  cursorCharLeft,

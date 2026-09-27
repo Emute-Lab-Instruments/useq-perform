@@ -18,6 +18,7 @@
 import type { Meta, Node } from "../core/index.ts";
 import type { LiveEditMetaPayload } from "./treeFromLezer.ts";
 import type { FormatSettings } from "../../../../lib/settings/schema.ts";
+import { canonicalizeNamespaceSpelling } from "../../../../lib/operatorNamespaces.ts";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -140,6 +141,7 @@ export function printNodeWithBreaks(n: Node): string {
     case "document":
       return n.children.map(printNodeWithBreaks).join("\n");
     case "symbol":
+      return wrapWithMetas(canonicalizeNamespaceSpelling(n.text), n.metas);
     case "number":
     case "keyword":
     case "string":
@@ -223,7 +225,26 @@ function weight(n: Node): number {
  * to measure the host separately from its meta wrappers.
  */
 function printFlat(n: Node): string {
-  return printNode(n);
+  switch (n.kind) {
+    case "document":
+      return n.children.map(printFlat).join("\n");
+    case "symbol":
+      return wrapWithMetas(canonicalizeNamespaceSpelling(n.text), n.metas);
+    case "number":
+    case "keyword":
+    case "string":
+      return wrapWithMetas(n.text, n.metas);
+    case "hole":
+      return wrapWithMetas(`($ ${n.name} :${n.holeType})`, n.metas);
+    case "list":
+      return wrapWithMetas(`(${n.children.map(printFlat).join(" ")})`, n.metas);
+    case "vector":
+      return wrapWithMetas(`[${n.children.map(printFlat).join(" ")}]`, n.metas);
+    case "map":
+      return wrapWithMetas(`{${n.children.map(printFlat).join(" ")}}`, n.metas);
+    case "set":
+      return wrapWithMetas(`#{${n.children.map(printFlat).join(" ")}}`, n.metas);
+  }
 }
 
 /** Check whether a list node's head symbol is the given name. */
@@ -278,6 +299,7 @@ function formatAtColumn(
   switch (n.kind) {
     // Leaves — always single-line.
     case "symbol":
+      return wrapWithMetas(canonicalizeNamespaceSpelling(n.text), n.metas);
     case "number":
     case "keyword":
     case "string":

@@ -42,7 +42,6 @@ import {
 import { OSC_SINE_NODEDEF_DESCRIPTOR } from "../contracts/nodeDefRegistry";
 import {
   createSynthesisService,
-  type SynthesisService,
   type SynthesisServiceOptions,
   type SynthesisWorkerPort,
 } from "./synthesisService";
@@ -455,7 +454,7 @@ describe("synthesisService — legacy telemetry snapshots are inert", () => {
 
     bundle.workletNode.deliverFromWorklet(
       buildWorkletSnapshot({
-        audioFrame: 128n,
+        audioFrame: 128,
         producerTimeoutActive: true,
         producerLivenessAge: 24,
         peakSample: 0.77,

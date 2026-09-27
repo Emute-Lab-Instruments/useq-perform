@@ -35,6 +35,7 @@ export function verifyCompilerCapabilityManifest({
   jsPath,
   wasmPath,
   expectedGitCommit,
+  allowDirtySource = false,
 }) {
   let manifest;
   try {
@@ -52,11 +53,11 @@ export function verifyCompilerCapabilityManifest({
   if (!/^[0-9a-f]{40}$/.test(manifest.source.git_commit ?? '')) {
     fail('source.git_commit is not a full Git object id');
   }
-  if (manifest.source.git_dirty !== false) {
+  if (!allowDirtySource && manifest.source.git_dirty !== false) {
     fail('source build was dirty');
   }
-  if (!Array.isArray(manifest.source.git_dirty_entries) ||
-      manifest.source.git_dirty_entries.length !== 0) {
+  if (!allowDirtySource && (!Array.isArray(manifest.source.git_dirty_entries) ||
+      manifest.source.git_dirty_entries.length !== 0)) {
     fail('source.git_dirty_entries is not empty');
   }
   if (expectedGitCommit !== undefined &&

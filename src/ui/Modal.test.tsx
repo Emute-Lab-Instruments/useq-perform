@@ -123,7 +123,7 @@ describe("Modal", () => {
     trigger.remove();
   });
 
-  it("has z-index above overlay", () => {
+  it("stacks via token-driven CSS classes, not inline z-index", () => {
     const { container } = render(() => (
       <Modal title="Test" onClose={() => {}}>
         <p>content</p>
@@ -131,9 +131,39 @@ describe("Modal", () => {
     ));
     const overlay = container.querySelector(".modal-overlay") as HTMLElement;
     const modal = container.querySelector(".modal") as HTMLElement;
-    const overlayZ = parseInt(overlay.style.zIndex);
-    const modalZ = parseInt(modal.style.zIndex);
-    expect(modalZ).toBeGreaterThan(overlayZ);
+    expect(overlay.style.zIndex).toBe("");
+    expect(modal.style.zIndex).toBe("");
+  });
+
+  it("labels the close button and hides its glyph from assistive tech", () => {
+    render(() => (
+      <Modal title="Test" onClose={() => {}}>
+        <p>content</p>
+      </Modal>
+    ));
+    const closeBtn = screen.getByRole("button", { name: "Close" });
+    expect(closeBtn.querySelector('[aria-hidden="true"]')?.textContent).toBe("\u00D7");
+  });
+
+  it("does not sniff theme classes from the document root", () => {
+    document.documentElement.classList.add("cm-theme-light");
+    const { container } = render(() => (
+      <Modal title="Test" onClose={() => {}}>
+        <p>content</p>
+      </Modal>
+    ));
+    expect(container.querySelector(".modal")?.className).toBe("modal");
+    document.documentElement.classList.remove("cm-theme-light");
+  });
+
+  it("focuses a data-autofocus element in preference to the first focusable", () => {
+    render(() => (
+      <Modal title="Test" onClose={() => {}}>
+        <button>First</button>
+        <button data-autofocus="">Preferred</button>
+      </Modal>
+    ));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Preferred" }));
   });
 });
 

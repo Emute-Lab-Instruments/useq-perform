@@ -1,13 +1,12 @@
-import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockHwSendTransportCommand = vi.hoisted(() => vi.fn(async () => undefined));
+const mockHwSendTransportCommand = vi.hoisted(() => vi.fn(async (): Promise<void> => undefined));
 const mockHwCapabilities = vi.hoisted(() =>
   vi.fn(() => ({ available: false, connected: false, hasOpenPort: false, protocolMode: "legacy" as const }))
 );
 
-const mockWasmSendTransportCommand = vi.hoisted(() => vi.fn(async () => undefined));
-const mockWasmEvalCode = vi.hoisted(() => vi.fn(async () => "ok"));
+const mockWasmSendTransportCommand = vi.hoisted(() => vi.fn(async (): Promise<void> => undefined));
+const mockWasmEvalCode = vi.hoisted(() => vi.fn(async (_code: string) => "ok"));
 const mockWasmCapabilities = vi.hoisted(() =>
   vi.fn(() => ({ available: false, enabled: false, supportsEval: true, supportsTimeWindow: false }))
 );
@@ -17,10 +16,10 @@ vi.mock("../transport/webSerialHostPort", () => ({
     kind: "web-serial-host",
     capabilities: mockHwCapabilities,
     sendTransportCommand: mockHwSendTransportCommand,
-    syncTransportState: vi.fn(async () => undefined),
-    toggleConnection: vi.fn(async () => undefined),
+    syncTransportState: vi.fn(async (): Promise<void> => undefined),
+    toggleConnection: vi.fn(async (): Promise<void> => undefined),
     queryTransportState: vi.fn(async () => null),
-    sendCode: vi.fn(async () => undefined),
+    sendCode: vi.fn(async (): Promise<void> => undefined),
   },
 }));
 
@@ -32,11 +31,11 @@ vi.mock("./runtimeCoordinator", async (importOriginal) => {
     kind: "wasm-runtime",
     capabilities: mockWasmCapabilities,
     sendTransportCommand: mockWasmSendTransportCommand,
-    syncTransportState: vi.fn(async () => undefined),
-    ensureLoaded: vi.fn(async () => undefined),
+    syncTransportState: vi.fn(async (): Promise<void> => undefined),
+    ensureLoaded: vi.fn(async (): Promise<void> => undefined),
     evalCode: mockWasmEvalCode,
     evalCodeSilently: vi.fn(async () => null),
-    updateTime: vi.fn(async () => undefined),
+    updateTime: vi.fn(async (): Promise<void> => undefined),
     evalOutputAtTime: vi.fn(async () => 0),
     evalOutputsInTimeWindow: vi.fn(async () => new Map()),
     }),
@@ -144,7 +143,7 @@ describe("eval fan-out routing — (mode, command) → ports property test", () 
         "command %s — neither port receives bytes",
         async (command) => {
           enterMode("none");
-          await Effect.runPromise(sendRuntimeTransportCommand(command));
+          await sendRuntimeTransportCommand(command);
           expect(mockHwSendTransportCommand).not.toHaveBeenCalled();
           expect(mockWasmSendTransportCommand).not.toHaveBeenCalled();
         }
@@ -156,7 +155,7 @@ describe("eval fan-out routing — (mode, command) → ports property test", () 
         "command %s — WASM port receives bytes, hardware port does not",
         async (command) => {
           enterMode("wasm");
-          await Effect.runPromise(sendRuntimeTransportCommand(command));
+          await sendRuntimeTransportCommand(command);
           expect(mockWasmSendTransportCommand).toHaveBeenCalledWith(command);
           expect(mockHwSendTransportCommand).not.toHaveBeenCalled();
         }
@@ -168,7 +167,7 @@ describe("eval fan-out routing — (mode, command) → ports property test", () 
         "command %s — hardware port receives bytes, WASM port does not",
         async (command) => {
           enterMode("hardware");
-          await Effect.runPromise(sendRuntimeTransportCommand(command));
+          await sendRuntimeTransportCommand(command);
           expect(mockHwSendTransportCommand).toHaveBeenCalledWith(command);
           expect(mockWasmSendTransportCommand).not.toHaveBeenCalled();
         }
@@ -180,7 +179,7 @@ describe("eval fan-out routing — (mode, command) → ports property test", () 
         "command %s — both ports receive bytes",
         async (command) => {
           enterMode("both");
-          await Effect.runPromise(sendRuntimeTransportCommand(command));
+          await sendRuntimeTransportCommand(command);
           expect(mockHwSendTransportCommand).toHaveBeenCalledWith(command);
           expect(mockWasmSendTransportCommand).toHaveBeenCalledWith(command);
         }
@@ -192,7 +191,7 @@ describe("eval fan-out routing — (mode, command) → ports property test", () 
     it("wasm mode: hardware port is never called for any shared command", async () => {
       enterMode("wasm");
       for (const command of SHARED_TRANSPORT_COMMAND_LIST) {
-        await Effect.runPromise(sendRuntimeTransportCommand(command));
+        await sendRuntimeTransportCommand(command);
       }
       expect(mockHwSendTransportCommand).not.toHaveBeenCalled();
       expect(mockWasmSendTransportCommand).toHaveBeenCalledTimes(SHARED_TRANSPORT_COMMAND_LIST.length);
@@ -201,7 +200,7 @@ describe("eval fan-out routing — (mode, command) → ports property test", () 
     it("hardware mode: WASM port is never called for any shared command", async () => {
       enterMode("hardware");
       for (const command of SHARED_TRANSPORT_COMMAND_LIST) {
-        await Effect.runPromise(sendRuntimeTransportCommand(command));
+        await sendRuntimeTransportCommand(command);
       }
       expect(mockWasmSendTransportCommand).not.toHaveBeenCalled();
       expect(mockHwSendTransportCommand).toHaveBeenCalledTimes(SHARED_TRANSPORT_COMMAND_LIST.length);
@@ -210,7 +209,7 @@ describe("eval fan-out routing — (mode, command) → ports property test", () 
     it("both mode: every shared command reaches both ports", async () => {
       enterMode("both");
       for (const command of SHARED_TRANSPORT_COMMAND_LIST) {
-        await Effect.runPromise(sendRuntimeTransportCommand(command));
+        await sendRuntimeTransportCommand(command);
       }
       expect(mockHwSendTransportCommand).toHaveBeenCalledTimes(SHARED_TRANSPORT_COMMAND_LIST.length);
       expect(mockWasmSendTransportCommand).toHaveBeenCalledTimes(SHARED_TRANSPORT_COMMAND_LIST.length);
@@ -219,11 +218,32 @@ describe("eval fan-out routing — (mode, command) → ports property test", () 
     it("none mode: no shared command reaches any port", async () => {
       enterMode("none");
       for (const command of SHARED_TRANSPORT_COMMAND_LIST) {
-        await Effect.runPromise(sendRuntimeTransportCommand(command));
+        await sendRuntimeTransportCommand(command);
       }
       expect(mockHwSendTransportCommand).not.toHaveBeenCalled();
       expect(mockWasmSendTransportCommand).not.toHaveBeenCalled();
     });
+  });
+
+  it("starts both ports without waiting for either to finish", async () => {
+    enterMode("both");
+    let finishHardware!: () => void;
+    mockHwSendTransportCommand.mockImplementationOnce(() => new Promise<void>((resolve) => { finishHardware = resolve; }));
+    const result = sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.play);
+    expect(mockHwSendTransportCommand).toHaveBeenCalledTimes(1);
+    expect(mockWasmSendTransportCommand).toHaveBeenCalledTimes(1);
+    finishHardware();
+    await expect(result).resolves.toBe(SHARED_TRANSPORT_COMMANDS.play);
+  });
+
+  it.each(["hardware", "wasm"] as const)("still starts both ports when %s throws synchronously", async (kind) => {
+    enterMode("both");
+    const port = kind === "hardware" ? mockHwSendTransportCommand : mockWasmSendTransportCommand;
+    port.mockImplementationOnce(() => { throw new Error("offline"); });
+    await expect(sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.play))
+      .rejects.toThrow(`${kind === "hardware" ? "Hardware" : "WASM"} error: Error: offline`);
+    expect(mockHwSendTransportCommand).toHaveBeenCalledTimes(1);
+    expect(mockWasmSendTransportCommand).toHaveBeenCalledTimes(1);
   });
 
   describe("soft eval routing — WASM-only, hardware port always silent", () => {
@@ -248,21 +268,21 @@ describe("eval fan-out routing — (mode, command) → ports property test", () 
   describe("regular eval fan-out — hardware + WASM ports in both mode", () => {
     it("mode both: shared transport commands fan out to both ports", async () => {
       enterMode("both");
-      await Effect.runPromise(sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.play));
+      await sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.play);
       expect(mockHwSendTransportCommand).toHaveBeenCalledWith(SHARED_TRANSPORT_COMMANDS.play);
       expect(mockWasmSendTransportCommand).toHaveBeenCalledWith(SHARED_TRANSPORT_COMMANDS.play);
     });
 
     it("mode wasm: regular eval reaches only WASM port for transport commands", async () => {
       enterMode("wasm");
-      await Effect.runPromise(sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.stop));
+      await sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.stop);
       expect(mockWasmSendTransportCommand).toHaveBeenCalledWith(SHARED_TRANSPORT_COMMANDS.stop);
       expect(mockHwSendTransportCommand).not.toHaveBeenCalled();
     });
 
     it("mode hardware: regular eval reaches only hardware port for transport commands", async () => {
       enterMode("hardware");
-      await Effect.runPromise(sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.stop));
+      await sendRuntimeTransportCommand(SHARED_TRANSPORT_COMMANDS.stop);
       expect(mockHwSendTransportCommand).toHaveBeenCalledWith(SHARED_TRANSPORT_COMMANDS.stop);
       expect(mockWasmSendTransportCommand).not.toHaveBeenCalled();
     });

@@ -60,10 +60,10 @@ Runtime channels (see `src/contracts/runtimeChannels.ts`):
 | Channel | Payload | Publisher(s) | Subscriber(s) |
 |---|---|---|---|
 | `settingsChanged` | `AppSettings` | `runtimeService` | `settingsStore` |
-| `connectionChanged` | `ConnectionChangedDetail` | `runtimeService` | Toolbars, transport orchestration |
+| `connectionChanged` | `ConnectionChangedDetail` | `runtimeService` | Toolbars, transport orchestration, LiveAnnouncer (connection announcements) |
 | `protocolReady` | `ProtocolReadyDetail` | JSON protocol driver | Transport orchestration |
 | `jsonMeta` | `JsonMetaEventDetail` | JSON protocol driver | Transport orchestration |
-| `codeEvaluated` | `CodeEvaluatedDetail` | Runtime/evaluation layer | Visualisation sampler and editor feedback |
+| `codeEvaluated` | `CodeEvaluatedDetail` | Runtime/evaluation layer | Visualisation sampler, editor feedback, toolbar BPM refresh, LiveAnnouncer (eval announcements) |
 | `runtimeDiagnostics` | diagnostic snapshot | `runtimeDiagnostics` | Diagnostics UI |
 | `bootstrapFailure` | failure detail | `runtimeDiagnostics` | Recovery UI |
 | `animateConnect` | `AnimateConnectDetail` | JSON protocol driver (not-connected) | Connect-button animation (UI) |

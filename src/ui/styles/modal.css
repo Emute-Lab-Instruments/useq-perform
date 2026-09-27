@@ -1,37 +1,15 @@
 /* Simple modal system styles */
 
-/* Theme-aware modal colors */
-:root {
-  --modal-bg-light: #ffffff;
-  --modal-text-light: #000000;
-  --modal-border-light: #cccccc;
-  --modal-header-light: #f5f5f5;
-  --modal-close-hover-light: #e0e0e0;
-
-  --modal-bg-dark: #2d2d2d;
-  --modal-text-dark: #f0f0f0;
-  --modal-border-dark: #444444;
-  --modal-header-dark: #333333;
-  --modal-close-hover-dark: #555555;
-}
-
-/* Light theme */
-.cm-theme-light .modal {
-  --current-modal-bg: var(--modal-bg-light);
-  --current-modal-text: var(--modal-text-light);
-  --current-modal-border: var(--modal-border-light);
-  --current-modal-header: var(--modal-header-light);
-  --current-modal-close-hover: var(--modal-close-hover-light);
-}
-
-/* Dark theme */
-.cm-theme-dark .modal,
-:root:not(.cm-theme-light) .modal {
-  --current-modal-bg: var(--modal-bg-dark);
-  --current-modal-text: var(--modal-text-dark);
-  --current-modal-border: var(--modal-border-dark);
-  --current-modal-header: var(--modal-header-dark);
-  --current-modal-close-hover: var(--modal-close-hover-dark);
+/*
+ * Modal colours inherit the active theme through the CSS variables that
+ * src/editors/themes.ts writes on :root (--panel-bg, --text-primary, ...).
+ */
+.modal {
+  --current-modal-bg: var(--panel-bg, #2d2d2d);
+  --current-modal-text: var(--text-primary, #f0f0f0);
+  --current-modal-border: var(--panel-border, #444444);
+  --current-modal-header: var(--panel-section-bg, #333333);
+  --current-modal-close-hover: var(--panel-item-hover-bg, #555555);
 }
 
 .modal-overlay {
@@ -41,8 +19,7 @@
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  display: none;
+  z-index: var(--z-modal-backdrop, 1000);
 }
 
 .modal {
@@ -57,8 +34,7 @@
   width: 90%;
   max-height: 80vh;
   overflow-y: auto;
-  z-index: 1001;
-  display: none;
+  z-index: var(--z-modal, 1001);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -115,6 +91,8 @@
 /* Confirm modal (showConfirmModal) */
 .modal-confirm-message {
   margin: 0 0 20px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .modal-confirm-actions {
@@ -138,8 +116,21 @@
 
 .modal-confirm-ok {
   background-color: var(--accent-color, #4a9eff);
-  color: #fff;
+  color: var(--on-accent, #fff);
   border-color: var(--accent-color, #4a9eff);
+}
+
+/* Destructive confirm (confirmDialog({ destructive: true })) */
+.modal-confirm-ok.modal-confirm-destructive {
+  background-color: var(--status-error, #d9534f);
+  border-color: var(--status-error, #d9534f);
+  color: #fff;
+}
+
+.modal-confirm-actions button:focus-visible,
+.modal-close:focus-visible {
+  outline: 2px solid var(--accent-color, #4a9eff);
+  outline-offset: 2px;
 }
 
 .modal-confirm-actions button:hover {

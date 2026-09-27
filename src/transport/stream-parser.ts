@@ -78,7 +78,7 @@ export async function serialReader(
       onLegacyTextMessage,
     );
   } else {
-    console.log("Serial port is not readable or is locked");
+    console.warn("Serial port is not readable or is locked");
   }
 }
 
@@ -101,7 +101,7 @@ async function setupReaderAndProcessData(
       onLegacyTextMessage,
     );
   } catch (error) {
-    console.log("Serial read error:", error);
+    console.error("Serial read error:", error);
   } finally {
     cleanupReader(reader);
   }
@@ -153,7 +153,7 @@ export async function stopSerialReader(): Promise<void> {
     try {
       await currentReader.cancel();
     } catch (err) {
-      console.log("Error cancelling reader:", err);
+      console.warn("Error cancelling reader:", err);
     }
   }
 }

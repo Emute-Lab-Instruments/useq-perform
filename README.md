@@ -10,6 +10,9 @@ Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WAS
 - `npm run build:assets` - verifies and copies the generated WASM artefacts,
   generates the application served-bundle record, and refreshes the Engine
   Ledger specification and witness indexes.
+- `USEQ_ALLOW_DIRTY_COMPILER=1 npm run watch` - development-only escape hatch
+  for serving locally built WASM from a dirty `src-useq` checkout. The normal
+  build remains strict so dirty compiler artefacts cannot be published silently.
 - `npm run start` - serves `public/` on port `5000`.
 - `npm run storybook` - Storybook dev server.
 - `npm run build-storybook` - static Storybook build.
@@ -24,6 +27,7 @@ Web-based live coding interface for uSEQ hardware and the browser-local uSEQ WAS
 - `npm run test:all` - runs Mocha + Vitest unit tests.
 - `npm test` - alias for `npm run test:all`.
 - `npm run typecheck` - strict TypeScript check for all production `.ts`/`.tsx` under `src/` (tests and stories are excluded).
+- `npm run typecheck:tests` - strict TypeScript check for the unit-test project and its fixtures; matches the existing unit-runner exclusion of `structure-pure.test.ts`. CI runs both type checks.
 - `npm run src-useq:status` - print the authoritative `src-useq` submodule repo/branch/commit metadata the editor currently depends on.
 
 Testing styles:
@@ -55,28 +59,18 @@ Product scope, stable core, compatibility cuts, and out-of-scope items live in `
 
 Editor-facing firmware and WASM capability rules live in `docs/specs/runtime-contract.md`. Read that before auditing `src-useq` behavior or promoting standalone firmware work into the submodule.
 
-## Task Tracking (Ergo)
+## Task Tracking (Ergon)
 
-This repo uses **`ergo`** for all durable task tracking. `ergo` is the
-coding-work CLI over the Holon EAV substrate and replaced Beads (`bd`) on
-**2026-06-15**. Beads and its Dolt backend are **frozen read-only** historical
-infrastructure — do not set up or sync against them for current work.
+This repo uses **`ergon`** for all durable task tracking over the Holon/Kosmos
+substrate. Beads (`bd`), its Dolt backend, and the earlier `ergo` CLI are
+historical — do not set up or sync against them for current work.
 
-The `ergo` CLI is installed at `/home/w1n5t0n/.local/bin/ergo`. The required
-environment (`HOLON_TOKEN`, `HOLON_CORE_URL`, optional `HOLON_PRINCIPAL`) is
-loaded for every shell by `~/.zshenv` sourcing `~/.secrets/env`.
-
-```bash
-ergo ready              # unblocked open work
-ergo ready --mine       # filtered to your principal
-ergo show <id>          # inspect a task
-ergo create "Title" --type task --priority 1 --body "..."
-ergo claim <id>         # mark in progress under your principal
-ergo done <id> --reason "..."   # close (--reason is mandatory)
-```
+The required environment (`HOLON_TOKEN`, `HOLON_CORE_URL`, optional
+`HOLON_PRINCIPAL`) is loaded for every shell by `~/.zshenv` sourcing
+`~/.secrets/env`. Check `ergon --help` for the current command surface.
 
 Do **not** create Markdown TODO lists for durable work. The authoritative
-workflow lives in `/home/w1n5t0n/agents/skills/ergo/SKILL.md`.
+workflow lives in `/home/w1n5t0n/agents/skills/ergon/SKILL.md`.
 
 `docs/BEADS_BACKEND.md` is retained only as **explicitly archival** reference
 for the historical Beads/Dolt setup.

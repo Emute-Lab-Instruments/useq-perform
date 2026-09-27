@@ -54,3 +54,34 @@ describe("ProgressBar", () => {
     expect(outer.style.pointerEvents).toBe("none");
   });
 });
+
+describe("ProgressBar beat ticks", () => {
+  it("draws three ticks for the default four beats", () => {
+    const { container } = render(() => <ProgressBar progress={0} />);
+    const ticks = container.querySelectorAll(".progress-beat-tick");
+    expect(ticks.length).toBe(3);
+    expect((ticks[0] as HTMLElement).style.left).toBe("25%");
+    expect((ticks[2] as HTMLElement).style.left).toBe("75%");
+  });
+
+  it("follows the beats prop reactively", () => {
+    const [beats, setBeats] = createSignal(3);
+    const { container } = render(() => <ProgressBar progress={0} beats={beats()} />);
+    expect(container.querySelectorAll(".progress-beat-tick").length).toBe(2);
+    setBeats(7);
+    expect(container.querySelectorAll(".progress-beat-tick").length).toBe(6);
+  });
+
+  it("draws no ticks for a single-beat bar or invalid values", () => {
+    const { container } = render(() => <ProgressBar progress={0} beats={1} />);
+    expect(container.querySelectorAll(".progress-beat-tick").length).toBe(0);
+    const { container: c2 } = render(() => <ProgressBar progress={0} beats={Number.NaN} />);
+    expect(c2.querySelectorAll(".progress-beat-tick").length).toBe(3);
+  });
+
+  it("sizes through CSS (full width of its parent), not measurement", () => {
+    const { container } = render(() => <ProgressBar progress={0} />);
+    const outer = container.querySelector("#toolbar-bar-progress-container") as HTMLElement;
+    expect(outer.style.width).toBe("100%");
+  });
+});

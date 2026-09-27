@@ -72,11 +72,11 @@ export function Modal(props: ModalProps) {
     // Remember what had focus so we can restore it when the modal closes.
     previouslyFocused = document.activeElement as HTMLElement | null;
 
-    // Get focusable elements and focus the first one
+    // Focus the element marked `data-autofocus` (e.g. the safe button of a
+    // destructive confirm), else the first focusable element.
     focusableElements = getFocusableElements();
-    if (focusableElements.length > 0) {
-      focusableElements[0].focus();
-    }
+    const preferred = modalRef?.querySelector<HTMLElement>("[data-autofocus]");
+    (preferred ?? focusableElements[0])?.focus();
   });
 
   onCleanup(() => {
@@ -103,14 +103,6 @@ export function Modal(props: ModalProps) {
     popOverlay?.();
   });
 
-  // Inherit theme class from document root
-  const themeClass = () => {
-    const root = document.documentElement.className;
-    if (root.includes("cm-theme-light")) return "cm-theme-light";
-    if (root.includes("cm-theme-dark")) return "cm-theme-dark";
-    return "";
-  };
-
   const titleId = () => (props.id ? `${props.id}-title` : "modal-title");
 
   return (
@@ -118,16 +110,15 @@ export function Modal(props: ModalProps) {
       <div
         class="modal-overlay"
         id={props.id ? `${props.id}-overlay` : undefined}
-        style={{ display: "block", "z-index": 1000 }}
+
         onClick={(e) => {
           if (e.target === e.currentTarget) props.onClose();
         }}
       />
       <div
         ref={modalRef}
-        class={`modal ${themeClass()}`}
+        class="modal"
         id={props.id}
-        style={{ display: "block", "z-index": 1001 }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId()}
@@ -136,8 +127,13 @@ export function Modal(props: ModalProps) {
           <h3 class="modal-title" id={titleId()}>
             {props.title}
           </h3>
-          <button class="modal-close" onClick={props.onClose}>
-            ×
+          <button
+            type="button"
+            class="modal-close"
+            aria-label="Close"
+            onClick={props.onClose}
+          >
+            <span aria-hidden="true">×</span>
           </button>
         </div>
         <div class="modal-body">{props.children}</div>

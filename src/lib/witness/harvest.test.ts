@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 /**
  * Harvest output schema tests (witnesses.md §3, engine-ledger.md §2.1/§5.2).
  *
@@ -17,7 +18,7 @@ import {
   collectCorpusFiles,
   CORPUS_DIR,
   WITNESS_INDEX_VERSION,
-  // @ts-expect-error — build script, intentionally untyped JS
+
 } from "../../../scripts/harvest-witnesses.mjs";
 import {
   harvestSpecs,
@@ -25,7 +26,7 @@ import {
   parseSubSpecOrder,
   rewriteLinks,
   SPECS_DIR,
-  // @ts-expect-error — build script, intentionally untyped JS
+
 } from "../../../scripts/harvest-specs.mjs";
 
 const corpusAvailable = fs.existsSync(CORPUS_DIR) && collectCorpusFiles(CORPUS_DIR).length > 0;
@@ -114,6 +115,7 @@ describe.runIf(corpusAvailable)("witness harvest", () => {
 
   it("indexes every reference of a multi-clause witness under each clause", () => {
     const w = index.witnesses.find((x: { name: string }) => x.name === "time-as-rebinds-phasors");
+    assert(w);
     expect(w.specRefs).toHaveLength(2);
     expect(index.bySpecFile["time-warps.md"].clauses["2.2"]).toContain(w.name);
     expect(index.bySpecFile["time.md"].clauses["1.3.1"]).toContain(w.name);
@@ -193,12 +195,14 @@ describe("spec markdown parsing", () => {
 
   it("gives clause-opening paragraphs a stable anchor id (engine-ledger.md §2.2)", () => {
     const opener = parsed.blocks.find((b: { clauseOpener?: boolean }) => b.clauseOpener);
+    assert(opener);
     expect(opener.clause).toBe("1.1");
     expect(opener.id).toBe("clause-1.1");
   });
 
   it("keeps code fences as raw source so the app can mount read-only editors", () => {
     const code = parsed.blocks.find((b: { kind: string }) => b.kind === "code");
+    assert(code);
     expect(code.code).toBe("(a1 (fast 2 t))");
     expect(code.lang).toBe("lisp");
     // The fence belongs to the clause that opened before it.
@@ -207,11 +211,13 @@ describe("spec markdown parsing", () => {
 
   it("rewrites intra-corpus links to in-Ledger navigation (§2.3)", () => {
     const opener = parsed.blocks.find((b: { clauseOpener?: boolean }) => b.clauseOpener);
+    assert(opener);
     expect(opener.html).toContain('data-ledger-spec="time.md"');
   });
 
   it("defuses links that point outside the corpus", () => {
     const opener = parsed.blocks.find((b: { clauseOpener?: boolean }) => b.clauseOpener);
+    assert(opener);
     expect(opener.html).toContain("data-ledger-unresolved=");
     expect(opener.html).not.toContain('href="../../other.md"');
   });
@@ -237,6 +243,7 @@ describe("rewriteLinks", () => {
 
 describe.runIf(specsAvailable)("spec corpus harvest", () => {
   const { corpus, errors } = harvestSpecs();
+  assert(corpus);
 
   it("harvests the language spec corpus cleanly", () => {
     expect(errors).toEqual([]);
@@ -249,7 +256,7 @@ describe.runIf(specsAvailable)("spec corpus harvest", () => {
     const numbered = corpus.index.filter((e: { number: string | null }) => e.number !== null);
     expect(numbered.length).toBeGreaterThan(15);
     expect(numbered[0].file).toBe("dialects.md");
-    expect(numbered.map((e: { number: string }) => e.number)).toContain("6.6.1");
+    expect(numbered.map((e) => e.number)).toContain("6.6.1");
   });
 
   it("flags corpus files MAIN.md does not index rather than dropping them", () => {
@@ -258,7 +265,7 @@ describe.runIf(specsAvailable)("spec corpus harvest", () => {
   });
 
   it("gives every document a title and a clause list", () => {
-    for (const doc of Object.values<{ title: string; clauses: string[]; blocks: unknown[] }>(corpus.documents)) {
+    for (const doc of Object.values(corpus.documents)) {
       expect(doc.title.length).toBeGreaterThan(0);
       expect(Array.isArray(doc.clauses)).toBe(true);
       expect(doc.blocks.length).toBeGreaterThan(0);
@@ -270,9 +277,10 @@ describe.runIf(corpusAvailable && specsAvailable)("witness ↔ spec clause coupl
   it("resolves every cited clause to a clause the spec corpus actually defines", () => {
     const { index } = harvestWitnesses();
     const { corpus } = harvestSpecs();
+    assert(corpus);
     const unresolved: string[] = [];
 
-    for (const [file, bucket] of Object.entries<{ clauses: Record<string, string[]> }>(index.bySpecFile)) {
+    for (const [file, bucket] of Object.entries(index.bySpecFile)) {
       const doc = corpus.documents[file];
       if (!doc) {
         unresolved.push(`${file} (no such spec document)`);

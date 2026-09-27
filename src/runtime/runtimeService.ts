@@ -24,12 +24,8 @@ export {
   bootstrapRuntimeSession,
   refreshRuntimeSession,
   announceRuntimeSession,
-  reportTransportConnectionChanged,
-  reportProtocolModeChanged,
   getRuntimeServiceSnapshot,
   subscribeRuntimeService,
-  isRuntimeHardwareConnected,
-  isRuntimeWasmEnabled,
   resetRuntimeServiceForTests,
 } from "./runtimeSessionService";
 
@@ -38,15 +34,12 @@ export {
   replaceSettings,
   updateSettings,
   resetSettings,
-  loadSettings,
-  deletePersistedSettings,
   getSettings,
 } from "./runtimeSettingsService";
 
 // ── Transport service ──────────────────────────────────────────
 export {
   toggleRuntimeConnection,
-  resolveRuntimeTransportMode,
   sendRuntimeTransportCommand,
   queryRuntimeHardwareTransportState,
   syncRuntimeWasmTransportState,

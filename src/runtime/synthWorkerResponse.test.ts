@@ -147,7 +147,7 @@ describe("VAL-COMP-014: failed eval response shape contract", () => {
     // revision and the response's synthArtifacts reflects the new commit.
     const successResponse = {
       result: "ok",
-      diagnostics: [],
+      diagnostics: [] as Array<{ severity: string }>,
       synthArtifacts: {
         abi: SYNTH_ARTIFACT_ABI_VERSION,
         revision: 2,

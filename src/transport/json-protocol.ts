@@ -283,9 +283,7 @@ function dispatchProtocolReady(): void {
  * Resolves the shared signal so `sendHelloWithRetry` can exit cleanly.
  */
 function completeHandshake(response: JsonResponse): void {
-  if (import.meta.env.DEV) {
-    console.log("[json-protocol] completeHandshake called with:", JSON.stringify(response).slice(0, 300));
-  }
+  dbg("json-protocol: completeHandshake", JSON.stringify(response).slice(0, 300));
   if (response.success && response.mode === "json") {
     protocolState.mode = "json";
     protocolState.firmwareVersion = response.fw ?? null;
@@ -297,9 +295,7 @@ function completeHandshake(response: JsonResponse): void {
     protocolState.modules = Array.isArray(response.modules)
       ? response.modules.map((module) => ({ ...module }))
       : [];
-    if (import.meta.env.DEV) {
-      console.log("[json-protocol] Handshake SUCCESS — mode=json, fw=", response.fw);
-    }
+    dbg("json-protocol: handshake success", response.fw);
     if (response.fw) {
       upgradeCheck(response.fw);
     }
@@ -368,11 +364,11 @@ async function sendHelloOnce(): Promise<JsonResponse> {
 export async function sendHelloWithRetry(): Promise<void> {
   protocolState.negotiationAttempted = true;
   const handshakeDone = createHandshakeSignal();
-  console.log("[json-protocol] sendHelloWithRetry: starting protocol detection");
+  dbg("json-protocol: starting protocol detection");
 
   const initialPort = serialport();
   if (!initialPort?.writable) {
-    console.log("[json-protocol] sendHelloWithRetry: port not writable, aborting");
+    dbg("json-protocol: port not writable; protocol detection aborted");
     return;
   }
 
@@ -395,15 +391,15 @@ export async function sendHelloWithRetry(): Promise<void> {
 
     const port = serialport();
     if (!port?.writable) {
-      console.log("[json-protocol] sendHelloWithRetry: port not writable, aborting");
+      dbg("json-protocol: port not writable; hello retry aborted");
       return;
     }
 
-    console.log(`[json-protocol] hello attempt ${attempt}/${HELLO_MAX_ATTEMPTS}`);
+    dbg(`json-protocol: hello attempt ${attempt}/${HELLO_MAX_ATTEMPTS}`);
 
     const attemptRace = Promise.race([
       sendHelloOnce().then((response) => {
-        console.log("[json-protocol] hello response received:", JSON.stringify(response).slice(0, 200));
+        dbg("json-protocol: hello response", JSON.stringify(response).slice(0, 200));
         if (mode() === "negotiating") completeHandshake(response);
       }),
       handshakeDone,
@@ -413,13 +409,13 @@ export async function sendHelloWithRetry(): Promise<void> {
       await attemptRace;
       if (mode() !== "negotiating") return;
     } catch (err) {
-      console.log(`[json-protocol] hello attempt ${attempt} failed: ${String(err)}`);
+      dbg(`json-protocol: hello attempt ${attempt} failed: ${String(err)}`);
       if (mode() !== "negotiating") return;
     }
   }
 
   if (protocolState.mode === "negotiating") {
-    console.log("[json-protocol] All hello attempts exhausted — giving up");
+    dbg("json-protocol: all hello attempts exhausted");
     post(
       "uSEQ did not respond to hello. Try unplugging and reconnecting.",
       "error"
@@ -493,9 +489,7 @@ export function writeJsonRequest(
   };
 
   const message = `${JSON.stringify(payload)}\n`;
-  if (import.meta.env.DEV && !options.skipConsole) {
-    console.log(`[json-protocol] TX → ${message.trim().slice(0, 200)}`);
-  }
+  if (!options.skipConsole) dbg(`json-protocol: TX ${message.trim().slice(0, 200)}`);
 
   return new Promise<JsonResponse>((resolve, reject) => {
     pending.resolve = resolve;
@@ -503,7 +497,7 @@ export function writeJsonRequest(
 
     if (options.timeout && options.timeout > 0) {
       pending.timeoutId = setTimeout(() => {
-        console.log(`[json-protocol] TIMEOUT: ${requestId} (${options.timeout}ms) — pending: [${Array.from(protocolState.pendingRequests.keys()).join(', ')}]`);
+        dbg(`json-protocol: timeout ${requestId} (${options.timeout}ms)`);
         protocolState.pendingRequests.delete(requestId);
         reject(new Error(`Request ${requestId} timed out`));
       }, options.timeout);
@@ -513,7 +507,7 @@ export function writeJsonRequest(
 
     serialWrite(port, encoder.encode(message))
       .catch((error: Error) => {
-        console.log(`[json-protocol] serialWrite error for ${requestId}:`, error);
+        dbg(`json-protocol: serial write failed for ${requestId}`, error);
         if (pending.timeoutId) {
           clearTimeout(pending.timeoutId);
         }
@@ -869,7 +863,7 @@ export function handleJsonMessage(rawMessage: string): void {
   const trimmedMessage = rawMessage.trim();
   if (trimmedMessage.length === 0) return;
 
-  console.log(`[json-protocol] handleJsonMessage: ${trimmedMessage.slice(0, 200)}`);
+  dbg(`json-protocol: RX ${trimmedMessage.slice(0, 200)}`);
 
   let parsed: JsonResponse;
   try {
@@ -890,7 +884,7 @@ export function handleJsonMessage(rawMessage: string): void {
       console.error(`[json-protocol] Invalid ready frame: ${validation.error}`);
       return;
     }
-    console.log("[json-protocol] Received 'ready' frame from device");
+    dbg("json-protocol: received ready frame");
     retryHelloOnReady();
     return;
   }
@@ -986,7 +980,7 @@ export function handleJsonMessage(rawMessage: string): void {
     : never) | null = null;
 
   if (requestId && protocolState.pendingRequests.has(requestId)) {
-    console.log(`[json-protocol] Matched response for ${requestId}, success=${success}`);
+    dbg(`json-protocol: matched response ${requestId}, success=${success}`);
     pending = protocolState.pendingRequests.get(requestId)!;
     protocolState.pendingRequests.delete(requestId);
 
@@ -994,7 +988,7 @@ export function handleJsonMessage(rawMessage: string): void {
       clearTimeout(pending.timeoutId);
     }
   } else if (requestId) {
-    console.log(`[json-protocol] Response for ${requestId} has NO pending request (already timed out?)`);
+    dbg(`json-protocol: late/unmatched response ${requestId}`);
   }
 
   if (pending) {

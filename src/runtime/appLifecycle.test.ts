@@ -1,3 +1,4 @@
+import { defaultUserSettings } from "../lib/settings/schema.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveBootstrapPlan } from "./bootstrap.ts";
 
@@ -60,6 +61,17 @@ vi.mock("../transport/connector.ts", () => ({
 }));
 
 vi.mock("./runtimeCoordinator.ts", () => ({
+  getRuntimeSessionState: () => ({
+    connected: false,
+    protocolMode: "json",
+    session: {
+      hasHardwareConnection: false,
+      noModuleMode: false,
+      wasmEnabled: true,
+      connectionMode: "browser",
+      transportMode: "wasm",
+    },
+  }),
   getActiveWasmRuntimePort: () => ({
     ...workerPort,
     ensureLoaded: ensureUseqWasmLoaded,
@@ -117,6 +129,12 @@ describe("application no-module startup", () => {
   it("boots the browser-local runtime without touching hardware reconnect flow", async () => {
     const { createApp } = await import("./appLifecycle.ts");
     const environmentState = {
+      audioCapabilities: {
+        schemaVersion: 1 as const, crossOriginIsolated: false,
+        sharedArrayBufferAvailable: false, audioWorkletAvailable: false,
+        workerAvailable: false, sharedWebAssemblyMemoryAvailable: false,
+        audioCapable: false, reasons: [], capturedAt: 0,
+      },
       areInBrowser: true,
       areInDesktopApp: false,
       isWebSerialAvailable: true,
@@ -130,8 +148,9 @@ describe("application no-module startup", () => {
         params: { noModuleMode: "true" },
       },
       userSettings: {
+        ...defaultUserSettings,
         name: "Test User",
-        runtime: { startLocallyWithoutHardware: true },
+        runtime: { ...defaultUserSettings.runtime, startLocallyWithoutHardware: true },
         wasm: { enabled: true },
       },
       urlParams: { noModuleMode: "true" },
@@ -163,6 +182,12 @@ describe("application no-module startup", () => {
   it("starts browser-local runtime first and still kicks off reconnect checks in normal mode", async () => {
     const { createApp } = await import("./appLifecycle.ts");
     const environmentState = {
+      audioCapabilities: {
+        schemaVersion: 1 as const, crossOriginIsolated: false,
+        sharedArrayBufferAvailable: false, audioWorkletAvailable: false,
+        workerAvailable: false, sharedWebAssemblyMemoryAvailable: false,
+        audioCapable: false, reasons: [], capturedAt: 0,
+      },
       areInBrowser: true,
       areInDesktopApp: false,
       isWebSerialAvailable: true,
@@ -176,8 +201,9 @@ describe("application no-module startup", () => {
         params: {},
       },
       userSettings: {
+        ...defaultUserSettings,
         name: "Test User",
-        runtime: { startLocallyWithoutHardware: true },
+        runtime: { ...defaultUserSettings.runtime, startLocallyWithoutHardware: true },
         wasm: { enabled: true },
       },
       urlParams: {},
@@ -206,6 +232,12 @@ describe("application no-module startup", () => {
     runtimeSnapshot.session.wasmEnabled = false;
     const { createApp } = await import("./appLifecycle.ts");
     const environmentState = {
+      audioCapabilities: {
+        schemaVersion: 1 as const, crossOriginIsolated: false,
+        sharedArrayBufferAvailable: false, audioWorkletAvailable: false,
+        workerAvailable: false, sharedWebAssemblyMemoryAvailable: false,
+        audioCapable: false, reasons: [], capturedAt: 0,
+      },
       areInBrowser: true,
       areInDesktopApp: false,
       isWebSerialAvailable: true,
@@ -219,8 +251,9 @@ describe("application no-module startup", () => {
         params: {},
       },
       userSettings: {
+        ...defaultUserSettings,
         name: "Test User",
-        runtime: { startLocallyWithoutHardware: true },
+        runtime: { ...defaultUserSettings.runtime, startLocallyWithoutHardware: true },
         wasm: { enabled: true },
       },
       urlParams: {},
@@ -246,6 +279,12 @@ describe("application no-module startup", () => {
     const { createApp } = await import("./appLifecycle.ts");
     const dispose = vi.fn();
     const environmentState = {
+      audioCapabilities: {
+        schemaVersion: 1 as const, crossOriginIsolated: false,
+        sharedArrayBufferAvailable: false, audioWorkletAvailable: false,
+        workerAvailable: false, sharedWebAssemblyMemoryAvailable: false,
+        audioCapable: false, reasons: [], capturedAt: 0,
+      },
       areInBrowser: true,
       areInDesktopApp: false,
       isWebSerialAvailable: true,
@@ -259,8 +298,9 @@ describe("application no-module startup", () => {
         params: {},
       },
       userSettings: {
+        ...defaultUserSettings,
         name: "Test User",
-        runtime: { startLocallyWithoutHardware: false },
+        runtime: { ...defaultUserSettings.runtime, startLocallyWithoutHardware: false },
         wasm: { enabled: false },
       },
       urlParams: {},

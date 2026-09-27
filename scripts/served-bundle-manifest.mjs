@@ -50,7 +50,7 @@ function applicationSourceState() {
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
   const dirtyEntries = runGit([
-    'status', '--porcelain', '--untracked-files=no',
+    'status', '--porcelain', '--untracked-files=all',
   ]).split('\n').filter(Boolean).sort();
   return {
     git_commit: runGit(['rev-parse', 'HEAD']),

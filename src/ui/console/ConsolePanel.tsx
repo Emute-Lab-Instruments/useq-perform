@@ -22,7 +22,21 @@ import {
 import { settings as globalSettings } from "../../utils/settingsStore.ts";
 import { usePointerDrag } from "../panel-chrome/usePointerDrag.ts";
 import type { ConsoleSettings } from "../../lib/settings/schema.ts";
-import { advanceQueue, completeActive } from "./typewriterQueue.ts";
+import { advanceQueue, completeActive, type QueueState } from "./typewriterQueue.ts";
+import {
+  CONSOLE_TYPES,
+  filterMessages,
+  isFilterActive,
+  stripHtml,
+  type ConsoleFilters,
+} from "./consoleFilter.ts";
+import {
+  clampPosition,
+  loadConsoleLayout,
+  saveConsoleLayout,
+  type ConsoleLayout,
+  type ConsolePosition,
+} from "./consoleLayout.ts";
 import "./console.css";
 
 // ---------------------------------------------------------------------------
@@ -35,13 +49,6 @@ const MIN_H = 120;
 interface Size {
   w: number;
   h: number;
-}
-
-function defaultSize(): Size {
-  return {
-    w: Math.min(520, window.innerWidth * 0.4),
-    h: Math.min(340, window.innerHeight * 0.35),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +145,21 @@ function ConsoleEntry(props: {
     props.onTypewriterDone(msg().id);
   };
 
+  // Hover copy affordance: copies the entry's plain (stripped) text.
+  const [copied, setCopied] = createSignal(false);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(copiedTimer));
+
+  const copyEntry = () => {
+    const clip = navigator.clipboard;
+    if (!clip?.writeText) return;
+    clip.writeText(stripHtml(msg().content)).then(() => {
+      setCopied(true);
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => setCopied(false), 900);
+    }).catch(() => { /* clipboard unavailable — ignore */ });
+  };
+
   return (
     <div
       class={`console-entry console-entry--${msg().type} ${animClass()} ${compactClass()}`}
@@ -170,14 +192,17 @@ function ConsoleEntry(props: {
           />
         </Show>
       </span>
+      <button
+        type="button"
+        class="console-copy-btn"
+        classList={{ "console-copy-btn--done": copied() }}
+        onClick={copyEntry}
+        title="Copy text"
+      >
+        {copied() ? "✓" : "⧉"}
+      </button>
     </div>
   );
-}
-
-function stripHtml(html: string): string {
-  const tmp = document.createElement("span");
-  tmp.innerHTML = html;
-  return tmp.textContent || tmp.innerText || "";
 }
 
 // ---------------------------------------------------------------------------
@@ -224,8 +249,17 @@ function ResizeZone(props: {
 // ---------------------------------------------------------------------------
 
 export function ConsolePanel() {
-  const [size, setSize] = createSignal<Size>(defaultSize());
-  const [collapsed, setCollapsed] = createSignal(false);
+  // Restore persisted layout (clamped to the viewport; console.md §1.10).
+  const restored = loadConsoleLayout();
+  const [size, setSize] = createSignal<Size>({ w: restored.w, h: restored.h });
+  const [position, setPosition] = createSignal<ConsolePosition | null>(
+    restored.x !== null && restored.y !== null
+      ? { x: restored.x, y: restored.y }
+      : null,
+  );
+  const [collapsed, setCollapsed] = createSignal(restored.collapsed);
+  const [filters, setFilters] = createSignal<ConsoleFilters>(restored.filters);
+  const [searchQuery, setSearchQuery] = createSignal("");
   const [unreadCount, setUnreadCount] = createSignal(0);
   const [isAutoScrolling, setIsAutoScrolling] = createSignal(true);
   const [showScrollIndicator, setShowScrollIndicator] = createSignal(false);
@@ -235,6 +269,7 @@ export function ConsolePanel() {
   // Tracks the highest message id flushed so far; newer entries still animate.
   const [flushedUpToId, setFlushedUpToId] = createSignal(0);
   let contentRef: HTMLDivElement | undefined;
+  let panelRef: HTMLDivElement | undefined;
   let prevMessageCount = 0;
 
   const consoleSettings = (): ConsoleSettings =>
@@ -252,6 +287,11 @@ export function ConsolePanel() {
     });
     setTypewriterActiveId(next.activeId);
   };
+
+  // Filtered view (console.md §1.8): view-only, the store is untouched.
+  const visibleMessages = () =>
+    filterMessages(consoleStore.messages, filters(), searchQuery());
+  const filteringActive = () => isFilterActive(filters(), searchQuery());
 
   createEffect(() => {
     const msgs = consoleStore.messages;
@@ -276,6 +316,40 @@ export function ConsolePanel() {
     }
     prevMessageCount = count;
   });
+
+  // A filter change can hide the entry that is currently typewriting; treat
+  // hidden entries as finished so the queue keeps advancing against the
+  // filtered view (console.md §1.8).
+  createEffect(() => {
+    const visible = visibleMessages();
+    const activeId = typewriterActiveId();
+    if (activeId === null || visible.some((m) => m.id === activeId)) return;
+    let state: QueueState = { activeId, flushedUpToId: flushedUpToId() };
+    while (
+      state.activeId !== null &&
+      !visible.some((m) => m.id === state.activeId)
+    ) {
+      state = completeActive(consoleStore.messages, state.activeId, state);
+    }
+    setTypewriterActiveId(state.activeId);
+  });
+
+  // Persist layout changes (console.md §1.10). Geometry drags fire rapidly,
+  // so debounce writes through the persistence service (honours ?nosave).
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => {
+    const layout = {
+      w: size().w,
+      h: size().h,
+      x: position()?.x ?? null,
+      y: position()?.y ?? null,
+      collapsed: collapsed(),
+      filters: { ...filters() },
+    } as ConsoleLayout;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveConsoleLayout(layout), 250);
+  });
+  onCleanup(() => clearTimeout(saveTimer));
 
   const onScroll = () => {
     if (!contentRef) return;
@@ -302,6 +376,38 @@ export function ConsolePanel() {
     requestAnimationFrame(scrollToBottom);
   };
 
+  // Title-bar drag: switches the panel from its bottom-right anchor to a
+  // viewport position on first drag, clamped so it stays fully on screen.
+  let dragStart: ConsolePosition | null = null;
+  const titleDrag = usePointerDrag({
+    onStart: (e) => {
+      // Don't hijack presses on the title-bar buttons or the filter input.
+      if ((e.target as HTMLElement).closest("button, input")) return false;
+      if (position()) {
+        dragStart = { ...position()! };
+      } else {
+        const rect = panelRef?.getBoundingClientRect();
+        if (!rect) return false;
+        dragStart = { x: rect.left, y: rect.top };
+      }
+      return true;
+    },
+    onMove: (_e, dx, dy) => {
+      if (!dragStart) return;
+      const { w, h } = size();
+      setPosition(
+        clampPosition(
+          dragStart.x + dx,
+          dragStart.y + dy,
+          w,
+          h,
+          window.innerWidth,
+          window.innerHeight,
+        ),
+      );
+    },
+  });
+
   const edges: ResizeEdge[] = ["n", "w", "nw"];
 
   return (
@@ -309,19 +415,34 @@ export function ConsolePanel() {
       {/* Expanded panel */}
       <div
         class="console-panel"
-        classList={{ "console-panel--hidden": collapsed() }}
-        style={{
-          width: `${size().w}px`,
-          height: `${size().h}px`,
+        classList={{
+          "console-panel--hidden": collapsed(),
+          "console-panel--positioned": position() !== null,
         }}
+        ref={panelRef}
+        style={
+          position()
+            ? {
+                width: `${size().w}px`,
+                height: `${size().h}px`,
+                left: `${position()!.x}px`,
+                top: `${position()!.y}px`,
+                right: "auto",
+                bottom: "auto",
+              }
+            : {
+                width: `${size().w}px`,
+                height: `${size().h}px`,
+              }
+        }
       >
         {/* Resize zones */}
         <For each={edges}>
           {(edge) => <ResizeZone edge={edge} size={size} setSize={setSize} />}
         </For>
 
-        {/* Title bar */}
-        <div class="console-title-bar">
+        {/* Title bar (draggable) */}
+        <div class="console-title-bar" onPointerDown={titleDrag}>
           <span class="title-text">
             <span class="title-accent">&gt;</span> console
           </span>
@@ -343,6 +464,38 @@ export function ConsolePanel() {
           </button>
         </div>
 
+        {/* Filter row (console.md §1.8): view-only per-type toggles + search */}
+        <div class="console-filter-row">
+          <div class="console-filter-types" role="group" aria-label="Filter by type">
+            <For each={CONSOLE_TYPES}>
+              {(t) => (
+                <button
+                  type="button"
+                  class={`console-filter-type console-filter-type--${t}`}
+                  classList={{ "console-filter-type--off": !filters()[t] }}
+                  onClick={() => setFilters((f) => ({ ...f, [t]: !f[t] }))}
+                  title={`${filters()[t] ? "Hide" : "Show"} ${t} entries`}
+                >
+                  {t}
+                </button>
+              )}
+            </For>
+          </div>
+          <input
+            class="console-filter-search"
+            type="text"
+            placeholder="filter…"
+            value={searchQuery()}
+            onInput={(e) => setSearchQuery(e.currentTarget.value)}
+            aria-label="Search console"
+          />
+          <Show when={filteringActive()}>
+            <span class="console-filter-count">
+              {visibleMessages().length}/{consoleStore.messages.length}
+            </span>
+          </Show>
+        </div>
+
         {/* Content */}
         <div
           class="console-content"
@@ -358,17 +511,26 @@ export function ConsolePanel() {
               </div>
             }
           >
-            <For each={consoleStore.messages}>
-              {(msg) => (
-                <ConsoleEntry
-                  message={msg}
-                  settings={consoleSettings()}
-                  typewriterActiveId={typewriterActiveId}
-                  flushedUpToId={flushedUpToId}
-                  onTypewriterDone={onTypewriterDone}
-                />
-              )}
-            </For>
+            <Show
+              when={visibleMessages().length > 0}
+              fallback={
+                <div class="console-empty">
+                  <span>no matching entries</span>
+                </div>
+              }
+            >
+              <For each={visibleMessages()}>
+                {(msg) => (
+                  <ConsoleEntry
+                    message={msg}
+                    settings={consoleSettings()}
+                    typewriterActiveId={typewriterActiveId}
+                    flushedUpToId={flushedUpToId}
+                    onTypewriterDone={onTypewriterDone}
+                  />
+                )}
+              </For>
+            </Show>
           </Show>
         </div>
 

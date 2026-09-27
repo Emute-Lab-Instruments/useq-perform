@@ -126,7 +126,7 @@ describe("nodeDefRegistry — validation", () => {
     const withOtherFreq = {
       ...OSC_SINE_NODEDEF_DESCRIPTOR,
       params: [
-        { name: "freq", default: 220, rate: "block", smoothing: "step" },
+        { name: "freq", default: 220, rate: "block" as const, smoothing: "step" as const },
         OSC_SINE_NODEDEF_DESCRIPTOR.params[1],
       ],
     };

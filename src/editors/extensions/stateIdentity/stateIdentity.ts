@@ -17,7 +17,7 @@
  * Tests import `identityExtensions` directly with a custom config.
  */
 
-import { identityExtensions, buildIdentityField, type IdentityConfig } from "./identityField.ts";
+import { identityExtensions } from "./identityField.ts";
 import { createDefaultIdentityConfig } from "./createDefaultIdentityConfig.ts";
 
 export { identityExtensions, identityExtensionsWithField, buildIdentityField } from "./identityField.ts";

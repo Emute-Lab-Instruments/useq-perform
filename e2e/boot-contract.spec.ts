@@ -48,10 +48,10 @@ test.describe(
           page.locator(SEL.editorLine).filter({ hasText: ";; ping" }),
         ).toBeVisible();
 
-        // 4. Mode indicator (runtime-modes §1.6 — exact-text `W` also proves it
-        //    is not `HW`/`HW+W`)
+        // 4. Mode indicator (runtime-modes §1.6.1 — exact-text label also proves
+        //    it is not the hardware or hardware+virtual state)
         await expect(page.locator(SEL.connectButton)).toBeVisible();
-        await expect(page.locator(SEL.connectBadge)).toHaveText("W");
+        await expect(page.locator(SEL.connectBadge)).toHaveText("Virtual uSEQ");
         await expect(page.locator(SEL.connectBadge)).toHaveClass(/transport-wasm/);
 
         // 5. Transport paused signature (transport §1.1 trap — assert the machine

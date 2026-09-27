@@ -101,12 +101,12 @@ describe("inferRange", () => {
   // ── Number X, parent osc / phasor ────────────────────────────────────────
 
   it("440, parent 'osc' → [20, max(2000, 880)] = [20, 2000]", () => {
-    const r = inferRange(440, "osc");
+    const r = inferRange(440, "lfo/sin");
     expect(r).toMatchObject({ min: 20, max: 2000 });
   });
 
   it("1200, parent 'osc' → [20, max(2000, 2400)] = [20, 2400]", () => {
-    const r = inferRange(1200, "osc");
+    const r = inferRange(1200, "lfo/sin");
     expect(r).toMatchObject({ min: 20, max: 2400 });
   });
 
@@ -121,7 +121,7 @@ describe("inferRange", () => {
   });
 
   it("decimal 440.5, parent 'osc' → [20, max(2000, 881)] = [20, 2000]", () => {
-    const r = inferRange(440.5, "osc");
+    const r = inferRange(440.5, "lfo/sin");
     expect(r).toMatchObject({ min: 20, max: 2000 });
   });
 
@@ -149,7 +149,7 @@ describe("inferRange", () => {
 
   it("integer 8, parent 'osc' but > 1 and not integer-slow/fast path → [20, 2000]", () => {
     // osc/phasor check applies before the generic >0 check
-    const r = inferRange(8, "osc");
+    const r = inferRange(8, "lfo/sin");
     expect(r).toMatchObject({ min: 20, max: 2000 });
   });
 

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const examineEnvironment = vi.fn();
 const startApp = vi.fn();
 const createApp = vi.fn(() => ({ start: startApp }));
-const loadConfigurationWithMetadata = vi.fn();
+const loadBootstrapSettingsWithMetadata = vi.fn();
 const seedBootstrapDiagnostics = vi.fn();
 const publishDiagnosticsSnapshot = vi.fn();
 const reportBootstrapFailure = vi.fn();
@@ -48,7 +48,7 @@ const createWasmRuntimeWorkerPort = vi.fn(() => ({
 }));
 
 vi.mock("./runtime/appSettingsRepository.ts", () => ({
-  loadConfigurationWithMetadata,
+  loadBootstrapSettingsWithMetadata,
   getAppSettings: getSettings,
 }));
 
@@ -108,7 +108,7 @@ vi.mock("./editors/commands/actionHandlers.ts", () => ({
   executeAction: vi.fn(),
 }));
 
-vi.mock("./lib/menu/dispatcher.ts", () => ({
+vi.mock("./editors/menu/dispatcher.ts", () => ({
   createMenuDispatcher,
 }));
 
@@ -161,7 +161,7 @@ vi.mock("./editors/extensions/liveEdit/widgetStoreBridge.ts", () => ({
 }));
 
 
-describe("bootstrap (via startLegacyApp re-export)", () => {
+describe("bootstrap (via main.ts re-export)", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -174,7 +174,7 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
       <div id="status-bar"></div>
     `;
 
-    loadConfigurationWithMetadata.mockResolvedValue({
+    loadBootstrapSettingsWithMetadata.mockResolvedValue({
       config: { editor: { code: "(play)" } },
       settingsSources: ["defaults", "local-storage"],
     });
@@ -213,11 +213,11 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
   });
 
   it("loads configuration, publishes diagnostics, and starts the app", async () => {
-    const { startLegacyApp } = await import("./main.ts");
+    const { bootstrap } = await import("./main.ts");
 
-    await startLegacyApp();
+    await bootstrap();
 
-    expect(loadConfigurationWithMetadata).toHaveBeenCalledTimes(1);
+    expect(loadBootstrapSettingsWithMetadata).toHaveBeenCalledTimes(1);
     expect(replaceSettings).toHaveBeenCalledWith({ editor: { code: "(play)" } });
     expect(initEditorPanel).toHaveBeenCalledWith("#panel-main-editor");
     expect(ensureWorkerLoaded).toHaveBeenCalledTimes(1);
@@ -248,10 +248,10 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
   });
 
   it("surfaces configuration bootstrap failures and still starts with examined environment", async () => {
-    loadConfigurationWithMetadata.mockRejectedValue(new Error("bad config"));
-    const { startLegacyApp } = await import("./main.ts");
+    loadBootstrapSettingsWithMetadata.mockRejectedValue(new Error("bad config"));
+    const { bootstrap } = await import("./main.ts");
 
-    await startLegacyApp();
+    await bootstrap();
 
     expect(reportBootstrapFailure).toHaveBeenCalledWith(
       "config-loader",
@@ -262,9 +262,9 @@ describe("bootstrap (via startLegacyApp re-export)", () => {
 
   it("continues hardware-only instead of falling back to main-thread WASM when Worker is absent", async () => {
     vi.stubGlobal("Worker", undefined);
-    const { startLegacyApp } = await import("./main.ts");
+    const { bootstrap } = await import("./main.ts");
 
-    await startLegacyApp();
+    await bootstrap();
 
     expect(ensureWorkerLoaded).not.toHaveBeenCalled();
     expect(bootstrapRuntimeSession).toHaveBeenCalledWith(

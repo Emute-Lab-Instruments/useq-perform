@@ -26,7 +26,7 @@ vi.mock("../runtime/runtimeCompatibility.ts", () => ({
 }));
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions as clojureExtensions } from "@nextjournal/clojure-mode";
 
 // ---------------------------------------------------------------------------
@@ -41,7 +41,19 @@ const mockEvalCodeWithDiagnostics = vi.hoisted(() =>
     });
   }),
 );
-const mockSendTouSEQ = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const mockSendTouSEQ = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve()));
+
+vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
+  dispatchRuntimeCodeEvaluation: vi.fn(async ({ code, wasmCode, soft = false }) => ({
+    session: { transportMode: soft ? "wasm" : "both" },
+    wasm: { status: "fulfilled", value: await mockEvalCodeWithDiagnostics(wasmCode ?? code) },
+    hardware: soft ? null : {
+      status: "fulfilled",
+      value: await mockSendTouSEQ(code),
+    },
+    diagnosticAuthority: soft ? "wasm" : "hardware",
+  })),
+}));
 
 vi.mock("@nextjournal/clojure-mode/extensions/eval-region", () => ({
   top_level_string: (_state: unknown) => "",
@@ -108,15 +120,12 @@ vi.mock("../lib/holeDetection.ts", () => ({
 // ---------------------------------------------------------------------------
 
 import { evaluate } from "./editorEvaluation.ts";
-import { buildIdentityField } from "../editors/extensions/stateIdentity/identityField.ts";
 import {
   defaultIdentityExtension,
   identityField,
   _resetIdentityFieldSingletonForTests,
 } from "../editors/extensions/stateIdentity/identityFieldExport.ts";
-import { defaultStatefulFormClassifier } from "../editors/extensions/stateIdentity/identityClassify.ts";
-import { deterministicIdGenerator } from "../editors/extensions/stateIdentity/identityGenerator.ts";
-import { makeContinuitySource, entriesOf } from "../editors/extensions/stateIdentity/identityMapState.ts";
+import { entriesOf } from "../editors/extensions/stateIdentity/identityMapState.ts";
 import { readIdentityMap } from "../editors/extensions/stateIdentity/identityField.ts";
 import { evalHighlightField } from "../editors/extensions/evalHighlight.ts";
 
@@ -143,15 +152,6 @@ function buildSingletonField() {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function newView(doc: string, field: ReturnType<typeof buildIdentityField>): EditorView {
-  return new EditorView({
-    parent: document.body,
-    state: EditorState.create({
-      doc,
-      extensions: [...clojureExtensions, field, evalHighlightField],
-    }),
-  });
-}
 
 /**
  * Build a view with the SAME singleton field that editorEvaluation.ts

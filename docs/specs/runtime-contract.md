@@ -22,6 +22,7 @@ For the higher-level product boundary and compatibility cuts, read [MAIN.md](MAI
 - `src/runtime/workers/wasmRuntime.worker.ts` — Worker-local WASM instantiation and ABI validation call site
 - `src/runtime/witnessEngine.ts` — isolated, non-production conformance-witness interpreter
 - `src/runtime/runtimeTransportService.ts` — fan-out of shared commands to both runtimes
+- `src/runtime/runtimeCodeEvaluation.ts` — live-session code-evaluation fan-out and per-runtime outcomes
 - `src/effects/transportOrchestrator.ts` — transport command dispatch
 - `src/contracts/wasmAbi.test.ts` — ABI contract tests
 - `src/contracts/useqRuntimeContract.test.ts` — capability split tests
@@ -145,6 +146,8 @@ The canonical editor constants live in:
 - `../../src/contracts/wasmAbi.ts` — WASM export signatures and ABI validation
 
 Both `src/effects/transportOrchestrator.ts` and `src/runtime/wasmInterpreter.ts` import from these files instead of maintaining separate command lists or hard-coded symbol strings.
+
+Arbitrary editor code is port-specific rather than part of the six-command shared transport floor. `runtimeCodeEvaluation.ts` resolves the current `RuntimeSession`, `WebSerialHostPort`, and selected Worker `WasmRuntimePort` for each dispatch. It returns separate outcomes and names diagnostic authority; `editorEvaluation.ts` consumes that result and does not import the JSON protocol or active-WASM lookup.
 
 ## Drift Prevention
 

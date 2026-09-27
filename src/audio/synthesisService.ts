@@ -91,7 +91,6 @@ import {
   MAX_SYNTH_NODES,
   PRODUCER_FIRST_PUBLISH_DEADLINE_MS,
   attachSynthesisControlView,
-  controlChannelKey,
   createSynthesisControlBuffer,
   type SynthesisControlView,
 } from "../contracts/synthesisControlAbi";
@@ -100,7 +99,6 @@ import type {
   WorkletGraphTransactionAckEvent,
   WorkletModuleTransferMessage,
   WorkletProducerTimeoutEvent,
-  WorkletTelemetrySnapshot,
 } from "./workletGraphDelta";
 import {
   buildEngineCommitPlan,
@@ -1021,7 +1019,7 @@ function createCapableService(
    */
   function consoleMessageForTransition(
     nextState: SynthesisEngineState,
-    reasonKey: EngineStateReasonKey | null,
+    _reasonKey: EngineStateReasonKey | null,
     reasonMessage: string | null,
   ): { message: string; type: "log" | "warn" | "error" } | null {
     if (nextState === "suspended") {

@@ -6,10 +6,10 @@
  * public API (enter/next/prev/toggle/commit/cancel).
  */
 
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { structuralCoreExtensions } from "../../structure/adapter/extension.ts";
@@ -17,7 +17,6 @@ import { dispatchAction } from "../../structure/adapter/dispatcher.ts";
 import { structField } from "../../structure/adapter/stateField.ts";
 import {
   createVectorMarkController,
-  type VectorMarkController,
 } from "../vectorMarkController.ts";
 import { vectorMarkSessionField } from "../vectorMarking.ts";
 

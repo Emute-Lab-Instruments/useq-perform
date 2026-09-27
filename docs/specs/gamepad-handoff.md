@@ -20,7 +20,8 @@ non-normative: true
 - `src/lib/gamepad/hardware.ts` — Stage 1: `diffSnapshots` (snapshot diffing to LogicalEvent[])
 - `src/lib/gamepad/index.ts` — full pipeline wiring: `createGamepadPipeline()`, re-exports, raw shoulder-edge forwarding to the menu dispatcher (radial-menu.md §6.2.5)
 - `src/lib/gamepad/paradigms/` — `radial.ts` (menu takeover layer), `modal-shift.ts`, `leader.ts`, `hydra.ts`, `chord-heavy.ts`
-- `src/lib/menu/dispatcher.ts` — `MenuDispatcher`: routes `menu.*` actions + axis + raw shoulder edges to the menu state machine, applies verb mutations
+- `src/lib/menu/types.ts` — shared `MenuDispatcher` interface
+- `src/editors/menu/dispatcher.ts` — `MenuDispatcher` implementation: routes `menu.*` actions + axis + raw shoulder edges to the menu state machine, applies verb mutations
 - `src/lib/keybindings/actions.ts` — `ActionDef.reversible`, `ReversibleActionId`, `NonReversibleActionId`, `isReversible()`
 - `src/lib/gamepad/gamepadManager.ts` — low-level Gamepad API polling
 - `src/contracts/gamepadChannels.ts` — axis channel registry and typed gamepad channels
@@ -147,7 +148,8 @@ Spec §8.3. Determinism is asserted in example tests today; property tests would
 
 **Related code:**
 - `src/contracts/gamepadChannels.ts` — the axis-channel registry from spec §4.6 and typed gamepad channels
-- `src/lib/menu/` — the radial-menu state machine (`state.ts`), dispatcher (`dispatcher.ts`), store, and manifest
+- `src/lib/menu/` — the radial-menu state machine (`state.ts`), shared types (`types.ts`, including `MenuDispatcher`), store, and manifest
+- `src/editors/menu/` — radial-menu dispatcher (`dispatcher.ts`) and editor-owned structural application and planning
 - `src/lib/gamepad/gamepadManager.ts` — low-level polling; Stage 1 (`hardware.ts`) builds on this
 
 (`src/lib/gamepadIntents.ts` and `src/ui/adapters/gamepadMenuBridge.ts` were removed during the cutover.)

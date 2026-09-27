@@ -68,7 +68,7 @@ export const DeepDiveBlock: Component<{ title: string; content: ContentBlock[] }
         onClick={() => setExpanded((prev) => !prev)}
         aria-expanded={expanded()}
       >
-        <span class="guide-deep-dive-arrow">{expanded() ? "▼" : "▶"}</span>{" "}
+        <span class="guide-deep-dive-arrow" aria-hidden="true">{expanded() ? "▼" : "▶"}</span>{" "}
         {props.title}
       </button>
       <Show when={expanded()}>

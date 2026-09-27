@@ -19,6 +19,7 @@ import { actions, type ActionId, type ActionDef } from "../../lib/keybindings/ac
 import { defaultKeyBindings } from "../../lib/keybindings/defaults.ts";
 import { executeAction as dispatchAction } from "../../editors/commands/actionHandlers.ts";
 import { isMac as detectIsMac } from "../../lib/keybindings/osReserved.ts";
+import { notify } from "../../contracts/toastChannels.ts";
 import { editor } from "../../lib/editorStore.ts";
 import { pushOverlay } from "../overlayManager.ts";
 
@@ -68,22 +69,9 @@ function matchesQuery(
 // Toast
 // ---------------------------------------------------------------------------
 
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
-
+/** Binding tip after a palette execution (keybindings.md §1.10). */
 function showToast(message: string): void {
-  const existing = document.querySelector(".action-palette-toast");
-  if (existing) existing.remove();
-  if (toastTimer) clearTimeout(toastTimer);
-
-  const el = document.createElement("div");
-  el.className = "action-palette-toast";
-  el.textContent = message;
-  document.body.appendChild(el);
-
-  toastTimer = setTimeout(() => {
-    el.remove();
-    toastTimer = undefined;
-  }, 2000);
+  notify({ message, kind: "info", durationMs: 2000 });
 }
 
 // ---------------------------------------------------------------------------

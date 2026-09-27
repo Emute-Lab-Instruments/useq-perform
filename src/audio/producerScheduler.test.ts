@@ -40,7 +40,7 @@
  * import did not resolve) and pass after the canonical scheduler
  * lands.
  */
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ABI_VERSION,
@@ -174,8 +174,8 @@ function buildScheduler(opts: {
     blockRateChannels: opts.blockRateChannels ?? ["freq", "amp"],
     lookaheadBlocks: opts.lookaheadBlocks ?? CONTROL_LOOKAHEAD_BLOCKS,
     renderQuantumFrames: opts.renderQuantumFrames ?? DEFAULT_RENDER_QUANTUM_FRAMES,
+    ...(opts.audit !== false ? { audit } : {}),
   };
-  if (opts.audit !== false) schedulerOpts.audit = audit;
   const scheduler = createProducerScheduler(schedulerOpts);
   return { scheduler, clock, executor, view, map, audit };
 }
@@ -311,6 +311,7 @@ describe("producerScheduler / responsiveness bound (VAL-ENGINE-006)", () => {
       scheduler.processInbox(() => {
         // Simulated message handling.
         clock.tick(2);
+        return false;
       });
       view.publishAudioFrame({
         frame: 1n + BigInt((i + 1) * DEFAULT_RENDER_QUANTUM_FRAMES),

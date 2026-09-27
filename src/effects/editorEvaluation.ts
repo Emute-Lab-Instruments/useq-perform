@@ -10,10 +10,12 @@ import type { EditorState } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { top_level_string } from "@nextjournal/clojure-mode/extensions/eval-region";
 
-import { sendTouSEQ } from "../transport/json-protocol.ts";
 import { post } from "../utils/consoleStore.ts";
-import { getActiveWasmRuntimePort } from "../runtime/activeWasmRuntimePort.ts";
-import { shouldUseWasmShadow } from "../runtime/runtimeCompatibility.ts";
+import {
+  dispatchRuntimeCodeEvaluation,
+  type RuntimeCodeEvaluationResult,
+  type WasmCodeEvaluation,
+} from "../runtime/runtimeCodeEvaluation.ts";
 import {
   discoverSlotsAfterEval,
   runBootReconciliation,
@@ -32,24 +34,14 @@ import {
 // (VAL-COMP-013). The eval-to-engine commit pipeline consumes it after
 // the editor-state mutations below so the worklet receives the graph
 // delta and the Worker producer arms the new epoch (VAL-ENGINE-010).
-const evalInUseqWasm = async (
-  code: string,
-): Promise<{
-  result: string | null;
-  diagnostics: UseqDiagnostic[];
-  synthArtifacts: SynthArtifactsPayload | null;
-}> =>
-  getActiveWasmRuntimePort().evalCodeWithDiagnostics(code);
 import { pushDiagnostics, clearDiagnosticsForRange } from "../editors/extensions/diagnostics.ts";
 import { getAllManualControlBindings } from "../lib/manualControlState.ts";
-import { getStartupFlagsSnapshot } from "../runtime/startupContext.ts";
 import { evalRejectionForNoRuntime } from "./noneModeGate.ts";
 import { flashEvalHighlight } from "../editors/extensions/evalHighlight.ts";
 import { detectAndTrackExpressionEvaluation } from "../editors/extensions/expressionEval.ts";
 import { markOutputRunning } from "../utils/outputHealthStore.ts";
 import { dispatchInlineResult } from "../editors/extensions/inlineResults.ts";
 import type { UseqDiagnostic } from "../contracts/runtimeTypes.ts";
-import type { SynthArtifactsPayload } from "../contracts/runtimeTypes.ts";
 import { getActiveSynthesisService } from "../runtime/activeSynthesisService.ts";
 import { getAudioCapabilitySnapshot } from "../runtime/startupContext.ts";
 import type { AudioCapabilitySnapshot } from "../contracts/audioCapabilities.ts";
@@ -238,7 +230,6 @@ function evalWasm(
   code: string,
   opts: {
     isImmediate: boolean;
-    noModuleMode: boolean;
     isPreview: boolean;
     view?: EditorView;
     /** Character offset in the document where this code starts */
@@ -253,6 +244,7 @@ function evalWasm(
      */
     sourceMap?: EvalPayload["sourceMap"];
   },
+  evaluation: Promise<WasmCodeEvaluation | null>,
 ): Promise<{ text: string; isError: boolean; pos: number }> {
   const wasmCode = opts.isImmediate ? code.slice(1) : code;
   const evalPos = opts.view ? opts.view.state.selection.main.from : 0;
@@ -263,8 +255,11 @@ function evalWasm(
   const seq = view ? nextEvalSeq(view) : 0;
   const isStale = () => view !== undefined && !isLatestEvalSeq(view, seq);
 
-  return evalInUseqWasm(wasmCode)
-    .then(async ({ result, diagnostics, synthArtifacts }) => {      // A newer eval has been dispatched on this view since we started.
+  return evaluation
+    .then(async (wasmResult) => {
+      if (!wasmResult) return { text: "", isError: false, pos: evalPos };
+      const { result, diagnostics, synthArtifacts } = wasmResult;
+      // A newer eval has been dispatched on this view since we started.
       // Drop our result so we don't clobber the fresher eval's effects.
       // Empty `text` makes the outer `.then`'s `dispatchInlineResult` a
       // no-op, and we skip every editor-state mutation below.
@@ -418,11 +413,7 @@ function evalWasm(
         return { text: displayText, isError, pos: evalPos };
       }
 
-      if (!opts.noModuleMode) {
-        return { text: displayText, isError, pos: evalPos };
-      }
-
-      return { text: trimmed, isError: false, pos: evalPos };
+      return { text: displayText, isError, pos: evalPos };
     })
     .catch((error: unknown) => {
       // A stale failed eval should not surface its error to the user —
@@ -434,13 +425,43 @@ function evalWasm(
       console.error(`[modulisp] eval error: ${message}`);
       if (opts.isPreview) {
         post(message, "error");
-      } else if (opts.noModuleMode) {
-        post(message, "error");
       } else {
         console.error("uSEQ WASM interpreter evaluation failed", error);
       }
       return { text: message, isError: true, pos: evalPos };
     });
+}
+
+function wasmOutcome(
+  evaluation: Promise<RuntimeCodeEvaluationResult>,
+): Promise<WasmCodeEvaluation | null> {
+  return evaluation.then((result) => {
+    if (!result.wasm) return null;
+    if (result.wasm.status === "rejected") throw result.wasm.error;
+    return result.wasm.value;
+  });
+}
+
+function applyAuthoritativeHardwareDiagnostics(
+  evaluation: Promise<RuntimeCodeEvaluationResult>,
+  view: EditorView | undefined,
+  docOffset: number,
+  rangeFrom: number,
+  rangeTo: number,
+  sourceMap?: EvalPayload["sourceMap"],
+): void {
+  void evaluation.then((result) => {
+    if (result.diagnosticAuthority !== "hardware"
+      || result.hardware?.status !== "fulfilled") return;
+    applyHardwareDiagnostics(
+      view,
+      result.hardware.value,
+      docOffset,
+      rangeFrom,
+      rangeTo,
+      sourceMap,
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -610,34 +631,30 @@ export function evaluate(view: EditorView, strategy: EvalStrategy): boolean {
 
         flashEvalHighlight(view, sel.from, sel.to);
 
-        // Current WASM shadows current firmware only. Pre-1.2 hardware remains
-        // authoritative because its language/runtime semantics differ.
-        if (shouldUseWasmShadow()) {
-          evalWasm(code, {
-            isImmediate: true,
-            noModuleMode: getStartupFlagsSnapshot().noModuleMode,
-            isPreview: false,
-            view,
-            docOffset: sel.from,
-            range: { from: sel.from, to: sel.to },
-            sourceMap: payload.sourceMap,
-          }).then((result) => {
-            if (result.text) {
-              dispatchInlineResult(view, result.text, sel.to, result.isError);
-            }
-          });
-        }
-
-        sendTouSEQ(code).then((response) => {
-          applyHardwareDiagnostics(
-            view,
-            response,
-            sel.from,
-            sel.from,
-            sel.to,
-            payload.sourceMap,
-          );
+        const evaluation = dispatchRuntimeCodeEvaluation({
+          code,
+          wasmCode: payload.runtimeCode,
         });
+        evalWasm(code, {
+          isImmediate: true,
+          isPreview: false,
+          view,
+          docOffset: sel.from,
+          range: { from: sel.from, to: sel.to },
+          sourceMap: payload.sourceMap,
+        }, wasmOutcome(evaluation)).then((result) => {
+          if (result.text) {
+            dispatchInlineResult(view, result.text, sel.to, result.isError);
+          }
+        });
+        applyAuthoritativeHardwareDiagnostics(
+          evaluation,
+          view,
+          sel.from,
+          sel.from,
+          sel.to,
+          payload.sourceMap,
+        );
         return true;
       }
       // Fall through to toplevel with @ prefix
@@ -695,8 +712,6 @@ function gateFormWithHoles(
 
 function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
   const { view, state, identities } = ctx;
-  const startupFlags = getStartupFlagsSnapshot();
-  const noModuleMode = startupFlags.noModuleMode;
   // Unified payload: composes identity injection + manual control through
   // one source map (VAL-ID-013, VAL-ID-015). The same runtimeCode feeds
   // both WASM and hardware paths; diagnostics are remapped through
@@ -741,46 +756,44 @@ function evaluateToplevel(ctx: EvalContext, prefix: string): boolean {
 
   const evalPos = range ? range.to : state.selection.main.from;
 
-  if (shouldUseWasmShadow()) {
-    evalWasm(code, {
-      isImmediate,
-      noModuleMode,
-      isPreview: false,
-      view,
-      docOffset: range?.from ?? 0,
-      range: range ?? undefined,
-      sourceMap: payload.sourceMap,
-    }).then((result) => {
-      if (hasView && result.text) {
-        dispatchInlineResult(view, result.text, evalPos, result.isError);
+  const evaluation = dispatchRuntimeCodeEvaluation({
+    code,
+    wasmCode: rawRuntimeCode,
+  });
+  evalWasm(code, {
+    isImmediate,
+    isPreview: false,
+    view,
+    docOffset: range?.from ?? 0,
+    range: range ?? undefined,
+    sourceMap: payload.sourceMap,
+  }, wasmOutcome(evaluation)).then((result) => {
+    if (hasView && result.text) {
+      dispatchInlineResult(view, result.text, evalPos, result.isError);
+    }
+  });
+
+  // §4.4 binding wasm-preview lifecycle follows actual delivery, not a
+  // boot-time URL flag: only a fulfilled hardware eval lifts preview state.
+  const bindingKeys = bindingKeysInText(rawCode);
+  if (bindingKeys.length > 0) {
+    void evaluation.then((result) => {
+      if (result.hardware?.status === "fulfilled") {
+        clearBindingsSoftPreview(bindingKeys);
+      } else if (result.wasm?.status === "fulfilled") {
+        markBindingsSoftPreview(bindingKeys);
       }
     });
   }
 
-  // §4.4 binding wasm-preview lifecycle: a normal (non-soft) eval that reaches
-  // the module lifts any bindings in the form out of preview; in no-module
-  // mode the form stays WASM-only, so those bindings remain previews.
-  const bindingKeys = bindingKeysInText(rawCode);
-  if (bindingKeys.length > 0) {
-    if (noModuleMode) {
-      markBindingsSoftPreview(bindingKeys);
-    } else {
-      clearBindingsSoftPreview(bindingKeys);
-    }
-  }
-
-  if (!noModuleMode) {
-    sendTouSEQ(code).then((response) => {
-      applyHardwareDiagnostics(
-        hasView ? view : undefined,
-        response,
-        range?.from ?? 0,
-        range?.from ?? 0,
-        range?.to ?? state.doc.length,
-        payload.sourceMap,
-      );
-    });
-  }
+  applyAuthoritativeHardwareDiagnostics(
+    evaluation,
+    hasView ? view : undefined,
+    range?.from ?? 0,
+    range?.from ?? 0,
+    range?.to ?? state.doc.length,
+    payload.sourceMap,
+  );
 
   return true;
 }
@@ -838,15 +851,19 @@ function evaluateSoft(ctx: EvalContext): boolean {
 
   const evalPos = state.selection.main.from;
 
+  const evaluation = dispatchRuntimeCodeEvaluation({
+    code: payload.runtimeCode,
+    wasmCode: payload.runtimeCode,
+    soft: true,
+  });
   evalWasm(payload.runtimeCode, {
     isImmediate,
-    noModuleMode: true,
     isPreview: true,
     view,
     docOffset: sliceFrom,
     range: range ?? undefined,
     sourceMap: payload.sourceMap,
-  })
+  }, wasmOutcome(evaluation))
     .then((result) => {
       if (hasView && result.text) {
         dispatchInlineResult(view, result.text, evalPos, result.isError);

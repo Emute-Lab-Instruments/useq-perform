@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — clojure-mode has no type declarations
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 
 import { structuralCoreExtensions } from "../extension.ts";
@@ -67,7 +67,7 @@ describe("structural-editing adapter (round 2 smoke)", () => {
     const after1 = view.state.field(structField);
     const list = after1.state.tree.root.children[0]!;
     expect(list.kind).toBe("list");
-    const sym = (list as { children: Array<{ id: string }> }).children[0]!;
+    const sym = (list as { children: ReadonlyArray<{ id: string }> }).children[0]!;
     expect((after1.state.cursors.primary as { target: string }).target).toBe(
       sym.id,
     );
@@ -75,7 +75,7 @@ describe("structural-editing adapter (round 2 smoke)", () => {
     dispatchAction(view, "nav.next"); // onto "1"
     const after2 = view.state.field(structField);
     const list2 = after2.state.tree.root.children[0]!;
-    const second = (list2 as { children: Array<{ id: string }> }).children[1]!;
+    const second = (list2 as { children: ReadonlyArray<{ id: string }> }).children[1]!;
     expect((after2.state.cursors.primary as { target: string }).target).toBe(
       second.id,
     );

@@ -7,6 +7,7 @@ import {
   Decoration,
   DecorationSet,
   EditorView,
+  ViewPlugin,
   WidgetType,
 } from "@codemirror/view";
 import type { EvalResultMode } from "../../lib/settings/schema.ts";
@@ -177,15 +178,22 @@ export function createInlineResultsField(config: InlineResultsConfig): Extension
 
       return decos;
     },
-    provide: (f) => EditorView.decorations.from(f),
+    provide: (f) => [
+      EditorView.decorations.from(f),
+      ViewPlugin.define((view) => ({ destroy() {
+        const timer = inlineDismissTimers.get(view);
+        if (timer !== undefined) clearTimeout(timer);
+        inlineDismissTimers.delete(view);
+      } })),
+    ],
   });
 }
 
 // ---------------------------------------------------------------------------
-// Default config — backward-compatible wrapper using global state
+// Default config — production wiring to global state
 // ---------------------------------------------------------------------------
 
-/** Default config that reads from the app's global state (backward-compatible). */
+/** Default config that reads from the app's global state. */
 export function createDefaultInlineResultsConfig(): InlineResultsConfig {
   return {
     getMode: () => getAppSettings().evalResults?.mode ?? "console",
@@ -195,12 +203,12 @@ export function createDefaultInlineResultsConfig(): InlineResultsConfig {
   };
 }
 
-/** Backward-compatible default field instance. */
+/** Default field instance used by the production editor. */
 export const inlineResultsField: Extension = createInlineResultsField(
   createDefaultInlineResultsConfig(),
 );
 
-let inlineDismissTimer: ReturnType<typeof setTimeout> | null = null;
+const inlineDismissTimers = new WeakMap<EditorView, ReturnType<typeof setTimeout>>();
 
 export function dispatchInlineResult(
   view: EditorView,
@@ -213,9 +221,10 @@ export function dispatchInlineResult(
 
   if (mode === "console") return;
 
-  if (inlineDismissTimer) {
-    clearTimeout(inlineDismissTimer);
-    inlineDismissTimer = null;
+  const previousTimer = inlineDismissTimers.get(view);
+  if (previousTimer !== undefined) {
+    clearTimeout(previousTimer);
+    inlineDismissTimers.delete(view);
   }
 
   view.dispatch({
@@ -225,22 +234,24 @@ export function dispatchInlineResult(
   if (mode === "inline-ephemeral" || mode === "floating") {
     const delay = settings?.autoDismissMs ?? 3000;
     if (delay > 0) {
-      inlineDismissTimer = setTimeout(() => {
-        inlineDismissTimer = null;
+      const timer = setTimeout(() => {
+        inlineDismissTimers.delete(view);
         try {
           view.dispatch({ effects: clearInlineResults.of(undefined) });
         } catch {
           // View may have been destroyed
         }
       }, delay);
+      inlineDismissTimers.set(view, timer);
     }
   }
 }
 
 export function clearAllInlineResults(view: EditorView): void {
-  if (inlineDismissTimer) {
-    clearTimeout(inlineDismissTimer);
-    inlineDismissTimer = null;
+  const previousTimer = inlineDismissTimers.get(view);
+  if (previousTimer !== undefined) {
+    clearTimeout(previousTimer);
+    inlineDismissTimers.delete(view);
   }
   view.dispatch({ effects: clearInlineResults.of(undefined) });
 }

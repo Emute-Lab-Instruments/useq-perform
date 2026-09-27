@@ -40,9 +40,9 @@ describe("configLoader", () => {
   });
 
   it("preserves hardcoded editor defaults when default-config omits nested fields", { timeout: 15000 }, async () => {
-    const { loadConfiguration } = await import("./appSettingsRepository.ts");
+    const { loadBootstrapSettingsWithMetadata } = await import("./appSettingsRepository.ts");
 
-    const config = await loadConfiguration();
+    const config = (await loadBootstrapSettingsWithMetadata()).config;
 
     expect(config.editor.code).toBe(defaultMainEditorStartingCode);
     expect(config.editor.fontSize).toBe(31);
@@ -59,8 +59,8 @@ describe("configLoader", () => {
     );
     window.localStorage.setItem(settingsModule.codeStorageKey, "(saved-from-local-storage)");
 
-    const { loadConfiguration } = await import("./appSettingsRepository.ts");
-    const config = await loadConfiguration();
+    const { loadBootstrapSettingsWithMetadata } = await import("./appSettingsRepository.ts");
+    const config = (await loadBootstrapSettingsWithMetadata()).config;
 
     expect(config.editor.fontSize).toBe(18);
     expect(config.storage.autoSaveEnabled).toBe(false);
@@ -79,8 +79,8 @@ describe("configLoader", () => {
     );
     window.localStorage.setItem(PERSISTENCE_KEYS.editorCode, "(stale-split-code)");
 
-    const { loadConfiguration } = await import("./appSettingsRepository.ts");
-    const config = await loadConfiguration();
+    const { loadBootstrapSettingsWithMetadata } = await import("./appSettingsRepository.ts");
+    const config = (await loadBootstrapSettingsWithMetadata()).config;
 
     expect(config.editor.code).toBe("(from-document-record)");
   });
@@ -100,8 +100,8 @@ describe("configLoader", () => {
       }),
     );
 
-    const { loadConfigurationWithMetadata } = await import("./appSettingsRepository.ts");
-    const result = await loadConfigurationWithMetadata();
+    const { loadBootstrapSettingsWithMetadata } = await import("./appSettingsRepository.ts");
+    const result = await loadBootstrapSettingsWithMetadata();
 
     expect(result.settingsSources).toEqual([
       "defaults",
@@ -120,8 +120,8 @@ describe("configLoader", () => {
     window.localStorage.setItem(settingsModule.codeStorageKey, "(local-only)");
     setLocation("/?nosave");
 
-    const { loadConfiguration } = await import("./appSettingsRepository.ts");
-    const config = await loadConfiguration();
+    const { loadBootstrapSettingsWithMetadata } = await import("./appSettingsRepository.ts");
+    const config = (await loadBootstrapSettingsWithMetadata()).config;
 
     // persistence.md §1.7: nosave gates writes only — persisted state is still read
     expect(config.editor.fontSize).toBe(12);
@@ -137,8 +137,8 @@ describe("configLoader", () => {
     vi.stubGlobal("fetch", fetchMock);
     setLocation("/?txt=https://example.com/code.txt");
 
-    const { loadConfiguration } = await import("./appSettingsRepository.ts");
-    const config = await loadConfiguration();
+    const { loadBootstrapSettingsWithMetadata } = await import("./appSettingsRepository.ts");
+    const config = (await loadBootstrapSettingsWithMetadata()).config;
 
     expect(fetchMock).toHaveBeenCalledWith("https://example.com/code.txt");
     expect(config.editor.code).toBe("(from-text-url)");
@@ -186,8 +186,8 @@ describe("configLoader", () => {
     vi.stubGlobal("fetch", fetchMock);
     setLocation("/?config=https://example.com/useq-config.json");
 
-    const { loadConfiguration } = await import("./appSettingsRepository.ts");
-    const config = await loadConfiguration();
+    const { loadBootstrapSettingsWithMetadata } = await import("./appSettingsRepository.ts");
+    const config = (await loadBootstrapSettingsWithMetadata()).config;
 
     expect(config.runtime).toEqual({
       autoReconnect: false,

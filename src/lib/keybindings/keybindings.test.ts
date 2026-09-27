@@ -229,6 +229,7 @@ describe("Default keyboard binding key snapshot", () => {
         "Alt-e ]",
         "Alt-e j",
         "Alt-e k",
+        "Alt-e n",
         "Alt-e p",
         "Alt-e r",
         "Alt-e s",

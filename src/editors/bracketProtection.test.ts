@@ -9,14 +9,13 @@
  *          Backspace/Delete inside an empty pair removes both brackets.
  *   - OFF: plain deletion (deleteCharBackward / deleteCharForward).
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-// @ts-expect-error — no type declarations for clojure-mode
+
 import { default_extensions } from "@nextjournal/clojure-mode";
 import {
   executeEditorCommand,
-  type EditorCommand,
 } from "./commands/editorCommandRouter.ts";
 import { deleteConfirmField } from "./extensions/deleteConfirmFlash.ts";
 

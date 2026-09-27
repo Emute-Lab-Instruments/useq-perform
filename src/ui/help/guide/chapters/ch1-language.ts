@@ -5,7 +5,7 @@
  * in lessonData.ts. Content follows docs/USER_GUIDE_SPEC.md Chapter 1.
  */
 
-import type { Chapter, VisSignal } from "../guideTypes";
+import type { Chapter } from "../guideTypes";
 
 // ---------------------------------------------------------------------------
 // DSP helpers — small building blocks for static VisSignal lambdas

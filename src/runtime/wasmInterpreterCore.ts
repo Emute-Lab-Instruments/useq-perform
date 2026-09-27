@@ -257,7 +257,6 @@ export function createWasmBatchEvaluator(
   );
 
   const evaluateLegacy = (
-    outputs: string[],
     outputsJson: string,
     start: number,
     end: number,
@@ -348,7 +347,7 @@ export function createWasmBatchEvaluator(
       }
       if (legacyEval) {
         try {
-          return evaluateLegacy(safeOutputs, outputsJson, start, end, count);
+          return evaluateLegacy(outputsJson, start, end, count);
         } catch (error) {
           if (!isBrokenOptionalExportError(error)) throw error;
           log(`legacy batch export is broken; sampling via useq_eval_output()`);

@@ -113,7 +113,6 @@ async function checkForSavedPort(): Promise<SerialPort | null | undefined> {
   if (savedInfo) {
     const ports = await navigator.serial.getPorts();
     dbg("Ports", ports);
-
     return ports.find((port: SerialPort) => {
       const info = port.getInfo();
       return (
@@ -171,7 +170,7 @@ export function askForPortAndConnect(): void {
         connectToSerialPort(port);
       })
       .catch((err: unknown) => {
-        console.log("Error requesting port:", err);
+        console.warn("Error requesting port:", err);
         post("Error requesting port. Please try again.", "error");
       });
   } else {
@@ -207,7 +206,7 @@ export async function connectToSerialPort(port: SerialPort): Promise<boolean> {
     await setupConnectedPort(port);
     return true;
   } catch (err: unknown) {
-    console.log("Error connecting to serial:", err);
+    console.error("Error connecting to serial:", err);
     post(
       'Connection failed. See <a href="https://www.emutelabinstruments.co.uk/useqinfo/useq-editor/#troubleshooting">troubleshooting guide</a>',
       "error"
@@ -251,7 +250,7 @@ export async function disconnect(port?: SerialPort | null): Promise<void> {
         await port.close();
       }
     } catch (err) {
-      console.log("Error closing port:", err);
+      console.warn("Error closing port:", err);
       disconnectError = err;
     }
 

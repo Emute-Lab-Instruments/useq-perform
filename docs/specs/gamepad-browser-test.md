@@ -20,7 +20,7 @@ non-normative: true
 - `src/contracts/gamepadChannels.ts` — typed channels (subscribe in console for debugging)
 - `src/editors/gamepadNavigation.ts` — editor-context reader and manual-control axis bridge
 - `src/editors/commands/actionHandlers.ts` — handler registry; dispatches `nav.up`/`nav.down`/`nav.left`/`nav.right` and other ActionIds to the structural dispatcher
-- `src/lib/menu/dispatcher.ts` — menu action, axis, freeze, and mutation bridge
+- `src/editors/menu/dispatcher.ts` — menu action, axis, freeze, and mutation bridge
 
 ---
 
@@ -83,7 +83,7 @@ non-normative: true
 
 **Test**: Place cursor on a number like `3` inside the list, press Y. The number should be deleted.
 
-## 6. Menu system (see `src/lib/menu/dispatcher.ts`, `src/lib/gamepad/paradigms/radial.ts`)
+## 6. Menu system (see `src/editors/menu/dispatcher.ts`, `src/lib/gamepad/paradigms/radial.ts`)
 
 | Action | Gamepad | Expected |
 |--------|---------|----------|

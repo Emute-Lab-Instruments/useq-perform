@@ -33,6 +33,7 @@ import { dispatchAction } from "../extensions/structure/adapter/dispatcher.ts";
 import { pathsFromCursorSet } from "../extensions/structure/adapter/cursorPath.ts";
 import {
   setStructState,
+  setIntendedFocus,
   structField,
 } from "../extensions/structure/adapter/stateField.ts";
 import {
@@ -47,6 +48,7 @@ import {
 import { atomAdjust, flipPolarity } from "../extensions/structure/core/atomOps.ts";
 import { evaluate, type EvalStrategy } from "../../effects/editorEvaluation.ts";
 import type { StructuralAction } from "../extensions/structure/adapter/dispatcher.ts";
+import { openNamespacePicker } from "../extensions/operatorNamespaces.ts";
 
 export type EditorCommandSource =
   | "keyboard"
@@ -72,6 +74,7 @@ export type EditorCommand = (
   | { kind: "adjustNumber"; delta: number }
   | { kind: "atomAdjust"; direction: 1 | -1 }
   | { kind: "atomFlipPolarity" }
+  | { kind: "openNamespacePicker" }
   | { kind: "toggleManualControl"; stick: "left" | "right" }
   | { kind: "manualControlAxis"; stick: "left" | "right"; x: number; y: number; nowMs?: number }
 ) & { source: EditorCommandSource };
@@ -168,13 +171,11 @@ export function executeEditorCommand(
       break;
 
     case "undo":
-      handled = undo(view);
-      if (handled) syncStructuralCursorFromSelection(view);
+      handled = applyHistory(view, undo);
       break;
 
     case "redo":
-      handled = redo(view);
-      if (handled) syncStructuralCursorFromSelection(view);
+      handled = applyHistory(view, redo);
       break;
 
     case "evaluate":
@@ -201,6 +202,10 @@ export function executeEditorCommand(
       handled = atomFlipPolarityAtCursor(view);
       break;
 
+    case "openNamespacePicker":
+      handled = openNamespacePicker(view);
+      break;
+
     case "toggleManualControl":
       handled = toggleManualControl(view, command.stick);
       break;
@@ -217,6 +222,19 @@ export function executeEditorCommand(
   }
 
   if (handled && shouldRestoreEditorFocus(command.source)) view.focus();
+  return handled;
+}
+
+function applyHistory(view: EditorView, command: typeof undo): boolean {
+  let hasIntendedFocus = false;
+  const handled = command({
+    state: view.state,
+    dispatch: (transaction) => {
+      hasIntendedFocus = transaction.effects.some((effect) => effect.is(setIntendedFocus));
+      view.dispatch(transaction);
+    },
+  });
+  if (handled && !hasIntendedFocus) syncStructuralCursorFromSelection(view);
   return handled;
 }
 

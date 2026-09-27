@@ -51,91 +51,33 @@ function getConfig(): EvalIntegrationConfig {
   return _config;
 }
 
-// Re-export everything from expressionEvalState.ts for backward compatibility.
-export {
-  matchPattern,
-  expressionEvaluatedAnnotation,
-  lastEvaluatedExpressionField,
-  findExpressionBounds,
-  findExpressionAtPosition,
-  isRangeActive,
-  findExpressionRanges,
-} from "./expressionEvalState.ts";
-
 import {
-  matchPattern,
+  collectOutputAssignments,
   expressionEvaluatedAnnotation,
-  findExpressionBounds,
 } from "./expressionEvalState.ts";
 
 // ---------------------------------------------------------------------------
 // Side-effectful helpers
 // ---------------------------------------------------------------------------
 
-/** Scan the document for the definition of an expression type. */
+/** Resolve one output variant using exact source offsets. */
 function findExpressionDefinition(
   view: EditorView,
   exprType: string,
-): { expressionText: string; from: number; to: number } | null {
-  const state = view.state;
-  const doc = state.doc;
-
-  dbg(`Finding definition for ${exprType}`);
-
-  for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
-    const lineObj = doc.line(lineNum);
-    const lineText = lineObj.text;
-    const lineFrom = lineObj.from;
-
-    let match: RegExpExecArray | null;
-    matchPattern.lastIndex = 0;
-    while ((match = matchPattern.exec(lineText)) !== null) {
-      const matchStart = lineFrom + match.index;
-      const foundExprType = `${match[1]}${match[2]}`;
-      if (foundExprType === exprType) {
-        const bounds = findExpressionBounds(state, matchStart);
-        const startLineObj = doc.line(bounds.from);
-        const endLineObj = doc.line(bounds.to);
-        const expressionText = doc.sliceString(startLineObj.from, endLineObj.to);
-        dbg(`Found ${exprType} from ${bounds.from} to ${bounds.to}`);
-        return { expressionText, from: startLineObj.from, to: endLineObj.to };
-      }
-    }
-  }
-
-  dbg(`No definition located for ${exprType}`);
-  return null;
+  position?: { from: number; to: number },
+) {
+  const assignment = collectOutputAssignments(view.state).find((entry) =>
+    entry.expressionType === exprType &&
+    (!position || (entry.from === position.from && entry.to === position.to)),
+  );
+  return assignment ? {
+    ...assignment,
+    expressionText: view.state.sliceDoc(assignment.from, assignment.to),
+  } : null;
 }
 
 function ensureSerialVisPanelVisible(): void {
   showVisualisationPanel({ emitAutoOpenEvent: true });
-}
-
-/** Find expression bounds by line number (helper for visualise). */
-function findExpressionDefinitionBounds(
-  view: EditorView,
-  exprType: string,
-): { from: number; to: number } | null {
-  const state = view.state;
-  const doc = state.doc;
-
-  for (let lineNum = 1; lineNum <= doc.lines; lineNum++) {
-    const lineObj = doc.line(lineNum);
-    const lineText = lineObj.text;
-    const lineFrom = lineObj.from;
-
-    let match: RegExpExecArray | null;
-    matchPattern.lastIndex = 0;
-    while ((match = matchPattern.exec(lineText)) !== null) {
-      const matchStart = lineFrom + match.index;
-      const foundExprType = `${match[1]}${match[2]}`;
-      if (foundExprType === exprType) {
-        const bounds = findExpressionBounds(state, matchStart);
-        return { from: bounds.from, to: bounds.to };
-      }
-    }
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,9 +101,6 @@ export function detectAndTrackExpressionEvaluation(
   const state = view.state;
   const doc = state.doc;
   const ui = (getAppSettings()?.ui as any) || {};
-  if (ui.expressionLastTrackingEnabled === false) {
-    return;
-  }
 
   // Determine evaluated top-level range using standard syntax tree
   let evalFrom = 0;
@@ -181,42 +120,16 @@ export function detectAndTrackExpressionEvaluation(
 
   if (evalFrom === evalTo) return;
 
-  const startLineNum = doc.lineAt(evalFrom).number;
-  const endLineNum = doc.lineAt(evalTo).number;
-  const lastInChunk = new Map<
-    string,
-    {
-      expressionType: string;
-      position: { from: number; to: number; line: number };
-      matchStart: number;
-    }
-  >();
-
-  for (let lineNum = startLineNum; lineNum <= endLineNum; lineNum++) {
-    const lineObj = doc.line(lineNum);
-    const lineText = lineObj.text;
-    const lineFrom = lineObj.from;
-    let match: RegExpExecArray | null;
-    matchPattern.lastIndex = 0;
-    while ((match = matchPattern.exec(lineText)) !== null) {
-      const matchStart = lineFrom + match.index;
-      if (matchStart < evalFrom || matchStart > evalTo) continue;
-      const bounds = findExpressionBounds(state, matchStart);
-      const exprType = `${match[1]}${match[2]}`;
-      const info = {
-        expressionType: exprType,
-        position: {
-          from: doc.line(bounds.from).from,
-          to: doc.line(bounds.to).to,
-          line: bounds.from,
-        },
-        matchStart,
-      };
-      const prev = lastInChunk.get(exprType);
-      if (!prev || prev.matchStart <= info.matchStart) {
-        lastInChunk.set(exprType, info);
-      }
-    }
+  const lastInChunk = new Map<string, {
+    expressionType: string;
+    position: { from: number; to: number; line: number };
+  }>();
+  for (const assignment of collectOutputAssignments(state)) {
+    if (assignment.from < evalFrom || assignment.to > evalTo) continue;
+    lastInChunk.set(assignment.expressionType, {
+      expressionType: assignment.expressionType,
+      position: { from: assignment.from, to: assignment.to, line: assignment.line },
+    });
   }
 
   if (lastInChunk.size > 0) {
@@ -226,7 +139,7 @@ export function detectAndTrackExpressionEvaluation(
     // must not move the rail-active state (expression-gutter.md §2.4). Only a
     // non-preview eval dispatches the annotation that updates
     // `lastEvaluatedExpressionField` (the field `isRangeActive` reads).
-    if (!opts.isPreview) {
+    if (!opts.isPreview && ui.expressionLastTrackingEnabled !== false) {
       const annotations = evaluations.map((info) =>
         expressionEvaluatedAnnotation.of({
           expressionType: info.expressionType,
@@ -240,8 +153,8 @@ export function detectAndTrackExpressionEvaluation(
       const exprType = info.expressionType;
       visualisationSession.expressions.notifyEvaluated(exprType);
 
-      const position = { from: info.position.line, to: info.position.line };
-      const definition = findExpressionDefinition(view, exprType);
+      const position = { from: info.position.from, to: info.position.to };
+      const definition = findExpressionDefinition(view, exprType, position);
       const newText = definition?.expressionText?.trim();
       if (!newText) continue;
 
@@ -295,27 +208,18 @@ export function handleClearExpression(view: EditorView, exprType: string): void 
   });
 }
 
-/** Send the expression definition to the module and track evaluation. */
-export function handlePlayExpression(view: EditorView, exprType: string): void {
-  const definition = findExpressionDefinition(view, exprType);
+/** Toggle only the clicked visualization variant; hardware eval is a separate action. */
+export function handlePlayExpression(
+  view: EditorView,
+  exprType: string,
+  position?: { from: number; to: number },
+): void {
+  const definition = findExpressionDefinition(view, exprType, position);
   if (!definition) return;
-
-  const expressionText = definition.expressionText.trim();
-  const config = getConfig();
-  const connected = config.isConnected();
-
-  if (connected) {
-    try {
-      dbg(`Play: sending ${exprType}`);
-      config.sendCode(expressionText);
-    } catch (e) {
-      dbg(`Play: failed to send ${exprType}: ${e}`);
-    }
-  }
-
-  const bounds = findExpressionDefinitionBounds(view, exprType);
-  const position = bounds ? { from: bounds.from, to: bounds.to } : undefined;
-  handleVisualiseExpression(view, exprType, expressionText, position);
+  handleVisualiseExpression(view, exprType, definition.expressionText, {
+    from: definition.from,
+    to: definition.to,
+  });
 }
 
 /**
@@ -340,36 +244,15 @@ export function handleToggleVisAtHalo(view: EditorView): boolean {
   }
   if (!(node.parent && node.parent.type.name === "Program")) return false;
 
-  const formFrom = node.from;
-  const formTo = node.to;
-
-  // Find the output assignment at the head of this form. matchPattern is broad,
-  // so we require the matched token to sit at (or right after) the form's
-  // opening — i.e. the head position of the list (§1.4: only output
-  // assignments get a rail/toggle).
-  const startLineNum = doc.lineAt(formFrom).number;
-  const endLineNum = doc.lineAt(formTo).number;
-  for (let lineNum = startLineNum; lineNum <= endLineNum; lineNum++) {
-    const lineObj = doc.line(lineNum);
-    const lineText = lineObj.text;
-    const lineFrom = lineObj.from;
-    let match: RegExpExecArray | null;
-    matchPattern.lastIndex = 0;
-    while ((match = matchPattern.exec(lineText)) !== null) {
-      const matchStart = lineFrom + match.index;
-      if (matchStart < formFrom || matchStart > formTo) continue;
-      // Head position: the char before the token (skipping inner whitespace)
-      // must be the form's opening paren.
-      const before = doc.sliceString(formFrom, matchStart);
-      if (!/^\(\s*$/.test(before)) continue;
-      const exprType = `${match[1]}${match[2]}`;
-      const expressionText = doc.sliceString(formFrom, formTo).trim();
-      const position = { from: formFrom, to: formTo };
-      handleVisualiseExpression(view, exprType, expressionText, position);
-      return true;
-    }
+  const assignments = collectOutputAssignments(state).filter(
+    (entry) => entry.from === node.from && entry.to === node.to,
+  );
+  for (const assignment of assignments) {
+    handleVisualiseExpression(view, assignment.expressionType,
+      doc.sliceString(assignment.from, assignment.to),
+      { from: assignment.from, to: assignment.to });
   }
-  return false;
+  return assignments.length > 0;
 }
 
 /** Toggle visualisation for an expression. */
@@ -393,10 +276,7 @@ export function handleVisualiseExpression(
     }
     expressionText = definition.expressionText.trim();
     if (!position) {
-      const bounds = findExpressionDefinitionBounds(view, exprType);
-      if (bounds) {
-        position = { from: bounds.from, to: bounds.to };
-      }
+      position = { from: definition.from, to: definition.to };
     }
   }
 
@@ -407,13 +287,6 @@ export function handleVisualiseExpression(
 
   const wasVisualised = visualisationSession.expressions.isVisualised(exprType, position);
 
-  if (typeof console !== "undefined" && console.debug) {
-    console.debug("useq:visualise-toggle", {
-      exprType,
-      wasVisualised,
-      length: expressionText.length,
-    });
-  }
   dbg(`Visualise: toggling ${exprType}, text length ${expressionText.length}`);
   visualisationSession.expressions.toggle(exprType, expressionText, position)
     .then(() => {

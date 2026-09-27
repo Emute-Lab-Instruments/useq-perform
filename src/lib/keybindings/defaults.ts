@@ -103,6 +103,7 @@ export const defaultKeyBindings: KeyBinding[] = [
   { action: "edit.transposeFwd", key: "Alt-e j" },
   { action: "edit.transposeBack", key: "Alt-e k" },
   { action: "edit.pasteSample", key: "Alt-e p" },
+  { action: "namespace.pick", key: "Alt-e n" },
 
   // -- Chord alternatives: probe management (Alt-o namespace) -------------
   // "o" for "observe" — avoids conflict with direct Alt-p binding.

@@ -1,3 +1,4 @@
+import { commitGraph } from "./testing/commitGraph";
 /**
  * M2.2 routing integration: real compiler artefacts drive the engine.
  *
@@ -235,21 +236,10 @@ describe("M2.2 routing integration — real artefact drives the engine", () => {
       { port: 0, sourceIdentity: "lfo", sourcePort: 0 },
     ]);
 
-    // Drive the simulated worklet core with the plan's deltas, exactly
-    // as the service posts them (statePointer/stateBytes 0 → the core
-    // allocates zones between quanta).
+    // Prepare and activate the complete compiler plan through the service protocol.
     const host = buildHost();
-    for (const delta of plan.workletDeltas) {
-      if (delta.type === "instantiate") {
-        host.core.handleMessage({
-          ...delta,
-          statePointer: 0,
-          stateBytes: 0,
-        });
-      } else {
-        host.core.handleMessage(delta);
-      }
-    }
+    commitGraph(host.core, plan.workletDeltas.map((delta) =>
+      delta.type === "instantiate" ? { ...delta, statePointer: 0, stateBytes: 0 } : delta));
 
     // SAB channels in commit-plan order: lfo.freq=2, lfo.amp=110,
     // car.freq=440. Step past the fade-in window.
@@ -291,13 +281,8 @@ describe("M2.2 routing integration — real artefact drives the engine", () => {
 
     const host = buildHost();
     const post = (deltas: typeof plan1.workletDeltas) => {
-      for (const delta of deltas) {
-        if (delta.type === "instantiate") {
-          host.core.handleMessage({ ...delta, statePointer: 0, stateBytes: 0 });
-        } else {
-          host.core.handleMessage(delta);
-        }
-      }
+      commitGraph(host.core, deltas.map((delta) =>
+        delta.type === "instantiate" ? { ...delta, statePointer: 0, stateBytes: 0 } : delta));
     };
 
     post(plan1.workletDeltas);

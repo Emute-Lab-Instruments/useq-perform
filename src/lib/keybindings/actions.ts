@@ -119,6 +119,12 @@ export const actions = {
     icon: "book-open",
     requiresEditor: true,
   },
+  "namespace.pick": {
+    description: "Choose operator namespace",
+    category: "editor",
+    reversible: true,
+    requiresEditor: true,
+  },
   "edit.undo": {
     description: "Undo",
     category: "editor",

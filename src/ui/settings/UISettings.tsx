@@ -60,6 +60,23 @@ export function UISettings(props: UISettingsProps = {}) {
           onChange={(val) => updateUIField("expressionClearButtonEnabled", val)}
         />
       </FormRow>
+      <FormRow label="Show namespace learning hints">
+        <Checkbox
+          checked={s().ui?.namespaceHintsVerbose !== false}
+          onChange={(val) => updateUIField("namespaceHintsVerbose", val)}
+        />
+      </FormRow>
+      <FormRow label="Panel style">
+        <Select
+          value={s().ui?.panelChrome ?? "pane"}
+          options={[
+            { value: "pane", label: "Floating window" },
+            { value: "drawer", label: "Side drawer" },
+            { value: "tile", label: "Tiled" },
+          ]}
+          onChange={(val) => updateUIField("panelChrome", val)}
+        />
+      </FormRow>
       <FormRow label="Gamepad Picker Style" level="advanced">
         <Select
           value={s().ui?.gamepadPickerStyle || "grid"}

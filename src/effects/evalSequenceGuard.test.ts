@@ -36,7 +36,6 @@ interface PendingEval {
   resolve: (value: { result: string | null; diagnostics: unknown[] }) => void;
 }
 
-const pending: PendingEval[] = [];
 
 const mockEvalCodeWithDiagnostics = vi.hoisted(() => {
   // Each call captures the eval's resolver into a shared queue so the
@@ -61,7 +60,19 @@ Object.defineProperty(globalThis, "__evalSeqPending", {
 });
 
 const mockEvalCode = vi.hoisted(() => vi.fn(() => Promise.resolve("42")));
-const mockSendTouSEQ = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const mockSendTouSEQ = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve()));
+
+vi.mock("../runtime/runtimeCodeEvaluation.ts", () => ({
+  dispatchRuntimeCodeEvaluation: vi.fn(async ({ code, wasmCode, soft = false }) => ({
+    session: { transportMode: soft ? "wasm" : "both" },
+    wasm: { status: "fulfilled", value: await mockEvalCodeWithDiagnostics(wasmCode ?? code) },
+    hardware: soft ? null : {
+      status: "fulfilled",
+      value: await mockSendTouSEQ(code),
+    },
+    diagnosticAuthority: soft ? "wasm" : "hardware",
+  })),
+}));
 const mockPushDiagnostics = vi.hoisted(() => vi.fn());
 const mockClearDiagnosticsForRange = vi.hoisted(() => vi.fn());
 const mockDispatchInlineResult = vi.hoisted(() => vi.fn());

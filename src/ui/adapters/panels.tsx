@@ -9,11 +9,13 @@
  */
 import { Show, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { PanelChrome } from "../panel-chrome/PanelChrome";
-import { DesignSelector } from "../panel-chrome/DesignSelector";
+import { isNarrowViewport } from "../panel-chrome/geometry";
+import type { PanelSide } from "../panel-chrome/types";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import { HelpPanel } from "../help/HelpPanel";
 import { WiredMachinePanel } from "../help/machine/MachinePanel";
 import { ConsolePanel } from "../console/ConsolePanel";
+import { settings } from "../../utils/settingsStore";
 // Side-effect import: registers the diagnostic → guide deep-link bridge
 // (the-machine.md §5.1). panels.tsx is loaded from bootstrap, so the bridge
 // is live before any diagnostic can be rendered.
@@ -43,30 +45,115 @@ const visibilityGetters: Record<string, () => boolean> = {
   console: consoleVisible,
 };
 
-// ---- Public API ----
+// ---- Side-by-side docking ----
+//
+// Chrome panels dock to one of two viewport sides so that up to two can be
+// open at once without overlapping. Each panel has a preferred side; when it
+// is taken the panel uses the free side, and when both are taken the panel
+// replaces the occupant of its preferred side. On narrow viewports panels are
+// full width, so only one chrome panel is open at a time.
 
-/** Panel IDs that don't participate in the "close others" mutual exclusion. */
+/** Panel IDs that don't participate in docking / mutual exclusion. */
 const independentPanels = new Set(["console"]);
+
+const preferredSide: Record<string, PanelSide> = {
+  settings: "right",
+  help: "left",
+  machine: "right",
+};
+
+const [panelSides, setPanelSides] = createSignal<Record<string, PanelSide>>({});
+
+/** Stacking order of open chrome panels; last = topmost. */
+const [panelOrder, setPanelOrder] = createSignal<string[]>([]);
+
+/** Per-mounted-panel hooks that move its overlay-stack entry to the top. */
+const overlayRaisers = new Map<string, () => void>();
+
+function otherSide(side: PanelSide): PanelSide {
+  return side === "left" ? "right" : "left";
+}
+
+function openChromePanelIds(): string[] {
+  return Object.keys(visibilityGetters).filter(
+    (id) => !independentPanels.has(id) && visibilityGetters[id](),
+  );
+}
+
+/** Pick a side for `panelId`, closing whichever panel must make room. */
+function assignSide(panelId: string): PanelSide {
+  const preferred = preferredSide[panelId] ?? "right";
+  const others = openChromePanelIds().filter((id) => id !== panelId);
+
+  if (isNarrowViewport()) {
+    for (const id of others) visibilitySetters[id](false);
+    return preferred;
+  }
+
+  const sides = panelSides();
+  const occupant = (side: PanelSide) => others.find((id) => sides[id] === side);
+
+  let side = preferred;
+  if (occupant(preferred)) {
+    if (!occupant(otherSide(preferred))) {
+      side = otherSide(preferred);
+    } else {
+      visibilitySetters[occupant(preferred)!](false);
+    }
+  }
+  // Panels without an assigned side (none expected) are closed defensively
+  // so that at most two chrome panels are ever open.
+  for (const id of others) {
+    if (sides[id] == null) visibilitySetters[id](false);
+  }
+  return side;
+}
+
+function openPanel(panelId: string): void {
+  const side = assignSide(panelId);
+  setPanelSides((prev) => ({ ...prev, [panelId]: side }));
+  visibilitySetters[panelId](true);
+}
+
+/**
+ * Raise an open chrome panel to the top of the paint order and of the
+ * overlay stack, so Escape dismisses it first (overlays.md §1.1).
+ */
+export function raisePanel(panelId: string): void {
+  const order = panelOrder();
+  if (!order.includes(panelId) || order[order.length - 1] === panelId) return;
+  setPanelOrder([...order.filter((id) => id !== panelId), panelId]);
+  overlayRaisers.get(panelId)?.();
+}
+
+// ---- Public API ----
 
 export function togglePanelVisibility(panelId: string) {
   const getter = visibilityGetters[panelId];
   const setter = visibilitySetters[panelId];
-  if (getter && setter) {
-    if (!getter() && !independentPanels.has(panelId)) {
-      hideAllPanels();
-    }
-    setter(!getter());
+  if (!getter || !setter) return;
+  if (getter()) {
+    setter(false);
+  } else if (independentPanels.has(panelId)) {
+    setter(true);
+  } else {
+    openPanel(panelId);
   }
 }
 
 /**
- * Show a specific panel by panelId.
+ * Show a specific panel by panelId. An already-open panel is raised.
  */
 export function showPanel(panelId: string) {
+  const getter = visibilityGetters[panelId];
   const setter = visibilitySetters[panelId];
-  if (setter) {
-    hideAllPanels();
+  if (!getter || !setter) return;
+  if (independentPanels.has(panelId)) {
     setter(true);
+  } else if (getter()) {
+    raisePanel(panelId);
+  } else {
+    openPanel(panelId);
   }
 }
 
@@ -110,45 +197,88 @@ export function hideChromePanel(panelId: string): void {
 
 // ---- Application-owned component tree ----
 
+/**
+ * Registers a visible chrome panel with the overlay stack (Escape + scroll
+ * lock) and the paint order, and raises it on pointer-down / focus-in.
+ * Renders a `display: contents` wrapper so it does not affect layout.
+ */
 function ManagedPanel(props: {
   panelId: string;
   onClose: () => void;
-  children: JSX.Element;
+  children: (stackIndex: () => number) => JSX.Element;
 }) {
   let popOverlay: (() => void) | undefined;
+  let wrapper: HTMLDivElement | undefined;
+  const panelId = props.panelId;
+  const register = () => pushOverlay(`panel:${panelId}`, () => props.onClose());
+  const onInteract = () => raisePanel(panelId);
+
   onMount(() => {
-    popOverlay = pushOverlay(`panel:${props.panelId}`, props.onClose);
+    popOverlay = register();
+    setPanelOrder((order) => [...order.filter((id) => id !== panelId), panelId]);
+    // Push the new entry before popping the old one so the scroll-lock
+    // reference count never drops to zero during a raise.
+    overlayRaisers.set(panelId, () => {
+      const previous = popOverlay;
+      popOverlay = register();
+      previous?.();
+    });
+    wrapper?.addEventListener("pointerdown", onInteract, true);
+    wrapper?.addEventListener("focusin", onInteract);
   });
   onCleanup(() => {
+    wrapper?.removeEventListener("pointerdown", onInteract, true);
+    wrapper?.removeEventListener("focusin", onInteract);
+    overlayRaisers.delete(panelId);
+    setPanelOrder((order) => order.filter((id) => id !== panelId));
     popOverlay?.();
   });
-  return <>{props.children}</>;
+
+  const stackIndex = () => Math.max(0, panelOrder().indexOf(panelId));
+  return (
+    <div ref={wrapper} class="managed-panel" style={{ display: "contents" }}>
+      {props.children(stackIndex)}
+    </div>
+  );
 }
+
+const chromeDesign = () => settings.ui?.panelChrome ?? "pane";
+const sideOf = (panelId: string) => panelSides()[panelId] ?? preferredSide[panelId] ?? "right";
 
 export function PanelRoot() {
   return (
     <>
       <Show when={settingsVisible()}>
         <ManagedPanel panelId="settings" onClose={() => setSettingsVisible(false)}>
-          <PanelChrome
-            panelId="settings"
-            title="Settings"
-            onClose={() => setSettingsVisible(false)}
-          >
-            <SettingsPanel />
-          </PanelChrome>
+          {(stackIndex) => (
+            <PanelChrome
+              panelId="settings"
+              title="Settings"
+              design={chromeDesign()}
+              side={sideOf("settings")}
+              stackIndex={stackIndex()}
+              onClose={() => setSettingsVisible(false)}
+            >
+              <SettingsPanel />
+            </PanelChrome>
+          )}
         </ManagedPanel>
       </Show>
 
       <Show when={helpVisible()}>
         <ManagedPanel panelId="help" onClose={() => setHelpVisible(false)}>
-          <PanelChrome
-            panelId="help"
-            title="Help"
-            onClose={() => setHelpVisible(false)}
-          >
-            <HelpPanel />
-          </PanelChrome>
+          {(stackIndex) => (
+            <PanelChrome
+              panelId="help"
+              title="Help"
+              design={chromeDesign()}
+              side={sideOf("help")}
+              stackIndex={stackIndex()}
+              onClose={() => setHelpVisible(false)}
+            >
+              <HelpPanel />
+            </PanelChrome>
+          )}
         </ManagedPanel>
       </Show>
 
@@ -159,15 +289,20 @@ export function PanelRoot() {
           (overlays.md §1.1, §1.2) without inventing a new surface kind. */}
       <Show when={machineVisible()}>
         <ManagedPanel panelId="machine" onClose={() => setMachineVisible(false)}>
-          <PanelChrome
-            panelId="machine"
-            title="How uSEQ thinks"
-            onClose={() => setMachineVisible(false)}
-          >
-            <div class="panel machine-standalone">
-              <WiredMachinePanel />
-            </div>
-          </PanelChrome>
+          {(stackIndex) => (
+            <PanelChrome
+              panelId="machine"
+              title="How uSEQ thinks"
+              design={chromeDesign()}
+              side={sideOf("machine")}
+              stackIndex={stackIndex()}
+              onClose={() => setMachineVisible(false)}
+            >
+              <div class="panel machine-standalone">
+                <WiredMachinePanel />
+              </div>
+            </PanelChrome>
+          )}
         </ManagedPanel>
       </Show>
 
@@ -183,10 +318,4 @@ export function PanelRoot() {
  */
 export function toggleMachinePanel(): void {
   togglePanelVisibility("machine");
-}
-
-// ---- Design selector ----
-
-export function DesignSelectorRoot(props: { devmode: boolean }) {
-  return <DesignSelector devmode={props.devmode} />;
 }

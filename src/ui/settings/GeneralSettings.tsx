@@ -13,6 +13,7 @@ import { ConsoleSettings } from "./ConsoleSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import type { AppSettings } from "../../lib/appSettings.ts";
+import { confirmDialog, type ConfirmDialogFn } from "../adapters/modal";
 
 export interface GeneralSettingsProps {
   /** Current settings object. Defaults to the global reactive settings store. */
@@ -23,6 +24,8 @@ export interface GeneralSettingsProps {
   onResetSettings?: () => void;
   /** Callback invoked after reset or import when a page reload is needed. Defaults to window.location.reload. */
   onReload?: () => void;
+  /** In-app confirmation dialog. Defaults to the imperative modal adapter's confirmDialog. */
+  confirm?: ConfirmDialogFn;
 }
 
 export function GeneralSettings(props: GeneralSettingsProps = {}) {
@@ -31,8 +34,14 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
     (props.onUpdateSettings ?? requestSettingsUpdate)(patch);
   const reload = () => (props.onReload ?? (() => window.location.reload()))();
 
-  const handleReset = () => {
-    if (confirm("Are you sure you want to reset all settings to default values?")) {
+  const handleReset = async () => {
+    const ok = await (props.confirm ?? confirmDialog)({
+      title: "Reset all settings?",
+      message: "All settings return to their default values. The page will reload.",
+      confirmLabel: "Reset settings",
+      destructive: true,
+    });
+    if (ok) {
       (props.onResetSettings ?? resetSettings)();
       reload();
     }
@@ -49,14 +58,14 @@ export function GeneralSettings(props: GeneralSettingsProps = {}) {
       <KeybindingsSettings settings={s()} onUpdateSettings={update} />
       <VisualisationSettings settings={s()} onUpdateSettings={update} />
       <AdvancedSettings settings={s()} onUpdateSettings={update} />
-      <ConfigurationManagement onReload={reload} />
+      <ConfigurationManagement onReload={reload} confirm={props.confirm} />
 
       <div class="settings-footer">
         <div class="settings-footer-group">
           <button class="panel-button" onClick={handleSettingsExport()}>
             Export settings
           </button>
-          <button class="panel-button" onClick={handleSettingsImport(reload)}>
+          <button class="panel-button" onClick={handleSettingsImport(reload, { confirm: props.confirm })}>
             Import settings
           </button>
         </div>

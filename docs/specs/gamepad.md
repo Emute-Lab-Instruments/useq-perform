@@ -606,15 +606,15 @@ This collapses "select target + choose verb + pick content" into a single chord 
   - Each D-pad press moves the node immediately; held repeats fire.
 - Exit gestures:
   - A → `actOn.drop`: commit position (no-op on tree — moves already applied), exit grab
-  - B → `actOn.cancelGrab`: batch-undo all moves back to the pre-grab state (restoring both tree and cursor), exit grab
+  - B → `actOn.cancelGrab`: undo the moves through the document's real history, restore the saved structural focus, and end the grab session
   - Y → `actOn.duplicateDrop`: exit grab (stub — duplicate-at-position semantics deferred)
-- Grab state is tracked in `src/lib/gamepad/grabState.ts` (module-level, not CodeMirror state). A snapshot of the document text and cursor paths is saved on entry, enabling cursor restoration on cancel. A separate CM `grabModeField` boolean drives the visual indicator.
-- The grab layer uses `when: () => isGrabActive()` (predicate-driven); it does not auto-timeout.
+- Each document owns one CodeMirror `GrabSession` field in `src/editors/grabSession.ts`. A non-null session means grab is active; it stores the original structural focus and move count. The visual indicator derives from that same session, with no mirrored boolean or module-global singleton. Grab lifecycle state is excluded from undo history: undo or redo must not resurrect an ended grab session.
+- The grab layer reads `state.grabActive` from the injected editor context; it does not auto-timeout. Dropping ends the session while retaining the applied document edits.
 
 ```ts
 const grabLayer: Layer = {
   name:   'grab-mode',
-  when:   () => isGrabActive(),
+  when:   (state) => state.grabActive === true,
   gestures: {
     [keyOf(tap('Left'))]:  'grab.moveLeft',
     [keyOf(held('Left'))]: 'grab.moveLeft',

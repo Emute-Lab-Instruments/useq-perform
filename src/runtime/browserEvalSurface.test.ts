@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 /**
  * Tests for the devmode-only browser eval surface.
  *
@@ -29,8 +30,8 @@ const {
   sampleOutputAtTimeMock,
 } = vi.hoisted(() => ({
   evaluateMock: vi.fn((_view: unknown, _strategy: string) => true),
-  editorAccessorMock: vi.fn<[], unknown>(() => null),
-  telemetryAccessorMock: vi.fn<[], unknown>(() => null),
+  editorAccessorMock: vi.fn<() => unknown>(() => null),
+  telemetryAccessorMock: vi.fn<() => unknown>(() => null),
   sampleOutputAtTimeMock: vi.fn(async (_name: string, _time: number) => 0),
 }));
 
@@ -134,7 +135,7 @@ describe("browserEvalSurface (devmode-only verified eval route)", () => {
       editorAccessorMock.mockReturnValue(null);
       const result = w.__useqBrowserEval!.evalToplevelNow();
       const resolved = await Promise.resolve(result);
-      expect(resolved.ok).toBe(false);
+      assert(resolved.ok === false);
       expect(typeof resolved.error).toBe("string");
       expect(evaluateMock).not.toHaveBeenCalled();
     });
@@ -191,7 +192,7 @@ describe("browserEvalSurface (devmode-only verified eval route)", () => {
       evaluateMock.mockReturnValue(false);
 
       const result = await Promise.resolve(w.__useqBrowserEval!.evalToplevelNow());
-      expect(result.ok).toBe(true);
+      assert(result.ok === true);
       expect(result.evalAccepted).toBe(false);
     });
 
@@ -216,7 +217,7 @@ describe("browserEvalSurface (devmode-only verified eval route)", () => {
       telemetryAccessorMock.mockReturnValue({ telemetry: fakeTelemetry });
 
       const result = await Promise.resolve(w.__useqBrowserEval!.evalToplevelNow());
-      expect(result.ok).toBe(true);
+      assert(result.ok === true);
       expect(result.evalAccepted).toBe(true);
       expect(result.telemetry).toEqual(fakeTelemetry);
       expect(result.telemetry?.programRevision).toBe(3);
@@ -234,7 +235,7 @@ describe("browserEvalSurface (devmode-only verified eval route)", () => {
       telemetryAccessorMock.mockReturnValue(null);
 
       const result = await Promise.resolve(w.__useqBrowserEval!.evalToplevelNow());
-      expect(result.ok).toBe(true);
+      assert(result.ok === true);
       expect(result.evalAccepted).toBe(true);
       expect(result.telemetry).toBeNull();
     });
@@ -252,7 +253,7 @@ describe("browserEvalSurface (devmode-only verified eval route)", () => {
       });
 
       const result = await Promise.resolve(w.__useqBrowserEval!.evalToplevelNow());
-      expect(result.ok).toBe(false);
+      assert(result.ok === false);
       expect(typeof result.error).toBe("string");
       expect(result.error).toContain("boom");
     });

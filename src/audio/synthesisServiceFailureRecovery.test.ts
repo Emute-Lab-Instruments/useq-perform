@@ -32,7 +32,7 @@
  * OBSERVED FAILING before the synthesis service learned to consume
  * `WorkletOutboundEvent` messages and expose full telemetry.
  */
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 
 import {
   resetEngineStateStoreForTests,
@@ -43,8 +43,6 @@ import {
   createSynthesisService,
   createSynthesisDevmodeSurface,
   SYNTHESIS_TELEMETRY_SCHEMA_VERSION,
-  type ConsoleMessageSink,
-  type SynthesisService,
   type SynthesisServiceOptions,
 } from "./synthesisService";
 import {
@@ -94,7 +92,7 @@ function buildWorkletSnapshot(
 }
 
 interface OptionsBundle {
-  readonly options: SynthesisServiceOptions;
+  readonly options: { -readonly [K in keyof SynthesisServiceOptions]: SynthesisServiceOptions[K] };
   readonly audioContext: FakeAudioContext;
   readonly workletNode: FakeWorkletNode;
   readonly telemetry: ReturnType<typeof createFakeTelemetryInstaller>;
@@ -505,7 +503,7 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
     });
     const initialContext = createFakeAudioContext();
     const freshContext = createFakeAudioContext();
-    freshContext.audioWorklet.addModule = async () => bringUpReleased;
+    freshContext.audioWorklet!.addModule = async () => bringUpReleased;
     const bundle = buildOptions({
       audioContextFactory: () => (nodeIndex === 0 ? initialContext : freshContext),
       workletNodeFactory: () => (nodeIndex++ === 0 ? firstNode : secondNode),
@@ -590,7 +588,7 @@ describe("synthesisService — recovery preserves one-executor/one-worklet (VAL-
     // guard.
     staleView.publishAudioFrame({ frame: 9999n, blockFrameOffset: 9999 });
     staleView.peakSample = 0.99;
-    firstNode.deliverFromWorklet(buildWorkletSnapshot({ audioFrame: 9999n, peakSample: 0.99 }));
+    firstNode.deliverFromWorklet(buildWorkletSnapshot({ audioFrame: 9999, peakSample: 0.99 }));
     expect(service.telemetry.audioFrame).toBe(256n);
     expect(service.telemetry.peakSample).toBeCloseTo(0.2, 6);
     await service.dispose();

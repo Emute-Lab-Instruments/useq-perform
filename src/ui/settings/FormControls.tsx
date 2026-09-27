@@ -1,4 +1,4 @@
-import { JSX, createEffect, createSignal, Show, onMount, onCleanup } from "solid-js";
+import { JSX, createEffect, createSignal, Show } from "solid-js";
 import { isLevelVisible, type SettingsLevel } from "./devmodeContext";
 
 /**
@@ -23,9 +23,10 @@ export function Section(props: {
       <div class="panel-section" classList={{ "panel-section--open": isOpen() }}>
         <button
           class="panel-section-toggle"
+          aria-expanded={isOpen()}
           onClick={() => setManualOpen(!manualOpen())}
         >
-          <span class="panel-section-arrow">{isOpen() ? "▾" : "▸"}</span>
+          <span class="panel-section-arrow" aria-hidden="true">{isOpen() ? "▾" : "▸"}</span>
           <h3 class="panel-section-title">{props.title}</h3>
         </button>
         <Show when={isOpen()}>
@@ -56,9 +57,10 @@ export function SubGroup(props: {
       <div class="panel-subgroup" classList={{ "panel-subgroup--open": isOpen() }}>
         <button
           class="panel-subgroup-toggle"
+          aria-expanded={isOpen()}
           onClick={() => setManualOpen(!manualOpen())}
         >
-          <span class="panel-subgroup-arrow">{isOpen() ? "▾" : "▸"}</span>
+          <span class="panel-subgroup-arrow" aria-hidden="true">{isOpen() ? "▾" : "▸"}</span>
           <span class="panel-subgroup-label">{props.label}</span>
         </button>
         <Show when={isOpen()}>

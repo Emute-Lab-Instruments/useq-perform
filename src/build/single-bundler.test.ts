@@ -41,10 +41,6 @@ function readAllBuildJavaScript(): string {
 const ENTRY_POINT = "bundle.js";
 
 // Shared modules that should be present in the build
-const EXPECTED_MODULES = [
-  { fingerprint: "serialComms", description: "serial communication module" },
-  { fingerprint: "appSettingsRepository", description: "user settings persistence" },
-];
 
 describe("Single-bundle build structure", () => {
   let entryFiles: string[];

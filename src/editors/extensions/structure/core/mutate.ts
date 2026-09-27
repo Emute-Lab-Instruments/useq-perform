@@ -18,7 +18,6 @@
 
 import { findHolesInOrder, isHole } from "./holes.ts";
 import {
-  childrenOf,
   findById,
   indexOfChild,
   isCompound,

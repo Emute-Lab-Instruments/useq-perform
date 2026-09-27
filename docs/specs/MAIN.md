@@ -209,6 +209,8 @@ Read each as a self-contained spec. Internal numbering restarts at 1.1.
 
 6.34 [the-machine.md](the-machine.md) — (draft) user-facing canonical representation: live schematic of the signal model (six ideas, no-animation-without-a-real-event) plus guide chapter 0 "How uSEQ thinks".
 
+6.35 [operator-modifier-ui.md](operator-modifier-ui.md) — (evolving; approved contract, implementation in progress) source-canonical editor discovery, presentation, completion, and undoable rewriting for attached `operator[...]` modifiers. Qualification stays orthogonal; language authority lives in `../../src-useq/docs/specs/operator-modifiers.md` and `../../src-useq/docs/specs/qualified-symbols.md`.
+
 ---
 
 ## 7. Cross-References

@@ -1,15 +1,11 @@
 import { ReadableStream, WritableStream } from "node:stream/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  JSON_META_EVENT,
-  PROTOCOL_READY_EVENT,
-} from "../contracts/runtimeChannels";
 
 const postMock = vi.fn();
 const upgradeCheckMock = vi.fn();
 const notifyExternalTimeUpdateMock = vi.fn();
-const reportTransportConnectionChangedMock = vi.fn(() => ({
+const reportTransportConnectionChangedMock = vi.fn((_detail: { connected: boolean; protocolMode?: string }) => ({
   connected: false,
   protocolMode: "legacy",
   session: {
@@ -282,11 +278,11 @@ describe("serialComms fake host harness", () => {
   it("proves connect -> hello -> stream-config -> meta/time routing -> disconnect", async () => {
     const { channels, ...serialComms } = await loadSerialComms();
     const port = new FakeSerialPort();
-    const protocolEvents: Array<Record<string, unknown>> = [];
+    const protocolEvents: Array<import("../contracts/runtimeChannels").ProtocolReadyDetail> = [];
     const metaEvents: Array<Record<string, unknown>> = [];
 
     channels.protocolReady.subscribe((detail) => {
-      protocolEvents.push(detail as Record<string, unknown>);
+      protocolEvents.push(detail);
     });
     channels.jsonMeta.subscribe((detail) => {
       metaEvents.push(detail as Record<string, unknown>);
@@ -383,9 +379,9 @@ describe("serialComms fake host harness", () => {
     const port = new FakeSerialPort();
     port.disableResponses.add("hello");
 
-    const protocolEvents: Array<Record<string, unknown>> = [];
+    const protocolEvents: Array<import("../contracts/runtimeChannels").ProtocolReadyDetail> = [];
     channels.protocolReady.subscribe((detail) => {
-      protocolEvents.push(detail as Record<string, unknown>);
+      protocolEvents.push(detail);
     });
 
     // Don't await the connect promise yet — protocol detection takes 2800 ms.
@@ -417,9 +413,9 @@ describe("serialComms fake host harness", () => {
     port.disableResponses.add("hello");
     port.legacyFirmwareVersion = "1.1.1";
 
-    const protocolEvents: Array<Record<string, unknown>> = [];
+    const protocolEvents: Array<import("../contracts/runtimeChannels").ProtocolReadyDetail> = [];
     channels.protocolReady.subscribe((detail) => {
-      protocolEvents.push(detail as Record<string, unknown>);
+      protocolEvents.push(detail);
     });
 
     expect(await serialComms.connectToSerialPort(port as unknown as SerialPort)).toBe(true);

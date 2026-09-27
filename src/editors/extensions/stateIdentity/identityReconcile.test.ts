@@ -241,7 +241,7 @@ describe("Bug 15513d48: IdentityMap stays collision-free under FormKey overwrite
     // ids differ. forkEntry must (a) succeed, and (b) leave byId
     // consistent: byId[idA] must be gone.
     const idsB = ((): {
-      next(): string;
+      next(): import("./identityTypes.ts").StateId;
     } => {
       let n = 100;
       return { next: () => `id-fresh-${n++}` as never };
@@ -302,7 +302,7 @@ describe("Bug 15513d48: IdentityMap stays collision-free under FormKey overwrite
 
     // Simulate the recovery path: build an entry at the same key with a
     // brand-new id.
-    const genRestored = ((): { next(): string } => {
+    const genRestored = ((): { next(): import("./identityTypes.ts").StateId } => {
       let done = false;
       return {
         next() {
